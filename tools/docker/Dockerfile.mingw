@@ -1,0 +1,46 @@
+FROM ubuntu:22.04 AS builder
+
+# Install MinGW cross-compiler + build deps
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    cmake \
+    g++-mingw-w64-x86-64 \
+    mingw-w64 \
+    git \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set MinGW as default cross-compiler
+RUN update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix || true
+RUN update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix || true
+
+WORKDIR /src
+COPY . .
+
+# MinGW toolchain file
+RUN mkdir -p /src/tools/cmake && cat > /src/tools/cmake/mingw-toolchain.cmake << 'EOF'
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
+set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+EOF
+
+# Build (raylib will be fetched via FetchContent automatically)
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=/src/tools/cmake/mingw-toolchain.cmake \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
+    && cmake --build build -- -j$(nproc)
+
+# Package output
+FROM scratch AS output
+COPY --from=builder /src/build/OpenDoctrines.exe /
+COPY --from=builder /src/data /data/
+# Find and copy Mingw DLLs
+COPY --from=builder /usr/x86_64-w64-mingw32/lib/libstdc++-6.dll /
+COPY --from=builder /usr/x86_64-w64-mingw32/lib/libgcc_s_seh-1.dll /
+COPY --from=builder /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll /
+# Find raylib DLL
+COPY --from=builder /src/build/_deps/raylib-build/raylib/Release/raylib.dll / 2>/dev/null || true

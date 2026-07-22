@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  body{margin:0;background:#000;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+</head><body>
+<script>
+document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+var Module = {
+  locateFile: function(s) { return s; },
+  preRun: [],
+  postRun: [],
+  canvas: (function() {
+    var c = document.getElementById('canvas');
+    if (!c) { c = document.createElement('canvas'); c.id = 'canvas'; document.body.appendChild(c); }
+    return c;
+  })()
+};
+</script>
+{{{ SCRIPT }}}
+</body></html>

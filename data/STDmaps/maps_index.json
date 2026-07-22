@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Modern Day",
+    "filename": "map.odmap",
+    "author": "OpenDoctrines",
+    "description": "Current world map with 179 countries, based on GREG/GADM boundaries. Includes realistic population distribution, resource deposits, territorial claims, diplomatic relations, and minority demographics.",
+    "thumbnail": "map_thumb.png",
+    "hasScripts": false
+  }
+]

@@ -1,0 +1,40 @@
+FROM ubuntu:22.04 AS builder
+
+# Install build dependencies
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    cmake \
+    g++ \
+    git \
+    pkg-config \
+    libxrandr-dev \
+    libxinerama-dev \
+    libxcursor-dev \
+    libxi-dev \
+    libgl1-mesa-dev \
+    libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# Build (raylib will be fetched via FetchContent automatically)
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
+    && cmake --build build -- -j$(nproc)
+
+# Runtime stage: minimal Ubuntu with just needed runtime libs
+FROM ubuntu:22.04 AS runtime
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxi6 \
+    libgl1 \
+    libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/build/OpenDoctrines /app/OpenDoctrines
+COPY --from=builder /src/data /app/data
+WORKDIR /app
+CMD ["./OpenDoctrines"]

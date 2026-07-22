@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#c8102e" height="600" viewBox="-50 -30 100 60" width="1000">
+  <title>Flag of Burundi
+  </title>
+  <defs>
+    <clipPath id="f">
+      <path d="m-50-30H50v60H-50z"/>
+    </clipPath>
+  </defs>
+  <path d="m-50-30H50v60H-50z"/>
+  <path clip-path="url(#f)" d="m-55-33v66L55-33v66z" fill="#43b02a" stroke="#fff" stroke-width="8"/>
+  <circle fill="#fff" r="17"/>
+  <path d="m0-12.44 1.051 1.82h2.101L2.102-8.8l1.05 1.82H1.051L0-5.16-1.051-6.98h-2.101l1.05-1.82-1.05-1.82h2.101z" id="s" stroke="#43b02a" stroke-width="0.36"/>
+  <path d="m0-12.44 1.051 1.82h2.101L2.102-8.8l1.05 1.82H1.051L0-5.16-1.051-6.98h-2.101l1.05-1.82-1.05-1.82h2.101z" stroke="#43b02a" stroke-width="0.36" transform="rotate(120.000000)"/>
+  <path d="m0-12.44 1.051 1.82h2.101L2.102-8.8l1.05 1.82H1.051L0-5.16-1.051-6.98h-2.101l1.05-1.82-1.05-1.82h2.101z" stroke="#43b02a" stroke-width="0.36" transform="rotate(240.000000)"/>
+</svg>

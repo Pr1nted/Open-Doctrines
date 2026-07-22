@@ -1,0 +1,34 @@
+@OpenDoctrines - Grand Strategy Game Engine
+---
+@
+@Graphics, Engine & Programming
+---
+- Various open-source contributors
+
+@Map Data
+---
+- Natural Earth (public domain)
+- GREG (Gartzke et al.)
+
+@Libraries
+---
+- raylib (zlib/libpng license)
+- nanosvg (zlib license)
+- nlohmann/json (MIT license)
+- miniz (MIT license)
+- stb_image (public domain)
+- Unifont (SIL OFL 1.1 / GPL 2+)
+- DejaVu Sans Font (Bitstream Vera license)
+
+@SVG Flag Symbols
+---
+- Adapted from Wikimedia Commons (public domain)
+
+@Special Thanks
+---
+- Open source cartography projects
+- You, for playing the game!
+
+
+$This is a free and open-source project.
+$No copyright infringement is intended.

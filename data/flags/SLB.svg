@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="600" viewBox="-35 -30 200 100" width="1200">
+  <clipPath id="A">
+    <path d="M-35-30h200V70H-35z"/>
+  </clipPath>
+  <path d="M-35-30h200V70H-35z" fill="#215b33"/>
+  <path d="M-35 70V-30h200" fill="#0051ba"/>
+  <path clip-path="url(#A)" d="M165-30L-35 70" stroke="#fcd116" stroke-width="9"/>
+  <g fill="#fff" id="B" transform="scale(10)">
+    <g id="C">
+      <path d="M0-1l-.309.951.476.155z" id="D"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(288.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(216.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+  </g>
+  <g fill="#fff" transform="scale(10.000000) matrix(1.000000,0.000000,0.000000,1.000000,19.741054,-16.920130)">
+    <g>
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(288.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(216.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+  </g>
+  <g fill="#fff" transform="scale(10.000000) matrix(1.000000,0.000000,0.000000,1.000000,19.741054,16.920130)">
+    <g>
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(288.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(216.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+  </g>
+  <g fill="#fff" transform="scale(10.000000) matrix(1.000000,0.000000,0.000000,1.000000,-19.741054,16.920130)">
+    <g>
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(288.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(216.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+  </g>
+  <g fill="#fff" transform="scale(10.000000) matrix(1.000000,0.000000,0.000000,1.000000,-19.741054,-16.920130)">
+    <g>
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(288.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+    <g transform="rotate(216.000000)">
+      <path d="M0-1l-.309.951.476.155z"/>
+      <path d="M0-1l-.309.951.476.155z" transform="scale(-1.000000,1.000000)"/>
+    </g>
+  </g>
+</svg>

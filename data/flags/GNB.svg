@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="600" version="1.0" viewBox="-2 -3 12 6" width="1200">
+  <rect fill="#fcd116" height="6" width="12" x="-2" y="-3"/>
+  <rect fill="#009e49" height="3" width="12" x="-2"/>
+  <rect fill="#ce1126" height="6" width="4" x="-2" y="-3"/>
+  <g id="c">
+    <path d="M 0,-1 v 1 h .5" fill="#000" id="t" transform="rotate(18 0,-1)"/>
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+  </g>
+  <g transform="rotate(72.000000)">
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+  </g>
+  <g transform="rotate(144.000000)">
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+  </g>
+  <g transform="rotate(216.000000)">
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+  </g>
+  <g transform="rotate(288.000000)">
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+  </g>
+</svg>

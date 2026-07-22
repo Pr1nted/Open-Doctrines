@@ -1,0 +1,229 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="600" version="1.1" width="1200">
+  <defs>
+    <clipPath id="Canton">
+      <path d="M 0,0 L 600,0 L 600,300 L 0,300 z"/>
+    </clipPath>
+    <clipPath id="Diagonals">
+      <path d="M 0,0 L 300,150 L 0,150 z M 300,0 L 600,0 L 300,150 z M 300,150 L 600,150 L 600,300 z M 300,150 L 300,300 L 0,300 z"/>
+    </clipPath>
+    <g id="Pentagram">
+      <g id="Arm" transform="translate(0,-0.324925)">
+        <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+        <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+      </g>
+      <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+        <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+        <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+      </g>
+      <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+        <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+        <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+      </g>
+      <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+        <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+        <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+      </g>
+      <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+        <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+        <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+      </g>
+    </g>
+  </defs>
+  <rect fill="#012169" height="600" width="1200" x="0" y="0"/>
+  <g id="Flag_of_the_United_Kingdom">
+    <path clip-path="url(#Canton)" d="M 0,0 L 600,300 M 0,300 L 600,0" id="Saint_Andrews_Cross" stroke="#FFF" stroke-width="60"/>
+    <path clip-path="url(#Diagonals)" d="M 0,0 L 600,300 M 0,300 L 600,0" id="Saint_Patricks_Cross" stroke="#C8102E" stroke-width="40"/>
+    <g id="Saint_Georges_Cross">
+      <path clip-path="url(#Canton)" d="M 300,0 L 300,300 M 0,150 L 600,150" stroke="#FFF" stroke-width="100"/>
+      <path clip-path="url(#Canton)" d="M 300,0 L 300,300 M 0,150 L 600,150" stroke="#C8102E" stroke-width="60"/>
+    </g>
+  </g>
+  <g id="Southern_Cross">
+    <g id="Gamma_Crucis">
+      <g transform="translate(900.000000,120.000000) scale(45.400000)">
+        <g transform="translate(0,-0.324925)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+      </g>
+      <g transform="translate(900.000000,120.000000) scale(30.000000)">
+        <g transform="translate(0,-0.324925)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(82,900,240)">
+      <g id="Delta_Crucis">
+        <g transform="translate(900.000000,120.000000) rotate(-82.000000) scale(40.400000)">
+          <g transform="translate(0,-0.324925)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+        </g>
+        <g transform="translate(900.000000,120.000000) rotate(-82.000000) scale(25.000000)">
+          <g transform="translate(0,-0.324925)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+        </g>
+      </g>
+      <g id="Beta_Crucis">
+        <g transform="translate(900.000000,380.000000) rotate(-82.000000) scale(45.400000)">
+          <g transform="translate(0,-0.324925)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+        </g>
+        <g transform="translate(900.000000,380.000000) rotate(-82.000000) scale(30.000000)">
+          <g transform="translate(0,-0.324925)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+          <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+            <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+            <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g id="Alpha_Crucis">
+      <g transform="translate(900.000000,480.000000) scale(50.400000)">
+        <g transform="translate(0,-0.324925)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+      </g>
+      <g transform="translate(900.000000,480.000000) scale(35.000000)">
+        <g transform="translate(0,-0.324925)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+        <g transform="translate(0.000000,-0.324925) rotate(-72.000000,0.000000,0.000000) scale(-1.000000,1.000000)">
+          <path d="M 0,0 L 0,0.5 L 1,0 z"/>
+          <path d="M 0,0 L 0,-0.5 L 1,0 z" transform="rotate(-36,1,0)"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

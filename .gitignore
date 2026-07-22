@@ -1,0 +1,23 @@
+# CMake build files
+build/
+cmake-build-*/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# CLion-specific files
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Executable files
+*.exe
+*.out
+*.dSYM/
+
+# Other
+.vscode/
+dist/*
+AGENTS.md
+.DS_Store

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="600" width="1200">
+  <path d="M0 0H1200V600H0z" fill="#da121a"/>
+  <path d="M0 0H1200V400H0z" fill="#fcdd09"/>
+  <path d="M0 0H1200V200H0z" fill="#078930"/>
+  <g transform="matrix(1.6666667,0,0,1.6666667,600,300)">
+    <circle fill="#0f47af" r="120"/>
+    <g id="a">
+      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    </g>
+    <g transform="rotate(-144.000000)">
+      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    </g>
+    <g transform="rotate(-72.000000)">
+      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    </g>
+  </g>
+</svg>

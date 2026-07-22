@@ -1,0 +1,328 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="500" width="1000">
+  <path d="M0 0h1000v500H0z" fill="#308738"/>
+  <path d="M0 0h1000v250H0z" fill="#3081f7"/>
+  <path d="M0 160h1000v180H0z" fill="#ee162e"/>
+  <path d="M0 170h1000v160H0z" fill="#fff"/>
+  <circle cx="140" cy="80" fill="#fff" r="60"/>
+  <circle cx="160" cy="80" fill="#3081f7" r="60"/>
+  <g fill="#fff" transform="matrix(2 0 0 2 272 128)">
+    <g id="e">
+      <g id="d">
+        <g id="c">
+          <g id="b">
+            <path d="M0-6v6h3" id="a" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-24.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-48.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(24.000000,0.000000)">
+      <g>
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-24.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-48.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(48.000000,0.000000)">
+      <g>
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-24.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(0.000000,-48.000000)">
+        <g>
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+        <g transform="rotate(-72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(144.000000)">
+          <g>
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+          <g transform="rotate(72.000000)">
+            <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+            <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(-48.000000,0.000000)">
+      <g>
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+      <g transform="rotate(-72.000000)">
+        <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+        <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(-24.000000,0.000000)">
+      <g>
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+      <g transform="rotate(-72.000000)">
+        <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+        <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="translate(-24.000000,-24.000000)">
+      <g>
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+      <g transform="rotate(-72.000000)">
+        <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+        <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+        <g transform="rotate(72.000000)">
+          <path d="M0-6v6h3" transform="rotate(18 0 -6)"/>
+          <path d="M0-6v6h3" transform="rotate(18.000000,0.000000,-6.000000) scale(-1.000000,1.000000)"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

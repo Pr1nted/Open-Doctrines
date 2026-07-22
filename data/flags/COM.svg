@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#fff" height="600" viewBox="0 0 60 36" width="1000">
+  <title>Flag of the Comoros
+  </title>
+  <path d="m0 0h60v36H0z"/>
+  <path d="m0 0h60v9H0z" fill="#ffd100"/>
+  <path d="m0 18h60v18H0z" fill="#ef3340"/>
+  <path d="m0 27h60v9H0z" fill="#003da5"/>
+  <path d="m30 18L0 36V0z" fill="#009639"/>
+  <path d="m12.519 9.809a8.25 8.25 0 0 0 0 16.382 8.5 8.5 0 1 1 0-16.382z"/>
+  <g id="t">
+    <path d="m12.519 10.75 1.029 3.166-2.693-1.957h3.329l-2.693 1.957z" id="s"/>
+    <path d="m12.519 10.75 1.029 3.166-2.693-1.957h3.329l-2.693 1.957z" transform="translate(0.000000,3.750000)"/>
+  </g>
+  <g transform="translate(0.000000,7.500000)">
+    <path d="m12.519 10.75 1.029 3.166-2.693-1.957h3.329l-2.693 1.957z"/>
+    <path d="m12.519 10.75 1.029 3.166-2.693-1.957h3.329l-2.693 1.957z" transform="translate(0.000000,3.750000)"/>
+  </g>
+</svg>

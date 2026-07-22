@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="600" viewBox="0 0 168 84" width="1200">
+  <title>Flag of São Tomé and Príncipe
+  </title>
+  <path d="m0 0h168v84H0z" fill="#009739"/>
+  <path d="m0 24h168v36H0z" fill="#ffd100"/>
+  <path d="m42 42L0 84V0z" fill="#ef3340"/>
+  <path d="m84 29L92.448 55 70.331 38.931h27.338L75.552 55z" id="s"/>
+  <path d="m84 29L92.448 55 70.331 38.931h27.338L75.552 55z" transform="translate(42.000000,0.000000)"/>
+</svg>
