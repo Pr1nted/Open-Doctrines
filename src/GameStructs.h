@@ -23,6 +23,11 @@ struct MapEntry {
     std::string thumbPath;    // PNG thumbnail
     std::string directory;    // full dir containing the map files
     bool isStandard = false;
+    // True when the map is a bare "<name>.odmap" sitting directly in
+    // custom_maps/ rather than its own subfolder. `directory` is then the
+    // shared custom_maps/ root, so deleting must remove only `filename` —
+    // never sweep the directory.
+    bool isLooseFile = false;
     std::string author;       // map author
     std::string license;      // map license
     bool hasScripts = false;  // whether map has scripted events

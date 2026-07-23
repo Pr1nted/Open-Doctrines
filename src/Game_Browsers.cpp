@@ -221,15 +221,62 @@ void Game::loadMapEntries() {
         struct dirent* ent;
         while ((ent = readdir(dir)) != nullptr) {
             std::string id = ent->d_name;
+            if (id == "." || id == "..") continue;
+
+            bool isDir;
 #ifdef _WIN32
             struct stat st;
             std::string fullPath = customDir + id;
-            if (stat(fullPath.c_str(), &st) != 0 || !(st.st_mode & S_IFDIR)) continue;
+            isDir = (stat(fullPath.c_str(), &st) == 0 && (st.st_mode & S_IFDIR));
 #else
-            if (ent->d_type != DT_DIR) continue;
+            isDir = (ent->d_type == DT_DIR);
 #endif
 
-            if (id == "." || id == "..") continue;
+            // A bare "<name>.odmap" dropped in here (which is exactly what the
+            // map editor's Export produces) is a valid custom map too — read
+            // its metadata straight out of the archive. Without this, exported
+            // maps sat in the folder but never appeared in the browser.
+            if (!isDir) {
+                if (id.size() < 7 || id.substr(id.size() - 6) != ".odmap") continue;
+
+                MapEntry me;
+                me.id = id.substr(0, id.size() - 6);
+                me.name = me.id;
+                me.filename = id;
+                me.directory = customDir;
+                me.thumbPath = customDir + me.id + "_thumb.png"; // fallback; thumb.png inside the zip wins
+                me.isStandard = false;
+                me.isLooseFile = true;
+
+                std::string odmPath = customDir + id;
+                int zipSize = 0;
+                unsigned char* zipData = LoadFileData(odmPath.c_str(), &zipSize);
+                if (zipData && zipSize > 22) {
+                    mz_zip_archive zip{};
+                    if (mz_zip_reader_init_mem(&zip, zipData, zipSize, 0)) {
+                        int metaIdx = mz_zip_reader_locate_file(&zip, "metadata.json", nullptr, 0);
+                        if (metaIdx >= 0) {
+                            size_t metaSize = 0;
+                            char* metaData = (char*)mz_zip_reader_extract_to_heap(&zip, metaIdx, &metaSize, 0);
+                            if (metaData && metaSize > 0) {
+                                try {
+                                    auto j = nlohmann::json::parse(metaData, metaData + metaSize);
+                                    if (j.contains("name") && j["name"].is_string()) me.name = j["name"];
+                                    if (j.contains("author") && j["author"].is_string()) me.author = j["author"];
+                                    if (j.contains("license") && j["license"].is_string()) me.license = j["license"];
+                                    if (j.contains("description") && j["description"].is_string()) me.description = j["description"];
+                                    if (j.contains("has_scripts") && j["has_scripts"].is_boolean()) me.hasScripts = j["has_scripts"];
+                                } catch (...) {}
+                                mz_free(metaData);
+                            }
+                        }
+                        mz_zip_reader_end(&zip);
+                    }
+                }
+                if (zipData) RL_FREE(zipData);
+                m_mapEntries.push_back(me);
+                continue;
+            }
 
             MapEntry me;
             me.id = id;
@@ -1646,19 +1693,26 @@ void Game::updateMapBrowser() {
             if (CheckCollisionPointRec(mouse, delBtn)) {
                 // Delete custom map directory
                 if (m_mapDeleteIndex >= 0 && m_mapDeleteIndex < (int)m_mapEntries.size()) {
-                    std::string dir = m_mapEntries[m_mapDeleteIndex].directory;
-                    // Remove files in directory
-                    DIR* d = opendir(dir.c_str());
-                    if (d) {
-                        struct dirent* e;
-                        while ((e = readdir(d)) != nullptr) {
-                            std::string fn = e->d_name;
-                            if (fn == "." || fn == "..") continue;
-                            std::remove((dir + fn).c_str());
+                    const MapEntry& target = m_mapEntries[m_mapDeleteIndex];
+                    std::string dir = target.directory;
+                    if (target.isLooseFile) {
+                        // `directory` is the shared custom_maps/ root here —
+                        // sweeping it would delete every other exported map.
+                        std::remove((dir + target.filename).c_str());
+                    } else {
+                        // Own subfolder: remove its files, then the folder
+                        DIR* d = opendir(dir.c_str());
+                        if (d) {
+                            struct dirent* e;
+                            while ((e = readdir(d)) != nullptr) {
+                                std::string fn = e->d_name;
+                                if (fn == "." || fn == "..") continue;
+                                std::remove((dir + fn).c_str());
+                            }
+                            closedir(d);
                         }
-                        closedir(d);
+                        rmdir(dir.c_str());
                     }
-                    rmdir(dir.c_str());
                     // Reload entries
                     loadMapEntries();
                 }
