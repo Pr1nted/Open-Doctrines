@@ -70,54 +70,185 @@ void ScriptEngine::addError(const std::string& scriptName, int lineNum, const st
     printf("[SCRIPT] Error in %s line %d: %s\n", scriptName.c_str(), lineNum, msg.c_str());
 }
 
+bool ScriptEngine::isEntrypoint(const std::string& content) {
+    std::istringstream ss(content);
+    std::string line;
+    while (std::getline(ss, line)) {
+        size_t start = line.find_first_not_of(" \t\r");
+        if (start == std::string::npos) continue;
+        return line.compare(start, 14, "#OD/MapEngine/") == 0;
+    }
+    return false;
+}
+
 bool ScriptEngine::runScripts(const std::unordered_map<std::string, std::string>& scriptData) {
     m_errors.clear();
+    m_suspended.clear();
+    m_globals.clear();
+    m_arrays.clear();
+    m_lists.clear();
+
+    // First pass: index every script by name — the include universe
+    m_library.clear();
     for (auto& [path, content] : scriptData) {
-        // Only process files under "scripts/" prefix
         if (path.rfind("scripts/", 0) != 0) continue;
-        // Skip directory entries
         if (path.back() == '/') continue;
-        // Extract script name (filename without path)
-        std::string name = path.substr(8); // remove "scripts/"
-        // Remove .txt extension if present
+        std::string name = path.substr(8);
         if (name.size() > 4 && name.substr(name.size() - 4) == ".txt")
             name = name.substr(0, name.size() - 4);
+        m_library[name] = content;
+    }
 
+    // Second pass: run only entrypoints (files carrying the #OD/MapEngine/
+    // header); the rest are libraries reachable via `include`
+    for (auto& [name, content] : m_library) {
+        if (!isEntrypoint(content)) {
+            printf("[SCRIPT] Library (not run): %s\n", name.c_str());
+            continue;
+        }
         printf("[SCRIPT] Running script: %s\n", name.c_str());
-        executeScript(name, content);
+        std::vector<std::string> lines;
+        std::vector<std::string> stack;
+        if (preprocess(name, content, lines, stack))
+            runLines(name, std::move(lines), 0);
     }
     return m_errors.empty();
 }
 
-bool ScriptEngine::executeScript(const std::string& name, const std::string& content) {
-    // Split into lines
-    std::vector<std::string> lines;
+bool ScriptEngine::preprocess(const std::string& name, const std::string& content,
+                              std::vector<std::string>& outLines,
+                              std::vector<std::string>& includeStack) {
+    if (includeStack.size() > 16) {
+        addError(name, 0, "include depth exceeded (16)");
+        return false;
+    }
+    if (std::find(includeStack.begin(), includeStack.end(), name) != includeStack.end()) {
+        addError(name, 0, "circular include of '" + name + "'");
+        return false;
+    }
+    includeStack.push_back(name);
+
     std::istringstream ss(content);
     std::string line;
+    int lineNum = 0;
+    bool ok = true;
     while (std::getline(ss, line)) {
-        // Strip leading whitespace
+        lineNum++;
         size_t start = line.find_first_not_of(" \t\r");
-        if (start == std::string::npos) continue; // empty line
+        if (start == std::string::npos) continue;
         line = line.substr(start);
-        // Skip comments and blank lines
-        if (line.empty() || line[0] == '#') {
-            // Check for engine version header
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+            line.pop_back();
+        if (line.empty()) continue;
+        if (line[0] == '#') {
             if (line.rfind("#OD/MapEngine/", 0) == 0) {
                 int ver = 0;
                 sscanf(line.c_str() + 14, "%d", &ver);
                 if (ver != ENGINE_VERSION) {
-                    addError(name, 0, "Unsupported script engine version " + std::to_string(ver) + " (expected " + std::to_string(ENGINE_VERSION) + ")");
-                    return false;
+                    addError(name, lineNum, "Unsupported script engine version " + std::to_string(ver) +
+                                            " (expected " + std::to_string(ENGINE_VERSION) + ")");
+                    ok = false;
+                    break;
                 }
             }
             continue;
         }
-        lines.push_back(line);
+        auto tokens = tokenize(line);
+        if (!tokens.empty() && tokens[0] == "include") {
+            if (tokens.size() < 2) {
+                addError(name, lineNum, "include: missing script name");
+                continue;
+            }
+            std::string inc = tokens[1];
+            if (inc.size() > 4 && inc.substr(inc.size() - 4) == ".txt")
+                inc = inc.substr(0, inc.size() - 4);
+            auto it = m_library.find(inc);
+            if (it == m_library.end()) {
+                addError(name, lineNum, "include: script '" + inc + "' not found");
+                continue;
+            }
+            preprocess(inc, it->second, outLines, includeStack); // errors already recorded
+            continue;
+        }
+        outLines.push_back(line);
     }
+    includeStack.pop_back();
+    return ok;
+}
 
-    std::unordered_map<std::string, ScriptValue> localVars;
-    int lineIdx = 0;
-    return executeBlock(lines, lineIdx, name, localVars);
+bool ScriptEngine::isWaitLine(const std::string& line) {
+    return line.rfind("waitUntil", 0) == 0 &&
+           (line.size() == 9 || line[9] == ' ' || line[9] == '\t' || line[9] == '(');
+}
+
+std::string ScriptEngine::waitCondition(const std::string& line) {
+    std::string expr = line.substr(9); // past "waitUntil"
+    size_t s = expr.find_first_not_of(" \t");
+    expr = (s == std::string::npos) ? "" : expr.substr(s);
+    while (!expr.empty() && (expr.back() == ' ' || expr.back() == '\t')) expr.pop_back();
+    // Accept waitUntil(cond) form: strip one surrounding paren pair
+    if (expr.size() >= 2 && expr.front() == '(' && expr.back() == ')')
+        expr = expr.substr(1, expr.size() - 2);
+    return expr;
+}
+
+void ScriptEngine::runLines(const std::string& name, std::vector<std::string> lines, int startLine) {
+    int pc = startLine;
+    while (pc < (int)lines.size()) {
+        if (isWaitLine(lines[pc])) {
+            std::string expr = waitCondition(lines[pc]);
+            if (expr.empty()) {
+                addError(name, pc + 1, "waitUntil: missing condition");
+                pc++;
+                continue;
+            }
+            std::unordered_map<std::string, ScriptValue> lv;
+            if (!evalExpr(expr, lv).asBool()) {
+                // Park here; tick() re-tests the condition each turn
+                m_suspended.push_back({name, std::move(lines), pc});
+                return;
+            }
+            pc++;
+            continue;
+        }
+        // Gather the segment up to the next top-level waitUntil (block depth
+        // aware); nested waitUntils are rejected — top level only
+        int depth = 0, end = pc;
+        while (end < (int)lines.size()) {
+            auto t = tokenize(lines[end]);
+            if (!t.empty()) {
+                if (t[0] == "if" || t[0] == "foreach" || t[0] == "while") depth++;
+                else if (t[0] == "endif" || t[0] == "next" || t[0] == "endwhile") depth--;
+                else if (isWaitLine(lines[end])) {
+                    if (depth == 0) break;
+                    addError(name, end + 1, "waitUntil is only allowed at top level (not inside if/foreach/while)");
+                    lines[end] = "# waitUntil ignored (nested)";
+                }
+            }
+            end++;
+        }
+        std::vector<std::string> segment(lines.begin() + pc, lines.begin() + end);
+        std::unordered_map<std::string, ScriptValue> localVars;
+        int idx = 0;
+        executeBlock(segment, idx, name, localVars);
+        pc = end;
+    }
+}
+
+void ScriptEngine::tick() {
+    if (m_suspended.empty()) return;
+    std::vector<SuspendedScript> pending;
+    pending.swap(m_suspended);
+    for (auto& s : pending) {
+        std::string expr = waitCondition(s.lines[s.resumeLine]);
+        std::unordered_map<std::string, ScriptValue> lv;
+        if (evalExpr(expr, lv).asBool()) {
+            printf("[SCRIPT] Resuming script: %s\n", s.name.c_str());
+            runLines(s.name, std::move(s.lines), s.resumeLine + 1);
+        } else {
+            m_suspended.push_back(std::move(s));
+        }
+    }
 }
 
 bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& lineIdx,
@@ -172,18 +303,15 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         }
 
         // foreach province in country.ISO
+        // foreach item in array.NAME / foreach item in list.NAME
         if (kw == "foreach") {
-            if (tokens.size() < 4 || tokens[1] != "province" || tokens[2] != "in") {
-                addError(scriptName, lineIdx + 1, "foreach: expected 'foreach province in country.ISO'");
+            if (tokens.size() < 4 || tokens[2] != "in" ||
+                (tokens[1] != "province" && tokens[1] != "item")) {
+                addError(scriptName, lineIdx + 1,
+                         "foreach: expected 'foreach province in country.ISO' or 'foreach item in array/list.NAME'");
                 lineIdx++; return false;
             }
-            std::string countryRef = tokens[3];
-            // Parse country.ISO
-            if (countryRef.rfind("country.", 0) != 0) {
-                addError(scriptName, lineIdx + 1, "foreach: expected country.ISO, got " + countryRef);
-                lineIdx++; return false;
-            }
-            std::string iso = countryRef.substr(8);
+            std::string sourceRef = tokens[3];
 
             // Find matching next
             int blockStart = lineIdx + 1;
@@ -200,9 +328,51 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             }
             if (depth != 0) { addError(scriptName, lineIdx + 1, "foreach: missing next"); return false; }
 
-            // Iterate provinces owned by this country
             auto& vars = const_cast<std::unordered_map<std::string, ScriptValue>&>(localVars);
-            // Find country ID by ISO
+
+            // ── foreach item in array.NAME / list.NAME ──
+            if (tokens[1] == "item") {
+                std::vector<ScriptValue> items;
+                if (sourceRef.rfind("array.", 0) == 0) {
+                    auto it = m_arrays.find(sourceRef.substr(6));
+                    if (it == m_arrays.end()) {
+                        addError(scriptName, lineIdx + 1, "foreach: unknown array " + sourceRef);
+                        lineIdx = blockEnd + 1;
+                        continue;
+                    }
+                    items = it->second;
+                } else if (sourceRef.rfind("list.", 0) == 0) {
+                    auto it = m_lists.find(sourceRef.substr(5));
+                    if (it == m_lists.end()) {
+                        addError(scriptName, lineIdx + 1, "foreach: unknown list " + sourceRef);
+                        lineIdx = blockEnd + 1;
+                        continue;
+                    }
+                    items.assign(it->second.begin(), it->second.end());
+                } else {
+                    addError(scriptName, lineIdx + 1, "foreach item: expected array.NAME or list.NAME");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                for (size_t i = 0; i < items.size(); ++i) {
+                    vars["item"] = items[i];
+                    vars["item.index"] = ScriptValue::makeInt((long long)i);
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                }
+                vars.erase("item");
+                vars.erase("item.index");
+                lineIdx = blockEnd + 1;
+                continue;
+            }
+
+            // ── foreach province in country.ISO ──
+            if (sourceRef.rfind("country.", 0) != 0) {
+                addError(scriptName, lineIdx + 1, "foreach: expected country.ISO, got " + sourceRef);
+                lineIdx = blockEnd + 1;
+                continue;
+            }
+            std::string iso = sourceRef.substr(8);
             int targetCid = -1;
             for (auto& [cid, c] : m_game->m_countries.getAll())
                 if (c.isoA3 == iso) { targetCid = cid; break; }
@@ -237,6 +407,13 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             vars.erase("province.fortification");
             vars.erase("province.owner");
             lineIdx = blockEnd + 1;
+            continue;
+        }
+
+        // array/list statements
+        if (kw == "array" || kw == "list") {
+            execCollectionStmt(tokens, scriptName, lineIdx + 1, localVars);
+            lineIdx++;
             continue;
         }
 
@@ -299,7 +476,9 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 } else {
                     // Check if it's a reference
                     if (valStr.rfind("country.", 0) == 0 || valStr.rfind("province.", 0) == 0 ||
-                        valStr.rfind("map.", 0) == 0) {
+                        valStr.rfind("map.", 0) == 0 || valStr.rfind("var.", 0) == 0 ||
+                        valStr.rfind("array.", 0) == 0 || valStr.rfind("list.", 0) == 0 ||
+                        valStr == "item" || valStr.rfind("item.", 0) == 0) {
                         val = resolveRef(valStr, localVars);
                     } else {
                         // Strip quotes if present
@@ -321,6 +500,95 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         lineIdx++;
     }
     return true;
+}
+
+ScriptValue ScriptEngine::parseValueToken(const std::string& tok,
+                                          const std::unordered_map<std::string, ScriptValue>& localVars) {
+    if (tok == "true") return ScriptValue::makeBool(true);
+    if (tok == "false") return ScriptValue::makeBool(false);
+    if (!tok.empty() && ((tok[0] >= '0' && tok[0] <= '9') || tok[0] == '-')) {
+        bool hasDot = tok.find('.') != std::string::npos;
+        try {
+            if (hasDot) return ScriptValue::makeFloat(std::stod(tok));
+            return ScriptValue::makeInt(std::stoll(tok));
+        } catch (...) {}
+    }
+    if (tok.rfind("country.", 0) == 0 || tok.rfind("province.", 0) == 0 ||
+        tok.rfind("map.", 0) == 0 || tok.rfind("var.", 0) == 0 ||
+        tok.rfind("array.", 0) == 0 || tok.rfind("list.", 0) == 0 ||
+        tok == "item" || tok.rfind("item.", 0) == 0 || localVars.count(tok))
+        return resolveRef(tok, localVars);
+    return ScriptValue::makeStr(tok); // plain string (quotes already stripped)
+}
+
+// array create|push|set|remove NAME …   /   list create|pushfront|pushback|popfront|popback NAME …
+void ScriptEngine::execCollectionStmt(const std::vector<std::string>& tokens, const std::string& scriptName,
+                                      int lineNum, const std::unordered_map<std::string, ScriptValue>& localVars) {
+    const std::string& kind = tokens[0];
+    if (tokens.size() < 3) {
+        addError(scriptName, lineNum, kind + ": expected '" + kind + " <op> <name> ...'");
+        return;
+    }
+    const std::string& op = tokens[1];
+    const std::string& name = tokens[2];
+
+    if (kind == "array") {
+        if (op == "create") { m_arrays[name].clear(); m_arrays[name] = {}; return; }
+        auto it = m_arrays.find(name);
+        if (it == m_arrays.end()) {
+            addError(scriptName, lineNum, "array: '" + name + "' does not exist (use 'array create " + name + "')");
+            return;
+        }
+        if (op == "push") {
+            if (tokens.size() < 4) { addError(scriptName, lineNum, "array push: missing value"); return; }
+            it->second.push_back(parseValueToken(tokens[3], localVars));
+            return;
+        }
+        if (op == "set") {
+            if (tokens.size() < 5) { addError(scriptName, lineNum, "array set: expected NAME <index> <value>"); return; }
+            long long idx = parseValueToken(tokens[3], localVars).asInt();
+            if (idx < 0 || idx >= (long long)it->second.size()) {
+                addError(scriptName, lineNum, "array set: index " + std::to_string(idx) + " out of range");
+                return;
+            }
+            it->second[idx] = parseValueToken(tokens[4], localVars);
+            return;
+        }
+        if (op == "remove") {
+            if (tokens.size() < 4) { addError(scriptName, lineNum, "array remove: missing index"); return; }
+            long long idx = parseValueToken(tokens[3], localVars).asInt();
+            if (idx < 0 || idx >= (long long)it->second.size()) {
+                addError(scriptName, lineNum, "array remove: index " + std::to_string(idx) + " out of range");
+                return;
+            }
+            it->second.erase(it->second.begin() + idx);
+            return;
+        }
+        addError(scriptName, lineNum, "array: unknown op '" + op + "' (create/push/set/remove)");
+        return;
+    }
+
+    // list …
+    if (op == "create") { m_lists[name].clear(); m_lists[name] = {}; return; }
+    auto it = m_lists.find(name);
+    if (it == m_lists.end()) {
+        addError(scriptName, lineNum, "list: '" + name + "' does not exist (use 'list create " + name + "')");
+        return;
+    }
+    if (op == "pushfront" || op == "pushback") {
+        if (tokens.size() < 4) { addError(scriptName, lineNum, "list " + op + ": missing value"); return; }
+        ScriptValue v = parseValueToken(tokens[3], localVars);
+        if (op == "pushfront") it->second.push_front(v);
+        else it->second.push_back(v);
+        return;
+    }
+    if (op == "popfront" || op == "popback") {
+        if (it->second.empty()) { addError(scriptName, lineNum, "list " + op + ": '" + name + "' is empty"); return; }
+        if (op == "popfront") it->second.pop_front();
+        else it->second.pop_back();
+        return;
+    }
+    addError(scriptName, lineNum, "list: unknown op '" + op + "' (create/pushfront/pushback/popfront/popback)");
 }
 
 ScriptValue ScriptEngine::evalExpr(const std::string& expr,
@@ -428,10 +696,40 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         if (!cur.empty()) dots.push_back(cur);
     }
 
+    // var.NAME — script-global user variable
+    if (dots.size() >= 2 && dots[0] == "var") {
+        auto it = m_globals.find(dots[1]);
+        return it != m_globals.end() ? it->second : ScriptValue{};
+    }
+
+    // array.NAME.length / array.NAME.<index>
+    if (dots.size() >= 3 && dots[0] == "array") {
+        auto it = m_arrays.find(dots[1]);
+        if (it == m_arrays.end()) return ScriptValue{};
+        if (dots[2] == "length") return ScriptValue::makeInt((long long)it->second.size());
+        try {
+            long long idx = std::stoll(dots[2]);
+            if (idx >= 0 && idx < (long long)it->second.size()) return it->second[idx];
+        } catch (...) {}
+        return ScriptValue{};
+    }
+
+    // list.NAME.length / list.NAME.front / list.NAME.back
+    if (dots.size() >= 3 && dots[0] == "list") {
+        auto it = m_lists.find(dots[1]);
+        if (it == m_lists.end()) return ScriptValue{};
+        if (dots[2] == "length") return ScriptValue::makeInt((long long)it->second.size());
+        if (dots[2] == "front") return it->second.empty() ? ScriptValue{} : it->second.front();
+        if (dots[2] == "back") return it->second.empty() ? ScriptValue{} : it->second.back();
+        return ScriptValue{};
+    }
+
     if (dots.size() >= 2 && dots[0] == "map") {
         std::string prop = dots[1];
         if (prop == "date") {
-            // Read map date from metadata
+            // Live date if the game has one (scripts can change it)
+            if (!m_game->m_mapDate.empty()) return ScriptValue::makeStr(m_game->m_mapDate);
+            // Fall back to metadata
             auto it = m_game->m_odmJsonData.find("metadata.json");
             if (it != m_game->m_odmJsonData.end()) {
                 try {
@@ -637,10 +935,20 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
         }
     }
 
-    // set map.date "value" — read only, ignore
-    if (dots.size() >= 2 && dots[0] == "map") return false;
+    // set var.NAME value — script-global user variable
+    if (dots.size() >= 2 && dots[0] == "var") {
+        m_globals[dots[1]] = val;
+        return true;
+    }
 
-    // set local.var value — set in localVars
-    // Not supported in this const ref context — would need mutable localVars
+    // set map.date "Month Year" — the only writable map property
+    if (dots.size() >= 2 && dots[0] == "map") {
+        if (dots[1] == "date") {
+            m_game->m_mapDate = val.asString();
+            return true;
+        }
+        return false;
+    }
+
     return false;
 }

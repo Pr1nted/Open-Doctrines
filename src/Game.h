@@ -37,6 +37,7 @@ public:
 
 private:
     enum ScreenState {
+        SCREEN_SPLASH,         // startup "Pr1nted presents" fade, shown before the main menu
         SCREEN_MENU,
         SCREEN_SINGLEPLAYER,   // submenu: New World / Load World
         SCREEN_FILE_BROWSER,
@@ -49,6 +50,16 @@ private:
         SCREEN_MAP_EDITOR
     };
     ScreenState m_currentScreen = SCREEN_MENU;
+
+    // Startup splash ("Pr1nted presents" fade before the main menu)
+    void updateSplashScreen(float dt);
+    void drawSplashScreen();
+    float m_splashTimer = 0.0f;
+    // Main-menu intro: 0 -> 1 slides/fades the UI in after the splash so the
+    // menu eases in instead of popping. 1 = finished (normal drawing).
+    // Input is suppressed while it plays, so the drawn positions and the
+    // click rects in updateMainMenu() can never disagree mid-slide.
+    float m_menuIntro = 1.0f;
 
     // Loading screen
     void drawLoadingScreen();
@@ -351,6 +362,12 @@ private:
     Texture2D m_iconResearch{};
     int m_activeSidebarTab = 0; // 0=none, 1=Policies, 2=Economy, 3=Claims, 4=Research
     bool m_inResearch = false;
+    // Sidebar "needs attention" markers: set when something finishes for the
+    // player (research completed / a policy finished implementing), cleared
+    // once they actually open that panel. Purely a UI hint.
+    bool m_researchAlert = false;
+    bool m_politicsAlert = false;
+
     bool m_inPolitics = false;
 
     // ─── Economy overlay ──────────────────────────

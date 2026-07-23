@@ -1779,12 +1779,21 @@ void Game::drawSidebarButtons() {
         Vector2 mouse = getMouse();
         bool hovered = !m_paused && !btns[i].disabled && CheckCollisionPointRec(mouse, r);
         bool active = (m_activeSidebarTab == btns[i].id);
+        // Something finished and hasn't been looked at yet (research done /
+        // a policy went live). Accent the button until the panel is opened.
+        bool alert = !btns[i].disabled && !active &&
+                     ((btns[i].id == 4 && m_researchAlert) || (btns[i].id == 1 && m_politicsAlert));
+        Color accent = hexToColor(m_config.accentColor);
+        // Gentle pulse so it reads as "new" rather than just another state
+        float pulse = alert ? 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)GetTime() * 3.0f)) : 0.0f;
 
         Color bgColor;
         if (btns[i].disabled) {
             bgColor = {40, 40, 50, 120};
         } else if (active) {
             bgColor = hovered ? Color{60, 50, 20, 220} : Color{50, 40, 10, 220};
+        } else if (alert) {
+            bgColor = ColorAlpha(accent, (hovered ? 0.30f : 0.20f) * pulse);
         } else {
             bgColor = hovered ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180};
         }
@@ -1792,11 +1801,13 @@ void Game::drawSidebarButtons() {
 
         Color borderCol = btns[i].disabled ? Color{60, 60, 70, 100}
                         : active ? Color{200, 160, 50, 200}
+                        : alert ? ColorAlpha(accent, pulse)
                         : Color{80, 80, 100, 150};
         DrawRectangleRoundedLines(r, 0.15f, 8, borderCol);
 
         Color iconCol = btns[i].disabled ? Color{80, 80, 90, 150}
-                      : active ? hexToColor(m_config.accentColor)
+                      : active ? accent
+                      : alert ? accent
                       : hovered ? WHITE : LIGHTGRAY;
 
         int iconDrawSize = 48;
@@ -1807,7 +1818,11 @@ void Game::drawSidebarButtons() {
 
         int labelW = MeasureText(btns[i].label, 13);
         DrawText(btns[i].label, startX + (btnSize - labelW) / 2, y + btnSize - 18, 13,
-                 btns[i].disabled ? Color{80, 80, 90, 150} : (active ? hexToColor(m_config.accentColor) : LIGHTGRAY));
+                 btns[i].disabled ? Color{80, 80, 90, 150}
+                 : (active || alert) ? accent : LIGHTGRAY);
+
+        // Small corner dot as a colour-blind-friendly second cue
+        if (alert) DrawCircle((int)(r.x + r.width - 10), (int)(r.y + 10), 4.0f, ColorAlpha(accent, pulse));
     }
 }
 

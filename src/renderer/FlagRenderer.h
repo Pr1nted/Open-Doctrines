@@ -93,6 +93,11 @@ public:
     static Texture2D render(const FlagPattern& pattern, int width, int height, const std::string& baseDir = "",
                              const std::unordered_map<std::string, std::string>* odmData = nullptr);
 
+    // SVG rasterization with cache (public: the map editor previews dropped-in
+    // custom flag SVGs through it)
+    static Image rasterizeSVG(const std::string& filePath, int width, int height, const std::string& baseDir,
+                               const std::unordered_map<std::string, std::string>* odmData = nullptr);
+
 private:
     static void drawFlagBackground(Image* img, const FlagPattern& pattern, int width, int height);
     static void drawSymbol(Image* img, const FlagSymbol& sym, int width, int height, const std::string& baseDir = "",
@@ -128,8 +133,5 @@ private:
     static void drawTextBlock(Image* img, int cx, int cy, int w, int h, Color c);
     static void drawCensorBar(Image* img, int cx, int cy, int rad);
 
-    // SVG rasterization with cache
-    static Image rasterizeSVG(const std::string& filePath, int width, int height, const std::string& baseDir,
-                               const std::unordered_map<std::string, std::string>* odmData = nullptr);
     static Image recolorImage(const Image& src, Color newColor);
 };

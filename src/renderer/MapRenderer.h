@@ -27,21 +27,38 @@ public:
 
     void setPoliticalTexture(Texture2D tex);
     void updatePoliticalTexture(const void* data);
+    void updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h);
+    // Recompute border/halo pixels in a map-space rect from raw province pixels
+    // and patch just that region of the border texture (live painting feedback).
+    void updateBorderRegion(const Color* provPixels, int mapW, int mapH,
+                            int rx, int ry, int rw, int rh);
     void setPopulationTexture(Texture2D tex);
     void updatePopulationTexture(const void* data);
     void setResourceTexture(Texture2D tex);
     void updateResourceTexture(const void* data);
     void setShowClaims(bool on) { m_showClaims = on; }
+    bool getShowClaims() const { return m_showClaims; }
+    void setShowPolitical(bool on) { m_showPolitical = on; }
+    // Editor overlays: generic overlay texture (buildings view) + a pulsing
+    // selection-highlight texture positioned in map space. Both take ownership.
+    void setEditorOverlay(Texture2D tex);
+    void setShowEditorOverlay(bool on) { m_showEditorOverlay = on; }
+    bool getShowEditorOverlay() const { return m_showEditorOverlay; }
+    void setHighlight(Texture2D tex, int x, int y);
+    void clearHighlight();
     void setShowPopulation(bool on) { m_showPopulation = on; }
     void setShowRelations(bool on) { m_showRelations = on; }
     void setShowIndustry(bool on) { m_showIndustry = on; }
     void setClaimsTexture(Texture2D tex);
     void updateClaimsTexture(const void* data);
+    void updateClaimsTextureRec(const void* rectData, int x, int y, int w, int h);
+    bool hasClaimsTexture() const { return m_claimsTex.id > 0; }
     void setShowResource(int idx) { m_showResource = idx; }
     int  getShowResource() const { return m_showResource; }
     float getZoom() const { return m_camera.zoom; }
     void computeBorderTexture(const Image& provImage);
     void screenToPixel(float sx, float sy, int& px, int& py) const;
+    void pixelToScreen(float px, float py, float& sx, float& sy) const;
     void setSelectedProvince(int id) { m_selectedProvinceId = id; }
     int getSelectedProvinceId() const { return m_selectedProvinceId; }
     void setPaused(bool paused) { m_paused = paused; }
@@ -114,6 +131,11 @@ private:
     Rectangle m_provincePanelRect{};
     bool m_showCountryNames = false;
     bool m_blockLeftPan = false;
+    bool m_showPolitical = true;
+    Texture2D m_editorOverlayTex{};
+    bool m_showEditorOverlay = false;
+    Texture2D m_highlightTex{};
+    int m_highlightX = 0, m_highlightY = 0;
     bool m_showPopulation = false;
     bool m_showRelations = false;
     bool m_showClaims = false;

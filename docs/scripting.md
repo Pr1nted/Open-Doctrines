@@ -5,26 +5,52 @@
 ## Overview
 
 OpenDoctrines supports custom scripts inside `.odmap` files. Scripts are plain
-text files placed in the `scripts/` directory of the map archive. They are
-executed once after all map data is loaded, before the player starts playing.
+text files placed in the `scripts/` directory of the map archive. Entry
+scripts start running after all map data is loaded; a script that reaches a
+`waitUntil` suspends there and is resumed automatically as turns are played.
 
 Scripts allow map makers to:
 - Set country properties (treasury, war/alliance states)
 - Set province properties (population, owner, industry, fortification)
-- Check map metadata (date, name, turn number)
-- Loop over provinces owned by a country
+- Check map metadata (date, name, turn number) and change the date
+- Loop over provinces owned by a country, or over arrays/lists
 - Apply conditional logic with if/else
+- Store state in global variables, arrays and linked lists
+- Wait for a condition (`waitUntil`) — e.g. a turn number — before continuing
+- Split code across files with `include`
 
-## File Format
+The map editor has a built-in script IDE in the **Scripts** tab: create or
+import scripts, double-click to open them in a syntax-highlighted editor with
+completion hints (Tab accepts the highlighted hint, Ctrl/Cmd+S saves).
 
-Each script file must start with the engine version header:
+## File Format — Entrypoints vs Libraries
+
+A file whose **first non-blank line** is the engine version header is an
+**entrypoint** — it runs automatically when the map loads:
 
 ```
 #OD/MapEngine/1
 ```
 
+A file **without** the header is a **library**: it never runs on its own and
+can only be pulled into an entrypoint (or another library) with `include`.
+
 Lines starting with `#` are comments. The language is line-based (one command
 per line). Indentation is cosmetic but recommended for readability.
+
+## include
+
+`include "name"` splices another script from the same `scripts/` directory in
+place, at the point of the include (the `.txt` extension is optional):
+
+```
+#OD/MapEngine/1
+include "setup_alliances"
+include "cold_war_events"
+```
+
+Circular includes are rejected, and includes may nest up to 16 levels deep.
+Included libraries must not carry the `#OD/MapEngine/` header.
 
 ## Variables & References
 
@@ -50,9 +76,43 @@ province.ID.fortification → (int) fortification level (0-5)
 
 ### Map References
 ```
-map.date  → (string) map date (from metadata.json)
+map.date  → (string) current date, e.g. "January 2000" — WRITABLE via set
 map.name  → (string) map name (from metadata.json)
-map.turn  → (int) current turn number (0 at script execution)
+map.turn  → (int) current turn number (0 when entry scripts first run)
+```
+
+The map's starting date is set in the editor's **Metadata** tab
+("Start date", `Month Year` format) and advances one month per turn.
+
+### Global Variables
+```
+var.NAME  → your own global value; create/update with:  set var.NAME <value>
+```
+Variables are shared between all scripts and persist across `waitUntil`
+suspensions (but not across save games — see Limitations).
+
+### Arrays
+```
+array create NAME            create/reset an empty array
+array push NAME <value>      append a value
+array set NAME <i> <value>   overwrite index i (0-based)
+array remove NAME <i>        delete index i
+
+array.NAME.length            → (int) element count
+array.NAME.<i>               → value at index i (e.g. array.targets.0)
+```
+
+### Linked Lists
+```
+list create NAME             create/reset an empty list
+list pushfront NAME <value>  insert at the front
+list pushback NAME <value>   append at the back
+list popfront NAME           remove the front element
+list popback NAME            remove the back element
+
+list.NAME.length             → (int) element count
+list.NAME.front              → first value
+list.NAME.back               → last value
 ```
 
 ## Commands
@@ -110,6 +170,17 @@ Inside a foreach loop, these variables are available:
 - `province.fortification` → fortification level (int)
 - `province.owner` → ISO code of owner (string)
 
+`foreach` also iterates arrays and lists; the loop variable is `item`:
+
+```
+foreach item in array.targets
+    set country.USA.at_war_with item true
+next
+```
+
+- `item` → the current value
+- `item.index` → its 0-based position
+
 ### while / endwhile
 Loops while a condition is true. Safety limit: 10,000 iterations.
 
@@ -118,6 +189,29 @@ while country.USA.treasury > 1000
     set country.USA.treasury 0
 endwhile
 ```
+
+### waitUntil
+Suspends the script until a condition becomes true. The condition is
+re-checked once per processed turn, and when it holds the script resumes on
+the next line. `waitUntil(cond)` and `waitUntil cond` are both accepted.
+
+```
+#OD/MapEngine/1
+set country.RUS.treasury 8000
+
+waitUntil map.turn >= 12
+# One year has passed — the cold war turns hot
+set country.RUS.at_war_with USA true
+
+waitUntil map.date == "January 2005 AD"
+set country.RUS.at_war_with USA false
+```
+
+Rules:
+- `waitUntil` is only allowed at **top level** — not inside `if`, `foreach`
+  or `while` blocks.
+- A script can contain several `waitUntil`s; they gate stages in order.
+- Global `var.*`, arrays and lists survive across suspensions.
 
 ## Value Types
 
@@ -168,12 +262,40 @@ script engine will:
    screen for 3 seconds: `Failed to load script: [name].txt error: [message]`
 3. Continue executing the next script (one bad script doesn't stop others)
 
+## The Map Editor Script IDE
+
+The **Scripts** tab of the map editor manages a map project's scripts:
+- **+ Script** creates a new entrypoint (pre-filled with the header),
+  **+ Library** creates a header-less library file.
+- The list shows every project script with an `[entry]` / `[lib]` badge —
+  **double-click** (or select + Edit) opens it in the editor.
+- A second list shows loose `.txt` files in `data/scripts/` on disk;
+  double-clicking imports a copy into the project.
+- Scripts are saved inside `.uodmap` projects and exported into the `.odmap`
+  archive automatically (`has_scripts` is set for you).
+
+The editor itself supports full cursor editing (arrows, Home/End,
+PageUp/Down, click-to-position), syntax highlighting, paste (Ctrl/Cmd+V),
+Ctrl/Cmd+S to save, and ESC to save & close. While typing, matching
+completions appear in the hint bar at the bottom with a one-line description —
+**Tab** inserts the highlighted one.
+
 ## Packaging
 
-To include scripts in a `.odmap` archive, place them in the `data/scripts/`
-directory before running `package_odmap.py`. The packager automatically
-includes all files in `scripts/` and sets the `has_scripts` flag in
-`metadata.json`.
+Scripts written in the map editor are packaged automatically on export.
+For hand-built archives: place files in the `scripts/` directory of the
+`.odmap` (or `data/scripts/` before running `package_odmap.py`) and set the
+`has_scripts` flag in `metadata.json`.
 
 Script filenames should use `.txt` extension. The engine strips the
 extension when displaying error messages.
+
+## Limitations
+
+- Expressions support a single comparison per condition — no arithmetic,
+  `and`/`or`, or parentheses (beyond the optional `waitUntil(...)` pair).
+- `waitUntil` must be at top level.
+- Suspended scripts are **not** saved into save games: when a save is loaded,
+  entry scripts run again from the top and re-suspend at their first false
+  `waitUntil`. Keep code before a `waitUntil` idempotent (safe to re-run).
+- The script IDE has no text selection or undo yet.

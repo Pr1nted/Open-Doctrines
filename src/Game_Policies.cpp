@@ -264,6 +264,10 @@ void Game::applyPolicyEffects(int countryId) {
         if (ap.turnsRemaining > 0) {
             // Still implementing
             ap.turnsRemaining--;
+            // Hitting 0 means it just went live — flag the Politics button so
+            // the player notices without having to poll the panel every turn.
+            if (ap.turnsRemaining == 0 && countryId == m_playerCountryId)
+                m_politicsAlert = true;
             totalCost += p->costPerTurn;
             // Apply compass shift during implementation
             shiftCountryCompass(countryId, p->econShift / p->implementationTurns, p->socShift / p->implementationTurns);

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <deque>
 #include <unordered_map>
 #include <functional>
 
@@ -35,10 +36,21 @@ class ScriptEngine {
 public:
     ScriptEngine(Game* game);
 
-    // Load and execute all scripts from the map's scripts/ directory.
-    // scriptData: map of filename → content (from m_odmJsonData, filtered by "scripts/" prefix).
+    // Load all scripts from the map's scripts/ directory and run the
+    // entrypoints (files whose first non-blank line is #OD/MapEngine/N).
+    // Files without the header are libraries, reachable only via `include`.
+    // scriptData: map of filename → content (from m_odmJsonData).
     // Returns true if all scripts executed without errors.
     bool runScripts(const std::unordered_map<std::string, std::string>& scriptData);
+
+    // Per-turn hook: re-evaluate scripts suspended on `waitUntil` and resume
+    // the ones whose condition has become true.
+    void tick();
+    bool hasSuspended() const { return !m_suspended.empty(); }
+
+    // True when the first non-blank line carries the #OD/MapEngine/ header
+    // (shared with the map editor's script browser badges).
+    static bool isEntrypoint(const std::string& content);
 
     // Get the last error (for debug display)
     const std::vector<ScriptError>& getErrors() const { return m_errors; }
@@ -49,16 +61,52 @@ private:
     Game* m_game;
     std::vector<ScriptError> m_errors;
 
+    // All map scripts by name (extension stripped) — the include universe
+    std::unordered_map<std::string, std::string> m_library;
+
+    // Script-global state: `var.NAME` variables, arrays, linked lists
+    std::unordered_map<std::string, ScriptValue> m_globals;
+    std::unordered_map<std::string, std::vector<ScriptValue>> m_arrays;
+    std::unordered_map<std::string, std::deque<ScriptValue>> m_lists;
+
+    // A script parked on a top-level `waitUntil`: preprocessed lines plus the
+    // index of the waitUntil line to re-test each turn.
+    struct SuspendedScript {
+        std::string name;
+        std::vector<std::string> lines;
+        int resumeLine = 0;
+    };
+    std::vector<SuspendedScript> m_suspended;
+
     // Tokenize a line into space-separated tokens (respecting quoted strings)
     std::vector<std::string> tokenize(const std::string& line);
 
-    // Parse and execute a single script
-    bool executeScript(const std::string& name, const std::string& content);
+    // Strip comments/header and splice `include`d libraries (recursive, with
+    // circular-include and depth guards). Returns false on a fatal error.
+    bool preprocess(const std::string& name, const std::string& content,
+                    std::vector<std::string>& outLines,
+                    std::vector<std::string>& includeStack);
 
-    // Execute a block of lines (with nesting support for if/foreach)
+    // Run preprocessed lines from `startLine`, suspending on a false
+    // top-level `waitUntil`.
+    void runLines(const std::string& name, std::vector<std::string> lines, int startLine);
+
+    // waitUntil helpers
+    static bool isWaitLine(const std::string& line);
+    static std::string waitCondition(const std::string& line);
+
+    // Execute a block of lines (with nesting support for if/foreach/while)
     bool executeBlock(const std::vector<std::string>& lines, int& lineIdx,
                       const std::string& scriptName,
                       const std::unordered_map<std::string, ScriptValue>& localVars);
+
+    // `array …` / `list …` statements
+    void execCollectionStmt(const std::vector<std::string>& tokens, const std::string& scriptName,
+                            int lineNum, const std::unordered_map<std::string, ScriptValue>& localVars);
+
+    // Parse a single value token: literal, reference, or plain string
+    ScriptValue parseValueToken(const std::string& tok,
+                                const std::unordered_map<std::string, ScriptValue>& localVars);
 
     // Eval an expression: returns a ScriptValue
     ScriptValue evalExpr(const std::string& expr,

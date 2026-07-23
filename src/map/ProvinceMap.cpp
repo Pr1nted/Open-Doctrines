@@ -2,6 +2,7 @@
 #include "../json.hpp"
 #include <fstream>
 #include <iostream>
+#include <cstring>
 
 ProvinceMap::~ProvinceMap() {
     if (m_loaded) {
@@ -113,4 +114,29 @@ Province* ProvinceMap::getProvinceById(int id) {
     auto it = m_provinces.find(id);
     if (it != m_provinces.end()) return &it->second;
     return nullptr;
+}
+
+void ProvinceMap::updatePixels(const Color* pixels) {
+    if (!m_loaded || m_image.data == nullptr) return;
+    // m_image is forced to R8G8B8A8 on load, so a straight copy is safe
+    memcpy(m_image.data, pixels, (size_t)m_width * m_height * sizeof(Color));
+}
+
+void ProvinceMap::updatePixelsRect(const Color* fullPixels, int x, int y, int w, int h) {
+    if (!m_loaded || m_image.data == nullptr) return;
+    if (x < 0 || y < 0 || x + w > m_width || y + h > m_height) return;
+    auto* dst = static_cast<Color*>(m_image.data);
+    for (int row = 0; row < h; ++row)
+        memcpy(&dst[(size_t)(y + row) * m_width + x],
+               &fullPixels[(size_t)(y + row) * m_width + x],
+               (size_t)w * sizeof(Color));
+}
+
+void ProvinceMap::clear() {
+    if (m_loaded) UnloadImage(m_image);
+    m_image = Image{};
+    m_width = 0;
+    m_height = 0;
+    m_loaded = false;
+    m_provinces.clear();
 }

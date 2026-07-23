@@ -436,7 +436,8 @@ void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int 
     std::string svgPath;
     auto mapToSVG = [&](SymbolType t, const char* svgName) {
         if (effectiveType == t) {
-            svgPath = std::string("flags/") + svgName;
+            // Symbol SVGs live in <data>/symbols/ (data/flags/ holds country flags)
+            svgPath = std::string("symbols/") + svgName;
             effectiveType = SymbolType::SVG_FILE;
         }
     };

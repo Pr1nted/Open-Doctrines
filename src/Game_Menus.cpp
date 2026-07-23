@@ -370,7 +370,7 @@ void Game::updateCommunityMenu() {
         if (CheckCollisionPointRec(mouse, discordBtn)) {
             system("open https://discord.gg/wqS65jzVv5");
         } else if (CheckCollisionPointRec(mouse, githubBtn)) {
-            system("open https://github.com/anomalyco/OpenDoctrines");
+            system("open https://github.com/Pr1nted/Open-Doctrines");
         } else if (CheckCollisionPointRec(mouse, backBtn)) {
             m_currentScreen = SCREEN_MENU;
         }
@@ -461,34 +461,49 @@ void Game::drawMainMenu() {
     int fontSize = 30;
     int itemH = 50;
 
+    // ── Intro animation (after the splash): title slides in from the left,
+    //    buttons from the right, icons from above, everything fading up.
+    //    Purely visual — updateMainMenu() ignores input until it finishes,
+    //    so the click rects never disagree with the drawn positions. ──
+    if (m_menuIntro < 1.0f) {
+        m_menuIntro += GetFrameTime() / 0.45f;
+        if (m_menuIntro > 1.0f) m_menuIntro = 1.0f;
+    }
+    float e = 1.0f - powf(1.0f - m_menuIntro, 3.0f); // ease-out cubic
+    float a = e;                                     // group alpha
+    int titleDX = (int)((1.0f - e) * -140.0f);
+    int btnDX   = (int)((1.0f - e) *  140.0f);
+    int iconDY  = (int)((1.0f - e) *  -60.0f);
+    auto fade = [&](Color c) { return ColorAlpha(c, a * (c.a / 255.0f)); };
+
     // ── Background: scrolling landmass silhouette ──
     drawMenuBackground();
 
     // Dark gradient behind title (top area)
-    DrawRectangleGradientV(0, 0, m_screenW, 200, {0, 0, 0, 200}, {0, 0, 0, 0});
+    DrawRectangleGradientV(0, 0, m_screenW, 200, fade({0, 0, 0, 200}), {0, 0, 0, 0});
     // Dark gradient behind buttons (center area)
     int btnStartY = m_screenH / 2 - (MAIN_MENU_COUNT * itemH) / 2 + 30 - 20;
     int btnEndY = btnStartY + MAIN_MENU_COUNT * itemH + 40;
-    DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, {0, 0, 0, 180}, {0, 0, 0, 0});
-    DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, {0, 0, 0, 0}, {0, 0, 0, 180});
+    DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, fade({0, 0, 0, 180}), {0, 0, 0, 0});
+    DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, {0, 0, 0, 0}, fade({0, 0, 0, 180}));
     // Solid dark strip for readability
-    DrawRectangle(centerX - 250, btnStartY, 500, btnEndY - btnStartY, {0, 0, 0, 100});
+    DrawRectangle(centerX - 250, btnStartY, 500, btnEndY - btnStartY, fade({0, 0, 0, 100}));
 
     // Title
     const char* title = "OpenDoctrines";
     int titleSize = 60;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2, 80, titleSize, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2 + titleDX, 80, titleSize, fade(hexToColor(m_config.accentColor)));
 
     const char* subtitle = "A Grand Strategy Game";
     int subSize = 20;
     int subW = MeasureText(subtitle, subSize);
-    DrawText(subtitle, centerX - subW / 2, 150, subSize, (Color){160, 160, 170, 255});
+    DrawText(subtitle, centerX - subW / 2 + titleDX, 150, subSize, fade((Color){160, 160, 170, 255}));
 
     // Decorative line
     int lineW = 300;
-    DrawRectangle(centerX - lineW / 2, 180, lineW, 2, ColorAlpha(hexToColor(m_config.accentColor), 100.0f/255.0f));
-    DrawRectangle(centerX - lineW / 2 + 1, 181, lineW - 2, 1, (Color){100, 90, 50, 60});
+    DrawRectangle(centerX - lineW / 2 + titleDX, 180, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accentColor), 100.0f/255.0f)));
+    DrawRectangle(centerX - lineW / 2 + 1 + titleDX, 181, lineW - 2, 1, fade((Color){100, 90, 50, 60}));
 
     // Buttons
     int count = MAIN_MENU_COUNT;
@@ -496,11 +511,13 @@ void Game::drawMainMenu() {
 
     Vector2 mouse = getMouse();
     int hovered = -1;
-    for (int i = 0; i < count; ++i) {
-        int y = startY + i * itemH;
-        int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
-        Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
-        if (CheckCollisionPointRec(mouse, rect)) { hovered = i; break; }
+    if (m_menuIntro >= 1.0f) {
+        for (int i = 0; i < count; ++i) {
+            int y = startY + i * itemH;
+            int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
+            Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
+            if (CheckCollisionPointRec(mouse, rect)) { hovered = i; break; }
+        }
     }
 
     for (int i = 0; i < count; ++i) {
@@ -511,37 +528,37 @@ void Game::drawMainMenu() {
         Color bgColor = isHovered ? (Color){255, 255, 255, 16} : BLANK;
 
         int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
-        Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
-        DrawRectangleRounded(rect, 0.1f, 8, bgColor);
-        DrawText(MAIN_MENU_ITEMS[i], centerX - tw / 2, y, fontSize, textColor);
+        Rectangle rect = { (float)(centerX - tw / 2 - 20 + btnDX), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
+        DrawRectangleRounded(rect, 0.1f, 8, fade(bgColor));
+        DrawText(MAIN_MENU_ITEMS[i], centerX - tw / 2 + btnDX, y, fontSize, fade(textColor));
 
         if (isSelected) {
             int underlineW = tw + 20;
-            DrawRectangle(centerX - underlineW / 2, y + fontSize + 4, underlineW, 2, hexToColor(m_config.accentColor));
+            DrawRectangle(centerX - underlineW / 2 + btnDX, y + fontSize + 4, underlineW, 2, fade(hexToColor(m_config.accentColor)));
         }
     }
 
     // Top-right icons: Settings (gear) and Quit (X)
     int iconSize = 36;
-    int iconY = 16;
+    int iconY = 16 + iconDY;
     int quitX = m_screenW - 16 - iconSize;
     int gearX = quitX - 16 - iconSize;
 
     // Gear icon (settings) — reuse style from world browser
     {
         Rectangle gearRect = {(float)gearX, (float)iconY, (float)iconSize, (float)iconSize};
-        bool gearHover = CheckCollisionPointRec(mouse, gearRect);
+        bool gearHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, gearRect);
         Color gearBg = gearHover ? (Color){255, 255, 255, 24} : BLANK;
-        DrawRectangleRounded(gearRect, 0.3f, 6, gearBg);
+        DrawRectangleRounded(gearRect, 0.3f, 6, fade(gearBg));
 
         int gcx = gearX + iconSize / 2;
         int gcy = iconY + iconSize / 2;
-        Color gearColor = gearHover ? (Color){220, 220, 230, 255} : (Color){160, 160, 170, 200};
+        Color gearColor = fade(gearHover ? (Color){220, 220, 230, 255} : (Color){160, 160, 170, 200});
         DrawCircle(gcx, gcy, 7, gearColor);
         for (int t = 0; t < 8; ++t) {
-            float a = t * 45.0f * DEG2RAD;
-            int tx = gcx + (int)(cosf(a) * 8);
-            int ty = gcy + (int)(sinf(a) * 8);
+            float ang = t * 45.0f * DEG2RAD;
+            int tx = gcx + (int)(cosf(ang) * 8);
+            int ty = gcy + (int)(sinf(ang) * 8);
             DrawCircle(tx, ty, 2.5f, gearColor);
         }
     }
@@ -549,20 +566,20 @@ void Game::drawMainMenu() {
     // Quit X icon
     {
         Rectangle quitRect = {(float)quitX, (float)iconY, (float)iconSize, (float)iconSize};
-        bool quitHover = CheckCollisionPointRec(mouse, quitRect);
+        bool quitHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, quitRect);
         Color quitBg = quitHover ? (Color){255, 64, 64, 32} : BLANK;
-        DrawRectangleRounded(quitRect, 0.2f, 8, quitBg);
+        DrawRectangleRounded(quitRect, 0.2f, 8, fade(quitBg));
 
         int cx = quitX + iconSize / 2;
         int cy = iconY + iconSize / 2;
         int arm = 8;
-        Color xColor = quitHover ? (Color){255, 80, 80, 255} : (Color){160, 160, 170, 200};
+        Color xColor = fade(quitHover ? (Color){255, 80, 80, 255} : (Color){160, 160, 170, 200});
         DrawLine(cx - arm, cy - arm, cx + arm, cy + arm, xColor);
         DrawLine(cx + arm, cy - arm, cx - arm, cy + arm, xColor);
     }
 
     // Version info
-    DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, (Color){80, 80, 90, 200});
+    DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade((Color){80, 80, 90, 200}));
 
     // Feedback message
     if (m_menuFeedbackTimer > 0 && !m_menuFeedback.empty()) {
@@ -572,10 +589,64 @@ void Game::drawMainMenu() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Startup splash: "Pr1nted presents" fades in, holds, fades out, then hands
+// off to the main menu. Any key/click skips straight to the menu.
+// ────────────────────────────────────────────────────────────────────────────
+static const float SPLASH_FADE_IN = 0.6f;
+static const float SPLASH_HOLD = 1.6f;
+static const float SPLASH_FADE_OUT = 0.8f;
+static const float SPLASH_TOTAL = SPLASH_FADE_IN + SPLASH_HOLD + SPLASH_FADE_OUT;
+
+void Game::updateSplashScreen(float dt) {
+    m_splashTimer += dt;
+    updateMenuBackground(); // keep the menu bg animating so the fade-out reveals it in motion
+    bool skip = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ESCAPE) ||
+                IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    if (skip || m_splashTimer >= SPLASH_TOTAL) {
+        m_currentScreen = SCREEN_MENU;
+        m_menuIntro = 0.0f; // play the menu's slide/fade-in instead of popping
+    }
+}
+
+void Game::drawSplashScreen() {
+    float textAlpha, blackAlpha;
+    if (m_splashTimer < SPLASH_FADE_IN) {
+        textAlpha = m_splashTimer / SPLASH_FADE_IN;
+        blackAlpha = 1.0f;
+    } else if (m_splashTimer < SPLASH_FADE_IN + SPLASH_HOLD) {
+        textAlpha = 1.0f;
+        blackAlpha = 1.0f;
+    } else {
+        float t = (m_splashTimer - SPLASH_FADE_IN - SPLASH_HOLD) / SPLASH_FADE_OUT;
+        t = std::max(0.0f, std::min(1.0f, t));
+        textAlpha = 1.0f - t;
+        blackAlpha = 1.0f - t; // black bg fades out too, revealing the menu bg underneath
+    }
+    textAlpha = std::max(0.0f, std::min(1.0f, textAlpha));
+    blackAlpha = std::max(0.0f, std::min(1.0f, blackAlpha));
+
+    // Menu background sits underneath the whole time; the black overlay just
+    // uncovers it as it fades, so the splash crossfades into the real menu
+    // instead of hard-cutting.
+    drawMenuBackground(false);
+    DrawRectangle(0, 0, m_screenW, m_screenH, ColorAlpha(BLACK, blackAlpha));
+
+    const char* line = "Pr1nted presents";
+    int fontSize = std::max(20, m_screenW / 28);
+    int tw = MeasureText(line, fontSize);
+    Color col = ColorAlpha(WHITE, textAlpha);
+    DrawText(line, m_screenW / 2 - tw / 2, m_screenH / 2 - fontSize / 2, fontSize, col);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // updateMainMenu
 // ────────────────────────────────────────────────────────────────────────────
 void Game::updateMainMenu() {
     if (isMouseOverConsole()) return;
+    // Ignore input while the intro slide is still playing — the drawn
+    // positions are offset mid-animation, so a click would otherwise land on
+    // a button that isn't visually there.
+    if (m_menuIntro < 1.0f) return;
     int count = MAIN_MENU_COUNT;
 
     if (m_menuFeedbackTimer > 0) {

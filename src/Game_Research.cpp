@@ -37,7 +37,27 @@ bool ResearchNode::isAvailable(const std::vector<ResearchNode>& nodes) const {
     return true;
 }
 
-void Game::initResearchTrees() {
+const std::vector<std::string>& doctrineList() {
+    static const std::vector<std::string> kDoctrines = {
+        "",                    // none
+        "Blitzkrieg",
+        "Mobile Warfare",
+        "Attrition Warfare",
+        "Trench Warfare",
+        "People's War",
+        "Total War",
+        "Fortress Doctrine",
+        "Deterrence",
+        "Naval Supremacy",
+        "Air Superiority",
+        "Combined Arms",
+        "Guerrilla Warfare",
+    };
+    return kDoctrines;
+}
+
+void buildResearchNodes(std::vector<ResearchNode>& out) {
+    std::vector<ResearchNode>& m_researchNodes = out; // alias so the body below reads naturally
     m_researchNodes.clear();
     auto add = [&](const std::string& id, const std::string& name, const std::string& desc,
                    const std::string& cat, const std::string& subcat,
@@ -83,7 +103,8 @@ void Game::initResearchTrees() {
         "buildings","industry",{"ind5"},40,650,580).resourceModPct=10;
     m_researchNodes.back().mutexGroup=9;
     add("ind6", "Industry VI",  "Unlocks industry level 6",
-        "buildings","industry",{"ind_pop"},50,450,680).industryLevel=6;
+        "buildings","industry",{"ind_pop","ind_res"},50,450,680).industryLevel=6;
+    m_researchNodes.back().depsAny=true;
     add("ind7", "Industry VII", "Unlocks industry level 7",
         "buildings","industry",{"ind6"},50,450,780).industryLevel=7;
     add("ind8", "Industry VIII","Unlocks industry level 8",
@@ -119,7 +140,8 @@ void Game::initResearchTrees() {
         "army","army",{"professional_army"},8,210,280).armyAtkPct=10;
     m_researchNodes.back().mutexGroup=2;
     add("combined_arms","Combined Arms","Attack +5%, Defence +5%",
-        "army","army",{"def_tactics"},15,100,380);
+        "army","army",{"def_tactics","off_tactics"},15,100,380);
+    m_researchNodes.back().depsAny=true;
     m_researchNodes.back().armyDefPct=5; m_researchNodes.back().armyAtkPct=5;
     add("logistics","Advanced Logistics","Maintenance cost -15%",
         "army","army",{"combined_arms"},15,100,480).maintenanceCostPct=15;
@@ -135,7 +157,8 @@ void Game::initResearchTrees() {
         "army","army",{"modern_warfare"},30,210,780).armyDefPct=25;
     m_researchNodes.back().mutexGroup=3;
     add("officer_corps","Officer Corps","Maintenance cost -20%",
-        "army","army",{"total_war"},25,100,880).maintenanceCostPct=20;
+        "army","army",{"total_war","fortress_doctrine"},25,100,880).maintenanceCostPct=20;
+    m_researchNodes.back().depsAny=true;
     add("reserve_system","Reserve System","Conscription cost -25%",
         "army","army",{"officer_corps"},20,100,980).conscriptionCostPct=25;
     add("national_mob","National Mobilization","Conscription capacity +30%",
@@ -146,7 +169,8 @@ void Game::initResearchTrees() {
     m_researchNodes.back().mutexGroup=4;
     m_researchNodes.back().maintenanceCostPct=30; m_researchNodes.back().conscriptionCostPct=50;
     add("people_army","People's Army","Conscription capacity +50%",
-        "army","army",{"national_mob"},40,100,1180).conscriptionPct=50;
+        "army","army",{"national_mob","volunteer_force"},40,100,1180).conscriptionPct=50;
+    m_researchNodes.back().depsAny=true;
 
     // ─── Army > Navy (linear with branches) ───
     add("navy1","Naval Engineering","Unlocks ship building",
@@ -162,7 +186,8 @@ void Game::initResearchTrees() {
         "army","navy",{"navy3"},25,560,380).navySpeedPct=25;
     m_researchNodes.back().mutexGroup=5;
     add("navy6","Fleet Modernization","Ship cost -15%",
-        "army","navy",{"navy4"},30,450,480).navyCostPct=15;
+        "army","navy",{"navy4","navy5"},30,450,480).navyCostPct=15;
+    m_researchNodes.back().depsAny=true;
     add("navy7","Radar Technology","Ship defence +15%",
         "army","navy",{"navy6"},30,340,580).navyDefPct=15;
     m_researchNodes.back().mutexGroup=8;
@@ -278,6 +303,10 @@ void Game::initResearchTrees() {
     m_researchNodes.back().infinite=true;
 
     std::cout << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
+}
+
+void Game::initResearchTrees() {
+    buildResearchNodes(m_researchNodes);
 
     // ─── Apply per-country starting research based on development level ───
     // Helper: mark a node as researched for a given country

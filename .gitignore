@@ -21,3 +21,6 @@ Makefile
 dist/*
 AGENTS.md
 .DS_Store
+
+# Map editor projects and generated assets (user-created context, not source)
+data/projects/

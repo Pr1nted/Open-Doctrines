@@ -27,6 +27,37 @@ static int colorToId(Color c) {
 static bool isLand(Color c) { return c.g > c.b; }
 static bool isSea(Color c) { return c.b > c.g; }
 
+std::string makeIsoA3(const std::string& name, const std::unordered_set<std::string>& used) {
+    std::string letters;
+    for (char ch : name) {
+        if (ch >= 'a' && ch <= 'z') letters.push_back((char)(ch - 32));
+        else if (ch >= 'A' && ch <= 'Z') letters.push_back(ch);
+    }
+    while (letters.size() < 3) letters.push_back('X');
+    auto free_ = [&](const std::string& c) { return used.find(c) == used.end(); };
+    // Prefer codes built from the name's letters
+    int n = (int)letters.size();
+    const int combos[3][3] = {{0,1,2},{0,1,3},{0,2,3}};
+    for (auto& cmb : combos) {
+        if (cmb[2] >= n) continue;
+        std::string c{letters[cmb[0]], letters[cmb[1]], letters[cmb[2]]};
+        if (free_(c)) return c;
+    }
+    // First two letters + any last letter
+    for (char ch = 'A'; ch <= 'Z'; ++ch) {
+        std::string c{letters[0], letters[1], ch};
+        if (free_(c)) return c;
+    }
+    // Full scan fallback
+    for (char a = 'A'; a <= 'Z'; ++a)
+        for (char b = 'A'; b <= 'Z'; ++b)
+            for (char ch = 'A'; ch <= 'Z'; ++ch) {
+                std::string c{a, b, ch};
+                if (free_(c)) return c;
+            }
+    return "ZZZ";
+}
+
 // ── Country name generator ──
 static std::string generateCountryName(int cid, int seed) {
     std::mt19937 rng((unsigned int)(cid * 7919u + seed * 104729u));
@@ -449,7 +480,7 @@ ProceduralOutput generateProcedural(
         int np = (int)countryPix.size();
 
         float targetSize = 2500.0f / provinceDensity;
-        int numProv = std::max(1, std::min(200, (int)((float)np / targetSize)));
+        int numProv = std::max(1, std::min(2000, (int)((float)np / targetSize)));
 
         if (numProv == 1) {
             int pid = nextProvinceId++;
@@ -563,6 +594,49 @@ ProceduralOutput generateProcedural(
                     inFrontier[nidx] = true;
                 }
             }
+        }
+
+        // ── Orphan land: any land pixel of this country still unassigned belongs
+        //    to an island (or blob) disconnected from every province seed. Group
+        //    such pixels into connected components and give each its own province
+        //    so no land is ever left province-less. ──
+        std::vector<bool> visitedOrphan(w * h, false);
+        for (int start : countryPix) {
+            if (colorToId(out.provincePixels[start]) != 0) continue;
+            if (visitedOrphan[start]) continue;
+            // Flood the connected orphan component (4-connected, X-wrapped).
+            std::vector<int> comp;
+            std::vector<int> stack{start};
+            visitedOrphan[start] = true;
+            while (!stack.empty()) {
+                int idx = stack.back(); stack.pop_back();
+                comp.push_back(idx);
+                int cx = idx % w, cy = idx / w;
+                int nbs[4][2] = {{cx-1,cy},{cx+1,cy},{cx,cy-1},{cx,cy+1}};
+                for (auto& nb : nbs) {
+                    int nx = nb[0], ny = nb[1];
+                    if (nx < 0) nx = w - 1; else if (nx >= w) nx = 0;
+                    if (ny < 0 || ny >= h) continue;
+                    int nidx = ny * w + nx;
+                    if (visitedOrphan[nidx]) continue;
+                    if (countryOfPixel[nidx] != cid) continue;
+                    if (colorToId(out.provincePixels[nidx]) != 0) continue;
+                    if (!isLand(landSea[nidx])) continue;
+                    visitedOrphan[nidx] = true;
+                    stack.push_back(nidx);
+                }
+            }
+            int pid = nextProvinceId++;
+            nlohmann::json entry;
+            entry["id"] = pid;
+            entry["name"] = "Province #" + std::to_string(pid);
+            entry["country_id"] = cid;
+            entry["iso_a3"] = "";
+            char hex[8]; snprintf(hex, sizeof(hex), "#%06x", pid);
+            entry["color"] = std::string(hex);
+            provinceJson[std::to_string(pid)] = entry;
+            Color pc = idToPixel(pid);
+            for (int p : comp) out.provincePixels[p] = pc;
         }
     }
 
@@ -756,30 +830,56 @@ ProceduralOutput generateProcedural(
             default: f["type"] = "solid"; f["colors"] = {h(rr,gg,bb)}; break;
         }
 
-        // Add overlay symbol for visual interest (~50% chance)
-        std::uniform_int_distribution<int> symDist(0, 9);
-        int symroll = symDist(frng);
-        if (symroll < 5) {
+        // ── Overlay symbol: like rebellion flags, every generated country gets a
+        //    symbol, chosen from a compass-biased set and drawn in a contrasting
+        //    color so it stays visible on both light and dark fields. ──
+        {
+            // Recover this country's political compass (same formula as the
+            // countries.json entry) to bias the symbol toward its ideology.
+            float econ = (float)((cid * 7 + 3) % 201 - 100) * 0.5f;  // -50..+50
+            float soc  = (float)((cid * 13 + 7) % 201 - 100) * 0.5f; // -50..+50
+
+            // SVG-backed symbols that render cleanly (no hate symbols).
+            static const char* leftSyms[]   = {"star_5","star_6","gear","sun","crossed_swords","sword"};
+            static const char* rightSyms[]  = {"cross_latin","cross_saltir","cross_maltese","diamond","star_5"};
+            static const char* libSyms[]    = {"sun","sun_rays","tree","crescent","diamond","star_5"};
+            static const char* centerSyms[] = {"star_5","crescent","cross_latin","mountain","diamond","tree","sun"};
+
+            const char** set = centerSyms; int setN = 7;
+            if (econ < -15.0f)      { set = leftSyms;  setN = 6; }
+            else if (econ > 15.0f)  { set = rightSyms; setN = 5; }
+            else if (soc > 15.0f)   { set = libSyms;   setN = 6; }
+
             nlohmann::json sym;
-            static const char* symTypes[] = {"star_5","circle","cross_latin","crescent","diamond","sun","gear","mountain","cross_saltir","star_6"};
-            sym["type"] = symTypes[patDist(frng) % 10];
-            sym["colors"] = {h(rw,gw,bw)};
+            sym["type"] = set[patDist(frng) % setN];
+
+            // Contrast color: white on dark fields, near-black on light fields.
+            float lum = (0.299f * rr + 0.587f * gg + 0.114f * bb) / 255.0f;
+            if (lum > 0.6f) sym["colors"] = {h(26, 26, 34)};
+            else            sym["colors"] = {h(rw, gw, bw)};
+
             sym["x"] = 0.5; sym["y"] = 0.5;
-            sym["size"] = 0.22 + patDist(frng) * 0.02f;
-            // Some flags get centered symbols, some get offset
+            sym["size"] = 0.28 + (patDist(frng) % 5) * 0.02f;
+            // Canton flags get a smaller symbol tucked into the upper-hoist corner.
             if (pattern == 10) { sym["x"] = 0.25; sym["y"] = 0.25; sym["size"] = 0.18; }
             f["symbols"] = {sym};
         }
 
         return f;
     };
+    std::unordered_set<std::string> usedIso = {"UNC", "BLC", "SPC"};
+    std::map<int, std::string> nameByCid; // for ethnic-group naming in Step 12
     for (int cid : countryIds) {
         Color col = countryColors[cid];
         std::string name = generateCountryName(cid, seed);
+        nameByCid[cid] = name;
+        std::string iso = makeIsoA3(name, usedIso);
+        usedIso.insert(iso);
+        out.isoByCid[cid] = iso;
         nlohmann::json entry;
         entry["id"] = cid;
         entry["name"] = name;
-        entry["iso_a3"] = "";
+        entry["iso_a3"] = iso;
         char hex[8]; snprintf(hex, sizeof(hex), "#%02x%02x%02x", col.r, col.g, col.b);
         entry["color"] = std::string(hex);
         entry["flag_actual"] = genFlag(cid, col.r, col.g, col.b);
@@ -820,9 +920,9 @@ ProceduralOutput generateProcedural(
 
     // ── Step 9: Generate population.json ──
     // Population proportional to province pixel count, using noise for variation
+    std::map<int, long long> provPop;       // shared with Step 11 (armies)
     {
         nlohmann::json popJson;
-        std::map<int, long long> provPop;
         std::map<int, int> provPixels;
         for (int i = 0; i < w * h; ++i) {
             int pid = colorToId(out.provincePixels[i]);
@@ -844,12 +944,14 @@ ProceduralOutput generateProcedural(
             float latFactor = 1.0f - fabsf((float)(y - h/2) / (float)(h/2)) * 0.5f;
             long long pop = (long long)((double)cnt / totalLand * totalPop * noiseVar * latFactor);
             pop = std::max(pop, 100LL);
+            provPop[pid] = pop;
             popJson[std::to_string(pid)] = pop;
         }
         out.populationJson = popJson.dump(2);
     }
 
     // ── Step 10: Generate resources.json (industry + resources) ──
+    std::map<int, int> provIndustry;        // shared with Step 11 (armies)
     {
         nlohmann::json resJson;
         for (int i = 0; i < w * h; ++i) {
@@ -860,6 +962,7 @@ ProceduralOutput generateProcedural(
             // Industry: base level 0-5 based on noise + population density
             float indNoise = fbmNoise((float)x * 0.002f, (float)y * 0.002f, seed + 1000);
             int indLevel = (int)(indNoise * 4.0f);
+            provIndustry[pid] = indLevel;
             float income = 5.0f + indNoise * 25.0f;
 
             // Resources: oil, metal, gold, rubber based on noise
@@ -884,6 +987,247 @@ ProceduralOutput generateProcedural(
             resJson[std::to_string(pid)] = entry;
         }
         out.resourcesJson = resJson.dump(2);
+    }
+
+    // ── Step 11: Ports, armies, ships, relations ──
+    {
+        // Per-province owner + one coastal pixel (land 4-adjacent to sea)
+        std::map<int, int> provOwner;
+        std::map<int, int> provCoastPixel;
+        for (int i = 0; i < w * h; ++i) {
+            int pid = colorToId(out.provincePixels[i]);
+            if (pid == 0) continue;
+            if (!provOwner.count(pid)) provOwner[pid] = countryOfPixel[i];
+            if (provCoastPixel.count(pid)) continue;
+            int x = i % w, y = i / w;
+            int nbs[4][2] = {{x-1,y},{x+1,y},{x,y-1},{x,y+1}};
+            for (auto& nb : nbs) {
+                int nx = nb[0], ny = nb[1];
+                if (nx < 0) nx = w - 1; else if (nx >= w) nx = 0;
+                if (ny < 0 || ny >= h) continue;
+                if (!isLand(landSea[ny * w + nx])) { provCoastPixel[pid] = i; break; }
+            }
+        }
+
+        // Ports: about half the coastal provinces get one, level weighted low
+        for (auto& [pid, px] : provCoastPixel) {
+            if (rng() % 100 >= 50) continue;
+            int roll = rng() % 100;
+            out.portLevelByPid[pid] = roll < 60 ? 1 : (roll < 90 ? 2 : 3);
+        }
+
+        // Armies: garrison scaled by population and industry, owned by the province owner
+        for (auto& [pid, owner] : provOwner) {
+            if (owner <= 0) continue;
+            long long pop = provPop.count(pid) ? provPop[pid] : 1000;
+            int ind = provIndustry.count(pid) ? provIndustry[pid] : 0;
+            long long g = (long long)((double)pop * 0.01 * (1.0 + ind * 0.3));
+            int garrison = (int)std::max(500LL, std::min(500000LL, g));
+            garrison = (garrison / 100) * 100;
+            out.armiesByPid[pid] = {ArmyUnit{owner, garrison}};
+        }
+
+        // Province-level political compass: nudged from the owning country's
+        // compass (same deterministic formula used for countries.json below)
+        // with per-province noise, so provinces aren't perfectly uniform.
+        for (auto& [pid, owner] : provOwner) {
+            if (owner <= 0) continue;
+            float countryEcon = (float)((owner * 7 + 3) % 201 - 100) * 0.5f;
+            float countrySoc  = (float)((owner * 13 + 7) % 201 - 100) * 0.5f;
+            float noiseE = (float)(rng() % 401 - 200) / 10.0f; // +/-20
+            float noiseS = (float)(rng() % 401 - 200) / 10.0f;
+            float e = std::max(-100.0f, std::min(100.0f, countryEcon + noiseE));
+            float s = std::max(-100.0f, std::min(100.0f, countrySoc + noiseS));
+            out.provinceCompassByPid[pid] = {e, s};
+        }
+
+        // Ships: 1-3 per country that owns a coastline, placed in open sea
+        std::map<int, std::vector<int>> coastByCountry; // cid -> coastal pixels
+        for (auto& [pid, px] : provCoastPixel) {
+            int owner = provOwner.count(pid) ? provOwner[pid] : 0;
+            if (owner > 0) coastByCountry[owner].push_back(px);
+        }
+        static const char* shipTypes[] = {"destroyer", "destroyer", "carrier", "boat"};
+        const float MIN_SHIP_DIST = (float)w / 70.0f;  // keep fleets spread out
+        const float minShipDistSq = MIN_SHIP_DIST * MIN_SHIP_DIST;
+        std::vector<std::pair<int,int>> placed;        // positions of all ships so far
+        auto farFromOthers = [&](int x, int y) {
+            for (auto& [ox, oy] : placed) {
+                float dx = fabsf((float)(x - ox));
+                if (dx > w * 0.5f) dx = w - dx; // X wraps
+                float dy = (float)(y - oy);
+                if (dx * dx + dy * dy < minShipDistSq) return false;
+            }
+            return true;
+        };
+        for (auto& [cid, coast] : coastByCountry) {
+            int nShips = 1 + (int)(rng() % 3);
+            for (int s = 0; s < nShips; ++s) {
+                // Retry a few coastal starts until the spot is clear of other ships
+                int sx = -1, sy = -1;
+                for (int attempt = 0; attempt < 12 && sx < 0; ++attempt) {
+                    int start = coast[rng() % coast.size()];
+                    int cx = start % w, cy = start / w;
+                    // Find a seaward direction, then walk ~10 px out
+                    int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+                    for (auto& d : dirs) {
+                        int nx = cx + d[0], ny = cy + d[1];
+                        if (nx < 0) nx = w - 1; else if (nx >= w) nx = 0;
+                        if (ny < 0 || ny >= h) continue;
+                        if (!isLand(landSea[ny * w + nx])) {
+                            int tx0 = nx, ty0 = ny;
+                            for (int step = 0; step < 10; ++step) {
+                                int tx = tx0 + d[0], ty = ty0 + d[1];
+                                if (tx < 0) tx = w - 1; else if (tx >= w) tx = 0;
+                                if (ty < 0 || ty >= h) break;
+                                if (isLand(landSea[ty * w + tx])) break;
+                                tx0 = tx; ty0 = ty;
+                            }
+                            if (farFromOthers(tx0, ty0)) { sx = tx0; sy = ty0; }
+                            break;
+                        }
+                    }
+                }
+                if (sx < 0) continue; // no clear spot on this coast — skip the ship
+                placed.push_back({sx, sy});
+                NavyShip ship;
+                ship.countryId = cid;
+                ship.type = shipTypes[rng() % 4];
+                ship.lon = (double)sx / w * 360.0 - 180.0;
+                ship.lat = 90.0 - (double)sy / h * 180.0;
+                ship.health = 100;
+                ship.crew = ship.type == "boat" ? (int)(50 + rng() % 451) : 0; // 50-500 troops
+                out.ships.push_back(ship);
+            }
+        }
+
+        // Relations: seed a few wars/alliances/NAPs between neighbors
+        for (auto& [cid, nbrs] : adj) {
+            for (int nid : nbrs) {
+                if (nid <= cid) continue; // each pair once
+                if (cid == UNC_CID || cid == BLC_CID || nid == UNC_CID || nid == BLC_CID) continue;
+                int roll = (int)(rng() % 100);
+                CountryRelation rel;
+                if (roll < 5) rel.war = true;
+                else if (roll < 13) rel.alliance = true;
+                else if (roll < 21) rel.nonAggression = true;
+                else if (roll < 25) rel.guarantee = true;
+                else continue;
+                out.relations[{cid, nid}] = rel;
+            }
+        }
+
+        // ── Ethnic groups ──
+        // Two kinds of group exist side by side:
+        //  1. TITULAR groups — one per country, named after the country
+        //     ("Valdoria" -> "Valdorians"), matching that country's majority.
+        //  2. INDEPENDENT groups — a shared map-wide pool of invented peoples
+        //     with their own names (not derived from any country), scattered
+        //     across borders as historical/regional minorities. This is what
+        //     makes the ethnic map read as more than "one color per country".
+        {
+            auto titularName = [](const std::string& country) -> std::string {
+                if (country.empty()) return "Locals";
+                char last = (char)tolower(country.back());
+                if (last == 'a' || last == 'o' || last == 'u' || last == 'i' || last == 'e')
+                    return country + "ns";   // "Valdoria" -> "Valdorians"
+                return country + "ians";     // "Arden" -> "Ardenians"
+            };
+            // Distinct phonetic pool + suffix set from generateCountryName so
+            // independent ethnonyms don't read as country names.
+            static const char* ethRoots[] = {"kesh","tavor","nirem","ozul","hadric","kelun",
+                "sombra","vashti","orenn","talic","brenu","cassar","dunmir","ferrow","gulek",
+                "hessa","imlar","jorund","kavesh","lorric","mundai","nevash","oskur","paldan",
+                "qirem","rosnik","suvara","teshan","umbric","vorlek"};
+            static const char* ethSuffixes[] = {"i","ese","ic","ani","esh","ari","yat","une","oth","ai"};
+            int nEthRoots = sizeof(ethRoots)/sizeof(ethRoots[0]);
+            int nEthSuf = sizeof(ethSuffixes)/sizeof(ethSuffixes[0]);
+            auto cap = [](std::string s) { if (!s.empty()) s[0] = (char)toupper(s[0]); return s; };
+            auto genIndependentName = [&](std::mt19937& r) {
+                std::string base = ethRoots[r() % nEthRoots];
+                return cap(base + ethSuffixes[r() % nEthSuf]);
+            };
+
+            std::mt19937 ethRng((unsigned)(seed * 1913u + 7));
+            // Independent pool size scales with the number of countries so
+            // small maps don't get an overwhelming number of stray peoples.
+            int nIndependent = std::max(3, (int)countryIds.size() / 5);
+            std::vector<std::string> independentPool;
+            std::unordered_set<std::string> usedEthNames;
+            for (int i = 0; i < nIndependent; ++i) {
+                std::string n;
+                int guard = 0;
+                do { n = genIndependentName(ethRng); } while (usedEthNames.count(n) && ++guard < 30);
+                usedEthNames.insert(n);
+                independentPool.push_back(n);
+            }
+
+            std::map<int, std::string> titularByCid;
+            nlohmann::json colJson;
+            auto colorFor = [&](const std::string& name, Color base) {
+                colJson[name] = { (int)(base.r + (255 - base.r) * 0.25f),
+                                  (int)(base.g + (255 - base.g) * 0.25f),
+                                  (int)(base.b + (255 - base.b) * 0.25f) };
+            };
+            for (auto& [cid, cname] : nameByCid) {
+                std::string g = titularName(cname);
+                titularByCid[cid] = g;
+                Color cc = countryColors.count(cid) ? countryColors[cid] : Color{140,140,140,255};
+                colorFor(g, cc);
+            }
+            // Independent groups get a color hashed from their name (stable,
+            // and visually distinct from any single country's palette).
+            for (auto& g : independentPool) {
+                size_t h = std::hash<std::string>{}(g);
+                Color base = {(uint8_t)(80 + (h % 150)), (uint8_t)(80 + ((h >> 8) % 150)),
+                             (uint8_t)(80 + ((h >> 16) % 150)), 255};
+                colorFor(g, base);
+            }
+
+            nlohmann::json minJson;
+            for (auto& [pid, owner] : provOwner) {
+                if (owner <= 0 || !titularByCid.count(owner)) continue;
+                nlohmann::json arr = nlohmann::json::array();
+                float majority = 55.0f + (float)(rng() % 401) / 10.0f; // 55-95%
+                std::vector<int> nbrs;
+                auto it = adj.find(owner);
+                if (it != adj.end())
+                    for (int nid : it->second)
+                        if (titularByCid.count(nid)) nbrs.push_back(nid);
+
+                // Build up to 2 minority entries. Each slot independently
+                // rolls between a bordering country's titular group (when a
+                // border exists) and the map-wide independent pool — so
+                // independent peoples show up everywhere, not just enclaves.
+                auto pickMinorityName = [&]() -> std::string {
+                    bool useIndependent = nbrs.empty() || (rng() % 100) < 45;
+                    if (useIndependent)
+                        return independentPool[rng() % independentPool.size()];
+                    return titularByCid[nbrs[rng() % nbrs.size()]];
+                };
+
+                int nMinSlots = (rng() % 100 < 70) ? 1 : 2; // most provinces: 1 minority
+                if (nbrs.empty() && (rng() % 100) < 30) nMinSlots = 0; // some fully homogeneous
+                if (nMinSlots == 0) {
+                    arr.push_back({{"n", titularByCid[owner]}, {"p", 100.0f}});
+                } else {
+                    float rest = 100.0f - majority;
+                    arr.push_back({{"n", titularByCid[owner]}, {"p", majority}});
+                    if (nMinSlots == 1) {
+                        arr.push_back({{"n", pickMinorityName()}, {"p", roundf(rest * 10.0f) / 10.0f}});
+                    } else {
+                        float p1 = rest * (0.5f + (float)(rng() % 30) / 100.0f);
+                        std::string m1 = pickMinorityName(), m2;
+                        do { m2 = pickMinorityName(); } while (m2 == m1);
+                        arr.push_back({{"n", m1}, {"p", roundf(p1 * 10.0f) / 10.0f}});
+                        arr.push_back({{"n", m2}, {"p", roundf((rest - p1) * 10.0f) / 10.0f}});
+                    }
+                }
+                minJson[std::to_string(pid)] = arr;
+            }
+            out.minoritiesJson = minJson.dump(2);
+            out.minorityColorsJson = colJson.dump(2);
+        }
     }
 
     return out;

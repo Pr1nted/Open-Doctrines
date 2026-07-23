@@ -30,6 +30,7 @@ public:
     const std::unordered_map<int, Country>& getAll() const { return m_countries; }
     std::unordered_map<int, Country>& getAll() { return m_countries; }
     int size() const { return (int)m_countries.size(); }
+    void clear() { m_countries.clear(); }
 
 private:
     std::unordered_map<int, Country> m_countries;

@@ -496,7 +496,10 @@ bool Game::init(int screenW, int screenH, const char* title) {
     emscripten_run_script("console.log('[OD] Game::init() SUCCESS')");
 #endif
     m_running = true;
-    m_currentScreen = SCREEN_MENU;
+    m_currentScreen = SCREEN_SPLASH;
+    m_splashTimer = 0.0f;
+    initMenuBackground(); // ready so the splash's fade-out can reveal it
+    m_menuBgScroll = 0;
     return true;
 }
 
@@ -779,7 +782,13 @@ void Game::run() {
             initMenuBackground();
         }
 
-        if (m_currentScreen == SCREEN_MENU) {
+        if (m_currentScreen == SCREEN_SPLASH) {
+            updateSplashScreen(dt);
+            BeginDrawing();
+            ClearBackground(BLACK);
+            drawSplashScreen();
+            EndDrawing();
+        } else if (m_currentScreen == SCREEN_MENU) {
             if (m_inSettings) {
                 updateMenuBackground();
                 updateSettingsFromMenu();

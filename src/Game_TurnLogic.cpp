@@ -318,13 +318,23 @@ void Game::processTurn() {
         if (scanned >= 2) {
             for (int i = 0; i < 12; ++i) if (strcmp(mb, MONTHS[i]) == 0) { mi = i; break; }
         }
+        // Preserve the era suffix (BC dates count years down toward 1 BC/AD)
+        bool isBC = m_mapDate.find("BC") != std::string::npos;
+        const char* era = isBC ? "BC" : "AD";
         if (mi >= 0 && mi < 11) {
-            m_mapDate = std::string(MONTHS[mi+1]) + " " + std::to_string(yr) + " AD";
+            m_mapDate = std::string(MONTHS[mi+1]) + " " + std::to_string(yr) + " " + era;
+        } else if (isBC && yr > 1) {
+            m_mapDate = std::string("January ") + std::to_string(yr - 1) + " BC";
         } else {
             m_mapDate = std::string("January ") + std::to_string(yr + 1) + " AD";
         }
     }
     m_turnNumber++;
+    // Resume any map scripts suspended on waitUntil now that turn/date advanced
+    if (m_scriptEngine) {
+        m_scriptEngine->tick();
+        if (!m_scriptEngine->getErrors().empty()) m_scriptErrorTimer = 3.0f;
+    }
     m_turnState = TURN_NORMAL;
     drawFrame(1.0f, "Done!");
     printf("[TURN] Turn %d processed.\n", turnNum);
@@ -2549,6 +2559,7 @@ void Game::processUpgrades() {
                     node.researched = true;
                     printf("[RESEARCH] %s completed!\n", node.name.c_str());
                     m_researchActiveNode = -1;
+                    m_researchAlert = true; // highlight the sidebar button until it's opened
                 }
             } else {
                 m_researchActiveNode = -1;

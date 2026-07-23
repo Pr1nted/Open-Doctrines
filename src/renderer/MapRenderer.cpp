@@ -31,6 +31,25 @@ MapRenderer::~MapRenderer() {
     if (m_populationTex.id > 0) UnloadTexture(m_populationTex);
     if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
     if (m_claimsTex.id > 0) UnloadTexture(m_claimsTex);
+    if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
+    if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
+}
+
+void MapRenderer::setEditorOverlay(Texture2D tex) {
+    if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
+    m_editorOverlayTex = tex;
+}
+
+void MapRenderer::setHighlight(Texture2D tex, int x, int y) {
+    if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
+    m_highlightTex = tex;
+    m_highlightX = x;
+    m_highlightY = y;
+}
+
+void MapRenderer::clearHighlight() {
+    if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
+    m_highlightTex = Texture2D{};
 }
 
 void MapRenderer::setPoliticalTexture(Texture2D tex) {
@@ -41,6 +60,53 @@ void MapRenderer::setPoliticalTexture(Texture2D tex) {
 void MapRenderer::updatePoliticalTexture(const void* data) {
     if (m_politicalTex.id > 0)
         UpdateTexture(m_politicalTex, data);
+}
+
+void MapRenderer::updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h) {
+    if (m_politicalTex.id > 0)
+        UpdateTextureRec(m_politicalTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
+}
+
+void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH,
+                                     int rx, int ry, int rw, int rh) {
+    if (m_borderTex.id == 0 || provPixels == nullptr || m_borderPixels.empty()) return;
+    // Expand by 2 so border/halo transitions at the rect edge recompute correctly
+    int x0 = std::max(0, rx - 2), y0 = std::max(0, ry - 2);
+    int x1 = std::min(mapW - 1, rx + rw + 1), y1 = std::min(mapH - 1, ry + rh + 1);
+    if (x0 > x1 || y0 > y1) return;
+
+    const auto* pixels = reinterpret_cast<const uint32_t*>(provPixels);
+    auto isBorder = [&](int px, int py) -> bool {
+        uint32_t center = pixels[py * mapW + px];
+        if (center == 0) return false;
+        int l = (px == 0) ? mapW - 1 : px - 1;
+        int r = (px == mapW - 1) ? 0 : px + 1;
+        return pixels[py * mapW + l] != center || pixels[py * mapW + r] != center ||
+               (py == 0 || pixels[(py - 1) * mapW + px] != center) ||
+               (py == mapH - 1 || pixels[(py + 1) * mapW + px] != center);
+    };
+
+    int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    std::vector<uint32_t> rect((size_t)w * h, 0);
+    auto* full = reinterpret_cast<uint32_t*>(m_borderPixels.data());
+    for (int py = y0; py <= y1; ++py) {
+        for (int px = x0; px <= x1; ++px) {
+            uint8_t a = 0;
+            if (isBorder(px, py)) {
+                a = 180;
+            } else {
+                int l = (px == 0) ? mapW - 1 : px - 1;
+                int r = (px == mapW - 1) ? 0 : px + 1;
+                if (isBorder(l, py) || isBorder(r, py) ||
+                    (py > 0 && isBorder(px, py - 1)) ||
+                    (py < mapH - 1 && isBorder(px, py + 1))) a = 50;
+            }
+            uint32_t v = a ? (0xFFFFFF00u | a) : 0u; // same encoding as computeBorderTexture
+            rect[(size_t)(py - y0) * w + (px - x0)] = v;
+            full[(size_t)py * mapW + px] = v;
+        }
+    }
+    UpdateTextureRec(m_borderTex, {(float)x0, (float)y0, (float)w, (float)h}, rect.data());
 }
 
 void MapRenderer::setPopulationTexture(Texture2D tex) {
@@ -71,6 +137,11 @@ void MapRenderer::setClaimsTexture(Texture2D tex) {
 void MapRenderer::updateClaimsTexture(const void* data) {
     if (m_claimsTex.id > 0)
         UpdateTexture(m_claimsTex, data);
+}
+
+void MapRenderer::updateClaimsTextureRec(const void* rectData, int x, int y, int w, int h) {
+    if (m_claimsTex.id > 0)
+        UpdateTextureRec(m_claimsTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
 }
 
 void MapRenderer::computeBorderTexture(const Image& provImage) {
@@ -703,9 +774,23 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
         DrawTexture(lsTex, tx * m_mapW, 0, WHITE);
     }
 
-    if (m_politicalTex.id > 0) {
+    if (m_politicalTex.id > 0 && m_showPolitical) {
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_politicalTex, tx * m_mapW, 0, WHITE);
+        }
+    }
+
+    // Claims wash (map editor's claims brush). Sits above the political fill
+    // so claimed provinces read clearly, but below borders/highlight.
+    if (m_claimsTex.id > 0 && m_showClaims) {
+        for (int tx = tileStart; tx < tileEnd; ++tx) {
+            DrawTexture(m_claimsTex, tx * m_mapW, 0, WHITE);
+        }
+    }
+
+    if (m_editorOverlayTex.id > 0 && m_showEditorOverlay) {
+        for (int tx = tileStart; tx < tileEnd; ++tx) {
+            DrawTexture(m_editorOverlayTex, tx * m_mapW, 0, WHITE);
         }
     }
 
@@ -713,6 +798,15 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
         Color bc = ColorAlpha(BLACK, 0.15f);
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_borderTex, tx * m_mapW, 0, bc);
+        }
+    }
+
+    // Pulsing selection highlight (map editor)
+    if (m_highlightTex.id > 0) {
+        float pulse = 0.30f + 0.18f * sinf((float)GetTime() * 4.0f);
+        Color hc = ColorAlpha(WHITE, pulse);
+        for (int tx = tileStart; tx < tileEnd; ++tx) {
+            DrawTexture(m_highlightTex, tx * m_mapW + m_highlightX, m_highlightY, hc);
         }
     }
 
@@ -729,4 +823,12 @@ void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
     px = static_cast<int>(worldPos.x);
     while (px < 0) px += m_mapW;
     while (px >= m_mapW) px -= m_mapW;
+}
+
+void MapRenderer::pixelToScreen(float px, float py, float& sx, float& sy) const {
+    // The map wraps horizontally: project the tile copy nearest the camera
+    float wrapped = px + roundf((m_camera.target.x - px) / (float)m_mapW) * (float)m_mapW;
+    Vector2 v = GetWorldToScreen2D({wrapped, py}, m_camera);
+    sx = v.x;
+    sy = v.y;
 }

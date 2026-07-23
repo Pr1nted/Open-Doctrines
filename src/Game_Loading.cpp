@@ -1429,7 +1429,11 @@ bool Game::loadFromODM(const std::string& odmPath) {
         return false;
 
     struct FileEntry { std::string name; void* data; size_t size; };
-    FileEntry entries[128];
+    // Dynamic — a map can carry far more than a small fixed cap once custom
+    // flag SVGs and script files are added (the old fixed-size[128] array
+    // silently truncated and dropped scripts/late-appended entries).
+    std::vector<FileEntry> entries;
+    entries.reserve(256);
     const char* needed[] = {"land_sea.png", "provinces.png", "provinces.json", "countries.json",
                             "metadata.json", "population.json", "political_compass.json",
                             "minorities.json", "minority_colors.json", "starting_policies.json",
@@ -1439,19 +1443,17 @@ bool Game::loadFromODM(const std::string& odmPath) {
     int found = 0;
     int neededCount = sizeof(needed) / sizeof(needed[0]);
 
-    for (int fi = 0; fi < neededCount && found < 128; ++fi) {
+    for (int fi = 0; fi < neededCount; ++fi) {
         int idx = mz_zip_reader_locate_file(&zip, needed[fi], nullptr, 0);
         if (idx < 0) continue;
         size_t outSize = 0;
         void* outData = mz_zip_reader_extract_to_heap(&zip, idx, &outSize, 0);
         if (!outData) continue;
-        entries[found].name = needed[fi];
-        entries[found].data = outData;
-        entries[found].size = outSize;
+        entries.push_back({needed[fi], outData, outSize});
         found++;
     }
 
-    // Scan for scripts/ entries, licenses/, and flags/ SVGs in the archive
+    // Scan for scripts/ entries, licenses/, symbols/, and flags/ SVGs in the archive
     m_loadedMapHasScripts = false;
     {
         int numEntries = mz_zip_reader_get_num_files(&zip);
@@ -1465,26 +1467,24 @@ bool Game::loadFromODM(const std::string& odmPath) {
                 }
             }
         }
-        // Extract license, flag-symbol, and symbol SVG entries (not in needed[] list)
-        for (int zi = 0; zi < numEntries && found < 128; ++zi) {
+        // Extract license, symbol, flag SVG, and script entries (not in needed[] list)
+        for (int zi = 0; zi < numEntries; ++zi) {
             mz_zip_archive_file_stat fstat;
             if (mz_zip_reader_file_stat(&zip, zi, &fstat)) {
                 std::string entryName = fstat.m_filename;
+                if (entryName.empty() || entryName.back() == '/') continue; // directory marker
+                bool isScript = entryName.rfind("scripts/", 0) == 0;
                 if (entryName.rfind("licenses/", 0) == 0 || entryName.rfind("symbols/", 0) == 0 ||
-                    (entryName.rfind("flags/", 0) == 0 && entryName.find(".svg") != std::string::npos)) {
-                    // Also extract flag SVGs (flags/USA.svg, etc.)
+                    (entryName.rfind("flags/", 0) == 0 && entryName.find(".svg") != std::string::npos) ||
+                    isScript) {
                     // Check if already extracted
                     bool already = false;
-                    for (int ei = 0; ei < found; ++ei) {
-                        if (entries[ei].name == entryName) { already = true; break; }
-                    }
+                    for (auto& e : entries) if (e.name == entryName) { already = true; break; }
                     if (already) continue;
                     size_t outSize = 0;
                     void* outData = mz_zip_reader_extract_to_heap(&zip, zi, &outSize, 0);
                     if (!outData) continue;
-                    entries[found].name = entryName;
-                    entries[found].data = outData;
-                    entries[found].size = outSize;
+                    entries.push_back({entryName, outData, outSize});
                     found++;
                 }
             }
@@ -1494,7 +1494,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
     mz_zip_reader_end(&zip);
 
     if (found < 5) {
-        for (int i = 0; i < found; ++i) free(entries[i].data);
+        for (auto& e : entries) free(e.data);
         std::cerr << "  Incomplete .odmap archive" << std::endl;
         return false;
     }
@@ -1743,18 +1743,19 @@ bool Game::loadFromODM(const std::string& odmPath) {
         }
     }
 
-    // Store JSON data in memory (no disk writes). Binary/image files loaded above.
+    // Store JSON/script/SVG data in memory (no disk writes). Binary map
+    // images are loaded directly above and skipped here. Script bodies MUST
+    // be kept — ScriptEngine::runScripts() reads them out of this map.
     m_odmJsonData.clear();
-    for (int i = 0; i < found; ++i) {
-        const std::string& name = entries[i].name;
+    for (auto& e : entries) {
+        const std::string& name = e.name;
         if (name == "land_sea.png" || name == "provinces.png" || name == "political.png" ||
             name == "thumb.png") continue;
-        if (name.rfind("scripts/", 0) == 0) continue;
-        m_odmJsonData[name] = std::string(static_cast<char*>(entries[i].data), entries[i].size);
+        m_odmJsonData[name] = std::string(static_cast<char*>(e.data), e.size);
     }
 
     // Free all extracted data
-    for (int i = 0; i < found; ++i) free(entries[i].data);
+    for (auto& e : entries) free(e.data);
 
     if (!m_provinces.getWidth()) {
         std::cerr << "  Failed to load provinces from .odmap" << std::endl;
@@ -1868,30 +1869,36 @@ bool Game::loadGameDataStep1() {
         for (auto& [provStr, res] : resJson.items()) {
             int pid = std::stoi(provStr);
             ProvinceResources pr;
-            auto& o = res["oil"];   pr.oil     = {o["a"].get<float>(), o["b"].get<float>()};
-            auto& g = res["gold"];  pr.gold    = {g["a"].get<float>(), g["b"].get<float>()};
-            auto& r = res["rubber"];pr.rubber  = {r["a"].get<float>(), r["b"].get<float>()};
-            auto& e = res["gemstones"];pr.gemstones = {e["a"].get<float>(), e["b"].get<float>()};
-            auto& m = res["metal"];pr.metal = {m["a"].get<float>(), m["b"].get<float>()};
+            // Tolerate missing keys (older/procedural maps omit absent resources)
+            auto readRes = [&](const char* key) -> ProvinceResource {
+                if (!res.contains(key)) return {0.0f, 0.0f};
+                auto& o = res[key];
+                return {o.value("a", 0.0f), o.value("b", 0.0f)};
+            };
+            pr.oil = readRes("oil");
+            pr.gold = readRes("gold");
+            pr.rubber = readRes("rubber");
+            pr.gemstones = readRes("gemstones");
+            pr.metal = readRes("metal");
             m_provinceResources[pid] = pr;
             if (res.contains("industry")) {
                 auto& ind = res["industry"];
                 ProvinceIndustry pi;
-                pi.level = ind["level"].get<int>();
-                pi.income = ind["income"].get<float>();
-                pi.specialization = ind["specialization"].get<std::string>();
-                pi.resourceIncome = ind["resourceIncome"].get<float>();
-                pi.popIncome = ind["popIncome"].get<float>();
-                pi.popModifier = ind["popModifier"].get<float>();
+                pi.level = ind.value("level", 0);
+                pi.income = ind.value("income", 0.0f);
+                pi.specialization = ind.value("specialization", std::string());
+                pi.resourceIncome = ind.value("resourceIncome", 0.0f);
+                pi.popIncome = ind.value("popIncome", 0.0f);
+                pi.popModifier = ind.value("popModifier", 1.0f);
                 m_provinceIndustry[pid] = pi;
             }
             if (res.contains("fortification")) {
                 auto indIt = m_provinceIndustry.find(pid);
                 if (indIt != m_provinceIndustry.end()) {
-                    indIt->second.fortification = res["fortification"].get<int>();
+                    indIt->second.fortification = res.value("fortification", 0);
                 } else {
                     ProvinceIndustry pi;
-                    pi.fortification = res["fortification"].get<int>();
+                    pi.fortification = res.value("fortification", 0);
                     m_provinceIndustry[pid] = pi;
                 }
             }
@@ -1999,7 +2006,8 @@ bool Game::loadGameDataStep2() {
                     std::vector<ArmyUnit> vec;
                     for (auto& u : units) {
                         ArmyUnit au;
-                        au.countryId = ownerCid;
+                        // Units may belong to a foreign nation; fall back to the owner
+                        au.countryId = u.value("country_id", ownerCid);
                         au.count = u["count"].get<int>();
                         vec.push_back(au);
                     }
@@ -2699,6 +2707,8 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_researchPoints = 0;
     m_researchHoveredNode = -1;
     m_researchTab = 0;
+    m_researchAlert = false;   // don't carry a stale sidebar highlight into a new game
+    m_politicsAlert = false;
     // Reset all research nodes to unresearched
     for (auto& n : m_researchNodes) {
         n.researched = false;

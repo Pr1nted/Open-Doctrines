@@ -14,7 +14,9 @@ void Game::updateMapEditor() {
         float dt = GetFrameTime();
         m_mapEditor->update(dt);
 
-        if (IsKeyPressed(KEY_ESCAPE)) {
+        // The editor decides when ESC means "leave" (its dispatcher closes
+        // overlays/dialogs first and can show an unsaved-changes prompt).
+        if (m_mapEditor->consumeExitRequest()) {
             m_currentScreen = SCREEN_MENU;
         }
     }

@@ -603,6 +603,7 @@ void Game::update(float dt) {
                             m_claimsEditMode = false;
                             m_claimsEditToAdd.clear();
                             m_claimsEditToDrop.clear();
+                            m_politicsAlert = false; // seen
                         }
                     } else if (tid == 4) {
                         // Research — open/close (close other panels first)
@@ -611,6 +612,7 @@ void Game::update(float dt) {
                         m_inPolitics = false;
                         m_inResearch = !m_inResearch;
                         m_activeSidebarTab = m_inResearch ? 4 : 0;
+                        if (m_inResearch) m_researchAlert = false; // seen
                         if (m_renderer) m_renderer->setPaused(m_inResearch);
                     }
                     break;

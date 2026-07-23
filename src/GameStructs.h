@@ -275,6 +275,13 @@ struct ResearchNode {
     bool isAvailable(const std::vector<ResearchNode>& nodes) const;
 };
 
+// Builds the full research-tree node definitions into `out`. Shared by the game
+// (Game::initResearchTrees) and the map editor's research picker.
+void buildResearchNodes(std::vector<ResearchNode>& out);
+
+// Canonical list of selectable country doctrines (index 0 = "None"/empty).
+const std::vector<std::string>& doctrineList();
+
 // ─── Pending Actions (queued for processing on next turn) ────
 struct PendingDiplomaticAction {
     std::string sourceIso;
