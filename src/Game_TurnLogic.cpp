@@ -299,6 +299,9 @@ void Game::processTurn() {
         std::vector<std::pair<std::string, std::string>> rebelFiles;
         for (auto& [cid2, svg] : m_rebelFlagSvgs)
              rebelFiles.push_back({"rebellion/" + std::to_string(cid2) + ".svg", svg});
+         // Persist the rebel countries themselves, not just their flags —
+         // otherwise their provinces reload as ownerless limbo.
+         { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
         std::string stateJson = saveStateJson();
         SaveManager::appendTurn(m_currentSavePath, delta, &stateJson, &rebelFiles);
         m_turnCount++;
@@ -384,6 +387,52 @@ void Game::processCountryTurn(int countryId) {
     if (te > 1000) printf("[PROCESS] cid=%d recruit=%lldus\n", countryId, te);
     te = (long long)std::chrono::duration_cast<std::chrono::microseconds>(pt10-pt9).count();
     if (te > 1000) printf("[PROCESS] cid=%d embark=%lldus\n", countryId, te);
+}
+
+// Rebel countries only ever existed in memory: createRebelCountry() inserts
+// them into m_countries at runtime and the save wrote nothing but their flag
+// SVG. On reload every province they owned referenced a missing country id,
+// which is why captured territory ended up in limbo without even a UNC/BLC
+// tag. Emitting them in countries.json shape lets CountryMap::loadFromJson
+// merge them straight back in.
+std::string Game::buildRebelsJson() const {
+    nlohmann::json root = nlohmann::json::object();
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (cid < REBEL_CID_MIN || cid >= SPC_CID) continue; // skip map countries + UNC/BLC/SPC
+        nlohmann::json e;
+        e["id"] = cid;
+        e["name"] = c.name;
+        e["iso_a3"] = c.isoA3;
+        char hex[8];
+        snprintf(hex, sizeof(hex), "#%02x%02x%02x", c.color.r, c.color.g, c.color.b);
+        e["color"] = std::string(hex);
+        e["treasury"] = c.treasury;
+        e["compass_economic"] = c.compassEconomic;
+        e["compass_social"] = c.compassSocial;
+        root[std::to_string(cid)] = e;
+    }
+    if (root.empty()) return std::string();
+    return root.dump();
+}
+
+void Game::restoreRebels(const std::string& savePath) {
+    if (savePath.empty()) return;
+    std::string rebels = SaveManager::readEntry(savePath, "rebels.json");
+    if (rebels.empty()) return;
+    // Merges by id without clearing, so map countries are left alone
+    m_countries.loadFromJson(rebels);
+
+    // Re-attach their flags and make sure new rebels don't reuse a live id
+    try {
+        auto j = nlohmann::json::parse(rebels);
+        for (auto& [cidStr, e] : j.items()) {
+            int cid = atoi(cidStr.c_str());
+            if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
+            std::string svg = SaveManager::readEntry(savePath, "rebellion/" + cidStr + ".svg");
+            if (!svg.empty()) m_rebelFlagSvgs[cid] = svg;
+        }
+        std::cout << "  Restored " << j.size() << " rebel countries" << std::endl;
+    } catch (...) { std::cerr << "  Failed to parse rebels.json" << std::endl; }
 }
 
 // === allocateRebelCid ===

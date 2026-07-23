@@ -53,6 +53,9 @@ bool Game::trySaveGame() {
         std::vector<std::pair<std::string, std::string>> rebelFiles;
         for (auto& [cid2, svg] : m_rebelFlagSvgs)
             rebelFiles.push_back({"rebellion/" + std::to_string(cid2) + ".svg", svg});
+        // Persist the rebel countries themselves, not just their flags —
+        // otherwise their provinces reload as ownerless limbo.
+        { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
         SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles);
     }
 

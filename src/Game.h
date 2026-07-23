@@ -570,6 +570,14 @@ private:
     int m_nextRebelCid = 60000;
     std::unordered_map<int, float> m_countryPacification;
     int allocateRebelCid();
+    // Rebel countries are created at runtime, so unlike map countries they
+    // exist nowhere on disk. Without persisting them, a reloaded save has
+    // provinces pointing at a country id that no longer exists — the territory
+    // renders as unowned limbo with no UNC/BLC tag. Serialized in the same
+    // shape as countries.json so CountryMap::loadFromJson can merge them back.
+    std::string buildRebelsJson() const;
+    void restoreRebels(const std::string& savePath);
+    static constexpr int REBEL_CID_MIN = 60000;
     void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
     void processRebellions(int countryId);
 

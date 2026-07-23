@@ -133,6 +133,8 @@ public:
     static bool writeState(const std::string& odsvPath, const std::string& stateJson,
                            const std::vector<std::pair<std::string, std::string>>& extraFiles = {});
     static std::string readState(const std::string& odsvPath);
+    // Read any single entry out of the archive by name (returns "" if absent)
+    static std::string readEntry(const std::string& odsvPath, const std::string& entryName);
     // Estimate size of a delta in bytes
     static size_t estimateDeltaSize(const TurnDelta& delta);
     // Estimate total save growth over N turns

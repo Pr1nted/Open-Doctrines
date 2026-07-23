@@ -895,6 +895,27 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
 
 // ─── Read state.json from .odsv ──────────────────────────
 
+std::string SaveManager::readEntry(const std::string& odsvPath, const std::string& entryName) {
+    auto zipData = readFile(odsvPath);
+    if (zipData.empty()) return {};
+
+    mz_zip_archive zip{};
+    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
+        return {};
+
+    int idx = mz_zip_reader_locate_file(&zip, entryName.c_str(), nullptr, 0);
+    if (idx < 0) { mz_zip_reader_end(&zip); return {}; }
+
+    size_t sz = 0;
+    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
+    mz_zip_reader_end(&zip);
+
+    if (!d) return {};
+    std::string result((char*)d, sz);
+    free(d);
+    return result;
+}
+
 std::string SaveManager::readState(const std::string& odsvPath) {
     auto zipData = readFile(odsvPath);
     if (zipData.empty()) return {};

@@ -331,6 +331,9 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
                         std::vector<std::pair<std::string, std::string>> rebelFiles;
                         for (auto& [cid2, svg] : m_rebelFlagSvgs)
                             rebelFiles.push_back({"rebellion/" + std::to_string(cid2) + ".svg", svg});
+                        // Persist the rebel countries themselves, not just their flags —
+                        // otherwise their provinces reload as ownerless limbo.
+                        { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
                         SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles);
                     }
                     std::cout << "Auto-created save: " << m_currentSavePath << std::endl;
@@ -2392,6 +2395,11 @@ bool Game::replaySaveTurns(const std::string& savePath) {
 
     int turnCount = meta.turnCount;
     std::cout << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
+
+    // Must happen BEFORE the deltas are applied: those deltas set province
+    // owners to rebel country ids, and if those countries don't exist yet the
+    // territory resolves to nothing (no owner, not even UNC/BLC).
+    restoreRebels(savePath);
 
     for (int t = 1; t <= turnCount; t++) {
         TurnDelta delta = SaveManager::readTurn(savePath, t);
