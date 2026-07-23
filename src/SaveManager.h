@@ -100,7 +100,7 @@ struct SaveMetadata {
     int shipCount = 0;
     int playerCountryId = 0;
     std::unordered_map<int, PoliticalCompassSave> countryCompasses;
-    std::unordered_map<int, float> countryTreasuries;
+    std::unordered_map<int, double> countryTreasuries;
 };
 
 class SaveManager {
@@ -109,9 +109,15 @@ public:
     static bool createSave(const std::string& odsvPath,
                            const std::string& odmData,
                            const SaveMetadata& meta);
-    // Append a turn delta to an existing .odsv
+    // Append a turn delta to an existing .odsv.
+    // Optionally writes state.json and extra entries (e.g. rebellion/{cid}.svg)
+    // in the SAME archive rewrite. Every save operation has to rebuild the
+    // whole zip, so folding the state write in here halves the per-turn cost
+    // versus calling appendTurn() then writeState().
     static bool appendTurn(const std::string& odsvPath,
-                           const TurnDelta& delta);
+                           const TurnDelta& delta,
+                           const std::string* stateJson = nullptr,
+                           const std::vector<std::pair<std::string, std::string>>* extraFiles = nullptr);
     // Read metadata from a .odsv
     static SaveMetadata readMetadata(const std::string& odsvPath);
     // Read a specific turn's delta

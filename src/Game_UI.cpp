@@ -442,8 +442,8 @@ void Game::drawCeasefireScreen() {
         curY += 16;
     };
 
-    int pMax = (int)std::max(0.0f, m_countries.getAll()[m_playerCountryId].treasury + 1000);
-    int tMax = (int)std::max(0.0f, targetC->treasury + 1000);
+    int pMax = (int)std::max(0.0, m_countries.getAll()[m_playerCountryId].treasury + 1000);
+    int tMax = (int)std::max(0.0, targetC->treasury + 1000);
     drawMoneySlider("Money we offer", m_ceasefireOurMoney, pMax, Color{40, 200, 40, 220});
     drawMoneySlider("Money we demand", m_ceasefireTheirMoney, tMax, Color{220, 60, 60, 220});
 
@@ -642,7 +642,7 @@ void Game::updateCeasefireScreen() {
 
     if (CheckCollisionPointRec(mouse, sendBtn) && click) {
         // Clamp offer to what the player can actually pay (treasury >= 0)
-        float& pTreas = m_countries.getAll()[m_playerCountryId].treasury;
+        double& pTreas = m_countries.getAll()[m_playerCountryId].treasury;
         if (m_ceasefireOurMoney > (int)pTreas) m_ceasefireOurMoney = (int)pTreas;
         if (m_ceasefireOurMoney < 0) m_ceasefireOurMoney = 0;
         // Deduct offered money from treasury immediately (refunded if rejected)

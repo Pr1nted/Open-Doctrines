@@ -435,7 +435,9 @@ void Game::updatePolicies() {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
         applyPolicyEffects(cid);
         applyEthnicPolicyEffects(cid);
-        processArtilleryOrders(cid);
+        // NOTE: artillery is deliberately NOT processed here. processCountryTurn()
+        // already calls processArtilleryOrders() for every country earlier in the
+        // turn; doing it again here made every bombardment apply its damage twice.
     }
     // Clean up cancelled/completed policies
     std::vector<ActivePolicy> newActive;

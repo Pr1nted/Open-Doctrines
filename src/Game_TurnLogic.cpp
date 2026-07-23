@@ -294,14 +294,13 @@ void Game::processTurn() {
     // Persist turn delta to .odsv
     drawFrame(0.85f, "Saving turn data...");
     if (!m_currentSavePath.empty()) {
-        SaveManager::appendTurn(m_currentSavePath, delta);
-        // Save full state snapshot (pending orders, claims, research, etc.)
-        {
-            std::vector<std::pair<std::string, std::string>> rebelFiles;
-            for (auto& [cid2, svg] : m_rebelFlagSvgs)
-                 rebelFiles.push_back({"rebellion/" + std::to_string(cid2) + ".svg", svg});
-            SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles);
-        }
+        // One archive rewrite, not two: appendTurn also writes the state
+        // snapshot (pending orders, claims, research, ...) and rebel flags.
+        std::vector<std::pair<std::string, std::string>> rebelFiles;
+        for (auto& [cid2, svg] : m_rebelFlagSvgs)
+             rebelFiles.push_back({"rebellion/" + std::to_string(cid2) + ".svg", svg});
+        std::string stateJson = saveStateJson();
+        SaveManager::appendTurn(m_currentSavePath, delta, &stateJson, &rebelFiles);
         m_turnCount++;
     }
     drawFrame(0.90f, "Cleaning up...");
@@ -2430,7 +2429,7 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     // If alreadyDeducted (player→AI offer: money already taken from player when
     // sending), only credit the target — don't double-deduct from source.
     if (terms.ourMoney > 0) {
-        float amt = (float)terms.ourMoney;
+        double amt = (double)terms.ourMoney;
         if (!alreadyDeducted) {
             amt = std::min(amt, srcC.treasury);
             srcC.treasury -= amt;
@@ -2439,7 +2438,7 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         printf("[CEASEFIRE] %s pays %g to %s\n", sourceIso.c_str(), amt, targetIso.c_str());
     }
     if (terms.theirMoney > 0) {
-        float amt = std::min((float)terms.theirMoney, tgtC.treasury);
+        double amt = std::min((double)terms.theirMoney, tgtC.treasury);
         tgtC.treasury -= amt;
         srcC.treasury += amt;
         printf("[CEASEFIRE] %s pays %g to %s\n", targetIso.c_str(), amt, sourceIso.c_str());

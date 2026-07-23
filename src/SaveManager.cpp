@@ -205,7 +205,9 @@ bool SaveManager::createSave(const std::string& odsvPath,
         return false;
 
     // Embed the original .odmap
-    mz_zip_writer_add_mem(&zip, "map.odmap", odmData.data(), odmData.size(), MZ_BEST_COMPRESSION);
+    // Stored, not deflated — see the note in appendTurn(); the embedded map is
+    // already-compressed data and re-deflating it is wasted time.
+    mz_zip_writer_add_mem(&zip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     // Write metadata.json with country compasses
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
@@ -252,7 +254,9 @@ mz_zip_writer_finalize_archive(&zip);
  
 // ─── Append a turn delta ─────────────────────────────────
  
-bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta) {
+bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta,
+                             const std::string* stateJson,
+                             const std::vector<std::pair<std::string, std::string>>* extraFiles) {
     std::vector<uint8_t> zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
@@ -279,7 +283,11 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
         return false;
 
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_BEST_COMPRESSION);
+    // Stored, not deflated: map.odmap is itself a zip of already-compressed
+    // PNGs, so max-level deflate burns hundreds of ms per call and saves
+    // essentially nothing. This runs on every save rewrite, so it dominated
+    // turn time.
+    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     meta.turnCount++;
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
@@ -323,7 +331,11 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     idx += "]}\n";
     mz_zip_writer_add_mem(&newZip, "index.json", idx.data(), idx.size(), MZ_BEST_COMPRESSION);
 
-    // Add previous turn files + state.json (from original zip)
+    // Carry over previous turn files, plus anything else already in the
+    // archive (rebellion/*.svg and friends). map.odmap / metadata.json /
+    // index.json are regenerated above, so they're skipped here.
+    // state.json is skipped when we're writing a fresh one below; entries
+    // supplied via extraFiles are skipped too, since those override.
     {
         mz_zip_archive srcZip{};
         if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
@@ -331,14 +343,21 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
                 if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
-                if (strstr(st.m_filename, "turns/") == st.m_filename ||
-                    strcmp(st.m_filename, "state.json") == 0) {
-                    size_t sz = 0;
-                    void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                    if (d) {
-                        mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                        free(d);
-                    }
+                if (strcmp(st.m_filename, "map.odmap") == 0 ||
+                    strcmp(st.m_filename, "metadata.json") == 0 ||
+                    strcmp(st.m_filename, "index.json") == 0) continue;
+                if (stateJson && strcmp(st.m_filename, "state.json") == 0) continue;
+                bool overridden = false;
+                if (extraFiles)
+                    for (auto& [n, c] : *extraFiles)
+                        if (n == st.m_filename) { overridden = true; break; }
+                if (overridden) continue;
+
+                size_t sz = 0;
+                void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
+                if (d) {
+                    mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
+                    free(d);
                 }
             }
             mz_zip_reader_end(&srcZip);
@@ -350,6 +369,13 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     char turnPath[32];
     snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
     mz_zip_writer_add_mem(&newZip, turnPath, packed.data(), packed.size(), MZ_BEST_COMPRESSION);
+
+    // Fold the state snapshot into this same rewrite when supplied
+    if (stateJson)
+        mz_zip_writer_add_mem(&newZip, "state.json", stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
+    if (extraFiles)
+        for (auto& [name, content] : *extraFiles)
+            mz_zip_writer_add_mem(&newZip, name.c_str(), content.data(), content.size(), MZ_BEST_COMPRESSION);
 
     mz_zip_writer_finalize_archive(&newZip);
     mz_zip_writer_end(&newZip);
@@ -392,7 +418,11 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
         return false;
 
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_BEST_COMPRESSION);
+    // Stored, not deflated: map.odmap is itself a zip of already-compressed
+    // PNGs, so max-level deflate burns hundreds of ms per call and saves
+    // essentially nothing. This runs on every save rewrite, so it dominated
+    // turn time.
+    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
     std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
@@ -508,7 +538,7 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
         if (j.contains("country_treasuries")) {
             for (auto& [cidStr, tr] : j["country_treasuries"].items()) {
                 int cid = std::stoi(cidStr);
-                meta.countryTreasuries[cid] = tr.get<float>();
+                meta.countryTreasuries[cid] = tr.get<double>();
             }
         }
     } catch (...) {
@@ -669,7 +699,11 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
         return false;
 
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_BEST_COMPRESSION);
+    // Stored, not deflated: map.odmap is itself a zip of already-compressed
+    // PNGs, so max-level deflate burns hundreds of ms per call and saves
+    // essentially nothing. This runs on every save rewrite, so it dominated
+    // turn time.
+    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
     std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
@@ -778,7 +812,11 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
         return false;
 
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_BEST_COMPRESSION);
+    // Stored, not deflated: map.odmap is itself a zip of already-compressed
+    // PNGs, so max-level deflate burns hundreds of ms per call and saves
+    // essentially nothing. This runs on every save rewrite, so it dominated
+    // turn time.
+    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
     // Parse metadata from the in-memory buffer (NOT from the truncated file on disk)
     meta = parseMetadataFromZip(zipData);
     std::string cr = meta.created.empty() ? "unknown" : meta.created;

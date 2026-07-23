@@ -181,7 +181,11 @@ void Game::recordIncomeSnapshot() {
         if (m_countryBalances.find(cid) == m_countryBalances.end())
             m_countryBalances[cid] = 0;
         m_countryBalances[cid] += cs.net;
-        c.treasury += cs.net;
+        // Treasury is NOT credited here. processEconomy() already applied this
+        // turn's net income (Game_TurnLogic.cpp), so doing it again made every
+        // country earn double the income actually shown in the UI — which also
+        // drove treasuries into the range where float precision breaks down.
+        // This function only records history/balances.
     }
 }
 

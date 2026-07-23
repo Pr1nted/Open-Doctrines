@@ -944,7 +944,7 @@ void Game::update(float dt) {
                                 m_artilleryTargetPid = -1;
                                 m_blockLeftPanTimer = 2;
                             } else {
-                            float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+                            double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
                             float cost = getArtyCost(m_artillerySelectedType);
                             // Check if we already have an order for (source, target, type) — toggle it off
                             bool found = false;

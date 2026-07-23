@@ -2993,7 +2993,17 @@ void MapEditor::exportODMap() {
     if (!provCompassJson.empty()) addFile("political_compass.json");
     if (!policiesJson.empty()) addFile("policies.json");
     if (!startingPoliciesJson.empty()) addFile("starting_policies.json");
+    // This was written to the temp dir but never added to the archive, so every
+    // Ethnic Relations setting was silently discarded on export.
+    if (!startingMinorityPoliciesJson.empty()) addFile("starting_minority_policies.json");
     if (m_licenseCustom && !m_licenseText.empty()) addFile("licenses/LICENSE.txt");
+
+    // Exporting with no policy data is almost always a mistake rather than an
+    // intent, and it used to fail silently — say so in the log.
+    if (startingPoliciesJson.empty())
+        std::cout << "  NOTE: no country starting policies to export\n";
+    if (startingMinorityPoliciesJson.empty())
+        std::cout << "  NOTE: no ethnic-relations settings to export\n";
     addFile("metadata.json");
     addFile("thumb.png");
     // Embed custom flag SVGs
@@ -5430,7 +5440,16 @@ void MapEditor::openSetModeEthnicity(const std::string& name, const std::string&
                                      int initialTab, bool fromList) {
     m_setModeIsEthnicity = true;
     m_setModeEthnicity = name;
-    m_setModeEthnicityIso = iso;
+    // m_ethnicRelations is keyed by ISO (that's the shape the game's
+    // starting_minority_policies.json uses). Countries created by hand in the
+    // editor start with an empty ISO, so anything set for them would be stored
+    // under "" and then dropped at export. Assign codes up front instead.
+    std::string useIso = iso;
+    if (useIso.empty() && cid >= 0) {
+        ensureIsoCodes();
+        if (const Country* c = m_editCountries.getCountry(cid)) useIso = c->isoA3;
+    }
+    m_setModeEthnicityIso = useIso;
     m_setModeEthnicityCid = cid;
     m_setModeEthnicTab = initialTab;
     m_setModeEthnicFromList = fromList;

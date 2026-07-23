@@ -1109,13 +1109,20 @@ void Game::drawCountryPanel() {
         static const int IND_TURNS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
         auto cs = computeCountryIncome(m_playerCountryId);
-        float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
-        int nextLv = indLevel + 1;
-        float upgradeCost = (nextLv <= 10) ? (float)IND_COST[nextLv] : 99999.0f;
-        float costMod = 1.0f + getTotalEffect("industryCostPct") / 100.0f;
-        upgradeCost *= costMod;
-        bool canAfford = (treasury >= upgradeCost);
-        int turnsToBuild = (nextLv <= 10) ? IND_TURNS[nextLv] : 0;
+        double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+        // Clamp both ends: `level` comes unvalidated from resources.json and
+        // from save deltas, and a negative or >10 value used to index these
+        // fixed-size tables out of bounds, printing genuine garbage.
+        static const int IND_MAX_LV = (int)(sizeof(IND_COST) / sizeof(IND_COST[0])) - 1;
+        int nextLv = std::clamp(indLevel + 1, 0, IND_MAX_LV);
+        bool nextLvValid = (indLevel + 1) >= 0 && (indLevel + 1) <= IND_MAX_LV;
+        // "Industry cost -50%" is registered as a POSITIVE 50, so this has to
+        // subtract. It used to add, making the discount research raise the
+        // price to 1.5x instead of halving it.
+        float costMod = std::max(0.0f, 1.0f - getTotalEffect("industryCostPct") / 100.0f);
+        float upgradeCost = (float)IND_COST[nextLv] * costMod;
+        bool canAfford = nextLvValid && (treasury >= upgradeCost);
+        int turnsToBuild = IND_TURNS[nextLv];
 
         int btnW = (panelW - pad * 2 - 4) / 2;
         int btnH = 28;
@@ -1153,7 +1160,11 @@ void Game::drawCountryPanel() {
         // Specialization: dropdown on click
         int specBtnY = btnStartY + btnH + btnGap;
         static const char* specOpts[] = {"Oil", "Gold", "Metal", "Rubber", "Gemstones"};
-        float specCost = upgradeCost * 1.5f;
+        // Priced off the CURRENT industry level, not the next one. Deriving it
+        // from upgradeCost meant that at max level it inherited the
+        // "no next level" sentinel and displayed ~$150,000, which also made
+        // specialising impossible exactly when you'd most want it.
+        float specCost = (float)IND_COST[std::clamp(indLevel, 0, IND_MAX_LV)] * 1.5f * costMod;
         bool canSpec = isOwnProv && indLevel >= 1 && !specPending && treasury >= specCost;
         Color specBg = canSpec ? Color{40, 30, 60, 220} : Color{20, 20, 25, 200};
         Color specBd = canSpec ? Color{120, 80, 180, 200} : Color{40, 40, 50, 150};
@@ -1226,10 +1237,12 @@ void Game::drawCountryPanel() {
         static const int FORT_TURNS[] = {0, 1, 1, 1, 1, 1};
 
         auto cs = computeCountryIncome(m_playerCountryId);
-        float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+        double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
         int nextLv = fortLevel + 1;
         float fortCost = (nextLv <= 5) ? (float)FORT_COST[nextLv] : 99999.0f;
-        float costMod = 1.0f + getTotalEffect("fortCostPct") / 100.0f;
+        // No research affects fortification cost (there is no "fortCostPct"
+        // effect); the old lookup of that name silently returned 0 anyway.
+        float costMod = 1.0f;
         fortCost *= costMod;
         bool canAfford = (treasury >= fortCost);
         int turnsToBuild = (nextLv <= 5) ? FORT_TURNS[nextLv] : 0;
@@ -1314,11 +1327,14 @@ void Game::drawCountryPanel() {
 
         int recruitCount = (int)(maxRecruit * m_armyRecruitPct / 100);
         // Cost: $1 per 10k soldiers, research cost modifier applies
-        float costMod = 1.0f + getTotalEffect("armyCostPct") / 100.0f;
+        // "armyCostPct" is not a real effect name, so this always returned 0 and
+        // recruit prices ignored research entirely. The actual effect is
+        // conscriptionCostPct, and it's a cost REDUCTION, so it subtracts.
+        float costMod = std::max(0.0f, 1.0f - getTotalEffect("conscriptionCostPct") / 100.0f);
         float recruitCost = (recruitCount / 10000.0f) * costMod;
         if (recruitCost < 1.0f && recruitCount > 0) recruitCost = 1.0f;
         auto cs = computeCountryIncome(m_playerCountryId);
-        float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+        double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
         bool canRecruit = isOwnProv && recruitCount > 0 && !hasPendingRecruit && treasury >= recruitCost;
 
         // Recruit button with slider
@@ -1452,7 +1468,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                         {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
                         {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
                     };
-                    float& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
+                    double& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
                     for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                         if (it->fromProvince == selPid) {
                             for (int ci = 0; ARTY_CANCEL_COST[ci].id; ++ci)
@@ -1601,7 +1617,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     if (drawActBtn(panelX + pad, caY, btnW * 2 + btnGap, btnH,
                         TextFormat("Cancel Artillery (%d)", artyOrderCount), false,
                         Color{60, 30, 20, 220}, Color{180, 80, 40, 200})) {
-                        float& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
+                        double& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
                         for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                             if (it->fromProvince == selPid) {
                                 for (auto& art : ALL_ARTY) {
@@ -1627,7 +1643,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
         for (auto& pu : m_pendingUpgrades)
             if (pu.provinceId == selPid && pu.type == "port") portPending = true;
         auto cs = computeCountryIncome(m_playerCountryId);
-        float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+        double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
         int btnH = 28;
         int btnGap = 4;
         int btnW = (panelW - pad * 2 - 4) / 2;
@@ -2298,7 +2314,7 @@ void Game::drawInner() {
                         return 0;
                     };
                     float cost = getArtyCost(m_shipBombardAmmo);
-                    float& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+                    double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
                     if (treasury >= cost) {
                         auto& vec = m_pendingShipBombardOrders;
                         // Refund old orders for this ship before replacing

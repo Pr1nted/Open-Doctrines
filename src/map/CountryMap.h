@@ -12,7 +12,10 @@ struct Country {
     Color color{};
     FlagPattern flagActual;
     FlagPattern flagCensored;
-    float treasury = 0.0f;
+    // double, not float: a 32-bit float cannot represent consecutive integers
+    // above 2^24 (~16.7M), so once a treasury grew past that, `treasury += net`
+    // silently became a no-op and the economy appeared to freeze.
+    double treasury = 0.0;
     float compassEconomic = 0.0f;  // -100 (left) to +100 (right)
     float compassSocial = 0.0f;    // -100 (auth) to +100 (libertarian)
     std::string doctrine;          // doctrine ID, empty = none
