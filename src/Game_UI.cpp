@@ -893,6 +893,31 @@ std::string Game::saveStateJson() {
         j["pacification"][std::to_string(cid)] = val;
     }
 
+    // Diplomatic relations. These were previously not persisted anywhere, so
+    // every war/alliance declared in-game was silently lost on load.
+    for (auto& [isoA, targets] : m_relations) {
+        for (auto& [isoB, r] : targets) {
+            if (!r.war && !r.alliance && !r.nonAggression && !r.guarantee) continue;
+            nlohmann::json e;
+            e["war"] = r.war;
+            e["ally"] = r.alliance;
+            e["nonAggression"] = r.nonAggression;
+            e["guarantee"] = r.guarantee;
+            j["relations"][isoA][isoB] = e;
+        }
+    }
+
+    // Claims. Only the pending add/drop lists were saved before, so claims
+    // created at runtime (e.g. by a rebellion) vanished on reload.
+    for (auto& [iso, pids] : m_claims) {
+        if (pids.empty()) continue;
+        j["claims"][iso] = pids;
+    }
+
+    // Calendar date — advanced every turn but only ever read back from the
+    // map's metadata, so a loaded save always jumped back to the map's start.
+    j["mapDate"] = m_mapDate;
+
     // Turn number
     j["turnNumber"] = m_turnNumber;
 
@@ -1123,6 +1148,37 @@ void Game::loadStateJson(const std::string& json) {
             m_countryPacification[std::stoi(key)] = val.get<float>();
         }
     }
+
+    // Diplomatic relations (see saveStateJson) — restored symmetrically, the
+    // same way the in-game setters maintain both directions.
+    if (j.contains("relations")) {
+        for (auto& [isoA, targets] : j["relations"].items()) {
+            for (auto& [isoB, e] : targets.items()) {
+                CountryRelation r;
+                r.war = e.value("war", false);
+                r.alliance = e.value("ally", false);
+                r.nonAggression = e.value("nonAggression", false);
+                r.guarantee = e.value("guarantee", false);
+                m_relations[isoA][isoB] = r;
+                m_relations[isoB][isoA] = r;
+            }
+        }
+    }
+
+    // Claims — rebuild both the forward and reverse indices
+    if (j.contains("claims")) {
+        m_claims.clear();
+        m_claimsByProvince.clear();
+        for (auto& [iso, pids] : j["claims"].items()) {
+            for (auto& p : pids) {
+                int pid = p.get<int>();
+                m_claims[iso].push_back(pid);
+                m_claimsByProvince[pid].push_back(iso);
+            }
+        }
+    }
+
+    if (j.contains("mapDate")) m_mapDate = j["mapDate"].get<std::string>();
 
     // Turn number
     if (j.contains("turnNumber")) {

@@ -370,9 +370,19 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
     mz_zip_writer_add_mem(&newZip, turnPath, packed.data(), packed.size(), MZ_BEST_COMPRESSION);
 
-    // Fold the state snapshot into this same rewrite when supplied
-    if (stateJson)
+    // Fold the state snapshot into this same rewrite when supplied.
+    // It is written twice: state.json is the "resume where I left off" copy,
+    // and turns/s_NNNNN.json pins the state as it was at the END of this turn.
+    // The binary .dat only carries province/ship/army numbers, so without this
+    // per-turn copy the pending orders, policies and research could not be
+    // reconstructed for any turn but the latest — which is what rewinding to
+    // an earlier turn needs.
+    if (stateJson) {
         mz_zip_writer_add_mem(&newZip, "state.json", stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
+        char statePath[40];
+        snprintf(statePath, sizeof(statePath), "turns/s_%05d.json", delta.turnNumber);
+        mz_zip_writer_add_mem(&newZip, statePath, stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
+    }
     if (extraFiles)
         for (auto& [name, content] : *extraFiles)
             mz_zip_writer_add_mem(&newZip, name.c_str(), content.data(), content.size(), MZ_BEST_COMPRESSION);
