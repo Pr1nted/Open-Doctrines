@@ -24,3 +24,5 @@ AGENTS.md
 
 # Map editor projects and generated assets (user-created context, not source)
 data/projects/
+# Exported playthrough timelapses
+data/timelapses/

@@ -3561,6 +3561,8 @@ void Game::drawInner() {
         }
     }
     if (m_paused) drawPauseMenu();
+    // Turn history sits above the pause menu it was opened from
+    if (m_inHistory) drawHistoryScreen();
 
     // Debug overlay
     if (m_config.debugMode) {

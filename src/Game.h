@@ -569,6 +569,36 @@ private:
     // ─── Rebellion System ─────────────────────────
     int m_nextRebelCid = 60000;
     std::unordered_map<int, float> m_countryPacification;
+    // ── Turn history / timelapse (Game_History.cpp) ──
+    // Reconstructed purely from the .odsv, so browsing never mutates the
+    // running game.
+    struct HistShip { double lat = 0, lon = 0; int countryId = 0; };
+    struct TurnSnapshot {
+        int turn = 0;
+        std::unordered_map<int, int> owner;            // pid -> cid
+        std::unordered_map<int, long long> population; // pid -> pop
+        std::unordered_map<int, long long> troops;     // pid -> total troops
+        std::vector<HistShip> ships;
+        bool hasState = false;   // has turns/s_NNNNN.json, so revert is faithful
+    };
+    bool buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnapshot>& out);
+    void renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, float t,
+                            int outW, int outH, std::vector<uint8_t>& rgba);
+    bool exportHistoryGif(const std::string& savePath, int outW, int outH,
+                          int subFrames, std::string& outPath);
+    bool revertToTurn(int turn);
+    void updateHistoryScreen();
+    void drawHistoryScreen();
+    void openHistoryScreen();
+
+    bool m_inHistory = false;
+    int  m_historyIndex = 0;      // selected turn
+    int  m_historyScroll = 0;
+    int  m_historyResIndex = 1;   // index into the resolution presets
+    int  m_historySubFrames = 4;  // interpolated frames per turn transition
+    std::string m_historyStatus;
+    std::vector<TurnSnapshot> m_historySnaps;
+
     int allocateRebelCid();
     // Rebel countries are created at runtime, so unlike map countries they
     // exist nowhere on disk. Without persisting them, a reloaded save has

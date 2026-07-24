@@ -42,8 +42,8 @@ std::string formatPop(long long pop) {
     return std::to_string(pop);
 }
 
-const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Quit to Menu"};
-const int MENU_COUNT = 4;
+const char* MENU_ITEMS[] = {"Continue", "Settings", "Turn History", "Save", "Quit to Menu"};
+const int MENU_COUNT = 5;
 const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Credits"};
 const int MAIN_MENU_COUNT = 6;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
