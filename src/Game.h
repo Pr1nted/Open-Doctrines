@@ -624,6 +624,10 @@ private:
     // shape as countries.json so CountryMap::loadFromJson can merge them back.
     std::string buildRebelsJson() const;
     void restoreRebels(const std::string& savePath);
+    // Creates placeholder countries for any rebel cid that provinces reference
+    // but m_countries doesn't have (old saves with no rebels.json). Keeps such
+    // territory rendering as a coloured state instead of grey limbo.
+    void synthesizeMissingRebels();
     static constexpr int REBEL_CID_MIN = 60000;
     void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
     void processRebellions(int countryId);

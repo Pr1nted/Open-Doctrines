@@ -435,6 +435,35 @@ void Game::restoreRebels(const std::string& savePath) {
     } catch (...) { std::cerr << "  Failed to parse rebels.json" << std::endl; }
 }
 
+void Game::synthesizeMissingRebels() {
+    // Collect rebel cids that provinces point at but no country exists for.
+    std::unordered_set<int> missing;
+    for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
+        int cid = prov.countryId;
+        if (cid >= REBEL_CID_MIN && cid < SPC_CID && !m_countries.getCountry(cid))
+            missing.insert(cid);
+    }
+    if (missing.empty()) return;
+
+    for (int cid : missing) {
+        Country c;
+        c.id = cid;
+        c.name = "Rebel State " + std::to_string(cid - REBEL_CID_MIN + 1);
+        // Deterministic ISO + colour from the cid so reloads stay stable.
+        char iso[4];
+        snprintf(iso, sizeof(iso), "R%02d", (cid - REBEL_CID_MIN) % 100);
+        c.isoA3 = iso;
+        unsigned h = (unsigned)(cid * 2654435761u);
+        c.color = {(uint8_t)(90 + (h & 0x7F)), (uint8_t)(70 + ((h >> 8) & 0x7F)),
+                   (uint8_t)(90 + ((h >> 16) & 0x7F)), 255};
+        c.treasury = 0.0;
+        m_countries.getAll()[cid] = c;
+        if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
+    }
+    std::cout << "  Synthesized " << missing.size()
+              << " placeholder rebel state(s) missing from the save" << std::endl;
+}
+
 // === allocateRebelCid ===
 int Game::allocateRebelCid() {
     while (m_countries.getCountry(m_nextRebelCid) != nullptr) {
@@ -1287,6 +1316,13 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 // === processRebellions ===
 void Game::processRebellions(int countryId) {
     if (countryId <= 0 || countryId == SPC_CID || countryId == UNC_CID || countryId == BLC_CID) return;
+
+    // Breakaway states must not immediately re-fracture. They own low-alignment
+    // provinces that the parent auto-claims and declares war on, which keeps
+    // rebellion chance high — so rebel countries processing rebellions produced
+    // a runaway (dozens of new one-province rebel states every turn, each of
+    // which then rebelled again). A newly formed rebel is simply skipped here.
+    if (countryId >= REBEL_CID_MIN) return;
 
     int totalProvCount = 0;
     std::vector<int> rebellingProvs;

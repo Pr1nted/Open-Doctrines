@@ -398,6 +398,7 @@ bool Game::revertToTurn(int turn) {
         m_ships[i].lon = s.ships[i].lon;
         m_ships[i].countryId = s.ships[i].countryId;
     }
+    synthesizeMissingRebels(); // same safety net as the normal load path
     loadStateJson(stateJson);
     m_turnNumber = turn;
 

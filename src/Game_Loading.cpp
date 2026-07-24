@@ -2454,6 +2454,14 @@ bool Game::replaySaveTurns(const std::string& savePath) {
         m_researchPoints = delta.researchPoints;
     }
 
+    // Safety net for saves that predate rebel persistence (or any gap): a
+    // province may now be owned by a rebel cid that restoreRebels() couldn't
+    // load, because the save has no rebels.json. Without a country for that
+    // cid the territory renders as grey "cid>0, not found" limbo. Synthesize a
+    // placeholder country for every such cid so it at least shows as a
+    // distinct, coloured breakaway state instead of broken grey.
+    synthesizeMissingRebels();
+
     // Rebuild pixel-level ownership after province ownership replay
     m_provinceCountryLookup.assign(m_provinceCountryLookup.size(), 0);
     for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
