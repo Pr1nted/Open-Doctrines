@@ -44,6 +44,7 @@ set(GAME_SOURCES
     src/ScriptEngine.cpp
     src/Config.cpp
     src/SaveManager.cpp
+    src/GifEncoder.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
     src/map/CountryMap.cpp
