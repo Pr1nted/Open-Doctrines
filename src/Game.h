@@ -581,23 +581,40 @@ private:
         std::vector<HistShip> ships;
         bool hasState = false;   // has turns/s_NNNNN.json, so revert is faithful
     };
+    enum HistoryView { HV_POLITICAL = 0, HV_POPULATION = 1, HV_TROOPS = 2 };
     bool buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnapshot>& out);
+    // Loads just the province image + countries from the save's embedded
+    // .odmap, so history can be browsed/previewed/exported without a full
+    // game load. Returns false if the save has no usable map data.
+    bool loadHistoryMapData(const std::string& savePath);
     void renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, float t,
-                            int outW, int outH, std::vector<uint8_t>& rgba);
+                            int outW, int outH, std::vector<uint8_t>& rgba,
+                            HistoryView view = HV_POLITICAL);
     bool exportHistoryGif(const std::string& savePath, int outW, int outH,
-                          int subFrames, std::string& outPath);
+                          int subFrames, const std::string& destPath, std::string& outMsg);
     bool revertToTurn(int turn);
     void updateHistoryScreen();
     void drawHistoryScreen();
-    void openHistoryScreen();
+    void openHistoryScreen(const std::string& savePath);
+    void refreshHistoryPreview();
+    std::string defaultTimelapsePath(const std::string& savePath, int w, int h) const;
 
     bool m_inHistory = false;
-    int  m_historyIndex = 0;      // selected turn
+    std::string m_historySavePath;       // save being browsed
+    bool m_historyFromGame = false;      // opened over a live game vs. from the browser
+    int  m_historyIndex = 0;             // selected turn
     int  m_historyScroll = 0;
-    int  m_historyResIndex = 1;   // index into the resolution presets
-    int  m_historySubFrames = 4;  // interpolated frames per turn transition
+    int  m_historyResIndex = 1;          // index into the resolution presets
+    int  m_historySubFrames = 4;         // interpolated frames per turn transition
+    HistoryView m_historyView = HV_POLITICAL;
     std::string m_historyStatus;
     std::vector<TurnSnapshot> m_historySnaps;
+    Texture2D m_historyPreviewTex{};
+    int  m_historyPreviewTurn = -1;      // which turn the preview texture holds
+    HistoryView m_historyPreviewView = HV_POLITICAL;
+    bool m_historyEditingDest = false;   // destination text field focused
+    std::string m_historyDestPath;       // where to write the GIF
+    bool m_historyConfirmRevert = false; // two-step revert confirmation
 
     int allocateRebelCid();
     // Rebel countries are created at runtime, so unlike map countries they

@@ -366,7 +366,7 @@ void Game::drawWorldBrowser() {
     if (m_showWorldSettings) {
         // ── World settings overlay ──
         DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 180});
-        int dlgW = 500, dlgH = 300;
+        int dlgW = 500, dlgH = 340;
         int dlgX = (m_screenW - dlgW) / 2;
         int dlgY = (m_screenH - dlgH) / 2;
         DrawRectangle(dlgX, dlgY, dlgW, dlgH, {20, 20, 30, 240});
@@ -382,8 +382,18 @@ void Game::drawWorldBrowser() {
         DrawText(("Last Played: " + wi.lastPlayed).c_str(), dlgX + 30, yOff, fs, LIGHTGRAY); yOff += 30;
         DrawText(("Turns: " + std::to_string(wi.turnCount)).c_str(), dlgX + 30, yOff, fs, LIGHTGRAY); yOff += 40;
 
-        // Buttons
+        // Turn History — full-width row above the Rename/Close row
         Vector2 mouse = getMouse();
+        int histW = 260, histH = 38;
+        Rectangle histBtn = {(float)(centerX - histW / 2), (float)(dlgY + dlgH - 108), (float)histW, (float)histH};
+        bool histHov = CheckCollisionPointRec(mouse, histBtn);
+        DrawRectangleRounded(histBtn, 0.2f, 8, histHov ? ColorAlpha(hexToColor(m_config.accentColor), 0.30f)
+                                                       : ColorAlpha(hexToColor(m_config.accentColor), 0.15f));
+        DrawRectangleRoundedLines(histBtn, 0.2f, 8, hexToColor(m_config.accentColor));
+        const char* histLabel = "Turn History / Timelapse";
+        DrawText(histLabel, (int)(histBtn.x + (histW - MeasureText(histLabel, 18)) / 2),
+                 (int)(histBtn.y + 10), 18, WHITE);
+
         int btnW = 120, btnH = 40;
         int btnY = dlgY + dlgH - 55;
 
@@ -596,15 +606,23 @@ void Game::updateWorldBrowser() {
     if (m_showWorldSettings) {
         Vector2 mouse = getMouse();
         int centerX = m_screenW / 2;
-        int dlgW = 500, dlgH = 300;
+        int dlgW = 500, dlgH = 340;
+        int dlgY = (m_screenH - dlgH) / 2;
         int btnW = 120, btnH = 40;
-        int btnY = (m_screenH - dlgH) / 2 + dlgH - 55;
+        int btnY = dlgY + dlgH - 55;
 
+        int histW = 260, histH = 38;
+        Rectangle histBtn = {(float)(centerX - histW / 2), (float)(dlgY + dlgH - 108), (float)histW, (float)histH};
         Rectangle renameBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle closeBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            if (CheckCollisionPointRec(mouse, renameBtn)) {
+            if (CheckCollisionPointRec(mouse, histBtn)) {
+                std::string path = m_dataDir + "saves/" + m_worldInfos[m_worldSettingsIndex].filename;
+                m_showWorldSettings = false;
+                m_worldSettingsIndex = -1;
+                openHistoryScreen(path);
+            } else if (CheckCollisionPointRec(mouse, renameBtn)) {
                 // Open rename dialog
                 m_renameWorldOldName = m_worldInfos[m_worldSettingsIndex].worldName;
                 m_renameWorldNewName = m_renameWorldOldName;

@@ -42,8 +42,8 @@ std::string formatPop(long long pop) {
     return std::to_string(pop);
 }
 
-const char* MENU_ITEMS[] = {"Continue", "Settings", "Turn History", "Save", "Quit to Menu"};
-const int MENU_COUNT = 5;
+const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Quit to Menu"};
+const int MENU_COUNT = 4;
 const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Credits"};
 const int MAIN_MENU_COUNT = 6;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
@@ -818,7 +818,16 @@ void Game::run() {
             if (m_config.debugMode) drawDebugOverlay();
             EndDrawing();
         } else if (m_currentScreen == SCREEN_FILE_BROWSER) {
-            if (m_browsingSaves) {
+            if (m_inHistory) {
+                // Turn History opened from a save's World Settings takes over
+                // the whole screen until closed.
+                updateHistoryScreen();
+                BeginDrawing();
+                ClearBackground(BLACK);
+                drawHistoryScreen();
+                if (m_config.showConsole) drawConsoleWindow();
+                EndDrawing();
+            } else if (m_browsingSaves) {
                 updateMenuBackground();
                 updateWorldBrowser();
                 BeginDrawing();

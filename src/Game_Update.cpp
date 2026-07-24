@@ -47,12 +47,11 @@ void Game::handlePauseMenu() {
         m_menuIndex = std::clamp(m_menuIndex, 0, MENU_COUNT - 1);
         if (m_menuIndex == 0) m_paused = false;
         else if (m_menuIndex == 1) { m_inSettings = true; m_settingsIndex = 0; m_settingsScroll = 0; }
-        else if (m_menuIndex == 2) { openHistoryScreen(); }
-        else if (m_menuIndex == 3) {
+        else if (m_menuIndex == 2) {
             m_config.save(m_configPath);
             trySaveGame();
         }
-        else if (m_menuIndex == 4) {
+        else if (m_menuIndex == 3) {
             if (m_unsavedChanges) {
                 m_showUnsavedWarning = true;
                 m_unsavedChoice = 0;

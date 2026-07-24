@@ -16,8 +16,13 @@
 #include "miniz.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <sys/stat.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 namespace {
 
@@ -98,13 +103,44 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
     return true;
 }
 
+// ─── Standalone map data ─────────────────────────────────
+
+// History can be opened straight from the save browser, with no game loaded,
+// so pull the province image + countries out of the save's embedded .odmap.
+bool Game::loadHistoryMapData(const std::string& savePath) {
+    auto odm = SaveManager::extractODM(savePath);
+    if (odm.empty()) return false;
+
+    // provinces.png bytes + provinces.json
+    mz_zip_archive z{};
+    if (!mz_zip_reader_init_mem(&z, odm.data(), odm.size(), 0)) return false;
+    std::vector<uint8_t> pngBytes;
+    int pidx = mz_zip_reader_locate_file(&z, "provinces.png", nullptr, 0);
+    if (pidx >= 0) {
+        size_t sz = 0;
+        void* d = mz_zip_reader_extract_to_heap(&z, pidx, &sz, 0);
+        if (d) { pngBytes.assign((uint8_t*)d, (uint8_t*)d + sz); mz_free(d); }
+    }
+    mz_zip_reader_end(&z);
+
+    std::string provJson = odmapEntry(odm, "provinces.json");
+    std::string countryJson = odmapEntry(odm, "countries.json");
+    if (pngBytes.empty() || provJson.empty() || countryJson.empty()) return false;
+
+    m_provinces.loadFromMemory(pngBytes.data(), (int)pngBytes.size(), provJson);
+    m_countries.loadFromJson(countryJson);
+    restoreRebels(savePath); // so rebel-owned territory has a colour
+    return m_provinces.getImage().data != nullptr;
+}
+
 // ─── Frame rendering ─────────────────────────────────────
 
 // Renders one interpolated frame at the requested size straight from the CPU
 // province image — no offscreen GPU pass needed. `t` blends a->b so ownership
 // changes cross-fade instead of popping, and ships glide between positions.
 void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, float t,
-                              int outW, int outH, std::vector<uint8_t>& rgba) {
+                              int outW, int outH, std::vector<uint8_t>& rgba,
+                              HistoryView view) {
     rgba.assign((size_t)outW * outH * 4, 255);
     const Image& provImg = m_provinces.getImage();
     if (!provImg.data) return;
@@ -125,14 +161,50 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
         return col;
     };
 
+    // For the heatmap views, find the max so colours span the full range.
+    auto peak = [](const std::unordered_map<int, long long>& m) -> long long {
+        long long mx = 1;
+        for (auto& [k, v] : m) if (v > mx) mx = v;
+        return mx;
+    };
+    long long popMaxA = 1, popMaxB = 1, trMaxA = 1, trMaxB = 1;
+    if (view == HV_POPULATION) { popMaxA = peak(a.population); popMaxB = peak(b.population); }
+    if (view == HV_TROOPS)     { trMaxA = peak(a.troops);      trMaxB = peak(b.troops); }
+
+    // A blue→red heat ramp for the value views.
+    auto heat = [&](const std::unordered_map<int, long long>& m, long long mx, int pid,
+                    bool onLand) -> Color {
+        if (!onLand) return SEA;
+        auto it = m.find(pid);
+        double v = (it == m.end()) ? 0.0 : (double)it->second / (double)mx;
+        v = v < 0 ? 0 : (v > 1 ? 1 : v);
+        // sqrt so small-but-nonzero values are visible
+        v = std::sqrt(v);
+        return Color{(uint8_t)(40 + 215 * v), (uint8_t)(60 * (1 - v)),
+                     (uint8_t)(200 * (1 - v) + 30 * v), 255};
+    };
+
     for (int y = 0; y < outH; ++y) {
         int sy = (int)((int64_t)y * mapH / outH);
         for (int x = 0; x < outW; ++x) {
             int sx = (int)((int64_t)x * mapW / outW);
             const Color& pc = src[(size_t)sy * mapW + sx];
             int pid = Province::colorToId(pc.r, pc.g, pc.b);
-            Color ca = ownerColor(a.owner, pid);
-            Color cb = ownerColor(b.owner, pid);
+            Color ca, cb;
+            if (view == HV_POPULATION) {
+                bool land = a.owner.count(pid) && a.owner.at(pid) != 0;
+                bool landB = b.owner.count(pid) && b.owner.at(pid) != 0;
+                ca = heat(a.population, popMaxA, pid, land);
+                cb = heat(b.population, popMaxB, pid, landB);
+            } else if (view == HV_TROOPS) {
+                bool land = a.owner.count(pid) && a.owner.at(pid) != 0;
+                bool landB = b.owner.count(pid) && b.owner.at(pid) != 0;
+                ca = heat(a.troops, trMaxA, pid, land);
+                cb = heat(b.troops, trMaxB, pid, landB);
+            } else {
+                ca = ownerColor(a.owner, pid);
+                cb = ownerColor(b.owner, pid);
+            }
             size_t o = ((size_t)y * outW + x) * 4;
             rgba[o + 0] = (uint8_t)(ca.r + (cb.r - ca.r) * t);
             rgba[o + 1] = (uint8_t)(ca.g + (cb.g - ca.g) * t);
@@ -166,96 +238,154 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
     }
 }
 
+
 // ─── GIF export ──────────────────────────────────────────
 
-bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
-                            int subFrames, std::string& outPath) {
-    std::vector<TurnSnapshot> snaps;
-    if (!buildTurnSnapshots(savePath, snaps) || snaps.size() < 2) {
-        m_historyStatus = "Need at least 2 turns to export";
-        return false;
-    }
-
+std::string Game::defaultTimelapsePath(const std::string& savePath, int w, int h) const {
     std::string base = savePath;
     auto slash = base.find_last_of("/\\");
     if (slash != std::string::npos) base = base.substr(slash + 1);
     auto dot = base.find_last_of('.');
     if (dot != std::string::npos) base = base.substr(0, dot);
-    outPath = m_dataDir + "timelapses/" + base + "_" + std::to_string(outW) + "x" +
-              std::to_string(outH) + ".gif";
-    system(("mkdir -p \"" + m_dataDir + "timelapses\"").c_str());
+    std::string name = base + "_" + std::to_string(w) + "x" + std::to_string(h) + ".gif";
+#ifdef __EMSCRIPTEN__
+    // Web: the path is irrelevant (virtual FS); the browser download uses the
+    // filename only.
+    return name;
+#else
+    // Native: default to the Desktop if it exists, else the home dir, so the
+    // GIF lands somewhere the user can actually find it.
+    const char* home = getenv("HOME");
+    if (!home) home = getenv("USERPROFILE");
+    if (home) {
+        std::string desktop = std::string(home) + "/Desktop";
+        struct stat st;
+        if (stat(desktop.c_str(), &st) == 0 && (st.st_mode & S_IFDIR))
+            return desktop + "/" + name;
+        return std::string(home) + "/" + name;
+    }
+    return m_dataDir + "timelapses/" + name;
+#endif
+}
+
+bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
+                            int subFrames, const std::string& destPath, std::string& outMsg) {
+    std::vector<TurnSnapshot> snaps;
+    if (!buildTurnSnapshots(savePath, snaps) || snaps.size() < 2) {
+        outMsg = "Need at least 2 turns to export";
+        return false;
+    }
+
+    // On web we encode to a temp path in the virtual FS, then hand the bytes
+    // to the browser as a download. Natively we write straight to destPath.
+#ifdef __EMSCRIPTEN__
+    std::string writePath = "/tmp_timelapse.gif";
+#else
+    std::string writePath = destPath;
+    // Make sure the parent directory exists (best effort).
+    auto slash = writePath.find_last_of('/');
+    if (slash != std::string::npos)
+        system(("mkdir -p \"" + writePath.substr(0, slash) + "\"").c_str());
+#endif
 
     GifEncoder gif;
-    if (!gif.begin(outPath, outW, outH, 8)) {
-        m_historyStatus = "Could not start GIF";
+    if (!gif.begin(writePath, outW, outH, 8)) {
+        outMsg = "Could not create GIF at that path";
         return false;
     }
 
     std::vector<uint8_t> frame;
-    // Sample a spread of keyframes so the palette covers colours that only
-    // appear late (rebel states, conquests) — and crucially also sample
-    // MID-TRANSITION frames. Without those the blend colours have no palette
-    // entry, so every ownership cross-fade quantises to the nearest endpoint
-    // and snaps instead of fading.
+    // Sample keyframes AND mid-transition frames for the palette: sampling only
+    // pure turn states leaves blend colours with no palette entry, so every
+    // cross-fade would quantise to the nearest endpoint and snap.
     int sampleStep = std::max<int>(1, (int)snaps.size() / 8);
     for (size_t i = 0; i < snaps.size(); i += sampleStep) {
-        renderHistoryFrame(snaps[i], snaps[i], 0.0f, outW, outH, frame);
+        renderHistoryFrame(snaps[i], snaps[i], 0.0f, outW, outH, frame, m_historyView);
         gif.addPaletteSample(frame.data());
-        if (i + 1 < snaps.size()) {
+        if (i + 1 < snaps.size())
             for (float t : {0.25f, 0.5f, 0.75f}) {
-                renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame);
+                renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame, m_historyView);
                 gif.addPaletteSample(frame.data());
             }
-        }
     }
-    renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame);
+    renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
     gif.addPaletteSample(frame.data());
 
     int total = (int)(snaps.size() - 1) * subFrames + 1;
     int done = 0;
-    for (size_t i = 0; i + 1 < snaps.size(); ++i) {
+    for (size_t i = 0; i + 1 < snaps.size(); ++i)
         for (int s = 0; s < subFrames; ++s) {
             float t = (float)s / (float)subFrames;
-            renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame);
+            renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame, m_historyView);
             gif.writeFrame(frame.data());
             if ((++done % 8) == 0) {
                 setLoadingProgress((float)done / total, "Rendering timelapse...");
                 drawLoadingScreen();
             }
         }
-    }
-    renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame);
+    renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
     gif.writeFrame(frame.data());
 
     int n = gif.frameCount();
     bool ok = gif.end();
-    m_historyStatus = ok ? ("Saved " + std::to_string(n) + " frames to " + outPath)
-                         : "GIF export failed";
-    std::cout << "  Timelapse: " << m_historyStatus << std::endl;
-    return ok;
+    if (!ok) { outMsg = "GIF export failed"; return false; }
+
+#ifdef __EMSCRIPTEN__
+    // Read the encoded file back and trigger a browser download so it lands on
+    // the user's real machine rather than the sandbox FS.
+    {
+        std::string fname = destPath.empty() ? "timelapse.gif" : destPath;
+        auto slash2 = fname.find_last_of('/');
+        if (slash2 != std::string::npos) fname = fname.substr(slash2 + 1);
+        std::string js =
+            "var d=FS.readFile('" + writePath + "');"
+            "var b=new Blob([d],{type:'image/gif'});"
+            "var u=URL.createObjectURL(b);var a=document.createElement('a');"
+            "a.href=u;a.download='" + fname + "';document.body.appendChild(a);"
+            "a.click();document.body.removeChild(a);URL.revokeObjectURL(u);";
+        emscripten_run_script(js.c_str());
+        outMsg = "Downloaded " + fname + " (" + std::to_string(n) + " frames)";
+    }
+#else
+    outMsg = "Saved " + std::to_string(n) + " frames to " + writePath;
+#endif
+    std::cout << "  Timelapse: " << outMsg << std::endl;
+    return true;
 }
 
 // ─── Revert ──────────────────────────────────────────────
 
 bool Game::revertToTurn(int turn) {
-    if (m_currentSavePath.empty()) { m_historyStatus = "No save file loaded"; return false; }
+    std::string savePath = m_historySavePath.empty() ? m_currentSavePath : m_historySavePath;
+    if (savePath.empty()) { m_historyStatus = "No save file"; return false; }
+
     std::string tag = std::string(5 - std::to_string(turn).size(), '0') + std::to_string(turn);
-    std::string stateJson = SaveManager::readEntry(m_currentSavePath, "turns/s_" + tag + ".json");
+    std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" + tag + ".json");
     if (stateJson.empty()) {
         // Saves made before per-turn snapshots existed can't be restored
-        // faithfully — better to refuse than to silently load the wrong state.
+        // faithfully — refuse rather than silently load the wrong state.
         m_historyStatus = "Turn " + std::to_string(turn) + " has no snapshot (older save)";
         return false;
     }
 
+    // Opened from the browser (no game running): do a normal full load of the
+    // save first, so all the systems are initialised, then rewind onto it.
+    if (!m_historyFromGame) {
+        std::string fname = savePath;
+        auto slash = fname.find_last_of('/');
+        if (slash != std::string::npos) fname = fname.substr(slash + 1);
+        startLoadedGame(fname);          // full load to the latest turn
+        m_currentScreen = SCREEN_PLAYING;
+    }
+
     std::vector<TurnSnapshot> snaps;
-    if (!buildTurnSnapshots(m_currentSavePath, snaps) || turn >= (int)snaps.size()) {
+    if (!buildTurnSnapshots(savePath, snaps) || turn >= (int)snaps.size()) {
         m_historyStatus = "Could not reconstruct that turn";
         return false;
     }
     const TurnSnapshot& s = snaps[turn];
 
-    restoreRebels(m_currentSavePath);
+    restoreRebels(savePath);
     for (auto& [pid, cid] : s.owner) {
         Province* p = m_provinces.getProvinceById(pid);
         if (p) p->countryId = cid;
@@ -275,6 +405,7 @@ bool Game::revertToTurn(int turn) {
     generatePoliticalTexture();
     reloadBorders();
 
+    m_currentSavePath = savePath;
     m_historyStatus = "Reverted to turn " + std::to_string(turn);
     std::cout << "  " << m_historyStatus << std::endl;
     return true;
@@ -289,51 +420,105 @@ static const struct { int w, h; const char* label; } HIST_RES[] = {
     {1920, 960, "1920x960 (large)"},
 };
 static const int HIST_RES_COUNT = 3;
+static const char* HIST_VIEW_LABELS[] = {"Political", "Population", "Troops"};
 
-void Game::openHistoryScreen() {
+void Game::refreshHistoryPreview() {
+    if (m_historyIndex < 0 || m_historyIndex >= (int)m_historySnaps.size()) return;
+    // Render the selected turn (no interpolation) at a small preview size.
+    const int PW = 480, PH = 240;
+    std::vector<uint8_t> rgba;
+    const TurnSnapshot& s = m_historySnaps[m_historyIndex];
+    renderHistoryFrame(s, s, 0.0f, PW, PH, rgba, m_historyView);
+
+    if (m_historyPreviewTex.id > 0) UnloadTexture(m_historyPreviewTex);
+    Image img{};
+    img.data = rgba.data();
+    img.width = PW; img.height = PH;
+    img.mipmaps = 1; img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    m_historyPreviewTex = LoadTextureFromImage(img);
+    SetTextureFilter(m_historyPreviewTex, TEXTURE_FILTER_BILINEAR);
+    m_historyPreviewTurn = m_historyIndex;
+    m_historyPreviewView = m_historyView;
+}
+
+void Game::openHistoryScreen(const std::string& savePath) {
     m_inHistory = true;
     m_historyStatus.clear();
     m_historySnaps.clear();
-    if (!m_currentSavePath.empty()) {
-        buildTurnSnapshots(m_currentSavePath, m_historySnaps);
-        m_historyIndex = (int)m_historySnaps.size() - 1;
-    } else {
-        m_historyStatus = "No save file — play a turn first";
+    m_historyConfirmRevert = false;
+    m_historyEditingDest = false;
+    m_historyPreviewTurn = -1;
+    m_historyView = HV_POLITICAL;
+    m_historySavePath = savePath;
+    // "From game" means a live game is running under us (currently unused, since
+    // the entry point is the save browser, but revert() honours it).
+    m_historyFromGame = (m_currentScreen == SCREEN_PLAYING);
+
+    if (savePath.empty()) {
+        m_historyStatus = "No save selected";
+        return;
     }
-    if (m_historyIndex < 0) m_historyIndex = 0;
+    // If no game is loaded, pull the map out of the save so we can render.
+    if (!m_provinces.getImage().data)
+        loadHistoryMapData(savePath);
+
+    buildTurnSnapshots(savePath, m_historySnaps);
+    m_historyIndex = std::max(0, (int)m_historySnaps.size() - 1);
     m_historyScroll = 0;
+    m_historyDestPath = defaultTimelapsePath(savePath, HIST_RES[m_historyResIndex].w,
+                                             HIST_RES[m_historyResIndex].h);
+    refreshHistoryPreview();
 }
 
 void Game::updateHistoryScreen() {
+    if (m_historyEditingDest) {
+        // The destination text field owns the keyboard while focused.
+        int c = GetCharPressed();
+        while (c > 0) {
+            if (c >= 32 && c < 127 && m_historyDestPath.size() < 400)
+                m_historyDestPath.push_back((char)c);
+            c = GetCharPressed();
+        }
+        if (IsKeyPressed(KEY_BACKSPACE) && !m_historyDestPath.empty())
+            m_historyDestPath.pop_back();
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) m_historyEditingDest = false;
+        return;
+    }
     if (IsKeyPressed(KEY_ESCAPE)) { m_inHistory = false; return; }
     int n = (int)m_historySnaps.size();
     if (n > 0) {
+        int prev = m_historyIndex;
         if (IsKeyPressed(KEY_UP))   m_historyIndex = std::max(0, m_historyIndex - 1);
         if (IsKeyPressed(KEY_DOWN)) m_historyIndex = std::min(n - 1, m_historyIndex + 1);
+        if (m_historyIndex != prev) m_historyConfirmRevert = false;
     }
     float wheel = GetMouseWheelMove();
     if (wheel != 0) m_historyScroll = std::max(0, m_historyScroll - (int)(wheel * 3));
+
+    // Rebuild the preview only when the selection or view actually changes.
+    if (m_historyPreviewTurn != m_historyIndex || m_historyPreviewView != m_historyView)
+        refreshHistoryPreview();
 }
 
 void Game::drawHistoryScreen() {
     int cx = m_screenW / 2;
     Color accent = hexToColor(m_config.accentColor);
-    DrawRectangle(0, 0, m_screenW, m_screenH, {8, 8, 12, 245});
+    Vector2 mouse = getMouse();
+    DrawRectangle(0, 0, m_screenW, m_screenH, {8, 8, 12, 248});
 
     const char* title = "Turn History";
-    int tw = MeasureText(title, 34);
-    DrawText(title, cx - tw / 2, 28, 34, accent);
+    DrawText(title, cx - MeasureText(title, 32) / 2, 22, 32, accent);
+    DrawText("ESC to close", m_screenW - 130, 28, 13, Color{120, 120, 140, 160});
 
-    Vector2 mouse = getMouse();
     int n = (int)m_historySnaps.size();
 
-    // ── Turn list ──
-    int listX = 40, listY = 92, listW = m_screenW / 2 - 70;
-    int rowH = 26;
-    int visible = std::max(1, (m_screenH - listY - 150) / rowH);
+    // ── Turn list (left) ──
+    int listX = 30, listY = 84, listW = 300;
+    int rowH = 24;
+    int visible = std::max(1, (m_screenH - listY - 70) / rowH);
     m_historyScroll = std::clamp(m_historyScroll, 0, std::max(0, n - visible));
 
-    DrawText("Turns", listX, listY - 22, 16, LIGHTGRAY);
+    DrawText("Turns", listX, listY - 20, 15, LIGHTGRAY);
     DrawRectangle(listX, listY, listW, visible * rowH, {16, 16, 22, 255});
     for (int i = m_historyScroll; i < n && i < m_historyScroll + visible; ++i) {
         auto& s = m_historySnaps[i];
@@ -343,51 +528,76 @@ void Game::drawHistoryScreen() {
         bool sel = (i == m_historyIndex);
         if (sel)      DrawRectangleRec(r, ColorAlpha(accent, 0.18f));
         else if (hov) DrawRectangleRec(r, {255, 255, 255, 12});
-        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_historyIndex = i;
-
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            m_historyIndex = i;
+            m_historyConfirmRevert = false;
+        }
         DrawText(s.turn == 0 ? "Turn 0 (start)" : TextFormat("Turn %d", s.turn),
-                 listX + 10, y + 5, 15, sel ? accent : WHITE);
-        // Countries still holding land that turn — a rough shape of the game
-        int alive = 0;
+                 listX + 10, y + 4, 14, sel ? accent : WHITE);
         std::unordered_map<int, int> seen;
         for (auto& [pid, cid] : s.owner) if (cid > 0 && cid < SPC_CID) seen[cid]++;
-        alive = (int)seen.size();
-        DrawText(TextFormat("%d countries", alive), listX + listW - 130, y + 6, 12, LIGHTGRAY);
+        DrawText(TextFormat("%d", (int)seen.size()), listX + listW - 90, y + 5, 12, LIGHTGRAY);
         if (!s.hasState && s.turn > 0)
-            DrawText("no snapshot", listX + listW - 240, y + 6, 11, Color{170, 140, 90, 255});
+            DrawText("view only", listX + listW - 66, y + 5, 11, Color{170, 140, 90, 255});
     }
 
-    // ── Detail + actions ──
-    int px = m_screenW / 2 + 20, py = listY;
-    if (n > 0 && m_historyIndex >= 0 && m_historyIndex < n) {
+    // ── Map preview (right/top) ──
+    int px = listX + listW + 30;
+    int previewW = std::min(m_screenW - px - 30, 640);
+    int previewH = previewW / 2;
+    int py = listY;
+    if (m_historyPreviewTex.id > 0) {
+        DrawTexturePro(m_historyPreviewTex, {0, 0, (float)m_historyPreviewTex.width, (float)m_historyPreviewTex.height},
+                       {(float)px, (float)py, (float)previewW, (float)previewH}, {0, 0}, 0, WHITE);
+    } else {
+        DrawRectangle(px, py, previewW, previewH, {20, 20, 28, 255});
+        DrawText("No preview", px + previewW / 2 - 40, py + previewH / 2, 14, GRAY);
+    }
+    DrawRectangleLines(px, py, previewW, previewH, {60, 60, 75, 255});
+    if (n > 0 && m_historyIndex < n) {
         auto& s = m_historySnaps[m_historyIndex];
-        DrawText(s.turn == 0 ? "Start of game" : TextFormat("Turn %d", s.turn), px, py, 22, accent);
-        py += 34;
-        long long totalPop = 0;
-        for (auto& [pid, p] : s.population) totalPop += p;
-        DrawText(TextFormat("Provinces tracked: %d", (int)s.owner.size()), px, py, 14, LIGHTGRAY); py += 20;
-        DrawText(TextFormat("Ships: %d", (int)s.ships.size()), px, py, 14, LIGHTGRAY); py += 20;
-        if (totalPop > 0) { DrawText(TextFormat("Recorded population: %lld", totalPop), px, py, 14, LIGHTGRAY); py += 20; }
-        py += 10;
+        DrawText(s.turn == 0 ? "Start of game" : TextFormat("Turn %d", s.turn),
+                 px + 6, py + 4, 16, accent);
     }
+    py += previewH + 8;
 
-    // Resolution picker
-    DrawText("GIF resolution:", px, py, 14, LIGHTGRAY); py += 20;
+    // View toggle buttons
+    DrawText("View:", px, py + 4, 14, LIGHTGRAY);
+    int vbx = px + 50;
+    for (int v = 0; v < 3; ++v) {
+        Rectangle r = {(float)vbx, (float)py, 100, 24};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        bool sel = (m_historyView == v);
+        DrawRectangleRounded(r, 0.15f, 6, sel ? ColorAlpha(accent, 0.22f) : (hov ? Color{40,40,55,255} : Color{24,24,32,255}));
+        DrawRectangleRoundedLines(r, 0.15f, 6, sel ? accent : Color{60,60,75,255});
+        DrawText(HIST_VIEW_LABELS[v], (int)r.x + 10, (int)r.y + 5, 13, sel ? accent : LIGHTGRAY);
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_historyView = (HistoryView)v;
+        vbx += 106;
+    }
+    py += 34;
+
+    // ── Export controls ──
+    DrawText("GIF resolution:", px, py, 14, LIGHTGRAY);
+    int rbx = px + 130;
     for (int i = 0; i < HIST_RES_COUNT; ++i) {
-        Rectangle r = {(float)px, (float)py, 240, 24};
+        Rectangle r = {(float)rbx, (float)py - 4, 150, 24};
         bool hov = CheckCollisionPointRec(mouse, r);
         bool sel = (i == m_historyResIndex);
         DrawRectangleRounded(r, 0.15f, 6, sel ? ColorAlpha(accent, 0.2f) : (hov ? Color{40,40,55,255} : Color{24,24,32,255}));
         DrawRectangleRoundedLines(r, 0.15f, 6, sel ? accent : Color{60,60,75,255});
-        DrawText(HIST_RES[i].label, px + 10, py + 5, 13, sel ? accent : LIGHTGRAY);
-        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_historyResIndex = i;
-        py += 28;
+        DrawText(HIST_RES[i].label, (int)r.x + 8, (int)r.y + 5, 12, sel ? accent : LIGHTGRAY);
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            m_historyResIndex = i;
+            m_historyDestPath = defaultTimelapsePath(m_historySavePath, HIST_RES[i].w, HIST_RES[i].h);
+        }
+        rbx += 156;
     }
-    py += 6;
-    DrawText(TextFormat("Smoothing: %d frames per turn", m_historySubFrames), px, py, 13, LIGHTGRAY);
+    py += 30;
+
+    DrawText(TextFormat("Smoothing: %d frames/turn", m_historySubFrames), px, py, 13, LIGHTGRAY);
     {
-        Rectangle minus = {(float)(px + 230), (float)py - 4, 24, 20};
-        Rectangle plus  = {(float)(px + 258), (float)py - 4, 24, 20};
+        Rectangle minus = {(float)(px + 210), (float)py - 4, 24, 20};
+        Rectangle plus  = {(float)(px + 238), (float)py - 4, 24, 20};
         for (int i = 0; i < 2; ++i) {
             Rectangle r = i ? plus : minus;
             bool hov = CheckCollisionPointRec(mouse, r);
@@ -398,55 +608,88 @@ void Game::drawHistoryScreen() {
                 m_historySubFrames = std::clamp(m_historySubFrames + (i ? 1 : -1), 1, 12);
         }
     }
+    py += 30;
+
+    // Destination path field
+    DrawText("Save GIF to:", px, py, 13, LIGHTGRAY); py += 18;
+    {
+        Rectangle field = {(float)px, (float)py, (float)std::min(previewW, 560), 26};
+        bool hov = CheckCollisionPointRec(mouse, field);
+        DrawRectangleRounded(field, 0.1f, 4, m_historyEditingDest ? Color{35,35,50,255} : (hov ? Color{28,28,38,255} : Color{22,22,30,255}));
+        DrawRectangleRoundedLines(field, 0.1f, 4, m_historyEditingDest ? accent : Color{60,60,75,255});
+        // Show the tail of long paths so the filename stays visible
+        std::string shown = m_historyDestPath;
+        int maxCh = (int)(field.width - 16) / 8;
+        if ((int)shown.size() > maxCh) shown = "..." + shown.substr(shown.size() - maxCh + 3);
+        DrawText(shown.c_str(), (int)field.x + 8, (int)field.y + 6, 13, m_historyEditingDest ? accent : WHITE);
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_historyEditingDest = true;
+        else if (m_historyEditingDest && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !hov) m_historyEditingDest = false;
+    }
     py += 34;
 
-    // ── Buttons ──
-    auto button = [&](const char* label, int y, bool enabled, Color tint) -> bool {
-        Rectangle r = {(float)px, (float)y, 300, 34};
+    // ── Action buttons ──
+    auto button = [&](const char* label, int y, int w, bool enabled, Color tint) -> bool {
+        Rectangle r = {(float)px, (float)y, (float)w, 34};
         bool hov = enabled && CheckCollisionPointRec(mouse, r);
-        DrawRectangleRounded(r, 0.15f, 6, enabled ? (hov ? ColorAlpha(tint, 0.30f) : ColorAlpha(tint, 0.15f))
-                                                  : Color{22, 22, 28, 200});
-        DrawRectangleRoundedLines(r, 0.15f, 6, enabled ? tint : Color{50, 50, 60, 150});
-        int lw = MeasureText(label, 15);
-        DrawText(label, (int)(r.x + r.width / 2 - lw / 2), (int)r.y + 9, 15,
-                 enabled ? WHITE : Color{110, 110, 120, 200});
+        DrawRectangleRounded(r, 0.15f, 6, enabled ? (hov ? ColorAlpha(tint, 0.30f) : ColorAlpha(tint, 0.15f)) : Color{22,22,28,200});
+        DrawRectangleRoundedLines(r, 0.15f, 6, enabled ? tint : Color{50,50,60,150});
+        DrawText(label, (int)(r.x + r.width / 2 - MeasureText(label, 15) / 2), (int)r.y + 9, 15,
+                 enabled ? WHITE : Color{110,110,120,200});
         return hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
     };
 
     bool haveTurns = n > 1;
-    if (button("Download GIF of playthrough", py, haveTurns, accent)) {
-        std::string out;
-        exportHistoryGif(m_currentSavePath, HIST_RES[m_historyResIndex].w,
-                         HIST_RES[m_historyResIndex].h, m_historySubFrames, out);
+    if (button("Download GIF of playthrough", py, std::min(previewW, 560), haveTurns, accent)) {
+        std::string msg;
+        exportHistoryGif(m_historySavePath, HIST_RES[m_historyResIndex].w,
+                         HIST_RES[m_historyResIndex].h, m_historySubFrames, m_historyDestPath, msg);
+        m_historyStatus = msg;
     }
     py += 42;
 
     bool canRevert = (n > 0 && m_historyIndex >= 0 && m_historyIndex < n &&
                       m_historySnaps[m_historyIndex].hasState);
-    if (button(canRevert ? TextFormat("Revert to turn %d", m_historySnaps[m_historyIndex].turn)
-                         : "Revert (no snapshot for this turn)",
-               py, canRevert, Color{220, 140, 70, 255})) {
-        if (revertToTurn(m_historySnaps[m_historyIndex].turn)) {
+    int revertTurn = (n > 0 && m_historyIndex < n) ? m_historySnaps[m_historyIndex].turn : 0;
+    const char* revertLabel = !canRevert ? "Revert (no snapshot for this turn)"
+                            : m_historyConfirmRevert ? "Click again to confirm revert"
+                            : TextFormat("Revert to turn %d", revertTurn);
+    if (button(revertLabel, py, std::min(previewW, 560), canRevert, Color{220,140,70,255})) {
+        if (!m_historyConfirmRevert) {
+            m_historyConfirmRevert = true;
+        } else {
+            int t = revertTurn;
             m_inHistory = false;
             m_paused = false;
+            if (revertToTurn(t)) m_currentScreen = SCREEN_PLAYING;
         }
     }
     py += 42;
 
-    if (button("Back to save selection", py, true, Color{140, 140, 160, 255})) {
-        m_inHistory = false;
-        m_paused = false;
-        unloadGameData();
-        m_currentScreen = SCREEN_FILE_BROWSER;
-        m_browsingSaves = true;
+    int halfW = (std::min(previewW, 560) - 10) / 2;
+    // Back to save selection
+    {
+        Rectangle r = {(float)px, (float)py, (float)halfW, 34};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.15f, 6, hov ? Color{50,50,64,255} : Color{30,30,40,255});
+        DrawRectangleRoundedLines(r, 0.15f, 6, Color{90,90,110,255});
+        DrawText("Back to save selection", (int)(r.x + r.width/2 - MeasureText("Back to save selection", 14)/2), (int)r.y + 10, 14, WHITE);
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            m_inHistory = false;
+            m_currentScreen = SCREEN_FILE_BROWSER;
+            m_browsingSaves = true;
+        }
     }
-    py += 42;
-
-    if (button("Close", py, true, Color{110, 110, 125, 255})) m_inHistory = false;
-
-    if (!m_historyStatus.empty()) {
-        int sw = MeasureText(m_historyStatus.c_str(), 14);
-        DrawText(m_historyStatus.c_str(), cx - sw / 2, m_screenH - 40, 14, accent);
+    // Close
+    {
+        Rectangle r = {(float)(px + halfW + 10), (float)py, (float)halfW, 34};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.15f, 6, hov ? Color{50,50,64,255} : Color{30,30,40,255});
+        DrawRectangleRoundedLines(r, 0.15f, 6, Color{90,90,110,255});
+        DrawText("Close", (int)(r.x + r.width/2 - MeasureText("Close", 14)/2), (int)r.y + 10, 14, WHITE);
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_inHistory = false;
     }
-    DrawText("ESC to close", m_screenW - 130, 30, 13, Color{120, 120, 140, 160});
+    py += 44;
+
+    if (!m_historyStatus.empty())
+        DrawText(m_historyStatus.c_str(), px, py, 13, accent);
 }

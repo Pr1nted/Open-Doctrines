@@ -9,7 +9,7 @@ struct Setting { const char* label; bool isValue; int actionId; };
 Color hexToColor(int hex);
 std::string formatPop(long long pop);
 
-extern const char* MENU_ITEMS[5];
+extern const char* MENU_ITEMS[4];
 extern const int MENU_COUNT;
 extern const char* MAIN_MENU_ITEMS[6];
 extern const int MAIN_MENU_COUNT;
