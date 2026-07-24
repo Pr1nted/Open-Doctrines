@@ -627,7 +627,9 @@ void Game::drawClaimsTab() {
             int fillPac = (int)(slW * m_pacificationAllocation);
             if (fillPac > 0) DrawRectangle(slX, slY, fillPac, slH, {80, 180, 220, 200});
             DrawText(TextFormat("%d%%", (int)(m_pacificationAllocation * 100)), slX + slW + 6, slY + 2, 12, WHITE);
-            float pacPct = m_pacificationAllocation * 60.0f;
+            // 50, matching the engine formula — this screen used to claim x60
+            // while the engine applied x50, overstating suppression by 20%.
+            float pacPct = m_pacificationAllocation * 50.0f;
             DrawText(TextFormat("Suppression: %.1f%%", pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
 
             Vector2 mse = getMouse();

@@ -550,31 +550,47 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
         }
     }
     // Claims on this province increase unrest (foreign claims agitate population)
+    // Claimant resolved via the ISO index — this function runs for every owned
+    // province of every country each turn plus per-frame in three UI panels,
+    // and the old linear scan over ALL countries per claimant grew with every
+    // rebel state ever created.
     float claimUnrest = 0.0f;
     auto claimIt = m_claimsByProvince.find(provinceId);
     if (claimIt != m_claimsByProvince.end()) {
+        const Country* ownerC = m_countries.getCountry(countryId);
         for (auto& claimantIso : claimIt->second) {
-            // Find the claimant country
-            for (auto& [cid, c] : m_countries.getAll()) {
-                if (c.isoA3 == claimantIso && cid != countryId) {
-                    // More unrest if claimant is at war with us
-                    bool atWar = false;
-                    auto relIt = m_relations.find(claimantIso);
-                    if (relIt != m_relations.end()) {
-                        const Country* ownerC = m_countries.getCountry(countryId);
-                        if (ownerC) {
-                            auto rt = relIt->second.find(ownerC->isoA3);
-                            if (rt != relIt->second.end() && rt->second.war) atWar = true;
-                        }
-                    }
-                    claimUnrest += atWar ? 6.0f : 2.0f;
-                    break;
-                }
+            int claimantCid = cidForIso(claimantIso);
+            if (claimantCid < 0 || claimantCid == countryId) continue;
+            bool atWar = false;
+            auto relIt = m_relations.find(claimantIso);
+            if (relIt != m_relations.end() && ownerC) {
+                auto rt = relIt->second.find(ownerC->isoA3);
+                if (rt != relIt->second.end() && rt->second.war) atWar = true;
             }
+            claimUnrest += atWar ? 6.0f : 2.0f;
         }
     }
     float total = base + polUnrest + ethUnrest + claimUnrest;
-    // Suppression from pacification allocation
+
+    // Active policies advertising "unrest reduction" now actually reduce it.
+    // (The effect used to be applied only in getCountryUnrest(), which nothing
+    // ever called — the tooltip promised a reduction that never happened.)
+    auto apIt = m_countryActivePolicyIndices.find(countryId);
+    if (apIt != m_countryActivePolicyIndices.end()) {
+        for (int idx : apIt->second) {
+            if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
+            const ActivePolicy& ap = m_activePolicies[idx];
+            if (ap.turnsRemaining != 0) continue; // only fully active policies
+            for (const auto& p : m_allPolicies)
+                if (p.id == ap.policyId) { total -= p.effect.unrestReduction; break; }
+        }
+    }
+
+    // Suppression from pacification allocation.
+    // SUBTRACTED, not multiplied: the player reads "Suppression: X%" next to
+    // "Unrest: Y%" and rightly expects X >= Y to mean no rebellion. The old
+    // multiplicative form (total * (1 - pac*50/100)) capped out at halving the
+    // chance, so even max funding could never actually prevent a rebellion.
     float pac = 0.0f;
     if (countryId == m_playerCountryId) {
         pac = m_pacificationAllocation;
@@ -583,7 +599,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
         if (pacIt != m_countryPacification.end()) pac = pacIt->second;
     }
     float suppressionPct = pac * 50.0f;
-    total = total * (1.0f - suppressionPct / 100.0f);
+    total -= suppressionPct;
     return std::min(95.0f, std::max(0.0f, total));
 }
 

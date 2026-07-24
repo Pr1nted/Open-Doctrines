@@ -565,6 +565,7 @@ void Game::drawLoadingScreen() {
 }
 
 void Game::buildPopulationLookups() {
+    rebuildIsoIndex(); // countries are final by the time lookups are (re)built
     int maxPid = 0;
     for (auto& [pid, prov] : m_provinces.getAllProvinces())
         if (pid > maxPid) maxPid = pid;

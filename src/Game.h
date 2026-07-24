@@ -268,6 +268,7 @@ private:
     std::unordered_map<int, float> m_provinceRadius;
     std::unordered_map<int, Vector2> m_countryCenters;
     std::vector<CountryLabel> m_countryLabels;
+    bool m_labelsDirty = false; // set by rebellions/ceasefires; labels rebuilt once per turn
     int m_lastSelectedProvince = 0;
     std::vector<int> m_countryProvinceIds;
     int m_countryProvinceIndex = -1;
@@ -628,6 +629,24 @@ private:
     // but m_countries doesn't have (old saves with no rebels.json). Keeps such
     // territory rendering as a coloured state instead of grey limbo.
     void synthesizeMissingRebels();
+    // ISO-A3 -> cid index. Many hot paths (rebellion-chance claims scan,
+    // guarantee chains, diplomacy) used to find a country by ISO with a linear
+    // scan over ALL countries — and the country map grows with every rebel
+    // state, so those scans got slower every rebellion. Kept fresh by
+    // rebuildIsoIndex() at load and by insertions at rebel creation.
+    std::unordered_map<std::string, int> m_isoToCid;
+    void rebuildIsoIndex();
+    int cidForIso(const std::string& iso) const;
+
+    // Single choke point for "X declares war on Y" (war flags were previously
+    // set raw at scattered sites). Sets both relation directions, applies the
+    // minority-kin alignment penalty, notifies the player when involved, and —
+    // the new rule — pulls every guarantor of the defender into the war
+    // against the attacker (one level; guarantors' own guarantors are not
+    // chained, so a world war needs explicit guarantees, not transitivity).
+    void declareWar(const std::string& attackerIso, const std::string& defenderIso,
+                    bool chainGuarantees = true);
+    void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
     static constexpr int REBEL_CID_MIN = 60000;
     void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
     void processRebellions(int countryId);

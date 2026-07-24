@@ -186,6 +186,13 @@ void Game::processTurn() {
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
     generatePoliticalTexture();
+    // One label rebuild per turn no matter how many rebellions/ceasefires
+    // marked them dirty — computeCountryLabels is a full-map raster scan.
+    if (m_labelsDirty) {
+        m_labelsDirty = false;
+        computeCountryLabels();
+        if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
+    }
     auto t8 = std::chrono::steady_clock::now();
     drawFrame(0.65f, "Syncing population data...");
     // Sync population array and regenerate population texture for player country
@@ -421,6 +428,7 @@ void Game::restoreRebels(const std::string& savePath) {
     if (rebels.empty()) return;
     // Merges by id without clearing, so map countries are left alone
     m_countries.loadFromJson(rebels);
+    rebuildIsoIndex();
 
     // Re-attach their flags and make sure new rebels don't reuse a live id
     try {
@@ -433,6 +441,17 @@ void Game::restoreRebels(const std::string& savePath) {
         }
         std::cout << "  Restored " << j.size() << " rebel countries" << std::endl;
     } catch (...) { std::cerr << "  Failed to parse rebels.json" << std::endl; }
+}
+
+void Game::rebuildIsoIndex() {
+    m_isoToCid.clear();
+    for (auto& [cid, c] : m_countries.getAll())
+        if (!c.isoA3.empty()) m_isoToCid[c.isoA3] = cid;
+}
+
+int Game::cidForIso(const std::string& iso) const {
+    auto it = m_isoToCid.find(iso);
+    return it != m_isoToCid.end() ? it->second : -1;
 }
 
 void Game::synthesizeMissingRebels() {
@@ -460,6 +479,7 @@ void Game::synthesizeMissingRebels() {
         m_countries.getAll()[cid] = c;
         if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
     }
+    rebuildIsoIndex();
     std::cout << "  Synthesized " << missing.size()
               << " placeholder rebel state(s) missing from the save" << std::endl;
 }
@@ -1255,6 +1275,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     m_rebelFlagSvgs[rebelCid] = rebelSvg;
 
     m_countries.getAll()[rebelCid] = rebel;
+    if (!rebel.isoA3.empty()) m_isoToCid[rebel.isoA3] = rebelCid;
     m_countryCompass[rebelCid] = {avgEcon, avgSoc};
 
     if (rebelCid >= (int)m_countryPixels.size())
@@ -1284,6 +1305,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     }
 
     // Transfer province ownership + populate m_countryPixels for population view
+    std::unordered_set<int> movedPixels; // everything leaving the parent
     for (int pid : provinceIds) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (pp) {
@@ -1299,18 +1321,26 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 // Populate rebel's m_countryPixels
                 if (rebelCid >= 0 && rebelCid < (int)m_countryPixels.size())
                     m_countryPixels[rebelCid].push_back(idx);
-                // Remove from parent's m_countryPixels (fixes relations view highlight)
-                if (parentCid >= 0 && parentCid < (int)m_countryPixels.size()) {
-                    auto& parentPixels = m_countryPixels[parentCid];
-                    auto pit = std::find(parentPixels.begin(), parentPixels.end(), idx);
-                    if (pit != parentPixels.end()) parentPixels.erase(pit);
-                }
+                movedPixels.insert(idx);
             }
         }
     }
+    // Remove the moved pixels from the parent in ONE pass. The old per-pixel
+    // std::find + erase over the parent's whole pixel vector was
+    // O(rebelPixels x parentPixels) — for a large country that's billions of
+    // element visits per rebellion, and the single biggest reason turns with
+    // several rebellions took so long.
+    if (!movedPixels.empty() && parentCid >= 0 && parentCid < (int)m_countryPixels.size()) {
+        auto& parentPixels = m_countryPixels[parentCid];
+        parentPixels.erase(std::remove_if(parentPixels.begin(), parentPixels.end(),
+                                          [&](int idx) { return movedPixels.count(idx) != 0; }),
+                           parentPixels.end());
+    }
 
-    computeCountryLabels();
-    m_renderer->setCountryLabels(&m_countryLabels);
+    // Labels are rebuilt ONCE per turn (m_labelsDirty, consumed in
+    // processTurn) instead of per rebellion — computeCountryLabels does a full
+    // 8192x4096 raster scan, so ten rebellions used to mean ten full scans.
+    m_labelsDirty = true;
 }
 
 // === processRebellions ===
@@ -1432,6 +1462,12 @@ void Game::processRebellions(int countryId) {
                 auto& cl = m_claims[parentIso];
                 if (std::find(cl.begin(), cl.end(), pid) == cl.end()) {
                     cl.push_back(pid);
+                    // Keep the reverse index in sync — it used to be skipped,
+                    // so rebellion claims produced no unrest until a save
+                    // reload rebuilt m_claimsByProvince from m_claims.
+                    auto& rev = m_claimsByProvince[pid];
+                    if (std::find(rev.begin(), rev.end(), parentIso) == rev.end())
+                        rev.push_back(parentIso);
                     printf("[CLAIM] %s -> province %d (rebellion claim)\n", parentIso.c_str(), pid);
                 }
             }
@@ -2152,6 +2188,95 @@ void Game::eliminateDefeatedCountries() {
     }
 }
 
+// === declareWar ===
+// The one place wars start. Guarantee semantics: a guarantee on the DEFENDER
+// obliges the guarantor to enter the war against the attacker. Guarantees are
+// stored one-directionally in places, so both directions are checked.
+void Game::applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso) {
+    int attackerCid = cidForIso(attackerIso);
+    int defenderCid = cidForIso(defenderIso);
+    if (attackerCid < 0 || defenderCid < 0) return;
+    // Count minority population in defender
+    std::unordered_map<std::string, long long> defenderMinPop;
+    for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
+        if (pv.countryId != defenderCid) continue;
+        long long pop = m_provincePopulations.count(pid) ? m_provincePopulations[pid] : 0;
+        auto mit = m_provinceMinorities.find(pid);
+        if (mit == m_provinceMinorities.end()) continue;
+        for (auto& mg : mit->second)
+            defenderMinPop[mg.name] += (long long)(pop * mg.pct / 100.0f);
+    }
+    // Apply penalty to attacker's minorities that have kin in defender
+    for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
+        if (pv.countryId != attackerCid) continue;
+        auto mit = m_provinceMinorities.find(pid);
+        if (mit == m_provinceMinorities.end()) continue;
+        for (auto& mg : mit->second) {
+            auto dpIt = defenderMinPop.find(mg.name);
+            if (dpIt != defenderMinPop.end() && dpIt->second >= 500000)
+                m_minorityAlignmentDrift[mg.name] -= 30.0f;
+        }
+    }
+}
+
+void Game::declareWar(const std::string& attackerIso, const std::string& defenderIso,
+                      bool chainGuarantees) {
+    if (attackerIso.empty() || defenderIso.empty() || attackerIso == defenderIso) return;
+    CountryRelation& fwd = m_relations[attackerIso][defenderIso];
+    if (fwd.war) return; // already at war — nothing to do, no double penalties
+    fwd.war = true;
+    fwd.alliance = false;
+    fwd.nonAggression = false;
+    CountryRelation& rev = m_relations[defenderIso][attackerIso];
+    rev.war = true;
+    rev.alliance = false;
+    rev.nonAggression = false;
+
+    applyWarKinPenalty(attackerIso, defenderIso);
+    applyWarKinPenalty(defenderIso, attackerIso);
+
+    // Player notification when dragged in (guarantee chains can reach the
+    // player without any request ever targeting them)
+    std::string playerIso;
+    if (const Country* pc = m_countries.getCountry(m_playerCountryId)) playerIso = pc->isoA3;
+    if (!playerIso.empty() && defenderIso == playerIso) {
+        int otherCid = cidForIso(attackerIso);
+        const Country* oc = m_countries.getCountry(otherCid);
+        std::string otherName = oc ? oc->name : attackerIso;
+        pushPopup(PopupType::WAR_DECLARED, "War Declared!",
+                  otherName + " has declared war on you!", otherCid);
+    }
+
+    printf("[WAR] %s declares war on %s\n", attackerIso.c_str(), defenderIso.c_str());
+
+    if (!chainGuarantees) return;
+    // Every guarantor of the defender joins against the attacker. Collect
+    // first, declare after — declaring mutates m_relations while iterating.
+    std::vector<std::string> guarantors;
+    for (auto& [isoA, targets] : m_relations) {
+        if (isoA == attackerIso || isoA == defenderIso) continue;
+        bool guards = false;
+        auto it = targets.find(defenderIso);
+        if (it != targets.end() && it->second.guarantee) guards = true;
+        if (!guards) {
+            auto dIt = m_relations.find(defenderIso);
+            if (dIt != m_relations.end()) {
+                auto rIt = dIt->second.find(isoA);
+                if (rIt != dIt->second.end() && rIt->second.guarantee) guards = true;
+            }
+        }
+        if (guards && cidForIso(isoA) >= 0) guarantors.push_back(isoA);
+    }
+    for (auto& g : guarantors) {
+        printf("[WAR] %s honours its guarantee of %s and joins against %s\n",
+               g.c_str(), defenderIso.c_str(), attackerIso.c_str());
+        declareWar(g, attackerIso, false); // one level only
+        if (!playerIso.empty() && g == playerIso)
+            addNotification("You honour your guarantee of " + defenderIso +
+                            " and are now at war with " + attackerIso, RED, 8.0f);
+    }
+}
+
 // === processDiplomaticRequests ===
 void Game::processDiplomaticRequests() {
     // Get player ISO
@@ -2230,6 +2355,10 @@ void Game::processDiplomaticRequests() {
                 msg2 = srcName + " proposes a non-aggression pact.";
             }
             pushPopup(pt, title, msg2, reqCid, da.action, da.sourceIso, da.targetIso);
+            // War is not a request — it happens whether or not the player has
+            // dismissed the popup yet. This used to be dropped entirely here.
+            if (da.action == "declare_war")
+                declareWar(da.sourceIso, da.targetIso, true);
             m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
             printf("[DIPLO] Incoming request from %s → player: %s (pushed to popup queue)\n",
                    da.sourceIso.c_str(), da.action.c_str());
@@ -2268,9 +2397,13 @@ void Game::processDiplomaticRequests() {
                 absorbForeign(srcCid, tgtCid);
                 absorbForeign(tgtCid, srcCid);
             } else if (da.action == "request_guarantee") {
+                // Mirrored — guarantee was the only relation written one-way,
+                // which made guarantor lookups direction-dependent.
                 rt.guarantee = true;
+                m_relations[da.targetIso][da.sourceIso].guarantee = true;
             } else if (da.action == "break_guarantee") {
                 rt.guarantee = false;
+                m_relations[da.targetIso][da.sourceIso].guarantee = false;
             } else if (da.action == "request_nap") {
                 rt.nonAggression = true;
                 m_relations[da.targetIso][da.sourceIso].nonAggression = true;
@@ -2386,41 +2519,9 @@ void Game::processDiplomaticRequests() {
                 }
                 printf("[CEASEFIRE] Accepted offer applied: %s vs %s\n", da.sourceIso.c_str(), da.targetIso.c_str());
             } else if (da.action == "declare_war") {
-                rt.war = true;
-                m_relations[da.targetIso][da.sourceIso].war = true;
-                // War with kin: apply alignment penalty to minorities matching enemy's primary groups
-                auto applyKinPenalty = [&](const std::string& attackerIso, const std::string& defenderIso) {
-                    // Find country IDs
-                    int attackerCid = -1, defenderCid = -1;
-                    for (auto& [cid, c] : m_countries.getAll()) {
-                        if (c.isoA3 == attackerIso) attackerCid = cid;
-                        if (c.isoA3 == defenderIso) defenderCid = cid;
-                    }
-                    if (attackerCid < 0 || defenderCid < 0) return;
-                    // Count minority population in defender
-                    std::unordered_map<std::string, long long> defenderMinPop;
-                    for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
-                        if (pv.countryId != defenderCid) continue;
-                        long long pop = m_provincePopulations.count(pid) ? m_provincePopulations[pid] : 0;
-                        auto mit = m_provinceMinorities.find(pid);
-                        if (mit == m_provinceMinorities.end()) continue;
-                        for (auto& mg : mit->second)
-                            defenderMinPop[mg.name] += (long long)(pop * mg.pct / 100.0f);
-                    }
-                    // Apply penalty to attacker's minorities that have kin in defender
-                    for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
-                        if (pv.countryId != attackerCid) continue;
-                        auto mit = m_provinceMinorities.find(pid);
-                        if (mit == m_provinceMinorities.end()) continue;
-                        for (auto& mg : mit->second) {
-                            auto dpIt = defenderMinPop.find(mg.name);
-                            if (dpIt != defenderMinPop.end() && dpIt->second >= 500000)
-                                m_minorityAlignmentDrift[mg.name] -= 30.0f;
-                        }
-                    }
-                };
-                applyKinPenalty(da.sourceIso, da.targetIso);
-                applyKinPenalty(da.targetIso, da.sourceIso);
+                // Guarantee chains + kin penalties + notifications all live in
+                // the helper so every declaration behaves identically.
+                declareWar(da.sourceIso, da.targetIso, true);
             }
             printf("[DIPLO] %s → %s: %s applied\n", da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
             m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
@@ -2529,9 +2630,9 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         printf("[CEASEFIRE] %s pays %g to %s\n", targetIso.c_str(), amt, sourceIso.c_str());
     }
 
-    // Refresh the per-country lookup pixel arrays and labels so the map updates next frame
-    computeCountryLabels();
-    if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
+    // Labels refresh once per turn via m_labelsDirty (full-map scan otherwise
+    // repeats for every ceasefire processed in the same turn)
+    m_labelsDirty = true;
     if (m_renderer) m_renderer->setShowClaims(false);
     if (m_showClaims && m_playerCountryId > 0) {
         m_lastClaimsCountryId = m_playerCountryId;

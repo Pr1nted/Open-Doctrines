@@ -56,6 +56,11 @@ bool Config::load(const std::string& path) {
     showZoom = findBool(json, "showZoom", false);
     showConsole = findBool(json, "showConsole", false);
     fpsTarget = findInt(json, "fpsTarget", 0);
+    aiDifficulty = findInt(json, "aiDifficulty", 1);
+    if (aiDifficulty < 0) aiDifficulty = 0;
+    if (aiDifficulty > 3) aiDifficulty = 3;
+    aiDebug = findBool(json, "aiDebug", false);
+    aiLearning = findBool(json, "aiLearning", true);
     accentColor = findInt(json, "accentColor", 0xFFD700);
 
     // Load keybinds
@@ -99,6 +104,9 @@ bool Config::save(const std::string& path) {
     file << "  \"showZoom\": " << (showZoom ? "true" : "false") << ",\n";
     file << "  \"showConsole\": " << (showConsole ? "true" : "false") << ",\n";
     file << "  \"fpsTarget\": " << fpsTarget << ",\n";
+    file << "  \"aiDifficulty\": " << aiDifficulty << ",\n";
+    file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
+    file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
     file << "  \"keybinds\": [";
     for (int i = 0; i < ACTION_COUNT; ++i) {

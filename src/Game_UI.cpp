@@ -127,14 +127,22 @@ void Game::updatePopup() {
         Rectangle rejectBtn = {(float)(popX + popW / 2 + 10), (float)btnY, (float)btnW, (float)btnH};
 
         if (CheckCollisionPointRec(mouse, approveBtn)) {
-            // Execute the diplomatic action
-            processDiplomaticRequests(); // process the approval
+            // Apply the request stored in the popup itself. The pending action
+            // was erased when this popup was created, so the old
+            // processDiplomaticRequests() call here applied nothing — Approve
+            // was a silent no-op for alliances/guarantees/NAPs.
+            auto& fwd = m_relations[popup.sourceIso][popup.targetIso];
+            auto& rev = m_relations[popup.targetIso][popup.sourceIso];
+            if (popup.action == "request_alliance")      { fwd.alliance = true;      rev.alliance = true; }
+            else if (popup.action == "request_guarantee"){ fwd.guarantee = true;     rev.guarantee = true; }
+            else if (popup.action == "request_nap")      { fwd.nonAggression = true; rev.nonAggression = true; }
+            printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
-            // Remove the pending action from queue
-            if (!m_pendingDiplomaticActions.empty()) {
-                m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin());
-            }
+            // Nothing to erase from the pending queue: the request was already
+            // removed when the popup was created. The old code erased
+            // begin(), which could silently drop an unrelated queued action.
+            printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
         }
     } else if (popup.type == PopupType::CEASEFIRE_REQUEST) {

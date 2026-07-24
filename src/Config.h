@@ -15,6 +15,11 @@ struct Config {
     bool showZoom = false;
     bool showConsole = false;
     int fpsTarget = 0; // -1=Unlimited, 0=VSync, 10-120=capped
+    // AI difficulty: 0=Easy 1=Normal 2=Hard 3=Insane. One shared model —
+    // difficulty only changes how deterministically countries follow it.
+    int aiDifficulty = 1;
+    bool aiDebug = false;   // log AI decisions + enable the in-game AI overlay
+    bool aiLearning = true; // online reinforcement learning during play
 
     int keybinds[ACTION_COUNT];
 
