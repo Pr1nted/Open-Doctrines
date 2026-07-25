@@ -1034,8 +1034,13 @@ ProceduralOutput generateProcedural(
             if (owner <= 0) continue;
             float countryEcon = (float)((owner * 7 + 3) % 201 - 100) * 0.5f;
             float countrySoc  = (float)((owner * 13 + 7) % 201 - 100) * 0.5f;
-            float noiseE = (float)(rng() % 401 - 200) / 10.0f; // +/-20
-            float noiseS = (float)(rng() % 401 - 200) / 10.0f;
+            // rng() is unsigned: `rng()%401 - 200` underflowed to ~4 billion
+            // whenever rng()%401 < 200 (half the time), making the noise huge
+            // and clamping the province compass to +100. Cast to int FIRST.
+            // This corrupted province politics on every generated map and was
+            // the real driver of universal early-game rebellions.
+            float noiseE = (float)((int)(rng() % 401) - 200) / 10.0f; // +/-20
+            float noiseS = (float)((int)(rng() % 401) - 200) / 10.0f;
             float e = std::max(-100.0f, std::min(100.0f, countryEcon + noiseE));
             float s = std::max(-100.0f, std::min(100.0f, countrySoc + noiseS));
             out.provinceCompassByPid[pid] = {e, s};

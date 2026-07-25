@@ -66,6 +66,12 @@ public:
     std::string getMapName() const { return m_mapName; }
     void setMapName(const std::string& n) { m_mapName = n; m_dirty = true; }
 
+    // Headless generate-and-export for AI self-play training: runs the full
+    // generation chain (landmass -> provinces/countries -> game data) and
+    // packages it as an .odmap, no renderer or UI involved. Call init() first
+    // (it only sets sizes + data dir). Returns the exported path, "" on failure.
+    std::string generateAndExportHeadless(const GeneratorParams& p, const std::string& mapName);
+
 private:
     // Map display
     static const int MAP_W = 8192;

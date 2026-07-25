@@ -45,6 +45,11 @@ public:
     bool deserialize(const uint8_t* data, size_t size);
 
     const std::vector<int>& architecture() const { return m_sizes; }
+    size_t paramCount() const {
+        size_t n = 0;
+        for (const Layer& L : m_layers) n += L.w.size() + L.b.size();
+        return n;
+    }
     int inputSize() const { return m_sizes.empty() ? 0 : m_sizes.front(); }
     int outputSize() const { return m_sizes.empty() ? 0 : m_sizes.back(); }
     bool valid() const { return m_sizes.size() >= 2; }
@@ -52,6 +57,12 @@ public:
     // Introspection for the AI debug overlay.
     const std::vector<float>& lastOutput() const { return m_acts.empty() ? m_empty : m_acts.back(); }
     uint64_t updateCount() const { return m_updates; }
+
+    // Activation snapshot/restore: lets a caller run forward() once, stash the
+    // activations, and later apply policyGradientUpdate() WITHOUT re-running
+    // the forward pass (the update only needs the cached activations).
+    void snapshotActs(std::vector<std::vector<float>>& out) const { out = m_acts; }
+    void restoreActs(std::vector<std::vector<float>>&& in) { m_acts = std::move(in); }
 
     // ── Helpers used by the AI system ──
     static void softmax(const std::vector<float>& logits, float temperature,

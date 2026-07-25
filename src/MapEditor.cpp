@@ -2802,6 +2802,51 @@ std::string MapEditor::buildCountriesJson() const {
     return cj.dump(2);
 }
 
+std::string MapEditor::generateAndExportHeadless(const GeneratorParams& p, const std::string& mapName) {
+    m_mapName = mapName;
+    // initBlankMap normally seeds the land/sea map before any generation; do
+    // the state half here (no renderer). Without it isLand() answers "sea"
+    // for the whole map and sanitizeProvincePixels garbage-collects every
+    // province out of the export.
+    m_pixels.assign((size_t)MAP_W * MAP_H, COL_SEA);
+    m_editLandSea.setFromPixels(m_pixels.data(), MAP_W, MAP_H);
+    // Same sequence the deferred-generation path in update() runs, minus the
+    // overlay frames. No m_renderer exists, so every texture branch is skipped.
+    generateMap(p);
+    generateProvincesCountries();
+    generateGameData();
+    if (!m_hasProvinces) return std::string();
+
+    // The renderer path of generateProvincesCountries also sets up editor
+    // STATE the export depends on (m_editProvinces, m_editCountries, pixel
+    // sanitation) — without it the .odmap ships an empty countries.json.
+    // Recreate just the state here; textures stay skipped.
+    if (!m_renderer) {
+        std::vector<uint8_t> rawProv(MAP_W * MAP_H * 4);
+        for (int i = 0; i < MAP_W * MAP_H; ++i) {
+            rawProv[i*4]   = m_provincePixels[i].r;
+            rawProv[i*4+1] = m_provincePixels[i].g;
+            rawProv[i*4+2] = m_provincePixels[i].b;
+            rawProv[i*4+3] = 255;
+        }
+        int pngLen = 0;
+        unsigned char* pngData = stbi_write_png_to_mem(rawProv.data(), MAP_W * 4,
+                                                       MAP_W, MAP_H, 4, &pngLen);
+        if (pngData) {
+            m_editProvinces.clear();
+            m_editProvinces.loadFromMemory(pngData, pngLen, m_provinceJson);
+            STBI_FREE(pngData);
+        }
+        m_editCountries.clear();
+        m_editCountries.loadFromJson(m_countryJson);
+        sanitizeProvincePixels();
+    }
+
+    exportODMap();
+    std::string path = m_dataDir + "custom_maps/" + m_mapName + ".odmap";
+    return fs::exists(path) ? path : std::string();
+}
+
 void MapEditor::exportODMap() {
     if (!m_hasProvinces) {
         std::cout << "  No provinces to export. Generate provinces first.\n";
@@ -2816,7 +2861,10 @@ void MapEditor::exportODMap() {
         std::ofstream f(path, std::ios::binary); f << content; f.close();
     };
 
-    std::string tmpDir = m_dataDir + "tmp_export/";
+    // Per-map staging dir: two concurrent exporters (e.g. two --train-ai
+    // processes, whose map names already carry their PID) must not write into
+    // the same tmp_export/ and corrupt each other's intermediate files.
+    std::string tmpDir = m_dataDir + "tmp_export_" + m_mapName + "/";
     fs::create_directories(tmpDir);
 
     // Save land_sea.png from m_pixels

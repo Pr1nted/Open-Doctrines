@@ -76,8 +76,20 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     cs.total = cs.gross + cs.resource + cs.pop;
     float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts;
     float affordable = std::max(0.0f, cs.total - baseExpenses);
-    cs.researchCost = cs.total * m_researchAllocation;
-    cs.pacificationCost = cs.total * m_pacificationAllocation;
+    // Allocations are per-country: only the player pays the research slider
+    // Each country pays for ITS OWN allocations: the player's come from the
+    // UI sliders, AI countries' from the per-country maps the AI sets — they
+    // used to be billed the player's sliders as pure money sinks.
+    float rAlloc = m_researchAllocation;
+    float pAlloc = m_pacificationAllocation;
+    if (countryId != m_playerCountryId) {
+        auto raIt = m_countryResearchAllocation.find(countryId);
+        rAlloc = (raIt != m_countryResearchAllocation.end()) ? raIt->second : 0.0f;
+        auto pacIt = m_countryPacification.find(countryId);
+        pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
+    }
+    cs.researchCost = cs.total * rAlloc;
+    cs.pacificationCost = cs.total * pAlloc;
     float totalAlloc = cs.researchCost + cs.pacificationCost;
     if (totalAlloc > affordable && totalAlloc > 0) {
         float scale = affordable / totalAlloc;
@@ -156,8 +168,16 @@ void Game::refreshIncomeCache() {
         }
         float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts;
         float affordable = std::max(0.0f, cs.total - baseExpenses);
-        cs.researchCost = cs.total * m_researchAllocation;
-        cs.pacificationCost = cs.total * m_pacificationAllocation;
+        float rAlloc = m_researchAllocation;
+        float pAlloc = m_pacificationAllocation;
+        if (cid != m_playerCountryId) {
+            auto raIt = m_countryResearchAllocation.find(cid);
+            rAlloc = (raIt != m_countryResearchAllocation.end()) ? raIt->second : 0.0f;
+            auto pacIt = m_countryPacification.find(cid);
+            pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
+        }
+        cs.researchCost = cs.total * rAlloc;
+        cs.pacificationCost = cs.total * pAlloc;
         float totalAlloc = cs.researchCost + cs.pacificationCost;
         if (totalAlloc > affordable && totalAlloc > 0) {
             float scale = affordable / totalAlloc;

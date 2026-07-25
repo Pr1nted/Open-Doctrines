@@ -37,6 +37,66 @@ bool ResearchNode::isAvailable(const std::vector<ResearchNode>& nodes) const {
     return true;
 }
 
+// Country-aware ResearchNode::isAvailable: that one reads the player-global
+// node flags; this reads m_countryResearched[cid] so every AI country walks
+// the tree independently.
+bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
+    auto cit = m_countryResearched.find(countryId);
+    auto has = [&](const std::string& id) {
+        return cit != m_countryResearched.end() && cit->second.count(id) > 0;
+    };
+    if (has(node.id)) return false;
+    if (node.depsAny) {
+        bool any = node.deps.empty();
+        for (const auto& req : node.deps)
+            if (has(req)) { any = true; break; }
+        if (!any) return false;
+    } else {
+        for (const auto& req : node.deps)
+            if (!has(req)) return false;
+    }
+    if (node.mutexGroup > 0)
+        for (const auto& n : m_researchNodes)
+            if (n.id != node.id && n.mutexGroup == node.mutexGroup && has(n.id)) return false;
+    return true;
+}
+
+// Per-country research progression for AI countries — the mirror of the
+// player block in processUpgrades: allocation buys research points
+// (rp = 1 + sqrt(spend/2)), points sink into the active node, completion
+// lands in m_countryResearched where all the effect queries pick it up.
+void Game::progressCountryResearch(int countryId) {
+    if (countryId == m_playerCountryId) return;
+    auto raIt = m_countryResearchAllocation.find(countryId);
+    if (raIt == m_countryResearchAllocation.end() || raIt->second <= 0.001f) return;
+
+    auto cs = computeCountryIncome(countryId); // O(1) while the turn cache is hot
+    int rp = 1 + (int)sqrtf(cs.researchCost * 0.5f);
+    int& pts = m_countryResearchPoints[countryId];
+    pts = std::min(10000, pts + rp);
+
+    int& active = m_countryResearchActive.count(countryId)
+                      ? m_countryResearchActive[countryId]
+                      : (m_countryResearchActive[countryId] = -1);
+    if (active < 0 || active >= (int)m_researchNodes.size()) return;
+    const ResearchNode& node = m_researchNodes[active];
+    int& invested = m_countryResearchInvested[countryId];
+    if (m_countryResearched[countryId].count(node.id)) { active = -1; invested = 0; return; }
+
+    int toSpend = std::min(pts, node.cost - invested);
+    if (toSpend > 0) { invested += toSpend; pts -= toSpend; }
+    if (invested >= node.cost) {
+        m_countryResearched[countryId].insert(node.id);
+        active = -1;
+        invested = 0;
+        if (m_config.aiDebug) {
+            const Country* c = m_countries.getCountry(countryId);
+            printf("[RESEARCH] %s completed %s\n",
+                   c ? c->name.c_str() : "?", node.id.c_str());
+        }
+    }
+}
+
 const std::vector<std::string>& doctrineList() {
     static const std::vector<std::string> kDoctrines = {
         "",                    // none
@@ -460,27 +520,22 @@ float Game::getTotalEffect(const std::string& effectField) const {
 bool Game::canCountryEnactPolicy(int countryId, const Policy& p) const {
     auto it = m_countryCompass.find(countryId);
     if (it == m_countryCompass.end()) {
-        std::cerr << "[DIAG] canEnact " << p.id << " FAIL: no compass for cid " << countryId << std::endl;
         return false;
     }
     const auto& pc = it->second;
     if (pc.economic < p.minEcon || pc.economic > p.maxEcon) {
-        std::cerr << "[DIAG] canEnact " << p.id << " FAIL: econ " << pc.economic << " not in [" << p.minEcon << "," << p.maxEcon << "]" << std::endl;
         return false;
     }
     if (pc.social < p.minSoc || pc.social > p.maxSoc) {
-        std::cerr << "[DIAG] canEnact " << p.id << " FAIL: soc " << pc.social << " not in [" << p.minSoc << "," << p.maxSoc << "]" << std::endl;
         return false;
     }
     for (const auto& ap : m_activePolicies) {
         if (ap.countryId == countryId && ap.policyId == p.id && ap.turnsRemaining >= 0) {
-            std::cerr << "[DIAG] canEnact " << p.id << " FAIL: already active/implementing" << std::endl;
             return false;
         }
         if (ap.countryId == countryId && ap.turnsRemaining >= 0) {
             for (const auto& inc : p.incompatibleWith) {
                 if (ap.policyId == inc) {
-                    std::cerr << "[DIAG] canEnact " << p.id << " FAIL: incompatible with " << inc << std::endl;
                     return false;
                 }
             }
@@ -490,10 +545,8 @@ bool Game::canCountryEnactPolicy(int countryId, const Policy& p) const {
     float available = cs.total - (cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts);
     available = std::max(0.0f, available);
     if (p.costPerTurn > 0 && available < p.costPerTurn) {
-        std::cerr << "[DIAG] canEnact " << p.id << " FAIL: cost " << p.costPerTurn << " > available " << available << std::endl;
         return false;
     }
-    std::cerr << "[DIAG] canEnact " << p.id << " OK (cost=" << p.costPerTurn << ", available=" << available << ", compass=(" << pc.economic << "," << pc.social << "))" << std::endl;
     return true;
 }
 

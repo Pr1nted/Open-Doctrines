@@ -869,6 +869,16 @@ std::string Game::saveStateJson() {
             j["researched"].push_back(entry);
         }
     }
+    // Per-country research progression (AI countries)
+    for (auto& [cid, alloc] : m_countryResearchAllocation)
+        if (alloc > 0.0f) j["countryResearchAlloc"][std::to_string(cid)] = alloc;
+    for (auto& [cid, pts] : m_countryResearchPoints)
+        if (pts > 0) j["countryResearchPoints"][std::to_string(cid)] = pts;
+    for (auto& [cid, active] : m_countryResearchActive)
+        if (active >= 0 && active < (int)m_researchNodes.size())
+            j["countryResearchActive"][std::to_string(cid)] = m_researchNodes[active].id;
+    for (auto& [cid, inv] : m_countryResearchInvested)
+        if (inv > 0) j["countryResearchInvested"][std::to_string(cid)] = inv;
 
     // Balances
     for (auto& [cid, bal] : m_countryBalances) {
@@ -1111,6 +1121,25 @@ void Game::loadStateJson(const std::string& json) {
             m_countryResearched[cid].insert(nodeId);
         }
     }
+    // Per-country research progression (AI countries)
+    if (j.contains("countryResearchAlloc"))
+        for (auto& [key, val] : j["countryResearchAlloc"].items())
+            m_countryResearchAllocation[std::stoi(key)] = val.get<float>();
+    if (j.contains("countryResearchPoints"))
+        for (auto& [key, val] : j["countryResearchPoints"].items())
+            m_countryResearchPoints[std::stoi(key)] = val.get<int>();
+    if (j.contains("countryResearchActive"))
+        for (auto& [key, val] : j["countryResearchActive"].items()) {
+            std::string nodeId = val.get<std::string>();
+            for (int i = 0; i < (int)m_researchNodes.size(); ++i)
+                if (m_researchNodes[i].id == nodeId) {
+                    m_countryResearchActive[std::stoi(key)] = i;
+                    break;
+                }
+        }
+    if (j.contains("countryResearchInvested"))
+        for (auto& [key, val] : j["countryResearchInvested"].items())
+            m_countryResearchInvested[std::stoi(key)] = val.get<int>();
 
     // Balances
     if (j.contains("balances")) {

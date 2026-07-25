@@ -144,11 +144,17 @@ void Game::initEthnicPolicyCategories() {
 }
 
 void Game::initCountryCompass() {
-    // Only fill in missing countries (those not already loaded from country_compass.json)
+    // Fill in countries not already loaded from country_compass.json FROM THEIR
+    // OWN COMPASS, not {0,0}. Political unrest is measured as a province's
+    // distance from its GOVERNMENT's stance; defaulting the government to the
+    // political centre made every ideologically-extreme province read as
+    // dissent even when it perfectly matched an extreme government — the true
+    // cause of universal early fragmentation on generated maps (which set
+    // Country compass but ship no country_compass.json).
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
         if (m_countryCompass.find(cid) == m_countryCompass.end()) {
-            m_countryCompass[cid] = {0.0f, 0.0f};
+            m_countryCompass[cid] = {c.compassEconomic, c.compassSocial};
         }
     }
 }
@@ -525,18 +531,27 @@ float Game::getCountryUnrest(int countryId) const {
 float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     float polUnrest = 0.0f, ethUnrest = 0.0f;
 
-    float base = 2.0f;
+    // Baseline: a centrist, well-governed province is STABLE (near-zero). The
+    // old formula floored base at 1.0 for every province, which — multiplied
+    // across dozens of provinces every turn — guaranteed universal early-game
+    // fragmentation. Now baseline rises only with ideological extremeness.
+    float base = 0.5f;
     auto pcIt = m_provinceCompass.find(provinceId);
     if (pcIt != m_provinceCompass.end()) {
         float extremeness = (fabsf(pcIt->second.x) + fabsf(pcIt->second.y)) * 0.5f;
-        base = 1.0f + extremeness * 0.05f;
+        base = extremeness * 0.04f;
     }
 
     auto govIt = m_countryCompass.find(countryId);
     auto pcIt2 = m_provinceCompass.find(provinceId);
     if (pcIt2 != m_provinceCompass.end() && govIt != m_countryCompass.end()) {
-        float dx = pcIt2->second.x + govIt->second.economic;
-        float dy = pcIt2->second.y + govIt->second.social;
+        // Unrest comes from a province DISAGREEING with its government, i.e.
+        // the DISTANCE between the two compasses. This was a '+', which made a
+        // province ALIGNED with its government maximally unhappy and one that
+        // was its exact opposite perfectly content — backwards, and the main
+        // driver of universal early fragmentation.
+        float dx = pcIt2->second.x - govIt->second.economic;
+        float dy = pcIt2->second.y - govIt->second.social;
         float dist = sqrtf(dx*dx + dy*dy);
         if (dist > 80) polUnrest = std::min(15.0f, (dist - 80) * 0.1f);
     }
@@ -600,6 +615,16 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     }
     float suppressionPct = pac * 50.0f;
     total -= suppressionPct;
+
+    // Inherent civil order. Every functioning state commands baseline loyalty,
+    // so a well-governed, homogeneous, ideologically-aligned province is STABLE
+    // at zero pacification — rebellion is driven by real grievance (extreme
+    // mismatch, hostile minorities, foreign claims, war) that exceeds this
+    // floor. Without it, the tiny per-province baseline unrest summed across
+    // dozens of provinces made early fragmentation certain for every country,
+    // and pacification was a mandatory tax rather than a tool for hotspots.
+    total -= REBELLION_LOYALTY_FLOOR;
+
     return std::min(95.0f, std::max(0.0f, total));
 }
 

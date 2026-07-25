@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "SaveManager.h"
 #include "Keybinds.h"
+#include "ai/AISystem.h"
 #include "renderer/FlagRenderer.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -58,8 +59,11 @@ const int TAB_COUNT = 5;
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
 
-const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"Back", false, -1}};
-const int DISPLAY_COUNT = 8;
+const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"Back", false, -1}};
+const int DISPLAY_COUNT = 9;
+
+const char* AI_DIFFICULTY_NAMES[] = {"Easy", "Normal", "Hard", "Insane"};
+const int AI_DIFFICULTY_COUNT = 4;
 
 const int ACCENT_PRESETS[] = {
     0xFFD700, // Gold
@@ -113,9 +117,11 @@ const Setting ADVANCED_ITEMS[] = {
     {"Display FPS", false, -1},
     {"Display Zoom", false, -1},
     {"Console Window", false, -1},
+    {"AI Debug", false, -1},
+    {"AI Learning", false, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 4;
+const int ADVANCED_COUNT = 6;
 
 const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS};
 const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT};
@@ -238,6 +244,9 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += std::string(": ") + fpsLabel(cfg.fpsTarget);
     } else if (tab == 0 && index == 6) {
         char b[16]; snprintf(b, sizeof(b), ": #%06X", cfg.accentColor); label += b;
+    } else if (tab == 0 && index == 7) {
+        int d = cfg.aiDifficulty < 0 ? 0 : (cfg.aiDifficulty >= AI_DIFFICULTY_COUNT ? AI_DIFFICULTY_COUNT - 1 : cfg.aiDifficulty);
+        label += std::string(": ") + AI_DIFFICULTY_NAMES[d];
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (tab == 4 && index == 0) {
@@ -246,6 +255,10 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.showZoom ? ": On" : ": Off";
     } else if (tab == 4 && index == 2) {
         label += cfg.showConsole ? ": On" : ": Off";
+    } else if (tab == 4 && index == 3) {
+        label += cfg.aiDebug ? ": On" : ": Off";
+    } else if (tab == 4 && index == 4) {
+        label += cfg.aiLearning ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
     }
@@ -504,6 +517,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
 }
 
 void Game::shutdown() {
+    // Save the AI model on quit (unloadGameData also does this on world exit)
+    if (m_ai) { delete m_ai; m_ai = nullptr; }
     UnloadTexture(m_politicalTex);
     for (auto& [cid, tex] : m_countryFlags) {
         if (tex.id > 0) UnloadTexture(tex);
@@ -719,6 +734,18 @@ void Game::drawDebugOverlay() {
         DrawText(TextFormat("Provinces: %d", provCount), 10, 32, 14, (Color){180, 220, 255, 200});
         DrawText(TextFormat("Zoom: %.2f", zoom), 10, 48, 14, (Color){180, 220, 255, 200});
         DrawText(TextFormat("DPI: %.2f", m_dpiScale), 10, 64, 14, (Color){140, 160, 180, 160});
+    }
+
+    // AI decision feed: last decisions from the ring buffer, newest first
+    if (m_config.aiDebug && m_ai) {
+        int y = 84;
+        DrawText(TextFormat("AI decisions (turn, country, module, action) — %d this turn",
+                            m_ai->decisionsThisTurn()), 10, y, 14, {255, 220, 140, 230});
+        y += 18;
+        for (const auto& line : m_ai->debugLines(24)) {
+            DrawText(line.c_str(), 10, y, 12, {220, 220, 180, 210});
+            y += 14;
+        }
     }
 }
 
@@ -1147,6 +1174,9 @@ void Game::drawPauseMenu() {
                 strcmp(items[i].label, "Display FPS") == 0 ||
                 strcmp(items[i].label, "Display Zoom") == 0 ||
                 strcmp(items[i].label, "Console Window") == 0 ||
+                strcmp(items[i].label, "AI Debug") == 0 ||
+                strcmp(items[i].label, "AI Learning") == 0 ||
+                strcmp(items[i].label, "AI Difficulty") == 0 ||
                 strcmp(items[i].label, "Resolution") == 0 ||
                 strcmp(items[i].label, "FPS") == 0 ||
                 (m_settingsTab == 3 && items[i].actionId >= 0))) {

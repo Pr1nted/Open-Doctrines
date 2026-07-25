@@ -2,6 +2,7 @@
 #include "GameInternals.h"
 #include "Keybinds.h"
 #include "SaveManager.h"
+#include "ai/AISystem.h"
 #include "raymath.h"
 #include <iostream>
 #include <cmath>
@@ -131,7 +132,7 @@ void Game::processTurn() {
         ClearBackground(BLACK);
         drawLoadingScreen();
     };
-    printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
+    if (m_config.aiDebug) printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
     auto t0 = std::chrono::steady_clock::now();
     // Snapshot current state for turn delta
     drawFrame(0.01f, "Snapshoting state...");
@@ -144,6 +145,11 @@ void Game::processTurn() {
     auto t1 = std::chrono::steady_clock::now();
     // Pre-compute all country incomes in a single province pass (avoids 356 redundant scans)
     refreshIncomeCache();
+    m_rebellionsThisTurnByCid.clear();
+    // Country AI: created lazily on the first processed turn so map load stays
+    // instant; the model persists across saves in the game data directory.
+    if (!m_ai) m_ai = new AISystem(this, m_dataDir + "ai/model.bin");
+    m_ai->beginTurn();
     drawFrame(0.02f, "Processing countries...");
     // Process per-country actions in batches with loading frames
     // Pre-count active countries for progress tracking
@@ -154,8 +160,18 @@ void Game::processTurn() {
     int processedCountries = 0;
     int batchCounter = 0;
     const int BATCH_SIZE = 20;
+    // Snapshot the cid list: processRebellions inserts new rebel countries
+    // into m_countries mid-loop, and an unordered_map rehash mid-iteration is
+    // undefined behavior (rare, but a guaranteed eventual crash on long runs).
+    // Fresh rebels take their first turn next turn, which is also the sane rule.
+    std::vector<int> turnCids;
+    turnCids.reserve(m_countries.getAll().size());
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
+        turnCids.push_back(cid);
+    }
+    for (int cid : turnCids) {
+        if (!m_countries.getCountry(cid)) continue; // eliminated mid-turn
         processCountryTurn(cid);
         processedCountries++;
         batchCounter++;
@@ -172,7 +188,12 @@ void Game::processTurn() {
     processUpgrades();
     auto t3 = std::chrono::steady_clock::now();
     drawFrame(0.52f, "Processing navy and diplomacy...");
-    processNavyCombat(m_playerCountryId);
+    // Every country's engage orders execute, not just the player's — AI navies
+    // could previously queue engagements that never resolved.
+    for (auto& [navyCid, navyC] : m_countries.getAll()) {
+        if (navyCid == UNC_CID || navyCid == BLC_CID || navyCid == SPC_CID) continue;
+        processNavyCombat(navyCid);
+    }
     processDiplomaticRequests();
     auto t4 = std::chrono::steady_clock::now();
     drawFrame(0.55f, "Processing population...");
@@ -185,13 +206,17 @@ void Game::processTurn() {
     eliminateDefeatedCountries();
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
-    generatePoliticalTexture();
+    // Self-play training never looks at the map: skip the full-raster texture
+    // and label passes, they dominate turn time on big maps.
+    if (!m_aiTraining) generatePoliticalTexture();
     // One label rebuild per turn no matter how many rebellions/ceasefires
     // marked them dirty — computeCountryLabels is a full-map raster scan.
     if (m_labelsDirty) {
         m_labelsDirty = false;
-        computeCountryLabels();
-        if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
+        if (!m_aiTraining) {
+            computeCountryLabels();
+            if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
+        }
     }
     auto t8 = std::chrono::steady_clock::now();
     drawFrame(0.65f, "Syncing population data...");
@@ -205,6 +230,7 @@ void Game::processTurn() {
     if (m_playerCountryId > 0 && m_playerCountryId != SPC_CID)
         generatePopulationTexture(m_playerCountryId, -1);
     auto t9 = std::chrono::steady_clock::now();
+    if (m_config.aiDebug)
     printf("[TURN] timing: snapshot=%lldms countryTurn=%lldms upgrades=%lldms navy+diplo=%lldms pop=%lldms policies=%lldms elim=%lldms politTexture=%lldms popSync=%lldms\n",
         (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count(),
         (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count(),
@@ -315,6 +341,10 @@ void Game::processTurn() {
     }
     drawFrame(0.90f, "Cleaning up...");
     recordIncomeSnapshot();
+    // AI learning step: rewards from the turn's state deltas. Runs while the
+    // income cache recordIncomeSnapshot just refreshed is still hot, so the
+    // per-country post-turn income reads are O(1) instead of full map scans.
+    if (m_ai) m_ai->endTurn();
     m_countryIncomeCache.clear();
     // Cleanup sunk ships AFTER delta building so ship indices stay stable during comparison
     cleanupSunkShips();
@@ -346,7 +376,7 @@ void Game::processTurn() {
     }
     m_turnState = TURN_NORMAL;
     drawFrame(1.0f, "Done!");
-    printf("[TURN] Turn %d processed.\n", turnNum);
+    if (m_config.aiDebug) printf("[TURN] Turn %d processed.\n", turnNum);
 }
 
 // === processCountryTurn ===
@@ -354,6 +384,13 @@ void Game::processCountryTurn(int countryId) {
     if (countryId <= 0 || countryId == SPC_CID || countryId == UNC_CID || countryId == BLC_CID) return;
     auto pt0 = std::chrono::steady_clock::now();
     processEconomy(countryId);
+    // AI countries think AFTER their economy resolves (fresh treasury) and
+    // BEFORE order execution, so orders enqueued here fire this same turn.
+    // Research progresses AFTER the AI's snapshot: a node completed here is
+    // then visible as a delta in the learning step — progressing before the
+    // snapshot made every completion invisible (and unrewarded, and uncounted).
+    if (m_ai && countryId != m_playerCountryId) m_ai->takeTurn(countryId);
+    if (countryId != m_playerCountryId) progressCountryResearch(countryId);
     auto pt1 = std::chrono::steady_clock::now();
     processArtilleryOrders(countryId);
     auto pt2 = std::chrono::steady_clock::now();
@@ -486,12 +523,25 @@ void Game::synthesizeMissingRebels() {
 
 // === allocateRebelCid ===
 int Game::allocateRebelCid() {
-    while (m_countries.getCountry(m_nextRebelCid) != nullptr) {
-        m_nextRebelCid++;
+    // Rebel cids must stay inside [REBEL_CID_MIN, SPC_CID). Long self-play
+    // runs create thousands of rebels; the old unbounded ++ walked the counter
+    // straight into the SPC/UNC/BLC sentinel ids (65533-65535) — overwriting
+    // those pseudo-countries in m_countries — and then past 65535, where every
+    // 16-bit owner field (turn-history codec) silently truncates. Wrap within
+    // the band and reuse cids freed by eliminated rebels instead.
+    const int SPAN = SPC_CID - REBEL_CID_MIN;
+    if (m_nextRebelCid < REBEL_CID_MIN || m_nextRebelCid >= SPC_CID)
+        m_nextRebelCid = REBEL_CID_MIN;
+    for (int tries = 0; tries < SPAN; ++tries) {
+        int cid = m_nextRebelCid;
+        m_nextRebelCid = REBEL_CID_MIN + (cid + 1 - REBEL_CID_MIN) % SPAN;
+        if (m_countries.getCountry(cid) == nullptr) return cid;
     }
-    int cid = m_nextRebelCid;
-    m_nextRebelCid++;
-    return cid;
+    // Every cid in the band is occupied (pathological): recycle an eliminated
+    // rebel rather than ever touching the sentinel range.
+    for (int cid = REBEL_CID_MIN; cid < SPC_CID; ++cid)
+        if (m_eliminatedCids.count(cid)) return cid;
+    return REBEL_CID_MIN;
 }
 
 // === createRebelCountry ===
@@ -550,7 +600,8 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         if (!secondEthnic.empty() && secondPct > provinceIds.size() * 20.0f) {
             ethnicName = secondEthnic;
             secondMinorityNaming = true;
-            printf("[REBELLION] Named after second-largest minority '%s' (%.1f%% avg across %zu provinces)\n",
+            if (m_config.aiDebug)
+                printf("[REBELLION] Named after second-largest minority '%s' (%.1f%% avg across %zu provinces)\n",
                    secondEthnic.c_str(), secondPct / provinceIds.size(), provinceIds.size());
         }
     }
@@ -833,7 +884,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 oneWordSet = leftOneWord; oneWordCount = 4;
             } else if (avgEcon > 40) {
                 multiWordSet = farRightPre; multiWordCount = 3;
-                oneWordSet = farRightOneWord; oneWordCount = 4;
+                oneWordSet = farRightOneWord; oneWordCount = 3; // farRightOneWord has 3 entries
             } else if (avgEcon > 20) {
                 multiWordSet = rightPre; multiWordCount = 4;
                 oneWordSet = rightOneWord; oneWordCount = 3;
@@ -842,7 +893,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 oneWordSet = authOneWord; oneWordCount = 3;
             } else if (avgSoc > 30) {
                 multiWordSet = libPre; multiWordCount = 3;
-                oneWordSet = libOneWord; oneWordCount = 4;
+                oneWordSet = libOneWord; oneWordCount = 3; // libOneWord has 3 entries
             }
             if (rand() % 100 < 60) {
                 int ti = rand() % oneWordCount;
@@ -1286,14 +1337,16 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     Texture2D tex = FlagRenderer::render(rebel.flagActual, 256, 128, "", &m_odmJsonData);
     m_countryFlags[rebelCid] = tex;
 
-    printf("[REBELLION] Created '%s' (CID=%d, ISO=%s, %zu provinces, %lld pop, econ=%.1f soc=%.1f)\n",
+    if (m_config.aiDebug)
+        printf("[REBELLION] Created '%s' (CID=%d, ISO=%s, %zu provinces, %lld pop, econ=%.1f soc=%.1f)\n",
            countryName.c_str(), rebelCid, isoA3.c_str(), provinceIds.size(), totalPop, avgEcon, avgSoc);
 
     // Declare war (bidirectional)
     auto& parentIso = m_countries.getAll()[parentCid].isoA3;
     m_relations[isoA3][parentIso].war = true;
     m_relations[parentIso][isoA3].war = true;
-    printf("[REBELLION] War: %s vs %s\n", isoA3.c_str(), parentIso.c_str());
+    if (m_config.aiDebug)
+        printf("[REBELLION] War: %s vs %s\n", isoA3.c_str(), parentIso.c_str());
 
     // Notify player if this affects them
     if (parentCid == m_playerCountryId) {
@@ -1365,12 +1418,14 @@ void Game::processRebellions(int countryId) {
     }
     // Single-province countries can't have rebellions
     if (totalProvCount <= 1) {
-        printf("[REBELLION] cid=%d only %d province(s), skipping\n", countryId, totalProvCount);
+        if (m_config.aiDebug)
+            printf("[REBELLION] cid=%d only %d province(s), skipping\n", countryId, totalProvCount);
         return;
     }
     if (rebellingProvs.empty()) return;
 
-    printf("[REBELLION] cid=%d has %zu rebelling provinces (of %d total)\n", countryId, rebellingProvs.size(), totalProvCount);
+    if (m_config.aiDebug)
+        printf("[REBELLION] cid=%d has %zu rebelling provinces (of %d total)\n", countryId, rebellingProvs.size(), totalProvCount);
 
     // Precompute BFS distances between rebelling provinces (capped at 6 steps)
     auto graphDist = [&](int a, int b, int maxD) -> int {
@@ -1421,7 +1476,8 @@ void Game::processRebellions(int countryId) {
         factions.push_back(faction);
     }
 
-    printf("[REBELLION] cid=%d => %zu faction(s)\n", countryId, factions.size());
+    if (m_config.aiDebug)
+        printf("[REBELLION] cid=%d => %zu faction(s)\n", countryId, factions.size());
 
     for (auto& faction : factions) {
         // Damage parent armies in rebelling provinces
@@ -1434,7 +1490,8 @@ void Game::processRebellions(int countryId) {
                     float killPct = 0.3f + (float)rand() / (float)RAND_MAX * 0.4f;
                     int killed = (int)(it->count * killPct);
                     it->count -= killed;
-                    printf("[REBELLION] cid=%d lost %d/%d troops in prov %d\n",
+                    if (m_config.aiDebug)
+                        printf("[REBELLION] cid=%d lost %d/%d troops in prov %d\n",
                            countryId, killed, killed + it->count, pid);
                     if (it->count <= 0) { it = units.erase(it); continue; }
                 }
@@ -1444,6 +1501,7 @@ void Game::processRebellions(int countryId) {
 
         int rebelCid = allocateRebelCid();
         createRebelCountry(rebelCid, countryId, faction);
+        m_rebellionsThisTurnByCid[countryId]++;
 
         // Reduce population (1% casualties from uprising)
         for (int pid : faction) {
@@ -1494,7 +1552,9 @@ void Game::processEconomy(int countryId) {
 
 // === processShipBombardOrders ===
 void Game::processShipBombardOrders(int countryId) {
-    printf("[SHIPBOMBARD] entered for cid=%d, pending orders: %zu\n", countryId, m_pendingShipBombardOrders.size());
+    if (m_pendingShipBombardOrders.empty()) return; // common case: nothing to do
+    if (m_config.aiDebug)
+        printf("[SHIPBOMBARD] entered for cid=%d, pending orders: %zu\n", countryId, m_pendingShipBombardOrders.size());
     struct ArtyEffect { float troopKillPct; float popKillPct; float fortDmg; int indDmg; float fortChance; };
     auto getEffect = [&](const std::string& type) -> ArtyEffect {
         for (auto& n : m_researchNodes)
@@ -1754,7 +1814,9 @@ void Game::processShipDisembarks(int countryId) {
             // Shift pending order indices to account for removal
             auto shiftIdx = [&](int& idx) { if (idx > shipIdx) idx--; };
             for (auto& mo : m_pendingShipMoveOrders) shiftIdx(mo.shipIndex);
-            for (auto& eo : m_pendingShipEngageOrders) shiftIdx(eo.shipIndex);
+            // Engage orders reference TWO ships; forgetting targetIndex here
+            // skewed every queued engagement one ship over after a disembark.
+            for (auto& eo : m_pendingShipEngageOrders) { shiftIdx(eo.shipIndex); shiftIdx(eo.targetIndex); }
             for (auto& bo : m_pendingShipBombardOrders) shiftIdx(bo.shipIndex);
             for (auto& d : m_pendingShipDisembarks) shiftIdx(d.shipIndex);
             for (auto& ss : m_pendingScrapShips) shiftIdx(ss.shipIndex);
@@ -1888,7 +1950,8 @@ void Game::processEmbarkations(int countryId) {
                                 ns.type = "boat"; ns.countryId = countryId;
                                 ns.health = 100; ns.crew = totalRemoved / 100;
                                 m_ships.push_back(ns);
-                                printf("[EMBARK] Spawned boat for %lld troops at province %d\n",
+                                if (m_config.aiDebug)
+                                    printf("[EMBARK] Spawned boat for %lld troops at province %d\n",
                                        (long long)totalRemoved, e.provinceId);
                             }
                         }
@@ -2172,9 +2235,20 @@ void Game::eliminateDefeatedCountries() {
         if (p.countryId > 0 && p.countryId != UNC_CID && p.countryId != BLC_CID)
             provCount[p.countryId]++;
     }
+    // Rebels whose last province was retaken are removed outright (below).
+    // Map countries are only marked: they keep their entry so an amphibious
+    // landing can revive them and saves/UI can still name them.
+    std::vector<int> deadRebels;
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
-        if (provCount[cid] > 0) continue;
+        if (provCount[cid] > 0) {
+            // Holds land again (e.g. revived by an amphibious landing) — allow
+            // a future re-elimination to fire cleanly.
+            m_eliminatedCids.erase(cid);
+            continue;
+        }
+        // Already torn down on a previous turn — nothing left to disband.
+        if (!m_eliminatedCids.insert(cid).second) continue;
         // Fully conquered — delete navy, armies, treasury, policies
         for (auto& ship : m_ships)
             if (ship.countryId == cid) ship.countryId = UNC_CID;
@@ -2183,9 +2257,45 @@ void Game::eliminateDefeatedCountries() {
                 [cid](auto& u) { return u.countryId == cid; }), units.end());
         c.treasury = 0;
         m_countryBalances[cid] = 0;
-        printf("[ELIMINATE] %s (%s) fully conquered — navy dissolved, armies disbanded\n",
-               c.name.c_str(), c.isoA3.c_str());
+        if (cid >= REBEL_CID_MIN) deadRebels.push_back(cid);
+        if (m_config.aiDebug)
+            printf("[ELIMINATE] %s (%s) fully conquered — navy dissolved, armies disbanded\n",
+                   c.name.c_str(), c.isoA3.c_str());
     }
+    // Fully retire dead rebel states. A dissolved rebel can never return (no
+    // navy, no armies, no provinces), yet it used to linger in m_countries
+    // forever: thousands piled up over a long self-play run, every one of them
+    // still "at war" with its parent — which kept spamming ceasefire requests
+    // at corpses each turn — and allocateRebelCid could never reuse their ids,
+    // marching the counter into the 65533-65535 sentinel range.
+    for (int cid : deadRebels) {
+        const Country* rc = m_countries.getCountry(cid);
+        if (!rc) continue;
+        std::string iso = rc->isoA3;
+        // Drop every relation row/column touching the dead rebel so nobody
+        // keeps negotiating with (or declaring war on) a ghost.
+        m_relations.erase(iso);
+        for (auto& [otherIso, rels] : m_relations) rels.erase(iso);
+        m_pendingDiplomaticActions.erase(
+            std::remove_if(m_pendingDiplomaticActions.begin(), m_pendingDiplomaticActions.end(),
+                [&](const PendingDiplomaticAction& da) {
+                    return da.sourceIso == iso || da.targetIso == iso;
+                }), m_pendingDiplomaticActions.end());
+        m_claims.erase(iso);
+        for (auto& [pid, isos] : m_claimsByProvince)
+            isos.erase(std::remove(isos.begin(), isos.end(), iso), isos.end());
+        m_rebelFlagSvgs.erase(cid);
+        m_countryBalances.erase(cid);
+        m_countryPacification.erase(cid);
+        m_rebellionsThisTurnByCid.erase(cid);
+        if (cid < (int)m_countryPixels.size()) {
+            m_countryPixels[cid].clear();
+            m_countryPixels[cid].shrink_to_fit();
+        }
+        m_eliminatedCids.erase(cid); // cid is free for reuse now
+        m_countries.getAll().erase(cid);
+    }
+    if (!deadRebels.empty()) rebuildIsoIndex();
 }
 
 // === declareWar ===
@@ -2367,6 +2477,21 @@ void Game::processDiplomaticRequests() {
 
         da.turnsRemaining--;
         if (da.turnsRemaining <= 0) {
+            // Requests aimed at an AI country go through its diplomacy net
+            // instead of being auto-accepted.
+            if (m_ai && (da.action == "request_alliance" || da.action == "request_guarantee" ||
+                         da.action == "request_nap")) {
+                int aiTgtCid = cidForIso(da.targetIso);
+                if (aiTgtCid >= 0 && aiTgtCid != m_playerCountryId &&
+                    !m_ai->decideDiplomacy(aiTgtCid, da.action, da.sourceIso)) {
+                    printf("[DIPLO] %s rejected %s from %s\n", da.targetIso.c_str(),
+                           da.action.c_str(), da.sourceIso.c_str());
+                    if (!playerIso.empty() && da.sourceIso == playerIso)
+                        addNotification(da.targetIso + " rejected your request", ORANGE, 6.0f);
+                    m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
+                    continue;
+                }
+            }
             // Apply the diplomatic action
             auto& rels = m_relations[da.sourceIso];
             auto& rt = rels[da.targetIso];
@@ -2416,7 +2541,11 @@ void Game::processDiplomaticRequests() {
                 // or if terms are favorable (no demands from AI).
                 std::string key = da.sourceIso + "|" + da.targetIso;
                 auto tit = m_pendingCeasefireTerms.find(key);
-                bool aiAccepts = true; // AI accepts by default for now
+                // The target country's diplomacy net decides on the ceasefire
+                int cfTgtCid = cidForIso(da.targetIso);
+                bool aiAccepts = true;
+                if (m_ai && cfTgtCid >= 0 && cfTgtCid != m_playerCountryId)
+                    aiAccepts = m_ai->decideDiplomacy(cfTgtCid, "request_ceasefire", da.sourceIso);
 
                 // Check for mutual ceasefire: if target also sent a ceasefire
                 // request to source, pick one randomly and cancel the other.
@@ -2914,7 +3043,8 @@ void Game::processPopulation() {
             long long moveCount = std::min(mg.totalPop, moveCap);
             if (moveCount < 1) continue;
 
-            printf("[MIGRATION] %lld %s within-country: province %d → %d\n",
+            if (m_config.aiDebug)
+                printf("[MIGRATION] %lld %s within-country: province %d → %d\n",
                    moveCount, mg.name.c_str(), mg.sourcePid, bestDst);
 
             // Remove from source: reduce population
@@ -2982,7 +3112,16 @@ void Game::processPopulation() {
             if (srcPop < 10000) continue;
             float srcUnrest = provinceUnrest.count(srcPid) ? provinceUnrest[srcPid] : 0;
 
-            for (auto& mg : mit->second) {
+            // Iterate a snapshot, not mit->second itself: the "recalculate at source"
+            // block below erases from m_provinceMinorities[srcPid] (== mit->second) and
+            // may erase the whole entry when it empties. Mutating/shrinking the vector
+            // while a range-for holds a reference into it invalidates the loop — the
+            // next read runs past the new size() (container-overflow) and occasionally
+            // dereferences a garbage MinorityGroup string, the intermittent crash. The
+            // within-country phase above is safe precisely because it decides over a
+            // pre-collected list; do the same here.
+            std::vector<MinorityGroup> srcGroups = mit->second;
+            for (auto& mg : srcGroups) {
                 if (mg.pct < 5.0f) continue;
                 long long minorityPop = (long long)(srcPop * mg.pct / 100.0f);
                 if (minorityPop < 1000) continue;
@@ -3077,7 +3216,8 @@ void Game::processPopulation() {
                 m_provincePopulations[srcPid] = std::max(0LL, srcPop - moveCount);
                 m_provincePopulations[bestDst] = dstPop + moveCount;
 
-                printf("[MIGRATION] %lld %s cross-border: province %d (%s) → province %d (%s)\n",
+                if (m_config.aiDebug)
+                    printf("[MIGRATION] %lld %s cross-border: province %d (%s) → province %d (%s)\n",
                        moveCount, mg.name.c_str(), srcPid,
                        m_countries.getCountry(cid)->name.c_str(),
                        bestDst, m_countries.getCountry(bestDstCid)->name.c_str());

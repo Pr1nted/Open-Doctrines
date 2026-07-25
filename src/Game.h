@@ -17,6 +17,8 @@
 #include <mutex>
 #include <condition_variable>
 
+class AISystem;
+
 class Game {
 public:
     static constexpr int SPC_CID = 65533;
@@ -24,6 +26,7 @@ public:
     static constexpr int BLC_CID = 65535;
 
     friend class ScriptEngine;
+    friend class AISystem;
 
     Game();
     ~Game();
@@ -34,6 +37,12 @@ public:
 
     // Public wrapper for loading a save file from command line
     void loadSaveAndStart(const std::string& savePath);
+
+    // Headless AI self-play training (`--train-ai`): generate a procedural
+    // map, play N turns with every country AI-driven, then rotate to a fresh
+    // map so the model never overfits one geography. Model persists to
+    // data/ai/model.bin between maps and runs.
+    void runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigned int baseSeed);
 
 private:
     enum ScreenState {
@@ -647,15 +656,49 @@ private:
     void declareWar(const std::string& attackerIso, const std::string& defenderIso,
                     bool chainGuarantees = true);
     void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
+    // Inherent civil order subtracted from every province's rebellion chance —
+    // makes stability the default and rebellion a grievance-driven exception.
+    // Tuned so baseline provinces are stable but claim/war/minority hotspots
+    // still revolt (see getProvinceRebellionChance).
+    static constexpr float REBELLION_LOYALTY_FLOOR = 6.0f;
     static constexpr int REBEL_CID_MIN = 60000;
     void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
     void processRebellions(int countryId);
+
+    // ── Country AI (neural-net RL, see src/ai/) ──
+    // Created lazily on the first processed turn; owns its model file.
+    AISystem* m_ai = nullptr;
+    // Self-play training mode: skips political-texture/label/delta work in
+    // processTurn so turns run as fast as the simulation allows.
+    bool m_aiTraining = false;
+    // Rebellions that fired this turn, per country — cleared at processTurn
+    // start. The AI reads it both as a feature and as a punishment signal.
+    std::unordered_map<int, int> m_rebellionsThisTurnByCid;
+    // Countries already reduced to zero provinces and disbanded, so the
+    // per-turn elimination sweep does the (once-only) teardown and log line
+    // exactly once instead of re-running it every turn for every dead shell —
+    // a real cost on crowded maps with 100+ rebel breakaways. A country is
+    // erased from this set if it ever holds land again (e.g. an amphibious
+    // landing revives it), so it can be re-eliminated cleanly.
+    std::unordered_set<int> m_eliminatedCids;
 
     // Research effect queries
     int getResearchedFortLevel(int countryId = -1) const;
     int getResearchedIndustryLevel(int countryId = -1) const;
     int getResearchedPortLevel(int countryId = -1) const;
     float getTotalEffect(const std::string& effectField) const;
+
+    // ── Per-country research (AI countries; the player keeps the global tree
+    // UI). Completion lands in m_countryResearched, which every effect query
+    // above already consults, so finished nodes unlock features per country. ──
+    std::unordered_map<int, float> m_countryResearchAllocation; // 0..1 share of income
+    std::unordered_map<int, int>   m_countryResearchPoints;
+    std::unordered_map<int, int>   m_countryResearchActive;     // index into m_researchNodes, -1 = none
+    std::unordered_map<int, int>   m_countryResearchInvested;   // points sunk into the active node
+    // Country-aware ResearchNode::isAvailable (that one reads the player-global
+    // node flags; this reads m_countryResearched[cid]).
+    bool isNodeAvailableFor(const ResearchNode& node, int countryId) const;
+    void progressCountryResearch(int countryId);
 
     // ── Pending Actions (queued for processing on next turn) ──
     std::vector<PendingDiplomaticAction> m_pendingDiplomaticActions;

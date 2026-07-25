@@ -37,6 +37,7 @@ set(GAME_SOURCES
     src/Game_Render.cpp
     src/Game_Research.cpp
     src/Game_TurnLogic.cpp
+    src/Game_AITrain.cpp
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
@@ -46,6 +47,8 @@ set(GAME_SOURCES
     src/SaveManager.cpp
     src/GifEncoder.cpp
     src/Game_History.cpp
+    src/ai/NeuralNet.cpp
+    src/ai/AISystem.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
     src/map/CountryMap.cpp
@@ -57,6 +60,11 @@ set(GAME_SOURCES
     tools/map_generator/miniz_tinfl.c
     tools/map_generator/miniz_zip.c
 )
+
+# The NN inner loops (matvec + Adam) dominate AI training time; fast-math lets
+# the compiler vectorize the sqrt/fma chains. Scoped to this file only so game
+# logic keeps strict IEEE behavior.
+set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
 
 add_executable(OpenDoctrines ${GAME_SOURCES})
 if(APPLE)
@@ -94,6 +102,12 @@ if(EMSCRIPTEN)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(OpenDoctrines Threads::Threads)
+endif()
+
+if(APPLE)
+    # IOKit for the power assertion that keeps the Mac awake during headless
+    # AI training (see Game_AITrain.cpp); CoreFoundation for CFStringRef.
+    target_link_libraries(OpenDoctrines "-framework IOKit" "-framework CoreFoundation")
 endif()
 
 # --- Map generator target ---

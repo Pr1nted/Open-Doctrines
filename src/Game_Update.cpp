@@ -1317,7 +1317,7 @@ void Game::update(float dt) {
         // Reset via keyboard (KEY_R on selected item)
         if (IsKeyPressed(KEY_R) && m_settingsIndex >= 0 && m_settingsIndex < count) {
             const Setting& rs = items[m_settingsIndex];
-            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0) {
+            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0) {
                 if (m_settingsTab == 0 && m_settingsIndex == 0) {
                     if (m_config.fullscreen) {
                         setFullscreenAttrs(false, &m_windowedX, &m_windowedY, &m_windowedW, &m_windowedH);
@@ -1334,10 +1334,13 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 0 && m_settingsIndex == 4) { /* Resolution - handled below */ }
                 else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
                 else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
+                else if (m_settingsTab == 0 && m_settingsIndex == 7) { m_config.aiDifficulty = 1; }
                 else if (m_settingsTab == 1 && m_settingsIndex == 0) { m_config.flySpeed = 2.0f; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 0) { m_config.showFps = true; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
+                else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
+                else if (m_settingsTab == 4 && m_settingsIndex == 4) { m_config.aiLearning = true; }
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId];
                 m_config.save(m_configPath);
@@ -1405,6 +1408,11 @@ void Game::update(float dt) {
             m_config.accentColor = ACCENT_PRESETS[curIdx];
         }
 
+        // AI difficulty cycling (LEFT/RIGHT on AI Difficulty item)
+        if (m_settingsTab == 0 && m_settingsIndex == 7 && (left || right)) {
+            m_config.aiDifficulty = (m_config.aiDifficulty + (right ? 1 : -1) + AI_DIFFICULTY_COUNT) % AI_DIFFICULTY_COUNT;
+        }
+
         // Activation — resetHovered first so reset buttons overrides item click
         bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
@@ -1427,10 +1435,13 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 0 && m_settingsIndex == 4) { m_config.screenW = 1920; m_config.screenH = 1080; forceWindowResize(1920, 1080); m_renderer->resize(1920, 1080); }
                 else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
                 else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
+                else if (m_settingsTab == 0 && m_settingsIndex == 7) { m_config.aiDifficulty = 1; }
                 else if (m_settingsTab == 1 && m_settingsIndex == 0) { m_config.flySpeed = 2.0f; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 0) { m_config.showFps = true; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
+                else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
+                else if (m_settingsTab == 4 && m_settingsIndex == 4) { m_config.aiLearning = true; }
                 else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
                 m_config.save(m_configPath);
             } else if (hovered >= 0) {
@@ -1472,6 +1483,12 @@ void Game::update(float dt) {
                 m_config.showZoom = !m_config.showZoom;
             } else if (strcmp(s.label, "Console Window") == 0) {
                 m_config.showConsole = !m_config.showConsole;
+            } else if (strcmp(s.label, "AI Debug") == 0) {
+                m_config.aiDebug = !m_config.aiDebug;
+            } else if (strcmp(s.label, "AI Learning") == 0) {
+                m_config.aiLearning = !m_config.aiLearning;
+            } else if (strcmp(s.label, "AI Difficulty") == 0) {
+                m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
             } else if (strcmp(s.label, "Accent Color") == 0) {
                 int curIdx = 0;
                 for (int p = 0; p < ACCENT_PRESETS_COUNT; ++p)

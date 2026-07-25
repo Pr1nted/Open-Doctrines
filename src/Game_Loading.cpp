@@ -2,6 +2,7 @@
 #include "GameInternals.h"
 #include "SaveManager.h"
 #include "Keybinds.h"
+#include "ai/AISystem.h"
 #include "renderer/FlagRenderer.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -181,6 +182,10 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
         }
         case LOAD_INIT_RENDERER: {
             setLoadingProgress(0.40f, "Initializing renderer...");
+            // Free the previous world's renderer — each one holds full-map
+            // textures, so leaking it per load exhausts GPU memory (fatal for
+            // long AI training runs that reload dozens of maps).
+            if (m_renderer) { delete m_renderer; m_renderer = nullptr; }
             m_renderer = new MapRenderer(m_screenW, m_screenH,
                                          m_landSea.getWidth(), m_landSea.getHeight());
             if (m_renderer) {
@@ -596,6 +601,14 @@ void Game::buildPopulationLookups() {
     int maxCid = 0;
     for (auto& [cid, c] : m_countries.getAll())
         if (cid > maxCid) maxCid = cid;
+    // These two per-pixel index maps are rebuilt from scratch by the loop
+    // below. On the async (training) reload path nothing else clears them, and
+    // province/country IDs repeat across maps — so without clearing, each map
+    // load APPENDS its pixels onto the previous map's lists. That is a
+    // ~100 MB-per-map leak that OOM-kills long training runs (the crash after a
+    // dozen map rotations). Clear both before repopulating.
+    m_countryPixels.clear();
+    m_provincePixels.clear();
     m_countryPixels.resize(maxCid + 1);
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
 
@@ -1770,6 +1783,22 @@ bool Game::loadFromODM(const std::string& odmPath) {
 }
 
 void Game::unloadGameData() {
+    // Persist the AI model before tearing the world down (destructor saves)
+    if (m_ai) { delete m_ai; m_ai = nullptr; }
+    m_rebellionsThisTurnByCid.clear();
+    m_eliminatedCids.clear();
+    // Return the big per-pixel buffers to the OS (swap-with-empty frees
+    // capacity; clear() alone would keep it reserved). At 33.5M pixels these
+    // total well over a gigabyte — leaving them resident while the NEXT map is
+    // generated is what pushes long training runs into an out-of-memory kill.
+    std::vector<int>().swap(m_pixelCountryArray);
+    std::vector<std::vector<int>>().swap(m_countryPixels);
+    std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
+    std::vector<Color>().swap(m_populationPixelBuffer);
+    std::vector<Color>().swap(m_politicalPixelBuffer);
+    std::vector<uint8_t>().swap(m_gradientDist);
+    std::vector<Color>().swap(m_claimsPixelBuffer);
+    for (auto& b : m_resourceBuffers) std::vector<Color>().swap(b);
     // Clean up script engine
     if (m_scriptEngine) { delete m_scriptEngine; m_scriptEngine = nullptr; }
     m_scriptErrors.clear();
@@ -1822,6 +1851,18 @@ void Game::unloadGameData() {
     m_pendingRecruitments.clear();
     m_pendingDisbandOrders.clear();
     m_pendingDiplomaticActions.clear();
+    // Ship/artillery queues were never cleared here, so orders (with ship
+    // indices and province ids from the OLD world) leaked into the next one —
+    // AI training rotates maps in-process, so a stale bombard/disembark could
+    // fire at whatever ship or province happened to reuse the id.
+    m_pendingShipMoveOrders.clear();
+    m_pendingShipEngageOrders.clear();
+    m_pendingShipBombardOrders.clear();
+    m_pendingShipDisembarks.clear();
+    m_pendingShipBuilds.clear();
+    m_pendingScrapShips.clear();
+    m_pendingEmbarkations.clear();
+    m_pendingArtilleryOrders.clear();
     m_researchNodes.clear();
     m_countryResearched.clear();
     m_activePolicies.clear();
@@ -1835,6 +1876,28 @@ void Game::unloadGameData() {
     m_incomeHistory.clear();
     m_playableCountryIds.clear();
     m_rebelFlagSvgs.clear();
+    // Country-keyed state. CountryMap::loadFromJson MERGES into the existing
+    // map, so without these clears every world load inherited the previous
+    // world's countries (stale rebels included) — 25-country maps came up
+    // with 100+ countries after a few loads.
+    m_countries.clear();
+    m_claims.clear();
+    m_isoToCid.clear();
+    m_countryCompass.clear();
+    m_countryPacification.clear();
+    m_countryBalances.clear();
+    m_pendingCeasefireTerms.clear();
+    m_acceptedCeasefireTerms.clear();
+    m_countryResearchAllocation.clear();
+    m_countryResearchPoints.clear();
+    m_countryResearchActive.clear();
+    m_countryResearchInvested.clear();
+    // All countries were just cleared, so every rebel cid is free again.
+    // Without this reset the counter climbed monotonically across worlds —
+    // AI self-play (thousands of rebels per session) walked it into the
+    // SPC/UNC/BLC sentinel ids and past 65535. Save loads that carry live
+    // rebels re-bump it via restoreRebels()/synthesizeMissingRebels().
+    m_nextRebelCid = REBEL_CID_MIN;
     m_playerCountryId = 0;
     m_lastPanelCountryId = -1;
     m_lastIncomeCountryId = -1;

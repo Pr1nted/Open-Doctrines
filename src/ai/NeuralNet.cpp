@@ -72,6 +72,12 @@ void NeuralNet::backprop(const std::vector<float>& outputGrad, float lr) {
         for (int o = 0; o < L.out; ++o) {
             float g = gy[o];
             if (g == 0.0f) continue;
+            // Per-element gradient clip. Saturated weights (|w|~1e6 after past
+            // NaN poisoning) blow the backward chain up to inf within a layer
+            // or two, and inf/inf in the Adam step mints fresh NaN weights.
+            // Clipping here keeps every downstream product finite.
+            if (!std::isfinite(g)) continue;
+            g = std::clamp(g, -10.0f, 10.0f);
             float* wr = &L.w[(size_t)o * L.in];
             float* mwr = &L.mw[(size_t)o * L.in];
             float* vwr = &L.vw[(size_t)o * L.in];
@@ -156,7 +162,9 @@ int NeuralNet::samplePolicy(const std::vector<float>& logits, float temperature,
 // ─── Serialization ───────────────────────────────────────
 
 static const uint32_t NN_MAGIC = 0x4F44414Eu; // "NADO"
-static const uint32_t NN_VERSION = 1;
+// v2: Adam moments + step counter ride along with the weights, so resumed
+// training keeps its optimizer momentum instead of cold-starting Adam.
+static const uint32_t NN_VERSION = 2;
 
 void NeuralNet::serialize(std::vector<uint8_t>& out) const {
     auto put32 = [&](uint32_t v) {
@@ -169,9 +177,14 @@ void NeuralNet::serialize(std::vector<uint8_t>& out) const {
     put32((uint32_t)m_sizes.size());
     for (int s : m_sizes) put32((uint32_t)s);
     put32((uint32_t)(m_updates & 0xFFFFFFFFu));
+    put32((uint32_t)m_adamT);
     for (const Layer& L : m_layers) {
         for (float f : L.w) putf(f);
         for (float f : L.b) putf(f);
+        for (float f : L.mw) putf(f);
+        for (float f : L.vw) putf(f);
+        for (float f : L.mb) putf(f);
+        for (float f : L.vb) putf(f);
     }
 }
 
@@ -194,14 +207,43 @@ bool NeuralNet::deserialize(const uint8_t* data, size_t size) {
     // Architecture must match what the code expects — refuse otherwise so a
     // stale model file can't silently misbehave.
     if (!m_sizes.empty() && sizes != m_sizes) return false;
-    uint32_t updates;
+    uint32_t updates, adamT;
     if (!get32(updates)) return false;
+    if (!get32(adamT)) return false;
 
     *this = NeuralNet(sizes, 1234);
     m_updates = updates;
+    m_adamT = (int)adamT;
     for (Layer& L : m_layers) {
         for (float& f : L.w) if (!getf(f)) return false;
         for (float& f : L.b) if (!getf(f)) return false;
+        for (float& f : L.mw) if (!getf(f)) return false;
+        for (float& f : L.vw) if (!getf(f)) return false;
+        for (float& f : L.mb) if (!getf(f)) return false;
+        for (float& f : L.vb) if (!getf(f)) return false;
+    }
+    // Self-heal models poisoned by earlier NaN/inf reward bugs: a single NaN
+    // weight makes every forward pass NaN (0*NaN==NaN), and a NaN Adam moment
+    // re-poisons the weight on its next update. Zero non-finite values, clamp
+    // the survivors — weights of magnitude 1e6+ (past-poison fallout) overflow
+    // the backward pass into inf and regenerate the NaNs — and keep second
+    // moments non-negative (Adam divides by sqrt(v)).
+    for (Layer& L : m_layers) {
+        auto scrub = [](std::vector<float>& v, float lim) {
+            for (float& f : v) {
+                if (!std::isfinite(f)) f = 0.0f;
+                else f = std::clamp(f, -lim, lim);
+            }
+        };
+        scrub(L.w, 50.0f);   scrub(L.b, 50.0f);
+        scrub(L.mw, 1e3f);   scrub(L.mb, 1e3f);
+        auto scrubVar = [](std::vector<float>& v) {
+            for (float& f : v) {
+                if (!std::isfinite(f) || f < 0.0f) f = 0.0f;
+                else if (f > 1e6f) f = 1e6f;
+            }
+        };
+        scrubVar(L.vw); scrubVar(L.vb);
     }
     return true;
 }
