@@ -1,10 +1,9 @@
 @OpenDoctrines - Grand Strategy Game Engine
 ---
-@
-@Graphics, Engine & Programming
+@Lead programmer
 ---
-- Various open-source contributors
-
+- Pr1nted
+@
 @Map Data
 ---
 - Natural Earth (public domain)
