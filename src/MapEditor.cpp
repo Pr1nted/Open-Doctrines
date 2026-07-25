@@ -2312,8 +2312,11 @@ void MapEditor::generateProvincesCountries() {
     m_countryJson.clear();
     m_hasProvinces = false;
 
-    // Downscale land/sea 2x for fast generation (4x fewer pixels)
-    const int SCALE = 2;
+    // Downscale land/sea for generation. SCALE 2 keeps the editor's province
+    // outlines crisp; headless training uses 4 (16x fewer pixels than full
+    // res), which is what this path used historically before it was lowered
+    // for visual quality.
+    const int SCALE = m_fastGen ? 4 : 2;
     int sw = MAP_W / SCALE, sh = MAP_H / SCALE;
     std::vector<Color> smallPixels(sw * sh);
     for (int py = 0; py < sh; ++py) {
@@ -2322,8 +2325,10 @@ void MapEditor::generateProvincesCountries() {
             smallPixels[py * sw + px] = m_pixels[srcRow + px * SCALE];
     }
 
-    // SCALE changed from 4→2 → 4× more pixels → divide density by 4 to keep same province count
-    float adjustedDensity = m_genParams.provinceDensity / 4.0f;
+    // Province count must not move with SCALE: halving SCALE quadruples the
+    // pixel count, so the density divisor is 16/SCALE^2 (4 at SCALE 2, 1 at
+    // SCALE 4 — the original tuning).
+    float adjustedDensity = m_genParams.provinceDensity * (float)(SCALE * SCALE) / 16.0f;
     auto result = generateProcedural(smallPixels, sw, sh,
                                      m_genParams.seed, m_genParams.numCountries,
                                      adjustedDensity);
@@ -2804,6 +2809,13 @@ std::string MapEditor::buildCountriesJson() const {
 
 std::string MapEditor::generateAndExportHeadless(const GeneratorParams& p, const std::string& mapName) {
     m_mapName = mapName;
+    // NOT enabling m_fastGen. SCALE 4 cuts generation from ~12s to ~8s, but it
+    // point-samples the land/sea map every 4th pixel, so small islands and thin
+    // land bridges disappear and connected-component analysis sees a different
+    // world. Measured on seed 4242, islands scenario, same map seed: landings
+    // fell 406 -> 204 and survivors 27 -> 18, i.e. the archipelago scenarios
+    // quietly became land campaigns. Flip this to true only if map throughput
+    // matters more than keeping the naval scenarios intact.
     // initBlankMap normally seeds the land/sea map before any generation; do
     // the state half here (no renderer). Without it isLand() answers "sea"
     // for the whole map and sanitizeProvincePixels garbage-collects every
@@ -2866,6 +2878,27 @@ void MapEditor::exportODMap() {
     // the same tmp_export/ and corrupt each other's intermediate files.
     std::string tmpDir = m_dataDir + "tmp_export_" + m_mapName + "/";
     fs::create_directories(tmpDir);
+
+    // PNG encoding of three 8192x4096 layers dominates headless export —
+    // profiled at more self time than the terrain generator itself, because
+    // stb tries all five row filters per scanline and then runs a long LZ77
+    // hash chain over 33M pixels. The interactive save path already makes this
+    // trade (see writePngFast above); the training path was still on stb's
+    // defaults. These maps are broad flat-coloured regions, so a fixed filter
+    // and a short chain cost very little file size. Restored on scope exit
+    // since these are stb globals shared with the other export paths.
+    struct PngSpeedGuard {
+        int filter, level;
+        PngSpeedGuard() : filter(stbi_write_force_png_filter),
+                          level(stbi_write_png_compression_level) {
+            stbi_write_force_png_filter = 0;
+            stbi_write_png_compression_level = 5; // stb clamps anything lower to 5
+        }
+        ~PngSpeedGuard() {
+            stbi_write_force_png_filter = filter;
+            stbi_write_png_compression_level = level;
+        }
+    } pngSpeedGuard;
 
     // Save land_sea.png from m_pixels
     {

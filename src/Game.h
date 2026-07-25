@@ -603,6 +603,10 @@ private:
     bool exportHistoryGif(const std::string& savePath, int outW, int outH,
                           int subFrames, const std::string& destPath, std::string& outMsg);
     bool revertToTurn(int turn);
+    // The rewind itself, split out because it may only run against a fully
+    // built world (renderer included). revertToTurn() either calls it straight
+    // away or defers it to the end of the async load.
+    bool applyTurnRewind(const std::string& savePath, int turn);
     void updateHistoryScreen();
     void drawHistoryScreen();
     void openHistoryScreen(const std::string& savePath);
@@ -625,6 +629,10 @@ private:
     bool m_historyEditingDest = false;   // destination text field focused
     std::string m_historyDestPath;       // where to write the GIF
     bool m_historyConfirmRevert = false; // two-step revert confirmation
+    // Set when a revert needs the save loaded first: the async loader applies
+    // the rewind on its final step, once the renderer and world exist again.
+    int  m_pendingRevertTurn = -1;
+    std::string m_pendingRevertSave;
 
     int allocateRebelCid();
     // Rebel countries are created at runtime, so unlike map countries they

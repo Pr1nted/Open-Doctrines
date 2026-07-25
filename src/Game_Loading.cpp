@@ -49,6 +49,11 @@ static Color blendColor(Color base, float t) {
 
 void Game::showLoadingScreen() {
     m_showLoadingScreen = true;
+    // Any load that starts here supersedes a queued revert — otherwise a failed
+    // or abandoned load would leave the request armed to fire on the next world.
+    // revertToTurn() re-arms it immediately after kicking its load off.
+    m_pendingRevertTurn = -1;
+    m_pendingRevertSave.clear();
     m_loadingProgress = 0.0f;
     m_loadingStatus = "Initializing...";
     m_tipTimer = 0;
@@ -473,6 +478,18 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                     m_currentScreen = SCREEN_PLAYING;
                 }
             }
+            // A revert queued from the history screen: the world only just came
+            // back up, so this is the first point at which the rewind is safe.
+            if (m_pendingRevertTurn >= 0) {
+                int t = m_pendingRevertTurn;
+                std::string sp = m_pendingRevertSave;
+                m_pendingRevertTurn = -1;
+                m_pendingRevertSave.clear();
+                if (!applyTurnRewind(sp, t))
+                    std::cerr << "  Revert to turn " << t << " failed: "
+                              << m_historyStatus << std::endl;
+            }
+
             // Record initial income snapshot
             recordIncomeSnapshot();
             break;
@@ -1397,7 +1414,15 @@ bool Game::loadFromFiles() {
                 // Find country ID by ISO
                 for (auto& [cid, c] : m_countries.getAll()) {
                     if (c.isoA3 == iso) {
-                        m_countryCompass[cid] = {-left, -auth};
+                        // NOT negated. m_provinceCompass stores the same
+                        // generator's numbers verbatim, and the two are compared
+                        // directly (getProvinceRebellionChance), so flipping one
+                        // side turned that distance into a sum: every province
+                        // read as ~2x its compass away from its own government.
+                        // That put ~26 countries per turn over the rebellion
+                        // threshold on the modern map. It also made Russia
+                        // (auth 85) load as a libertarian state.
+                        m_countryCompass[cid] = {left, auth};
                         break;
                     }
                 }
@@ -1691,7 +1716,9 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     float auth = comp["auth"].get<float>();
                     for (auto& [cid, c] : m_countries.getAll()) {
                         if (c.isoA3 == iso) {
-                            m_countryCompass[cid] = {-left, -auth};
+                            // Un-negated, to match m_provinceCompass — see the
+                            // loose-file loader above.
+                            m_countryCompass[cid] = {left, auth};
                             break;
                         }
                     }

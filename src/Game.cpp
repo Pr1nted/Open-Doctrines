@@ -53,8 +53,8 @@ const int SINGLEPLAYER_COUNT = 2;
 // Game version: major.minor.patch + state (a=alpha, b=beta, r=release, s=snapshot)
 const char* GAME_VERSION = "1.0.2a";
 
-const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced"};
-const int TAB_COUNT = 5;
+const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental"};
+const int TAB_COUNT = 6;
 
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
@@ -118,13 +118,23 @@ const Setting ADVANCED_ITEMS[] = {
     {"Display Zoom", false, -1},
     {"Console Window", false, -1},
     {"AI Debug", false, -1},
+    {"Back", false, -1},
+};
+const int ADVANCED_COUNT = 5;
+
+// Experimental: behaviour that changes how the game plays rather than how it
+// looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
+// reinforcement-learning updates on every AI decision during a normal session
+// and writes data/ai/model.bin, which costs time and mutates the shared model
+// that self-play training is building.
+const Setting EXPERIMENTAL_ITEMS[] = {
     {"AI Learning", false, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 6;
+const int EXPERIMENTAL_COUNT = 2;
 
-const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS};
-const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT};
+const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS};
+const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT};
 
 const char* keyName(int key) {
     if (key == 0) return "\xe2\x80\x94"; // em dash
@@ -257,7 +267,7 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.showConsole ? ": On" : ": Off";
     } else if (tab == 4 && index == 3) {
         label += cfg.aiDebug ? ": On" : ": Off";
-    } else if (tab == 4 && index == 4) {
+    } else if (tab == 5 && index == 0) {
         label += cfg.aiLearning ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);

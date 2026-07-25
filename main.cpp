@@ -1,10 +1,22 @@
 #include "Game.h"
+#include "ai/AISystem.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
 
 int main(int argc, char** argv) {
+    // --ai-readonly: use the trained model but never save over it. Intended for
+    // watching current AI behaviour in a real game while a --train-ai session
+    // runs in parallel; without it both processes write data/ai/model.bin every
+    // 20 turns and the shorter session clobbers the longer one's progress.
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--ai-readonly") == 0) {
+            AISystem::s_readOnlyModel = true;
+            std::cout << "[AI] Read-only model: this session will not save "
+                         "data/ai/model.bin" << std::endl;
+        }
+
     Game game;
     if (!game.init(1600, 900, "OpenDoctrines")) {
         return 1;
@@ -36,10 +48,12 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // If save file provided as argument, load it
-    if (argc > 1) {
-        std::string savePath = argv[1];
-        game.loadSaveAndStart(savePath);
+    // If save file provided as argument, load it. Skip flags so
+    // `--ai-readonly` on its own isn't mistaken for a save path.
+    for (int i = 1; i < argc; ++i) {
+        if (strncmp(argv[i], "--", 2) == 0) continue;
+        game.loadSaveAndStart(std::string(argv[i]));
+        break;
     }
 
     game.run();

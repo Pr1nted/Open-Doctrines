@@ -1503,6 +1503,47 @@ void Game::processRebellions(int countryId) {
         createRebelCountry(rebelCid, countryId, faction);
         m_rebellionsThisTurnByCid[countryId]++;
 
+        // The survivors of the uprising are now standing inside a country that
+        // did not exist a moment ago and that their owner is automatically at
+        // war with. Nothing in the engine retreats, captures or attrits troops
+        // in hostile territory, so left alone they sat there forever — inert,
+        // still drawing upkeep, and blocking the rebel from holding its own
+        // ground. Pull them back to an adjacent province the parent still
+        // holds; if the province is fully enclosed by the revolt, they are
+        // overrun and disband. (Same intent as the ceasefire cession cleanup.)
+        for (int pid : faction) {
+            auto ait = m_provinceArmies.find(pid);
+            if (ait == m_provinceArmies.end()) continue;
+            auto& units = ait->second;
+            int retreating = 0;
+            for (auto it = units.begin(); it != units.end(); ) {
+                if (it->countryId == countryId) {
+                    retreating += it->count;
+                    it = units.erase(it);
+                } else ++it;
+            }
+            if (units.empty()) m_provinceArmies.erase(pid);
+            if (retreating <= 0) continue;
+
+            int dest = -1;
+            auto nIt = m_provinceNeighbors.find(pid);
+            if (nIt != m_provinceNeighbors.end())
+                for (int nid : nIt->second)
+                    if (nid >= 0 && nid < (int)m_provinceCountryLookup.size() &&
+                        m_provinceCountryLookup[nid] == countryId) { dest = nid; break; }
+
+            if (dest >= 0) {
+                auto& dstUnits = m_provinceArmies[dest];
+                bool merged = false;
+                for (auto& u : dstUnits)
+                    if (u.countryId == countryId) { u.count += retreating; merged = true; break; }
+                if (!merged) dstUnits.push_back({countryId, retreating});
+            }
+            if (m_config.aiDebug)
+                printf("[REBELLION] cid=%d %s %d troops from prov %d\n", countryId,
+                       dest >= 0 ? "retreated" : "lost (surrounded)", retreating, pid);
+        }
+
         // Reduce population (1% casualties from uprising)
         for (int pid : faction) {
             auto popIt = m_provincePopulations.find(pid);
@@ -1655,6 +1696,13 @@ void Game::processShipDisembarks(int countryId) {
             if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
                 m_pixelCountryArray[idx] = newOwner;
         }
+        // m_countryPixels only feeds texture generation (political, relations,
+        // population, claims overlays) — never game logic. Maintaining it costs a
+        // full scan of the owning country's pixel list on every province
+        // capture, which profiled at ~39% of self-play runtime. Headless
+        // training draws its minimap from m_provinceCountryLookup, so the list
+        // is pure overhead there.
+        if (m_aiTraining) return;
         // Move pixels from old owner to new owner in m_countryPixels (O(N+M), not O(N*M))
         if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
             newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
@@ -1996,6 +2044,8 @@ void Game::processArmyMovement(int countryId) {
             if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
                 m_pixelCountryArray[idx] = newOwner;
         }
+        // Rendering-only bookkeeping — see processArmyMovement's copy.
+        if (m_aiTraining) return;
         if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
             newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
             auto& oldPx = m_countryPixels[oldOwner];
@@ -2484,8 +2534,11 @@ void Game::processDiplomaticRequests() {
                 int aiTgtCid = cidForIso(da.targetIso);
                 if (aiTgtCid >= 0 && aiTgtCid != m_playerCountryId &&
                     !m_ai->decideDiplomacy(aiTgtCid, da.action, da.sourceIso)) {
-                    printf("[DIPLO] %s rejected %s from %s\n", da.targetIso.c_str(),
-                           da.action.c_str(), da.sourceIso.c_str());
+                    // Remember the refusal so the proposer backs off properly.
+                    m_ai->noteDiploRejected(cidForIso(da.sourceIso), aiTgtCid);
+                    if (m_config.aiDebug)
+                        printf("[DIPLO] %s rejected %s from %s\n", da.targetIso.c_str(),
+                               da.action.c_str(), da.sourceIso.c_str());
                     if (!playerIso.empty() && da.sourceIso == playerIso)
                         addNotification(da.targetIso + " rejected your request", ORANGE, 6.0f);
                     m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
@@ -2600,7 +2653,12 @@ void Game::processDiplomaticRequests() {
                     // AI rejects — refund offered money + notify player
                     if (tit != m_pendingCeasefireTerms.end()) {
                         int refund = tit->second.ourMoney;
-                        if (refund > 0) {
+                        // Only the player pre-pays at proposal time (hence the
+                        // alreadyDeducted flag passed to applyCeasefireTerms).
+                        // An AI sender is charged on acceptance instead, so
+                        // refunding one here would mint treasury from nothing
+                        // on every rejected offer.
+                        if (refund > 0 && da.sourceIso == playerIso) {
                             int srcCid = -1;
                             for (auto& [cid, c] : m_countries.getAll())
                                 if (c.isoA3 == da.sourceIso) { srcCid = cid; break; }
@@ -2625,7 +2683,8 @@ void Game::processDiplomaticRequests() {
                 auto tit2 = m_pendingCeasefireTerms.find(key2);
                 if (tit2 != m_pendingCeasefireTerms.end()) {
                     int refund = tit2->second.ourMoney;
-                    if (refund > 0) {
+                    // Player-only, for the same reason as the rejection path.
+                    if (refund > 0 && da.sourceIso == playerIso) {
                         int srcCid = -1;
                         for (auto& [cid, c] : m_countries.getAll())
                             if (c.isoA3 == da.sourceIso) { srcCid = cid; break; }
@@ -2652,7 +2711,8 @@ void Game::processDiplomaticRequests() {
                 // the helper so every declaration behaves identically.
                 declareWar(da.sourceIso, da.targetIso, true);
             }
-            printf("[DIPLO] %s → %s: %s applied\n", da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
+            if (m_config.aiDebug)
+                printf("[DIPLO] %s → %s: %s applied\n", da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
             m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
         } else ++i;
     }
@@ -2691,20 +2751,35 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         // Update per-pixel country array + move countryPixels
         auto ppIt = m_provincePixels.find(pid);
         if (ppIt != m_provincePixels.end()) {
-            for (int idx : ppIt->second) {
+            const auto& px = ppIt->second;
+            for (int idx : px)
                 if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
                     m_pixelCountryArray[idx] = toCid;
-                // Remove from old owner
-                if (fromCid >= 0 && fromCid < (int)m_countryPixels.size()) {
-                    auto& fp = m_countryPixels[fromCid];
-                    fp.erase(std::remove(fp.begin(), fp.end(), idx), fp.end());
-                }
-                // Add to new owner
-                if (toCid >= 0 && toCid < (int)m_countryPixels.size())
-                    m_countryPixels[toCid].push_back(idx);
+            // One pass over the old owner's pixel list, not a full scan of it
+            // per transferred pixel. The original nested erase was O(province
+            // pixels x country pixels) — invisible while this was dead code
+            // (the AI never sent terms, so nothing was ever ceded), but a
+            // 10-20x per-turn slowdown the moment ceasefires actually moved
+            // territory. Same shape as transferCountryPixels in
+            // processShipDisembarks, which already did it this way.
+            if (!m_aiTraining &&   // rendering-only, see processArmyMovement
+                fromCid >= 0 && fromCid < (int)m_countryPixels.size() &&
+                toCid >= 0 && toCid < (int)m_countryPixels.size()) {
+                std::unordered_set<int> pxSet(px.begin(), px.end());
+                auto& fp = m_countryPixels[fromCid];
+                std::vector<int> moved;
+                moved.reserve(px.size());
+                auto newEnd = std::remove_if(fp.begin(), fp.end(), [&](int idx) {
+                    if (pxSet.count(idx)) { moved.push_back(idx); return true; }
+                    return false;
+                });
+                fp.erase(newEnd, fp.end());
+                auto& tp = m_countryPixels[toCid];
+                tp.insert(tp.end(), moved.begin(), moved.end());
             }
         }
-        printf("[CEASEFIRE] province %d: %s -> %s\n", pid, sourceIso.c_str(), targetIso.c_str());
+        if (m_config.aiDebug)
+            printf("[CEASEFIRE] province %d: %s -> %s\n", pid, sourceIso.c_str(), targetIso.c_str());
     };
     // Sender cedes ourProvs to recipient
     for (int pid : terms.ourProvs) {
@@ -2767,8 +2842,15 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         m_lastClaimsCountryId = m_playerCountryId;
         generateClaimsTexture();
     }
-    // Re-render the political map texture so new borders show immediately
-    generatePoliticalTexture();
+    // Re-render the political map texture so new borders show immediately.
+    // Skipped during self-play: this rebuilds the whole 8192x4096 political
+    // buffer and re-uploads it to the GPU, and it runs once per ceasefire that
+    // moves territory. Profiling a training run put it at 79% of total runtime
+    // once the AI actually started ceding provinces. processTurn already does
+    // exactly one regeneration per turn, on the same !m_aiTraining condition,
+    // and it runs after processDiplomaticRequests — so interactive play still
+    // sees the new borders on the same turn.
+    if (!m_aiTraining) generatePoliticalTexture();
 }
 
 // === processUpgrades ===

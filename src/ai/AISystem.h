@@ -73,8 +73,15 @@ public:
     void endTurn();
     // Incoming diplomacy aimed at an AI country: accept or reject.
     bool decideDiplomacy(int targetCid, const std::string& action, const std::string& sourceIso);
+    // "They said no" — back the pair off hard rather than re-asking as soon as
+    // the ordinary cooldown lapses.
+    void noteDiploRejected(int sourceCid, int targetCid);
 
     void saveModel();
+    // Observation mode: load the model and act on it, but never write it back.
+    // Lets a normal game run alongside a training session without the two
+    // processes fighting over data/ai/model.bin.
+    static bool s_readOnlyModel;
     // Reward-scale calibration from a replayed save's turn history: seeds the
     // running reward statistics so advantages are sensibly scaled from turn
     // one instead of after dozens of live turns. (Actions are not recorded in
@@ -97,6 +104,12 @@ public:
     struct TrainStats {
         long long warsDeclared = 0, ceasefiresOffered = 0,
                   pactsProposed = 0, researchCompleted = 0;
+        // Amphibious pipeline. Troops embarked but never landed means the fleet
+        // is stuck at sea — the failure mode that leaves island maps frozen.
+        // landings counts assaults on hostile shores only; unloadsHome counts
+        // cargo brought back to our own ports. Conflating them would flatter the
+        // invasion rate with what are really aborted crossings.
+        long long embarks = 0, landings = 0, unloadsHome = 0;
     };
     const TrainStats& trainStats() const { return m_trainStats; }
     // Mean raw reward per module per turn, last ~600 turns
@@ -131,6 +144,10 @@ private:
         // friendly/at-war). War is otherwise only declarable across a land
         // frontier, which left water-separated foes permanently un-attackable.
         int navalTargets = 0;
+        // Coastal countries we are ALREADY at war with and could land on. Kept
+        // apart from navalTargets (which counts only not-yet-engaged foes)
+        // because embarking is only worth doing when one of the two is nonzero.
+        int navalWarTargets = 0;
         struct Frontier { int pid; int enemyCid; };
         std::vector<Frontier> frontiers;
     };
@@ -173,16 +190,30 @@ private:
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     std::unordered_map<int, int> m_lastResearchCount;  // for the completions counter
-    // Outgoing-overture cooldown per (source, target) pair: without it a
-    // country re-proposes/re-offers every turn — and when the target is the
-    // player, every single one is a popup.
+    // Overture cooldown, keyed on the UNORDERED pair. An ordered key let A and
+    // B alternate proposals to each other every single turn, so the pair never
+    // actually cooled down.
     std::unordered_map<long long, int> m_diploCooldownUntil;
+    // Per-country budget. The pair cooldown alone still let a country with a
+    // dozen neighbours fire one overture every turn for a dozen turns straight
+    // — that, not the per-pair rate, is what flooded the log.
+    std::unordered_map<int, int> m_diploNextTurn;
+    static long long diploKey(int a, int b) {
+        int lo = a < b ? a : b, hi = a < b ? b : a;
+        return ((long long)lo << 24) | (long long)hi;
+    }
+    bool diploBudgetReady(int cid) const {
+        auto it = m_diploNextTurn.find(cid);
+        return it == m_diploNextTurn.end() || m_turn >= it->second;
+    }
     bool diploReady(int sourceCid, int targetCid) const {
-        auto it = m_diploCooldownUntil.find(((long long)sourceCid << 24) | targetCid);
+        if (!diploBudgetReady(sourceCid)) return false;
+        auto it = m_diploCooldownUntil.find(diploKey(sourceCid, targetCid));
         return it == m_diploCooldownUntil.end() || m_turn >= it->second;
     }
     void diploCoolDown(int sourceCid, int targetCid) {
-        m_diploCooldownUntil[((long long)sourceCid << 24) | targetCid] = m_turn + 8;
+        m_diploCooldownUntil[diploKey(sourceCid, targetCid)] = m_turn + 25;
+        m_diploNextTurn[sourceCid] = m_turn + 5;
     }
     long long m_worldArmy = 0;
     size_t m_worldPixels = 0;

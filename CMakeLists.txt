@@ -108,6 +108,17 @@ if(APPLE)
     # IOKit for the power assertion that keeps the Mac awake during headless
     # AI training (see Game_AITrain.cpp); CoreFoundation for CFStringRef.
     target_link_libraries(OpenDoctrines "-framework IOKit" "-framework CoreFoundation")
+    # Accelerate provides a vectorised BLAS. NeuralNet::forward uses it for the
+    # per-layer matrix-vector product, which profiled as the single largest
+    # remaining cost in self-play. Optional and macOS-only: every other platform
+    # (and the Emscripten build) compiles the portable scalar loop instead, so
+    # this is purely an opt-in speedup, never a build requirement.
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(OpenDoctrines "-framework Accelerate")
+        # ACCELERATE_NEW_LAPACK selects the modern (non-deprecated) CBLAS headers.
+        target_compile_definitions(OpenDoctrines PRIVATE
+                                   OD_USE_ACCELERATE=1 ACCELERATE_NEW_LAPACK=1)
+    endif()
 endif()
 
 # --- Map generator target ---

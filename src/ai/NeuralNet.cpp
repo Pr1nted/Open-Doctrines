@@ -4,6 +4,13 @@
 #include <cstdio>
 #include <cstring>
 
+// Optional vectorised BLAS for the forward pass. Enabled by CMake on macOS
+// only (OD_USE_ACCELERATE); everywhere else the portable scalar loop below is
+// compiled instead, so the build has no hard dependency on any BLAS.
+#ifdef OD_USE_ACCELERATE
+#include <Accelerate/Accelerate.h>
+#endif
+
 NeuralNet::NeuralNet(const std::vector<int>& layerSizes, uint32_t seed) {
     m_sizes = layerSizes;
     if (m_sizes.size() < 2) return;
@@ -43,12 +50,26 @@ const std::vector<float>& NeuralNet::forward(const std::vector<float>& in) {
         const std::vector<float>& x = m_acts[l];
         std::vector<float>& y = m_acts[l + 1];
         bool hidden = (l + 1 < m_layers.size());
+#ifdef OD_USE_ACCELERATE
+        // y = W*x + b. W is (out x in) row-major, so this is a plain sgemv with
+        // the bias preloaded into y and beta = 1. Mathematically identical to
+        // the scalar loop below; BLAS may sum the dot products in a different
+        // order, so results can differ in the last bit or two of float
+        // precision — harmless for the policy, but it does mean a run is not
+        // bit-reproducible across the two code paths.
+        std::copy(L.b.begin(), L.b.end(), y.begin());
+        cblas_sgemv(CblasRowMajor, CblasNoTrans, L.out, L.in,
+                    1.0f, L.w.data(), L.in, x.data(), 1, 1.0f, y.data(), 1);
+        if (hidden)
+            for (int o = 0; o < L.out; ++o) y[o] = std::tanh(y[o]);
+#else
         for (int o = 0; o < L.out; ++o) {
             const float* wr = &L.w[(size_t)o * L.in];
             float s = L.b[o];
             for (int i = 0; i < L.in; ++i) s += wr[i] * x[i];
             y[o] = hidden ? std::tanh(s) : s; // hidden: tanh, output: linear
         }
+#endif
     }
     return m_acts.back();
 }
@@ -251,11 +272,19 @@ bool NeuralNet::deserialize(const uint8_t* data, size_t size) {
 bool NeuralNet::save(const std::string& path) const {
     std::vector<uint8_t> buf;
     serialize(buf);
-    FILE* f = fopen(path.c_str(), "wb");
+    // Write to a temporary beside the target, then rename into place. rename()
+    // is atomic, so a reader always sees either the whole previous model or the
+    // whole new one. Writing in place left an 11MB window on every save during
+    // which the file was truncated or half-written: quitting, crashing, or
+    // starting a second instance in that window destroyed the model. With tens
+    // of millions of updates invested in it, that is not an acceptable risk.
+    std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) return false;
     size_t w = fwrite(buf.data(), 1, buf.size(), f);
-    fclose(f);
-    return w == buf.size();
+    if (fclose(f) != 0 || w != buf.size()) { std::remove(tmp.c_str()); return false; }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) { std::remove(tmp.c_str()); return false; }
+    return true;
 }
 
 bool NeuralNet::load(const std::string& path) {

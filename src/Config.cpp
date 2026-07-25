@@ -60,7 +60,7 @@ bool Config::load(const std::string& path) {
     if (aiDifficulty < 0) aiDifficulty = 0;
     if (aiDifficulty > 3) aiDifficulty = 3;
     aiDebug = findBool(json, "aiDebug", false);
-    aiLearning = findBool(json, "aiLearning", true);
+    aiLearning = findBool(json, "aiLearning", false);
     accentColor = findInt(json, "accentColor", 0xFFD700);
 
     // Load keybinds

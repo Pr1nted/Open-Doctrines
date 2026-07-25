@@ -179,6 +179,11 @@ private:
     std::string m_warningMsg;
     float m_warningTimer = 0;
     std::string m_mapName = "New Map";
+    // Headless self-play export: generate terrain at a coarser scale. Training
+    // maps are throwaway geography the model sees once, so province-outline
+    // fidelity matters far less than how many maps per hour it can chew
+    // through. Never set for the interactive editor.
+    bool m_fastGen = false;
     bool m_dirty = false;
 
     int m_screenW = 1600, m_screenH = 900;

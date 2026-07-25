@@ -348,8 +348,11 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             EndDrawing();
 
             if ((t + 1) % 100 == 0) {
-                printf("[TRAIN] map %d turn %d/%d (%.2f s/turn, %d alive)\n",
-                       m + 1, t + 1, turnsPerMap, mapSecs / (t + 1), alive);
+                const auto& ts2 = m_ai ? m_ai->trainStats() : AISystem::TrainStats{};
+                printf("[TRAIN] map %d turn %d/%d (%.4f s/turn, %d alive) "
+                       "embarks=%lld landings=%lld home=%lld\n",
+                       m + 1, t + 1, turnsPerMap, mapSecs / (t + 1), alive,
+                       ts2.embarks, ts2.landings, ts2.unloadsHome);
             }
         }
         m_aiTraining = false;

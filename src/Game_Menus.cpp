@@ -1423,7 +1423,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 5)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 4) || (m_settingsTab == 5 && i < 1)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -1583,7 +1583,7 @@ void Game::updateSettingsFromMenu() {
             else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
             else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
             else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
-            else if (m_settingsTab == 4 && m_settingsIndex == 4) { m_config.aiLearning = true; }
+            else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
             m_config.save(m_configPath);
         } else if (hovered >= 0) {

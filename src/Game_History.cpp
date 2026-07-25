@@ -184,6 +184,29 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
                      (uint8_t)(200 * (1 - v) + 30 * v), 255};
     };
 
+    // Country borders. The live map derives its outlines from the province
+    // image at source resolution (MapRenderer::computeBorderTexture), but this
+    // frame point-samples that image at mapW/outW — roughly 6:1 for a 960px
+    // GIF — so a source-resolution border mask would lose ~5 of every 6 of its
+    // pixels. Detect the edge at OUTPUT resolution instead: compare each
+    // pixel's owner against its right and below neighbours.
+    //
+    // Only country edges, not province ones: at 480x240 a province is about
+    // five pixels across, so outlining provinces would darken most of the land
+    // into mush. Ownership is taken from whichever snapshot the frame is
+    // weighted toward, so borders flip at the midpoint of a transition rather
+    // than smearing.
+    const std::unordered_map<int, int>& ownerNow = (t < 0.5f) ? a.owner : b.owner;
+    auto ownerAtOut = [&](int ox, int oy) -> int {
+        if (ox >= outW) ox = outW - 1;
+        if (oy >= outH) oy = outH - 1;
+        int px = (int)((int64_t)ox * mapW / outW);
+        int py = (int)((int64_t)oy * mapH / outH);
+        const Color& c = src[(size_t)py * mapW + px];
+        auto it = ownerNow.find(Province::colorToId(c.r, c.g, c.b));
+        return (it == ownerNow.end()) ? 0 : it->second;
+    };
+
     for (int y = 0; y < outH; ++y) {
         int sy = (int)((int64_t)y * mapH / outH);
         for (int x = 0; x < outW; ++x) {
@@ -210,6 +233,18 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
             rgba[o + 1] = (uint8_t)(ca.g + (cb.g - ca.g) * t);
             rgba[o + 2] = (uint8_t)(ca.b + (cb.b - ca.b) * t);
             rgba[o + 3] = 255;
+
+            // Draw the edge on the owned side only, so coastlines and country
+            // borders both come out as a single clean line rather than a
+            // double-width one straddling the boundary.
+            auto oit = ownerNow.find(pid);
+            int ownHere = (oit == ownerNow.end()) ? 0 : oit->second;
+            if (ownHere != 0 &&
+                (ownerAtOut(x + 1, y) != ownHere || ownerAtOut(x, y + 1) != ownHere)) {
+                rgba[o + 0] = (uint8_t)(rgba[o + 0] * 0.45f);
+                rgba[o + 1] = (uint8_t)(rgba[o + 1] * 0.45f);
+                rgba[o + 2] = (uint8_t)(rgba[o + 2] * 0.45f);
+            }
         }
     }
 
@@ -368,14 +403,41 @@ bool Game::revertToTurn(int turn) {
         return false;
     }
 
-    // Opened from the browser (no game running): do a normal full load of the
-    // save first, so all the systems are initialised, then rewind onto it.
+    // Opened from the browser (no game running): the save has to be loaded
+    // before anything can be rewound onto it. startLoadedGame() is ASYNCHRONOUS
+    // — it tears the current world down (deleting the renderer) and then runs
+    // one load phase per frame — so rewinding inline here walked all over a
+    // world that no longer existed, and generatePoliticalTexture() dereferenced
+    // the freed renderer. Hand the rewind to the loader instead; it runs it on
+    // its final step, once everything has been rebuilt.
     if (!m_historyFromGame) {
         std::string fname = savePath;
         auto slash = fname.find_last_of('/');
         if (slash != std::string::npos) fname = fname.substr(slash + 1);
-        startLoadedGame(fname);          // full load to the latest turn
-        m_currentScreen = SCREEN_PLAYING;
+        m_inHistory = false;
+        startLoadedGame(fname);          // leaves m_currentScreen = SCREEN_LOADING
+        // Armed after the load starts: showLoadingScreen() clears any stale request.
+        m_pendingRevertSave = savePath;
+        m_pendingRevertTurn = turn;
+        m_historyStatus = "Loading save to revert to turn " + std::to_string(turn);
+        return true;
+    }
+
+    return applyTurnRewind(savePath, turn);
+}
+
+bool Game::applyTurnRewind(const std::string& savePath, int turn) {
+    // Everything below repaints the map, so a world without a renderer is not
+    // something we can rewind onto.
+    if (!m_renderer || !m_provinces.getImage().data) {
+        m_historyStatus = "No world loaded to revert";
+        return false;
+    }
+    std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" +
+        std::string(5 - std::to_string(turn).size(), '0') + std::to_string(turn) + ".json");
+    if (stateJson.empty()) {
+        m_historyStatus = "Turn " + std::to_string(turn) + " has no snapshot (older save)";
+        return false;
     }
 
     std::vector<TurnSnapshot> snaps;
@@ -403,10 +465,12 @@ bool Game::revertToTurn(int turn) {
     m_turnNumber = turn;
 
     buildPopulationLookups();
-    generatePoliticalTexture();
-    reloadBorders();
+    reloadBorders();   // regenerates the political texture too
 
     m_currentSavePath = savePath;
+    m_inHistory = false;
+    // A save with no player country still needs the selection screen first.
+    if (m_playerCountryId > 0) m_currentScreen = SCREEN_PLAYING;
     m_historyStatus = "Reverted to turn " + std::to_string(turn);
     std::cout << "  " << m_historyStatus << std::endl;
     return true;
@@ -659,9 +723,11 @@ void Game::drawHistoryScreen() {
             m_historyConfirmRevert = true;
         } else {
             int t = revertTurn;
-            m_inHistory = false;
             m_paused = false;
-            if (revertToTurn(t)) m_currentScreen = SCREEN_PLAYING;
+            // revertToTurn() owns the screen transition: a revert that needs the
+            // save loaded first has to stay on SCREEN_LOADING until the async
+            // load finishes, so forcing SCREEN_PLAYING here would strand it.
+            revertToTurn(t);
         }
     }
     py += 42;
