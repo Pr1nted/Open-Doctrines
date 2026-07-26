@@ -24,12 +24,10 @@ your module.
 
 Working: **Core, GameState.Read, UI, Assets, GameProcess, GameState.Write, Neural, Map, Diplomacy, Storage, WasiStub**.
 
-Not implemented yet: . A mod requesting one of these is
-**refused at load** with a diagnostic naming the import — deliberately, because
-running you without a capability you believe you hold would be worse.
+Every capability module is implemented. A mod can read the world, change it,
+draw panels, run code on turn boundaries, read the map, read and propose
+diplomacy, observe the AI, and persist its own state.
 
-So today a mod can read the world, draw a panel, run code on turn boundaries and
-read its own bundled assets. It **cannot change game state**.
 
 ## Two rules that catch everyone
 
