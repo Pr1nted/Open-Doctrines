@@ -1,0 +1,7 @@
+# Generated on every build; never edit by hand.
+#
+# frozen_stdlib.h is ~50 MB of hex: the whole CPython standard library as
+# marshalled code objects. It is derived entirely from python312.zip in the
+# toolchain, so it is regenerated rather than committed.
+/examples/*/frozen_stdlib.h
+/examples/*/script.h

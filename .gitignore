@@ -26,3 +26,23 @@ AGENTS.md
 data/projects/
 # Exported playthrough timelapses
 data/timelapses/
+
+# Gearbox mod system: built artifacts and installed mods
+build-web/
+data/mods/*.odmod
+data/mods.json
+sdk/**/mod.wasm
+sdk/**/*.odmod
+sdk/**/node_modules/
+sdk/**/package-lock.json
+
+# SDK toolchains installed by tools/sdk_toolchains.sh
+.toolchains/
+
+# Second build tree, used to test the classic-interpreter build
+# (-DOD_MODS_FAST_INTERP=OFF) that the Python SDK requires.
+build-classic/
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc

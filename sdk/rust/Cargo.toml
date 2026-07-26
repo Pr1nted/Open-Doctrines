@@ -1,0 +1,46 @@
+# The `gearbox` binding crate, and the workspace that holds it plus the example.
+#
+# The library is an rlib on purpose: an rlib exports nothing to WASM, which is
+# correct, because a library has no `mod_load` to export. The cdylib lives in
+# examples/hello_panel/Cargo.toml, which is the thing that actually becomes
+# mod.wasm. Only the final artifact may be a cdylib; if you make this one too,
+# cargo builds a second, empty .wasm every time and nothing links.
+
+[workspace]
+members = ["examples/hello_panel"]
+resolver = "2"
+
+[package]
+name = "gearbox"
+version = "1.0.0"
+edition = "2021"
+description = "Rust binding for the OpenDoctrines Gearbox mod ABI (Gearbox v1.0)."
+publish = false
+# `examples/` is a magic directory to cargo: it scans it for build targets. Our
+# example is a workspace member with its own manifest, not a cargo example
+# target, so turn the scan off rather than rely on it finding nothing.
+autoexamples = false
+autobenches = false
+autotests = false
+
+[lib]
+crate-type = ["rlib"]
+
+# Profiles only take effect from the workspace root, so these apply to the
+# example too — which is where they matter, since the example is the artifact
+# that ships.
+[profile.release]
+opt-level = "z"     # size, not speed: a mod is I/O-bound on host calls, and the
+                    # thing you are charged for is fuel per instruction, which
+                    # "z" also reduces. Try "s" if a hot loop regresses.
+lto = true          # cross-crate inlining; this is what lets the thin wrappers
+                    # in this crate compile down to the bare import call.
+codegen-units = 1   # one unit, so LTO can actually see everything.
+panic = "abort"     # wasm32-unknown-unknown already defaults to abort, but
+                    # saying so keeps unwinding tables out if that ever changes.
+strip = true        # drop symbol names; the host does not read them and they
+                    # are a third of the file.
+overflow-checks = false
+
+[profile.dev]
+panic = "abort"

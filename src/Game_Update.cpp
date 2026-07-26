@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "GameInternals.h"
+#include "mods/ModManager.h"
 #include "Keybinds.h"
 #include "renderer/FlagRenderer.h"
 #include "raymath.h"
@@ -1486,7 +1487,15 @@ void Game::update(float dt) {
             } else if (strcmp(s.label, "AI Debug") == 0) {
                 m_config.aiDebug = !m_config.aiDebug;
             } else if (strcmp(s.label, "AI Learning") == 0) {
-                m_config.aiLearning = !m_config.aiLearning;
+                // Mirrors the main-menu copy in Game_Menus.cpp; see the note
+                // there. The two settings implementations are separate.
+                if (!m_config.aiLearning && ModManager::get().anyEnabled()) {
+                    addNotification("Disable all mods first - training with mods "
+                                    "loaded corrupts the model",
+                                    Color{230, 160, 140, 255}, 6.0f);
+                } else {
+                    m_config.aiLearning = !m_config.aiLearning;
+                }
             } else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
             } else if (strcmp(s.label, "Accent Color") == 0) {

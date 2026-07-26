@@ -1,5 +1,14 @@
+// See the note below on why these are STATIC.
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
+// STATIC keeps both stb implementations private to this file. raylib links its
+// own copies; on desktop the linker drops the duplicates out of a static
+// archive, but linking for web pulls in every object and they collide
+// (wasm-ld: duplicate symbol stbi_load). Going through raylib's copy instead is
+// not an option: the headless export path calls stbi_write_png_to_mem, which
+// the implementation keeps internal.
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
 #include "ProceduralGenerator.h"
 #include "ScriptEngine.h"
@@ -1714,7 +1723,7 @@ void MapEditor::initEmptyProvinceLayer() {
         if (pngData) {
             m_editProvinces.clear();
             m_editProvinces.loadFromMemory(pngData, pngLen, m_provinceJson);
-            STBI_FREE(pngData);
+            stbi_image_free(pngData);
         }
     }
 
@@ -2456,7 +2465,7 @@ void MapEditor::generateProvincesCountries() {
         if (pngData) {
             m_editProvinces.clear(); // drop provinces/image from a previous generation
             m_editProvinces.loadFromMemory(pngData, pngLen, m_provinceJson);
-            STBI_FREE(pngData);
+            stbi_image_free(pngData);
         }
 
         // ── Load countries (clear first — loadFromJson merges into existing) ──
@@ -2847,7 +2856,7 @@ std::string MapEditor::generateAndExportHeadless(const GeneratorParams& p, const
         if (pngData) {
             m_editProvinces.clear();
             m_editProvinces.loadFromMemory(pngData, pngLen, m_provinceJson);
-            STBI_FREE(pngData);
+            stbi_image_free(pngData);
         }
         m_editCountries.clear();
         m_editCountries.loadFromJson(m_countryJson);

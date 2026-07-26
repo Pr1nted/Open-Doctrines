@@ -3576,4 +3576,7 @@ void Game::drawInner() {
 
     // Draw ceasefire screen on top if active
     if (m_inCeasefireScreen) drawCeasefireScreen();
+
+    // Mod panels last, so a mod can never paint over a game dialog.
+    drawModPanels();
 }

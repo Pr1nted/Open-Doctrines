@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# gearbox — one command to build a mod and put it where the game will find it.
+#
+#   gearbox doctor              what toolchains do I have?
+#   gearbox new my-mod          scaffold a mod (add --lang to pick a language)
+#   gearbox build [dir]         compile + pack + verify
+#   gearbox install [dir]       copy the .odmod into the game's mods folder
+#   gearbox dev [dir]           build + install; the one to bind to a key
+#
+# The point of `dev` is that recompiling should not mean hunting for the mods
+# folder and copying files by hand. Edit, run `gearbox dev`, then hit
+# "Reload modloader" in the mod menu.
+#
+# Works on macOS, Linux, and Windows via Git Bash / WSL / MSYS2. A native
+# PowerShell version is in tools/gearbox.ps1.
+set -u
+
+here="$(cd "$(dirname "$0")" && pwd)"
+root="$(dirname "$here")"
+TC="$root/.toolchains"
+
+# Where the game looks for mods. Override with GEARBOX_MODS_DIR if your install
+# lives somewhere else -- the mod menu's title bar shows the path it scanned.
+default_mods_dir() {
+    if [ -n "${GEARBOX_MODS_DIR:-}" ]; then echo "$GEARBOX_MODS_DIR"; return; fi
+    echo "$root/data/mods"
+}
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# A clang that can target wasm32. Apple's cannot; Emscripten's and upstream
+# LLVM's can.
+find_wasm_clang() {
+    local pp="${1:-clang}"
+    for c in "${CC:-}" "$(command -v $pp || true)" \
+             /opt/homebrew/Cellar/emscripten/*/libexec/llvm/bin/$pp \
+             /usr/local/Cellar/emscripten/*/libexec/llvm/bin/$pp \
+             /opt/homebrew/opt/llvm/bin/$pp /usr/lib/llvm-*/bin/$pp; do
+        [ -n "$c" ] && [ -x "$c" ] || continue
+        if "$c" --print-targets 2>/dev/null | grep -qi wasm32; then echo "$c"; return 0; fi
+    done
+    return 1
+}
+
+detect_lang() {
+    local d="$1"
+    [ -f "$d/Cargo.toml" ]            && { echo rust;  return; }
+    [ -f "$d/go.mod" ]                && { echo go;    return; }
+    [ -d "$d/assembly" ]              && { echo as;    return; }
+    ls "$d"/*.wat        >/dev/null 2>&1 && { echo wat;   return; }
+    ls "$d"/*.swift      >/dev/null 2>&1 && { echo swift; return; }
+    ls "$d"/*.zig        >/dev/null 2>&1 && { echo zig;   return; }
+    ls "$d"/*.cpp "$d"/*.cc >/dev/null 2>&1 && { echo cpp; return; }
+    ls "$d"/*.c          >/dev/null 2>&1 && { echo c;     return; }
+    echo unknown
+}
+
+# ---------------------------------------------------------------- doctor ----
+cmd_doctor() {
+    echo "Gearbox toolchain report"
+    echo
+    local cc; cc="$(find_wasm_clang clang || true)"
+    printf '  %-16s %s\n' "C"   "${cc:-MISSING (need a wasm32-capable clang)}"
+    local cxx; cxx="$(find_wasm_clang clang++ || true)"
+    printf '  %-16s %s\n' "C++" "${cxx:-MISSING}"
+    for t in "rust:$TC/cargo/bin/cargo:cargo" "zig:$TC/zig/zig:zig" \
+             "tinygo:$TC/tinygo/bin/tinygo:tinygo" "wat2wasm:$TC/wabt/bin/wat2wasm:wat2wasm"; do
+        local name="${t%%:*}" rest="${t#*:}" local_p="${rest%%:*}" global_p="${rest##*:}"
+        if [ -x "$local_p" ]; then printf '  %-16s %s\n' "$name" "$local_p"
+        elif have "$global_p"; then printf '  %-16s %s\n' "$name" "$(command -v $global_p)"
+        else printf '  %-16s %s\n' "$name" "MISSING"; fi
+    done
+    printf '  %-16s %s\n' "AssemblyScript" \
+        "$([ -d "$root/sdk/assemblyscript/node_modules" ] && echo installed || echo 'MISSING (needs npm)')"
+    printf '  %-16s %s\n' "Swift(wasm)" \
+        "$([ -x "$TC/swift-toolchain/usr/bin/swiftc" ] && echo "$TC/swift-toolchain" || echo MISSING)"
+    echo
+    echo "  mods folder     $(default_mods_dir)"
+    echo "  odmod-check     $([ -x "$root/build/odmod-check" ] && echo "$root/build/odmod-check" \
+        || echo 'not built (cmake --build build --target OdmodCheck)')"
+    echo
+    echo "Install the missing ones with:  tools/sdk_toolchains.sh install"
+}
+
+# ------------------------------------------------------------------- new ----
+cmd_new() {
+    local id="${1:-}"; shift || true
+    local lang=c
+    while [ $# -gt 0 ]; do
+        case "$1" in --lang) lang="$2"; shift 2 ;; --lang=*) lang="${1#*=}"; shift ;; *) shift ;; esac
+    done
+    [ -n "$id" ] || { echo "usage: gearbox new <name> [--lang c|cpp]"; exit 2; }
+    local d="$PWD/$id"
+    [ -e "$d" ] && { echo "$d already exists"; exit 1; }
+    mkdir -p "$d"
+
+    # A reverse-DNS id is required, and it is the one field that cannot be
+    # changed later without orphaning users' settings, so make it obvious.
+    cat > "$d/MANIFEST.json" <<JSON
+{
+  "schema": 1,
+  "id": "com.example.$id",
+  "name": "$id",
+  "version": "1.0.0",
+  "description": "A Gearbox mod.",
+  "authors": ["you"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI", "GameState.Read"],
+  "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
+}
+JSON
+
+    case "$lang" in
+      c|cpp)
+        local ext=c; [ "$lang" = cpp ] && ext=cpp
+        cp "$root/sdk/examples/hello-panel/mod.c" "$d/mod.$ext"
+        cp "$root/sdk/gearbox.h" "$d/gearbox.h"
+        ;;
+      *) echo "scaffolding for '$lang' is not written yet; copy sdk/$lang/ by hand"; ;;
+    esac
+
+    # Ship IDE project files so the folder opens as a working project rather
+    # than a bag of source. One script, invoked from a Build button.
+    if [ -d "$root/sdk/templates/ide" ]; then
+        cp -R "$root/sdk/templates/ide/.vscode" "$root/sdk/templates/ide/.run" "$d/" 2>/dev/null || true
+        # Point the tasks at this checkout so Build works with no further setup.
+        if [ -f "$d/.vscode/settings.json" ]; then
+            sed -i.bak "s|CHANGE_ME|$root|" "$d/.vscode/settings.json" && rm -f "$d/.vscode/settings.json.bak"
+        fi
+    fi
+
+    echo "created $d"
+    echo "  edit MANIFEST.json -- change \"id\" to your own reverse-DNS name"
+    echo "  then:  gearbox dev $id"
+}
+
+# ----------------------------------------------------------------- build ----
+cmd_build() {
+    local d="${1:-$PWD}"
+    d="$(cd "$d" && pwd)"
+    [ -f "$d/MANIFEST.json" ] || { echo "no MANIFEST.json in $d"; exit 1; }
+
+    local lang; lang="$(detect_lang "$d")"
+    echo "building $(basename "$d")  [$lang]"
+
+    case "$lang" in
+      c|cpp)
+        local tool inc
+        if [ "$lang" = cpp ]; then tool="$(find_wasm_clang clang++)" || { echo "no wasm32 clang++"; exit 1; }
+        else tool="$(find_wasm_clang clang)" || { echo "no wasm32 clang"; exit 1; }; fi
+        # Prefer a gearbox.h sitting next to the source, so a copied-out mod
+        # directory builds without the repo.
+        inc="$d"; [ -f "$d/gearbox.h" ] || inc="$root/sdk"
+        local extra=""; [ "$lang" = cpp ] && extra="-fno-exceptions -fno-rtti -std=c++17"
+        # shellcheck disable=SC2086
+        "$tool" --target=wasm32 -nostdlib -O2 -I "$inc" $extra \
+                -Wl,--no-entry -Wl,--allow-undefined \
+                -o "$d/mod.wasm" "$d"/*."$( [ "$lang" = cpp ] && echo cpp || echo c )" || exit 1
+        ;;
+      rust)  ( cd "$d" && "$TC/cargo/bin/cargo" build --release --target wasm32-unknown-unknown ) || exit 1
+             find "$d" -name "*.wasm" -path "*release*" -exec cp {} "$d/mod.wasm" \; ;;
+      zig)   ( cd "$d" && "$TC/zig/zig" build-exe -target wasm32-freestanding -fno-entry \
+                  -O ReleaseSmall --export=mod_load -femit-bin="$d/mod.wasm" ./*.zig ) || exit 1 ;;
+      go)    ( cd "$d" && "$TC/tinygo/bin/tinygo" build -target=wasm-unknown -no-debug -o "$d/mod.wasm" . ) || exit 1 ;;
+      as)    ( cd "$d" && ./node_modules/.bin/asc assembly/index.ts --config asconfig.json --target release ) || exit 1 ;;
+      wat)   local w="$TC/wabt/bin/wat2wasm"; have wat2wasm && w=wat2wasm
+             "$w" "$d"/*.wat -o "$d/mod.wasm" || exit 1 ;;
+      *) echo "cannot tell what language this is. Expected mod.c, mod.cpp, Cargo.toml, go.mod, *.zig, *.wat or assembly/"; exit 1 ;;
+    esac
+
+    [ -f "$d/mod.wasm" ] || { echo "build produced no mod.wasm"; exit 1; }
+
+    # Catch a stray import here, where the message can be useful, rather than at
+    # load time where it looks like the game's fault.
+    python3 "$root/tools/wasm_imports.py" "$d/mod.wasm" >/dev/null || {
+        echo; echo "This module imports something outside the Gearbox ABI and will be refused."
+        python3 "$root/tools/wasm_imports.py" "$d/mod.wasm" | sed 's/^/  /'
+        exit 1; }
+
+    "$root/tools/pack_odmod.sh" "$d" "$d/$(basename "$d").odmod" || exit 1
+    [ -x "$root/build/odmod-check" ] && "$root/build/odmod-check" "$d/$(basename "$d").odmod" \
+        >/dev/null 2>&1 && echo "  odmod-check: OK"
+    return 0
+}
+
+# --------------------------------------------------------------- install ----
+cmd_install() {
+    local d="${1:-$PWD}"; d="$(cd "$d" && pwd)"
+    local out; out="$(default_mods_dir)"
+    local f="$d/$(basename "$d").odmod"
+    [ -f "$f" ] || { echo "no .odmod in $d -- run 'gearbox build' first"; exit 1; }
+    mkdir -p "$out"
+    cp "$f" "$out/" || exit 1
+    echo "installed $(basename "$f") -> $out"
+    echo "In the game: Mod Menu -> Reload modloader (mods never load without that)"
+}
+
+case "${1:-}" in
+    doctor)  shift; cmd_doctor "$@" ;;
+    new)     shift; cmd_new "$@" ;;
+    build)   shift; cmd_build "$@" ;;
+    install) shift; cmd_install "$@" ;;
+    dev)     shift; cmd_build "${1:-$PWD}" && cmd_install "${1:-$PWD}" ;;
+    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

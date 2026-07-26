@@ -1,0 +1,105 @@
+OpenDoctrines Non-Commercial License
+Version 1.0
+
+Copyright (c) OpenDoctrines. All rights reserved.
+
+"the Licensor" means the copyright holder named above.
+"the Software" means OpenDoctrines, including its source code, assets,
+documentation, and the Gearbox SDK, as distributed under this license.
+"Content" means mods, maps, saves, scripts, images, videos, and any other
+material you create that is designed to be used with the Software or that
+depicts the Software.
+"Commercial Use" means any use that is primarily intended for or directed
+toward commercial advantage or monetary compensation.
+
+
+1. GRANT
+
+Subject to the terms below, the Licensor grants you a worldwide,
+royalty-free, non-exclusive license to:
+
+  (a) use and run the Software for any purpose that is not Commercial Use;
+  (b) study and modify the Software;
+  (c) create, use and distribute Content for the Software; and
+  (d) distribute the Software and your modifications of it, provided that
+      every copy you distribute includes this license unchanged and retains
+      the copyright notice above.
+
+
+2. NON-COMMERCIAL RESTRICTION
+
+Commercial Use of the Software is prohibited.
+
+The Licensor reserves the exclusive right to make Commercial Use of the
+Software. No other person or entity may do so without the Licensor's prior
+written permission.
+
+For the avoidance of doubt, the following are NOT Commercial Use, and are
+permitted:
+
+  (a) creating and distributing Content free of charge;
+  (b) accepting donations, tips, subscriptions or advertising revenue for
+      video, streaming or written coverage of the Software or of Content,
+      including monetised videos and streams;
+  (c) use by an individual for personal, educational, academic or research
+      purposes; and
+  (d) use by a non-profit organisation for non-commercial purposes.
+
+The following ARE Commercial Use, and are prohibited without permission:
+
+  (a) selling the Software, or charging any fee for access to it;
+  (b) selling Content, or charging any fee for access to Content, where the
+      Content cannot be used without the Software;
+  (c) bundling the Software with any product or service that is sold; and
+  (d) incorporating the Software, or any part of it, into a product or
+      service that is offered commercially.
+
+
+3. CONTENT YOU CREATE
+
+You own the Content you create. This license does not claim any ownership of
+it, and clause 2 does not restrict your Content except where that Content
+includes part of the Software itself.
+
+
+4. FUTURE VERSIONS OF THIS LICENSE
+
+The Licensor may release future versions of the Software under different
+terms, including terms that are more or less permissive than these.
+
+A version of the Software that you received under this license remains
+licensed to you under this license, permanently. A later change of license
+does not apply retroactively to a version you already have, and does not
+revoke the rights this license gave you in that version.
+
+
+5. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+
+6. NO LIABILITY
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The Software runs community-created Content in a sandbox, but no sandbox is
+perfect. The Licensor is not liable for Content created by others, nor for any
+consequence of running it.
+
+
+7. TERMINATION
+
+If you breach this license, the rights it grants you end automatically. They
+are reinstated if you cure the breach within 30 days of becoming aware of it.
+
+
+8. THIRD-PARTY COMPONENTS
+
+The Software includes third-party components under their own licenses. Those
+licenses govern those components, and nothing here overrides them. See
+data/licenses/ for the full texts.

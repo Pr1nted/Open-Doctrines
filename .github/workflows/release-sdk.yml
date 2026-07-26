@@ -1,0 +1,111 @@
+# Gearbox SDK release. Triggered by the tag tools/release.py pushes
+# (gearbox-v1.1).
+#
+# GitHub only. The SDK is not an itch.io artifact -- players download the game
+# there, modders get the SDK from releases, and conflating the two would mean a
+# modder has to find the SDK inside a game download.
+#
+# There is no confirmation gate here, unlike the game. The SDK's correctness is
+# decided by the test suite: every language builds its example and every example
+# must render byte-identical output. That is a stronger check than a human
+# clicking around, and it is fully automated, so a gate would only add delay.
+
+name: Release SDK
+
+on:
+  push:
+    tags: ["gearbox-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test every SDK
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: latest }
+
+      - name: Install SDK toolchains
+        run: tools/sdk_toolchains.sh install
+
+      # Every SDK's example is rebuilt from source here rather than trusting the
+      # .odmod files in the tree, so a binding that stopped compiling cannot
+      # ship behind a stale artifact.
+      - name: Build every SDK example
+        run: |
+          eval "$(tools/sdk_toolchains.sh env)"
+          set -e
+          for b in sdk/examples/hello-panel sdk/cpp sdk/rust \
+                   sdk/zig/examples/hello-panel sdk/go/examples/hello-panel \
+                   sdk/assemblyscript sdk/lua/examples/hello-panel \
+                   sdk/js/examples/hello-panel sdk/js/examples/hello-panel-ts \
+                   sdk/java/examples/hello-panel \
+                   sdk/java/examples/hello-panel-kotlin; do
+            echo "--- $b"
+            "./$b/build.sh"
+          done
+
+      # The real gate: the generated bindings must match abi.json, and every
+      # language must render identical output.
+      - name: Run the full suite
+        run: |
+          eval "$(tools/sdk_toolchains.sh env)"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          tests/run_all.sh
+
+      - name: Assemble the SDK archive
+        run: |
+          VER="${GITHUB_REF_NAME#gearbox-v}"
+          OUT="gearbox-sdk-$VER"
+          mkdir -p "dist/$OUT"
+          # Sources, generated bindings and the ABI reference. Built .odmod and
+          # .wasm files are deliberately left out: a modder builds their own,
+          # and shipping ours would just go stale.
+          cp -r sdk "dist/$OUT/sdk"
+          find "dist/$OUT/sdk" \( -name '*.odmod' -o -name 'mod.wasm' \
+               -o -name 'node_modules' -o -name 'target' -o -name '.lua-src' \
+               -o -name '.quickjs-src' \) -exec rm -rf {} + 2>/dev/null || true
+          mkdir -p "dist/$OUT/docs"
+          cp docs/gearbox-*.md docs/modding.md "dist/$OUT/docs/"
+          awk '/^## /{n++} n==1' CHANGELOG.md > "dist/$OUT/RELEASE-NOTES.md"
+          (cd dist && zip -qr "$OUT.zip" "$OUT")
+          ls -lh dist/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gearbox-sdk
+          path: dist/*.zip
+
+  publish:
+    name: Publish to GitHub
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: gearbox-sdk, path: dist }
+
+      - name: Extract release notes
+        run: awk '/^## /{n++} n==1' CHANGELOG.md > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          body_path: notes.md
+          name: Gearbox SDK ${{ github.ref_name }}

@@ -126,6 +126,11 @@ public:
     }
     const float* rewardMeans() const { return m_rMean; }
 
+    // Observe-only view for the Neural capability. buildFeatures is private
+    // because nothing outside should be constructing training input; this
+    // hands out a copy of what the model would see, and cannot alter it.
+    void modObserveFeatures(int cid, std::vector<float>& out) { buildFeatures(cid, out); }
+
 private:
     struct CountryStat {
         int provinces = 0;
@@ -236,8 +241,12 @@ private:
 
     void buildFeatures(int cid, std::vector<float>& out);
     void difficultyParams(float& temperature, float& epsilon) const;
-    int pickAction(NeuralNet& net, const std::vector<float>& feats,
-                   const std::vector<bool>& valid, float& scoreOut);
+
+    // `graveAction`, when >= 0, names an action that epsilon-random exploration
+    // must not fire during normal play. See the note in pickAction.
+    int  pickAction(NeuralNet& net, const std::vector<float>& feats,
+                    const std::vector<bool>& valid, float& scoreOut,
+                    int graveAction = -1);
     void logDecision(int cid, int module, int action, float score, const std::string& label);
 
     // Action execution (mirrors player enqueue rules incl. treasury deduction)

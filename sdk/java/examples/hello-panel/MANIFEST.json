@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.hello-panel-java",
+  "name": "Hello Panel (Java)",
+  "version": "1.0.0",
+  "description": "Example mod: shows turn, country count and treasury in a panel. Written in Java.",
+  "authors": [
+    "OpenDoctrines"
+  ],
+  "gearbox": "1.0",
+  "modules": [
+    "Core",
+    "UI",
+    "GameState.Read",
+    "WasiStub"
+  ],
+  "limits": {
+    "memoryPages": 256,
+    "fuelPerTurn": 200000
+  }
+}

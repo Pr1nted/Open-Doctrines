@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "GameInternals.h"
+#include "mods/ModManager.h"
 #include "SaveManager.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -713,8 +714,11 @@ void Game::updateMainMenu() {
                 m_currentScreen = SCREEN_MAP_EDITOR;
                 break;
             case 3: // Mod Menu
-                m_menuFeedback = "Mod support coming soon";
-                m_menuFeedbackTimer = 2.0f;
+                m_modIndex = 0;
+                m_modScroll = 0;
+                m_modAdvancedFor = m_modDeleteFor = m_modAiWarnFor = -1;
+                ModManager::get().rescan();
+                m_currentScreen = SCREEN_MODS;
                 break;
             case 4: // Community
                 m_currentScreen = SCREEN_COMMUNITY;
@@ -1640,7 +1644,14 @@ void Game::updateSettingsFromMenu() {
         } else if (strcmp(s.label, "AI Debug") == 0) {
             m_config.aiDebug = !m_config.aiDebug;
         } else if (strcmp(s.label, "AI Learning") == 0) {
-            m_config.aiLearning = !m_config.aiLearning;
+            // Never on while a mod is: a mod can change what the AI observes,
+            // and training against that silently corrupts data/ai/model.bin.
+            if (!m_config.aiLearning && ModManager::get().anyEnabled()) {
+                m_menuFeedback = "Disable all mods first — training with mods loaded corrupts the model";
+                m_menuFeedbackTimer = 4.0f;
+            } else {
+                m_config.aiLearning = !m_config.aiLearning;
+            }
         } else if (strcmp(s.label, "AI Difficulty") == 0) {
             m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
         } else if (strcmp(s.label, "Accent Color") == 0) {

@@ -1,0 +1,10 @@
+{
+  "name": "gearbox-assemblyscript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": { "assemblyscript": "^0.27.31" },
+  "scripts": {
+    "build": "asc assembly/index.ts --target release"
+  }
+}

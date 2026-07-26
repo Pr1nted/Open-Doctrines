@@ -1,0 +1,7 @@
+# Lua source, downloaded and cached by build.sh. Not vendored: it is 30k lines
+# of upstream C that we do not modify -- the only Lua behaviour we change is the
+# error handling, and that happens through gbx_throw.h at compile time.
+/.lua-src/
+
+# Generated from main.lua on every build; never edit by hand.
+/examples/hello-panel/script.h

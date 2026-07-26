@@ -1,0 +1,10 @@
+# QuickJS source, downloaded and cached by build_mod.sh. Not vendored: it is
+# upstream C we do not modify -- the only build-time adjustment is -DEMSCRIPTEN,
+# which selects a branch QuickJS already has.
+/.quickjs-src/
+
+# Generated from the script on every build; never edit by hand.
+/examples/*/script.h
+
+# tsc output.
+/examples/*/build/

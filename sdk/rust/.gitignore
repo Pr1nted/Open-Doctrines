@@ -1,0 +1,7 @@
+# cargo build output. Cargo.lock is deliberately NOT here: this workspace
+# produces a shipped artifact, so the lock belongs in version control.
+/target/
+
+# build.sh artefacts, staged next to the manifest so pack_odmod.sh can find them
+/examples/hello_panel/mod.wasm
+/examples/hello_panel/*.odmod

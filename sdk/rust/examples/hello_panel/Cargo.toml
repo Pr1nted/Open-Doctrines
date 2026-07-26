@@ -1,0 +1,22 @@
+[package]
+name = "hello-panel"
+version = "1.0.0"
+edition = "2021"
+description = "Example OpenDoctrines mod: turn, country count and treasury in a panel."
+publish = false
+
+[lib]
+name = "hello_panel"          # cargo would derive this from the package name
+                              # anyway (hyphens become underscores), but the
+                              # build script copies the file by name, so pin it.
+crate-type = ["cdylib"]       # the only crate type that produces exports in the
+                              # WASM module. An rlib produces mod.wasm with an
+                              # empty export section and the host refuses it
+                              # with "mod does not export mod_load".
+
+[dependencies]
+gearbox = { path = "../.." }
+
+# No [profile] here: profiles are ignored in a workspace member and only read
+# from the workspace root, which is sdk/rust/Cargo.toml. Cargo warns if you put
+# one here, and it would be a lie besides.

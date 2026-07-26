@@ -207,6 +207,16 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         m_playerCountryId = 0;     // spectator: every country is AI-driven
         m_aiTraining = true;
 
+        // Headless self-play exists to learn, so it always learns.
+        //
+        // config.aiLearning defaults to false and gates AISystem::endTurn(),
+        // because in-game learning is an opt-in experiment that must not mutate
+        // data/ai/model.bin behind a player's back. That switch is about normal
+        // play; applying it here silently turned --train-ai into an expensive
+        // no-op -- it ran thousands of turns, took no gradient steps, and left
+        // the dashboard's reward graphs empty because nothing fed them.
+        m_config.aiLearning = true;
+
         // ── 3. Self-play ──
         auto mapStart = std::chrono::steady_clock::now();
         int alive = 0;

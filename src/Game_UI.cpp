@@ -39,14 +39,30 @@ void Game::pushPopup(PopupType type, const std::string& title, const std::string
     m_popupQueue.push_back(entry);
 }
 
+namespace {
+// Both drawPopup() and updatePopup() need identical geometry -- they were
+// already duplicating these numbers, and making the height depend on the terms
+// panel would have let them drift, putting the buttons somewhere the click
+// handler was not looking.
+void popupGeometry(const PopupEntry& p, bool showTerms, int& w, int& h) {
+    if (p.type == PopupType::CEASEFIRE_REQUEST) {
+        w = 560;
+        h = showTerms ? 590 : 360;
+    } else {
+        w = 480;
+        h = 260;
+    }
+}
+}  // namespace
+
 void Game::drawPopup() {
     if (m_popupQueue.empty()) return;
 
     auto& popup = m_popupQueue.front();
 
     // Ceasefire popups need more vertical space to show the terms summary
-    int popW = (popup.type == PopupType::CEASEFIRE_REQUEST) ? 560 : 480;
-    int popH = (popup.type == PopupType::CEASEFIRE_REQUEST) ? 360 : 260;
+    int popW, popH;
+    popupGeometry(popup, m_popupShowTerms, popW, popH);
     int popX = (m_screenW - popW) / 2;
     int popY = (m_screenH - popH) / 2;
 
@@ -74,6 +90,77 @@ void Game::drawPopup() {
     // Buttons
     int btnW = 140, btnH = 40;
     int btnY = popY + popH - btnH - 20;
+
+    // Ceasefire offers: an itemised breakdown behind a toggle. The summary above
+    // only gives counts ("cedes 2 provinces"), which is not enough to judge an
+    // offer -- you need to know *which* provinces before you sign.
+    if (popup.type == PopupType::CEASEFIRE_REQUEST) {
+        Rectangle termsBtn = {(float)(popX + (popW - 200) / 2), (float)(btnY - 46),
+                              200.0f, 32.0f};
+        bool th = CheckCollisionPointRec(getMouse(), termsBtn);
+        DrawRectangleRounded(termsBtn, 0.2f, 6,
+                             th ? Color{70, 80, 110, 255} : Color{45, 50, 70, 230});
+        DrawRectangleRoundedLines(termsBtn, 0.2f, 6, Color{90, 95, 125, 220});
+        const char* tl = m_popupShowTerms ? "Hide full terms" : "View full terms";
+        int tlw = MeasureText(tl, 16);
+        DrawText(tl, (int)(termsBtn.x + (200 - tlw) / 2), (int)termsBtn.y + 8, 16, WHITE);
+
+        if (m_popupShowTerms) {
+            const Country* oc = m_countries.getCountry(popup.countryId);
+            std::string them = oc ? oc->name : popup.sourceIso;
+
+            auto provName = [&](int pid) -> std::string {
+                Province* pp = m_provinces.getProvinceById(pid);
+                return (pp && !pp->name.empty()) ? pp->name
+                                                 : ("province " + std::to_string(pid));
+            };
+            // Long lists are truncated rather than overflowing the panel; the
+            // count is already in the summary above.
+            auto listOf = [&](const std::vector<int>& v) -> std::string {
+                if (v.empty()) return "-";
+                std::string out;
+                size_t n = v.size() < 4 ? v.size() : 4;
+                for (size_t i = 0; i < n; i++) { if (i) out += ", "; out += provName(v[i]); }
+                if (v.size() > n) out += TextFormat(" +%d more", (int)(v.size() - n));
+                return out;
+            };
+            auto gold = [](int g) -> std::string {
+                return g > 0 ? TextFormat("%d gold", g) : "-";
+            };
+
+            Color accent = hexToColor(m_config.accentColor);
+            int ty = popY + 150;
+            int tx = popX + 30;
+            DrawLine(tx, ty - 12, popX + popW - 30, ty - 12, Color{70, 70, 95, 255});
+
+            auto section = [&](const char* heading, Color c) {
+                DrawText(heading, tx, ty, 16, c);
+                ty += 24;
+            };
+            auto row = [&](const char* label, const std::string& value) {
+                DrawText(label, tx + 12, ty, 14, Color{150, 150, 165, 255});
+                drawHybridText(tx + 150, ty, 14, value.c_str(), WHITE);
+                ty += 20;
+            };
+
+            section(TextFormat("%s gives you", them.c_str()), Color{120, 210, 140, 255});
+            row("Money",           gold(popup.terms.ourMoney));
+            row("Provinces",       listOf(popup.terms.ourProvs));
+            row("Claims dropped",  listOf(popup.terms.ourDropClaims));
+            ty += 10;
+            section(TextFormat("%s asks from you", them.c_str()), Color{225, 130, 120, 255});
+            row("Money",           gold(popup.terms.theirMoney));
+            row("Provinces",       listOf(popup.terms.theirProvs));
+            row("Claims to drop",  listOf(popup.terms.theirDropClaims));
+
+            if (popup.terms.ourProvs.empty() && popup.terms.theirProvs.empty() &&
+                popup.terms.ourMoney == 0 && popup.terms.theirMoney == 0 &&
+                popup.terms.ourDropClaims.empty() && popup.terms.theirDropClaims.empty()) {
+                ty += 8;
+                DrawText("A white peace: nothing changes hands.", tx, ty, 14, accent);
+            }
+        }
+    }
 
     if (popup.type == PopupType::DIPLOMATIC_REQUEST || popup.type == PopupType::CEASEFIRE_REQUEST) {
         // Approve / Reject
@@ -113,14 +200,23 @@ void Game::updatePopup() {
     auto& popup = m_popupQueue.front();
     Vector2 mouse = getMouse();
 
-    int popW = (popup.type == PopupType::CEASEFIRE_REQUEST) ? 560 : 480;
-    int popH = (popup.type == PopupType::CEASEFIRE_REQUEST) ? 360 : 260;
+    int popW, popH;
+    popupGeometry(popup, m_popupShowTerms, popW, popH);
     int popX = (m_screenW - popW) / 2;
     int popY = (m_screenH - popH) / 2;
     int btnW = 140, btnH = 40;
     int btnY = popY + popH - btnH - 20;
 
     if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return;
+
+    if (popup.type == PopupType::CEASEFIRE_REQUEST) {
+        Rectangle termsBtn = {(float)(popX + (popW - 200) / 2), (float)(btnY - 46),
+                              200.0f, 32.0f};
+        if (CheckCollisionPointRec(mouse, termsBtn)) {
+            m_popupShowTerms = !m_popupShowTerms;
+            return;   // the popup just changed size; do not also hit a button
+        }
+    }
 
     if (popup.type == PopupType::DIPLOMATIC_REQUEST) {
         Rectangle approveBtn = {(float)(popX + popW / 2 - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -138,12 +234,14 @@ void Game::updatePopup() {
             else if (popup.action == "request_nap")      { fwd.nonAggression = true; rev.nonAggression = true; }
             printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
+            m_popupShowTerms = false;
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
             // Nothing to erase from the pending queue: the request was already
             // removed when the popup was created. The old code erased
             // begin(), which could silently drop an unrelated queued action.
             printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
+            m_popupShowTerms = false;
         }
     } else if (popup.type == PopupType::CEASEFIRE_REQUEST) {
         Rectangle approveBtn = {(float)(popX + popW / 2 - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -168,6 +266,7 @@ void Game::updatePopup() {
             auto tit = m_pendingCeasefireTerms.find(key);
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
             m_popupQueue.erase(m_popupQueue.begin());
+            m_popupShowTerms = false;
             printf("[CEASEFIRE] Player accepted offer from %s — apply scheduled for next turn\n", popup.sourceIso.c_str());
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
             // Erase the waiting terms and notify sender side (no automatic
@@ -176,6 +275,7 @@ void Game::updatePopup() {
             auto tit = m_pendingCeasefireTerms.find(key);
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
             m_popupQueue.erase(m_popupQueue.begin());
+            m_popupShowTerms = false;
             printf("[CEASEFIRE] Player rejected offer from %s\n", popup.sourceIso.c_str());
         }
     } else {
@@ -183,6 +283,7 @@ void Game::updatePopup() {
         Rectangle okBtn = {(float)(popX + (popW - btnW) / 2), (float)btnY, (float)btnW, (float)btnH};
         if (CheckCollisionPointRec(mouse, okBtn)) {
             m_popupQueue.erase(m_popupQueue.begin());
+            m_popupShowTerms = false;
         }
     }
 }

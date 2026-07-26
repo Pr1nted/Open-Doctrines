@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <!-- CLion / IntelliJ / Rider: Run > Gearbox: build + install.
+       Set GEARBOX to the tools/gearbox script in your OpenDoctrines checkout,
+       or edit SCRIPT_TEXT below. -->
+  <configuration default="false" name="Gearbox: build + install" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="&quot;$GEARBOX$&quot; dev &quot;$ProjectFileDir$&quot;" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$ProjectFileDir$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="/bin/bash" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <method v="2" />
+  </configuration>
+</component>

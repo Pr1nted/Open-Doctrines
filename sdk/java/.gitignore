@@ -1,0 +1,4 @@
+# Maven build output. The wasm lands in examples/*/target/wasm/ and is copied
+# to mod.wasm next to the manifest so pack_odmod.sh can find it; both are
+# already covered by the root .gitignore.
+target/

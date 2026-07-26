@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.hello-panel-wat",
+  "name": "Hello Panel (WAT)",
+  "version": "1.0.0",
+  "description": "Example mod written directly in WebAssembly text format.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI"],
+  "limits": { "memoryPages": 2, "fuelPerTurn": 50000 }
+}

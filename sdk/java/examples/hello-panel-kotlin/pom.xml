@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Kotlin example. kotlinc arrives as a Maven plugin, so Kotlin needs no
+     toolchain install beyond the one Java already needs. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.opendoctrines</groupId>
+    <artifactId>gearbox-parent</artifactId>
+    <version>1.0.0</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>hello-panel-kotlin</artifactId>
+  <packaging>jar</packaging>
+  <name>Hello Panel (Kotlin)</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.opendoctrines</groupId>
+      <artifactId>gearbox</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-classlib</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>${kotlin.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/kotlin</sourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-maven-plugin</artifactId>
+        <version>${kotlin.version}</version>
+        <executions>
+          <execution>
+            <id>compile</id>
+            <phase>compile</phase>
+            <goals><goal>compile</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <jvmTarget>21</jvmTarget>
+          <!-- Force StringBuilder for any string concatenation kotlinc
+               generates. The default on JVM 9+ is an invokedynamic against
+               StringConcatFactory, which TeaVM does not implement. -->
+          <args>
+            <arg>-Xstring-concat=inline</arg>
+          </args>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.teavm</groupId>
+        <artifactId>teavm-maven-plugin</artifactId>
+        <version>${teavm.version}</version>
+        <executions>
+          <execution>
+            <id>wasm</id>
+            <phase>package</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <mainClass>org.opendoctrines.example.HelloPanelKt</mainClass>
+              <targetType>WEBASSEMBLY_WASI</targetType>
+              <targetDirectory>${project.build.directory}/wasm</targetDirectory>
+              <optimizationLevel>FULL</optimizationLevel>
+              <minifying>false</minifying>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

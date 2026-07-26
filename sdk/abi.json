@@ -1,0 +1,2346 @@
+{
+  "$comment": [
+    "The Gearbox ABI, machine-readable. THIS FILE IS THE SOURCE OF TRUTH.",
+    "",
+    "Every language binding under sdk/ is a transcription of this file, and",
+    "tests/mod_abi_test.cpp asserts that the host's own function table matches it",
+    "exactly -- same modules, same names, same wire signatures, same capability.",
+    "So a binding written from this file cannot silently drift from the host: if",
+    "the host changes and this file does not, the build fails.",
+    "",
+    "Wire types are WebAssembly value types. 'ptr' and 'len' are both i32; they",
+    "are called out separately only to document intent. A pointer is an offset",
+    "into your module's linear memory, which the host bounds-checks on every use.",
+    "",
+    "Strings are (ptr, len) pairs of UTF-8 bytes. They are NOT null-terminated.",
+    "The host does not retain a pointer into your memory after a call returns."
+  ],
+  "gearbox": "1.0",
+  "schema": 1,
+  "modules": [
+    {
+      "name": "Core",
+      "import": "gearbox:core",
+      "revocable": false,
+      "implemented": true,
+      "grants": "Logging, environment introspection, abort, fuel budget"
+    },
+    {
+      "name": "GameState.Read",
+      "import": "gearbox:gamestate.read",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Read the turn, countries, treasuries, provinces"
+    },
+    {
+      "name": "UI",
+      "import": "gearbox:ui",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Register panels and draw inside them"
+    },
+    {
+      "name": "Assets",
+      "import": "gearbox:assets",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Read your own data/ directory"
+    },
+    {
+      "name": "GameProcess",
+      "import": null,
+      "revocable": true,
+      "implemented": true,
+      "grants": "Turn lifecycle hooks. Grants exports, not imports."
+    },
+    {
+      "name": "GameState.Write",
+      "import": "gearbox:gamestate.write",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Mutate the world. Implies GameState.Read."
+    },
+    {
+      "name": "Neural",
+      "import": "gearbox:neural",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Observe AI features and rewards (observe-only: no import writes to the model)"
+    },
+    {
+      "name": "Map",
+      "import": "gearbox:map",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Province geometry and adjacency"
+    },
+    {
+      "name": "Diplomacy",
+      "import": "gearbox:diplomacy",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Read and propose diplomatic actions"
+    },
+    {
+      "name": "Storage",
+      "import": "gearbox:storage",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Persistent key-value store namespaced to your mod id"
+    },
+    {
+      "name": "WasiStub",
+      "import": "wasi_snapshot_preview1",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock."
+    }
+  ],
+  "imports": [
+    {
+      "module": "gearbox:core",
+      "name": "log",
+      "capability": null,
+      "signature": "(iii)",
+      "params": [
+        {
+          "name": "level",
+          "type": "i32",
+          "role": "enum:log_level"
+        },
+        {
+          "name": "msg",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "msg_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": null,
+      "doc": "Write a line to the game log and the mod menu's log view. Messages longer than 2048 bytes are truncated. An out-of-bounds (ptr,len) is refused and logged as an error against your mod rather than read."
+    },
+    {
+      "module": "gearbox:core",
+      "name": "env",
+      "capability": null,
+      "signature": "(i)",
+      "params": [
+        {
+          "name": "out",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out",
+          "struct": "gearbox_env_t"
+        }
+      ],
+      "result": null,
+      "doc": "Fill a gearbox_env_t. Write your own sizeof into out->size FIRST; the host writes at most that many bytes, so an older mod stays safe against a newer host. If size is 0 or larger than the host's struct, the host uses its own size."
+    },
+    {
+      "module": "gearbox:core",
+      "name": "abort",
+      "capability": null,
+      "signature": "(ii)",
+      "params": [
+        {
+          "name": "msg",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "msg_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": null,
+      "noreturn": true,
+      "doc": "Unrecoverable error. Traps out of the current call, disables the mod, and shows the message to the user. Prefer returning an error from a hook where you can."
+    },
+    {
+      "module": "gearbox:core",
+      "name": "fuel_budget",
+      "capability": null,
+      "signature": "()I",
+      "params": [],
+      "result": {
+        "type": "i64",
+        "sentinel": "u64_max_means_unmetered",
+        "unsigned": true
+      },
+      "doc": "The instruction budget for the current hook, or 0xFFFFFFFFFFFFFFFF when unmetered. This is the LIMIT, not a live countdown: it does not decrease as you run. Use it to size your work up front and count your own iterations."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "turn_number",
+      "capability": "GameState.Read",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The current turn. 0 when no world is loaded."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_count",
+      "capability": "GameState.Read",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many countries exist. 0 when no world is loaded. Rebel factions are not included."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_at",
+      "capability": "GameState.Read",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle:country"
+      },
+      "doc": "The country at index in [0, country_count). Returns GEARBOX_INVALID (0xFFFFFFFF) if out of range. Ordering is stable within a turn but not across turns."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_name",
+      "capability": "GameState.Read",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Two-call sizing. Writes at most cap bytes of UTF-8 and returns the FULL length. Call with cap 0 to size, then again to fill. A return greater than cap means truncation, not failure. Returns 0 for an unknown country."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_treasury",
+      "capability": "GameState.Read",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Treasury balance. 0 for an unknown country."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_province_count",
+      "capability": "GameState.Read",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many provinces the country owns. 0 for an unknown country."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_population",
+      "capability": "GameState.Read",
+      "signature": "(i)I",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "Population of a province. 0 for an unknown province."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_owner",
+      "capability": "GameState.Read",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle:country"
+      },
+      "doc": "Owning country, or GEARBOX_INVALID if unowned or unknown."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_register",
+      "capability": "UI",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "title",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "title_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "min_w",
+          "type": "i32"
+        },
+        {
+          "name": "min_h",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle:panel"
+      },
+      "doc": "Register a panel and return its handle. Returns 0 (invalid) when headless, when UI was revoked, or when you already hold 8 panels. Titles are truncated to 64 bytes. Call this from mod_load, not from your draw hook."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_rect",
+      "capability": "UI",
+      "signature": "(iiiiii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "y",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "w",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "h",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "rgba",
+          "type": "i32",
+          "role": "color"
+        }
+      ],
+      "result": null,
+      "doc": "Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA. Coordinates outside the panel are clipped by the host; they cannot escape it."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_text",
+      "capability": "UI",
+      "signature": "(iiiiii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "y",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "rgba",
+          "type": "i32",
+          "role": "color"
+        },
+        {
+          "name": "text",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "text_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": null,
+      "doc": "UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per call."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "button",
+      "capability": "UI",
+      "signature": "(iiiiiii)i",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "y",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "w",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "h",
+          "type": "i32",
+          "signed": true
+        },
+        {
+          "name": "label",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "label_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Immediate-mode button: draws it and returns 1 on the frame it is clicked. One click activates one button -- the host consumes it, so overlapping rects do not all fire. Label truncated to 64 bytes."
+    },
+    {
+      "module": "gearbox:assets",
+      "name": "size",
+      "capability": "Assets",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Byte size of one of your own data/ files, or 0 if there is no such asset. Names are relative to data/ and use '/' separators: data/flags/fr.png is \"flags/fr.png\".",
+      "binding_name": "asset_size"
+    },
+    {
+      "module": "gearbox:assets",
+      "name": "read",
+      "capability": "Assets",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Two-call sizing, like country_name. Writes at most cap bytes and returns the asset's full size. The name is looked up in your package's entry list, never resolved as a filesystem path.",
+      "binding_name": "asset_read"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "capability": "WasiStub",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "iovs",
+          "type": "i32"
+        },
+        {
+          "name": "iovs_len",
+          "type": "i32"
+        },
+        {
+          "name": "nwritten",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Writes to fd 1 or 2 only, and the bytes go to the mod log where the user can see them. Any other fd returns EBADF. This is how print() in an interpreted mod reaches you."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "proc_exit",
+      "capability": "WasiStub",
+      "signature": "(i)",
+      "params": [
+        {
+          "name": "code",
+          "type": "i32"
+        }
+      ],
+      "result": null,
+      "doc": "Traps the mod. A runtime calling exit() must not return into code that believes the process is gone."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "random_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "buf",
+          "type": "i32"
+        },
+        {
+          "name": "buf_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "DETERMINISTIC pseudo-random bytes, seeded from your mod id -- not OS entropy. Real entropy is a machine fingerprint and would make self-play and save replay irreproducible. Two mods get different streams; one mod gets the same stream every run. Do not use for anything security-relevant."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_time_get",
+      "capability": "WasiStub",
+      "signature": "(iIi)i",
+      "params": [
+        {
+          "name": "clock_id",
+          "type": "i32"
+        },
+        {
+          "name": "precision",
+          "type": "i64"
+        },
+        {
+          "name": "time",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Returns the turn number expressed as nanoseconds, not the wall clock. Monotonic and coarse. A mod cannot learn the real date, the timezone, or how long anything took -- all of which are fingerprints."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_sizes_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "count",
+          "type": "i32"
+        },
+        {
+          "name": "buf_size",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Always reports zero variables. There is no environment."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "environ",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "No-op; there is no environment to write."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_sizes_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "count",
+          "type": "i32"
+        },
+        {
+          "name": "buf_size",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Always reports zero arguments. Reports success rather than failing, because runtimes commonly abort at startup if argv cannot be read."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "argv",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "No-op; there are no arguments."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_close",
+      "capability": "WasiStub",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "EBADF. There are no real descriptors."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "stat",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "ENOTCAPABLE."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "prestat",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "ENOTCAPABLE. No preopened directories, so no filesystem root exists to walk."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_dir_name",
+      "capability": "WasiStub",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "ENOTCAPABLE."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_read",
+      "capability": "WasiStub",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "iovs",
+          "type": "i32"
+        },
+        {
+          "name": "iovs_len",
+          "type": "i32"
+        },
+        {
+          "name": "nread",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "ENOTCAPABLE. There is no stdin and no file to read."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "capability": "WasiStub",
+      "signature": "(iIii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "offset",
+          "type": "i64"
+        },
+        {
+          "name": "whence",
+          "type": "i32"
+        },
+        {
+          "name": "newoffset",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "EBADF."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_open",
+      "capability": "WasiStub",
+      "signature": "(iiiiiIIii)i",
+      "params": [
+        {
+          "name": "dirfd",
+          "type": "i32"
+        },
+        {
+          "name": "dirflags",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        },
+        {
+          "name": "oflags",
+          "type": "i32"
+        },
+        {
+          "name": "fs_rights_base",
+          "type": "i64"
+        },
+        {
+          "name": "fs_rights_inheriting",
+          "type": "i64"
+        },
+        {
+          "name": "fdflags",
+          "type": "i32"
+        },
+        {
+          "name": "fd",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "ENOTCAPABLE, always. Opening a file is refused rather than stubbed -- this is the single import that would turn the shim into the hole the sandbox exists to prevent."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_res_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "id",
+          "type": "i32"
+        },
+        {
+          "name": "out",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Reports a fixed, coarse resolution matching clock_time_get's one-tick-per-turn granularity. Claiming anything finer would be a lie a runtime might act on."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sched_yield",
+      "capability": "WasiStub",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Succeeds and does nothing. A mod is single-threaded; there is nothing to yield to."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_advise",
+      "capability": "WasiStub",
+      "signature": "(iIIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "offset",
+          "type": "i64"
+        },
+        {
+          "name": "len",
+          "type": "i64"
+        },
+        {
+          "name": "advice",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_allocate",
+      "capability": "WasiStub",
+      "signature": "(iII)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "offset",
+          "type": "i64"
+        },
+        {
+          "name": "len",
+          "type": "i64"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_datasync",
+      "capability": "WasiStub",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_sync",
+      "capability": "WasiStub",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_set_flags",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "flags",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_get",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "out",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). File metadata would describe a filesystem the mod cannot reach."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_tell",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "out",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_renumber",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "from",
+          "type": "i32"
+        },
+        {
+          "name": "to",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There are no descriptors to renumber."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_size",
+      "capability": "WasiStub",
+      "signature": "(iI)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "size",
+          "type": "i64"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_times",
+      "capability": "WasiStub",
+      "signature": "(iIIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "atim",
+          "type": "i64"
+        },
+        {
+          "name": "mtim",
+          "type": "i64"
+        },
+        {
+          "name": "fst_flags",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). There is no filesystem."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pread",
+      "capability": "WasiStub",
+      "signature": "(iiiIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "iovs",
+          "type": "i32"
+        },
+        {
+          "name": "iovs_len",
+          "type": "i32"
+        },
+        {
+          "name": "offset",
+          "type": "i64"
+        },
+        {
+          "name": "nread",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). Reading is not provided; assets come from the Assets module instead."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pwrite",
+      "capability": "WasiStub",
+      "signature": "(iiiIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "iovs",
+          "type": "i32"
+        },
+        {
+          "name": "iovs_len",
+          "type": "i32"
+        },
+        {
+          "name": "offset",
+          "type": "i64"
+        },
+        {
+          "name": "nwritten",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). A mod cannot write files; use the host log."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_readdir",
+      "capability": "WasiStub",
+      "signature": "(iiiIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32"
+        },
+        {
+          "name": "buf_len",
+          "type": "i32"
+        },
+        {
+          "name": "cookie",
+          "type": "i64"
+        },
+        {
+          "name": "bufused",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). Listing a directory would reveal a filesystem the sandbox denies."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_create_directory",
+      "capability": "WasiStub",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_remove_directory",
+      "capability": "WasiStub",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_unlink_file",
+      "capability": "WasiStub",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_get",
+      "capability": "WasiStub",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "flags",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        },
+        {
+          "name": "out",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). Answering would tell a mod whether a path exists on your machine."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_symlink",
+      "capability": "WasiStub",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "old_path",
+          "type": "i32"
+        },
+        {
+          "name": "old_path_len",
+          "type": "i32"
+        },
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "new_path",
+          "type": "i32"
+        },
+        {
+          "name": "new_path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_readlink",
+      "capability": "WasiStub",
+      "signature": "(iiiiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32"
+        },
+        {
+          "name": "buf_len",
+          "type": "i32"
+        },
+        {
+          "name": "bufused",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_rename",
+      "capability": "WasiStub",
+      "signature": "(iiiiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "old_path",
+          "type": "i32"
+        },
+        {
+          "name": "old_path_len",
+          "type": "i32"
+        },
+        {
+          "name": "new_fd",
+          "type": "i32"
+        },
+        {
+          "name": "new_path",
+          "type": "i32"
+        },
+        {
+          "name": "new_path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_link",
+      "capability": "WasiStub",
+      "signature": "(iiiiiii)i",
+      "params": [
+        {
+          "name": "old_fd",
+          "type": "i32"
+        },
+        {
+          "name": "old_flags",
+          "type": "i32"
+        },
+        {
+          "name": "old_path",
+          "type": "i32"
+        },
+        {
+          "name": "old_path_len",
+          "type": "i32"
+        },
+        {
+          "name": "new_fd",
+          "type": "i32"
+        },
+        {
+          "name": "new_path",
+          "type": "i32"
+        },
+        {
+          "name": "new_path_len",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_set_times",
+      "capability": "WasiStub",
+      "signature": "(iiiiIIi)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "flags",
+          "type": "i32"
+        },
+        {
+          "name": "path",
+          "type": "i32"
+        },
+        {
+          "name": "path_len",
+          "type": "i32"
+        },
+        {
+          "name": "atim",
+          "type": "i64"
+        },
+        {
+          "name": "mtim",
+          "type": "i64"
+        },
+        {
+          "name": "fst_flags",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is no filesystem, by design."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "poll_oneoff",
+      "capability": "WasiStub",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "in",
+          "type": "i32"
+        },
+        {
+          "name": "out",
+          "type": "i32"
+        },
+        {
+          "name": "nsubscriptions",
+          "type": "i32"
+        },
+        {
+          "name": "nevents",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). There is nothing to poll: no files, no sockets, no timers a mod may wait on."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_accept",
+      "capability": "WasiStub",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "flags",
+          "type": "i32"
+        },
+        {
+          "name": "out_fd",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). A mod has no network access, which is much of the point of the sandbox."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_recv",
+      "capability": "WasiStub",
+      "signature": "(iiiiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "ri_data",
+          "type": "i32"
+        },
+        {
+          "name": "ri_data_len",
+          "type": "i32"
+        },
+        {
+          "name": "ri_flags",
+          "type": "i32"
+        },
+        {
+          "name": "ro_datalen",
+          "type": "i32"
+        },
+        {
+          "name": "ro_flags",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). A mod has no network access."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_send",
+      "capability": "WasiStub",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "si_data",
+          "type": "i32"
+        },
+        {
+          "name": "si_data_len",
+          "type": "i32"
+        },
+        {
+          "name": "si_flags",
+          "type": "i32"
+        },
+        {
+          "name": "so_datalen",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (ENOTCAPABLE). A mod has no network access."
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_shutdown",
+      "capability": "WasiStub",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "fd",
+          "type": "i32"
+        },
+        {
+          "name": "how",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Refused (EBADF). A mod has no network access."
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "get",
+      "capability": "Storage",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "key",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "key_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Reads one of your own keys. Two-call sizing: returns the full value length and writes at most cap bytes. Returns GEARBOX_INVALID if the key is absent -- which is NOT the same as a zero-length value, so you can tell 'never stored' from 'stored empty'. Values are arbitrary bytes, not text."
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "set",
+      "capability": "Storage",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "key",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "key_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "value",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "value_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Stores bytes under one of your own keys. Returns 1 on success, 0 if a quota was exceeded (256 keys, 128-byte keys, 16 KiB per value, 64 KiB total per mod) -- the reason is written to your log. Not written to disk immediately: the store is flushed at turn boundaries and on unload, because a mod may call this from a draw hook."
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "remove",
+      "capability": "Storage",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "key",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "key_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Deletes one of your own keys. Returns 1 if it existed, 0 if it did not."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "width",
+      "capability": "Map",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Width of the province map in pixels. 0 when no world is loaded."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "height",
+      "capability": "Map",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Height of the province map in pixels. 0 when no world is loaded."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_count",
+      "capability": "Map",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many provinces the loaded map has. 0 when no world is loaded."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_at",
+      "capability": "Map",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle:province"
+      },
+      "doc": "Province handle at an index in [0, province_count). Returns GEARBOX_INVALID if out of range. The order is stable across runs, unlike the game's internal storage, so an index is safe to remember within a session."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_name",
+      "capability": "Map",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The province's name. Two-call sizing: returns the full length and writes at most cap bytes. Empty for an unknown province."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_x",
+      "capability": "Map",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "X pixel coordinate of the province's centre. 0 for an unknown province."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_y",
+      "capability": "Map",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Y pixel coordinate of the province's centre. 0 for an unknown province."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_is_land",
+      "capability": "Map",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "1 if the province is land, 0 if it is sea or unknown. Sampled at the province centre."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_count",
+      "capability": "Map",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many provinces border this one. 0 for an unknown province."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_at",
+      "capability": "Map",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle:province"
+      },
+      "doc": "The bordering province at an index in [0, province_neighbor_count). GEARBOX_INVALID if out of range. Adjacency is computed once when the map loads, so walking it is cheap."
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "at_war",
+      "capability": "Diplomacy",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "a",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "b",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "1 if the two countries are at war. Relations are symmetric, so the argument order does not matter. 0 for unknown countries or for a country with itself."
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "allied",
+      "capability": "Diplomacy",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "a",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "b",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "1 if the two countries are allied."
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "non_aggression",
+      "capability": "Diplomacy",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "a",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "b",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "1 if the two countries have a non-aggression pact."
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "guaranteed",
+      "capability": "Diplomacy",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "a",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "b",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "1 if the first country guarantees the second."
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "propose_war",
+      "capability": "Diplomacy",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "attacker",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "defender",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "PROPOSES a declaration of war, and returns 1 only if the game accepted it. It is routed through the same code path any other actor uses, so guarantee chains and war consequences follow exactly as normal -- a mod cannot produce a diplomatic state the game itself could not reach. Refused (0) if either country is unknown, they are the same country, or they are already at war. Either outcome is written to your mod log, so a player can see after the fact that a mod started a war."
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_country_treasury",
+      "capability": "GameState.Write",
+      "signature": "(iF)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "value",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Sets a country's treasury outright. Returns 1 on success, 0 if the country is unknown or the value is not finite and within +/-1e12 -- NaN or infinity would silently poison every later calculation, so they are refused rather than stored."
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "add_country_treasury",
+      "capability": "GameState.Write",
+      "signature": "(iF)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "delta",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Adds to a country's treasury. Usually what you want instead of set: it composes with whatever the economy did this turn. Refused (0) if the result would leave the sane range."
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_owner",
+      "capability": "GameState.Write",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Transfers a province to another country. Routed through the same code the game's own ceasefires use, so the province, the ownership lookup, the per-pixel country map and both countries' pixel lists all stay consistent -- and the previous owner's troops in that province are disbanded, as they are for any other transfer. Returns 0 if either handle is unknown or the country already owns it. Always written to your mod log: territory changing hands is the most consequential thing a mod can do."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "feature_count",
+      "capability": "Neural",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many floats are in the AI's feature vector. 0 when there is no AI or no world."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "features",
+      "capability": "Neural",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Copies the feature vector the AI would see for a country, as 32-bit floats. Two-call sizing, but note cap counts FLOATS and the buffer must therefore be cap*4 bytes. This is a snapshot: writing to your copy does not affect the AI."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_count",
+      "capability": "Neural",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many reward channels the AI tracks (economy, politics, war, navy)."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_mean",
+      "capability": "Neural",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "The running mean reward for one channel, indexed in [0, reward_count). 0 if out of range. OBSERVE ONLY: this capability has no import that writes to the model, the optimiser state or the reward history, which is deliberate -- a trained model is hours of work and a mod that could quietly retrain it is not something a user can meaningfully consent to."
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_population",
+      "capability": "GameState.Write",
+      "signature": "(iI)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        },
+        {
+          "name": "value",
+          "type": "i64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Sets a province's population. Returns 0 if the province is unknown, the value is negative, or it exceeds 100 billion. The game stores population in two places -- a map and a dense array used by the population texture -- and this updates both, which is why it exists as an import rather than being something a mod could do by other means."
+    }
+  ],
+  "exports": [
+    {
+      "name": "mod_load",
+      "required": true,
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "signed": true
+      },
+      "doc": "Called once when your mod is enabled, before anything else. Return 0 to accept the load; non-zero refuses it and the value is shown to the user. There is no autorun, so this runs every session the user enables you -- never assume prior state."
+    },
+    {
+      "name": "mod_unload",
+      "required": false,
+      "signature": "()",
+      "params": [],
+      "result": null,
+      "doc": "Called when disabled, reloaded, or at shutdown. Release what you hold. Your state does not survive a reload and there is no hook to serialise it."
+    },
+    {
+      "name": "mod_pre_turn",
+      "required": false,
+      "capability": "GameProcess",
+      "signature": "(i)",
+      "params": [
+        {
+          "name": "turn",
+          "type": "i32"
+        }
+      ],
+      "result": null,
+      "doc": "Called before the host processes a turn. Only invoked if GameProcess is granted."
+    },
+    {
+      "name": "mod_post_turn",
+      "required": false,
+      "capability": "GameProcess",
+      "signature": "(i)",
+      "params": [
+        {
+          "name": "turn",
+          "type": "i32"
+        }
+      ],
+      "result": null,
+      "doc": "Called after the host processes a turn. Only invoked if GameProcess is granted."
+    },
+    {
+      "name": "mod_draw_panel",
+      "required": false,
+      "capability": "UI",
+      "signature": "(iii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "width",
+          "type": "i32"
+        },
+        {
+          "name": "height",
+          "type": "i32"
+        }
+      ],
+      "result": null,
+      "doc": "Called once per frame per visible panel you registered. Never called when headless. Re-issue all your draw calls every frame; the command list is cleared between frames."
+    }
+  ],
+  "enums": {
+    "log_level": {
+      "TRACE": 0,
+      "INFO": 1,
+      "WARN": 2,
+      "ERROR": 3
+    },
+    "platform": {
+      "UNKNOWN": 0,
+      "WINDOWS": 1,
+      "MACOS": 2,
+      "LINUX": 3,
+      "WEB": 4
+    }
+  },
+  "constants": {
+    "GEARBOX_INVALID": "0xFFFFFFFF",
+    "GEARBOX_MAJOR": 1,
+    "GEARBOX_MINOR": 0
+  },
+  "env_struct": {
+    "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",
+    "size_bytes": 28,
+    "fields": [
+      {
+        "name": "size",
+        "type": "u32",
+        "offset": 0,
+        "doc": "You write sizeof(gearbox_env_t) here before calling env"
+      },
+      {
+        "name": "gearbox_major",
+        "type": "u32",
+        "offset": 4
+      },
+      {
+        "name": "gearbox_minor",
+        "type": "u32",
+        "offset": 8
+      },
+      {
+        "name": "host_version",
+        "type": "u32",
+        "offset": 12,
+        "doc": "(major<<16)|(minor<<8)|patch"
+      },
+      {
+        "name": "platform",
+        "type": "u8",
+        "offset": 16,
+        "doc": "enum:platform"
+      },
+      {
+        "name": "is_web",
+        "type": "u8",
+        "offset": 17,
+        "doc": "1 under Emscripten. Fuel is NOT enforced there."
+      },
+      {
+        "name": "is_headless",
+        "type": "u8",
+        "offset": 18,
+        "doc": "1 when there is no renderer. UI imports no-op."
+      },
+      {
+        "name": "reserved0",
+        "type": "u8",
+        "offset": 19
+      },
+      {
+        "name": "screen_w",
+        "type": "u32",
+        "offset": 20,
+        "doc": "0 when headless"
+      },
+      {
+        "name": "screen_h",
+        "type": "u32",
+        "offset": 24,
+        "doc": "0 when headless"
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "//": "No 'module' and no import/export in main.ts, deliberately. The host finds hooks as globals, and module scope would hide them: tsc treats a file with no top-level import/export as a script, which is exactly what QuickJS needs to evaluate here.",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "strict": true,
+    "noEmitOnError": true,
+    "types": [],
+    "outDir": "build"
+  },
+  "files": ["../../types/gearbox.d.ts", "main.ts"]
+}

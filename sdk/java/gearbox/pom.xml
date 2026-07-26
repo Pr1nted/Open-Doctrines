@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The binding itself: Gearbox.java and nothing else. A mod depends on this
+     artifact and is compiled to wasm by the example's TeaVM plugin config. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.opendoctrines</groupId>
+    <artifactId>gearbox-parent</artifactId>
+    <version>1.0.0</version>
+  </parent>
+
+  <artifactId>gearbox</artifactId>
+  <packaging>jar</packaging>
+  <name>Gearbox ABI binding</name>
+
+  <dependencies>
+    <!-- @Import, @Export and Address. Compile-time only: none of it survives
+         into the wasm as a call, it all becomes an import or a raw load. -->
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-interop</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+  </dependencies>
+</project>

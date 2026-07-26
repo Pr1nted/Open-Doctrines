@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The example mod. `mvn package` here produces target/wasm/classes.wasm;
+     build.sh copies that to mod.wasm and packs the .odmod. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.opendoctrines</groupId>
+    <artifactId>gearbox-parent</artifactId>
+    <version>1.0.0</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>hello-panel</artifactId>
+  <packaging>jar</packaging>
+  <name>Hello Panel (Java)</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.opendoctrines</groupId>
+      <artifactId>gearbox</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <!-- TeaVM's emulation of the Java class library. Without it the compiler
+         cannot resolve java.lang.* and fails with a null MethodHolder. -->
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-classlib</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.teavm</groupId>
+        <artifactId>teavm-maven-plugin</artifactId>
+        <version>${teavm.version}</version>
+        <executions>
+          <execution>
+            <id>wasm</id>
+            <phase>package</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <mainClass>org.opendoctrines.example.HelloPanel</mainClass>
+              <!-- WEBASSEMBLY_WASI, not WEBASSEMBLY_GC. The GC backend emits a
+                   tag section (exception handling, which WAMR's fast
+                   interpreter refuses) and 22 JavaScript-host imports. See
+                   sdk/java/README.md. -->
+              <targetType>WEBASSEMBLY_WASI</targetType>
+              <targetDirectory>${project.build.directory}/wasm</targetDirectory>
+              <optimizationLevel>FULL</optimizationLevel>
+              <minifying>false</minifying>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

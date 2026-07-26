@@ -1,0 +1,19 @@
+# Default every cargo invocation under sdk/rust to WASM.
+#
+# Without this, a bare `cargo check` builds for your host triple, where
+# `core::arch::wasm32` does not exist and the `gearbox:*` imports have nothing
+# to link against — so you get a confusing error about a missing module rather
+# than "this crate is for wasm". build.sh passes --target explicitly anyway,
+# because cargo reads this file from the working directory, not from the
+# manifest path.
+[build]
+target = "wasm32-unknown-unknown"
+
+# Shrink the 1 MiB shadow stack wasm-ld reserves by default, which is most of
+# what a Rust mod's initial memory is spent on. Left commented out because 64
+# KiB is not much stack if you put large arrays in locals, and a WASM stack
+# overflow is a trap with no message. If you enable it, lower `memoryPages` in
+# MANIFEST.json to match and then actually run the mod.
+#
+# [target.wasm32-unknown-unknown]
+# rustflags = ["-C", "link-arg=-zstack-size=65536"]

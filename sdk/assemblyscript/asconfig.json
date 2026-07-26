@@ -1,0 +1,16 @@
+{
+  "targets": {
+    "release": {
+      "outFile": "mod.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 2,
+      "converge": true,
+      "noAssert": true
+    }
+  },
+  "options": {
+    "bindings": [],
+    "exportRuntime": false,
+    "use": ["abort="]
+  }
+}

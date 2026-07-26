@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "GameInternals.h"
+#include "mods/ModManager.h"
 #include "Keybinds.h"
 #include "SaveManager.h"
 #include "ai/AISystem.h"
@@ -12,6 +13,8 @@
 #include <sstream>
 #include <random>
 #include <cstdio>
+#include <deque>
+#include <unordered_set>
 
 // === isProvinceCoastal ===
 bool Game::isProvinceCoastal(int pid) const {
@@ -133,6 +136,9 @@ void Game::processTurn() {
         drawLoadingScreen();
     };
     if (m_config.aiDebug) printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
+
+    // GameProcess hook. A mod that traps here is disabled, not fatal.
+    ModManager::get().preTurn(m_turnNumber + 1);
     auto t0 = std::chrono::steady_clock::now();
     // Snapshot current state for turn delta
     drawFrame(0.01f, "Snapshoting state...");
@@ -375,6 +381,11 @@ void Game::processTurn() {
         if (!m_scriptEngine->getErrors().empty()) m_scriptErrorTimer = 3.0f;
     }
     m_turnState = TURN_NORMAL;
+
+    // GameProcess post-turn hook. This also services a reload that was asked
+    // for mid-turn: reloads happen between turns, never inside one.
+    ModManager::get().postTurn(m_turnNumber);
+
     drawFrame(1.0f, "Done!");
     if (m_config.aiDebug) printf("[TURN] Turn %d processed.\n", turnNum);
 }
@@ -2718,6 +2729,88 @@ void Game::processDiplomaticRequests() {
     }
 }
 
+// === withdrawArmiesAfterPeace ===
+// When a war ends, neither side's troops may remain standing on the other's
+// soil. Nothing in the engine retreats, captures or attrits troops in foreign
+// territory, so before this existed they simply stayed: still drawing upkeep,
+// still blocking the owner, and — since the war was over — untouchable. The
+// player-visible symptom was "we made peace and they still have an army in my
+// country".
+//
+// Each intruding stack walks home to the nearest province its owner actually
+// holds. A single-hop check is not enough: a deep incursion is several
+// provinces from its own border, which is exactly when this is most visible.
+// A stack that cannot reach home within kMaxHops is interned and disbands —
+// the alternative is teleporting it across the map, which is worse.
+int Game::withdrawArmiesAfterPeace(int cidA, int cidB) {
+    if (cidA <= 0 || cidB <= 0 || cidA == cidB) return 0;
+    constexpr int kMaxHops = 12;
+
+    auto ownerOf = [&](int pid) -> int {
+        if (pid < 0 || (size_t)pid >= m_provinceCountryLookup.size()) return 0;
+        return m_provinceCountryLookup[pid];
+    };
+
+    // Nearest province owned by `cid`, breadth-first from `start`.
+    auto findHome = [&](int start, int cid) -> int {
+        std::unordered_set<int> seen{start};
+        std::deque<std::pair<int, int>> q;
+        q.push_back({start, 0});
+        while (!q.empty()) {
+            auto [p, d] = q.front();
+            q.pop_front();
+            if (d >= kMaxHops) continue;
+            auto nIt = m_provinceNeighbors.find(p);
+            if (nIt == m_provinceNeighbors.end()) continue;
+            for (int n : nIt->second) {
+                if (!seen.insert(n).second) continue;
+                if (ownerOf(n) == cid) return n;
+                q.push_back({n, d + 1});
+            }
+        }
+        return -1;
+    };
+
+    // Collect first: the move below mutates m_provinceArmies.
+    std::vector<std::pair<int, int>> work;   // (province, intruding country)
+    for (const auto& [pid, units] : m_provinceArmies) {
+        int owner = ownerOf(pid);
+        if (owner != cidA && owner != cidB) continue;
+        int intruder = (owner == cidA) ? cidB : cidA;
+        for (const auto& u : units)
+            if (u.countryId == intruder && u.count > 0) { work.push_back({pid, intruder}); break; }
+    }
+
+    int cleared = 0;
+    for (const auto& [pid, intruder] : work) {
+        auto ait = m_provinceArmies.find(pid);
+        if (ait == m_provinceArmies.end()) continue;
+
+        int moving = 0;
+        auto& units = ait->second;
+        for (auto it = units.begin(); it != units.end(); ) {
+            if (it->countryId == intruder) { moving += it->count; it = units.erase(it); }
+            else ++it;
+        }
+        if (units.empty()) m_provinceArmies.erase(pid);
+        if (moving <= 0) continue;
+        cleared++;
+
+        int dest = findHome(pid, intruder);
+        if (dest >= 0) {
+            auto& dst = m_provinceArmies[dest];
+            bool merged = false;
+            for (auto& u : dst)
+                if (u.countryId == intruder) { u.count += moving; merged = true; break; }
+            if (!merged) dst.push_back({intruder, moving});
+        }
+        if (m_config.aiDebug)
+            printf("[PEACE] cid=%d %s %d troops from prov %d\n", intruder,
+                   dest >= 0 ? "withdrew" : "interned (no route home)", moving, pid);
+    }
+    return cleared;
+}
+
 // === applyCeasefireTerms ===
 // Apply a ceasefire's obligations: transfer provinces, drop claims, move money.
 //   sourceIso = the offer's sender (the country offering its provinces)
@@ -2728,20 +2821,14 @@ void Game::processDiplomaticRequests() {
 //   terms.theirDropClaims   → claims the recipient drops (its claims on these pids)
 //   terms.ourMoney   → money sender pays to recipient
 //   terms.theirMoney → money recipient pays to sender
-void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted) {
-    int srcCid = -1, tgtCid = -1;
-    for (auto& [cid, c] : m_countries.getAll()) {
-        if (c.isoA3 == sourceIso) srcCid = cid;
-        if (c.isoA3 == targetIso) tgtCid = cid;
-    }
-    if (srcCid < 0 || tgtCid < 0) {
-        printf("[CEASEFIRE] apply: bad ISOs %s/%s — skipping\n", sourceIso.c_str(), targetIso.c_str());
-        return;
-    }
-    Country& srcC = m_countries.getAll()[srcCid];
-    Country& tgtC = m_countries.getAll()[tgtCid];
-
-    auto transferProvince = [&](int pid, int fromCid, int toCid) {
+// Moves one province between owners, keeping every structure that records
+// ownership in step: the Province itself, m_provinceCountryLookup, the
+// per-pixel country array and both countries' pixel lists. Getting any one
+// of those wrong corrupts a save in a way that only shows up much later.
+//
+// Extracted from the ceasefire path so that the GameState.Write capability
+// and the game's own territory transfers cannot drift apart. Both call this.
+void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (!pp) return;
         if (pp->countryId != fromCid) return;
@@ -2778,6 +2865,23 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
                 tp.insert(tp.end(), moved.begin(), moved.end());
             }
         }
+}
+
+void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted) {
+    int srcCid = -1, tgtCid = -1;
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (c.isoA3 == sourceIso) srcCid = cid;
+        if (c.isoA3 == targetIso) tgtCid = cid;
+    }
+    if (srcCid < 0 || tgtCid < 0) {
+        printf("[CEASEFIRE] apply: bad ISOs %s/%s — skipping\n", sourceIso.c_str(), targetIso.c_str());
+        return;
+    }
+    Country& srcC = m_countries.getAll()[srcCid];
+    Country& tgtC = m_countries.getAll()[tgtCid];
+
+    auto transferProvince = [&](int pid, int fromCid, int toCid) {
+        transferProvinceOwnership(pid, fromCid, toCid);
         if (m_config.aiDebug)
             printf("[CEASEFIRE] province %d: %s -> %s\n", pid, sourceIso.c_str(), targetIso.c_str());
     };
@@ -2851,6 +2955,11 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     // and it runs after processDiplomaticRequests — so interactive play still
     // sees the new borders on the same turn.
     if (!m_aiTraining) generatePoliticalTexture();
+
+    // The war is over, so nobody's troops may still be standing on the other's
+    // soil. Done last, after every province transfer above, so ownership is
+    // final when we decide what counts as foreign territory.
+    withdrawArmiesAfterPeace(srcCid, tgtCid);
 }
 
 // === processUpgrades ===

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.hello-panel-lua",
+  "name": "Hello Panel (Lua)",
+  "version": "1.0.0",
+  "description": "Example mod: shows turn, country count and treasury in a panel. Written in Lua.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI", "GameState.Read", "WasiStub"],
+  "limits": { "memoryPages": 128, "fuelPerTurn": 1000000 }
+}

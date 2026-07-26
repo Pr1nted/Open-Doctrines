@@ -56,7 +56,8 @@ private:
         SCREEN_LOADING,
         SCREEN_CREDITS,
         SCREEN_COMMUNITY,
-        SCREEN_MAP_EDITOR
+        SCREEN_MAP_EDITOR,
+        SCREEN_MODS
     };
     ScreenState m_currentScreen = SCREEN_MENU;
 
@@ -171,6 +172,96 @@ private:
     void drawCredits();
     void updateCommunityMenu();
     void drawCommunityMenu();
+
+    // --- Mods (Gearbox). See src/Game_Mods.cpp and docs/modding.md ---
+    void initModSystem();
+    void updateModsMenu();
+    void drawModsMenu();
+    void drawModAdvanced();
+    void drawModDeleteConfirm();
+    void drawModAiWarning();
+    void drawModReloadingOverlay();
+    void drawModPanels();
+    void clearModThumbnails();
+
+    // Backing for the GameState.Read capability. Kept as plain accessors so the
+    // mod layer never sees a game header. Public because the bridge that
+    // implements ModGameAccess lives outside the class.
+public:
+    int         modTurnNumber() const;
+    const std::vector<int>& modCountryIds() const;
+    bool        modCountryExists(int cid) const;
+    std::string modCountryName(int cid) const;
+    double      modCountryTreasury(int cid) const;
+    int         modCountryProvinceCount(int cid) const;
+    long long   modProvincePopulation(int pid) const;
+    int         modProvinceOwner(int pid) const;
+
+    // Backing for the Map capability. Geometry only, and read-only: adjacency
+    // and centres are already computed at load (m_provinceNeighbors,
+    // m_provinceCenters), so none of this costs anything to expose.
+    int         modMapWidth() const;
+    int         modMapHeight() const;
+    const std::vector<int>& modProvinceIds() const;
+    std::string modProvinceName(int pid) const;
+    bool        modProvinceExists(int pid) const;
+    float       modProvinceCenterX(int pid) const;
+    float       modProvinceCenterY(int pid) const;
+    bool        modProvinceIsLand(int pid) const;
+    int         modProvinceNeighborCount(int pid) const;
+    int         modProvinceNeighborAt(int pid, int index) const;
+
+    // Backing for the Diplomacy capability. Relations are stored by isoA3, so
+    // these take country ids and do the lookup, keeping the mod layer free of
+    // the game's keying.
+    bool        modAtWar(int a, int b) const;
+    bool        modAllied(int a, int b) const;
+    bool        modNonAggression(int a, int b) const;
+    bool        modGuaranteed(int a, int b) const;
+    // Proposes, rather than performs: routed through declareWar so guarantee
+    // chains and every other consequence happen exactly as they would for any
+    // other actor. Returns false when the game refuses it.
+    bool        modProposeWar(int attacker, int defender);
+
+    // Backing for GameState.Write. Every one of these goes through the same
+    // code the game itself uses, so a mod cannot reach a state the game could
+    // not; each validates and returns false rather than trapping.
+    bool        modSetCountryTreasury(int cid, double value);
+    bool        modAddCountryTreasury(int cid, double delta);
+    bool        modSetProvinceOwner(int pid, int toCid);
+    bool        modSetProvincePopulation(int pid, long long value);
+
+    // Backing for the Neural capability. OBSERVE ONLY: there is deliberately
+    // no path here that can write to the model or to training state.
+    int         modNeuralFeatureCount() const;
+    int         modNeuralFeatures(int cid, float* out, int cap) const;
+    int         modNeuralRewardCount() const;
+    double      modNeuralRewardMean(int index) const;
+private:
+    const std::string* modIsoFor(int cid) const;
+    bool        modRelationFlag(int a, int b, int which) const;
+public:
+private:
+    // Dense, stable id list for the Map capability, built on demand because
+    // m_provinces is an unordered_map and a mod needs a fixed iteration order.
+    mutable std::vector<int> m_modProvinceIds;
+public:
+
+    int   m_modIndex = 0;
+    int   m_modScroll = 0;
+    int   m_modAdvancedFor = -1;      // index whose Advanced panel is open
+    int   m_modDeleteFor = -1;
+    int   m_modAiWarnFor = -1;        // index awaiting the AI-learning interlock
+    bool  m_modReloading = false;
+    int   m_modReloadFrames = 0;
+    std::string m_modFeedback;
+    float m_modFeedbackTimer = 0.0f;
+    std::unordered_map<std::string, Texture2D> m_modThumbs;
+
+    // Caches for the read capability, rebuilt when the turn changes.
+    mutable std::vector<int> m_modCountryIds;
+    mutable int m_modCountryIdsTurn = -1;
+    mutable std::unordered_map<int, int> m_modProvCounts;
     std::vector<CreditEntry> m_credits;
     float m_creditsScroll = 0.0f;
     float m_creditsSpeed = 60.0f;
@@ -204,6 +295,9 @@ private:
     void updateNotifications();
 
     std::vector<PopupEntry> m_popupQueue;
+    // Ceasefire popup: whether the itemised terms panel is expanded. Reset
+    // whenever a popup is dismissed so the next one starts collapsed.
+    bool m_popupShowTerms = false;
     void pushPopup(PopupType type, const std::string& title, const std::string& message,
                     int countryId = 0, const std::string& action = "",
                     const std::string& sourceIso = "", const std::string& targetIso = "");
@@ -661,6 +755,8 @@ private:
     // the new rule — pulls every guarantor of the defender into the war
     // against the attacker (one level; guarantors' own guarantors are not
     // chained, so a world war needs explicit guarantees, not transitivity).
+    // Shared by the ceasefire path and the GameState.Write capability.
+    void transferProvinceOwnership(int pid, int fromCid, int toCid);
     void declareWar(const std::string& attackerIso, const std::string& defenderIso,
                     bool chainGuarantees = true);
     void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
@@ -823,6 +919,9 @@ private:
     // applied). We store a parallel copy of the terms because the popup is
     // dismissed once the player clicks Approve.
     std::unordered_map<std::string, CeasefireTerms> m_acceptedCeasefireTerms;
+    // Pulls each side's armies out of the other's territory when a war ends.
+    // Returns the number of provinces cleared. See Game_TurnLogic.cpp.
+    int  withdrawArmiesAfterPeace(int cidA, int cidB);
     void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false);
 
     void drawCeasefireScreen();

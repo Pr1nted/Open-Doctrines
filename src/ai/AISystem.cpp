@@ -371,7 +371,8 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
 }
 
 int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
-                         const std::vector<bool>& valid, float& scoreOut) {
+                         const std::vector<bool>& valid, float& scoreOut,
+                         int graveAction) {
     const std::vector<float>& logits = net.forward(feats);
     scoreOut = 0;
     if (logits.empty()) return 0;
@@ -397,10 +398,30 @@ int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
         // pool came up empty, and pool[x % 0] was a modulo-by-zero + null
         // deref: the intermittent training SIGSEGV (AISystem.cpp:373).
         std::vector<int> pool;
-        for (size_t i = 0; i < masked.size(); ++i)
-            if (i >= valid.size() || valid[i]) pool.push_back((int)i);
-        if (pool.empty()) return 0; // can't happen (validCount>0), belt+braces
-        a = pool[(size_t)(d(m_rng) * pool.size()) % pool.size()];
+        for (size_t i = 0; i < masked.size(); ++i) {
+            if (i < valid.size() && !valid[i]) continue;
+            // Exploration is meant to make one AI play *worse*, not to make the
+            // world incoherent. Declaring war is the one action here that cannot
+            // be undone and that rewrites the game for every other country: a
+            // coin flip landing on it dogpiles a neighbour for no reason, and at
+            // eps=0.10 over ~6 valid war actions that fires somewhere on the map
+            // every few turns, forever. Players read that as the AI being
+            // deranged rather than merely weak.
+            //
+            // Self-play is the exact opposite case: the net cannot learn what
+            // war is worth unless it sometimes tries one, so exploration stays
+            // unrestricted while training.
+            if ((int)i == graveAction && m_g && !m_g->m_aiTraining) continue;
+            pool.push_back((int)i);
+        }
+        if (!pool.empty()) {
+            a = pool[(size_t)(d(m_rng) * pool.size()) % pool.size()];
+        } else {
+            // Every valid action was grave. Fall back to the policy rather than
+            // action 0 -- returning "hold" here would silently make the module
+            // inert in exactly the situations that matter most.
+            a = NeuralNet::samplePolicy(masked, temperature, m_rng);
+        }
     } else {
         a = NeuralNet::samplePolicy(masked, temperature, m_rng);
     }
@@ -460,7 +481,8 @@ void AISystem::takeTurn(int cid) {
     logDecision(cid, MOD_POLITICS, a, score, execPolitics(cid, a));
 
     validWar(cid, valid);
-    a = pickAction(m_policy[MOD_WAR], exp.features, valid, score);
+    // 4 = declare war; see the graveAction note in pickAction.
+    a = pickAction(m_policy[MOD_WAR], exp.features, valid, score, /*graveAction=*/4);
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
     logDecision(cid, MOD_WAR, a, score, execWar(cid, a));

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.hello-panel-as",
+  "name": "Hello Panel (AssemblyScript)",
+  "version": "1.0.0",
+  "description": "The hello-panel example, written in AssemblyScript.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI", "GameState.Read"],
+  "limits": { "memoryPages": 64, "fuelPerTurn": 400000 }
+}

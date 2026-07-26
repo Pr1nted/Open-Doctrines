@@ -1,0 +1,263 @@
+# Writing Gearbox mods in your language
+
+The ABI is the product. Every SDK under `sdk/` is a thin transcription of
+[`sdk/abi.json`](../sdk/abi.json) — 18 imports, 5 exports — so "supporting a
+language" means declaring those imports with the right module names and getting
+a pointer and a length out of a string. Nothing more.
+
+This page is about which languages actually reach that bar today, and what
+stands in the way of the ones that do not.
+
+## Status, honestly
+
+"Verified" means a hello-world mod was compiled with that toolchain, packed into
+a `.odmod`, and loaded by the host with `odmod-check`. "Written" means the
+binding exists and was transcribed from `abi.json`, but no toolchain was
+available to compile it.
+
+| Language | Binding | Status | Hello-world |
+|---|---|---|---|
+| **C** | [`sdk/gearbox.h`](../sdk/gearbox.h) | **verified** — clang 21 | 1.1 KB |
+| **C++** | [`sdk/cpp/`](../sdk/cpp) | **verified** — clang 21 | 2.9 KB |
+| **Rust** | [`sdk/rust/`](../sdk/rust) | **verified** — rustc 1.97.1, `wasm32-unknown-unknown` | 3.2 KB |
+| **Zig** | [`sdk/zig/`](../sdk/zig) | **verified** — Zig 0.16.0 | 1.8 KB |
+| **Go (TinyGo)** | [`sdk/go/`](../sdk/go) | **verified** — TinyGo 0.41.1. Needed a host fix, see below. | 3.0 KB |
+| **AssemblyScript** | [`sdk/assemblyscript/`](../sdk/assemblyscript) | **verified** — asc 0.27 | 6.2 KB |
+| **Raw WAT** | [`sdk/wat/`](../sdk/wat) | **verified** — wabt 1.0.41 | 0.4 KB |
+| **JavaScript** | [`sdk/js/`](../sdk/js) | **verified** — QuickJS 2025-04-26 via Emscripten 5.0.7. `try`/`catch` works normally. | 702 KB |
+| **TypeScript** | [`sdk/js/`](../sdk/js) | **verified** — TypeScript 7.0.2, same engine and binding as JavaScript, plus typed `gearbox` declarations | 702 KB |
+| **Lua** | [`sdk/lua/`](../sdk/lua) | **verified** — Lua 5.4.7 via Emscripten 5.0.7. `pcall` does not recover; see its README. | 232 KB |
+| **Java** | [`sdk/java/`](../sdk/java) | **verified** — TeaVM 0.12.0, `WEBASSEMBLY_WASI` target | 156 KB |
+| **Kotlin** | [`sdk/java/`](../sdk/java) | **verified** — Kotlin 2.0.21, same binding and toolchain as Java | 166 KB |
+| Ruby | — | **dropped**, see below | — |
+| **Python** | [`sdk/python/`](../sdk/python) | **verified** — CPython 3.12 via wasi-sdk 20. **Requires `-DOD_MODS_FAST_INTERP=OFF`**; see below. | 43 MB |
+| C# | — | **dropped**, see below | — |
+| Swift | — | **dropped**, see below | — |
+
+Verified means all of this, not just "it compiled":
+
+1. Compiled with that toolchain and packed into a `.odmod`.
+2. Loaded by the host; `mod_load` ran and returned 0.
+3. Revoking a declared capability correctly refused the load.
+4. `mod_draw_panel` ran against a synthetic world and produced **byte-identical
+   output to every other language**.
+5. A simulated click on its button advanced the mod's own state.
+
+Steps 4 and 5 are the ones that matter for a binding, and `ModExamplesTest` does
+them. Loading only proves a module links: a binding that declared
+`draw_text`'s parameters in the wrong order, got two-call sizing backwards, or
+always returned 0 from `button` would pass steps 1–3 and then draw nonsense in
+the game. All six full examples currently render:
+
+```
+Turn 42
+Countries: 3
+Grand Duchy of Testphalia      <- exercises two-call string sizing
+Provinces: 7
+Treasury: 1234                 <- exercises the f64 return
+Next country
+```
+
+and all six advance to `Bortania` when the button is clicked.
+
+### What testing them actually found
+
+**TinyGo did not work, and the bug was ours.** TinyGo exports `_initialize` —
+the WASI reactor convention — and expects the environment to call it before any
+other export. WAMR does that only when built with `WASM_ENABLE_LIBC_WASI`, and
+we deliberately build with WASI off. So `mod_load` ran against an uninitialised
+Go runtime and trapped with `Exception: unreachable`. The host now calls
+`_initialize` itself, and `tests/mod_runtime_test.cpp` pins it with a fixture
+that models the convention. This would have hit Rust `wasip1` and C# NativeAOT
+identically.
+
+C and C++ never showed this, because WAMR *does* call `__wasm_call_ctors`, which
+is what clang emits instead. Testing one language family had hidden it.
+
+**TinyGo also needs `wasm-opt`** (Binaryen) on `PATH` or in `WASMOPT`, or it
+refuses to build at all.
+
+**Swift was dropped after getting very close.** With the swift.org 6.3 toolchain
+(Xcode's is a different build of 6.3 and is rejected) plus the SwiftWasm
+embedded SDK, it compiled and linked to a correct 5.4 KB reactor module with all
+18 Gearbox imports resolving and exactly the right exports. One import survived:
+`wasi_snapshot_preview1.random_get`, referenced somewhere inside the Swift
+runtime and not via `getentropy` (overriding that changed nothing). The host
+refuses any import outside `gearbox:*`, so the mod would not load.
+
+Finishing it means finding the archive member that references `random_get` and
+overriding or excluding it. The cost that made it not worth carrying: a ~6 GB
+toolchain (4.6 GB compiler + 1.4 GB SDK) for one language.
+
+Every binding is cross-checked against the ABI by `tools/check_bindings.py`,
+which verifies that each one uses only import module names the host actually
+provides and mentions all 18 imports. That catches the single most likely
+transcription error — a mistyped module name such as `gearbox:gamestate` for
+`gearbox:gamestate.read`, which would otherwise surface as a confusing
+"this host does not provide that import" in the modder's face. It is a text
+lint: it cannot check argument order, and it compiles nothing.
+
+The unverified bindings were written against the machine-readable ABI, and
+`tests/mod_abi_test.cpp` guarantees that ABI still matches the host. That is a
+real guarantee about the *contract*, and no guarantee at all about the
+*toolchain syntax* — version-sensitive details (TinyGo's `//go:wasmimport`,
+Swift's `@_extern(wasm:)`) are flagged in each README. Expect to fix a line or
+two, and please report what you had to change.
+
+## Why C# was dropped
+
+The binding was written and then removed, because there is no route to a
+loadable mod today and pretending otherwise wastes a modder's evening.
+
+The .NET wasm workloads that exist (`wasm-tools`, `wasm-experimental`) target
+Blazor / browser-wasm. They emit a module carrying the whole .NET runtime plus
+JS-interop imports, and this host refuses any import outside `gearbox:*` — so
+that path cannot produce a mod that loads, however it is configured.
+
+What a C# mod would need is **NativeAOT-LLVM**, which compiles straight to a
+freestanding wasm module. That lives on an experimental NuGet feed, requires
+.NET 9+, and its package identifiers and versions move between previews. A
+binding pinned against it would be stale within a release.
+
+If NativeAOT-LLVM stabilises this becomes straightforward — the binding is 18
+`DllImport`s and five `UnmanagedCallersOnly` exports, and `sdk/abi.json` has
+everything needed to regenerate it. Until then, C# users are better served by
+the honest answer than by a directory that cannot be built.
+
+## Why Python needs a different build
+
+Python is the only SDK here that does not run on the default build, and the
+reason is worth stating precisely because it is not fixable by configuration.
+
+WAMR's **fast interpreter** encodes each function's operand-stack offsets in a
+signed 16-bit field. A function whose stack depth or local count exceeds
+`INT16_MAX` is rejected at load time with `fast interpreter offset overflow`.
+CPython's evaluation loop exceeds it. Both checks are in `wasm_loader.c`; the
+**classic interpreter** has neither.
+
+So a host that wants Python builds with:
+
+```bash
+cmake -S . -B build-python -DOD_MODS_FAST_INTERP=OFF
+```
+
+and accepts that every mod, in every language, runs on the slower interpreter.
+That is the whole trade, and it is why this is a build option rather than the
+default: fourteen SDKs would pay for one.
+
+Binaryen's `--flatten` pass rewrites nested expressions into locals and would
+in principle lower the stack depth enough. On the 43 MB module it ran for over
+40 minutes without completing, and it moves the pressure onto the local-count
+limit instead — so it is not a build step worth having.
+
+Both test suites detect this and skip the Python example on a fast build,
+matching on the loader's message rather than on the mod's name, so a Python mod
+broken for any other reason still fails loudly.
+
+## Why Ruby was dropped
+
+Not for want of a route — one was found and most of it worked. It was dropped
+because the last step needs a third toolchain and buys the smallest audience of
+any language here the largest artifact (~18 MB).
+
+What was verified before stopping, so the decision can be revisited on evidence
+rather than repeated from scratch:
+
+- `libruby-static.a` from ruby.wasm 3.4 links against **wasi-sdk 33**, despite
+  having been built with clang 17, into a **reactor** module exporting
+  `_initialize` and `mod_load` (`-mexec-model=reactor`, plus
+  `-lwasi-emulated-{mman,signal,getpid,process-clocks}`).
+- The raw link has only two imports outside the ABI —
+  `asyncify.start_unwind` and `asyncify.stop_rewind`. **Binaryen
+  `wasm-opt --asyncify`** replaces both, after which every import is permitted.
+- The module instantiates and `mod_load` runs under the real host.
+- Ruby needs no wasm exception handling: it does its own stack switching
+  through Asyncify, so the constraint that shapes every other SDK here does not
+  apply to it.
+
+Two traps, recorded because they cost a cycle each and would cost the same
+again:
+
+1. **Asyncify returns a false success if nothing drives it.** Called directly,
+   `mod_load` returned 0 having executed almost nothing — Ruby's `setjmp`
+   triggers an unwind that returns straight up the stack. The body has to run
+   through `rb_wasm_rt_start`, whose symbol is in the archive but which no
+   installed header declares.
+2. **`ruby_setup()` then calls `exit(71)`.** This is where it stops. Ruby needs
+   its standard library, and the prebuilt binary has one packed as a
+   **wasi-vfs** image (hence its `wasi_vfs_pack_fs` export). A hand-rolled link
+   has no such image.
+
+Finishing it means adding the **wasi-vfs** CLI to the toolchain set, packing
+the stdlib, and first establishing whether wasi-vfs serves reads inside the
+module or falls through to the host's WASI path calls. If it falls through,
+Ruby cannot work without opening a filesystem hole in the sandbox — which would
+be a bad trade for one language.
+
+## Interpreted languages: the WasiStub capability
+
+These languages cannot compile to WebAssembly. Running them means shipping an
+interpreter inside the mod — CPython, ruby.wasm, wasmoon, TeaVM — and every one
+of those, as built by its own toolchain, targets **WASI**. This host links no
+WASI at all, so until now they simply could not load.
+
+`WasiStub` is the narrowest surface that lets such an interpreter boot. It is a
+capability like any other: declared in `MANIFEST.json`, **off unless the user
+grants it**, and revocable in **Advanced**.
+
+It is emphatically *not* a WASI implementation, and it must never grow into one.
+Two decisions keep it from becoming the hole the sandbox exists to prevent:
+
+| | |
+|---|---|
+| `random_get` | **Deterministic**, seeded from your mod id. Not OS entropy. Real entropy is a machine fingerprint, and it would also make self-play and save replay irreproducible. Two mods get different streams; one mod gets the same stream every run. |
+| `clock_time_get` | The **turn number** as nanoseconds. Not the wall clock. A mod cannot learn the date, the timezone, or how long anything took — all fingerprints. |
+| `fd_write` | fd 1 and 2 only, and the bytes go to the **mod log**. That is how `print()` reaches the player. Any other descriptor is `EBADF`. |
+| `path_open` | **`ENOTCAPABLE`, always.** Refused, not stubbed. This is the one import that would make the shim meaningful as an escape, so it is the one that never works. |
+| `fd_read`, `fd_seek`, `fd_prestat_*` | Refused. No stdin, no preopened directory, so there is no filesystem root to walk. |
+| `args_*`, `environ_*` | Report zero entries and succeed, because runtimes commonly abort at startup if they cannot read argv. |
+
+`tests/mod_runtime_test.cpp` pins all of it: the determinism, the turn-derived
+clock, the `EBADF` on a non-stdio descriptor, and that `path_open` is refused.
+
+### What this costs, stated plainly
+
+A mod with `WasiStub` can print, and can run a language runtime that expects a
+POSIX-ish floor. It still cannot open a file, read stdin, see your environment,
+learn the time of day, or obtain real randomness. The trade is a wider *shape*
+of surface in exchange for four more languages — taken deliberately, with the
+fingerprinting primitives specifically neutered rather than passed through.
+
+If you are writing in a language that compiles to wasm directly, do not request
+it. Users are right to weigh it.
+
+## Adding a binding for a language we do not ship## Adding a binding for a language we do not ship
+
+You need three things:
+
+1. **Declare the imports.** Whatever your language's syntax is for "external
+   function in wasm module X named Y". Note the module names contain a colon
+   (`gearbox:core`); some toolchains handle that awkwardly, so check it first
+   with a one-import test rather than after writing the whole binding.
+2. **Export `mod_load`** under exactly that name, returning `i32`.
+3. **Get a pointer and a length out of a string.** Everything else follows.
+
+Then, before anything else:
+
+```bash
+python3 tools/wasm_imports.py mod.wasm
+```
+
+Stray imports are the failure mode for every language, and catching them at this
+point saves a confusing debugging session later. The full list of common
+offenders is in
+[gearbox-troubleshooting.md §7](gearbox-troubleshooting.md).
+
+Work from [`sdk/abi.json`](../sdk/abi.json) rather than from another binding —
+it is machine-readable, so for many languages you can generate the declarations
+instead of typing them. [`sdk/wat/`](../sdk/wat) shows what the imports and
+exports look like at the wire level if you need to see the bytes.
+
+If you get one working, a PR adding it under `sdk/<language>/` with a README in
+the same shape as the others is welcome. Say plainly in the README whether you
+compiled it and with which toolchain version.

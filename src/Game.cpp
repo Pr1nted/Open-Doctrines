@@ -50,8 +50,15 @@ const int MAIN_MENU_COUNT = 6;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 
-// Game version: major.minor.patch + state (a=alpha, b=beta, r=release, s=snapshot)
-const char* GAME_VERSION = "1.0.2a";
+// Game version: major.minor.patch + state (a=alpha, b=beta, r=release, s=snapshot).
+//
+// Injected by CMake from the ./VERSION file, which tools/release.py bumps. Do
+// not hardcode it here: the displayed version and the packaged version must be
+// the same string, and they were not while this was a separate literal.
+#ifndef OD_VERSION_STRING
+#define OD_VERSION_STRING "0.0.0-dev"   // building without CMake, e.g. a stray IDE target
+#endif
+const char* GAME_VERSION = OD_VERSION_STRING;
 
 const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental"};
 const int TAB_COUNT = 6;
@@ -383,6 +390,10 @@ bool Game::init(int screenW, int screenH, const char* title) {
 #endif
     m_configPath = m_dataDir + "config.json";
     m_config.load(m_configPath);
+
+    // Mods are scanned here but never started: instantiation only ever happens
+    // from the mod menu (docs/modding.md, "Lifecycle rules").
+    initModSystem();
 
     srand((unsigned int)time(nullptr));
 
@@ -802,7 +813,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER) {
                 initMenuBackground();
                 m_menuBgScroll = 0;
-            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR) {
+            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS) {
                 if (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH) {
                     initMenuBackground();
                 }
@@ -813,7 +824,7 @@ void Game::run() {
         // (covers transitions back from gameplay/country-select without a resize event)
         // Handle all menu screen types, but only init once per resize
         if ((m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER ||
-             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR) &&
+             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS) &&
             !IsWindowResized() &&
             (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH)) {
             initMenuBackground();
@@ -943,6 +954,15 @@ void Game::run() {
             BeginDrawing();
             ClearBackground(BLACK);
             drawCommunityMenu();
+            if (m_config.showConsole) drawConsoleWindow();
+            if (m_config.debugMode) drawDebugOverlay();
+            EndDrawing();
+        } else if (m_currentScreen == SCREEN_MODS) {
+            updateMenuBackground();
+            updateModsMenu();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            drawModsMenu();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
             EndDrawing();
