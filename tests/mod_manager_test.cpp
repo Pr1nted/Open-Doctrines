@@ -7,6 +7,7 @@
 // Build target: ModManagerTest.
 
 #include "mods/ModManager.h"
+#include "mods/ModUpdates.h"
 #include "mods/ModHost.h"
 #include "test_zip.h"
 
@@ -452,6 +453,57 @@ int main(int argc, char** argv) {
         mm.setEnabled(idxOf("com.test.bridge"), false);
         check("disabling the bridge brings the conflict back",
               !mm.blockingConflict(need("com.test.left")).empty());
+    }
+
+    // ---- update checks ------------------------------------------------------
+    // The response comes from a server a mod author controls, so the parser is
+    // the security boundary. It is tested directly; the network fetch is not,
+    // because a test that needs the internet is a test that fails on a train.
+    printf("\nupdate checks\n");
+    {
+        std::string v, page;
+
+        check("a well-formed response parses",
+              ModUpdates::parseResponse(
+                  "{\"version\": \"1.4.0\", \"url\": \"https://example.com/m\"}",
+                  v, page) && v == "1.4.0" && page == "https://example.com/m",
+              v + " / " + page);
+
+        check("url is optional",
+              ModUpdates::parseResponse("{\"version\": \"2.0.0\"}", v, page)
+                  && v == "2.0.0" && page.empty(), v);
+
+        // A page that merely contains the word must not read as an update.
+        check("a response with no version is rejected",
+              !ModUpdates::parseResponse("<html>version</html>", v, page));
+        check("a non-numeric version is rejected",
+              !ModUpdates::parseResponse("{\"version\": \"latest\"}", v, page));
+        check("an over-long version is rejected",
+              !ModUpdates::parseResponse(
+                  "{\"version\": \"" + std::string(64, '1') + "\"}", v, page));
+
+        // A plain-http or javascript: link must never reach a browser-open.
+        ModUpdates::parseResponse(
+            "{\"version\": \"1.1.0\", \"url\": \"http://insecure.example\"}", v, page);
+        check("a non-https url is dropped", page.empty(), page);
+        ModUpdates::parseResponse(
+            "{\"version\": \"1.1.0\", \"url\": \"javascript:alert(1)\"}", v, page);
+        check("a javascript: url is dropped", page.empty(), page);
+
+        // Version comparison.
+        check("newer patch is newer",  ModUpdates::isNewer("1.0.0", "1.0.1"));
+        check("newer minor is newer",  ModUpdates::isNewer("1.0.9", "1.1.0"));
+        check("newer major is newer",  ModUpdates::isNewer("1.9.9", "2.0.0"));
+        check("equal is not newer",   !ModUpdates::isNewer("1.2.3", "1.2.3"));
+        check("older is not newer",   !ModUpdates::isNewer("2.0.0", "1.9.9"));
+        check("missing version is not newer", !ModUpdates::isNewer("1.0.0", ""));
+
+        // The gate. With the setting off, nothing is requested at all.
+        ModUpdates::get().clear();
+        ModUpdates::get().checkAll(mm, false);
+        check("no check runs while the setting is off",
+              ModUpdates::get().infoFor("com.test.lib") == nullptr &&
+              !ModUpdates::get().busy());
     }
 
     mm.unloadAll();

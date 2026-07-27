@@ -7,6 +7,7 @@
 #include "Game.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
+#include "mods/ModUpdates.h"
 #include "mods/ModHost.h"
 
 #include <algorithm>
@@ -628,6 +629,41 @@ void Game::drawModsMenu() {
         if (status.size() > 96) status.resize(96);
         drawHybridText((int)textX, (int)row.y + 58, 13, status.c_str(), sc);
 
+        // Badges, left to right after the status line. A conflict the host
+        // OBSERVED is shown even while the mod runs: it is not grounds to
+        // disable a mod mid-game, but the player should still be told which two
+        // mods are fighting and over what.
+        int badgeX = (int)textX + MeasureText(status.c_str(), 13) + 12;
+        auto badge = [&](const char* label, Color fg, Color bg) {
+            int w = MeasureText(label, 12) + 14;
+            Rectangle b{(float)badgeX, (float)row.y + 55, (float)w, 19.0f};
+            DrawRectangleRounded(b, 0.4f, 6, bg);
+            DrawText(label, badgeX + 7, (int)row.y + 58, 12, fg);
+            badgeX += w + 6;
+            return b;
+        };
+
+        if (e.manifestValid && ModConflicts::get().anyFor(e.id))
+            badge("conflict", Color{255, 200, 130, 255}, Color{90, 60, 25, 220});
+
+        // "Can be updated" only ever appears when the player opted in AND the
+        // author's page reported a genuinely higher version.
+        if (e.manifestValid) {
+            if (const auto* up = ModUpdates::get().infoFor(e.id)) {
+                if (up->newer) {
+                    Rectangle b = badge("Can be updated",
+                                        Color{140, 220, 255, 255},
+                                        Color{25, 60, 90, 230});
+                    if (CheckCollisionPointRec(mouse, b)) {
+                        DrawRectangleRoundedLines(b, 0.4f, 6, Color{140, 220, 255, 200});
+                        // The click is handled in updateModsMenu; drawing only
+                        // marks it. Opening a browser is as far as this goes --
+                        // the game never downloads or installs a mod.
+                    }
+                }
+            }
+        }
+
         // Right-anchored controls, laid out right to left.
         const int btn = 30;
         int bx = (int)(row.x + row.width) - 12 - btn;
@@ -693,7 +729,8 @@ void Game::drawModAdvanced() {
     Vector2 mouse = getMouse();
 
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 170});
-    int w = 520, h = 460;
+    // Taller than it was: the conflicts section lives below the permissions.
+    int w = 520, h = 600;
     int x = m_screenW / 2 - w / 2, y = m_screenH / 2 - h / 2;
     DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.05f, 10,
                          Color{20, 20, 32, 245});
@@ -730,6 +767,70 @@ void Game::drawModAdvanced() {
         DrawText(st, (int)b.x + (int)(b.width - tw) / 2, (int)b.y + 7, 13,
                  (granted && !locked) ? Color{20, 20, 25, 255} : Color{180, 180, 190, 255});
         ry += 34;
+    }
+
+    // --- conflicts ------------------------------------------------------------
+    // Listed per PAIR, because that is what a conflict is and what an override
+    // applies to. Declared conflicts (the author knew) and observed ones (the
+    // host watched two mods fight over the same value) are shown together --
+    // the user cares that these two disagree, not how we found out.
+    ry += 6;
+    DrawLine(x + 24, ry, x + w - 24, ry, Color{60, 60, 80, 200});
+    ry += 12;
+    drawHybridText(x + 28, ry, 16, "Conflicts", accent);
+    ry += 26;
+
+    int shown = 0;
+    if (e.manifestValid) {
+        auto& mmRef = ModManager::get();
+        for (auto& other : mmRef.mods()) {
+            if (!other.manifestValid || other.id == e.id) continue;
+
+            bool declared = false;
+            for (const auto& c : e.manifest.conflicts)
+                if (c.id == other.id) declared = true;
+            for (const auto& c : other.manifest.conflicts)
+                if (c.id == e.id) declared = true;
+
+            bool observed = false;
+            for (const auto& cl : ModConflicts::get().clashes())
+                if ((cl.modA == e.id && cl.modB == other.id) ||
+                    (cl.modB == e.id && cl.modA == other.id)) observed = true;
+
+            if (!declared && !observed) continue;
+            if (shown >= 3) break;              // the panel is not a log viewer
+
+            bool bridgedPair = mmRef.bridged(e.id, other.id);
+            bool overridden = e.overridesConflictWith(other.id) ||
+                              other.overridesConflictWith(e.id);
+
+            std::string label = other.manifest.name;
+            if (label.size() > 26) label.resize(26);
+            label += declared ? "  (declared)" : "  (observed)";
+            drawHybridText(x + 28, ry + 5, 14, label.c_str(),
+                           bridgedPair || overridden ? Color{150, 150, 160, 255}
+                                                     : Color{255, 200, 130, 255});
+
+            Rectangle b{(float)(x + w - 150), (float)ry, 112.0f, 24.0f};
+            const char* st = bridgedPair ? "BRIDGED"
+                                         : (overridden ? "ALLOWED" : "BLOCKED");
+            bool bh = !bridgedPair && CheckCollisionPointRec(mouse, b);
+            DrawRectangleRounded(b, 0.35f, 8,
+                bridgedPair ? Color{40, 42, 55, 200}
+                            : (overridden ? ColorAlpha(accent, bh ? 0.9f : 0.7f)
+                                          : (bh ? Color{70, 75, 100, 255}
+                                                : Color{35, 38, 55, 220})));
+            int tw2 = MeasureText(st, 12);
+            DrawText(st, (int)b.x + (int)(b.width - tw2) / 2, (int)b.y + 6, 12,
+                     (overridden && !bridgedPair) ? Color{20, 20, 25, 255}
+                                                  : Color{180, 180, 190, 255});
+            ry += 30;
+            shown++;
+        }
+    }
+    if (shown == 0) {
+        DrawText("None with the mods you have enabled.", x + 28, ry, 13,
+                 Color{130, 130, 140, 255});
     }
 
     const char* note = "Changing permissions requires a reload.";
@@ -813,6 +914,14 @@ void Game::drawModReloadingOverlay() {
 // ------------------------------------------------------- mod menu input ---
 
 void Game::updateModsMenu() {
+    // One round of update checks per visit to this menu, and only ever with the
+    // player's opt-in. checkAll() is a no-op when the setting is off and when a
+    // round is already in flight, so this cannot turn into per-frame traffic.
+    if (!m_modUpdatesAsked) {
+        m_modUpdatesAsked = true;
+        ModUpdates::get().checkAll(ModManager::get(), m_config.modUpdateChecks);
+    }
+
     ModManager& mm = ModManager::get();
     // A world being loaded is what makes activation deferred: joining a game
     // already in progress would make turn order depend on when the user
@@ -903,7 +1012,7 @@ void Game::updateModsMenu() {
     if (m_modAdvancedFor >= 0) {
         if (m_modAdvancedFor >= (int)mods.size()) { m_modAdvancedFor = -1; return; }
         ModEntry& e = mods[m_modAdvancedFor];
-        int w = 520, h = 460;
+        int w = 520, h = 600;              // must match drawModAdvanced
         int x = m_screenW / 2 - w / 2, y = m_screenH / 2 - h / 2;
 
         static const uint32_t kBits[] = {
@@ -917,6 +1026,44 @@ void Game::updateModsMenu() {
             if (!locked && click && CheckCollisionPointRec(mouse, b))
                 mm.setGrant((size_t)m_modAdvancedFor, bit, !(e.grants & bit));
             ry += 34;
+        }
+
+        // Conflict overrides. The same walk as the draw, so the hit boxes line
+        // up; a bridged pair has no toggle because nothing needs deciding.
+        ry += 6 + 12 + 26;
+        int shown = 0;
+        if (e.manifestValid) {
+            for (auto& other : mm.mods()) {
+                if (!other.manifestValid || other.id == e.id) continue;
+
+                bool declared = false;
+                for (const auto& c : e.manifest.conflicts)
+                    if (c.id == other.id) declared = true;
+                for (const auto& c : other.manifest.conflicts)
+                    if (c.id == e.id) declared = true;
+
+                bool observed = false;
+                for (const auto& cl : ModConflicts::get().clashes())
+                    if ((cl.modA == e.id && cl.modB == other.id) ||
+                        (cl.modB == e.id && cl.modA == other.id)) observed = true;
+
+                if (!declared && !observed) continue;
+                if (shown >= 3) break;
+
+                if (!mm.bridged(e.id, other.id)) {
+                    Rectangle b{(float)(x + w - 150), (float)ry, 112.0f, 24.0f};
+                    if (click && CheckCollisionPointRec(mouse, b)) {
+                        bool on = e.overridesConflictWith(other.id);
+                        mm.setConflictOverride((size_t)m_modAdvancedFor, other.id, !on);
+                        m_modFeedback = on ? "Conflict blocked again"
+                                           : "Allowed — reload for it to take effect";
+                        m_modFeedbackTimer = 3.0f;
+                        return;
+                    }
+                }
+                ry += 30;
+                shown++;
+            }
         }
         Rectangle close{(float)(x + w - 120), (float)(y + h - 46), 96.0f, 32.0f};
         if ((click && CheckCollisionPointRec(mouse, close)) || IsKeyPressed(KEY_ESCAPE))
@@ -982,6 +1129,39 @@ void Game::updateModsMenu() {
         Rectangle togB{(float)(bx - 3 * (btn + 8) - 34), (float)bY, 64.0f, (float)btn};
 
         if (!click) continue;
+
+        // "Can be updated" opens the author's page in a browser and does
+        // nothing else. The game never downloads or installs a mod: that would
+        // mean fetching and running code chosen by a third party, which is the
+        // one thing the whole capability sandbox exists to prevent.
+        const auto& me = mods[i];
+        if (me.manifestValid) {
+            if (const auto* up = ModUpdates::get().infoFor(me.id)) {
+                if (up->newer && !up->page.empty()) {
+                    std::string status = modStateName(me.state);
+                    if (me.state == ModState::PendingReload)
+                        status = "Needs reload to take effect";
+                    if (!me.diagnostic.empty()) status += " — " + me.diagnostic;
+                    else if (!me.warnings.empty()) status += " — " + me.warnings[0];
+                    if (status.size() > 96) status.resize(96);
+
+                    float thumb = (float)itemH - 28;
+                    int badgeX = (int)(row.x + 10 + thumb + 14)
+                               + MeasureText(status.c_str(), 13) + 12;
+                    if (ModConflicts::get().anyFor(me.id))
+                        badgeX += MeasureText("conflict", 12) + 14 + 6;
+                    Rectangle upB{(float)badgeX, row.y + 55,
+                                  (float)(MeasureText("Can be updated", 12) + 14), 19.0f};
+                    if (CheckCollisionPointRec(mouse, upB)) {
+                        OpenURL(up->page.c_str());
+                        m_modFeedback = "Opened the mod's page in your browser";
+                        m_modFeedbackTimer = 3.0f;
+                        return;
+                    }
+                }
+            }
+        }
+
         if (CheckCollisionPointRec(mouse, delB))  { m_modDeleteFor = i; return; }
         if (CheckCollisionPointRec(mouse, advB))  { m_modAdvancedFor = i; return; }
         if (CheckCollisionPointRec(mouse, rldB))  {

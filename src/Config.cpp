@@ -61,6 +61,9 @@ bool Config::load(const std::string& path) {
     if (aiDifficulty > 3) aiDifficulty = 3;
     aiDebug = findBool(json, "aiDebug", false);
     aiLearning = findBool(json, "aiLearning", false);
+    // Absent means off: an older config file must not silently opt the
+    // player into an outbound request they never agreed to.
+    modUpdateChecks = findBool(json, "modUpdateChecks", false);
     accentColor = findInt(json, "accentColor", 0xFFD700);
 
     // Load keybinds
@@ -107,6 +110,7 @@ bool Config::save(const std::string& path) {
     file << "  \"aiDifficulty\": " << aiDifficulty << ",\n";
     file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
     file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";
+    file << "  \"modUpdateChecks\": " << (modUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
     file << "  \"keybinds\": [";
     for (int i = 0; i < ACTION_COUNT; ++i) {

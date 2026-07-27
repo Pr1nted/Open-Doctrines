@@ -32,7 +32,7 @@ extern const Setting AUDIO_ITEMS[1];
 extern const int AUDIO_COUNT;
 extern const Setting KEYBINDS_ITEMS[27];
 extern const int KEYBINDS_COUNT;
-extern const Setting ADVANCED_ITEMS[5];
+extern const Setting ADVANCED_ITEMS[6];
 extern const int ADVANCED_COUNT;
 extern const Setting EXPERIMENTAL_ITEMS[2];
 extern const int EXPERIMENTAL_COUNT;

@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
+#include "mods/ModUpdates.h"
 #include "SaveManager.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -1427,7 +1428,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 4) || (m_settingsTab == 5 && i < 1)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 5) || (m_settingsTab == 5 && i < 1)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -1587,6 +1588,11 @@ void Game::updateSettingsFromMenu() {
             else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
             else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
             else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
+            else if (m_settingsTab == 4 && m_settingsIndex == 4) {
+                m_config.modUpdateChecks = false;
+                ModUpdates::get().clear();
+                m_modUpdatesAsked = false;
+            }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
             m_config.save(m_configPath);
@@ -1643,6 +1649,23 @@ void Game::updateSettingsFromMenu() {
             m_config.showConsole = !m_config.showConsole;
         } else if (strcmp(s.label, "AI Debug") == 0) {
             m_config.aiDebug = !m_config.aiDebug;
+        } else if (strcmp(s.label, "Check mods for updates") == 0) {
+            m_config.modUpdateChecks = !m_config.modUpdateChecks;
+            // Off has to mean off *now*, not from the next session: drop
+            // whatever earlier checks returned so no "Can be updated" badge
+            // outlives the setting that produced it. Clearing on the way on
+            // too is what lets the toggle take effect without leaving and
+            // re-entering the mods menu.
+            ModUpdates::get().clear();
+            m_modUpdatesAsked = false;
+            // Say plainly what switching it on means. A player agreeing to
+            // "check for updates" is not obviously agreeing to tell a stranger
+            // which mods they run, so the message says so rather than assuming
+            // they inferred it.
+            m_menuFeedback = m_config.modUpdateChecks
+                ? "On — each mod's author will see that you run their mod when the check runs"
+                : "Off — no outbound requests";
+            m_menuFeedbackTimer = 4.0f;
         } else if (strcmp(s.label, "AI Learning") == 0) {
             // Never on while a mod is: a mod can change what the AI observes,
             // and training against that silently corrupts data/ai/model.bin.

@@ -120,14 +120,19 @@ const Setting KEYBINDS_ITEMS[] = {
 };
 const int KEYBINDS_COUNT = sizeof(KEYBINDS_ITEMS) / sizeof(KEYBINDS_ITEMS[0]);
 
-const Setting ADVANCED_ITEMS[] = {
+const Setting ADVANCED_ITEMS[6] = {
     {"Display FPS", false, -1},
     {"Display Zoom", false, -1},
     {"Console Window", false, -1},
     {"AI Debug", false, -1},
+    // Off by default and left that way unless the player asks. It is the only
+    // outbound request the game makes, and it goes to a URL a MOD AUTHOR
+    // controls -- turning it on tells that author this player runs their mod.
+    // Even on, the game only looks: it never downloads or installs anything.
+    {"Check mods for updates", false, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 5;
+const int ADVANCED_COUNT = 6;
 
 // Experimental: behaviour that changes how the game plays rather than how it
 // looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
@@ -274,6 +279,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.showConsole ? ": On" : ": Off";
     } else if (tab == 4 && index == 3) {
         label += cfg.aiDebug ? ": On" : ": Off";
+    } else if (tab == 4 && index == 4) {
+        label += cfg.modUpdateChecks ? ": On" : ": Off";
     } else if (tab == 5 && index == 0) {
         label += cfg.aiLearning ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {

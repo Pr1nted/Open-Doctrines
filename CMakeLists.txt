@@ -160,6 +160,7 @@ set(GAME_SOURCES
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
+    src/mods/ModUpdates.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
@@ -298,6 +299,7 @@ add_executable(ModManagerTest EXCLUDE_FROM_ALL
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
+    src/mods/ModUpdates.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
@@ -337,6 +339,7 @@ add_executable(ModExamplesTest EXCLUDE_FROM_ALL
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
+    src/mods/ModUpdates.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c

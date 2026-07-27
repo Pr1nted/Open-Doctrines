@@ -250,6 +250,9 @@ public:
     int   m_modIndex = 0;
     int   m_modScroll = 0;
     int   m_modAdvancedFor = -1;      // index whose Advanced panel is open
+    // Reset when the mod menu is left, so each visit checks for updates
+    // once rather than every frame.
+    bool  m_modUpdatesAsked = false;
     int   m_modDeleteFor = -1;
     int   m_modAiWarnFor = -1;        // index awaiting the AI-learning interlock
     bool  m_modReloading = false;

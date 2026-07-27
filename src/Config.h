@@ -25,6 +25,18 @@ struct Config {
     // long self-play training run has accumulated in the shared model.
     bool aiLearning = false;
 
+    // Ask each mod's declared updateUrl whether a newer version exists.
+    //
+    // OFF BY DEFAULT, and it stays that way unless the player turns it on. This
+    // is the only outbound request the game ever makes, and it is to a URL a
+    // MOD AUTHOR controls -- so switching it on tells every such author that
+    // this player runs their mod, roughly when, and from which IP. That is a
+    // real disclosure and not one to make on someone's behalf.
+    //
+    // Even when on, the game only ever LOOKS. It never downloads or installs a
+    // mod: the button it enables opens the author's page in a browser.
+    bool modUpdateChecks = false;
+
     int keybinds[ACTION_COUNT];
 
     int accentColor = 0xFFD700; // default gold, hex 0xRRGGBB
