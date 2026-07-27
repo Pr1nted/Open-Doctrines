@@ -64,6 +64,7 @@ bool Config::load(const std::string& path) {
     // Absent means off: an older config file must not silently opt the
     // player into an outbound request they never agreed to.
     modUpdateChecks = findBool(json, "modUpdateChecks", false);
+    gameUpdateChecks = findBool(json, "gameUpdateChecks", true);
     accentColor = findInt(json, "accentColor", 0xFFD700);
 
     // Load keybinds
@@ -111,6 +112,7 @@ bool Config::save(const std::string& path) {
     file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
     file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";
     file << "  \"modUpdateChecks\": " << (modUpdateChecks ? "true" : "false") << ",\n";
+    file << "  \"gameUpdateChecks\": " << (gameUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
     file << "  \"keybinds\": [";
     for (int i = 0; i < ACTION_COUNT; ++i) {

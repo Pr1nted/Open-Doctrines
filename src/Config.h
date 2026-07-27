@@ -37,6 +37,13 @@ struct Config {
     // mod: the button it enables opens the author's page in a browser.
     bool modUpdateChecks = false;
 
+    // Whether the game asks its own release host whether a newer OpenDoctrines
+    // exists. ON by default, unlike modUpdateChecks above, and the difference
+    // is deliberate: a mod check tells a stranger which mods this player runs,
+    // while this one asks the game's own host about the game. Players who want
+    // no outbound traffic at all can switch it off in Settings > Advanced.
+    bool gameUpdateChecks = true;
+
     int keybinds[ACTION_COUNT];
 
     int accentColor = 0xFFD700; // default gold, hex 0xRRGGBB

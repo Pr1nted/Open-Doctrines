@@ -153,6 +153,12 @@ private:
     // Main menu
     void drawMainMenu();
     void updateMainMenu();
+    // The "!" beside the version in the main menu, and the panel it opens.
+    // Returns the clickable rect so update and draw cannot disagree about
+    // where the badge is.
+    Rectangle updateBadgeRect() const;
+    void drawUpdatePanel();
+    bool updatePanelClick(Vector2 mouse);
     void drawSingleplayerMenu();
     void updateSingleplayerMenu();
     void drawCountrySelect();
@@ -253,6 +259,8 @@ public:
     // Reset when the mod menu is left, so each visit checks for updates
     // once rather than every frame.
     bool  m_modUpdatesAsked = false;
+    bool  m_updatePanel = false;      // the game-update panel is open
+    bool  m_gameUpdateAsked = false;  // the check has been started this session
     int   m_modDeleteFor = -1;
     int   m_modAiWarnFor = -1;        // index awaiting the AI-learning interlock
     bool  m_modReloading = false;

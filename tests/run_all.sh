@@ -14,7 +14,7 @@ step "fixture mods"
 
 step "build test targets"
 cmake --build "$build" --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       >/dev/null || { echo "build failed"; exit 1; }
 
 run() {
@@ -27,6 +27,9 @@ run "archive reader"   "$build/ModArchiveTest"
 run "abi conformance"  "$build/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$build/ModRuntimeTest" "$build/testmods"
 run "mod manager"      "$build/ModManagerTest" "$build/testmods" "$build/modmgr_scratch"
+# Run from the repository root: the version test shells out to tools/odver.py
+# and reads tests/fixtures/, and both are relative to it.
+run "game updater"     "$build/GameUpdatesTest"
 
 run "example mods, all languages" "$build/ModExamplesTest" "$root/sdk"
 

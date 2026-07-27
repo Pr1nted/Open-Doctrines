@@ -1,3 +1,4 @@
+#include "GameUpdates.h"
 #include "Game.h"
 #include "SaveManager.h"
 #include "Keybinds.h"
@@ -120,7 +121,7 @@ const Setting KEYBINDS_ITEMS[] = {
 };
 const int KEYBINDS_COUNT = sizeof(KEYBINDS_ITEMS) / sizeof(KEYBINDS_ITEMS[0]);
 
-const Setting ADVANCED_ITEMS[6] = {
+const Setting ADVANCED_ITEMS[7] = {
     {"Display FPS", false, -1},
     {"Display Zoom", false, -1},
     {"Console Window", false, -1},
@@ -130,9 +131,12 @@ const Setting ADVANCED_ITEMS[6] = {
     // controls -- turning it on tells that author this player runs their mod.
     // Even on, the game only looks: it never downloads or installs anything.
     {"Check mods for updates", false, -1},
+    // On by default. Asks the game's own release host about the game itself,
+    // which is a different disclosure from the mod check above.
+    {"Check for game updates", false, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 6;
+const int ADVANCED_COUNT = 7;
 
 // Experimental: behaviour that changes how the game plays rather than how it
 // looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
@@ -281,6 +285,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.aiDebug ? ": On" : ": Off";
     } else if (tab == 4 && index == 4) {
         label += cfg.modUpdateChecks ? ": On" : ": Off";
+    } else if (tab == 4 && index == 5) {
+        label += cfg.gameUpdateChecks ? ": On" : ": Off";
     } else if (tab == 5 && index == 0) {
         label += cfg.aiLearning ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {
@@ -396,6 +402,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
     m_dataDir = appDir + "../data/";
 #endif
     m_configPath = m_dataDir + "config.json";
+
+    // Tell the updater where the game actually lives before it does anything.
+    // GetApplicationDirectory() is the executable's own directory, which is
+    // what an update must replace; the working directory can be anywhere when
+    // the game is launched by double-clicking it.
+    GameUpdates::setInstallDir(GetApplicationDirectory());
+
+    // Sweep up after any update that installed on the previous run: the
+    // staging directory and the binary that was displaced to make room. Both
+    // are safe to remove now, because nothing is running from them.
+    GameUpdates::cleanUpAfterUpdate();
     m_config.load(m_configPath);
 
     // Mods are scanned here but never started: instantiation only ever happens

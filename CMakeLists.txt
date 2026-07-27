@@ -127,6 +127,7 @@ message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    src/GameUpdates.cpp
     src/Game_Browsers.cpp
     src/Game_Claims.cpp
     src/Game_Economy.cpp
@@ -306,6 +307,19 @@ add_executable(ModManagerTest EXCLUDE_FROM_ALL
     tools/map_generator/miniz_zip.c
 )
 target_include_directories(ModManagerTest PRIVATE src tests tools/map_generator)
+
+# The in-game updater: the version comparison (which must agree with
+# tools/odver.py), the hostile-input parsing of a release reply, and the rule
+# that installing an update never deletes anything.
+add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
+    tests/game_updates_test.cpp
+    src/GameUpdates.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(GameUpdatesTest PRIVATE src tests tools/map_generator)
 if(OD_MODS_BACKEND STREQUAL "wamr")
     target_link_libraries(ModManagerTest vmlib)
     target_compile_definitions(ModManagerTest PRIVATE OD_MODS_WAMR=1)

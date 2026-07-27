@@ -2,6 +2,7 @@
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
+#include "GameUpdates.h"
 #include "SaveManager.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -583,11 +584,31 @@ void Game::drawMainMenu() {
     // Version info
     DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade((Color){80, 80, 90, 200}));
 
+    // The "!" — only ever drawn when a newer release actually exists, so its
+    // presence is information rather than decoration.
+    if (GameUpdates::get().updateAvailable()) {
+        Rectangle r = updateBadgeRect();
+        bool hov = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, r);
+        Color accent = hexToColor(m_config.accentColor);
+        DrawRectangleRounded(r, 0.4f, 8, fade(ColorAlpha(accent, hov ? 0.35f : 0.20f)));
+        DrawRectangleRoundedLines(r, 0.4f, 8, fade(ColorAlpha(accent, 0.8f)));
+        // A gentle pulse, so it reads as new without demanding attention.
+        float pulse = 0.75f + 0.25f * sinf((float)GetTime() * 3.0f);
+        DrawCircle((int)r.x + 14, (int)(r.y + r.height / 2), 7,
+                   fade(ColorAlpha(accent, pulse)));
+        DrawText("!", (int)r.x + 11, (int)(r.y + r.height / 2) - 7, 16,
+                 fade((Color){20, 20, 25, 255}));
+        DrawText("Update available", (int)r.x + 28, (int)(r.y + r.height / 2) - 7, 14,
+                 fade(hov ? WHITE : (Color){200, 200, 210, 255}));
+    }
+
     // Feedback message
     if (m_menuFeedbackTimer > 0 && !m_menuFeedback.empty()) {
         int fbW = MeasureText(m_menuFeedback.c_str(), 16);
         DrawText(m_menuFeedback.c_str(), centerX - fbW / 2, m_screenH - 80, 16, ColorAlpha(hexToColor(m_config.accentColor), std::min(1.0f, m_menuFeedbackTimer)));
     }
+
+    if (m_updatePanel) drawUpdatePanel();
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -643,12 +664,239 @@ void Game::drawSplashScreen() {
 // ────────────────────────────────────────────────────────────────────────────
 // updateMainMenu
 // ────────────────────────────────────────────────────────────────────────────
+// ── The game updater's UI ──────────────────────────────────────────────────
+//
+// Geometry lives in one place so the drawing and the click handling cannot
+// disagree about where anything is. That is not fussiness: a button drawn in
+// one place and hit-tested in another is the classic way an update button
+// becomes unclickable on somebody else's screen resolution.
+
+namespace {
+
+struct UpdatePanelLayout {
+    Rectangle panel, primary, secondary;
+};
+
+UpdatePanelLayout updatePanelLayout(int screenW, int screenH) {
+    UpdatePanelLayout L;
+    const float w = 600, h = 320;
+    L.panel = {(float)(screenW / 2) - w / 2, (float)(screenH / 2) - h / 2, w, h};
+    float by = L.panel.y + h - 60;
+    L.primary   = {L.panel.x + w - 380, by, 200, 40};
+    L.secondary = {L.panel.x + w - 160, by, 120, 40};
+    return L;
+}
+
+// Breaks text into lines that fit `maxW`, keeping the newlines the release
+// notes already contain.
+std::vector<std::string> wrapText(const std::string& text, int fontSize, int maxW) {
+    std::vector<std::string> lines;
+    std::string line;
+    auto flush = [&]() { lines.push_back(line); line.clear(); };
+    std::string word;
+    auto pushWord = [&]() {
+        if (word.empty()) return;
+        std::string candidate = line.empty() ? word : line + " " + word;
+        if (MeasureText(candidate.c_str(), fontSize) > maxW && !line.empty()) {
+            flush();
+            line = word;
+        } else {
+            line = candidate;
+        }
+        word.clear();
+    };
+    for (char c : text) {
+        if (c == '\n') { pushWord(); flush(); }
+        else if (c == ' ') pushWord();
+        else word += c;
+    }
+    pushWord();
+    if (!line.empty()) flush();
+    return lines;
+}
+
+}  // namespace
+
+Rectangle Game::updateBadgeRect() const {
+    return {6.0f, (float)m_screenH - 52.0f, 160.0f, 26.0f};
+}
+
+void Game::drawUpdatePanel() {
+    using Stage = GameUpdates::Stage;
+    GameUpdates::Status st = GameUpdates::get().status();
+    UpdatePanelLayout L = updatePanelLayout(m_screenW, m_screenH);
+    Color accent = hexToColor(m_config.accentColor);
+
+    DrawRectangle(0, 0, m_screenW, m_screenH, (Color){0, 0, 0, 170});
+    DrawRectangleRounded(L.panel, 0.04f, 8, (Color){24, 24, 30, 250});
+    DrawRectangleRoundedLines(L.panel, 0.04f, 8, ColorAlpha(accent, 0.6f));
+
+    int x = (int)L.panel.x + 28;
+    int y = (int)L.panel.y + 24;
+
+    DrawText("A new version is available", x, y, 24, accent);
+    y += 38;
+
+    DrawText(TextFormat("You have  v%s", GAME_VERSION), x, y, 16,
+             (Color){170, 170, 180, 255});
+    DrawText(TextFormat("Newest  v%s", st.latest.c_str()), x + 260, y, 16, WHITE);
+    y += 30;
+
+    DrawLine(x, y, (int)(L.panel.x + L.panel.width) - 28, y,
+             (Color){60, 60, 70, 255});
+    y += 14;
+
+    // What the panel says in the middle depends entirely on where the update
+    // has got to, so each stage gets its own words rather than a generic
+    // "working…".
+    const int notesW = (int)L.panel.width - 56;
+    switch (st.stage) {
+        case Stage::Downloading: {
+            DrawText(TextFormat("Downloading…  %d%%", st.percent), x, y, 16, WHITE);
+            Rectangle bar = {(float)x, (float)y + 26, (float)notesW, 10};
+            DrawRectangleRounded(bar, 0.5f, 6, (Color){50, 50, 58, 255});
+            Rectangle fill = bar;
+            fill.width = bar.width * (float)st.percent / 100.0f;
+            if (fill.width > 4) DrawRectangleRounded(fill, 0.5f, 6, accent);
+            break;
+        }
+        case Stage::Installing:
+            DrawText("Installing…", x, y, 16, WHITE);
+            DrawText("Your saves, worlds and mods are not touched.", x, y + 24, 14,
+                     (Color){150, 150, 160, 255});
+            break;
+        case Stage::Restart:
+            DrawText("Installed.", x, y, 18, accent);
+            DrawText("Quit and start OpenDoctrines again to play the new version.",
+                     x, y + 28, 15, (Color){200, 200, 210, 255});
+            break;
+        case Stage::OpenedPage:
+            DrawText("Opened the download page in your browser.", x, y, 16, WHITE);
+            DrawText("Download the new version and replace this copy — macOS builds",
+                     x, y + 26, 14, (Color){150, 150, 160, 255});
+            DrawText("are not signed, so the game cannot replace itself here.",
+                     x, y + 44, 14, (Color){150, 150, 160, 255});
+            break;
+        case Stage::Failed: {
+            DrawText("The update did not finish.", x, y, 16, (Color){235, 120, 120, 255});
+            auto lines = wrapText(st.error, 14, notesW);
+            for (size_t i = 0; i < lines.size() && i < 3; ++i)
+                DrawText(lines[i].c_str(), x, y + 26 + (int)i * 18, 14,
+                         (Color){170, 170, 180, 255});
+            DrawText("Nothing was changed. You can download it yourself instead.",
+                     x, y + 26 + 3 * 18, 14, (Color){150, 150, 160, 255});
+            break;
+        }
+        default: {
+            if (!st.notes.empty()) {
+                auto lines = wrapText(st.notes, 15, notesW);
+                for (size_t i = 0; i < lines.size() && i < 5; ++i)
+                    DrawText(lines[i].c_str(), x, y + (int)i * 20, 15,
+                             (Color){190, 190, 200, 255});
+            } else {
+                DrawText("No release notes were published for this version.", x, y, 15,
+                         (Color){150, 150, 160, 255});
+            }
+            break;
+        }
+    }
+
+    // Buttons. The primary one names what it will actually do — on macOS it
+    // opens a page and says so, rather than saying "Update" and then not
+    // updating anything.
+    const char* primaryLabel = nullptr;
+    switch (st.stage) {
+        case Stage::Available:
+            primaryLabel = GameUpdates::canSelfInstall() ? "Update now"
+                                                         : "Open download page";
+            break;
+        case Stage::Failed:
+            primaryLabel = "Open download page";
+            break;
+        default:
+            break;
+    }
+
+    Vector2 mouse = getMouse();
+    if (primaryLabel) {
+        bool hov = CheckCollisionPointRec(mouse, L.primary);
+        DrawRectangleRounded(L.primary, 0.25f, 8,
+                             ColorAlpha(accent, hov ? 0.85f : 0.6f));
+        int tw = MeasureText(primaryLabel, 16);
+        DrawText(primaryLabel, (int)(L.primary.x + L.primary.width / 2 - tw / 2),
+                 (int)(L.primary.y + 12), 16, (Color){20, 20, 25, 255});
+    }
+
+    const char* closeLabel = (st.stage == Stage::Restart ||
+                              st.stage == Stage::OpenedPage) ? "Close" : "Later";
+    bool chov = CheckCollisionPointRec(mouse, L.secondary);
+    DrawRectangleRounded(L.secondary, 0.25f, 8,
+                         chov ? (Color){255, 255, 255, 30} : (Color){255, 255, 255, 14});
+    int cw = MeasureText(closeLabel, 16);
+    DrawText(closeLabel, (int)(L.secondary.x + L.secondary.width / 2 - cw / 2),
+             (int)(L.secondary.y + 12), 16, chov ? WHITE : (Color){200, 200, 210, 255});
+}
+
+// Returns true when the click was the panel's, so the caller can stop looking
+// at the menu underneath it.
+bool Game::updatePanelClick(Vector2 mouse) {
+    using Stage = GameUpdates::Stage;
+    UpdatePanelLayout L = updatePanelLayout(m_screenW, m_screenH);
+    GameUpdates::Status st = GameUpdates::get().status();
+
+    if (CheckCollisionPointRec(mouse, L.secondary)) {
+        m_updatePanel = false;
+        return true;
+    }
+    if (CheckCollisionPointRec(mouse, L.primary)) {
+        if (st.stage == Stage::Available) {
+            GameUpdates::get().beginUpdate();
+            // macOS hands off to the browser rather than installing; see
+            // GameUpdates.h for why.
+            if (!GameUpdates::canSelfInstall() && !st.pageUrl.empty())
+                OpenURL(st.pageUrl.c_str());
+        } else if (st.stage == Stage::Failed && !st.pageUrl.empty()) {
+            OpenURL(st.pageUrl.c_str());
+        }
+        return true;
+    }
+    // A click anywhere else inside the panel is swallowed, so the menu behind
+    // it cannot be operated through it.
+    return CheckCollisionPointRec(mouse, L.panel);
+}
+
 void Game::updateMainMenu() {
     if (isMouseOverConsole()) return;
+
+    // One check per session, and only ever with the setting on. check() is
+    // also a no-op when disabled, so the gate holds even if this call site is
+    // ever moved somewhere that forgets to ask.
+    if (!m_gameUpdateAsked) {
+        m_gameUpdateAsked = true;
+        GameUpdates::get().check(m_config.gameUpdateChecks);
+    }
+
     // Ignore input while the intro slide is still playing — the drawn
     // positions are offset mid-animation, so a click would otherwise land on
     // a button that isn't visually there.
     if (m_menuIntro < 1.0f) return;
+
+    // The panel is modal: while it is open it takes the input, so Enter does
+    // not start a game behind it and Escape closes the panel rather than
+    // quitting the game.
+    if (m_updatePanel) {
+        if (IsKeyPressed(KEY_ESCAPE)) { m_updatePanel = false; return; }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) updatePanelClick(getMouse());
+        return;
+    }
+
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) &&
+        GameUpdates::get().updateAvailable() &&
+        CheckCollisionPointRec(getMouse(), updateBadgeRect())) {
+        m_updatePanel = true;
+        return;
+    }
+
     int count = MAIN_MENU_COUNT;
 
     if (m_menuFeedbackTimer > 0) {
@@ -1428,7 +1676,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 5) || (m_settingsTab == 5 && i < 1)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 1)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -1593,6 +1841,7 @@ void Game::updateSettingsFromMenu() {
                 ModUpdates::get().clear();
                 m_modUpdatesAsked = false;
             }
+            else if (m_settingsTab == 4 && m_settingsIndex == 5) { m_config.gameUpdateChecks = true; }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
             m_config.save(m_configPath);
@@ -1665,6 +1914,12 @@ void Game::updateSettingsFromMenu() {
             m_menuFeedback = m_config.modUpdateChecks
                 ? "On — each mod's author will see that you run their mod when the check runs"
                 : "Off — no outbound requests";
+            m_menuFeedbackTimer = 4.0f;
+        } else if (strcmp(s.label, "Check for game updates") == 0) {
+            m_config.gameUpdateChecks = !m_config.gameUpdateChecks;
+            m_menuFeedback = m_config.gameUpdateChecks
+                ? "On — the game will ask its release host for new versions"
+                : "Off — the game will not check for its own updates";
             m_menuFeedbackTimer = 4.0f;
         } else if (strcmp(s.label, "AI Learning") == 0) {
             // Never on while a mod is: a mod can change what the AI observes,
