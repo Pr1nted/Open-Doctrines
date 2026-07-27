@@ -40,8 +40,26 @@ std::string modModuleMaskToString(uint32_t mask);
 
 struct ModDependency {
     std::string id;
-    std::string version;    // range expression; parsed, not acted on in Phase 1
+    std::string version;    // range expression, e.g. ">=2.0.0 <3.0.0"
     bool optional = false;
+};
+
+// A conflict the author already knows about. Most conflicts are NOT declared --
+// nobody can enumerate every mod they will ever be incompatible with -- so this
+// is a supplement to detection, not a substitute for it.
+struct ModConflict {
+    std::string id;         // the mod this one cannot run alongside
+    std::string reason;     // shown to the user; required, because "conflicts"
+                            // with no reason is not actionable
+};
+
+// A bridge mod: one that exists to make two otherwise-conflicting mods work
+// together. While it is enabled, the conflict between those two is suppressed.
+// This is the supported answer to "these two nearly work together" -- a third
+// mod reconciles them, rather than either being forced to change.
+struct ModBridge {
+    std::string a, b;       // the two mod ids it reconciles
+    std::string reason;
 };
 
 struct ModLimits {
@@ -72,6 +90,12 @@ struct ModManifest {
     int gearboxMinor = 0;
     uint32_t modules = 0;              // always includes MODULE_CORE
     std::vector<ModDependency> dependencies;
+    std::vector<ModConflict>   conflicts;
+    std::vector<ModBridge>     bridges;
+    // Where a newer version can be found. Optional, and only ever used to show
+    // the user that an update exists -- the game never downloads a mod by
+    // itself. Must be https.
+    std::string updateUrl;
     std::string publicKey;             // "ed25519:BASE64..."; reserved, unverified
     ModLimits limits;
 };

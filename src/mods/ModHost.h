@@ -131,6 +131,65 @@ struct ModPanel {
     std::vector<ModDrawCmd> cmds;
 };
 
+// Conflict detection, by observation rather than declaration.
+//
+// WHY THIS IS NOT A MANIFEST FIELD
+//
+// A modder cannot list every mod they will ever be incompatible with -- they do
+// not know what will be written next year. And declaring the same capability is
+// not a conflict: two mods that both hold GameState.Write but touch different
+// countries never collide, while two that both adjust one country's treasury
+// do. Capability overlap is a bad proxy for the thing we actually care about.
+//
+// What we actually care about is observable. Every mutation a mod makes goes
+// through a host native, so the host sees all of them. Record what each mod
+// wrote and a conflict is a fact rather than a guess: two mods set the SAME
+// target to DIFFERENT values within one turn.
+//
+// Two mods writing the same value is not reported. They agree; nothing is
+// fighting, and telling the user otherwise would train them to ignore this.
+class ModConflicts {
+public:
+    static ModConflicts& get();
+
+    // Called from the write natives. `target` identifies the thing written --
+    // "country:11:treasury", "province:3:owner" -- and `value` is its stringified
+    // new value, which is what makes "both wrote it, differently" decidable.
+    void recordWrite(const std::string& modId, const std::string& target,
+                     const std::string& value);
+
+    struct Clash {
+        std::string modA, modB;
+        std::string target;
+        std::string valueA, valueB;
+        int         turn = 0;
+        uint32_t    seen = 1;      // how many turns this pair has clashed here
+    };
+
+    // Everything observed so far, newest first. The UI shows these against the
+    // mods involved; nothing is suppressed here, because suppression is a
+    // decision about a PAIR (an override or a bridge) and belongs to the
+    // manager, which knows what else is installed.
+    const std::vector<Clash>& clashes() const { return m_clashes; }
+    bool anyFor(const std::string& modId) const;
+
+    void beginTurn(int turn);      // clears the per-turn write log
+    void forget(const std::string& modId);
+    void clear();
+
+private:
+    int m_turn = 0;
+    // target -> (mod -> its LATEST value this turn).
+    //
+    // Latest, not every write: a mod that sets a treasury to 500 and then
+    // corrects it to 600 has only ever meant 600. Comparing a second mod
+    // against the superseded 500 reported agreement as a conflict.
+    std::map<std::string, std::map<std::string, std::string>> m_thisTurn;
+    std::vector<Clash> m_clashes;
+
+    static constexpr size_t kMaxClashes = 256;
+};
+
 // Persistent key-value storage, namespaced per mod id.
 //
 // One file per mod under <modsDir>/storage/, named from a sanitised mod id, so

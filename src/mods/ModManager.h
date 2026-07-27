@@ -37,6 +37,16 @@ struct ModEntry {
 
     std::string diagnostic;      // why it failed, or why it needs a reload
     std::vector<std::string> warnings;
+
+    // Conflicts the user has chosen to live with, as the OTHER mod's id. Kept
+    // per-mod rather than as a global pair list so the user can override on one
+    // side, the other, or both -- overriding on either side is enough to let the
+    // pair run, which is what "make these two work anyway" means in practice.
+    std::vector<std::string> conflictOverrides;
+    bool overridesConflictWith(const std::string& otherId) const {
+        for (const auto& o : conflictOverrides) if (o == otherId) return true;
+        return false;
+    }
     std::vector<uint8_t> thumbnailPng;   // raw bytes; the renderer decodes it
 
     long long   fileMTime = 0;   // to notice the file being replaced on disk
@@ -63,6 +73,21 @@ public:
     bool removeMod(size_t index, std::string& err);
 
     void setEnabled(size_t index, bool on);
+
+    // Dependency and conflict resolution. Both answer for the CURRENT set of
+    // installed and enabled mods, so neither can live in ModPackage, which only
+    // ever sees one archive.
+    //
+    // Returns empty when the mod may run; otherwise a sentence naming what is
+    // missing or what it clashes with.
+    std::string unmetDependency(const ModEntry& e) const;
+    std::string blockingConflict(const ModEntry& e) const;
+
+    // True when some enabled mod declares it bridges these two.
+    bool bridged(const std::string& a, const std::string& b) const;
+
+    // Toggle "run these two anyway" on one side of a pair.
+    void setConflictOverride(size_t index, const std::string& otherId, bool on);
     void setGrant(size_t index, uint32_t moduleBit, bool on);
 
     // Tears down every instance and starts the enabled set again. This is the

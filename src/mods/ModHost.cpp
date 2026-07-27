@@ -686,16 +686,31 @@ double neural_reward_mean(ExecEnv e, uint32_t index) {
 // something impossible degrades instead of dying -- and each is logged, so a
 // player can see what a mod did to their game.
 
+// Records the post-write value rather than the argument, so `set` and `add`
+// are comparable: two mods that reach the same treasury by different routes
+// are not in conflict, and two that reach different ones are.
+void noteWrite(ModInstance* mi, const std::string& target, double value) {
+    char buf[40];
+    snprintf(buf, sizeof buf, "%.6g", value);
+    ModConflicts::get().recordWrite(mi->id(), target, buf);
+}
+
 uint32_t gsw_set_country_treasury(ExecEnv e, uint32_t cid, double value) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_GAMESTATE_WRITE) || !g_modGame) return 0;
-    return g_modGame->setCountryTreasury(cid, value) ? 1 : 0;
+    if (!g_modGame->setCountryTreasury(cid, value)) return 0;
+    noteWrite(mi, "country:" + std::to_string(cid) + ":treasury",
+              g_modGame->countryTreasury(cid));
+    return 1;
 }
 
 uint32_t gsw_add_country_treasury(ExecEnv e, uint32_t cid, double delta) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_GAMESTATE_WRITE) || !g_modGame) return 0;
-    return g_modGame->addCountryTreasury(cid, delta) ? 1 : 0;
+    if (!g_modGame->addCountryTreasury(cid, delta)) return 0;
+    noteWrite(mi, "country:" + std::to_string(cid) + ":treasury",
+              g_modGame->countryTreasury(cid));
+    return 1;
 }
 
 uint32_t gsw_set_province_population(ExecEnv e, uint32_t pid, uint64_t value) {
@@ -703,7 +718,11 @@ uint32_t gsw_set_province_population(ExecEnv e, uint32_t pid, uint64_t value) {
     if (!mi || !mi->has(MODULE_GAMESTATE_WRITE) || !g_modGame) return 0;
     // The ABI carries this as i64; a mod passing a negative is refused by the
     // game rather than wrapping into an enormous population.
-    return g_modGame->setProvincePopulation(pid, (long long)value) ? 1 : 0;
+    if (!g_modGame->setProvincePopulation(pid, (long long)value)) return 0;
+    ModConflicts::get().recordWrite(mi->id(),
+        "province:" + std::to_string(pid) + ":population",
+        std::to_string((long long)value));
+    return 1;
 }
 
 uint32_t gsw_set_province_owner(ExecEnv e, uint32_t pid, uint32_t cid) {
@@ -715,6 +734,9 @@ uint32_t gsw_set_province_owner(ExecEnv e, uint32_t pid, uint32_t cid) {
     pushLog(mi->id(), ok ? 1 : 2,
             ok ? "transferred a province via GameState.Write"
                : "province transfer refused");
+    if (ok)
+        ModConflicts::get().recordWrite(mi->id(),
+            "province:" + std::to_string(pid) + ":owner", std::to_string(cid));
     return ok ? 1 : 0;
 }
 
@@ -752,6 +774,13 @@ uint32_t dip_propose_war(ExecEnv e, uint32_t attacker, uint32_t defender) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_DIPLOMACY) || !g_modGame) return 0;
     bool ok = g_modGame->proposeWar(attacker, defender);
+    if (ok) {
+        // Declaring war on someone another mod is trying to keep at peace is a
+        // conflict a player will feel, so it is tracked like any other write.
+        ModConflicts::get().recordWrite(mi->id(),
+            "diplomacy:" + std::to_string(attacker) + "-" + std::to_string(defender),
+            "war");
+    }
     // Logged either way. A mod starting a war is something a player should be
     // able to see in the mod log after the fact.
     pushLog(mi->id(), ok ? 1 : 2,
@@ -936,6 +965,78 @@ const ModHostFn* modHostFunctions(size_t& count) {
 ModUI& ModUI::get() {
     static ModUI ui;
     return ui;
+}
+
+// ------------------------------------------------------------ Conflicts ----
+
+ModConflicts& ModConflicts::get() {
+    static ModConflicts c;
+    return c;
+}
+
+void ModConflicts::beginTurn(int turn) {
+    m_turn = turn;
+    // Writes only conflict within a turn. Two mods that each adjust a treasury
+    // on alternating turns are taking turns, not fighting, and the log would
+    // fill with noise if that counted.
+    m_thisTurn.clear();
+}
+
+void ModConflicts::recordWrite(const std::string& modId,
+                               const std::string& target,
+                               const std::string& value) {
+    auto& latest = m_thisTurn[target];
+
+    for (const auto& other : latest) {
+        if (other.first == modId) continue;     // a mod may overwrite itself
+        if (other.second == value) continue;    // agreement is not a conflict
+
+        // Same pair, same target: count it rather than adding a duplicate, so a
+        // mod writing every frame produces one finding and not thousands.
+        bool merged = false;
+        for (auto& c : m_clashes) {
+            bool samePair = (c.modA == other.first && c.modB == modId) ||
+                            (c.modA == modId && c.modB == other.first);
+            if (samePair && c.target == target) {
+                c.seen++;
+                c.turn = m_turn;
+                c.valueA = other.second;
+                c.valueB = value;
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) {
+            if (m_clashes.size() >= kMaxClashes) m_clashes.erase(m_clashes.begin());
+            Clash c;
+            c.modA = other.first; c.modB = modId;
+            c.target = target;
+            c.valueA = other.second; c.valueB = value;
+            c.turn = m_turn;
+            m_clashes.push_back(std::move(c));
+            pushLog(modId, 2, "conflicts with " + other.first + " over " + target +
+                              " (" + other.second + " vs " + value + ")");
+        }
+    }
+
+    latest[modId] = value;
+}
+
+bool ModConflicts::anyFor(const std::string& modId) const {
+    for (const auto& c : m_clashes)
+        if (c.modA == modId || c.modB == modId) return true;
+    return false;
+}
+
+void ModConflicts::forget(const std::string& modId) {
+    for (auto it = m_clashes.begin(); it != m_clashes.end();)
+        it = (it->modA == modId || it->modB == modId) ? m_clashes.erase(it) : it + 1;
+    for (auto& e : m_thisTurn) e.second.erase(modId);
+}
+
+void ModConflicts::clear() {
+    m_thisTurn.clear();
+    m_clashes.clear();
 }
 
 // -------------------------------------------------------------- Storage ----

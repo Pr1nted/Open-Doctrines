@@ -313,6 +313,84 @@ int main(int argc, char** argv) {
         check("unknown province is refused", !w.setProvinceOwner(99, 7));
     }
 
+    // ---- conflict detection -------------------------------------------------
+    // The interesting cases are the ones that must NOT be reported. Declaring
+    // the same capability is not a conflict, agreeing is not a conflict, and a
+    // mod overwriting its own value is not a conflict -- if any of those were
+    // flagged the feature would be noise and users would learn to ignore it.
+    printf("\nconflict detection\n");
+    {
+        ModConflicts& cf = ModConflicts::get();
+        cf.clear();
+        cf.beginTurn(1);
+
+        cf.recordWrite("com.a", "country:11:treasury", "500");
+        check("one mod writing alone is not a conflict", cf.clashes().empty());
+
+        cf.recordWrite("com.a", "country:11:treasury", "600");
+        check("a mod overwriting itself is not a conflict", cf.clashes().empty());
+
+        cf.recordWrite("com.b", "country:11:treasury", "600");
+        check("two mods agreeing is not a conflict", cf.clashes().empty(),
+              std::to_string(cf.clashes().size()));
+
+        cf.recordWrite("com.c", "country:22:treasury", "999");
+        check("different targets are not a conflict", cf.clashes().empty(),
+              std::to_string(cf.clashes().size()));
+
+        // The real thing: same target, different values, same turn.
+        //
+        // Two findings, not one, and that is correct: com.a and com.b are both
+        // sitting on 600, so com.d disagrees with each of them separately. A
+        // conflict is a property of a PAIR, so a mod that disagrees with two
+        // others has two conflicts to resolve, and the user may want to
+        // override them independently.
+        cf.recordWrite("com.d", "country:11:treasury", "1200");
+        check("same target, different value, IS a conflict",
+              cf.clashes().size() == 2, std::to_string(cf.clashes().size()));
+        if (!cf.clashes().empty()) {
+            const auto& c = cf.clashes().front();
+            check("the report names both mods",
+                  (c.modA == "com.d" || c.modB == "com.d") &&
+                  (c.modA != c.modB), c.modA + " / " + c.modB);
+            check("the report names the target",
+                  c.target == "country:11:treasury", c.target);
+            check("the report carries both values",
+                  c.valueA != c.valueB, c.valueA + " vs " + c.valueB);
+        }
+
+        // A mod writing every frame must not produce thousands of findings.
+        for (int i = 0; i < 50; i++) cf.recordWrite("com.d", "country:11:treasury", "1200");
+        check("repeat writes merge, not accumulate", cf.clashes().size() == 2,
+              std::to_string(cf.clashes().size()));
+        check("but the repeat count is kept",
+              cf.clashes().front().seen > 1,
+              std::to_string(cf.clashes().front().seen));
+
+        check("anyFor finds an involved mod", cf.anyFor("com.d"));
+        check("anyFor ignores an uninvolved mod", !cf.anyFor("com.zzz"));
+
+        // Alternating turns is taking turns, not fighting.
+        cf.clear();
+        cf.beginTurn(2);
+        cf.recordWrite("com.a", "province:3:owner", "11");
+        cf.beginTurn(3);
+        cf.recordWrite("com.b", "province:3:owner", "22");
+        check("writes in different turns are not a conflict", cf.clashes().empty(),
+              std::to_string(cf.clashes().size()));
+
+        // Uninstalling a mod should take its findings with it.
+        cf.clear();
+        cf.beginTurn(4);
+        cf.recordWrite("com.a", "province:3:owner", "11");
+        cf.recordWrite("com.b", "province:3:owner", "22");
+        check("conflict recorded before forget", cf.clashes().size() == 1);
+        cf.forget("com.a");
+        check("forget removes that mod's findings", cf.clashes().empty(),
+              std::to_string(cf.clashes().size()));
+        cf.clear();
+    }
+
     // ---- storage ------------------------------------------------------------
     // Exercised directly rather than through a fixture mod: what needs proving
     // is the quota arithmetic, the namespacing and the on-disk round trip, and

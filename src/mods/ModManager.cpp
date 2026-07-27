@@ -200,6 +200,20 @@ void ModManager::activate(ModEntry& e) {
         fail(e, e.diagnostic.empty() ? "the archive could not be read" : e.diagnostic);
         return;
     }
+    // Refuse before instantiating, not after: a mod whose dependency is missing
+    // should never get as far as running mod_load, or it will fail somewhere
+    // deep inside itself with a message that blames the wrong thing.
+    if (std::string why = unmetDependency(e); !why.empty()) {
+        fail(e, why);
+        return;
+    }
+    if (std::string why = blockingConflict(e); !why.empty()) {
+        // Recoverable by a user decision, so the message says so. The override
+        // is offered in the mod menu against this entry.
+        fail(e, why + " — enable anyway from this mod's entry if you accept it");
+        return;
+    }
+
     std::string err;
     // Core is never revocable, so it is always in the effective grant set.
     uint32_t grants = (e.grants & e.manifest.modules) | MODULE_CORE;
@@ -219,6 +233,137 @@ void ModManager::activate(ModEntry& e) {
     }
     e.state = ModState::Active;
     e.diagnostic.clear();
+}
+
+// -------------------------------------------- dependencies and conflicts ---
+
+namespace {
+
+// Semver comparison, numeric per component. A prerelease suffix is ignored
+// rather than ordered: getting -rc ordering subtly wrong is worse than not
+// claiming to support it, and no mod manifest here uses one.
+int cmpSemver(const std::string& a, const std::string& b) {
+    auto part = [](const std::string& s, int idx) -> long {
+        size_t start = 0;
+        for (int i = 0; i < idx; i++) {
+            size_t d = s.find('.', start);
+            if (d == std::string::npos) return 0;
+            start = d + 1;
+        }
+        return strtol(s.c_str() + start, nullptr, 10);
+    };
+    std::string ca = a.substr(0, a.find_first_of("-+"));
+    std::string cb = b.substr(0, b.find_first_of("-+"));
+    for (int i = 0; i < 3; i++) {
+        long x = part(ca, i), y = part(cb, i);
+        if (x != y) return x < y ? -1 : 1;
+    }
+    return 0;
+}
+
+// A range is a space-separated list of comparators, all of which must hold:
+//   ">=2.0.0 <3.0.0"      "1.4.2"      ">=1.0.0"
+// An empty range accepts anything, which is what a dependency with no version
+// means.
+bool versionSatisfies(const std::string& have, const std::string& range) {
+    if (range.empty()) return true;
+    size_t i = 0;
+    while (i < range.size()) {
+        while (i < range.size() && range[i] == ' ') i++;
+        if (i >= range.size()) break;
+        size_t j = range.find(' ', i);
+        std::string term = range.substr(i, j == std::string::npos ? j : j - i);
+        i = (j == std::string::npos) ? range.size() : j + 1;
+        if (term.empty()) continue;
+
+        std::string op = "==", ver = term;
+        for (const char* cand : {">=", "<=", "==", ">", "<", "="}) {
+            size_t n = strlen(cand);
+            if (term.size() > n && term.compare(0, n, cand) == 0) {
+                op = cand; ver = term.substr(n); break;
+            }
+        }
+        int c = cmpSemver(have, ver);
+        bool ok = (op == ">=") ? c >= 0 : (op == "<=") ? c <= 0
+                : (op == ">")  ? c >  0 : (op == "<")  ? c <  0
+                : c == 0;
+        if (!ok) return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+std::string ModManager::unmetDependency(const ModEntry& e) const {
+    for (const auto& dep : e.manifest.dependencies) {
+        const ModEntry* found = nullptr;
+        for (const auto& other : m_mods)
+            if (other.manifestValid && other.id == dep.id) { found = &other; break; }
+
+        if (!found) {
+            if (dep.optional) continue;
+            return "needs " + dep.id +
+                   (dep.version.empty() ? "" : " " + dep.version) +
+                   ", which is not installed";
+        }
+        if (!versionSatisfies(found->manifest.version, dep.version)) {
+            if (dep.optional) continue;
+            return "needs " + dep.id + " " + dep.version + ", but " +
+                   found->manifest.version + " is installed";
+        }
+        // Present but switched off is its own message: "not installed" would
+        // send the user looking for a download they already have.
+        if (!found->enabled) {
+            if (dep.optional) continue;
+            return "needs " + dep.id + ", which is installed but not enabled";
+        }
+    }
+    return "";
+}
+
+bool ModManager::bridged(const std::string& a, const std::string& b) const {
+    for (const auto& m : m_mods) {
+        if (!m.enabled || !m.manifestValid) continue;
+        for (const auto& br : m.manifest.bridges) {
+            if ((br.a == a && br.b == b) || (br.a == b && br.b == a)) return true;
+        }
+    }
+    return false;
+}
+
+std::string ModManager::blockingConflict(const ModEntry& e) const {
+    for (const auto& other : m_mods) {
+        if (!other.enabled || !other.manifestValid || other.id == e.id) continue;
+
+        // Declared in either direction -- a conflict is mutual even when only
+        // one author knew about it.
+        const ModConflict* decl = nullptr;
+        for (const auto& c : e.manifest.conflicts)
+            if (c.id == other.id) { decl = &c; break; }
+        if (!decl)
+            for (const auto& c : other.manifest.conflicts)
+                if (c.id == e.id) { decl = &c; break; }
+        if (!decl) continue;
+
+        // A bridge mod exists precisely to make this pair work; so does an
+        // explicit override on either side.
+        if (bridged(e.id, other.id)) continue;
+        if (e.overridesConflictWith(other.id)) continue;
+        if (other.overridesConflictWith(e.id)) continue;
+
+        return "conflicts with " + other.manifest.name + ": " + decl->reason;
+    }
+    return "";
+}
+
+void ModManager::setConflictOverride(size_t index, const std::string& otherId,
+                                     bool on) {
+    if (index >= m_mods.size()) return;
+    auto& v = m_mods[index].conflictOverrides;
+    auto it = std::find(v.begin(), v.end(), otherId);
+    if (on && it == v.end())      v.push_back(otherId);
+    else if (!on && it != v.end()) v.erase(it);
+    save();
 }
 
 void ModManager::deactivate(ModEntry& e) {
@@ -387,6 +532,9 @@ void ModManager::preTurn(int turn) {
     // A turn boundary is where a mod's state is coherent, so it is where the
     // key-value stores are written. Cheap when nothing is dirty.
     ModStorage::get().flush();
+    // Conflicts are judged within a turn: two mods writing the same thing on
+    // alternating turns are taking turns, not fighting.
+    ModConflicts::get().beginTurn(turn);
     if (m_mods.empty()) return;
     uint32_t args[1] = {(uint32_t)turn};
     for (auto& e : m_mods) {
@@ -455,6 +603,10 @@ void ModManager::save() const {
         m["id"] = e.id;
         m["enabled"] = e.enabled;
         m["grants"] = e.grants;
+        // "Run these two anyway" is a user decision like enabling is, so it
+        // survives a restart the same way.
+        if (!e.conflictOverrides.empty())
+            m["conflictOverrides"] = e.conflictOverrides;
         arr.push_back(std::move(m));
     }
     j["mods"] = std::move(arr);
@@ -493,6 +645,11 @@ void ModManager::load() {
                 // hand-edited file must not grant a capability the mod did not
                 // ask for and the user never saw.
                 e.grants = gr->get<uint32_t>() & e.manifest.modules;
+            auto co = m.find("conflictOverrides");
+            e.conflictOverrides.clear();
+            if (co != m.end() && co->is_array())
+                for (const auto& o : *co)
+                    if (o.is_string()) e.conflictOverrides.push_back(o.get<std::string>());
             break;
         }
     }

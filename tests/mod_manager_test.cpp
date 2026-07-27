@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <vector>
 
@@ -72,10 +73,32 @@ std::vector<uint8_t> packMod(const std::string& manifest,
     return z.finish();
 }
 
+// A manifest with a raw extra block, for dependency/conflict/bridge cases.
+std::string manifestWith(const char* id, const char* version, const char* extra) {
+    char buf[1024];
+    snprintf(buf, sizeof buf,
+             "{\n  \"schema\": 1,\n  \"id\": \"%s\",\n  \"name\": \"%s\",\n"
+             "  \"version\": \"%s\",\n  \"gearbox\": \"1.0\",\n"
+             "  \"modules\": [\"Core\"],\n%s"
+             "  \"limits\": { \"memoryPages\": 16, \"fuelPerTurn\": 500000 }\n}",
+             id, id, version, extra);
+    return buf;
+}
+
 ModEntry* byId(const char* id) {
     for (auto& e : ModManager::get().mods())
         if (e.id == id) return &e;
     return nullptr;
+}
+
+// Dereferencing a missing entry turns a readable test failure into a SIGBUS,
+// which is how a wrong fixture path cost a debugging cycle. Fail loudly instead.
+const ModEntry& need(const char* id) {
+    static ModEntry empty;
+    ModEntry* e = byId(id);
+    if (e) return *e;
+    check(std::string("fixture present: ") + id, false, "not found after rescan");
+    return empty;
 }
 
 }  // namespace
@@ -103,6 +126,19 @@ int main(int argc, char** argv) {
 
     // Fresh scratch directory every run.
     mkdir(dir.c_str(), 0755);
+    // Start from an empty scratch directory. The suite installs mods into it as
+    // it goes, so without this the second run finds the first run's leftovers
+    // and the "empty directory" precondition below fails -- a stale-state
+    // failure that looks like a real one.
+    if (DIR* d = opendir(dir.c_str())) {
+        while (dirent* ent = readdir(d)) {
+            std::string n = ent->d_name;
+            if (n.size() > 6 && n.compare(n.size() - 6, 6, ".odmod") == 0)
+                ::remove((dir + "/" + n).c_str());
+        }
+        closedir(d);
+    }
+    ::remove(state.c_str());
     for (const char* f : {"com.test.core.odmod", "com.test.ui.odmod",
                           "com.test.refuse.odmod"})
         ::remove((dir + "/" + f).c_str());
@@ -309,6 +345,113 @@ int main(int argc, char** argv) {
         struct stat st;
         check("the file is gone from disk",
               stat((dir + "/com.test.refuse.odmod").c_str(), &st) != 0);
+    }
+
+    // ---- dependencies and conflicts -----------------------------------------
+    // These were "parsed, not resolved in Phase 1". The point of resolving them
+    // is that a mod refuses BEFORE running, with a message naming what is
+    // wrong, rather than failing somewhere inside itself later.
+    printf("\ndependencies and conflicts\n");
+    {
+        const auto& wasm = coreWasm;   // fixtures live in `fixtures`, not the scratch dir
+
+        // lib 2.0.0; app needs >=2.0.0 <3.0.0; old needs >=3.0.0 (unmet).
+        writeFile(dir + "/com.test.lib.odmod",
+                  packMod(manifestWith("com.test.lib", "2.0.0", ""), wasm));
+        writeFile(dir + "/com.test.app.odmod",
+                  packMod(manifestWith("com.test.app", "1.0.0",
+                      "  \"dependencies\": [{\"id\": \"com.test.lib\","
+                      " \"version\": \">=2.0.0 <3.0.0\"}],\n"), wasm));
+        writeFile(dir + "/com.test.needsnew.odmod",
+                  packMod(manifestWith("com.test.needsnew", "1.0.0",
+                      "  \"dependencies\": [{\"id\": \"com.test.lib\","
+                      " \"version\": \">=3.0.0\"}],\n"), wasm));
+        writeFile(dir + "/com.test.needsmissing.odmod",
+                  packMod(manifestWith("com.test.needsmissing", "1.0.0",
+                      "  \"dependencies\": [{\"id\": \"com.test.absent\"}],\n"), wasm));
+        writeFile(dir + "/com.test.optional.odmod",
+                  packMod(manifestWith("com.test.optional", "1.0.0",
+                      "  \"dependencies\": [{\"id\": \"com.test.absent\","
+                      " \"optional\": true}],\n"), wasm));
+        // Two mods that declare a conflict, and a bridge that reconciles them.
+        writeFile(dir + "/com.test.left.odmod",
+                  packMod(manifestWith("com.test.left", "1.0.0",
+                      "  \"conflicts\": [{\"id\": \"com.test.right\","
+                      " \"reason\": \"both rewrite the economy\"}],\n"), wasm));
+        writeFile(dir + "/com.test.right.odmod",
+                  packMod(manifestWith("com.test.right", "1.0.0", ""), wasm));
+        writeFile(dir + "/com.test.bridge.odmod",
+                  packMod(manifestWith("com.test.bridge", "1.0.0",
+                      "  \"bridges\": [{\"between\": [\"com.test.left\","
+                      " \"com.test.right\"], \"reason\": \"merges both\"}],\n"), wasm));
+        mm.rescan();
+
+        auto idxOf = [&](const char* id) -> size_t {
+            const auto& v = mm.mods();
+            for (size_t i = 0; i < v.size(); i++) if (v[i].id == id) return i;
+            return (size_t)-1;
+        };
+
+        // Resolution only considers ENABLED mods, deliberately: an installed
+        // but switched-off dependency is not going to run, so treating it as
+        // satisfied would let the dependent fail later for no visible reason.
+        mm.setEnabled(idxOf("com.test.lib"), true);
+
+        check("satisfied dependency is met",
+              mm.unmetDependency(need("com.test.app")).empty(),
+              mm.unmetDependency(need("com.test.app")));
+        check("missing dependency is reported",
+              !mm.unmetDependency(need("com.test.needsmissing")).empty());
+        check("out-of-range version is reported",
+              !mm.unmetDependency(need("com.test.needsnew")).empty(),
+              mm.unmetDependency(need("com.test.needsnew")));
+        check("the message names the installed version",
+              mm.unmetDependency(need("com.test.needsnew")).find("2.0.0")
+                  != std::string::npos,
+              mm.unmetDependency(need("com.test.needsnew")));
+        check("an optional missing dependency is not a blocker",
+              mm.unmetDependency(need("com.test.optional")).empty(),
+              mm.unmetDependency(need("com.test.optional")));
+
+        // Present but switched off is a different message from absent.
+        mm.setEnabled(idxOf("com.test.lib"), false);
+        std::string off = mm.unmetDependency(need("com.test.app"));
+        check("a disabled dependency is reported as disabled, not missing",
+              off.find("not enabled") != std::string::npos, off);
+        mm.setEnabled(idxOf("com.test.lib"), true);
+
+        // Conflicts.
+        check("no conflict while the other side is disabled",
+              mm.blockingConflict(need("com.test.left")).empty());
+        mm.setEnabled(idxOf("com.test.left"), true);
+        mm.setEnabled(idxOf("com.test.right"), true);
+        check("declared conflict blocks once both are enabled",
+              !mm.blockingConflict(need("com.test.left")).empty(),
+              mm.blockingConflict(need("com.test.left")));
+        check("the conflict is mutual, not one-directional",
+              !mm.blockingConflict(need("com.test.right")).empty(),
+              "right should see it too");
+        check("the message carries the author's reason",
+              mm.blockingConflict(need("com.test.left")).find("economy")
+                  != std::string::npos);
+
+        // Override on ONE side is enough to let the pair run.
+        mm.setConflictOverride(idxOf("com.test.left"), "com.test.right", true);
+        check("an override on one side clears it for both",
+              mm.blockingConflict(need("com.test.left")).empty() &&
+              mm.blockingConflict(need("com.test.right")).empty());
+        mm.setConflictOverride(idxOf("com.test.left"), "com.test.right", false);
+        check("removing the override restores the conflict",
+              !mm.blockingConflict(need("com.test.left")).empty());
+
+        // A bridge mod does the same thing, without the user deciding anything.
+        mm.setEnabled(idxOf("com.test.bridge"), true);
+        check("an enabled bridge suppresses the conflict",
+              mm.blockingConflict(need("com.test.left")).empty(),
+              mm.blockingConflict(need("com.test.left")));
+        mm.setEnabled(idxOf("com.test.bridge"), false);
+        check("disabling the bridge brings the conflict back",
+              !mm.blockingConflict(need("com.test.left")).empty());
     }
 
     mm.unloadAll();

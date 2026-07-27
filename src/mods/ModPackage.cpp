@@ -306,7 +306,8 @@ ModLoadResult parseModManifest(const std::string& text,
     if (out.modules & MODULE_GAMESTATE_WRITE)
         out.modules |= MODULE_GAMESTATE_READ;      // Write implies Read
 
-    // dependencies (parsed, not resolved in Phase 1)
+    // dependencies -- resolved by ModManager at enable time, not here: this
+    // layer sees one package and cannot know what else is installed.
     auto dit = j.find("dependencies");
     if (dit != j.end()) {
         if (!dit->is_array()) return bad("\"dependencies\" must be an array");
@@ -323,6 +324,54 @@ ModLoadResult parseModManifest(const std::string& text,
             out.dependencies.push_back(dep);
         }
     }
+
+    // conflicts: the ones the author already knows about. A reason is required
+    // -- "conflicts with X" that does not say why leaves the user with no way
+    // to decide whether to override it.
+    auto cit = j.find("conflicts");
+    if (cit != j.end()) {
+        if (!cit->is_array()) return bad("\"conflicts\" must be an array");
+        for (const auto& c : *cit) {
+            if (!c.is_object()) return bad("each conflict must be an object");
+            ModConflict cf;
+            cf.id = jsonString(c, "id");
+            if (cf.id.empty()) return bad("conflict is missing \"id\"");
+            if (!validModId(cf.id))
+                return bad("conflict id \"" + cf.id + "\" is not a valid mod id");
+            if (cf.id == out.id) return bad("a mod cannot conflict with itself");
+            cf.reason = jsonString(c, "reason");
+            if (cf.reason.empty())
+                return bad("conflict with \"" + cf.id + "\" needs a \"reason\"");
+            out.conflicts.push_back(cf);
+        }
+    }
+
+    // bridges: this mod exists (in part) to reconcile two others.
+    auto bit = j.find("bridges");
+    if (bit != j.end()) {
+        if (!bit->is_array()) return bad("\"bridges\" must be an array");
+        for (const auto& b : *bit) {
+            if (!b.is_object()) return bad("each bridge must be an object");
+            auto pit = b.find("between");
+            if (pit == b.end() || !pit->is_array() || pit->size() != 2)
+                return bad("a bridge needs \"between\": [modA, modB]");
+            ModBridge br;
+            br.a = (*pit)[0].is_string() ? (*pit)[0].get<std::string>() : "";
+            br.b = (*pit)[1].is_string() ? (*pit)[1].get<std::string>() : "";
+            if (!validModId(br.a) || !validModId(br.b))
+                return bad("bridge \"between\" entries must be valid mod ids");
+            if (br.a == br.b) return bad("a bridge must name two different mods");
+            br.reason = jsonString(b, "reason");
+            out.bridges.push_back(br);
+        }
+    }
+
+    // updateUrl: only ever shown to the user. The game never fetches a mod by
+    // itself, so this is a link, not a download instruction -- and it must be
+    // https, because a plaintext update pointer is worse than none.
+    out.updateUrl = jsonString(j, "updateUrl");
+    if (!out.updateUrl.empty() && !startsWith(out.updateUrl, "https://"))
+        return bad("\"updateUrl\" must be an https:// URL");
 
     out.publicKey = jsonString(j, "publicKey");
     if (!out.publicKey.empty() && !startsWith(out.publicKey, "ed25519:"))
