@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "SaveManager.h"
 #include "raymath.h"
@@ -12,6 +13,8 @@
 
 void Game::addNotification(const std::string& msg, Color color, float duration) {
     m_notifications.push_back({msg, duration, duration, color});
+    // Silent until data/audio/sfx/notify.* exists; see data/audio/README.md.
+    Audio::get().playSfx("notify");
 }
 
 void Game::updateNotifications() {
@@ -37,6 +40,7 @@ void Game::pushPopup(PopupType type, const std::string& title, const std::string
     entry.sourceIso = sourceIso;
     entry.targetIso = targetIso;
     m_popupQueue.push_back(entry);
+    Audio::get().playSfx("panel_open");
 }
 
 namespace {
@@ -232,6 +236,8 @@ void Game::updatePopup() {
             if (popup.action == "request_alliance")      { fwd.alliance = true;      rev.alliance = true; }
             else if (popup.action == "request_guarantee"){ fwd.guarantee = true;     rev.guarantee = true; }
             else if (popup.action == "request_nap")      { fwd.nonAggression = true; rev.nonAggression = true; }
+            // The treaty exists as of this click -- the lines above just set it.
+            Audio::get().playSfx("treaty_signed");
             printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
@@ -239,6 +245,7 @@ void Game::updatePopup() {
             // Nothing to erase from the pending queue: the request was already
             // removed when the popup was created. The old code erased
             // begin(), which could silently drop an unrelated queued action.
+            Audio::get().playSfx("deal_rejected");
             printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
@@ -248,6 +255,7 @@ void Game::updatePopup() {
         Rectangle rejectBtn = {(float)(popX + popW / 2 + 10), (float)btnY, (float)btnW, (float)btnH};
 
         if (CheckCollisionPointRec(mouse, approveBtn)) {
+            Audio::get().playSfx("deal_accepted");
             // Player accepted the ceasefire: schedule an apply_ceasefire action
             // that fires on the NEXT turn (1 → 0 → apply). Stash the terms so
             // processDiplomaticRequests can pick them up when apply_ceasefire runs.
@@ -269,6 +277,7 @@ void Game::updatePopup() {
             m_popupShowTerms = false;
             printf("[CEASEFIRE] Player accepted offer from %s — apply scheduled for next turn\n", popup.sourceIso.c_str());
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
+            Audio::get().playSfx("deal_rejected");
             // Erase the waiting terms and notify sender side (no automatic
             // re-permit for now — sender will see the war persists).
             std::string key = popup.sourceIso + "|" + popup.targetIso;
@@ -1121,6 +1130,8 @@ void Game::loadStateJson(const std::string& json) {
             PendingScrapShip ss;
             ss.shipIndex = entry["shipIndex"];
             m_pendingScrapShips.push_back(ss);
+            // Money coming back is the one moment the treasury is the point.
+            Audio::get().playSfx("coin");
         }
     }
 

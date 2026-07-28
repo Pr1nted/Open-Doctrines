@@ -11,6 +11,7 @@
 #define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
 #include "ProceduralGenerator.h"
+#include "Audio.h"
 #include "ScriptEngine.h"
 #include <sstream>
 #include "json.hpp"
@@ -146,6 +147,16 @@ bool MapEditor::drawButtonCol(const char* label, Rectangle rect, Color accent, b
     DrawRectangleRoundedLines(rect, 0.12f, 8, border);
     int tw = MeasureText(label, fontSize);
     DrawText(label, (int)(rect.x + rect.width/2 - tw/2), (int)(rect.y + rect.height/2 - fontSize/2), fontSize, textCol);
+
+    const int id = (int)rect.x * 73856093 ^ (int)rect.y * 19349663 ^ (int)rect.width * 83492791;
+    if (hover && m_lastHoverBtn != id) {
+        m_lastHoverBtn = id;
+        Audio::get().playSfx("hover");
+    }
+    // Lighter than the menus on purpose: the editor is a dense tool surface and
+    // a heavy click on every brush and layer button would wear thin fast.
+    if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+        Audio::get().playSfx("click_light");
     return hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 }
 
@@ -3530,12 +3541,17 @@ void MapEditor::update(float dt) {
     // ── Two-step deferred generation ──
     // m_genPending=2: loading overlay was drawn in previous frame, now run generation
     if (m_genPending == 2) {
+        // Tens of seconds of blocking work on the main thread, with no frames in
+        // between -- exactly the starvation the world loader had. The helper
+        // thread keeps the music fed for the duration.
+        Audio::get().beginBackgroundPump();
         m_genStatus = "Generating landmass...";
         generateMap(m_genParams);
         m_genStatus = "Generating provinces & countries...";
         generateProvincesCountries();
         m_genStatus = "Generating game data...";
         generateGameData();
+        Audio::get().endBackgroundPump();
         m_genPending = 0;
         return;
     }
@@ -3702,6 +3718,9 @@ void MapEditor::drawPickerOverlay() {
 
     int key = GetCharPressed();
     while (key > 0) {
+        // Every character the field takes. Jittered, because a
+        // typed word is a run of distinct taps, not one tap looped.
+        Audio::get().playSfx("key_type", 0.12f);
         if (key >= 32 && key < 127 && m_pickerQuery.size() < 40) m_pickerQuery.push_back((char)key);
         key = GetCharPressed();
     }
@@ -4199,6 +4218,13 @@ void MapEditor::updateToolbar() {
         requestReturnToMapMenu();
         return;
     }
+    // Settings, so a mapmaker can reach volume, resolution and keybinds without
+    // leaving a session. Game owns that screen and draws it over the editor.
+    Rectangle setBtn = {(float)(m_screenW - 318), (float)((m_toolbarH-30)/2), 90, 30};
+    if (CheckCollisionPointRec(mouse, setBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        m_wantsSettings = true;
+        return;
+    }
     if (mouse.y < 0 || mouse.y > m_toolbarH) return;
     const char* names[] = {"Landmass","Provinces","Countries","Navy","Relations","Scripts","Generator","Metadata"};
     int btnW = 95, btnH = 34, gap = 4, startX = 8;
@@ -4234,6 +4260,16 @@ void MapEditor::drawToolbar() {
     int mtw = MeasureText("Menu", 13);
     DrawText("Menu", (int)(menuBtn.x + menuBtn.width/2 - mtw/2), (int)(menuBtn.y + 8), 13, menuHov ? Color{230,180,80,255} : LIGHTGRAY);
     if (m_dirty) DrawCircle((int)(menuBtn.x + menuBtn.width - 6), (int)menuBtn.y + 4, 3, Color{230, 140, 60, 255});
+
+    // Settings — same shape as Menu but neutral, so it does not compete with
+    // the one button that leaves the project.
+    Rectangle setBtn = {(float)(m_screenW - 318), (float)((m_toolbarH-30)/2), 90, 30};
+    bool setHov = CheckCollisionPointRec(GetMousePosition(), setBtn);
+    DrawRectangleRounded(setBtn, 0.15f, 6, setHov ? Color{45,45,55,220} : Color{35,35,42,180});
+    DrawRectangleRoundedLines(setBtn, 0.15f, 6, setHov ? Color{200,200,215,255} : Color{110,110,125,200});
+    int stw = MeasureText("Settings", 13);
+    DrawText("Settings", (int)(setBtn.x + setBtn.width/2 - stw/2), (int)(setBtn.y + 8), 13,
+             setHov ? WHITE : LIGHTGRAY);
 
     DrawText(TextFormat("Zoom: %.2fx", m_renderer ? m_renderer->getZoom() : 1.0f), m_screenW - 120, 16, 12, WHITE);
 }
@@ -4483,6 +4519,9 @@ void MapEditor::updateGeneratorPanel() {
     if (m_editingSeed) {
         int key = GetCharPressed();
         while (key > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (key >= '0' && key <= '9' && m_seedText.size() < 10) m_seedText.push_back((char)key);
             key = GetCharPressed();
         }
@@ -4532,6 +4571,9 @@ void MapEditor::updateGeneratorPanel() {
     if (m_editingCountryCount) {
         int key = GetCharPressed();
         while (key > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (key >= '0' && key <= '9' && m_countryCountText.size() < 4) m_countryCountText.push_back((char)key);
             key = GetCharPressed();
         }
@@ -4823,6 +4865,9 @@ void MapEditor::drawProvincePanel() {
         if (m_provPopEditing) {
             int key = GetCharPressed();
             while (key > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (key >= '0' && key <= '9' && m_provPopEditText.size() < 12) m_provPopEditText.push_back((char)key);
                 key = GetCharPressed();
             }
@@ -5085,6 +5130,9 @@ void MapEditor::updateCountryPanel() {
         if (m_editingCountryName) {
             int key = GetCharPressed();
             while (key > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (key >= 32 && key < 128 && m_editingNameText.size() < 40)
                     m_editingNameText.push_back((char)key);
                 key = GetCharPressed();
@@ -6323,6 +6371,9 @@ bool MapEditor::drawIntField(Rectangle r, long long& value, long long lo, long l
     if (editing) {
         int key = GetCharPressed();
         while (key > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (key >= '0' && key <= '9' && editBuf.size() < 12) editBuf.push_back((char)key);
             key = GetCharPressed();
         }
@@ -6555,6 +6606,9 @@ void MapEditor::drawNavyPanel() {
     if (m_navySearchFocused) {
         int key = GetCharPressed();
         while (key > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (key >= 32 && key < 127 && m_navySearchQuery.size() < 40) m_navySearchQuery.push_back((char)key);
             key = GetCharPressed();
         }
@@ -6768,6 +6822,9 @@ void MapEditor::drawScriptPanel() {
                      (int)nameRect.y + 4, 12, ACCENT);
             int key = GetCharPressed();
             while (key > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (key >= 32 && key < 127 && m_scriptRenameText.size() < 64)
                     m_scriptRenameText.push_back((char)key);
                 key = GetCharPressed();
@@ -7402,6 +7459,9 @@ void MapEditor::drawScriptEditorOverlay() {
 
     int key = GetCharPressed();
     while (key > 0) {
+        // Every character the field takes. Jittered, because a
+        // typed word is a run of distinct taps, not one tap looped.
+        Audio::get().playSfx("key_type", 0.12f);
         if (!ctrl && key >= 32 && key < 127) {
             std::string s(1, (char)key);
             scriptEdInsertText(s);
@@ -7910,6 +7970,9 @@ void MapEditor::drawMetadataPanel() {
         if (m_editingDateYear) {
             int key = GetCharPressed();
             while (key > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (key >= '0' && key <= '9' && m_dateYearText.size() < 6)
                     m_dateYearText.push_back((char)key);
                 key = GetCharPressed();
@@ -8049,6 +8112,9 @@ void MapEditor::drawMetadataPanel() {
             const size_t MAX_LICENSE = 20000;
             int key = GetCharPressed();
             while (key > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (key >= 32 && key < 128 && m_licenseText.size() < MAX_LICENSE) {
                     m_licenseText.push_back((char)key);
                     trackChange();
@@ -8100,6 +8166,9 @@ void MapEditor::drawMetadataPanel() {
     if (m_metaEditField >= 0 && m_metaEditField < NUM_FIELDS) {
         int key = GetCharPressed();
         while (key > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (key >= 32 && key < 128 && m_metaEditText.size() < 60)
                 m_metaEditText.push_back((char)key);
             key = GetCharPressed();

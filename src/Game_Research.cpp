@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
 #include "raymath.h"
@@ -561,6 +562,7 @@ void Game::drawResearchTab() {
     int xw = MeasureText("X", 20);
     DrawText("X", (int)(closeBtn.x + closeBtn.width/2 - xw/2), 12, 20, {180, 180, 180, 200});
     if (CheckCollisionPointRec(mouse, closeBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        Audio::get().playSfx("back");
         m_inResearch = false;
         m_inPolitics = false;
         m_activeSidebarTab = 0;
@@ -587,7 +589,10 @@ void Game::drawResearchTab() {
         if (active) DrawRectangleRoundedLines(cr, 0.1f, 6, hexToColor(m_config.accentColor));
         int tw = MeasureText(catNames[c], 16);
         DrawText(catNames[c], tx + (catSpacing - 8 - tw) / 2, catTabY + 6, 16, active ? hexToColor(m_config.accentColor) : LIGHTGRAY);
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered) m_researchTab = c;
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered && m_researchTab != c) {
+            m_researchTab = c;
+            Audio::get().playSfx("tab_switch");
+        }
     }
 
     // ─── Pan/Zoom ───
@@ -710,7 +715,14 @@ void Game::drawResearchTab() {
         else { bg = {30, 30, 35, 180}; border = {60, 60, 70, 150}; }
 
         bool hovered = CheckCollisionPointRec(mouse, r);
-        if (hovered) { m_researchHoveredNode = idx; border = hexToColor(m_config.accentColor); }
+        if (hovered) {
+            if (m_lastResearchHover != idx) {
+                m_lastResearchHover = idx;
+                Audio::get().playSfx("hover");
+            }
+            m_researchHoveredNode = idx;
+            border = hexToColor(m_config.accentColor);
+        }
 
         DrawRectangleRounded(r, 0.15f, 8, bg);
         DrawRectangleRoundedLines(r, 0.15f, 8, border);
@@ -757,6 +769,13 @@ void Game::drawResearchTab() {
             if (m_researchActiveNode >= 0) m_researchNodes[m_researchActiveNode].inProgress = false;
             node.inProgress = true;
             m_researchActiveNode = m_researchHoveredNode;
+            Audio::get().playSfx("research_start");
+        } else if (node.researched || node.inProgress) {
+            // Clicking something already done or already running is inspecting
+            // it, not being refused -- only a locked node is a refusal.
+            Audio::get().playSfx("research_select");
+        } else {
+            Audio::get().playSfx("deny");
         }
     }
 
@@ -798,11 +817,14 @@ void Game::drawResearchTab() {
     int rpPerTurn = 1 + (int)(sqrtf(allocAmount2 * 0.5f));
     DrawText(TextFormat("(+%d RP/turn)", rpPerTurn), sliderX + sliderW + 60, sliderY + 1, 11, LIGHTGRAY);
 
-    if (CheckCollisionPointRec(mouse, {(float)sliderX, (float)sliderY, (float)sliderW, (float)sliderH})) {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-            m_researchAllocation = (mouse.x - sliderX) / sliderW;
-            if (m_researchAllocation < 0) m_researchAllocation = 0;
-            if (m_researchAllocation > maxAllocFrac) m_researchAllocation = maxAllocFrac;
+    {
+        const Rectangle allocBar = {(float)sliderX, (float)sliderY,
+                                    (float)sliderW, (float)sliderH};
+        float t = m_researchAllocation;
+        if (sliderInteract(allocBar, /*steps=*/0, t, m_draggingResearchAlloc)) {
+            // Clamped after the shared control has spoken: this slider's
+            // ceiling is whatever the budget currently allows, not 1.0.
+            m_researchAllocation = std::clamp(t, 0.0f, maxAllocFrac);
         }
     }
 }

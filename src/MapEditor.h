@@ -62,6 +62,14 @@ public:
     void trackChange() { m_dirty = true; }
     bool isInProjectDialog() const { return m_projectState != PROJ_EDITING; }
     bool consumeExitRequest() { bool v = m_wantsExit; m_wantsExit = false; return v; }
+    // The toolbar's Settings button. Game owns the settings screen, so the
+    // editor only raises the request and lets it decide what to draw.
+    bool consumeSettingsRequest() { bool v = m_wantsSettings; m_wantsSettings = false; return v; }
+
+    // Camera state, for whoever needs to know how far out the view is. The
+    // audio layer scales the map atmosphere by it.
+    float getZoom() const { return m_renderer ? m_renderer->getZoom() : 1.0f; }
+    float getMinZoom() const { return m_renderer ? m_renderer->getMinZoom() : 1.0f; }
 
     std::string getMapName() const { return m_mapName; }
     void setMapName(const std::string& n) { m_mapName = n; m_dirty = true; }
@@ -274,6 +282,7 @@ private:
 
     // Exit request (consumed by Game::updateMapEditor)
     bool m_wantsExit = false;
+    bool m_wantsSettings = false;
 
     // ── Relations editor ──
     int m_relCountryA = -1, m_relCountryB = -1;
@@ -505,6 +514,9 @@ private:
     // Button helper
     bool drawButton(const char* label, Rectangle rect, bool selected, int fontSize);
     bool drawButtonCol(const char* label, Rectangle rect, Color accent, bool selected, int fontSize);
+    // See Game::m_lastHoverBtn -- immediate-mode buttons have no identity, so
+    // the rect stands in for one and turns "still hovered" into "just arrived".
+    int m_lastHoverBtn = 0;
 
     // Update
     void updateEdit(float dt);

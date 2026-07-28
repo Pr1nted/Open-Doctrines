@@ -1,0 +1,1372 @@
+{
+ "$comment": "Named oil and gas producing regions, authored for OpenDoctrines. Replaces ACOR (ETH Zurich), which ships no licence and is itself a digitisation of a 1982 atlas -- see NOTICE.md. Nothing here is copied from ACOR or from any other dataset: each entry is a named region with an approximate centre and a weight chosen for play balance. `fields` is expanded by load_oil_fields() into that many points, which is what the diminishing-returns curve in scale_resource() consumes. `iso` is required and is what the region is attributed to -- over half these centres are at sea, where the map has no province to read a country off, so placement matches the nearest province OF THAT COUNTRY rather than the nearest province. `offshore` is documentation for the reader; the code does not branch on it. `iso_fallback` lists countries to try when the map does not model `iso` at all -- a 2000-start map has no South Sudan or Timor-Leste, and their oil should go to whoever held the ground then rather than vanish. Map-independent: on a map that does model them, the fallback is never reached.",
+ "schema": 1,
+ "fields": [
+  {
+   "name": "Ghawar",
+   "iso": "SAU",
+   "lon": 49.7,
+   "lat": 25.4,
+   "fields": 20
+  },
+  {
+   "name": "Safaniya",
+   "iso": "SAU",
+   "lon": 48.8,
+   "lat": 28.0,
+   "fields": 18,
+   "offshore": true
+  },
+  {
+   "name": "Khurais",
+   "iso": "SAU",
+   "lon": 48.0,
+   "lat": 25.1,
+   "fields": 12
+  },
+  {
+   "name": "Shaybah",
+   "iso": "SAU",
+   "lon": 53.9,
+   "lat": 22.5,
+   "fields": 12
+  },
+  {
+   "name": "Abqaiq",
+   "iso": "SAU",
+   "lon": 49.7,
+   "lat": 26.0,
+   "fields": 10
+  },
+  {
+   "name": "Qatif",
+   "iso": "SAU",
+   "lon": 50.0,
+   "lat": 26.6,
+   "fields": 8
+  },
+  {
+   "name": "Wafra (Neutral Zone)",
+   "iso": "SAU",
+   "lon": 47.9,
+   "lat": 28.6,
+   "fields": 8
+  },
+  {
+   "name": "Burgan",
+   "iso": "KWT",
+   "lon": 47.9,
+   "lat": 28.9,
+   "fields": 20
+  },
+  {
+   "name": "Raudhatain",
+   "iso": "KWT",
+   "lon": 47.8,
+   "lat": 29.8,
+   "fields": 12
+  },
+  {
+   "name": "Rumaila",
+   "iso": "IRQ",
+   "lon": 47.2,
+   "lat": 30.4,
+   "fields": 20
+  },
+  {
+   "name": "West Qurna",
+   "iso": "IRQ",
+   "lon": 47.4,
+   "lat": 30.9,
+   "fields": 16
+  },
+  {
+   "name": "Majnoon",
+   "iso": "IRQ",
+   "lon": 47.5,
+   "lat": 31.1,
+   "fields": 12
+  },
+  {
+   "name": "Kirkuk",
+   "iso": "IRQ",
+   "lon": 44.4,
+   "lat": 35.5,
+   "fields": 16
+  },
+  {
+   "name": "East Baghdad",
+   "iso": "IRQ",
+   "lon": 44.6,
+   "lat": 33.4,
+   "fields": 8
+  },
+  {
+   "name": "Ahvaz-Marun",
+   "iso": "IRN",
+   "lon": 48.8,
+   "lat": 31.3,
+   "fields": 18
+  },
+  {
+   "name": "Gachsaran",
+   "iso": "IRN",
+   "lon": 50.8,
+   "lat": 30.3,
+   "fields": 14
+  },
+  {
+   "name": "Agha Jari",
+   "iso": "IRN",
+   "lon": 49.8,
+   "lat": 30.7,
+   "fields": 12
+  },
+  {
+   "name": "Azadegan",
+   "iso": "IRN",
+   "lon": 48.0,
+   "lat": 31.4,
+   "fields": 12
+  },
+  {
+   "name": "South Pars",
+   "iso": "IRN",
+   "lon": 52.6,
+   "lat": 27.5,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Upper Zakum",
+   "iso": "ARE",
+   "lon": 53.6,
+   "lat": 24.9,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Bu Hasa",
+   "iso": "ARE",
+   "lon": 53.2,
+   "lat": 23.5,
+   "fields": 12
+  },
+  {
+   "name": "Bab-Murban",
+   "iso": "ARE",
+   "lon": 53.7,
+   "lat": 23.9,
+   "fields": 12
+  },
+  {
+   "name": "Dukhan",
+   "iso": "QAT",
+   "lon": 50.8,
+   "lat": 25.4,
+   "fields": 12
+  },
+  {
+   "name": "North Field",
+   "iso": "QAT",
+   "lon": 51.6,
+   "lat": 26.2,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Yibal",
+   "iso": "OMN",
+   "lon": 56.0,
+   "lat": 22.2,
+   "fields": 10
+  },
+  {
+   "name": "Awali",
+   "iso": "BHR",
+   "lon": 50.5,
+   "lat": 26.0,
+   "fields": 8,
+   "iso_fallback": [
+    "SAU"
+   ]
+  },
+  {
+   "name": "Marib",
+   "iso": "YEM",
+   "lon": 45.5,
+   "lat": 15.5,
+   "fields": 8
+  },
+  {
+   "name": "Masila",
+   "iso": "YEM",
+   "lon": 48.5,
+   "lat": 15.9,
+   "fields": 8
+  },
+  {
+   "name": "Tengiz",
+   "iso": "KAZ",
+   "lon": 53.5,
+   "lat": 46.4,
+   "fields": 18
+  },
+  {
+   "name": "Kashagan",
+   "iso": "KAZ",
+   "lon": 51.3,
+   "lat": 46.5,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Karachaganak",
+   "iso": "KAZ",
+   "lon": 51.5,
+   "lat": 51.4,
+   "fields": 12
+  },
+  {
+   "name": "Uzen",
+   "iso": "KAZ",
+   "lon": 52.8,
+   "lat": 43.4,
+   "fields": 10
+  },
+  {
+   "name": "Azeri-Chirag-Gunashli",
+   "iso": "AZE",
+   "lon": 50.6,
+   "lat": 40.0,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Shah Deniz",
+   "iso": "AZE",
+   "lon": 50.9,
+   "lat": 39.6,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Galkynysh",
+   "iso": "TKM",
+   "lon": 62.0,
+   "lat": 37.3,
+   "fields": 12
+  },
+  {
+   "name": "Dauletabad",
+   "iso": "TKM",
+   "lon": 61.6,
+   "lat": 35.9,
+   "fields": 10
+  },
+  {
+   "name": "Cheleken",
+   "iso": "TKM",
+   "lon": 53.2,
+   "lat": 39.4,
+   "fields": 6
+  },
+  {
+   "name": "Kokdumalak",
+   "iso": "UZB",
+   "lon": 64.5,
+   "lat": 38.6,
+   "fields": 8
+  },
+  {
+   "name": "Fergana",
+   "iso": "UZB",
+   "lon": 71.5,
+   "lat": 40.5,
+   "fields": 4
+  },
+  {
+   "name": "Samotlor",
+   "iso": "RUS",
+   "lon": 76.8,
+   "lat": 61.1,
+   "fields": 20
+  },
+  {
+   "name": "Priobskoye",
+   "iso": "RUS",
+   "lon": 69.5,
+   "lat": 61.5,
+   "fields": 18
+  },
+  {
+   "name": "Fedorovskoye",
+   "iso": "RUS",
+   "lon": 73.5,
+   "lat": 61.5,
+   "fields": 14
+  },
+  {
+   "name": "Mamontovskoye",
+   "iso": "RUS",
+   "lon": 72.6,
+   "lat": 60.3,
+   "fields": 12
+  },
+  {
+   "name": "Urengoy",
+   "iso": "RUS",
+   "lon": 76.7,
+   "lat": 66.0,
+   "fields": 16
+  },
+  {
+   "name": "Yamburg",
+   "iso": "RUS",
+   "lon": 75.0,
+   "lat": 67.8,
+   "fields": 14
+  },
+  {
+   "name": "Bovanenkovo",
+   "iso": "RUS",
+   "lon": 68.4,
+   "lat": 70.4,
+   "fields": 12
+  },
+  {
+   "name": "Romashkino",
+   "iso": "RUS",
+   "lon": 52.3,
+   "lat": 54.6,
+   "fields": 14
+  },
+  {
+   "name": "Orenburg",
+   "iso": "RUS",
+   "lon": 55.1,
+   "lat": 51.7,
+   "fields": 10
+  },
+  {
+   "name": "Vankor",
+   "iso": "RUS",
+   "lon": 84.0,
+   "lat": 67.7,
+   "fields": 12
+  },
+  {
+   "name": "Verkhnechonsk",
+   "iso": "RUS",
+   "lon": 108.0,
+   "lat": 58.5,
+   "fields": 10
+  },
+  {
+   "name": "Sakhalin shelf",
+   "iso": "RUS",
+   "lon": 143.3,
+   "lat": 53.3,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Usinsk (Komi)",
+   "iso": "RUS",
+   "lon": 57.5,
+   "lat": 65.9,
+   "fields": 10
+  },
+  {
+   "name": "Ekofisk",
+   "iso": "NOR",
+   "lon": 3.2,
+   "lat": 56.5,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Statfjord",
+   "iso": "NOR",
+   "lon": 1.9,
+   "lat": 61.2,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Troll",
+   "iso": "NOR",
+   "lon": 3.6,
+   "lat": 60.7,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Johan Sverdrup",
+   "iso": "NOR",
+   "lon": 2.6,
+   "lat": 58.8,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Oseberg",
+   "iso": "NOR",
+   "lon": 2.8,
+   "lat": 60.5,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Forties",
+   "iso": "GBR",
+   "lon": 0.9,
+   "lat": 57.7,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Brent",
+   "iso": "GBR",
+   "lon": 1.7,
+   "lat": 61.0,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Buzzard",
+   "iso": "GBR",
+   "lon": 0.0,
+   "lat": 57.9,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Groningen",
+   "iso": "NLD",
+   "lon": 6.8,
+   "lat": 53.3,
+   "fields": 12
+  },
+  {
+   "name": "Schoonebeek",
+   "iso": "NLD",
+   "lon": 6.9,
+   "lat": 52.7,
+   "fields": 3
+  },
+  {
+   "name": "Dan-Gorm",
+   "iso": "DNK",
+   "lon": 5.0,
+   "lat": 55.5,
+   "fields": 6,
+   "offshore": true
+  },
+  {
+   "name": "Ploiesti",
+   "iso": "ROU",
+   "lon": 26.0,
+   "lat": 44.9,
+   "fields": 5
+  },
+  {
+   "name": "Zistersdorf",
+   "iso": "AUT",
+   "lon": 16.8,
+   "lat": 48.5,
+   "fields": 2
+  },
+  {
+   "name": "Val d'Agri",
+   "iso": "ITA",
+   "lon": 15.9,
+   "lat": 40.4,
+   "fields": 4
+  },
+  {
+   "name": "Lacq",
+   "iso": "FRA",
+   "lon": -0.6,
+   "lat": 43.4,
+   "fields": 2
+  },
+  {
+   "name": "Emsland",
+   "iso": "DEU",
+   "lon": 7.3,
+   "lat": 52.6,
+   "fields": 2
+  },
+  {
+   "name": "Boryslav",
+   "iso": "UKR",
+   "lon": 23.4,
+   "lat": 49.3,
+   "fields": 2
+  },
+  {
+   "name": "Shebelinka",
+   "iso": "UKR",
+   "lon": 36.3,
+   "lat": 49.5,
+   "fields": 4
+  },
+  {
+   "name": "Rechitsa",
+   "iso": "BLR",
+   "lon": 30.4,
+   "lat": 52.4,
+   "fields": 3
+  },
+  {
+   "name": "Pannonian Basin",
+   "iso": "SRB",
+   "lon": 20.2,
+   "lat": 45.6,
+   "fields": 3
+  },
+  {
+   "name": "Patos-Marinza",
+   "iso": "ALB",
+   "lon": 19.6,
+   "lat": 40.7,
+   "fields": 4
+  },
+  {
+   "name": "Niger Delta (Bonny)",
+   "iso": "NGA",
+   "lon": 6.5,
+   "lat": 4.8,
+   "fields": 18
+  },
+  {
+   "name": "Forcados",
+   "iso": "NGA",
+   "lon": 5.4,
+   "lat": 5.4,
+   "fields": 14
+  },
+  {
+   "name": "Agbami-Akpo",
+   "iso": "NGA",
+   "lon": 4.0,
+   "lat": 3.5,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Bonga",
+   "iso": "NGA",
+   "lon": 4.9,
+   "lat": 4.1,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Block 17 (Girassol)",
+   "iso": "AGO",
+   "lon": 11.0,
+   "lat": -7.5,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Cabinda",
+   "iso": "AGO",
+   "lon": 12.0,
+   "lat": -5.6,
+   "fields": 14
+  },
+  {
+   "name": "Kizomba",
+   "iso": "AGO",
+   "lon": 11.4,
+   "lat": -8.2,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Hassi Messaoud",
+   "iso": "DZA",
+   "lon": 6.1,
+   "lat": 31.7,
+   "fields": 16
+  },
+  {
+   "name": "Hassi R'Mel",
+   "iso": "DZA",
+   "lon": 3.3,
+   "lat": 33.0,
+   "fields": 14
+  },
+  {
+   "name": "Berkine (El Merk)",
+   "iso": "DZA",
+   "lon": 8.0,
+   "lat": 30.9,
+   "fields": 10
+  },
+  {
+   "name": "In Salah",
+   "iso": "DZA",
+   "lon": 2.5,
+   "lat": 27.2,
+   "fields": 8
+  },
+  {
+   "name": "Sirte (Zelten)",
+   "iso": "LBY",
+   "lon": 20.0,
+   "lat": 28.8,
+   "fields": 16
+  },
+  {
+   "name": "Sarir",
+   "iso": "LBY",
+   "lon": 22.5,
+   "lat": 27.7,
+   "fields": 12
+  },
+  {
+   "name": "Waha",
+   "iso": "LBY",
+   "lon": 19.0,
+   "lat": 28.3,
+   "fields": 10
+  },
+  {
+   "name": "El Sharara",
+   "iso": "LBY",
+   "lon": 12.6,
+   "lat": 27.7,
+   "fields": 10
+  },
+  {
+   "name": "Gulf of Suez",
+   "iso": "EGY",
+   "lon": 33.3,
+   "lat": 28.5,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Khalda (Western Desert)",
+   "iso": "EGY",
+   "lon": 27.5,
+   "lat": 30.5,
+   "fields": 8
+  },
+  {
+   "name": "Zohr",
+   "iso": "EGY",
+   "lon": 32.5,
+   "lat": 33.7,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "El Borma",
+   "iso": "TUN",
+   "lon": 9.2,
+   "lat": 31.6,
+   "fields": 5
+  },
+  {
+   "name": "Heglig-Unity",
+   "iso": "SDN",
+   "lon": 29.5,
+   "lat": 9.9,
+   "fields": 10
+  },
+  {
+   "name": "Palogue",
+   "iso": "SSD",
+   "lon": 32.4,
+   "lat": 10.5,
+   "fields": 10,
+   "iso_fallback": [
+    "SDN"
+   ]
+  },
+  {
+   "name": "Rabi-Kounga",
+   "iso": "GAB",
+   "lon": 10.0,
+   "lat": -1.9,
+   "fields": 10
+  },
+  {
+   "name": "Zafiro",
+   "iso": "GNQ",
+   "lon": 8.9,
+   "lat": 3.8,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Alba",
+   "iso": "GNQ",
+   "lon": 8.6,
+   "lat": 3.7,
+   "fields": 6,
+   "offshore": true
+  },
+  {
+   "name": "Nkossa",
+   "iso": "COG",
+   "lon": 11.5,
+   "lat": -4.6,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Moho-Bilondo",
+   "iso": "COG",
+   "lon": 11.2,
+   "lat": -4.9,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Doba",
+   "iso": "TCD",
+   "lon": 16.9,
+   "lat": 8.6,
+   "fields": 8
+  },
+  {
+   "name": "Rio del Rey",
+   "iso": "CMR",
+   "lon": 8.8,
+   "lat": 4.3,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Albertine Graben",
+   "iso": "UGA",
+   "lon": 31.4,
+   "lat": 1.7,
+   "fields": 5
+  },
+  {
+   "name": "Lokichar",
+   "iso": "KEN",
+   "lon": 35.7,
+   "lat": 2.4,
+   "fields": 3
+  },
+  {
+   "name": "Calub (Ogaden)",
+   "iso": "ETH",
+   "lon": 44.3,
+   "lat": 6.4,
+   "fields": 2
+  },
+  {
+   "name": "Rovuma",
+   "iso": "MOZ",
+   "lon": 40.6,
+   "lat": -10.8,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Pande-Temane",
+   "iso": "MOZ",
+   "lon": 34.4,
+   "lat": -21.5,
+   "fields": 4
+  },
+  {
+   "name": "Mnazi Bay",
+   "iso": "TZA",
+   "lon": 40.2,
+   "lat": -10.4,
+   "fields": 3,
+   "offshore": true
+  },
+  {
+   "name": "Kudu",
+   "iso": "NAM",
+   "lon": 14.5,
+   "lat": -28.6,
+   "fields": 2,
+   "offshore": true
+  },
+  {
+   "name": "Permian Basin",
+   "iso": "USA",
+   "lon": -102.5,
+   "lat": 31.9,
+   "fields": 20
+  },
+  {
+   "name": "Eagle Ford",
+   "iso": "USA",
+   "lon": -98.5,
+   "lat": 28.8,
+   "fields": 14
+  },
+  {
+   "name": "Bakken",
+   "iso": "USA",
+   "lon": -103.0,
+   "lat": 47.9,
+   "fields": 14
+  },
+  {
+   "name": "Gulf of Mexico deepwater",
+   "iso": "USA",
+   "lon": -90.5,
+   "lat": 27.5,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Prudhoe Bay",
+   "iso": "USA",
+   "lon": -148.3,
+   "lat": 70.3,
+   "fields": 14
+  },
+  {
+   "name": "San Joaquin (Kern River)",
+   "iso": "USA",
+   "lon": -119.0,
+   "lat": 35.4,
+   "fields": 10
+  },
+  {
+   "name": "Marcellus",
+   "iso": "USA",
+   "lon": -78.0,
+   "lat": 40.5,
+   "fields": 12
+  },
+  {
+   "name": "Anadarko",
+   "iso": "USA",
+   "lon": -98.5,
+   "lat": 35.5,
+   "fields": 8
+  },
+  {
+   "name": "East Texas",
+   "iso": "USA",
+   "lon": -94.8,
+   "lat": 32.4,
+   "fields": 8
+  },
+  {
+   "name": "Athabasca oil sands",
+   "iso": "CAN",
+   "lon": -111.5,
+   "lat": 57.0,
+   "fields": 20
+  },
+  {
+   "name": "Cold Lake",
+   "iso": "CAN",
+   "lon": -110.2,
+   "lat": 54.5,
+   "fields": 12
+  },
+  {
+   "name": "Pembina",
+   "iso": "CAN",
+   "lon": -114.8,
+   "lat": 53.2,
+   "fields": 10
+  },
+  {
+   "name": "Montney",
+   "iso": "CAN",
+   "lon": -120.5,
+   "lat": 55.8,
+   "fields": 10
+  },
+  {
+   "name": "Hibernia",
+   "iso": "CAN",
+   "lon": -48.8,
+   "lat": 46.8,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Cantarell",
+   "iso": "MEX",
+   "lon": -92.2,
+   "lat": 19.4,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Ku-Maloob-Zaap",
+   "iso": "MEX",
+   "lon": -92.1,
+   "lat": 19.7,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Chicontepec",
+   "iso": "MEX",
+   "lon": -97.8,
+   "lat": 20.8,
+   "fields": 8
+  },
+  {
+   "name": "Orinoco Belt",
+   "iso": "VEN",
+   "lon": -64.5,
+   "lat": 8.6,
+   "fields": 20
+  },
+  {
+   "name": "Maracaibo",
+   "iso": "VEN",
+   "lon": -71.4,
+   "lat": 10.0,
+   "fields": 18
+  },
+  {
+   "name": "El Furrial",
+   "iso": "VEN",
+   "lon": -63.5,
+   "lat": 9.5,
+   "fields": 10
+  },
+  {
+   "name": "Campos Basin",
+   "iso": "BRA",
+   "lon": -40.2,
+   "lat": -22.4,
+   "fields": 16,
+   "offshore": true
+  },
+  {
+   "name": "Santos pre-salt (Tupi)",
+   "iso": "BRA",
+   "lon": -43.2,
+   "lat": -25.3,
+   "fields": 18,
+   "offshore": true
+  },
+  {
+   "name": "Urucu",
+   "iso": "BRA",
+   "lon": -65.3,
+   "lat": -4.9,
+   "fields": 6
+  },
+  {
+   "name": "Cusiana-Cupiagua",
+   "iso": "COL",
+   "lon": -72.7,
+   "lat": 4.9,
+   "fields": 10
+  },
+  {
+   "name": "Rubiales",
+   "iso": "COL",
+   "lon": -71.3,
+   "lat": 3.5,
+   "fields": 8
+  },
+  {
+   "name": "Cano Limon",
+   "iso": "COL",
+   "lon": -71.3,
+   "lat": 6.9,
+   "fields": 8
+  },
+  {
+   "name": "Shushufindi (Oriente)",
+   "iso": "ECU",
+   "lon": -76.6,
+   "lat": -0.2,
+   "fields": 10
+  },
+  {
+   "name": "Camisea",
+   "iso": "PER",
+   "lon": -72.9,
+   "lat": -11.8,
+   "fields": 8
+  },
+  {
+   "name": "Talara",
+   "iso": "PER",
+   "lon": -81.1,
+   "lat": -4.6,
+   "fields": 5
+  },
+  {
+   "name": "Vaca Muerta",
+   "iso": "ARG",
+   "lon": -69.3,
+   "lat": -38.5,
+   "fields": 12
+  },
+  {
+   "name": "Cerro Dragon",
+   "iso": "ARG",
+   "lon": -68.6,
+   "lat": -45.7,
+   "fields": 8
+  },
+  {
+   "name": "Margarita (Tarija)",
+   "iso": "BOL",
+   "lon": -63.7,
+   "lat": -21.5,
+   "fields": 6
+  },
+  {
+   "name": "Magallanes",
+   "iso": "CHL",
+   "lon": -70.9,
+   "lat": -52.8,
+   "fields": 3
+  },
+  {
+   "name": "Trinidad offshore",
+   "iso": "TTO",
+   "lon": -61.0,
+   "lat": 10.2,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Varadero",
+   "iso": "CUB",
+   "lon": -81.3,
+   "lat": 23.2,
+   "fields": 4
+  },
+  {
+   "name": "Stabroek",
+   "iso": "GUY",
+   "lon": -57.0,
+   "lat": 8.2,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Tambaredjo",
+   "iso": "SUR",
+   "lon": -55.5,
+   "lat": 5.8,
+   "fields": 4
+  },
+  {
+   "name": "Daqing",
+   "iso": "CHN",
+   "lon": 125.0,
+   "lat": 46.6,
+   "fields": 18
+  },
+  {
+   "name": "Shengli",
+   "iso": "CHN",
+   "lon": 118.7,
+   "lat": 37.5,
+   "fields": 16
+  },
+  {
+   "name": "Bohai Bay",
+   "iso": "CHN",
+   "lon": 119.3,
+   "lat": 38.7,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Changqing (Ordos)",
+   "iso": "CHN",
+   "lon": 108.0,
+   "lat": 37.5,
+   "fields": 14
+  },
+  {
+   "name": "Tahe (Tarim)",
+   "iso": "CHN",
+   "lon": 84.0,
+   "lat": 41.0,
+   "fields": 12
+  },
+  {
+   "name": "Karamay (Junggar)",
+   "iso": "CHN",
+   "lon": 85.0,
+   "lat": 45.6,
+   "fields": 10
+  },
+  {
+   "name": "Sichuan Basin",
+   "iso": "CHN",
+   "lon": 105.0,
+   "lat": 30.5,
+   "fields": 10
+  },
+  {
+   "name": "Fuling",
+   "iso": "CHN",
+   "lon": 107.4,
+   "lat": 29.7,
+   "fields": 8
+  },
+  {
+   "name": "Minas-Duri",
+   "iso": "IDN",
+   "lon": 101.2,
+   "lat": 1.0,
+   "fields": 14
+  },
+  {
+   "name": "Mahakam",
+   "iso": "IDN",
+   "lon": 117.5,
+   "lat": -0.6,
+   "fields": 10
+  },
+  {
+   "name": "Cepu",
+   "iso": "IDN",
+   "lon": 111.6,
+   "lat": -7.1,
+   "fields": 8
+  },
+  {
+   "name": "Natuna",
+   "iso": "IDN",
+   "lon": 108.5,
+   "lat": 3.8,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Tangguh",
+   "iso": "IDN",
+   "lon": 133.0,
+   "lat": -2.3,
+   "fields": 8
+  },
+  {
+   "name": "Miri-Baram",
+   "iso": "MYS",
+   "lon": 114.0,
+   "lat": 4.4,
+   "fields": 10
+  },
+  {
+   "name": "Kikeh",
+   "iso": "MYS",
+   "lon": 114.3,
+   "lat": 6.2,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Terengganu offshore",
+   "iso": "MYS",
+   "lon": 104.5,
+   "lat": 5.5,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Seria",
+   "iso": "BRN",
+   "lon": 114.3,
+   "lat": 4.6,
+   "fields": 10
+  },
+  {
+   "name": "Bach Ho",
+   "iso": "VNM",
+   "lon": 107.9,
+   "lat": 9.9,
+   "fields": 12,
+   "offshore": true
+  },
+  {
+   "name": "Nam Con Son",
+   "iso": "VNM",
+   "lon": 107.5,
+   "lat": 8.5,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Bongkot",
+   "iso": "THA",
+   "lon": 102.0,
+   "lat": 8.2,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Sirikit",
+   "iso": "THA",
+   "lon": 100.2,
+   "lat": 17.0,
+   "fields": 5
+  },
+  {
+   "name": "Yadana",
+   "iso": "MMR",
+   "lon": 95.9,
+   "lat": 14.9,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Shwe",
+   "iso": "MMR",
+   "lon": 93.3,
+   "lat": 19.6,
+   "fields": 6,
+   "offshore": true
+  },
+  {
+   "name": "Mumbai High",
+   "iso": "IND",
+   "lon": 71.5,
+   "lat": 19.4,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Cambay",
+   "iso": "IND",
+   "lon": 72.5,
+   "lat": 22.5,
+   "fields": 8
+  },
+  {
+   "name": "Mangala (Barmer)",
+   "iso": "IND",
+   "lon": 72.0,
+   "lat": 26.0,
+   "fields": 8
+  },
+  {
+   "name": "Krishna-Godavari",
+   "iso": "IND",
+   "lon": 82.0,
+   "lat": 16.2,
+   "fields": 8,
+   "offshore": true
+  },
+  {
+   "name": "Digboi (Assam)",
+   "iso": "IND",
+   "lon": 95.6,
+   "lat": 27.4,
+   "fields": 6
+  },
+  {
+   "name": "Sui",
+   "iso": "PAK",
+   "lon": 69.2,
+   "lat": 28.6,
+   "fields": 8
+  },
+  {
+   "name": "Potwar",
+   "iso": "PAK",
+   "lon": 72.8,
+   "lat": 33.0,
+   "fields": 4
+  },
+  {
+   "name": "Bibiyana",
+   "iso": "BGD",
+   "lon": 91.7,
+   "lat": 24.4,
+   "fields": 6
+  },
+  {
+   "name": "North West Shelf",
+   "iso": "AUS",
+   "lon": 116.0,
+   "lat": -19.5,
+   "fields": 14,
+   "offshore": true
+  },
+  {
+   "name": "Gippsland",
+   "iso": "AUS",
+   "lon": 148.0,
+   "lat": -38.5,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Cooper Basin",
+   "iso": "AUS",
+   "lon": 140.0,
+   "lat": -27.5,
+   "fields": 8
+  },
+  {
+   "name": "Ichthys (Browse)",
+   "iso": "AUS",
+   "lon": 123.5,
+   "lat": -13.9,
+   "fields": 10,
+   "offshore": true
+  },
+  {
+   "name": "Maui",
+   "iso": "NZL",
+   "lon": 173.5,
+   "lat": -39.6,
+   "fields": 6,
+   "offshore": true
+  },
+  {
+   "name": "Kutubu",
+   "iso": "PNG",
+   "lon": 143.2,
+   "lat": -6.5,
+   "fields": 8
+  },
+  {
+   "name": "Hides",
+   "iso": "PNG",
+   "lon": 142.8,
+   "lat": -5.9,
+   "fields": 6
+  },
+  {
+   "name": "Bayu-Undan",
+   "iso": "TLS",
+   "lon": 126.2,
+   "lat": -10.5,
+   "fields": 8,
+   "offshore": true,
+   "iso_fallback": [
+    "IDN"
+   ]
+  },
+  {
+   "name": "Tamsag",
+   "iso": "MNG",
+   "lon": 118.5,
+   "lat": 47.3,
+   "fields": 4
+  },
+  {
+   "name": "Niigata",
+   "iso": "JPN",
+   "lon": 139.0,
+   "lat": 37.9,
+   "fields": 2
+  }
+ ]
+}

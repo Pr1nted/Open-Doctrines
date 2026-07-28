@@ -1,4 +1,5 @@
 #include "Config.h"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -38,6 +39,28 @@ static bool findBool(const std::string& json, const std::string& key, bool def) 
     return json[pos] == 't';
 }
 
+
+namespace {
+
+// The config parser is a set of small scanners rather than a JSON library.
+// This is the string equivalent; it deliberately does not handle escapes,
+// because every value it reads is a URL the user typed into a settings file.
+std::string findConfigString(const std::string& json, const char* key,
+                             const std::string& fallback) {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t at = json.find(needle);
+    if (at == std::string::npos) return fallback;
+    at = json.find(':', at + needle.size());
+    if (at == std::string::npos) return fallback;
+    const size_t open = json.find('"', at);
+    if (open == std::string::npos) return fallback;
+    const size_t close = json.find('"', open + 1);
+    if (close == std::string::npos) return fallback;
+    return json.substr(open + 1, close - open - 1);
+}
+
+}  // namespace
+
 bool Config::load(const std::string& path) {
     std::ifstream file(path);
     if (!file) return false;
@@ -61,11 +84,19 @@ bool Config::load(const std::string& path) {
     if (aiDifficulty > 3) aiDifficulty = 3;
     aiDebug = findBool(json, "aiDebug", false);
     aiLearning = findBool(json, "aiLearning", false);
+    masterVolume = std::clamp(findFloat(json, "masterVolume", 0.8f), 0.0f, 1.0f);
+    musicVolume  = std::clamp(findFloat(json, "musicVolume",  0.6f), 0.0f, 1.0f);
+    sfxVolume    = std::clamp(findFloat(json, "sfxVolume",    0.8f), 0.0f, 1.0f);
+    nowPlayingToast = findBool(json, "nowPlayingToast", true);
+    mapAtmosphere   = findBool(json, "mapAtmosphere", true);
     // Absent means off: an older config file must not silently opt the
     // player into an outbound request they never agreed to.
     modUpdateChecks = findBool(json, "modUpdateChecks", false);
     gameUpdateChecks = findBool(json, "gameUpdateChecks", true);
     accentColor = findInt(json, "accentColor", 0xFFD700);
+    accountIssuer = findConfigString(json, "accountIssuer", "");
+    serverCredential = findConfigString(json, "serverCredential", "");
+    accountAgreed = findBool(json, "accountAgreed", false);
 
     // Load keybinds
     auto kbPos = json.find("\"keybinds\"");
@@ -111,9 +142,17 @@ bool Config::save(const std::string& path) {
     file << "  \"aiDifficulty\": " << aiDifficulty << ",\n";
     file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
     file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";
+    file << "  \"masterVolume\": " << masterVolume << ",\n";
+    file << "  \"musicVolume\": " << musicVolume << ",\n";
+    file << "  \"sfxVolume\": " << sfxVolume << ",\n";
+    file << "  \"nowPlayingToast\": " << (nowPlayingToast ? "true" : "false") << ",\n";
+    file << "  \"mapAtmosphere\": " << (mapAtmosphere ? "true" : "false") << ",\n";
     file << "  \"modUpdateChecks\": " << (modUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"gameUpdateChecks\": " << (gameUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
+    file << "  \"accountIssuer\": \"" << accountIssuer << "\",\n";
+    file << "  \"serverCredential\": \"" << serverCredential << "\",\n";
+    file << "  \"accountAgreed\": " << (accountAgreed ? "true" : "false") << ",\n";
     file << "  \"keybinds\": [";
     for (int i = 0; i < ACTION_COUNT; ++i) {
         if (i > 0) file << ", ";

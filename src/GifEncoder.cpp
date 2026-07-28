@@ -1,6 +1,7 @@
 #include "GifEncoder.h"
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 
 // ─── Setup ───────────────────────────────────────────────
 
@@ -32,20 +33,134 @@ void GifEncoder::addPaletteSample(const uint8_t* rgba) {
 // ─── Palette ─────────────────────────────────────────────
 
 void GifEncoder::finalizePalette() {
-    std::vector<std::pair<uint16_t, uint32_t>> sorted(m_hist.begin(), m_hist.end());
-    std::sort(sorted.begin(), sorted.end(),
-              [](const auto& a, const auto& b) { return a.second > b.second; });
+    // Median cut over the sampled histogram.
+    //
+    // This replaced "the 256 most frequent colours", which is only a quantiser
+    // when the histogram has peaks. A smooth gradient does not: every colour
+    // appears once or twice, so the top 256 were an arbitrary 256 and everything
+    // else mapped to whichever of them happened to be nearest -- up to 206 out
+    // of 255 wrong on one channel, measured. That matters here specifically
+    // because the thing being exported is political.png, which has the border
+    // gradient baked into every country.
+    //
+    // Median cut instead splits the colour space where the colours actually are:
+    // repeatedly take the box with the largest spread, sort its colours on that
+    // axis, and cut at the weighted median until there are 256 boxes.
+    struct Box {
+        std::vector<size_t> items;      // indices into `cols`
+        uint8_t lo[3], hi[3];
+        uint64_t weight = 0;
+        int longest = 0;                // axis with the widest spread
+        int spread = 0;
+    };
+
+    struct Col { uint8_t c[3]; uint32_t count; };
+    std::vector<Col> cols;
+    cols.reserve(m_hist.size());
+    for (const auto& [key, count] : m_hist) {
+        uint8_t r = (uint8_t)(((key >> 10) & 0x1F) << 3); r |= r >> 5;
+        uint8_t g = (uint8_t)(((key >> 5) & 0x1F) << 3);  g |= g >> 5;
+        uint8_t b = (uint8_t)((key & 0x1F) << 3);         b |= b >> 5;
+        cols.push_back({{r, g, b}, count});
+    }
+
+    auto measure = [&cols](Box& box) {
+        for (int a = 0; a < 3; ++a) { box.lo[a] = 255; box.hi[a] = 0; }
+        box.weight = 0;
+        for (size_t i : box.items) {
+            for (int a = 0; a < 3; ++a) {
+                box.lo[a] = std::min(box.lo[a], cols[i].c[a]);
+                box.hi[a] = std::max(box.hi[a], cols[i].c[a]);
+            }
+            box.weight += cols[i].count;
+        }
+        box.longest = 0; box.spread = 0;
+        for (int a = 0; a < 3; ++a) {
+            int d = box.hi[a] - box.lo[a];
+            if (d > box.spread) { box.spread = d; box.longest = a; }
+        }
+    };
 
     m_palette.clear();
-    for (size_t i = 0; i < sorted.size() && m_palette.size() < 256; ++i) {
-        uint16_t k = sorted[i].first;
-        // Replicate high bits so 5-bit white maps back to 0xFF, not 0xF8
-        uint8_t r = (uint8_t)(((k >> 10) & 0x1F) << 3); r |= r >> 5;
-        uint8_t g = (uint8_t)(((k >> 5) & 0x1F) << 3);  g |= g >> 5;
-        uint8_t b = (uint8_t)((k & 0x1F) << 3);         b |= b >> 5;
-        m_palette.push_back({r, g, b});
+    if (!cols.empty()) {
+        std::vector<Box> boxes(1);
+        boxes[0].items.resize(cols.size());
+        for (size_t i = 0; i < cols.size(); ++i) boxes[0].items[i] = i;
+        measure(boxes[0]);
+
+        while (boxes.size() < 256) {
+            // Split the box that is worst to represent with one colour: widest
+            // spread, and among equals the one covering the most pixels.
+            int pick = -1;
+            for (size_t i = 0; i < boxes.size(); ++i) {
+                if (boxes[i].items.size() < 2 || boxes[i].spread == 0) continue;
+                if (pick < 0 || boxes[i].spread > boxes[pick].spread ||
+                    (boxes[i].spread == boxes[pick].spread &&
+                     boxes[i].weight > boxes[pick].weight)) {
+                    pick = (int)i;
+                }
+            }
+            if (pick < 0) break;        // every box is a single colour
+
+            Box& src = boxes[pick];
+            const int axis = src.longest;
+            std::sort(src.items.begin(), src.items.end(),
+                      [&cols, axis](size_t a, size_t b) {
+                          if (cols[a].c[axis] != cols[b].c[axis])
+                              return cols[a].c[axis] < cols[b].c[axis];
+                          return a < b;      // stable, so output is reproducible
+                      });
+            // Cut at the weighted median so both halves carry similar pixel
+            // counts -- but the cut MUST leave both sides non-empty.
+            //
+            // The scan below stops before the last item, so it never counts that
+            // item's weight. When a single colour holds more than half the box
+            // and happens to sort last, `run` therefore never reaches `half`,
+            // `cut` runs off to size-1, and the high half comes out empty. The
+            // box then never actually splits: the loop appends an empty box,
+            // picks the same box again, and repeats until it has 256 boxes of
+            // which only a handful hold anything.
+            //
+            // That is not a corner case here. A political map is ~70% sea in one
+            // flat colour, so it happened on the first frame of every timelapse
+            // and the palette came out with five entries instead of a hundred.
+            uint64_t half = src.weight / 2, run = 0;
+            size_t cut = 0;
+            bool reached = false;
+            for (; cut + 1 < src.items.size(); ++cut) {
+                run += cols[src.items[cut]].count;
+                if (run >= half) { reached = true; break; }
+            }
+            if (!reached) {
+                // One dominant colour at the far end. Peel it off on its own,
+                // which is what a median cut should do with it anyway.
+                cut = src.items.size() - 2;
+            }
+            Box hiBox;
+            hiBox.items.assign(src.items.begin() + (long)cut + 1, src.items.end());
+            src.items.resize(cut + 1);
+            measure(src);
+            measure(hiBox);
+            boxes.push_back(std::move(hiBox));
+        }
+
+        for (const Box& box : boxes) {
+            if (box.items.empty()) continue;
+            // Pixel-weighted mean, so a box holding one dominant colour and a
+            // few strays lands on the dominant one.
+            uint64_t acc[3] = {0, 0, 0}, w = 0;
+            for (size_t i : box.items) {
+                for (int a = 0; a < 3; ++a)
+                    acc[a] += (uint64_t)cols[i].c[a] * cols[i].count;
+                w += cols[i].count;
+            }
+            if (!w) continue;
+            m_palette.push_back({(uint8_t)(acc[0] / w), (uint8_t)(acc[1] / w),
+                                 (uint8_t)(acc[2] / w)});
+        }
     }
     if (m_palette.empty()) m_palette.push_back({0, 0, 0});
+
     m_exactCache.assign(32768, -1);
     m_hist.clear();
 

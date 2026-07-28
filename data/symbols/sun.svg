@@ -1,1 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200"><g fill="#fff"><circle cx="0" cy="0" r="30"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(0)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(22.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(45)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(67.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(90)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(112.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(135)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(157.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(180)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(202.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(225)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(247.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(270)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(292.5)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(315)"/><polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(337.5)"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <g fill="#fff">
+    <circle cx="0" cy="0" r="30"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(0)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(22.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(45)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(67.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(90)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(112.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(135)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(157.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(180)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(202.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(225)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(247.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(270)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(292.5)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(315)"/>
+    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(337.5)"/>
+  </g>
+</svg>

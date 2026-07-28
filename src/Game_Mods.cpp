@@ -5,6 +5,7 @@
 // rules"), so everything that can start or stop a mod lives in this file.
 
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
@@ -978,11 +979,13 @@ void Game::updateModsMenu() {
         Rectangle off{(float)(x + 24), (float)(y + h - 58), 250.0f, 36.0f};
         Rectangle can{(float)(x + w - 130), (float)(y + h - 58), 106.0f, 36.0f};
         if (click && CheckCollisionPointRec(mouse, off)) {
+            Audio::get().playSfx("toggle_off");
             m_config.aiLearning = false;
             m_config.save(m_configPath);
             mm.setEnabled((size_t)m_modAiWarnFor, true);
             m_modAiWarnFor = -1;
         } else if ((click && CheckCollisionPointRec(mouse, can)) || IsKeyPressed(KEY_ESCAPE)) {
+            Audio::get().playSfx("back");
             m_modAiWarnFor = -1;
         }
         return;
@@ -994,6 +997,7 @@ void Game::updateModsMenu() {
         Rectangle del{(float)(x + w - 220), (float)(y + h - 52), 96.0f, 34.0f};
         Rectangle can{(float)(x + w - 114), (float)(y + h - 52), 96.0f, 34.0f};
         if (click && CheckCollisionPointRec(mouse, del)) {
+            Audio::get().playSfx("confirm");
             std::string err;
             if (!mm.removeMod((size_t)m_modDeleteFor, err)) {
                 m_modFeedback = err;
@@ -1004,6 +1008,7 @@ void Game::updateModsMenu() {
             m_modDeleteFor = -1;
             m_modIndex = std::clamp(m_modIndex, 0, std::max(0, (int)mods.size() - 1));
         } else if ((click && CheckCollisionPointRec(mouse, can)) || IsKeyPressed(KEY_ESCAPE)) {
+            Audio::get().playSfx("back");
             m_modDeleteFor = -1;
         }
         return;
@@ -1023,7 +1028,8 @@ void Game::updateModsMenu() {
         for (uint32_t bit : kBits) {
             Rectangle b{(float)(x + w - 110), (float)ry, 72.0f, 26.0f};
             bool locked = !(e.manifest.modules & bit) || bit == MODULE_CORE;
-            if (!locked && click && CheckCollisionPointRec(mouse, b))
+            if (!locked && click && CheckCollisionPointRec(mouse, b) &&
+                (Audio::get().playSfx("click_light"), true))
                 mm.setGrant((size_t)m_modAdvancedFor, bit, !(e.grants & bit));
             ry += 34;
         }
@@ -1053,6 +1059,7 @@ void Game::updateModsMenu() {
                 if (!mm.bridged(e.id, other.id)) {
                     Rectangle b{(float)(x + w - 150), (float)ry, 112.0f, 24.0f};
                     if (click && CheckCollisionPointRec(mouse, b)) {
+                        Audio::get().playSfx("click_light");
                         bool on = e.overridesConflictWith(other.id);
                         mm.setConflictOverride((size_t)m_modAdvancedFor, other.id, !on);
                         m_modFeedback = on ? "Conflict blocked again"
@@ -1066,7 +1073,8 @@ void Game::updateModsMenu() {
             }
         }
         Rectangle close{(float)(x + w - 120), (float)(y + h - 46), 96.0f, 32.0f};
-        if ((click && CheckCollisionPointRec(mouse, close)) || IsKeyPressed(KEY_ESCAPE))
+        if (((click && CheckCollisionPointRec(mouse, close)) || IsKeyPressed(KEY_ESCAPE)) &&
+            (Audio::get().playSfx("back"), true))
             m_modAdvancedFor = -1;
         return;
     }
@@ -1090,13 +1098,15 @@ void Game::updateModsMenu() {
     Rectangle relB{250.0f, (float)by, 190.0f, 36.0f};
     Rectangle backB{(float)(m_screenW - 140), (float)by, 100.0f, 36.0f};
 
-    if (click && CheckCollisionPointRec(mouse, backB)) { m_currentScreen = SCREEN_MENU; return; }
+    if (click && CheckCollisionPointRec(mouse, backB)) { Audio::get().playSfx("back"); m_currentScreen = SCREEN_MENU; return; }
     if (click && CheckCollisionPointRec(mouse, relB)) {
+        Audio::get().playSfx("click_light");
         m_modReloading = true;
         m_modReloadFrames = 0;
         return;
     }
     if (click && CheckCollisionPointRec(mouse, addB)) {
+        Audio::get().playSfx("click_light");
         std::string p = pickOdmodFile();
         if (p.empty()) {
             m_modFeedback = "Drag a .odmod file onto the window to add it";
@@ -1153,6 +1163,7 @@ void Game::updateModsMenu() {
                     Rectangle upB{(float)badgeX, row.y + 55,
                                   (float)(MeasureText("Can be updated", 12) + 14), 19.0f};
                     if (CheckCollisionPointRec(mouse, upB)) {
+                        Audio::get().playSfx("click_light");
                         OpenURL(up->page.c_str());
                         m_modFeedback = "Opened the mod's page in your browser";
                         m_modFeedbackTimer = 3.0f;
@@ -1162,9 +1173,10 @@ void Game::updateModsMenu() {
             }
         }
 
-        if (CheckCollisionPointRec(mouse, delB))  { m_modDeleteFor = i; return; }
-        if (CheckCollisionPointRec(mouse, advB))  { m_modAdvancedFor = i; return; }
+        if (CheckCollisionPointRec(mouse, delB))  { Audio::get().playSfx("click_light"); m_modDeleteFor = i; return; }
+        if (CheckCollisionPointRec(mouse, advB))  { Audio::get().playSfx("click_light"); m_modAdvancedFor = i; return; }
         if (CheckCollisionPointRec(mouse, rldB))  {
+            Audio::get().playSfx("click_light");
             mm.reloadOne((size_t)i);
             clearModThumbnails();
             m_modFeedback = "Reloaded";
@@ -1174,7 +1186,14 @@ void Game::updateModsMenu() {
         if (CheckCollisionPointRec(mouse, togB)) {
             ModEntry& e = mods[i];
             // The interlock: never let a mod and AI learning both be live.
-            if (!e.enabled && m_config.aiLearning) { m_modAiWarnFor = i; return; }
+            // Blocked by the interlock: the click did something, but not the
+            // thing it looks like, so it must not sound like a toggle.
+            if (!e.enabled && m_config.aiLearning) {
+                Audio::get().playSfx("deny");
+                m_modAiWarnFor = i;
+                return;
+            }
+            Audio::get().playSfx(!e.enabled ? "toggle_on" : "toggle_off");
             mm.setEnabled((size_t)i, !e.enabled);
             if (mods[i].state == ModState::PendingReload) {
                 m_modFeedback = "Enabled — reload to apply while a game is running";
@@ -1182,6 +1201,6 @@ void Game::updateModsMenu() {
             }
             return;
         }
-        if (CheckCollisionPointRec(mouse, row)) { m_modIndex = i; return; }
+        if (CheckCollisionPointRec(mouse, row)) { Audio::get().playSfx("click_light"); m_modIndex = i; return; }
     }
 }

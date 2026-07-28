@@ -1,0 +1,8 @@
+{
+  "title": "Global Politics",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": { "tension": 0.30, "energy": 0.50, "valence": 0.20 },
+  "weight": 1.0,
+  "$comment": "Solo violin and oboe over pizzicato strings, celeste and a light kit -- measured and deliberative rather than martial. A general piece that lands specifically on politics: the treaty signal in Game::currentMood counts standing alliances, pacts and guarantees and moves the mood exactly here, which is a corner no other track sits in (mid energy, mildly positive, low tension). Deliberately kept clear of the menu point so it never beats the main theme to the title screen. Editable source: data/audio/midi/Global Politics.mid"
+}

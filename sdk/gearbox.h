@@ -84,6 +84,58 @@ typedef uint32_t gearbox_panel;
 
 #include "gearbox_generated.h"
 
+/* ---------------------------------------------------------------------------
+ * Which side of a multiplayer game you are running on.
+ *
+ * `env.net_role` is the byte that used to be `reserved0`. STANDALONE is 0, so
+ * a mod compiled before this existed reads the same byte and gets the right
+ * answer for the only game it could have been in.
+ *
+ * WHY YOU SHOULD CARE
+ *
+ * In multiplayer the SERVER is authoritative for everything. A client's copy of
+ * the world is overwritten by whatever the server sends at the end of each
+ * turn, so a write you make on the client does not survive and was never going
+ * to. That is not a restriction imposed on mods; it is what stops a modified
+ * client from cheating, and it applies to your mod exactly as it applies to
+ * everyone else's.
+ *
+ * So: presentation, panels and local convenience are client work. Anything that
+ * changes the world belongs on the server side of your mod. Declare which side
+ * you are in MANIFEST.json ("side": "client" | "server" | "both") -- a
+ * client-side mod has GameState.Write and GameProcess masked off its grants for
+ * the duration of a multiplayer session, whatever the user granted.
+ * ------------------------------------------------------------------------- */
+typedef enum {
+    GEARBOX_NET_STANDALONE  = 0,   /* singleplayer: you are both sides       */
+    GEARBOX_NET_CLIENT      = 1,   /* a server elsewhere is authoritative    */
+    GEARBOX_NET_SERVER      = 2,   /* dedicated host: authoritative, no player */
+    GEARBOX_NET_HOST_PLAYER = 3    /* authoritative, and playing             */
+} gearbox_net_role;
+
+/* True wherever there is a local player to draw for -- which includes
+ * singleplayer and a host who is also playing. Use this to decide whether to
+ * put up UI. */
+static inline int gearbox_is_client(const gearbox_env_t* env) {
+    return env->net_role == GEARBOX_NET_STANDALONE
+        || env->net_role == GEARBOX_NET_CLIENT
+        || env->net_role == GEARBOX_NET_HOST_PLAYER;
+}
+
+/* True wherever this process owns the world. Use this to decide whether a
+ * write is real. In singleplayer both this and gearbox_is_client are true,
+ * because there is only one process and it is both. */
+static inline int gearbox_is_server(const gearbox_env_t* env) {
+    return env->net_role == GEARBOX_NET_STANDALONE
+        || env->net_role == GEARBOX_NET_SERVER
+        || env->net_role == GEARBOX_NET_HOST_PLAYER;
+}
+
+/* True only in a real multiplayer session, on either side. */
+static inline int gearbox_is_multiplayer(const gearbox_env_t* env) {
+    return env->net_role != GEARBOX_NET_STANDALONE;
+}
+
 #ifdef __cplusplus
 }   /* extern "C" */
 #endif

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "Keybinds.h"
@@ -46,8 +47,9 @@ void Game::handlePauseMenu() {
 
     if (activate) {
         m_menuIndex = std::clamp(m_menuIndex, 0, MENU_COUNT - 1);
-        if (m_menuIndex == 0) m_paused = false;
-        else if (m_menuIndex == 1) { m_inSettings = true; m_settingsIndex = 0; m_settingsScroll = 0; }
+        if (m_menuIndex == 0) { m_paused = false; Audio::get().playSfx("back"); }
+        else if (m_menuIndex == 1) { m_inSettings = true; m_settingsIndex = 0; m_settingsScroll = 0;
+                                     Audio::get().playSfx("click_light"); }
         else if (m_menuIndex == 2) {
             m_config.save(m_configPath);
             trySaveGame();
@@ -153,6 +155,7 @@ void Game::update(float dt) {
             }
         } else {
             m_paused = !m_paused;
+            Audio::get().playSfx(m_paused ? "panel_open" : "panel_close");
             m_menuIndex = 0;
             m_settingsIndex = 0;
         }
@@ -477,6 +480,7 @@ void Game::update(float dt) {
             if (IsKeyPressed(m_config.keybinds[tabActions[i]])) {
                 int tab = i + 1;
                 m_activeViewTab = (m_activeViewTab == tab) ? 0 : tab;
+                Audio::get().playSfx("tab_switch");
                 if (m_showClaims) clearClaimsView();
                 break;
             }
@@ -492,6 +496,7 @@ void Game::update(float dt) {
             if (idx >= 0 && idx < 8) {
                 int tab = idx + 1;
                 m_activeViewTab = (m_activeViewTab == tab) ? 0 : tab;
+                Audio::get().playSfx("tab_switch");
                 // Clear claims view when switching tabs
                 if (m_showClaims) clearClaimsView();
             }
@@ -665,6 +670,7 @@ void Game::update(float dt) {
             if (sel != m_lastSelectedProvince) {
                 m_lastSelectedProvince = sel;
                 if (sel > 0) {
+                    Audio::get().playSfx("select_province", 0.05f);
                     buildCountryProvinceList(sel);
                     // Selecting a province clears ship selection
                     m_selectedShipIndices.clear();
@@ -969,6 +975,9 @@ void Game::update(float dt) {
                                     }
                                     treasury -= cost;
                                     m_pendingArtilleryOrders.push_back({m_artillerySourceProvince, hp->id, m_artillerySelectedType});
+                                    // The shells land turns later; paying for
+                                    // them is the only feedback at this end.
+                                    Audio::get().playSfx("coin");
                                 } else {
                                     printf("[DIAG] Not enough treasury for artillery strike ($%.0f needed, $%.0f available)\n", cost, treasury);
                                 }
@@ -1127,6 +1136,9 @@ void Game::update(float dt) {
         if (m_keybindFilterActive && m_settingsTab == 3 && !m_waitingForKey && !m_editingValue) {
             int c = GetCharPressed();
             while (c > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (c >= 32 && c <= 126) m_keybindFilter += (char)c;
                 c = GetCharPressed();
             }
@@ -1142,6 +1154,9 @@ void Game::update(float dt) {
         if (m_editingValue) {
             int c = GetCharPressed();
             while (c > 0) {
+                // Every character the field takes. Jittered, because a
+                // typed word is a run of distinct taps, not one tap looped.
+                Audio::get().playSfx("key_type", 0.12f);
                 if (c >= '0' && c <= '9') m_editBuffer += (char)c;
                 else if (c == '.' && m_editBuffer.find('.') == std::string::npos) m_editBuffer += '.';
                 c = GetCharPressed();
@@ -1248,7 +1263,7 @@ void Game::update(float dt) {
                 if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
                     { hovered = i; }
             }
-            if (i < count && (items[i].isValue || (m_settingsTab == 0 && i <= 6) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 3))) {
+            if (i < count && (items[i].isValue || (m_settingsTab == 0 && i <= 6) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 3) || isVolumeSetting(m_settingsTab, i))) {
                 const char* resetLabel = "R";
                 int rw = MeasureText(resetLabel, smFont);
                 float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (centerX + tw / 2 + 14);
@@ -1258,10 +1273,17 @@ void Game::update(float dt) {
             }
         }
 
+        // Volume sliders. Before the activation block below: a press landing on
+        // a slider must drag it and NOT also activate the row it sits in.
+        bool onVolumeSlider = updateVolumeSliders(startY, itemH, centerX, effScroll);
+
         // Tab switching (LEFT/RIGHT) — skip when on value items, FPS slider, or resolution
         bool left = IsKeyPressed(KEY_LEFT);
         bool right = IsKeyPressed(KEY_RIGHT);
-        bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count && items[m_settingsIndex].isValue;
+        // Volume rows count as values here despite isValue being false: what
+        // this gates is whether LEFT/RIGHT adjusts the row or flips tab.
+        bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count &&
+                       (items[m_settingsIndex].isValue || isVolumeSetting(m_settingsTab, m_settingsIndex));
         bool onFps = (m_settingsTab == 0 && m_settingsIndex == 5);
         bool onResolution = (m_settingsTab == 0 && m_settingsIndex == 4);
         if (left && !onValue && !onFps && !onResolution) {
@@ -1312,11 +1334,27 @@ void Game::update(float dt) {
                 int idx = nearestIndex(m_config.flySpeed, FLY_SPEED_VALS, FLY_SPEED_COUNT);
                 idx = (idx + dir + FLY_SPEED_COUNT) % FLY_SPEED_COUNT;
                 m_config.flySpeed = FLY_SPEED_VALS[idx];
+            } else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
+                adjustVolume(m_settingsIndex, dir * 0.05f);
             }
         }
 
         // Reset via keyboard (KEY_R on selected item)
         if (IsKeyPressed(KEY_R) && m_settingsIndex >= 0 && m_settingsIndex < count) {
+            if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
+                if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
+                    *v = VOLUME_DEFAULTS[m_settingsIndex];
+                    applyVolumes(m_config);
+                    m_config.save(m_configPath);
+                }
+            } else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT) {
+                m_config.nowPlayingToast = true;
+                m_config.save(m_configPath);
+            } else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT + 1) {
+                m_config.mapAtmosphere = true;
+                Audio::get().setMapAtmosphere(true);
+                m_config.save(m_configPath);
+            }
             const Setting& rs = items[m_settingsIndex];
             if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0) {
                 if (m_settingsTab == 0 && m_settingsIndex == 0) {
@@ -1443,9 +1481,17 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
+                else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
+                    if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
+                        *v = VOLUME_DEFAULTS[m_settingsIndex];
+                        applyVolumes(m_config);
+                    }
+                }
+                else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT) { m_config.nowPlayingToast = true; }
+                else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT + 1) { m_config.mapAtmosphere = true; Audio::get().setMapAtmosphere(true); }
                 else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
                 m_config.save(m_configPath);
-            } else if (hovered >= 0) {
+            } else if (hovered >= 0 && !onVolumeSlider) {
                 m_settingsIndex = hovered;
                 activate = true;
             }
@@ -1478,6 +1524,15 @@ void Game::update(float dt) {
             } else if (strcmp(s.label, "Debug Mode") == 0) {
                 m_config.debugMode = !m_config.debugMode;
                 m_renderer->setDebugMode(m_config.debugMode);
+            } else if (strcmp(s.label, "Map Atmosphere") == 0) {
+                m_config.mapAtmosphere = !m_config.mapAtmosphere;
+                Audio::get().setMapAtmosphere(m_config.mapAtmosphere);
+            } else if (strcmp(s.label, "Now Playing Toast") == 0) {
+                m_config.nowPlayingToast = !m_config.nowPlayingToast;
+                // Show one straight away when switching it on, so the setting
+                // demonstrates itself instead of waiting for the next track.
+                if (m_config.nowPlayingToast) showNowPlayingToast();
+                else m_toastTimer = 0.0f;
             } else if (strcmp(s.label, "Display FPS") == 0) {
                 m_config.showFps = !m_config.showFps;
             } else if (strcmp(s.label, "Display Zoom") == 0) {

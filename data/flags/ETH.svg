@@ -8,21 +8,29 @@
       <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
       <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
     </g>
-    <g transform="rotate(72.000000)">
-      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
-      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    <g height="100%" transform="rotate(72.000000)" width="100%">
+      <g>
+        <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+        <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+      </g>
     </g>
-    <g transform="rotate(144.000000)">
-      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
-      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    <g height="100%" transform="rotate(144.000000)" width="100%">
+      <g>
+        <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+        <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+      </g>
     </g>
-    <g transform="rotate(-144.000000)">
-      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
-      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    <g height="100%" transform="rotate(-144.000000)" width="100%">
+      <g>
+        <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+        <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+      </g>
     </g>
-    <g transform="rotate(-72.000000)">
-      <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
-      <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+    <g height="100%" transform="rotate(-72.000000)" width="100%">
+      <g>
+        <path d="m 0,-96 -4.205849,12.944272 17.347494,53.390097 H -9.987258 l -2.599358,8 h 74.162668 l 11.011056,-8 H 21.553343 Z" fill="#fcdd09"/>
+        <path d="M 0,44 V 96" stroke="#fcdd09" stroke-width="4" transform="rotate(-144)"/>
+      </g>
     </g>
   </g>
 </svg>

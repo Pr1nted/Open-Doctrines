@@ -28,7 +28,7 @@ typedef struct {
     uint8_t   platform;   /* enum:platform */
     uint8_t   is_web;   /* 1 under Emscripten. Fuel is NOT enforced there. */
     uint8_t   is_headless;   /* 1 when there is no renderer. UI imports no-op. */
-    uint8_t   reserved0;
+    uint8_t   net_role;   /* enum:net_role. 0 in singleplayer, which is what an older mod reading this byte as reserved already saw. */
     uint32_t  screen_w;   /* 0 when headless */
     uint32_t  screen_h;   /* 0 when headless */
 } gearbox_env_t;

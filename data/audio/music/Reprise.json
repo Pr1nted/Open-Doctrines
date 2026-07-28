@@ -1,0 +1,8 @@
+{
+  "title": "Reprise",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": { "tension": 0.20, "energy": 0.42, "valence": 0.35 },
+  "weight": 1.0,
+  "$comment": "Solo violin over piano, horns, nylon guitar and a choir -- peaceful but not idle, which is what rebuilding sounds like. Sits above Creator on energy and above Technology! on calm, so it owns the window after a war ends rather than competing for ordinary peacetime. Driven by the post-war signal in Game::currentMood. Editable source: data/audio/midi/Reprise.mid"
+}

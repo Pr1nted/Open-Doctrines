@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "Keybinds.h"
@@ -75,6 +76,23 @@ void Game::processArtilleryOrders(int countryId) {
         }
         return {0,0,0,0,0};
     };
+    // The wheel's type ids are short; the recordings are named for the weapon.
+    auto artySfx = [](const std::string& type) -> const char* {
+        if (type == "mortar")     return "mortar";
+        if (type == "light")      return "light_artillery";
+        if (type == "heavy")      return "heavy_artillery";
+        if (type == "napalm")     return "napalm";
+        if (type == "carpet")     return "carpet_bombing";
+        if (type == "chemical")   return "chemical_artillery";
+        if (type == "nuclear")    return "nuclear_shelling";
+        if (type == "biological") return "biological_shelling";
+        return nullptr;
+    };
+    // Capped, and only for strikes the player is an end of. Every country on a
+    // 185-country map resolves its artillery in this same pass, and hearing all
+    // of it would be a wall of noise that says nothing about your own turn.
+    int artyHeard = 0;
+
     for (size_t i = 0; i < m_pendingArtilleryOrders.size(); ) {
         auto& ao = m_pendingArtilleryOrders[i];
         Province* srcP = m_provinces.getProvinceById(ao.fromProvince);
@@ -82,6 +100,16 @@ void Game::processArtilleryOrders(int countryId) {
         Province* tgtP = m_provinces.getProvinceById(ao.targetProvince);
         if (!tgtP) { ++i; continue; }
         ArtyEffect eff = getEffect(ao.ammoType);
+
+        if (artyHeard < 3 && (countryId == m_playerCountryId ||
+                              tgtP->countryId == m_playerCountryId)) {
+            if (const char* sfx = artySfx(ao.ammoType)) {
+                // Jittered: a battery firing four times is four reports, not one
+                // report played four times.
+                Audio::get().playSfx(sfx, 0.06f);
+                ++artyHeard;
+            }
+        }
 
         // Kill troops in target province
         auto aIt = m_provinceArmies.find(ao.targetProvince);
@@ -135,6 +163,7 @@ void Game::processTurn() {
         ClearBackground(BLACK);
         drawLoadingScreen();
     };
+    Audio::get().playSfx("process_turn");
     if (m_config.aiDebug) printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
 
     // GameProcess hook. A mod that traps here is disabled, not fatal.
@@ -2418,6 +2447,11 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
                   otherName + " has declared war on you!", otherCid);
     }
 
+    // Only wars the player is in. On a 185-country map the AI declares a dozen
+    // a turn, and an alarm for each would mean nothing.
+    if (!playerIso.empty() && (attackerIso == playerIso || defenderIso == playerIso))
+        Audio::get().playSfx("war_alarm");
+
     printf("[WAR] %s declares war on %s\n", attackerIso.c_str(), defenderIso.c_str());
 
     if (!chainGuarantees) return;
@@ -3062,6 +3096,7 @@ void Game::processUpgrades() {
                 if (node.invested >= node.cost) {
                     m_countryResearched[m_playerCountryId].insert(node.id);
                     node.researched = true;
+                    Audio::get().playSfx("research_complete");
                     printf("[RESEARCH] %s completed!\n", node.name.c_str());
                     m_researchActiveNode = -1;
                     m_researchAlert = true; // highlight the sidebar button until it's opened

@@ -30,20 +30,28 @@ GROUPS = [
         "check_bindings.py", "wasm_imports.py", "pack_odmod.sh",
         "sdk_toolchains.sh", "test_all_sdks.sh",
     ]),
+    ("Testing multiplayer", [
+        "second_player.sh",
+    ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
         "generate_sample_odsv.py", "generate_zero_turn_odsv.py",
     ]),
     ("Building the world data", [
-        "run_pipeline.py", "overlay_real_data.py", "download_external_data.py",
+        "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",
+        "download_external_data.py",
         "province_geo.py", "analyze_provinces.py", "build_iso_map.py",
         "generate_province_populations.py", "generate_minorities.py",
         "generate_minority_policies.py", "generate_political_compass.py",
         "generate_relations.py", "generate_resources.py", "generate_claims.py",
         "generate_navy.py", "generate_ships_fast.py", "boost_economies.py",
     ]),
+    ("Licensing and provenance", [
+        "gen_notices.py", "audit_flag_licenses.py",
+    ]),
     ("Flags, icons and symbols", [
-        "download_flags.py", "download_flags_fast.py", "patch_flag_images.py",
+        "download_flags.py", "download_flags_fast.py",
+        "download_scenario_flags.py", "patch_flag_images.py",
         "generate_flag_svgs.py", "prerender_problematic_flags.py",
         "download_wiki_symbols.py", "generate_svg_symbols.py",
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",

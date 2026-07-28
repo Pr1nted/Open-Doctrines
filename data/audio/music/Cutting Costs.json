@@ -1,0 +1,12 @@
+{
+  "title": "Cutting Costs",
+  "author": "Pr1nted",
+  "contexts": ["game"],
+  "mood": {
+    "tension": 0.30,
+    "energy": 0.25,
+    "valence": -0.55
+  },
+  "weight": 1.0,
+  "$comment": "Bassoon over honky-tonk piano, accordion, pizzicato bass and a sad trombone -- deflated rather than tragic, which is exactly what running out of money feels like. It occupies the low-energy/negative-valence corner that nothing else did: bleak WITHOUT being tense, so it never competes with a war. If the treasury collapses during a war, March to the Death still wins, and that is the right order of priorities. Restricted to game because a bankruptcy theme has no meaning outside one. Editable source: data/audio/midi/Cutting Costs.mid"
+}

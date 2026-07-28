@@ -1,0 +1,8 @@
+{
+  "title": "Navy and Arms",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": { "tension": 0.45, "energy": 0.65, "valence": 0.15 },
+  "weight": 1.0,
+  "$comment": "Horn and trumpets over a string ostinato and a forge-like drum bed -- purposeful, martial, not yet violent. Wanted for arming up: ships, ports, fortifications. Driven by the military-buildup signal, which is army plus navy upkeep as a share of income while at peace, so it plays when a country is visibly preparing rather than fighting. Editable source: data/audio/midi/Navy and Arms.mid"
+}

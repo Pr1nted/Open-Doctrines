@@ -4,22 +4,40 @@
   <rect fill="#ce1126" height="6" width="4" x="-2" y="-3"/>
   <g id="c">
     <path d="M 0,-1 v 1 h .5" fill="#000" id="t" transform="rotate(18 0,-1)"/>
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+    <g transform="scale(-1.000000,1.000000)">
+      <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+    </g>
   </g>
   <g transform="rotate(72.000000)">
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+    <g>
+      <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      </g>
+    </g>
   </g>
   <g transform="rotate(144.000000)">
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+    <g>
+      <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      </g>
+    </g>
   </g>
   <g transform="rotate(216.000000)">
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+    <g>
+      <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      </g>
+    </g>
   </g>
   <g transform="rotate(288.000000)">
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
-    <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18.000000,0.000000,-1.000000) scale(-1.000000,1.000000)"/>
+    <g>
+      <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-1 v 1 h .5" fill="#000" transform="rotate(18 0,-1)"/>
+      </g>
+    </g>
   </g>
 </svg>

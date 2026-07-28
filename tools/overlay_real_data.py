@@ -3,10 +3,13 @@
 Overlay real-world geographic datasets onto the province map.
 
 Integrates:
-  - GREG: ethnic group polygons → minorities.json
-  - USGS Major Mineral Deposits: gold & gemstone deposits → resources.json
-  - ACOR: oil/gas field polygons → resources.json (oil)
+  - USGS Major Mineral Deposits: gold, gemstone & metal deposits → resources.json
+  - tools/data/oil_fields.json: project-authored oil regions → resources.json (oil)
   - Country-level data for rubber
+  - Province centres → province_centers.json, consumed by generate_minorities.py
+
+Ethnic composition is NOT generated here any more; see generate_minorities.py
+and NOTICE.md for why GREG and ACOR were dropped.
 
 Usage:
   pip install shapely pyshp pillow numpy
@@ -18,24 +21,26 @@ from collections import defaultdict
 import numpy as np
 from PIL import Image
 import shapefile
-from shapely.geometry import Point, Polygon as ShapelyPolygon, shape as shapely_shape
-from shapely import prepared
 
 # ─── Paths ──────────────────────────────────────────────────────────
 DATA_DIR = "data"
 PROVINCES_PNG = os.path.join(DATA_DIR, "provinces.png")
 PROVINCES_JSON = os.path.join(DATA_DIR, "provinces.json")
 COUNTRIES_JSON = os.path.join(DATA_DIR, "countries.json")
-OUT_MINORITIES = os.path.join(DATA_DIR, "minorities.json")
-OUT_MINORITY_COLORS = os.path.join(DATA_DIR, "minority_colors.json")
 OUT_RESOURCES = os.path.join(DATA_DIR, "resources.json")
 OUT_ARMIES = os.path.join(DATA_DIR, "armies.json")
 OUT_PORTS = os.path.join(DATA_DIR, "ports.json")
 OUT_SHIPS = os.path.join(DATA_DIR, "ships.json")
 
-GREG_SHP = "/tmp/greg_data/GREG.shp"
+OUT_PROVINCE_CENTERS = os.path.join(DATA_DIR, "province_centers.json")
+
+# The only external dataset still read here. US Geological Survey publications
+# are works of the US Government and carry no copyright. See NOTICE.md.
 USGS_SHP = "/tmp/usgs_data/ofr20051294.shp"
-ACOR_SHP = "/tmp/acor_data/acor_0.2.shp"
+
+# Project-authored, checked in, no download step.
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+OIL_FIELDS_JSON = os.path.join(TOOLS_DIR, "data", "oil_fields.json")
 
 MAP_W = 8192
 MAP_H = 4096
@@ -144,520 +149,26 @@ def compute_province_centers_fast(provinces):
         result[pid] = {"x": cx, "y": cy, "lon": lon, "lat": lat, "area": area}
     return result
 
-# ─── GREG: Ethnic groups ────────────────────────────────────────────
-def load_greg():
-    """Load GREG polygons, return list of (group_name, prepared_polygon)."""
-    sf = shapefile.Reader(GREG_SHP, encoding="latin-1")
-    fields = [f[0] for f in sf.fields[1:]]
-    groups = []
-    for i in range(sf.numRecords):
-        rec = sf.record(i)
-        d = dict(zip(fields, rec))
-        # Use the most specific group name available
-        gname = (d.get("G3SHORTNAM") or "").strip()
-        if not gname:
-            gname = (d.get("G2SHORTNAM") or "").strip()
-        if not gname:
-            gname = (d.get("G1SHORTNAM") or "").strip()
-        if not gname:
-            continue
-        # Read geometry
-        shp = sf.shape(i)
-        if shp.shapeType != 5:  # POLYGON
-            continue
-        # Build shapely polygon from shapefile parts
-        parts = []
-        for pi in range(len(shp.parts)):
-            start = shp.parts[pi]
-            end = shp.parts[pi + 1] if pi + 1 < len(shp.parts) else len(shp.points)
-            ring = shp.points[start:end]
-            if len(ring) >= 3:
-                # WGS84 coords are (lon, lat)
-                parts.append(ring)
-        if not parts:
-            continue
-        # Build polygon (outer ring + holes)
-        poly = ShapelyPolygon(parts[0], parts[1:] if len(parts) > 1 else None)
-        if poly.is_valid and not poly.is_empty:
-            groups.append((gname, prepared.prep(poly)))
-    print(f"  Loaded {len(groups)} GREG ethnic group polygons")
-    return groups
-
-# Canonical name mapping: GREG variant -> standardized name
-NAME_CANON = {
-    # Same group, variant names
-    "Byelorussians": "Belarusians",
-    "Poles": "Polish",
-    "Gypsies": "Romani",
-    "Tsigani": "Romani",
-    "Gitanos": "Romani",
-    "Rom": "Romani",
-    "Azerbaijanians": "Azerbaijanis",
-    "Kirghiz": "Kyrgyz",
-    "Kirghis": "Kyrgyz",
-    "Khalka": "Mongols",
-    "Moldavians": "Moldovans",
-    "Bosnian Muslims": "Bosniaks",
-    "Ruthenians": "Ukrainians",
-    "Little Russians": "Ukrainians",
-    "Great Russians": "Russians",
-    "Rumanians": "Romanians",
-    "Scotsmen": "Scottish",
-    "Irishmen": "Irish",
-    "Englishmen": "English",
-    "Dutchmen": "Dutch",
-    "Turks": "Turkish",
-    "Turkomans": "Turkmens",
-    "Letts": "Latvians",
-    "Uzbeks of Afghanistan": "Uzbeks",
-    "Uighurs": "Uyghur",
-    "Mashona": "Shona",
-    "Matebele": "Ndebele",
-    "Fula": "Fulani",
-    "Fulbe": "Fulani",
-    "Somali": "Somalis",
-    "Siamese": "Thai",
-    "Xosa": "Xhosa",
-    # Arabic group variants
-    "Syria Arabs": "Arabs",
-    "Arabs of Yemen": "Arabs",
-    "West Sahara Arabs": "Arabs",
-    "Arabs of Libya": "Arabs",
-    "Arabs of Sudan": "Arabs",
-    "Sudan Arabs": "Arabs",
-    "Lebanon Arabs": "Arabs",
-    "Iran Arabs": "Arabs",
-    "Shoa-Arabs": "Arabs",
-    # Somali variants
-    "Somalis of Ogaden": "Somalis",
-    "Somalis (Issa)": "Somalis",
-    "Somali (Gadabursi)": "Somalis",
-    # Chinese group variants
-    "Chinese (Han)": "Han Chinese",
-    "Chuang": "Zhuang",
-    "Mongols of Chinese Peoples' Republic": "Mongols",
-    # Other
-    "Pashai": "Pashtun",
-    "Various": "Unknown",
-}
-
-def canonicalize_names(minority_data):
-    """Merge variant ethnic group names into canonical forms."""
-    canon_count = 0
-    for pid_str, entries in minority_data.items():
-        merged = {}
-        for e in entries:
-            name = NAME_CANON.get(e["n"], e["n"])
-            merged[name] = merged.get(name, 0.0) + e["p"]
-        merged_list = [{"n": n, "p": round(p, 1)} for n, p in merged.items()]
-        diff = 100.0 - sum(e["p"] for e in merged_list)
-        if merged_list and abs(diff) > 0.01:
-            merged_list[-1]["p"] = round(merged_list[-1]["p"] + diff, 1)
-        if len(merged_list) < len(entries):
-            canon_count += 1
-        minority_data[pid_str] = merged_list
-    print(f"  Canonicalized names in {canon_count} provinces")
-    return minority_data
-
-def assign_ethnic_groups(province_centers, greg_groups):
-    """For each province center, test which GREG polygons contain it."""
-    print("  Assigning ethnic groups to provinces...")
-    province_groups = defaultdict(list)
-    total = len(province_centers)
-    for idx, (pid, pc) in enumerate(province_centers.items()):
-        pt = Point(pc["lon"], pc["lat"])
-        for gname, prep_poly in greg_groups:
-            if prep_poly.contains(pt):
-                province_groups[pid].append(gname)
-        if (idx + 1) % 200 == 0:
-            print(f"    {idx+1}/{total}")
-    # Build ethnic composition per province
-    # If multiple groups overlap, split evenly
-    # If no groups found, mark as "Unknown"
-    minority_data = {}
-    for pid in province_centers:
-        groups = province_groups.get(pid, ["Unknown"])
-        total_pct = 100.0 / len(groups)
-        entries = [{"n": g, "p": round(total_pct, 1)} for g in groups]
-        # Normalize to exactly 100
-        diff = 100.0 - sum(e["p"] for e in entries)
-        if entries and diff != 0:
-            entries[-1]["p"] = round(entries[-1]["p"] + diff, 1)
-        minority_data[str(pid)] = entries
-    # Canonicalize names to merge variants
-    minority_data = canonicalize_names(minority_data)
-    print(f"  Assigned ethnic groups to {len(minority_data)} provinces")
-    return minority_data
-
-# Country-level ethnic composition for secondary groups
-# (name, base_pct) per ISO code — used to add secondary groups
-COUNTRY_ETHNIC = {
-    "UKR": [("Ukrainians", 78), ("Russians", 17), ("Belarusians", 1), ("Moldovans", 1), ("Crimean Tatars", 1)],
-    "RUS": [("Russians", 81), ("Tatars", 4), ("Ukrainians", 1), ("Chuvash", 1), ("Bashkirs", 1), ("Chechens", 1)],
-    "USA": [("White Americans", 60), ("Hispanic Americans", 19), ("African Americans", 12), ("Asian Americans", 6)],
-    "CHN": [("Han Chinese", 92), ("Zhuang", 1), ("Hui", 1), ("Manchu", 1), ("Uyghur", 1)],
-    "IND": [("Indo-Aryan", 72), ("Dravidian", 25)],
-    "CAN": [("White Canadians", 70), ("Asian Canadians", 16), ("Indigenous Canadians", 5)],
-    "GBR": [("English", 84), ("Scottish", 8), ("Welsh", 5), ("Northern Irish", 3)],
-    "FRA": [("French", 87), ("North African", 6), ("Sub-Saharan African", 3)],
-    "DEU": [("Germans", 88), ("Turkish", 3), ("Polish", 1)],
-    "AUS": [("White Australians", 76), ("Asian Australians", 12), ("Indigenous Australians", 3)],
-    "BRA": [("White Brazilians", 48), ("Mixed-race Brazilians", 43), ("Black Brazilians", 8)],
-    "ZAF": [("Black South Africans", 81), ("White South Africans", 8), ("Coloured", 9)],
-    "KAZ": [("Kazakhs", 68), ("Russians", 20), ("Uzbeks", 3)],
-    "BLR": [("Belarusians", 84), ("Russians", 8), ("Polish", 3)],
-    "BGR": [("Bulgarians", 85), ("Turkish", 9), ("Romani", 4)],
-    "ROU": [("Romanians", 89), ("Hungarians", 6), ("Romani", 3)],
-    "SRB": [("Serbs", 83), ("Hungarians", 4), ("Bosniaks", 2), ("Romani", 2)],
-    "MKD": [("Macedonians", 64), ("Albanians", 25), ("Turkish", 4)],
-    "MNE": [("Montenegrins", 45), ("Serbs", 29), ("Bosniaks", 9), ("Albanians", 5)],
-    "BIH": [("Bosniaks", 50), ("Serbs", 31), ("Croats", 15)],
-    "HRV": [("Croats", 90), ("Serbs", 5)],
-    "SVN": [("Slovenes", 83), ("Serbs", 2), ("Croats", 2)],
-    "HUN": [("Hungarians", 90), ("Romani", 4), ("Germans", 1)],
-    "SVK": [("Slovaks", 86), ("Hungarians", 10), ("Romani", 2)],
-    "CZE": [("Czechs", 90), ("Slovaks", 2), ("Polish", 1)],
-    "POL": [("Polish", 94), ("Germans", 2), ("Ukrainians", 2), ("Belarusians", 1), ("Silesian", 1)],
-    "AUT": [("Austrians", 91), ("Germans", 2), ("Serbs", 1)],
-    "CHE": [("Swiss Germans", 63), ("Swiss French", 23), ("Swiss Italians", 8)],
-    "ITA": [("Italians", 86), ("Arabs", 1.5), ("Romanians", 1.5), ("Albanians", 1)],
-    "ESP": [("Spaniards", 84), ("Catalans", 16)],
-    "PRT": [("Portuguese", 89), ("Black Brazilians", 2), ("Ukrainians", 1)],
-    "GRC": [("Greeks", 93), ("Albanians", 4)],
-    "TUR": [("Turkish", 75), ("Kurds", 18)],
-    "IRN": [("Persians", 60), ("Azerbaijanis", 16), ("Kurds", 10)],
-    "IRQ": [("Arabs", 75), ("Kurds", 20)],
-    "SYR": [("Arabs", 90), ("Kurds", 9)],
-    "ISR": [("Jews", 74), ("Arabs", 21)],
-    "SAU": [("Arabs", 90), ("Afro-Arabs", 10)],
-    "EGY": [("Egyptians", 91), ("Bedouins", 5)],
-    "MAR": [("Arabs", 66), ("Berbers", 33)],
-    "DZA": [("Arabs", 75), ("Berbers", 25)],
-    "TUN": [("Arabs", 80), ("Berbers", 20)],
-    "LBY": [("Arabs", 92), ("Berbers", 5)],
-    "SDN": [("Arabs", 70), ("Fur", 5), ("Beja", 5)],
-    "ETH": [("Oromo", 34), ("Amhara", 27), ("Somali", 6), ("Tigray", 6)],
-    "KEN": [("Kikuyu", 17), ("Luhya", 14), ("Kalenjin", 13), ("Luo", 11)],
-    "NGA": [("Hausa", 25), ("Yoruba", 21), ("Igbo", 18), ("Fulani", 6)],
-    "AFG": [("Pashtun", 42), ("Tajik", 27), ("Hazara", 9), ("Uzbek", 9)],
-    "PAK": [("Punjabi", 45), ("Pashtun", 15), ("Sindhi", 14), ("Saraiki", 10)],
-    "BGD": [("Bengalis", 93), ("Biharis", 3), ("Hill tribes", 1)],
-    "IDN": [("Javanese", 40), ("Sundanese", 15), ("Malay", 4), ("Batak", 4)],
-    "MYS": [("Malays", 50), ("Chinese", 23), ("Indians", 7)],
-    "PHL": [("Tagalog", 28), ("Cebuano", 13), ("Ilocano", 9)],
-    "VNM": [("Vietnamese", 86), ("Tay", 2), ("Thai", 2)],
-    "MMR": [("Bamar", 68), ("Shan", 9), ("Karen", 7)],
-    "THA": [("Thai", 90), ("Chinese", 10)],
-    "MNG": [("Mongols", 93), ("Kazakhs", 4)],
-    "JPN": [("Japanese", 95), ("Korean", 1), ("Chinese", 1)],
-    "KOR": [("Koreans", 96), ("Chinese", 1)],
-    "PRK": [("Koreans", 97), ("Chinese", 1)],
-    "GRL": [("Inuit", 89), ("Danes", 10)],
-    "NOR": [("Norwegians", 86), ("Poles", 2), ("Swedes", 1)],
-    "MEX": [("Mestizo", 62), ("Indigenous", 21), ("White Mexicans", 7)],
-    "COL": [("Mestizo", 50), ("White Colombians", 20), ("Afro-Colombians", 10)],
-    "MDG": [("Malagasy", 94), ("French", 1)],
-    "IRL": [("Irish", 85), ("White Irish", 10)],
-    "CUB": [("White Cubans", 64), ("Mixed-race Cubans", 27)],
-    "VEN": [("Mestizo", 50), ("White Venezuelans", 40)],
-    "MLI": [("Bambara", 34), ("Fula", 14), ("Soninke", 9)],
-    "PRY": [("Mestizo", 90), ("Indigenous", 4), ("White Paraguayans", 1)],
-    "BOL": [("Mestizo", 68), ("Indigenous", 20)],
-    "PER": [("Mestizo", 60), ("Indigenous", 26)],
-    "ECU": [("Mestizo", 71), ("Indigenous", 7)],
-    "GTM": [("Mestizo", 60), ("Indigenous", 40)],
-    "HND": [("Mestizo", 85), ("Indigenous", 5), ("Black Hondurans", 1)],
-    "DOM": [("Mixed Dominicans", 70), ("White Dominicans", 15)],
-    "HTI": [("Black Haitians", 90), ("Mixed Haitians", 5)],
-    "JAM": [("Black Jamaicans", 88), ("Mixed Jamaicans", 4)],
-    "TTO": [("Indo-Trinidadian", 35), ("Afro-Trinidadian", 34)],
-    "GUY": [("Indo-Guyanese", 40), ("Afro-Guyanese", 30)],
-    "SUR": [("Indo-Surinamese", 27), ("Maroon", 21), ("Creole", 16)],
-    "BHS": [("Black Bahamians", 85), ("White Bahamians", 5)],
-    "BRB": [("Black Barbadians", 88), ("White Barbadians", 3)],
-    "PAN": [("Mestizo", 60), ("Indigenous", 5)],
-    "CRI": [("White Costa Ricans", 80), ("Mestizo", 4)],
-    "NIC": [("Mestizo", 65), ("Indigenous", 4)],
-    "BLZ": [("Mestizo", 52), ("Creole", 26)],
-    "SLV": [("Mestizo", 82), ("Indigenous", 3)],
-    "URY": [("White Uruguayans", 83), ("Mestizo", 5)],
-    "ARG": [("White Argentines", 85), ("Mestizo", 10)],
-    "CHL": [("Mestizo", 60), ("White Chileans", 30)],
-    "COD": [("Luba", 18), ("Kongo", 16), ("Mongo", 14), ("Rwanda", 10)],
-    "AGO": [("Ovimbundu", 37), ("Kimbundu", 25), ("Kongo", 13)],
-    "TCD": [("Sara", 28), ("Arab", 12), ("Kanembu", 9)],
-    "SWE": [("Swedes", 85), ("Finns", 3), ("Iraqis", 2)],
-    "FIN": [("Finns", 88), ("Swedish Finns", 5), ("Russians", 1)],
-    "NER": [("Hausa", 53), ("Songhai", 21), ("Tuareg", 11)],
-    "ZMB": [("Bemba", 33), ("Tonga", 15), ("Chewa", 7)],
-    "NAM": [("Ovambo", 50), ("Kavango", 9), ("Herero", 7)],
-    "MOZ": [("Makua", 26), ("Tsonga", 11), ("Malawi", 9)],
-    "MWI": [("Chewa", 34), ("Lomwe", 19), ("Yao", 13)],
-    "BWA": [("Tswana", 79), ("Kalanga", 11)],
-    "UGA": [("Baganda", 17), ("Banyankole", 10), ("Basoga", 8)],
-    "GAB": [("Fang", 32), ("Punu", 18), ("Nzebi", 13)],
-    "TZA": [("Sukuma", 16), ("Nyamwezi", 5), ("Chagga", 5)],
-    "MRT": [("Arabs", 70), ("Black Moors", 30)],
-    "LAO": [("Lao", 55), ("Khmu", 11), ("Hmong", 8)],
-    "FJI": [("iTaukei", 57), ("Indo-Fijian", 37)],
-    "ARM": [("Armenians", 94), ("Russians", 2), ("Yazidis", 1)],
-    "KWT": [("Arabs", 78), ("Kuwaitis", 20)],
-    "GNQ": [("Fang", 86), ("Bubi", 7)],
-    "DNK": [("Danes", 87), ("Polish", 1), ("Turkish", 1)],
-    "UZB": [("Uzbeks", 84), ("Tajiks", 5), ("Kazakhs", 3)],
-    "CAF": [("Baya", 33), ("Banda", 27), ("Mandjia", 13)],
-    "PNG": [("Papuan", 65), ("Melanesian", 30)],
-    "NZL": [("New Zealand Europeans", 70), ("Māori", 17), ("Asian New Zealanders", 15)],
-    "TKM": [("Turkmens", 85), ("Uzbeks", 5), ("Russians", 4)],
-    "YEM": [("Arabs", 85), ("Somalis", 5), ("Afro-Arabs", 5)],
-    "CMR": [("Fang", 20), ("Bamileke", 18), ("Bassa", 12), ("Fulani", 10)],
-    "SOM": [("Somalis", 85), ("Arabs", 5), ("Bantu", 5)],
-    "ZWE": [("Shona", 82), ("Ndebele", 14)],
-    "OMN": [("Arabs", 75), ("Baloch", 5), ("South Asian", 5)],
-    "CIV": [("Akan", 42), ("Gur", 18), ("Northern Mande", 10)],
-    "COG": [("Kongo", 51), ("Teke", 17), ("Mboshi", 12)],
-    "BFA": [("Mossi", 52), ("Fulani", 8), ("Gurunsi", 7)],
-    "GIN": [("Fulani", 33), ("Malinke", 30), ("Sussu", 20)],
-    "GHA": [("Akan", 47), ("Mole-Dagbon", 17), ("Ewe", 13)],
-    "SLB": [("Melanesian", 90), ("Polynesian", 4)],
-    "KGZ": [("Kyrgyz", 73), ("Uzbeks", 15), ("Russians", 6)],
-    "SEN": [("Wolof", 39), ("Fulani", 28), ("Serer", 15)],
-    "KHM": [("Khmer", 90), ("Vietnamese", 3), ("Chinese", 1)],
-    "ISL": [("Icelanders", 88), ("Polish", 3), ("Danes", 1)],
-    "LVA": [("Latvians", 62), ("Russians", 26)],
-    "LTU": [("Lithuanians", 85), ("Poles", 7), ("Russians", 5)],
-    "TJK": [("Tajiks", 84), ("Uzbeks", 14)],
-    "NPL": [("Nepali", 80), ("Madheshi", 10)],
-    "ERI": [("Tigrinya", 55), ("Tigre", 30)],
-    "BEN": [("Fon", 39), ("Adja", 15), ("Yoruba", 12)],
-    "LBR": [("Kpelle", 20), ("Bassa", 14), ("Grebo", 8)],
-    "GMB": [("Mandinka", 34), ("Fulani", 24), ("Wolof", 15)],
-    "TGO": [("Ewe", 46), ("Kabye", 14), ("Tem", 6)],
-    "SLE": [("Temne", 35), ("Mende", 31), ("Kono", 5)],
-    "BDI": [("Hutu", 85), ("Tutsi", 14)],
-    "RWA": [("Hutu", 85), ("Tutsi", 14)],
-    "LSO": [("Sotho", 95), ("Zulu", 3)],
-    "SWZ": [("Swazi", 93), ("Zulu", 4)],
-    "GNB": [("Fulani", 30), ("Balanta", 30), ("Mandinka", 13)],
-    "DJI": [("Somali", 60), ("Afar", 35)],
-    "EST": [("Estonians", 69), ("Russians", 26)],
-    "LVA": [("Latvians", 62), ("Russians", 26)],
-    "NLD": [("Dutch", 80), ("Frisians", 3), ("Turkish", 2)],
-    "BEL": [("Flemings", 58), ("Walloons", 31), ("Other", 11)],
-    "AZE": [("Azerbaijanis", 92), ("Russians", 2), ("Armenians", 2)],
-    "ALB": [("Albanians", 83), ("Greeks", 1), ("Other", 5)],
-    "ARE": [("Arabs", 60), ("South Asian", 30)],
-    "JOR": [("Arabs", 94), ("Circassians", 2)],
-    "GEO": [("Georgians", 87), ("Azerbaijanis", 6), ("Armenians", 5)],
-    "MDA": [("Moldovans", 75), ("Romanians", 7), ("Ukrainians", 7), ("Russians", 6)],
-    "LKA": [("Sinhalese", 75), ("Sri Lankan Tamils", 11), ("Sri Lankan Moors", 9)],
-    "ESH": [("Arabs", 80), ("Saharawis", 20)],
-    "XSO": [("Somalis", 85), ("Other", 15)],
-    "BTN": [("Ngalop", 50), ("Sharchop", 35)],
-    "TWN": [("Han Taiwanese", 84), ("Indigenous Taiwanese", 2)],
-    "FLK": [("British", 90)],
-    "LUX": [("Luxembourgers", 55), ("Portuguese", 16), ("French", 6)],
-    "XNC": [("Turkish Cypriots", 50), ("Greek Cypriots", 5)],
-    "CYP": [("Greek Cypriots", 60), ("Turkish Cypriots", 18)],
-    "LBN": [("Lebanese", 68), ("Syrian", 8), ("Palestinian", 8)],
-    "PSE": [("Palestinians", 85), ("Arabs", 10)],
-    "KWT": [("Kuwaitis", 31), ("Arabs", 28), ("South Asian", 37)],
-    "QAT": [("Arabs", 40), ("South Asian", 36)],
-    "BHR": [("Bahrainis", 46), ("South Asian", 36)],
-    "BRN": [("Malay", 66), ("Chinese", 10), ("Indians", 3)],
-    "VUT": [("Melanesian", 90), ("Polynesian", 4)],
-    "MUS": [("Indo-Mauritian", 68), ("Creole", 27)],
-    "PRI": [("White Puerto Ricans", 65), ("Mixed Puerto Ricans", 12)],
-    "CPV": [("Creole", 70), ("African", 28)],
-    "NCL": [("Melanesian", 40), ("European", 30), ("Polynesian", 10)],
-    "PYF": [("Polynesian", 80), ("French", 12)],
-    "ALA": [("Swedes", 50), ("Finns", 45)],
-    "FRO": [("Danes", 50), ("Faroese", 45)],
-    "ATF": [("French", 60), ("Various", 40)],
-    "SGS": [("British", 60), ("Various", 40)],
-}
-
-def find_matching_name(greg_name, country_names):
-    """Best-effort match between a GREG group name and the country composition names."""
-    canon = NAME_CANON.get(greg_name, greg_name)
-    cl = canon.lower()
-    for cn in country_names:
-        if cn.lower() == cl:
-            return cn
-    for cn in country_names:
-        cnl = cn.lower()
-        if cnl in cl or cl in cnl:
-            return cn
-    return None
-
-def supplement_with_secondary_groups(minority_data, provinces, centers, greg_groups):
-    """Merge ALL GREG-assigned groups with country-level composition."""
-    random.seed(42)
-    for pid_str, entries in list(minority_data.items()):
-        pid = int(pid_str)
-        if pid not in provinces:
-            continue
-        iso = provinces[pid]["iso_a3"]
-        if iso not in COUNTRY_ETHNIC:
-            continue
-
-        comp = COUNTRY_ETHNIC[iso]
-        country_map = {n: p for n, p in comp}
-
-        # Collect ALL GREG groups for this province (canonicalized, deduped)
-        greg_map = {}
-        for e in entries:
-            canon = NAME_CANON.get(e['n'], e['n'])
-            greg_map[canon] = greg_map.get(canon, 0.0) + e['p']
-
-        greg_names = list(greg_map.keys())
-
-        if all(g in ("Unknown", "unknown") for g in greg_names):
-            # No GREG data — allocate minorities with meaningful floor, majority fills remainder
-            all_groups = {}
-            minority_settled = 0.0
-            for cn, cp in comp:
-                if cp >= 50:
-                    continue
-                share = max(2.5, cp * random.uniform(0.5, 2.0))
-                all_groups[cn] = share
-                minority_settled += share
-            if minority_settled > 40:
-                scale = 40.0 / minority_settled
-                for n in list(all_groups.keys()):
-                    all_groups[n] *= scale
-                minority_settled = 40.0
-            majority_names = [cn for cn, cp in comp if cp >= 50]
-            if majority_names:
-                all_groups[majority_names[0]] = max(0, 100.0 - minority_settled)
-            # Add ±15% per-province variation
-            for n in list(all_groups.keys()):
-                all_groups[n] *= 1 + random.uniform(-0.15, 0.15)
-            raw = [(n, p) for n, p in all_groups.items()]
-        else:
-            n_greg = len(greg_names)
-            equal_share = 100.0 / n_greg
-
-            # Build composition: allocate minorities first, let majority fill remainder
-            all_groups = {}
-            minority_settled = 0.0
-
-            for gn in greg_names:
-                cn = find_matching_name(gn, list(country_map.keys()))
-                if cn:
-                    base_pct = country_map[cn]
-                    if base_pct < 50:
-                        # GREG found a minority group — boost significantly
-                        share = max(25.0, base_pct + random.uniform(15, 30))
-                        share *= 1 + random.uniform(-0.15, 0.15)
-                        all_groups[cn] = share
-                        minority_settled += share
-                else:
-                    # Local GREG group not in country comp — preserve it
-                    share = max(3, equal_share * random.uniform(0.3, 0.6))
-                    all_groups[gn] = share
-                    minority_settled += share
-
-            # Add COUNTRY_ETHNIC minority groups not assigned by GREG — with a meaningful floor
-            existing_names = set(all_groups.keys())
-            existing_canon = {NAME_CANON.get(g, g) for g in existing_names}
-            for cn, cp in country_map.items():
-                if cp >= 50:
-                    continue
-                ccn = NAME_CANON.get(cn, cn)
-                if cn not in existing_names and ccn not in existing_canon:
-                    share = max(2.5, cp * random.uniform(0.5, 2.0))
-                    all_groups[ccn] = share
-                    minority_settled += share
-
-            # Cap minority total at 40% to leave room for majority
-            if minority_settled > 40:
-                scale = 40.0 / minority_settled
-                for n in list(all_groups.keys()):
-                    all_groups[n] *= scale
-                minority_settled = 40.0
-
-            # Add the majority group(s) — fill the remainder
-            majority_names = [cn for cn, cp in comp if cp >= 50]
-            if majority_names:
-                remainder = max(0, 100.0 - minority_settled)
-                all_groups[majority_names[0]] = remainder
-
-            # Per-province ±10% variation on all groups
-            for n in list(all_groups.keys()):
-                all_groups[n] *= 1 + random.uniform(-0.10, 0.10)
-
-            raw = [(n, p) for n, p in all_groups.items()]
-
-        # Filter tiny entries
-        raw = [(n, p) for n, p in raw if p > 0.5]
-        # Renormalize
-        total = sum(p for _, p in raw)
-        if total > 0:
-            norm = [(n, round(p / total * 100, 1)) for n, p in raw]
-            diff = 100.0 - sum(p for _, p in norm)
-            if norm and abs(diff) > 0.01:
-                norm[-1] = (norm[-1][0], round(norm[-1][1] + diff, 1))
-        else:
-            norm = [(greg_names[0], 100.0)]
-
-        # Ensure diversity: break up 100% single-group provinces
-        if len(norm) == 1 and norm[0][0] != "Unknown":
-            if len(country_map) >= 2 and len([cp for cn, cp in comp if cp >= 50]) < 2:
-                # Try to add a minority group from country comp
-                second_name = max([cn for cn, cp in comp if cp < 50] or [""],
-                                  key=lambda n: country_map.get(n, 0) if n else 0)
-                if second_name:
-                    second_pct = max(0.5, country_map[second_name] * random.uniform(0.5, 1.0))
-                    norm[0] = (norm[0][0], round(norm[0][1] - second_pct, 1))
-                    norm.append((second_name, round(second_pct, 1)))
-                else:
-                    other_pct = max(0.5, random.uniform(1, 5))
-                    norm[0] = (norm[0][0], round(norm[0][1] - other_pct, 1))
-                    norm.append(("Unknown", round(other_pct, 1)))
-            else:
-                other_pct = max(0.5, random.uniform(1, 5))
-                norm[0] = (norm[0][0], round(norm[0][1] - other_pct, 1))
-                norm.append(("Unknown", round(other_pct, 1)))
-
-        minority_data[pid_str] = [{"n": n, "p": p} for n, p in norm]
-    return minority_data
-
-
-def ensure_diversity(minority_data, provinces):
-    """Final pass: break up 100% single-group provinces not covered by COUNTRY_ETHNIC."""
-    random.seed(7)
-    changes = 0
-    for pid_str, entries in list(minority_data.items()):
-        pid = int(pid_str)
-        if pid not in provinces:
-            continue
-        if len(entries) == 1 and entries[0]['n'] != 'Unknown':
-            pct = entries[0]['p']
-            other = max(0.5, random.uniform(1, 5))
-            minority_data[pid_str] = [
-                {'n': entries[0]['n'], 'p': round(pct - other, 1)},
-                {'n': 'Unknown', 'p': round(other, 1)},
-            ]
-            changes += 1
-    print(f"  Ensured diversity in {changes} provinces")
-    return minority_data
-
-
-def generate_minority_colors(minority_data):
-    """Generate deterministic colors for each ethnic group name."""
-    colors = {}
-    for pid_str, entries in minority_data.items():
-        for e in entries:
-            name = e["n"]
-            if name not in colors:
-                h = hashlib.md5(name.encode()).digest()
-                colors[name] = [
-                    30 + (h[0] % 200),
-                    30 + (h[1] % 200),
-                    30 + (h[2] % 200),
-                ]
-    return colors
+# ─── Province centres ───────────────────────────────────────────────
+# Ethnic composition was derived here from GREG (ETH Zurich) polygons until
+# that dataset turned out to carry no licence at all -- its download page asks
+# only to be cited "when using the GREG data for your research", and GREG is
+# itself a digitisation of the 1964 Soviet Atlas Narodov Mira, so the people
+# distributing it could not have sublicensed it either. See NOTICE.md.
+#
+# minorities.json is now produced by tools/generate_minorities.py from
+# tools/data/ethnic_groups.json, which the project authors. The one thing that
+# step needs from this file is the province centres, which are computed above
+# anyway -- so they are written out here rather than recomputed from an 8192 x
+# 4096 PNG a second time.
+def write_province_centers(centers):
+    out = {
+        str(pid): {"lon": round(c["lon"], 4), "lat": round(c["lat"], 4)}
+        for pid, c in centers.items()
+    }
+    with open(OUT_PROVINCE_CENTERS, "w") as f:
+        json.dump(out, f, separators=(",", ":"))
+    print(f"  Wrote {OUT_PROVINCE_CENTERS} ({len(out)} provinces)")
 
 # ─── USGS: Mineral deposits ─────────────────────────────────────────
 def load_usgs_gold():
@@ -720,37 +231,56 @@ def load_usgs_metal():
     print(f"  Loaded {len(metal_points)} metal deposits")
     return metal_points
 
-# ─── ACOR: Oil fields ──────────────────────────────────────────────
-def load_acor_oil():
-    """Load oil field polygons from ACOR dataset.
-    Returns centroids (lon, lat) for each oil field polygon.
+# ─── Oil fields ─────────────────────────────────────────────────────
+def load_oil_fields():
+    """Oil and gas field locations from tools/data/oil_fields.json.
+
+    Replaces ACOR (ETH Zurich), which shipped no licence and is itself a
+    digitisation of a 1982 atlas -- see NOTICE.md. The replacement is a
+    project-authored list of named producing regions rather than a copy of
+    anyone's polygons.
+
+    Each region carries a `fields` weight, expanded here into that many points
+    scattered in a small deterministic disc around the centre. That keeps the
+    input shape scale_resource() already expects (a count per province) and
+    stops a 20-weight region landing entirely on one pixel when the province
+    boundary happens to run through it.
+
+    Returns (lon, lat, isos), where `isos` is the declared country followed by
+    any `iso_fallback` entries. Carrying the country is what makes offshore
+    fields work at all: their coordinates are at sea, so it cannot be recovered
+    from the map. The fallbacks cover countries a given map does not model --
+    a 2000-start map has no South Sudan. The `offshore` flag in the JSON is
+    documentation for the reader and a count for this log line; placement does
+    not branch on it.
     """
-    sf = shapefile.Reader(ACOR_SHP)
-    fields = [f[0] for f in sf.fields[1:]]
-    oil_centroids = []
-    for i in range(sf.numRecords):
-        rec = sf.record(i)
-        d = dict(zip(fields, rec))
-        if d.get("type") != "oil":
-            continue
-        shp = sf.shape(i)
-        if not shp.parts:
-            continue
-        parts = []
-        for pi in range(len(shp.parts)):
-            start = shp.parts[pi]
-            end = shp.parts[pi + 1] if pi + 1 < len(shp.parts) else len(shp.points)
-            ring = shp.points[start:end]
-            if len(ring) >= 3:
-                parts.append(ring)
-        if not parts:
-            continue
-        poly = ShapelyPolygon(parts[0], parts[1:] if len(parts) > 1 else None)
-        if poly.is_valid and not poly.is_empty and poly.area > 0:
-            centroid = poly.centroid
-            oil_centroids.append((centroid.x, centroid.y))
-    print(f"  Loaded {len(oil_centroids)} oil field centroids")
-    return oil_centroids
+    with open(OIL_FIELDS_JSON, encoding="utf-8") as f:
+        doc = json.load(f)
+    if doc.get("schema") != 1:
+        raise SystemExit(f"{OIL_FIELDS_JSON}: unsupported schema {doc.get('schema')!r}")
+
+    rng = random.Random(20260727)   # fixed: the map must not churn between runs
+    points = []
+    offshore = 0
+    for entry in doc["fields"]:
+        lon, lat = float(entry["lon"]), float(entry["lat"])
+        count = int(entry["fields"])
+        if entry.get("offshore"):
+            offshore += 1
+        # A tuple of candidate countries, most specific first. Everything
+        # downstream takes the first one the map actually models.
+        isos = (entry["iso"],) + tuple(entry.get("iso_fallback", ()))
+        points.append((lon, lat, isos))
+        # Remaining points spread over roughly a 60 km disc.
+        for _ in range(count - 1):
+            points.append((
+                lon + rng.uniform(-0.35, 0.35),
+                lat + rng.uniform(-0.35, 0.35),
+                isos,
+            ))
+    print(f"  Loaded {len(doc['fields'])} oil regions "
+          f"({offshore} offshore) -> {len(points)} field points")
+    return points
 
 # ─── Resource assignment ────────────────────────────────────────────
 def scale_resource(count):
@@ -825,28 +355,64 @@ def assign_resources(provinces, province_centers, gold_points, gem_points, oil_c
                 gem_provinces.add(pid)
     print(f"  Gem deposits found in {len(gem_provinces)} provinces")
 
-    # Process oil fields via centroid-to-pixel lookup
+    # Process oil fields.
+    #
+    # A pixel lookup alone does not work here. Over half these regions are
+    # offshore, so their coordinates are at sea where there is no province at
+    # all, and an expanding pixel search finds whichever coast is nearest --
+    # which put Danish fields in Germany, Egyptian ones in Cyprus, and lost
+    # every North Sea field in the water between Britain and Norway.
+    #
+    # Each region declares the country it belongs to, so use it: try the exact
+    # pixel first (precise inside large countries), and otherwise fall back to
+    # the nearest province centre BELONGING TO THAT COUNTRY. Attribution is
+    # then correct by construction, and the only thing approximated is which
+    # of a country's own provinces gets the field.
+    centers_by_iso = defaultdict(list)
+    for pid, c in province_centers.items():
+        iso = provinces.get(pid, {}).get("iso_a3", "")
+        if iso:
+            centers_by_iso[iso].append((pid, c["lon"], c["lat"]))
+
+    def nearest_in_country(lon, lat, iso):
+        best, best_d = 0, None
+        for pid, clon, clat in centers_by_iso.get(iso, ()):
+            # Planar distance with a cos(lat) correction. Exact great-circle
+            # distance would change no answer at these separations.
+            dx = (clon - lon) * math.cos(math.radians((clat + lat) * 0.5))
+            dy = clat - lat
+            d = dx * dx + dy * dy
+            if best_d is None or d < best_d:
+                best, best_d = pid, d
+        return best
+
     oil_counts = defaultdict(int)
     oil_provinces = set()
-    for lon, lat in oil_centroids:
+    oil_unmodelled = defaultdict(int)
+    for lon, lat, isos in oil_centroids:
         px, py = lonlat_to_pixel(lon, lat)
-        found = False
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                pid = pixel_to_pid_safe(px + dx, py + dy)
-                if pid > 0 and pid in provinces:
-                    oil_counts[pid] += 1
-                    oil_provinces.add(pid)
-                    found = True
+        pid = pixel_to_pid_safe(px, py)
+        if not (pid > 0 and pid in provinces and
+                provinces[pid].get("iso_a3", "") in isos):
+            pid = 0
+            for iso in isos:                 # declared country, then fallbacks
+                pid = nearest_in_country(lon, lat, iso)
+                if pid:
                     break
-            if found:
-                break
-        if not found:
-            pid = pixel_to_pid_safe(px, py)
-            if pid > 0 and pid in provinces:
-                oil_counts[pid] += 1
-                oil_provinces.add(pid)
+        if pid:
+            oil_counts[pid] += 1
+            oil_provinces.add(pid)
+        else:
+            oil_unmodelled[isos[0]] += 1
     print(f"  Oil fields found in {len(oil_provinces)} provinces")
+    if oil_unmodelled:
+        # Not a warning: a map is allowed not to model a country. Said out loud
+        # anyway, because otherwise the oil just quietly is not there and the
+        # first sign is someone asking why a producer has none. Give a country
+        # here an iso_fallback if the oil should land somewhere instead.
+        print("  Not placed — this map models neither the country nor a "
+              "fallback: " + ", ".join(f"{iso} ({n} points)"
+                                       for iso, n in sorted(oil_unmodelled.items())))
 
     # Process metal deposits
     metal_counts = defaultdict(int)
@@ -986,33 +552,14 @@ def assign_resources(provinces, province_centers, gold_points, gem_points, oil_c
     # The shapefile data counts raw deposit counts, not reserve sizes.
     # These multipliers correct per-country totals to match real-world proportions.
     # Countries not listed keep their raw shapefile-derived values.
-    OIL_FIX = {
-        # Middle East — massively undercounted by ACOR centroid data
-        "SAU": 3.0, "IRQ": 2.5, "IRN": 2.0, "KWT": 5.0, "ARE": 3.5,
-        "QAT": 3.5, "OMN": 1.5, "BHR": 4.0,
-        # Americas
-        "VEN": 2.5, "CAN": 1.5, "USA": 0.08, "MEX": 0.7,
-        "BRA": 1.5, "COL": 1.0, "ECU": 1.0, "ARG": 0.15,
-        "TTO": 1.0, "CUB": 1.0,
-        # Africa — ACOR misses many fields
-        "NGA": 1.5, "AGO": 1.5, "DZA": 0.8, "LBY": 1.2,
-        "EGY": 1.0, "SDN": 2.0, "GAB": 1.5, "COG": 1.5,
-        "TCD": 1.0, "CMR": 1.5, "GNQ": 2.0,
-        # Europe — massive overcount from small seeps
-        "GBR": 0.3, "NOR": 0.3, "NLD": 0.1, "DNK": 0.1,
-        "ROU": 0.1, "POL": 0.05, "DEU": 0.02, "FRA": 0.02,
-        "ITA": 0.05, "GRC": 0.05, "UKR": 0.05, "BLR": 0.1,
-        "HRV": 0.1, "SRB": 0.1, "HUN": 0.1, "BGR": 0.1,
-        "AUT": 0.1, "CZE": 0.1, "SVK": 0.1, "CHE": 0.0,
-        # Asia
-        "JPN": 0.01, "CHN": 0.5, "IND": 0.3,
-        "IDN": 0.3, "MYS": 0.5, "MMR": 0.8,
-        "KAZ": 0.6, "UZB": 0.5, "AZE": 0.5, "TKM": 0.6,
-        "VNM": 0.3, "THA": 0.3, "PHL": 0.2,
-        "PNG": 1.0, "AUS": 0.3, "NZL": 0.2,
-        "TUR": 0.2, "SYR": 0.5, "YEM": 0.5,
-        "TUN": 0.5,
-    }
+    # OIL_FIX used to exist because ACOR's polygon centroids were wildly uneven
+    # -- thousands of tiny US and North Sea entries, a handful for the Gulf --
+    # so every major producer needed a multiplier to undo the source's shape.
+    # tools/data/oil_fields.json is weighted directly for play balance instead,
+    # so a correction on top would be a second, contradictory set of knobs.
+    # Left in place, and empty, because the mechanism is still the right place
+    # to put a per-country tweak if one is ever needed again.
+    OIL_FIX = {}
     GOLD_FIX = {
         "USA": 0.15, "JPN": 0.02, "DEU": 0.05, "FRA": 0.02,
         "ITA": 0.05, "GBR": 0.1, "POL": 0.1, "ROU": 0.1,
@@ -1658,11 +1205,33 @@ def compute_industry_levels(provinces, province_centers, population, resources, 
         }
         resources[str(pid)]["fortification"] = border_forts.get(pid, 0)
 
-    # Manual industry level overrides for specific provinces
-    INDUSTRY_OVERRIDE = {1697: 5, 1328: 5, 1533: 3, 1487: 2, 1535: 3, 1821: 3, 1822: 4}
-    for pid_str, lvl in INDUSTRY_OVERRIDE.items():
-        if str(pid_str) in resources:
-            resources[str(pid_str)]["industry"]["level"] = lvl
+    # Manual industry level overrides.
+    #
+    # These were raw province ids, and province ids are output of the
+    # generator, not input to it: regenerate the map and 1697 is somewhere
+    # else entirely, so the override lands on an unrelated province and the
+    # one it was written for goes back to whatever the formula said. Keyed on
+    # coordinates instead, which survive a regeneration -- the point of an
+    # override is a place, not a number.
+    INDUSTRY_OVERRIDE_AT = [
+        # lon, lat, level, what it is
+        (139.7, 35.7, 5, "Tokyo"),
+        (-74.0, 40.7, 5, "New York"),
+        (2.35, 48.86, 3, "Paris"),
+        (-0.13, 51.51, 3, "London"),
+        (13.4, 52.52, 3, "Berlin"),
+        (121.5, 31.2, 3, "Shanghai"),
+        (37.6, 55.75, 4, "Moscow"),
+    ]
+    if province_centers:
+        for lon, lat, lvl, label in INDUSTRY_OVERRIDE_AT:
+            best, best_d = None, None
+            for pid, c in province_centers.items():
+                d = (c["lon"] - lon) ** 2 + (c["lat"] - lat) ** 2
+                if best_d is None or d < best_d:
+                    best, best_d = pid, d
+            if best is not None and str(best) in resources:
+                resources[str(best)]["industry"]["level"] = lvl
 
     n_with_forts = sum(1 for v in resources.values() if v.get("fortification", 0) > 0)
     levels = defaultdict(int)
@@ -1691,27 +1260,11 @@ def main():
         centers = compute_province_centers_fast(provinces)
         print(f"  Computed centers for {len(centers)} provinces (fast scan)")
 
-    # ── Ethnic groups — skip if shapefiles missing ──
-    greg_groups = []
-    minority_data = {}
-    colors = {}
-    try:
-        print("\n=== Processing GREG ethnic groups ===")
-        greg_groups = load_greg()
-        minority_data = assign_ethnic_groups(centers, greg_groups)
-        minority_data = supplement_with_secondary_groups(minority_data, provinces, centers, greg_groups)
-        minority_data = ensure_diversity(minority_data, provinces)
-        colors = generate_minority_colors(minority_data)
-        valid_pids = set(provinces.keys())
-        minority_data = {k: v for k, v in minority_data.items() if int(k) in valid_pids}
-        with open(OUT_MINORITIES, "w") as f:
-            json.dump(minority_data, f, indent=None, separators=(",", ":"))
-        print(f"  Wrote {OUT_MINORITIES} ({len(minority_data)} provinces)")
-        with open(OUT_MINORITY_COLORS, "w") as f:
-            json.dump(colors, f, indent=None, separators=(",", ":"))
-        print(f"  Wrote {OUT_MINORITY_COLORS} ({len(colors)} groups)")
-    except Exception as e:
-        print(f"  GREG shapefile unavailable ({e}), keeping existing minority files")
+    # ── Province centres for generate_minorities.py ──
+    print("\n=== Writing province centres ===")
+    write_province_centers(centers)
+    print("  minorities.json is generated by tools/generate_minorities.py, "
+          "which runs after this step")
 
     # ── Armies & fortifications — always generate from current province data ──
     print("\n=== Generating armies and fortifications ===")
@@ -1725,11 +1278,11 @@ def main():
         gold_points, gem_points = load_usgs_gold()
         print("\n=== Processing USGS metal deposits ===")
         metal_points = load_usgs_metal()
-        print("\n=== Processing ACOR oil fields ===")
-        oil_centroids = load_acor_oil()
+        print("\n=== Loading oil regions ===")
+        oil_centroids = load_oil_fields()
         resources_loaded = True
     except Exception as e:
-        print(f"  USGS/ACOR shapefiles unavailable ({e}), preserving existing resources.json")
+        print(f"  USGS shapefiles unavailable ({e}), preserving existing resources.json")
     if resources_loaded:
         print("\n=== Assigning resources ===")
         resources = assign_resources(provinces, centers, gold_points, gem_points, oil_centroids, metal_points, population, border_forts)

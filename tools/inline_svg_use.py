@@ -89,12 +89,26 @@ def transforms_to_str(transforms):
     return " ".join(parts)
 
 
-def concat_transforms(t1, t2):
-    if not t1:
-        return t2
-    if not t2:
-        return t1
-    return t1 + t2
+def concat_transforms(outer, inner):
+    """Flatten two transform lists. `outer` is applied first, `inner` inside it.
+
+    SVG reads transform="A B" left to right as outermost to innermost, so a flat
+    concatenation is correct -- but only if the caller passes them in that order.
+    Named for that, because passing them the wrong way round is exactly the bug
+    this function was part of."""
+    if not outer:
+        return inner
+    if not inner:
+        return outer
+    return outer + inner
+
+
+def qname(root, local):
+    """`local` in the document's own namespace, so the wrapper serialises as
+    <g> rather than <ns0:g> and stays a real SVG element."""
+    if isinstance(root.tag, str) and root.tag.startswith("{"):
+        return "{" + root.tag[1:].split("}")[0] + "}" + local
+    return local
 
 
 def has_use_elements(elem):
@@ -168,31 +182,60 @@ def inline_svg_text(svg_text, filepath_hint=""):
         ref_id = href[1:]
         ref_elem = ids[ref_id]
 
-        use_transform_str = use_to_resolve.get("transform", "")
-        use_transforms = parse_transform(use_transform_str)
+        # Per the SVG spec, <use x y transform="T" href="#r"/> is equivalent to
+        #     <g transform="T translate(x,y)"> {deep clone of #r, keeping its
+        #                                        own transform} </g>
+        # so the flattened list is  T, translate(x,y), then the referenced
+        # element's own transform -- outermost first.
+        #
+        # This was built the other way round: the x/y translate was inserted
+        # BEFORE the use element's own transform, and the referenced element's
+        # transform was placed outermost of all. Whenever both a use offset and
+        # a referenced transform existed the result was wrong, which is why the
+        # East German emblem sat in the upper-left corner and Iran's takbir
+        # bands were displaced. Flags with only one of the two looked fine,
+        # which is why this survived 183 flags.
+        # Build the <g> the spec says a <use> is equivalent to, and put the clone
+        # inside it. Wrapping rather than merging keeps two things right that
+        # merging got wrong:
+        #
+        #  - transform order. T then translate(x,y) on the wrapper, the
+        #    referenced element's own transform left untouched inside it. Merging
+        #    them into one list had the composition backwards, which put the East
+        #    German emblem in a corner.
+        #
+        #  - EVERY OTHER ATTRIBUTE. Only transform/x/y were carried over, so
+        #    stroke, fill, opacity and the rest were silently dropped. Nepal
+        #    draws its blue border as <use href="#a" stroke="#003893" .../> over
+        #    the crimson field, so the whole border vanished -- which is why that
+        #    file ended up hand-patched with a duplicate blue path instead.
+        #    Attributes go on the wrapper, so anything the referenced element
+        #    sets itself still wins, which is what inheritance does.
+        wrapper = ET.Element(qname(root, "g"))
+        for attr, value in use_to_resolve.attrib.items():
+            local = attr.split("}")[-1] if "}" in attr else attr
+            if local in ("href", "x", "y", "transform", "id"):
+                continue
+            wrapper.set(attr, value)
 
+        use_transforms = parse_transform(use_to_resolve.get("transform", ""))
         x_str = use_to_resolve.get("x")
         y_str = use_to_resolve.get("y")
         if x_str or y_str:
-            tx = float(x_str) if x_str else 0
-            ty = float(y_str) if y_str else 0
-            use_transforms.insert(0, ("translate", [tx, ty]))
-
-        new_elem = deep_copy_strip_ids(ref_elem)
-
-        existing_transform_str = new_elem.get("transform", "")
-        existing_transforms = parse_transform(existing_transform_str)
-        all_transforms = concat_transforms(existing_transforms, use_transforms)
-
-        if all_transforms:
-            new_elem.set("transform", transforms_to_str(all_transforms))
+            tx = float(x_str) if x_str else 0.0
+            ty = float(y_str) if y_str else 0.0
+            use_transforms.append(("translate", [tx, ty]))
+        if use_transforms:
+            wrapper.set("transform", transforms_to_str(use_transforms))
 
         use_id = use_to_resolve.get("id")
         if use_id:
-            new_elem.set("id", use_id)
+            wrapper.set("id", use_id)
+
+        wrapper.append(deep_copy_strip_ids(ref_elem))
 
         use_parent.remove(use_to_resolve)
-        use_parent.insert(use_index, new_elem)
+        use_parent.insert(use_index, wrapper)
 
         total_inlined += 1
 
@@ -206,9 +249,24 @@ def inline_svg_text(svg_text, filepath_hint=""):
 
 
 def process_svg_file(filepath):
-    """Process a single SVG file. Returns (inlined_count, unresolved_count) or raises."""
+    """Process a single SVG file. Returns (inlined_count, unresolved_count) or raises.
+
+    Keeps the pre-inlining file under .orig/ beside it. This rewrites in place,
+    and when the transform composition turned out to be wrong there was no way
+    to see it or undo it without re-downloading every flag from Commons -- the
+    only evidence was an emblem in the wrong corner. A copy costs nothing and
+    makes the next inliner bug diffable.
+    """
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         original = f.read()
+
+    if "<use" in original:
+        orig_dir = os.path.join(os.path.dirname(filepath), ".orig")
+        os.makedirs(orig_dir, exist_ok=True)
+        keep = os.path.join(orig_dir, os.path.basename(filepath))
+        if not os.path.exists(keep):
+            with open(keep, "w", encoding="utf-8") as f:
+                f.write(original)
 
     if "<use" not in original and "<use " not in original:
         return 0, 0

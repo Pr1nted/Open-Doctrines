@@ -61,15 +61,19 @@ if kor_pids and prk_pids:
     print(f"North Korea claims {len(kor_pids)} South Korea provinces")
     print(f"South Korea claims {len(prk_pids)} North Korea provinces")
 
-# Cyprus claims N. Cyprus (cid=77)
-ncy_pids = [int(ps) for ps, p in provinces.items() if p.get('country_id') == 77]
+# Cyprus claims N. Cyprus.
+# Was `country_id == 77`. Country ids are assigned in whatever order the
+# rasteriser happens to walk the shapefile, so that number was only ever true
+# for one generated map and became a claim on a random country the moment the
+# provinces were regenerated. ISO codes are stable; ids are not.
+ncy_pids = sorted(provinces_of("XNC"))
 cyp_pids = provinces_of("CYP")
 if ncy_pids and cyp_pids:
     claims.setdefault("CYP", []).extend(ncy_pids)
     print(f"Cyprus claims {len(ncy_pids)} N. Cyprus provinces")
 
-# Somalia claims Somaliland (cid=167)
-sl_pids = [int(ps) for ps, p in provinces.items() if p.get('country_id') == 167]
+# Somalia claims Somaliland. Same fix as above: ISO, not a generated id.
+sl_pids = sorted(provinces_of("XSO"))
 som_pids = provinces_of("SOM")
 if sl_pids and som_pids:
     claims.setdefault("SOM", []).extend(sl_pids)
@@ -161,9 +165,9 @@ for lon, lat, label in [(147.8, 45.1, "Iturup/Etorofu"), (146.0, 44.2, "Kunashir
         claims.setdefault("JPN", []).append(pid)
         print(f"Japan claims RUS province {pid} ({label})")
 
-# Argentina claims Falkland Islands (cid=250, iso=FLK)
+# Argentina claims the Falkland Islands. ISO, not a generated id — see above.
 arg_pids = provinces_of("ARG")
-flk_pids = [int(ps) for ps, p in provinces.items() if p.get('country_id') == 250]
+flk_pids = sorted(provinces_of("FLK"))
 if flk_pids and arg_pids:
     claims.setdefault("ARG", []).extend(flk_pids)
     print(f"Argentina claims {len(flk_pids)} Falkland Islands provinces")

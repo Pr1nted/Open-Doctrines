@@ -123,11 +123,115 @@ if(OD_ENABLE_MODS)
 endif()
 message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 
+# --- Multiplayer transport ---
+#
+# Optional for the same reason the mod runtime is: the game must still build on
+# a machine that cannot fetch mbedTLS. Without it, src/net/WsUnavailable.cpp is
+# linked instead and the multiplayer menu says this build cannot connect --
+# rather than the build failing outright.
+#
+# The web target needs nothing fetched: the browser already has a WebSocket and
+# already has the certificate store, and would not permit a raw socket anyway.
+option(OD_ENABLE_NET "Build the multiplayer transport" ON)
+
+set(OD_NET_BACKEND "none")
+if(OD_ENABLE_NET)
+    if(EMSCRIPTEN)
+        set(OD_NET_BACKEND "browser")
+    else()
+        include(FetchContent)
+        # TLS only. No programs, no tests, no self-test binaries: this is
+        # linked into a game, and every extra target is build time nobody asked
+        # for.
+        set(ENABLE_PROGRAMS   OFF CACHE BOOL "" FORCE)
+        set(ENABLE_TESTING    OFF CACHE BOOL "" FORCE)
+        set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(mbedtls
+            GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+            GIT_TAG v3.6.2
+            GIT_SHALLOW TRUE
+            EXCLUDE_FROM_ALL
+        )
+        FetchContent_MakeAvailable(mbedtls)
+        set(OD_NET_BACKEND "mbedtls")
+    endif()
+endif()
+message(STATUS "Multiplayer transport backend: ${OD_NET_BACKEND}")
+
+# --- Peer-to-peer fallback -----------------------------------------------
+#
+# For the player who cannot reach a host directly: WebRTC data channels over
+# ICE, with the offer/answer exchange going through the account service as
+# matchmaking (see NetSignal in src/net/NetProtocol.h). The media path is peer
+# to peer, so this is not a relay.
+#
+# OFF by default, and deliberately so. libdatachannel pulls in usrsctp, libjuice
+# and plog, which is a large addition to a build that currently fetches two
+# things -- and the direct path works without it. A build with this off says
+# plainly that the fallback is unavailable rather than failing to compile, which
+# is the same bargain the mod runtime and the transport already make.
+#
+# USE_MBEDTLS matters: without it libdatachannel wants OpenSSL, and this project
+# links mbedTLS precisely so that it builds on a machine with nothing installed.
+option(OD_ENABLE_P2P "Build the WebRTC peer-to-peer fallback (fetches libdatachannel)" OFF)
+
+set(OD_P2P_BACKEND "none")
+if(OD_ENABLE_P2P AND OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    include(FetchContent)
+    # Ahead of libdatachannel's own modules, so its find_package(MbedTLS) picks
+    # up the mbedTLS we already build rather than looking for an installed one.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    set(USE_MBEDTLS   ON  CACHE BOOL "" FORCE)   # reuse the TLS we already have
+    set(NO_MEDIA      ON  CACHE BOOL "" FORCE)   # data channels only
+    set(NO_WEBSOCKET  ON  CACHE BOOL "" FORCE)   # we have our own, in src/net
+    set(NO_EXAMPLES   ON  CACHE BOOL "" FORCE)
+    set(NO_TESTS      ON  CACHE BOOL "" FORCE)
+    FetchContent_Declare(libdatachannel
+        GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+        GIT_TAG v0.24.5
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
+    )
+    # libdatachannel exports install targets that reference mbedTLS, which is
+    # not in any export set because we build it from source rather than
+    # installing it. Nothing here is installed -- the game is packaged as an
+    # app bundle -- so the rules are skipped for this subtree rather than
+    # contorting mbedTLS into an export it has no other use for.
+    # libdatachannel's mbedTLS backend references DTLS-SRTP unconditionally,
+    # even with NO_MEDIA -- the block is behind `#elif USE_MBEDTLS` rather than
+    # behind the media guard. mbedTLS ships that option off, so it is turned on
+    # here. It is media-key negotiation we never use; enabling it is cheaper
+    # than patching a dependency, and PUBLIC so libdatachannel compiles against
+    # exactly the configuration mbedTLS was built with. A mismatch there is the
+    # kind of thing that links fine and then misbehaves at runtime.
+    if(TARGET mbedcrypto)
+        target_compile_definitions(mbedcrypto PUBLIC MBEDTLS_SSL_DTLS_SRTP)
+    endif()
+
+    set(_od_skip_install "${CMAKE_SKIP_INSTALL_RULES}")
+    set(CMAKE_SKIP_INSTALL_RULES ON)
+    FetchContent_MakeAvailable(libdatachannel)
+    set(CMAKE_SKIP_INSTALL_RULES "${_od_skip_install}")
+    set(OD_P2P_BACKEND "libdatachannel")
+endif()
+
+# Both halves of the game need to know whether the fallback exists: the code
+# that offers it, and PeerLink itself picking a backend.
+if(OD_P2P_BACKEND STREQUAL "libdatachannel")
+    set(OD_P2P_DEFS OD_ENABLE_P2P=1)
+    set(OD_P2P_LIBS datachannel-static)
+else()
+    set(OD_P2P_DEFS "")
+    set(OD_P2P_LIBS "")
+endif()
+message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
+
 # --- Game target ---
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
     src/GameUpdates.cpp
+    src/Game_Account.cpp
     src/Game_Browsers.cpp
     src/Game_Claims.cpp
     src/Game_Economy.cpp
@@ -135,6 +239,7 @@ set(GAME_SOURCES
     src/Game_MapEditor.cpp
     src/Game_Menus.cpp
     src/Game_Mods.cpp
+    src/Game_Multiplayer.cpp
     src/Game_Policies.cpp
     src/Game_Render.cpp
     src/Game_Research.cpp
@@ -145,6 +250,7 @@ set(GAME_SOURCES
     src/MapEditor.cpp
     src/ProceduralGenerator.cpp
     src/ScriptEngine.cpp
+    src/Audio.cpp
     src/Config.cpp
     src/SaveManager.cpp
     src/GifEncoder.cpp
@@ -158,6 +264,35 @@ set(GAME_SOURCES
     src/renderer/FlagRenderer.cpp
     src/renderer/NanoSVGWrapper.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
+    src/net/NetProtocol.cpp
+    src/net/AccountClient.cpp
+    src/net/BadgeStyle.cpp
+    src/net/Host.cpp
+    src/net/HttpClient.cpp
+    src/net/JoinTicket.cpp
+    src/net/Lobby.cpp
+    src/net/NetUrl.cpp
+    src/net/PeerLinkNative.cpp
+    src/net/PeerLinkWeb.cpp
+    src/net/PeerLinkUnavailable.cpp
+    src/net/ServerBook.cpp
+    src/net/Session.cpp
+    src/net/TlsSocket.cpp
+    src/net/TurnRunner.cpp
+    src/net/Tunnel.cpp
+    src/net/TunnelInstall.cpp
+    src/net/SeatBook.cpp
+    src/net/TurnSeal.cpp
+    src/net/TurnStore.cpp
+    src/util/Ed25519.cpp
+    src/net/WorldSync.cpp
+    src/net/WsCommon.cpp
+    src/net/WsHandshake.cpp
+    src/net/WsServer.cpp
+    src/net/WsNative.cpp
+    src/net/WsWeb.cpp
+    src/net/WsUnavailable.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
@@ -194,6 +329,18 @@ target_include_directories(OpenDoctrines PRIVATE src tools/map_generator)
 # Both system raylib (via find_package) and FetchContent create a target named raylib
 target_link_libraries(OpenDoctrines raylib)
 
+if(OD_NET_BACKEND STREQUAL "mbedtls")
+    target_link_libraries(OpenDoctrines MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_ENABLE_NET=1)
+elseif(OD_NET_BACKEND STREQUAL "browser")
+    target_compile_definitions(OpenDoctrines PRIVATE OD_ENABLE_NET=1)
+endif()
+
+if(OD_P2P_DEFS)
+    target_link_libraries(OpenDoctrines ${OD_P2P_LIBS})
+    target_compile_definitions(OpenDoctrines PRIVATE ${OD_P2P_DEFS})
+endif()
+
 if(OD_MODS_BACKEND STREQUAL "wamr")
     target_link_libraries(OpenDoctrines vmlib)
     target_compile_definitions(OpenDoctrines PRIVATE OD_MODS_WAMR=1)
@@ -206,6 +353,8 @@ if(EMSCRIPTEN)
     target_compile_options(OpenDoctrines PRIVATE )
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
+        # emscripten_websocket_*; the browser does the TLS.
+        "-lwebsocket.js"
         "-sASYNCIFY"
         # The Gearbox ABI has i64 returns (fuel_budget, province_population).
         # Without BigInt they cannot cross the JS boundary that the browser mod
@@ -218,6 +367,18 @@ if(EMSCRIPTEN)
         "-sMAXIMUM_MEMORY=4GB"
         "--shell-file" "${CMAKE_SOURCE_DIR}/shell.html"
         "--preload-file" "${CMAKE_SOURCE_DIR}/data@/data"
+        # The preload is downloaded in full before the menu draws, so anything
+        # in data/ that the browser cannot use is time the player waits for
+        # nothing. Two things qualify outright:
+        #   tools/      cloudflared, a 37 MB arm64 Mach-O executable used to
+        #               open a host tunnel. Tunnel.cpp is compiled out entirely
+        #               under __EMSCRIPTEN__ -- a page cannot spawn a process,
+        #               so the web build has no code path that could reach it.
+        #   audio/midi/ editable sources for the music. The loader scans
+        #               audio/music only; see data/audio/README.md.
+        # Together they were 42 MB of a 145 MB package.
+        "--exclude-file" "*/tools/*"
+        "--exclude-file" "*/audio/midi/*"
     )
 else()
     find_package(Threads REQUIRED)
@@ -260,12 +421,171 @@ if(APPLE)
     target_link_libraries(MapGenerator PRIVATE "-framework CoreFoundation")
 endif()
 
+# --- hashing and signature verification ---
+# Every vector is from FIPS 180-4 or RFC 8032, never from our own output: this
+# is the code that decides whether a join ticket is genuine, and it is the one
+# place where being wrong is both silent and total.
+add_executable(NetCryptoTest EXCLUDE_FROM_ALL
+    tests/net_crypto_test.cpp
+    src/util/Ed25519.cpp
+)
+target_include_directories(NetCryptoTest PRIVATE src tests)
+
+# --- join tickets ---
+# The check that used to be Cloudflare's. Almost every case is a refusal,
+# because this is what a stranger passes through to be seated on a host's own
+# machine. No sockets: the fixture is a real signed ticket, not a live call.
+add_executable(NetTicketTest EXCLUDE_FROM_ALL
+    tests/net_ticket_test.cpp
+    src/net/JoinTicket.cpp
+    src/net/HttpClient.cpp
+    src/net/NetUrl.cpp
+    src/util/Ed25519.cpp
+)
+target_include_directories(NetTicketTest PRIVATE src tests)
+
+# --- seats remembered across sessions ---
+# A campaign played over weeks lives or dies on returning players getting their
+# own country back, so the pairing of psid to country is what this guards.
+add_executable(NetSeatBookTest EXCLUDE_FROM_ALL
+    tests/net_seatbook_test.cpp
+    src/net/SeatBook.cpp
+    src/net/Lobby.cpp
+    src/net/HttpClient.cpp
+    src/net/NetUrl.cpp
+    src/net/NetProtocol.cpp
+)
+target_include_directories(NetSeatBookTest PRIVATE src tests)
+
+# --- tunnel address parsing ---
+# Against the real shape of what these tools print, banners and all: the failure
+# mode is handing players a documentation link instead of the game.
+add_executable(NetTunnelTest EXCLUDE_FROM_ALL
+    tests/net_tunnel_test.cpp
+    src/net/Tunnel.cpp
+)
+target_include_directories(NetTunnelTest PRIVATE src tests)
+
+# --- sealing turn submissions ---
+# The store is a dumb bucket anyone can read and sometimes overwrite, so almost
+# every case is something that must NOT open. Needs mbedTLS for AES-GCM.
+add_executable(NetSealTest EXCLUDE_FROM_ALL
+    tests/net_seal_test.cpp
+    src/net/TurnSeal.cpp
+)
+target_include_directories(NetSealTest PRIVATE src tests)
+target_compile_definitions(NetSealTest PRIVATE OD_ENABLE_NET=1)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(NetSealTest PRIVATE MbedTLS::mbedcrypto)
+endif()
+
+# --- connectivity, end to end ---
+# A real NetHost and a real NetSession over loopback, against a stand-in
+# account service (tests/mock_issuer.mjs). This is the only test of the SEAM
+# between the two halves; run it with tests/connectivity_test.sh, which brings
+# the stand-in up and down around it.
+add_executable(NetConnectTest EXCLUDE_FROM_ALL
+    tests/net_connect_test.cpp
+    src/net/Host.cpp
+    src/net/Session.cpp
+    src/net/Lobby.cpp
+    src/net/JoinTicket.cpp
+    src/net/ModAttest.cpp
+    src/net/NetProtocol.cpp
+    src/net/NetUrl.cpp
+    src/net/TurnRunner.cpp
+    src/net/HttpClient.cpp
+    src/net/TlsSocket.cpp
+    src/net/WorldSync.cpp
+    src/net/WsCommon.cpp
+    src/net/WsHandshake.cpp
+    src/net/WsNative.cpp
+    src/net/WsServer.cpp
+    src/util/Ed25519.cpp
+)
+target_include_directories(NetConnectTest PRIVATE src tests)
+target_compile_definitions(NetConnectTest PRIVATE OD_ENABLE_NET=1)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(NetConnectTest PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
+# --- websocket server ---
+# The handshake is pure string work over input that arrives on a listening port
+# from strangers, so most of those cases are malformed rather than correct. The
+# rest drives a real listener over loopback with a hand-built client, because
+# framing bugs do not show up in string tests. No TLS: the server speaks plain
+# ws:// by design (see WsServer.h), so this needs no mbedTLS.
+add_executable(NetWsServerTest EXCLUDE_FROM_ALL
+    tests/net_wsserver_test.cpp
+    src/net/WsHandshake.cpp
+    src/net/WsServer.cpp
+)
+target_include_directories(NetWsServerTest PRIVATE src tests)
+target_compile_definitions(NetWsServerTest PRIVATE OD_ENABLE_NET=1)
+
+# --- lobby rules ---
+# Pure logic: no sockets, no renderer, no game headers. Almost every case is a
+# rule a client must not be able to break by asking nicely.
+add_executable(NetLobbyTest EXCLUDE_FROM_ALL
+    tests/net_lobby_test.cpp
+    src/net/Lobby.cpp
+    src/net/NetProtocol.cpp
+    src/net/TurnRunner.cpp
+)
+target_include_directories(NetLobbyTest PRIVATE src tests)
+
+# --- account client ---
+# The pure halves: the JSON reader that parses replies from the network, and
+# the local nickname check. No sockets, so no OD_ENABLE_NET and no mbedTLS.
+add_executable(NetAccountTest EXCLUDE_FROM_ALL
+    tests/net_account_test.cpp
+    src/net/AccountClient.cpp
+    src/net/BadgeStyle.cpp
+    src/net/HttpClient.cpp
+    src/net/NetUrl.cpp
+    src/net/ServerBook.cpp
+    src/net/TurnStore.cpp
+)
+target_include_directories(NetAccountTest PRIVATE src tests)
+find_package(Threads REQUIRED)
+target_link_libraries(NetAccountTest Threads::Threads)
+
+# --- multiplayer wire format ---
+# Pure bytes in, bytes out: no raylib, no game headers, no sockets. This is the
+# layer that parses input from strangers, so most of the test is about what it
+# refuses rather than what it round-trips.
+add_executable(NetProtocolTest EXCLUDE_FROM_ALL
+    tests/net_protocol_test.cpp
+    src/net/NetProtocol.cpp
+    src/net/WorldSync.cpp
+    src/net/NetUrl.cpp
+    src/util/Ed25519.cpp
+    src/net/WsCommon.cpp
+    src/net/WsUnavailable.cpp
+)
+target_include_directories(NetProtocolTest PRIVATE src tests)
+
+# --- mod sides and attestation ---
+# Pure logic: no archives, no runtime, no network. What a mod's declared side
+# means for its grants, and what the two ends of a join tell each other.
+add_executable(NetAttestTest EXCLUDE_FROM_ALL
+    tests/net_attest_test.cpp
+    src/net/ModAttest.cpp
+    src/mods/ModPackage.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(NetAttestTest PRIVATE src tests tools/map_generator)
+
 # --- .odmod reader tests ---
 # Fixture-driven; builds hostile archives at runtime rather than committing
 # them. Not built by default -- `cmake --build . --target ModArchiveTest`.
 add_executable(ModArchiveTest EXCLUDE_FROM_ALL
     tests/mod_archive_test.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
@@ -279,6 +599,7 @@ target_include_directories(ModArchiveTest PRIVATE src tests tools/map_generator)
 add_executable(ModRuntimeTest EXCLUDE_FROM_ALL
     tests/mod_runtime_test.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     tools/map_generator/miniz.c
@@ -297,6 +618,7 @@ endif()
 add_executable(ModManagerTest EXCLUDE_FROM_ALL
     tests/mod_manager_test.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
@@ -311,6 +633,14 @@ target_include_directories(ModManagerTest PRIVATE src tests tools/map_generator)
 # The in-game updater: the version comparison (which must agree with
 # tools/odver.py), the hostile-input parsing of a release reply, and the rule
 # that installing an update never deletes anything.
+# GifEncoder is raylib-free by design (cstdint/cstdio/string/vector only), so
+# the timelapse writer can be tested on its own. tests/gif_encoder_check.py then
+# decodes what it wrote with Pillow -- an encoder cannot verify its own LZW.
+add_executable(GifEncoderTest EXCLUDE_FROM_ALL
+    tests/gif_encoder_test.cpp
+    src/GifEncoder.cpp)
+target_include_directories(GifEncoderTest PRIVATE src)
+
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp
@@ -331,6 +661,7 @@ endif()
 add_executable(ModAbiTest EXCLUDE_FROM_ALL
     tests/mod_abi_test.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     tools/map_generator/miniz.c
@@ -350,6 +681,7 @@ endif()
 add_executable(ModExamplesTest EXCLUDE_FROM_ALL
     tests/mod_examples_test.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
@@ -372,6 +704,7 @@ endif()
 add_executable(OdmodCheck
     tools/odmod_check.cpp
     src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
     tools/map_generator/miniz.c

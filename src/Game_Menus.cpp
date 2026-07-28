@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
@@ -375,6 +376,7 @@ void Game::updateCommunityMenu() {
         } else if (CheckCollisionPointRec(mouse, githubBtn)) {
             system("open https://github.com/Pr1nted/Open-Doctrines");
         } else if (CheckCollisionPointRec(mouse, backBtn)) {
+            Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
         }
     }
@@ -390,9 +392,26 @@ void Game::drawCommunityMenu() {
     drawMenuBackground();
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 160});
 
-    // Load icon textures once
-    static Texture2D discordIcon = LoadTexture("data/icons/links/discord.png");
-    static Texture2D githubIcon = LoadTexture("data/icons/links/github.png");
+    // Loaded once, and from m_dataDir like every other asset. These two were the
+    // only paths in the game that assumed the process working directory was the
+    // project root, so they could resolve from a source checkout and never from
+    // the .app bundle, where the CWD is wherever the user launched it from.
+    //
+    // Checked with FileExists first because both files are absent from the
+    // repository: raylib logs a WARNING per failed LoadTexture, and the buttons
+    // below already fall back to their text labels, so the only thing the
+    // attempt produced was noise in the log every run.
+    static bool linkIconsTried = false;
+    static Texture2D discordIcon{};
+    static Texture2D githubIcon{};
+    if (!linkIconsTried) {
+        linkIconsTried = true;
+        const std::string dir = m_dataDir + "icons/links/";
+        const std::string dPath = dir + "discord.png";
+        const std::string gPath = dir + "github.png";
+        if (FileExists(dPath.c_str())) discordIcon = LoadTexture(dPath.c_str());
+        if (FileExists(gPath.c_str())) githubIcon  = LoadTexture(gPath.c_str());
+    }
 
     Vector2 mouse = getMouse();
     int btnW = 260, btnH = 80, gap = 20, backBtnH = 48;
@@ -911,8 +930,8 @@ void Game::updateMainMenu() {
 
     // ── Background scrolling (moved to updateMenuBackground, called from run()) ──
 
-    if (IsKeyPressed(KEY_UP)) m_menuIndex = (m_menuIndex + count - 1) % count;
-    if (IsKeyPressed(KEY_DOWN)) m_menuIndex = (m_menuIndex + 1) % count;
+    if (IsKeyPressed(KEY_UP)) { m_menuIndex = (m_menuIndex + count - 1) % count; Audio::get().playSfx("hover"); }
+    if (IsKeyPressed(KEY_DOWN)) { m_menuIndex = (m_menuIndex + 1) % count; Audio::get().playSfx("hover"); }
     if (IsKeyPressed(KEY_ESCAPE)) { m_running = false; return; }
 
     Vector2 mouse = getMouse();
@@ -928,11 +947,19 @@ void Game::updateMainMenu() {
             { hovered = i; break; }
     }
 
+    // On entering a row, not while sitting in it. m_lastMenuHover is what makes
+    // this one sound per row rather than one per frame the pointer rests there.
+    if (hovered != m_lastMenuHover) {
+        if (hovered >= 0) Audio::get().playSfx("hover");
+        m_lastMenuHover = hovered;
+    }
+
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
         m_menuIndex = hovered;
         activate = true;
     }
+    if (activate) Audio::get().playSfx("click_heavy");
 
     // Check top-right icon clicks
     int iconSize = 36;
@@ -952,13 +979,18 @@ void Game::updateMainMenu() {
                 m_currentScreen = SCREEN_SINGLEPLAYER;
                 break;
             case 1: // Play Multiplayer
-                m_menuFeedback = "Multiplayer not yet available";
-                m_menuFeedbackTimer = 2.0f;
+                openMultiplayerMenu();
                 break;
             case 2: // Map Editor
                 if (!m_mapEditor) {
                     m_mapEditor = new MapEditor();
+                    // Loads the map synchronously, right here on the main
+                    // thread -- it does not go through the loading screen, so
+                    // nothing else refills the music for however long it takes.
+                    // Same starvation the world loader had; same fix.
+                    Audio::get().beginBackgroundPump();
                     m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
+                    Audio::get().endBackgroundPump();
                 }
                 m_currentScreen = SCREEN_MAP_EDITOR;
                 break;
@@ -968,11 +1000,15 @@ void Game::updateMainMenu() {
                 m_modAdvancedFor = m_modDeleteFor = m_modAiWarnFor = -1;
                 ModManager::get().rescan();
                 m_currentScreen = SCREEN_MODS;
+                Audio::get().playSfx("click_light");
                 break;
             case 4: // Community
                 m_currentScreen = SCREEN_COMMUNITY;
                 break;
-            case 5: // Credits
+            case 5: // Account
+                openAccountMenu();
+                break;
+            case 6: // Credits
                 if (!m_creditsLoaded) loadCredits();
                 m_creditsScroll = 0.0f;
                 m_currentScreen = SCREEN_CREDITS;
@@ -984,6 +1020,7 @@ void Game::updateMainMenu() {
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         if (gearHover) {
             m_inSettings = true;
+            Audio::get().playSfx("click_light");
             m_settingsIndex = 0;
             m_settingsScroll = 0;
         }
@@ -1057,9 +1094,11 @@ void Game::updateSingleplayerMenu() {
     if (isMouseOverConsole()) return;
     int count = SINGLEPLAYER_COUNT;
 
-    if (IsKeyPressed(KEY_UP)) m_menuIndex = (m_menuIndex + count - 1) % count;
-    if (IsKeyPressed(KEY_DOWN)) m_menuIndex = (m_menuIndex + 1) % count;
-    if (IsKeyPressed(KEY_ESCAPE)) { m_currentScreen = SCREEN_MENU; return; }
+    // This submenu is hand-rolled rather than drawn through drawMenuList, which
+    // is why it was the one menu in the game that answered to nothing.
+    if (IsKeyPressed(KEY_UP))   { m_menuIndex = (m_menuIndex + count - 1) % count; Audio::get().playSfx("hover"); }
+    if (IsKeyPressed(KEY_DOWN)) { m_menuIndex = (m_menuIndex + 1) % count;         Audio::get().playSfx("hover"); }
+    if (IsKeyPressed(KEY_ESCAPE)) { Audio::get().playSfx("back"); m_currentScreen = SCREEN_MENU; return; }
 
     Vector2 mouse = getMouse();
     int centerX = m_screenW / 2;
@@ -1080,9 +1119,17 @@ void Game::updateSingleplayerMenu() {
     int backW = MeasureText(backLabel, 22);
     bool backHovered = CheckCollisionPointRec(mouse, { (float)(centerX - backW/2 - 15), (float)(backY - 5), (float)(backW + 30), 34 });
 
+    // On entering a row, not while sitting in it.
+    const int hoverNow = backHovered ? 1000 : hovered;
+    if (hoverNow != m_lastMenuHover) {
+        if (hoverNow >= 0) Audio::get().playSfx("hover");
+        m_lastMenuHover = hoverNow;
+    }
+
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         if (backHovered) {
+            Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
             return;
         }
@@ -1091,6 +1138,7 @@ void Game::updateSingleplayerMenu() {
             activate = true;
         }
     }
+    if (activate) Audio::get().playSfx("click_heavy");
 
     if (activate) {
         m_menuIndex = std::clamp(m_menuIndex, 0, count - 1);
@@ -1538,6 +1586,9 @@ void Game::updateSettingsFromMenu() {
     if (m_keybindFilterActive && m_settingsTab == 3 && !m_waitingForKey && !m_editingValue) {
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c <= 126) m_keybindFilter += (char)c;
             c = GetCharPressed();
         }
@@ -1553,6 +1604,9 @@ void Game::updateSettingsFromMenu() {
     if (m_editingValue) {
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= '0' && c <= '9') m_editBuffer += (char)c;
             else if (c == '.' && m_editBuffer.find('.') == std::string::npos) m_editBuffer += '.';
             c = GetCharPressed();
@@ -1676,7 +1730,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 1)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 1) || isVolumeSetting(m_settingsTab, i)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -1685,10 +1739,19 @@ void Game::updateSettingsFromMenu() {
         }
     }
 
+    // Volume sliders. Runs before the activation block below, because a press
+    // that lands on a slider must drag it and NOT also activate the row it sits
+    // in -- the two hit-test the same rows.
+    bool onVolumeSlider = updateVolumeSliders(startY, itemH, centerX, mmEffScroll);
+
     // Tab switching
     bool left = IsKeyPressed(KEY_LEFT);
     bool right = IsKeyPressed(KEY_RIGHT);
-    bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count && items[m_settingsIndex].isValue;
+    // Volume rows count as values here even though their isValue is false: what
+    // this gates is whether LEFT/RIGHT adjusts the row or flips to the next
+    // tab, and on a volume row it has to adjust.
+    bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count &&
+                   (items[m_settingsIndex].isValue || isVolumeSetting(m_settingsTab, m_settingsIndex));
     bool onFps = (m_settingsTab == 0 && m_settingsIndex == 5);
     bool onResolution = (m_settingsTab == 0 && m_settingsIndex == 4);
 
@@ -1751,6 +1814,8 @@ void Game::updateSettingsFromMenu() {
             int idx = nearestIndex(m_config.flySpeed, FLY_SPEED_VALS, FLY_SPEED_COUNT);
             idx = (idx + dir + FLY_SPEED_COUNT) % FLY_SPEED_COUNT;
             m_config.flySpeed = FLY_SPEED_VALS[idx];
+        } else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
+            adjustVolume(m_settingsIndex, dir * 0.05f);
         }
     }
 
@@ -1774,9 +1839,10 @@ void Game::updateSettingsFromMenu() {
     // FPS cycling
     if (m_settingsIndex == 5 && m_settingsTab == 0 && (left || right)) {
         int idx = fpsTargetToIndex(m_config.fpsTarget);
-        idx = (idx + (right ? 1 : -1) + 14) % 14;
+        idx = (idx + (right ? 1 : -1) + FPS_STEPS) % FPS_STEPS;
         m_config.fpsTarget = indexToFpsTarget(idx);
         applyFpsTarget(m_config.fpsTarget);
+        Audio::get().playSfx("slider_tick", 0.08f);
     }
 
     // AI difficulty cycling
@@ -1784,29 +1850,16 @@ void Game::updateSettingsFromMenu() {
         m_config.aiDifficulty = (m_config.aiDifficulty + (right ? 1 : -1) + AI_DIFFICULTY_COUNT) % AI_DIFFICULTY_COUNT;
     }
 
-    // FPS slider drag
+    // FPS slider drag -- the same control the volume rows use, so grabbing,
+    // stepping and letting go sound and behave identically on both.
     if (m_settingsTab == 0) {
-        int fpsIdx = 5;
-        int sy = startY + (fpsIdx - m_settingsScroll) * itemH;
-        int sliderW = 300;
-        int sliderX = centerX - sliderW / 2;
-        Rectangle sliderRow = { (float)(centerX - 260), (float)sy, 520, (float)itemH };
-
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, sliderRow)) {
-            m_draggingFpsSlider = true;
-        }
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            m_draggingFpsSlider = false;
-        }
-        if (m_draggingFpsSlider && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-            float t = (mouse.x - sliderX) / sliderW;
-            int idx = (int)roundf(t * 13.0f);
-            idx = std::clamp(idx, 0, 13);
-            int newTarget = indexToFpsTarget(idx);
-            if (newTarget != m_config.fpsTarget) {
-                m_config.fpsTarget = newTarget;
-                applyFpsTarget(m_config.fpsTarget);
-            }
+        const Rectangle bar = sliderBarRect(startY + (5 - m_settingsScroll) * itemH,
+                                            centerX);
+        float t = (float)fpsTargetToIndex(m_config.fpsTarget) / (float)(FPS_STEPS - 1);
+        if (sliderInteract(bar, FPS_STEPS, t, m_draggingFpsSlider)) {
+            m_config.fpsTarget =
+                indexToFpsTarget((int)roundf(t * (float)(FPS_STEPS - 1)));
+            applyFpsTarget(m_config.fpsTarget);
         }
     }
 
@@ -1843,9 +1896,17 @@ void Game::updateSettingsFromMenu() {
             }
             else if (m_settingsTab == 4 && m_settingsIndex == 5) { m_config.gameUpdateChecks = true; }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
+            else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
+                if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
+                    *v = VOLUME_DEFAULTS[m_settingsIndex];
+                    applyVolumes(m_config);
+                }
+            }
+            else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT) { m_config.nowPlayingToast = true; }
+            else if (m_settingsTab == AUDIO_TAB && m_settingsIndex == VOLUME_COUNT + 1) { m_config.mapAtmosphere = true; Audio::get().setMapAtmosphere(true); }
             else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) { m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId]; }
             m_config.save(m_configPath);
-        } else if (hovered >= 0) {
+        } else if (hovered >= 0 && !onVolumeSlider) {
             m_settingsIndex = hovered;
             activate = true;
         }
@@ -1859,6 +1920,7 @@ void Game::updateSettingsFromMenu() {
             m_config.save(m_configPath);
         } else if (strcmp(s.label, "Fullscreen") == 0) {
             m_config.fullscreen = !m_config.fullscreen;
+            Audio::get().playSfx(m_config.fullscreen ? "toggle_on" : "toggle_off");
             if (m_config.fullscreen) {
                 m_windowedX = (int)GetWindowPosition().x;
                 m_windowedY = (int)GetWindowPosition().y;
@@ -1875,10 +1937,12 @@ void Game::updateSettingsFromMenu() {
             m_menuBgScroll = 0;
         } else if (strcmp(s.label, "Show Actual Flags") == 0) {
             m_config.showActualFlags = !m_config.showActualFlags;
+            Audio::get().playSfx(m_config.showActualFlags ? "toggle_on" : "toggle_off");
             rebuildFlags();
             if (m_renderer) m_renderer->setCountryFlags(&m_countryFlags);
         } else if (strcmp(s.label, "Debug Mode") == 0) {
             m_config.debugMode = !m_config.debugMode;
+            Audio::get().playSfx(m_config.debugMode ? "toggle_on" : "toggle_off");
             if (!m_config.debugMode) {
                 // Turn off debug overlays when debug mode is disabled
                 m_config.showFps = false;
@@ -1890,16 +1954,32 @@ void Game::updateSettingsFromMenu() {
                     m_settingsScroll = 0;
                 }
             }
+        } else if (strcmp(s.label, "Map Atmosphere") == 0) {
+            m_config.mapAtmosphere = !m_config.mapAtmosphere;
+            Audio::get().playSfx(m_config.mapAtmosphere ? "toggle_on" : "toggle_off");
+            Audio::get().setMapAtmosphere(m_config.mapAtmosphere);
+        } else if (strcmp(s.label, "Now Playing Toast") == 0) {
+            m_config.nowPlayingToast = !m_config.nowPlayingToast;
+            Audio::get().playSfx(m_config.nowPlayingToast ? "toggle_on" : "toggle_off");
+            // Show one straight away when switching it on, so the setting
+            // demonstrates itself instead of waiting for the next track.
+            if (m_config.nowPlayingToast) showNowPlayingToast();
+            else m_toastTimer = 0.0f;
         } else if (strcmp(s.label, "Display FPS") == 0) {
             m_config.showFps = !m_config.showFps;
+            Audio::get().playSfx(m_config.showFps ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "Display Zoom") == 0) {
             m_config.showZoom = !m_config.showZoom;
+            Audio::get().playSfx(m_config.showZoom ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "Console Window") == 0) {
             m_config.showConsole = !m_config.showConsole;
+            Audio::get().playSfx(m_config.showConsole ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "AI Debug") == 0) {
             m_config.aiDebug = !m_config.aiDebug;
+            Audio::get().playSfx(m_config.aiDebug ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "Check mods for updates") == 0) {
             m_config.modUpdateChecks = !m_config.modUpdateChecks;
+            Audio::get().playSfx(m_config.modUpdateChecks ? "toggle_on" : "toggle_off");
             // Off has to mean off *now*, not from the next session: drop
             // whatever earlier checks returned so no "Can be updated" badge
             // outlives the setting that produced it. Clearing on the way on
@@ -1917,6 +1997,7 @@ void Game::updateSettingsFromMenu() {
             m_menuFeedbackTimer = 4.0f;
         } else if (strcmp(s.label, "Check for game updates") == 0) {
             m_config.gameUpdateChecks = !m_config.gameUpdateChecks;
+            Audio::get().playSfx(m_config.gameUpdateChecks ? "toggle_on" : "toggle_off");
             m_menuFeedback = m_config.gameUpdateChecks
                 ? "On — the game will ask its release host for new versions"
                 : "Off — the game will not check for its own updates";
@@ -1929,6 +2010,7 @@ void Game::updateSettingsFromMenu() {
                 m_menuFeedbackTimer = 4.0f;
             } else {
                 m_config.aiLearning = !m_config.aiLearning;
+                Audio::get().playSfx(m_config.aiLearning ? "toggle_on" : "toggle_off");
             }
         } else if (strcmp(s.label, "AI Difficulty") == 0) {
             m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
@@ -2016,6 +2098,10 @@ void Game::cycleProvince(int direction) {
     m_countryProvinceIndex = (m_countryProvinceIndex + direction + n) % n;
     int nextId = m_countryProvinceIds[m_countryProvinceIndex];
     m_lastSelectedProvince = nextId;
+    // Same event as clicking one on the map -- the mouse path plays this in
+    // Game_Update, and this path assigns the selection directly, so it was the
+    // only way to change province without hearing it.
+    Audio::get().playSfx("select_province", 0.05f);
     m_renderer->setSelectedProvince(nextId);
     m_renderer->rebuildSelectionGlow();
     flyToProvince(nextId);

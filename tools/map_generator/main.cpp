@@ -17,6 +17,12 @@ int main(int argc, char* argv[]) {
             cfg.dataDir = argv[++i];
         } else if (arg == "--year" && i + 1 < argc) {
             cfg.popYear = std::stoi(argv[++i]);
+        } else if (arg == "--provinces" && i + 1 < argc) {
+            cfg.targetProvinces = std::stoi(argv[++i]);
+        } else if (arg == "--admin-units") {
+            cfg.useAdminUnits = true;
+        } else if (arg == "--no-admin-units") {
+            cfg.useAdminUnits = false;
         } else if (arg == "--scale" && i + 1 < argc) {
             std::string scale = argv[++i];
             if (scale == "110m") {
@@ -47,13 +53,18 @@ int main(int argc, char* argv[]) {
                       << "  --height H        Map height in pixels (default: 4096)\n"
                       << "  --data-dir DIR    Output directory (default: data)\n"
                       << "  --year Y          Population year for World Bank data (default: 2000)\n"
-                      << "  --scale SCALE     Natural Earth scale: 110m, 50m, 10m (default: 10m)\n";
+                      << "  --scale SCALE     Natural Earth scale: 110m, 50m, 10m (default: 10m)\n"
+                      << "  --provinces N     Scale the total (default: 0 = area formula unscaled)\n"
+                      << "  --admin-units     Subdivide by real admin_1 units (uneven; off by default)\n";
             return 0;
         }
     }
 
     std::cout << "OpenDoctrines Map Generator\n";
     std::cout << "  Population year: " << cfg.popYear << "\n";
+    std::cout << "  Provinces: " << (cfg.useAdminUnits ? "admin_1 units" : "flood fill")
+              << ", allocation " << (cfg.targetProvinces ? std::to_string(cfg.targetProvinces) : "area formula")
+              << "\n";
 
     Generator gen(cfg);
     if (!gen.run()) {

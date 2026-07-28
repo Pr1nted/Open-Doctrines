@@ -1,0 +1,12 @@
+{
+  "title": "Parade Uniform",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": {
+    "tension": 0.45,
+    "energy": 0.5,
+    "valence": -0.3
+  },
+  "weight": 1.0,
+  "$comment": "The main theme. C minor, march-tempo, timpani and low brass under a sax/horn melody with a solo violin over the top -- ceremonial rather than celebratory, which is why valence sits below zero. Listed for every context because it is currently the only piece; when there are others, narrowing this to [\"menu\"] is what will let the mood picker do real work in-game. Editable source: data/audio/midi/Parade Uniform.mid"
+}

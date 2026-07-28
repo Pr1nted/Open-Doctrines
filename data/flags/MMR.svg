@@ -4,9 +4,17 @@
   <rect fill="#EA2839" height="4" width="18" y="8"/>
   <g transform="translate(9,6.422) scale(4.422)">
     <polygon fill="#FFF" id="pt" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0"/>
-    <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0" transform="rotate(-144.000000)"/>
-    <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0" transform="rotate(-72.000000)"/>
-    <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0" transform="rotate(72.000000)"/>
-    <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0" transform="rotate(144.000000)"/>
+    <g transform="rotate(-144.000000)">
+      <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0"/>
+    </g>
+    <g transform="rotate(-72.000000)">
+      <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0"/>
+    </g>
+    <g transform="rotate(72.000000)">
+      <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0"/>
+    </g>
+    <g transform="rotate(144.000000)">
+      <polygon fill="#FFF" points="-0.3249196962329062,0 0,-1 0.3249196962329062,0"/>
+    </g>
   </g>
 </svg>

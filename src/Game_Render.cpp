@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
 #include "renderer/FlagRenderer.h"
@@ -405,6 +406,7 @@ void Game::drawCountryPanel() {
                         if (clickedRow == m_shipListFocusIndex) {
                             // Second click: open this ship (single ship view)
                             int shipIdx = m_selectedShipIndices[clickedRow];
+                            Audio::get().playSfx("select_province", 0.05f);
                             m_selectedShipIndices.clear();
                             m_selectedShipIndices.push_back(shipIdx);
                             m_shipListFocusIndex = -1;
@@ -412,6 +414,7 @@ void Game::drawCountryPanel() {
                             buildCountryShipList(shipIdx);
                         } else {
                             m_shipListFocusIndex = clickedRow;
+                            Audio::get().playSfx("click_light");
                         }
                     } else {
                         m_shipListFocusIndex = -1;
@@ -946,6 +949,22 @@ void Game::drawCountryPanel() {
         int fs = 11;
         int tw = MeasureText(label, fs);
         DrawText(label, x + (w - tw) / 2, y + (h - fs) / 2, fs, tc);
+
+        // Centralised on purpose: seventeen call sites reach this lambda, and
+        // wiring the sound at each of them is seventeen chances to forget one.
+        const int id = x * 73856093 ^ y * 19349663 ^ w * 83492791;
+        if (hovered && m_lastHoverBtn != id) {
+            m_lastHoverBtn = id;
+            Audio::get().playSfx("hover");
+        }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) &&
+            CheckCollisionPointRec(mse, r)) {
+            // A disabled button still answers -- saying no is feedback too.
+            Audio::get().playSfx(disabled ? "deny"
+                                          : (m_btnSfxOverride ? m_btnSfxOverride
+                                                              : "click_heavy"));
+        }
+        m_btnSfxOverride = nullptr;   // one button only, never the next one
         return hovered && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
     };
 
@@ -1063,6 +1082,16 @@ void Game::drawCountryPanel() {
                     bg = Color{30, 30, 50, 220}; border = Color{80, 80, 120, 200};
                 }
                 if (pending) { bg = Color{40, 30, 10, 220}; border = Color{200, 160, 50, 200}; }
+                // Each diplomatic act has its own recording. Cancelling a
+                // pending one is not the act itself, so that keeps the plain
+                // click -- as do break_* and anything else unnamed.
+                if (!pending) {
+                    if      (ab.action == "declare_war")        m_btnSfxOverride = "declare_war";
+                    else if (ab.action == "request_alliance")   m_btnSfxOverride = "request_alliance";
+                    else if (ab.action == "request_nap")        m_btnSfxOverride = "request_nap";
+                    else if (ab.action == "request_guarantee")  m_btnSfxOverride = "request_guarantee";
+                    else if (ab.action == "request_ceasefire")  m_btnSfxOverride = "request_ceasefire";
+                }
                 if (drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border) && !disabled) {
                     if (pending) cancelPending(ab.action);
                     else if (ab.action == "request_ceasefire") {
@@ -1155,6 +1184,7 @@ void Game::drawCountryPanel() {
         if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH, upgLabel, upgDisabled, upgBg, upgBd) && !upgDisabled && !atHardCap && !atResearchCap && canAfford && !upgradePending) {
             treasury -= upgradeCost;
             m_pendingUpgrades.push_back({selPid, "industry", nextLv, turnsToBuild});
+            Audio::get().playSfx("build_industry", 0.04f);
         }
 
         // Specialization: dropdown on click
@@ -1289,6 +1319,9 @@ void Game::drawCountryPanel() {
         if (drawActBtn(panelX + pad, btnStartY, panelW - pad * 2, btnH, label, btnDisabled, bg, bd) && !btnDisabled && !atHardCap && !atResearchCap && canAfford && !fortPending) {
             treasury -= fortCost;
             m_pendingUpgrades.push_back({selPid, "fortification", nextLv, turnsToBuild});
+            // At the order, not at completion: this is the click's feedback.
+            // Finishing is already announced by a notification.
+            Audio::get().playSfx("build_fortification", 0.04f);
         }
     }
 
@@ -1733,6 +1766,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 TextFormat("Build Port%s ($60, 3t)", noPortReason), !canBuildPort, pBg, pBd) && canBuildPort) {
                 treasury -= 60.0f;
                 m_pendingUpgrades.push_back({selPid, "port", 1, 3});
+                Audio::get().playSfx("build_port", 0.04f);
             }
         }
     }
@@ -1853,9 +1887,13 @@ void Game::draw() {
     BeginDrawing();
     ClearBackground(BLACK);
     // Guard: if not in playing state, skip game rendering to avoid accessing freed data
-    if (m_currentScreen != SCREEN_PLAYING) { EndDrawing(); return; }
+    // endFrame() rather than EndDrawing(): this is the map's own frame, outside
+    // run()'s draw blocks, and the now-playing toast has to land on it too.
+    // Only the closing pair -- the extra pairs drawInner() emits mid-frame are
+    // not frame ends and must not draw an overlay.
+    if (m_currentScreen != SCREEN_PLAYING) { endFrame(); return; }
     drawInner();
-    EndDrawing();
+    endFrame();
 }
 
 void Game::drawInner() {
@@ -2820,13 +2858,25 @@ void Game::drawInner() {
         int sbX = 12, sbY = m_screenH - 58;
         Rectangle ptRect = {(float)sbX, (float)sbY, (float)sbBtnW, (float)sbBtnH};
         if (CheckCollisionPointRec(sm, ptRect)) {
-            showLoadingScreen();
-            setLoadingProgress(0.0f, "Processing turn...");
-            EndDrawing();
-            processTurn();
-            hideLoadingScreen();
-            BeginDrawing();
-            ClearBackground(BLACK);
+            if (mpIsClient()) {
+                // A client never resolves a turn: it submits and waits for the
+                // world the host produced. Resolving locally would compute a
+                // second answer, and the two machines would diverge.
+                if (!m_mpWaitingForTurn) mpSubmitTurn();
+            } else if (mpIsHost()) {
+                // The host's own orders are already in this world -- but the
+                // lobby has to be TOLD, or the host counts as a player who
+                // never submitted and the turn waits on itself forever.
+                mpHostReady();
+            } else {
+                showLoadingScreen();
+                setLoadingProgress(0.0f, "Processing turn...");
+                EndDrawing();
+                processTurn();
+                hideLoadingScreen();
+                BeginDrawing();
+                ClearBackground(BLACK);
+            }
         }
     }
     // ─── Pending action indicators on provinces ─────
@@ -3545,8 +3595,23 @@ void Game::drawInner() {
         bool ptHov = !m_paused && CheckCollisionPointRec(sm, ptRect);
         DrawRectangleRounded(ptRect, 0.1f, 6, ptHov ? Color{40,100,60,220} : Color{30,70,45,220});
         DrawRectangleRoundedLines(ptRect, 0.1f, 6, Color{60,150,90,180});
-        int ptw = MeasureText("Process Turn", 16);
-        DrawText("Process Turn", sbX+(sbBtnW-ptw)/2, sbY+10, 16, WHITE);
+        // What the button actually does depends on who you are: a client says
+        // "ready", the host says "my orders are in" -- and neither resolves
+        // anything by itself.
+        const char* ptLabel = mpIsClient() ? (m_mpWaitingForTurn ? "Waiting..." : "Ready")
+                            : mpIsHost()   ? "Ready"
+                                           : "Process Turn";
+        int ptw = MeasureText(ptLabel, 16);
+        DrawText(ptLabel, sbX+(sbBtnW-ptw)/2, sbY+10, 16, WHITE);
+
+        // ─── who the turn is waiting on, and for how long ───
+        //
+        // In a network game the single most useful thing on screen is why the
+        // turn has not moved. Without it, a stalled campaign is indis-
+        // tinguishable from a broken one.
+        if (mpIsHost() || mpIsClient()) {
+            drawMpTurnPanel(sbX, sbY - 12);
+        }
     }
     // ─── (TURN_PROCESSED removed — not used) ───
     if (m_inPolitics || m_inEconomy || m_inClaims || m_inResearch) {

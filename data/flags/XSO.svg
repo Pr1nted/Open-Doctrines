@@ -5,23 +5,41 @@
   <g transform="translate(600,305.72949)">
     <g id="a">
       <path d="m0-60v60h30" id="b" transform="rotate(18,0,-60)"/>
-      <path d="m0-60v60h30" transform="rotate(18.000000,0.000000,-60.000000) scale(-1.000000,1.000000)"/>
+      <g height="100%" transform="scale(-1.000000,1.000000)" width="100%">
+        <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+      </g>
     </g>
-    <g transform="rotate(72.000000)">
-      <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
-      <path d="m0-60v60h30" transform="rotate(18.000000,0.000000,-60.000000) scale(-1.000000,1.000000)"/>
+    <g height="100%" transform="rotate(72.000000)" width="100%">
+      <g>
+        <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        <g height="100%" transform="scale(-1.000000,1.000000)" width="100%">
+          <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        </g>
+      </g>
     </g>
-    <g transform="rotate(144.000000)">
-      <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
-      <path d="m0-60v60h30" transform="rotate(18.000000,0.000000,-60.000000) scale(-1.000000,1.000000)"/>
+    <g height="100%" transform="rotate(144.000000)" width="100%">
+      <g>
+        <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        <g height="100%" transform="scale(-1.000000,1.000000)" width="100%">
+          <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        </g>
+      </g>
     </g>
-    <g transform="rotate(216.000000)">
-      <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
-      <path d="m0-60v60h30" transform="rotate(18.000000,0.000000,-60.000000) scale(-1.000000,1.000000)"/>
+    <g height="100%" transform="rotate(216.000000)" width="100%">
+      <g>
+        <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        <g height="100%" transform="scale(-1.000000,1.000000)" width="100%">
+          <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        </g>
+      </g>
     </g>
-    <g transform="rotate(-72.000000)">
-      <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
-      <path d="m0-60v60h30" transform="rotate(18.000000,0.000000,-60.000000) scale(-1.000000,1.000000)"/>
+    <g height="100%" transform="rotate(-72.000000)" width="100%">
+      <g>
+        <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        <g height="100%" transform="scale(-1.000000,1.000000)" width="100%">
+          <path d="m0-60v60h30" transform="rotate(18,0,-60)"/>
+        </g>
+      </g>
     </g>
   </g>
   <g fill="#ffffff" transform="matrix(.17045451 0 0 .15895092 365.24336 4.3512839)">

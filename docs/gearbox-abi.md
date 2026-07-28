@@ -1528,7 +1528,7 @@ struct is safe against a newer host that has appended fields.
 | 16 | `platform` | `u8` | enum:platform |
 | 17 | `is_web` | `u8` | 1 under Emscripten. Fuel is NOT enforced there. |
 | 18 | `is_headless` | `u8` | 1 when there is no renderer. UI imports no-op. |
-| 19 | `reserved0` | `u8` | — |
+| 19 | `net_role` | `u8` | enum:net_role. 0 in singleplayer, which is what an older mod reading this byte as reserved already saw. |
 | 20 | `screen_w` | `u32` | 0 when headless |
 | 24 | `screen_h` | `u32` | 0 when headless |
 
@@ -1537,6 +1537,8 @@ struct is safe against a newer host that has appended fields.
 **`log_level`** — `TRACE` = 0, `INFO` = 1, `WARN` = 2, `ERROR` = 3
 
 **`platform`** — `UNKNOWN` = 0, `WINDOWS` = 1, `MACOS` = 2, `LINUX` = 3, `WEB` = 4
+
+**`net_role`** — `STANDALONE` = 0, `CLIENT` = 1, `SERVER` = 2, `HOST_PLAYER` = 3
 
 ## Constants
 

@@ -1,5 +1,6 @@
 #include "ModManager.h"
 #include "ModHost.h"
+#include "../net/ModAttest.h"
 
 #include "json.hpp"
 
@@ -193,6 +194,22 @@ void ModManager::rescan() {
     load();      // re-apply persisted enable/grant state for newly seen mods
 }
 
+std::vector<ModAttestEntry> ModManager::attestation() const {
+    std::vector<ModAttestEntry> out;
+    for (const auto& e : m_mods) {
+        // Only what is actually running. A mod sitting on disk disabled is not
+        // part of this game and claiming it would be a lie in the honest
+        // direction, which is still a lie.
+        if (e.state != ModState::Active || !e.package || !e.manifestValid) continue;
+        out.push_back(ModAttestEntry{
+            e.manifest.id, e.manifest.version, e.package->sha256(), e.manifest.side,
+        });
+    }
+    std::sort(out.begin(), out.end(),
+              [](const ModAttestEntry& a, const ModAttestEntry& b) { return a.id < b.id; });
+    return out;
+}
+
 // ------------------------------------------------------------- lifecycle ---
 
 void ModManager::activate(ModEntry& e) {
@@ -214,9 +231,25 @@ void ModManager::activate(ModEntry& e) {
         return;
     }
 
+    // A server-side mod has no business running on a client. Not a failure --
+    // the player did nothing wrong and there is nothing to fix -- so it stays
+    // Disabled with a diagnostic that explains rather than accuses.
+    if (m_multiplayer && !m_authoritative && e.manifest.side == ModSide::Server) {
+        e.state = ModState::Disabled;
+        e.diagnostic = "server-side mod; it runs on the host, not here";
+        return;
+    }
+
     std::string err;
     // Core is never revocable, so it is always in the effective grant set.
     uint32_t grants = (e.grants & e.manifest.modules) | MODULE_CORE;
+
+    // A client-side mod cannot write game state or run turn hooks while a
+    // server owns the world. Applied here, as a mask over the same word the
+    // Advanced panel edits, so there is exactly one definition of what a mod
+    // may touch rather than a second check somewhere downstream.
+    grants &= modSideGrantMask(e.manifest.side, m_multiplayer);
+
     e.instance = ModRuntime::get().instantiate(*e.package, grants, err);
     if (!e.instance) { fail(e, err); return; }
 

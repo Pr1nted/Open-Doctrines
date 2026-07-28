@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "SaveManager.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
@@ -582,6 +583,7 @@ void Game::updateWorldBrowser() {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (CheckCollisionPointRec(mouse, delBtn)) {
+                Audio::get().playSfx("confirm");
                 // Delete the world file
                 std::string path = m_dataDir + "saves/" + m_worldInfos[m_deleteWorldIndex].filename;
                 std::remove(path.c_str());
@@ -592,6 +594,7 @@ void Game::updateWorldBrowser() {
                     m_fileScroll = 0;
                 }
             } else if (CheckCollisionPointRec(mouse, canBtn)) {
+                Audio::get().playSfx("back");
                 m_showDeleteConfirm = false;
                 m_deleteWorldIndex = -1;
             }
@@ -618,11 +621,13 @@ void Game::updateWorldBrowser() {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (CheckCollisionPointRec(mouse, histBtn)) {
+                Audio::get().playSfx("click_light");
                 std::string path = m_dataDir + "saves/" + m_worldInfos[m_worldSettingsIndex].filename;
                 m_showWorldSettings = false;
                 m_worldSettingsIndex = -1;
                 openHistoryScreen(path);
             } else if (CheckCollisionPointRec(mouse, renameBtn)) {
+                Audio::get().playSfx("click_light");
                 // Open rename dialog
                 m_renameWorldOldName = m_worldInfos[m_worldSettingsIndex].worldName;
                 m_renameWorldNewName = m_renameWorldOldName;
@@ -630,6 +635,7 @@ void Game::updateWorldBrowser() {
                 m_showRenameDialog = true;
                 m_showWorldSettings = false;
             } else if (CheckCollisionPointRec(mouse, closeBtn)) {
+                Audio::get().playSfx("back");
                 m_showWorldSettings = false;
                 m_worldSettingsIndex = -1;
             }
@@ -648,6 +654,9 @@ void Game::updateWorldBrowser() {
         // Handle text input
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_renameWorldNewName.size() < 64) {
                 // Sanitize: disallow path separators
                 if (c != '/' && c != '\\' && c != ':')
@@ -707,6 +716,7 @@ void Game::updateWorldBrowser() {
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
             Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
             if (CheckCollisionPointRec(mouse, confBtn) && !m_renameWorldNewName.empty()) {
+                Audio::get().playSfx("confirm");
                 // Handle duplicate names by appending (1), (2), etc.
                 std::string baseName = m_renameWorldNewName;
                 std::string savePath = m_dataDir + "saves/" + m_renameWorldNewName + ".odsv";
@@ -741,6 +751,7 @@ void Game::updateWorldBrowser() {
                 return;
             }
             if (CheckCollisionPointRec(mouse, canBtn)) {
+                Audio::get().playSfx("back");
                 m_showRenameDialog = false;
                 m_renameWorldOldName.clear();
                 m_renameWorldNewName.clear();
@@ -790,6 +801,7 @@ void Game::updateWorldBrowser() {
     // Back button click
     Rectangle backRect = {20, (float)(m_screenH - 48), (float)(MeasureText("< Back", 24) + 24), (float)(24 + 12)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
+        Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
         return;
     }
@@ -810,11 +822,13 @@ void Game::updateWorldBrowser() {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (CheckCollisionPointRec(mouse, gearRect)) {
+                Audio::get().playSfx("click_light");
                 m_worldSettingsIndex = i;
                 m_showWorldSettings = true;
                 return;
             }
             if (CheckCollisionPointRec(mouse, delRect)) {
+                Audio::get().playSfx("click_light");
                 m_deleteWorldIndex = i;
                 m_showDeleteConfirm = true;
                 return;
@@ -829,6 +843,7 @@ void Game::updateWorldBrowser() {
     // Activate: click or enter/space
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (clickRow >= 0) {
+        Audio::get().playSfx("click_light");
         m_fileIndex = clickRow;
         activate = true;
     }
@@ -1561,6 +1576,21 @@ void Game::drawMapBrowser() {
 
 void Game::updateMapBrowser() {
     if (isMouseOverConsole()) return;
+
+    // The info and licence popups are the only two dialogs on this screen whose
+    // buttons are handled in drawMapBrowser() rather than here. Without this
+    // guard the click that presses one of their buttons ALSO reaches the map
+    // card underneath in the same frame, which starts a new world: pressing
+    // "View License" opened the licence and the new-world dialog on top of it,
+    // pressing "Close" started a world, and cancelling that revealed the popup
+    // still sitting there -- which looked like being thrown back to map info.
+    //
+    // The other three dialogs here consume their own input below and return, so
+    // they need no entry in this list. Moving the popups' input handling out of
+    // the draw pass would be the tidier fix; this is the correct one either way,
+    // because a modal must stop the screen behind it from seeing the click.
+    if (m_showMapInfoPopup || m_showLicensePopup) return;
+
     Vector2 mouse = getMouse();
     int centerX = m_screenW / 2;
 
@@ -1568,6 +1598,9 @@ void Game::updateMapBrowser() {
     if (m_showNewWorldDialog) {
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_newWorldName.size() < 64) {
                 // Sanitize: disallow path separators
                 if (c != '/' && c != '\\' && c != ':')
@@ -1610,6 +1643,7 @@ void Game::updateMapBrowser() {
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
             Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
             if (CheckCollisionPointRec(mouse, confBtn) && !m_newWorldName.empty()) {
+                Audio::get().playSfx("confirm");
                 // Handle duplicate names by appending (1), (2), etc.
                 std::string baseName = m_newWorldName;
                 std::string savePath = m_dataDir + "saves/" + m_newWorldName + ".odsv";
@@ -1627,6 +1661,7 @@ void Game::updateMapBrowser() {
                 return;
             }
             if (CheckCollisionPointRec(mouse, canBtn)) {
+                Audio::get().playSfx("back");
                 m_showNewWorldDialog = false;
                 m_newWorldMapPath.clear();
                 m_newWorldName.clear();
@@ -1640,6 +1675,9 @@ void Game::updateMapBrowser() {
     if (m_showImportNameDialog) {
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_importName.size() < 64) {
                 // Sanitize: disallow path separators
                 if (c != '/' && c != '\\' && c != ':')
@@ -1668,10 +1706,12 @@ void Game::updateMapBrowser() {
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
             Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
             if (CheckCollisionPointRec(mouse, confBtn) && !m_importName.empty()) {
+                Audio::get().playSfx("confirm");
                 executeMapImport();
                 return;
             }
             if (CheckCollisionPointRec(mouse, canBtn)) {
+                Audio::get().playSfx("back");
                 m_showImportNameDialog = false;
                 m_importPath.clear();
                 m_importName.clear();
@@ -1692,6 +1732,7 @@ void Game::updateMapBrowser() {
         for (int t = 0; t < tabCount; ++t) {
             Rectangle tabRect = {(float)(tabStartX + t * tabW), (float)tabY, (float)tabW, 36};
             if (CheckCollisionPointRec(mouse, tabRect)) {
+                Audio::get().playSfx("tab_switch");
                 m_mapTabIndex = t;
                 m_mapIndex = 0;
                 m_mapScroll = 0;
@@ -1712,6 +1753,7 @@ void Game::updateMapBrowser() {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (CheckCollisionPointRec(mouse, delBtn)) {
+                Audio::get().playSfx("confirm");
                 // Delete custom map directory
                 if (m_mapDeleteIndex >= 0 && m_mapDeleteIndex < (int)m_mapEntries.size()) {
                     const MapEntry& target = m_mapEntries[m_mapDeleteIndex];
@@ -1740,6 +1782,7 @@ void Game::updateMapBrowser() {
                 m_showMapDeleteConfirm = false;
                 m_mapDeleteIndex = -1;
             } else if (CheckCollisionPointRec(mouse, canBtn)) {
+                Audio::get().playSfx("back");
                 m_showMapDeleteConfirm = false;
                 m_mapDeleteIndex = -1;
             }
@@ -1797,6 +1840,7 @@ void Game::updateMapBrowser() {
     // Back button
     Rectangle backRect = {20, (float)(m_screenH - 44), (float)(MeasureText("< Back", 24) + 24), (float)(24 + 10)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
+        Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
         return;
     }
@@ -1811,6 +1855,7 @@ void Game::updateMapBrowser() {
 
         if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) continue;
         if (!CheckCollisionPointRec(mouse, cardRect)) continue;
+        Audio::get().playSfx("click_light");
 
         if (showImportBtn && vi == importIdx) {
             // Import .odmap via native file dialog
@@ -1842,6 +1887,7 @@ void Game::updateMapBrowser() {
             int delY = y + cardH - 36;
             Rectangle delRect = {(float)delX, (float)delY, 30, 30};
             if (CheckCollisionPointRec(mouse, delRect)) {
+                Audio::get().playSfx("click_light");
                 m_mapDeleteIndex = visible[vi];
                 m_showMapDeleteConfirm = true;
                 return;
@@ -1854,6 +1900,7 @@ void Game::updateMapBrowser() {
         int infoRadius = 14;
         Rectangle infoRect = {(float)(infoX - infoRadius), (float)(infoY - infoRadius), (float)(infoRadius * 2), (float)(infoRadius * 2)};
         if (CheckCollisionPointRec(mouse, infoRect)) {
+            Audio::get().playSfx("click_light");
             m_mapInfoIndex = visible[vi];
             m_showMapInfoPopup = true;
             return;
@@ -1966,6 +2013,7 @@ void Game::updateFileBrowser() {
     int backW = MeasureText("< Back", 24);
     Rectangle backRect = {20, (float)(m_screenH - 50), (float)(backW + 24), (float)(24 + 12)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(getMouse(), backRect)) {
+        Audio::get().playSfx("back");
         m_currentScreen = m_browsingSaves ? SCREEN_SINGLEPLAYER : SCREEN_MAP_SELECT;
         return;
     }
@@ -1990,6 +2038,7 @@ void Game::updateFileBrowser() {
 
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
+        Audio::get().playSfx("click_light");
         m_fileIndex = hovered;
         activate = true;
     }

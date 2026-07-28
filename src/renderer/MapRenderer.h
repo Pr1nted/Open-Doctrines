@@ -56,6 +56,10 @@ public:
     void setShowResource(int idx) { m_showResource = idx; }
     int  getShowResource() const { return m_showResource; }
     float getZoom() const { return m_camera.zoom; }
+    // Fully-zoomed-out level, i.e. the whole map on screen. Depends on the map
+    // and window size, so anything that wants "how far out are we, really"
+    // has to measure against this rather than against a fixed number.
+    float getMinZoom() const { return m_minZoom; }
     void computeBorderTexture(const Image& provImage);
     void screenToPixel(float sx, float sy, int& px, int& py) const;
     void pixelToScreen(float px, float py, float& sx, float& sy) const;

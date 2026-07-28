@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "SaveManager.h"
 #include "Keybinds.h"
@@ -291,7 +292,16 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
         case LOAD_CREATE_SAVE: {
             setLoadingProgress(0.95f, "Creating save file...");
             if (m_loadingShouldCreateSave && !m_loadingWorldName.empty()) {
-                std::string saveDir = m_dataDir + "saves/";
+                // Network games live apart from singleplayer worlds. They are
+                // not interchangeable -- a multiplayer save is one machine's
+                // view of a game somebody else is the authority for, and
+                // loading one from Load World would look like a normal world
+                // and behave like nothing at all.
+                std::string saveDir = m_mpLoad != MpLoad::None
+                    ? m_dataDir + "saves/multiplayer/"
+                    : m_dataDir + "saves/";
+                std::error_code mkec;
+                std::filesystem::create_directories(saveDir, mkec);
                 std::string worldName = m_loadingWorldName;
                 std::string savePath = saveDir + worldName + ".odsv";
                 struct stat chkStat;
@@ -439,6 +449,13 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
             setLoadingProgress(1.0f, "Select your country!");
             m_loadingPhase = LOAD_DONE;
             hideLoadingScreen();
+            // A multiplayer load ends somewhere else entirely: a host goes back
+            // to its lobby, a joiner goes straight into the game as the country
+            // the server gave it. Neither wants the country-select screen.
+            if (m_mpLoad != MpLoad::None) {
+                mpOnWorldLoaded();
+                break;
+            }
             if (m_loadingShouldCreateSave) {
                 // New game: show country selection (no saved player country yet)
                 m_currentScreen = SCREEN_COUNTRY_SELECT;
@@ -502,6 +519,12 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
 void Game::setLoadingProgress(float progress, const std::string& status) {
     m_loadingProgress = std::clamp(progress, 0.0f, 1.0f);
     m_loadingStatus = status;
+
+    // Every loading phase announces itself through here, which makes this the
+    // one place that reliably sits between two blocks of heavy work. The main
+    // loop is not running during those, so without this the music stream is
+    // never refilled and stutters its way through the whole loading screen.
+    Audio::get().pump();
 }
 
 void Game::drawLoadingScreen() {
@@ -2475,85 +2498,68 @@ bool Game::loadSaveFile(const std::string& savePath) {
     return true;
 }
 
-bool Game::replaySaveTurns(const std::string& savePath) {
-    SaveMetadata meta;
-    try {
-        meta = SaveManager::readMetadata(savePath);
-    } catch (...) {
-        std::cerr << "  Failed to read save metadata" << std::endl;
-        return false;
+/**
+ * Apply one turn's changes to the world.
+ *
+ * Lifted out of replaySaveTurns() because a multiplayer client needs exactly
+ * this: the host sends turn deltas in the same `.odsv` binary form a save
+ * stores, and "bring the world to turn N" is the same operation whether the
+ * deltas came off disk or off a socket. Having two copies of it would be having
+ * two answers to what a delta means.
+ */
+void Game::applyTurnDelta(const TurnDelta& delta) {
+    // Province changes
+    for (auto& pd : delta.provinces) {
+        int pid = pd.provinceId;
+        Province* prov = m_provinces.getProvinceById(pid);
+        if (!prov) continue;
+        if (pd.ownerChanged)          prov->countryId = pd.newOwner;
+        if (pd.populationChanged) {
+            m_provincePopulations[pid] = pd.newPopulation;
+            if ((size_t)pid < m_provincePopArray.size())
+                m_provincePopArray[pid] = pd.newPopulation;
+        }
+        if (pd.industryLevelChanged)  m_provinceIndustry[pid].level = pd.newIndustryLevel;
+        if (pd.fortificationChanged)  m_provinceIndustry[pid].fortification = pd.newFortification;
+        if (pd.incomeChanged)         m_provinceIndustry[pid].income = pd.newIncome;
+        if (pd.resourceIncomeChanged) m_provinceIndustry[pid].resourceIncome = pd.newResourceIncome;
+        if (pd.popIncomeChanged)      m_provinceIndustry[pid].popIncome = pd.newPopIncome;
+        if (pd.popModifierChanged)    m_provinceIndustry[pid].popModifier = pd.newPopModifier;
     }
-
-    int turnCount = meta.turnCount;
-    std::cout << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
-
-    // Must happen BEFORE the deltas are applied: those deltas set province
-    // owners to rebel country ids, and if those countries don't exist yet the
-    // territory resolves to nothing (no owner, not even UNC/BLC).
-    restoreRebels(savePath);
-
-    for (int t = 1; t <= turnCount; t++) {
-        TurnDelta delta = SaveManager::readTurn(savePath, t);
-        if (delta.turnNumber != t) {
-            std::cerr << "  Turn mismatch at " << t << std::endl;
-            continue;
-        }
-        // Apply province changes
-        for (auto& pd : delta.provinces) {
-            int pid = pd.provinceId;
-            Province* prov = m_provinces.getProvinceById(pid);
-            if (!prov) continue;
-            if (pd.ownerChanged)          prov->countryId = pd.newOwner;
-            if (pd.populationChanged) {
-                m_provincePopulations[pid] = pd.newPopulation;
-                if ((size_t)pid < m_provincePopArray.size())
-                    m_provincePopArray[pid] = pd.newPopulation;
-            }
-            if (pd.industryLevelChanged)  m_provinceIndustry[pid].level = pd.newIndustryLevel;
-            if (pd.fortificationChanged)  m_provinceIndustry[pid].fortification = pd.newFortification;
-            if (pd.incomeChanged)         m_provinceIndustry[pid].income = pd.newIncome;
-            if (pd.resourceIncomeChanged) m_provinceIndustry[pid].resourceIncome = pd.newResourceIncome;
-            if (pd.popIncomeChanged)      m_provinceIndustry[pid].popIncome = pd.newPopIncome;
-            if (pd.popModifierChanged)    m_provinceIndustry[pid].popModifier = pd.newPopModifier;
-        }
-        // Apply ship changes
-        for (auto& sd : delta.ships) {
-            if (sd.shipIndex >= (int)m_ships.size()) continue;
-            auto& ship = m_ships[sd.shipIndex];
-            if (sd.latChanged)   ship.lat = sd.newLat;
-            if (sd.lonChanged)   ship.lon = sd.newLon;
-            if (sd.healthChanged) ship.health = sd.newHealth;
-            if (sd.crewChanged)  ship.crew = sd.newCrew;
-            if (sd.countryIdChanged) ship.countryId = sd.newCountryId;
-        }
-        // Apply army changes
-        for (auto& ad : delta.armies) {
-            if (ad.units.empty()) {
-                m_provinceArmies.erase(ad.provinceId);
-            } else {
-                std::vector<ArmyUnit> units;
-                for (auto& u : ad.units) {
-                    units.push_back({u.countryId, u.count});
-                }
-                m_provinceArmies[ad.provinceId] = std::move(units);
-            }
-        }
-        // Apply research/pacification state (recorded per-turn in .dat)
-        m_researchAllocation = delta.researchAllocation;
-        m_pacificationAllocation = delta.pacificationAllocation;
-        m_researchActiveNode = delta.researchActiveNode;
-        m_researchPoints = delta.researchPoints;
+    // Ship changes
+    for (auto& sd : delta.ships) {
+        if (sd.shipIndex >= (int)m_ships.size()) continue;
+        auto& ship = m_ships[sd.shipIndex];
+        if (sd.latChanged)   ship.lat = sd.newLat;
+        if (sd.lonChanged)   ship.lon = sd.newLon;
+        if (sd.healthChanged) ship.health = sd.newHealth;
+        if (sd.crewChanged)  ship.crew = sd.newCrew;
+        if (sd.countryIdChanged) ship.countryId = sd.newCountryId;
     }
+    // Army changes
+    for (auto& ad : delta.armies) {
+        if (ad.units.empty()) {
+            m_provinceArmies.erase(ad.provinceId);
+        } else {
+            std::vector<ArmyUnit> units;
+            for (auto& u : ad.units) {
+                units.push_back({u.countryId, u.count});
+            }
+            m_provinceArmies[ad.provinceId] = std::move(units);
+        }
+    }
+    // Research/pacification state (recorded per-turn in .dat)
+    m_researchAllocation = delta.researchAllocation;
+    m_pacificationAllocation = delta.pacificationAllocation;
+    m_researchActiveNode = delta.researchActiveNode;
+    m_researchPoints = delta.researchPoints;
+}
 
-    // Safety net for saves that predate rebel persistence (or any gap): a
-    // province may now be owned by a rebel cid that restoreRebels() couldn't
-    // load, because the save has no rebels.json. Without a country for that
-    // cid the territory renders as grey "cid>0, not found" limbo. Synthesize a
-    // placeholder country for every such cid so it at least shows as a
-    // distinct, coloured breakaway state instead of broken grey.
-    synthesizeMissingRebels();
-
-    // Rebuild pixel-level ownership after province ownership replay
+/**
+ * Rebuild pixel-level ownership and the border gradient after province owners
+ * have moved. Needed after replaying deltas, from a save or from a host.
+ */
+void Game::rebuildOwnershipPixels() {
     m_provinceCountryLookup.assign(m_provinceCountryLookup.size(), 0);
     for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
         if ((size_t)pid < m_provinceCountryLookup.size())
@@ -2620,6 +2626,44 @@ bool Game::replaySaveTurns(const std::string& savePath) {
             }
         }
     }
+
+}
+
+bool Game::replaySaveTurns(const std::string& savePath) {
+    SaveMetadata meta;
+    try {
+        meta = SaveManager::readMetadata(savePath);
+    } catch (...) {
+        std::cerr << "  Failed to read save metadata" << std::endl;
+        return false;
+    }
+
+    int turnCount = meta.turnCount;
+    std::cout << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
+
+    // Must happen BEFORE the deltas are applied: those deltas set province
+    // owners to rebel country ids, and if those countries don't exist yet the
+    // territory resolves to nothing (no owner, not even UNC/BLC).
+    restoreRebels(savePath);
+
+    for (int t = 1; t <= turnCount; t++) {
+        TurnDelta delta = SaveManager::readTurn(savePath, t);
+        if (delta.turnNumber != t) {
+            std::cerr << "  Turn mismatch at " << t << std::endl;
+            continue;
+        }
+        applyTurnDelta(delta);
+    }
+
+    // Safety net for saves that predate rebel persistence (or any gap): a
+    // province may now be owned by a rebel cid that restoreRebels() couldn't
+    // load, because the save has no rebels.json. Without a country for that
+    // cid the territory renders as grey "cid>0, not found" limbo. Synthesize a
+    // placeholder country for every such cid so it at least shows as a
+    // distinct, coloured breakaway state instead of broken grey.
+    synthesizeMissingRebels();
+
+    rebuildOwnershipPixels();
 
     // Load full state snapshot (pending orders, claims, research, alignment, etc.)
     if (!savePath.empty()) {

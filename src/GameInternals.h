@@ -6,44 +6,72 @@
 struct Config;
 struct Setting { const char* label; bool isValue; int actionId; };
 
+// NOTE ON THE ARRAYS BELOW: their bounds are deliberately left off.
+//
+// A bound written here does not describe the array -- it DEFINES it. C++ takes
+// an omitted bound in the definition from the earlier declaration, so if this
+// header said [27] and Game.cpp listed 25 rows, the array really would be 27,
+// the last two zero-filled with a NULL label, and sizeof()/sizeof([0]) would
+// report 27. The settings menu then walked onto those rows and dereferenced
+// the null label. Leaving the bound off makes the initializer the single
+// source of truth, and the static_asserts in Game.cpp keep each hand-written
+// *_COUNT honest.
+
 Color hexToColor(int hex);
 std::string formatPop(long long pop);
 
-extern const char* MENU_ITEMS[4];
+extern const char* MENU_ITEMS[];
 extern const int MENU_COUNT;
-extern const char* MAIN_MENU_ITEMS[6];
+extern const char* MAIN_MENU_ITEMS[];
 extern const int MAIN_MENU_COUNT;
-extern const char* SINGLEPLAYER_ITEMS[2];
+extern const char* SINGLEPLAYER_ITEMS[];
 extern const int SINGLEPLAYER_COUNT;
 extern const char* GAME_VERSION;
-extern const char* TAB_NAMES[6];
+extern const char* TAB_NAMES[];
 extern const int TAB_COUNT;
-extern const int RESOLUTIONS[5][2];
+extern const int RESOLUTIONS[][2];
 extern const int RES_COUNT;
-extern const Setting DISPLAY_ITEMS[9];
-extern const char* AI_DIFFICULTY_NAMES[4];
+extern const Setting DISPLAY_ITEMS[];
+extern const char* AI_DIFFICULTY_NAMES[];
 extern const int AI_DIFFICULTY_COUNT;
 extern const int DISPLAY_COUNT;
-extern const int ACCENT_PRESETS[10];
+extern const int ACCENT_PRESETS[];
 extern const int ACCENT_PRESETS_COUNT;
-extern const Setting CONTROLS_ITEMS[2];
+extern const Setting CONTROLS_ITEMS[];
 extern const int CONTROLS_COUNT;
-extern const Setting AUDIO_ITEMS[1];
+extern const Setting AUDIO_ITEMS[];
 extern const int AUDIO_COUNT;
-extern const Setting KEYBINDS_ITEMS[27];
+extern const float VOLUME_DEFAULTS[];
+extern const Setting KEYBINDS_ITEMS[];
 extern const int KEYBINDS_COUNT;
-extern const Setting ADVANCED_ITEMS[7];
+extern const Setting ADVANCED_ITEMS[];
 extern const int ADVANCED_COUNT;
-extern const Setting EXPERIMENTAL_ITEMS[2];
+extern const Setting EXPERIMENTAL_ITEMS[];
 extern const int EXPERIMENTAL_COUNT;
 extern const Setting* TAB_ITEMS[6];
-extern const int TAB_ITEM_COUNTS[6];
-extern float FLY_SPEED_VALS[6];
+extern const int TAB_ITEM_COUNTS[];
+extern float FLY_SPEED_VALS[];
 extern const int FLY_SPEED_COUNT;
-extern float MAX_ZOOM_VALS[7];
+extern float MAX_ZOOM_VALS[];
 extern const int MAX_ZOOM_COUNT;
 
+// The Audio tab, and the volume rows at the top of it. Both settings screens
+// (the one reached from the main menu and the one reached in-game) draw these
+// rows as sliders rather than as plain text, so both have to recognise them;
+// naming the tab here is what keeps that from being a bare 2 in a dozen places.
+constexpr int AUDIO_TAB = 2;
+constexpr int VOLUME_COUNT = 3;
+
+bool isVolumeSetting(int tab, int index);
+/** The Config field a volume row edits, or nullptr when the row is not one. */
+float* volumeSettingPtr(Config& cfg, int tab, int index);
+/** Pushes all three config volumes into the audio device. */
+void applyVolumes(const Config& cfg);
+
 const char* keyName(int key);
+// Unlimited, 10..120 in tens, VSync. One name, because the count was spelled
+// out as a bare 14 (and its last index as a bare 13) in five separate places.
+constexpr int FPS_STEPS = 14;
 int fpsTargetToIndex(int target);
 int indexToFpsTarget(int idx);
 int nearestIndex(float val, float* vals, int count);

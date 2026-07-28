@@ -15,40 +15,54 @@
           <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
         </g>
         <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+            <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          </g>
         </g>
       </g>
       <g transform="rotate(15.000000)">
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+            <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          </g>
+          <g transform="scale(-1.000000)">
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+          </g>
         </g>
       </g>
     </g>
     <g transform="rotate(30.000000)">
       <g>
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+            <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          </g>
+          <g transform="scale(-1.000000)">
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+          </g>
         </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-      </g>
-      <g transform="rotate(15.000000)">
-        <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+        <g transform="rotate(15.000000)">
+          <g>
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+            <g transform="scale(-1.000000)">
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+            </g>
+          </g>
         </g>
       </g>
     </g>
@@ -57,44 +71,60 @@
     <g>
       <g>
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+            <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          </g>
+          <g transform="scale(-1.000000)">
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+          </g>
         </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-      </g>
-      <g transform="rotate(15.000000)">
-        <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-      </g>
-    </g>
-    <g transform="rotate(30.000000)">
-      <g>
-        <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+        <g transform="rotate(15.000000)">
+          <g>
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+            <g transform="scale(-1.000000)">
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+            </g>
+          </g>
         </g>
       </g>
-      <g transform="rotate(15.000000)">
+      <g transform="rotate(30.000000)">
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+            <g transform="scale(-1.000000)">
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+            </g>
+          </g>
+          <g transform="rotate(15.000000)">
+            <g>
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+              <g transform="scale(-1.000000)">
+                <g>
+                  <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                  <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+                </g>
+              </g>
+            </g>
+          </g>
         </g>
       </g>
     </g>
@@ -103,44 +133,60 @@
     <g>
       <g>
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+            <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          </g>
+          <g transform="scale(-1.000000)">
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+          </g>
         </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-      </g>
-      <g transform="rotate(15.000000)">
-        <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-      </g>
-    </g>
-    <g transform="rotate(30.000000)">
-      <g>
-        <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+        <g transform="rotate(15.000000)">
+          <g>
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+            <g transform="scale(-1.000000)">
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+            </g>
+          </g>
         </g>
       </g>
-      <g transform="rotate(15.000000)">
+      <g transform="rotate(30.000000)">
         <g>
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
-        </g>
-        <g transform="scale(-1.000000)">
-          <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
-          <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+          <g>
+            <g>
+              <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+              <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+            </g>
+            <g transform="scale(-1.000000)">
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+            </g>
+          </g>
+          <g transform="rotate(15.000000)">
+            <g>
+              <g>
+                <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+              </g>
+              <g transform="scale(-1.000000)">
+                <g>
+                  <path d="m0-8 .3 4.81409L0-.80235-.3-3.18591z"/>
+                  <circle cy="-8" r="0.35" transform="rotate(7.5)"/>
+                </g>
+              </g>
+            </g>
+          </g>
         </g>
       </g>
     </g>

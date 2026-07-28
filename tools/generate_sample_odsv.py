@@ -74,16 +74,21 @@ def main():
     odm_data = open(ODMAP_PATH, 'rb').read()
     print(f"Read map.odmap: {len(odm_data):,} bytes")
 
-    # Load provinces.json to get real province IDs
-    prov_path = os.path.join(DATA_DIR, 'provinces.json')
-    provinces_data = json.load(open(prov_path)) if os.path.exists(prov_path) else {}
-    all_pids = sorted([int(k) for k in provinces_data.keys()])
-    print(f"Loaded {len(all_pids)} provinces from provinces.json")
-
-    # Load ships.json to get real ship indices
-    ships_path = os.path.join(DATA_DIR, 'ships.json')
-    ships_data = json.load(open(ships_path)) if os.path.exists(ships_path) else []
-    print(f"Loaded {len(ships_data)} ships from ships.json")
+    # Province ids and ships come out of the .odmap we just read, not out of
+    # data/. The loose files exist only DURING a pipeline run -- step 20 sweeps
+    # them -- so this used to fall back to {} and then die on all_pids[100] with
+    # an IndexError that said nothing about the real problem. The map is the
+    # source of truth and it is already in memory.
+    import io as _io
+    with zipfile.ZipFile(_io.BytesIO(odm_data)) as _z:
+        names = _z.namelist()
+        provinces_data = json.loads(_z.read('provinces.json')) if 'provinces.json' in names else {}
+        ships_data = json.loads(_z.read('ships.json')) if 'ships.json' in names else []
+    all_pids = sorted(int(k) for k in provinces_data)
+    print(f"Loaded {len(all_pids)} provinces and {len(ships_data)} ships from map.odmap")
+    if len(all_pids) < 300:
+        print(f"Error: only {len(all_pids)} provinces — this generator needs a few hundred")
+        return
 
     # ── Generate 3 sample turns ──
 

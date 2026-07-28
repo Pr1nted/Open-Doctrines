@@ -192,13 +192,28 @@ def main():
                         help="Re-download even if real SVG exists")
     args = parser.parse_args()
 
-    if not os.path.exists(COUNTRIES_JSON):
-        print(f"ERROR: {COUNTRIES_JSON} not found")
-        sys.exit(1)
     os.makedirs(FLAGS_DIR, exist_ok=True)
 
-    with open(COUNTRIES_JSON) as f:
-        countries = json.load(f)
+    # data/countries.json exists only DURING a pipeline run -- step 20 sweeps it
+    # -- so requiring it made this tool unusable standalone, which is when you
+    # actually want to re-fetch a flag. Fall back to the base map's own copy.
+    # (prerender_problematic_flags.py and generate_scenario.py had the same
+    # break; the pattern is that a build artifact is not a dependency.)
+    countries = None
+    if os.path.exists(COUNTRIES_JSON):
+        with open(COUNTRIES_JSON) as f:
+            countries = json.load(f)
+    else:
+        import zipfile
+        odmap = os.path.join(DATA_DIR, "STDmaps", "map.odmap")
+        if os.path.exists(odmap):
+            with zipfile.ZipFile(odmap) as z:
+                if "countries.json" in z.namelist():
+                    countries = json.loads(z.read("countries.json"))
+            print(f"  countries.json taken from {os.path.relpath(odmap)}")
+    if countries is None:
+        print(f"ERROR: no countries.json in data/ or in STDmaps/map.odmap")
+        sys.exit(1)
 
     downloaded = 0
     skipped_real = 0

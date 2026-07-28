@@ -1,0 +1,12 @@
+# Local development secrets for `wrangler dev`. Copy to .dev.vars and fill in.
+#
+# Generate the keys with:
+#   node -e 'const {webcrypto:c}=require("node:crypto");const r=n=>require("node:crypto").randomBytes(n).toString("base64");c.subtle.generateKey("Ed25519",true,["sign","verify"]).then(async k=>{console.log("ED25519_PRIVATE_KEY="+JSON.stringify(await c.subtle.exportKey("jwk",k.privateKey)));console.log("ED25519_PUBLIC_JWK="+JSON.stringify(await c.subtle.exportKey("jwk",k.publicKey)));console.log("IDENT_KEY="+r(32));console.log("PAIRWISE_KEY="+r(32));console.log("ADMIN_SECRET="+r(32));})'
+#
+# .dev.vars is gitignored. Never put production keys in it.
+ISSUER=http://localhost:8787
+ED25519_PRIVATE_KEY=
+ED25519_PUBLIC_JWK=
+IDENT_KEY=
+PAIRWISE_KEY=
+ADMIN_SECRET=

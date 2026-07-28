@@ -1,0 +1,12 @@
+{
+  "title": "Bombing Voronezh",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": {
+    "tension": 0.65,
+    "energy": 0.85,
+    "valence": -0.10
+  },
+  "weight": 1.0,
+  "$comment": "Driving rather than ceremonial: lead and rhythm guitar, electric bass and a full kit under the sax carrying the seed theme. Sits at high energy with tension just above Parade Uniform's, which puts it in the same neighbourhood as the theme during a war -- close enough that the repeat penalty trades the two off, so a long war alternates between the orchestral reading and this one instead of looping either. Loses the menu to Parade Uniform on energy. Editable source: data/audio/midi/Bombing Voronezh.mid"
+}

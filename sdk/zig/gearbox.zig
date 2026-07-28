@@ -53,6 +53,25 @@ pub const Platform = enum(u8) {
     _,
 };
 
+/// Which side of a multiplayer game this process is.
+///
+/// In multiplayer the SERVER is authoritative: a client's world is replaced by
+/// whatever the server sends each turn, so a write made on a client does not
+/// survive. That is what stops a modified client cheating, and it applies to
+/// your mod like anyone else's -- put presentation on the client and anything
+/// that changes the world on the server.
+pub const NetRole = enum(u8) {
+    /// Singleplayer. This process is both sides, so `isClient` and `isServer`
+    /// are both true.
+    standalone = 0,
+    client = 1,
+    /// Dedicated host: authoritative, with no local player.
+    server = 2,
+    /// Authoritative, and playing.
+    host_player = 3,
+    _,
+};
+
 /// Layout is ABI. Fields are only ever appended, never reordered or resized;
 /// `size` is what lets an older mod stay safe against a newer host.
 ///
@@ -71,11 +90,38 @@ pub const Env = extern struct {
     is_web: u8 = 0,
     /// 1 when there is no renderer. Every UI import silently no-ops.
     is_headless: u8 = 0,
-    reserved0: u8 = 0,
+    /// A `NetRole` value: which side of a multiplayer game this is.
+    /// `.standalone` in singleplayer.
+    net_role: u8 = 0,
     /// 0 when headless.
     screen_w: u32 = 0,
     screen_h: u32 = 0,
 };
+
+pub fn netRole(e: Env) NetRole {
+    return @enumFromInt(e.net_role);
+}
+
+/// True wherever there is a local player to draw for, which includes
+/// singleplayer and a host who is also playing.
+pub fn isClient(e: Env) bool {
+    return switch (netRole(e)) {
+        .standalone, .client, .host_player => true,
+        else => false,
+    };
+}
+
+/// True wherever this process owns the world, so a write is real.
+pub fn isServer(e: Env) bool {
+    return switch (netRole(e)) {
+        .standalone, .server, .host_player => true,
+        else => false,
+    };
+}
+
+pub fn isMultiplayer(e: Env) bool {
+    return netRole(e) != .standalone;
+}
 
 comptime {
     // The four u8 fields pack into one word; wasm32 uses 4-byte alignment for

@@ -9,6 +9,7 @@
 // baseline and applying every delta up to it.
 
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "GifEncoder.h"
 #include "SaveManager.h"
@@ -45,6 +46,21 @@ std::string odmapEntry(const std::vector<uint8_t>& odm, const char* name) {
 } // namespace
 
 // ─── Snapshot reconstruction ─────────────────────────────
+
+// Zero-padded turn tag, matching the "%05d" format SaveManager writes with.
+//
+// The three call sites each built this by hand, padding with
+// std::string(5 - std::to_string(turn).size(), '0'). That subtraction is
+// int minus size_t, so any turn of six digits or more
+// underflows to about 1.8e19 and the std::string construction throws
+// length_error rather than producing a name. Unreachable at one turn per month
+// -- turn 100000 is the year 10333 -- but it is an underflow, and the two sides
+// also disagreed about the format past five digits. snprintf widens instead.
+static std::string turnTag(int turn) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%05d", turn);
+    return std::string(buf);
+}
 
 bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnapshot>& out) {
     out.clear();
@@ -96,8 +112,7 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
         }
         // A per-turn state snapshot means this turn can be fully restored.
         cur.hasState = !SaveManager::readEntry(
-            savePath, "turns/s_" + std::string(5 - std::to_string(t).size(), '0') +
-                          std::to_string(t) + ".json").empty();
+            savePath, "turns/s_" + turnTag(t) + ".json").empty();
         out.push_back(cur);
     }
     return true;
@@ -197,15 +212,71 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
     // weighted toward, so borders flip at the midpoint of a transition rather
     // than smearing.
     const std::unordered_map<int, int>& ownerNow = (t < 0.5f) ? a.owner : b.owner;
+
+    // Owner per OUTPUT pixel, computed once. Used for the border pass and the
+    // gradient below, both of which would otherwise re-sample the source image
+    // several times per pixel.
+    std::vector<int32_t> cidOut((size_t)outW * outH, 0);
+    for (int y = 0; y < outH; ++y) {
+        int sy = (int)((int64_t)y * mapH / outH);
+        for (int x = 0; x < outW; ++x) {
+            int sx = (int)((int64_t)x * mapW / outW);
+            const Color& c = src[(size_t)sy * mapW + sx];
+            auto it = ownerNow.find(Province::colorToId(c.r, c.g, c.b));
+            cidOut[(size_t)y * outW + x] = (it == ownerNow.end()) ? 0 : it->second;
+        }
+    }
     auto ownerAtOut = [&](int ox, int oy) -> int {
         if (ox >= outW) ox = outW - 1;
         if (oy >= outH) oy = outH - 1;
-        int px = (int)((int64_t)ox * mapW / outW);
-        int py = (int)((int64_t)oy * mapH / outH);
-        const Color& c = src[(size_t)py * mapW + px];
-        auto it = ownerNow.find(Province::colorToId(c.r, c.g, c.b));
-        return (it == ownerNow.end()) ? 0 : it->second;
+        return cidOut[(size_t)oy * outW + ox];
     };
+
+    // Border-distance field, so the political view carries the same inward
+    // gradient the live map draws (generatePoliticalTexture in Game_Loading.cpp:
+    // chamfer 2-3 from every country edge, capped, then blended toward grey).
+    //
+    // The cap is scaled to output resolution. In game the field runs 60 SOURCE
+    // pixels inward and the player sees it scaled by however far they are zoomed
+    // out; at 640px for the whole world that is 60 * 640 / 8192, about five
+    // pixels. Using 60 here would flood every country to full darkening and the
+    // gradient would vanish into a flat, muddier colour.
+    const int gradCap = (view == HV_POLITICAL)
+        ? std::max(6, (int)((int64_t)60 * outW / mapW)) : 0;
+    std::vector<int16_t> gdist;
+    if (gradCap > 0) {
+        gdist.assign((size_t)outW * outH, (int16_t)gradCap);
+        for (int y = 0; y < outH; ++y)
+            for (int x = 0; x < outW; ++x) {
+                const size_t i = (size_t)y * outW + x;
+                const int32_t c = cidOut[i];
+                if ((x + 1 < outW && cidOut[i + 1] != c) ||
+                    (x > 0 && cidOut[i - 1] != c) ||
+                    (y + 1 < outH && cidOut[i + outW] != c) ||
+                    (y > 0 && cidOut[i - outW] != c))
+                    gdist[i] = 0;
+            }
+        // Relax against the eight neighbours until settled: orthogonal +2,
+        // diagonal +3, the same metric the game's BFS uses.
+        for (int pass = 0; pass < gradCap; ++pass) {
+            bool moved = false;
+            for (int y = 0; y < outH; ++y)
+                for (int x = 0; x < outW; ++x) {
+                    const size_t i = (size_t)y * outW + x;
+                    int best = gdist[i];
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            if (!dx && !dy) continue;
+                            int nx = x + dx, ny = y + dy;
+                            if (nx < 0 || ny < 0 || nx >= outW || ny >= outH) continue;
+                            int cand = gdist[(size_t)ny * outW + nx] + ((dx && dy) ? 3 : 2);
+                            if (cand < best) best = cand;
+                        }
+                    if (best < gdist[i]) { gdist[i] = (int16_t)best; moved = true; }
+                }
+            if (!moved) break;
+        }
+    }
 
     for (int y = 0; y < outH; ++y) {
         int sy = (int)((int64_t)y * mapH / outH);
@@ -229,9 +300,29 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
                 cb = ownerColor(b.owner, pid);
             }
             size_t o = ((size_t)y * outW + x) * 4;
-            rgba[o + 0] = (uint8_t)(ca.r + (cb.r - ca.r) * t);
-            rgba[o + 1] = (uint8_t)(ca.g + (cb.g - ca.g) * t);
-            rgba[o + 2] = (uint8_t)(ca.b + (cb.b - ca.b) * t);
+            float mr = ca.r + (cb.r - ca.r) * t;
+            float mg = ca.g + (cb.g - ca.g) * t;
+            float mb = ca.b + (cb.b - ca.b) * t;
+
+            if (gradCap > 0) {
+                // blendColor(base, g) from Game_Loading.cpp, and the same sea
+                // ramp, so a frame matches what the map looks like in play.
+                const float g = std::min(1.0f, (float)gdist[(size_t)y * outW + x]
+                                                   / (float)gradCap);
+                if (cidOut[(size_t)y * outW + x] == 0) {
+                    const float inv = 1.0f - g;
+                    mr = 8.0f + inv * 16.0f;
+                    mg = 10.0f + inv * 22.0f;
+                    mb = 15.0f + inv * 38.0f;
+                } else {
+                    mr = mr * (1.0f - g * 0.4f) + 40.0f * g * 0.3f;
+                    mg = mg * (1.0f - g * 0.4f) + 40.0f * g * 0.3f;
+                    mb = mb * (1.0f - g * 0.4f) + 40.0f * g * 0.3f;
+                }
+            }
+            rgba[o + 0] = (uint8_t)std::min(255.0f, std::max(0.0f, mr));
+            rgba[o + 1] = (uint8_t)std::min(255.0f, std::max(0.0f, mg));
+            rgba[o + 2] = (uint8_t)std::min(255.0f, std::max(0.0f, mb));
             rgba[o + 3] = 255;
 
             // Draw the edge on the owned side only, so coastlines and country
@@ -303,6 +394,22 @@ std::string Game::defaultTimelapsePath(const std::string& savePath, int w, int h
 #endif
 }
 
+bool Game::exportTimelapseHeadless(const std::string& savePath,
+                                   const std::string& outPath,
+                                   int outW, int outH, int subFrames,
+                                   HistoryView view) {
+    m_headless = true;
+    m_historyView = view;
+    if (!loadHistoryMapData(savePath)) {
+        fprintf(stderr, "could not read map data out of %s\n", savePath.c_str());
+        return false;
+    }
+    std::string msg;
+    bool ok = exportHistoryGif(savePath, outW, outH, subFrames, outPath, msg);
+    printf("%s\n", msg.empty() ? (ok ? "exported" : "failed") : msg.c_str());
+    return ok;
+}
+
 bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
                             int subFrames, const std::string& destPath, std::string& outMsg) {
     std::vector<TurnSnapshot> snaps;
@@ -353,7 +460,7 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
             float t = (float)s / (float)subFrames;
             renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame, m_historyView);
             gif.writeFrame(frame.data());
-            if ((++done % 8) == 0) {
+            if ((++done % 8) == 0 && !m_headless) {
                 setLoadingProgress((float)done / total, "Rendering timelapse...");
                 drawLoadingScreen();
             }
@@ -394,7 +501,7 @@ bool Game::revertToTurn(int turn) {
     std::string savePath = m_historySavePath.empty() ? m_currentSavePath : m_historySavePath;
     if (savePath.empty()) { m_historyStatus = "No save file"; return false; }
 
-    std::string tag = std::string(5 - std::to_string(turn).size(), '0') + std::to_string(turn);
+    std::string tag = turnTag(turn);
     std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" + tag + ".json");
     if (stateJson.empty()) {
         // Saves made before per-turn snapshots existed can't be restored
@@ -434,7 +541,7 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         return false;
     }
     std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" +
-        std::string(5 - std::to_string(turn).size(), '0') + std::to_string(turn) + ".json");
+        turnTag(turn) + ".json");
     if (stateJson.empty()) {
         m_historyStatus = "Turn " + std::to_string(turn) + " has no snapshot (older save)";
         return false;
@@ -540,6 +647,9 @@ void Game::updateHistoryScreen() {
         // The destination text field owns the keyboard while focused.
         int c = GetCharPressed();
         while (c > 0) {
+            // Every character the field takes. Jittered, because a
+            // typed word is a run of distinct taps, not one tap looped.
+            Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_historyDestPath.size() < 400)
                 m_historyDestPath.push_back((char)c);
             c = GetCharPressed();

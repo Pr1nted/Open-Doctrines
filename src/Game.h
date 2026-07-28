@@ -5,6 +5,8 @@
 #include "map/CountryMap.h"
 #include "renderer/MapRenderer.h"
 #include "Config.h"
+#include "Audio.h"
+#include "net/TurnStore.h"
 #include "ScriptEngine.h"
 #include "MapEditor.h"
 #include "raymath.h"
@@ -57,7 +59,9 @@ private:
         SCREEN_CREDITS,
         SCREEN_COMMUNITY,
         SCREEN_MAP_EDITOR,
-        SCREEN_MODS
+        SCREEN_MODS,
+        SCREEN_ACCOUNT,
+        SCREEN_MULTIPLAYER
     };
     ScreenState m_currentScreen = SCREEN_MENU;
 
@@ -123,6 +127,9 @@ private:
     bool loadMapPack(const std::string& odmPath);  // Load .odmap and init renderer
     bool loadSaveFile(const std::string& savePath); // Load .odsv, extract .odmap, replay
     bool replaySaveTurns(const std::string& savePath); // Replay turn deltas from a save
+    // One turn's changes, from a save or from a host. See the definition.
+    void applyTurnDelta(const struct TurnDelta& delta);
+    void rebuildOwnershipPixels();
     void startNewGame(const std::string& mapName);
     void startNewGameWithName(const std::string& mapName, const std::string& worldName);
     void startLoadedGame(const std::string& saveName);
@@ -178,6 +185,279 @@ private:
     void drawCredits();
     void updateCommunityMenu();
     void drawCommunityMenu();
+
+    // --- account screen (src/Game_Account.cpp) --------------------------------
+    void openAccountMenu();
+    void updateAccountMenu();
+    void drawAccountMenu();
+    void drawAccountField(int x, int y, int w, int h);
+    void drawAccountProviders(int centerX, int y, const struct AccountInfo& info);
+
+    std::string m_accountNote;
+    float m_accountNoteTimer = 0.0f;
+    // The account id is revealed on request rather than always shown: it is
+    // not a credential, but it is a stable identifier and this screen gets
+    // streamed.
+    bool m_accountShowId = false;
+
+    std::string m_accountNickField;
+    bool m_accountFieldFocused = false;
+    // The stored token is checked once per launch. Retrying on every visit
+    // would hammer the service when it is down, and the state already held is
+    // the right answer in the meantime.
+    bool m_accountRestoreTried = false;
+
+    // --- multiplayer (src/Game_Multiplayer.cpp) ------------------------------
+    //
+    // One screen with four pages rather than four screens: the whole flow is
+    // hub -> host/join -> lobby, and back always means "the previous page",
+    // which a single screen expresses and four separate ones would not.
+    enum class MpPage : uint8_t { Hub = 0, Join, HostSetup, Lobby };
+
+    void openMultiplayerMenu();
+    void updateMultiplayerMenu();
+    void drawMultiplayerMenu();
+    void drawMpHub(Vector2 mouse, bool click);
+    void drawMpJoin(Vector2 mouse, bool click);
+    void drawMpHostSetup(Vector2 mouse, bool click);
+    void drawMpLobby(Vector2 mouse, bool click);
+    /** The store the host has selected, as a kind rather than an index. */
+    TurnStoreKind mpStoreKind() const;
+    void mpStartHosting();
+    void mpOpenHost();
+
+    // --- the lobby -> game bridge ---
+    //
+    // Loading a world is asynchronous and shared with singleplayer, so the
+    // multiplayer paths set a PURPOSE before starting a load and pick it up in
+    // mpOnWorldLoaded() when the loader finishes. Without it the loader would
+    // drop a host into the singleplayer country-select screen, which is not
+    // where either side of a network game belongs.
+    enum class MpLoad : uint8_t { None = 0, HostOpen, JoinApply };
+    MpLoad      m_mpLoad = MpLoad::None;
+    int         m_mpMapIndex = 0;
+    std::string m_mpMapId;                    // portable map identity, not a path
+    std::vector<uint8_t> m_mpPendingSnapshot; // held while the world loads
+    uint16_t    m_mpMyCountry = 0;
+
+    /** Map id -> a path on THIS machine. False when the map is not installed. */
+    bool mpResolveMap(const std::string& id, std::string& pathOut, std::string& nameOut);
+    /** Tell joiners what this world contains. Host only. */
+    void mpPublishCountries();
+    /** Called by the loader when a multiplayer load finishes. */
+    void mpOnWorldLoaded();
+    /** Build the whole-world payload. Host only. */
+    std::vector<uint8_t> mpBuildSnapshot();
+    /** Load the world a snapshot describes. Client only. */
+    void mpApplySnapshot(const std::vector<uint8_t>& payload);
+    /** Enter the game as `countryId`. */
+    void mpEnterGame(uint16_t countryId);
+
+    // --- the turn loop ---
+    //
+    // In a network game the HOST resolves turns and nobody else does. A client
+    // that ran processTurn() locally would produce its own answer to what
+    // happened, and two machines would quietly disagree about the world. So a
+    // client submits orders and waits for the delta the host actually produced.
+
+    /** True while a network game is running and this machine is not the host. */
+    bool mpIsClient() const;
+    /** True while this machine is the authority for a running network game. */
+    bool mpIsHost() const;
+
+    /** This country's pending orders, for submission. */
+    std::vector<uint8_t> mpSerializeOrders(int countryId) const;
+
+    /**
+     * Merge a peer's submitted orders into this world.
+     *
+     * Every order is checked against what `countryId` actually owns and dropped
+     * otherwise. This is where "the server is authoritative" stops being a
+     * design note: a client can ask for anything, and only orders over its own
+     * provinces and ships survive.
+     */
+    void mpApplyOrders(int countryId, const std::vector<uint8_t>& payload);
+
+    /** Drive the host's turn: collect, resolve when due, broadcast. */
+    void mpHostTurnUpdate();
+    /** Resolve now: apply everyone's orders, process, send the delta. */
+    void mpResolveTurn();
+    /** Apply a delta the host produced. Client only. */
+    void mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    /** Called instead of processTurn() when this machine is a client. */
+    void mpSubmitTurn();
+
+    class TurnRunner* m_mpTurns = nullptr;
+    /** Set once this client's orders are in; cleared when a delta lands. */
+    bool m_mpWaitingForTurn = false;
+    void mpBeginJoin(const std::string& address, const std::string& code);
+    void mpLeave();
+    /** Tear multiplayer down at exit. Defined where the types are complete. */
+    void mpShutdown();
+    void mpDrainEvents();
+    void mpNote(const std::string& text, bool error = false);
+
+    MpPage      m_mpPage = MpPage::Hub;
+    std::string m_mpNote;
+    bool        m_mpNoteError = false;
+    float       m_mpNoteTimer = 0.0f;
+
+    // Which text box has the keyboard. -1 is none.
+    int         m_mpFocus = -1;
+    std::string m_mpAddressField;
+    std::string m_mpCodeField;
+    std::string m_mpNameField;
+    std::string m_mpPortField;
+    /**
+     * Seconds per turn, as typed.
+     *
+     * A text box rather than a preset list: on a live server the right interval
+     * is whatever that group actually plays at -- 45 seconds for a quick game,
+     * 20 minutes for a slow one -- and a fixed set of choices is always missing
+     * the one somebody wants. Empty or 0 means long-form (no timer at all).
+     */
+    std::string m_mpTurnField;
+
+    int         m_mpSelected = -1;      // index into the server book
+    bool        m_mpBindAll = false;
+    bool        m_mpListed = false;
+    int         m_mpMaxPlayers = 8;
+
+    /**
+     * Seconds per turn, read from the text box.
+     *
+     * Derived rather than cached, because a cached copy is only as fresh as the
+     * last time the tab holding that box happened to be drawn -- and a host who
+     * never opened it would run the game on a stale value.
+     */
+    int mpTurnSeconds() const;
+
+    // --- what the host can configure ---
+    int  m_mpAssignment = 1;    // NetAssignment: 0 host-assigns, 1 players pick
+    int  m_mpLateJoin  = 1;     // NetLateJoin:  0 refuse, 1 spectate
+    int  m_mpAbsent    = 0;     // NetAbsent:    0 AI plays, 1 idle
+    int  m_mpStore     = 0;     // TurnStoreKind index; see mpStoreKind()
+    bool m_mpAnonymous = false;
+    bool m_mpDedicated = false;
+    /** Which page of host settings is showing: 0 basics, 1 rules, 2 turns. */
+    int  m_mpSetupTab = 0;
+
+    /**
+     * The join screen makes the player acknowledge that the host will see
+     * their IP. Reset per join, never remembered: it is the one thing about
+     * joining that cannot be undone afterwards.
+     */
+    bool m_mpIpWarningAccepted = false;
+
+    /** Lobby has a Players tab showing who is human and who the AI plays. */
+    bool m_mpPlayersTab = false;
+
+    /** The country picker is open, covering the lobby. */
+    bool m_mpPickingCountry = false;
+    int  m_mpCountryScroll = 0;
+
+    /**
+     * Whether anyone outside this network can actually reach the game.
+     *
+     * A host cannot tell by looking. "It works on my machine" is exactly what a
+     * LAN-only bind looks like from the host's chair, and the failure lands on
+     * the players instead -- so the game checks rather than leaving them to
+     * find out.
+     */
+    enum class MpReach : uint8_t { Unknown = 0, Testing, Reachable, Unreachable };
+    MpReach     m_mpReach = MpReach::Unknown;
+    std::string m_mpReachNote;
+    float       m_mpReachTimer = 0.0f;
+    class WebSocket* m_mpReachProbe = nullptr;
+
+    /** What a host hands to players, as one block of text. */
+    std::string mpInviteText() const;
+    void mpBeginReachTest();
+    void mpUpdateReachTest();
+
+    /**
+     * Start a tunnel automatically when hosting, if one is installed.
+     *
+     * On by default when a provider is available: the tunnel is the recommended
+     * way to host, and a host who has already installed cloudflared has plainly
+     * opted into it. It never installs or downloads anything -- see Tunnel.h.
+     */
+    /**
+     * Continue a saved campaign instead of starting a new world.
+     *
+     * A network game played over weeks is the case the whole turn-delta design
+     * was for, and it was unreachable until now: hosting could only ever begin
+     * a fresh world from a map.
+     */
+    /** Start hosting was pressed with no turn timer; awaiting a second press. */
+    /**
+     * The player has agreed to the terms and privacy policy.
+     *
+     * Asked once, before the first sign-in, and remembered -- agreeing is a
+     * decision about the service, not about this launch of the game.
+     */
+    bool m_accountAgreed = false;
+    bool m_mpConfirmSlow = false;
+    bool m_mpResume = false;
+    /** Search box for the map list, and scroll offsets for both lists. */
+    std::string m_mpMapSearch;
+    int m_mpMapScroll = 0;
+    int m_mpSaveScroll = 0;
+    /** Index of the save awaiting a confirmed delete, or -1. */
+    int m_mpSaveDeleting = -1;
+    int  m_mpSaveIndex = 0;
+    std::vector<std::string> m_mpSavePaths;   // full paths, saves/multiplayer
+    std::vector<std::string> m_mpSaveNames;   // what the host sees
+    void mpRefreshSaves();
+    /** Write the current seating beside the save, for the next session. */
+    void mpSaveSeats();
+    /**
+     * The host declaring its own orders finished.
+     *
+     * The host plays too, and its orders are already in this world -- but the
+     * lobby did not know that, so the host sat in missingSubmissions forever
+     * and a game with no turn timer could never resolve at all.
+     */
+    void mpHostReady();
+    /**
+     * Each player's own deadline for this turn, host-side.
+     *
+     * Not one shared clock: somebody who joins mid-turn has not had the same
+     * time as everyone else, and treating them as late the moment they arrive
+     * is how a latecomer loses a turn they never got to play. Kept off the
+     * wire -- the host is the only machine that decides anything from it.
+     */
+    std::unordered_map<uint16_t, long long> m_mpDeadlineMs;
+    /** Milliseconds this player has left, or -1 when there is no timer. */
+    long long mpDeadlineLeft(uint16_t peerId, long long nowMs) const;
+    /** Resolve now, without waiting for the stragglers. Host only. */
+    void mpForceResolve();
+    /** Who the turn is waiting on, drawn above the Ready button. */
+    void drawMpTurnPanel(int x, int bottomY);
+    /** The host's server console: what this server is, and who is on it. */
+    void drawMpHostConsole(int x, int top);
+
+    bool m_mpUseTunnel = true;
+    int  m_mpTunnelChoice = 0;      // index into the available providers
+    class Tunnel* m_mpTunnel = nullptr;
+    /** Fetches cloudflared on request. See the safeguards in Tunnel.h. */
+    class TunnelInstaller* m_mpTunnelInstaller = nullptr;
+    std::string mpToolsDir() const;
+
+    class NetHost*    m_netHost = nullptr;
+    class NetSession* m_netSession = nullptr;
+    class ServerBook* m_serverBook = nullptr;
+
+    // Registering a server credential is one blocking HTTPS call, so it runs
+    // off the render thread. Doing it inline froze the game for as long as the
+    // request took -- on the click that is supposed to start the game.
+    enum class MpRegister : uint8_t { Idle = 0, Working, Done, Failed };
+    std::thread              m_mpRegisterThread;
+    std::atomic<MpRegister>  m_mpRegisterState{MpRegister::Idle};
+    std::string              m_mpRegisterResult;   // guarded by m_mpRegisterMutex
+    std::string              m_mpRegisterError;
+    std::mutex               m_mpRegisterMutex;
+    bool                     m_mpHostAfterRegister = false;
 
     // --- Mods (Gearbox). See src/Game_Mods.cpp and docs/modding.md ---
     void initModSystem();
@@ -403,6 +683,114 @@ public:
     int m_rebindingAction = -1;
     int m_settingsScroll = 0;
 
+    /**
+     * Tells the audio layer where the game currently is, and ages the toast.
+     * Called once per frame from run().
+     */
+    void updateMusic(float dt);
+
+    /**
+     * Reads the game state as a point in mood space (see Mood in Audio.h).
+     *
+     * Recomputed a few times a second rather than every frame: it walks every
+     * province, and nothing it reads moves faster than a turn.
+     */
+    Mood currentMood();
+
+    /**
+     * How much map atmosphere the current view calls for, 0..1.
+     *
+     * Driven by the camera, not by the screen: fully zoomed out is 1, and it
+     * falls to 0 as the view closes in, so a map examined province-by-province
+     * sounds like the menus and the whole world sounds like a room. Menus
+     * return 0 outright.
+     */
+    float mapAtmosphereIntensity() const;
+
+    /**
+     * The now-playing toast. Drawn by endFrame() so it lands on top of every
+     * screen, including menus and the popup overlay.
+     */
+    void drawNowPlayingToast();
+    /** Raises the toast for whatever is playing right now, if anything. */
+    void showNowPlayingToast();
+    /** EndDrawing, plus everything that must sit above all other drawing. */
+    void endFrame();
+
+    TrackInfo m_toast;              // what the toast is announcing
+    float m_toastTimer = 0.0f;      // seconds left; <= 0 means not shown
+    Mood  m_mood;                   // cached, refreshed on m_moodStamp
+    double m_moodStamp = -1.0;
+    // Province count the player held when this country was first seen, which is
+    // what "gaining" and "losing" are measured against. Keyed by country id so
+    // loading a save or picking a new country re-baselines with no extra hook.
+    int m_moodBaseline = -1;
+    int m_moodBaselineCid = -1;
+    // Turn the player was last at war. "Rebuilding" is peace shortly after a
+    // war, which cannot be read from a snapshot -- peace looks identical either
+    // side of it — so it has to be remembered.
+    int m_moodLastWarTurn = -1;
+
+    // Main-menu row the pointer was last on, so the hover sound fires once on
+    // entering a row instead of once per frame it rests there. -1 = no row.
+    int m_lastMenuHover = -1;
+
+    // ─── Settings > Audio ────────────────────────
+    //
+    // The volume rows are dragged, not typed, so they need geometry that the
+    // rest of the table-driven settings list has no concept of. There is one
+    // draw path for settings (drawPauseMenu, which drawSettingsFromMenu reuses)
+    // but two input paths -- the in-game one and the main-menu one -- and both
+    // call updateVolumeSliders. Sharing it is what stops the two screens from
+    // growing two subtly different volume controls.
+    Rectangle sliderBarRect(int y, int centerX) const;
+
+    // Every settings slider is this one. `steps` is 0 for a continuous value
+    // (the volumes) and the number of stops for a stepped one (the frame cap):
+    // that is the only difference between them, and it used to be the excuse
+    // for two separate widgets with different geometry, different hit areas
+    // and a thumb that did not sit on its own tick marks.
+    void drawSliderWidget(Rectangle bar, float t, bool active, int steps) const;
+    // Drives one slider for a frame and makes its noises. `t` is normalised and
+    // updated in place; `owns` is the caller's drag flag. Returns true if the
+    // value changed.
+    bool sliderInteract(Rectangle bar, int steps, float& t, bool& owns);
+    /**
+     * Runs drag and hover for the three volume rows.
+     *
+     * Returns true when the pointer is on a slider, which tells the caller to
+     * leave the click alone: without that the same press would drag the slider
+     * AND "activate" the row under it.
+     */
+    bool updateVolumeSliders(int startY, int itemH, int centerX, int effScroll);
+    /** Draws one volume row's bar. Called from the settings item-draw loop. */
+    void drawVolumeSlider(int index, int y, int centerX, bool selected);
+    /** Nudges a volume row by delta and applies it. Used by LEFT/RIGHT and R. */
+    void adjustVolume(int index, float delta);
+
+    int m_draggingVolume = -1;        // volume row being dragged, -1 when none
+    double m_lastVolumePreview = 0.0; // rate-limits the click played while dragging
+    double m_lastSliderTick = 0.0;    // shared by every slider, so a drag ticks once
+    // Which button the pointer was over last frame, as a cheap hash of its
+    // rect. Buttons are drawn immediate-mode with no identity of their own, so
+    // this is what makes "the pointer arrived" distinguishable from "the
+    // pointer is still here" -- without it every hovered button would scream
+    // once a frame.
+    int m_lastHoverBtn = 0;
+    // Set immediately before a drawActBtn call to give that one button its own
+    // click sound; the lambda consumes and clears it. Declaring war and asking
+    // for an alliance are not generic clicks, and playing both the specific
+    // sound and the generic one on top of each other just muddies them.
+    const char* m_btnSfxOverride = nullptr;
+    // The value the live drag last reported. Compared against instead of the
+    // caller's stored value, which is rounded (volumes), clamped (research and
+    // pacification) or snapped (the frame cap) -- so it almost never equalled
+    // the raw mouse position and every held frame counted as a move.
+    float m_sliderDragT = -1.0f;
+    int  m_lastResearchHover = -1;      // edge-detects the node the pointer is on
+    bool m_draggingResearchAlloc = false;
+    bool m_draggingPacification = false;
+
     // ─── Debug/Advanced settings ─────────────────
     struct ConsoleBuf : std::streambuf {
         Game* game;
@@ -558,6 +946,10 @@ public:
     int m_countryShipIndex = -1;
     void buildCountryShipList(int shipIdx);
     void cycleShip(int direction);
+    // The ship counterpart to flyToProvince. Cycling ships moved the selection
+    // but left the camera where it was, so stepping through a navy scrolled a
+    // list while the map sat still.
+    void flyToShip(int shipIndex);
 
     // ─── Claims system ────────────────────────────
     std::unordered_map<std::string, std::vector<int>> m_claims;  // claimer ISO -> claimed province IDs
@@ -702,6 +1094,23 @@ public:
     // .odmap, so history can be browsed/previewed/exported without a full
     // game load. Returns false if the save has no usable map data.
     bool loadHistoryMapData(const std::string& savePath);
+
+public:
+    // Render a save's timelapse straight to a GIF with no window and no UI.
+    //
+    // renderHistoryFrame() is pure CPU -- it reads the province Image and fills
+    // an RGBA buffer, with no Draw* calls -- so the only thing standing between
+    // the export and a headless run was the progress overlay. Worth having:
+    // it makes the export testable, scriptable for promo renders, and usable on
+    // a machine with no display.
+    bool exportTimelapseHeadless(const std::string& savePath,
+                                 const std::string& outPath,
+                                 int outW, int outH, int subFrames,
+                                 HistoryView view = HV_POLITICAL);
+private:
+    // Set while exportTimelapseHeadless runs. Suppresses anything that needs a
+    // GL context.
+    bool m_headless = false;
     void renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, float t,
                             int outW, int outH, std::vector<uint8_t>& rgba,
                             HistoryView view = HV_POLITICAL);

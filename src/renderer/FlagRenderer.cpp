@@ -1,4 +1,5 @@
 #include "FlagRenderer.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <unordered_map>
@@ -100,53 +101,54 @@ void FlagRenderer::imagePixelate(Image* img, int blockSize) {
 
 void FlagRenderer::imageBlur(Image* img, int radius) {
     if (radius < 1 || img->width < 1 || img->height < 1) return;
-    // Simple 2D box blur approximated as separable Gaussian blur
-    // Using a 3-sigma kernel (radius = 3 * sigma)
-    int size = radius * 2 + 1;
-    std::vector<float> kernel(size * size);
-    float sigma = radius / 3.0f;
-    float sum = 0.0f;
-    for (int y = -radius; y <= radius; ++y) {
-        for (int x = -radius; x <= radius; ++x) {
-            float g = expf(-(x*x + y*y) / (2.0f * sigma * sigma));
-            kernel[(y + radius) * size + (x + radius)] = g;
-            sum += g;
-        }
-    }
-    for (float& k : kernel) k /= sum;
-    // Create temporary image for horizontal pass
-    Image tmp = GenImageColor(img->width, img->height, BLANK);
-    // Horizontal blur pass
-    for (int y = 0; y < img->height; ++y) {
-        for (int x = 0; x < img->width; ++x) {
-            float r = 0, g = 0, b = 0, a = 0;
-            for (int kx = -radius; kx <= radius; ++kx) {
-                int sx = x + kx;
-                if (sx < 0) sx = 0;
-                if (sx >= img->width) sx = img->width - 1;
-                Color c = GetImageColor(*img, sx, y);
-                float w = kernel[(radius) * size + (kx + radius)];
-                r += c.r * w; g += c.g * w; b += c.b * w; a += c.a * w;
+
+    // Block-average mosaic, which is what `FlagPattern::censored` documents
+    // itself as doing ("pixelate to obscure hate symbols") and what a censored
+    // flag is expected to look like.
+    //
+    // It replaces a separable Gaussian that did not work. The kernel was
+    // normalised in TWO dimensions -- all (2r+1)^2 weights summed to 1 -- and
+    // then applied as two one-dimensional passes, each reading a single row of
+    // it. Each pass therefore multiplied the image by the sum of one row, about
+    // 0.30 at radius 4, and two passes left roughly 9% of the original in both
+    // colour AND alpha. The result was not a blurred flag, it was a nearly
+    // transparent one, which looked like the censored flag failing to render
+    // at all.
+    //
+    // A mosaic also obscures better than a blur: a swastika at 4px of blur is
+    // still legible in outline, and averaged into 12px blocks it is not.
+    const int block = std::max(2, radius * 3);
+    for (int by = 0; by < img->height; by += block) {
+        for (int bx = 0; bx < img->width; bx += block) {
+            const int x1 = std::min(bx + block, img->width);
+            const int y1 = std::min(by + block, img->height);
+            unsigned long long r = 0, g = 0, b = 0, a = 0;
+            int n = 0;
+            for (int y = by; y < y1; ++y) {
+                for (int x = bx; x < x1; ++x) {
+                    Color c = GetImageColor(*img, x, y);
+                    // Weight colour by alpha so a transparent margin does not
+                    // drag an opaque block toward black.
+                    r += (unsigned long long)c.r * c.a;
+                    g += (unsigned long long)c.g * c.a;
+                    b += (unsigned long long)c.b * c.a;
+                    a += c.a;
+                    ++n;
+                }
             }
-            ImageDrawPixel(&tmp, x, y, {(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a});
-        }
-    }
-    // Vertical blur pass and store back
-    for (int y = 0; y < img->height; ++y) {
-        for (int x = 0; x < img->width; ++x) {
-            float r = 0, g = 0, b = 0, a = 0;
-            for (int ky = -radius; ky <= radius; ++ky) {
-                int sy = y + ky;
-                if (sy < 0) sy = 0;
-                if (sy >= img->height) sy = img->height - 1;
-                Color c = GetImageColor(tmp, x, sy);
-                float w = kernel[(ky + radius) * size + (radius)];
-                r += c.r * w; g += c.g * w; b += c.b * w; a += c.a * w;
+            if (n == 0) continue;
+            Color avg;
+            if (a == 0) {
+                avg = BLANK;
+            } else {
+                avg = { (unsigned char)(r / a), (unsigned char)(g / a),
+                        (unsigned char)(b / a), (unsigned char)(a / n) };
             }
-            ImageDrawPixel(img, x, y, {(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a});
+            for (int y = by; y < y1; ++y)
+                for (int x = bx; x < x1; ++x)
+                    ImageDrawPixel(img, x, y, avg);
         }
     }
-    UnloadImage(tmp);
 }
 
 // ══════════════════════════════════════════════════════

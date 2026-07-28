@@ -102,6 +102,7 @@ unacceptable is rejected before any bulk inflation happens.
   "description": "Retunes AI war scoring.",
   "authors": ["Jane Doe <jane@example.com>"],
   "gearbox": "1.0",                   // targeted API version, "Gearbox v1.0"
+  "side": "client",                   // "client" | "server" | "both"; default "both"
   "modules": [                        // requested capabilities, least privilege
     "Core",
     "GameState.Read",
@@ -136,6 +137,50 @@ Enforced field rules:
   than the host allows is being optimistic, not hostile, and still loads with a
   warning. Ceilings are 1024 memory pages (64 MiB) and 100,000,000 fuel/turn.
 - `publicKey` — must carry the `ed25519:` prefix if present. Not verified yet.
+- `side` — optional, defaults to `"both"`. An unrecognised value is a warning
+  and falls back to `"both"`, so a future release adding a side does not stop
+  today's game loading your mod. See below.
+
+### Which side a mod runs on
+
+In multiplayer the **server is authoritative**. A client's copy of the world is
+replaced by whatever the server sends at the end of each turn, so a write made
+on a client does not survive and was never going to. That is what stops a
+modified client from cheating, and it applies to your mod exactly as it applies
+to everyone else's.
+
+`side` says where your mod belongs:
+
+| `side` | Where it runs | What it may do |
+|---|---|---|
+| `"client"` | Every client, and a host who is also playing | UI, overlays, convenience. **`GameState.Write` and `GameProcess` are masked off its grants for the whole session**, whatever the player granted in the Advanced panel. |
+| `"server"` | The host only. Never instantiated on a client. | Everything it was granted. Clients do not need the file and are never asked for it. |
+| `"both"` (default) | Both ends | Everything it was granted — but the server instance is authoritative and the client instance is presentation. Must be present on both ends at the same version and the same bytes. |
+
+Almost every mod is `"client"`. Choose `"both"` only if the mod genuinely
+changes how turns resolve *and* clients need a matching copy to display the
+result sensibly.
+
+At runtime, `gearbox_env_t.net_role` tells you which side you are on, and
+`gearbox_is_client()` / `gearbox_is_server()` wrap it. In singleplayer both are
+true, because there is one process and it is both.
+
+### What mod matching does and does not prove
+
+A server lists the `"both"`-side mods it runs, and a joining client is refused
+if its own set does not match by id, version and SHA-256 of the `.odmod`.
+
+**This is an integrity check, not an anti-tamper one**, and the game says so to
+players in exactly those words. A client is a program on hardware its owner
+controls; it can report any mod list it likes, and nothing in an open-source
+game changes that. What the check is for is the failure that actually happens:
+a wrong version, a truncated download, a mod someone edited and forgot to
+rebuild.
+
+Cheating is prevented by authority instead — state only flows server to client,
+orders are re-attributed to the authenticated player's country, and a
+client-side mod has the write capabilities absent rather than merely useless.
+A client that lies about its mods desyncs its own display and gains nothing.
 
 ### API versioning
 
@@ -248,15 +293,24 @@ typedef struct {
     uint8_t  platform;          // 0 unknown, 1 windows, 2 macos, 3 linux, 4 web
     uint8_t  is_web;            // 1 when running under Emscripten
     uint8_t  is_headless;       // 1 during --train-ai
-    uint8_t  reserved;
+    uint8_t  net_role;          // 0 standalone, 1 client, 2 server, 3 host+player
     uint32_t screen_w, screen_h;
 } gearbox_env_t;
 
 void gearbox_core_env(gearbox_env_t* out);   // import: gearbox:core/env
+
+int gearbox_is_client(const gearbox_env_t*);       // has a local player
+int gearbox_is_server(const gearbox_env_t*);       // owns the world
+int gearbox_is_multiplayer(const gearbox_env_t*);
 ```
 
 `is_headless` matters: self-play training runs thousands of turns with no
 renderer, and a `UI` mod must no-op there rather than trap.
+
+`net_role` occupies the byte that was `reserved` before multiplayer existed.
+The layout is unchanged — still 28 bytes, still ten fields — so a mod built
+against the older struct is byte-compatible and reads `0`, which is
+`STANDALONE`: the right answer for the only game it could have been running.
 
 ## SDK tiers
 

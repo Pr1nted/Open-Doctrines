@@ -10,6 +10,8 @@ struct Config {
     int screenH = 900;
     bool fullscreen = false;
     bool showActualFlags = true;
+    /** The account terms and privacy policy have been accepted. */
+    bool accountAgreed = false;
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;
@@ -19,6 +21,26 @@ struct Config {
     // difficulty only changes how deterministically countries follow it.
     int aiDifficulty = 1;
     bool aiDebug = false;   // log AI decisions + enable the in-game AI overlay
+
+    // Audio, 0..1. What reaches the device is master * category, so pulling
+    // master to zero silences the game without disturbing the two settings
+    // under it. Music sits below effects by default because it plays
+    // continuously and the effects do not.
+    float masterVolume = 0.8f;
+    float musicVolume  = 0.6f;
+    float sfxVolume    = 0.8f;
+
+    // Announce each new track in a corner toast. On by default: the music picks
+    // itself now, and without this there is no way to tell what was chosen or
+    // to find a piece again by name.
+    bool nowPlayingToast = true;
+
+    // Make the map sound like a different place from the menus: the music drops
+    // a few dB and picks up a small room reverb once you are looking at the
+    // world. On by default — it is what stops the menu music from following you
+    // onto the map at full level, sitting in front of the game.
+    bool mapAtmosphere = true;
+
     // Online reinforcement learning during a normal session (Experimental tab).
     // Off by default: it costs time on every AI decision and writes
     // data/ai/model.bin, so a single play session can overwrite progress that a
@@ -43,6 +65,28 @@ struct Config {
     // while this one asks the game's own host about the game. Players who want
     // no outbound traffic at all can switch it off in Settings > Advanced.
     bool gameUpdateChecks = true;
+
+    // Where the account service lives, e.g.
+    // "https://opendoctrines-net.example.workers.dev".
+    //
+    // Empty by default, and an empty value means the game offers no sign-in at
+    // all rather than guessing at a host. There is no baked-in default because
+    // whoever builds this may not be running the official one, and a hardcoded
+    // fallback would quietly send their players' logins somewhere else.
+    std::string accountIssuer;
+
+    /**
+     * Proves WHICH server this machine is, when hosting.
+     *
+     * Issued once by the account service and then kept. It is what makes the
+     * per-player pseudonyms on this server stable, so registering again would
+     * make every returning player look like a stranger to it -- which is why
+     * this is stored rather than fetched each time.
+     *
+     * Not a credential for the account: it names a server, and the account
+     * session token is required alongside it to open a session.
+     */
+    std::string serverCredential;
 
     int keybinds[ACTION_COUNT];
 

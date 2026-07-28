@@ -14,13 +14,29 @@
 
 class Game;
 
+// Which side of a multiplayer game this process is, from a mod's point of
+// view. Reported to mods through gearbox_env_t.net_role, and the thing a mod
+// checks when it needs to know whether it is looking at the authoritative
+// state or at a copy the server sent.
+//
+// Standalone is 0 deliberately: it is what an older mod, reading a byte it was
+// told was reserved, already saw -- and singleplayer is the correct answer for
+// one of those.
+enum class ModNetRole : uint8_t {
+    Standalone = 0,   // singleplayer; this process is both sides
+    Client     = 1,   // a server elsewhere is authoritative
+    Server     = 2,   // dedicated host: authoritative, nobody plays here
+    HostPlayer = 3,   // authoritative AND playing
+};
+
 // What the Core `env` import reports. Set by ModManager; the mod sees a
 // snapshot taken when it asks, not a live pointer.
 struct ModHostContext {
-    Game*    game = nullptr;
-    bool     headless = false;      // --train-ai: no renderer, UI must no-op
-    uint32_t screenW = 0;
-    uint32_t screenH = 0;
+    Game*      game = nullptr;
+    bool       headless = false;      // --train-ai: no renderer, UI must no-op
+    uint32_t   screenW = 0;
+    uint32_t   screenH = 0;
+    ModNetRole netRole = ModNetRole::Standalone;
 };
 
 extern ModHostContext g_modHost;

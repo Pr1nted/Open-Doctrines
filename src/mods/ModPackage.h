@@ -38,6 +38,38 @@ enum ModModuleBit : uint32_t {
 uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
 std::string modModuleMaskToString(uint32_t mask);
 
+// Which side of a multiplayer game a mod belongs on. "both" is the default
+// because it is what a mod written before multiplayer existed effectively is,
+// and because it is the conservative answer: a mod the server does not need is
+// merely wasteful, whereas one it needed and did not have is a desync.
+//
+// The distinction is enforced, not advisory:
+//
+//   Client  In a multiplayer session the mod's GameState.Write and GameProcess
+//           grants are MASKED OFF, whatever the user granted. It cannot change
+//           the world -- which is also why the server does not care whether a
+//           joining player has it. This is the category almost every UI, map
+//           overlay and quality-of-life mod belongs in.
+//   Server  Never instantiated on a client at all. Clients do not need the
+//           file and are never asked for it.
+//   Both    Must be present on both ends, at the same version and the same
+//           bytes. Even here the server instance is authoritative and the
+//           client instance is presentation: the server never asks a client to
+//           compute game state.
+enum class ModSide : uint8_t {
+    Both   = 0,
+    Client = 1,
+    Server = 2,
+};
+
+const char* modSideName(ModSide s);
+ModSide     modSideFromName(const std::string& name, bool& known);
+
+// Capabilities a client-side mod cannot hold while a multiplayer session is
+// running. Applied as a mask, reusing the existing revocable-grant mechanism
+// rather than adding a second notion of what a mod may do.
+uint32_t    modSideGrantMask(ModSide side, bool multiplayer);
+
 struct ModDependency {
     std::string id;
     std::string version;    // range expression, e.g. ">=2.0.0 <3.0.0"
@@ -89,6 +121,7 @@ struct ModManifest {
     int gearboxMajor = 0;
     int gearboxMinor = 0;
     uint32_t modules = 0;              // always includes MODULE_CORE
+    ModSide  side = ModSide::Both;     // MANIFEST "side", default "both"
     std::vector<ModDependency> dependencies;
     std::vector<ModConflict>   conflicts;
     std::vector<ModBridge>     bridges;
@@ -175,6 +208,19 @@ public:
 
     const ModManifest& manifest() const { return m_manifest; }
     const std::vector<uint8_t>& wasm() const { return m_wasm; }
+
+    // SHA-256 of the whole .odmod, lowercase hex. Computed once at open().
+    //
+    // This is an INTEGRITY check, not an anti-tamper one, and the UI must say
+    // so. A modified client on hardware its owner controls can report any
+    // digest it likes; nothing in an open-source game can stop that. What this
+    // catches is the common case: a wrong version, a half-finished download, a
+    // mod someone edited and forgot to rebuild.
+    //
+    // Cheating is prevented elsewhere and by a different mechanism -- the
+    // server is authoritative, so a client that lies gains nothing but its own
+    // desync. See src/net/ModAttest.h.
+    const std::string& sha256() const { return m_sha256; }
     const std::vector<uint8_t>& thumbnail() const { return m_thumbnail; }
     const std::string& path() const { return m_path; }
     const std::string& diagnostic() const { return m_diagnostic; }
@@ -196,6 +242,7 @@ private:
 
     std::string  m_path;
     std::string  m_diagnostic;
+    std::string  m_sha256;
     ModManifest  m_manifest;
 
     std::vector<uint8_t> m_archive;    // kept: assets are inflated on demand

@@ -26,6 +26,11 @@ AGENTS.md
 data/projects/
 # Exported playthrough timelapses
 data/timelapses/
+# The signed-in account's session token. The app bundle's data/ is a symlink
+# to this directory, so the game writes it here -- inside the repo.
+data/account.json
+# The server book: where you play. Local, and yours.
+data/servers.json
 
 # Gearbox mod system: built artifacts and installed mods
 build-web/
@@ -46,3 +51,21 @@ build-classic/
 # Python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Cloudflare multiplayer infrastructure (net/)
+net/node_modules/
+net/.wrangler/
+net/package-lock.json
+# The nickname blocklist is deployment data, uploaded to KV. See net/blocklist/README.md.
+net/blocklist/profanity.txt
+# Local development secrets. See net/.dev.vars.example.
+net/.dev.vars
+net/od-secrets-BACKUP.txt
+net/wrangler.toml.bak
+
+# Tunnel helper for hosting a multiplayer game. A ~37 MB platform-specific
+# executable: the copy here is arm64 macOS, so it is dead weight for every
+# clone on any other platform, and the web build excludes it outright because
+# a browser cannot spawn a process. Fetch it per-platform instead of shipping
+# one binary in history.
+data/tools/cloudflared

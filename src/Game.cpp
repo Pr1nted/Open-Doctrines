@@ -1,5 +1,7 @@
 #include "GameUpdates.h"
 #include "Game.h"
+#include "Audio.h"
+#include "net/AccountClient.h"
 #include "SaveManager.h"
 #include "Keybinds.h"
 #include "ai/AISystem.h"
@@ -46,8 +48,8 @@ std::string formatPop(long long pop) {
 
 const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Quit to Menu"};
 const int MENU_COUNT = 4;
-const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Credits"};
-const int MAIN_MENU_COUNT = 6;
+const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits"};
+const int MAIN_MENU_COUNT = 7;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 
@@ -88,8 +90,43 @@ const int ACCENT_PRESETS[] = {
 const int ACCENT_PRESETS_COUNT = 10;
 const Setting CONTROLS_ITEMS[] = {{"Fly Speed", true, -1}, {"Back", false, -1}};
 const int CONTROLS_COUNT = 2;
-const Setting AUDIO_ITEMS[] = {{"Back", false, -1}};
-const int AUDIO_COUNT = 1;
+// isValue stays false on the volume rows even though they hold numbers. That
+// flag routes a click into the type-a-number editor, which is right for Max
+// Zoom and wrong here: a volume is dragged or nudged, never typed. The two
+// settings screens special-case these rows via isVolumeSetting() instead.
+const Setting AUDIO_ITEMS[] = {
+    {"Master Volume", false, -1},
+    {"Music Volume", false, -1},
+    {"Sound Effects", false, -1},
+    {"Now Playing Toast", false, -1},
+    {"Map Atmosphere", false, -1},
+    {"Back", false, -1},
+};
+const int AUDIO_COUNT = 6;
+
+// Defaults live here rather than in Config so the reset button and a fresh
+// config cannot drift apart.
+const float VOLUME_DEFAULTS[] = {0.8f, 0.6f, 0.8f};
+
+bool isVolumeSetting(int tab, int index) {
+    return tab == AUDIO_TAB && index >= 0 && index < VOLUME_COUNT;
+}
+
+float* volumeSettingPtr(Config& cfg, int tab, int index) {
+    if (!isVolumeSetting(tab, index)) return nullptr;
+    switch (index) {
+        case 0:  return &cfg.masterVolume;
+        case 1:  return &cfg.musicVolume;
+        default: return &cfg.sfxVolume;
+    }
+}
+
+void applyVolumes(const Config& cfg) {
+    Audio::get().setMasterVolume(cfg.masterVolume);
+    Audio::get().setMusicVolume(cfg.musicVolume);
+    Audio::get().setSfxVolume(cfg.sfxVolume);
+    Audio::get().setMapAtmosphere(cfg.mapAtmosphere);
+}
 
 // Keybinds items — isValue=false; handled specially via m_waitingForKey
 const Setting KEYBINDS_ITEMS[] = {
@@ -121,7 +158,7 @@ const Setting KEYBINDS_ITEMS[] = {
 };
 const int KEYBINDS_COUNT = sizeof(KEYBINDS_ITEMS) / sizeof(KEYBINDS_ITEMS[0]);
 
-const Setting ADVANCED_ITEMS[7] = {
+const Setting ADVANCED_ITEMS[] = {
     {"Display FPS", false, -1},
     {"Display Zoom", false, -1},
     {"Console Window", false, -1},
@@ -211,6 +248,35 @@ const int FLY_SPEED_COUNT = 6;
 float MAX_ZOOM_VALS[] = {2.0f, 3.0f, 5.0f, 8.0f, 10.0f, 15.0f, 20.0f};
 const int MAX_ZOOM_COUNT = 7;
 
+// Every *_COUNT above is written by hand, and a settings menu that walks past
+// the end of its array reads a row that was never initialised -- which is how
+// the Keybinds tab came to dereference a null label. These tie each count to
+// the array it counts, so adding a row and forgetting to bump the count is a
+// compile error rather than a crash in the menu.
+#define OD_COUNT_OF(a) (int)(sizeof(a) / sizeof((a)[0]))
+static_assert(MENU_COUNT           == OD_COUNT_OF(MENU_ITEMS),          "MENU_COUNT");
+static_assert(MAIN_MENU_COUNT      == OD_COUNT_OF(MAIN_MENU_ITEMS),     "MAIN_MENU_COUNT");
+static_assert(SINGLEPLAYER_COUNT   == OD_COUNT_OF(SINGLEPLAYER_ITEMS),  "SINGLEPLAYER_COUNT");
+static_assert(TAB_COUNT            == OD_COUNT_OF(TAB_NAMES),           "TAB_COUNT");
+static_assert(RES_COUNT            == OD_COUNT_OF(RESOLUTIONS),         "RES_COUNT");
+static_assert(DISPLAY_COUNT        == OD_COUNT_OF(DISPLAY_ITEMS),       "DISPLAY_COUNT");
+static_assert(AI_DIFFICULTY_COUNT  == OD_COUNT_OF(AI_DIFFICULTY_NAMES), "AI_DIFFICULTY_COUNT");
+static_assert(ACCENT_PRESETS_COUNT == OD_COUNT_OF(ACCENT_PRESETS),      "ACCENT_PRESETS_COUNT");
+static_assert(CONTROLS_COUNT       == OD_COUNT_OF(CONTROLS_ITEMS),      "CONTROLS_COUNT");
+static_assert(AUDIO_COUNT          == OD_COUNT_OF(AUDIO_ITEMS),         "AUDIO_COUNT");
+static_assert(VOLUME_COUNT         == OD_COUNT_OF(VOLUME_DEFAULTS),     "VOLUME_DEFAULTS");
+// The volume rows are the first VOLUME_COUNT of the Audio tab, and "Back" has
+// to stay after them: isVolumeSetting() decides by index alone.
+static_assert(VOLUME_COUNT         <  AUDIO_COUNT,                      "Audio tab needs a Back row");
+static_assert(KEYBINDS_COUNT       == OD_COUNT_OF(KEYBINDS_ITEMS),      "KEYBINDS_COUNT");
+static_assert(ADVANCED_COUNT       == OD_COUNT_OF(ADVANCED_ITEMS),      "ADVANCED_COUNT");
+static_assert(EXPERIMENTAL_COUNT   == OD_COUNT_OF(EXPERIMENTAL_ITEMS),  "EXPERIMENTAL_COUNT");
+static_assert(FLY_SPEED_COUNT      == OD_COUNT_OF(FLY_SPEED_VALS),      "FLY_SPEED_COUNT");
+static_assert(MAX_ZOOM_COUNT       == OD_COUNT_OF(MAX_ZOOM_VALS),       "MAX_ZOOM_COUNT");
+static_assert(TAB_COUNT            == OD_COUNT_OF(TAB_ITEMS),           "TAB_ITEMS vs TAB_COUNT");
+static_assert(TAB_COUNT            == OD_COUNT_OF(TAB_ITEM_COUNTS),     "TAB_ITEM_COUNTS vs TAB_COUNT");
+#undef OD_COUNT_OF
+
 int fpsTargetToIndex(int target) {
     if (target == -1) return 0;
     if (target == 0) return 13;
@@ -275,6 +341,13 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += std::string(": ") + AI_DIFFICULTY_NAMES[d];
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
+    } else if (isVolumeSetting(tab, index)) {
+        const float* v = volumeSettingPtr(const_cast<Config&>(cfg), tab, index);
+        char b[16]; snprintf(b, sizeof(b), ": %d%%", (int)lroundf(*v * 100.0f)); label += b;
+    } else if (tab == AUDIO_TAB && index == VOLUME_COUNT) {
+        label += cfg.nowPlayingToast ? ": On" : ": Off";
+    } else if (tab == AUDIO_TAB && index == VOLUME_COUNT + 1) {
+        label += cfg.mapAtmosphere ? ": On" : ": Off";
     } else if (tab == 4 && index == 0) {
         label += cfg.showFps ? ": On" : ": Off";
     } else if (tab == 4 && index == 1) {
@@ -400,6 +473,19 @@ bool Game::init(int screenW, int screenH, const char* title) {
 #else
     std::string appDir = GetApplicationDirectory();
     m_dataDir = appDir + "../data/";
+
+    // A second copy of the game on the same machine needs its own account,
+    // config and saves -- otherwise the two instances fight over one
+    // account.json and the second sign-in evicts the first. Testing
+    // multiplayer alone is the whole reason this exists.
+    if (const char* over = getenv("OD_DATA_DIR")) {
+        std::string d = over;
+        if (!d.empty()) {
+            if (d.back() != '/') d += '/';
+            m_dataDir = d;
+            std::cout << "Data directory overridden: " << m_dataDir << std::endl;
+        }
+    }
 #endif
     m_configPath = m_dataDir + "config.json";
 
@@ -435,6 +521,18 @@ bool Game::init(int screenW, int screenH, const char* title) {
     m_consoleBuf = new ConsoleBuf(this);
     m_origCout = std::cout.rdbuf(m_consoleBuf);
     m_origCerr = std::cerr.rdbuf(m_consoleBuf);
+
+    // Audio comes up here rather than at the end of init(): it depends on
+    // nothing below -- not the map, not the fonts -- and anything down there
+    // that fails would otherwise take the sound down with it. After the console
+    // redirect, so the device report lands in the in-game console too. A
+    // machine with no output device leaves this silent and carries on.
+    Audio::get().init(m_dataDir);
+    applyVolumes(m_config);
+
+    // The account service. An empty issuer means this build offers no sign-in,
+    // which the Account screen reports rather than failing at a request.
+    AccountClient::get().init(m_config.accountIssuer, m_dataDir + "account.json");
 
 #ifndef __EMSCRIPTEN__
     {
@@ -562,6 +660,18 @@ bool Game::init(int screenW, int screenH, const char* title) {
 }
 
 void Game::shutdown() {
+    // Before the textures below: closing the device stops the streaming thread,
+    // and it must not still be reading a Music that the unload is freeing.
+    Audio::get().shutdown();
+
+    // Joins any in-flight account request before the process goes away.
+    AccountClient::get().shutdown();
+
+    // Same for multiplayer. A live host keeps a listening socket and a
+    // registration may be mid-flight; an unjoined std::thread at destruction
+    // terminates the process, which would turn a clean quit into a crash.
+    mpShutdown();
+
     // Save the AI model on quit (unloadGameData also does this on world exit)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
     UnloadTexture(m_politicalTex);
@@ -607,6 +717,21 @@ void Game::buildCountryShipList(int shipIdx) {
     }
 }
 
+void Game::flyToShip(int shipIndex) {
+    if (!m_renderer || shipIndex < 0 || shipIndex >= (int)m_ships.size()) return;
+    const NavyShip& s = m_ships[(size_t)shipIndex];
+    int px = 0, py = 0;
+    m_landSea.lonLatToPixel((float)s.lon, (float)s.lat, px, py);
+
+    // Fixed rather than derived: a ship has no extent to frame the way a
+    // province does, so there is nothing to size the zoom against. Floored at
+    // the whole-map zoom so this can never ask to pull further out than the
+    // map itself allows.
+    const float minZoom = std::max(m_screenW / (float)m_provinces.getWidth(),
+                                   m_screenH / (float)m_provinces.getHeight());
+    m_renderer->flyTo((float)px, (float)py, std::max(2.0f, minZoom), m_config.flySpeed);
+}
+
 void Game::cycleShip(int direction) {
     if (m_countryShipIndices.empty()) return;
     int newIdx = m_countryShipIndex + direction;
@@ -616,6 +741,8 @@ void Game::cycleShip(int direction) {
     int shipIdx = m_countryShipIndices[m_countryShipIndex];
     if (shipIdx >= 0 && shipIdx < (int)m_ships.size()) {
         m_selectedShipIndices = {shipIdx};
+        Audio::get().playSfx("select_province", 0.05f);
+        flyToShip(shipIdx);
     }
 }
 
@@ -811,7 +938,21 @@ void Game::run() {
         frameCount++;
 #endif
         float dt = GetFrameTime();
-        
+
+        // Above the popup early-out below: the music stream has to be fed on
+        // every frame, and a popup is exactly when it must not stutter.
+        Audio::get().update(dt);
+        updateMusic(dt);
+
+        // A network game has to be pumped every frame, not only while the
+        // multiplayer screen is up -- it spends its life on the map, and a host
+        // that stopped listening there would drop every player the moment the
+        // game began.
+        if (m_netHost || m_netSession) {
+            mpDrainEvents();
+            mpHostTurnUpdate();
+        }
+
         updateNotifications();
         updatePopup();
         // Block all other update when popup is active (draw popup overlay on any screen)
@@ -824,7 +965,7 @@ void Game::run() {
             drawPopup();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
             continue;
         }
         
@@ -837,7 +978,8 @@ void Game::run() {
             if (m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER) {
                 initMenuBackground();
                 m_menuBgScroll = 0;
-            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS) {
+            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
+                       m_currentScreen == SCREEN_MULTIPLAYER) {
                 if (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH) {
                     initMenuBackground();
                 }
@@ -848,7 +990,8 @@ void Game::run() {
         // (covers transitions back from gameplay/country-select without a resize event)
         // Handle all menu screen types, but only init once per resize
         if ((m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER ||
-             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS) &&
+             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
+                       m_currentScreen == SCREEN_MULTIPLAYER) &&
             !IsWindowResized() &&
             (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH)) {
             initMenuBackground();
@@ -859,7 +1002,7 @@ void Game::run() {
             BeginDrawing();
             ClearBackground(BLACK);
             drawSplashScreen();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_MENU) {
             if (m_inSettings) {
                 updateMenuBackground();
@@ -869,7 +1012,7 @@ void Game::run() {
                 drawSettingsFromMenu();
                 if (m_config.showConsole) drawConsoleWindow();
                 if (m_config.debugMode) drawDebugOverlay();
-                EndDrawing();
+                endFrame();
             } else {
                 updateMenuBackground();
                 updateMainMenu();
@@ -878,7 +1021,7 @@ void Game::run() {
                 drawMainMenu();
                 if (m_config.showConsole) drawConsoleWindow();
                 if (m_config.debugMode) drawDebugOverlay();
-                EndDrawing();
+                endFrame();
             }
         } else if (m_currentScreen == SCREEN_SINGLEPLAYER) {
             updateMenuBackground();
@@ -888,7 +1031,7 @@ void Game::run() {
             drawSingleplayerMenu();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_FILE_BROWSER) {
             if (m_inHistory) {
                 // Turn History opened from a save's World Settings takes over
@@ -898,7 +1041,7 @@ void Game::run() {
                 ClearBackground(BLACK);
                 drawHistoryScreen();
                 if (m_config.showConsole) drawConsoleWindow();
-                EndDrawing();
+                endFrame();
             } else if (m_browsingSaves) {
                 updateMenuBackground();
                 updateWorldBrowser();
@@ -907,7 +1050,7 @@ void Game::run() {
                 drawWorldBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
                 if (m_config.debugMode) drawDebugOverlay();
-                EndDrawing();
+                endFrame();
             } else {
                 updateMenuBackground();
                 updateFileBrowser();
@@ -916,7 +1059,7 @@ void Game::run() {
                 drawFileBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
                 if (m_config.debugMode) drawDebugOverlay();
-                EndDrawing();
+                endFrame();
             }
         } else if (m_currentScreen == SCREEN_MAP_SELECT) {
             updateMenuBackground();
@@ -926,7 +1069,7 @@ void Game::run() {
             drawMapBrowser();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_LOADING) {
             // Throttled work: run at most one loading phase per ~33ms (30fps) so the
             // throbber gets a chance to render between heavy steps.  Draw happens
@@ -938,7 +1081,13 @@ void Game::run() {
             if (now - m_lastLoadingWork >= 0.033) {
                 m_lastLoadingWork = now;
                 if (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE && !m_loadingFailed) {
+                    // One loading phase is six to nine seconds of blocking work
+                    // at worst, during which nothing here refills the music.
+                    // The helper thread does it instead; the brackets are tight
+                    // around the call so it cannot outlive the stall.
+                    Audio::get().beginBackgroundPump();
                     updateLoading();
+                    Audio::get().endBackgroundPump();
                 }
             }
             BeginDrawing();
@@ -947,7 +1096,7 @@ void Game::run() {
                 drawLoadingScreen();
             } else {
                 // Loading completed — present one final frame then transition
-                EndDrawing();
+                endFrame();
                 if (m_loadingFailed) {
                     m_currentScreen = SCREEN_MENU;
                 } else if (m_currentScreen == SCREEN_LOADING) {
@@ -962,7 +1111,7 @@ void Game::run() {
             drawCountrySelect();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_CREDITS) {
             updateMenuBackground();
             updateCredits();
@@ -971,7 +1120,7 @@ void Game::run() {
             drawCredits();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_COMMUNITY) {
             updateMenuBackground();
             updateCommunityMenu();
@@ -980,7 +1129,7 @@ void Game::run() {
             drawCommunityMenu();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
         } else if (m_currentScreen == SCREEN_MODS) {
             updateMenuBackground();
             updateModsMenu();
@@ -989,16 +1138,46 @@ void Game::run() {
             drawModsMenu();
             if (m_config.showConsole) drawConsoleWindow();
             if (m_config.debugMode) drawDebugOverlay();
-            EndDrawing();
+            endFrame();
+        } else if (m_currentScreen == SCREEN_MULTIPLAYER) {
+            updateMultiplayerMenu();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            drawMultiplayerMenu();
+            if (m_config.showConsole) drawConsoleWindow();
+            if (m_config.debugMode) drawDebugOverlay();
+            endFrame();
+        } else if (m_currentScreen == SCREEN_ACCOUNT) {
+            updateAccountMenu();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            drawAccountMenu();
+            if (m_config.showConsole) drawConsoleWindow();
+            if (m_config.debugMode) drawDebugOverlay();
+            endFrame();
         } else if (m_currentScreen == SCREEN_MAP_EDITOR) {
             if (m_mapEditor) {
-                updateMapEditor();
+                // The editor's toolbar can ask for the settings screen. Game
+                // owns that screen, so the editor only raises the request and
+                // this decides what to run -- the editor keeps drawing behind
+                // it, which is what makes it read as an overlay on the work
+                // rather than as having left the project.
+                if (m_mapEditor->consumeSettingsRequest()) {
+                    m_inSettings = true;
+                    Audio::get().playSfx("click_light");
+                    m_settingsTab = AUDIO_TAB;
+                    m_settingsIndex = 0;
+                    m_settingsScroll = 0;
+                }
+                if (m_inSettings) updateSettingsFromMenu();
+                else updateMapEditor();
                 BeginDrawing();
                 ClearBackground(BLACK);
                 drawMapEditor();
+                if (m_inSettings) drawPauseMenu();
                 if (m_config.showConsole) drawConsoleWindow();
                 if (m_config.debugMode) drawDebugOverlay();
-                EndDrawing();
+                endFrame();
             } else {
                 m_currentScreen = SCREEN_MENU;
             }
@@ -1010,6 +1189,499 @@ void Game::run() {
 }
 
 
+
+// ────────────────────────────────────────────────────────────────────────────
+// Music selection
+// ────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// Long enough to read a title and an author without looking for it, short
+// enough that it is gone before it becomes part of the screen.
+constexpr float TOAST_SECONDS = 4.5f;
+constexpr float TOAST_FADE    = 0.45f;
+}  // namespace
+
+Mood Game::currentMood() {
+    const double now = GetTime();
+    if (m_moodStamp >= 0.0 && now - m_moodStamp < 0.5) return m_mood;
+    m_moodStamp = now;
+
+    Mood m;
+    if (m_currentScreen == SCREEN_MAP_EDITOR) {
+        // Building something, with nothing at stake.
+        m = { 0.10f, 0.35f, 0.15f };
+    } else if (m_currentScreen != SCREEN_PLAYING) {
+        // Menus, browsers, loading. NOT neutral, which was the first guess and
+        // the wrong one: neutral is closest to whatever the calmest track in the
+        // library happens to be, so the main theme would never play on the main
+        // menu. A title screen is poised and ceremonial -- about to begin rather
+        // than at rest -- and this is the point that says so.
+        m = { 0.35f, 0.45f, -0.15f };
+    } else {
+        const Country* pc = m_countries.getCountry(m_playerCountryId);
+        if (!pc) { m_mood = { 0.2f, 0.4f, 0.0f }; return m_mood; }
+
+        int wars = 0;
+        std::vector<std::string> enemies;
+        auto rel = m_relations.find(pc->isoA3);
+        if (rel != m_relations.end())
+            for (const auto& [other, r] : rel->second)
+                if (r.war) { ++wars; enemies.push_back(other); }
+
+        // One pass over the map serves three questions: how much the player
+        // holds, how much each enemy holds, and how close to revolt the
+        // player's own provinces are. Walking it three times would be the same
+        // answer for three times the cost.
+        int mine = 0;
+        float unrest = 0.0f;
+        std::unordered_map<int, int> provsByCid;
+        for (const auto& [id, p] : m_provinces.getAllProvinces()) {
+            ++provsByCid[p.countryId];
+            if (p.countryId == m_playerCountryId) {
+                ++mine;
+                unrest += getProvinceRebellionChance(id, m_playerCountryId);
+            }
+        }
+
+        // Re-baseline on a different country: a new game, a loaded save or a
+        // country switch all change who "we" are, and comparing the new holding
+        // against the old one would read as a catastrophic loss.
+        if (m_moodBaselineCid != m_playerCountryId) {
+            m_moodBaselineCid = m_playerCountryId;
+            m_moodBaseline = mine;
+        }
+
+        // One war is already the difference in kind; further wars only deepen
+        // it. Scaling linearly from zero would have a single desperate war
+        // scoring calmer than peace does in the menus.
+        m.tension = (wars == 0) ? 0.15f
+                                : std::clamp(0.55f + 0.15f * (float)(wars - 1), 0.0f, 1.0f);
+        m.energy  = 0.30f + 0.50f * m.tension;
+
+        // Whether the empire has grown since this country was picked up. The
+        // x10 is what makes losing a tenth of it read as fully bleak rather
+        // than as a rounding error.
+        const float trend = (m_moodBaseline > 0)
+            ? (float)(mine - m_moodBaseline) / (float)m_moodBaseline : 0.0f;
+        m.valence = std::clamp(trend * 10.0f, -1.0f, 1.0f);
+
+        // An active research project is the one thing the player can be busy
+        // with that the map does not show. Scaled by how much of the budget is
+        // actually committed, so a token allocation is a nudge and a real push
+        // is what moves the music -- at the default quarter this barely
+        // registers, and near full commitment it takes over.
+        // Money trouble. Deliberately measured as RUNWAY -- how many turns the
+        // reserve survives the current bleed -- rather than as a treasury
+        // number, because "broke" means nothing without knowing the burn rate:
+        // a small country with a small deficit is fine, a large one haemorrhaging
+        // is not, and the raw balance cannot tell them apart.
+        float trouble = 0.0f;
+        if (pc->treasury < 0.0) {
+            trouble = 1.0f;                      // already in the red
+        } else {
+            const CountryIncomeSnapshot inc = computeCountryIncome(m_playerCountryId);
+            const float net = inc.gross + inc.resource + inc.pop - inc.expenses;
+            if (net < 0.0f) {
+                const float runway = (float)(pc->treasury / -net);
+                // Forty turns of reserve is comfortable; none is total.
+                trouble = std::clamp(1.0f - runway / 40.0f, 0.0f, 1.0f);
+            }
+        }
+        if (trouble > 0.0f) {
+            // Bleak without being martial: the threat is that nothing can be
+            // paid for, not that anything is attacking.
+            m.valence = std::clamp(m.valence - 0.70f * trouble, -1.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  - 0.15f * trouble, 0.0f, 1.0f);
+            m.tension = std::clamp(m.tension + 0.15f * trouble, 0.0f, 1.0f);
+        }
+
+        // ── Who are we fighting? ──────────────────────────────────────────
+        // A rebellion or a far smaller neighbour is a different experience from
+        // a peer war: still loud, but not frightening. Rebel CIDs start at
+        // REBEL_CID_MIN, so a breakaway is recognisable without comparing sizes
+        // at all; everyone else is judged on how much of the map they hold.
+        float asymmetry = 0.0f;   // 0 peer or stronger .. 1 far weaker
+        if (wars > 0 && mine > 0) {
+            int biggestEnemy = 0;
+            bool allRebels = true;
+            for (const std::string& iso : enemies) {
+                const Country* ec = m_countries.getCountryByCode(iso);
+                if (!ec) continue;
+                if (ec->id < REBEL_CID_MIN) allRebels = false;
+                auto it = provsByCid.find(ec->id);
+                if (it != provsByCid.end()) biggestEnemy = std::max(biggestEnemy, it->second);
+            }
+            const float ratio = (float)biggestEnemy / (float)mine;
+            // Even odds is 0; a quarter of our size or less is total.
+            asymmetry = std::clamp(1.0f - ratio / 0.75f, 0.0f, 1.0f);
+            if (allRebels) asymmetry = std::max(asymmetry, 0.8f);
+        }
+        // Being the bigger country is not the same as winning. An empire coming
+        // apart is usually at war with something small -- its own breakaways --
+        // and reading that as confidence is exactly backwards, so the whole
+        // effect is scaled by how the map is actually going.
+        if (m.valence < 0.0f) asymmetry *= std::max(0.0f, 1.0f + m.valence);
+
+        if (asymmetry > 0.0f) {
+            // Confident rather than threatened: the noise stays, the fear goes.
+            // Tension drops only a little on purpose -- dropping it far landed
+            // the mood on top of the research theme, and a one-sided war is
+            // still a war, which is the whole distinction being drawn here.
+            m.tension = std::clamp(m.tension - 0.12f * asymmetry, 0.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  + 0.20f * asymmetry, 0.0f, 1.0f);
+            m.valence = std::clamp(m.valence + 0.45f * asymmetry, -1.0f, 1.0f);
+        }
+
+        // ── Politics ──────────────────────────────────────────────────────
+        // Treaties standing rather than wars declared: alliances, pacts and
+        // guarantees are the whole of what a country does with its neighbours
+        // when it is not fighting them, so how many it holds is how far the
+        // situation has become a diplomatic one.
+        if (wars == 0 && rel != m_relations.end()) {
+            int treaties = 0;
+            for (const auto& [other, r] : rel->second)
+                if (!r.war && (r.alliance || r.nonAggression || r.guarantee))
+                    ++treaties;
+            // The first two are subtracted, not counted: a pact with each
+            // neighbour is ordinary, and starting the scale at zero would make
+            // every country at peace a political one. Eight is a web.
+            const float politics = std::clamp((float)(treaties - 2) / 6.0f, 0.0f, 1.0f);
+            m.tension = std::clamp(m.tension + 0.15f * politics, 0.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  + 0.13f * politics, 0.0f, 1.0f);
+            m.valence = std::clamp(m.valence + 0.20f * politics, -1.0f, 1.0f);
+        }
+
+        // ── Rebuilding ────────────────────────────────────────────────────
+        // Peace right after a war does not look different from any other peace
+        // in a snapshot, so the last war has to be remembered.
+        if (wars > 0) m_moodLastWarTurn = m_turnCount;
+        if (wars == 0 && m_moodLastWarTurn >= 0) {
+            const int since = m_turnCount - m_moodLastWarTurn;
+            const float recent = std::clamp(1.0f - (float)since / 40.0f, 0.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  + 0.20f * recent, 0.0f, 1.0f);
+            m.valence = std::clamp(m.valence + 0.35f * recent, -1.0f, 1.0f);
+        }
+
+        // ── Arming ────────────────────────────────────────────────────────
+        // Army and navy upkeep as a share of income, and only while at peace:
+        // a country spending heavily on forces it is not using is preparing to.
+        if (wars == 0) {
+            const CountryIncomeSnapshot mil = computeCountryIncome(m_playerCountryId);
+            const float income = mil.gross + mil.resource + mil.pop;
+            if (income > 1.0f) {
+                const float share = (mil.armyExpenses + mil.navyExpenses) / income;
+                // A third of the budget on forces is already a war footing.
+                const float arming = std::clamp((share - 0.10f) / 0.25f, 0.0f, 1.0f);
+                m.tension = std::clamp(m.tension + 0.30f * arming, 0.0f, 1.0f);
+                m.energy  = std::clamp(m.energy  + 0.30f * arming, 0.0f, 1.0f);
+                m.valence = std::clamp(m.valence + 0.10f * arming, -1.0f, 1.0f);
+            }
+        }
+
+        // ── Something about to go wrong ───────────────────────────────────
+        // Rebellion pressure across the player's own provinces. This is the one
+        // signal that rises BEFORE anything visible happens, which is why it
+        // raises tension while LOWERING energy -- dread, not alarm.
+        if (mine > 0) {
+            const float avgUnrest = unrest / (float)mine;
+            // The loyalty floor is what a province must exceed to revolt at all,
+            // so it is the natural zero point for "is this becoming a problem".
+            const float risk = std::clamp((avgUnrest - REBELLION_LOYALTY_FLOOR) / 6.0f, 0.0f, 1.0f);
+            m.tension = std::clamp(m.tension + 0.35f * risk, 0.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  - 0.25f * risk, 0.0f, 1.0f);
+            m.valence = std::clamp(m.valence - 0.35f * risk, -1.0f, 1.0f);
+        }
+
+        if (m_researchActiveNode >= 0) {
+            const float commit = std::clamp(m_researchAllocation, 0.0f, 1.0f);
+            m.energy  = std::clamp(m.energy  + 0.35f * commit, 0.0f, 1.0f);
+            m.valence = std::clamp(m.valence + 0.45f * commit, -1.0f, 1.0f);
+        }
+    }
+
+    m_mood = m;
+    return m_mood;
+}
+
+float Game::mapAtmosphereIntensity() const {
+    float zoom = 0.0f, minZoom = 0.0f;
+    if (m_currentScreen == SCREEN_PLAYING && m_renderer) {
+        zoom = m_renderer->getZoom();
+        minZoom = m_renderer->getMinZoom();
+    } else if (m_currentScreen == SCREEN_MAP_EDITOR && m_mapEditor) {
+        zoom = m_mapEditor->getZoom();
+        minZoom = m_mapEditor->getMinZoom();
+    } else {
+        return 0.0f;   // menus and everything else stay dry
+    }
+    if (zoom <= 0.0f || minZoom <= 0.0f) return 0.0f;
+
+    // Zoom is multiplicative, so "how far in are we" is a ratio and the curve
+    // has to be logarithmic. Measured against the fit-to-screen level rather
+    // than a fixed number, because what counts as zoomed out depends on the map
+    // and the window. Dry once the view is ZOOM_DRY_RATIO times closer than
+    // that, which on a world map is roughly continent-sized.
+    constexpr float ZOOM_DRY_RATIO = 8.0f;
+    const float t = std::log(zoom / minZoom) / std::log(ZOOM_DRY_RATIO);
+    return 1.0f - std::clamp(t, 0.0f, 1.0f);
+}
+
+void Game::updateMusic(float dt) {
+    // Consumed unconditionally, then shown only if the option is on. Leaving
+    // the flag set while the toast is disabled would make the next track the
+    // player enables it for pop up instantly and out of context.
+    TrackInfo changed;
+    if (Audio::get().takeTrackChange(changed) && m_config.nowPlayingToast) {
+        m_toast = changed;
+        m_toastTimer = TOAST_SECONDS;
+    }
+    if (m_toastTimer > 0.0f) m_toastTimer -= dt;
+
+    Audio::get().setAtmosphereIntensity(mapAtmosphereIntensity());
+
+    // playForContext returns immediately when the context has not changed, so
+    // this runs unconditionally rather than tracking screen transitions here.
+    switch (m_currentScreen) {
+        case SCREEN_SPLASH:
+            // Whatever silence the game started in. Opening a logo fade over a
+            // track that starts mid-phrase sounds like a mistake.
+            break;
+        case SCREEN_PLAYING:
+            Audio::get().playForContext("game", currentMood());
+            break;
+        case SCREEN_MAP_EDITOR:
+            Audio::get().playForContext("editor", currentMood());
+            break;
+        default:
+            // Every menu, browser and loading screen is one context. They are
+            // places the player passes through rather than sits in, and a track
+            // restarting on each hop between them would be worse than one that
+            // carries across.
+            Audio::get().playForContext("menu", currentMood());
+            break;
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Now-playing toast
+// ────────────────────────────────────────────────────────────────────────────
+
+void Game::showNowPlayingToast() {
+    TrackInfo t = Audio::get().nowPlaying();
+    if (t.title.empty()) return;
+    m_toast = t;
+    m_toastTimer = TOAST_SECONDS;
+}
+
+void Game::drawNowPlayingToast() {
+    if (m_toastTimer <= 0.0f || m_toast.title.empty()) return;
+
+    // Eased at both ends so it never blinks out mid-frame.
+    float alpha = 1.0f;
+    const float shown = TOAST_SECONDS - m_toastTimer;
+    if (shown < TOAST_FADE)         alpha = shown / TOAST_FADE;
+    else if (m_toastTimer < TOAST_FADE) alpha = m_toastTimer / TOAST_FADE;
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
+    const auto A = [&](int v) { return (unsigned char)std::clamp((int)(v * alpha), 0, 255); };
+
+    // Deliberately ASCII and DrawText: the toast draws on every screen,
+    // including ones reached before m_gameFont exists, and raylib's built-in
+    // font has no glyph for a musical note or an em dash.
+    const char* kicker = "NOW PLAYING";
+    const std::string title = m_toast.title;
+    const std::string author = m_toast.author.empty() ? std::string() : ("by " + m_toast.author);
+
+    const int kickerSize = 12, titleSize = 22, authorSize = 14;
+    const int padX = 16, padY = 12, accentW = 3;
+
+    int textW = std::max(MeasureText(kicker, kickerSize), MeasureText(title.c_str(), titleSize));
+    if (!author.empty()) textW = std::max(textW, MeasureText(author.c_str(), authorSize));
+
+    const int boxW = textW + padX * 2 + accentW;
+    const int boxH = padY * 2 + kickerSize + 6 + titleSize + (author.empty() ? 0 : 4 + authorSize);
+    // Bottom-left: notifications already own the top-right corner. The margin
+    // clears the version string the main menu draws at screenH - 24 in 14px,
+    // which the toast otherwise sits directly on top of.
+    const int x = 24;
+    const int y = m_screenH - boxH - 46;
+
+    const Color accent = hexToColor(m_config.accentColor);
+    DrawRectangleRounded({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
+                         (Color){ 12, 12, 18, A(225) });
+    DrawRectangleRoundedLines({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
+                              (Color){ accent.r, accent.g, accent.b, A(90) });
+    // Accent spine down the left edge, inset so the rounding does not clip it.
+    DrawRectangle(x + 1, y + 8, accentW, boxH - 16, (Color){ accent.r, accent.g, accent.b, A(230) });
+
+    int ty = y + padY;
+    const int tx = x + accentW + padX;
+    DrawText(kicker, tx, ty, kickerSize, (Color){ accent.r, accent.g, accent.b, A(215) });
+    ty += kickerSize + 6;
+    DrawText(title.c_str(), tx, ty, titleSize, (Color){ 245, 245, 250, A(255) });
+    if (!author.empty()) {
+        ty += titleSize + 4;
+        DrawText(author.c_str(), tx, ty, authorSize, (Color){ 170, 170, 185, A(200) });
+    }
+}
+
+void Game::endFrame() {
+    // Everything that has to sit above all other drawing goes here. run() has
+    // fifteen separate draw blocks, one per screen state, and threading a new
+    // overlay through each of them is how one of them ends up missing it.
+    drawNowPlayingToast();
+    EndDrawing();
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Settings > Audio sliders
+// ────────────────────────────────────────────────────────────────────────────
+
+namespace {
+constexpr float SLIDER_W = 320.0f;
+constexpr float SLIDER_H = 8.0f;
+// Under the label, not beside it. The label is centred and its width changes
+// as the percentage does ("9%" to "100%"), so a bar beside it would shift.
+constexpr float SLIDER_DY = 44.0f;
+}  // namespace
+
+Rectangle Game::sliderBarRect(int y, int centerX) const {
+    return { (float)centerX - SLIDER_W / 2.0f, (float)y + SLIDER_DY, SLIDER_W, SLIDER_H };
+}
+
+void Game::drawSliderWidget(Rectangle bar, float t, bool active, int steps) const {
+    const Color accent = hexToColor(m_config.accentColor);
+    t = std::clamp(t, 0.0f, 1.0f);
+
+    DrawRectangleRounded(bar, 1.0f, 6, (Color){255, 255, 255, 36});
+    Rectangle fill = bar;
+    fill.width = bar.width * t;
+    // Below one bar-height the rounded rect degenerates into a smear.
+    if (fill.width >= SLIDER_H) DrawRectangleRounded(fill, 1.0f, 6, accent);
+
+    // Stops are drawn from the same fraction the thumb and the hit test use.
+    // They disagreed before: ticks at i/(n-1), thumb at (i+0.5)/n, so the
+    // handle never once sat on the stop it was reporting.
+    if (steps > 1) {
+        for (int i = 0; i < steps; ++i) {
+            const float f = (float)i / (float)(steps - 1);
+            const int tx = (int)(bar.x + bar.width * f);
+            const int th = (i == 0 || i == steps - 1) ? 12 : 6;
+            DrawRectangle(tx, (int)(bar.y + bar.height) + 2, 2, th,
+                          (Color){140, 140, 140, 200});
+        }
+    }
+
+    const int kx = (int)(bar.x + bar.width * t);
+    const int ky = (int)(bar.y + bar.height * 0.5f);
+    const float kr = active ? 9.0f : 7.0f;
+    DrawCircle(kx, ky, kr, accent);
+    DrawCircle(kx, ky, kr - 3.0f, (Color){20, 20, 28, 255});
+}
+
+bool Game::sliderInteract(Rectangle bar, int steps, float& t, bool& owns) {
+    const Vector2 mouse = getMouse();
+    // Eight pixels of bar is not a mouse target; the grab band is the row.
+    const Rectangle grab = { bar.x - 10.0f, bar.y - 16.0f,
+                             bar.width + 20.0f, bar.height + 32.0f };
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+        CheckCollisionPointRec(mouse, grab)) {
+        owns = true;
+        m_sliderDragT = -1.0f;   // nothing reported yet this drag
+        Audio::get().playSfx("slider_grab");
+    }
+    if (owns && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        owns = false;
+        Audio::get().playSfx("slider_release");
+    }
+    if (!owns || !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) return false;
+
+    float nt = std::clamp((mouse.x - bar.x) / bar.width, 0.0f, 1.0f);
+    if (steps > 1) {
+        const int idx = std::clamp((int)roundf(nt * (float)(steps - 1)), 0, steps - 1);
+        nt = (float)idx / (float)(steps - 1);
+    } else {
+        // Whole percent. The labels read as integer percentages anyway, and a
+        // raw mouse position never repeats, so without this the slider had no
+        // notion of "not moved" at all.
+        nt = roundf(nt * 100.0f) / 100.0f;
+    }
+    // Against the last reported value, not the caller's -- see m_sliderDragT.
+    if (nt == m_sliderDragT) return false;
+
+    // Hitting either stop is its own sound: a slider that ticks identically
+    // forever gives no feedback that it has run out of travel.
+    const bool wasEnd = (m_sliderDragT >= 0.0f &&
+                         (m_sliderDragT <= 0.0f || m_sliderDragT >= 1.0f));
+    const bool isEnd  = (nt <= 0.0f || nt >= 1.0f);
+    m_sliderDragT = nt;
+    t = nt;
+    if (isEnd && !wasEnd) {
+        Audio::get().playSfx("slider_end");
+    } else if (GetTime() - m_lastSliderTick > 0.03) {
+        // Rate-limited: a continuous drag would otherwise fire one per frame.
+        m_lastSliderTick = GetTime();
+        Audio::get().playSfx("slider_tick", 0.08f);
+    }
+    return true;
+}
+
+void Game::adjustVolume(int index, float delta) {
+    float* v = volumeSettingPtr(m_config, AUDIO_TAB, index);
+    if (!v) return;
+
+    // Whole percent. The label shows an integer percentage, and without the
+    // rounding a drag would write 0.7999999 into config.json and then read it
+    // back as a value the label disagrees with.
+    float nv = roundf(std::clamp(*v + delta, 0.0f, 1.0f) * 100.0f) / 100.0f;
+    if (nv == *v) return;
+    *v = nv;
+    applyVolumes(m_config);
+
+    // Master and Effects are otherwise silent to adjust: with nothing playing
+    // there is no way to hear what was just set. Music needs no preview because
+    // moving it changes what is already audible. Rate-limited because a drag
+    // would otherwise fire one click per frame.
+    if (index != 1 && GetTime() - m_lastSliderTick > 0.03) {
+        m_lastSliderTick = GetTime();
+        Audio::get().playSfx("slider_tick", 0.08f);
+    }
+}
+
+bool Game::updateVolumeSliders(int startY, int itemH, int centerX, int effScroll) {
+    if (m_settingsTab != AUDIO_TAB) { m_draggingVolume = -1; return false; }
+    // Once per drag, not once per frame of it. Leaving the settings screen saves
+    // too, but a player who drags a slider and then quits from the window's
+    // close button never reaches that.
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_draggingVolume >= 0)
+        m_config.save(m_configPath);
+
+    const Vector2 mouse = getMouse();
+    bool over = false;
+    for (int i = 0; i < VOLUME_COUNT; ++i) {
+        const float* v = volumeSettingPtr(m_config, AUDIO_TAB, i);
+        if (!v) continue;
+        const Rectangle bar = sliderBarRect(startY + (i - effScroll) * itemH, centerX);
+        const Rectangle grab = { bar.x - 10.0f, bar.y - 16.0f,
+                                 bar.width + 20.0f, bar.height + 32.0f };
+        if (CheckCollisionPointRec(mouse, grab)) over = true;
+
+        bool owns = (m_draggingVolume == i);
+        float t = *v;
+        const bool changed = sliderInteract(bar, /*steps=*/0, t, owns);
+        if (owns) { m_draggingVolume = i; m_settingsIndex = i; }
+        else if (m_draggingVolume == i) m_draggingVolume = -1;
+        if (changed) adjustVolume(i, t - *v);
+    }
+    return over || m_draggingVolume >= 0;
+}
+
+void Game::drawVolumeSlider(int index, int y, int centerX, bool selected) {
+    const float* v = volumeSettingPtr(m_config, AUDIO_TAB, index);
+    if (!v) return;
+    drawSliderWidget(sliderBarRect(y, centerX), *v,
+                     selected || m_draggingVolume == index, /*steps=*/0);
+}
 
 void Game::drawPauseMenu() {
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 160});
@@ -1142,6 +1814,9 @@ void Game::drawPauseMenu() {
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Show Actual Flags") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Debug Mode") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "FPS") == 0 ||
+                strcmp(TAB_ITEMS[m_settingsTab][i].label, "Now Playing Toast") == 0 ||
+                strcmp(TAB_ITEMS[m_settingsTab][i].label, "Map Atmosphere") == 0 ||
+                isVolumeSetting(m_settingsTab, i) ||
                 (m_settingsTab == 3 && TAB_ITEMS[m_settingsTab][i].actionId >= 0))) {
                 int smFont = 24;
                 const char* rl = "R";
@@ -1204,7 +1879,12 @@ void Game::drawPauseMenu() {
             }
             DrawRectangleRounded(rect, 0.1f, 8, bgColor);
             DrawText(label.c_str(), centerX - tw / 2, y, fontSize, textColor);
-            if (isSelected && !isEditing) {
+            // The volume rows get a bar instead of the selection underline --
+            // the two sit four pixels apart and read as one smudged double
+            // line. Selection shows as the knob growing instead.
+            if (isVolumeSetting(m_settingsTab, i)) {
+                drawVolumeSlider(i, y, centerX, isSelected);
+            } else if (isSelected && !isEditing) {
                 int lineW = (m_settingsTab == 0 && i == 5) ? 320 : tw + 20;
                 DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accentColor));
             }
@@ -1233,6 +1913,9 @@ void Game::drawPauseMenu() {
                 strcmp(items[i].label, "AI Difficulty") == 0 ||
                 strcmp(items[i].label, "Resolution") == 0 ||
                 strcmp(items[i].label, "FPS") == 0 ||
+                strcmp(items[i].label, "Now Playing Toast") == 0 ||
+                strcmp(items[i].label, "Map Atmosphere") == 0 ||
+                isVolumeSetting(m_settingsTab, i) ||
                 (m_settingsTab == 3 && items[i].actionId >= 0))) {
                 int smFont = 24;
                 const char* rl = "R";
@@ -1245,32 +1928,21 @@ void Game::drawPauseMenu() {
                 DrawText(rl, (int)(rx + 5), (int)(ry + 2), smFont, rc);
             }
 
-            // FPS slider
+            // FPS slider -- the same widget as the volumes, stepped rather
+            // than continuous. It used to be a second implementation with its
+            // own geometry, and a thumb drawn at (idx+0.5)/14 over ticks laid
+            // out at idx/13, so the handle never sat on a stop.
             if (m_settingsTab == 0 && i == 5) {
-                int sliderW = 300;
-                int sliderH = 8;
-                int sliderX = centerX - sliderW / 2;
-                int sliderY = y + 28;
-                int thumbR = 9;
-
-                DrawRectangle(sliderX, sliderY, sliderW, sliderH, (Color){80, 80, 80, 200});
-                int idx = fpsTargetToIndex(m_config.fpsTarget);
-                float fillFrac = (idx + 0.5f) / 14.0f;
-                DrawRectangle(sliderX, sliderY, (int)(sliderW * fillFrac), sliderH, ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f));
-
-                for (int t = 0; t < 14; ++t) {
-                    int tx = sliderX + t * sliderW / 13;
-                    int th = (t == 0 || t == 13) ? 12 : 6;
-                    DrawRectangle(tx, sliderY + sliderH + 2, 2, th, (Color){140, 140, 140, 200});
-                }
-
-                int lblSize = 14;
-                DrawText("Unlimited", sliderX, sliderY + sliderH + 16, lblSize, (Color){180, 180, 180, 200});
-                DrawText("VSync", sliderX + sliderW - MeasureText("VSync", lblSize), sliderY + sliderH + 16, lblSize, (Color){180, 180, 180, 200});
-
-                int thumbX = sliderX + (int)(fillFrac * sliderW);
-                DrawCircle(thumbX, sliderY + sliderH / 2, (float)thumbR, hexToColor(m_config.accentColor));
-                DrawCircle(thumbX, sliderY + sliderH / 2, (float)(thumbR - 3), (Color){255, 255, 255, 220});
+                const Rectangle bar = sliderBarRect(y, centerX);
+                const int idx = fpsTargetToIndex(m_config.fpsTarget);
+                drawSliderWidget(bar, (float)idx / (float)(FPS_STEPS - 1),
+                                 m_settingsIndex == i || m_draggingFpsSlider,
+                                 FPS_STEPS);
+                const int lbl = 14;
+                const int ly = (int)(bar.y + bar.height) + 16;
+                DrawText("Unlimited", (int)bar.x, ly, lbl, (Color){180, 180, 180, 200});
+                DrawText("VSync", (int)(bar.x + bar.width) - MeasureText("VSync", lbl),
+                         ly, lbl, (Color){180, 180, 180, 200});
             }
         }
     } else {

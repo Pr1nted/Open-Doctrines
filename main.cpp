@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "ai/AISystem.h"
 #include <cstring>
 #include <cstdlib>
@@ -16,6 +17,42 @@ int main(int argc, char** argv) {
             std::cout << "[AI] Read-only model: this session will not save "
                          "data/ai/model.bin" << std::endl;
         }
+
+    // Training has nobody listening. This has to be decided before init(),
+    // which is where the device would otherwise be opened -- and the headless
+    // machines that run training are the ones least likely to have one.
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--train-ai") == 0) Audio::s_disabled = true;
+
+    // --export-timelapse <save.odsv> [out.gif] [WxH] [political|population|troops]
+    // Headless: no window, no audio, no UI. Runs before anything is initialised.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--export-timelapse") != 0) continue;
+        if (i + 1 >= argc) {
+            fprintf(stderr, "--export-timelapse needs a save path\n");
+            return 2;
+        }
+        Audio::s_disabled = true;
+        std::string save = argv[i + 1];
+        std::string out = (i + 2 < argc && argv[i + 2][0] != '-') ? argv[i + 2]
+                                                                 : "timelapse.gif";
+        int w = 960, h = 480;
+        Game::HistoryView view = Game::HV_POLITICAL;
+        for (int k = i + 3; k < argc; ++k) {
+            std::string a = argv[k];
+            int pw = 0, ph = 0;
+            if (sscanf(a.c_str(), "%dx%d", &pw, &ph) == 2 && pw > 0 && ph > 0) {
+                w = pw; h = ph;
+            } else if (a == "population") {
+                view = Game::HV_POPULATION;
+            } else if (a == "troops") {
+                view = Game::HV_TROOPS;
+            }
+        }
+        Game g;
+        bool ok = g.exportTimelapseHeadless(save, out, w, h, 6, view);
+        return ok ? 0 : 1;
+    }
 
     Game game;
     if (!game.init(1600, 900, "OpenDoctrines")) {

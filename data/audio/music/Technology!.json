@@ -1,0 +1,12 @@
+{
+  "title": "Technology!",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": {
+    "tension": 0.25,
+    "energy": 0.70,
+    "valence": 0.45
+  },
+  "weight": 1.0,
+  "$comment": "Synth lead, arp, pad, crystal bells and electronic percussion -- active without being martial. It is the only piece in the library with high energy AND positive valence, which is precisely the corner nothing else occupies: a country that is busy and doing well. That is why it wins a research push and a growing empire but loses every war to Bombing Voronezh, whose energy it nearly matches but whose valence it does not. Editable source: data/audio/midi/Technology!.mid"
+}

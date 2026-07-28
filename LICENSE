@@ -62,7 +62,38 @@ it, and clause 2 does not restrict your Content except where that Content
 includes part of the Software itself.
 
 
-4. FUTURE VERSIONS OF THIS LICENSE
+4. CONTRIBUTIONS
+
+"Contribution" means any work you deliberately submit for inclusion in the
+Software -- a pull request, a patch, or anything else offered for the same
+purpose. Reporting a bug, writing about the Software, or creating Content
+under clause 3 is not a Contribution.
+
+You keep the copyright in your Contribution. You are not assigning it.
+
+By submitting a Contribution you grant the Licensor a perpetual, worldwide,
+non-exclusive, royalty-free, irrevocable license to use, reproduce, modify,
+distribute and sublicense it as part of the Software, under this license and
+under any other terms the Licensor releases the Software under, including
+commercial terms.
+
+This grant runs to the Licensor only. It does not give any other person a
+right to your Contribution beyond what clause 1 gives them in the Software as
+a whole, and it does not permit the Licensor to relicense your Contribution
+separately from the Software.
+
+You confirm that you are legally able to make this grant -- that the work is
+yours, or that whoever holds the rights has authorised you.
+
+Why this clause exists, stated plainly: clause 5 lets the Licensor relicense
+the Software, but that power reaches only the Licensor's own copyright.
+Without an inbound grant, one accepted patch would leave a piece of the
+Software that the Licensor cannot relicense and cannot remove without
+rewriting it. This clause keeps that from happening. It asks for no more than
+that.
+
+
+5. FUTURE VERSIONS OF THIS LICENSE
 
 The Licensor may release future versions of the Software under different
 terms, including terms that are more or less permissive than these.
@@ -73,14 +104,14 @@ does not apply retroactively to a version you already have, and does not
 revoke the rights this license gave you in that version.
 
 
-5. NO WARRANTY
+6. NO WARRANTY
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 
-6. NO LIABILITY
+7. NO LIABILITY
 
 IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
@@ -92,14 +123,18 @@ perfect. The Licensor is not liable for Content created by others, nor for any
 consequence of running it.
 
 
-7. TERMINATION
+8. TERMINATION
 
 If you breach this license, the rights it grants you end automatically. They
 are reinstated if you cure the breach within 30 days of becoming aware of it.
 
 
-8. THIRD-PARTY COMPONENTS
+9. THIRD-PARTY COMPONENTS
 
 The Software includes third-party components under their own licenses. Those
-licenses govern those components, and nothing here overrides them. See
-data/licenses/ for the full texts.
+licenses govern those components, and nothing here overrides them.
+
+NOTICE.md lists every one of them, what it is used for, and what its terms
+require. data/licenses/ holds the full texts, and data/licenses/FLAGS.md the
+per-file terms of the flag artwork. Both are generated from tools/provenance.json
+and are checked by the test suite, so they cannot fall behind what ships.

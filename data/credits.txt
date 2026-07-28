@@ -4,30 +4,66 @@
 ---
 - Pr1nted
 @
-@Map Data
+@Original music
 ---
-- Natural Earth (public domain)
-- GREG (Gartzke et al.)
-
-@Libraries
----
-- raylib (zlib/libpng license)
-- nanosvg (zlib license)
-- nlohmann/json (MIT license)
-- miniz (MIT license)
-- stb_image (public domain)
-- Unifont (SIL OFL 1.1 / GPL 2+)
-- DejaVu Sans Font (Bitstream Vera license)
-
-@SVG Flag Symbols
----
-- Adapted from Wikimedia Commons (public domain)
-
+- Pr1nted - "Parade Uniform" (main theme)
+- Pr1nted - "Creator"
+- Pr1nted - "Looking Around"
+- Pr1nted - "Bombing Voronezh"
+- Pr1nted - "Technology!"
+- Pr1nted - "March to the Death"
+- Pr1nted - "Cutting Costs"
+- Pr1nted - "Anthem of Survivors"
+- Pr1nted - "Navy and Arms"
+- Pr1nted - "Rebel"
+- Pr1nted - "Reprise"
+- Pr1nted - "Instability"
+- Pr1nted - "Global Politics"
+- Pr1nted - "Great Diplomacy"
+@
 @Special Thanks
 ---
 - Open source cartography projects
 - You, for playing the game!
-
+@
 
 $This is a free and open-source project.
 $No copyright infringement is intended.
+
+$--- generated from tools/provenance.json — do not edit below ---
+
+@Map & World Data
+---
+- Natural Earth (Public domain)
+- USGS Major Mineral Deposits of the World (Public domain (work of the US Government, 17 U.S.C. 105))
+- NGA World Port Index (Pub 150) (Public domain (work of the US Government))
+- World Bank Open Data (CC BY 4.0)
+- Wikimedia Commons (Public domain, CC0 and OGL-om 1.0 — per file)
+@
+@Required Attribution
+---
+$ Contains data from the World Bank, licensed under CC BY 4.0. The World Bank does not endorse this work.
+$ Flag artwork from Wikimedia Commons. Per-file licences and required attribution: data/licenses/FLAGS.md.
+@
+@Libraries
+---
+- raylib (zlib/libpng)
+- WebAssembly Micro Runtime (WAMR) (Apache-2.0)
+- Mbed TLS (Apache-2.0)
+- nlohmann/json (MIT)
+- nanosvg (zlib)
+- miniz (MIT)
+- stb_image / stb_image_write (Public domain (Unlicense/MIT dual))
+@
+@Fonts
+---
+- DejaVu Sans (Bitstream Vera Fonts License)
+- GNU Unifont (SIL OFL 1.1)
+@
+@Artwork
+---
+- SVG symbol set (Public domain)
+@
+
+$Full third-party notices: NOTICE.md
+$Per-flag licences: data/licenses/FLAGS.md

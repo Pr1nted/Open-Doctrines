@@ -5,23 +5,41 @@
   <g fill="#FFF" transform="translate(150 150)">
     <g id="b">
       <path d="M0-75V0h37.5" id="a" transform="rotate(18 0 -75)"/>
-      <path d="M0-75V0h37.5" transform="rotate(18.000000,0.000000,-75.000000) scale(-1.000000,1.000000)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+      </g>
     </g>
     <g transform="rotate(72.000000)">
-      <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
-      <path d="M0-75V0h37.5" transform="rotate(18.000000,0.000000,-75.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(144.000000)">
-      <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
-      <path d="M0-75V0h37.5" transform="rotate(18.000000,0.000000,-75.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(216.000000)">
-      <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
-      <path d="M0-75V0h37.5" transform="rotate(18.000000,0.000000,-75.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(288.000000)">
-      <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
-      <path d="M0-75V0h37.5" transform="rotate(18.000000,0.000000,-75.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M0-75V0h37.5" transform="rotate(18 0 -75)"/>
+        </g>
+      </g>
     </g>
   </g>
 </svg>

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "raymath.h"
 #include <iostream>
@@ -45,6 +46,7 @@ void Game::drawClaimsTab() {
     int xw = MeasureText("X", 20);
     DrawText("X", (int)(closeBtn.x + closeBtn.width/2 - xw/2), 12, 20, {180, 180, 180, 200});
     if (CheckCollisionPointRec(mouse, closeBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        Audio::get().playSfx("back");
         m_inClaims = false;
         m_activeSidebarTab = 0;
         m_claimsEditMode = false;
@@ -80,6 +82,7 @@ void Game::drawClaimsTab() {
         if (active) DrawRectangle(tx - tw / 2, tabY + 24, tw, 3, hexToColor(m_config.accentColor));
         Rectangle tr = {(float)(tx - tw / 2 - 10), (float)(tabY - 5), (float)(tw + 20), 30};
         if (CheckCollisionPointRec(mouse, tr) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (m_claimsTab != t) Audio::get().playSfx("tab_switch");
             m_claimsTab = t;
             m_claimsScroll = 0;
             m_claimsMapSrcX = m_claimsMapSrcY = 0;
@@ -447,10 +450,13 @@ void Game::drawClaimsTab() {
                     if (m_claimsEditMode && CheckCollisionPointRec(mouse, {(float)(listX + 4), (float)drawY, (float)(listW - 8), 22}) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         bool isCur = std::find(currentClaims.begin(), currentClaims.end(), pid) != currentClaims.end();
                         bool isOwnedByPlayer = ppIt->second.countryId == m_playerCountryId;
-                        if (isCur && !inDrop) m_claimsEditToDrop.push_back(pid);
-                        else if (isCur && inDrop) m_claimsEditToDrop.erase(std::remove(m_claimsEditToDrop.begin(), m_claimsEditToDrop.end(), pid), m_claimsEditToDrop.end());
-                        else if (!isCur && !inAdd && !isOwnedByPlayer) m_claimsEditToAdd.push_back(pid);
-                        else if (!isCur && inAdd && !isOwnedByPlayer) m_claimsEditToAdd.erase(std::remove(m_claimsEditToAdd.begin(), m_claimsEditToAdd.end(), pid), m_claimsEditToAdd.end());
+                        if (isCur && !inDrop) { m_claimsEditToDrop.push_back(pid); Audio::get().playSfx("toggle_off"); }
+                        else if (isCur && inDrop) { m_claimsEditToDrop.erase(std::remove(m_claimsEditToDrop.begin(), m_claimsEditToDrop.end(), pid), m_claimsEditToDrop.end()); Audio::get().playSfx("toggle_on"); }
+                        else if (!isCur && !inAdd && !isOwnedByPlayer) { m_claimsEditToAdd.push_back(pid); Audio::get().playSfx("stake_claim"); }
+                        else if (!isCur && inAdd && !isOwnedByPlayer) { m_claimsEditToAdd.erase(std::remove(m_claimsEditToAdd.begin(), m_claimsEditToAdd.end(), pid), m_claimsEditToAdd.end()); Audio::get().playSfx("toggle_off"); }
+                        // Your own province cannot be claimed, and the click
+                        // above falls through every branch when it is.
+                        else Audio::get().playSfx("deny");
                         m_claimsOverlayDirty = true;
                     }
                 }
@@ -469,6 +475,7 @@ void Game::drawClaimsTab() {
             DrawRectangleLinesEx(confirmBtn, 1, {80, 200, 80, 255});
             DrawText("Confirm Changes", centerX - 170 + 80 - MeasureText("Confirm Changes", 15)/2, btnY + 8, 15, WHITE);
             if (CheckCollisionPointRec(mouse, confirmBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("confirm");
                 // Move edits to pending (applied on next turn)
                 for (int pid : m_claimsEditToDrop) {
                     auto pp = std::find(m_claimsPendingAdd.begin(), m_claimsPendingAdd.end(), pid);
@@ -490,6 +497,7 @@ void Game::drawClaimsTab() {
             DrawRectangleLinesEx(cancelBtn, 1, {140, 80, 80, 255});
             DrawText("Cancel", centerX + 10 + 80 - MeasureText("Cancel", 15)/2, btnY + 8, 15, LIGHTGRAY);
             if (CheckCollisionPointRec(mouse, cancelBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("back");
                 m_claimsEditToAdd.clear();
                 m_claimsEditToDrop.clear();
                 m_claimsEditMode = false;
@@ -503,6 +511,7 @@ void Game::drawClaimsTab() {
             DrawRectangleLinesEx(editBtn, 1, {80, 120, 200, 255});
             DrawText("Edit Claims", centerX - MeasureText("Edit Claims", 16)/2, btnAreaY + 6, 16, WHITE);
             if (CheckCollisionPointRec(mouse, editBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("click_light");
                 m_claimsEditMode = true;
                 // Merge pending into edit so user can modify them
                 m_claimsEditToAdd = m_claimsPendingAdd;
@@ -540,8 +549,11 @@ void Game::drawClaimsTab() {
             DrawText(selCountry ? selCountry->name.c_str() : selIso.c_str(), listX + 30, drawY + 4, 13, hexToColor(m_config.accentColor));
             if (CheckCollisionPointRec(mouse, selRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 float relX = mouse.x - selRect.x;
-                if (relX < 24 && canPrev) { m_claimsPovIndex--; m_claimsOverlayDirty = true; }
-                else if (relX > selRect.width - 24 && canNext) { m_claimsPovIndex++; m_claimsOverlayDirty = true; }
+                if (relX < 24 && canPrev) { m_claimsPovIndex--; m_claimsOverlayDirty = true; Audio::get().playSfx("click_light"); }
+                else if (relX > selRect.width - 24 && canNext) { m_claimsPovIndex++; m_claimsOverlayDirty = true; Audio::get().playSfx("click_light"); }
+                // Either end of the list: the arrow is drawn greyed, so the
+                // click needs to say so rather than do nothing.
+                else if (relX < 24 || relX > selRect.width - 24) Audio::get().playSfx("deny");
             }
             drawY += 30;
 
@@ -632,12 +644,13 @@ void Game::drawClaimsTab() {
             float pacPct = m_pacificationAllocation * 50.0f;
             DrawText(TextFormat("Suppression: %.1f%%", pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
 
-            Vector2 mse = getMouse();
-            if (CheckCollisionPointRec(mse, {(float)slX, (float)slY, (float)slW, (float)slH})) {
-                if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                    m_pacificationAllocation = (mse.x - slX) / slW;
-                    if (m_pacificationAllocation < 0) m_pacificationAllocation = 0;
-                    if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
+            {
+                const Rectangle pacBar = {(float)slX, (float)slY, (float)slW, (float)slH};
+                float t = m_pacificationAllocation;
+                if (sliderInteract(pacBar, /*steps=*/0, t, m_draggingPacification)) {
+                    // Same clamp-after as the research allocation: the ceiling
+                    // is what the budget allows, not 1.0.
+                    m_pacificationAllocation = std::clamp(t, 0.0f, maxAllocFrac);
                 }
             }
         }

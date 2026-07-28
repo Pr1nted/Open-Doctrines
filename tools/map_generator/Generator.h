@@ -34,6 +34,23 @@ public:
         std::string adminUrl = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces.zip";
         std::string populatedPlacesUrl = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_populated_places.zip";
         int voronoiRelaxIterations = 2;
+
+        // admin_1 units (real states, oblasts, departements) instead of the
+        // flood-fill subdivision. OFF by default: the units are accurate but
+        // wildly uneven in size between countries, and Europe -- where they are
+        // finest and where europeMult already doubles the allocation -- came out
+        // as confetti next to Africa and Asia. Even provinces read better on a
+        // world map than accurate ones. Kept because it is built, tested, and
+        // is the right answer for a Europe-only or single-country map.
+        bool useAdminUnits = false;
+        // Rough total to aim for, scaling the per-country allocation up or
+        // down uniformly. 0 -- the default -- means "no scaling": each country
+        // gets what the area formula gives it, which is the balance the map had
+        // before admin_1 units existed. Set a number only to make the whole map
+        // finer or coarser; the RELATIVE split between countries is the
+        // formula's either way, and letting admin_1 decide it instead gave
+        // Britain 8.6x its share and Congo half of its.
+        int targetProvinces = 0;
     };
 
     Generator(const Config& cfg);

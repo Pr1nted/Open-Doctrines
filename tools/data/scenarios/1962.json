@@ -1,0 +1,693 @@
+{
+ "$comment": "October 1962. The easiest era to express on modern province geometry, because decolonisation has mostly happened and most borders are the ones the base map already has: `independent_default` fills in every country that is simply itself, and this file lists only what differs. Known approximations: the base map has one Germany and one Vietnam, so the inner-German border is a bounding box over ten German provinces and North/South Vietnam are not separated at all. Algeria is independent (July 1962), Samoa is independent (January 1962), Uganda is independent (October 1962).",
+ "schema": 1,
+ "id": "1962",
+ "name": "The Missile Crisis",
+ "date": "October 1962 AD",
+ "author": "OpenDoctrines",
+ "description": "Two blocs, one ocean between them, and missiles in Cuba. Africa is coming out from under Europe faster than anyone planned, and the Sino-Soviet split is a year old.",
+ "independent_default": true,
+ "population_scale": 0.52,
+ "industry_scale": 0.55,
+ "industry_level_cap": 8,
+ "industry_by_iso": {
+  "USA": 1.0,
+  "DEU": 0.95,
+  "GBR": 1.0,
+  "FRA": 0.95,
+  "JPN": 0.8,
+  "ITA": 0.85,
+  "BEL": 0.95,
+  "NLD": 0.9,
+  "CHE": 0.95,
+  "SWE": 0.95,
+  "CZE": 0.9,
+  "AUT": 0.85,
+  "CAN": 0.9,
+  "AUS": 0.85,
+  "RUS": 0.8,
+  "UKR": 0.8,
+  "POL": 0.7,
+  "ROU": 0.6,
+  "CHN": 0.35,
+  "IND": 0.35,
+  "BRA": 0.5,
+  "KOR": 0.35,
+  "TWN": 0.4,
+  "MEX": 0.5,
+  "IDN": 0.3,
+  "NGA": 0.25,
+  "EGY": 0.4,
+  "ZAF": 0.75,
+  "TUR": 0.45,
+  "IRN": 0.4
+ },
+ "powers": [
+  {
+   "iso": "USA",
+   "name": "United States",
+   "color": "#4b82c6",
+   "owns": [
+    "USA",
+    "PRI"
+   ],
+   "flag_from": "USA",
+   "population": 187000000,
+   "army": 2800000,
+   "navy": 34,
+   "compass": {
+    "left": -5,
+    "auth": 0
+   },
+   "policies": [
+    "free_press",
+    "deregulation",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "SOV",
+   "name": "Soviet Union",
+   "color": "#c63b3b",
+   "owns": [
+    "RUS",
+    "UKR",
+    "BLR",
+    "KAZ",
+    "UZB",
+    "TKM",
+    "TJK",
+    "KGZ",
+    "ARM",
+    "AZE",
+    "GEO",
+    "MDA",
+    "EST",
+    "LVA",
+    "LTU"
+   ],
+   "population": 221000000,
+   "army": 3600000,
+   "navy": 26,
+   "compass": {
+    "left": 95,
+    "auth": 92
+   },
+   "policies": [
+    "state_industry",
+    "land_reform",
+    "censorship",
+    "secret_police",
+    "conscription",
+    "national_unity"
+   ],
+   "flag_file": "SOV"
+  },
+  {
+   "iso": "CHN",
+   "name": "People's Republic of China",
+   "color": "#c8a149",
+   "owns": [
+    "CHN"
+   ],
+   "population": 672000000,
+   "army": 2500000,
+   "navy": 6,
+   "compass": {
+    "left": 92,
+    "auth": 95
+   },
+   "policies": [
+    "state_industry",
+    "land_reform",
+    "censorship",
+    "secret_police",
+    "conscription",
+    "national_unity"
+   ],
+   "flag_file": "CHN_PRC"
+  },
+  {
+   "iso": "DDR",
+   "name": "German Democratic Republic",
+   "color": "#c68b4b",
+   "boxes": [
+    {
+     "from": "DEU",
+     "bbox": [
+      10.6,
+      50.2,
+      15.1,
+      54.8
+     ]
+    }
+   ],
+   "population": 17100000,
+   "army": 120000,
+   "navy": 2,
+   "compass": {
+    "left": 88,
+    "auth": 90
+   },
+   "policies": [
+    "state_industry",
+    "land_reform",
+    "censorship",
+    "secret_police",
+    "conscription",
+    "national_unity"
+   ],
+   "flag_file": "DDR"
+  },
+  {
+   "iso": "DEU",
+   "name": "Federal Republic of Germany",
+   "color": "#89c64b",
+   "owns": [
+    "DEU"
+   ],
+   "flag_from": "DEU",
+   "population": 56000000,
+   "army": 380000,
+   "navy": 5,
+   "compass": {
+    "left": 5,
+    "auth": 5
+   },
+   "policies": [
+    "free_press",
+    "conscription",
+    "worker_rights"
+   ]
+  },
+  {
+   "iso": "GBR",
+   "name": "United Kingdom",
+   "color": "#c65d4b",
+   "owns": [
+    "GBR",
+    "IMN",
+    "HKG",
+    "GUY",
+    "BLZ",
+    "FLK",
+    "SGS",
+    "ZWE",
+    "ZMB",
+    "MWI",
+    "BWA",
+    "LSO",
+    "SWZ",
+    "KEN",
+    "GMB",
+    "MUS",
+    "BHS",
+    "SLB",
+    "FJI",
+    "ARE",
+    "QAT",
+    "OMN",
+    "BRN",
+    "XSO"
+   ],
+   "flag_from": "GBR",
+   "population": 108000000,
+   "army": 430000,
+   "navy": 24,
+   "compass": {
+    "left": 25,
+    "auth": 10
+   },
+   "policies": [
+    "free_press",
+    "deregulation"
+   ]
+  },
+  {
+   "iso": "FRA",
+   "name": "French Republic",
+   "color": "#4b76c6",
+   "owns": [
+    "FRA",
+    "NCL",
+    "PYF",
+    "ATF",
+    "COM",
+    "DJI"
+   ],
+   "flag_from": "FRA",
+   "population": 47500000,
+   "army": 700000,
+   "navy": 12,
+   "compass": {
+    "left": 15,
+    "auth": 20
+   },
+   "policies": [
+    "free_press",
+    "conscription",
+    "worker_rights"
+   ]
+  },
+  {
+   "iso": "PRT",
+   "name": "Portuguese State",
+   "color": "#4bc677",
+   "owns": [
+    "PRT",
+    "AGO",
+    "MOZ",
+    "GNB",
+    "CPV",
+    "STP"
+   ],
+   "population": 22000000,
+   "army": 180000,
+   "navy": 4,
+   "compass": {
+    "left": -35,
+    "auth": 88
+   },
+   "policies": [
+    "censorship",
+    "national_unity"
+   ],
+   "flag_file": "PRT_1911"
+  },
+  {
+   "iso": "ESP",
+   "name": "Spanish State",
+   "color": "#c69c44",
+   "owns": [
+    "ESP",
+    "ESH",
+    "GNQ"
+   ],
+   "population": 31000000,
+   "army": 300000,
+   "navy": 5,
+   "compass": {
+    "left": -35,
+    "auth": 88
+   },
+   "policies": [
+    "conscription",
+    "censorship",
+    "secret_police",
+    "national_unity",
+    "patriotic_education",
+    "state_industry"
+   ],
+   "flag_file": "ESP_1938"
+  },
+  {
+   "iso": "AUS",
+   "name": "Australia",
+   "color": "#c68c4b",
+   "owns": [
+    "AUS",
+    "PNG"
+   ],
+   "flag_from": "AUS",
+   "population": 12500000,
+   "army": 50000,
+   "navy": 6,
+   "compass": {
+    "left": 20,
+    "auth": 0
+   },
+   "policies": [
+    "free_press",
+    "deregulation",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "IDN",
+   "name": "Indonesia",
+   "color": "#c98a3a",
+   "owns": [
+    "IDN"
+   ],
+   "flag_from": "IDN",
+   "population": 96000000,
+   "army": 350000,
+   "navy": 5,
+   "compass": {
+    "left": 55,
+    "auth": 70
+   },
+   "policies": [
+    "censorship",
+    "national_unity",
+    "conscription"
+   ]
+  },
+  {
+   "iso": "CUB",
+   "name": "Cuba",
+   "color": "#c63636",
+   "owns": [
+    "CUB"
+   ],
+   "flag_from": "CUB",
+   "population": 7300000,
+   "army": 300000,
+   "navy": 2,
+   "compass": {
+    "left": 90,
+    "auth": 88
+   },
+   "policies": [
+    "state_industry",
+    "land_reform",
+    "censorship",
+    "secret_police",
+    "conscription",
+    "national_unity"
+   ]
+  },
+  {
+   "iso": "CYP",
+   "name": "Cyprus",
+   "color": "#c9a127",
+   "owns": [
+    "CYP",
+    "XNC"
+   ],
+   "flag_from": "CYP",
+   "population": 577000,
+   "compass": {
+    "left": 10,
+    "auth": 30
+   },
+   "policies": [
+    "free_press",
+    "conscription",
+    "worker_rights"
+   ]
+  }
+ ],
+ "relations": {
+  "alliances": [
+   [
+    "USA",
+    "GBR",
+    "FRA",
+    "DEU",
+    "ITA",
+    "CAN",
+    "NLD",
+    "BEL",
+    "NOR",
+    "DNK",
+    "PRT",
+    "GRC",
+    "TUR",
+    "ISL",
+    "LUX"
+   ],
+   [
+    "SOV",
+    "DDR",
+    "POL",
+    "CZE",
+    "HUN",
+    "ROU",
+    "BGR"
+   ],
+   [
+    "SOV",
+    "CUB"
+   ],
+   [
+    "USA",
+    "JPN"
+   ],
+   [
+    "USA",
+    "KOR"
+   ],
+   [
+    "USA",
+    "PHL"
+   ],
+   [
+    "USA",
+    "THA"
+   ],
+   [
+    "USA",
+    "AUS"
+   ],
+   [
+    "USA",
+    "NZL"
+   ],
+   [
+    "USA",
+    "TWN"
+   ],
+   [
+    "CHN",
+    "PRK"
+   ],
+   [
+    "CHN",
+    "PAK"
+   ]
+  ],
+  "non_aggression": [
+   [
+    "SOV",
+    "CHN"
+   ],
+   [
+    "IND",
+    "SOV"
+   ]
+  ],
+  "wars": [
+   [
+    "VNM",
+    "KHM"
+   ]
+  ]
+ },
+ "claims": [
+  {
+   "by": "DDR",
+   "on": "DEU",
+   "note": "one Germany"
+  },
+  {
+   "by": "DEU",
+   "on": "DDR",
+   "note": "one Germany"
+  },
+  {
+   "by": "PRK",
+   "on": "KOR",
+   "note": "one Korea"
+  },
+  {
+   "by": "KOR",
+   "on": "PRK",
+   "note": "one Korea"
+  },
+  {
+   "by": "CHN",
+   "on": "TWN",
+   "note": "one China"
+  },
+  {
+   "by": "TWN",
+   "on": "CHN",
+   "note": "one China"
+  },
+  {
+   "by": "IDN",
+   "on": "MYS",
+   "note": "British Borneo",
+   "bbox": [
+    109.0,
+    0.5,
+    119.5,
+    5.2
+   ]
+  },
+  {
+   "by": "SOM",
+   "on": "GBR",
+   "bbox": [
+    42.5,
+    8.0,
+    49.0,
+    11.6
+   ],
+   "note": "British Somaliland"
+  },
+  {
+   "by": "SOM",
+   "on": "ETH",
+   "note": "the Ogaden",
+   "bbox": [
+    40.0,
+    4.0,
+    48.0,
+    11.0
+   ]
+  },
+  {
+   "by": "CHN",
+   "on": "IND",
+   "note": "Aksai Chin",
+   "bbox": [
+    76.0,
+    32.0,
+    80.5,
+    35.5
+   ]
+  },
+  {
+   "by": "IND",
+   "on": "PAK",
+   "note": "Kashmir",
+   "bbox": [
+    73.0,
+    33.0,
+    75.5,
+    35.5
+   ]
+  },
+  {
+   "by": "PAK",
+   "on": "IND",
+   "note": "Kashmir",
+   "bbox": [
+    73.5,
+    32.2,
+    77.5,
+    35.2
+   ]
+  }
+ ],
+ "independent_except": [
+  "XNC",
+  "BLC",
+  "UNC"
+ ],
+ "ethnic_overrides": {
+  "$comment": "Western Europe before the post-1960s immigration the modern table encodes.",
+  "DEU": [
+   [
+    "German",
+    96
+   ],
+   [
+    "Turkish",
+    1
+   ],
+   [
+    "Italian",
+    1
+   ],
+   [
+    "Polish",
+    1
+   ],
+   [
+    "Danish",
+    1
+   ]
+  ],
+  "FRA": [
+   [
+    "French",
+    92
+   ],
+   [
+    "Italian",
+    2
+   ],
+   [
+    "Algerian",
+    2
+   ],
+   [
+    "Spanish",
+    2
+   ],
+   [
+    "Portuguese",
+    1
+   ],
+   [
+    "Polish",
+    1
+   ]
+  ],
+  "GBR": [
+   [
+    "English",
+    83
+   ],
+   [
+    "Scottish",
+    9
+   ],
+   [
+    "Welsh",
+    4
+   ],
+   [
+    "Irish",
+    3
+   ],
+   [
+    "Indian",
+    1
+   ]
+  ],
+  "NLD": [
+   [
+    "Dutch",
+    95
+   ],
+   [
+    "Indonesian",
+    2
+   ],
+   [
+    "German",
+    1
+   ],
+   [
+    "Belgian",
+    1
+   ],
+   [
+    "Surinamese",
+    1
+   ]
+  ],
+  "SWE": [
+   [
+    "Swedish",
+    95
+   ],
+   [
+    "Finnish",
+    3
+   ],
+   [
+    "Norwegian",
+    1
+   ],
+   [
+    "Danish",
+    1
+   ]
+  ]
+ }
+}

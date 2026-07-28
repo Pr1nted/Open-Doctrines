@@ -1,0 +1,1812 @@
+{
+ "$comment": "July 1914, before mobilisation. Partitioned Poland is expressed with bounding boxes over the modern Polish provinces: Prussian Poland to the west, Austrian Galicia to the south-east, Russian Congress Poland as the remainder. Austria-Hungary has no internal crownland divisions, because the base map has no provinces for them. Alsace-Lorraine is a box over French provinces and will be coarse.",
+ "schema": 1,
+ "id": "1914",
+ "name": "The Powder Keg",
+ "date": "July 1914 AD",
+ "author": "OpenDoctrines",
+ "description": "Five empires and a continent of alliances waiting on one funeral in Sarajevo. Nobody on this map has fought a European war in forty-three years.",
+ "population_scale": 0.29,
+ "industry_scale": 0.14,
+ "industry_level_cap": 6,
+ "industry_by_iso": {
+  "GBR": 1.0,
+  "DEU": 1.0,
+  "USA": 1.0,
+  "FRA": 0.95,
+  "BEL": 1.0,
+  "CZE": 0.85,
+  "AUT": 0.8,
+  "CHE": 0.85,
+  "NLD": 0.8,
+  "SWE": 0.75,
+  "DNK": 0.7,
+  "ITA": 0.6,
+  "JPN": 0.5,
+  "RUS": 0.4,
+  "UKR": 0.4,
+  "POL": 0.4,
+  "ESP": 0.35,
+  "HUN": 0.45,
+  "CAN": 0.5,
+  "AUS": 0.5,
+  "ZAF": 0.4,
+  "ARG": 0.4,
+  "BRA": 0.2,
+  "MEX": 0.2,
+  "CHN": 0.12,
+  "IND": 0.15,
+  "TUR": 0.15,
+  "EGY": 0.2,
+  "IDN": 0.15,
+  "NOR": 0.6
+ },
+ "powers": [
+  {
+   "iso": "GER",
+   "name": "German Empire",
+   "color": "#8bc64b",
+   "owns": [
+    "DEU"
+   ],
+   "boxes": [
+    {
+     "from": "FRA",
+     "bbox": [
+      6.8,
+      47.4,
+      8.3,
+      49.6
+     ]
+    },
+    {
+     "from": "POL",
+     "bbox": [
+      14.0,
+      49.5,
+      19.5,
+      55.0
+     ]
+    }
+   ],
+   "population": 67000000,
+   "army": 4500000,
+   "navy": 20,
+   "compass": {
+    "left": -20,
+    "auth": 85
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "GER_EMPIRE"
+  },
+  {
+   "iso": "AUH",
+   "name": "Austria-Hungary",
+   "color": "#c6a44b",
+   "owns": [
+    "AUT",
+    "HUN",
+    "CZE",
+    "SVK",
+    "SVN",
+    "HRV",
+    "BIH"
+   ],
+   "boxes": [
+    {
+     "from": "POL",
+     "bbox": [
+      19.5,
+      48.9,
+      24.3,
+      50.6
+     ]
+    }
+   ],
+   "population": 52000000,
+   "army": 3000000,
+   "navy": 8,
+   "compass": {
+    "left": -15,
+    "auth": 88
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "AUH"
+  },
+  {
+   "iso": "RUS",
+   "name": "Russian Empire",
+   "color": "#c63b3b",
+   "owns": [
+    "RUS",
+    "UKR",
+    "BLR",
+    "EST",
+    "LVA",
+    "LTU",
+    "FIN",
+    "MDA",
+    "POL",
+    "ARM",
+    "AZE",
+    "GEO",
+    "KAZ",
+    "UZB",
+    "TKM",
+    "TJK",
+    "KGZ"
+   ],
+   "population": 166000000,
+   "army": 5900000,
+   "navy": 14,
+   "compass": {
+    "left": 5,
+    "auth": 95
+   },
+   "policies": [
+    "censorship",
+    "national_unity",
+    "conscription"
+   ],
+   "flag_file": "RUS_EMPIRE"
+  },
+  {
+   "iso": "OTT",
+   "name": "Ottoman Empire",
+   "color": "#c68f4b",
+   "owns": [
+    "TUR",
+    "SYR",
+    "LBN",
+    "IRQ",
+    "JOR",
+    "ISR",
+    "PSE",
+    "SAU",
+    "KWT",
+    "YEM",
+    "QAT"
+   ],
+   "population": 21000000,
+   "army": 800000,
+   "navy": 4,
+   "compass": {
+    "left": -20,
+    "auth": 92
+   },
+   "policies": [
+    "censorship",
+    "national_unity",
+    "conscription"
+   ],
+   "flag_file": "OTT"
+  },
+  {
+   "iso": "GBR",
+   "name": "British Empire",
+   "color": "#c65d4b",
+   "owns": [
+    "GBR",
+    "IRL",
+    "IMN",
+    "IND",
+    "PAK",
+    "BGD",
+    "MMR",
+    "LKA",
+    "NPL",
+    "BTN",
+    "AUS",
+    "NZL",
+    "CAN",
+    "ZAF",
+    "NAM",
+    "ZWE",
+    "ZMB",
+    "MWI",
+    "BWA",
+    "LSO",
+    "SWZ",
+    "KEN",
+    "UGA",
+    "TZA",
+    "SDN",
+    "NGA",
+    "GHA",
+    "SLE",
+    "GMB",
+    "CYP",
+    "XNC",
+    "EGY",
+    "BHS",
+    "JAM",
+    "TTO",
+    "GUY",
+    "BLZ",
+    "MYS",
+    "BRN",
+    "HKG",
+    "FJI",
+    "SLB",
+    "PNG",
+    "MUS",
+    "FLK",
+    "SGS",
+    "OMN",
+    "ARE",
+    "SOM",
+    "XSO"
+   ],
+   "flag_from": "GBR",
+   "population": 430000000,
+   "army": 1000000,
+   "navy": 34,
+   "compass": {
+    "left": 10,
+    "auth": 35
+   },
+   "policies": [
+    "free_press",
+    "deregulation"
+   ]
+  },
+  {
+   "iso": "FRA",
+   "name": "French Republic",
+   "color": "#4b76c6",
+   "owns": [
+    "FRA",
+    "DZA",
+    "MAR",
+    "TUN",
+    "MRT",
+    "MLI",
+    "NER",
+    "TCD",
+    "SEN",
+    "GIN",
+    "CIV",
+    "BFA",
+    "BEN",
+    "TGO",
+    "CMR",
+    "CAF",
+    "COG",
+    "GAB",
+    "DJI",
+    "MDG",
+    "COM",
+    "VNM",
+    "LAO",
+    "KHM",
+    "NCL",
+    "PYF",
+    "VUT",
+    "ATF"
+   ],
+   "flag_from": "FRA",
+   "population": 96000000,
+   "army": 4000000,
+   "navy": 18,
+   "compass": {
+    "left": 20,
+    "auth": 25
+   },
+   "policies": [
+    "free_press",
+    "conscription",
+    "worker_rights"
+   ]
+  },
+  {
+   "iso": "ITA",
+   "name": "Kingdom of Italy",
+   "color": "#4bc667",
+   "owns": [
+    "ITA",
+    "LBY",
+    "ERI"
+   ],
+   "population": 38000000,
+   "army": 1200000,
+   "navy": 10,
+   "compass": {
+    "left": -10,
+    "auth": 70
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "ITA_KINGDOM"
+  },
+  {
+   "iso": "JPN",
+   "name": "Empire of Japan",
+   "color": "#c66c47",
+   "owns": [
+    "JPN",
+    "KOR",
+    "PRK",
+    "TWN"
+   ],
+   "population": 68000000,
+   "army": 800000,
+   "navy": 14,
+   "compass": {
+    "left": -30,
+    "auth": 90
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "JPN_EMPIRE"
+  },
+  {
+   "iso": "USA",
+   "name": "United States",
+   "color": "#4b82c6",
+   "owns": [
+    "USA",
+    "PRI",
+    "PHL"
+   ],
+   "flag_from": "USA",
+   "population": 106000000,
+   "army": 200000,
+   "navy": 16,
+   "compass": {
+    "left": 5,
+    "auth": -5
+   },
+   "policies": [
+    "free_press",
+    "deregulation",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "CHN",
+   "name": "Republic of China",
+   "color": "#c8a149",
+   "owns": [
+    "CHN",
+    "MNG"
+   ],
+   "population": 437000000,
+   "army": 900000,
+   "navy": 2,
+   "compass": {
+    "left": 0,
+    "auth": 75
+   },
+   "policies": [
+    "censorship",
+    "national_unity",
+    "conscription"
+   ],
+   "flag_file": "CHN_1912"
+  },
+  {
+   "iso": "BEL",
+   "name": "Belgium",
+   "color": "#c6b44b",
+   "owns": [
+    "BEL",
+    "COD",
+    "RWA",
+    "BDI",
+    "LUX"
+   ],
+   "flag_from": "BEL",
+   "population": 22000000,
+   "army": 200000,
+   "navy": 1,
+   "compass": {
+    "left": 10,
+    "auth": 20
+   },
+   "policies": [
+    "free_press",
+    "deregulation",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "SRB",
+   "name": "Kingdom of Serbia",
+   "color": "#4b8cc6",
+   "owns": [
+    "SRB",
+    "MKD"
+   ],
+   "population": 4750000,
+   "army": 445000,
+   "compass": {
+    "left": 0,
+    "auth": 70
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "SRB_KINGDOM"
+  },
+  {
+   "iso": "ROU",
+   "name": "Kingdom of Romania",
+   "color": "#c6a23f",
+   "owns": [
+    "ROU"
+   ],
+   "population": 7700000,
+   "army": 600000,
+   "navy": 1,
+   "compass": {
+    "left": -15,
+    "auth": 75
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "ROU_KINGDOM"
+  },
+  {
+   "iso": "BGR",
+   "name": "Kingdom of Bulgaria",
+   "color": "#82c64b",
+   "owns": [
+    "BGR"
+   ],
+   "population": 4800000,
+   "army": 400000,
+   "compass": {
+    "left": -10,
+    "auth": 75
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "BGR_KINGDOM"
+  },
+  {
+   "iso": "GRC",
+   "name": "Kingdom of Greece",
+   "color": "#4b82c6",
+   "owns": [
+    "GRC"
+   ],
+   "population": 4800000,
+   "army": 300000,
+   "navy": 2,
+   "compass": {
+    "left": -15,
+    "auth": 70
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "GRC_KINGDOM"
+  },
+  {
+   "iso": "ALB",
+   "name": "Principality of Albania",
+   "color": "#c64b4b",
+   "owns": [
+    "ALB"
+   ],
+   "population": 800000,
+   "army": 20000,
+   "compass": {
+    "left": -10,
+    "auth": 80
+   },
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "ALB_1914"
+  },
+  {
+   "iso": "IRN",
+   "name": "Sublime State of Persia",
+   "color": "#4bc690",
+   "owns": [
+    "IRN"
+   ],
+   "population": 11000000,
+   "army": 40000,
+   "compass": {
+    "left": -15,
+    "auth": 85
+   },
+   "policies": [
+    "censorship",
+    "national_unity",
+    "conscription"
+   ],
+   "flag_file": "IRN_PERSIA"
+  },
+  {
+   "iso": "MEX",
+   "name": "Mexico",
+   "color": "#4bc66a",
+   "owns": [
+    "MEX"
+   ],
+   "population": 15000000,
+   "compass": {
+    "left": 45,
+    "auth": 40
+   },
+   "flag_from": "MEX",
+   "army": 55000,
+   "navy": 1
+  },
+  {
+   "iso": "BRA",
+   "name": "Brazil",
+   "color": "#6bc64b",
+   "owns": [
+    "BRA"
+   ],
+   "population": 25000000,
+   "compass": {
+    "left": -20,
+    "auth": 80
+   },
+   "flag_from": "BRA",
+   "army": 90000,
+   "navy": 3
+  },
+  {
+   "iso": "ARG",
+   "name": "Argentina",
+   "color": "#4badc6",
+   "owns": [
+    "ARG"
+   ],
+   "population": 7900000,
+   "compass": {
+    "left": 0,
+    "auth": 40
+   },
+   "flag_from": "ARG",
+   "army": 70000,
+   "navy": 3
+  },
+  {
+   "iso": "CHL",
+   "name": "Chile",
+   "color": "#c64b4b",
+   "owns": [
+    "CHL"
+   ],
+   "population": 3500000,
+   "compass": {
+    "left": 10,
+    "auth": 30
+   },
+   "flag_from": "CHL",
+   "army": 40000,
+   "navy": 2
+  },
+  {
+   "iso": "COL",
+   "name": "Colombia",
+   "color": "#c6b74b",
+   "owns": [
+    "COL",
+    "PAN"
+   ],
+   "population": 5500000,
+   "compass": {
+    "left": -5,
+    "auth": 35
+   },
+   "flag_from": "COL",
+   "army": 15000
+  },
+  {
+   "iso": "PER",
+   "name": "Peru",
+   "color": "#c6624b",
+   "owns": [
+    "PER"
+   ],
+   "population": 4500000,
+   "compass": {
+    "left": -10,
+    "auth": 50
+   },
+   "flag_from": "PER",
+   "army": 25000,
+   "navy": 1
+  },
+  {
+   "iso": "VEN",
+   "name": "Venezuela",
+   "color": "#c6b74b",
+   "owns": [
+    "VEN"
+   ],
+   "population": 2700000,
+   "compass": {
+    "left": -15,
+    "auth": 60
+   },
+   "flag_from": "VEN",
+   "army": 15000
+  },
+  {
+   "iso": "BOL",
+   "name": "Bolivia",
+   "color": "#86c64b",
+   "owns": [
+    "BOL"
+   ],
+   "population": 2200000,
+   "compass": {
+    "left": 5,
+    "auth": 55
+   },
+   "flag_from": "BOL",
+   "army": 20000
+  },
+  {
+   "iso": "URY",
+   "name": "Uruguay",
+   "color": "#4b92c6",
+   "owns": [
+    "URY"
+   ],
+   "population": 1200000,
+   "compass": {
+    "left": 20,
+    "auth": 10
+   },
+   "flag_from": "URY",
+   "army": 10000
+  },
+  {
+   "iso": "PRY",
+   "name": "Paraguay",
+   "color": "#c6ac4b",
+   "owns": [
+    "PRY"
+   ],
+   "population": 800000,
+   "compass": {
+    "left": -10,
+    "auth": 65
+   },
+   "flag_from": "PRY",
+   "army": 15000
+  },
+  {
+   "iso": "ECU",
+   "name": "Ecuador",
+   "color": "#c69a4b",
+   "owns": [
+    "ECU"
+   ],
+   "population": 1600000,
+   "compass": {
+    "left": -5,
+    "auth": 45
+   },
+   "flag_from": "ECU",
+   "army": 10000
+  },
+  {
+   "iso": "CUB",
+   "name": "Cuba",
+   "color": "#c6764b",
+   "owns": [
+    "CUB"
+   ],
+   "population": 2500000,
+   "compass": {
+    "left": -10,
+    "auth": 55
+   },
+   "flag_from": "CUB",
+   "army": 15000
+  },
+  {
+   "iso": "GTM",
+   "name": "Guatemala",
+   "color": "#9bc64b",
+   "owns": [
+    "GTM"
+   ],
+   "population": 2000000,
+   "compass": {
+    "left": -20,
+    "auth": 70
+   },
+   "flag_from": "GTM",
+   "army": 8000
+  },
+  {
+   "iso": "HND",
+   "name": "Honduras",
+   "color": "#4b72c6",
+   "owns": [
+    "HND"
+   ],
+   "population": 600000,
+   "compass": {
+    "left": -15,
+    "auth": 60
+   },
+   "flag_from": "HND",
+   "army": 5000
+  },
+  {
+   "iso": "NIC",
+   "name": "Nicaragua",
+   "color": "#b4c64b",
+   "owns": [
+    "NIC"
+   ],
+   "population": 600000,
+   "compass": {
+    "left": -15,
+    "auth": 70
+   },
+   "flag_from": "NIC",
+   "army": 4000
+  },
+  {
+   "iso": "CRI",
+   "name": "Costa Rica",
+   "color": "#4bc693",
+   "owns": [
+    "CRI"
+   ],
+   "population": 400000,
+   "compass": {
+    "left": 10,
+    "auth": 5
+   },
+   "flag_from": "CRI",
+   "army": 2000
+  },
+  {
+   "iso": "SLV",
+   "name": "El Salvador",
+   "color": "#c64b82",
+   "owns": [
+    "SLV"
+   ],
+   "population": 1100000,
+   "compass": {
+    "left": -20,
+    "auth": 70
+   },
+   "flag_from": "SLV",
+   "army": 5000
+  },
+  {
+   "iso": "DOM",
+   "name": "Dominican Republic",
+   "color": "#824bc6",
+   "owns": [
+    "DOM"
+   ],
+   "population": 800000,
+   "compass": {
+    "left": -25,
+    "auth": 85
+   },
+   "flag_from": "DOM",
+   "army": 5000
+  },
+  {
+   "iso": "HTI",
+   "name": "Haiti",
+   "color": "#4bc6c6",
+   "owns": [
+    "HTI"
+   ],
+   "population": 2000000,
+   "compass": {
+    "left": -5,
+    "auth": 60
+   },
+   "flag_from": "HTI",
+   "army": 3000
+  },
+  {
+   "iso": "LBR",
+   "name": "Liberia",
+   "color": "#4bc6c6",
+   "owns": [
+    "LBR"
+   ],
+   "population": 1000000,
+   "compass": {
+    "left": 0,
+    "auth": 45
+   },
+   "flag_from": "LBR",
+   "army": 2000
+  },
+  {
+   "iso": "CHE",
+   "name": "Switzerland",
+   "color": "#c64b4e",
+   "owns": [
+    "CHE"
+   ],
+   "population": 3900000,
+   "compass": {
+    "left": 5,
+    "auth": -25
+   },
+   "flag_from": "CHE",
+   "army": 250000,
+   "policies": [
+    "free_press",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "SWE",
+   "name": "Sweden",
+   "color": "#4b9ac6",
+   "owns": [
+    "SWE",
+    "ALA"
+   ],
+   "population": 5700000,
+   "compass": {
+    "left": 30,
+    "auth": -5
+   },
+   "flag_from": "SWE",
+   "army": 300000,
+   "navy": 4,
+   "policies": [
+    "free_press",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "NOR",
+   "name": "Norway",
+   "color": "#c64b66",
+   "owns": [
+    "NOR"
+   ],
+   "population": 2500000,
+   "compass": {
+    "left": 25,
+    "auth": -15
+   },
+   "flag_from": "NOR",
+   "army": 50000,
+   "navy": 2,
+   "policies": [
+    "free_press",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "DNK",
+   "name": "Denmark",
+   "color": "#c64b4f",
+   "owns": [
+    "DNK",
+    "FRO",
+    "ISL",
+    "GRL"
+   ],
+   "population": 3000000,
+   "compass": {
+    "left": 20,
+    "auth": -10
+   },
+   "flag_from": "DNK",
+   "army": 40000,
+   "navy": 2,
+   "policies": [
+    "free_press",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "NLD",
+   "name": "Netherlands",
+   "color": "#c98a3a",
+   "owns": [
+    "NLD",
+    "IDN",
+    "SUR"
+   ],
+   "population": 55000000,
+   "compass": {
+    "left": 15,
+    "auth": 5
+   },
+   "flag_from": "NLD",
+   "army": 200000,
+   "navy": 6,
+   "policies": [
+    "free_press",
+    "deregulation",
+    "decentralization"
+   ]
+  },
+  {
+   "iso": "ESP",
+   "name": "Spain",
+   "color": "#c69c44",
+   "owns": [
+    "ESP",
+    "ESH",
+    "GNQ"
+   ],
+   "population": 20500000,
+   "compass": {
+    "left": -25,
+    "auth": 75
+   },
+   "army": 200000,
+   "navy": 5,
+   "policies": [
+    "national_unity",
+    "conscription",
+    "patriotic_education"
+   ],
+   "flag_file": "ESP_1938"
+  },
+  {
+   "iso": "PRT",
+   "name": "Portugal",
+   "color": "#4bc677",
+   "owns": [
+    "PRT",
+    "AGO",
+    "MOZ",
+    "GNB",
+    "CPV",
+    "STP"
+   ],
+   "population": 15000000,
+   "compass": {
+    "left": -15,
+    "auth": 70
+   },
+   "army": 60000,
+   "navy": 3,
+   "policies": [
+    "censorship",
+    "national_unity"
+   ],
+   "flag_file": "PRT_1911"
+  },
+  {
+   "iso": "AFG",
+   "name": "Afghanistan",
+   "color": "#c6a04b",
+   "owns": [
+    "AFG"
+   ],
+   "population": 6000000,
+   "compass": {
+    "left": -15,
+    "auth": 85
+   },
+   "army": 70000
+  },
+  {
+   "iso": "THA",
+   "name": "Siam",
+   "color": "#ac4bc6",
+   "owns": [
+    "THA"
+   ],
+   "population": 8300000,
+   "compass": {
+    "left": -25,
+    "auth": 85
+   },
+   "army": 60000,
+   "navy": 2,
+   "flag_file": "THA_SIAM"
+  },
+  {
+   "iso": "ETH",
+   "name": "Ethiopian Empire",
+   "color": "#c68e4b",
+   "owns": [
+    "ETH"
+   ],
+   "population": 9000000,
+   "compass": {
+    "left": -30,
+    "auth": 92
+   },
+   "army": 100000,
+   "flag_file": "ETH_EMPIRE"
+  }
+ ],
+ "relations": {
+  "alliances": [
+   [
+    "GER",
+    "AUH"
+   ],
+   [
+    "GER",
+    "OTT"
+   ],
+   [
+    "FRA",
+    "RUS"
+   ],
+   [
+    "GBR",
+    "FRA"
+   ],
+   [
+    "GBR",
+    "JPN"
+   ],
+   [
+    "SRB",
+    "GRC"
+   ],
+   [
+    "ROU",
+    "AUH"
+   ]
+  ],
+  "guarantees": [
+   [
+    "RUS",
+    "SRB"
+   ],
+   [
+    "GBR",
+    "BEL"
+   ]
+  ],
+  "non_aggression": [
+   [
+    "GBR",
+    "GER"
+   ],
+   [
+    "ITA",
+    "GER"
+   ],
+   [
+    "ITA",
+    "AUH"
+   ]
+  ]
+ },
+ "claims": [
+  {
+   "by": "FRA",
+   "on": "GER",
+   "note": "Alsace-Lorraine",
+   "bbox": [
+    6.8,
+    47.4,
+    8.4,
+    49.6
+   ]
+  },
+  {
+   "by": "SRB",
+   "on": "AUH",
+   "note": "Bosnia and the South Slav lands",
+   "bbox": [
+    17.5,
+    42.5,
+    20.5,
+    45.4
+   ]
+  },
+  {
+   "by": "ITA",
+   "on": "AUH",
+   "note": "Trentino and the Littoral",
+   "bbox": [
+    10.5,
+    45.4,
+    14.6,
+    47.1
+   ]
+  },
+  {
+   "by": "AUH",
+   "on": "SRB",
+   "note": "punishment of Serbia"
+  },
+  {
+   "by": "BGR",
+   "on": "SRB",
+   "note": "Vardar Macedonia",
+   "bbox": [
+    20.5,
+    41.0,
+    23.0,
+    42.6
+   ]
+  },
+  {
+   "by": "GRC",
+   "on": "OTT",
+   "note": "the Aegean coast",
+   "bbox": [
+    25.5,
+    38.5,
+    30.0,
+    41.5
+   ]
+  },
+  {
+   "by": "RUS",
+   "on": "OTT",
+   "note": "the Straits",
+   "bbox": [
+    26.0,
+    40.5,
+    30.5,
+    42.2
+   ]
+  },
+  {
+   "by": "RUS",
+   "on": "AUH",
+   "note": "Ruthenian Galicia",
+   "bbox": [
+    21.5,
+    48.0,
+    26.5,
+    50.5
+   ]
+  }
+ ],
+ "ethnic_overrides": {
+  "$comment": "Composition as of the scenario date, keyed by MODERN country because that is what base-map provinces are labelled with. Figures from public-domain census summaries, rounded.",
+  "POL": [
+   [
+    "Polish",
+    69
+   ],
+   [
+    "Ukrainian",
+    14
+   ],
+   [
+    "Jewish",
+    9
+   ],
+   [
+    "Belarusian",
+    3
+   ],
+   [
+    "German",
+    2
+   ],
+   [
+    "Lithuanian",
+    1
+   ],
+   [
+    "Russian",
+    1
+   ],
+   [
+    "Czech",
+    1
+   ]
+  ],
+  "CZE": [
+   [
+    "Czech",
+    65
+   ],
+   [
+    "German",
+    30
+   ],
+   [
+    "Slovak",
+    3
+   ],
+   [
+    "Hungarian",
+    1
+   ],
+   [
+    "Jewish",
+    1
+   ]
+  ],
+  "SVK": [
+   [
+    "Slovak",
+    85
+   ],
+   [
+    "Hungarian",
+    8
+   ],
+   [
+    "German",
+    3
+   ],
+   [
+    "Jewish",
+    3
+   ],
+   [
+    "Romani",
+    1
+   ]
+  ],
+  "DEU": [
+   [
+    "German",
+    92
+   ],
+   [
+    "Polish",
+    4
+   ],
+   [
+    "Jewish",
+    1
+   ],
+   [
+    "Danish",
+    1
+   ],
+   [
+    "French",
+    1
+   ],
+   [
+    "Sorbian",
+    1
+   ]
+  ],
+  "AUT": [
+   [
+    "German",
+    92
+   ],
+   [
+    "Czech",
+    4
+   ],
+   [
+    "Slovene",
+    2
+   ],
+   [
+    "Hungarian",
+    1
+   ],
+   [
+    "Jewish",
+    1
+   ]
+  ],
+  "HUN": [
+   [
+    "Hungarian",
+    84
+   ],
+   [
+    "German",
+    6
+   ],
+   [
+    "Slovak",
+    3
+   ],
+   [
+    "Jewish",
+    4
+   ],
+   [
+    "Romanian",
+    1
+   ],
+   [
+    "Croatian",
+    1
+   ],
+   [
+    "Serbian",
+    1
+   ]
+  ],
+  "ROU": [
+   [
+    "Romanian",
+    72
+   ],
+   [
+    "Hungarian",
+    8
+   ],
+   [
+    "German",
+    4
+   ],
+   [
+    "Jewish",
+    4
+   ],
+   [
+    "Ukrainian",
+    3
+   ],
+   [
+    "Russian",
+    2
+   ],
+   [
+    "Bulgarian",
+    2
+   ],
+   [
+    "Romani",
+    2
+   ],
+   [
+    "Turkish",
+    1
+   ],
+   [
+    "Gagauz",
+    1
+   ],
+   [
+    "Serbian",
+    1
+   ]
+  ],
+  "UKR": [
+   [
+    "Ukrainian",
+    76
+   ],
+   [
+    "Russian",
+    12
+   ],
+   [
+    "Jewish",
+    5
+   ],
+   [
+    "Polish",
+    3
+   ],
+   [
+    "German",
+    2
+   ],
+   [
+    "Moldovan",
+    1
+   ],
+   [
+    "Bulgarian",
+    1
+   ]
+  ],
+  "BLR": [
+   [
+    "Belarusian",
+    80
+   ],
+   [
+    "Jewish",
+    8
+   ],
+   [
+    "Polish",
+    6
+   ],
+   [
+    "Russian",
+    5
+   ],
+   [
+    "Ukrainian",
+    1
+   ]
+  ],
+  "LTU": [
+   [
+    "Lithuanian",
+    80
+   ],
+   [
+    "Jewish",
+    8
+   ],
+   [
+    "Polish",
+    6
+   ],
+   [
+    "Russian",
+    3
+   ],
+   [
+    "German",
+    3
+   ]
+  ],
+  "LVA": [
+   [
+    "Latvian",
+    76
+   ],
+   [
+    "Russian",
+    11
+   ],
+   [
+    "Jewish",
+    5
+   ],
+   [
+    "German",
+    4
+   ],
+   [
+    "Polish",
+    3
+   ],
+   [
+    "Lithuanian",
+    1
+   ]
+  ],
+  "EST": [
+   [
+    "Estonian",
+    88
+   ],
+   [
+    "Russian",
+    8
+   ],
+   [
+    "German",
+    2
+   ],
+   [
+    "Swedish",
+    1
+   ],
+   [
+    "Jewish",
+    1
+   ]
+  ],
+  "MDA": [
+   [
+    "Moldovan",
+    65
+   ],
+   [
+    "Ukrainian",
+    11
+   ],
+   [
+    "Russian",
+    8
+   ],
+   [
+    "Jewish",
+    7
+   ],
+   [
+    "Bulgarian",
+    4
+   ],
+   [
+    "Gagauz",
+    3
+   ],
+   [
+    "German",
+    2
+   ]
+  ],
+  "FRA": [
+   [
+    "French",
+    92
+   ],
+   [
+    "Italian",
+    2
+   ],
+   [
+    "Polish",
+    2
+   ],
+   [
+    "Spanish",
+    1
+   ],
+   [
+    "Belgian",
+    1
+   ],
+   [
+    "Breton",
+    1
+   ],
+   [
+    "Alsatian",
+    1
+   ]
+  ],
+  "GBR": [
+   [
+    "English",
+    79
+   ],
+   [
+    "Scottish",
+    10
+   ],
+   [
+    "Welsh",
+    5
+   ],
+   [
+    "Irish",
+    5
+   ],
+   [
+    "Jewish",
+    1
+   ]
+  ],
+  "NLD": [
+   [
+    "Dutch",
+    96
+   ],
+   [
+    "German",
+    2
+   ],
+   [
+    "Jewish",
+    1
+   ],
+   [
+    "Belgian",
+    1
+   ]
+  ],
+  "USA": [
+   [
+    "White American",
+    88
+   ],
+   [
+    "African American",
+    11
+   ],
+   [
+    "Native American",
+    1
+   ]
+  ],
+  "GRC": [
+   [
+    "Greek",
+    82
+   ],
+   [
+    "Turkish",
+    8
+   ],
+   [
+    "Bulgarian",
+    4
+   ],
+   [
+    "Albanian",
+    3
+   ],
+   [
+    "Jewish",
+    2
+   ],
+   [
+    "Vlach",
+    1
+   ]
+  ],
+  "BGR": [
+   [
+    "Bulgarian",
+    83
+   ],
+   [
+    "Turkish",
+    10
+   ],
+   [
+    "Romani",
+    2
+   ],
+   [
+    "Greek",
+    2
+   ],
+   [
+    "Jewish",
+    1
+   ],
+   [
+    "Armenian",
+    1
+   ],
+   [
+    "Vlach",
+    1
+   ]
+  ],
+  "TUR": [
+   [
+    "Turkish",
+    62
+   ],
+   [
+    "Kurdish",
+    14
+   ],
+   [
+    "Greek",
+    10
+   ],
+   [
+    "Armenian",
+    7
+   ],
+   [
+    "Arab",
+    3
+   ],
+   [
+    "Circassian",
+    2
+   ],
+   [
+    "Assyrian",
+    1
+   ],
+   [
+    "Jewish",
+    1
+   ]
+  ],
+  "RUS": [
+   [
+    "Russian",
+    44
+   ],
+   [
+    "Ukrainian",
+    18
+   ],
+   [
+    "Polish",
+    6
+   ],
+   [
+    "Belarusian",
+    5
+   ],
+   [
+    "Jewish",
+    4
+   ],
+   [
+    "Kazakh",
+    3
+   ],
+   [
+    "Tatar",
+    3
+   ],
+   [
+    "German",
+    2
+   ],
+   [
+    "Uzbek",
+    2
+   ],
+   [
+    "Finnish",
+    2
+   ],
+   [
+    "Lithuanian",
+    1
+   ],
+   [
+    "Latvian",
+    1
+   ],
+   [
+    "Estonian",
+    1
+   ],
+   [
+    "Armenian",
+    1
+   ],
+   [
+    "Azeri",
+    1
+   ],
+   [
+    "Bashkir",
+    1
+   ],
+   [
+    "Chuvash",
+    1
+   ],
+   [
+    "Moldovan",
+    1
+   ],
+   [
+    "Chechen",
+    1
+   ],
+   [
+    "Mordvin",
+    1
+   ],
+   [
+    "Georgian",
+    1
+   ]
+  ]
+ }
+}

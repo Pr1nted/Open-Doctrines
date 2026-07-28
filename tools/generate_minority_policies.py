@@ -57,29 +57,32 @@ def main():
 
     # HARDCODED OVERRIDES: specific country-minority → policy option indices
     # Format: iso -> minority -> [dep, eco, cul, pol, lan, int]
+    #
+    # Group names must match tools/data/ethnic_groups.json exactly. They were
+    # rewritten when GREG was dropped: GREG used plural ethnonyms ("Chechens",
+    # "Tatars") and country-qualified oddities ("Germans (China)"), the authored
+    # table uses singular adjectival forms and China's actual listed minorities.
+    # An override naming a group its country does not have is reported below
+    # rather than silently doing nothing, which is how the old CHN block came to
+    # be entirely dead without anyone noticing.
     OVERRIDES = {
         "RUS": {
-            "Chechens":          [0, 2, 2, 2, 2, 2],  # Harsh, None, Suppress, Disenfranchised, Ban, None
-            "Tatars":            [1, 2, 1, 1, 1, 1],  # Medium, None, Partial, Standard, Tolerance, Passive
-            "Ukrainians":        [0, 2, 2, 1, 1, 2],  # Harsh, None, Suppress, Standard, Tolerance, None
-            "Bashkirs":          [1, 2, 1, 1, 1, 1],
+            "Chechen":           [0, 2, 2, 2, 2, 2],  # Harsh, None, Suppress, Disenfranchised, Ban, None
+            "Tatar":             [1, 2, 1, 1, 1, 1],  # Medium, None, Partial, Standard, Tolerance, Passive
+            "Ukrainian":         [0, 2, 2, 1, 1, 2],  # Harsh, None, Suppress, Standard, Tolerance, None
+            "Bashkir":           [1, 2, 1, 1, 1, 1],
             "Chuvash":           [1, 2, 1, 1, 1, 1],
-            "Komi":              [1, 2, 1, 1, 1, 1],
-            "Buryats":           [1, 2, 1, 1, 1, 1],
-            "Tuvinians":         [1, 2, 1, 1, 1, 1],
-            "Yakuts":            [1, 2, 1, 1, 1, 1],
-            "Nenets":            [1, 2, 1, 0, 1, 1],
-            "Nganasans":         [1, 2, 1, 0, 1, 1],
-            "Selkups":           [1, 2, 1, 0, 1, 1],
-            "Chukchi":           [1, 2, 1, 0, 1, 1],
-            "Koryaks":           [1, 2, 1, 0, 1, 1],
+            "Avar":              [1, 2, 1, 1, 1, 1],
+            "Mordvin":           [1, 2, 1, 1, 1, 1],
+            "Udmurt":            [1, 2, 1, 1, 1, 1],
+            "Mari":              [1, 2, 1, 1, 1, 1],
         },
         "CHN": {
-            "Germans (China)":     [1, 2, 1, 1, 1, 1],
-            "Kazakhs":             [1, 1, 1, 1, 1, 1],
-            "Russians (China)":    [1, 2, 1, 1, 1, 1],
-            "Uzbeks (China)":      [1, 2, 1, 1, 1, 1],
-            "Ukrainians (China)":  [1, 2, 1, 1, 1, 1],
+            "Zhuang":            [1, 1, 1, 1, 1, 1],
+            "Hui":               [1, 2, 1, 1, 1, 1],
+            "Manchu":            [1, 2, 1, 1, 1, 1],
+            "Mongol":            [1, 2, 1, 1, 1, 1],
+            "Korean":            [1, 2, 1, 1, 1, 1],
         },
     }
 
@@ -101,6 +104,19 @@ def main():
             defaults[1] = 2  # No economic incentives
 
         return defaults
+
+    # An override that matches nothing is a silent no-op, and a silent no-op is
+    # indistinguishable from a deliberate neutral policy when you read the data
+    # back. Say so instead.
+    unmatched = [
+        f"{iso}/{name}"
+        for iso, groups in OVERRIDES.items()
+        for name in groups
+        if name not in country_minorities.get(iso, {})
+    ]
+    if unmatched:
+        print(f"  WARNING: {len(unmatched)} override(s) name a group the country "
+              f"does not have, and will do nothing: {', '.join(unmatched)}")
 
     result = {}
     for iso, minorities_dict in country_minorities.items():

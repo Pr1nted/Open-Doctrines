@@ -17,10 +17,12 @@ EXTRA_FILES = [
     "relations.json", "policies.json",
 ]
 
-# License files
-LICENSE_FILES = [
-    "licenses/CC-BY-4.0.txt",
-]
+# Licence files: the whole of data/licenses/, swept rather than listed.
+#
+# This was a hardcoded list of one file, and the day FLAGS.md was generated the
+# map would have shipped 183 flags while leaving the attribution for them on
+# somebody's disk. An archive that carries the artwork has to carry the terms.
+LICENSES_DIR = os.path.join(DATA_DIR, "licenses")
 
 # Country flag SVGs
 FLAGS_DIR = os.path.join(DATA_DIR, "flags")
@@ -100,11 +102,15 @@ def main():
                         zf.write(fpath, arcname)
                         print(f"  + {arcname} (flag svg fallback)")
         # Include license files
-        for fname in LICENSE_FILES:
-            fpath = os.path.join(DATA_DIR, fname)
-            if os.path.exists(fpath):
-                zf.write(fpath, fname)
-                print(f"  + {fname} (license)")
+        if os.path.isdir(LICENSES_DIR):
+            for f in sorted(os.listdir(LICENSES_DIR)):
+                fpath = os.path.join(LICENSES_DIR, f)
+                if os.path.isfile(fpath):
+                    arcname = "licenses/" + f
+                    zf.write(fpath, arcname)
+                    print(f"  + {arcname} (license)")
+        else:
+            print("  ! data/licenses/ missing — the map will ship without its terms")
         # Include symbol SVGs (used by rebel flag generation)
         symbols_dir = os.path.join(DATA_DIR, "symbols")
         if os.path.isdir(symbols_dir):

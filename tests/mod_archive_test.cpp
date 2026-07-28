@@ -121,6 +121,17 @@ std::string manifestWith(const std::string& field, const std::string& value) {
            m.substr(eol);
 }
 
+// Adds a field the good manifest does not have. manifestWith() only rewrites
+// an existing one and silently returns the manifest untouched otherwise, which
+// would make a test for an optional field pass without testing anything.
+std::string manifestPlus(const std::string& field, const std::string& value) {
+    std::string m = goodManifest();
+    size_t at = m.find("\"schema\"");
+    size_t eol = m.find('\n', at);
+    return m.substr(0, eol + 1) + "  \"" + field + "\": " + value + ",\n" +
+           m.substr(eol + 1);
+}
+
 // Rewrites an entry name in place, in both the local header and the central
 // directory. Needed because miniz's writer sanitises names it considers
 // invalid — it silently drops a leading '/' — so an archive containing a
@@ -328,6 +339,75 @@ int main() {
                                   minimalWasm()), "core");
         check("Core always granted",
               (p.manifest().modules & MODULE_CORE) != 0);
+    }
+
+    // ---- side --------------------------------------------------------------
+    {
+        ModPackage p;
+        auto r = p.openFromMemory(buildMod(goodManifest(), minimalWasm()), "noside");
+        check("a manifest with no \"side\" defaults to both",
+              r == ModLoadResult::Ok && p.manifest().side == ModSide::Both,
+              modSideName(p.manifest().side));
+    }
+    for (const char* want : {"client", "server", "both"}) {
+        ModPackage p;
+        p.openFromMemory(buildMod(manifestPlus("side", std::string("\"") + want + "\""),
+                                  minimalWasm()), "side");
+        check((std::string("\"side\": \"") + want + "\" parses").c_str(),
+              std::string(modSideName(p.manifest().side)) == want,
+              modSideName(p.manifest().side));
+    }
+    {
+        // A future release adding a side must not stop today's game loading a
+        // mod. Warn, fall back to "both", keep going.
+        ModPackage p;
+        auto r = p.openFromMemory(buildMod(manifestPlus("side", "\"proxy\""),
+                                           minimalWasm()), "unknownside");
+        check("an unknown side loads anyway, as both",
+              r == ModLoadResult::Ok && p.manifest().side == ModSide::Both);
+        check("and warns about it", !p.warnings().empty(),
+              p.warnings().empty() ? "(no warnings)" : p.warnings()[0]);
+    }
+    {
+        ModPackage p;
+        auto r = p.openFromMemory(buildMod(manifestPlus("side", "3"), minimalWasm()),
+                                  "numericside");
+        check("a non-string side is rejected", r == ModLoadResult::ManifestInvalid,
+              modLoadResultName(r));
+    }
+    {
+        // Not an error -- it may be running singleplayer, where side means
+        // nothing -- but the usual cause is a mod that meant to say "both".
+        std::string m = manifestPlus("side", "\"client\"");
+        // Replace the module list in the already-extended manifest.
+        size_t at = m.find("\"modules\"");
+        size_t eol = m.find('\n', at);
+        m = m.substr(0, at) + "\"modules\": [\"Core\", \"GameState.Write\"]," +
+            m.substr(eol);
+        ModPackage p;
+        auto r = p.openFromMemory(buildMod(m, minimalWasm()), "clientwrite");
+        check("a client-side mod asking for Write loads", r == ModLoadResult::Ok,
+              p.diagnostic());
+        check("but is warned that the grant is masked in multiplayer",
+              !p.warnings().empty(),
+              p.warnings().empty() ? "(no warnings)" : p.warnings()[0]);
+    }
+
+    // ---- archive digest ----------------------------------------------------
+    {
+        ModPackage a, b;
+        auto bytes = buildMod(goodManifest(), minimalWasm());
+        a.openFromMemory(bytes, "a");
+        b.openFromMemory(bytes, "b");
+        check("the same archive digests the same", a.sha256() == b.sha256(),
+              a.sha256());
+        check("and it is a lowercase hex sha256", a.sha256().size() == 64 &&
+              a.sha256().find_first_not_of("0123456789abcdef") == std::string::npos,
+              a.sha256());
+
+        ModPackage c;
+        c.openFromMemory(buildMod(manifestWith("version", "\"9.9.9\""), minimalWasm()), "c");
+        check("a different archive digests differently", c.sha256() != a.sha256());
     }
     {
         std::string m = goodManifest();

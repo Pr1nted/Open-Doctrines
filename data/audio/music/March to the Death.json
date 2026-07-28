@@ -1,0 +1,13 @@
+{
+  "title": "March to the Death",
+  "author": "Pr1nted",
+  "contexts": ["game"],
+  "mood": {
+    "tension": 0.85,
+    "energy": 0.75,
+    "valence": 0.85
+  },
+  "valenceMode": "magnitude",
+  "weight": 1.0,
+  "$comment": "Full military band -- trumpets, piccolo, horns, tuba, timpani and field drums. Wanted for a war being won AND a war being lost catastrophically, which is two opposite valences and something no single signed point can express. \"valenceMode\": \"magnitude\" is the answer: the 0.85 above is matched against |valence|, so this asks for a DECISIVE war in either direction and stays out of the undecided middle, where Parade Uniform and Bombing Voronezh belong. Restricted to game -- a death march has no business on a title screen. Editable source: data/audio/midi/March to the Death.mid"
+}

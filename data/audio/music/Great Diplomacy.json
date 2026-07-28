@@ -1,0 +1,8 @@
+{
+  "title": "Great Diplomacy",
+  "author": "Pr1nted",
+  "contexts": ["game"],
+  "mood": { "tension": 0.20, "energy": 0.30, "valence": -0.95 },
+  "weight": 1.0,
+  "$comment": "A trumpet lament over a funeral drum and a tolling bell -- the title is the irony. Placed at the bleakest point in the library, but at LOW tension on purpose: an empire coming apart after the fighting stopped, not during it. That separation is what keeps March to the Death owning a war being lost and hands this one the aftermath, when the map is much smaller and nothing is being shot at. Editable source: data/audio/midi/Great Diplomacy.mid"
+}

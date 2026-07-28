@@ -4,23 +4,41 @@
   <g fill="#fcd116" transform="translate(450,300)">
     <g id="c">
       <path d="M 0,-100 V 0 H 50" id="t" transform="rotate(18 0,-100)"/>
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18.000000,0.000000,-100.000000) scale(-1.000000,1.000000)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+      </g>
     </g>
     <g transform="rotate(72.000000)">
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18.000000,0.000000,-100.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(144.000000)">
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18.000000,0.000000,-100.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(216.000000)">
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18.000000,0.000000,-100.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        </g>
+      </g>
     </g>
     <g transform="rotate(288.000000)">
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
-      <path d="M 0,-100 V 0 H 50" transform="rotate(18.000000,0.000000,-100.000000) scale(-1.000000,1.000000)"/>
+      <g>
+        <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-100 V 0 H 50" transform="rotate(18 0,-100)"/>
+        </g>
+      </g>
     </g>
   </g>
 </svg>

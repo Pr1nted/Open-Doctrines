@@ -9,6 +9,7 @@
 
 #include "ModPackage.h"
 #include "ModRuntime.h"
+#include "../net/ModAttest.h"
 
 #include <cstdint>
 #include <memory>
@@ -100,6 +101,25 @@ public:
     void setInGame(bool v) { m_inGame = v; }
     bool inGame() const { return m_inGame; }
 
+    // Which side of a multiplayer game this process is, which decides what a
+    // mod's declared `side` means for it. Must be set BEFORE reloadAll(),
+    // because grants are fixed at instantiation: a mod cannot have a
+    // capability taken away underneath it, so joining a game is a reload.
+    //
+    // `authoritative` is true on a host (dedicated or playing) and false on a
+    // client. Outside multiplayer both are ignored.
+    void setNetContext(bool multiplayer, bool authoritative) {
+        m_multiplayer = multiplayer;
+        m_authoritative = authoritative;
+    }
+    bool multiplayer() const { return m_multiplayer; }
+    bool authoritative() const { return m_authoritative; }
+
+    // What this install offers the other end: every enabled mod that loaded,
+    // with its digest. See src/net/ModAttest.h for what this does and does not
+    // prove.
+    std::vector<ModAttestEntry> attestation() const;
+
     // A reload asked for during turn processing is queued until the turn ends.
     void requestReload() { m_reloadQueued = true; }
     bool reloadQueued() const { return m_reloadQueued; }
@@ -140,4 +160,6 @@ private:
     bool m_inGame = false;
     bool m_reloadQueued = false;
     bool m_inited = false;
+    bool m_multiplayer = false;
+    bool m_authoritative = true;
 };

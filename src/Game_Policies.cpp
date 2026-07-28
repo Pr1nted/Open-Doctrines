@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Audio.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
 #include "raymath.h"
@@ -700,6 +701,7 @@ void Game::drawPoliciesTab() {
             DrawRectangle(tx - tw/2, tabY + 24, tw, 3, hexToColor(m_config.accentColor));
         }
         if (CheckCollisionPointRec(mouse, tr) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (m_policyTab != t) Audio::get().playSfx("tab_switch");
             m_policyTab = t;
             m_policyScroll = 0;
         }
@@ -716,6 +718,7 @@ int xw = MeasureText("X", 20);
 
     // Close button click
     if (closeHover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        Audio::get().playSfx("back");
         m_inPolitics = false;
         m_activeSidebarTab = 0;
         m_policyTab = 0;
@@ -814,8 +817,8 @@ int xw = MeasureText("X", 20);
             DrawRectangleRec(fhRect, {50, 50, 60, 180});
             DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶", fname.c_str()), 30, y + 4, 18, hexToColor(m_config.accentColor));
             if (CheckCollisionPointRec(mouse, fhRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-                if (isOpen) m_openFolders.erase(fname);
-                else m_openFolders.insert(fname);
+                if (isOpen) { m_openFolders.erase(fname);  Audio::get().playSfx("panel_close"); }
+                else       { m_openFolders.insert(fname); Audio::get().playSfx("panel_open");  }
             }
             y += folderHeaderH;
 
@@ -904,11 +907,15 @@ int xw = MeasureText("X", 20);
                     if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         enactPolicy(m_playerCountryId, p.id);
                         m_policiesEnactedThisTurn++;
+                        Audio::get().playSfx("confirm");
                     }
                 } else {
                     DrawRectangleRounded(enactBtn, 0.2f, 6, Color{80, 80, 90, 180});
                     const char* label = enactLimitReached ? "No actions" : "Locked";
                     DrawText(label, (int)(enactBtn.x + enactBtn.width/2 - MeasureText(label, 18)/2), y + 22, 18, Color{120, 120, 140, 200});
+                    if (CheckCollisionPointRec(mouse, enactBtn) &&
+                        IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                        Audio::get().playSfx("deny");
                 }
 
                 y += policyItemH;
@@ -961,6 +968,7 @@ int xw = MeasureText("X", 20);
             DrawRectangleRounded(cancelBtn, 0.2f, 6, hover ? Color{180, 80, 80, 255} : Color{150, 60, 60, 255});
             DrawText("Cancel", (int)(cancelBtn.x + cancelBtn.width/2 - MeasureText("Cancel", 18)/2), y + 30, 18, WHITE);
             if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("back");
                 cancelPolicy((int)i);
             }
  
@@ -1016,6 +1024,7 @@ int xw = MeasureText("X", 20);
             DrawRectangleRounded(removeBtn, 0.2f, 6, hover ? Color{100, 100, 180, 255} : Color{80, 80, 150, 255});
             DrawText("Repeal", (int)(removeBtn.x + removeBtn.width/2 - MeasureText("Repeal", 18)/2), y + 30, 18, WHITE);
             if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("toggle_off");
                 cancelPolicy((int)i);  // Mark as completed/removed
             }
  
@@ -1074,6 +1083,7 @@ void Game::updatePoliciesTab() {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             for (auto& [pid, rect] : m_analysisGoToButtons) {
                 if (CheckCollisionPointRec(mouse, rect)) {
+                    Audio::get().playSfx("select_province", 0.05f);
                     m_renderer->setSelectedProvince(pid);
                     m_renderer->rebuildSelectionGlow();
                     m_flyToLockTimer = 90;
@@ -1444,13 +1454,11 @@ void Game::drawAnalysisTab() {
         DrawText(TextFormat("%d%%", (int)(m_pacificationAllocation * 100)), slX + slW + 6, slY + 2, 12, WHITE);
         float pacPct = m_pacificationAllocation * 50.0f;
         DrawText(TextFormat("Suppression: %.1f%%", pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
-        Vector2 mse = getMouse();
-        if (CheckCollisionPointRec(mse, {(float)slX, (float)slY, (float)slW, (float)slH})) {
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                m_pacificationAllocation = (mse.x - slX) / slW;
-                if (m_pacificationAllocation < 0) m_pacificationAllocation = 0;
-                if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
-            }
+        {
+            const Rectangle pacBar = {(float)slX, (float)slY, (float)slW, (float)slH};
+            float t = m_pacificationAllocation;
+            if (sliderInteract(pacBar, /*steps=*/0, t, m_draggingPacification))
+                m_pacificationAllocation = std::clamp(t, 0.0f, maxAllocFrac);
         }
     }
 }

@@ -1,0 +1,21 @@
+{
+  "name": "opendoctrines-net",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Account and relay infrastructure for OpenDoctrines multiplayer",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.8",
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <algorithm>
 #include <set>
+#include <functional>
 #include <map>
 #include <unordered_map>
 #include <cstring>
@@ -1298,13 +1299,155 @@ bool Generator::generateProvinces() {
         std::cout << "  Merged " << mergedComps << " small components (" << mergedPixels << " px)\n";
     }
 
-    std::cout << "\n--- Step 6: Random flood fill subdivision per country ---\n";
+    // ── Step 5.5: Rasterize admin_1 sub-national units ──
+    //
+    // Provinces used to be random flood-fill blobs: seeds scattered by Poisson
+    // spacing and grown until they met. They tile a country evenly and mean
+    // nothing -- there is no Bavaria, no Texas, no Silesia, only "Germany #412".
+    // Natural Earth's admin_1 layer has the real units and was already being
+    // downloaded here for a naming fix, so it costs one more rasterisation to
+    // use it for what it is.
+    //
+    // It matters most for historical scenarios: a border that follows real
+    // sub-national units can be described by naming them, where a border across
+    // random blobs can only be approximated with a bounding box.
+    std::vector<uint32_t> adminPixels;
+    nlohmann::json adminJson;
+    bool haveAdmin = false;
+    if (m_cfg.useAdminUnits && !m_cfg.adminUrl.empty()) {
+        std::cout << "\n--- Step 5.5: Rasterize admin_1 sub-national units ---\n";
+        adminPixels.assign((size_t)W * H, 0u);
+        int adminNextId = 1;
+        haveAdmin = rasterizeUrl(m_cfg.adminUrl, "admin1", adminPixels, adminJson, adminNextId);
+        if (!haveAdmin) {
+            std::cout << "  admin_1 unavailable — falling back to flood-fill subdivision\n";
+            adminPixels.clear();
+            adminPixels.shrink_to_fit();
+        }
+    }
+
+    // Size thresholds from the actual land area rather than hardcoding pixel
+    // counts, so --provinces means the same thing at any map resolution.
+    long long landPixelCount = 0;
+    for (int i = 0; i < W * H; ++i)
+        if (landData[(size_t)i * 4 + 3] != 0) landPixelCount++;
+    const double avgProvinceArea =
+        (m_cfg.targetProvinces > 0 && landPixelCount > 0)
+            ? (double)landPixelCount / m_cfg.targetProvinces : 0.0;
+    // A unit under a quarter of the average is merged into a neighbour; one
+    // over four times it is split. Both are generous: the point is to remove
+    // the extremes, not to make every province the same size, because real
+    // ones are not.
+    if (haveAdmin)
+        std::cout << "  land " << landPixelCount << " px, average province "
+                  << (long long)avgProvinceArea << " px\n";
+
+    std::cout << "\n--- Step 6: Subdivision per country ---\n";
     std::vector<uint32_t> provincePixels(W * H, 0);
     nlohmann::json provinceJson;
     int provNextId = 1;
     std::mt19937 rng(noiseSeed);
     std::vector<uint8_t> inCp(W * H, 0);
 
+    // Splits one admin unit's pixels into `parts` contiguous pieces. Same idea
+    // as the flood fill below, but scoped to the unit, so Sakha or Western
+    // Australia becomes several provinces without any of them crossing into a
+    // neighbouring unit. Deterministic: seeded from the shared rng.
+    std::vector<uint8_t> unitStamp((size_t)W * H, 0);
+    auto splitUnit = [&](const std::vector<int>& pix, int parts,
+                         std::mt19937& r) -> std::vector<std::vector<int>> {
+        if (parts <= 1) return {pix};
+        for (int idx : pix) unitStamp[idx] = 1;
+
+        std::vector<int> shuffled = pix;
+        std::shuffle(shuffled.begin(), shuffled.end(), r);
+        double minDistSq = ((double)pix.size() / parts) * 0.5;
+        std::vector<int> seeds;
+        for (int idx : shuffled) {
+            if ((int)seeds.size() >= parts) break;
+            int cx = idx % W, cy = idx / W;
+            bool tooClose = false;
+            for (int sIdx : seeds) {
+                long long dx = cx - sIdx % W, dy = cy - sIdx / W;
+                if ((double)(dx * dx + dy * dy) < minDistSq) { tooClose = true; break; }
+            }
+            if (!tooClose) seeds.push_back(idx);
+        }
+        for (int idx : shuffled) {
+            if ((int)seeds.size() >= parts) break;
+            if (std::find(seeds.begin(), seeds.end(), idx) == seeds.end()) seeds.push_back(idx);
+        }
+
+        std::unordered_map<int, int> partOf;
+        std::vector<int> queue;
+        for (int si = 0; si < (int)seeds.size(); ++si) {
+            partOf[seeds[si]] = si;
+            queue.push_back(seeds[si]);
+        }
+        for (size_t qi = 0; qi < queue.size(); ++qi) {
+            int idx = queue[qi];
+            int cx = idx % W, cy = idx / W, p = partOf[idx];
+            for (int d = 0; d < 4; ++d) {
+                int nx = (cx + (d == 0) - (d == 1) + W) % W;
+                int ny = cy + (d == 2) - (d == 3);
+                if (ny < 0 || ny >= H) continue;
+                int nidx = ny * W + nx;
+                if (!unitStamp[nidx] || partOf.count(nidx)) continue;
+                partOf[nidx] = p;
+                queue.push_back(nidx);
+            }
+        }
+
+        std::vector<std::vector<int>> out((size_t)seeds.size());
+        for (int idx : pix) {
+            auto it = partOf.find(idx);
+            // A fragment the BFS could not reach (an island of the same unit)
+            // joins part 0 rather than vanishing.
+            out[it == partOf.end() ? 0 : it->second].push_back(idx);
+        }
+        for (int idx : pix) unitStamp[idx] = 0;
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [](const std::vector<int>& v) { return v.empty(); }),
+                  out.end());
+        return out;
+    };
+
+    // How many provinces each component SHOULD have.
+    //
+    // Letting admin_1 decide the count on its own produced a badly skewed map:
+    // Britain 8.6x its old province count, Italy 6.4x, France 4.1x, because
+    // those countries are divided into small units, while Congo came out at
+    // 0.5x because it has few. The unit boundaries are the part worth keeping;
+    // how many provinces a country gets is a balance decision, and the old
+    // area-based formula already encoded it.
+    //
+    // So the formula sets the target and the admin units are merged or split to
+    // meet it: real borders, previous balance. `targetProvinces` scales the
+    // whole thing, since the formula's own total is whatever it is.
+    auto desiredFor = [&](const std::vector<int>& cp, const std::string& iso) {
+        int np = (int)cp.size();
+        long long sumY = 0, sumX = 0;
+        for (int idx : cp) { sumY += idx / W; sumX += idx % W; }
+        float lat = 90.0f - ((float)sumY / np / H) * 180.0f;
+        float lon = ((float)sumX / np / W) * 360.0f - 180.0f;
+        float merc = std::max(cosf(lat * (float)M_PI / 180.0f), 0.3f);
+        float europe = (lat >= 35.0f && lat <= 70.0f && lon >= -10.0f && lon <= 40.0f) ? 2.0f : 1.0f;
+        float canada = (iso == "CAN") ? 0.2f : 1.0f;
+        return std::min(120, std::max(1, (int)std::sqrt(np * merc * europe * canada / 250.0f)));
+    };
+
+    double rawTotal = 0.0;
+    for (auto& [rid, components] : countryComps) {
+        std::string iso = regionIsoA3.count(rid) ? regionIsoA3[rid] : "";
+        for (auto& cp : components) rawTotal += desiredFor(cp, iso);
+    }
+    const double desiredScale =
+        (m_cfg.targetProvinces > 0 && rawTotal > 0) ? m_cfg.targetProvinces / rawTotal : 1.0;
+    std::cout << "  Allocation: formula wants " << (long long)rawTotal
+              << " provinces, scaling by " << desiredScale
+              << " for a target of " << m_cfg.targetProvinces << "\n";
+
+    int adminProvinces = 0, floodProvinces = 0;
     int countryCount = 0;
     for (auto& [rid, components] : countryComps) {
         countryCount++;
@@ -1332,8 +1475,9 @@ bool Generator::generateProvinces() {
             // Canada has too many provinces due to its large landmass; reduce count
             float canadaMult = (isoA3 == "CAN") ? 0.2f : 1.0f;
 
-            int numProv = std::max(1, (int)std::sqrt(np * mercFactor * europeMult * canadaMult / 250.0f));
+            int numProv = std::max(1, (int)std::lround(desiredFor(cp, isoA3) * desiredScale));
             numProv = std::min(numProv, 120);
+            (void)mercFactor; (void)europeMult; (void)canadaMult;
 
             if (countryCount <= 30 || countryCount == (int)countryComps.size()) {
                 std::cout << "  [" << countryCount << "] \"" << countryName << "\": "
@@ -1342,7 +1486,206 @@ bool Generator::generateProvinces() {
                 std::cout << "  ... (" << ((int)countryComps.size() - 31) << " more countries)\n";
             }
 
-            if (numProv == 1) {
+            // ── Real sub-national units, where this component has them ──
+            bool usedAdmin = false;
+            if (haveAdmin) {
+                std::unordered_map<int, std::vector<int>> byUnit;
+                for (int idx : cp) {
+                    uint32_t a = adminPixels[idx];
+                    if (a) byUnit[pixelToId(a)].push_back(idx);
+                }
+                // Small units are MERGED with a neighbour, never dropped.
+                //
+                // Dropping them looks equivalent and is not: admin_1 is not one
+                // level of government. Germany is 16 Laender and Poland 16
+                // voivodeships, but France is 96 departements, Italy 110
+                // provinces and Japan 47 prefectures -- all far below any
+                // threshold that suits the first group. Discarding "too small"
+                // units therefore discarded every unit those countries had, the
+                // coverage test then failed, and France came out as flood-fill
+                // blobs while Germany got Bayern. Merging keeps the borders
+                // real: a cluster of departements is still bounded by
+                // departement lines, which is the whole point.
+                std::unordered_map<int, int> parent;
+                std::unordered_map<int, long long> clusterSize;
+                for (auto& [uid, pix] : byUnit) {
+                    parent[uid] = uid;
+                    clusterSize[uid] = (long long)pix.size();
+                }
+                std::function<int(int)> findRoot = [&](int u) {
+                    while (parent[u] != u) { parent[u] = parent[parent[u]]; u = parent[u]; }
+                    return u;
+                };
+
+                // Unit adjacency, from the raster rather than the geometry.
+                std::unordered_map<int, std::set<int>> adj;
+                for (int idx : cp) {
+                    uint32_t a = adminPixels[idx];
+                    if (!a) continue;
+                    int u = pixelToId(a);
+                    int cx = idx % W, cy = idx / W;
+                    // A 5x5 window, not 4-adjacency. admin_1 polygons do not
+                    // tile exactly once rasterised -- shared edges land a pixel
+                    // or two apart and leave unpainted seams between units. With
+                    // strict adjacency most Italian provinces looked isolated,
+                    // nothing could merge, and Italy came out with 75 provinces
+                    // of 150 pixels each. Two pixels of tolerance closes the
+                    // seams without inventing adjacency that is not there.
+                    for (int dy = -2; dy <= 2; ++dy) {
+                        for (int dx = -2; dx <= 2; ++dx) {
+                            if (!dx && !dy) continue;
+                            int nx = (cx + dx + W) % W;
+                            int ny = cy + dy;
+                            if (ny < 0 || ny >= H) continue;
+                            int nidx = ny * W + nx;
+                            if (regionPixels[nidx] != rid) continue;
+                            uint32_t na = adminPixels[nidx];
+                            if (!na) continue;
+                            int v = pixelToId(na);
+                            if (v == u || !byUnit.count(v)) continue;
+                            adj[u].insert(v);
+                            adj[v].insert(u);
+                        }
+                    }
+                }
+
+                // Merge until the cluster count reaches the allocation, taking
+                // the smallest cluster each round and folding it into its
+                // smallest neighbour. Smallest-into-smallest keeps the result
+                // even; merging into the largest would grow one blob across the
+                // whole country. Stops early if what is left has no neighbours
+                // to merge with -- a scatter of islands cannot be reduced.
+                int clusterCount = (int)byUnit.size();
+                while (clusterCount > numProv) {
+                    int worst = -1;
+                    long long worstSize = 0;
+                    for (auto& [uid, _pix] : byUnit) {
+                        int r = findRoot(uid);
+                        if (r != uid) continue;
+                        if (worst < 0 || clusterSize[r] < worstSize) {
+                            worst = r; worstSize = clusterSize[r];
+                        }
+                    }
+                    if (worst < 0) break;
+
+                    int best = -1;
+                    long long bestSize = 0;
+                    for (auto& [uid, _pix] : byUnit) {
+                        if (findRoot(uid) != worst) continue;
+                        for (int nb : adj[uid]) {
+                            int nr = findRoot(nb);
+                            if (nr == worst) continue;
+                            if (best < 0 || clusterSize[nr] < bestSize) {
+                                best = nr; bestSize = clusterSize[nr];
+                            }
+                        }
+                    }
+                    if (best < 0) {
+                        // The smallest cluster is isolated. Take it out of the
+                        // running rather than spinning, and try the next one.
+                        clusterSize[worst] = LLONG_MAX;
+                        bool anyMergeable = false;
+                        for (auto& [uid, _pix] : byUnit)
+                            if (findRoot(uid) == uid && clusterSize[uid] != LLONG_MAX)
+                                { anyMergeable = true; break; }
+                        if (!anyMergeable) break;
+                        continue;
+                    }
+                    parent[worst] = best;
+                    clusterSize[best] += clusterSize[worst];
+                    clusterCount--;
+                }
+                // Sizes were used as a scratch marker above; recompute.
+                for (auto& [uid, _pix] : byUnit) clusterSize[uid] = 0;
+                for (auto& [uid, pix] : byUnit) clusterSize[findRoot(uid)] += (long long)pix.size();
+
+                std::unordered_map<int, std::vector<int>> byCluster;
+                std::unordered_map<int, int> clusterName;   // root -> biggest unit
+                for (auto& [uid, pix] : byUnit) {
+                    int r = findRoot(uid);
+                    auto& dst = byCluster[r];
+                    dst.insert(dst.end(), pix.begin(), pix.end());
+                    auto it = clusterName.find(r);
+                    if (it == clusterName.end() || byUnit[it->second].size() < pix.size())
+                        clusterName[r] = uid;
+                }
+
+                std::vector<std::pair<int, std::vector<int>>> keep;
+                long long covered = 0;
+                for (auto& [root, pix] : byCluster) {
+                    covered += (long long)pix.size();
+                    keep.push_back({clusterName[root], pix});
+                }
+                if (!keep.empty() && covered * 2 >= (long long)np) {
+                    // Stable order: pixel count then id, so the same input map
+                    // always produces the same province ids.
+                    std::sort(keep.begin(), keep.end(),
+                              [](const auto& a, const auto& b) {
+                                  if (a.second.size() != b.second.size())
+                                      return a.second.size() > b.second.size();
+                                  return a.first < b.first;
+                              });
+                    usedAdmin = true;
+
+                    // If merging bottomed out above the allocation there is
+                    // nothing more to do, but if the country has FEWER units
+                    // than provinces -- Russia has 83 admin units and an
+                    // allocation near a hundred -- the shortfall is spread over
+                    // the largest clusters, repeatedly splitting whichever has
+                    // the most pixels per part. Largest-remainder, so Sakha is
+                    // cut several times before Kaliningrad is cut once. Without
+                    // this, splitting on a fixed pixel ceiling gave Russia 167
+                    // provinces against its old 95.
+                    std::vector<int> partsPer(keep.size(), 1);
+                    for (int have = (int)keep.size(); have < numProv; ++have) {
+                        int best = -1;
+                        double bestPer = -1.0;
+                        for (size_t i = 0; i < keep.size(); ++i) {
+                            double per = (double)keep[i].second.size() / partsPer[i];
+                            if (per > bestPer) { bestPer = per; best = (int)i; }
+                        }
+                        if (best < 0) break;
+                        partsPer[best]++;
+                    }
+
+                    for (size_t ki = 0; ki < keep.size(); ++ki) {
+                        const int uid = keep[ki].first;
+                        const std::vector<int>& pix = keep[ki].second;
+                        std::string unitName;
+                        auto uj = adminJson.find(std::to_string(uid));
+                        if (uj != adminJson.end() && uj->contains("name"))
+                            unitName = (*uj)["name"].get<std::string>();
+                        if (unitName.empty()) unitName = provPrefix;
+
+                        auto pieces = splitUnit(pix, partsPer[ki], rng);
+
+                        for (size_t pi = 0; pi < pieces.size(); ++pi) {
+                            int pid = provNextId++;
+                            uint8_t r = (pid >> 16) & 0xFF;
+                            uint8_t g = (pid >> 8) & 0xFF;
+                            uint8_t b = pid & 0xFF;
+                            char hex[8];
+                            snprintf(hex, sizeof(hex), "#%02x%02x%02x", r, g, b);
+                            nlohmann::json entry;
+                            entry["id"] = pid;
+                            // A split unit gets numbered parts; an intact one
+                            // keeps the name it has in the real world.
+                            entry["name"] = pieces.size() > 1
+                                ? unitName + " " + std::to_string(pi + 1)
+                                : unitName;
+                            entry["country_id"] = rid;
+                            entry["iso_a3"] = isoA3;
+                            entry["color"] = std::string(hex);
+                            provinceJson[std::to_string(pid)] = entry;
+                            uint32_t px = idToPixel(pid);
+                            for (int idx : pieces[pi]) provincePixels[idx] = px;
+                            adminProvinces++;
+                        }
+                    }
+                }
+            }
+
+            if (!usedAdmin && numProv == 1) {
                 int pid = provNextId++;
                 uint8_t r = (pid >> 16) & 0xFF;
                 uint8_t g = (pid >> 8) & 0xFF;
@@ -1360,13 +1703,14 @@ bool Generator::generateProvinces() {
                 continue;
             }
 
+            std::vector<int> seeds;
+            if (!usedAdmin) {
             float avgArea = (float)np / numProv;
             float minDist = std::sqrt(avgArea * 0.5f);
             float minDistSq = minDist * minDist;
 
             std::vector<int> shuffled = cp;
             std::shuffle(shuffled.begin(), shuffled.end(), rng);
-            std::vector<int> seeds;
 
             for (int idx : shuffled) {
                 if ((int)seeds.size() >= numProv) break;
@@ -1413,15 +1757,22 @@ bool Generator::generateProvinces() {
                 entry["color"] = std::string(hex);
                 provinceJson[std::to_string(pid)] = entry;
                 provincePixels[seeds[si]] = idToPixel(pid);
+                floodProvinces++;
             }
+            }   // !usedAdmin
 
+            // Seed the frontier from everything already assigned, whichever
+            // path assigned it: scattered seeds, or whole admin units. The
+            // leftovers are the pixels admin_1 did not cover, and they end up
+            // in whichever province reaches them first, which is the nearest.
             std::vector<int> frontier;
             std::vector<bool> inFrontier(W * H, false);
-            for (int si = 0; si < (int)seeds.size(); ++si) {
-                int sx = seeds[si] % W, sy = seeds[si] / W;
+            for (int idx : cp) {
+                if (provincePixels[idx] == 0) continue;
+                int cx = idx % W, cy = idx / W;
                 for (int d = 0; d < 4; ++d) {
-                    int nx = sx + (d == 0) - (d == 1);
-                    int ny = sy + (d == 2) - (d == 3);
+                    int nx = cx + (d == 0) - (d == 1);
+                    int ny = cy + (d == 2) - (d == 3);
                     if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
                     int nidx = ny * W + nx;
                     if (provincePixels[nidx] == 0 && landData[nidx * 4 + 3] != 0
@@ -1556,6 +1907,7 @@ bool Generator::generateProvinces() {
         if (!tinyProvs.empty()) {
             int mergedPixels = 0;
             int skipped = 0;
+            std::set<int> erased;
             for (int pid : tinyProvs) {
                 std::vector<int> pixs;
                 for (int i = 0; i < W * H; ++i) {
@@ -1634,16 +1986,30 @@ bool Generator::generateProvinces() {
                     for (int idx : pixs)
                         provincePixels[idx] = idToPixel(bestNbr);
                     mergedPixels += (int)pixs.size();
+                    erased.insert(pid);
                 }
             }
-            for (int pid : tinyProvs)
+            // Only drop what was actually absorbed. This used to erase every
+            // tiny province from the JSON whether or not a neighbour was found
+            // to merge it into, so a province with no land neighbour kept its
+            // pixels in provinces.png and lost its entry -- 9 ids and 208
+            // pixels of the world map that the game could paint but not look
+            // up. Small, but it is a province id that resolves to nothing.
+            for (int pid : erased)
                 provinceJson.erase(std::to_string(pid));
+            int stranded = (int)tinyProvs.size() - (int)erased.size() - skipped;
+            if (stranded > 0)
+                std::cout << "  " << stranded << " tiny province(s) had no neighbour "
+                          << "to merge into and were kept\n";
             std::cout << "  Merged " << (tinyProvs.size() - skipped) << " tiny provinces ("
                       << mergedPixels << " pixels), kept " << skipped << " as last of country\n";
         } else {
             std::cout << "  No tiny provinces to merge\n";
         }
     }
+
+    std::cout << "  Provinces: " << adminProvinces << " from admin_1 units, "
+              << floodProvinces << " from flood fill\n";
 
     std::cout << "\n--- Step 7: Organic smoothing ---\n";
     for (int relaxIter = 0; relaxIter < m_cfg.voronoiRelaxIterations; ++relaxIter) {

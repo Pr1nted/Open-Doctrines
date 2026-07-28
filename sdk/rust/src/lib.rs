@@ -155,6 +155,41 @@ impl Platform {
     }
 }
 
+/// Which side of a multiplayer game this process is. Matches
+/// `enums.net_role` in `abi.json`.
+///
+/// In multiplayer the **server** is authoritative: a client's world is replaced
+/// by whatever the server sends each turn, so a write made on a client does not
+/// survive and was never going to. That is what stops a modified client
+/// cheating, and it applies to your mod like anyone else's -- put presentation
+/// on the client and anything that changes the world on the server.
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NetRole {
+    /// Singleplayer: this process is both sides, so [`Env::is_client`] and
+    /// [`Env::is_server`] are both true.
+    Standalone = 0,
+    Client = 1,
+    /// Dedicated host: authoritative, with no local player.
+    Server = 2,
+    /// Authoritative, and playing.
+    HostPlayer = 3,
+}
+
+impl NetRole {
+    /// An unknown value means a newer host with a role this crate predates.
+    /// Treating it as `Standalone` would claim authority we may not have, so
+    /// it degrades to `Client`, which is the safe assumption.
+    pub const fn from_raw(v: u8) -> NetRole {
+        match v {
+            0 => NetRole::Standalone,
+            2 => NetRole::Server,
+            3 => NetRole::HostPlayer,
+            _ => NetRole::Client,
+        }
+    }
+}
+
 /// The environment struct, `gearbox_env_t`.
 ///
 /// **The layout is ABI.** Fields are only ever appended, never reordered or
@@ -177,7 +212,8 @@ pub struct Env {
     pub is_web: u8,
     /// 1 when there is no renderer. Every UI import no-ops.
     pub is_headless: u8,
-    pub reserved0: u8,
+    /// A [`NetRole`] discriminant; use [`Env::net_role`].
+    pub net_role: u8,
     /// 0 when headless.
     pub screen_w: u32,
     /// 0 when headless.
@@ -205,7 +241,7 @@ impl Env {
             platform: 0,
             is_web: 0,
             is_headless: 0,
-            reserved0: 0,
+            net_role: 0,
             screen_w: 0,
             screen_h: 0,
         }
@@ -234,6 +270,31 @@ impl Env {
 
     pub fn platform(&self) -> Platform {
         Platform::from_raw(self.platform)
+    }
+
+    pub fn net_role(&self) -> NetRole {
+        NetRole::from_raw(self.net_role)
+    }
+
+    /// True wherever there is a local player to draw for, which includes
+    /// singleplayer and a host who is also playing.
+    pub fn is_client(&self) -> bool {
+        matches!(
+            self.net_role(),
+            NetRole::Standalone | NetRole::Client | NetRole::HostPlayer
+        )
+    }
+
+    /// True wherever this process owns the world, so a write is real.
+    pub fn is_server(&self) -> bool {
+        matches!(
+            self.net_role(),
+            NetRole::Standalone | NetRole::Server | NetRole::HostPlayer
+        )
+    }
+
+    pub fn is_multiplayer(&self) -> bool {
+        self.net_role() != NetRole::Standalone
     }
 
     /// `host_version` unpacked into `(major, minor, patch)`.

@@ -3,6 +3,7 @@
 #include "miniz.h"
 #include "miniz_zip.h"
 #include "json.hpp"
+#include "../util/Sha256.h"
 
 #include <cstdio>
 #include <cstring>
@@ -37,6 +38,42 @@ uint32_t modModuleFromName(const std::string& name) {
     for (const auto& m : kModules)
         if (name == m.name) return m.bit;
     return 0;
+}
+
+// ------------------------------------------------------------------ side --
+
+const char* modSideName(ModSide s) {
+    switch (s) {
+        case ModSide::Client: return "client";
+        case ModSide::Server: return "server";
+        case ModSide::Both:   return "both";
+    }
+    return "both";
+}
+
+ModSide modSideFromName(const std::string& name, bool& known) {
+    known = true;
+    if (name == "client") return ModSide::Client;
+    if (name == "server") return ModSide::Server;
+    if (name == "both")   return ModSide::Both;
+    known = false;
+    return ModSide::Both;
+}
+
+uint32_t modSideGrantMask(ModSide side, bool multiplayer) {
+    // Outside a multiplayer session `side` means nothing: there is one process
+    // and it is authoritative, so a "client" mod is simply a mod.
+    if (!multiplayer || side != ModSide::Client) return ~0u;
+
+    // A client-side mod cannot write game state or run turn hooks while a
+    // server is authoritative. Not because we distrust it -- because those
+    // writes would be silently discarded the moment the next turn delta
+    // arrived, and a capability that appears to work but does nothing is worse
+    // than one that was never granted.
+    //
+    // Expressed as a mask over the existing grant word so there is exactly one
+    // place in the codebase that decides what a mod may touch.
+    return ~(MODULE_GAMESTATE_WRITE | MODULE_GAMEPROCESS);
 }
 
 std::string modModuleMaskToString(uint32_t mask) {
@@ -306,6 +343,36 @@ ModLoadResult parseModManifest(const std::string& text,
     if (out.modules & MODULE_GAMESTATE_WRITE)
         out.modules |= MODULE_GAMESTATE_READ;      // Write implies Read
 
+    // side: optional, defaulting to "both". Not a schema bump -- an existing
+    // mod that says nothing keeps working, and "both" is what it already was.
+    //
+    // An UNKNOWN value is a warning, not a rejection, and it falls back to
+    // "both". A future release adding a fourth side should not stop today's
+    // game loading a mod; treating it as "both" is the answer that cannot
+    // silently drop a mod the server needed.
+    auto sideIt = j.find("side");
+    if (sideIt != j.end()) {
+        if (!sideIt->is_string()) return bad("\"side\" must be a string");
+        bool known = false;
+        out.side = modSideFromName(sideIt->get<std::string>(), known);
+        if (!known) {
+            warnings.push_back("unknown \"side\" value \"" + sideIt->get<std::string>() +
+                               "\", treated as \"both\"");
+        }
+    }
+
+    // A client-side mod declaring capabilities it can never use in the mode it
+    // named. Allowed -- it may be running singleplayer, where side means
+    // nothing -- but worth saying out loud, because the usual cause is a mod
+    // that should have declared "both".
+    if (out.side == ModSide::Client &&
+        (out.modules & (MODULE_GAMESTATE_WRITE | MODULE_GAMEPROCESS))) {
+        warnings.push_back(
+            "declares \"side\": \"client\" but asks for GameState.Write or "
+            "GameProcess; those are masked off in multiplayer, where the "
+            "server owns the world");
+    }
+
     // dependencies -- resolved by ModManager at enable time, not here: this
     // layer sees one package and cannot know what else is installed.
     auto dit = j.find("dependencies");
@@ -480,8 +547,13 @@ ModLoadResult ModPackage::openFromMemory(std::vector<uint8_t> bytes,
     m_assetIndices.clear();
     m_wasm.clear();
     m_thumbnail.clear();
+    m_sha256.clear();
     m_manifest = ModManifest{};
     m_archive = std::move(bytes);
+
+    // Digest the archive before anything reads it, so what we report is what
+    // arrived rather than what we made of it.
+    m_sha256 = ::sha256Hex(m_archive.data(), m_archive.size());
 
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_mem(&zip, m_archive.data(), m_archive.size(), 0))

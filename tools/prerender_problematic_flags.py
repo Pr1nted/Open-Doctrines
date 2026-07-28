@@ -83,9 +83,6 @@ def main():
                         help="Only pre-render flags with nanosvg-unfriendly features (legacy mode)")
     args = parser.parse_args()
 
-    if not os.path.exists(COUNTRIES_JSON):
-        print(f"ERROR: {COUNTRIES_JSON} not found")
-        sys.exit(1)
     os.makedirs(FLAGS_DIR, exist_ok=True)
 
     # Check if rsvg-convert is available
@@ -97,8 +94,16 @@ def main():
         print("  apt install librsvg2-bin")
         sys.exit(1)
 
-    with open(COUNTRIES_JSON) as f:
-        countries = json.load(f)
+    # countries.json is only needed to rewrite flag paths at the end. It is not
+    # present outside a pipeline run (step 20 sweeps it), and rasterising should
+    # not depend on a file it does not read. Without it, render everything and
+    # skip the rewrite -- which is what you want when adding scenario flags.
+    try:
+        with open(COUNTRIES_JSON) as f:
+            countries = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("  countries.json absent — rendering SVGs, skipping the path rewrite")
+        countries = None
 
     # Determine which SVGs to pre-render
     svgs_to_render = []
@@ -134,6 +139,10 @@ def main():
 
     # Update countries.json: point all flag_actual entries to .png
     updated = 0
+    if countries is None:
+        print(f"\nPre-rendered: {converted} PNGs, {failed} failures")
+        print("Done (no countries.json to update)")
+        return
     for cid, entry in countries.items():
         fa = entry.get("flag_actual", {})
         if isinstance(fa, dict):

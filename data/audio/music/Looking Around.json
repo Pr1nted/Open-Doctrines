@@ -1,0 +1,12 @@
+{
+  "title": "Looking Around",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": {
+    "tension": 0.05,
+    "energy": 0.15,
+    "valence": 0.0
+  },
+  "weight": 1.0,
+  "$comment": "The idle piece: stiller and more neutral than Creator, which is what separates them. Sitting at the low corner of the space means it never beats the theme on the menu or during a war, but it trades places with Creator over the map and the editor -- close enough in mood that the repeat penalty alternates them, far enough apart that each still has a home. Editable source: data/audio/midi/Looking Around.mid"
+}

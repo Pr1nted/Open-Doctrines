@@ -3,7 +3,7 @@
 OpenDoctrines Data Pipeline
 ============================
 Orchestrates the full data generation pipeline:
-   1. Download external data (GREG, USGS, ACOR, WPI)
+   1. Download external data (USGS, WPI — public domain only, see NOTICE.md)
    2. Run MapGenerator (generates provinces, base map, initial gravity-model pop)
    3. Save initial map.odmap to STDmaps/
    4. Override population with corrected province populations
@@ -59,7 +59,7 @@ def step(n, desc):
 
 def main():
     # ── Step 1: Download external data ──────────────────────────
-    step(1, "Download external data (GREG, USGS, ACOR, WPI)")
+    step(1, "Download external data (USGS, WPI)")
     run_ignore_fail(
         [sys.executable, os.path.join(TOOLS_DIR, "download_external_data.py")],
         "external data download",
@@ -100,6 +100,14 @@ def main():
         "Normalize symbol SVGs to canonical viewBox",
     )
 
+    # ── Step 5b: Historical flags for the scenario powers ─────────
+    # Before step 6, so the same rasteriser handles them.
+    step("5b", "Download historical flags for scenario powers")
+    run_ignore_fail(
+        [sys.executable, os.path.join(TOOLS_DIR, "download_scenario_flags.py")],
+        "scenario flag download",
+    )
+
     # ── Step 6: Pre-render problem SVGs to PNG (nanosvg doesn't support clipPath)
     step(6, "Pre-render SVGs with clipPath/negative viewBox to PNG (rsvg-convert)")
     run_ignore_fail(
@@ -129,6 +137,17 @@ def main():
     run_ignore_fail(
         [sys.executable, os.path.join(TOOLS_DIR, "overlay_real_data.py")],
         "real data overlay",
+    )
+
+    # ── Step 9b: Generate minorities ──────────────────────────────
+    # Separate from step 9 because it is no longer derived from a shapefile:
+    # overlay_real_data.py writes province_centers.json and this reads it
+    # together with tools/data/ethnic_groups.json. Must run before step 13,
+    # which keys its policy overrides off the group names produced here.
+    step("9b", "Generate per-province ethnic composition")
+    run_ignore_fail(
+        [sys.executable, os.path.join(TOOLS_DIR, "generate_minorities.py")],
+        "minorities generation",
     )
 
     # ── Step 10: Generate ships ──────────────────────────────────
@@ -234,6 +253,15 @@ def main():
     shutil.copy2(final_map, stdmap_dst)
     print(f"  Copied {final_map} -> {stdmap_dst}")
 
+    # ── Step 18b: Historical scenarios ────────────────────────────
+    # Every scenario is the Modern Day province layer under different owners,
+    # so this must run after step 18 has put the finished map in STDmaps/.
+    step("18b", "Generate historical scenario maps")
+    run_ignore_fail(
+        [sys.executable, os.path.join(TOOLS_DIR, "generate_scenario.py"), "--all"],
+        "scenario generation",
+    )
+
     # ── Step 19: Generate zero-turn save ──────────────────────────
     step(19, "Generate zero-turn save (.odsv)")
     run_ignore_fail(
@@ -262,6 +290,23 @@ def main():
     if os.path.exists(map_odmap):
         os.remove(map_odmap)
         print(f"  Removed file: map.odmap (saved in STDmaps/)")
+    # ── Step 21: Licensing paperwork ─────────────────────────────
+    # Last, and deliberately loud. The audit is what catches a flag that
+    # arrived under new terms, and gen_notices is what keeps the credits and
+    # NOTICE.md honest about what the map now actually contains. Neither
+    # blocks the pipeline — the map is already built — but a failure here
+    # means the build is not shippable until it is dealt with.
+    step(21, "Verify licensing paperwork")
+    # Covers the scenario flags too — they ship in the same archives.
+    run_ignore_fail(
+        [sys.executable, os.path.join(TOOLS_DIR, "audit_flag_licenses.py"), "--check"],
+        "flag licence audit",
+    )
+    run_ignore_fail(
+        [sys.executable, os.path.join(TOOLS_DIR, "gen_notices.py"), "--check"],
+        "third-party notices",
+    )
+
     log("Pipeline complete!")
     print("\nNow build and run the game:")
     print("  cmake --build cmake-build-debug/ -- -j8")

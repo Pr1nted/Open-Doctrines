@@ -1,0 +1,87 @@
+{
+ "$comment": "Every third-party thing OpenDoctrines ships or builds against, and the terms it is under. This file is the single source of truth: NOTICE.md and the third-party half of data/credits.txt are both generated from it by tools/gen_notices.py, and tests/run_all.sh fails if either has drifted. Add the entry here first; the paperwork follows.",
+ "schema": 1,
+
+ "data": [
+  {
+   "name": "Natural Earth",
+   "what": "Coastlines, country boundaries and the province seed geometry",
+   "license": "Public domain",
+   "url": "https://www.naturalearthdata.com/about/terms-of-use/",
+   "attribution": false,
+   "used_by": "tools/map_generator"
+  },
+  {
+   "name": "USGS Major Mineral Deposits of the World",
+   "what": "Gold, gemstone and metal deposit locations",
+   "license": "Public domain (work of the US Government, 17 U.S.C. 105)",
+   "url": "https://mrdata.usgs.gov/major-deposits/",
+   "attribution": false,
+   "used_by": "tools/overlay_real_data.py"
+  },
+  {
+   "name": "NGA World Port Index (Pub 150)",
+   "what": "Port locations, harbour size and depth",
+   "license": "Public domain (work of the US Government)",
+   "url": "https://msi.nga.mil/Publications/WPI",
+   "attribution": false,
+   "used_by": "tools/overlay_real_data.py, tools/generate_ships_fast.py"
+  },
+  {
+   "name": "World Bank Open Data",
+   "what": "Year-2000 national population totals",
+   "license": "CC BY 4.0",
+   "url": "https://datacatalog.worldbank.org/public-licenses",
+   "attribution": true,
+   "attribution_text": "Contains data from the World Bank, licensed under CC BY 4.0. The World Bank does not endorse this work.",
+   "license_file": "CC-BY-4.0.txt",
+   "used_by": "tools/generate_province_populations.py"
+  },
+  {
+   "name": "Wikimedia Commons",
+   "what": "National flag artwork",
+   "license": "Public domain, CC0 and OGL-om 1.0 — per file",
+   "url": "https://commons.wikimedia.org/",
+   "attribution": true,
+   "attribution_text": "Flag artwork from Wikimedia Commons. Per-file licences and required attribution: data/licenses/FLAGS.md.",
+   "license_file": "FLAGS.md",
+   "used_by": "tools/download_flags_fast.py, audited by tools/audit_flag_licenses.py"
+  }
+ ],
+
+ "removed_data": [
+  {
+   "name": "GREG (Geo-referencing of Ethnic Groups), ETH Zurich",
+   "was": "Ethnic group polygons behind minorities.json",
+   "removed": "2026-07",
+   "why": "No licence is offered. The download page asks only that the dataset be cited \"when using the GREG data for your research\" — a citation request under research framing, not a grant, and silent on redistribution or on shipping derived data in a game. GREG is itself a digitisation of the 1964 Soviet Atlas Narodov Mira, so ETH is in no position to sublicense the underlying work either; asking them could not have produced a usable answer.",
+   "replaced_by": "tools/data/ethnic_groups.json — project-authored country compositions from public-domain reference material, plus hand-drawn concentration boxes. See tools/generate_minorities.py."
+  },
+  {
+   "name": "ACOR (oil and gas field polygons), ETH Zurich",
+   "was": "Oil field centroids behind the oil layer of resources.json",
+   "removed": "2026-07",
+   "why": "Same shape of problem as GREG: no licence text, a citation requirement only, and the polygons are digitised from a 1982 atlas.",
+   "replaced_by": "tools/data/oil_fields.json — a project-authored list of named producing regions with play-balance weights. See load_oil_fields() in tools/overlay_real_data.py."
+  }
+ ],
+
+ "libraries": [
+  {"name": "raylib", "version": "5.5", "license": "zlib/libpng", "url": "https://www.raylib.com/", "what": "Windowing, input, audio and 2D rendering"},
+  {"name": "WebAssembly Micro Runtime (WAMR)", "version": "2.4.5", "license": "Apache-2.0", "url": "https://github.com/bytecodealliance/wasm-micro-runtime", "what": "Sandboxed WASM runtime for Gearbox mods on desktop"},
+  {"name": "Mbed TLS", "version": "3.6.2", "license": "Apache-2.0", "url": "https://github.com/Mbed-TLS/mbedtls", "what": "TLS for the multiplayer transport, the updater and the account client"},
+  {"name": "nlohmann/json", "version": "vendored", "license": "MIT", "url": "https://github.com/nlohmann/json", "what": "JSON parsing"},
+  {"name": "nanosvg", "version": "vendored", "license": "zlib", "url": "https://github.com/memononen/nanosvg", "what": "SVG parsing and rasterising for flags and symbols"},
+  {"name": "miniz", "version": "vendored", "license": "MIT", "url": "https://github.com/richgel999/miniz", "what": "ZIP and deflate for .odmap, .odsv and .odmod"},
+  {"name": "stb_image / stb_image_write", "version": "vendored", "license": "Public domain (Unlicense/MIT dual)", "url": "https://github.com/nothings/stb", "what": "PNG decode and encode in the map generator"}
+ ],
+
+ "fonts": [
+  {"name": "DejaVu Sans", "file": "data/fonts/DejaVuSans.ttf", "license": "Bitstream Vera Fonts License", "url": "https://dejavu-fonts.github.io/License.html", "what": "The game's main UI face"},
+  {"name": "GNU Unifont", "file": "data/fonts/unifont.ttf", "license": "SIL OFL 1.1", "url": "https://unifoundry.com/unifont/", "what": "CJK and fallback glyph coverage. Unifont is dual-licensed OFL 1.1 / GPLv2+ with a font-embedding exception; OpenDoctrines takes the OFL grant, under which the font may be bundled with and sold as part of a larger work provided it is not sold on its own."}
+ ],
+
+ "art": [
+  {"name": "SVG symbol set", "what": "Heraldic symbols used by the procedural flag generator", "license": "Public domain", "url": "https://commons.wikimedia.org/", "note": "Adapted from Wikimedia Commons; all sources public domain."}
+ ]
+}

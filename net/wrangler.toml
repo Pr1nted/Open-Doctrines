@@ -1,0 +1,67 @@
+name = "opendoctrines-net"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# No preview URLs. They would expose the same auth endpoints on a second,
+# unversioned host that no OAuth provider has been told about.
+preview_urls = false
+
+# Observability is deliberately OFF.
+#
+# This is not a cost decision, it is the retention promise in PRIVACY.md. With
+# it on, Cloudflare retains request logs that would include the client IP of
+# every player who logs in or joins a game, and "we keep no join history" would
+# stop being true. If you turn this on you must also amend the policy.
+[observability]
+enabled = false
+
+# PRIVACY.md is served verbatim at /privacy. Importing it as a module rather
+# than pasting it into a .ts file means the published policy and the file in
+# the repository cannot drift apart.
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true
+
+[vars]
+# The `iss` claim we stamp into tokens, and the value a game server checks to
+# decide whether an identity is "official" (see Part F of the design: a badge
+# from any other issuer renders as unofficial).
+ISSUER = "https://opendoctrines-net.opendoctrines.workers.dev"
+
+# ---------------------------------------------------------------- storage ----
+#
+# One namespace. Everything is keyed by prefix (acct:, ident:, nick:, dc:,
+# tomb:, cfg:) rather than split across namespaces, because the free plan's
+# limits are per-account, not per-namespace, so splitting would buy nothing and
+# cost an extra binding.
+[[kv_namespaces]]
+binding = "OD_ACCOUNTS"
+id = "91b9e4bfc8e24b26ab29d463c8e6c07f"
+
+# ------------------------------------------------------------------ relay ----
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDO"
+
+# SQLite-backed, and that is a requirement rather than a preference: Durable
+# Objects are only available on the free plan with the SQLite storage backend.
+# A `new_classes` migration here would work on a paid account and fail on a
+# free one, which is exactly the wrong way round for this project.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LobbyDO"]
+
+# ---------------------------------------------------------------- secrets ----
+#
+# None of these live in this file. Set each with `wrangler secret put <NAME>`;
+# see README.md for how to generate them.
+#
+#   ED25519_PRIVATE_KEY  JWK of the signing key for session tokens and tickets
+#   ED25519_PUBLIC_JWK   the matching public JWK, served at /.well-known/od-keys.json
+#   IDENT_KEY            HMAC key that hashes provider user ids before storage
+#   PAIRWISE_KEY         HMAC key behind the per-server pseudonym (psid)
+#   ADMIN_SECRET         gates badge grants
+#   GOOGLE_CLIENT_ID     GOOGLE_CLIENT_SECRET
+#   DISCORD_CLIENT_ID    DISCORD_CLIENT_SECRET
+#   GITHUB_CLIENT_ID     GITHUB_CLIENT_SECRET

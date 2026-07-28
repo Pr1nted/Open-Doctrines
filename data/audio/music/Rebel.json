@@ -1,0 +1,8 @@
+{
+  "title": "Rebel",
+  "author": "Pr1nted",
+  "contexts": ["game"],
+  "mood": { "tension": 0.50, "energy": 0.80, "valence": 0.40 },
+  "weight": 1.0,
+  "$comment": "Active wartime, but confident rather than desperate: high energy with POSITIVE valence, which is the corner a war you are clearly winning occupies and which nothing else did. The asymmetry signal is what puts the game there -- putting down a rebellion, or fighting someone far smaller, lowers tension and raises valence, and this is what wins that. A war against a peer stays with Parade Uniform and Bombing Voronezh. Editable source: data/audio/midi/Rebel.mid"
+}

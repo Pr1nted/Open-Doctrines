@@ -1,13 +1,29 @@
 #!/usr/bin/env python3
 """
-Download external shapefile/data dependencies used by overlay_real_data.py
-and other data-generation tools.
+Download external data dependencies used by overlay_real_data.py and other
+data-generation tools.
+
+EVERY DATASET HERE IS PUBLIC DOMAIN. That is a rule, not a coincidence.
+
+Two datasets used to be downloaded here and are not any more:
+
+  GREG (ethnic group polygons, ETH Zurich)
+  ACOR (oil and gas field polygons, ETH Zurich)
+
+Neither offers a licence. Both ask only to be cited, GREG explicitly framing
+that as research use, and both are digitisations of mid-century atlases their
+distributors do not own. Data derived from them shipped inside map.odmap, which
+is redistribution, which nobody had granted. They were replaced by
+project-authored tables — tools/data/ethnic_groups.json and
+tools/data/oil_fields.json — that are checked in and need no download at all.
+The full reasoning is in NOTICE.md.
+
+The test to apply before adding anything below: can you point at the sentence
+that grants redistribution? If not, it does not go in the game.
 
 Sources:
-  GREG: https://icr.ethz.ch/data/greg/GREG.zip        → /tmp/greg_data/
   USGS: https://mrdata.usgs.gov/major-deposits/ofr20051294.zip → /tmp/usgs_data/
-  ACOR: https://icr.ethz.ch/data/acor/acor_0.2.zip     → /tmp/acor_data/
-  WPI:  See note below                                  → /tmp/wpi/UpdatedPub150.csv
+  WPI:  See note below                                         → /tmp/wpi/UpdatedPub150.csv
 
 WPI note: The World Port Index (UpdatedPub150.csv) is published by the US
 National Geospatial-Intelligence Agency (NGA) as Pub 150. The official
@@ -21,25 +37,17 @@ import os, shutil, subprocess, sys, zipfile, urllib.request
 TMP = "/tmp"
 
 DATASETS = {
-    "greg": {
-        "url": "https://icr.ethz.ch/data/greg/GREG.zip",
-        "dest": "/tmp/greg_data/",
-        "expected": ["GREG.shp", "GREG.dbf", "GREG.shx", "GREG.prj"],
-    },
     "usgs": {
         "url": "https://mrdata.usgs.gov/major-deposits/ofr20051294.zip",
         "dest": "/tmp/usgs_data/",
         "expected": ["ofr20051294.shp", "ofr20051294.dbf", "ofr20051294.shx"],
-    },
-    "acor": {
-        "url": "https://icr.ethz.ch/data/acor/acor_0.2.zip",
-        "dest": "/tmp/acor_data/",
-        "expected": ["acor_0.2.shp", "acor_0.2.dbf", "acor_0.2.shx"],
+        "license": "Public domain — work of the US Government (17 U.S.C. 105)",
     },
     "wpi": {
         "url": "https://ckan.rimes.int/it/dataset/ef461b79-7a50-4ffc-8327-31d71a690c6b/resource/23538e38-830f-4df1-b69d-4469fa6ee7af/download/UpdatedPub150.csv",
         "dest": "/tmp/wpi/UpdatedPub150.csv",
         "expected": ["UpdatedPub150.csv"],
+        "license": "Public domain — work of the US Government (NGA Pub 150)",
     },
 }
 
@@ -110,6 +118,7 @@ def main():
         print(f"{name}: missing or incomplete, downloading...")
 
         print(f"\n=== {name.upper()} ===")
+        print(f"  Licence: {ds['license']}")
         if "zip" in ds["url"]:
             ok = download_and_extract_zip(ds["url"], dest, ds["expected"])
         else:

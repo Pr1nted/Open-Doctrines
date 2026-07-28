@@ -50,25 +50,33 @@
           <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
         </g>
         <g stroke-width="2.7867">
-          <g stroke-width="2.7867" transform="translate(13.603532,0.000000)">
-            <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
-            <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
-            <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+          <g height="100%" transform="translate(13.603532,0.000000)" width="100%">
+            <g stroke-width="2.7867">
+              <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
+              <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
+              <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+            </g>
           </g>
-          <g stroke-width="2.7867" transform="translate(27.449532,0.000000)">
-            <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
-            <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
-            <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+          <g height="100%" transform="translate(27.449532,0.000000)" width="100%">
+            <g stroke-width="2.7867">
+              <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
+              <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
+              <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+            </g>
           </g>
-          <g stroke-width="2.7867" transform="translate(41.781532,0.000000)">
-            <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
-            <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
-            <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+          <g height="100%" transform="translate(41.781532,0.000000)" width="100%">
+            <g stroke-width="2.7867">
+              <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
+              <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
+              <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+            </g>
           </g>
-          <g stroke-width="2.7867" transform="translate(55.627533,0.000000)">
-            <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
-            <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
-            <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+          <g height="100%" transform="translate(55.627533,0.000000)" width="100%">
+            <g stroke-width="2.7867">
+              <path d="m266.11 196.61 8.5023 11.284" stroke-width="2.7867"/>
+              <path d="m266.11 207.89 9.2315-11.043" stroke-width="2.7867"/>
+              <path d="m270.97 195.88-.24252 6.9617" stroke-width="2.7867"/>
+            </g>
           </g>
         </g>
       </g>

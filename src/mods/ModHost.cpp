@@ -53,7 +53,7 @@ struct GearboxEnv {
     uint8_t  platform;
     uint8_t  is_web;
     uint8_t  is_headless;
-    uint8_t  reserved0;
+    uint8_t  net_role;
     uint32_t screen_w;
     uint32_t screen_h;
 };
@@ -98,6 +98,10 @@ void core_env(ExecEnv e, uint32_t outPtr) {
     env.platform = kPlatformUnknown;
 #endif
     env.is_headless = g_modHost.headless ? 1 : 0;
+    // Was `reserved0`, always zero. Standalone is 0, so a mod built against
+    // the older struct reads the same byte and gets the right answer for the
+    // only game it could have been running: singleplayer.
+    env.net_role = static_cast<uint8_t>(g_modHost.netRole);
     env.screen_w = g_modHost.headless ? 0 : g_modHost.screenW;
     env.screen_h = g_modHost.headless ? 0 : g_modHost.screenH;
 

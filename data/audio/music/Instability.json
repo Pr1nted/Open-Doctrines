@@ -1,0 +1,8 @@
+{
+  "title": "Instability",
+  "author": "Pr1nted",
+  "contexts": ["game"],
+  "mood": { "tension": 0.60, "energy": 0.30, "valence": -0.40 },
+  "weight": 1.0,
+  "$comment": "Tremolo strings, a low drone, fragmentary clarinet and a ticking clock. High tension with LOW energy is the dread corner -- nothing else in the library is there, because every other tense piece is also loud. That is exactly the shape of something bad that has not happened yet. Driven by rebellion pressure across the player's own provinces, so it looms while the map still looks calm. Editable source: data/audio/midi/Instability.mid"
+}

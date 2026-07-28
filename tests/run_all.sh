@@ -14,7 +14,7 @@ step "fixture mods"
 
 step "build test targets"
 cmake --build "$build" --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetSeatBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       >/dev/null || { echo "build failed"; exit 1; }
 
 run() {
@@ -24,12 +24,33 @@ run() {
 }
 
 run "archive reader"   "$build/ModArchiveTest"
+run "mod sides + attestation" "$build/NetAttestTest"
+run "net protocol"     "$build/NetProtocolTest"
+run "account client"   "$build/NetAccountTest"
+run "lobby rules"      "$build/NetLobbyTest"
+run "crypto vectors"   "$build/NetCryptoTest"
+run "join tickets"     "$build/NetTicketTest"
+run "sealed orders"    "$build/NetSealTest"
+run "seats remembered" "$build/NetSeatBookTest"
+run "tunnel parsing"   "$build/NetTunnelTest"
+# Binds a loopback port on an OS-chosen number. Opens nothing to the network.
+run "websocket server" "$build/NetWsServerTest"
+# A real host and a real client over loopback, against a stand-in account
+# service. Skips itself if node is missing; see tests/connectivity_test.sh.
+run "connectivity"     "$root/tests/connectivity_test.sh" "$build"
 run "abi conformance"  "$build/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$build/ModRuntimeTest" "$build/testmods"
 run "mod manager"      "$build/ModManagerTest" "$build/testmods" "$build/modmgr_scratch"
 # Run from the repository root: the version test shells out to tools/odver.py
 # and reads tests/fixtures/, and both are relative to it.
 run "game updater"     "$build/GameUpdatesTest"
+
+# Timelapse writer. The C++ side writes GIFs with known content; the Python side
+# decodes them with Pillow and compares. An encoder cannot verify its own LZW --
+# a stream with a mis-sized code still has a valid header and still opens.
+rm -rf "$build/giftest" && mkdir -p "$build/giftest"
+run "gif encoder"      "$build/GifEncoderTest" "$build/giftest"
+run "gif decodes back" python3 "$root/tests/gif_encoder_check.py" "$build/giftest"
 
 run "example mods, all languages" "$build/ModExamplesTest" "$root/sdk"
 
@@ -45,6 +66,19 @@ python3 "$root/tools/gen_bindings.py" --check || fail=1
 
 step "sdk bindings vs abi.json"
 python3 "$root/tools/check_bindings.py" || fail=1
+
+step "third-party notices vs provenance.json"
+# Fails if a dataset, library or font was added to the build without being
+# recorded, or if NOTICE.md / data/credits.txt were edited by hand instead of
+# regenerated. Attribution that drifts is a licence breach, not a typo.
+# Regenerate with: python3 tools/gen_notices.py
+python3 "$root/tools/gen_notices.py" --check || fail=1
+
+step "flag licences"
+# Offline: asserts every flag in download_flags_fast.py has a recorded licence
+# and that none of them is under terms the project has not accepted. Refresh
+# from Wikimedia with: python3 tools/audit_flag_licenses.py
+python3 "$root/tools/audit_flag_licenses.py" --check || fail=1
 
 step "documented example"
 "$root/tests/check_doc_examples.sh" "$build/doccheck" "$build/odmod-check" || fail=1

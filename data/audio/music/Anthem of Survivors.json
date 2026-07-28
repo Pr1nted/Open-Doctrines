@@ -1,0 +1,8 @@
+{
+  "title": "Anthem of Survivors",
+  "author": "Pr1nted",
+  "contexts": ["menu", "game", "editor"],
+  "mood": { "tension": 0.50, "energy": 0.60, "valence": 0.0 },
+  "weight": 1.2,
+  "$comment": "Trumpets, horns, organ, choir and tuba on the seed theme -- militaristic but general, which is a role rather than a situation. Placed deliberately CLOSE to Parade Uniform so the two trade off as the game's broad voice instead of one of them owning it; the weight above 1 is what keeps a general theme surfacing when nothing more specific fits. Editable source: data/audio/midi/Anthem of Survivors.mid"
+}

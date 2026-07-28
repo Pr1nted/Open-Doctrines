@@ -140,10 +140,14 @@ public:
     // Estimate total save growth over N turns
     static std::string estimateGrowth(const TurnDelta& avgDelta, int turns);
 
-private:
-    // Binary pack/unpack helpers
+    // The per-turn binary codec. Public because multiplayer sends exactly this
+    // format over the wire -- a turn delta is a turn delta whether it is being
+    // appended to a save or handed to another player, and a second "network
+    // delta format" would be a second thing to keep in step with the first.
     static std::vector<uint8_t> packTurn(const TurnDelta& delta);
     static bool unpackTurn(const uint8_t* data, size_t size, TurnDelta& out);
+
+private:
     static void writeU16(std::vector<uint8_t>& buf, uint16_t v);
     static void writeU32(std::vector<uint8_t>& buf, uint32_t v);
     static void writeFloat(std::vector<uint8_t>& buf, float v);
