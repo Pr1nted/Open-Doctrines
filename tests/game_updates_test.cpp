@@ -116,19 +116,38 @@ void testVersionOrdering() {
         "1.0.2s1", "1.0.2s2", "1.0.2a", "1.0.2b", "1.0.2r",
         "1.0.3a", "1.1.0a", "2.0.0a", "0.9.9r", "1.0.10a", "1.0.2s10",
     };
-    std::string cmd = "python3 -c \""
-        "import sys; sys.path.insert(0, 'tools'); import odver; "
-        "vs = sys.argv[1].split(','); "
-        "print(','.join(sorted(vs, key=lambda s: odver.Version.parse(s).sort_key())))\" ";
+    // The Python goes in a FILE, not in -c. Passing it inline meant a quoted
+    // program travelling through popen's shell, and on Windows that shell is
+    // cmd.exe, whose quoting rules are not sh's. When cmd mangled it, python
+    // received no valid -c argument, started its REPL, and blocked reading a
+    // stdin that popen never closes -- so the test did not fail, it HUNG, and
+    // took the whole CI job with it until the six-hour limit.
+    //
+    // A file has no nested quoting to get wrong on either platform.
+    const std::string script = (std::filesystem::temp_directory_path() /
+                                "od_version_sort_check.py").string();
+    {
+        std::ofstream f(script);
+        f << "import sys\n"
+             "sys.path.insert(0, 'tools')\n"
+             "import odver\n"
+             "vs = sys.argv[1].split(',')\n"
+             "print(','.join(sorted(vs, key=lambda s: odver.Version.parse(s).sort_key())))\n";
+    }
+
     std::string joined;
     for (size_t i = 0; i < table.size(); ++i) joined += (i ? "," : "") + table[i];
-    // 2>NUL on Windows: popen there goes through cmd.exe, which has no
-    // /dev/null and would take it as a filename to redirect into.
+
+    // stdin from the null device as well as stderr to it. Belt and braces: a
+    // child that decides to read input then gets EOF immediately instead of
+    // waiting forever, whatever went wrong with the command line.
 #ifdef _WIN32
-    cmd += joined + " 2>NUL";
+    const std::string nul = "NUL";
 #else
-    cmd += joined + " 2>/dev/null";
+    const std::string nul = "/dev/null";
 #endif
+    std::string cmd = "python3 \"" + script + "\" " + joined +
+                      " <" + nul + " 2>" + nul;
 
     FILE* p = OD_POPEN(cmd.c_str(), "r");
     std::string pyOut;
@@ -137,6 +156,7 @@ void testVersionOrdering() {
         while (fgets(buf, sizeof buf, p)) pyOut += buf;
         OD_PCLOSE(p);
     }
+    { std::error_code ec; std::filesystem::remove(script, ec); }
     while (!pyOut.empty() && (pyOut.back() == '\n' || pyOut.back() == '\r'))
         pyOut.pop_back();
 

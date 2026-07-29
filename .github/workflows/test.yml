@@ -52,6 +52,12 @@ jobs:
   qualify:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # A hang must not cost six hours. GitHub's default job timeout is 360
+    # minutes, and a test that blocks on stdin will happily use all of it: one
+    # did, holding a Windows runner for 26 minutes before anyone looked and
+    # heading for the full six. The slowest honest run here is Windows at about
+    # nine minutes, so 30 is generous and still fails fast.
+    timeout-minutes: 30
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
@@ -114,6 +120,7 @@ jobs:
   web:
     name: web (emscripten)
     runs-on: ubuntu-22.04
+    timeout-minutes: 30      # same reason as qualify; a link that hangs is not free
     steps:
       - uses: actions/checkout@v5
       - uses: mymindstorm/setup-emsdk@v14
