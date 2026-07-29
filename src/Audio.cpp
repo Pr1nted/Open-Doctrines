@@ -791,14 +791,32 @@ void Audio::backgroundPumpLoop() {
 
 void Audio::beginBackgroundPump() {
     if (!m_available) return;
+#ifdef __EMSCRIPTEN__
+    // No pump in a browser, and no way to have one. The web build is
+    // single-threaded and compiled without exceptions, so constructing a
+    // std::thread here does not fail -- it aborts the tab. This is the call
+    // that killed the game every time a player opened a world: the loader
+    // starts it to keep music fed across a long blocking load, so it fired on
+    // the way into every single game.
+    //
+    // Nothing is lost by skipping it. The pump exists because a load blocks the
+    // thread that would otherwise refill the music buffer; on web the loader is
+    // stepped from the frame loop and asyncify yields to the browser, so the
+    // buffer is refilled by the ordinary Audio::update() path anyway.
+    return;
+#else
     if (m_bgDepth++ > 0) return;              // already pumping
     if (!m_cur.loaded && !m_prev.loaded) return;   // nothing to feed
     m_bgRunning.store(true, std::memory_order_release);
     m_bgThread = std::thread(&Audio::backgroundPumpLoop, this);
+#endif
 }
 
 void Audio::endBackgroundPump() {
     if (!m_available) return;
+#ifdef __EMSCRIPTEN__
+    return;   // begin was a no-op there, so m_bgDepth was never raised
+#endif
     if (m_bgDepth == 0) return;
     if (--m_bgDepth > 0) return;
     m_bgRunning.store(false, std::memory_order_release);
