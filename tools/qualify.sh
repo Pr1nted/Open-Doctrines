@@ -86,6 +86,7 @@ if [ "$platform" = "linux" ]; then
         DEBIAN_FRONTEND=noninteractive $SUDO apt-get update -qq
         DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y -qq \
             build-essential cmake git pkg-config ca-certificates curl gnupg \
+            clang lld \
             libasound2-dev libx11-dev libxrandr-dev libxi-dev \
             libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
             libxinerama-dev libwayland-dev libxkbcommon-dev \
@@ -97,6 +98,12 @@ if [ "$platform" = "linux" ]; then
         # apt's npm drags in libnode-dev, and NodeSource's nodejs package then
         # fails to unpack because both own /usr/include/node/common.gypi.
         # Install the right one once, below, instead of fighting the wrong one.
+        #
+        # clang is for the MOD tests, not for building the game: the fixture
+        # mods are compiled to wasm32, and without a wasm32-capable compiler
+        # tests/build_test_mods.sh prints "no wasm32-capable clang found;
+        # skipping" and the whole mod half of the suite quietly does not run.
+        # A skip that reads like a pass is worse than a failure.
         python3 -m pip install --quiet --break-system-packages Pillow 2>/dev/null \
             || python3 -m pip install --quiet Pillow 2>/dev/null \
             || note "Pillow not installed; the GIF decode check will be skipped"

@@ -13,6 +13,11 @@
 
 #include "net/TurnSeal.h"
 
+// memcmp. Needed explicitly: libc++ pulls <cstring> in transitively, so this
+// compiled on macOS for as long as macOS was the only place it was built, and
+// failed on the first Linux/libstdc++ build with "'memcmp' was not declared".
+#include <cstring>
+
 #include <cstdio>
 #include <string>
 #include <vector>

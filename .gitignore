@@ -91,3 +91,11 @@ tools/playtest-mod/bridge-check.odmod
 # rather than this machine's. The images it produces are committed (docs/img);
 # the install it produces is not.
 .screenshots/
+
+# The developer's own settings -- and, until this was removed from history, a
+# signed serverCredential that proves which multiplayer server is yours. It is
+# per-machine state, not project state: Config::load() returns false when it is
+# absent and every field has a default, so a fresh clone simply starts with
+# them. tools/package.py already excluded it from releases; this excludes it
+# from the repository too.
+data/config.json
