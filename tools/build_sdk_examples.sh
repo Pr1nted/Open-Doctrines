@@ -57,16 +57,33 @@ built=() skipped=() failed=()
 #
 # Apple's clang cannot target wasm32 at all, so on a Mac the usable one is
 # Homebrew LLVM or the copy inside an emscripten install.
+# The probe LINKS, it does not just ask --print-targets. That distinction is the
+# whole point: Homebrew's llvm lists wasm32 as a target and ships no wasm-ld, so
+# it passes a --print-targets check, gets picked ahead of everything else because
+# it is early in the search order, and then fails every single build with
+#
+#     clang: error: unable to execute command: posix_spawn failed
+#
+# which names neither wasm-ld nor the compiler that went looking for it. Asking
+# "can you produce a wasm module" instead of "do you know the word wasm32" costs
+# one compile and rejects that clang, so the emscripten fallback below is
+# reached instead.
 wasm_clang() {
-    local exe="$1" c
+    local exe="$1" c probe="$logs/.probe-$1"
     for c in "$(command -v "$exe" || true)" \
              /opt/homebrew/opt/llvm/bin/"$exe" \
              /usr/local/opt/llvm/bin/"$exe" \
              /opt/homebrew/Cellar/emscripten/*/libexec/llvm/bin/"$exe" \
-             /usr/local/Cellar/emscripten/*/libexec/llvm/bin/"$exe"; do
+             /usr/local/Cellar/emscripten/*/libexec/llvm/bin/"$exe" \
+             "${EMSDK:-/nonexistent}/upstream/bin/$exe"; do
         [ -x "$c" ] || continue
-        if "$c" --print-targets 2>/dev/null | grep -qi wasm32; then echo "$c"; return 0; fi
+        printf 'int f(void){return 0;}\n' > "$probe.c"
+        if "$c" --target=wasm32 -nostdlib -Wl,--no-entry \
+                -o "$probe.wasm" "$probe.c" >/dev/null 2>&1; then
+            rm -f "$probe.c" "$probe.wasm"; echo "$c"; return 0
+        fi
     done
+    rm -f "$probe.c" "$probe.wasm"
     return 1
 }
 
@@ -153,9 +170,17 @@ rc=0
 # A language CI is supposed to cover must not fall back to "skipped" because an
 # image changed under us. Named languages that did not build are failures here
 # even though the same skip is fine on a developer's machine.
+#
+# built_list, rather than "${built[*]}" inline: macOS ships bash 3.2, where
+# expanding an EMPTY array under set -u is an unbound-variable error. It fired
+# on the first run where nothing built -- so the one case this check exists to
+# report is the one case it died instead of reporting.
+built_list=" "
+[ "${#built[@]}" -gt 0 ] && built_list=" ${built[*]} "
+
 if [ -n "$require" ]; then
     for want in $require; do
-        case " ${built[*]} " in
+        case "$built_list" in
             *" $want "*) ;;
             *) printf '  REQUIRED but not built: %s\n' "$want"; rc=1 ;;
         esac

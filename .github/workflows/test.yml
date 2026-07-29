@@ -108,11 +108,37 @@ jobs:
       # platforms, both reporting QUALIFIED. Every mod-sandbox guarantee the
       # runtime makes was therefore unverified on macOS.
       #
-      # Homebrew LLVM is the wasm32-capable clang the scripts already look for,
-      # at /opt/homebrew/opt/llvm on arm64 and /usr/local/opt/llvm on Intel.
+      # Emscripten, NOT `brew install llvm`. That was tried first and does not
+      # work: Homebrew's llvm advertises wasm32 in --print-targets and ships no
+      # wasm-ld, so every module failed at the link step with
+      # "posix_spawn failed: No such file or directory" -- and because it sits
+      # early in the compiler search order it also shadowed the emscripten
+      # fallback that would have worked. Emscripten's LLVM has the linker, and
+      # it is the toolchain the SDK build scripts were written against anyway.
       - name: A clang that can target wasm32 (macOS)
         if: runner.os == 'macOS'
-        run: brew install llvm
+        uses: mymindstorm/setup-emsdk@v14
+        with: { version: latest }
+
+      # Named explicitly rather than left to each script's own search. Every one
+      # of them looks in a slightly different list of places, and emsdk installs
+      # somewhere none of them guessed; CC/CXX is the override they all honour.
+      # Fails loudly with a directory listing if the layout is not what we think,
+      # because the alternative is silently falling back to "no wasm32 clang" and
+      # skipping the mod tests again.
+      - name: Point the mod builds at emscripten's clang (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cc="$EMSDK/upstream/bin/clang"
+          if [ ! -x "$cc" ]; then
+            echo "expected emscripten's clang at $cc, and it is not there:"
+            ls -la "$EMSDK/upstream/bin" 2>&1 | head -20
+            exit 1
+          fi
+          echo "CC=$cc"      >> "$GITHUB_ENV"
+          echo "CXX=${cc}++" >> "$GITHUB_ENV"
+          "$cc" --version | head -1
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
