@@ -1,0 +1,193 @@
+/* OpenDoctrines — itch.io custom CSS.
+ *
+ * Paste into: itch.io dashboard > your project > Edit theme > "Custom CSS".
+ *
+ * The palette is taken from the game rather than invented: #050813 is the menu
+ * background and #ffd700 is the title, sampled from docs/img/main-menu.png. The
+ * accent is gold and not green because gold is the SHIPPED default -- the accent
+ * is configurable in Settings, so a player's own build may differ from this page.
+ *
+ * A NOTE ON ITCH'S MARKUP
+ *
+ * itch.io's class names (.inner_column, .formatted_description, .buy_row) are
+ * not a public API and have changed before. Everything below is written so that
+ * a selector which stops matching costs you a detail, never a readable page:
+ * the base colours are set through itch's own theme fields as well, so the page
+ * degrades to "dark and legible" rather than to unstyled white.
+ *
+ * Set these in the Edit theme colour pickers FIRST, then add this CSS:
+ *     background   #050813
+ *     text         #c8ccd8
+ *     link         #ffd700
+ *     button bg    #ffd700
+ *     button fg    #050813
+ */
+
+/* ---- page shell -------------------------------------------------------- */
+
+body,
+#wrapper {
+    background: #050813;
+    color: #c8ccd8;
+}
+
+/* A faint vertical lift, so the page is not a flat black rectangle. Fixed
+   attachment keeps it from sliding under a long description. */
+body {
+    background-image: linear-gradient(180deg, #0a0f1e 0%, #050813 55%);
+    background-attachment: fixed;
+}
+
+.inner_column {
+    background: #080d1a;
+    border: 1px solid #1a2138;
+    border-radius: 6px;
+    padding: 28px 32px;
+}
+
+/* ---- type -------------------------------------------------------------- */
+
+.formatted_description {
+    font-size: 16px;
+    line-height: 1.65;
+    color: #c8ccd8;
+}
+
+.formatted_description h2 {
+    color: #ffd700;
+    font-weight: 700;
+    font-size: 22px;
+    margin: 2.2em 0 0.6em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1a2138;
+    letter-spacing: 0.01em;
+}
+
+.formatted_description h3 {
+    color: #e4e8f2;
+    font-size: 18px;
+    margin: 1.6em 0 0.4em;
+}
+
+.formatted_description strong { color: #e9edf6; }
+.formatted_description em     { color: #a8b0c4; font-style: italic; }
+
+.formatted_description a,
+.game_info_panel_widget a,
+a {
+    color: #ffd700;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 215, 0, 0.35);
+}
+.formatted_description a:hover,
+a:hover {
+    color: #ffe862;
+    border-bottom-color: #ffe862;
+}
+
+/* Lists: the scenario list and the "what is not finished" list are the two
+   places a reader actually stops, so give them room. */
+.formatted_description ul {
+    padding-left: 1.1em;
+    margin: 0.8em 0 1.2em;
+}
+.formatted_description li {
+    margin: 0.45em 0;
+    padding-left: 0.2em;
+}
+.formatted_description li::marker { color: #ffd700; }
+
+/* ---- images ------------------------------------------------------------ */
+
+/* Screenshots are the page. Full width, framed, and never overflowing on a
+   phone. */
+.formatted_description img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 1.4em 0;
+    border: 1px solid #1a2138;
+    border-radius: 4px;
+    background: #050813;
+}
+
+/* ---- the header block itch draws above the description ----------------- */
+
+.game_title,
+h1 {
+    color: #ffd700;
+    letter-spacing: 0.01em;
+}
+
+.game_short_text {
+    color: #a8b0c4;
+    font-size: 17px;
+}
+
+/* ---- download / buy row ------------------------------------------------ */
+
+.buy_row .buy_btn,
+.download_btn,
+.button {
+    background: #ffd700;
+    color: #050813 !important;
+    border: none;
+    border-radius: 4px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-shadow: none;
+}
+.buy_row .buy_btn:hover,
+.download_btn:hover,
+.button:hover {
+    background: #ffe862;
+    color: #050813 !important;
+}
+
+.uploads,
+.upload {
+    background: #0b1122;
+    border: 1px solid #1a2138;
+    border-radius: 4px;
+}
+.upload .info_column .name { color: #e4e8f2; }
+.upload .info_column .file_size,
+.upload .download_platforms { color: #8189a0; }
+
+/* ---- info panel (platforms, tags, licence) ----------------------------- */
+
+.game_info_panel_widget {
+    background: #0b1122;
+    border: 1px solid #1a2138;
+    border-radius: 4px;
+    color: #a8b0c4;
+}
+.game_info_panel_widget td { border-color: #1a2138; }
+
+/* ---- the embedded web build, if you upload one ------------------------- */
+
+.game_frame,
+.iframe_placeholder {
+    border: 1px solid #1a2138;
+    border-radius: 4px;
+    background: #050813;
+}
+
+/* ---- comments ---------------------------------------------------------- */
+
+.community_post,
+.post_body,
+.comment_form textarea,
+.comment_form input {
+    background: #0b1122;
+    color: #c8ccd8;
+    border-color: #1a2138;
+}
+
+/* ---- small screens ----------------------------------------------------- */
+
+@media (max-width: 700px) {
+    .inner_column { padding: 18px 16px; }
+    .formatted_description { font-size: 15px; }
+    .formatted_description h2 { font-size: 19px; margin-top: 1.8em; }
+}

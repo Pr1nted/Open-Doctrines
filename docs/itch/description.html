@@ -1,0 +1,121 @@
+<!--
+  OpenDoctrines — itch.io page description.
+
+  Paste the contents of this file into the itch.io page editor's description
+  box, using the "</>"  (edit HTML) button in its toolbar. See README.md in
+  this folder for the full walkthrough, including where each image goes.
+
+  IMAGE PLACEHOLDERS: every src="UPLOAD:..." below must be replaced with the
+  URL itch gives you after you upload that file. Uploading is done from the
+  same editor (the image button); itch rewrites the src for you if you insert
+  the image at the cursor, which is easier than editing the HTML by hand.
+-->
+
+<p><strong>OpenDoctrines is a grand strategy game about running a country</strong> — its
+industry, its armies, its research, its politics and its neighbours. Six historical
+scenarios on a 1641-province world map, a map editor for building your own,
+multiplayer that needs no port forwarding, and a mod SDK for thirteen languages.</p>
+
+<p><em>This is an alpha.</em> It is playable and it is not finished — there is no
+tutorial yet, and the section at the bottom says plainly what else is missing.</p>
+
+<img src="UPLOAD:world-map.png" alt="The world map, playing as the British Empire in September 1941">
+
+<h2>Every turn is recorded</h2>
+
+<p>A finished game can be replayed as a timelapse and exported as a GIF from inside
+the game. This is the 1939 scenario with every country played by the AI:</p>
+
+<img src="UPLOAD:timelapse-political.gif" alt="A political timelapse of the 1939 scenario">
+
+<h2>Run a country</h2>
+
+<p>Provinces have population, industry, fortification, resources and an ethnic
+composition. Countries have a treasury, a research programme, a political compass,
+claims on their neighbours and opinions about each other.</p>
+
+<img src="UPLOAD:province.png" alt="The country panel: industry level, income, specialisation and available actions">
+
+<p>Rebellions spawn from unrest and hold real territory. Wars pull in guarantee
+chains. Ceasefires are negotiated over provinces, money and dropped claims.</p>
+
+<img src="UPLOAD:research.png" alt="The research tree">
+
+<img src="UPLOAD:economy.png" alt="Gross income, net income and expenses, per country and globally">
+
+<h2>Six scenarios</h2>
+
+<ul>
+  <li><strong>Modern Day</strong> — 185 countries. Population from World Bank totals, deposits from USGS surveys.</li>
+  <li><strong>The Powder Keg</strong> (1914) — five empires and a continent of alliances waiting on one funeral.</li>
+  <li><strong>The Last Spring</strong> (1918) — Germany has won in the east and is losing in the west.</li>
+  <li><strong>The Gathering Storm</strong> (1939) — Europe on the morning the Wehrmacht crossed the Polish border.</li>
+  <li><strong>Year Zero</strong> (1945) — the war is over and nothing has been settled.</li>
+  <li><strong>The Missile Crisis</strong> (1962) — two blocs, one ocean between them, and missiles in Cuba.</li>
+</ul>
+
+<h2>Build your own world</h2>
+
+<img src="UPLOAD:map-editor.png" alt="The map editor">
+
+<p>Draw land and sea, cut provinces, place countries, populations, resources and
+claims, then export a map anyone else can load. There is a procedural generator too,
+for when you want <em>a</em> world rather than a specific one.</p>
+
+<h2>Multiplayer</h2>
+
+<p>Players dial out over an encrypted connection, so joining needs no router
+configuration. Hosting is a listening socket on the host's machine, and the game can
+open a tunnel to it for you — so in practice there is nothing to forward either way.</p>
+
+<p>The host is authoritative. State only ever flows server to client, orders are
+validated server-side and re-attributed to the authenticated player's country, and a
+client never computes a turn. <strong>A player who disconnects keeps their seat and
+their country</strong>: the turn resolves without them, and they get that same country
+back when they return.</p>
+
+<h2>Mods, in thirteen languages</h2>
+
+<img src="UPLOAD:mods.png" alt="The mod menu, showing example mods written in Go, Rust, Zig and C">
+
+<p>Mods are WebAssembly, so a mod is the same file on every platform, and it runs in a
+sandbox with a capability grant you can see and revoke. The SDK has bindings for
+<strong>C, C++, Rust, Zig, Go, Java, Kotlin, JavaScript, TypeScript, AssemblyScript,
+Lua, Python and hand-written WAT</strong> — every one of them builds the same example,
+and the test suite checks they all render byte-identical output.</p>
+
+<h2>Before you download</h2>
+
+<p><strong>macOS.</strong> The app is not signed with an Apple Developer ID, so the
+first launch needs <strong>right-click → Open → Open</strong>. Double-clicking gives you
+a refusal with no way past it. macOS remembers the choice, so every launch after the
+first is normal. Requires macOS 11 or later.</p>
+
+<p><strong>Windows.</strong> Unsigned, so SmartScreen shows "Windows protected your PC"
+on first run — <strong>More info → Run anyway</strong>. Requires 64-bit Windows 10 or
+later.</p>
+
+<p><strong>Linux.</strong> Requires glibc 2.35 or newer — Ubuntu 22.04, Debian 12,
+Fedora 36 and anything more recent. Older distributions can build from source. x86_64
+only.</p>
+
+<h2>What is not finished</h2>
+
+<p>Being honest about an alpha is cheaper than disappointing people later.</p>
+
+<ul>
+  <li><strong>There is no tutorial.</strong> Province actions live behind the view tabs
+      on the bottom bar, and the game does not yet tell you that. This is the single
+      biggest thing missing.</li>
+  <li><strong>No dedicated server.</strong> Hosting means a running copy of the game;
+      closing it ends the session.</li>
+  <li><strong>The browser build cannot host or join.</strong> A browser tab cannot
+      listen for players, and signing in is not implemented there yet. Everything
+      else — the map, the map editor, mods — works in a browser.</li>
+  <li>Long-form (play-by-post) turns are designed and not built.</li>
+</ul>
+
+<h2>Licence</h2>
+
+<p>Free to play, modify and share non-commercially, under the OpenDoctrines
+Non-Commercial License. The mods, maps, saves and videos you make are yours.</p>
