@@ -160,9 +160,26 @@ than one that does not.
 
 ### 3c. Cover image
 
-**Edit game → Cover image**, 630×500. itch crops to that ratio, so crop it
-yourself rather than letting it choose — the automatic crop takes the middle of
-the world map, which is ocean. Put Europe and the Atlantic in frame:
+**Edit game → Cover image**, 630×500. Upload **`cover-titled.png`** from this
+folder.
+
+Two versions are here. `cover.png` is the map alone; `cover-titled.png` has the
+game's wordmark across it. Use the titled one: at the ~315px itch actually
+renders in a browse grid, the plain map is attractive but could be any map game,
+while the titled one reads as a specific product. The blocky title survives the
+downscale where a thin typeface would turn to mush.
+
+The wordmark is lifted pixel-for-pixel out of the game's own menu rather than
+set in a lookalike font, so it matches what a player sees on launch. Everything
+but the gold strokes is masked to transparent before compositing — pasting the
+crop as a rectangle stamps a dark box across North Africa.
+
+The cost of the titled version is mild duplication: browse grids print the title
+beside the thumbnail anyway. That is worth paying for the places the image
+travels alone — social embeds, the itch app, "more like this" strips.
+
+Both are cropped by hand rather than by itch, because itch's automatic crop
+takes the middle of the world map, which is ocean. To rebuild the plain one:
 
 ```bash
 python3 -c "
@@ -173,6 +190,12 @@ im.crop((520, 60, 1150, 560)).resize((630, 500), Image.LANCZOS) \
   .save('docs/itch/cover.png')
 print('wrote docs/itch/cover.png')
 "
+```
+
+And to rebuild the titled one after a UI change, `tools/itch-cover.py`:
+
+```bash
+python3 tools/itch-cover.py
 ```
 
 ---
