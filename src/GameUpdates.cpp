@@ -320,6 +320,11 @@ std::string GameUpdates::platformKey() {
 #endif
 }
 
+bool GameUpdates::managedInstall() {
+    std::error_code ec;
+    return fs::exists(fs::path(installDir()) / "MANAGED", ec);
+}
+
 bool GameUpdates::canSelfInstall() {
 #if defined(__EMSCRIPTEN__)
     // Nothing to install into. The page is the install; a reload is the
@@ -329,7 +334,9 @@ bool GameUpdates::canSelfInstall() {
 #elif defined(__APPLE__)
     return false;   // unnotarized replacement would not launch; see the header
 #else
-    return true;
+    // Checked before returning true, not after: an installer-managed copy must
+    // not be told it can replace its own files, whatever the platform allows.
+    return !managedInstall();
 #endif
 }
 
@@ -569,6 +576,16 @@ void GameUpdates::beginUpdate() {
     Status s = status();
     if (s.stage != Stage::Available) return;
 
+    // A managed install is a different answer from macOS's, and the player
+    // needs the different one. On macOS "we opened the release page" is
+    // actionable: download it, drag it across. Telling a Flatpak or .deb user
+    // the same thing invites them to install a second, unmanaged copy beside
+    // the one their package manager owns.
+    if (managedInstall()) {
+        s.stage = Stage::Managed;
+        setStatus(s);
+        return;
+    }
     if (!canSelfInstall()) {
         // macOS. Hand off to the browser and say so; see the header for why
         // this platform does not install its own update.

@@ -76,6 +76,7 @@ public:
         Installing,
         Restart,       // installed; takes effect on next launch
         OpenedPage,    // macOS: handed off to the browser
+        Managed,       // something else owns this install; see managedInstall()
         Failed,
     };
 
@@ -105,8 +106,33 @@ public:
     bool   busy() const;
 
     // True where the game may replace its own files. False on macOS, for the
-    // notarization reason at the top of this file.
+    // notarization reason at the top of this file, and false for any install
+    // something else is responsible for updating -- see managedInstall().
     static bool canSelfInstall();
+
+    /**
+     * Is this copy of the game updated by something other than itself?
+     *
+     * True when a file named `MANAGED` sits beside the executable. Installers
+     * and stores drop it; the plain zip does not.
+     *
+     * The updater's own machinery works by renaming the running binary and
+     * writing next to it, which needs an install directory the player can
+     * write. That is true of an unzipped folder and false of nearly every
+     * managed install: a per-machine MSI in Program Files, a .deb owned by
+     * dpkg, an AppImage, a Flatpak, or a build the itch app manages. Worse
+     * than merely failing, self-updating behind a package manager corrupts its
+     * database, because the files on disk stop matching what it recorded.
+     *
+     * So the marker is a statement of ownership, not a capability check. The
+     * update screen reports "updates come from your package manager" instead
+     * of offering a button that would fail, or succeed and break the install.
+     *
+     * Deliberately a FILE rather than a compile-time flag: one build serves
+     * both the zip and the installer, and what differs is how it was put on
+     * the machine, which is not knowable when it is compiled.
+     */
+    static bool managedInstall();
 
     // Where the game is installed -- the directory holding the executable, not
     // the process's working directory. A double-clicked app is often launched

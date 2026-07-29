@@ -795,6 +795,18 @@ void Game::drawUpdatePanel() {
             DrawText("are not signed, so the game cannot replace itself here.",
                      x, y + 44, 14, Color{150, 150, 160, 255});
             break;
+        case Stage::Managed:
+            // Deliberately does NOT offer the download page. This copy is owned
+            // by something else, and sending the player to a zip would have
+            // them install a second, unmanaged copy beside the managed one.
+            DrawText("This copy is updated for you.", x, y, 16, WHITE);
+            DrawText("It was installed by a package manager, a store or an installer,",
+                     x, y + 26, 14, Color{150, 150, 160, 255});
+            DrawText("so updating it here would put the two out of step. Update it the",
+                     x, y + 44, 14, Color{150, 150, 160, 255});
+            DrawText("same way you installed it.",
+                     x, y + 62, 14, Color{150, 150, 160, 255});
+            break;
         case Stage::Failed: {
             DrawText("The update did not finish.", x, y, 16, Color{235, 120, 120, 255});
             auto lines = wrapText(st.error, 14, notesW);
@@ -846,7 +858,8 @@ void Game::drawUpdatePanel() {
     }
 
     const char* closeLabel = (st.stage == Stage::Restart ||
-                              st.stage == Stage::OpenedPage) ? "Close" : "Later";
+                              st.stage == Stage::OpenedPage ||
+                              st.stage == Stage::Managed) ? "Close" : "Later";
     bool chov = CheckCollisionPointRec(mouse, L.secondary);
     DrawRectangleRounded(L.secondary, 0.25f, 8,
                          chov ? Color{255, 255, 255, 30} : Color{255, 255, 255, 14});

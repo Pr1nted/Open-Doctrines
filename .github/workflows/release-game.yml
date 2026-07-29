@@ -94,6 +94,35 @@ jobs:
           path: dist/${{ matrix.artifact }}.zip
           retention-days: 14
 
+      # An installer as well as the zip, on the two platforms where the zip is
+      # the worse experience: Windows gets a Start-menu entry and an uninstaller
+      # instead of "extract this somewhere", and macOS gets the drag-to-
+      # Applications window everybody already knows.
+      #
+      # BOTH are still unsigned. An installer does not quiet SmartScreen or
+      # Gatekeeper -- only a code-signing certificate does -- so README.md's
+      # first-launch instructions apply to these exactly as they do to the zip.
+      #
+      # Linux keeps the tarball alone on purpose: a .deb or .rpm would put the
+      # game somewhere dpkg owns, and the updater must not write there. See
+      # GameUpdates::managedInstall().
+      - name: Installer
+        if: runner.os == 'Windows' || runner.os == 'macOS'
+        shell: bash
+        run: |
+          cpack --config build/CPackConfig.cmake -B dist/installer
+          ls -lh dist/installer/*.exe dist/installer/*.dmg 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows' || runner.os == 'macOS'
+        with:
+          name: ${{ matrix.artifact }}-installer
+          path: |
+            dist/installer/*.exe
+            dist/installer/*.dmg
+          retention-days: 14
+          if-no-files-found: error
+
   # Does it WORK on each platform, not just compile there.
   #
   # WHY THIS EXISTS
@@ -168,7 +197,14 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.zip
+          # Installers as well as zips. Globbing only *.zip would have built
+          # the .exe and .dmg, uploaded them as CI artifacts that expire in a
+          # fortnight, and attached neither to the release -- a failure that
+          # looks like success right up until someone goes looking for them.
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}
@@ -192,8 +228,25 @@ jobs:
           curl -sL -o butler.zip \
             https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip && chmod +x butler
+          # A build installed through the itch app is updated BY the itch app,
+          # so it must not also update itself -- two updaters writing the same
+          # directory is how an install ends up half one version and half
+          # another. The zip on the GitHub release carries no marker and keeps
+          # self-updating, which is right for a copy the player unzipped
+          # themselves; the copy pushed here gets one.
+          #
+          # package.py writes each file as <folder>/<path>, so the marker goes
+          # at <folder>/MANAGED. See GameUpdates::managedInstall().
+          printf '%s\n' \
+            'This copy of OpenDoctrines is managed by the itch app, so the' \
+            'in-game updater will not replace it. Update it through itch.' \
+            > MANAGED
           for z in artifacts/**/*.zip; do
-            channel=$(basename "$z" .zip | sed 's/^OpenDoctrines-//')
+            name=$(basename "$z" .zip)
+            channel=$(printf '%s' "$name" | sed 's/^OpenDoctrines-//')
+            mkdir -p "itchmark/$name"
+            cp MANAGED "itchmark/$name/MANAGED"
+            (cd itchmark && zip -q "../$z" "$name/MANAGED")
             echo "pushing $z -> $ITCH_TARGET:$channel"
             ./butler push "$z" "$ITCH_TARGET:$channel" \
                      --userversion "${GITHUB_REF_NAME#v}"

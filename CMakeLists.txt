@@ -843,9 +843,52 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
 endif()
 if(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
+    set(CPACK_DMG_VOLUME_NAME "OpenDoctrines")
 elseif(WIN32)
     set(CPACK_GENERATOR "NSIS")
+
+    # PER-USER, not per-machine, and this is the decision the whole installer
+    # rests on. The updater works by renaming the running binary and writing
+    # beside it, which needs a directory the player can write. Program Files is
+    # not: an update there would need elevation the game does not ask for, and
+    # would fail with a permissions error the player cannot act on.
+    #
+    # $LOCALAPPDATA keeps the updater working with no UAC prompt at install OR
+    # update time. It is what VS Code, Discord and Chrome do, for this reason.
+    set(CPACK_NSIS_INSTALL_ROOT "$LOCALAPPDATA\\\\Programs")
+    set(CPACK_NSIS_DEFINES "RequestExecutionLevel user")
+
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenDoctrines")
+    set(CPACK_NSIS_PACKAGE_NAME "OpenDoctrines")
+    set(CPACK_NSIS_DISPLAY_NAME "OpenDoctrines")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "OpenDoctrines.exe")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_MODIFY_PATH OFF)
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA
+        "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\OpenDoctrines.lnk' '$INSTDIR\\\\OpenDoctrines.exe'")
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA
+        "Delete '$SMPROGRAMS\\\\$START_MENU\\\\OpenDoctrines.lnk'")
 else()
     set(CPACK_GENERATOR "TGZ")
 endif()
+
+# The marker that tells the updater this copy is not its own to replace.
+#
+# Installed by the INSTALLERS only. The plain zip and the tarball do not carry
+# it, so those keep updating themselves as they always have -- which is the
+# point: one build serves both, and what differs is how it reached the machine.
+#
+# See GameUpdates::managedInstall(). Without this an installed copy would try
+# to rename its own binary underneath the installer that owns it, and on
+# Windows that means the uninstaller's file list stops matching what is on disk.
+if(NOT EMSCRIPTEN)
+    file(WRITE "${CMAKE_BINARY_DIR}/MANAGED"
+         "This copy of OpenDoctrines was put here by an installer, a store or a\n"
+         "package manager, so the in-game updater will not replace it. Update it\n"
+         "the same way you installed it.\n\n"
+         "Delete this file only if you moved the game somewhere you manage\n"
+         "yourself and want it to update itself again.\n")
+    install(FILES "${CMAKE_BINARY_DIR}/MANAGED" DESTINATION .)
+endif()
+
 include(CPack)
