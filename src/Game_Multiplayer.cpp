@@ -18,6 +18,14 @@
 // Neither is buried in a policy nobody reads. See net/PRIVACY.md.
 
 #include "Game.h"
+
+#include <cstring>
+#if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
+  #include <arpa/inet.h>
+  #include <ifaddrs.h>
+  #include <net/if.h>
+  #include <netinet/in.h>
+#endif
 #include "Audio.h"
 #include "GameInternals.h"
 #include "net/AccountClient.h"
@@ -27,7 +35,7 @@
 #include "net/ServerBook.h"
 #include "net/Session.h"
 #include "net/TurnRunner.h"
-#include "net/SeatBook.h"
+#include "net/HostBook.h"
 #include "net/Tunnel.h"
 #include "net/WebSocket.h"
 #include "net/TurnStore.h"
@@ -270,7 +278,9 @@ void Game::openMultiplayerMenu() {
 }
 
 int Game::mpTurnSeconds() const {
-    return std::clamp(atoi(m_mpTurnField.c_str()), 0, 65535);
+    // Thirty days. Long enough for the slowest campaign anybody would run,
+    // short enough that a typo cannot set a deadline beyond a lifetime.
+    return std::clamp(atoi(m_mpTurnField.c_str()), 0, 2592000);
 }
 
 std::string Game::mpToolsDir() const { return m_dataDir + "tools"; }
@@ -317,9 +327,23 @@ void Game::mpSaveSeats() {
     // Only the host holds the authoritative roster, and only it owns the save.
     if (!m_netHost || m_currentSavePath.empty()) return;
 
-    SeatBook book;
+    HostBook book;
     book.mapId = m_mpMapId;
     book.turnNumber = (uint32_t)std::max(0, m_turnNumber);
+
+    // Bans outlive the process, or they are not bans. Somebody barred on
+    // Tuesday must not simply walk back in when the campaign resumes.
+    book.bans = m_netHost->lobby().bans();
+
+    // And the table's own rules, so continuing plays as it played.
+    book.settings.turnSeconds = (uint32_t)mpTurnSeconds();
+    book.settings.maxPlayers  = (uint8_t)std::clamp(m_mpMaxPlayers, 2, 32);
+    book.settings.lateJoin    = (uint8_t)(m_mpLateJoin ? 1 : 0);
+    book.settings.absent      = (uint8_t)(m_mpAbsent ? 1 : 0);
+    book.settings.assignment  = (uint8_t)(m_mpAssignment ? 1 : 0);
+    book.settings.bindAll     = m_mpBindAll;
+    book.settings.listed      = m_mpListed;
+    book.settings.port        = (uint16_t)std::clamp(atoi(m_mpPortField.c_str()), 0, 65535);
     for (const NetPeer& p : m_netHost->lobby().roster()) {
         if (p.psid.empty() || p.countryId == 0) continue;
         // Written whether or not they are connected right now: somebody who
@@ -423,7 +447,7 @@ void Game::mpOpenHost() {
     cfg.gameVersion = OD_VERSION_STRING;
     cfg.listed = m_mpListed;
     cfg.showBadges = true;
-    cfg.turnSeconds = (uint16_t)mpTurnSeconds();
+    cfg.turnSeconds = (uint32_t)mpTurnSeconds();
     cfg.anonymous = m_mpAnonymous;
     cfg.dedicated = m_mpDedicated;
     cfg.store = mpStoreKind();
@@ -484,8 +508,22 @@ void Game::mpOpenHost() {
             return;
         }
         const std::string savePath = m_mpSavePaths[(size_t)m_mpSaveIndex];
-        SeatBook book;
-        if (SeatBook::load(savePath, book) && !book.mapId.empty()) {
+        HostBook book;
+        if (HostBook::load(savePath, book)) {
+            // The rules this table was played by. Restored before anyone can
+            // connect, so the first joiner meets the game as it was, not as
+            // whatever this screen happened to be showing.
+            m_mpTurnField  = std::to_string(book.settings.turnSeconds);
+            m_mpMaxPlayers = std::clamp((int)book.settings.maxPlayers, 2, 32);
+            m_mpLateJoin   = book.settings.lateJoin;
+            m_mpAbsent     = book.settings.absent;
+            m_mpAssignment = book.settings.assignment;
+            m_mpBindAll    = book.settings.bindAll;
+            m_mpListed     = book.settings.listed;
+            if (book.settings.port != 0)
+                m_mpPortField = std::to_string(book.settings.port);
+        }
+        if (!book.mapId.empty()) {
             // Joiners are told a map NAME and find it themselves, so a resumed
             // game must announce the same one the original did.
             m_mpMapId = book.mapId;
@@ -578,6 +616,20 @@ void Game::mpShutdown() {
                           m_mpReachProbe = nullptr; }
 }
 
+void Game::mpDrainModMessages() {
+    NetModMsg m;
+    if (m_netHost)
+        while (m_netHost->nextModMessage(m)) {
+            if (m_mpModInbox.size() >= 256) m_mpModInbox.pop_front();
+            m_mpModInbox.push_back(m);
+        }
+    if (m_netSession)
+        while (m_netSession->nextModMessage(m)) {
+            if (m_mpModInbox.size() >= 256) m_mpModInbox.pop_front();
+            m_mpModInbox.push_back(m);
+        }
+}
+
 void Game::mpDrainEvents() {
     if (m_mpTunnel) {
         const Tunnel::State before = m_mpTunnel->state();
@@ -659,6 +711,11 @@ void Game::mpDrainEvents() {
                     break;
                 case NetSessionEvent::Kind::TurnBegan:
                     m_mpWaitingForTurn = false;
+                    // Anchored the moment it arrives, so a client shows the
+                    // same countdown the host does instead of "no timer".
+                    m_mpTurnEndsAtMs = e.deadlineMs > 0
+                        ? (long long)(GetTime() * 1000.0) + (long long)e.deadlineMs
+                        : 0;
                     mpNote("Turn " + std::to_string(e.turnNumber) + " has begun.");
                     break;
                 case NetSessionEvent::Kind::Notice:
@@ -674,6 +731,10 @@ void Game::mpDrainEvents() {
             }
         }
     }
+
+    // Last, so a message that arrived in the updates above is readable by a mod
+    // this frame rather than the next one.
+    mpDrainModMessages();
 }
 
 // ------------------------------------------------------------------- update --
@@ -718,7 +779,7 @@ void Game::updateMultiplayerMenu() {
             case 1: target = &m_mpCodeField;    limit = 24;  break;
             case 2: target = &m_mpNameField;    limit = 48;  break;
             case 3: target = &m_mpPortField;    limit = 5;   break;
-            case 4: target = &m_mpTurnField;    limit = 5;   break;
+            case 4: target = &m_mpTurnField;    limit = 7;   break;
             case 5: target = &m_mpMapSearch;    limit = 32;  break;
             default: break;
         }
@@ -1025,7 +1086,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                             // behind would hold countries for a world that no
                             // longer exists.
                             std::filesystem::remove(
-                                SeatBook::pathFor(m_mpSavePaths[(size_t)idx]), ec);
+                                HostBook::pathFor(m_mpSavePaths[(size_t)idx]), ec);
                             m_mpSaveDeleting = -1;
                             mpRefreshSaves();
                             m_mpSaveScroll = 0;
@@ -1057,11 +1118,11 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                 // Re-checked rather than assumed: a Delete above can empty the
                 // list halfway through this very frame, and the index that was
                 // valid at the top of the block then points at nothing.
-                SeatBook book;
+                HostBook book;
                 const bool haveSave = m_mpSaveIndex >= 0 &&
                                       m_mpSaveIndex < (int)m_mpSavePaths.size();
                 if (haveSave &&
-                    SeatBook::load(m_mpSavePaths[(size_t)m_mpSaveIndex], book)) {
+                    HostBook::load(m_mpSavePaths[(size_t)m_mpSaveIndex], book)) {
                     std::string sum = "Turn " + std::to_string(book.turnNumber);
                     if (!book.seats.empty()) {
                         sum += ".  " + std::to_string(book.seats.size()) +
@@ -1624,7 +1685,24 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                  y + 10, 17, Color{130, 135, 150, 255});
         y += 44;
     } else {
-        for (const NetPeer& p : roster) {
+        // Scrolled rather than run off the bottom of the screen: eight seats is
+        // an ordinary game and thirty-two is allowed, and the buttons below
+        // must stay reachable in both.
+        const int total = (int)roster.size();
+        const int visibleRows = std::min(total, 6);
+        m_mpRosterScroll = std::clamp(m_mpRosterScroll, 0,
+                                      std::max(0, total - visibleRows));
+        const Rectangle listArea{(float)(centerX - panelW / 2), (float)y,
+                                 (float)panelW, (float)(visibleRows * 44)};
+        if (CheckCollisionPointRec(mouse, listArea)) {
+            const float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f) m_mpRosterScroll -= (int)wheel;
+            m_mpRosterScroll = std::clamp(m_mpRosterScroll, 0,
+                                          std::max(0, total - visibleRows));
+        }
+
+        for (int ri = 0; ri < visibleRows && m_mpRosterScroll + ri < total; ri++) {
+            const NetPeer& p = roster[(size_t)(m_mpRosterScroll + ri)];
             const Rectangle row{(float)(centerX - panelW / 2), (float)y, (float)panelW, 38.0f};
             DrawRectangleRounded(row, 0.12f, 8, Color{24, 26, 34, 190});
             DrawText(p.name.c_str(), (int)row.x + 14, (int)row.y + 10, 18,
@@ -1689,6 +1767,15 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             }
             drawBadgeTags(p.badges, p.officialIssuer, rightX, (int)row.y + 13);
             y += 44;
+        }
+        if (total > visibleRows) {
+            const std::string more =
+                std::to_string(m_mpRosterScroll + 1) + "-" +
+                std::to_string(std::min(total, m_mpRosterScroll + visibleRows)) +
+                " of " + std::to_string(total) + "   (scroll)";
+            DrawText(more.c_str(), centerX - panelW / 2, y, 12,
+                     Color{130, 140, 155, 255});
+            y += 16;
         }
     }
 
@@ -1926,11 +2013,48 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         const MpButton start = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
                                         (float)btnW, (float)btnH, mouse);
         const bool live = m_netHost->phase() == NetHost::Phase::Live;
-        drawButton(start, "Start game", 19, Color{40, 60, 48, 230},
-                   Color{130, 190, 140, 210}, live);
+        const bool anyChoosing = !m_netHost->lobby().stillChoosing().empty();
+        drawButton(start,
+                   (m_mpConfirmStart && anyChoosing) ? "Start without them"
+                                                     : "Start game",
+                   19,
+                   (m_mpConfirmStart && anyChoosing) ? Color{62, 52, 34, 235}
+                                                     : Color{40, 60, 48, 230},
+                   (m_mpConfirmStart && anyChoosing) ? Color{190, 160, 110, 220}
+                                                     : Color{130, 190, 140, 210},
+                   live);
+        // Somebody still choosing is not a reason the host cannot start -- it
+        // is a reason to be told who, and to have to mean it. Said once, then
+        // the second press goes through.
+        const std::vector<std::string> choosing = m_netHost->lobby().stillChoosing();
+        if (choosing.empty()) m_mpConfirmStart = false;
+        if (m_mpConfirmStart && !choosing.empty()) {
+            std::string names;
+            for (size_t i = 0; i < choosing.size() && i < 5; i++)
+                names += (i ? ", " : "") + choosing[i];
+            if (choosing.size() > 5) names += ", ...";
+            const std::string warn =
+                "Still choosing: " + names + ".  Starting now makes them "
+                "spectators -- they keep watching and can take a country later "
+                "if latecomers are allowed, but they will not play this turn.";
+            const int wrapW = panelW - 20;
+            const float wh = (float)measureWrapped(warn, wrapW, 13) + 18.0f;
+            const Rectangle wb{(float)(centerX - panelW / 2), (float)(y - wh - 10),
+                               (float)panelW, wh};
+            DrawRectangleRounded(wb, 0.06f, 8, Color{44, 36, 26, 228});
+            DrawRectangleRoundedLines(wb, 0.06f, 8, Color{175, 145, 95, 200});
+            drawWrapped(warn, centerX - panelW / 2 + 10, (int)wb.y + 9, wrapW, 13,
+                        Color{225, 205, 170, 255});
+        }
         if (click && start.hovered && live) {
+            const bool force = m_mpConfirmStart;
+            if (!choosing.empty() && !force) {
+                m_mpConfirmStart = true;   // say who first
+                return;
+            }
+            m_mpConfirmStart = false;
             std::string why;
-            if (!m_netHost->startGame(why)) {
+            if (!m_netHost->startGame(why, force)) {
                 mpNote(why, true);
             } else {
                 // Everyone gets the world before the host disappears into it.
@@ -2018,8 +2142,11 @@ void Game::mpOnWorldLoaded() {
         // recognises by psid, so returning after a week and returning after a
         // dropped packet are the same path through the same code.
         int held = 0;
-        SeatBook book;
-        if (m_netHost && SeatBook::load(m_currentSavePath, book)) {
+        HostBook book;
+        if (m_netHost && HostBook::load(m_currentSavePath, book)) {
+            // Before any seat is held: somebody barred is not somebody whose
+            // seat should be waiting for them.
+            for (const std::string& psid : book.bans) m_netHost->lobby().ban(psid);
             for (const SeatRecord& seat : book.seats) {
                 if (m_netHost->lobby().reserveSeat(seat.psid, seat.name, seat.countryId))
                     held++;
@@ -2399,6 +2526,33 @@ long long Game::mpDeadlineLeft(uint16_t peerId, long long nowMs) const {
     return std::max(0LL, it->second - nowMs);
 }
 
+bool Game::mpAmReady() const {
+    if (mpIsClient()) return m_mpWaitingForTurn;
+    if (mpIsHost() && m_mpTurns && m_mpTurns->running()) {
+        const LobbyMember* me =
+            m_netHost->lobby().find(m_netHost->lobby().hostPeerId());
+        return me && me->submitted &&
+               me->submittedTurn == m_mpTurns->turnNumber();
+    }
+    return false;
+}
+
+void Game::mpUnready() {
+    if (mpIsClient()) {
+        m_netSession->withdrawOrders((uint32_t)m_turnNumber + 1);
+        m_mpWaitingForTurn = false;
+        mpNote("Not ready. Your orders were taken back -- change them and press "
+               "Ready again.");
+        return;
+    }
+    if (mpIsHost() && m_mpTurns && m_mpTurns->running()) {
+        m_netHost->lobby().withdrawOrders(m_netHost->lobby().hostPeerId(),
+                                          m_mpTurns->turnNumber());
+        m_netHost->broadcastLobby();
+        mpNote("Not ready. The turn will wait for you again.");
+    }
+}
+
 void Game::mpHostReady() {
     if (!mpIsHost() || !m_mpTurns) { mpHostTurnUpdate(); return; }
     if (m_netHost->lobby().state() != NetSessionState::Game) return;
@@ -2530,6 +2684,22 @@ void Game::mpResolveTurn() {
     m_netHost->lobby().clearSubmissions();
     m_mpDeadlineMs.clear();
 
+    // Asked for during the turn, done now: the world has just been written and
+    // every player has the same delta, so this is the one moment when going
+    // back to the lobby loses nobody anything.
+    if (m_mpReturnAfterTurn) {
+        m_mpReturnAfterTurn = false;
+        // The world was already written by the turn that just resolved --
+        // appendTurn does it as part of resolving -- so only the seating needs
+        // saying, and it is what makes "Continue a game" find these players.
+        mpSaveSeats();
+        m_netHost->returnToLobby();
+        m_mpPage = MpPage::Lobby;
+        m_currentScreen = SCREEN_MULTIPLAYER;
+        mpNote("Back in the lobby, and the game is saved. Continue it later "
+               "from Host a game -> Continue a game.");
+    }
+
     // Who holds what, written beside the save every turn. A campaign is
     // abandoned far more often than it is closed politely -- a crash, a closed
     // laptop -- so this cannot wait until shutdown to be durable.
@@ -2564,6 +2734,41 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
 
 // ------------------------------------------------- inviting, and being found --
 
+namespace {
+
+/**
+ * This machine's address on the local network, or empty.
+ *
+ * Only ever used to fill in an invite the host is about to hand out
+ * deliberately. Nothing sends it anywhere on its own.
+ */
+std::string localNetworkAddress() {
+#if defined(__EMSCRIPTEN__) || defined(_WIN32)
+    return {};
+#else
+    struct ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0 || !list) return {};
+
+    std::string found;
+    for (struct ifaddrs* a = list; a; a = a->ifa_next) {
+        if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET) continue;
+        if (!(a->ifa_flags & IFF_UP) || (a->ifa_flags & IFF_LOOPBACK)) continue;
+        char buf[INET_ADDRSTRLEN] = {0};
+        const auto* in = reinterpret_cast<struct sockaddr_in*>(a->ifa_addr);
+        if (!inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf))) continue;
+        // Skip link-local self-assigned addresses: they mean the interface
+        // never got a lease, and handing one out sends players nowhere.
+        if (strncmp(buf, "169.254.", 8) == 0) continue;
+        found = buf;
+        break;
+    }
+    freeifaddrs(list);
+    return found;
+#endif
+}
+
+}  // namespace
+
 std::string Game::mpInviteText() const {
     if (!m_netHost) return {};
 
@@ -2574,14 +2779,25 @@ std::string Game::mpInviteText() const {
     if (m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up) {
         address = m_mpTunnel->address();
     } else if (m_mpBindAll) {
-        address = "<your address>:" + std::to_string(m_netHost->listenPort());
+        // The real address, not a placeholder. This used to paste the literal
+        // text "<your address>", which is no use to anybody in a chat window.
+        const std::string lan = localNetworkAddress();
+        address = (lan.empty() ? std::string("<this computer's address>") : lan) +
+                  ":" + std::to_string(m_netHost->listenPort());
     } else {
         address = "127.0.0.1:" + std::to_string(m_netHost->listenPort());
     }
 
-    return "Join my OpenDoctrines game\n"
-           "Address: " + address + "\n"
-           "Code:    " + m_netHost->code() + "\n";
+    std::string out = "Join my OpenDoctrines game\n"
+                      "Address: " + address + "\n"
+                      "Code:    " + m_netHost->code() + "\n";
+
+    // Somebody on this same machine -- a second client, a playtest -- needs
+    // loopback, which is never the address above.
+    if (m_mpBindAll)
+        out += "\nOn this computer: 127.0.0.1:" +
+               std::to_string(m_netHost->listenPort()) + "\n";
+    return out;
 }
 
 void Game::mpBeginReachTest() {
@@ -2687,20 +2903,23 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
 
     // The clock, in words rather than a raw count -- a long-form game's
     // remaining time is hours, and "6142" is not a number anyone can read.
-    const int seconds = mpTurnSeconds();
+    // A client's turn length is NOT its own config -- that belongs to whoever
+    // is hosting. It comes from the host with the turn, anchored on arrival.
+    const long long nowMs = (long long)(GetTime() * 1000.0);
     std::string clock;
-    if (seconds == 0) {
-        clock = "No timer -- waiting for everyone";
-    } else if (host && m_mpTurns && m_mpTurns->running()) {
-        const long long nowMs = (long long)(GetTime() * 1000.0);
+    if (host && m_mpTurns && m_mpTurns->running() && mpTurnSeconds() > 0) {
         const int left = (int)(m_mpTurns->remainingMs(nowMs) / 1000);
         clock = left > 0 ? durationWords(left) + " left" : "time is up";
+    } else if (!host && m_mpTurnEndsAtMs > 0) {
+        const long long ms = m_mpTurnEndsAtMs - nowMs;
+        clock = ms > 0 ? durationWords((int)(ms / 1000)) + " left" : "time is up";
     } else {
-        clock = durationWords(seconds) + " per turn";
+        clock = "No timer -- waiting for everyone";
     }
+    const bool noTimer = clock.rfind("No timer", 0) == 0;
     DrawText("This turn", x + 10, top + 8, 15, Color{200, 210, 225, 255});
     DrawText(clock.c_str(), x + 10, top + 26, 13,
-             seconds == 0 ? Color{195, 180, 135, 255} : Color{150, 190, 205, 255});
+             noTimer ? Color{195, 180, 135, 255} : Color{150, 190, 205, 255});
 
     int ry = top + headH;
     const uint32_t turn = host && m_mpTurns ? m_mpTurns->turnNumber()
@@ -2726,9 +2945,10 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
             mark = "ready";
             markColor = Color{130, 195, 150, 255};
         } else {
-            const long long left = host ? mpDeadlineLeft(p->peerId,
-                                              (long long)(GetTime() * 1000.0))
-                                        : -1;
+            const long long left =
+                host ? mpDeadlineLeft(p->peerId, nowMs)
+                     : (m_mpTurnEndsAtMs > 0
+                            ? std::max(0LL, m_mpTurnEndsAtMs - nowMs) : -1);
             if (left == 0) {
                 mark = "out of time";
                 markColor = Color{205, 155, 125, 255};
@@ -2782,7 +3002,7 @@ void Game::drawMpHostConsole(int x, int top) {
     const long long nowMs = (long long)(GetTime() * 1000.0);
 
     const int rowH = 22;
-    const int h = 150 + (int)roster.size() * rowH + 40;
+    const int h = 186 + (int)roster.size() * rowH + 162;
     DrawRectangleRounded({(float)x, (float)top, (float)w, (float)h}, 0.04f, 8,
                          Color{14, 16, 22, 238});
     DrawRectangleRoundedLines({(float)x, (float)top, (float)w, (float)h}, 0.04f, 8,
@@ -2831,6 +3051,17 @@ void Game::drawMpHostConsole(int x, int top) {
                     " seated  (max " + std::to_string(m_mpMaxPlayers) + ")",
          Color{190, 200, 215, 255});
 
+    const std::vector<const LobbyMember*> watching = m_netHost->lobby().spectators();
+    line("Watching", watching.empty() ? "nobody"
+                                      : std::to_string(watching.size()) +
+                                        (watching.size() == 1 ? " spectator"
+                                                              : " spectators"),
+         watching.empty() ? Color{135, 145, 162, 255} : Color{175, 195, 215, 255});
+
+    if (!m_netHost->lobby().bans().empty())
+        line("Barred", std::to_string(m_netHost->lobby().bans().size()) + " account(s)",
+             Color{190, 155, 145, 255});
+
     y += 6;
     DrawRectangle(x + 14, y, w - 28, 1, Color{60, 70, 88, 180});
     y += 8;
@@ -2846,6 +3077,59 @@ void Game::drawMpHostConsole(int x, int top) {
         if (name.size() > 26) name = name.substr(0, 25) + "...";
         DrawText(name.c_str(), x + 14, y + 4, 13,
                  p.connected ? Color{205, 212, 225, 255} : Color{150, 156, 170, 255});
+
+        // Moderation, at the row it applies to. Kick and ban are deliberately
+        // two buttons: one is "leave", the other is "and stay gone", and a
+        // host who only had the second would stop using either.
+        if (p.psid != m_netHost->lobby().find(m_netHost->lobby().hostPeerId())->psid
+            && !p.psid.empty()) {
+            const bool armed = m_mpArmedBan == p.psid;
+            const Rectangle kb{(float)(x + w - 128), (float)(y + 1), 54.0f, 19.0f};
+            const bool kh = CheckCollisionPointRec(mouse, kb);
+            DrawRectangleRounded(kb, 0.2f, 6, kh ? Color{64, 52, 36, 235}
+                                                 : Color{42, 38, 30, 215});
+            DrawRectangleRoundedLines(kb, 0.2f, 6, Color{140, 120, 90, 185});
+            DrawText("kick", (int)kb.x + 13, (int)kb.y + 4, 11,
+                     Color{215, 200, 170, 255});
+            if (kh && pressed) {
+                // Told why, and told they may return: a player who is simply
+                // gone assumes the game broke.
+                m_netHost->kick(p.peerId,
+                    "The host asked you to leave this game. You can rejoin.");
+                m_netHost->lobby().evict(p.peerId);
+                m_netHost->broadcastLobby();
+                m_mpArmedBan.clear();
+            }
+
+            const Rectangle bb{(float)(x + w - 70), (float)(y + 1),
+                               armed ? 60.0f : 54.0f, 19.0f};
+            const bool bh = CheckCollisionPointRec(mouse, bb);
+            DrawRectangleRounded(bb, 0.2f, 6,
+                                 armed ? (bh ? Color{96, 40, 40, 240}
+                                             : Color{76, 34, 34, 232})
+                                       : (bh ? Color{62, 40, 40, 235}
+                                             : Color{42, 34, 34, 215}));
+            DrawRectangleRoundedLines(bb, 0.2f, 6,
+                                      armed ? Color{225, 120, 120, 225}
+                                            : Color{140, 105, 105, 185});
+            DrawText(armed ? "sure?" : "ban", (int)bb.x + (armed ? 11 : 16),
+                     (int)bb.y + 4, 11,
+                     armed ? Color{245, 190, 190, 255} : Color{215, 175, 175, 255});
+            if (bh && pressed) {
+                if (armed) {
+                    m_netHost->kick(p.peerId,
+                        "The host has barred you from this game.");
+                    m_netHost->lobby().ban(p.psid);
+                    m_netHost->broadcastLobby();
+                    mpSaveSeats();
+                    m_mpArmedBan.clear();
+                } else {
+                    m_mpArmedBan = p.psid;   // ask twice; a ban is not undoable by them
+                }
+            }
+            y += rowH;
+            continue;
+        }
 
         // A seat nobody is coming back to can be given up from here too --
         // the lobby is not reachable without ending the game.
@@ -2875,6 +3159,73 @@ void Game::drawMpHostConsole(int x, int top) {
         y += rowH;
     }
 
+    // ---- a seat nobody holds, and somebody who would take it ---------------
+    //
+    // How a game survives losing a player: the country is not retired, it is
+    // offered to whoever has been watching. Countries with no holder come from
+    // the world, not the lobby -- the lobby only knows who holds what.
+    if (!watching.empty()) {
+        std::vector<uint16_t> freeCountries;
+        for (const int cid : m_playableCountryIds)
+            if (!m_netHost->lobby().holderOf((uint16_t)cid))
+                freeCountries.push_back((uint16_t)cid);
+
+        if (!freeCountries.empty()) {
+            // WHO, and WHICH -- both chosen, neither assumed. Handing a
+            // country to whoever happens to be first in a list is how the
+            // wrong person ends up with somebody's empire.
+            m_mpSeatWho = std::clamp(m_mpSeatWho, 0, (int)watching.size() - 1);
+            m_mpSeatWhich = std::clamp(m_mpSeatWhich, 0, (int)freeCountries.size() - 1);
+            const LobbyMember* who = watching[(size_t)m_mpSeatWho];
+            const uint16_t cid = freeCountries[(size_t)m_mpSeatWhich];
+            const Country* c = m_countries.getCountry((int)cid);
+
+            auto cycler = [&](const std::string& text, float bx, float bw,
+                              int& index, int count) {
+                const Rectangle r{bx, (float)(y + 6), bw, 22.0f};
+                const bool h = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRounded(r, 0.18f, 6, h ? Color{40, 48, 62, 238}
+                                                    : Color{28, 33, 43, 226});
+                DrawRectangleRoundedLines(r, 0.18f, 6, Color{100, 118, 145, 190});
+                std::string t = text;
+                if (count > 1) t += "  " + std::to_string(index + 1) + "/" +
+                                    std::to_string(count);
+                if ((int)t.size() > 20) t = t.substr(0, 19) + "...";
+                DrawText(t.c_str(), (int)r.x + 8, (int)r.y + 5, 11,
+                         Color{195, 205, 220, 255});
+                if (h && pressed && count > 1) index = (index + 1) % count;
+            };
+
+            cycler(who->name.empty() ? "a spectator" : who->name,
+                   (float)(x + 14), (float)(w / 2 - 20), m_mpSeatWho,
+                   (int)watching.size());
+            cycler(c ? c->name : std::to_string(cid),
+                   (float)(x + w / 2 + 2), (float)(w / 2 - 16), m_mpSeatWhich,
+                   (int)freeCountries.size());
+            y += 28;
+
+            const Rectangle sb{(float)(x + 14), (float)(y + 4), (float)(w - 28), 22.0f};
+            const bool sh = CheckCollisionPointRec(mouse, sb);
+            DrawRectangleRounded(sb, 0.15f, 6, sh ? Color{40, 66, 48, 238}
+                                                  : Color{32, 50, 38, 226});
+            DrawRectangleRoundedLines(sb, 0.15f, 6, Color{110, 170, 130, 195});
+            const char* t = "Seat them";
+            DrawText(t, (int)sb.x + ((int)sb.width - MeasureText(t, 12)) / 2,
+                     (int)sb.y + 5, 12, Color{190, 225, 200, 255});
+            if (sh && pressed &&
+                m_netHost->lobby().seatSpectator(who->peerId, cid) ==
+                    LobbyDenial::None) {
+                m_netHost->broadcastLobby();
+                mpSaveSeats();
+                mpNote((who->name.empty() ? std::string("A spectator") : who->name) +
+                       " is now playing " + (c ? c->name : "that country") + ".");
+                m_mpSeatWho = 0;
+                m_mpSeatWhich = 0;
+            }
+            y += 28;
+        }
+    }
+
     // ---- stop waiting -------------------------------------------------------
     if (m_mpTurns && m_mpTurns->running()) {
         const Rectangle go{(float)(x + 14), (float)(y + 8), (float)(w - 28), 26.0f};
@@ -2886,5 +3237,27 @@ void Game::drawMpHostConsole(int x, int top) {
         DrawText(t, (int)go.x + ((int)go.width - MeasureText(t, 13)) / 2,
                  (int)go.y + 7, 13, Color{228, 208, 168, 255});
         if (hov && pressed) mpForceResolve();
+        y += 32;
+
+        // Stopping AFTER the turn, never during it: orders people have already
+        // given would otherwise be thrown away, and they gave them in good
+        // faith. The world is written by the resolve either way.
+        const Rectangle rb{(float)(x + 14), (float)(y + 6), (float)(w - 28), 24.0f};
+        const bool rh = CheckCollisionPointRec(mouse, rb);
+        DrawRectangleRounded(rb, 0.15f, 6,
+                             m_mpReturnAfterTurn ? Color{44, 60, 76, 238}
+                                                 : (rh ? Color{40, 46, 58, 235}
+                                                       : Color{30, 34, 44, 224}));
+        DrawRectangleRoundedLines(rb, 0.15f, 6,
+                                  m_mpReturnAfterTurn ? Color{130, 175, 215, 210}
+                                                      : Color{95, 108, 130, 185});
+        const char* r = m_mpReturnAfterTurn
+            ? "Stopping after this turn (press to cancel)"
+            : "Everyone to the lobby after this turn";
+        DrawText(r, (int)rb.x + ((int)rb.width - MeasureText(r, 12)) / 2,
+                 (int)rb.y + 6, 12,
+                 m_mpReturnAfterTurn ? Color{190, 220, 245, 255}
+                                     : Color{190, 200, 215, 255});
+        if (rh && pressed) m_mpReturnAfterTurn = !m_mpReturnAfterTurn;
     }
 }

@@ -6,6 +6,7 @@
 #include "WsServer.h"
 
 #include <atomic>
+#include <deque>
 #include <chrono>
 #include <mutex>
 #include <random>
@@ -115,8 +116,23 @@ struct NetHost::Impl {
     struct Seated {
         WsConnId conn = 0;
         uint16_t peerId = 0;
+        /**
+         * When this socket last said anything.
+         *
+         * A TCP connection that is never written to can stay "open" for a very
+         * long time after the machine behind it has gone -- a closed laptop, a
+         * dropped tunnel. Without this the seat stays occupied and, with no
+         * turn timer, the game waits on somebody who is not there.
+         */
+        long long lastHeard = 0;
+        long long lastPinged = 0;
     };
     std::vector<Seated> seated;
+
+    /** Mod messages addressed to the host's own copy. */
+    std::deque<NetModMsg> modInbox;
+
+    void relayModMessage(const NetModMsg& in, uint16_t fromPeerId);
     uint16_t nextPeerId = 1;        // 0 is "nobody"
 
     std::vector<NetHostEvent> events;
@@ -165,6 +181,8 @@ struct NetHost::Impl {
     void handleConnected(WsConnId conn, const std::string& peerAddress);
     void handleTicket(WsConnId conn, const std::string& text);
     void handleDisconnected(WsConnId conn);
+    /** Ping the quiet, drop the silent. */
+    void checkLiveness();
     void handlePeerMessage(uint16_t peerId, const uint8_t* body, size_t size);
     void expirePending();
     void broadcastLobbyInternal();
@@ -395,7 +413,11 @@ void NetHost::update() {
                 // Only an authenticated connection has a seat, so an unseated
                 // one is simply not listened to. It cannot act as anybody.
                 const uint16_t peerId = impl.peerFor(e.conn);
-                if (peerId) impl.handlePeerMessage(peerId, e.data.data(), e.data.size());
+                if (peerId) {
+                    for (auto& s2 : impl.seated)
+                        if (s2.conn == e.conn) s2.lastHeard = nowSeconds();
+                    impl.handlePeerMessage(peerId, e.data.data(), e.data.size());
+                }
                 break;
             }
             case WsServerEvent::Kind::Disconnected:
@@ -405,6 +427,7 @@ void NetHost::update() {
     }
 
     impl.expirePending();
+    impl.checkLiveness();
 }
 
 // -------------------------------------------------------------- addressing ----
@@ -453,6 +476,51 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
     if (!p) return;              // already seated: a second ticket is ignored
 
     const std::string token = httpJsonString(text, "ticket", 4096);
+
+    // ---- can we play together at all? --------------------------------------
+    //
+    // Both of these are checked BEFORE the ticket. Verifying who somebody is
+    // costs signature work and burns a single-use jti; refusing them a moment
+    // later for speaking the wrong protocol wastes both and leaves them unable
+    // to retry without minting a fresh ticket.
+
+    // A version we do not speak. Named in both directions, because "connection
+    // closed" is a miserable way to learn you need to update -- and whichever
+    // side is older, the person reading it can tell which.
+    const long long theirs = httpJsonNumber(text, "protocol", -1);
+    if (theirs != (long long)kNetProtocolVersion) {
+        NetRejectMsg r;
+        r.reason = NetReject::ProtocolVersion;
+        r.text = theirs < 0
+            ? "That client is too old to say which version it speaks. This "
+              "server speaks version " + std::to_string(kNetProtocolVersion) + "."
+            : "You speak network version " + std::to_string(theirs) +
+              "; this server speaks " + std::to_string(kNetProtocolVersion) +
+              ". Whichever of you is older needs to update.";
+        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        server.closeConn(conn, "protocol");
+        dropPending(conn);
+        return;
+    }
+
+    // A mod set that cannot produce the same world. A mod that changes rules
+    // must be on BOTH machines or neither: one side resolving a turn with a
+    // rule the other has never heard of is a desync that surfaces later as
+    // "the game is broken", with nothing pointing at the cause.
+    {
+        ModAttestation offered;
+        modAttestDecode(httpJsonString(text, "mods", 8192), offered);
+        const ModAttestResult verdict = modAttestCompare(required, offered);
+        if (!verdict.ok) {
+            NetRejectMsg r;
+            r.reason = NetReject::ModMismatch;
+            r.text = verdict.summary();
+            server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+            server.closeConn(conn, "mods");
+            dropPending(conn);
+            return;
+        }
+    }
 
     NetTicketCheck expect;
     expect.issuer = config.issuer;
@@ -523,7 +591,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
     }
 
     dropPending(conn);
-    seated.push_back(Seated{conn, settled});
+    seated.push_back(Seated{conn, settled, nowSeconds(), 0});
 
     const LobbyMember* m = lobby.find(settled);
     if (!m) {
@@ -547,6 +615,39 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         server.send(conn, netEncodeFrame(NetMsg::Countries, countries.encode()));
     push({NetHostEvent::Kind::PeerJoined, settled, ticket.name, {}});
     broadcastLobbyInternal();
+}
+
+void NetHost::Impl::checkLiveness() {
+    // Quiet for this long and we ask; silent for this long and we stop asking.
+    // Generous, because a player thinking about a turn sends nothing at all,
+    // and being dropped for concentrating would be absurd.
+    constexpr long long kQuietSeconds = 20;
+    constexpr long long kDeadSeconds  = 60;
+
+    const long long now = nowSeconds();
+    for (size_t i = seated.size(); i-- > 0;) {
+        Seated& s = seated[i];
+        const long long quiet = now - s.lastHeard;
+
+        if (quiet >= kDeadSeconds) {
+            // The seat is KEPT: this is a lost connection, not a departure,
+            // and the psid still owns that country. Lobby::disconnect marks
+            // them away so the turn can stop waiting on them.
+            const uint16_t peerId = s.peerId;
+            server.closeConn(s.conn, "silent");
+            seated.erase(seated.begin() + static_cast<long>(i));
+            lobby.disconnect(peerId);
+            push({NetHostEvent::Kind::PeerLeft, peerId, "lost connection", {}});
+            broadcastLobbyInternal();
+            continue;
+        }
+
+        // One ping per quiet period, not one per frame.
+        if (quiet >= kQuietSeconds && now - s.lastPinged >= kQuietSeconds) {
+            s.lastPinged = now;
+            server.send(s.conn, netEncodeFrame(NetMsg::Pong, {}));
+        }
+    }
 }
 
 void NetHost::Impl::handleDisconnected(WsConnId conn) {
@@ -668,6 +769,22 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             }
             return;
         }
+        case NetMsg::Withdraw: {
+            NetOrdersMsg o;
+            if (!NetOrdersMsg::decode(body, size, o)) return;
+            if (lobby.withdrawOrders(peerId, o.turnNumber) == LobbyDenial::None) {
+                // Everyone is told, because "waiting for" just changed and the
+                // other players are reading exactly that.
+                broadcastLobbyInternal();
+            }
+            return;
+        }
+        case NetMsg::ModMsg: {
+            NetModMsg m;
+            if (!NetModMsg::decode(payload, payloadSize, m)) return;
+            relayModMessage(m, peerId);
+            return;
+        }
         case NetMsg::Chat: {
             NetChat c;
             if (!NetChat::decode(payload, payloadSize, c)) return;
@@ -684,6 +801,32 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
 
 // ------------------------------------------------------------- broadcasts ----
 
+void NetHost::Impl::relayModMessage(const NetModMsg& in, uint16_t fromPeerId) {
+    NetModMsg out = in;
+    out.peerId = fromPeerId;          // attribution is ours, as with chat
+
+    // Addressed to the host's own copy of the mod. The host has no connection
+    // to itself, so this is the only way it can be delivered.
+    if (in.peerId == lobby.hostPeerId()) {
+        modInbox.push_back(out);
+        if (modInbox.size() > 256) modInbox.pop_front();
+        return;
+    }
+
+    const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::ModMsgFrom, out.encode());
+    if (in.peerId != NetModMsg::kBroadcast) {
+        if (WsConnId c = connFor(in.peerId)) server.send(c, frame);
+        return;
+    }
+
+    // Broadcast reaches the host too -- its copy of the mod is as much a
+    // participant as anyone else's.
+    modInbox.push_back(out);
+    if (modInbox.size() > 256) modInbox.pop_front();
+    for (const Seated& s : seated)
+        if (s.peerId != fromPeerId) server.send(s.conn, frame);
+}
+
 void NetHost::Impl::broadcastLobbyInternal() {
     NetLobbyState s;
     s.state = lobby.state();
@@ -695,8 +838,27 @@ void NetHost::Impl::broadcastLobbyInternal() {
 
 void NetHost::broadcastLobby() { m_impl->broadcastLobbyInternal(); }
 
-bool NetHost::startGame(std::string& why) {
-    if (!m_impl->lobby.start(why)) return false;
+void NetHost::sendModMessage(const std::string& modId, int32_t toPeer,
+                             const std::vector<uint8_t>& payload) {
+    if (payload.size() > NetLimits::kModMsg) return;
+    NetModMsg m;
+    m.modId   = modId;
+    m.peerId  = toPeer < 0 ? NetModMsg::kBroadcast : (uint16_t)toPeer;
+    m.payload.assign(payload.begin(), payload.end());
+    // Sent as if it had arrived from the host's own peer id, so a message the
+    // host sends and one a player sends travel the same path.
+    m_impl->relayModMessage(m, m_impl->lobby.hostPeerId());
+}
+
+bool NetHost::nextModMessage(NetModMsg& out) {
+    if (m_impl->modInbox.empty()) return false;
+    out = std::move(m_impl->modInbox.front());
+    m_impl->modInbox.pop_front();
+    return true;
+}
+
+bool NetHost::startGame(std::string& why, bool force) {
+    if (!m_impl->lobby.start(why, force)) return false;
     m_impl->broadcastLobbyInternal();
     return true;
 }

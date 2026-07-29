@@ -1,0 +1,16 @@
+{
+  "title": "Golden Age",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.1,
+    "energy": 0.7,
+    "valence": 0.85
+  },
+  "weight": 1.0,
+  "$comment": "Prosperity: the empire growing with nothing threatening it. Lowest tension in the library paired with high energy and near-maximum valence, a corner nothing else occupies -- Technology! sits at the same calm but only half the optimism, so a research push alone will not reach this. It takes growth AND commitment together, which is what a golden age actually is.  Editable source: data/audio/midi/Golden Age.mid"
+}

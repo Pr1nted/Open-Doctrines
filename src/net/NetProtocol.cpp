@@ -281,7 +281,7 @@ std::vector<uint8_t> NetWelcome::encode() const {
     NetWriter w;
     w.u16(peerId);
     w.str(sessionName);
-    w.u16(turnSeconds);
+    w.u32(turnSeconds);
     w.u32(turnNumber);
     w.u8(showBadges ? 1 : 0);
     w.str(issuer);
@@ -310,7 +310,7 @@ bool NetWelcome::decode(const uint8_t* data, size_t size, NetWelcome& out) {
     NetReader r(data, size);
     out.peerId       = r.u16();
     out.sessionName  = r.str(NetLimits::kSessionName);
-    out.turnSeconds  = r.u16();
+    out.turnSeconds  = r.u32();
     out.turnNumber   = r.u32();
     out.showBadges   = r.u8() != 0;
     out.issuer       = r.str(NetLimits::kIssuer);
@@ -353,6 +353,22 @@ bool NetSignal::decode(const uint8_t* data, size_t size, NetSignal& out) {
     out.kind    = readEnum(r, 3, NetSignal::Kind::Offer);
     out.peerId  = r.u16();
     out.payload = r.str(NetLimits::kSignal);
+    return r.done();
+}
+
+std::vector<uint8_t> NetModMsg::encode() const {
+    NetWriter w;
+    w.str(modId);
+    w.u16(peerId);
+    w.str(payload);
+    return w.take();
+}
+
+bool NetModMsg::decode(const uint8_t* data, size_t size, NetModMsg& out) {
+    NetReader r(data, size);
+    out.modId   = r.str(NetLimits::kModId);
+    out.peerId  = r.u16();
+    out.payload = r.str(NetLimits::kModMsg);
     return r.done();
 }
 

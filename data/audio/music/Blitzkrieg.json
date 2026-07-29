@@ -1,0 +1,14 @@
+{
+  "title": "Blitzkrieg",
+  "author": "Pr1nted",
+  "contexts": [
+    "game"
+  ],
+  "mood": {
+    "tension": 0.68,
+    "energy": 0.92,
+    "valence": 0.95
+  },
+  "weight": 1.0,
+  "$comment": "Several wars at once against smaller enemies, all of them going. The asymmetry signal lifts energy and valence while keeping tension high, which is exactly this point and nothing else's. March to the Death is the same decisiveness against a peer, where it costs something.  Editable source: data/audio/midi/Blitzkrieg.mid"
+}

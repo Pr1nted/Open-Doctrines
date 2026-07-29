@@ -6,7 +6,8 @@
 // bytes out, which is what lets it be tested headlessly against hostile input
 // -- and this is the layer that parses hostile input, so that matters more
 // here than anywhere else in the game. Order payloads, which need the game's
-// own structs, are opaque blobs at this level; see NetOrders.h.
+// own structs, are opaque blobs at this level; they are built and read in
+// Game_Multiplayer.cpp (`mpSerializeOrders` / `mpApplyOrders`).
 //
 // FRAMING
 //
@@ -45,6 +46,24 @@ enum class NetMsg : uint16_t {
     ClaimCountry = 6,   // lobby: "I want this one"
     SwapOffer    = 7,   // lobby: offer mine to another player
     SwapReply    = 8,   // lobby: accept or decline an offer
+    /**
+     * "I am not ready after all."
+     *
+     * Carries the turn number, like Orders does, so a withdrawal that crosses
+     * a resolving turn cannot retract the wrong one. Additive: an older server
+     * ignores an unknown id, which reads as the player still being ready --
+     * the safe direction to be wrong in.
+     */
+    Withdraw     = 9,
+
+    /**
+     * A message from one copy of a mod to the others.
+     *
+     * Opaque to this layer on purpose. The server stamps who sent it and passes
+     * it on; it never parses the bytes, because they mean nothing outside the
+     * mod that wrote them.
+     */
+    ModMsg       = 10,
 
     // ---- server -> client -------------------------------------------------
     Welcome  = 64,
@@ -61,6 +80,7 @@ enum class NetMsg : uint16_t {
     Notice       = 75,  // "AI played X's turn because ..."
     Countries    = 76,  // the catalogue a lobby picks from
     Signal       = 77,  // WebRTC offer/answer/candidate, both directions
+    ModMsgFrom   = 78,  // a mod message, attributed by the server
 };
 
 const char* netMsgName(NetMsg m);
@@ -201,6 +221,15 @@ struct NetLimits {
     // SDP is the largest thing here and is a few KB at most; an ICE
     // candidate is a single line.
     static constexpr uint32_t kSignal      = 16 * 1024;
+    /**
+     * A mod message, and the id of the mod that sent it.
+     *
+     * 8 KB is generous for what this is for -- a mod telling other copies of
+     * itself something small -- and small enough that a mod cannot use the
+     * channel as a file transfer between players.
+     */
+    static constexpr uint32_t kModMsg     = 8 * 1024;
+    static constexpr uint32_t kModId      = 128;
 };
 
 /** What the session is doing. Joining is only open in Lobby. */
@@ -281,7 +310,14 @@ struct NetHostIdentity {
 struct NetWelcome {
     uint16_t    peerId = 0;
     std::string sessionName;
-    uint16_t    turnSeconds = 0;      // 0 = not a rapid game
+    /**
+     * Seconds per turn. 0 is long-form: no countdown at all.
+     *
+     * 32 bits because this was 16, which capped a turn at 18 hours -- and a
+     * campaign of a day or a week per turn is precisely what the long-form
+     * mode is for. 86400 came back as 20864.
+     */
+    uint32_t    turnSeconds = 0;
     uint32_t    turnNumber = 0;
     bool        showBadges = true;
     std::string issuer;               // who vouched for identities here
@@ -332,7 +368,7 @@ struct NetWorld {
 
 struct NetOrdersMsg {
     uint32_t             turnNumber = 0;
-    std::vector<uint8_t> payload;    // see NetOrders.h
+    std::vector<uint8_t> payload;    // see Game::mpSerializeOrders
 
     std::vector<uint8_t> encode() const;
     static bool decode(const uint8_t* data, size_t size, NetOrdersMsg& out);
@@ -394,6 +430,30 @@ struct NetSignal {
 
     std::vector<uint8_t> encode() const;
     static bool decode(const uint8_t* data, size_t size, NetSignal& out);
+};
+
+/**
+ * A message between copies of one mod, in both directions.
+ *
+ * Going up, `peerId` is who it is FOR, and kModBroadcast means everyone else.
+ * Coming down, the server has overwritten it with who it is FROM -- a client
+ * cannot claim to be another player, because the field it would lie in is the
+ * one the server replaces.
+ *
+ * `modId` is likewise stamped by the sending side's host, not chosen by the
+ * mod, and the receiving side delivers only to the mod of that name. Two mods
+ * cannot hear each other, and neither can eavesdrop.
+ */
+struct NetModMsg {
+    /** In `peerId` going up: send it to every other player. */
+    static constexpr uint16_t kBroadcast = 0xFFFF;
+
+    std::string modId;
+    uint16_t    peerId = kBroadcast;
+    std::string payload;      // opaque bytes; this layer never looks inside
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetModMsg& out);
 };
 
 /**

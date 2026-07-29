@@ -92,7 +92,7 @@ public:
 
         bool listed = false;            // show in the public directory
         bool showBadges = true;
-        uint16_t turnSeconds = 0;       // 0 = long-form, no countdown
+        uint32_t turnSeconds = 0;       // 0 = long-form, no countdown
         TurnStoreKind store = TurnStoreKind::DurableObject;
 
         // ---------------------------------------------------------- listening --
@@ -156,7 +156,8 @@ public:
     Lobby&       lobby();
 
     /** Lobby -> Game. Refuses, with a reason, while anyone holds no country. */
-    bool startGame(std::string& why);
+    /** `force` seats nobody who is still choosing -- they become spectators. */
+    bool startGame(std::string& why, bool force = false);
     void returnToLobby();
 
     /** Push the whole lobby to everyone. Called after any change. */
@@ -188,6 +189,19 @@ public:
                               const std::string& text);
 
     void kick(uint16_t peerId, const std::string& reason);
+
+    /**
+     * Pass a mod's message on. `toPeer` below zero means every other player.
+     *
+     * The mod id comes from the mod host, which stamps it; nothing a mod says
+     * chooses it. This is the only route mod traffic has, and it carries
+     * nothing else -- orders and deltas do not travel here.
+     */
+    void sendModMessage(const std::string& modId, int32_t toPeer,
+                        const std::vector<uint8_t>& payload);
+
+    /** Take a mod message addressed to this machine. */
+    bool nextModMessage(NetModMsg& out);
 
 private:
     struct Impl;

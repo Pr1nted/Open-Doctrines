@@ -44,6 +44,7 @@ enum class LobbyDenial : uint8_t {
     SessionFull,
     GameInProgress,
     IssuerNotAccepted,
+    Banned,            // told to go, and told not to come back
 };
 
 const char* lobbyDenialText(LobbyDenial d);
@@ -96,7 +97,21 @@ public:
     NetSessionState state() const { return m_state; }
 
     /** Lobby -> Game. Refuses while any player still holds no country. */
-    bool start(std::string& why);
+    /**
+     * Begin the game.
+     *
+     * Refuses while anybody is still choosing, and `why` names the first such
+     * player -- somebody who is mid-decision has not agreed to be left out.
+     *
+     * `force` starts anyway, and everyone still without a country becomes a
+     * SPECTATOR rather than a player with no land: a seat that exists but owns
+     * nothing would be waited on every turn by a player who cannot act. They
+     * keep watching, and a lobby that allows late joiners can seat them later.
+     */
+    bool start(std::string& why, bool force = false);
+
+    /** Players still choosing. Empty means start() will not refuse. */
+    std::vector<std::string> stillChoosing() const;
 
     /** Game -> Lobby, at the host's word. Orders and countries are cleared. */
     void returnToLobby();
@@ -143,6 +158,38 @@ public:
      */
     bool releaseSeat(const std::string& psid);
 
+    // ---- moderation --------------------------------------------------------
+    //
+    // Two different things, deliberately not one:
+    //
+    //   KICK  -- "leave this game". Removed now; may come back. It is what you
+    //            reach for when somebody is stuck, idle, or in the wrong seat.
+    //   BAN   -- "do not come back". Kept against the psid, so a reconnect is
+    //            refused before it is admitted -- as a player AND as a
+    //            spectator, since watching is exactly what a banned person
+    //            would otherwise do.
+    //
+    // Collapsing them would mean every kick was permanent, and a host would
+    // stop using it.
+
+    /** Refuse this psid from now on, and remove them if they are here. */
+    void ban(const std::string& psid);
+    void unban(const std::string& psid);
+    bool isBanned(const std::string& psid) const;
+    const std::vector<std::string>& bans() const { return m_bans; }
+
+    /**
+     * Move a spectator into a country nobody holds.
+     *
+     * How a game survives somebody leaving: the seat is not lost, it is passed
+     * to whoever has been waiting. Fails if the country is held, or if the
+     * target is not actually spectating.
+     */
+    LobbyDenial seatSpectator(uint16_t peerId, uint16_t countryId);
+
+    /** Everyone watching rather than playing. */
+    std::vector<const LobbyMember*> spectators() const;
+
     /** Mark gone. The slot is kept so the player can come back to it. */
     void disconnect(uint16_t peerId);
 
@@ -165,6 +212,15 @@ public:
     /** Records orders against the peer's psid so a reconnect keeps them. */
     LobbyDenial submitOrders(uint16_t peerId, uint32_t turnNumber,
                              const std::vector<uint8_t>& payload);
+
+    /**
+     * Take back a submission for `turnNumber`.
+     *
+     * Only this turn's: a request naming an older turn is a message that
+     * arrived late, and honouring it would un-ready somebody for a turn that
+     * has already moved on.
+     */
+    LobbyDenial withdrawOrders(uint16_t peerId, uint32_t turnNumber);
 
     /** Records that a submission arrived for this turn and was unreadable. */
     LobbyDenial markMalformed(uint16_t peerId, uint32_t turnNumber);
@@ -195,6 +251,7 @@ private:
     NetSessionState m_state = NetSessionState::Lobby;
     std::vector<LobbyMember> m_members;
     uint16_t m_hostPeerId = 0;
+    std::vector<std::string> m_bans;   // by psid
 
     struct Offer { uint16_t from; uint16_t to; };
     std::vector<Offer> m_offers;

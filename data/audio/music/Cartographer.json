@@ -1,0 +1,16 @@
+{
+  "title": "Cartographer",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.09,
+    "energy": 0.33,
+    "valence": 0.18
+  },
+  "weight": 1.0,
+  "$comment": "Written for the editor and lands on it: the editor mood is a fixed (0.10, 0.35, 0.15) and this is the nearest point in the library. Pairs with Creator, which held that spot alone until now.  Editable source: data/audio/midi/Cartographer.mid"
+}

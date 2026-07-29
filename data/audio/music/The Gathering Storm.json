@@ -1,0 +1,14 @@
+{
+  "title": "The Gathering Storm",
+  "author": "Pr1nted",
+  "contexts": [
+    "game"
+  ],
+  "mood": {
+    "tension": 0.75,
+    "energy": 0.38,
+    "valence": -0.55
+  },
+  "weight": 1.0,
+  "$comment": "A war already on and the country coming apart underneath it. Instability is the same dread before anything has happened; this is after. The low energy against high tension is what separates both from Bombing Voronezh, which is loud because the fighting is the event.  Editable source: data/audio/midi/The Gathering Storm.mid"
+}

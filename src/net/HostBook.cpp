@@ -1,4 +1,4 @@
-#include "SeatBook.h"
+#include "HostBook.h"
 
 #include "HttpClient.h"
 
@@ -39,7 +39,7 @@ std::string jsonEscape(const std::string& in) {
 
 }  // namespace
 
-std::string SeatBook::encode() const {
+std::string HostBook::encode() const {
     std::ostringstream o;
     o << "{\n  \"mapId\": \"" << jsonEscape(mapId) << "\",\n"
       << "  \"turnNumber\": " << turnNumber << ",\n"
@@ -54,12 +54,32 @@ std::string SeatBook::encode() const {
           << "\", \"countryId\": " << s.countryId << "}";
         written++;
     }
-    o << (written ? "\n  ]\n}\n" : "]\n}\n");
+    o << (written ? "\n  ]" : "]");
+
+    o << ",\n  \"bans\": [";
+    size_t nb = 0;
+    for (const std::string& b : bans) {
+        if (b.empty() || nb >= kMaxSeats) continue;
+        o << (nb ? ", " : "") << "\"" << jsonEscape(b) << "\"";
+        nb++;
+    }
+    o << "],\n";
+
+    o << "  \"settings\": {"
+      << "\"turnSeconds\": " << settings.turnSeconds
+      << ", \"maxPlayers\": " << (int)settings.maxPlayers
+      << ", \"lateJoin\": " << (int)settings.lateJoin
+      << ", \"absent\": " << (int)settings.absent
+      << ", \"assignment\": " << (int)settings.assignment
+      << ", \"bindAll\": " << (settings.bindAll ? "true" : "false")
+      << ", \"listed\": " << (settings.listed ? "true" : "false")
+      << ", \"port\": " << settings.port
+      << "}\n}\n";
     return o.str();
 }
 
-bool SeatBook::decode(const std::string& json, SeatBook& out) {
-    out = SeatBook{};
+bool HostBook::decode(const std::string& json, HostBook& out) {
+    out = HostBook{};
     if (json.empty()) return false;
 
     out.mapId = httpJsonString(json, "mapId", 128);
@@ -87,14 +107,40 @@ bool SeatBook::decode(const std::string& json, SeatBook& out) {
         if (!s.psid.empty() && s.countryId != 0) out.seats.push_back(std::move(s));
         at = end + 1;
     }
+
+    // Read from the "bans" key onward, so a psid in a SEAT can never be
+    // mistaken for a ban -- which would bar the player it belongs to.
+    const size_t bansAt = json.find("\"bans\"");
+    if (bansAt != std::string::npos) {
+        for (const std::string& b :
+             httpJsonStringArray(json, "bans", kMaxSeats, bansAt)) {
+            if (!b.empty()) out.bans.push_back(b);
+        }
+    }
+
+    const size_t setAt = json.find("\"settings\"");
+    if (setAt != std::string::npos) {
+        auto num = [&](const char* k, long long fallback, long long lo, long long hi) {
+            const long long v = httpJsonNumber(json, k, fallback, setAt);
+            return v < lo || v > hi ? fallback : v;
+        };
+        out.settings.turnSeconds = (uint32_t)num("turnSeconds", 0, 0, 2592000);
+        out.settings.maxPlayers  = (uint8_t)num("maxPlayers", 8, 2, 32);
+        out.settings.lateJoin    = (uint8_t)num("lateJoin", 0, 0, 1);
+        out.settings.absent      = (uint8_t)num("absent", 0, 0, 1);
+        out.settings.assignment  = (uint8_t)num("assignment", 0, 0, 1);
+        out.settings.port        = (uint16_t)num("port", 27015, 0, 65535);
+        out.settings.bindAll     = httpJsonBool(json, "bindAll", false, setAt);
+        out.settings.listed      = httpJsonBool(json, "listed", false, setAt);
+    }
     return true;
 }
 
-std::string SeatBook::pathFor(const std::string& savePath) {
-    return savePath + ".seats.json";
+std::string HostBook::pathFor(const std::string& savePath) {
+    return savePath + ".odhost";
 }
 
-bool SeatBook::save(const std::string& savePath) const {
+bool HostBook::save(const std::string& savePath) const {
     if (savePath.empty()) return false;
     std::ofstream f(pathFor(savePath), std::ios::binary | std::ios::trunc);
     if (!f) return false;
@@ -103,8 +149,8 @@ bool SeatBook::save(const std::string& savePath) const {
     return f.good();
 }
 
-bool SeatBook::load(const std::string& savePath, SeatBook& out) {
-    out = SeatBook{};
+bool HostBook::load(const std::string& savePath, HostBook& out) {
+    out = HostBook{};
     if (savePath.empty()) return false;
     std::ifstream f(pathFor(savePath), std::ios::binary);
     if (!f) return false;

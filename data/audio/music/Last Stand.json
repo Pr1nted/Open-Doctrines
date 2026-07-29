@@ -1,0 +1,14 @@
+{
+  "title": "Last Stand",
+  "author": "Pr1nted",
+  "contexts": [
+    "game"
+  ],
+  "mood": {
+    "tension": 0.95,
+    "energy": 0.72,
+    "valence": -0.9
+  },
+  "weight": 1.0,
+  "$comment": "Encircled and losing, still fighting. This is the corner March to the Death used to reach through valenceMode magnitude, covering triumph and catastrophe with one piece; with a real track for the second, that dual duty is retired and each keeps one meaning. Energy is 0.72 rather than the supplied 0.85 because four simultaneous wars cap energy at 0.80 and money trouble subtracts from there -- 0.85 was outside the reachable set.  Editable source: data/audio/midi/Last Stand.mid"
+}

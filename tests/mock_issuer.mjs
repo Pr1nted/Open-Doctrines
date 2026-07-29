@@ -94,6 +94,24 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, ISSUER);
     const path = url.pathname;
 
+    // WHO IS ASKING.
+    //
+    // The real service derives a psid from the account behind the bearer. So
+    // does this: a token of the form "dev-alice" is the player Alice, stably,
+    // every time. That stability is the point -- a psid that changed per
+    // request would make every rejoin look like a stranger, and seat memory
+    // could never be tested at all.
+    //
+    // With no dev token the old behaviour is kept exactly: an incrementing
+    // pseudonym per ticket, which is what the connectivity test expects.
+    const bearer = String(req.headers["authorization"] || "")
+        .replace(/^Bearer\s+/i, "");
+    const devName = bearer.startsWith("dev-") ? bearer.slice(4) : "";
+    const devPsid = devName ? `psid_dev_${devName}`.padEnd(24, "_") : "";
+    const devLabel = devName
+        ? devName.charAt(0).toUpperCase() + devName.slice(1)
+        : "";
+
     // The verification key. This is the ONE endpoint that matters for whether
     // the game will believe anything below.
     if (req.method === "GET" && path === "/.well-known/od-keys.json") {
@@ -106,7 +124,10 @@ const server = createServer(async (req, res) => {
 
     // A host opening a session.
     if (req.method === "POST" && path === "/session") {
-        return json(res, { code: CODE, hostPsid: "psid_host_aaaaaaaaaaaa" });
+        return json(res, {
+            code: CODE,
+            hostPsid: devPsid || "psid_host_aaaaaaaaaaaa",
+        });
     }
 
     // What a joiner asks about a session before minting a ticket. The
@@ -128,9 +149,10 @@ const server = createServer(async (req, res) => {
         const ticket = await sign({
             iss: ISSUER + (PAD ? "/" + "x".repeat(PAD) : ""),
             aud: `od-relay:${code}`,
-            psid: `psid_player_${String(issued).padStart(4, "0")}______`,
-            name: `Tester${issued}`,
-            badges: issued === 1 ? ["developer"] : [],
+            psid: devPsid || `psid_player_${String(issued).padStart(4, "0")}______`,
+            name: devLabel || `Tester${issued}`,
+            badges: devName ? (devName === "alice" ? ["developer"] : [])
+                            : (issued === 1 ? ["developer"] : []),
             nonce: String(body.nonce || ""),
             jti: `jti_${issued}_${now()}`,
             iat: now(),
@@ -140,7 +162,34 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && path === "/") {
-        return json(res, { service: "mock-issuer", issuer: ISSUER });
+        return json(res, {
+            service: "mock-issuer",
+            issuer: ISSUER,
+            // Enough for the account screen to render. Nothing here can create
+            // an account -- playtest clients arrive already signed in, with a
+            // token written straight into account.json.
+            providers: [{ id: "github", label: "GitHub", canCreate: true }],
+            privacy: `${ISSUER}/privacy`,
+            terms: `${ISSUER}/terms`,
+            keys: `${ISSUER}/.well-known/od-keys.json`,
+        });
+    }
+
+    // Who the bearer belongs to. The game asks this on startup and shows the
+    // answer as the signed-in player.
+    if (req.method === "GET" && path === "/account/me") {
+        if (!devName) return json(res, { error: "no such session" }, 401);
+        return json(res, {
+            id: devPsid,
+            nickname: devLabel,
+            badges: devName === "alice" ? ["developer"] : [],
+            providers: ["github"],
+        });
+    }
+
+    if (req.method === "GET" && (path === "/privacy" || path === "/terms")) {
+        res.writeHead(200, { "content-type": "text/markdown" });
+        return res.end("# Local development issuer\n\nNot a real service.\n");
     }
 
     json(res, { error: "not_found" }, 404);

@@ -673,6 +673,50 @@ void testSignalling() {
     }
 }
 
+// A mod message survives the wire, keeps binary payloads intact, and refuses
+// anything oversized or truncated.
+void testModMessages() {
+    {
+        NetModMsg m;
+        m.modId = "od.example";
+        m.peerId = 7;
+        // Deliberately binary, NUL included: this payload is opaque bytes, and
+        // a codec that stops at a NUL would silently truncate mods' data.
+        m.payload = std::string("\x01\x00\xff\x00hi", 6);
+
+        const std::vector<uint8_t> wire = m.encode();
+        NetModMsg back;
+        check("mod message round-trips",
+              NetModMsg::decode(wire.data(), wire.size(), back));
+        check("mod id survives", back.modId == "od.example");
+        check("peer survives", back.peerId == 7);
+        check("binary payload survives whole", back.payload == m.payload);
+        check("a NUL does not end the payload", back.payload.size() == 6);
+
+        bool allRefused = true;
+        for (size_t n = 0; n < wire.size(); n++) {
+            NetModMsg b;
+            if (NetModMsg::decode(wire.data(), n, b)) allRefused = false;
+        }
+        check("every mod-message truncation is refused", allRefused);
+    }
+    {
+        // The broadcast marker must not collide with a real peer id, or a
+        // message meant for one player would go to everyone.
+        check("broadcast is not a plausible peer",
+              NetModMsg::kBroadcast == 0xFFFF);
+    }
+    {
+        NetModMsg big;
+        big.modId = "od.example";
+        big.payload = std::string(NetLimits::kModMsg + 1, 'x');
+        const std::vector<uint8_t> wire = big.encode();
+        NetModMsg back;
+        check("an oversized mod payload is refused, not clipped",
+              !NetModMsg::decode(wire.data(), wire.size(), back));
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -688,6 +732,7 @@ int main() {
     testUrlParsing();
     testWorldSync();
     testSignalling();
+    testModMessages();
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

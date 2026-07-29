@@ -17,7 +17,7 @@
 //
 // A SIDECAR, NOT A SAVE FORMAT CHANGE
 //
-// This lives in `<save>.seats.json` rather than inside the .odsv. The save
+// This lives in `<save>.odhost` rather than inside the .odsv. The save
 // format is shared with singleplayer and read by tools, and widening it for a
 // multiplayer-only concern would make every reader carry the concept. The cost
 // is that the two files can be separated -- and when that happens the game is
@@ -42,7 +42,19 @@ struct SeatRecord {
     uint16_t    countryId = 0;
 };
 
-struct SeatBook {
+/** How the table was set up. Restored so a resumed game plays as it did. */
+struct HostSettings {
+    uint32_t turnSeconds = 0;
+    uint8_t  maxPlayers  = 8;
+    uint8_t  lateJoin    = 0;   // 0 refuse, 1 spectate
+    uint8_t  absent      = 0;   // 0 AI plays them, 1 their country idles
+    uint8_t  assignment  = 0;   // 0 host assigns, 1 players pick
+    bool     bindAll     = false;
+    bool     listed      = false;
+    uint16_t port        = 27015;
+};
+
+struct HostBook {
     /**
      * The map the save was built from.
      *
@@ -55,12 +67,24 @@ struct SeatBook {
     uint32_t    turnNumber = 0;
     std::vector<SeatRecord> seats;
 
-    std::string encode() const;
-    static bool decode(const std::string& json, SeatBook& out);
+    /**
+     * People barred from this game, by psid.
+     *
+     * On disk because a ban that evaporated when the host closed the game
+     * would be no ban at all -- the person barred on Tuesday would walk back
+     * in on Wednesday, and the host would have to remember and do it again.
+     */
+    std::vector<std::string> bans;
 
-    /** `<savePath>.seats.json` -- beside the save it belongs to. */
+    /** The table's rules, so continuing a campaign continues its settings. */
+    HostSettings settings;
+
+    std::string encode() const;
+    static bool decode(const std::string& json, HostBook& out);
+
+    /** `<savePath>.odhost` -- beside the save it belongs to. */
     static std::string pathFor(const std::string& savePath);
 
     bool save(const std::string& savePath) const;
-    static bool load(const std::string& savePath, SeatBook& out);
+    static bool load(const std::string& savePath, HostBook& out);
 };

@@ -1,0 +1,16 @@
+{
+  "title": "Rivers and Roads",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.13,
+    "energy": 0.46,
+    "valence": 0.3
+  },
+  "weight": 1.0,
+  "$comment": "The busiest of the calm pieces: building, and the only one with real movement in it. High enough in energy to reach a country in the middle of a construction push without leaving the calm corner.  Editable source: data/audio/midi/Rivers and Roads.mid"
+}

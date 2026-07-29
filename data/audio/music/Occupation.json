@@ -1,0 +1,14 @@
+{
+  "title": "Occupation",
+  "author": "Pr1nted",
+  "contexts": [
+    "game"
+  ],
+  "mood": {
+    "tension": 0.55,
+    "energy": 0.45,
+    "valence": -0.62
+  },
+  "weight": 1.0,
+  "$comment": "Losing a war to an equal. Not the collapse Great Diplomacy covers and not the last-ditch defence of Last Stand -- just steady, grinding loss, which is the most common way a war goes badly and had nothing written for it.  Editable source: data/audio/midi/Occupation.mid"
+}

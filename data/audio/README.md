@@ -79,62 +79,127 @@ than by sign — the track's value is matched against `|valence|`. That is how o
 piece can cover a war being *won* and a war being *lost catastrophically*, which
 are opposite valences and which no single signed point can express. It asks for
 "decisively one way or the other" and stays out of the undecided middle.
-`March to the Death` is the only track that uses it.
+
+No track currently uses it. `March to the Death` did, back when it was the only
+piece heavy enough for a catastrophe as well as a triumph. `Last Stand` covers
+the catastrophe now, and a magnitude track would sit on top of it in every
+scenario it exists for, so the flag came off and each piece kept one meaning.
+Reach for it only when a corner has no piece of its own and an existing one can
+honestly face both ways.
 
 ### What ships
 
 | Track | tension | energy | valence | Wins |
 | --- | --- | --- | --- | --- |
-| March to the Death | 0.85 | 0.75 | 0.85 **mag** | A decisive war, won or lost |
+| Last Stand | 0.95 | 0.72 | −0.90 | Encircled and losing, still fighting |
+| March to the Death | 0.85 | 0.75 | +0.85 | A decisive war against an equal |
+| The Gathering Storm | 0.75 | 0.38 | −0.55 | A war, and the country coming apart under it |
+| Blitzkrieg | 0.68 | 0.92 | +0.95 | Several wars at once, all of them going |
 | Bombing Voronezh | 0.65 | 0.85 | −0.10 | War, alongside the theme |
+| Cold War | 0.62 | 0.48 | −0.15 | Armed, unhappy, and not shooting |
 | Instability | 0.60 | 0.30 | −0.40 | Unrest building at home |
-| Anthem of Survivors | 0.50 | 0.60 | 0.00 | The general theme (weight 1.2) |
+| Occupation | 0.55 | 0.45 | −0.62 | Losing a war to an equal, steadily |
+| Mobilization | 0.50 | 0.86 | +0.25 | The army paid for and not yet used |
 | Rebel | 0.50 | 0.80 | +0.40 | A rebellion, or a far smaller enemy |
-| Global Politics | 0.30 | 0.50 | +0.20 | A country entangled in treaties |
-| Parade Uniform | 0.45 | 0.50 | −0.30 | Main menu; leads in a peer war |
+| Anthem of Survivors | 0.50 | 0.60 | 0.00 | The general theme (weight 1.2) |
 | Navy and Arms | 0.45 | 0.65 | +0.15 | Arming up in peacetime |
+| Parade Uniform | 0.45 | 0.50 | −0.30 | Main menu; leads in a peer war |
+| The Summit | 0.33 | 0.55 | +0.35 | A treaty web going well |
+| Neon Doctrine | 0.32 | 0.66 | +0.30 | Busy, entangled and running well |
+| Global Politics | 0.30 | 0.50 | +0.20 | A country entangled in treaties |
 | Cutting Costs | 0.30 | 0.25 | −0.55 | The treasury running dry |
-| Technology! | 0.25 | 0.70 | +0.45 | A research push; a growing empire |
+| Technology! | 0.25 | 0.70 | +0.45 | A research push |
+| Statecraft | 0.24 | 0.40 | +0.12 | A couple of pacts, the quiet end of diplomacy |
+| Nightshift | 0.22 | 0.42 | +0.05 | Late peacetime administration |
+| Overclock | 0.20 | 0.86 | +0.60 | Research at full commitment |
 | Reprise | 0.20 | 0.42 | +0.35 | Rebuilding after a war |
-| Creator | 0.10 | 0.25 | +0.15 | Map editor, peacetime |
-| Looking Around | 0.05 | 0.15 | 0.00 | Trades off with Creator when idling |
 | Great Diplomacy | 0.20 | 0.30 | −0.95 | An empire that has come apart |
+| The Long Game | 0.16 | 0.28 | 0.00 | The centre of peacetime |
+| New Horizons | 0.15 | 0.60 | +0.62 | Expanding by treaty rather than by war |
+| The Long Peace | 0.15 | 0.25 | −0.10 | Peace long enough to feel like stasis |
+| Old Maps | 0.14 | 0.20 | −0.30 | Quiet peace with the money tightening |
+| Rivers and Roads | 0.13 | 0.46 | +0.30 | Building; the busiest calm piece |
+| Provinces | 0.12 | 0.30 | +0.30 | Administration going well |
+| Golden Age | 0.10 | 0.70 | +0.85 | Prosperity, with nothing threatening it |
+| Creator | 0.10 | 0.25 | +0.15 | Map editor, peacetime |
+| The Archive | 0.10 | 0.16 | −0.05 | The stillest piece; pairs with Looking Around |
+| Cartographer | 0.09 | 0.33 | +0.18 | Map editor, the nearest point to it |
+| Peacetime | 0.08 | 0.28 | +0.42 | Peace that was never interrupted |
+| Looking Around | 0.05 | 0.15 | 0.00 | Trades off with Creator when idling |
 
-The library is deliberately spread across the corners rather than clustered.
-`Instability` is the only tense piece that is *quiet*, which is why dread never
-sounds like alarm; `Rebel` is the only loud one that is *happy*, which is why a
-one-sided war never sounds like a desperate one; `Technology!` is the only
-energetic piece at rest, so "busy and doing well" is never mistaken for combat.
-Each new piece is easiest to place by asking which corner is still empty.
+The library has two halves, and they are shaped differently on purpose.
 
-Four are restricted to `game` — `March to the Death`, `Cutting Costs`,
-`Rebel` and `Great Diplomacy`. Everything else plays anywhere. Nothing keeps the calm pieces out of a
-war except their mood being wrong for one, which is the system doing its job and
-is why the `contexts` list is rarely needed; the three exceptions earn it,
-because no mood value keeps a death march off a title screen and a bankruptcy or
-counter-insurgency theme means nothing outside a running game.
+**Above about 0.45 tension it is spread thin** — one piece per corner, each
+holding its situation firmly. `Instability` is the only tense piece that is
+*quiet*, which is why dread never sounds like alarm; `Rebel` is the only loud
+one that is *happy*, which is why a one-sided war never sounds like a desperate
+one. The distinctions are narrow but real: `Cold War` and `Occupation` are 0.07
+apart in tension and on opposite sides of whether a war is on; `Blitzkrieg` and
+`March to the Death` are the same decisiveness at different odds, separated by
+tension because a rout is not frightening.
+
+**Below it the pieces cluster, and that is the point.** Peace is where players
+spend most of their turns, so roughly half the library sits in a corner the
+reachable space keeps small — at peace, tension pins to 0.15 and energy to
+0.375 before any modifier, and only `valence` has real room. Fifteen pieces
+therefore spread mostly along that one axis, from `Old Maps` at −0.30 through
+`The Long Game` at zero to `Peacetime` at +0.42, with `Golden Age` and
+`Overclock` at the far energetic end. Several never win a situation outright and
+are not meant to: anything within 0.15 of the leader rotates in as soon as the
+incumbent's repeat penalty lands, and a deep bench is what keeps a fifty-turn
+stretch of peace from looping. `The Archive` and `Looking Around` sit 0.006
+apart and simply alternate.
+
+So: place a war piece by finding the empty corner, and a peace piece by choosing
+where on the valence line it belongs and letting it share. Either way, check the
+point you are aiming at can actually be produced — see **Placing a new track**
+below.
+
+Eight are restricted to `game` — `March to the Death`, `Cutting Costs`, `Rebel`,
+`Great Diplomacy`, `Last Stand`, `Occupation`, `Blitzkrieg` and
+`The Gathering Storm`. Everything else plays anywhere. Nothing keeps the calm
+pieces out of a war except their mood being wrong for one, which is the system
+doing its job and is why the `contexts` list is rarely needed; the exceptions
+earn it, because no mood value keeps a death march off a title screen, and a
+bankruptcy, counter-insurgency or last-stand theme means nothing outside a
+running game.
 
 What that produces, walking six consecutive picks per situation:
 
 | Situation | Rotation |
 | --- | --- |
-| Main menu | Parade Uniform ⇄ Anthem of Survivors |
-| Map editor | Creator ⇄ Reprise |
-| Peace, idle | Creator ⇄ Looking Around |
-| Peace, tangled in treaties | **Global Politics** ⇄ Reprise |
-| Peace, a couple of pacts | Creator ⇄ Global Politics |
-| The empire has come apart | **Great Diplomacy**, held |
-| Peace, rebuilding after a war | **Reprise** ⇄ Technology! |
-| Peace, arming heavily | **Navy and Arms** ⇄ Anthem of Survivors |
-| Peace, unrest rising | **Instability** ⇄ Parade Uniform |
-| Peace, researching hard | Technology! ⇄ Reprise |
-| Peace, treasury running out | Cutting Costs, held |
-| War against a peer | Parade Uniform ⇄ Anthem of Survivors |
-| War against rebels, holding | **Rebel** ⇄ Navy and Arms |
-| War against rebels, losing ground | March to the Death — a breakaway winning is not a small war |
-| War against a far smaller state | **Rebel** ⇄ Technology! |
-| A war being won or lost decisively | March to the Death |
-| War *and* broke | March to the Death — a war outranks a budget |
+| Main menu | Parade Uniform ⇄ Anthem of Survivors ⇄ Nightshift |
+| Map editor | Cartographer ⇄ Creator ⇄ Provinces |
+| Peace, idle | The Long Game ⇄ Nightshift ⇄ The Long Peace |
+| Peace, a long quiet stretch | The Long Peace ⇄ Old Maps ⇄ The Long Game |
+| Peace, growing steadily | Peacetime ⇄ Reprise ⇄ Provinces |
+| Peace, a couple of pacts | Statecraft ⇄ Nightshift ⇄ Global Politics |
+| Peace, tangled in treaties | Global Politics ⇄ Statecraft ⇄ The Summit |
+| Peace, treaties and growing | **New Horizons** ⇄ Technology! |
+| Peace, rebuilding after a war | Rivers and Roads ⇄ Statecraft ⇄ Cartographer |
+| Peace, building heavily | Reprise ⇄ The Summit ⇄ Rivers and Roads |
+| Peace, researching hard | Rivers and Roads ⇄ Technology! ⇄ Reprise |
+| Peace, research at full tilt | Technology! ⇄ Overclock ⇄ New Horizons |
+| Peace, research and prospering | **Golden Age** ⇄ New Horizons |
+| Peace, arming heavily | Navy and Arms ⇄ Anthem of Survivors ⇄ Mobilization |
+| Peace, armed and restive | Cold War ⇄ Anthem of Survivors ⇄ Bombing Voronezh |
+| Peace, unrest rising | **Instability** ⇄ Cutting Costs |
+| Peace, money tightening | Old Maps ⇄ Cutting Costs ⇄ The Long Peace |
+| Peace, treasury running out | **Cutting Costs** ⇄ Great Diplomacy |
+| The empire has come apart | **Great Diplomacy** ⇄ Cutting Costs |
+| War against a peer | Anthem of Survivors ⇄ Cold War ⇄ Navy and Arms |
+| War against a peer, losing | **Occupation** ⇄ The Gathering Storm |
+| War against a far smaller state | Rebel ⇄ Technology! ⇄ The Summit |
+| Several wars, all going well | Blitzkrieg ⇄ March to the Death ⇄ Rebel |
+| A decisive war against an equal | **March to the Death** ⇄ Blitzkrieg |
+| War, and unrest at home | **The Gathering Storm** ⇄ Occupation |
+| Encircled and losing | **Last Stand**, held |
+| Researching during a war | Mobilization ⇄ Navy and Arms ⇄ Rebel |
+
+Three-way rotations are the calm end of the library doing exactly what it is
+for. Peace is where players spend most of their turns, so it carries the most
+pieces and the loosest spacing; a war has fewer candidates and holds one piece
+much harder, which is the right shape for both.
 
 Pairs alternate when they sit close enough for the repeat penalty to decide
 between them, and hold when one is a clearly better fit. Tuning a new piece is
@@ -196,6 +261,38 @@ sitting close together in mood space will alternate; two far apart will not.
 With one track installed all of this collapses to "play the one track", which is
 the correct answer to that question.
 
+### Placing a new track
+
+The three axes are not independent, and most of the unit cube is not reachable.
+Picking coordinates that "sound like" the piece will usually put it somewhere
+the game never goes, and a track parked outside the reachable set is simply
+never heard — no error, no warning, just silence forever.
+
+Two constraints do most of the damage:
+
+- **Energy is derived from tension**, `0.30 + 0.50 × tension`, before any
+  modifier touches it. Peace therefore starts at `(0.15, 0.375)` and four
+  simultaneous wars at `(1.00, 0.80)`. There is no quiet war and no frantic
+  calm except through the modifiers.
+- **The confidence modifiers are gated on already doing well.** Asymmetry — the
+  one that lifts energy during a war — is scaled by `max(0, 1 + valence)` when
+  valence is negative, so it contributes almost nothing while you are losing.
+  High energy *and* deeply negative valence is close to unreachable: at four
+  wars energy caps at 0.80, and money trouble subtracts from there.
+
+`Last Stand` arrived asking for `energy 0.85` at `valence −0.70`, which is
+outside that set; it sits at 0.72 and wins its scenarios comfortably. Half of
+the batch it came in with needed the same correction.
+
+The reliable check is to work backwards: name the situation, walk it through
+the signals above, and see where it actually lands before choosing coordinates.
+Then confirm the track wins — or at least comes within the repeat penalty of
+winning — in the situation it was written for, and that it has not quietly
+displaced an existing piece from the corner that piece was written for. A new
+track that wins nothing is only a problem if it also wins nothing *by
+rotation*: anything within 0.15 of the leader takes over as soon as the
+incumbent's penalty lands, and that is a perfectly good way to exist.
+
 ### Formats, and why the choice matters
 
 `.ogg`, `.mp3`, `.qoa`, `.wav` and the `.xm` / `.mod` tracker formats all work.
@@ -206,8 +303,9 @@ Size is worth caring about, because the web build preloads all of `data/` before
 the game starts (see `--preload-file` in CMakeLists.txt). Every megabyte here is
 a megabyte every browser player downloads before the main menu appears.
 
-The fourteen pieces ship as **Ogg Vorbis, q3 (~112 kbps VBR)** — 23 MB, down from
-40 MB as 192 kbps MP3. Vorbis rather than a lower-bitrate MP3 because it is
+The thirty-five pieces ship as **Ogg Vorbis, q3 (~92 kbps VBR measured)** — 52 MB
+for roughly fifty minutes of music, against about 90 MB for the same material as
+192 kbps MP3. Vorbis rather than a lower-bitrate MP3 because it is
 markedly better at that rate, and 192 kbps CBR is a bitrate for music somebody
 sits and listens to, not for music playing under a map at half volume through a
 reverb. Encoded with the reference encoder:
@@ -245,6 +343,27 @@ lossy file.
 | `Navy and Arms.mid` | Source for Navy and Arms |
 | `Rebel.mid` | Source for Rebel |
 | `Reprise.mid` | Source for Reprise |
+| `Golden Age.mid` | Source for Golden Age |
+| `New Horizons.mid` | Source for New Horizons |
+| `The Long Peace.mid` | Source for The Long Peace |
+| `The Summit.mid` | Source for The Summit |
+| `Mobilization.mid` | Source for Mobilization |
+| `Cold War.mid` | Source for Cold War |
+| `The Gathering Storm.mid` | Source for The Gathering Storm |
+| `Occupation.mid` | Source for Occupation |
+| `Blitzkrieg.mid` | Source for Blitzkrieg |
+| `Last Stand.mid` | Source for Last Stand |
+| `Cartographer.mid` | Source for Cartographer |
+| `Provinces.mid` | Source for Provinces |
+| `Rivers and Roads.mid` | Source for Rivers and Roads |
+| `The Long Game.mid` | Source for The Long Game |
+| `Old Maps.mid` | Source for Old Maps |
+| `Peacetime.mid` | Source for Peacetime |
+| `Statecraft.mid` | Source for Statecraft |
+| `The Archive.mid` | Source for The Archive |
+| `Neon Doctrine.mid` | Source for Neon Doctrine |
+| `Nightshift.mid` | Source for Nightshift |
+| `Overclock.mid` | Source for Overclock |
 | `OpenDoctrines_Theme_SEED.mid` | **Reference.** Not a track — the bare motif |
 
 The seed is melody, chords and bass and nothing else. Every shipped piece is

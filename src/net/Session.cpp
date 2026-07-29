@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <deque>
 #include <mutex>
 #include <thread>
 
@@ -79,6 +80,17 @@ struct NetSession::Impl {
     NetAssignment   assignment = NetAssignment::PlayersPick;
 
     std::vector<NetSessionEvent> events;
+
+    /** Mod messages, kept apart from events: mods drain their own queue. */
+    std::deque<NetModMsg> modInbox;
+
+    void pushMod(NetModMsg m) {
+        std::lock_guard<std::mutex> lock(mutex);
+        // Bounded, like every other queue here: a peer that talks faster than
+        // the game reads must not grow this without limit.
+        if (modInbox.size() >= 256) modInbox.pop_front();
+        modInbox.push_back(std::move(m));
+    }
 
     WebSocket socket;
     std::thread joinWorker;
@@ -281,8 +293,7 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
 
     // Blocking HTTP, so off the render thread. The socket stays open meanwhile;
     // the host is holding a slot for this nonce until it times out.
-    if (joinWorker.joinable()) joinWorker.join();
-    joinWorker = std::thread([this, nonce] {
+    auto fetchTicket = [this, nonce] {
         std::string iss, c, tok;
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -341,9 +352,35 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
         //    never lands in a log or a history.
         {
             std::lock_guard<std::mutex> lock(mutex);
-            pendingHello = "{\"ticket\":\"" + httpJsonEscape(ticket) + "\"}";
+            // The ticket says WHO. These two say WHETHER WE CAN PLAY AT ALL:
+            // a protocol the host cannot speak, or a mod set that does not
+            // match theirs, are both better refused here with a reason than
+            // discovered as a desync three turns in.
+            pendingHello = "{\"ticket\":\"" + httpJsonEscape(ticket) + "\"" +
+                           ",\"protocol\":" + std::to_string(kNetProtocolVersion) +
+                           ",\"mods\":\"" + httpJsonEscape(modAttestation) + "\"}";
         }
-    });
+    };
+
+    // A browser has no thread to put this on: the emscripten build is
+    // single-threaded and compiled without exceptions, so constructing a
+    // std::thread there does not fail -- it aborts the tab.
+    //
+    // Running it inline is safe there for a specific reason, not as a
+    // compromise: httpRequest() on emscripten is a stub that returns
+    // "signing in from the web build is not supported yet" without touching
+    // the network. There is nothing to block on, so there is no frame to
+    // stall. What the player gets is that sentence, which is the honest
+    // answer, instead of a tab that dies on the Join button.
+    //
+    // If web HTTP is ever implemented, this has to become asyncify-aware
+    // rather than staying inline -- a real request here WOULD stall the frame.
+#ifdef __EMSCRIPTEN__
+    fetchTicket();
+#else
+    if (joinWorker.joinable()) joinWorker.join();
+    joinWorker = std::thread(std::move(fetchTicket));
+#endif
     return;
 }
 
@@ -535,6 +572,12 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
             push(std::move(e));
             return;
         }
+        case NetMsg::ModMsgFrom: {
+            NetModMsg m;
+            if (!NetModMsg::decode(body, size, m)) return;
+            pushMod(std::move(m));
+            return;
+        }
         case NetMsg::ChatFrom: {
             NetSessionEvent e{NetSessionEvent::Kind::Chat};
             if (!NetChat::decode(body, size, e.chat)) return;
@@ -587,6 +630,13 @@ void NetSession::replySwap(uint16_t fromPeerId, bool accept) {
     m_impl->socket.send(netEncodeFrame(NetMsg::SwapReply, s.encode()));
 }
 
+void NetSession::withdrawOrders(uint32_t turnNumber) {
+    if (phase() != Phase::InGame || spectating()) return;
+    NetOrdersMsg o;
+    o.turnNumber = turnNumber;          // payload deliberately empty
+    m_impl->socket.send(netEncodeFrame(NetMsg::Withdraw, o.encode()));
+}
+
 void NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
     // A spectator's orders are discarded rather than merely ignored: not
     // sending them at all means there is nothing for a server to mishandle.
@@ -595,6 +645,24 @@ void NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& p
     o.turnNumber = turnNumber;
     o.payload = payload;
     m_impl->socket.send(netEncodeFrame(NetMsg::Orders, o.encode()));
+}
+
+void NetSession::sendModMessage(const std::string& modId, int32_t toPeer,
+                                const std::vector<uint8_t>& payload) {
+    if (payload.size() > NetLimits::kModMsg) return;
+    NetModMsg m;
+    m.modId  = modId;
+    m.peerId = toPeer < 0 ? NetModMsg::kBroadcast : (uint16_t)toPeer;
+    m.payload.assign(payload.begin(), payload.end());
+    m_impl->socket.send(netEncodeFrame(NetMsg::ModMsg, m.encode()));
+}
+
+bool NetSession::nextModMessage(NetModMsg& out) {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    if (m_impl->modInbox.empty()) return false;
+    out = std::move(m_impl->modInbox.front());
+    m_impl->modInbox.pop_front();
+    return true;
 }
 
 void NetSession::sendChat(const std::string& text) {

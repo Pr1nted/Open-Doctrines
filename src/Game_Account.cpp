@@ -139,9 +139,13 @@ void Game::openAccountMenu() {
     // A first visit tries the stored token. Only once per launch: retrying on
     // every visit would hammer the service when it is down, and the state we
     // already have is the right answer in the meantime.
+    // Startup already tried the stored token. This is only a retry for the
+    // case where the service was unreachable then -- not a second attempt on
+    // every visit, which would hammer a service that is down.
     if (!m_accountRestoreTried) {
         m_accountRestoreTried = true;
-        AccountClient::get().bootstrap();
+        if (AccountClient::get().status() == AccountClient::Status::SignedOut)
+            AccountClient::get().bootstrap();
     }
 }
 

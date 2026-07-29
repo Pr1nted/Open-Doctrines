@@ -1,0 +1,16 @@
+{
+  "title": "Old Maps",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.14,
+    "energy": 0.2,
+    "valence": -0.3
+  },
+  "weight": 1.0,
+  "$comment": "The faded end of the calm pool. Nothing is wrong yet -- this is not Cutting Costs -- but it is the only quiet piece that is not content, which is what a slow peace with the money tightening actually sounds like.  Editable source: data/audio/midi/Old Maps.mid"
+}

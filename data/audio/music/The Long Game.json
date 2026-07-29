@@ -1,0 +1,16 @@
+{
+  "title": "The Long Game",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.16,
+    "energy": 0.28,
+    "valence": 0.0
+  },
+  "weight": 1.0,
+  "$comment": "Patience with no lean either way -- the exact centre of peacetime, where most turns are actually spent. Trades off with The Long Peace, which is the same stretch felt as stasis rather than as strategy.  Editable source: data/audio/midi/The Long Game.mid"
+}

@@ -154,7 +154,16 @@ public:
     void offerSwap(uint16_t toPeerId);
     void replySwap(uint16_t fromPeerId, bool accept);
     void submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    /** "Not ready after all" -- retracts this turn's submission. */
+    void withdrawOrders(uint32_t turnNumber);
     void sendChat(const std::string& text);
+
+    /** Send a mod's message. `toPeer` below zero means everyone else. */
+    void sendModMessage(const std::string& modId, int32_t toPeer,
+                        const std::vector<uint8_t>& payload);
+
+    /** Take a mod message that arrived for this machine. */
+    bool nextModMessage(NetModMsg& out);
     void sendReady();
 
 private:

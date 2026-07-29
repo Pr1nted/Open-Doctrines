@@ -1,0 +1,16 @@
+{
+  "title": "Mobilization",
+  "author": "Pr1nted",
+  "contexts": [
+    "menu",
+    "game",
+    "editor"
+  ],
+  "mood": {
+    "tension": 0.5,
+    "energy": 0.86,
+    "valence": 0.25
+  },
+  "weight": 1.0,
+  "$comment": "The army paid for and not yet used. Navy and Arms is the build-up itself; this is the top of it -- highest energy of any peacetime track, which is only reached when heavy upkeep stacks with a recent war or a research push, i.e. a country visibly winding up.  Editable source: data/audio/midi/Mobilization.mid"
+}

@@ -16,6 +16,8 @@ const char* lobbyDenialText(LobbyDenial d) {
         case LobbyDenial::NoOffer:           return "That offer is no longer open.";
         case LobbyDenial::SessionFull:       return "This game is full.";
         case LobbyDenial::GameInProgress:    return "That game has already started.";
+        case LobbyDenial::Banned:
+            return "the host has barred you from this game";
         case LobbyDenial::IssuerNotAccepted: return "This server does not accept that account service.";
     }
     return "";
@@ -62,6 +64,9 @@ LobbyDenial Lobby::admit(uint16_t peerId, const std::string& psid,
                          const std::string& name, const std::string& badges,
                          const std::string& issuer, bool officialIssuer) {
     if (peerId == 0) return LobbyDenial::NoSuchPeer;
+    // Before the issuer check, before the reconnect path: a ban is about the
+    // person, and nothing they present should get them past it.
+    if (isBanned(psid)) return LobbyDenial::Banned;
     if (!issuerAccepted(issuer, officialIssuer)) return LobbyDenial::IssuerNotAccepted;
 
     // A psid we have seen is the same person coming back. Their country and
@@ -151,6 +156,51 @@ bool Lobby::releaseSeat(const std::string& psid) {
         return true;
     }
     return false;
+}
+
+void Lobby::ban(const std::string& psid) {
+    if (psid.empty()) return;
+    if (!isBanned(psid)) m_bans.push_back(psid);
+    // Remove them now as well: a ban that only took effect on their next
+    // attempt would leave the person sitting there.
+    for (auto it = m_members.begin(); it != m_members.end(); ++it) {
+        if (it->psid != psid) continue;
+        dropOffers(it->peerId);
+        m_members.erase(it);
+        return;
+    }
+}
+
+void Lobby::unban(const std::string& psid) {
+    for (auto it = m_bans.begin(); it != m_bans.end(); ++it) {
+        if (*it == psid) { m_bans.erase(it); return; }
+    }
+}
+
+bool Lobby::isBanned(const std::string& psid) const {
+    for (const auto& b : m_bans) if (b == psid) return true;
+    return false;
+}
+
+std::vector<const LobbyMember*> Lobby::spectators() const {
+    std::vector<const LobbyMember*> out;
+    for (const auto& m : m_members) if (m.spectator) out.push_back(&m);
+    return out;
+}
+
+LobbyDenial Lobby::seatSpectator(uint16_t peerId, uint16_t countryId) {
+    if (countryId == 0) return LobbyDenial::NoSuchCountry;
+    LobbyMember* me = mutableFind(peerId);
+    if (!me) return LobbyDenial::NoSuchPeer;
+    if (!me->spectator) return LobbyDenial::NotYours;
+    if (holderOf(countryId)) return LobbyDenial::CountryTaken;
+
+    me->spectator = false;
+    me->countryId = countryId;
+    // They arrive mid-turn owing orders like anybody else.
+    me->submitted = false;
+    me->orders.clear();
+    return LobbyDenial::None;
 }
 
 void Lobby::disconnect(uint16_t peerId) {
@@ -277,6 +327,19 @@ LobbyDenial Lobby::submitOrders(uint16_t peerId, uint32_t turnNumber,
     return LobbyDenial::None;
 }
 
+LobbyDenial Lobby::withdrawOrders(uint16_t peerId, uint32_t turnNumber) {
+    LobbyMember* me = mutableFind(peerId);
+    if (!me) return LobbyDenial::NoSuchPeer;
+    if (me->spectator) return LobbyDenial::Spectator;
+    // Not ready for a turn that already went is not a thing to be.
+    if (!me->submitted || me->submittedTurn != turnNumber)
+        return LobbyDenial::NotInLobby;
+
+    me->submitted = false;
+    me->orders.clear();
+    return LobbyDenial::None;
+}
+
 LobbyDenial Lobby::markMalformed(uint16_t peerId, uint32_t turnNumber) {
     LobbyMember* me = mutableFind(peerId);
     if (!me) return LobbyDenial::NoSuchPeer;
@@ -317,18 +380,35 @@ std::vector<uint16_t> Lobby::missingSubmissions(uint32_t turnNumber) const {
 
 // ------------------------------------------------------------------ state ----
 
-bool Lobby::start(std::string& why) {
+std::vector<std::string> Lobby::stillChoosing() const {
+    std::vector<std::string> out;
+    for (const auto& m : m_members) {
+        if (m.spectator || m.countryId != 0) continue;
+        out.push_back(m.name.empty() ? "someone" : m.name);
+    }
+    return out;
+}
+
+bool Lobby::start(std::string& why, bool force) {
     if (m_state != NetSessionState::Lobby) {
         why = "The game has already started.";
         return false;
     }
-    for (const auto& m : m_members) {
-        if (m.spectator) continue;
-        if (m.countryId == 0) {
-            why = m.name.empty() ? "Someone has not picked a country yet."
-                                 : m.name + " has not picked a country yet.";
-            return false;
+    if (!force) {
+        for (const auto& m : m_members) {
+            if (m.spectator) continue;
+            if (m.countryId == 0) {
+                why = m.name.empty() ? "Someone has not picked a country yet."
+                                     : m.name + " has not picked a country yet.";
+                return false;
+            }
         }
+    } else {
+        // Left behind, but watching rather than stranded: a countryless player
+        // would otherwise be counted every turn as somebody the game is waiting
+        // for, and they have nothing to submit.
+        for (auto& m : m_members)
+            if (!m.spectator && m.countryId == 0) m.spectator = true;
     }
     m_state = NetSessionState::Game;
     m_offers.clear();

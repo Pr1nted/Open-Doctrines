@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.bridge-check",
+  "name": "Bridge Check",
+  "version": "1.0.0",
+  "description": "Playtest probe: shows whether the Net and Audio bridges are actually wired.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI", "Net", "Audio"],
+  "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
+}
