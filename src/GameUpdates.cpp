@@ -14,6 +14,13 @@
 #include "miniz_zip.h"
 
 #if defined(_WIN32)
+// NOMINMAX before windows.h, always. Without it windows.h defines `min` and
+// `max` as MACROS, and the next `std::min(100LL, ...)` in this file expands
+// into something that is not valid C++ -- reported as "syntax error: ')' was
+// unexpected here", pointing at a line with no obvious problem.
+// WIN32_LEAN_AND_MEAN drops the GDI/USER/socket headers nothing here wants.
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 #include <fcntl.h>

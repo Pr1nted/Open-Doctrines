@@ -13,6 +13,11 @@
 #ifndef _WIN32
 #include <dirent.h>
 #else
+// NOMINMAX / WIN32_LEAN_AND_MEAN for the same reasons as GameUpdates.cpp:
+// windows.h otherwise defines min/max as macros and drags in the GDI and
+// USER headers, whose Rectangle and DrawText collide with raylib's.
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 

@@ -25,15 +25,18 @@
 #include <direct.h>
 #endif
 #include <sys/stat.h>
-#ifndef _WIN32
-#endif
 #include <ctime>
 #include <random>
 #include <thread>
 #include <deque>
-#ifdef _WIN32
-#include <windows.h>
-#elif !defined(__EMSCRIPTEN__)
+// NO <windows.h> here, deliberately. Nothing in this file uses a Win32 API,
+// and including it is actively harmful: winuser.h defines DrawText as a macro
+// expanding to DrawTextA, and wingdi.h declares a function called Rectangle.
+// Both collide head-on with raylib's DrawText() and its Rectangle struct, and
+// this file is full of them -- so on Windows every such line failed with
+// "cannot convert argument 1 from 'const char *' to 'HDC'" and
+// "'Rectangle': redefinition; different type modifiers".
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
 #include "GameInternals.h"

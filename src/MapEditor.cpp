@@ -35,8 +35,19 @@
 
 namespace fs = std::filesystem;
 
-static bool dirExists(const std::string& p) { struct stat st; return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode); }
-static bool createDir(const std::string& p) { return mkdir(p.c_str(), 0755) == 0 || errno == EEXIST; }
+// std::filesystem rather than stat/S_ISDIR/mkdir: MSVC has none of those three
+// spellings (it offers _stat, _S_IFDIR and _mkdir instead), so this pair was a
+// Windows build failure on its own. create_directories also succeeds when the
+// directory already exists, which is what the errno == EEXIST check was for.
+static bool dirExists(const std::string& p) {
+    std::error_code ec;
+    return fs::is_directory(p, ec);
+}
+static bool createDir(const std::string& p) {
+    std::error_code ec;
+    fs::create_directories(p, ec);
+    return fs::is_directory(p, ec);
+}
 static Rectangle Rect(float x, float y, float w, float h) { return {x, y, w, h}; }
 
 static const Color ACCENT = {255, 215, 0, 255};  // Gold accent
