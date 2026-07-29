@@ -1,5 +1,22 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Set BEFORE project(), which is the only place it takes effect.
+#
+# Without this the binary's minimum OS is whatever SDK the build machine
+# happens to have, and nothing warns you. A build here produced a binary
+# stamped `minos 26.0` while Info.plist advertised LSMinimumSystemVersion 11.0
+# -- so the app store page said Big Sur and the executable refused to launch on
+# anything below macOS 26. CI would have shipped a different (equally wrong)
+# floor again, set by the runner image rather than by any decision.
+#
+# 11.0 because that is what Info.plist has always claimed, and because it is
+# the first release on Apple Silicon: below it there is no arm64 build to want.
+# Raising it is a deliberate choice to drop machines, so it belongs here in one
+# place next to the version, not in whatever Xcode a contributor installed.
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+endif()
+
 # The version lives in one file, ./VERSION, in the form MAJOR.MINOR.PATCH plus a
 # state letter (a alpha, b beta, r release, s snapshot, optionally followed by a
 # snapshot counter). tools/release.py is the only thing that edits it.
