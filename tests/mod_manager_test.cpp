@@ -15,7 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
-#include <dirent.h>
+#include <filesystem>
 #include <sys/stat.h>
 #include <vector>
 
@@ -131,13 +131,13 @@ int main(int argc, char** argv) {
     // it goes, so without this the second run finds the first run's leftovers
     // and the "empty directory" precondition below fails -- a stale-state
     // failure that looks like a real one.
-    if (DIR* d = opendir(dir.c_str())) {
-        while (dirent* ent = readdir(d)) {
-            std::string n = ent->d_name;
+    {   // std::filesystem: MSVC has no dirent.h. See mod_examples_test.cpp.
+        std::error_code ec;
+        for (const auto& ent : std::filesystem::directory_iterator(dir, ec)) {
+            const std::string n = ent.path().filename().string();
             if (n.size() > 6 && n.compare(n.size() - 6, 6, ".odmod") == 0)
                 ::remove((dir + "/" + n).c_str());
         }
-        closedir(d);
     }
     ::remove(state.c_str());
     for (const char* f : {"com.test.core.odmod", "com.test.ui.odmod",

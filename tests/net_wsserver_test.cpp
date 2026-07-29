@@ -160,13 +160,28 @@ void testResponse() {
 
 #include "net/WsServer.h"
 
-#include <arpa/inet.h>
 #include <chrono>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+
+// The same split WsServer.cpp uses, for the same reason: MSVC has none of the
+// POSIX socket headers, and this file could not compile on Windows at all.
+// Kept deliberately identical to the server's so the two cannot drift.
+#ifdef _WIN32
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  using SocketFd = SOCKET;
+  #define OD_BAD_SOCKET   INVALID_SOCKET
+  #define OD_CLOSE_SOCKET closesocket
+#else
+  #include <arpa/inet.h>
+  #include <netinet/in.h>
+  #include <sys/socket.h>
+  #include <unistd.h>
+  using SocketFd = int;
+  #define OD_BAD_SOCKET   (-1)
+  #define OD_CLOSE_SOCKET ::close
+#endif
 
 namespace {
 
@@ -177,14 +192,15 @@ constexpr int kQuiet = 0;
 #endif
 
 struct RawClient {
-    int fd = -1;
+    SocketFd fd = OD_BAD_SOCKET;
 
     bool connectTo(uint16_t port) {
         fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) return false;
+        if (fd == OD_BAD_SOCKET) return false;
 #ifdef SO_NOSIGPIPE
         int one = 1;
-        ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+        ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE,
+                     reinterpret_cast<const char*>(&one), sizeof(one));
 #endif
         sockaddr_in a{};
         a.sin_family = AF_INET;
@@ -194,8 +210,14 @@ struct RawClient {
     }
     // The server closes on a refusal, so these writes can hit a dead socket.
     // That must not kill the test process; see MSG_NOSIGNAL in WsServer.cpp.
-    void write(const std::string& s) { ::send(fd, s.data(), s.size(), kQuiet); }
-    void write(const std::vector<uint8_t>& v) { ::send(fd, v.data(), v.size(), kQuiet); }
+    void write(const std::string& s) {
+        ::send(fd, s.data(), static_cast<int>(s.size()), kQuiet);
+    }
+    void write(const std::vector<uint8_t>& v) {
+        // Winsock wants char*, and an int length rather than size_t.
+        ::send(fd, reinterpret_cast<const char*>(v.data()),
+               static_cast<int>(v.size()), kQuiet);
+    }
 
     /** Read whatever has arrived, with a bounded wait. */
     std::string read(int ms = 400) {
@@ -204,16 +226,26 @@ struct RawClient {
                               std::chrono::milliseconds(ms);
         while (std::chrono::steady_clock::now() < deadline) {
             char buf[4096];
+            // SO_RCVTIMEO is a DWORD of milliseconds on Winsock and a
+            // struct timeval everywhere else. Same 20 ms either way.
+#ifdef _WIN32
+            DWORD tv = 20;
+            ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+                         reinterpret_cast<const char*>(&tv), sizeof(tv));
+#else
             timeval tv{0, 20000};
             ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-            const auto rc = ::recv(fd, buf, sizeof(buf), 0);
+#endif
+            const auto rc = ::recv(fd, buf, static_cast<int>(sizeof(buf)), 0);
             if (rc > 0) out.append(buf, static_cast<size_t>(rc));
             else if (rc == 0) break;
             if (!out.empty() && out.size() < 4096) break;
         }
         return out;
     }
-    void close() { if (fd >= 0) { ::close(fd); fd = -1; } }
+    void close() {
+        if (fd != OD_BAD_SOCKET) { OD_CLOSE_SOCKET(fd); fd = OD_BAD_SOCKET; }
+    }
     ~RawClient() { close(); }
 };
 

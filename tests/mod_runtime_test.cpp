@@ -18,7 +18,7 @@
 #include <limits>
 #include <fstream>
 #include <string>
-#include <dirent.h>
+#include <filesystem>
 #include <sys/stat.h>
 #include <vector>
 
@@ -402,13 +402,13 @@ int main(int argc, char** argv) {
         // Start from an empty directory. Storage is persistent by design, so
         // without this the second run of the suite would load the first run's
         // files and the namespacing checks below would read as failures.
-        if (DIR* d = opendir(dir.c_str())) {
-            while (dirent* ent = readdir(d)) {
-                std::string n = ent->d_name;
+        {   // std::filesystem: MSVC has no dirent.h. See mod_examples_test.cpp.
+            std::error_code ec;
+            for (const auto& ent : std::filesystem::directory_iterator(dir, ec)) {
+                const std::string n = ent.path().filename().string();
                 if (n.size() > 3 && n.compare(n.size() - 3, 3, ".kv") == 0)
                     ::remove((dir + "/" + n).c_str());
             }
-            closedir(d);
         }
         ModStorage& st = ModStorage::get();
         st.clear();

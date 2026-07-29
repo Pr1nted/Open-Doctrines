@@ -19,7 +19,15 @@ step "build test targets"
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
       ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
-      >/dev/null || { echo "build failed"; exit 1; }
+      > "$build/test-targets-build.log" 2>&1 || {
+    # Not >/dev/null. Suppressing this meant a compile error on a platform
+    # nobody had built the tests on reported itself as the word "build failed"
+    # and nothing else -- one line, no file, no reason.
+    echo "build failed:"
+    grep -iE 'error|fatal' "$build/test-targets-build.log" | head -20
+    echo "  (full log: $build/test-targets-build.log)"
+    exit 1
+}
 
 # Where the test EXECUTABLES ended up, which is not always the build directory.
 # A multi-config generator writes build/Release/, so every "$build/SomeTest"

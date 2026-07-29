@@ -624,6 +624,13 @@ add_executable(NetWsServerTest EXCLUDE_FROM_ALL
 )
 target_include_directories(NetWsServerTest PRIVATE src tests)
 target_compile_definitions(NetWsServerTest PRIVATE OD_ENABLE_NET=1)
+if(WIN32)
+    # ws2_32 explicitly. The GAME gets it transitively through mbedTLS, which
+    # is why nothing noticed it was missing here -- this target links no
+    # libraries at all, so on Windows every socket call in WsServer.cpp and in
+    # the test's own loopback client is an unresolved symbol.
+    target_link_libraries(NetWsServerTest ws2_32)
+endif()
 
 # --- lobby rules ---
 # Pure logic: no sockets, no renderer, no game headers. Almost every case is a

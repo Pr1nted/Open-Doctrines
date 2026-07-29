@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <dirent.h>
+#include <filesystem>
 #include <string>
 #include <sys/stat.h>
 #include <vector>
@@ -145,20 +145,18 @@ bool isFastInterpLimit(const std::string& err) {
 }
 
 void findOdmods(const std::string& dir, std::vector<std::string>& out) {
-    DIR* d = opendir(dir.c_str());
-    if (!d) return;
-    while (dirent* e = readdir(d)) {
-        std::string n = e->d_name;
-        if (n == "." || n == "..") continue;
+    // std::filesystem, not dirent.h: MSVC has no such header, so this file
+    // could not compile on Windows at all. "." and ".." are never yielded, so
+    // the skips readdir needed are gone rather than merely unnecessary.
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string n = e.path().filename().string();
         if (n == "node_modules" || n == "target" || n == ".build") continue;
-        std::string p = dir + "/" + n;
-        struct stat st;
-        if (stat(p.c_str(), &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) findOdmods(p, out);
+        const std::string p = dir + "/" + n;
+        if (e.is_directory()) findOdmods(p, out);
         else if (n.size() > 6 && n.compare(n.size() - 6, 6, ".odmod") == 0)
             out.push_back(p);
     }
-    closedir(d);
 }
 
 std::string shortLabel(const std::string& path, const std::string& sdk) {
