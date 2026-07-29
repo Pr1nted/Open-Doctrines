@@ -112,6 +112,61 @@ tools/gearbox build my-mod      # compile, pack and verify -> my-mod.odmod
 [ABI reference](docs/gearbox-abi.md) ·
 [Troubleshooting](docs/gearbox-troubleshooting.md)
 
+## Installing
+
+### macOS — the first launch needs one extra step
+
+The app is **not signed with an Apple Developer ID**, because the project does
+not pay for one. macOS therefore refuses to open it the first time:
+
+> **"OpenDoctrines" cannot be opened because the developer cannot be verified.**
+
+That is Gatekeeper doing its job. It is telling you truthfully that Apple has
+not vouched for this app — not that anything is wrong with it. You get to make
+that call yourself, once:
+
+**Right-click the app → Open → Open.**
+
+Not double-click. Double-clicking gives you the refusal with no way past it;
+right-click → Open gives you the same dialog with an **Open** button on it.
+macOS remembers the decision, so every launch after the first is normal.
+
+If macOS says the app is *"damaged and can't be opened"*, that is a different
+message with a different cause: the download picked up a quarantine flag that
+survived being unzipped. Clear it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/OpenDoctrines.app
+```
+
+**On macOS the game does not update itself**, for the same reason. A replaced
+binary would not carry the approval you just granted, so the update would break
+the install; the update button opens the releases page and you install the new
+copy the way you installed this one.
+
+Requires **macOS 11 (Big Sur) or later**, Apple Silicon or Intel.
+
+### Linux
+
+Requires **glibc 2.35 or newer** — Ubuntu 22.04, Debian 12, Fedora 36 and
+anything more recent. The published binary is built on Ubuntu 22.04, and a glibc
+binary does not run on an older glibc than it was built against, so Ubuntu 20.04,
+Debian 11 and RHEL 9 need a build from source rather than the download. Building
+from source works fine on all of them.
+
+You also need the runtime libraries raylib links against — X11, ALSA and GL.
+Every mainstream desktop install already has them; a minimal or headless install
+may not.
+
+Only **x86_64** is published. Arm Linux builds from source; GitHub hosts no Arm
+Linux runner, so there is no artifact for it.
+
+### Windows
+
+Requires **Windows 10 or later**, 64-bit. The build is unsigned, so SmartScreen
+will show *"Windows protected your PC"* on first run — **More info → Run
+anyway**.
+
 ## Building
 
 Needs CMake 3.20+ and a C++20 compiler. Everything else is fetched or vendored.
