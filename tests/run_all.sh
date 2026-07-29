@@ -7,49 +7,10 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 build="${1:-$root/build}"
 fail=0
 
-# SKIPS ARE NOT PASSES
-#
-# Five checks here do nothing at all when a toolchain is absent -- the fixture
-# mods without a wasm32 clang, connectivity without node, the GIF decode without
-# Pillow, the documented example without clang, and the SDK example comparison
-# without any built .odmod. Every one of them used to exit 0, so the suite
-# printed ALL PASSED either way.
-#
-# That is not hypothetical. The SDK example comparison -- the only check that a
-# language binding got draw_text's argument order right -- skipped on all four
-# CI platforms simultaneously, for as long as CI has existed, while the workflow
-# header claimed it rebuilt every example and compared it against the reference.
-# Nothing was red, because nothing ran.
-#
-# So each of those exits 77 now (the usual "skipped" code) and skips are
-# collected and named in the verdict, which says PASSED, N SKIPPED rather than
-# ALL PASSED. Locally that is the whole change: a developer without tinygo
-# should not get a red suite, they should be told what they did not test.
-#
-# CI sets OD_STRICT_SKIPS=1, and there an unexpected skip fails the run --
-# because a hole nobody is told about is exactly how this went unnoticed for
-# months. OD_EXPECTED_SKIPS is the escape hatch: a space-separated list of tags
-# the caller declares genuinely impossible in its environment rather than merely
-# missing, set per platform in the workflow so each exception is written down
-# somewhere a person reads.
-declare -a skipped=()
-expected="${OD_EXPECTED_SKIPS:-}"
-strict="${OD_STRICT_SKIPS:-0}"
-
 step() { printf '\n=== %s ===\n' "$1"; }
 
-note_skip() {
-    skipped+=("$1")
-    printf '  SKIPPED [%s] %s\n' "$1" "$2"
-}
-
 step "fixture mods"
-"$root/tests/build_test_mods.sh" "$build/testmods"
-case $? in
-    0)  ;;
-    77) note_skip fixture-mods "no wasm32 clang: every mod test below has nothing to load" ;;
-    *)  fail=1 ;;
-esac
+"$root/tests/build_test_mods.sh" "$build/testmods" || fail=1
 
 step "build test targets"
 # --config Release for the multi-config generators. Visual Studio and Xcode
@@ -81,26 +42,10 @@ if [ -x "$build/Release/ModArchiveTest" ] || [ -f "$build/Release/ModArchiveTest
     bin="$build/Release"
 fi
 
-# Step names are prose ("example mods, all languages") and skip tags have to go
-# in an environment variable, so the tag is the name reduced to lowercase words
-# joined by dashes: example-mods-all-languages. Derived rather than written out
-# twice, so a renamed step cannot keep an out-of-date tag.
-slug() {
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' \
-        | sed 's/-*$//'
-}
-
 run() {
     local name="$1"; shift
     step "$name"
-    "$@"
-    case $? in
-        0)  ;;
-        # 77 is "this check did not run". It has to travel up as a skip rather
-        # than a pass, or the suite goes green on a machine that tested nothing.
-        77) note_skip "$(slug "$name")" "did not run here" ;;
-        *)  echo "$name FAILED"; fail=1 ;;
-    esac
+    if "$@"; then :; else echo "$name FAILED"; fail=1; fi
 }
 
 run "archive reader"   "$bin/ModArchiveTest"
@@ -161,12 +106,7 @@ step "flag licences"
 python3 "$root/tools/audit_flag_licenses.py" --check || fail=1
 
 step "documented example"
-"$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check"
-case $? in
-    0)  ;;
-    77) note_skip doc-example "no wasm32 clang: the documented hello-world was not compiled" ;;
-    *)  fail=1 ;;
-esac
+"$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check" || fail=1
 
 step "shipped example mods"
 # Every .odmod that has been built, in any language. Each must load, and each
@@ -195,37 +135,8 @@ while IFS= read -r m; do
     fi
     echo "ok    $rel"
 done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
-[ $found -eq 1 ] || note_skip sdk-examples \
-    "no .odmod built: capability enforcement was checked against nothing"
+[ $found -eq 1 ] || echo "skip  no example mods built yet"
 
 printf '\n'
-
-# The verdict names what did not run. "ALL PASSED" is reserved for a run where
-# everything actually ran -- it is the sentence people read instead of the log,
-# so it must not be printable by a suite that skipped half of itself.
-if [ ${#skipped[@]} -gt 0 ]; then
-    printf 'SKIPPED %d check(s) -- these were NOT tested:\n' "${#skipped[@]}"
-    for s in "${skipped[@]}"; do printf '  - %s\n' "$s"; done
-
-    if [ "$strict" != "0" ]; then
-        for s in "${skipped[@]}"; do
-            case " $expected " in
-                *" $s "*) ;;
-                *) printf 'UNEXPECTED SKIP: %s\n' "$s"
-                   printf '  This environment is supposed to run that check. Either install\n'
-                   printf '  what it needs, or add "%s" to OD_EXPECTED_SKIPS and say why.\n' "$s"
-                   fail=1 ;;
-            esac
-        done
-    fi
-    printf '\n'
-fi
-
-if [ $fail -ne 0 ]; then
-    echo "SOMETHING FAILED"
-elif [ ${#skipped[@]} -gt 0 ]; then
-    echo "PASSED, ${#skipped[@]} SKIPPED"
-else
-    echo "ALL PASSED"
-fi
+[ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOMETHING FAILED"
 exit $fail

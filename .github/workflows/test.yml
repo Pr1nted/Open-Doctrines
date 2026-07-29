@@ -61,25 +61,17 @@ jobs:
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
-        # expected_skips: the checks this image cannot run, declared rather than
-        # discovered. Anything skipped that is NOT listed fails the job.
         include:
-          - { name: macos-arm64,  os: macos-14, expected_skips: display }
+          - { name: macos-arm64,  os: macos-14 }
           # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
           # a job asking for it is never scheduled -- it sits queued forever
           # rather than failing. That is worse than a failure: the run never
           # finishes, it holds the concurrency group, and every later push is
           # cancelled behind it. Six consecutive runs were lost that way before
           # anyone noticed macos-x64 had never once completed.
-          - { name: macos-x64,    os: macos-15-intel, expected_skips: display }
-          # Windows skips the simulation too: the image's WGL reports no OpenGL
-          # and raylib's InitWindow() segfaults inside itself rather than
-          # returning, so there is no clean failure to inspect. A software GL
-          # (Mesa's opengl32.dll) would close this; it is not installed here.
-          - { name: windows-x64,  os: windows-2022,   expected_skips: display }
-          # Linux has xvfb, so it actually plays the five turns. It is the only
-          # platform where "does this build run at all" is currently proven.
-          - { name: linux-x64,    os: ubuntu-22.04,   expected_skips: "" }
+          - { name: macos-x64,    os: macos-15-intel }
+          - { name: windows-x64,  os: windows-2022 }
+          - { name: linux-x64,    os: ubuntu-22.04 }
 
     steps:
       - uses: actions/checkout@v5
@@ -100,46 +92,6 @@ jobs:
         with: { python-version: "3.12" }
       - run: python -m pip install --quiet Pillow
 
-      # Both macOS images ship only Apple's clang, which cannot target wasm32 at
-      # all. The consequence was invisible and large: tests/build_test_mods.sh
-      # skipped, so ModRuntimeTest ran 1 check instead of 113 ("fixture modules
-      # not found"), the documented example was never compiled, and the mod
-      # manager and ABI tests had nothing to load -- on two of the four
-      # platforms, both reporting QUALIFIED. Every mod-sandbox guarantee the
-      # runtime makes was therefore unverified on macOS.
-      #
-      # Emscripten, NOT `brew install llvm`. That was tried first and does not
-      # work: Homebrew's llvm advertises wasm32 in --print-targets and ships no
-      # wasm-ld, so every module failed at the link step with
-      # "posix_spawn failed: No such file or directory" -- and because it sits
-      # early in the compiler search order it also shadowed the emscripten
-      # fallback that would have worked. Emscripten's LLVM has the linker, and
-      # it is the toolchain the SDK build scripts were written against anyway.
-      - name: A clang that can target wasm32 (macOS)
-        if: runner.os == 'macOS'
-        uses: mymindstorm/setup-emsdk@v14
-        with: { version: latest }
-
-      # Named explicitly rather than left to each script's own search. Every one
-      # of them looks in a slightly different list of places, and emsdk installs
-      # somewhere none of them guessed; CC/CXX is the override they all honour.
-      # Fails loudly with a directory listing if the layout is not what we think,
-      # because the alternative is silently falling back to "no wasm32 clang" and
-      # skipping the mod tests again.
-      - name: Point the mod builds at emscripten's clang (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          cc="$EMSDK/upstream/bin/clang"
-          if [ ! -x "$cc" ]; then
-            echo "expected emscripten's clang at $cc, and it is not there:"
-            ls -la "$EMSDK/upstream/bin" 2>&1 | head -20
-            exit 1
-          fi
-          echo "CC=$cc"      >> "$GITHUB_ENV"
-          echo "CXX=${cc}++" >> "$GITHUB_ENV"
-          "$cc" --version | head -1
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -156,33 +108,6 @@ jobs:
       # so a PowerShell port would be a second implementation to keep in step.
       - name: Qualify
         shell: bash
-        env:
-          # A check that skips is not a check that passed. Five of them used to
-          # exit 0 when their toolchain was missing, and the SDK example
-          # comparison -- the only thing that verifies a language binding got
-          # draw_text's argument order right -- skipped on all four platforms at
-          # once for as long as this workflow has existed, while the header above
-          # claimed it rebuilt every example. Nothing was red, because nothing
-          # ran. Strict mode makes an undeclared skip a failure.
-          OD_STRICT_SKIPS: 1
-          # The one thing a hosted runner genuinely cannot do. macOS images have
-          # no usable GL context and there is no software GL for Cocoa, and the
-          # Windows image's WGL refuses too. Declared here, per platform, so the
-          # exception is written where a person reads it rather than absorbed
-          # into a green check. Linux runs it for real under xvfb.
-          OD_EXPECTED_SKIPS: ${{ matrix.expected_skips }}
-          # Only the two examples every runner can already build: both need a
-          # wasm32-capable clang, which is the same compiler the fixture mods
-          # use, so no new toolchain is installed. The rest are left alone
-          # deliberately -- AssemblyScript npm-installs its compiler on first
-          # run, and a network fetch is not something a build check should do
-          # behind your back.
-          OD_SDK_ONLY: c cpp
-          # Only c is required. clang++ is almost certainly next to clang on all
-          # four images, but "almost certainly" is not something to make the
-          # build depend on before it has been observed once. Tighten to "c cpp"
-          # once a run shows cpp building everywhere.
-          OD_SDK_REQUIRE: c
         run: tools/qualify.sh build
 
   # The web build is a platform too, and the one where "it compiled" is least

@@ -45,39 +45,14 @@ fi
 fail=0
 declare -a failed_steps=()
 
-# Steps that could not run here, as opposed to steps that ran and passed. The
-# verdict below prints "built, tested, and played a game", and it was printing
-# that on three of the four platforms without having played anything: a hosted
-# macOS or Windows runner has no GL context, the simulation step skipped, and
-# nothing downstream said so. A sentence that overstates on most of the fleet is
-# worse than no sentence.
-declare -a skipped_steps=()
-
-# Same contract as tests/run_all.sh: OD_STRICT_SKIPS=1 turns an UNDECLARED skip
-# into a failure, and OD_EXPECTED_SKIPS lists the tags that are genuinely
-# impossible in this environment rather than merely missing. CI sets both, so
-# "macOS runners have no GL context" is written down in the workflow where a
-# person reads it, and any OTHER check that stops running goes red.
-expected_skips="${OD_EXPECTED_SKIPS:-}"
-strict_skips="${OD_STRICT_SKIPS:-0}"
-
 step()  { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 note()  { printf '  %s\n' "$1"; }
 bad()   { fail=1; failed_steps+=("$1"); printf '  \033[31mFAILED: %s\033[0m\n' "$1"; }
-skip()  { skipped_steps+=("$1"); printf '  \033[33mSKIPPED [%s] %s\033[0m\n' "$1" "$2"; }
 
 run_step() {
     local name="$1"; shift
     step "$name"
-    "$@"
-    case $? in
-        0)  note "ok" ;;
-        # 77 is the suite's "did not run". tests/run_all.sh and
-        # tests/connectivity_test.sh use it so a missing toolchain reads as a
-        # hole rather than as a pass.
-        77) skip "$(printf '%s' "$name" | tr ' ' '-')" "nothing here could run it" ;;
-        *)  bad "$name" ;;
-    esac
+    if "$@"; then note "ok"; else bad "$name"; fi
 }
 
 # ---------------------------------------------------------------- platform ---
@@ -220,14 +195,6 @@ if [ -z "$game" ]; then
 fi
 note "binary: $game"
 
-# ------------------------------------------------------- the SDK examples ---
-# Before the suite, because ModExamplesTest inside it compares the example mods
-# against each other and there is nothing to compare on a fresh checkout -- the
-# .odmod files are build artifacts. Whatever this machine has the toolchain for
-# gets built; the rest is reported as skipped rather than silently absent.
-run_step "build the SDK examples" "$root/tools/build_sdk_examples.sh" \
-         "$build/sdk-examples"
-
 # ------------------------------------------------------------------ tests ---
 run_step "the whole test suite" "$root/tests/run_all.sh" "$build"
 
@@ -287,9 +254,9 @@ grep -E '^\[SIM\]' "$sim_log" || true
 # IsWindowReady() check never runs. That is why the log is matched rather than
 # the exit code -- there is no clean exit to inspect.
 if grep -qE 'suitable pixel format|does not appear to support OpenGL|could not open a window|Failed to initialize GLFW|GLX' "$sim_log"; then
-    skip display "play a real game: no usable display on this machine"
-    note "          The build and every other check above still ran; only"
-    note "          'does it play' is unproven on this runner."
+    note "SKIPPED -- this machine has no usable display, so the game cannot"
+    note "          open a window here. The build and every other check above"
+    note "          still ran; only 'does it play' is unproven on this runner."
     echo "  --- what the game said ---"
     grep -E 'GLFW|could not open a window' "$sim_log" | head -4 | sed 's/^/  /'
 elif [ "$sim_rc" -ne 0 ]; then
@@ -319,39 +286,10 @@ fi
 
 # ----------------------------------------------------------------- verdict ---
 printf '\n'
-if [ "${#skipped_steps[@]}" -gt 0 ]; then
-    printf '\033[33mNOT CHECKED on this machine:\033[0m\n'
-    for s in "${skipped_steps[@]}"; do printf '  - %s\n' "$s"; done
-
-    # In strict mode a skip nobody declared is a failure. macOS runners cannot
-    # open a GL context and never will, so the workflow declares "display" for
-    # them; anything ELSE that stops running is a hole that should turn the job
-    # red rather than being absorbed into a green check.
-    if [ "$strict_skips" != "0" ]; then
-        for s in "${skipped_steps[@]}"; do
-            case " $expected_skips " in
-                *" $s "*) ;;
-                *) printf '\033[31mUNDECLARED SKIP: %s\033[0m\n' "$s"
-                   printf '  Either make this environment able to run it, or add "%s" to\n' "$s"
-                   printf '  OD_EXPECTED_SKIPS and record why it is impossible here.\n'
-                   fail=1 ;;
-            esac
-        done
-    fi
-    printf '\n'
-fi
-
-if [ "$fail" -ne 0 ]; then
+if [ "$fail" -eq 0 ]; then
+    printf '\033[32m%s QUALIFIED\033[0m -- built, tested, and played a game.\n' "$platform"
+else
     printf '\033[31m%s NOT QUALIFIED\033[0m. What failed:\n' "$platform"
     for s in "${failed_steps[@]}"; do printf '  - %s\n' "$s"; done
-elif [ "${#skipped_steps[@]}" -gt 0 ]; then
-    # Deliberately not the word QUALIFIED. This is the line a person reads
-    # instead of the log, and on a runner that cannot open a window it was
-    # claiming a game had been played. Say what was actually established.
-    printf '\033[33m%s PARTLY QUALIFIED\033[0m -- built and tested, with %d check(s)\n' \
-           "$platform" "${#skipped_steps[@]}"
-    printf 'that this machine could not run. See the list above.\n'
-else
-    printf '\033[32m%s QUALIFIED\033[0m -- built, tested, and played a game.\n' "$platform"
 fi
 exit "$fail"

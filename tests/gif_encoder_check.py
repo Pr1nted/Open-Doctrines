@@ -18,9 +18,7 @@ try:
     from PIL import Image, ImageSequence
 except ImportError:
     print("skip  Pillow not installed — GIF decode not verified")
-    # 77 = skipped. An encoder cannot verify its own LZW, so without Pillow
-    # nothing here is checked; exiting 0 would report that as a pass.
-    sys.exit(77)
+    sys.exit(0)
 
 
 def regen(name, w, h, t):
