@@ -518,12 +518,9 @@ static void unloadBorderTexture(Texture2D& tex) {
 
 bool Game::init(int screenW, int screenH, const char* title) {
 #ifdef __EMSCRIPTEN__
-    emscripten_run_script("console.log('[OD] Game::init() entered')");
     // On Emscripten, GetApplicationDirectory() returns a URL, not a filesystem path.
     // Data is preloaded into the virtual FS at /data/ via --preload-file.
     m_dataDir = "/data/";
-    // Debug: list preloaded files
-    emscripten_run_script("try { var dir = FS.readdir('/data/'); console.log('[OD] /data/ contents: ' + JSON.stringify(dir)); } catch(e) { console.log('[OD] Failed to read /data/: ' + e.toString()); }");
 #else
     std::string appDir = GetApplicationDirectory();
     m_dataDir = appDir + "../data/";
@@ -632,15 +629,28 @@ bool Game::init(int screenW, int screenH, const char* title) {
         "var c=document.getElementById('canvas');"
         "if(c){c.style.width='100vw';c.style.height='100vh';}"
     );
+
+    // KNOWN BUG, not yet fixed: on first load the game renders into a ~400x300
+    // corner of a full-size canvas. It becomes correct the moment the window is
+    // resized, because that runs the IsWindowResized() path in run(), which
+    // recomputes everything properly. Nobody resizes a window they have just
+    // opened, so this is only ever visible on the first screen a player sees.
+    //
+    // What has been ruled out, so the next attempt does not start from zero:
+    //   - the canvas element is fine. Framebuffer and CSS size both match
+    //     window.innerWidth/innerHeight, and devicePixelRatio is 1.
+    //   - emscripten_set_canvas_element_size() + SetWindowSize() here does NOT
+    //     help: GetScreenWidth() immediately afterwards still returns raylib's
+    //     cached size, so raylib's GL viewport stays at the old dimensions.
+    //   - dispatching a synthetic window 'resize' event does NOT help either;
+    //     raylib registers an emscripten resize callback that appears not to
+    //     act on untrusted events. A real user resize does work.
+    //
+    // So the fix likely belongs in the frame loop -- comparing the canvas size
+    // against m_screenW each frame and driving the existing resize path when
+    // they disagree -- rather than in this one-shot init.
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
-    emscripten_run_script(
-        "(function(){"
-        "var c=document.getElementById('canvas');"
-        "console.log('[OD] canvas:',c?'element='+c.width+'x'+c.height+' css='+c.clientWidth+'x'+c.clientHeight:'NO CANVAS');"
-        "console.log('[OD] window.inner:',window.innerWidth+'x'+window.innerHeight);"
-        "})()"
-    );
     TraceLog(LOG_INFO, ("[OD] GetScreen: " + std::to_string(GetScreenWidth()) + "x" + std::to_string(GetScreenHeight())).c_str());
     TraceLog(LOG_INFO, ("[OD] m_screen: " + std::to_string(m_screenW) + "x" + std::to_string(m_screenH)).c_str());
 #endif
@@ -738,10 +748,9 @@ bool Game::init(int screenW, int screenH, const char* title) {
 
     loadCredits();
 
+    // Reaches the browser console too: emscripten routes stdout to console.log,
+    // which is why none of these need an emscripten_run_script of their own.
     std::cout << "OpenDoctrines initialized. " << m_screenW << "x" << m_screenH << std::endl;
-#ifdef __EMSCRIPTEN__
-    emscripten_run_script("console.log('[OD] Game::init() SUCCESS')");
-#endif
     m_running = true;
     m_currentScreen = SCREEN_SPLASH;
     m_splashTimer = 0.0f;
@@ -1021,21 +1030,7 @@ void Game::drawDebugOverlay() {
 }
 
 void Game::run() {
-#ifdef __EMSCRIPTEN__
-    emscripten_run_script("console.log('[OD] Game::run() entered')");
-#endif
-    int frameCount = 0;
     while (m_running && !WindowShouldClose()) {
-        frameCount++;
-#ifdef __EMSCRIPTEN__
-        static int frameCount = 0;
-        if (frameCount % 60 == 0) {
-            Vector2 mp = GetMousePosition();
-            Vector2 ms = getMouse();
-            emscripten_run_script(("console.log('[OD] mouse: GetMousePos=" + std::to_string(mp.x) + "," + std::to_string(mp.y) + " getMouse=" + std::to_string(ms.x) + "," + std::to_string(ms.y) + " screen=" + std::to_string(m_screenW) + "x" + std::to_string(m_screenH) + "')").c_str());
-        }
-        frameCount++;
-#endif
         float dt = GetFrameTime();
 
         // Above the popup early-out below: the music stream has to be fed on
