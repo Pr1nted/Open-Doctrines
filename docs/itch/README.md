@@ -129,34 +129,22 @@ This gallery is where players look. itch gives it a viewer and a lightbox for
 free, the order is drag-to-sort, and it needs no HTML at all. **Order matters:**
 the first one is what appears in listings and on your profile.
 
-### 3b. Inline images in the description
+### 3b. Inline images in the description — there are none, on purpose
 
-Separate uploads — the gallery and the description do not share files.
+`description.html` contains **no `<img>` tags**. Uploading to the Screenshots
+gallery does not make inline images work: they are separate uploads and do not
+share files, so an `<img>` in the description needs its own upload through the
+editor's image button, one at a time, every time the description is re-pasted.
 
-For each `UPLOAD:` placeholder still in the pasted description:
+That is a lot of clicking to duplicate images the gallery is already showing
+directly above. So the description is text, the gallery is pictures, and pasting
+the description is a single action that always looks right.
 
-1. Click it once to select the broken image, and delete it.
-2. With the cursor in that spot, click the **image button** in the editor
-   toolbar.
-3. Choose the matching file. itch uploads it and writes the `src` itself.
-
-| Placeholder | File |
-|---|---|
-| `UPLOAD:world-map.png` | `docs/img/world-map.png` |
-| `UPLOAD:timelapse-political.gif` | `docs/img/timelapse-political.gif` |
-| `UPLOAD:province.png` | `docs/img/province.png` |
-| `UPLOAD:research.png` | `docs/img/research.png` |
-| `UPLOAD:economy.png` | `docs/img/economy.png` |
-| `UPLOAD:map-editor.png` | `docs/img/map-editor.png` |
-| `UPLOAD:mods.png` | `docs/img/mods.png` |
-
-**You do not have to do all seven.** With the gallery already carrying them, the
-two worth keeping inline are **the timelapse GIF** and **`mods.png`** — the GIF
-because a moving map says more than any sentence on the page, and the mod menu
-because it is the one screenshot whose subject the surrounding text cannot
-convey. Delete the rest of the placeholders; the gallery covers them, and a
-description that alternates image-paragraph-image-paragraph is harder to read
-than one that does not.
+If you do want one inline later — the timelapse GIF is the only one that earns
+it, because a moving map says more than any sentence on the page — put the
+cursor where you want it, click the **image button** in the editor toolbar, and
+choose the file. itch uploads it and writes the `src` itself. Do not paste a
+path or a GitHub URL; neither works.
 
 ### 3c. Cover image
 
