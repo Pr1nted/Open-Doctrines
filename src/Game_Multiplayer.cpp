@@ -892,6 +892,37 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     }
 
     y += 20;
+
+#ifdef __EMSCRIPTEN__
+    // Say it here, before the buttons, rather than letting a player find out by
+    // pressing them. Neither works in a browser, and for two DIFFERENT reasons
+    // that are worth stating separately -- one is a limit of browsers and the
+    // other is unfinished work:
+    //
+    //   Host  a browser tab cannot accept an inbound connection, and
+    //         NetHost::open() begins by binding a listening socket. No amount
+    //         of work on this build changes that; it needs the relay described
+    //         in docs/multiplayer.md, which the host does not use yet.
+    //   Join  needs a signed join ticket, which needs an HTTPS call to the
+    //         account service, and httpRequest() has no emscripten
+    //         implementation. That one is a to-do, not a wall.
+    //
+    // Drawn as text rather than as disabled buttons because a greyed-out button
+    // invites a player to hunt for the setting that un-greys it.
+    DrawText("Multiplayer needs the desktop version.",
+             centerX - MeasureText("Multiplayer needs the desktop version.", 20) / 2,
+             y, 20, Color{210, 190, 140, 255});
+    y += 30;
+    const char* l1 = "A browser tab cannot listen for players, so it cannot host.";
+    const char* l2 = "Signing in is not implemented here yet, so it cannot join.";
+    DrawText(l1, centerX - MeasureText(l1, 15) / 2, y, 15, Color{150, 160, 180, 255});
+    y += 21;
+    DrawText(l2, centerX - MeasureText(l2, 15) / 2, y, 15, Color{150, 160, 180, 255});
+    y += 26;
+    const char* l3 = "Everything else -- the map, the map editor and mods -- works here.";
+    DrawText(l3, centerX - MeasureText(l3, 15) / 2, y, 15, Color{130, 140, 160, 255});
+    (void)click;
+#else
     const int btnW = 260, btnH = 52, gap = 16;
     const MpButton join = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
                                    (float)btnW, (float)btnH, mouse);
@@ -909,6 +940,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
         m_mpPage = MpPage::HostSetup;
         m_mpFocus = 2;
     }
+#endif
 }
 
 // --------------------------------------------------------------------- join --
