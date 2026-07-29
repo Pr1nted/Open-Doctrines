@@ -302,10 +302,26 @@ void AccountClient::Impl::runJob(std::function<void()> job) {
     joinWorker();
     busy.store(true);
     cancelRequested.store(false);
+
+    // In a browser, inline. The emscripten build is single-threaded and built
+    // without exceptions, so std::thread there aborts the tab rather than
+    // failing -- and every job routed through here ends up in httpRequest(),
+    // which on emscripten is a stub returning "signing in from the web build
+    // is not supported yet" without a network round trip. So there is nothing
+    // to move off the frame, and the player gets the sentence instead of a
+    // dead tab the moment they open the Account screen.
+    //
+    // The day web HTTP is real this must go back on something asynchronous;
+    // a live request run inline here would freeze the page for its duration.
+#ifdef __EMSCRIPTEN__
+    job();
+    busy.store(false);
+#else
     worker = std::thread([this, job = std::move(job)] {
         job();
         busy.store(false);
     });
+#endif
 }
 
 // ------------------------------------------------------------------- api ----

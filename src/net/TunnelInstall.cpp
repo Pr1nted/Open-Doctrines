@@ -296,7 +296,12 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
             return;
         }
 
-#if !defined(_WIN32)
+        // Guard has to match the one on <sys/stat.h> at the top of this file,
+        // not just exclude Windows: emscripten has no chmod to declare, so a
+        // call site that only checked _WIN32 broke the web build and nothing
+        // else. There is nothing to make executable in a browser regardless --
+        // a tunnel is installed to be RUN, and the web build runs nothing.
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
         ::chmod(finalPath.string().c_str(), 0755);
 #endif
 

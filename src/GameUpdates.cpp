@@ -314,7 +314,12 @@ std::string GameUpdates::platformKey() {
 }
 
 bool GameUpdates::canSelfInstall() {
-#if defined(__APPLE__)
+#if defined(__EMSCRIPTEN__)
+    // Nothing to install into. The page is the install; a reload is the
+    // update. check() returns before it can ever reach Stage::Available, so
+    // this is belt and braces rather than the thing doing the work.
+    return false;
+#elif defined(__APPLE__)
     return false;   // unnotarized replacement would not launch; see the header
 #else
     return true;
@@ -499,6 +504,20 @@ void GameUpdates::check(bool enabled) {
     // The gate, in the code that would do the work rather than only in the
     // caller: with the setting off nothing here reaches the network.
     if (!enabled) return;
+
+    // The web build has no update to install and no way to install it: the
+    // page IS the install, and reloading it is the update. Everything below
+    // this line would be work toward an outcome that cannot happen.
+    //
+    // It also cannot RUN there. The emscripten build is single-threaded
+    // (-sASYNCIFY, no -pthread) and compiled without exceptions, so the
+    // std::thread below does not fail gracefully -- it throws system_error
+    // "thread constructor failed", which in -fno-exceptions mode is an
+    // immediate abort(). The game reached the main menu and died on the first
+    // frame that drew it, because that frame is what calls this.
+#ifdef __EMSCRIPTEN__
+    return;
+#else
     if (m_asked.exchange(true)) return;    // once per session
 
     Status s; s.stage = Stage::Checking;
@@ -536,6 +555,7 @@ void GameUpdates::check(bool enabled) {
                                                            : Stage::UpToDate;
         setStatus(out);
     }).detach();
+#endif
 }
 
 void GameUpdates::beginUpdate() {

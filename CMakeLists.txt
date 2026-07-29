@@ -245,6 +245,7 @@ set(GAME_SOURCES
     src/Game_Research.cpp
     src/Game_TurnLogic.cpp
     src/Game_AITrain.cpp
+    src/Game_Screenshots.cpp
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
@@ -282,7 +283,7 @@ set(GAME_SOURCES
     src/net/TurnRunner.cpp
     src/net/Tunnel.cpp
     src/net/TunnelInstall.cpp
-    src/net/SeatBook.cpp
+    src/net/HostBook.cpp
     src/net/TurnSeal.cpp
     src/net/TurnStore.cpp
     src/util/Ed25519.cpp
@@ -361,7 +362,18 @@ if(EMSCRIPTEN)
         # backend goes through.
         "-sWASM_BIGINT"
         "-sALLOW_TABLE_GROWTH"
-        "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8']"
+        # The HEAP* views are NOT optional here, and the reason they look it is
+        # that emscripten used to export them unconditionally. It stopped, so
+        # this build linked cleanly and then died at startup with
+        # "Aborted('HEAPF32' was not exported)" the moment raylib's GL layer
+        # touched a vertex buffer -- after the audio had loaded, which made it
+        # look like an audio problem.
+        #
+        # HEAPU8 and HEAPU32 are ours (the mod bridge). The rest are raylib's
+        # and emscripten's own library JS. They are all views over one buffer,
+        # so exporting the set costs nothing and removes a whole class of
+        # "worked until it ran" failure.
+        "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','HEAP8','HEAPU8','HEAP16','HEAPU16','HEAP32','HEAPU32','HEAP64','HEAPU64','HEAPF32','HEAPF64']"
         "-sTOTAL_MEMORY=2GB"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMAXIMUM_MEMORY=4GB"
@@ -377,9 +389,39 @@ if(EMSCRIPTEN)
         #   audio/midi/ editable sources for the music. The loader scans
         #               audio/music only; see data/audio/README.md.
         # Together they were 42 MB of a 145 MB package.
-        "--exclude-file" "*/tools/*"
-        "--exclude-file" "*/audio/midi/*"
+        #
+        # Written as --exclude-file=PATTERN, one argument, NOT as the two
+        # arguments em++ also accepts. CMake de-duplicates repeated link
+        # options by exact string, so `"--exclude-file" "A" "--exclude-file"
+        # "B"` had its second flag collapsed away and emitted as
+        # `--exclude-file A B` -- leaving B as a bare argument that em++ then
+        # looked for as an input file and failed the link on. Joining the flag
+        # to its value makes the two strings different, so neither is dropped.
+        "--exclude-file=*/tools/*"
+        "--exclude-file=*/audio/midi/*"
+        # The music itself: 52 MB of .ogg, a third of the package, and none of
+        # it is needed before the main menu draws. Streamed instead -- Audio.cpp
+        # fetches a track the first time it is chosen. The .json SIDECARS stay
+        # in the preload deliberately: they are a few KB in total and they are
+        # what the index is built from on web, so the mood system knows every
+        # track exists before a byte of audio has been downloaded.
+        "--exclude-file=*/audio/music/*.ogg"
     )
+
+    # ...which means they have to be somewhere fetchable. Copied next to the
+    # page under the SAME path they have in the virtual filesystem, so the URL
+    # is the VFS path minus its leading slash and neither side has to translate.
+    #
+    # DEPLOYING: this directory ships with OpenDoctrines.{html,js,wasm,data}.
+    # A deployment that uploads only the four files gets a silent game.
+    add_custom_command(TARGET OpenDoctrines POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/audio/music"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/data/audio/music"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/audio/music"
+        COMMENT "Copying streamable music next to the page"
+        VERBATIM)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(OpenDoctrines Threads::Threads)
@@ -447,15 +489,15 @@ target_include_directories(NetTicketTest PRIVATE src tests)
 # --- seats remembered across sessions ---
 # A campaign played over weeks lives or dies on returning players getting their
 # own country back, so the pairing of psid to country is what this guards.
-add_executable(NetSeatBookTest EXCLUDE_FROM_ALL
-    tests/net_seatbook_test.cpp
-    src/net/SeatBook.cpp
+add_executable(NetHostBookTest EXCLUDE_FROM_ALL
+    tests/net_hostbook_test.cpp
+    src/net/HostBook.cpp
     src/net/Lobby.cpp
     src/net/HttpClient.cpp
     src/net/NetUrl.cpp
     src/net/NetProtocol.cpp
 )
-target_include_directories(NetSeatBookTest PRIVATE src tests)
+target_include_directories(NetHostBookTest PRIVATE src tests)
 
 # --- tunnel address parsing ---
 # Against the real shape of what these tools print, banners and all: the failure

@@ -382,6 +382,21 @@ bool Tunnel::available() { return false; }
 
 std::vector<TunnelProvider> tunnelProvidersAvailable() { return {}; }
 
+// Declared in Tunnel.h without a platform guard, so they have to EXIST on
+// every platform even where they can do nothing -- and Game_Multiplayer.cpp
+// calls tunnelSetToolsDir() unconditionally, three times. Without these the
+// Windows and web builds compiled every translation unit and then failed at
+// link with an undefined symbol, which is why the failure was invisible to
+// anyone building on macOS or Linux.
+//
+// They are no-ops rather than errors: setting where a program lives is
+// harmless on a platform that will not run one, and Tunnel::start() already
+// says why it cannot help. Refusing here would move that explanation to a
+// place with no player in front of it.
+void tunnelSetToolsDir(const std::string&) {}
+
+std::string tunnelResolveProgram(const char*) { return {}; }
+
 bool Tunnel::start(TunnelProvider, uint16_t, std::string& error) {
     error = "this build cannot start a tunnel for you; run one alongside the game "
             "and give players the address it prints";

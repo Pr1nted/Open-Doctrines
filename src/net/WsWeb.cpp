@@ -19,6 +19,15 @@
 
 #include <cstring>
 
+// The callbacks are STATIC MEMBERS of Impl rather than free functions in an
+// anonymous namespace, and that is not a style choice. `Impl` is a private
+// nested type: defining it out of line here is allowed, but a non-member
+// cannot NAME it, so free callbacks taking a `WebSocket::Impl*` do not
+// compile. Members of Impl can name Impl, which is the whole trick.
+//
+// This backend is compiled only by the emscripten build, so the day WebSocket
+// became pimpl'd this file broke and nothing on a desktop noticed. Anything
+// added here wants building for web before it is believed.
 struct WebSocket::Impl {
     EMSCRIPTEN_WEBSOCKET_T socket = 0;
     WsState                state = WsState::Idle;
@@ -26,48 +35,44 @@ struct WebSocket::Impl {
 
     std::deque<std::vector<uint8_t>> inboxBinary;
     std::deque<std::string>          inboxText;
+
+    static EM_BOOL onOpen(int, const EmscriptenWebSocketOpenEvent*, void* user) {
+        static_cast<Impl*>(user)->state = WsState::Open;
+        return EM_TRUE;
+    }
+
+    static EM_BOOL onMessage(int, const EmscriptenWebSocketMessageEvent* e, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        if (e->isText) {
+            // numBytes includes the trailing NUL the runtime appends to text.
+            impl->inboxText.emplace_back(reinterpret_cast<const char*>(e->data),
+                                         e->numBytes > 0 ? e->numBytes - 1 : 0);
+        } else {
+            impl->inboxBinary.emplace_back(e->data, e->data + e->numBytes);
+        }
+        return EM_TRUE;
+    }
+
+    static EM_BOOL onError(int, const EmscriptenWebSocketErrorEvent*, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        // The browser deliberately does not say why: the detail would be a
+        // cross-origin information leak. So neither can we, and a message that
+        // guessed would be worse than one that admits it.
+        if (impl->errorText.empty()) impl->errorText = "the connection failed";
+        return EM_TRUE;
+    }
+
+    static EM_BOOL onClose(int, const EmscriptenWebSocketCloseEvent* e, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        impl->state = WsState::Closed;
+        if (impl->errorText.empty() && e->code != 1000 && e->code != 1005) {
+            impl->errorText = e->reason[0] != '\0'
+                ? std::string(e->reason)
+                : "the connection closed unexpectedly (" + std::to_string(e->code) + ")";
+        }
+        return EM_TRUE;
+    }
 };
-
-namespace {
-
-EM_BOOL onOpen(int, const EmscriptenWebSocketOpenEvent*, void* user) {
-    static_cast<WebSocket::Impl*>(user)->state = WsState::Open;
-    return EM_TRUE;
-}
-
-EM_BOOL onMessage(int, const EmscriptenWebSocketMessageEvent* e, void* user) {
-    auto* impl = static_cast<WebSocket::Impl*>(user);
-    if (e->isText) {
-        // numBytes includes the trailing NUL the runtime appends to text.
-        impl->inboxText.emplace_back(reinterpret_cast<const char*>(e->data),
-                                     e->numBytes > 0 ? e->numBytes - 1 : 0);
-    } else {
-        impl->inboxBinary.emplace_back(e->data, e->data + e->numBytes);
-    }
-    return EM_TRUE;
-}
-
-EM_BOOL onError(int, const EmscriptenWebSocketErrorEvent*, void* user) {
-    auto* impl = static_cast<WebSocket::Impl*>(user);
-    // The browser deliberately does not say why: the detail would be a
-    // cross-origin information leak. So neither can we, and a message that
-    // guessed would be worse than one that admits it.
-    if (impl->errorText.empty()) impl->errorText = "the connection failed";
-    return EM_TRUE;
-}
-
-EM_BOOL onClose(int, const EmscriptenWebSocketCloseEvent* e, void* user) {
-    auto* impl = static_cast<WebSocket::Impl*>(user);
-    impl->state = WsState::Closed;
-    if (impl->errorText.empty() && e->code != 1000 && e->code != 1005) {
-        impl->errorText = e->reason[0] != '\0'
-            ? std::string(e->reason)
-            : "the connection closed unexpectedly (" + std::to_string(e->code) + ")";
-    }
-    return EM_TRUE;
-}
-
-}  // namespace
 
 WebSocket::WebSocket() : m_impl(std::make_unique<Impl>()) {}
 
@@ -108,10 +113,10 @@ bool WebSocket::connect(const std::string& url, bool allowInsecure) {
         return false;
     }
 
-    emscripten_websocket_set_onopen_callback(m_impl->socket, m_impl.get(), onOpen);
-    emscripten_websocket_set_onmessage_callback(m_impl->socket, m_impl.get(), onMessage);
-    emscripten_websocket_set_onerror_callback(m_impl->socket, m_impl.get(), onError);
-    emscripten_websocket_set_onclose_callback(m_impl->socket, m_impl.get(), onClose);
+    emscripten_websocket_set_onopen_callback(m_impl->socket, m_impl.get(), Impl::onOpen);
+    emscripten_websocket_set_onmessage_callback(m_impl->socket, m_impl.get(), Impl::onMessage);
+    emscripten_websocket_set_onerror_callback(m_impl->socket, m_impl.get(), Impl::onError);
+    emscripten_websocket_set_onclose_callback(m_impl->socket, m_impl.get(), Impl::onClose);
 
     m_impl->state = WsState::Connecting;
     return true;

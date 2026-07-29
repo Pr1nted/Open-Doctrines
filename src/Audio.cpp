@@ -12,7 +12,68 @@
 
 bool Audio::s_disabled = false;
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 namespace {
+
+#ifdef __EMSCRIPTEN__
+// ---- streamed music (web only) ------------------------------------------
+//
+// The .ogg files are excluded from the preload -- 52 MB of a package the
+// player waits on before the menu draws, for something no menu needs. They sit
+// next to the page instead and are fetched the first time a track is chosen.
+//
+// ONE AT A TIME, deliberately. The only caller is the track picker, which
+// wants exactly one track and then waits for it; fetching several in parallel
+// would spend bandwidth on tracks the mood may never ask for.
+//
+// The state is file-static rather than a member because emscripten_async_wget
+// takes plain C callbacks. There is one Audio.
+std::string g_fetching;      // VFS path in flight; empty when idle
+
+void onMusicFetched(const char*) { g_fetching.clear(); }
+
+void onMusicFailed(const char* file) {
+    // Not fatal and not retried: a track whose bytes will not arrive is one
+    // track. Clearing the slot lets the picker choose a different one, and it
+    // will, because startTrack failing leaves m_needPick set.
+    std::cerr << "  Music download failed: " << (file ? file : "?") << std::endl;
+    g_fetching.clear();
+}
+#endif
+
+/** True while a track's audio is on its way. Always false off the web. */
+bool musicFetchInFlight() {
+#ifdef __EMSCRIPTEN__
+    return !g_fetching.empty();
+#else
+    return false;
+#endif
+}
+
+/**
+ * Make sure `path` is readable, starting a download if it is not.
+ *
+ * Returns true when the file is there NOW. On web a first call for a missing
+ * track returns false having started the fetch; the caller is expected to ask
+ * again. Off the web this only ever answers the question it is asked.
+ */
+bool musicEnsureLocal(const std::string& path) {
+    if (FileExists(path.c_str())) return true;
+#ifdef __EMSCRIPTEN__
+    if (!g_fetching.empty()) return false;         // one at a time
+    // The copy next to the page mirrors the VFS layout exactly, so the URL is
+    // the VFS path without its leading slash. See the POST_BUILD copy in
+    // CMakeLists.txt -- if that directory was not deployed, this 404s and the
+    // failure callback says which file.
+    const std::string url = path.empty() || path[0] != '/' ? path : path.substr(1);
+    g_fetching = path;
+    emscripten_async_wget(url.c_str(), path.c_str(), onMusicFetched, onMusicFailed);
+#endif
+    return false;
+}
 
 // raylib restarts rather than layers a Sound that is already playing. Three
 // aliases share the same sample data and cost only a struct each.
@@ -333,6 +394,27 @@ void Audio::indexMusic(const std::string& dir) {
     // Recursive: subfolders under music/ are organisation, not meaning. What a
     // track is FOR comes from its sidecar, so someone can file the same piece
     // under music/themes/ or music/ and get identical behaviour.
+    //
+    // On web the audio is NOT here to be found: it is excluded from the
+    // preload and fetched on demand (see musicEnsureLocal). So the index is
+    // built from the sidecars, which are preloaded, and each track's path is
+    // derived from its sidecar's. The index is therefore complete before any
+    // audio has been downloaded, which is what lets the mood system choose
+    // between all 35 tracks on the first frame rather than between none.
+#ifdef __EMSCRIPTEN__
+    FilePathList files = LoadDirectoryFilesEx(dir.c_str(), ".json", true);
+    for (unsigned int i = 0; i < files.count; ++i) {
+        const std::string sidecar = files.paths[i];
+        TrackMeta t;
+        // "<stem>.json" -> "<stem>.ogg". Every shipped track is .ogg; a
+        // sidecar with no audio beside it simply never loads, and says so
+        // once, rather than being silently dropped from the index here.
+        t.path  = sidecar.substr(0, sidecar.find_last_of('.')) + ".ogg";
+        t.title = GetFileNameWithoutExt(sidecar.c_str());
+        readSidecar(t.path, t);
+        m_tracks.push_back(std::move(t));
+    }
+#else
     FilePathList files = LoadDirectoryFilesEx(dir.c_str(), MUSIC_EXTS, true);
     for (unsigned int i = 0; i < files.count; ++i) {
         TrackMeta t;
@@ -341,6 +423,7 @@ void Audio::indexMusic(const std::string& dir) {
         readSidecar(t.path, t);
         m_tracks.push_back(std::move(t));
     }
+#endif
     UnloadDirectoryFiles(files);
 
     // LoadDirectoryFilesEx does not promise an order, and an unordered index
@@ -497,6 +580,12 @@ bool Audio::startTrack(int trackIdx, bool crossfade) {
     const TrackMeta& meta = m_tracks[trackIdx];
     const int wasIdx = m_curIdx;
 
+    // On web the first ask for a track only starts its download; the caller
+    // retries once it lands. Nothing below can run on bytes that are not here
+    // yet, and LoadMusicStream on a missing file would report it as a corrupt
+    // track rather than an absent one.
+    if (!musicEnsureLocal(meta.path)) return false;
+
     Track next;
     next.music = LoadMusicStream(meta.path.c_str());
     if (next.music.frameCount == 0) {
@@ -611,12 +700,21 @@ void Audio::update(float dt) {
 
     // Held rather than dropped while the browser has not been touched yet, so
     // the first click starts the music that was already due.
-    if (m_needPick && gestureReady()) {
+    // A fetch in flight IS the pick, still happening -- so do not pick again
+    // over the top of it. Without this the picker would choose a second track
+    // every frame while the first downloads, and musicEnsureLocal would refuse
+    // each one for being busy.
+    if (m_needPick && gestureReady() && !musicFetchInFlight()) {
         // Cleared before the attempt, not after: a context with no matching
         // track must not retry once per frame forever.
         m_needPick = false;
         const int idx = pickTrack(m_context, m_mood, m_curIdx);
-        if (idx >= 0) startTrack(idx, /*crossfade=*/true);
+        // On web a first attempt only starts the download and reports failure.
+        // That is not "no track for this context", it is "not yet", so the ask
+        // is put back. Off the web musicFetchInFlight() is always false and
+        // this is the same "stay quiet" behaviour as before.
+        if (idx >= 0 && !startTrack(idx, /*crossfade=*/true) && musicFetchInFlight())
+            m_needPick = true;
     }
 
     if (m_fadeRate > 0.0f) {
