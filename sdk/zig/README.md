@@ -36,7 +36,7 @@ sdk/zig/examples/hello-panel/build.sh      # -> hello-panel-zig.odmod
 That is the recommended path: it drives `zig build-exe` directly, and compiler
 flags have been far more stable across Zig releases than the build system API.
 Set `ZIG=` if `zig` is not on your `PATH`. The script ends by calling
-`tools/pack_odmod.sh`, which needs `zip`.
+`tools/pack_odmod.sh`, which needs `python3`.
 
 What it runs, unwrapped:
 

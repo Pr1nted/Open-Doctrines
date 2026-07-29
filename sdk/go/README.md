@@ -66,7 +66,7 @@ sdk/go/examples/hello-panel/build.sh      # -> hello-panel-go.odmod
 ```
 
 Set `TINYGO=` if `tinygo` is not on your `PATH`. The script ends by calling
-`tools/pack_odmod.sh`, which needs `zip`. What it runs, unwrapped:
+`tools/pack_odmod.sh`, which needs `python3`. What it runs, unwrapped:
 
 ```bash
 cd sdk/go
