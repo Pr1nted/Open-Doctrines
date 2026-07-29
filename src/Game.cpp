@@ -29,14 +29,28 @@
 #include <random>
 #include <thread>
 #include <deque>
-// NO <windows.h> here, deliberately. Nothing in this file uses a Win32 API,
-// and including it is actively harmful: winuser.h defines DrawText as a macro
-// expanding to DrawTextA, and wingdi.h declares a function called Rectangle.
-// Both collide head-on with raylib's DrawText() and its Rectangle struct, and
-// this file is full of them -- so on Windows every such line failed with
-// "cannot convert argument 1 from 'const char *' to 'HDC'" and
-// "'Rectangle': redefinition; different type modifiers".
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#ifdef _WIN32
+// windows.h IS needed here -- samplePerformance() uses FILETIME,
+// GetProcessTimes, GetCurrentProcess and ULARGE_INTEGER to measure CPU time --
+// but it must not be included raw. NOGDI and NOUSER are what make it safe:
+//
+//   wingdi.h  declares a function named Rectangle, which collides with
+//             raylib's Rectangle STRUCT -- "redefinition; different type
+//             modifiers", on a file that is mostly Rectangles.
+//   winuser.h defines DrawText as a MACRO expanding to DrawTextA, so every
+//             raylib DrawText() call became a call to a GDI text routine:
+//             "cannot convert argument 1 from 'const char *' to 'HDC'".
+//   NOMINMAX  stops min/max becoming macros and breaking std::min.
+//
+// Everything this file wants (FILETIME, the process-time calls) lives in the
+// kernel32 headers, which NOGDI/NOUSER do not touch. Deleting the include
+// instead was the wrong fix and broke the Windows build a different way.
+#define NOGDI
+#define NOUSER
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
 #include "GameInternals.h"

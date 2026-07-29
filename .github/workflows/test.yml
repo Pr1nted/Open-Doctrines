@@ -36,10 +36,17 @@ on:
   workflow_dispatch:
   workflow_call:               # release-game.yml calls this before publishing
 
-# A second push to the same branch makes the first run irrelevant.
+# Runs are queued, NOT cancelled. cancel-in-progress is the right default for a
+# branch under normal development -- a newer commit makes an older run moot --
+# but while platforms are still being brought up it is actively harmful: each
+# push killed the three jobs that were about to tell us something, so no commit
+# ever produced a complete four-platform picture and the same failures had to
+# be rediscovered a push later.
+#
+# Turn cancel-in-progress back on once all four are green.
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   qualify:
