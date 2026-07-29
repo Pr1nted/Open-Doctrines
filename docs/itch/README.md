@@ -1,13 +1,25 @@
 # The itch.io page
 
-Three files, and the order matters — the CSS assumes the theme colours are
-already set, and the description assumes the images are already uploaded.
-
 ```
 description.html   paste into the page description (HTML mode)
-theme.css          paste into Edit theme > Custom CSS
+theme.css          reference only -- see the note below
 README.md          this
 ```
+
+## Read this first: itch has no custom CSS field
+
+The **Edit theme** panel gives you colour pickers, two font dropdowns, a
+screenshot layout dropdown and three image uploads. That is the whole surface.
+There is no box to paste a stylesheet into, so `theme.css` cannot be applied as
+written.
+
+It is kept because it is the design in a form you can read — every value in the
+table below comes from it — and because if you ever move the page somewhere that
+does take CSS, it is ready.
+
+What this actually means for the page: **the description carries it.** Structure,
+images and honest copy are what you control, and they matter more than styling
+would have.
 
 Everything the page shows is in `docs/img/`, produced by `tools/screenshots.sh`.
 When the game's UI changes, re-run that and re-upload; the page and the game do
@@ -36,43 +48,64 @@ that describe it most specifically; do not spend all ten on generic words.
 
 ---
 
-## 2. Set the theme colours
+## 2. Edit theme — every field, and what to put in it
 
-**Edit theme**, and set these *before* pasting the CSS. The custom CSS restates
-them, but itch uses the colour fields in places the CSS does not reach — and if
-a future itch redesign breaks a selector, these keep the page dark and readable
-instead of dumping it back to white.
+**Manage → Edit theme.** Set all of these; the ones behind *More options…* are
+the ones that make it stop looking like a default itch page.
 
-| Field | Value |
-|---|---|
-| Background | `#050813` |
-| Text | `#c8ccd8` |
-| Link | `#ffd700` |
-| Button background | `#ffd700` |
-| Button text | `#050813` |
+| Section | Field | Value | Why |
+|---|---|---|---|
+| Color | **BG** | `#050813` | The game's menu background, sampled from `docs/img/main-menu.png`. |
+| Color | **BG 2** | `#0b1122` | Must NOT equal BG. This is the content column; identical values make the page one flat black rectangle with the text floating on it. |
+| Color | **Text** | `#c8ccd8` | |
+| Color | **Link** | `#ffd700` | |
+| Color → More options | **Headers** | `#ffd700` | Left blank, headings render in the default colour and the page loses its structure. |
+| Color → More options | **Buttons** | `#ffd700` | The download button. This is the one thing on the page you want someone to press. |
+| Color → More options | **BG2 Alpha** | full (slider hard right) | Anything less lets the background image bleed through the text column. |
+| Text | **Font** | Lato | |
+| Text | **Size** | Large | The description is long; large is easier on it. |
+| Text → More options | **Header font** | Default | |
+| Layout | **Screenshots** | Auto | |
 
-These are the game's own colours, sampled from `docs/img/main-menu.png`: the
-menu background and the title. Gold rather than green because gold is the
-**shipped default** — the accent is configurable in Settings, so screenshots
-from a customised build will not match.
+Gold rather than green because gold is the **shipped default** — the accent is
+configurable in Settings, so screenshots from a customised build will not match
+what a new player sees.
+
+### The three image slots
+
+| Slot | What it is | Suggestion |
+|---|---|---|
+| **Banner** | Wide image above the page | Skip it, or crop the top third of `docs/img/world-map.png`. A banner competes with the first screenshot directly below it. |
+| **Background** | Behind the content column | Upload **`page-background.png`**, in this folder. Ready to use. |
+| **Embed BG** | Behind the web build's frame | `#050813` flat, only if you upload the web build. |
+
+`page-background.png` is 1920x960 and already prepared. It is built from the
+LAST FRAME of the political timelapse rather than from a screenshot, because a
+screenshot carries the game's UI — the Process Turn button, the sidebar, the
+"PLAYING AS" caption — and a page background with buttons drawn on it reads as
+broken. A timelapse frame is pure map.
+
+It is at 30% brightness with the colour muted to 75%, so it sits behind the
+content column without competing with the screenshots in it. To regenerate, or
+to pick a different moment in the war:
+
+```bash
+python3 -c "
+from PIL import Image, ImageEnhance
+gif = Image.open('docs/img/timelapse-political.gif')
+gif.seek(gif.n_frames - 1)          # last frame; try n_frames//2 for mid-war
+im = gif.convert('RGB').resize((1920, 960), Image.LANCZOS)
+im = ImageEnhance.Brightness(im).enhance(0.30)
+im = ImageEnhance.Color(im).enhance(0.75)
+im.save('docs/itch/page-background.png')
+"
+```
 
 ---
 
-## 3. Paste the CSS
+## 3. Upload the screenshots
 
-**Edit theme → Custom CSS**, paste all of `theme.css`, save, and look at the
-page.
-
-If something looks unstyled, an itch class name has changed — they are not a
-public API. The CSS is written so that costs you a detail rather than the page:
-step 2's colours still apply. Fix it by finding the element in your browser's
-inspector and adding its current class alongside the old one.
-
----
-
-## 4. Upload the screenshots
-
-The description references nine images by placeholder. Upload each from the
+The description references seven images by placeholder. Upload each from the
 description editor's **image button** so itch hosts it and writes the URL for
 you — that is easier and safer than editing the `src` by hand.
 
@@ -98,16 +131,16 @@ ocean.
 
 ---
 
-## 5. Paste the description
+## 4. Paste the description
 
 In the description editor, click the **`</>`** (edit HTML) button and paste all
 of `description.html`. Without HTML mode the tags arrive as literal text.
 
-Then replace each `UPLOAD:` image with a real upload, per step 4.
+Then replace each `UPLOAD:` image with a real upload, per step 3.
 
 ---
 
-## 6. Uploads
+## 5. Uploads
 
 Attach the builds from the GitHub release and set the platform checkboxes — itch
 will not show a download to a Windows visitor unless the file is marked Windows.
@@ -141,12 +174,12 @@ already says.
 
 ---
 
-## 7. Before you publish
+## 6. Before you publish
 
 - Read the "What is not finished" section once more and make sure it is still
   true. It is the part of the page that earns trust, and a stale one costs more
   than it saved.
-- Check the page on a phone. The CSS has a `max-width: 700px` block, but the
-  screenshots are wide and worth looking at.
+- Check the page on a phone. itch is responsive on its own, but the
+  screenshots are wide and worth looking at on a small screen.
 - Leave it **Restricted** and open the link on another machine first. Published
   is public immediately and there is no draft state to fall back to.
