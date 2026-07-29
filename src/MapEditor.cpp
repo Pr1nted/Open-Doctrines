@@ -27,7 +27,9 @@
 #include <random>
 #include <iostream>
 #include <sys/stat.h>
-#include <dirent.h>
+// Directory listing is std::filesystem below, not dirent.h: MSVC has no such
+// header, so this file could never compile on Windows. <filesystem> is already
+// a dependency of this translation unit and does the same job portably.
 #include <fstream>
 #include <filesystem>
 
@@ -183,8 +185,14 @@ void MapEditor::drawStartupDialog() {
                 m_projectState = PROJ_OPEN;
                 m_projFiles.clear();
                 std::string dir = m_dataDir + "projects/";
-                DIR* d = opendir(dir.c_str());
-                if (d) { struct dirent* de; while ((de = readdir(d))) { std::string n = de->d_name; if (n.size() >= 7 && n.substr(n.size()-7) == ".uodmap") m_projFiles.push_back(n); } closedir(d); }
+                {
+                    std::error_code ec;
+                    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+                        std::string n = e.path().filename().string();
+                        if (n.size() >= 7 && n.substr(n.size() - 7) == ".uodmap")
+                            m_projFiles.push_back(n);
+                    }
+                }
                 std::sort(m_projFiles.begin(), m_projFiles.end());
                 m_projChoice = 0; m_projScroll = 0;
             } else {
@@ -327,42 +335,33 @@ void MapEditor::scanImportableMaps() {
     // Standard maps: data/STDmaps/*.odmap
     {
         std::string dir = m_dataDir + "STDmaps/";
-        DIR* d = opendir(dir.c_str());
-        if (d) {
-            struct dirent* de;
-            while ((de = readdir(d))) {
-                std::string n = de->d_name;
-                if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
-                std::string path = dir + n;
-                std::string label = readNameFromOdmap(path, n.substr(0, n.size() - 6));
-                m_importEntries.push_back({label + "  [standard]", path, true});
-            }
-            closedir(d);
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            std::string n = e.path().filename().string();
+            if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
+            std::string path = dir + n;
+            std::string label = readNameFromOdmap(path, n.substr(0, n.size() - 6));
+            m_importEntries.push_back({label + "  [standard]", path, true});
         }
     }
     // Custom maps: data/custom_maps/<name>/*.odmap
     {
         std::string dir = m_dataDir + "custom_maps/";
-        DIR* d = opendir(dir.c_str());
-        if (d) {
-            struct dirent* de;
-            while ((de = readdir(d))) {
-                std::string sub = de->d_name;
-                if (sub == "." || sub == "..") continue;
-                std::string subdir = dir + sub + "/";
-                DIR* d2 = opendir(subdir.c_str());
-                if (!d2) continue;
-                struct dirent* de2;
-                while ((de2 = readdir(d2))) {
-                    std::string n = de2->d_name;
-                    if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
-                    std::string path = subdir + n;
-                    std::string label = readNameFromOdmap(path, sub);
-                    m_importEntries.push_back({label + "  [custom]", path, false});
-                }
-                closedir(d2);
+        // directory_iterator never yields "." or "..", so the explicit skips the
+        // readdir version needed are gone rather than merely unnecessary.
+        std::error_code ec;
+        for (const auto& sd : std::filesystem::directory_iterator(dir, ec)) {
+            if (!sd.is_directory()) continue;
+            const std::string sub = sd.path().filename().string();
+            const std::string subdir = dir + sub + "/";
+            std::error_code ec2;
+            for (const auto& e : std::filesystem::directory_iterator(subdir, ec2)) {
+                std::string n = e.path().filename().string();
+                if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
+                std::string path = subdir + n;
+                std::string label = readNameFromOdmap(path, sub);
+                m_importEntries.push_back({label + "  [custom]", path, false});
             }
-            closedir(d);
         }
     }
     std::sort(m_importEntries.begin(), m_importEntries.end(),
@@ -6859,14 +6858,10 @@ void MapEditor::drawScriptPanel() {
         m_diskScriptsScanned = true;
         m_diskScripts.clear();
         std::string dir = m_dataDir + "scripts/";
-        DIR* d = opendir(dir.c_str());
-        if (d) {
-            struct dirent* de;
-            while ((de = readdir(d))) {
-                std::string n = de->d_name;
-                if (n.size() > 4 && n.substr(n.size() - 4) == ".txt") m_diskScripts.push_back(n);
-            }
-            closedir(d);
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            std::string n = e.path().filename().string();
+            if (n.size() > 4 && n.substr(n.size() - 4) == ".txt") m_diskScripts.push_back(n);
         }
         std::sort(m_diskScripts.begin(), m_diskScripts.end());
     }

@@ -332,7 +332,7 @@ void Game::drawCeasefireScreen() {
         std::string title = "Peace Negotiation";
         int titleW = MeasureText(title.c_str(), 28);
         DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 16, 28, hexToColor(m_config.accentColor));
-        DrawText("ESC to close", 10, m_screenH - 24, 14, (Color){80, 80, 90, 200});
+        DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
         return;
     }
 

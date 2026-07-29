@@ -20,7 +20,6 @@
 #endif
 #include <sys/stat.h>
 #ifndef _WIN32
-#include <unistd.h>
 #endif
 #include <ctime>
 
@@ -342,16 +341,16 @@ void Game::drawCredits() {
     Vector2 mouse = getMouse();
     Rectangle xBtn = {(float)(m_screenW - 16 - xBtnSz), 16, (float)xBtnSz, (float)xBtnSz};
     bool xHov = CheckCollisionPointRec(mouse, xBtn);
-    Color xBg = xHov ? (Color){255, 64, 64, 32} : BLANK;
+    Color xBg = xHov ? Color{255, 64, 64, 32} : BLANK;
     DrawRectangleRounded(xBtn, 0.2f, 8, xBg);
     int cx = (int)(xBtn.x + xBtnSz / 2);
     int cy = (int)(xBtn.y + xBtnSz / 2);
-    Color xCol = xHov ? (Color){255, 80, 80, 255} : (Color){160, 160, 170, 200};
+    Color xCol = xHov ? Color{255, 80, 80, 255} : Color{160, 160, 170, 200};
     DrawLine(cx - 8, cy - 8, cx + 8, cy + 8, xCol);
     DrawLine(cx + 8, cy - 8, cx - 8, cy + 8, xCol);
 
     // Hint
-    DrawText("ESC to close", 10, m_screenH - 24, 14, (Color){80, 80, 90, 200});
+    DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -472,7 +471,7 @@ void Game::drawCommunityMenu() {
         DrawText("Back", centerX - MeasureText("Back", 22) / 2, r.y + (backBtnH - 22) / 2, 22, hover ? WHITE : LIGHTGRAY);
     }
 
-    DrawText("ESC to go back", 10, m_screenH - 24, 14, (Color){80, 80, 90, 200});
+    DrawText("ESC to go back", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -520,12 +519,12 @@ void Game::drawMainMenu() {
     const char* subtitle = "A Grand Strategy Game";
     int subSize = 20;
     int subW = MeasureText(subtitle, subSize);
-    DrawText(subtitle, centerX - subW / 2 + titleDX, 150, subSize, fade((Color){160, 160, 170, 255}));
+    DrawText(subtitle, centerX - subW / 2 + titleDX, 150, subSize, fade(Color{160, 160, 170, 255}));
 
     // Decorative line
     int lineW = 300;
     DrawRectangle(centerX - lineW / 2 + titleDX, 180, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accentColor), 100.0f/255.0f)));
-    DrawRectangle(centerX - lineW / 2 + 1 + titleDX, 181, lineW - 2, 1, fade((Color){100, 90, 50, 60}));
+    DrawRectangle(centerX - lineW / 2 + 1 + titleDX, 181, lineW - 2, 1, fade(Color{100, 90, 50, 60}));
 
     // Buttons
     int count = MAIN_MENU_COUNT;
@@ -547,7 +546,7 @@ void Game::drawMainMenu() {
         bool isSelected = (i == m_menuIndex);
         bool isHovered = (i == hovered);
         Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
-        Color bgColor = isHovered ? (Color){255, 255, 255, 16} : BLANK;
+        Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
         Rectangle rect = { (float)(centerX - tw / 2 - 20 + btnDX), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
@@ -570,12 +569,12 @@ void Game::drawMainMenu() {
     {
         Rectangle gearRect = {(float)gearX, (float)iconY, (float)iconSize, (float)iconSize};
         bool gearHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, gearRect);
-        Color gearBg = gearHover ? (Color){255, 255, 255, 24} : BLANK;
+        Color gearBg = gearHover ? Color{255, 255, 255, 24} : BLANK;
         DrawRectangleRounded(gearRect, 0.3f, 6, fade(gearBg));
 
         int gcx = gearX + iconSize / 2;
         int gcy = iconY + iconSize / 2;
-        Color gearColor = fade(gearHover ? (Color){220, 220, 230, 255} : (Color){160, 160, 170, 200});
+        Color gearColor = fade(gearHover ? Color{220, 220, 230, 255} : Color{160, 160, 170, 200});
         DrawCircle(gcx, gcy, 7, gearColor);
         for (int t = 0; t < 8; ++t) {
             float ang = t * 45.0f * DEG2RAD;
@@ -589,19 +588,19 @@ void Game::drawMainMenu() {
     {
         Rectangle quitRect = {(float)quitX, (float)iconY, (float)iconSize, (float)iconSize};
         bool quitHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, quitRect);
-        Color quitBg = quitHover ? (Color){255, 64, 64, 32} : BLANK;
+        Color quitBg = quitHover ? Color{255, 64, 64, 32} : BLANK;
         DrawRectangleRounded(quitRect, 0.2f, 8, fade(quitBg));
 
         int cx = quitX + iconSize / 2;
         int cy = iconY + iconSize / 2;
         int arm = 8;
-        Color xColor = fade(quitHover ? (Color){255, 80, 80, 255} : (Color){160, 160, 170, 200});
+        Color xColor = fade(quitHover ? Color{255, 80, 80, 255} : Color{160, 160, 170, 200});
         DrawLine(cx - arm, cy - arm, cx + arm, cy + arm, xColor);
         DrawLine(cx + arm, cy - arm, cx - arm, cy + arm, xColor);
     }
 
     // Version info
-    DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade((Color){80, 80, 90, 200}));
+    DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade(Color{80, 80, 90, 200}));
 
     // The "!" — only ever drawn when a newer release actually exists, so its
     // presence is information rather than decoration.
@@ -616,9 +615,9 @@ void Game::drawMainMenu() {
         DrawCircle((int)r.x + 14, (int)(r.y + r.height / 2), 7,
                    fade(ColorAlpha(accent, pulse)));
         DrawText("!", (int)r.x + 11, (int)(r.y + r.height / 2) - 7, 16,
-                 fade((Color){20, 20, 25, 255}));
+                 fade(Color{20, 20, 25, 255}));
         DrawText("Update available", (int)r.x + 28, (int)(r.y + r.height / 2) - 7, 14,
-                 fade(hov ? WHITE : (Color){200, 200, 210, 255}));
+                 fade(hov ? WHITE : Color{200, 200, 210, 255}));
     }
 
     // Feedback message
@@ -746,8 +745,8 @@ void Game::drawUpdatePanel() {
     UpdatePanelLayout L = updatePanelLayout(m_screenW, m_screenH);
     Color accent = hexToColor(m_config.accentColor);
 
-    DrawRectangle(0, 0, m_screenW, m_screenH, (Color){0, 0, 0, 170});
-    DrawRectangleRounded(L.panel, 0.04f, 8, (Color){24, 24, 30, 250});
+    DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 170});
+    DrawRectangleRounded(L.panel, 0.04f, 8, Color{24, 24, 30, 250});
     DrawRectangleRoundedLines(L.panel, 0.04f, 8, ColorAlpha(accent, 0.6f));
 
     int x = (int)L.panel.x + 28;
@@ -757,12 +756,12 @@ void Game::drawUpdatePanel() {
     y += 38;
 
     DrawText(TextFormat("You have  v%s", GAME_VERSION), x, y, 16,
-             (Color){170, 170, 180, 255});
+             Color{170, 170, 180, 255});
     DrawText(TextFormat("Newest  v%s", st.latest.c_str()), x + 260, y, 16, WHITE);
     y += 30;
 
     DrawLine(x, y, (int)(L.panel.x + L.panel.width) - 28, y,
-             (Color){60, 60, 70, 255});
+             Color{60, 60, 70, 255});
     y += 14;
 
     // What the panel says in the middle depends entirely on where the update
@@ -773,7 +772,7 @@ void Game::drawUpdatePanel() {
         case Stage::Downloading: {
             DrawText(TextFormat("Downloading…  %d%%", st.percent), x, y, 16, WHITE);
             Rectangle bar = {(float)x, (float)y + 26, (float)notesW, 10};
-            DrawRectangleRounded(bar, 0.5f, 6, (Color){50, 50, 58, 255});
+            DrawRectangleRounded(bar, 0.5f, 6, Color{50, 50, 58, 255});
             Rectangle fill = bar;
             fill.width = bar.width * (float)st.percent / 100.0f;
             if (fill.width > 4) DrawRectangleRounded(fill, 0.5f, 6, accent);
@@ -782,28 +781,28 @@ void Game::drawUpdatePanel() {
         case Stage::Installing:
             DrawText("Installing…", x, y, 16, WHITE);
             DrawText("Your saves, worlds and mods are not touched.", x, y + 24, 14,
-                     (Color){150, 150, 160, 255});
+                     Color{150, 150, 160, 255});
             break;
         case Stage::Restart:
             DrawText("Installed.", x, y, 18, accent);
             DrawText("Quit and start OpenDoctrines again to play the new version.",
-                     x, y + 28, 15, (Color){200, 200, 210, 255});
+                     x, y + 28, 15, Color{200, 200, 210, 255});
             break;
         case Stage::OpenedPage:
             DrawText("Opened the download page in your browser.", x, y, 16, WHITE);
             DrawText("Download the new version and replace this copy — macOS builds",
-                     x, y + 26, 14, (Color){150, 150, 160, 255});
+                     x, y + 26, 14, Color{150, 150, 160, 255});
             DrawText("are not signed, so the game cannot replace itself here.",
-                     x, y + 44, 14, (Color){150, 150, 160, 255});
+                     x, y + 44, 14, Color{150, 150, 160, 255});
             break;
         case Stage::Failed: {
-            DrawText("The update did not finish.", x, y, 16, (Color){235, 120, 120, 255});
+            DrawText("The update did not finish.", x, y, 16, Color{235, 120, 120, 255});
             auto lines = wrapText(st.error, 14, notesW);
             for (size_t i = 0; i < lines.size() && i < 3; ++i)
                 DrawText(lines[i].c_str(), x, y + 26 + (int)i * 18, 14,
-                         (Color){170, 170, 180, 255});
+                         Color{170, 170, 180, 255});
             DrawText("Nothing was changed. You can download it yourself instead.",
-                     x, y + 26 + 3 * 18, 14, (Color){150, 150, 160, 255});
+                     x, y + 26 + 3 * 18, 14, Color{150, 150, 160, 255});
             break;
         }
         default: {
@@ -811,10 +810,10 @@ void Game::drawUpdatePanel() {
                 auto lines = wrapText(st.notes, 15, notesW);
                 for (size_t i = 0; i < lines.size() && i < 5; ++i)
                     DrawText(lines[i].c_str(), x, y + (int)i * 20, 15,
-                             (Color){190, 190, 200, 255});
+                             Color{190, 190, 200, 255});
             } else {
                 DrawText("No release notes were published for this version.", x, y, 15,
-                         (Color){150, 150, 160, 255});
+                         Color{150, 150, 160, 255});
             }
             break;
         }
@@ -843,17 +842,17 @@ void Game::drawUpdatePanel() {
                              ColorAlpha(accent, hov ? 0.85f : 0.6f));
         int tw = MeasureText(primaryLabel, 16);
         DrawText(primaryLabel, (int)(L.primary.x + L.primary.width / 2 - tw / 2),
-                 (int)(L.primary.y + 12), 16, (Color){20, 20, 25, 255});
+                 (int)(L.primary.y + 12), 16, Color{20, 20, 25, 255});
     }
 
     const char* closeLabel = (st.stage == Stage::Restart ||
                               st.stage == Stage::OpenedPage) ? "Close" : "Later";
     bool chov = CheckCollisionPointRec(mouse, L.secondary);
     DrawRectangleRounded(L.secondary, 0.25f, 8,
-                         chov ? (Color){255, 255, 255, 30} : (Color){255, 255, 255, 14});
+                         chov ? Color{255, 255, 255, 30} : Color{255, 255, 255, 14});
     int cw = MeasureText(closeLabel, 16);
     DrawText(closeLabel, (int)(L.secondary.x + L.secondary.width / 2 - cw / 2),
-             (int)(L.secondary.y + 12), 16, chov ? WHITE : (Color){200, 200, 210, 255});
+             (int)(L.secondary.y + 12), 16, chov ? WHITE : Color{200, 200, 210, 255});
 }
 
 // Returns true when the click was the panel's, so the caller can stop looking
@@ -1065,7 +1064,7 @@ void Game::drawSingleplayerMenu() {
         bool isSelected = (i == m_menuIndex);
         bool isHovered = (i == hovered);
         Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
-        Color bgColor = isHovered ? (Color){255, 255, 255, 16} : BLANK;
+        Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int tw = MeasureText(SINGLEPLAYER_ITEMS[i], fontSize);
         Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
@@ -1083,7 +1082,7 @@ void Game::drawSingleplayerMenu() {
     const char* backLabel = "Back";
     int backW = MeasureText(backLabel, 22);
     bool backHovered = CheckCollisionPointRec(mouse, { (float)(centerX - backW/2 - 15), (float)(backY - 5), (float)(backW + 30), 34 });
-    Color backColor = backHovered ? WHITE : (Color){160, 160, 170, 255};
+    Color backColor = backHovered ? WHITE : Color{160, 160, 170, 255};
     DrawText(backLabel, centerX - backW / 2, backY, 22, backColor);
 }
 
@@ -1518,7 +1517,7 @@ void Game::drawMenuList(const std::vector<std::string>& items, int selectedIndex
         bool isSelected = (i == selectedIndex);
         bool isHovered = (i == hovered);
         Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
-        Color bgColor = isHovered ? (Color){255, 255, 255, 16} : BLANK;
+        Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int textW = MeasureText(items[i].c_str(), fontSize);
         Rectangle rect = { (float)(centerX - textW / 2 - 20), (float)(y - 5), (float)(textW + 40), (float)(itemH - 10) };

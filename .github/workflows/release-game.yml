@@ -59,7 +59,7 @@ jobs:
             artifact: OpenDoctrines-linux-x64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -153,7 +153,7 @@ jobs:
     needs: confirm
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with: { path: artifacts }
 

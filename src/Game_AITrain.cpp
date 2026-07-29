@@ -7,7 +7,15 @@
 #include <cstdio>
 #include <random>
 #include <unordered_map>
-#include <unistd.h>
+// getpid, to name the throwaway training map per process so two trainers do not
+// delete each other's. POSIX spells it unistd.h/getpid; MSVC spells it
+// process.h/_getpid and has no unistd.h at all.
+#ifdef _WIN32
+  #include <process.h>
+  #define getpid _getpid
+#else
+  #include <unistd.h>
+#endif
 #ifdef __APPLE__
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #endif

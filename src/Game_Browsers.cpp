@@ -12,7 +12,7 @@
 #include <string>
 #include <fstream>
 #include <cstdio>
-#include <dirent.h>
+#include <filesystem>
 #ifdef _WIN32
 #include <direct.h>
 #endif
@@ -153,15 +153,14 @@ void Game::loadMapEntries() {
     } else {
         // Fallback: scan STDmaps/ for .odmap files
         std::string stdDir = m_dataDir + "STDmaps/";
-        DIR* dir = opendir(stdDir.c_str());
-        if (dir) {
-            struct dirent* ent;
-            while ((ent = readdir(dir)) != nullptr) {
-                std::string name = ent->d_name;
-#ifndef _WIN32
-                if (ent->d_type == DT_DIR) continue;
-#endif
-                if (name == "." || name == "..") continue;
+        // std::filesystem rather than dirent.h, which MSVC does not have. It
+        // also replaces the d_type/stat split below: is_directory() is one
+        // question with one answer on every platform.
+        {
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::directory_iterator(stdDir, ec)) {
+                if (entry.is_directory()) continue;
+                std::string name = entry.path().filename().string();
                 if (name.size() < 6 || name.substr(name.size() - 6) != ".odmap") continue;
 
                 std::string fullPath = stdDir + name;
@@ -214,27 +213,16 @@ void Game::loadMapEntries() {
                 mz_zip_reader_end(&zip);
                 m_mapEntries.push_back(me);
             }
-            closedir(dir);
         }
     }
 
     // Scan custom maps directory
     std::string customDir = m_dataDir + "custom_maps/";
-    DIR* dir = opendir(customDir.c_str());
-    if (dir) {
-        struct dirent* ent;
-        while ((ent = readdir(dir)) != nullptr) {
-            std::string id = ent->d_name;
-            if (id == "." || id == "..") continue;
-
-            bool isDir;
-#ifdef _WIN32
-            struct stat st;
-            std::string fullPath = customDir + id;
-            isDir = (stat(fullPath.c_str(), &st) == 0 && (st.st_mode & S_IFDIR));
-#else
-            isDir = (ent->d_type == DT_DIR);
-#endif
+    {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(customDir, ec)) {
+            std::string id = entry.path().filename().string();
+            const bool isDir = entry.is_directory();
 
             // A bare "<name>.odmap" dropped in here (which is exactly what the
             // map editor's Export produces) is a valid custom map too — read
@@ -307,7 +295,6 @@ void Game::loadMapEntries() {
             }
             m_mapEntries.push_back(me);
         }
-        closedir(dir);
     }
 }
 
@@ -452,7 +439,7 @@ void Game::drawWorldBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Rename", (int)(confBtn.x + (btnW - MeasureText("Rename", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : (Color){100, 100, 100, 200});
+        DrawText("Rename", (int)(confBtn.x + (btnW - MeasureText("Rename", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
@@ -473,12 +460,12 @@ void Game::drawWorldBrowser() {
     if (m_worldInfos.empty()) {
         const char* empty = "No worlds found. Start a new game and save it!";
         int emptyW = MeasureText(empty, 24);
-        DrawText(empty, centerX - emptyW / 2, m_screenH / 2, 24, (Color){200, 100, 100, 255});
+        DrawText(empty, centerX - emptyW / 2, m_screenH / 2, 24, Color{200, 100, 100, 255});
         // Back button
         int backSize = 24;
         const char* backLabel = "< Back";
         int backW = MeasureText(backLabel, backSize);
-        DrawText(backLabel, 20, m_screenH - 50, backSize, (Color){200, 200, 210, 255});
+        DrawText(backLabel, 20, m_screenH - 50, backSize, Color{200, 200, 210, 255});
         return;
     }
 
@@ -512,7 +499,7 @@ void Game::drawWorldBrowser() {
 
         // Date line
         std::string dates = "v" + wi.version + "  |  Played: " + wi.lastPlayed;
-        DrawText(dates.c_str(), 36, y + 34, 13, (Color){160, 160, 170, 255});
+        DrawText(dates.c_str(), 36, y + 34, 13, Color{160, 160, 170, 255});
 
         // Turn count
         std::string turns = std::to_string(wi.turnCount) + " turn" + (wi.turnCount == 1 ? "" : "s");
@@ -528,13 +515,13 @@ void Game::drawWorldBrowser() {
         DrawRectangleRounded(gearRect, 0.3f, 6, gearHov ? Color{200, 200, 200, 40} : Color{0, 0, 0, 0});
         // Gear symbol (cog-like: circle + teeth)
         int gcx = gearX + btnSize / 2, gcy = gearY + btnSize / 2;
-        DrawCircle(gcx, gcy, 7, gearHov ? (Color){220, 220, 230, 255} : (Color){160, 160, 170, 255});
+        DrawCircle(gcx, gcy, 7, gearHov ? Color{220, 220, 230, 255} : Color{160, 160, 170, 255});
         DrawCircle(gcx, gcy, 4, bg);  // subtract center
         for (int t = 0; t < 8; ++t) {
             float ang = t * 3.14159f / 4;
             int tx = gcx + (int)(9 * cosf(ang));
             int ty = gcy + (int)(9 * sinf(ang));
-            DrawCircle(tx, ty, 2.5f, gearHov ? (Color){220, 220, 230, 255} : (Color){160, 160, 170, 255});
+            DrawCircle(tx, ty, 2.5f, gearHov ? Color{220, 220, 230, 255} : Color{160, 160, 170, 255});
         }
 
         // Delete button (X)
@@ -542,7 +529,7 @@ void Game::drawWorldBrowser() {
         Rectangle delRect = {(float)delX, (float)gearY, (float)btnSize, (float)btnSize};
         bool delHov = CheckCollisionPointRec(mouse, delRect);
         DrawRectangleRounded(delRect, 0.3f, 6, delHov ? Color{180, 50, 50, 40} : Color{0, 0, 0, 0});
-        DrawText("x", delX + 11, gearY + 6, 20, delHov ? (Color){255, 80, 80, 255} : (Color){200, 100, 100, 255});
+        DrawText("x", delX + 11, gearY + 6, 20, delHov ? Color{255, 80, 80, 255} : Color{200, 100, 100, 255});
 
         // Selection highlight underline
         if (isSelected) {
@@ -553,10 +540,10 @@ void Game::drawWorldBrowser() {
 
     // Scroll indicators
     if (m_fileScroll > 0) {
-        DrawText("^", centerX - 8, startY - 22, 18, (Color){160, 160, 170, 200});
+        DrawText("^", centerX - 8, startY - 22, 18, Color{160, 160, 170, 200});
     }
     if (m_fileScroll < maxScroll) {
-        DrawText("v", centerX - 8, m_screenH - 55, 18, (Color){160, 160, 170, 200});
+        DrawText("v", centerX - 8, m_screenH - 55, 18, Color{160, 160, 170, 200});
     }
 
     // Back button
@@ -565,8 +552,8 @@ void Game::drawWorldBrowser() {
     int backW = MeasureText(backLabel, backSize);
     Rectangle backRect = {20, (float)(m_screenH - 48), (float)(backW + 24), (float)(backSize + 12)};
     bool backHov = CheckCollisionPointRec(mouse, backRect);
-    DrawRectangleRounded(backRect, 0.1f, 8, backHov ? (Color){255, 255, 255, 20} : BLANK);
-    DrawText(backLabel, 20 + 12, m_screenH - 48 + 6, backSize, (Color){200, 200, 210, 255});
+    DrawRectangleRounded(backRect, 0.1f, 8, backHov ? Color{255, 255, 255, 20} : BLANK);
+    DrawText(backLabel, 20 + 12, m_screenH - 48 + 6, backSize, Color{200, 200, 210, 255});
 }
 
 void Game::updateWorldBrowser() {
@@ -1027,7 +1014,7 @@ void Game::drawMapBrowser() {
         Rectangle tabRect = {(float)(tabStartX + t * tabW), (float)tabY, (float)tabW, (float)tabH};
         bool active = (t == m_mapTabIndex);
         bool hover = CheckCollisionPointRec(mouse, tabRect);
-        Color bg = active ? (Color){60, 70, 100, 255} : (hover ? (Color){40, 45, 60, 255} : (Color){20, 22, 35, 255});
+        Color bg = active ? Color{60, 70, 100, 255} : (hover ? Color{40, 45, 60, 255} : Color{20, 22, 35, 255});
         DrawRectangleRounded(tabRect, 0.1f, 6, bg);
         int tw = MeasureText(tabs[t], 18);
         DrawText(tabs[t], (int)(tabRect.x + (tabW - tw) / 2), tabY + 8, 18, active ? hexToColor(m_config.accentColor) : LIGHTGRAY);
@@ -1068,7 +1055,7 @@ void Game::drawMapBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Start", (int)(confBtn.x + (btnW - MeasureText("Start", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : (Color){100, 100, 100, 200});
+        DrawText("Start", (int)(confBtn.x + (btnW - MeasureText("Start", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
@@ -1123,7 +1110,7 @@ void Game::drawMapBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Create", (int)(confBtn.x + (btnW - MeasureText("Create", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : (Color){100, 100, 100, 200});
+        DrawText("Create", (int)(confBtn.x + (btnW - MeasureText("Create", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
@@ -1199,8 +1186,8 @@ void Game::drawMapBrowser() {
                 {(float)thumbX, (float)thumbY, (float)thumbW, (float)thumbH},
                 {0, 0}, 0, WHITE);
         } else {
-            DrawRectangle(thumbX, thumbY, thumbW, thumbH, (Color){40, 42, 55, 255});
-            DrawText("no preview", thumbX + 60, thumbY + 45, 14, (Color){100, 100, 110, 200});
+            DrawRectangle(thumbX, thumbY, thumbW, thumbH, Color{40, 42, 55, 255});
+            DrawText("no preview", thumbX + 60, thumbY + 45, 14, Color{100, 100, 110, 200});
         }
 
         // Description
@@ -1221,16 +1208,16 @@ void Game::drawMapBrowser() {
         std::string license = entry.license.empty() ? "(not specified)" : entry.license;
         std::string scripts = entry.hasScripts ? "Yes" : "No";
 
-        DrawText("Author:", descX, detailY, 16, (Color){160, 180, 200, 255});
+        DrawText("Author:", descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(author.c_str(), descX + 100, detailY, 16, WHITE);
         detailY += 24;
 
-        DrawText("License:", descX, detailY, 16, (Color){160, 180, 200, 255});
+        DrawText("License:", descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(license.c_str(), descX + 100, detailY, 16, WHITE);
         detailY += 24;
 
-        DrawText("Scripted Events:", descX, detailY, 16, (Color){160, 180, 200, 255});
-        DrawText(scripts.c_str(), descX + 150, detailY, 16, entry.hasScripts ? (Color){100, 255, 100, 255} : (Color){200, 100, 100, 255});
+        DrawText("Scripted Events:", descX, detailY, 16, Color{160, 180, 200, 255});
+        DrawText(scripts.c_str(), descX + 150, detailY, 16, entry.hasScripts ? Color{100, 255, 100, 255} : Color{200, 100, 100, 255});
 
         // View License button (if license is specified)
         bool showLicenseBtn = !entry.license.empty() && entry.license != "(not specified)";
@@ -1468,7 +1455,7 @@ void Game::drawMapBrowser() {
         bool isImportBtn = showImportBtn && vi == importIdx;
         bool isSelected = (vi == m_mapIndex);
         bool isHovered = CheckCollisionPointRec(mouse, {(float)cardX, (float)y, (float)cardW, (float)cardH});
-        Color bgColor = isSelected ? (Color){60, 70, 100, 180} : (isHovered ? (Color){255, 255, 255, 15} : (Color){15, 17, 28, 200});
+        Color bgColor = isSelected ? Color{60, 70, 100, 180} : (isHovered ? Color{255, 255, 255, 15} : Color{15, 17, 28, 200});
         DrawRectangleRounded({(float)cardX, (float)y, (float)cardW, (float)cardH}, 0.08f, 8, bgColor);
 
         // Border for selected
@@ -1481,8 +1468,8 @@ void Game::drawMapBrowser() {
             int icX = centerX;
             int icY = y + cardH / 2;
             int plusSize = 40;
-            DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, (Color){100, 200, 100, 200});
-            DrawText("Import .odmap", icX - MeasureText("Import .odmap", 20) / 2, icY + 10, 20, (Color){100, 200, 100, static_cast<unsigned char>(isHovered ? 255 : 180)});
+            DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{100, 200, 100, 200});
+            DrawText("Import .odmap", icX - MeasureText("Import .odmap", 20) / 2, icY + 10, 20, Color{100, 200, 100, static_cast<unsigned char>(isHovered ? 255 : 180)});
         } else {
             int realIdx = visible[vi];
             auto& entry = m_mapEntries[realIdx];
@@ -1500,8 +1487,8 @@ void Game::drawMapBrowser() {
                     {(float)thumbX, (float)thumbY, (float)thumbW, (float)thumbH},
                     {0, 0}, 0, WHITE);
             } else {
-                DrawRectangle(thumbX, thumbY, thumbW, thumbH, (Color){40, 42, 55, 255});
-                DrawText("no preview", thumbX + 30, thumbY + 30, 14, (Color){100, 100, 110, 200});
+                DrawRectangle(thumbX, thumbY, thumbW, thumbH, Color{40, 42, 55, 255});
+                DrawText("no preview", thumbX + 30, thumbY + 30, 14, Color{100, 100, 110, 200});
             }
 
             // Name
@@ -1517,7 +1504,7 @@ void Game::drawMapBrowser() {
             int charsPerLine = std::max(20, maxLineW / 9);
             for (size_t ci = 0; ci < desc.size(); ci += charsPerLine) {
                 std::string line = desc.substr(ci, charsPerLine);
-                DrawText(line.c_str(), textX, descY, 14, (Color){160, 160, 170, 255});
+                DrawText(line.c_str(), textX, descY, 14, Color{160, 160, 170, 255});
                 descY += 18;
                 if (descY > y + cardH - 8) break;
             }
@@ -1528,8 +1515,8 @@ void Game::drawMapBrowser() {
             int tagX = cardX + cardW - tagW - 16;
             int tagY2 = y + 10;
             DrawRectangleRounded({(float)tagX - 4, (float)tagY2 - 2, (float)(tagW + 8), 18}, 0.15f, 6,
-                                entry.isStandard ? (Color){50, 120, 80, 200} : (Color){120, 90, 40, 200});
-            DrawText(tag.c_str(), tagX, tagY2, 11, (Color){200, 220, 210, 220});
+                                entry.isStandard ? Color{50, 120, 80, 200} : Color{120, 90, 40, 200});
+            DrawText(tag.c_str(), tagX, tagY2, 11, Color{200, 220, 210, 220});
 
             // Info button (all maps) - right side, vertically centered
             int infoX = cardX + cardW - 40;
@@ -1539,10 +1526,10 @@ void Game::drawMapBrowser() {
             bool infoHov = CheckCollisionPointRec(mouse, infoRect);
             
             // Draw circle background
-            Color circleBg = infoHov ? (Color){40, 80, 120, 200} : (Color){0, 0, 0, 120};
+            Color circleBg = infoHov ? Color{40, 80, 120, 200} : Color{0, 0, 0, 120};
             DrawCircle(infoX, infoY, infoRadius, circleBg);
             // Draw circle border
-            Color circleBorder = infoHov ? (Color){100, 180, 255, 255} : (Color){100, 150, 200, 200};
+            Color circleBorder = infoHov ? Color{100, 180, 255, 255} : Color{100, 150, 200, 200};
             DrawCircleLines(infoX, infoY, infoRadius, circleBorder);
             // Draw "i" character
             int iW = MeasureText("i", 18);
@@ -1552,17 +1539,17 @@ void Game::drawMapBrowser() {
             if (!entry.isStandard) {
                 std::string ver = "v" + entry.id;
                 int verW = MeasureText(ver.c_str(), 11);
-                DrawText(ver.c_str(), cardX + cardW - verW - 14, y + 14, 11, (Color){100, 100, 110, 200});
+                DrawText(ver.c_str(), cardX + cardW - verW - 14, y + 14, 11, Color{100, 100, 110, 200});
             }
         }
     }
 
     // Scroll indicators
     if (m_mapScroll > 0) {
-        DrawText("^", centerX - 6, listStartY - 18, 16, (Color){160, 160, 170, 200});
+        DrawText("^", centerX - 6, listStartY - 18, 16, Color{160, 160, 170, 200});
     }
     if (m_mapScroll < maxScroll) {
-        DrawText("v", centerX - 6, m_screenH - 50, 16, (Color){160, 160, 170, 200});
+        DrawText("v", centerX - 6, m_screenH - 50, 16, Color{160, 160, 170, 200});
     }
 
     // Back button
@@ -1570,8 +1557,8 @@ void Game::drawMapBrowser() {
     const char* backLabel = "< Back";
     Rectangle backRect = {20, (float)(m_screenH - 44), (float)(MeasureText(backLabel, backSize) + 24), (float)(backSize + 10)};
     bool backHov = CheckCollisionPointRec(mouse, backRect);
-    DrawRectangleRounded(backRect, 0.1f, 8, backHov ? (Color){255, 255, 255, 20} : BLANK);
-    DrawText(backLabel, 32, m_screenH - 44 + 5, backSize, (Color){200, 200, 210, 255});
+    DrawRectangleRounded(backRect, 0.1f, 8, backHov ? Color{255, 255, 255, 20} : BLANK);
+    DrawText(backLabel, 32, m_screenH - 44 + 5, backSize, Color{200, 200, 210, 255});
 }
 
 void Game::updateMapBrowser() {
@@ -1764,17 +1751,11 @@ void Game::updateMapBrowser() {
                         std::remove((dir + target.filename).c_str());
                     } else {
                         // Own subfolder: remove its files, then the folder
-                        DIR* d = opendir(dir.c_str());
-                        if (d) {
-                            struct dirent* e;
-                            while ((e = readdir(d)) != nullptr) {
-                                std::string fn = e->d_name;
-                                if (fn == "." || fn == "..") continue;
-                                std::remove((dir + fn).c_str());
-                            }
-                            closedir(d);
-                        }
-                        rmdir(dir.c_str());
+                        // remove_all does the whole job -- the files and then
+                        // the folder -- and needs neither dirent.h nor rmdir,
+                        // neither of which MSVC provides.
+                        std::error_code rmec;
+                        std::filesystem::remove_all(dir, rmec);
                     }
                     // Reload entries
                     loadMapEntries();
@@ -1937,12 +1918,12 @@ void Game::drawFileBrowser() {
 
     const char* help = "Select a save file or press ESC to go back";
     int helpW = MeasureText(help, 16);
-    DrawText(help, centerX - helpW / 2, 105, 16, (Color){140, 140, 150, 200});
+    DrawText(help, centerX - helpW / 2, 105, 16, Color{140, 140, 150, 200});
 
     if (m_fileItems.empty()) {
         const char* msg = "No files found in this directory";
         int msgW = MeasureText(msg, 24);
-        DrawText(msg, centerX - msgW / 2, m_screenH / 2, 24, (Color){200, 100, 100, 255});
+        DrawText(msg, centerX - msgW / 2, m_screenH / 2, 24, Color{200, 100, 100, 255});
         return;
     }
 
@@ -1973,14 +1954,14 @@ void Game::drawFileBrowser() {
     }
 
     if (m_fileScroll > 0)
-        DrawText("^", centerX - 8, startY - 25, 20, (Color){160, 160, 170, 200});
+        DrawText("^", centerX - 8, startY - 25, 20, Color{160, 160, 170, 200});
     if (m_fileScroll < maxScroll)
-        DrawText("v", centerX - 8, m_screenH - 50, 20, (Color){160, 160, 170, 200});
+        DrawText("v", centerX - 8, m_screenH - 50, 20, Color{160, 160, 170, 200});
 
     int backSize = 24;
     const char* backLabel = "< Back";
     int backW = MeasureText(backLabel, backSize);
-    DrawText(backLabel, 20, m_screenH - 50, backSize, (Color){200, 200, 210, 255});
+    DrawText(backLabel, 20, m_screenH - 50, backSize, Color{200, 200, 210, 255});
 }
 
 void Game::updateFileBrowser() {

@@ -21,13 +21,11 @@
 #include <cstdio>
 #include <string>
 #include <unordered_set>
-#include <dirent.h>
 #ifdef _WIN32
 #include <direct.h>
 #endif
 #include <sys/stat.h>
 #ifndef _WIN32
-#include <unistd.h>
 #endif
 #include <ctime>
 #include <random>
@@ -906,7 +904,7 @@ void Game::drawConsoleWindow() {
     Rectangle closeBtn = {closeX, c.rect.y + 2, 22, 22};
     bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
     if (closeHov) DrawRectangleRounded(closeBtn, 0.3f, 6, {180, 40, 40, 200});
-    DrawText("x", (int)closeX + 6, (int)c.rect.y + 4, 14, closeHov ? WHITE : (Color){180, 180, 200, 200});
+    DrawText("x", (int)closeX + 6, (int)c.rect.y + 4, 14, closeHov ? WHITE : Color{180, 180, 200, 200});
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, closeBtn)) {
         m_config.showConsole = false;
     }
@@ -959,16 +957,16 @@ void Game::drawDebugOverlay() {
     if (m_config.showFps) {
         int fps = GetFPS();
         const char* fpsStr = TextFormat("FPS: %d", fps);
-        Color fpsColor = fps >= 55 ? (Color){100, 255, 100, 220} : (fps >= 30 ? (Color){255, 255, 100, 220} : (Color){255, 100, 100, 220});
+        Color fpsColor = fps >= 55 ? Color{100, 255, 100, 220} : (fps >= 30 ? Color{255, 255, 100, 220} : Color{255, 100, 100, 220});
         DrawText(fpsStr, 10, 10, 18, fpsColor);
     }
 
     if (m_config.showZoom) {
         int provCount = (int)m_provinces.getAllProvinces().size();
         float zoom = m_renderer ? m_renderer->getZoom() : 1.0f;
-        DrawText(TextFormat("Provinces: %d", provCount), 10, 32, 14, (Color){180, 220, 255, 200});
-        DrawText(TextFormat("Zoom: %.2f", zoom), 10, 48, 14, (Color){180, 220, 255, 200});
-        DrawText(TextFormat("DPI: %.2f", m_dpiScale), 10, 64, 14, (Color){140, 160, 180, 160});
+        DrawText(TextFormat("Provinces: %d", provCount), 10, 32, 14, Color{180, 220, 255, 200});
+        DrawText(TextFormat("Zoom: %.2f", zoom), 10, 48, 14, Color{180, 220, 255, 200});
+        DrawText(TextFormat("DPI: %.2f", m_dpiScale), 10, 64, 14, Color{140, 160, 180, 160});
     }
 
     // AI decision feed: last decisions from the ring buffer, newest first
@@ -1580,20 +1578,20 @@ void Game::drawNowPlayingToast() {
 
     const Color accent = hexToColor(m_config.accentColor);
     DrawRectangleRounded({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
-                         (Color){ 12, 12, 18, A(225) });
+                         Color{ 12, 12, 18, A(225) });
     DrawRectangleRoundedLines({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
-                              (Color){ accent.r, accent.g, accent.b, A(90) });
+                              Color{ accent.r, accent.g, accent.b, A(90) });
     // Accent spine down the left edge, inset so the rounding does not clip it.
-    DrawRectangle(x + 1, y + 8, accentW, boxH - 16, (Color){ accent.r, accent.g, accent.b, A(230) });
+    DrawRectangle(x + 1, y + 8, accentW, boxH - 16, Color{ accent.r, accent.g, accent.b, A(230) });
 
     int ty = y + padY;
     const int tx = x + accentW + padX;
-    DrawText(kicker, tx, ty, kickerSize, (Color){ accent.r, accent.g, accent.b, A(215) });
+    DrawText(kicker, tx, ty, kickerSize, Color{ accent.r, accent.g, accent.b, A(215) });
     ty += kickerSize + 6;
-    DrawText(title.c_str(), tx, ty, titleSize, (Color){ 245, 245, 250, A(255) });
+    DrawText(title.c_str(), tx, ty, titleSize, Color{ 245, 245, 250, A(255) });
     if (!author.empty()) {
         ty += titleSize + 4;
-        DrawText(author.c_str(), tx, ty, authorSize, (Color){ 170, 170, 185, A(200) });
+        DrawText(author.c_str(), tx, ty, authorSize, Color{ 170, 170, 185, A(200) });
     }
 }
 
@@ -1625,7 +1623,7 @@ void Game::drawSliderWidget(Rectangle bar, float t, bool active, int steps) cons
     const Color accent = hexToColor(m_config.accentColor);
     t = std::clamp(t, 0.0f, 1.0f);
 
-    DrawRectangleRounded(bar, 1.0f, 6, (Color){255, 255, 255, 36});
+    DrawRectangleRounded(bar, 1.0f, 6, Color{255, 255, 255, 36});
     Rectangle fill = bar;
     fill.width = bar.width * t;
     // Below one bar-height the rounded rect degenerates into a smear.
@@ -1640,7 +1638,7 @@ void Game::drawSliderWidget(Rectangle bar, float t, bool active, int steps) cons
             const int tx = (int)(bar.x + bar.width * f);
             const int th = (i == 0 || i == steps - 1) ? 12 : 6;
             DrawRectangle(tx, (int)(bar.y + bar.height) + 2, 2, th,
-                          (Color){140, 140, 140, 200});
+                          Color{140, 140, 140, 200});
         }
     }
 
@@ -1648,7 +1646,7 @@ void Game::drawSliderWidget(Rectangle bar, float t, bool active, int steps) cons
     const int ky = (int)(bar.y + bar.height * 0.5f);
     const float kr = active ? 9.0f : 7.0f;
     DrawCircle(kx, ky, kr, accent);
-    DrawCircle(kx, ky, kr - 3.0f, (Color){20, 20, 28, 255});
+    DrawCircle(kx, ky, kr - 3.0f, Color{20, 20, 28, 255});
 }
 
 bool Game::sliderInteract(Rectangle bar, int steps, float& t, bool& owns) {
@@ -1869,10 +1867,10 @@ void Game::drawResourcePanel() {
     const Rectangle p = resourcePanelRect();
     const Color accent = hexToColor(m_config.accentColor);
 
-    DrawRectangleRounded(p, 0.06f, 8, (Color){14, 16, 22, 232});
-    DrawRectangleRoundedLines(p, 0.06f, 8, (Color){255, 255, 255, 40});
+    DrawRectangleRounded(p, 0.06f, 8, Color{14, 16, 22, 232});
+    DrawRectangleRoundedLines(p, 0.06f, 8, Color{255, 255, 255, 40});
     DrawText("RESOURCE LIMIT", (int)p.x + 16, (int)p.y + 12, 16, accent);
-    DrawText("F10", (int)(p.x + p.width) - 32, (int)p.y + 13, 12, (Color){140, 145, 160, 200});
+    DrawText("F10", (int)(p.x + p.width) - 32, (int)p.y + 13, 12, Color{140, 145, 160, 200});
 
     // Current setting + what it actually caps the frame rate at.
     {
@@ -1890,8 +1888,8 @@ void Game::drawResourcePanel() {
 
     // ── History graph ──
     const Rectangle g = { p.x + 16, p.y + 88, p.width - 32, 90 };
-    DrawRectangleRec(g, (Color){255, 255, 255, 10});
-    DrawRectangleLinesEx(g, 1, (Color){255, 255, 255, 26});
+    DrawRectangleRec(g, Color{255, 255, 255, 10});
+    DrawRectangleLinesEx(g, 1, Color{255, 255, 255, 26});
 
     // The vertical scale is CPU share of ONE core, headroom to the number of
     // cores actually present — a share above 1.0 is real and worth seeing, not
@@ -1903,7 +1901,7 @@ void Game::drawResourcePanel() {
 
     for (int i = 1; i < 4; ++i) {
         const float y = g.y + g.height * i / 4.0f;
-        DrawLineV({g.x, y}, {g.x + g.width, y}, (Color){255, 255, 255, 14});
+        DrawLineV({g.x, y}, {g.x + g.width, y}, Color{255, 255, 255, 14});
     }
 
     if (m_perfHistory.size() >= 2) {
@@ -1918,29 +1916,29 @@ void Game::drawResourcePanel() {
             // "did the cap actually bite?" is answerable by looking.
             const Vector2 budPt = {x, g.y + g.height * (1.0f - std::min(s.budget, peak) / peak)};
             if (i) {
-                DrawLineEx(prevCpu, cpuPt, 1.6f, (Color){120, 220, 160, 235});
-                DrawLineV(prevBudget, budPt, (Color){255, 200, 90, 150});
+                DrawLineEx(prevCpu, cpuPt, 1.6f, Color{120, 220, 160, 235});
+                DrawLineV(prevBudget, budPt, Color{255, 200, 90, 150});
             }
             prevCpu = cpuPt; prevBudget = budPt;
         }
     } else {
         DrawText("sampling...", (int)g.x + 8, (int)(g.y + g.height / 2 - 5), 12,
-                 (Color){150, 150, 160, 180});
+                 Color{150, 150, 160, 180});
     }
     DrawText(TextFormat("%.1f cores", peak), (int)g.x + 4, (int)g.y + 3, 10,
-             (Color){170, 175, 190, 190});
+             Color{170, 175, 190, 190});
 
     // Legend + live readouts
     const int ly = (int)(g.y + g.height) + 8;
-    DrawRectangle((int)g.x, ly + 5, 10, 2, (Color){120, 220, 160, 235});
-    DrawText("cpu used", (int)g.x + 14, ly, 11, (Color){170, 180, 190, 210});
-    DrawRectangle((int)g.x + 82, ly + 5, 10, 2, (Color){255, 200, 90, 190});
-    DrawText("limit", (int)g.x + 96, ly, 11, (Color){170, 180, 190, 210});
+    DrawRectangle((int)g.x, ly + 5, 10, 2, Color{120, 220, 160, 235});
+    DrawText("cpu used", (int)g.x + 14, ly, 11, Color{170, 180, 190, 210});
+    DrawRectangle((int)g.x + 82, ly + 5, 10, 2, Color{255, 200, 90, 190});
+    DrawText("limit", (int)g.x + 96, ly, 11, Color{170, 180, 190, 210});
 
     const float share = m_perfHistory.empty() ? 0.0f : m_perfHistory.back().cpuShare;
     std::string live = TextFormat("now %.0f%% of a core", share * 100.0f);
     if (m_lastTurnMs > 0.0f) live += TextFormat("   turn %.0f ms", m_lastTurnMs);
-    DrawText(live.c_str(), (int)g.x, ly + 18, 12, (Color){200, 205, 215, 225});
+    DrawText(live.c_str(), (int)g.x, ly + 18, 12, Color{200, 205, 215, 225});
 }
 
 void Game::throttleForBudget(double workSeconds, double maxSleepSeconds) {
@@ -2057,12 +2055,12 @@ void Game::drawPauseMenu() {
             int sbW = 300;
             int sbH = 24;
             int sbX = centerX - sbW / 2;
-            Color sbBg = m_keybindFilterActive ? (Color){255, 255, 255, 30} : (Color){255, 255, 255, 16};
+            Color sbBg = m_keybindFilterActive ? Color{255, 255, 255, 30} : Color{255, 255, 255, 16};
             DrawRectangle(sbX, sbY, sbW, sbH, sbBg);
-            Color sbBorder = m_keybindFilterActive ? ColorAlpha(hexToColor(m_config.accentColor), 180.0f/255.0f) : (Color){255, 255, 255, 50};
+            Color sbBorder = m_keybindFilterActive ? ColorAlpha(hexToColor(m_config.accentColor), 180.0f/255.0f) : Color{255, 255, 255, 50};
             DrawRectangleLines(sbX, sbY, sbW, sbH, sbBorder);
             std::string searchText = m_keybindFilter.empty() ? "Search keybinds..." : m_keybindFilter;
-            Color sc = m_keybindFilter.empty() ? (Color){120, 120, 140, 180} : WHITE;
+            Color sc = m_keybindFilter.empty() ? Color{120, 120, 140, 180} : WHITE;
             DrawText(searchText.c_str(), sbX + 6, sbY + 5, 13, sc);
             if (m_keybindFilterActive && !m_keybindFilter.empty()) {
                 int sw = MeasureText(m_keybindFilter.c_str(), 13);
@@ -2164,8 +2162,8 @@ void Game::drawPauseMenu() {
                 bool collapsed = m_collapsedSections.count(i) > 0;
                 const char* arrow = collapsed ? "[+]" : "[-]";
                 std::string headerLabel = std::string(arrow) + " " + (items[i].label + 2);
-                DrawText(headerLabel.c_str(), centerX - MeasureText(headerLabel.c_str(), 16) / 2, y + 6, 16, (Color){180, 180, 200, 180});
-                DrawLine(centerX - 260, y + itemH - 2, centerX + 260, y + itemH - 2, (Color){180, 180, 200, 40});
+                DrawText(headerLabel.c_str(), centerX - MeasureText(headerLabel.c_str(), 16) / 2, y + 6, 16, Color{180, 180, 200, 180});
+                DrawLine(centerX - 260, y + itemH - 2, centerX + 260, y + itemH - 2, Color{180, 180, 200, 40});
                 if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered == i) {
                     if (collapsed) m_collapsedSections.erase(i);
                     else m_collapsedSections.insert(i);
@@ -2178,7 +2176,7 @@ void Game::drawPauseMenu() {
             bool isEditing = m_editingValue && i == m_settingsIndex;
 
             Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
-            Color bgColor = isEditing ? (Color){255, 255, 255, 20} : (isHovered ? (Color){255, 255, 255, 16} : BLANK);
+            Color bgColor = isEditing ? Color{255, 255, 255, 20} : (isHovered ? Color{255, 255, 255, 16} : BLANK);
 
             std::string label;
             if (m_waitingForKey && m_rebindingAction >= 0 && items[i].actionId == m_rebindingAction) {
@@ -2247,9 +2245,9 @@ void Game::drawPauseMenu() {
                 int rw = MeasureText(rl, smFont);
                 float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (centerX + tw / 2 + 14);
                 float ry = (float)(y + 5);
-                Color rc = (resetHovered == i) ? hexToColor(m_config.accentColor) : (Color){180, 180, 180, 255};
+                Color rc = (resetHovered == i) ? hexToColor(m_config.accentColor) : Color{180, 180, 180, 255};
                 Rectangle rr = { rx, ry, (float)(rw + 16), (float)(smFont + 8) };
-                DrawRectangleRounded(rr, 0.2f, 6, (Color){255, 255, 255, 12});
+                DrawRectangleRounded(rr, 0.2f, 6, Color{255, 255, 255, 12});
                 DrawText(rl, (int)(rx + 5), (int)(ry + 2), smFont, rc);
             }
 
@@ -2265,9 +2263,9 @@ void Game::drawPauseMenu() {
                                  FPS_STEPS);
                 const int lbl = 14;
                 const int ly = (int)(bar.y + bar.height) + 16;
-                DrawText("Unlimited", (int)bar.x, ly, lbl, (Color){180, 180, 180, 200});
+                DrawText("Unlimited", (int)bar.x, ly, lbl, Color{180, 180, 180, 200});
                 DrawText("VSync", (int)(bar.x + bar.width) - MeasureText("VSync", lbl),
-                         ly, lbl, (Color){180, 180, 180, 200});
+                         ly, lbl, Color{180, 180, 180, 200});
             }
 
         }
@@ -2291,7 +2289,7 @@ void Game::drawPauseMenu() {
             bool isSelected = (i == m_menuIndex);
             bool isHovered = (i == hovered);
             Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
-            Color bgColor = isHovered ? (Color){255, 255, 255, 16} : BLANK;
+            Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
             int tw = MeasureText(MENU_ITEMS[i], fontSize);
             Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };

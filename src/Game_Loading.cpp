@@ -20,13 +20,12 @@
 #include <cstdio>
 #include <string>
 #include <unordered_set>
-#include <dirent.h>
+#include <filesystem>
 #ifdef _WIN32
 #include <direct.h>
 #endif
 #include <sys/stat.h>
 #ifndef _WIN32
-#include <unistd.h>
 #endif
 #include <ctime>
 #include <random>
@@ -1976,18 +1975,18 @@ void Game::unloadGameData() {
 
 void Game::scanDirectory(const std::string& dir, const std::string& ext, std::vector<std::string>& out) {
     out.clear();
-    DIR* d = opendir(dir.c_str());
-    if (!d) return;
-    struct dirent* entry;
-    while ((entry = readdir(d)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") continue;
-        // Check extension
+    // std::filesystem, not dirent.h: MSVC has no such header, so this file
+    // could not compile on Windows at all. The error_code overload keeps the
+    // old behaviour of returning quietly when the directory is not there --
+    // the throwing overload would turn a missing folder into a crash.
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+        // "." and ".." are never yielded, so the checks readdir needed are gone.
+        std::string name = e.path().filename().string();
         if (name.size() >= ext.size() && name.substr(name.size() - ext.size()) == ext) {
             out.push_back(name);
         }
     }
-    closedir(d);
     std::sort(out.begin(), out.end());
 }
 

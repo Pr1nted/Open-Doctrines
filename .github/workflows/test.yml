@@ -55,7 +55,7 @@ jobs:
           - { name: linux-x64,    os: ubuntu-22.04 }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Pinned, not inherited. The stand-in account service signs with WebCrypto
       # Ed25519, which arrived in node 18 -- and on older node the file does not
@@ -63,13 +63,13 @@ jobs:
       # `SyntaxError: Unexpected reserved word` pointing at a crypto line.
       # Ubuntu's own package is node 12, so this is reachable on an ordinary
       # machine, and the error tells you nothing about the real cause.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: "22" }
 
       # Pillow decodes the GIFs the encoder writes. An encoder cannot verify its
       # own LZW: a stream with a mis-sized code still has a valid header and
       # still opens.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: python -m pip install --quiet Pillow
 
@@ -102,7 +102,7 @@ jobs:
     name: web (emscripten)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: mymindstorm/setup-emsdk@v14
         with: { version: latest }
 
