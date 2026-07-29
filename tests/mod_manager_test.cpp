@@ -16,7 +16,6 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
-#include <sys/stat.h>
 #include <vector>
 
 namespace {
@@ -126,7 +125,7 @@ int main(int argc, char** argv) {
     }
 
     // Fresh scratch directory every run.
-    mkdir(dir.c_str(), 0755);
+    { std::error_code mkec; std::filesystem::create_directories(dir, mkec); }
     // Start from an empty scratch directory. The suite installs mods into it as
     // it goes, so without this the second run finds the first run's leftovers
     // and the "empty directory" precondition below fails -- a stale-state
@@ -343,9 +342,8 @@ int main(int argc, char** argv) {
         std::string err;
         check("delete removes the mod", mm.removeMod(idx, err), err);
         check("it is gone from the list", byId("com.test.refuse") == nullptr);
-        struct stat st;
         check("the file is gone from disk",
-              stat((dir + "/com.test.refuse.odmod").c_str(), &st) != 0);
+              !std::filesystem::exists(dir + "/com.test.refuse.odmod"));
     }
 
     // ---- dependencies and conflicts -----------------------------------------

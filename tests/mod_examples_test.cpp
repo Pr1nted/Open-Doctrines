@@ -25,7 +25,6 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
 
 namespace {

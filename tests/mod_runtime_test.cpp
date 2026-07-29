@@ -19,7 +19,6 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
-#include <sys/stat.h>
 #include <vector>
 
 namespace {
@@ -398,7 +397,7 @@ int main(int argc, char** argv) {
     printf("\nstorage\n");
     {
         std::string dir = std::string(argc > 1 ? argv[1] : ".") + "/storage_test";
-        mkdir(dir.c_str(), 0755);
+        { std::error_code mkec; std::filesystem::create_directories(dir, mkec); }
         // Start from an empty directory. Storage is persistent by design, so
         // without this the second run of the suite would load the first run's
         // files and the namespacing checks below would read as failures.
