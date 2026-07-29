@@ -103,13 +103,42 @@ im.save('docs/itch/page-background.png')
 
 ---
 
-## 3. Upload the screenshots
+## 3. Images
 
-The description references seven images by placeholder. Upload each from the
-description editor's **image button** so itch hosts it and writes the URL for
-you — that is easier and safer than editing the `src` by hand.
+itch must host every image. A `src` pointing at a local file, or at a raw
+GitHub URL, will not work — GitHub sends headers that stop other sites
+embedding its files, so it fails silently and looks exactly like a typo.
 
-In the order they appear:
+There are **two separate places** images live, and they are not the same thing.
+
+### 3a. The Screenshots gallery — do this one first
+
+**Edit game → Screenshots.** Upload all seven from `docs/img/`:
+
+```
+world-map.png            the hero: put it first, it is the thumbnail
+timelapse-political.gif  animated, and the most persuasive thing you have
+province.png
+research.png
+economy.png
+map-editor.png
+mods.png
+```
+
+This gallery is where players look. itch gives it a viewer and a lightbox for
+free, the order is drag-to-sort, and it needs no HTML at all. **Order matters:**
+the first one is what appears in listings and on your profile.
+
+### 3b. Inline images in the description
+
+Separate uploads — the gallery and the description do not share files.
+
+For each `UPLOAD:` placeholder still in the pasted description:
+
+1. Click it once to select the broken image, and delete it.
+2. With the cursor in that spot, click the **image button** in the editor
+   toolbar.
+3. Choose the matching file. itch uploads it and writes the `src` itself.
 
 | Placeholder | File |
 |---|---|
@@ -121,13 +150,30 @@ In the order they appear:
 | `UPLOAD:map-editor.png` | `docs/img/map-editor.png` |
 | `UPLOAD:mods.png` | `docs/img/mods.png` |
 
-The GIF is 1.2 MB and animates on the page, which is the single most useful
-thing on it — a still screenshot of a strategy game tells you very little.
+**You do not have to do all seven.** With the gallery already carrying them, the
+two worth keeping inline are **the timelapse GIF** and **`mods.png`** — the GIF
+because a moving map says more than any sentence on the page, and the mod menu
+because it is the one screenshot whose subject the surrounding text cannot
+convey. Delete the rest of the placeholders; the gallery covers them, and a
+description that alternates image-paragraph-image-paragraph is harder to read
+than one that does not.
 
-**Cover image** (the thumbnail in listings, 630×500): itch crops to that ratio,
-so crop `docs/img/world-map.png` yourself rather than letting it choose. Put
-Europe and the Atlantic in frame; the automatic crop takes the middle, which is
-ocean.
+### 3c. Cover image
+
+**Edit game → Cover image**, 630×500. itch crops to that ratio, so crop it
+yourself rather than letting it choose — the automatic crop takes the middle of
+the world map, which is ocean. Put Europe and the Atlantic in frame:
+
+```bash
+python3 -c "
+from PIL import Image
+im = Image.open('docs/img/world-map.png')
+# Europe/Atlantic, at the 630x500 aspect ratio
+im.crop((520, 60, 1150, 560)).resize((630, 500), Image.LANCZOS) \
+  .save('docs/itch/cover.png')
+print('wrote docs/itch/cover.png')
+"
+```
 
 ---
 
