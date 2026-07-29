@@ -1,27 +1,51 @@
 # Multiplayer
 
-Status: **infrastructure landed, game integration outstanding.** What is built is
-built properly and tested; the list at the bottom says what is not.
+Status: **built and playable.** Hosting, joining, seats, turns, disconnects and
+reconnects all work; `tools/playtest.sh --verify` checks them unattended. The
+list at the bottom says what is not built.
 
 ## The shape of it
 
-Everyone dials **out** over `wss://` to a Cloudflare Durable Object, including
-the host. There is no listening port on anybody's machine, so there is nothing
-to forward: no UPnP, no NAT punchthrough, no router configuration, and it works
-from a browser tab.
+**Players dial out. The host listens.**
 
 ```
   player ─┐
-  player ─┼──wss──▶  LobbyDO (relay)  ◀──wss──  host  ── authoritative game
-  spectator ┘             │
-                          │ verifies join tickets, stamps peer identity,
-                          │ forwards bytes. Never parses a game payload.
-                          ▼
-                   Worker + KV: accounts, nicknames, badges, tokens
+  player ─┼──wss──▶  tunnel (cloudflared)  ──▶  host :27015  ── authoritative game
+  spectator ┘                                        │
+                                                     │ verifies join tickets,
+                                                     │ stamps peer identity
+                                                     ▼
+                              Worker + KV: accounts, nicknames, badges, tokens
 ```
 
-The relay is deliberately stupid. Game rules live in the C++ host, in one
-place, where they are authoritative.
+A joiner needs no router configuration and can be a browser tab. A host binds a
+socket (`NetHost::open` -> `WsServer::listen`) and is reachable either by a
+forwarded port, a LAN address, or — the intended path — a tunnel the game can
+install and open for itself, so the host does not configure anything either.
+See [multiplayer-hosting.md](multiplayer-hosting.md).
+
+**Hosting therefore needs a desktop build.** A browser cannot accept an inbound
+connection, so the web build can join a game and cannot start one.
+
+### The relay that is not wired up
+
+`net/src/lobby/LobbyDO.ts` implements a different and better shape — everyone,
+including the host, dialling **out** to a Durable Object that forwards bytes
+between them. Its header still describes the game that way. That relay is
+deployed and works; the C++ host simply never adopted it and listens instead.
+
+The difference is worth knowing before reading either side:
+
+- the tunnel exists **because** the host listens. Adopting the relay would
+  remove the cloudflared install path from hosting on every platform.
+- browser hosting is impossible under the current shape and straightforward
+  under the relay's, because `WebSocket` — the class `Session` already uses,
+  and which `WsWeb.cpp` already implements for browsers — is all a relay host
+  would need.
+
+Whichever is used, the relay is deliberately stupid: it never parses a game
+payload. Game rules live in the C++ host, in one place, where they are
+authoritative.
 
 ## What stops cheating
 
@@ -165,23 +189,41 @@ cannot join a game as you, because joining needs a per-session ticket.
 
 Designed in full in [multiplayer-hosting.md](multiplayer-hosting.md) — host
 authorisation, lobby, country selection and swaps, the two turn modes, and what
-happens to a bad or absent submission. Step 1 of that build order (the protocol)
-is done; the rest is listed there.
+happens to a bad or absent submission. All of it is built except the dedicated
+server (below); host from the main menu under **Multiplayer > Host a game**.
+
+## Playing it
+
+Main menu > **Multiplayer**. The host starts a session and the lobby shows an
+address and a code; joiners paste both. Countries are picked in the lobby, the
+host starts the game, and from then on the map is the game — the host console
+is on Esc.
+
+To try it on one machine, `tools/playtest.sh` runs four clients as four
+different players against a local dev issuer, and `tools/playtest.sh --verify`
+does the same run unattended and exits non-zero if anything is wrong. Neither
+needs a second account or a real service. See
+[multiplayer-testing.md](multiplayer-testing.md).
 
 ## Not built yet
 
-The game does not yet join a game. Remaining, roughly in order:
+The session, the orders, the lobby, the turn loop and the menu are all built —
+what remains is one thing and two shapes that landed differently from the plan.
 
-1. **`Session`** — the state machine that ties transport, protocol and
-   attestation together: fetch session info, mint a ticket, connect, HELLO,
-   handle WELCOME/REJECT, heartbeat, reconnect. The HTTPS client it needs is
-   built (`src/net/HttpClient.h`).
-2. **`NetOrders`** — encode and decode the `m_pending*` vectors. Needs
-   `GameStructs.h`, which is why it is separate from `NetProtocol`.
-3. **`Game` wiring** — `NetRole`; skip `processTurn()` on a client and apply
-   deltas instead; never construct `m_ai` on a client; force order attribution
-   on the server.
-4. **Host modes** — `--host [--dedicated]`, reusing the existing headless path
-   built for `--train-ai`.
-5. **Rapid turn loop** and the multiplayer menu, replacing the
-   "Multiplayer not yet available" stub in `Game_Menus.cpp`.
+- **Dedicated server** — `--host [--dedicated] [--mode=rapid|longform]` is
+  designed in [multiplayer-hosting.md](multiplayer-hosting.md) and not
+  implemented. Hosting today means a running copy of the game with a window; a
+  host that closes it ends the session. The headless path `--train-ai` and
+  `--simulate` use is what this would reuse.
+- **Long-form turn mode** — designed, not built. See *Turn modes* above.
+
+Two things in this document's history are worth recording, because the code
+does not match the plan and the plan is what a reader will look for:
+
+- There is no `NetOrders` translation unit. Encoding and decoding the
+  `m_pending*` vectors turned out to be inseparable from the ownership checks
+  that guard them, so both live in `Game_Multiplayer.cpp`
+  (`mpSerializeOrders` / `mpApplyOrders`) — the same pass that reads an order
+  is the one that decides the sender owns the province it names.
+- There is no `NetRole` enum. A peer's role is which object it holds —
+  `m_netHost` or `m_netSession` — surfaced as `mpIsHost()` / `mpIsClient()`.

@@ -1,5 +1,6 @@
 # CMake build files
 build/
+build-release/
 cmake-build-*/
 CMakeCache.txt
 cmake_install.cmake
@@ -69,3 +70,24 @@ net/wrangler.toml.bak
 # a browser cannot spawn a process. Fetch it per-platform instead of shipping
 # one binary in history.
 data/tools/cloudflared
+
+# Four-client playtest sandbox: synthetic accounts and symlinked assets.
+.playtest/
+data-p2/
+
+# Worlds made or imported locally, plus the throwaway maps --train-ai generates.
+# A training run that is killed rather than closed leaves its map behind, so
+# this fills up with __ai_training_<pid>__.odmap nobody wants.
+data/custom_maps/
+
+# The playtest bridge probe is BUILT, never committed. tools/playtest.sh
+# compiles it against the current sdk/gearbox_generated.h on every run, because
+# a stale one would silently test an ABI the host no longer has -- which is
+# worse than not testing the bridge at all.
+tools/playtest-mod/mod.wasm
+tools/playtest-mod/bridge-check.odmod
+
+# Throwaway install tools/screenshots.sh builds to photograph a KNOWN game
+# rather than this machine's. The images it produces are committed (docs/img);
+# the install it produces is not.
+.screenshots/

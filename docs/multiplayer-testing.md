@@ -1,5 +1,51 @@
 # Testing multiplayer on one machine
 
+## One command
+
+```bash
+tools/playtest.sh              # a playing host and three joiners
+tools/playtest.sh --spectate   # host takes no seat; three joiners play
+tools/playtest.sh --verify     # no windows: check it, and exit non-zero if wrong
+tools/playtest.sh --clean      # throw the sandbox away
+```
+
+Four clients, four different players, no second Google account. It runs the
+local dev issuer (`tests/mock_issuer.mjs`), gives each client its own data
+directory, and writes each one a session directly -- Alice, Bob, Carol and
+Dave. Plain http is allowed for exactly this case and no other:
+`AccountClient` permits an insecure issuer only on `localhost`.
+
+Identity comes from the token, so `dev-alice` is **always** Alice. That
+stability is the point -- a pseudonym that changed per request would make every
+rejoin look like a stranger and seat memory could never be tested.
+
+Ctrl-C closes all four and the issuer. Logs land in `.playtest/*.log`.
+
+### Why four and not two
+
+Two peers cannot fail in the ways that matter. Seats that collide, a country
+claimed twice, a turn that begins for whoever was pumped last, a reconnect that
+hands somebody another player's country -- every one of those is *fine* with one
+joiner and wrong with three.
+
+`--verify` is exactly those cases with nobody at the keyboard: it brings up a
+real host and three real clients over loopback against the dev issuer, seats all
+four, resolves a turn, disconnects one player, resolves another turn without
+them, and reconnects them to check they get their **own** country back. It exits
+non-zero if any of that is wrong, which is what makes it the thing to run when
+qualifying a platform. See `testParty()` in `tests/net_connect_test.cpp`; it also
+runs as part of `tests/run_all.sh`.
+
+What `--verify` cannot judge is how any of it *looks*. That is what the windowed
+modes are for.
+
+**What it does not cover:** the account screen itself. These clients arrive
+already signed in, so OAuth, account creation and the consent gate are not
+exercised -- everything after sign-in is.
+
+---
+
+
 The awkward part is not running two copies. It is that **a psid is derived from
 the account you sign in with**, so two copies signed in as you are one player
 twice — and the lobby is right to say so. `admit()` sees a psid it already
