@@ -71,6 +71,17 @@ typedef uint32_t gearbox_panel;
  *                   reach and no filesystem to escape into. Names are relative
  *                   to data/ and use '/' separators: data/flags/fr.png is
  *                   "flags/fr.png".
+ *   Audio           Play sounds from your own assets. Volume is multiplied by
+ *                   the player's own effects setting, so you cannot be louder
+ *                   than they allowed, and every sound you started is stopped
+ *                   when your mod unloads.
+ *   Net             A channel between copies of YOUR mod on the players'
+ *                   machines. It is not access to the game's traffic: orders,
+ *                   deltas, tickets and chat never pass through it, and the
+ *                   host stamps your mod id on what you send so you cannot
+ *                   speak as another mod or another player. High trust cost
+ *                   all the same -- it is the one capability that reaches off
+ *                   the machine.
  *
  * Anything returning variable-length data uses two-call sizing: it returns the
  * FULL length and writes at most `cap` bytes. Call with cap 0 to size,

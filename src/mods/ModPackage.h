@@ -27,6 +27,8 @@ enum ModModuleBit : uint32_t {
     MODULE_DIPLOMACY       = 1u << 7,
     MODULE_ASSETS          = 1u << 8,
     MODULE_STORAGE         = 1u << 9,
+    MODULE_AUDIO           = 1u << 11,
+    MODULE_NET             = 1u << 12,
 
     // Not a Gearbox namespace: these are the real WASI import names, provided
     // so an interpreter-in-a-mod (Python, Ruby, Lua, Java) can boot. Deliberately

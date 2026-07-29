@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "ModHost.h"
 #include "ModRuntime.h"
 
@@ -287,6 +288,112 @@ uint32_t assets_read(ExecEnv e, uint32_t namePtr, uint32_t nameLen,
         mi->memWrite(bufPtr, n, data.data());
     }
     return (uint32_t)data.size();
+}
+
+// ----------------------------------------------------------------- Audio --
+//
+// A mod plays its OWN sounds. The bytes come from its package, through the
+// same reader `assets` uses, so a path outside the mod is not resolved -- it
+// simply is not there. Volume is scaled by the player's own effects setting,
+// which is what stops a mod being louder than they allowed.
+
+ModAudioBridge g_audioBridge;
+
+uint32_t audio_play(ExecEnv e, uint32_t pathPtr, uint32_t pathLen, float volume) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_AUDIO) || !mi->package() || !g_audioBridge.play)
+        return 0;
+    std::string path;
+    if (!mi->readString(pathPtr, pathLen, path)) return 0;
+
+    // Read through the package, so a path outside the mod is not resolved --
+    // it simply is not there.
+    std::vector<uint8_t> bytes;
+    if (!mi->package()->readAsset(path, bytes) || bytes.empty()) return 0;
+
+    // The extension picks the decoder, so it has to come from the name.
+    const size_t dot = path.rfind('.');
+    if (dot == std::string::npos) return 0;
+
+    return g_audioBridge.play(mi->id(), path.substr(dot), bytes,
+                              volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume));
+}
+
+void audio_stop(ExecEnv e, uint32_t handle) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_AUDIO) || !g_audioBridge.stop) return;
+    // The mod id goes with it: one mod must not be able to stop another's.
+    g_audioBridge.stop(mi->id(), handle);
+}
+
+void audio_set_volume(ExecEnv e, uint32_t handle, float volume) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_AUDIO) || !g_audioBridge.setVolume) return;
+    g_audioBridge.setVolume(mi->id(), handle,
+                            volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume));
+}
+
+uint32_t audio_is_playing(ExecEnv e, uint32_t handle) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_AUDIO) || !g_audioBridge.isPlaying) return 0;
+    return g_audioBridge.isPlaying(mi->id(), handle) ? 1 : 0;
+}
+
+// ------------------------------------------------------------------- Net --
+//
+// A channel between copies of ONE mod. Not access to game traffic: orders,
+// deltas, tickets and chat never pass through here, because a client mod that
+// could touch those could forge another player's turn -- which is precisely
+// what the server being authoritative exists to prevent.
+//
+// The game installs the bridge below when a session exists. Until it does,
+// every call answers "this is not a network game", which is a documented
+// answer rather than a failure -- and is exactly right in singleplayer.
+
+
+
+ModNetBridge g_netBridge;
+
+uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_netBridge.send) return 0;
+    if (dataLen > 8192) return 0;
+    std::vector<uint8_t> buf(dataLen);
+    if (dataLen && !mi->memRead(dataPtr, dataLen, buf.data())) return 0;
+    // The mod id is stamped HERE, by the host. A mod cannot send as another.
+    return g_netBridge.send(mi->id(), peer, buf) ? 1 : 0;
+}
+
+uint32_t net_recv(ExecEnv e, uint32_t outPtr, uint32_t outLen, uint32_t fromPtr) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_netBridge.recv) return 0;
+    std::vector<uint8_t> msg;
+    int32_t from = 0;
+    if (!g_netBridge.recv(mi->id(), msg, from)) return 0;
+    if (outLen && outPtr) {
+        const uint32_t n = (uint32_t)msg.size() < outLen ? (uint32_t)msg.size() : outLen;
+        mi->memWrite(outPtr, n, msg.data());
+    }
+    if (fromPtr) mi->memWrite(fromPtr, 4, &from);
+    return (uint32_t)msg.size();
+}
+
+uint32_t net_peer_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_netBridge.peerCount) return 0;
+    return g_netBridge.peerCount();
+}
+
+uint32_t net_self_peer(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_netBridge.selfPeer) return 0;
+    return g_netBridge.selfPeer();
+}
+
+uint32_t net_is_host(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_netBridge.isHost) return 0;
+    return g_netBridge.isHost() ? 1 : 0;
 }
 
 // -------------------------------------------------------------- WasiStub --
@@ -898,6 +1005,17 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:storage", "set",    "(iiii)i", (void*)storage_set,    MODULE_STORAGE},
     {"gearbox:storage", "remove", "(ii)i",   (void*)storage_remove, MODULE_STORAGE},
 
+    {"gearbox:audio", "play",       "(iif)i", (void*)audio_play,       MODULE_AUDIO},
+    {"gearbox:audio", "stop",       "(i)",    (void*)audio_stop,       MODULE_AUDIO},
+    {"gearbox:audio", "set_volume", "(if)",   (void*)audio_set_volume, MODULE_AUDIO},
+    {"gearbox:audio", "is_playing", "(i)i",   (void*)audio_is_playing, MODULE_AUDIO},
+
+    {"gearbox:net", "send",       "(iii)i", (void*)net_send,       MODULE_NET},
+    {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
+    {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
+    {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:net", "is_host",    "()i",    (void*)net_is_host,    MODULE_NET},
+
     {"gearbox:assets", "size", "(ii)i",   (void*)assets_size, MODULE_ASSETS},
     {"gearbox:assets", "read", "(iiii)i", (void*)assets_read, MODULE_ASSETS},
 
@@ -960,6 +1078,14 @@ const ModHostFn kHostFunctions[] = {
 };
 
 }  // namespace
+
+void modSetNetBridge(const ModNetBridge& bridge) { g_netBridge = bridge; }
+void modSetAudioBridge(const ModAudioBridge& bridge) { g_audioBridge = bridge; }
+
+void modReleaseAudio(const std::string& modId) {
+    if (g_audioBridge.stopAll) g_audioBridge.stopAll(modId);
+}
+
 
 const ModHostFn* modHostFunctions(size_t& count) {
     count = sizeof(kHostFunctions) / sizeof(kHostFunctions[0]);

@@ -405,6 +405,7 @@ void ModManager::deactivate(ModEntry& e) {
         if (e.instance->hasExport("mod_unload"))
             e.instance->callExport("mod_unload", nullptr, 0, nullptr, err);
         ModUI::get().removePanelsOf(e.id);
+        modReleaseAudio(e.id);
         e.instance.reset();
     }
     if (e.state == ModState::Active) e.state = ModState::Disabled;
@@ -412,6 +413,7 @@ void ModManager::deactivate(ModEntry& e) {
 
 void ModManager::fail(ModEntry& e, const std::string& why) {
     ModUI::get().removePanelsOf(e.id);
+    modReleaseAudio(e.id);
     e.instance.reset();
     e.state = ModState::Failed;
     e.diagnostic = why;

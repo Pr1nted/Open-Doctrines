@@ -89,6 +89,24 @@
       "grants": "Persistent key-value store namespaced to your mod id"
     },
     {
+      "name": "Audio",
+      "import": "gearbox:audio",
+      "revocable": true,
+      "implemented": true,
+      "side": "client",
+      "grants": "Play and stop sounds from your own mod's assets",
+      "notes": "Client-side only, and not because of trust: a server resolves turns and has nobody to play a sound to. A mod granted this on a server simply finds the calls do nothing."
+    },
+    {
+      "name": "Net",
+      "import": "gearbox:net",
+      "revocable": true,
+      "implemented": true,
+      "side": "both",
+      "grants": "Send and receive messages between copies of YOUR OWN mod",
+      "notes": "This is a channel between instances of one mod, NOT access to game traffic. A message is stamped by the host with the sending mod's id and the authenticated peer it came from, so a mod can neither read another mod's messages nor claim to be one. It cannot see or alter orders, turn deltas, tickets or chat -- those never pass through here. Raw packet access would let a client mod forge another player's orders, which is exactly what the server being authoritative exists to prevent. Delivery between machines is carried by the game, which lends the mod host a session while one exists; outside a network game every call answers 'not a network game', which is the right answer in singleplayer rather than an error."
+    },
+    {
       "name": "WasiStub",
       "import": "wasi_snapshot_preview1",
       "revocable": true,
@@ -534,6 +552,180 @@
       },
       "doc": "Two-call sizing, like country_name. Writes at most cap bytes and returns the asset's full size. The name is looked up in your package's entry list, never resolved as a filesystem path.",
       "binding_name": "asset_read"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "play",
+      "capability": "Audio",
+      "signature": "(iif)i",
+      "params": [
+        {
+          "name": "path",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "path_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "volume",
+          "type": "f32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "handle"
+      },
+      "doc": "Play a sound from your own mod's assets. `path` is relative to your mod root; a path outside it is refused rather than resolved. Volume is 0..1 and is multiplied by the player's own effects setting, so a mod cannot be louder than they allowed. Returns a handle, or 0 if it could not be played."
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "stop",
+      "capability": "Audio",
+      "signature": "(i)",
+      "params": [
+        {
+          "name": "handle",
+          "type": "i32",
+          "role": "handle"
+        }
+      ],
+      "result": null,
+      "doc": "Stop a sound this mod started. A handle belonging to another mod, or one that already finished, does nothing."
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "set_volume",
+      "capability": "Audio",
+      "signature": "(if)",
+      "params": [
+        {
+          "name": "handle",
+          "type": "i32",
+          "role": "handle"
+        },
+        {
+          "name": "volume",
+          "type": "f32"
+        }
+      ],
+      "result": null,
+      "doc": "Change the volume of a playing sound, 0..1, again scaled by the player's setting."
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "is_playing",
+      "capability": "Audio",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "handle",
+          "type": "i32",
+          "role": "handle"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether that handle is still making sound."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "send",
+      "capability": "Net",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "peer",
+          "type": "i32"
+        },
+        {
+          "name": "data",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "data_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Send a message to the same mod running on another peer. `peer` is a peer id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to every other peer, the host included. There is no fixed id for the host: a host that plays holds an ordinary seat, and a dedicated one holds none. The host stamps your mod id on the message, so you cannot send as another mod, and it never carries game traffic: orders, deltas and chat do not travel here. Messages larger than 8192 bytes are refused. Returns 0 if this is not a network game, or the message was too large."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "recv",
+      "capability": "Net",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "out",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "out_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "from_peer",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Take the next message addressed to this mod, writing it into `out` and the sender's peer id into `from_peer`. Returns the number of bytes written, or 0 when the queue is empty. A message longer than `out_len` is truncated rather than dropped, so a small buffer loses data instead of stalling the queue."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_count",
+      "capability": "Net",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "count"
+      },
+      "doc": "How many players this session has, a playing host included. 0 when this is not a network game, which is how a mod tells the difference. Spectators are not counted."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "self_peer",
+      "capability": "Net",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "count"
+      },
+      "doc": "This machine's own peer id. 0 means this is not a network game, or this is a dedicated host holding no seat -- a host that plays has an ordinary peer id like anyone else, so do not use this to tell host from client. `is_host` is that question."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "is_host",
+      "capability": "Net",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether this copy is the authoritative one. A mod that computes anything the game depends on must do it here and send the result, not compute it separately on each machine."
     },
     {
       "module": "wasi_snapshot_preview1",

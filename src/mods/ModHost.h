@@ -12,6 +12,64 @@
 #include <string>
 #include <vector>
 
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+/**
+ * How the game lends its session to mods, without lending them the wire.
+ *
+ * Installed when a network game exists and cleared when it ends. Every hook
+ * being null is the ordinary singleplayer state, and the Net imports answer
+ * "not a network game" -- which is a documented answer, not a failure.
+ *
+ * Note what is NOT here: no way to read or write orders, deltas, tickets or
+ * chat. A mod message is its own thing, stamped with the sending mod's id by
+ * the host, and it can never be mistaken for a turn.
+ */
+struct ModNetBridge {
+    /** (modId, peer or -1 for everyone, payload) -> was it sent */
+    std::function<bool(const std::string&, int32_t, const std::vector<uint8_t>&)> send;
+    /** (modId, out payload, out sender) -> was there one */
+    std::function<bool(const std::string&, std::vector<uint8_t>&, int32_t&)> recv;
+    std::function<uint32_t()> peerCount;
+    std::function<uint32_t()> selfPeer;
+    std::function<bool()>     isHost;
+};
+
+/**
+ * How the game lends its speakers to mods.
+ *
+ * The mod host does not link raylib -- the mod tests build it on its own, and
+ * that is worth keeping -- so it reads the bytes out of the mod's package and
+ * hands them over. Everything about decoding and mixing stays in the game.
+ */
+struct ModAudioBridge {
+    /** (modId, extension, bytes, volume 0..1) -> handle, or 0 */
+    std::function<uint32_t(const std::string&, const std::string&,
+                           const std::vector<uint8_t>&, float)> play;
+    std::function<void(const std::string&, uint32_t)>        stop;
+    std::function<void(const std::string&, uint32_t, float)> setVolume;
+    std::function<bool(const std::string&, uint32_t)>        isPlaying;
+    /** Everything this mod started, because it is going away. */
+    std::function<void(const std::string&)>                  stopAll;
+};
+
+/**
+ * Silence a mod that is being unloaded.
+ *
+ * Called from the same place panels are removed: a mod that stops must not
+ * leave a sound running with nobody able to stop it.
+ */
+void modReleaseAudio(const std::string& modId);
+
+void modSetAudioBridge(const ModAudioBridge& bridge);
+
+/** Hand the mod host a session, or take it away with a default-constructed one. */
+void modSetNetBridge(const ModNetBridge& bridge);
+
 class Game;
 
 // Which side of a multiplayer game this process is, from a mod's point of

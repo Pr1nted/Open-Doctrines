@@ -29,6 +29,8 @@ const ModuleEntry kModules[] = {
     {"Diplomacy",       MODULE_DIPLOMACY},
     {"Assets",          MODULE_ASSETS},
     {"Storage",         MODULE_STORAGE},
+    {"Audio",           MODULE_AUDIO},
+    {"Net",             MODULE_NET},
     {"WasiStub",        MODULE_WASISTUB},
 };
 
@@ -735,7 +737,11 @@ ModLoadResult ModPackage::openFromMemory(std::vector<uint8_t> bytes,
 
     // Assets are not inflated. A mod shipping 200 MiB of art costs us its
     // zipped size until something actually asks for a file.
-    if (!m_assetNames.empty() && !(m_manifest.modules & MODULE_ASSETS))
+    // Audio reads from data/ too -- playing your own sound does not also
+    // require the broader "read every file I ship" capability -- so a mod with
+    // Audio and no Assets is shipping sounds, not making a mistake.
+    if (!m_assetNames.empty() &&
+        !(m_manifest.modules & (MODULE_ASSETS | MODULE_AUDIO)))
         m_warnings.push_back("archive contains " +
                              std::to_string(m_assetNames.size()) +
                              " data/ file(s) but does not request the Assets "

@@ -126,6 +126,75 @@ func rawAssetSize(name unsafe.Pointer, name_len uint32) uint32
 //go:wasmimport gearbox:assets read
 func rawAssetRead(name unsafe.Pointer, name_len uint32, buf unsafe.Pointer, cap uint32) uint32
 
+// Play a sound from your own mod's assets. `path` is relative to your mod
+// root; a path outside it is refused rather than resolved. Volume is 0..1
+// and is multiplied by the player's own effects setting, so a mod cannot
+// be louder than they allowed. Returns a handle, or 0 if it could not be
+// played.
+// `(iif)i`
+//go:wasmimport gearbox:audio play
+func rawPlay(path unsafe.Pointer, path_len uint32, volume float32) uint32
+
+// Stop a sound this mod started. A handle belonging to another mod, or one
+// that already finished, does nothing.
+// `(i)`
+//go:wasmimport gearbox:audio stop
+func rawStop(handle uint32)
+
+// Change the volume of a playing sound, 0..1, again scaled by the player's
+// setting.
+// `(if)`
+//go:wasmimport gearbox:audio set_volume
+func rawSetVolume(handle uint32, volume float32)
+
+// Whether that handle is still making sound.
+// `(i)i`
+//go:wasmimport gearbox:audio is_playing
+func rawIsPlaying(handle uint32) uint32
+
+// Send a message to the same mod running on another peer. `peer` is a peer
+// id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to
+// every other peer, the host included. There is no fixed id for the host:
+// a host that plays holds an ordinary seat, and a dedicated one holds
+// none. The host stamps your mod id on the message, so you cannot send as
+// another mod, and it never carries game traffic: orders, deltas and chat
+// do not travel here. Messages larger than 8192 bytes are refused. Returns
+// 0 if this is not a network game, or the message was too large.
+// `(iii)i`
+//go:wasmimport gearbox:net send
+func rawSend(peer uint32, data unsafe.Pointer, data_len uint32) uint32
+
+// Take the next message addressed to this mod, writing it into `out` and
+// the sender's peer id into `from_peer`. Returns the number of bytes
+// written, or 0 when the queue is empty. A message longer than `out_len`
+// is truncated rather than dropped, so a small buffer loses data instead
+// of stalling the queue.
+// `(iii)i`
+//go:wasmimport gearbox:net recv
+func rawRecv(out unsafe.Pointer, out_len uint32, from_peer unsafe.Pointer) uint32
+
+// How many players this session has, a playing host included. 0 when this
+// is not a network game, which is how a mod tells the difference.
+// Spectators are not counted.
+// `()i`
+//go:wasmimport gearbox:net peer_count
+func rawPeerCount() uint32
+
+// This machine's own peer id. 0 means this is not a network game, or this
+// is a dedicated host holding no seat -- a host that plays has an ordinary
+// peer id like anyone else, so do not use this to tell host from client.
+// `is_host` is that question.
+// `()i`
+//go:wasmimport gearbox:net self_peer
+func rawSelfPeer() uint32
+
+// Whether this copy is the authoritative one. A mod that computes anything
+// the game depends on must do it here and send the result, not compute it
+// separately on each machine.
+// `()i`
+//go:wasmimport gearbox:net is_host
+func rawIsHost() uint32
+
 // Reads one of your own keys. Two-call sizing: returns the full value
 // length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
 // is absent -- which is NOT the same as a zero-length value, so you can

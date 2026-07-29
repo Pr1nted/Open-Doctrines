@@ -10,11 +10,15 @@
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
 #include "mods/ModHost.h"
+#include "net/Host.h"
+#include "net/Session.h"
+#include "net/Lobby.h"
 
 #include <algorithm>
 #include "ai/AISystem.h"
 #include <cstdio>
 #include <cstring>
+#include <unordered_map>
 
 // ----------------------------------------------------- world access -------
 
@@ -430,6 +434,144 @@ double Game::modNeuralRewardMean(int index) const {
     return (double)m_ai->rewardMeans()[index];
 }
 
+// ------------------------------------------------------- mod speakers ------
+
+namespace {
+
+// A sound a mod started. The mod id rides along so one mod cannot stop, mute or
+// query another's -- the handle alone would be forgeable by counting.
+struct ModSound {
+    std::string owner;
+    Wave        wave{};
+    Sound       sound{};
+};
+
+std::unordered_map<uint32_t, ModSound> g_modSounds;
+uint32_t                               g_nextModSound = 1;
+
+/** Reap finished one-shots, so a mod that fires and forgets does not leak. */
+void modSoundsCollect() {
+    for (auto it = g_modSounds.begin(); it != g_modSounds.end();) {
+        if (IsSoundPlaying(it->second.sound)) { ++it; continue; }
+        UnloadSound(it->second.sound);
+        UnloadWave(it->second.wave);
+        it = g_modSounds.erase(it);
+    }
+}
+
+}  // namespace
+
+void Game::unloadModSounds(const std::string& modId) {
+    for (auto it = g_modSounds.begin(); it != g_modSounds.end();) {
+        if (!modId.empty() && it->second.owner != modId) { ++it; continue; }
+        StopSound(it->second.sound);
+        UnloadSound(it->second.sound);
+        UnloadWave(it->second.wave);
+        it = g_modSounds.erase(it);
+    }
+}
+
+void Game::installModBridges() {
+    ModAudioBridge audio;
+
+    audio.play = [](const std::string& owner, const std::string& ext,
+                    const std::vector<uint8_t>& bytes, float volume) -> uint32_t {
+        // Silence is a valid outcome everywhere in this game: no device, or a
+        // file raylib cannot decode, leaves the mod running and quiet.
+        if (Audio::s_disabled || !IsAudioDeviceReady()) return 0;
+
+        // A mod that never stops its sounds must not grow the table forever.
+        modSoundsCollect();
+        if (g_modSounds.size() >= 64) return 0;
+
+        ModSound entry;
+        entry.owner = owner;
+        entry.wave  = LoadWaveFromMemory(ext.c_str(), bytes.data(), (int)bytes.size());
+        if (!entry.wave.data) return 0;
+
+        entry.sound = LoadSoundFromWave(entry.wave);
+        if (!entry.sound.frameCount) {
+            UnloadWave(entry.wave);
+            return 0;
+        }
+
+        // Through the player's sfx slider, not around it: a mod is not entitled
+        // to be louder than the game the player turned down.
+        Audio& a = Audio::get();
+        SetSoundVolume(entry.sound, volume * a.sfxVolume() * a.masterVolume());
+        PlaySound(entry.sound);
+
+        const uint32_t handle = g_nextModSound++;
+        g_modSounds[handle] = entry;
+        return handle;
+    };
+
+    audio.stop = [](const std::string& owner, uint32_t handle) {
+        auto it = g_modSounds.find(handle);
+        if (it == g_modSounds.end() || it->second.owner != owner) return;
+        StopSound(it->second.sound);
+        UnloadSound(it->second.sound);
+        UnloadWave(it->second.wave);
+        g_modSounds.erase(it);
+    };
+
+    audio.setVolume = [](const std::string& owner, uint32_t handle, float volume) {
+        auto it = g_modSounds.find(handle);
+        if (it == g_modSounds.end() || it->second.owner != owner) return;
+        Audio& a = Audio::get();
+        SetSoundVolume(it->second.sound, volume * a.sfxVolume() * a.masterVolume());
+    };
+
+    audio.isPlaying = [](const std::string& owner, uint32_t handle) -> bool {
+        auto it = g_modSounds.find(handle);
+        if (it == g_modSounds.end() || it->second.owner != owner) return false;
+        return IsSoundPlaying(it->second.sound);
+    };
+
+    audio.stopAll = [this](const std::string& owner) { unloadModSounds(owner); };
+
+    modSetAudioBridge(audio);
+
+    ModNetBridge net;
+
+    net.send = [this](const std::string& modId, int32_t peer,
+                      const std::vector<uint8_t>& payload) -> bool {
+        if (m_netHost)    { m_netHost->sendModMessage(modId, peer, payload);    return true; }
+        if (m_netSession) { m_netSession->sendModMessage(modId, peer, payload); return true; }
+        return false;     // singleplayer: there is nobody to send to
+    };
+
+    net.recv = [this](const std::string& modId, std::vector<uint8_t>& out,
+                      int32_t& from) -> bool {
+        // Only this mod's messages, and in order. A mod cannot read another's,
+        // which is why the queue is scanned rather than simply popped.
+        for (auto it = m_mpModInbox.begin(); it != m_mpModInbox.end(); ++it) {
+            if (it->modId != modId) continue;
+            out.assign(it->payload.begin(), it->payload.end());
+            from = (int32_t)it->peerId;
+            m_mpModInbox.erase(it);
+            return true;
+        }
+        return false;
+    };
+
+    net.peerCount = [this]() -> uint32_t {
+        if (m_netHost)    return (uint32_t)m_netHost->lobby().roster().size();
+        if (m_netSession) return (uint32_t)m_netSession->roster().size();
+        return 0;
+    };
+
+    net.selfPeer = [this]() -> uint32_t {
+        if (m_netHost)    return m_netHost->lobby().hostPeerId();
+        if (m_netSession) return m_netSession->welcome().peerId;
+        return 0;
+    };
+
+    net.isHost = [this]() { return m_netHost != nullptr; };
+
+    modSetNetBridge(net);
+}
+
 // ------------------------------------------------------------- setup ------
 
 void Game::initModSystem() {
@@ -443,6 +585,7 @@ void Game::initModSystem() {
     // Headless training never opens the mod menu, which is the only load path,
     // so it never scans for mods either.
     if (m_aiTraining) return;
+    installModBridges();
     ModManager::get().init(m_dataDir + "mods", m_dataDir + "mods.json");
 }
 

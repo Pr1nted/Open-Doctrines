@@ -129,6 +129,75 @@ public final class GearboxRaw {
     @Import(module = "gearbox:assets", name = "read")
     public static native int assetRead(int name, int nameLen, int buf, int cap);
 
+    // Play a sound from your own mod's assets. `path` is relative to your mod
+    // root; a path outside it is refused rather than resolved. Volume is 0..1
+    // and is multiplied by the player's own effects setting, so a mod cannot
+    // be louder than they allowed. Returns a handle, or 0 if it could not be
+    // played.
+    // `(iif)i`
+    @Import(module = "gearbox:audio", name = "play")
+    public static native int play(int path, int pathLen, float volume);
+
+    // Stop a sound this mod started. A handle belonging to another mod, or one
+    // that already finished, does nothing.
+    // `(i)`
+    @Import(module = "gearbox:audio", name = "stop")
+    public static native void stop(int handle);
+
+    // Change the volume of a playing sound, 0..1, again scaled by the player's
+    // setting.
+    // `(if)`
+    @Import(module = "gearbox:audio", name = "set_volume")
+    public static native void setVolume(int handle, float volume);
+
+    // Whether that handle is still making sound.
+    // `(i)i`
+    @Import(module = "gearbox:audio", name = "is_playing")
+    public static native int isPlaying(int handle);
+
+    // Send a message to the same mod running on another peer. `peer` is a peer
+    // id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to
+    // every other peer, the host included. There is no fixed id for the host:
+    // a host that plays holds an ordinary seat, and a dedicated one holds
+    // none. The host stamps your mod id on the message, so you cannot send as
+    // another mod, and it never carries game traffic: orders, deltas and chat
+    // do not travel here. Messages larger than 8192 bytes are refused. Returns
+    // 0 if this is not a network game, or the message was too large.
+    // `(iii)i`
+    @Import(module = "gearbox:net", name = "send")
+    public static native int send(int peer, int data, int dataLen);
+
+    // Take the next message addressed to this mod, writing it into `out` and
+    // the sender's peer id into `from_peer`. Returns the number of bytes
+    // written, or 0 when the queue is empty. A message longer than `out_len`
+    // is truncated rather than dropped, so a small buffer loses data instead
+    // of stalling the queue.
+    // `(iii)i`
+    @Import(module = "gearbox:net", name = "recv")
+    public static native int recv(int out, int outLen, int fromPeer);
+
+    // How many players this session has, a playing host included. 0 when this
+    // is not a network game, which is how a mod tells the difference.
+    // Spectators are not counted.
+    // `()i`
+    @Import(module = "gearbox:net", name = "peer_count")
+    public static native int peerCount();
+
+    // This machine's own peer id. 0 means this is not a network game, or this
+    // is a dedicated host holding no seat -- a host that plays has an ordinary
+    // peer id like anyone else, so do not use this to tell host from client.
+    // `is_host` is that question.
+    // `()i`
+    @Import(module = "gearbox:net", name = "self_peer")
+    public static native int selfPeer();
+
+    // Whether this copy is the authoritative one. A mod that computes anything
+    // the game depends on must do it here and send the result, not compute it
+    // separately on each machine.
+    // `()i`
+    @Import(module = "gearbox:net", name = "is_host")
+    public static native int isHost();
+
     // Reads one of your own keys. Two-call sizing: returns the full value
     // length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
     // is absent -- which is NOT the same as a zero-length value, so you can

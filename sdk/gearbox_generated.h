@@ -173,6 +173,84 @@ uint32_t gearbox_asset_size(const char* name, uint32_t name_len);
 GEARBOX_IMPORT("assets", "read")
 uint32_t gearbox_asset_read(const char* name, uint32_t name_len, void* buf, uint32_t cap);
 
+/* Play a sound from your own mod's assets. `path` is relative to your mod
+ * root; a path outside it is refused rather than resolved. Volume is 0..1
+ * and is multiplied by the player's own effects setting, so a mod cannot
+ * be louder than they allowed. Returns a handle, or 0 if it could not be
+ * played.
+ * `(iif)i`
+ */
+GEARBOX_IMPORT("audio", "play")
+uint32_t gearbox_play(const char* path, uint32_t path_len, float volume);
+
+/* Stop a sound this mod started. A handle belonging to another mod, or one
+ * that already finished, does nothing.
+ * `(i)`
+ */
+GEARBOX_IMPORT("audio", "stop")
+void gearbox_stop(uint32_t handle);
+
+/* Change the volume of a playing sound, 0..1, again scaled by the player's
+ * setting.
+ * `(if)`
+ */
+GEARBOX_IMPORT("audio", "set_volume")
+void gearbox_set_volume(uint32_t handle, float volume);
+
+/* Whether that handle is still making sound.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("audio", "is_playing")
+uint32_t gearbox_is_playing(uint32_t handle);
+
+/* Send a message to the same mod running on another peer. `peer` is a peer
+ * id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to
+ * every other peer, the host included. There is no fixed id for the host:
+ * a host that plays holds an ordinary seat, and a dedicated one holds
+ * none. The host stamps your mod id on the message, so you cannot send as
+ * another mod, and it never carries game traffic: orders, deltas and chat
+ * do not travel here. Messages larger than 8192 bytes are refused. Returns
+ * 0 if this is not a network game, or the message was too large.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("net", "send")
+uint32_t gearbox_send(uint32_t peer, const char* data, uint32_t data_len);
+
+/* Take the next message addressed to this mod, writing it into `out` and
+ * the sender's peer id into `from_peer`. Returns the number of bytes
+ * written, or 0 when the queue is empty. A message longer than `out_len`
+ * is truncated rather than dropped, so a small buffer loses data instead
+ * of stalling the queue.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("net", "recv")
+uint32_t gearbox_recv(char* out, uint32_t out_len, char* from_peer);
+
+/* How many players this session has, a playing host included. 0 when this
+ * is not a network game, which is how a mod tells the difference.
+ * Spectators are not counted.
+ * `()i`
+ */
+GEARBOX_IMPORT("net", "peer_count")
+uint32_t gearbox_peer_count(void);
+
+/* This machine's own peer id. 0 means this is not a network game, or this
+ * is a dedicated host holding no seat -- a host that plays has an ordinary
+ * peer id like anyone else, so do not use this to tell host from client.
+ * `is_host` is that question.
+ * `()i`
+ */
+GEARBOX_IMPORT("net", "self_peer")
+uint32_t gearbox_self_peer(void);
+
+/* Whether this copy is the authoritative one. A mod that computes anything
+ * the game depends on must do it here and send the result, not compute it
+ * separately on each machine.
+ * `()i`
+ */
+GEARBOX_IMPORT("net", "is_host")
+uint32_t gearbox_is_host(void);
+
 /* Reads one of your own keys. Two-call sizing: returns the full value
  * length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
  * is absent -- which is NOT the same as a zero-length value, so you can

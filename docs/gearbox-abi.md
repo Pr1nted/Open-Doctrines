@@ -37,6 +37,8 @@ memory after a call returns, and you must not keep one of the host's.
 | `Map` | `gearbox:map` | Province geometry and adjacency | yes | implemented |
 | `Diplomacy` | `gearbox:diplomacy` | Read and propose diplomatic actions | yes | implemented |
 | `Storage` | `gearbox:storage` | Persistent key-value store namespaced to your mod id | yes | implemented |
+| `Audio` | `gearbox:audio` | Play and stop sounds from your own mod's assets | yes | implemented |
+| `Net` | `gearbox:net` | Send and receive messages between copies of YOUR OWN mod | yes | implemented |
 | `WasiStub` | `wasi_snapshot_preview1` | Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock. | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
@@ -334,6 +336,135 @@ Byte size of one of your own data/ files, or 0 if there is no such asset. Names 
 **Returns** `i32` — byte length.
 
 Two-call sizing, like country_name. Writes at most cap bytes and returns the asset's full size. The name is looked up in your package's entry list, never resolved as a filesystem path.
+
+### `gearbox:audio`
+
+Requires the **Audio** capability.
+
+#### `play`
+
+```wat
+(import "gearbox:audio" "play" (func $x (param i32 i32 f32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `path` | `i32` | pointer into your linear memory |
+| `path_len` | `i32` | byte length |
+| `volume` | `f32` | — |
+
+**Returns** `i32`.
+
+Play a sound from your own mod's assets. `path` is relative to your mod root; a path outside it is refused rather than resolved. Volume is 0..1 and is multiplied by the player's own effects setting, so a mod cannot be louder than they allowed. Returns a handle, or 0 if it could not be played.
+
+#### `stop`
+
+```wat
+(import "gearbox:audio" "stop" (func $x (param i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `handle` | `i32` | — |
+
+**Returns** nothing.
+
+Stop a sound this mod started. A handle belonging to another mod, or one that already finished, does nothing.
+
+#### `set_volume`
+
+```wat
+(import "gearbox:audio" "set_volume" (func $x (param i32 f32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `handle` | `i32` | — |
+| `volume` | `f32` | — |
+
+**Returns** nothing.
+
+Change the volume of a playing sound, 0..1, again scaled by the player's setting.
+
+#### `is_playing`
+
+```wat
+(import "gearbox:audio" "is_playing" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `handle` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether that handle is still making sound.
+
+### `gearbox:net`
+
+Requires the **Net** capability.
+
+#### `send`
+
+```wat
+(import "gearbox:net" "send" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `peer` | `i32` | — |
+| `data` | `i32` | pointer into your linear memory |
+| `data_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Send a message to the same mod running on another peer. `peer` is a peer id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to every other peer, the host included. There is no fixed id for the host: a host that plays holds an ordinary seat, and a dedicated one holds none. The host stamps your mod id on the message, so you cannot send as another mod, and it never carries game traffic: orders, deltas and chat do not travel here. Messages larger than 8192 bytes are refused. Returns 0 if this is not a network game, or the message was too large.
+
+#### `recv`
+
+```wat
+(import "gearbox:net" "recv" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `out` | `i32` | pointer into your linear memory |
+| `out_len` | `i32` | byte length |
+| `from_peer` | `i32` | pointer into your linear memory |
+
+**Returns** `i32` — byte length.
+
+Take the next message addressed to this mod, writing it into `out` and the sender's peer id into `from_peer`. Returns the number of bytes written, or 0 when the queue is empty. A message longer than `out_len` is truncated rather than dropped, so a small buffer loses data instead of stalling the queue.
+
+#### `peer_count`
+
+```wat
+(import "gearbox:net" "peer_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many players this session has, a playing host included. 0 when this is not a network game, which is how a mod tells the difference. Spectators are not counted.
+
+#### `self_peer`
+
+```wat
+(import "gearbox:net" "self_peer" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+This machine's own peer id. 0 means this is not a network game, or this is a dedicated host holding no seat -- a host that plays has an ordinary peer id like anyone else, so do not use this to tell host from client. `is_host` is that question.
+
+#### `is_host`
+
+```wat
+(import "gearbox:net" "is_host" (func $x (result i32)))
+```
+
+**Returns** `i32` — 0 or 1.
+
+Whether this copy is the authoritative one. A mod that computes anything the game depends on must do it here and send the result, not compute it separately on each machine.
 
 ### `wasi_snapshot_preview1`
 
