@@ -311,12 +311,25 @@ set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3
 
 add_executable(OpenDoctrines ${GAME_SOURCES})
 if(APPLE)
+    # The bundle's Info.plist and icon are SOURCES, and they live in the source
+    # tree. They used to be read out of dist/, which is a build OUTPUT directory
+    # and is gitignored -- so they existed on the machine that first made them
+    # and in no fresh clone. Configuring macOS then failed with "Info.plist
+    # template could not be found", naming a path that had simply never been
+    # committed. Nobody noticed because nobody had built macOS from a clean
+    # checkout; CI did, the first time it was asked to.
+    #
+    # The version is substituted rather than written twice. VERSION is the one
+    # source of truth (odver.py and the updater both parse it), and a plist
+    # carrying its own copy is a plist that drifts.
+    configure_file("${CMAKE_SOURCE_DIR}/packaging/macos/Info.plist.in"
+                   "${CMAKE_BINARY_DIR}/Info.plist" @ONLY)
     set_target_properties(OpenDoctrines PROPERTIES
         MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/dist/OpenDoctrines.app/Contents/Info.plist"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_BINARY_DIR}/Info.plist"
     )
     # Copy icon.icns into the app bundle's Resources
-    set(ICON_SRC "${CMAKE_SOURCE_DIR}/dist/OpenDoctrines.app/Contents/Resources/icon.icns")
+    set(ICON_SRC "${CMAKE_SOURCE_DIR}/packaging/macos/icon.icns")
     add_custom_command(TARGET OpenDoctrines POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:OpenDoctrines>/Resources"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICON_SRC}" "$<TARGET_BUNDLE_CONTENT_DIR:OpenDoctrines>/Resources/"
