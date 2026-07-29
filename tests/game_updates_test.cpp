@@ -19,6 +19,16 @@
 #include "GameUpdates.h"
 
 #include <cstdio>
+
+// MSVC has popen/pclose, spelled with a leading underscore. Aliasing here keeps
+// the one call site below readable rather than sprouting an #ifdef around it.
+#ifdef _WIN32
+  #define OD_POPEN  _popen
+  #define OD_PCLOSE _pclose
+#else
+  #define OD_POPEN  popen
+  #define OD_PCLOSE pclose
+#endif
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -112,14 +122,20 @@ void testVersionOrdering() {
         "print(','.join(sorted(vs, key=lambda s: odver.Version.parse(s).sort_key())))\" ";
     std::string joined;
     for (size_t i = 0; i < table.size(); ++i) joined += (i ? "," : "") + table[i];
+    // 2>NUL on Windows: popen there goes through cmd.exe, which has no
+    // /dev/null and would take it as a filename to redirect into.
+#ifdef _WIN32
+    cmd += joined + " 2>NUL";
+#else
     cmd += joined + " 2>/dev/null";
+#endif
 
-    FILE* p = popen(cmd.c_str(), "r");
+    FILE* p = OD_POPEN(cmd.c_str(), "r");
     std::string pyOut;
     if (p) {
         char buf[512];
         while (fgets(buf, sizeof buf, p)) pyOut += buf;
-        pclose(p);
+        OD_PCLOSE(p);
     }
     while (!pyOut.empty() && (pyOut.back() == '\n' || pyOut.back() == '\r'))
         pyOut.pop_back();
