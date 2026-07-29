@@ -241,7 +241,19 @@ grep -E '^\[SIM\]' "$sim_log" || true
 # could not do, and the other three platforms still run it for real. Silently
 # passing would turn the one check that proves a build runs into a check that
 # proves nothing.
-if grep -qE 'suitable pixel format|could not open a window|Failed to initialize GLFW' "$sim_log"; then
+# Each platform words "there is no GPU here" differently, and the list has to
+# carry all of them or the step reports a broken build on a machine that simply
+# cannot draw:
+#
+#   macOS    NSGL: Failed to find a suitable pixel format
+#   Windows  WGL: The driver does not appear to support OpenGL
+#   Linux    GLX / Failed to initialize GLFW  (usually avoided by xvfb)
+#
+# On Windows the process then SEGFAULTS rather than returning: raylib's
+# InitWindow() crashes inside itself once WGL refuses, so Game::init()'s
+# IsWindowReady() check never runs. That is why the log is matched rather than
+# the exit code -- there is no clean exit to inspect.
+if grep -qE 'suitable pixel format|does not appear to support OpenGL|could not open a window|Failed to initialize GLFW|GLX' "$sim_log"; then
     note "SKIPPED -- this machine has no usable display, so the game cannot"
     note "          open a window here. The build and every other check above"
     note "          still ran; only 'does it play' is unproven on this runner."

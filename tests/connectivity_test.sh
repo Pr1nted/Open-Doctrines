@@ -50,9 +50,20 @@ if [ "${node_major:-0}" -lt 18 ]; then
 fi
 
 step "build"
-cmake --build "$build" --target NetConnectTest >/dev/null || {
+# --config Release: Visual Studio ignores CMAKE_BUILD_TYPE and takes the
+# configuration here. Harmless on Make and Ninja.
+cmake --build "$build" --config Release --target NetConnectTest >/dev/null || {
     echo "build failed"; exit 1;
 }
+
+# A multi-config generator writes build/Release/, not build/. Without this the
+# five cases below each reported "build/NetConnectTest: No such file or
+# directory" -- which reads as a binary that failed to build, when in fact it
+# had built perfectly well one directory over.
+bin="$build"
+if [ -x "$build/Release/NetConnectTest" ] || [ -f "$build/Release/NetConnectTest.exe" ]; then
+    bin="$build/Release"
+fi
 
 # A port nothing else is on. Asking the OS for one and closing it immediately
 # is racy in principle; in practice it is what is available without a helper,
@@ -101,7 +112,7 @@ run_case() {
         fi
     done
 
-    "$build/NetConnectTest" "http://localhost:$port" "$mode"
+    "$bin/NetConnectTest" "http://localhost:$port" "$mode"
     local rc=$?
 
     cleanup
