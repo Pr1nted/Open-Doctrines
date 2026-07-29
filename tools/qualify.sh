@@ -221,8 +221,22 @@ echo '{"musicVolume":0,"accountIssuer":""}' > "$sim_out/config.json"
 # ships bash 3.2, including on both macOS CI runners. So the plain form works
 # everywhere the array is non-empty (Linux, under xvfb) and fails on exactly
 # the platforms where it is empty. This idiom expands to nothing when unset.
-if OD_DATA_DIR="$sim_out" ${runner[@]+"${runner[@]}"} "$game" \
-       --simulate "$root/data/STDmaps/1939.odmap" 5 "Qualify" 2>&1 | grep -E '^\[SIM\]'; then
+# Output goes to a FILE, not through a pipe to grep. Piping meant the exit
+# status was grep's, so a game that printed an error and died produced no
+# [SIM] lines, grep failed, and the step reported "the simulation did not run"
+# -- which is the one thing the log then could not tell you. The whole point of
+# this step is to catch a build that does not run; hiding why is the worst
+# possible way for it to fail.
+sim_log="$build/qualify-sim.log"
+OD_DATA_DIR="$sim_out" ${runner[@]+"${runner[@]}"} "$game" \
+    --simulate "$root/data/STDmaps/1939.odmap" 5 "Qualify" > "$sim_log" 2>&1
+sim_rc=$?
+grep -E '^\[SIM\]' "$sim_log" || true
+if [ "$sim_rc" -ne 0 ]; then
+    bad "play a real game (the game exited $sim_rc)"
+    echo "  --- last 25 lines of $sim_log ---"
+    tail -25 "$sim_log" | sed 's/^/  /'
+else
     if [ -f "$sim_out/saves/Qualify.odsv" ]; then
         turns=$(python3 - "$sim_out/saves/Qualify.odsv" <<'PY'
 import sys, zipfile
@@ -241,8 +255,6 @@ PY
     else
         bad "play a real game (no save was written)"
     fi
-else
-    bad "play a real game (the simulation did not run)"
 fi
 
 # ----------------------------------------------------------------- verdict ---
