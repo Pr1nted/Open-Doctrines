@@ -116,6 +116,11 @@ if(OD_ENABLE_MODS)
         # Gives us wasm_runtime_set_instruction_count_limit, which is how
         # limits.fuelPerTurn is enforced. Without it an infinite loop in a hook
         # would hang the turn.
+        #
+        # Necessary but NOT sufficient on MSVC: WAMR 2.4.5's fast interpreter
+        # only checks the limit on its computed-goto dispatch path, which MSVC
+        # does not compile. See the PATCH_COMMAND below -- without it this
+        # option is accepted and does nothing on Windows.
         set(WAMR_BUILD_INSTRUCTION_METERING 1)
 
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
@@ -128,11 +133,19 @@ if(OD_ENABLE_MODS)
             set(WAMR_BUILD_TARGET "X86_64")
         endif()
 
+        # The patch restores the fuel limit in the fast interpreter on compilers
+        # without computed goto -- MSVC, so Windows. Applied on every platform,
+        # not just MSVC: the edit is a no-op for the branch gcc and clang
+        # compile, and a source tree that differs per host is one nobody can
+        # reproduce. cmake/wamr_fast_interp_metering.cmake explains the bug, and
+        # fails the configure rather than applying quietly if WAMR moves.
         FetchContent_Declare(wamr
             GIT_REPOSITORY https://github.com/bytecodealliance/wasm-micro-runtime.git
             GIT_TAG WAMR-2.4.5
             GIT_SHALLOW TRUE
             EXCLUDE_FROM_ALL          # keep WAMR's install() rules out of ours
+            PATCH_COMMAND ${CMAKE_COMMAND} -DWAMR_SRC=<SOURCE_DIR>
+                          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_fast_interp_metering.cmake
         )
         FetchContent_MakeAvailable(wamr)
 
