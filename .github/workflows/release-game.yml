@@ -49,7 +49,9 @@ jobs:
             os: macos-14
             artifact: OpenDoctrines-macos-arm64
           - name: macos-x64
-            os: macos-13
+            # macos-15-intel: the macos-13 image is retired, and a job asking
+            # for it queues forever instead of failing. See test.yml.
+            os: macos-15-intel
             artifact: OpenDoctrines-macos-x64
           - name: windows-x64
             os: windows-2022

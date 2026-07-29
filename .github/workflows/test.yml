@@ -57,7 +57,13 @@ jobs:
       matrix:
         include:
           - { name: macos-arm64,  os: macos-14 }
-          - { name: macos-x64,    os: macos-13 }
+          # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
+          # a job asking for it is never scheduled -- it sits queued forever
+          # rather than failing. That is worse than a failure: the run never
+          # finishes, it holds the concurrency group, and every later push is
+          # cancelled behind it. Six consecutive runs were lost that way before
+          # anyone noticed macos-x64 had never once completed.
+          - { name: macos-x64,    os: macos-15-intel }
           - { name: windows-x64,  os: windows-2022 }
           - { name: linux-x64,    os: ubuntu-22.04 }
 
