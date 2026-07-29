@@ -176,6 +176,12 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         // overlap is what pushed the peak into an OOM kill on big maps. Also
         // persists the AI model before the map rotates. (Harmless no-op on the
         // very first round when nothing is loaded yet.)
+        // Generating and loading a world is the one burst of full-tilt CPU the
+        // per-turn throttle never sees — it happens outside the turn loop. On a
+        // long run it is a rounding error, but a rotation every few thousand
+        // turns pegging every core is exactly what a player who set the limiter
+        // asked not to happen, so the phase pays its own idle time below.
+        auto genStart = std::chrono::steady_clock::now();
         unloadGameData();
 
         // Per-process temp map name: a second trainer (or a stray teardown
@@ -203,6 +209,9 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             continue;
         }
         hideLoadingScreen();
+        throttleForBudget(std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - genStart).count(),
+                          /*maxSleepSeconds=*/300.0);
         m_currentSavePath.clear(); // never write an .odsv during training
         m_playerCountryId = 0;     // spectator: every country is AI-driven
         m_aiTraining = true;
@@ -252,6 +261,11 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             alive = (int)realCount.size();
             if (alive <= 1) {
                 printf("[TRAIN] map %d decided after %d turns (1 country left)\n", m + 1, t + 1);
+                // Settle the winner's outstanding decisions as a WIN before the
+                // map rotates and the AISystem is destroyed with them still
+                // open. Conquering the world was previously worth nothing to
+                // the model.
+                if (m_ai && !realCount.empty()) m_ai->noteVictory(realCount.begin()->first);
                 break;
             }
             if (maxReal > bestTerritory || alive < fewestAlive) {
@@ -265,8 +279,12 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                 break;
             }
 
-            // Crash resilience: the model is tiny, save it often.
-            if (m_ai && (t + 1) % 25 == 0) m_ai->saveModel();
+            // Checkpointing lives in AISystem::endTurn, on a wall clock. This
+            // was a SECOND, independent turn-based schedule on top of it, so
+            // the model was written nine times per hundred turns instead of
+            // five — and the comment ("the model is tiny") stopped being true
+            // when it grew to 12 MB. The per-map save below still runs, and the
+            // destructor saves on exit, so nothing is lost by dropping it.
 
             double mapSecs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now() - mapStart).count() / 1000.0;
@@ -278,6 +296,28 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             // stays responsive and WindowShouldClose fires promptly.
             const double FRAME_INTERVAL = 0.05; // seconds
             bool drawFrame = (lastFrameSec < 0) || (mapSecs - lastFrameSec) >= FRAME_INTERVAL;
+            // Input is checked on EVERY turn, not only on drawn frames.
+            // IsKeyPressed reports "pressed since the last PollInputEvents", so
+            // a toggle handled only on drawn frames silently swallows any press
+            // that lands in one of the turns between them — which at 0.25 s a
+            // turn is most of them.
+            samplePerformance();
+            updateResourcePanel();
+            // Progress logging lives OUTSIDE the draw branch. It used to sit
+            // after EndDrawing, so a turn that fell between two drawn frames
+            // logged nothing -- and at 0.05 s a turn most of them do. Three
+            // maps of a five-map validation reported neither progress nor
+            // outcome purely because turn 3000 happened not to be drawn.
+            if ((t + 1) % 100 == 0) {
+                const auto& ts2 = m_ai ? m_ai->trainStats() : AISystem::TrainStats{};
+                printf("[TRAIN] map %d turn %d/%d (%.4f s/turn, %d alive) "
+                       "embarks=%lld landings=%lld home=%lld | "
+                       "calls=%lld answered=%lld refused=%lld staging=%lld\n",
+                       m + 1, t + 1, turnsPerMap, mapSecs / (t + 1), alive,
+                       ts2.embarks, ts2.landings, ts2.unloadsHome,
+                       ts2.callsIssued, ts2.callsAnswered, ts2.callsRefused,
+                       ts2.stagingMoves);
+            }
             if (!drawFrame) { PollInputEvents(); continue; }
             lastFrameSec = mapSecs;
             refreshMiniMap();
@@ -304,6 +344,12 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                                     alive, ts.warsDeclared, ts.ceasefiresOffered,
                                     ts.pactsProposed, ts.researchCompleted),
                          40, 100, 20, LIGHTGRAY);
+                // Coalition readout: whether alliances have started to mean
+                // anything, and whether anyone is using one to reach a front.
+                DrawText(TextFormat("calls to arms %lld  answered %lld  refused %lld   staged into allied land %lld",
+                                    ts.callsIssued, ts.callsAnswered, ts.callsRefused,
+                                    ts.stagingMoves),
+                         40, 122, 18, {170, 200, 255, 230});
                 // Reward trends per module — the actual "is it learning" view:
                 // rising lines mean the average country is doing better.
                 static const char* RLBL[] = {"economy reward", "politics reward", "war reward", "navy reward"};
@@ -311,9 +357,9 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                                              {255, 140, 120, 255}, {180, 160, 255, 255}};
                 for (int mm = 0; mm < 4; ++mm)
                     drawSparkline(m_ai->rewardHistory()[mm],
-                                  {40.0f + (mm % 2) * 215.0f, 132.0f + (mm / 2) * 62.0f, 205.0f, 56.0f},
+                                  {40.0f + (mm % 2) * 215.0f, 150.0f + (mm / 2) * 62.0f, 205.0f, 56.0f},
                                   RCOL[mm], RLBL[mm]);
-                int y = 268;
+                int y = 286;
                 for (const auto& line : m_ai->debugLines(14)) {
                     DrawText(line.c_str(), 40, y, 12, {180, 200, 180, 220});
                     y += 14;
@@ -353,17 +399,11 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                                     rm[0], rm[1], rm[2], rm[3]),
                          ix, iy, 14, dim);
             }
-            DrawText("Close the window to stop — progress is saved.", 40,
+            DrawText("Close the window to stop — progress is saved.   F10 / Ctrl+L: resource limit", 40,
                      m_screenH - 40, 16, GRAY);
+            drawResourcePanel();
             EndDrawing();
 
-            if ((t + 1) % 100 == 0) {
-                const auto& ts2 = m_ai ? m_ai->trainStats() : AISystem::TrainStats{};
-                printf("[TRAIN] map %d turn %d/%d (%.4f s/turn, %d alive) "
-                       "embarks=%lld landings=%lld home=%lld\n",
-                       m + 1, t + 1, turnsPerMap, mapSecs / (t + 1), alive,
-                       ts2.embarks, ts2.landings, ts2.unloadsHome);
-            }
         }
         m_aiTraining = false;
         if (m_ai) m_ai->saveModel();
@@ -381,4 +421,76 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
     unloadGameData(); // final model save + teardown
     // The throwaway training map shouldn't linger in the custom-maps menu
     remove((m_dataDir + TextFormat("custom_maps/__ai_training_%d__.odmap", (int)getpid())).c_str());
+}
+
+// ─── Unattended self-play on a shipped scenario ──────────
+// `OpenDoctrines --simulate <map.odmap> <turns> [world name]`
+//
+// Deliberately NOT a variant of training. Training generates its own maps and
+// clears m_currentSavePath so it never writes an .odsv; this loads a scenario
+// that actually ships and keeps the save, because the save IS the output. What
+// it produces is a world with a real turn history, which is the input
+// --export-timelapse has always needed and never had a way to make.
+//
+// It is also the smallest honest end-to-end check of a build: load a map,
+// resolve turns, write an archive. A platform where that works is a platform
+// where the game runs, and it needs nobody at the keyboard to say so.
+bool Game::runHeadlessSimulation(const std::string& mapPath, int turns,
+                                 const std::string& worldName) {
+    printf("[SIM] %s — %d turns\n", mapPath.c_str(), turns);
+
+    // Nothing is drawn between turns, so a frame cap would only add sleep.
+    applyFpsTarget(-1);
+
+    // The menu's own new-world path, so this exercises what a player exercises
+    // rather than a second loader that could drift away from it.
+    startNewGameWithName(mapPath, worldName);
+
+    // startNewGameWithName hands off to the async loader, which normally runs
+    // one step per frame from Game::run(). There is no run() here, so drive it.
+    while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {
+        if (WindowShouldClose()) { printf("[SIM] aborted while loading\n"); return false; }
+        updateLoading();
+    }
+    if (m_loadingFailed) {
+        fprintf(stderr, "[SIM] could not load %s\n", mapPath.c_str());
+        return false;
+    }
+    hideLoadingScreen();
+    m_currentScreen = SCREEN_PLAYING;
+    m_playerCountryId = 0;   // spectator: every country is AI-driven
+
+    if (m_currentSavePath.empty()) {
+        fprintf(stderr, "[SIM] no save was created; there would be no history to keep\n");
+        return false;
+    }
+    printf("[SIM] save: %s\n", m_currentSavePath.c_str());
+
+    auto start = std::chrono::steady_clock::now();
+    int played = 0;
+    for (int t = 0; t < turns; ++t) {
+        if (WindowShouldClose()) { printf("[SIM] stopped early at turn %d\n", played); break; }
+        processTurn();
+        played++;
+        // The window is never drawn to, but it still has to be pumped or the
+        // compositor decides the process has hung and WindowShouldClose never
+        // fires -- the same reason the training loop polls on skipped frames.
+        PollInputEvents();
+        if (played % 10 == 0 || played == turns) {
+            double secs = std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - start).count();
+            printf("[SIM] turn %d/%d  (%.1fs, %.2f s/turn)\n",
+                   played, turns, secs, secs / played);
+            fflush(stdout);
+        }
+    }
+
+    // A timelapse needs two turns to have something to animate between, so a
+    // run that produced fewer has not produced anything usable.
+    bool ok = played >= 2;
+    if (!ok) fprintf(stderr, "[SIM] only %d turn(s) resolved; need at least 2\n", played);
+
+    applyFpsTarget(m_config.fpsTarget);
+    unloadGameData();
+    return ok;
 }

@@ -78,6 +78,7 @@ struct PopupEntry {
     std::string action;       // for diplomacy: "request_alliance", etc.
     std::string sourceIso;
     std::string targetIso;
+    std::string subjectIso;   // used only for a call to arms: the aggressor
     CeasefireTerms terms;     // used only for CEASEFIRE_REQUEST
 };
 
@@ -291,8 +292,12 @@ const std::vector<std::string>& doctrineList();
 struct PendingDiplomaticAction {
     std::string sourceIso;
     std::string targetIso;
-    std::string action; // "request_alliance", "break_alliance", "request_guarantee", "break_guarantee", "request_nap", "break_nap", "declare_war"
+    std::string action; // "request_alliance", "break_alliance", "request_guarantee", "break_guarantee", "request_nap", "break_nap", "declare_war", "call_to_arms"
     int turnsRemaining = 1;
+    // "call_to_arms" only: who the ally is being asked to fight. The request
+    // itself travels defender -> ally, so the aggressor is a third party and
+    // cannot be recovered from source/target.
+    std::string subjectIso;
 };
 
 struct PendingUpgrade {

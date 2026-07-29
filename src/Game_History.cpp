@@ -561,6 +561,8 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         if (pid >= 0 && pid < (int)m_provinceCountryLookup.size())
             m_provinceCountryLookup[pid] = cid;
     }
+    // Scrubbing to an arbitrary turn rewrites ownership wholesale.
+    rebuildCountryProvinceIndex();
     for (auto& [pid, pop] : s.population) m_provincePopulations[pid] = pop;
     for (size_t i = 0; i < s.ships.size() && i < m_ships.size(); ++i) {
         m_ships[i].lat = s.ships[i].lat;

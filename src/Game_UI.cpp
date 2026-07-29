@@ -236,6 +236,15 @@ void Game::updatePopup() {
             if (popup.action == "request_alliance")      { fwd.alliance = true;      rev.alliance = true; }
             else if (popup.action == "request_guarantee"){ fwd.guarantee = true;     rev.guarantee = true; }
             else if (popup.action == "request_nap")      { fwd.nonAggression = true; rev.nonAggression = true; }
+            else if (popup.action == "call_to_arms") {
+                // Honouring the alliance: war with the aggressor, and unrest at
+                // home for the years that follow. Not chained -- see the note
+                // in processDiplomaticRequests.
+                declareWar(popup.targetIso, popup.subjectIso, false);
+                addWarWeariness(m_playerCountryId, CALL_TO_ARMS_UNREST);
+                addNotification("You honour your alliance with " + popup.sourceIso +
+                                " — unrest rises at home", ORANGE, 8.0f);
+            }
             // The treaty exists as of this click -- the lines above just set it.
             Audio::get().playSfx("treaty_signed");
             printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
@@ -245,6 +254,13 @@ void Game::updatePopup() {
             // Nothing to erase from the pending queue: the request was already
             // removed when the popup was created. The old code erased
             // begin(), which could silently drop an unrelated queued action.
+            if (popup.action == "call_to_arms") {
+                // Refusing is free at home and costs the alliance instead.
+                m_relations[popup.sourceIso][popup.targetIso].alliance = false;
+                m_relations[popup.targetIso][popup.sourceIso].alliance = false;
+                addNotification("You refused " + popup.sourceIso +
+                                "'s call to arms — the alliance is over", ORANGE, 8.0f);
+            }
             Audio::get().playSfx("deal_rejected");
             printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
@@ -956,6 +972,7 @@ std::string Game::saveStateJson() {
         entry["targetIso"] = da.targetIso;
         entry["action"] = da.action;
         entry["turnsRemaining"] = da.turnsRemaining;
+        if (!da.subjectIso.empty()) entry["subjectIso"] = da.subjectIso;
         j["pendingDiplomaticActions"].push_back(entry);
     }
 
@@ -1019,6 +1036,13 @@ std::string Game::saveStateJson() {
     // Pacification
     for (auto& [cid, val] : m_countryPacification) {
         j["pacification"][std::to_string(cid)] = val;
+    }
+
+    // War weariness. Without this a save/load wipes the entire cost of every
+    // alliance the country has honoured, which is the only thing making that
+    // decision a decision.
+    for (auto& [cid, val] : m_countryWarWeariness) {
+        if (val > 0.0f) j["warWeariness"][std::to_string(cid)] = val;
     }
 
     // Diplomatic relations. These were previously not persisted anywhere, so
@@ -1207,6 +1231,7 @@ void Game::loadStateJson(const std::string& json) {
             da.targetIso = entry["targetIso"].get<std::string>();
             da.action = entry["action"].get<std::string>();
             da.turnsRemaining = entry.value("turnsRemaining", 1);
+            da.subjectIso = entry.value("subjectIso", std::string());
             m_pendingDiplomaticActions.push_back(da);
         }
     }
@@ -1295,6 +1320,13 @@ void Game::loadStateJson(const std::string& json) {
     if (j.contains("pacification")) {
         for (auto& [key, val] : j["pacification"].items()) {
             m_countryPacification[std::stoi(key)] = val.get<float>();
+        }
+    }
+
+    // War weariness (see saveStateJson)
+    if (j.contains("warWeariness")) {
+        for (auto& [key, val] : j["warWeariness"].items()) {
+            m_countryWarWeariness[std::stoi(key)] = val.get<float>();
         }
     }
 

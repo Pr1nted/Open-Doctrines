@@ -625,6 +625,7 @@ void Game::buildPopulationLookups() {
         if (it != m_provincePopulations.end())
             m_provincePopArray[pid] = it->second;
     }
+    rebuildCountryProvinceIndex();
 
     // Build per-pixel country array and country pixel lists for fast updates
     const Image& provImg = m_provinces.getImage();
@@ -1885,6 +1886,22 @@ void Game::unloadGameData() {
     clearThumbCache();
 
     // Clear game data containers to free heap memory (important for Emscripten reload)
+    // The province table itself, which nothing ever cleared.
+    //
+    // Every other per-map container below was reset here; m_provinces was not,
+    // and loading a map only ADDS the provinces that map defines. Province ids
+    // come from pixel colour, so consecutive maps overlap only partially — and
+    // every province unique to the OLD map survived the rotation still owned by
+    // whoever held it there.
+    //
+    // Those owners do not exist on the new map. Their cids resolve to no
+    // country, which makes the provinces permanently un-conquerable (the AI's
+    // attack and declare-war paths both bail on a null Country) and permanently
+    // "alive" in the trainer's country count. Rebel ids created at runtime came
+    // across too: a fresh map would load owned by breakaway states from the
+    // previous one. Measured on a five-map rotation: 75 provinces held by five
+    // ghost countries and nineteen ghost rebels, on turn one.
+    m_provinces.clear();
     m_provinceIndustry.clear();
     m_provincePopulations.clear();
     m_provinceCompass.clear();
@@ -1935,6 +1952,10 @@ void Game::unloadGameData() {
     m_isoToCid.clear();
     m_countryCompass.clear();
     m_countryPacification.clear();
+    // Country ids are reused across maps, so leaving this behind would charge a
+    // fresh country for a war the previous map's cid 7 was dragged into.
+    m_countryWarWeariness.clear();
+    m_callToArmsCooldown.clear();
     m_countryBalances.clear();
     m_pendingCeasefireTerms.clear();
     m_acceptedCeasefireTerms.clear();
@@ -2565,6 +2586,8 @@ void Game::rebuildOwnershipPixels() {
         if ((size_t)pid < m_provinceCountryLookup.size())
             m_provinceCountryLookup[pid] = prov.countryId;
     }
+    // Replayed deltas move provinces without going through reindexProvinceOwner.
+    rebuildCountryProvinceIndex();
     const Image& provImg = m_provinces.getImage();
     int w2 = provImg.width, h2 = provImg.height;
     int totalPixels = w2 * h2;
@@ -2703,6 +2726,7 @@ void Game::startNewGame(const std::string& mapName) {
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
+    m_countryProvinces.clear();
     m_countryPixels.clear();
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
@@ -2793,6 +2817,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
+    m_countryProvinces.clear();
     m_countryPixels.clear();
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
@@ -2907,6 +2932,7 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
+    m_countryProvinces.clear();
     m_countryPixels.clear();
     m_countryRelationColors.clear();
     m_playerCountryId = 0;

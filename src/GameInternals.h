@@ -77,6 +77,20 @@ int indexToFpsTarget(int idx);
 int nearestIndex(float val, float* vals, int count);
 std::string makeSettingLabel(int tab, int index, const Config& cfg);
 void applyFpsTarget(int target);
+
+// ── Resource limiter (runtime panel, F10 / Ctrl+L) ──
+// The budget lives in a translation-unit global rather than being threaded
+// through applyFpsTarget's signature because the frame cap has to hold for the
+// callers that pass a fixed target and know nothing about the config — the
+// training loop asks for unlimited FPS, and an unlimited request is exactly the
+// one a throttled machine must not honour.
+constexpr float RESOURCE_BUDGET_MIN = 0.10f;
+/** Clamped to [RESOURCE_BUDGET_MIN, 1]. Call applyFpsTarget after changing it. */
+void setResourceBudget(float budget);
+float resourceBudget();
+/** Frame ceiling the budget implies, or 0 when the budget is unlimited. */
+int budgetedFpsCeiling();
+
 void forceWindowResize(int w, int h);
 void setFullscreenAttrs(bool fullscreen, int* x, int* y, int* w, int* h);
 

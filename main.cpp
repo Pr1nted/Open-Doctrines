@@ -54,9 +54,60 @@ int main(int argc, char** argv) {
         return ok ? 0 : 1;
     }
 
+    // --simulate <map.odmap> <turns> [world name]
+    // Unattended self-play on a shipped scenario. Leaves behind an .odsv with a
+    // real turn history -- what --export-timelapse needs, and what a fresh
+    // world does not have. Doubles as the per-platform smoke test: a build that
+    // loads a map, resolves turns and writes a save is a build that runs.
+    //
+    // The trained model is opened read-only. A smoke test that ran on every
+    // platform and quietly rewrote data/ai/model.bin each time would be a way
+    // to lose a model, not a way to check a build.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--simulate") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--simulate needs a map path and a turn count\n");
+            return 2;
+        }
+        AISystem::s_readOnlyModel = true;
+        Audio::s_disabled = true;
+        std::string map = argv[i + 1];
+        int turns = atoi(argv[i + 2]);
+        if (turns < 1) {
+            fprintf(stderr, "--simulate: turn count must be at least 1\n");
+            return 2;
+        }
+        std::string world = (i + 3 < argc && strncmp(argv[i + 3], "--", 2) != 0)
+                                ? argv[i + 3] : "Simulated";
+        Game g;
+        if (!g.init(1600, 900, "OpenDoctrines — simulating")) return 1;
+        return g.runHeadlessSimulation(map, turns, world) ? 0 : 1;
+    }
+
+    // --screenshots <dir> [save.odsv]
+    // Walks the game through a fixed list of screens and writes a PNG of each,
+    // so the images in README.md and on the store page can be retaken with one
+    // command instead of by hand. Needs a window: these are real frames.
+    std::string shotDir, shotSave;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--screenshots") != 0) continue;
+        if (i + 1 >= argc) {
+            fprintf(stderr, "--screenshots needs an output directory\n");
+            return 2;
+        }
+        shotDir = argv[i + 1];
+        if (i + 2 < argc && strncmp(argv[i + 2], "--", 2) != 0) shotSave = argv[i + 2];
+        break;
+    }
+
     Game game;
     if (!game.init(1600, 900, "OpenDoctrines")) {
         return 1;
+    }
+    if (!shotDir.empty()) {
+        game.beginScreenshotTour(shotDir, shotSave);
+        game.run();
+        return 0;
     }
 
     // Headless AI self-play training:

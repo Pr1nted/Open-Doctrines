@@ -2862,12 +2862,16 @@ void Game::drawInner() {
                 // A client never resolves a turn: it submits and waits for the
                 // world the host produced. Resolving locally would compute a
                 // second answer, and the two machines would diverge.
-                if (!m_mpWaitingForTurn) mpSubmitTurn();
+                //
+                // Pressing it again takes the submission back. Changing your
+                // mind before anyone else has finished is ordinary, and having
+                // no way to do it makes an accidental press permanent.
+                if (mpAmReady()) mpUnready(); else mpSubmitTurn();
             } else if (mpIsHost()) {
                 // The host's own orders are already in this world -- but the
                 // lobby has to be TOLD, or the host counts as a player who
                 // never submitted and the turn waits on itself forever.
-                mpHostReady();
+                if (mpAmReady()) mpUnready(); else mpHostReady();
             } else {
                 showLoadingScreen();
                 setLoadingProgress(0.0f, "Processing turn...");
@@ -3598,9 +3602,9 @@ void Game::drawInner() {
         // What the button actually does depends on who you are: a client says
         // "ready", the host says "my orders are in" -- and neither resolves
         // anything by itself.
-        const char* ptLabel = mpIsClient() ? (m_mpWaitingForTurn ? "Waiting..." : "Ready")
-                            : mpIsHost()   ? "Ready"
-                                           : "Process Turn";
+        const char* ptLabel = (mpIsClient() || mpIsHost())
+                            ? (mpAmReady() ? "Not ready" : "Ready")
+                            : "Process Turn";
         int ptw = MeasureText(ptLabel, 16);
         DrawText(ptLabel, sbX+(sbBtnW-ptw)/2, sbY+10, 16, WHITE);
 
@@ -3629,11 +3633,10 @@ void Game::drawInner() {
     // Turn history sits above the pause menu it was opened from
     if (m_inHistory) drawHistoryScreen();
 
-    // Debug overlay
-    if (m_config.debugMode) {
-        drawDebugOverlay();
-        drawScriptErrors();
-    }
+    // Debug overlay. drawDebugOverlay self-gates on debugMode -- it also draws
+    // the resource panel, which must be reachable without debug mode on.
+    drawDebugOverlay();
+    if (m_config.debugMode) drawScriptErrors();
     if (m_config.showConsole) drawConsoleWindow();
 
     // Draw notifications

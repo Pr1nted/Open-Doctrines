@@ -154,6 +154,39 @@ void Game::processArtilleryOrders(int countryId) {
 }
 
 // === processTurn ===
+// ─── Province ownership index ────────────────────────────────────────────
+
+void Game::rebuildCountryProvinceIndex() {
+    // Clear the vectors rather than the map: the country set barely changes
+    // between turns, so this keeps the per-country capacity and stops every
+    // turn from re-allocating a few hundred small vectors.
+    for (auto& [cid, list] : m_countryProvinces) list.clear();
+    for (auto& [pid, prov] : m_provinces.getAllProvinces())
+        if (prov.countryId > 0) m_countryProvinces[prov.countryId].push_back(pid);
+}
+
+void Game::reindexProvinceOwner(int pid, int oldOwner, int newOwner) {
+    if (oldOwner == newOwner) return;
+    if (oldOwner > 0) {
+        auto it = m_countryProvinces.find(oldOwner);
+        if (it != m_countryProvinces.end()) {
+            auto& v = it->second;
+            auto p = std::find(v.begin(), v.end(), pid);
+            // Swap-and-pop: order carries no meaning here, and erase() from
+            // the middle of a big country's list would be O(its provinces)
+            // on every single conquest.
+            if (p != v.end()) { *p = v.back(); v.pop_back(); }
+        }
+    }
+    if (newOwner > 0) m_countryProvinces[newOwner].push_back(pid);
+}
+
+const std::vector<int>& Game::provincesOf(int cid) const {
+    static const std::vector<int> none;
+    auto it = m_countryProvinces.find(cid);
+    return it == m_countryProvinces.end() ? none : it->second;
+}
+
 void Game::processTurn() {
     // Lambda to draw a loading screen frame (no-op if loading screen not active)
     auto drawFrame = [&](float pct, const char* status) {
@@ -178,6 +211,11 @@ void Game::processTurn() {
     auto prevArmies = m_provinceArmies;
     int turnNum = m_turnNumber + 1;
     auto t1 = std::chrono::steady_clock::now();
+    // Ownership index first: refreshIncomeCache and every per-country pass
+    // below read it, and a turn's worth of conquests can leave last turn's
+    // splices slightly behind on the rare path that writes ownership without
+    // reindexing. One O(provinces) scan a turn buys that back.
+    rebuildCountryProvinceIndex();
     // Pre-compute all country incomes in a single province pass (avoids 356 redundant scans)
     refreshIncomeCache();
     m_rebellionsThisTurnByCid.clear();
@@ -236,6 +274,7 @@ void Game::processTurn() {
     auto t5 = std::chrono::steady_clock::now();
     drawFrame(0.58f, "Updating policies...");
     updatePolicies();
+    decayWarWeariness();
     auto t6 = std::chrono::steady_clock::now();
     drawFrame(0.60f, "Eliminating defeated countries...");
     eliminateDefeatedCountries();
@@ -417,6 +456,18 @@ void Game::processTurn() {
 
     drawFrame(1.0f, "Done!");
     if (m_config.aiDebug) printf("[TURN] Turn %d processed.\n", turnNum);
+
+    // Resource limiter. The frame cap in Settings > Display does nothing for
+    // this loop -- it is single-threaded, runs as hard as the machine allows,
+    // and during self-play it IS the CPU load. Idling for a share of the work
+    // just done is what actually leaves the machine usable. No-op at 100%.
+    m_lastTurnMs = (float)(std::chrono::duration<double>(
+                               std::chrono::steady_clock::now() - t0).count() * 1000.0);
+    throttleForBudget(std::chrono::duration<double>(
+                          std::chrono::steady_clock::now() - t0).count(),
+                      // Self-play has nobody waiting on it, so it can idle as
+                      // long as the budget actually asks for.
+                      m_aiTraining ? 60.0 : 1.0);
 }
 
 // === processCountryTurn ===
@@ -448,9 +499,12 @@ void Game::processCountryTurn(int countryId) {
     auto pt8 = std::chrono::steady_clock::now();
     processRecruitments(countryId);
     auto pt9 = std::chrono::steady_clock::now();
+    // These two were timed as one segment labelled "embark", which made the
+    // most expensive phase of the country turn unattributable.
     processEmbarkations(countryId);
-    processRebellions(countryId);
     auto pt10 = std::chrono::steady_clock::now();
+    processRebellions(countryId);
+    auto pt11 = std::chrono::steady_clock::now();
     long long te = (long long)std::chrono::duration_cast<std::chrono::microseconds>(pt1-pt0).count();
     if (te > 1000) printf("[PROCESS] cid=%d economy=%lldus\n", countryId, te);
     te = (long long)std::chrono::duration_cast<std::chrono::microseconds>(pt2-pt1).count();
@@ -471,6 +525,8 @@ void Game::processCountryTurn(int countryId) {
     if (te > 1000) printf("[PROCESS] cid=%d recruit=%lldus\n", countryId, te);
     te = (long long)std::chrono::duration_cast<std::chrono::microseconds>(pt10-pt9).count();
     if (te > 1000) printf("[PROCESS] cid=%d embark=%lldus\n", countryId, te);
+    te = (long long)std::chrono::duration_cast<std::chrono::microseconds>(pt11-pt10).count();
+    if (te > 1000) printf("[PROCESS] cid=%d rebellion=%lldus\n", countryId, te);
 }
 
 // Rebel countries only ever existed in memory: createRebelCountry() inserts
@@ -1398,13 +1454,14 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     }
 
     // Transfer province ownership + populate m_countryPixels for population view
-    std::unordered_set<int> movedPixels; // everything leaving the parent
+    bool anyMoved = false;
     for (int pid : provinceIds) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (pp) {
             pp->countryId = rebelCid;
             if ((size_t)pid < m_provinceCountryLookup.size())
                 m_provinceCountryLookup[pid] = rebelCid;
+            reindexProvinceOwner(pid, parentCid, rebelCid);
         }
         auto ppIt = m_provincePixels.find(pid);
         if (ppIt != m_provincePixels.end()) {
@@ -1414,19 +1471,26 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 // Populate rebel's m_countryPixels
                 if (rebelCid >= 0 && rebelCid < (int)m_countryPixels.size())
                     m_countryPixels[rebelCid].push_back(idx);
-                movedPixels.insert(idx);
+                anyMoved = true;
             }
         }
     }
-    // Remove the moved pixels from the parent in ONE pass. The old per-pixel
-    // std::find + erase over the parent's whole pixel vector was
-    // O(rebelPixels x parentPixels) — for a large country that's billions of
-    // element visits per rebellion, and the single biggest reason turns with
-    // several rebellions took so long.
-    if (!movedPixels.empty() && parentCid >= 0 && parentCid < (int)m_countryPixels.size()) {
+    // Remove the moved pixels from the parent in ONE pass.
+    //
+    // The predicate asks m_pixelCountryArray -- which the loop above has
+    // already repointed at the rebel -- rather than probing a hash set of the
+    // moved pixels. Same answer, but a country holding 700k pixels was paying
+    // 700k hash lookups for a revolt in a SINGLE province: measured at 12-44 ms
+    // per rebellion, roughly 40% of the entire turn on a self-play map. An
+    // array read makes the same pass an order of magnitude cheaper.
+    if (anyMoved && parentCid >= 0 && parentCid < (int)m_countryPixels.size()) {
         auto& parentPixels = m_countryPixels[parentCid];
         parentPixels.erase(std::remove_if(parentPixels.begin(), parentPixels.end(),
-                                          [&](int idx) { return movedPixels.count(idx) != 0; }),
+                                          [&](int idx) {
+                                              return idx < 0 ||
+                                                     idx >= (int)m_pixelCountryArray.size() ||
+                                                     m_pixelCountryArray[idx] != parentCid;
+                                          }),
                            parentPixels.end());
     }
 
@@ -1449,8 +1513,14 @@ void Game::processRebellions(int countryId) {
 
     int totalProvCount = 0;
     std::vector<int> rebellingProvs;
-    for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
-        if (prov.countryId != countryId) continue;
+    // Was a scan of every province on the map, per country, per turn. On a
+    // 30-country map this loop alone was the largest single cost in the turn.
+    const auto& allProvs = m_provinces.getAllProvinces();
+    for (int pid : provincesOf(countryId)) {
+        auto pIt = allProvs.find(pid);
+        // The index is a candidate set: a province taken from us earlier this
+        // same turn is still listed until the next rebuild.
+        if (pIt == allProvs.end() || pIt->second.countryId != countryId) continue;
         totalProvCount++;
         float chance = getProvinceRebellionChance(pid, countryId);
         float roll = (float)rand() / (float)RAND_MAX * 100.0f;
@@ -1467,50 +1537,66 @@ void Game::processRebellions(int countryId) {
     if (m_config.aiDebug)
         printf("[REBELLION] cid=%d has %zu rebelling provinces (of %d total)\n", countryId, rebellingProvs.size(), totalProvCount);
 
-    // Precompute BFS distances between rebelling provinces (capped at 6 steps)
-    auto graphDist = [&](int a, int b, int maxD) -> int {
-        if (a == b) return 0;
-        std::queue<int> q;
-        std::unordered_map<int,int> dmap;
-        q.push(a); dmap[a] = 0;
-        while (!q.empty()) {
-            int cur = q.front(); q.pop();
-            int d = dmap[cur];
-            if (d >= maxD) continue;
-            auto nit = m_provinceNeighbors.find(cur);
-            if (nit == m_provinceNeighbors.end()) continue;
-            for (int n : nit->second) {
-                if (dmap.find(n) != dmap.end()) continue;
-                if (n == b) return d + 1;
-                dmap[n] = d + 1;
-                q.push(n);
-            }
-        }
-        return maxD + 1;
-    };
+    // Group by ideology (±20) AND geographic proximity (≤4 BFS steps).
+    //
+    // This was a PAIRWISE distance query: a fresh bounded BFS, with its own
+    // unordered_map and queue, for every (seed, candidate) pair — O(R^2)
+    // traversals of a densely connected province graph. Profiling a 30-country
+    // self-play map, this function alone was 59 ms of a 133 ms turn, dwarfing
+    // everything else including the neural net.
+    //
+    // One BFS per SEED answers the same question: flood four hops out, then
+    // every candidate the flood reached is within four hops by definition.
+    // O(R) traversals, and the scratch buffers are reused across seeds instead
+    // of reallocated per pair.
+    const int MAX_HOPS = 4;
+    std::vector<int> dist(m_provinceCountryLookup.size(), -1);
+    std::vector<int> touched;  // pids to reset, so the reset is O(visited)
+    std::vector<int> frontier, nextFrontier;
 
-    // Group by ideology (±20) AND geographic proximity (≤4 BFS steps)
     std::vector<std::vector<int>> factions;
     std::vector<bool> assigned(rebellingProvs.size(), false);
     for (size_t i = 0; i < rebellingProvs.size(); i++) {
         if (assigned[i]) continue;
-        std::vector<int> faction = {rebellingProvs[i]};
+        const int seed = rebellingProvs[i];
+        std::vector<int> faction = {seed};
         assigned[i] = true;
         Vector2 baseComp = {0, 0};
-        auto cit = m_provinceCompass.find(rebellingProvs[i]);
+        auto cit = m_provinceCompass.find(seed);
         if (cit != m_provinceCompass.end()) baseComp = cit->second;
+
+        // Flood MAX_HOPS out from the seed.
+        for (int pid : touched) if ((size_t)pid < dist.size()) dist[pid] = -1;
+        touched.clear();
+        frontier.clear();
+        if ((size_t)seed < dist.size()) { dist[seed] = 0; touched.push_back(seed); }
+        frontier.push_back(seed);
+        for (int d = 0; d < MAX_HOPS && !frontier.empty(); ++d) {
+            nextFrontier.clear();
+            for (int cur : frontier) {
+                auto nit = m_provinceNeighbors.find(cur);
+                if (nit == m_provinceNeighbors.end()) continue;
+                for (int n : nit->second) {
+                    if ((size_t)n >= dist.size() || dist[n] >= 0) continue;
+                    dist[n] = d + 1;
+                    touched.push_back(n);
+                    nextFrontier.push_back(n);
+                }
+            }
+            frontier.swap(nextFrontier);
+        }
+
         for (size_t j = i + 1; j < rebellingProvs.size(); j++) {
             if (assigned[j]) continue;
-            auto cjt = m_provinceCompass.find(rebellingProvs[j]);
+            const int cand = rebellingProvs[j];
+            if ((size_t)cand >= dist.size() || dist[cand] < 0) continue; // out of range
+            auto cjt = m_provinceCompass.find(cand);
             Vector2 comp = (cjt != m_provinceCompass.end()) ? cjt->second : Vector2{0,0};
             float ideoDist = sqrtf((comp.x - baseComp.x) * (comp.x - baseComp.x) +
                                    (comp.y - baseComp.y) * (comp.y - baseComp.y));
             if (ideoDist <= 20.0f) {
-                int gd = graphDist(rebellingProvs[i], rebellingProvs[j], 5);
-                if (gd <= 4) {
-                    faction.push_back(rebellingProvs[j]);
-                    assigned[j] = true;
-                }
+                faction.push_back(cand);
+                assigned[j] = true;
             }
         }
         factions.push_back(faction);
@@ -1794,6 +1880,7 @@ void Game::processShipDisembarks(int countryId) {
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
+                reindexProvinceOwner(dst->id, prevOwner, countryId);
                 transferCountryPixels(dst->id, countryId, prevOwner);
                 // Conquered province: add negative alignment drift for its minorities
                 {
@@ -1855,6 +1942,7 @@ void Game::processShipDisembarks(int countryId) {
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
+                reindexProvinceOwner(dst->id, prevOwner, countryId);
                 transferCountryPixels(dst->id, countryId, prevOwner);
                 // Conquered province: add negative alignment drift for its minorities
                 {
@@ -2162,6 +2250,7 @@ void Game::processArmyMovement(int countryId) {
                 // Update pixel lookup arrays + countryPixels
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
+                reindexProvinceOwner(dst->id, prevOwner, countryId);
                 transferCountryPixels(dst->id, countryId, prevOwner);
                 // Conquered province: add negative alignment drift for its minorities
                 {
@@ -2215,6 +2304,7 @@ void Game::processArmyMovement(int countryId) {
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
+                reindexProvinceOwner(dst->id, prevOwner, countryId);
                 transferCountryPixels(dst->id, countryId, prevOwner);
                 auto minIt = m_provinceMinorities.find(mo.toProvince);
                 if (minIt != m_provinceMinorities.end())
@@ -2480,6 +2570,70 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
             addNotification("You honour your guarantee of " + defenderIso +
                             " and are now at war with " + attackerIso, RED, 8.0f);
     }
+
+    // A guarantee compels; an alliance asks. Allies get a call to arms they can
+    // turn down -- which is what makes signing one a decision rather than a
+    // formality, and what gives the AI something to actually learn about it.
+    issueCallsToArms(attackerIso, defenderIso);
+}
+
+// ─── War weariness / calls to arms ───────────────────────────────────────
+
+void Game::addWarWeariness(int cid, float amount) {
+    if (cid <= 0 || cid >= SPC_CID) return;
+    float& w = m_countryWarWeariness[cid];
+    // Capped: weariness should make holding a country together hard, not make
+    // total collapse arithmetically certain the moment two allies call.
+    w = std::min(WAR_WEARINESS_MAX, w + amount);
+}
+
+void Game::decayWarWeariness() {
+    for (auto it = m_countryWarWeariness.begin(); it != m_countryWarWeariness.end(); ) {
+        it->second -= WAR_WEARINESS_DECAY;
+        if (it->second <= 0.01f) it = m_countryWarWeariness.erase(it);
+        else ++it;
+    }
+}
+
+void Game::issueCallsToArms(const std::string& attackerIso, const std::string& defenderIso) {
+    if (attackerIso.empty() || defenderIso.empty()) return;
+    auto defRels = m_relations.find(defenderIso);
+    if (defRels == m_relations.end()) return;
+
+    // Collect first: pushing onto m_pendingDiplomaticActions is safe, but
+    // reading m_relations while a later declareWar rewrites it is not.
+    std::vector<std::string> allies;
+    for (auto& [iso, rel] : defRels->second) {
+        if (!rel.alliance) continue;
+        if (iso == attackerIso) continue; // the alliance the attack just broke
+        int cid = cidForIso(iso);
+        if (cid < 0 || cid >= SPC_CID) continue;
+        // Already fighting them? Nothing to ask for.
+        auto ar = m_relations.find(iso);
+        if (ar != m_relations.end()) {
+            auto rr = ar->second.find(attackerIso);
+            if (rr != ar->second.end() && rr->second.war) continue;
+        }
+        // One ask per pair per cooldown. An ally who already marched, or who
+        // already said no, should not be re-asked every time a new front opens.
+        const long long key = ((long long)cidForIso(defenderIso) << 24) | (long long)cid;
+        auto cd = m_callToArmsCooldown.find(key);
+        if (cd != m_callToArmsCooldown.end() && m_turnNumber < cd->second) continue;
+        m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
+        allies.push_back(iso);
+    }
+    for (const std::string& iso : allies) {
+        PendingDiplomaticAction da;
+        da.sourceIso = defenderIso;
+        da.targetIso = iso;
+        da.action = "call_to_arms";
+        da.subjectIso = attackerIso;
+        da.turnsRemaining = 1;
+        m_pendingDiplomaticActions.push_back(da);
+        if (m_ai) m_ai->noteCallIssued();
+        printf("[WAR] %s calls its ally %s to arms against %s\n",
+               defenderIso.c_str(), iso.c_str(), attackerIso.c_str());
+    }
 }
 
 // === processDiplomaticRequests ===
@@ -2498,7 +2652,7 @@ void Game::processDiplomaticRequests() {
             && da.sourceIso != playerIso
             && (da.action == "request_alliance" || da.action == "request_guarantee"
              || da.action == "request_nap" || da.action == "declare_war"
-             || da.action == "request_ceasefire");
+             || da.action == "request_ceasefire" || da.action == "call_to_arms");
         if (isRequestToPlayer) {
             // Find requesting country ID
             int reqCid = -1;
@@ -2558,8 +2712,18 @@ void Game::processDiplomaticRequests() {
             } else if (da.action == "request_nap") {
                 title = "Non-Aggression Proposal";
                 msg2 = srcName + " proposes a non-aggression pact.";
+            } else if (da.action == "call_to_arms") {
+                int aggCid = cidForIso(da.subjectIso);
+                const Country* aggC = m_countries.getCountry(aggCid);
+                std::string aggName = aggC ? aggC->name : da.subjectIso;
+                title = "Call to Arms";
+                msg2 = srcName + " invokes your alliance against " + aggName + ".\n"
+                       "Join the war, or refuse and the alliance ends.\n"
+                       "Joining will stir unrest at home.";
             }
             pushPopup(pt, title, msg2, reqCid, da.action, da.sourceIso, da.targetIso);
+            if (da.action == "call_to_arms" && !m_popupQueue.empty())
+                m_popupQueue.back().subjectIso = da.subjectIso;
             // War is not a request — it happens whether or not the player has
             // dismissed the popup yet. This used to be dropped entirely here.
             if (da.action == "declare_war")
@@ -2574,6 +2738,36 @@ void Game::processDiplomaticRequests() {
         if (da.turnsRemaining <= 0) {
             // Requests aimed at an AI country go through its diplomacy net
             // instead of being auto-accepted.
+            if (da.action == "call_to_arms") {
+                // Allies choose. Accept = join the war and pay for it at home;
+                // refuse = keep the peace and lose the alliance.
+                int allyCid = cidForIso(da.targetIso);
+                bool accept = false;
+                if (allyCid >= 0 && allyCid != m_playerCountryId && m_ai)
+                    accept = m_ai->decideDiplomacy(allyCid, da.action, da.sourceIso);
+                if (accept) {
+                    // No further chaining: the ally's own guarantors and allies
+                    // are not dragged in as well, or one border incident
+                    // recursively enlists the entire map.
+                    declareWar(da.targetIso, da.subjectIso, false);
+                    addWarWeariness(allyCid, CALL_TO_ARMS_UNREST);
+                    if (m_ai) m_ai->noteCallAnswered();
+                    printf("[WAR] %s answers %s's call and joins against %s\n",
+                           da.targetIso.c_str(), da.sourceIso.c_str(), da.subjectIso.c_str());
+                } else {
+                    m_relations[da.sourceIso][da.targetIso].alliance = false;
+                    m_relations[da.targetIso][da.sourceIso].alliance = false;
+                    if (m_ai) { m_ai->noteCallRefused();
+                                m_ai->noteDiploRejected(cidForIso(da.sourceIso), allyCid); }
+                    printf("[WAR] %s refuses %s's call to arms; the alliance is over\n",
+                           da.targetIso.c_str(), da.sourceIso.c_str());
+                    if (!playerIso.empty() && da.sourceIso == playerIso)
+                        addNotification(da.targetIso + " refused your call to arms",
+                                        ORANGE, 8.0f);
+                }
+                m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
+                continue;
+            }
             if (m_ai && (da.action == "request_alliance" || da.action == "request_guarantee" ||
                          da.action == "request_nap")) {
                 int aiTgtCid = cidForIso(da.targetIso);
@@ -2869,6 +3063,7 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
         pp->countryId = toCid;
         if ((size_t)pid < m_provinceCountryLookup.size())
             m_provinceCountryLookup[pid] = toCid;
+        reindexProvinceOwner(pid, fromCid, toCid);
         // Update per-pixel country array + move countryPixels
         auto ppIt = m_provincePixels.find(pid);
         if (ppIt != m_provincePixels.end()) {
@@ -3267,6 +3462,10 @@ void Game::processPopulation() {
             float wcSurge = refugeeSurge.count(mg.sourcePid) ? refugeeSurge[mg.sourcePid] : 1.0f;
             long long moveCap = (wcSurge > 1.0f) ? srcPop / 2 : srcPop / 10; // 50% cap for refugees, 10% normally
             long long moveCount = std::min(mg.totalPop, moveCap);
+            // Don't let a destination be migrated past the province ceiling. Capping
+            // the move (rather than clamping the result) keeps migration zero-sum and
+            // keeps the minority-percentage recalculation below consistent.
+            moveCount = std::min(moveCount, std::max(0LL, MAX_PROVINCE_POP - dstPop));
             if (moveCount < 1) continue;
 
             if (m_config.aiDebug)
@@ -3436,6 +3635,9 @@ void Game::processPopulation() {
                 long long moveCount = std::max(1LL, (long long)(minorityPop * cbRate));
                 long long cbMoveCap = cbSurge > 1.0f ? srcPop / 2 : srcPop / 10;
                 moveCount = std::min(moveCount, cbMoveCap);
+                // Keep the destination under the province ceiling (see within-country
+                // migration above — cap the move, don't clamp the result).
+                moveCount = std::min(moveCount, std::max(0LL, MAX_PROVINCE_POP - dstPop));
                 if (moveCount < 1) continue;
 
                 // Execute cross-border move

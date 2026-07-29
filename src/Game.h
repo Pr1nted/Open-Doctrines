@@ -7,9 +7,11 @@
 #include "Config.h"
 #include "Audio.h"
 #include "net/TurnStore.h"
+#include "net/NetProtocol.h"
 #include "ScriptEngine.h"
 #include "MapEditor.h"
 #include "raymath.h"
+#include <deque>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,6 +28,14 @@ public:
     static constexpr int SPC_CID = 65533;
     static constexpr int UNC_CID = 65534;
     static constexpr int BLC_CID = 65535;
+
+    // Hard ceiling on a single province's population. Per-turn growth is
+    // multiplicative, so over the thousands of turns an AI training run plays
+    // it compounds without bound — logs showed provinces at ~3e17, a few
+    // orders of magnitude from overflowing long long and swamping every
+    // pop-derived economy/AI signal. 10 billion is well above any plausible
+    // in-game province and far below the point where the arithmetic degrades.
+    static constexpr long long MAX_PROVINCE_POP = 10000000000LL;
 
     friend class ScriptEngine;
     friend class AISystem;
@@ -46,7 +56,34 @@ public:
     // data/ai/model.bin between maps and runs.
     void runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigned int baseSeed);
 
+    // Unattended self-play on a REAL scenario (`--simulate`). Loads a shipped
+    // .odmap through the ordinary menu pipeline, creates the .odsv the menu
+    // would have created, plays `turns` turns with every country AI-driven,
+    // and leaves the save behind with its full turn history intact.
+    //
+    // Two callers wanted the same thing for different reasons and this is the
+    // overlap: --export-timelapse needs a save that HAS a history (a fresh
+    // world has one turn and nothing to animate), and the per-platform smoke
+    // test needs one command that proves a build can load a map, resolve turns
+    // and write a save without a human driving it. Training cannot serve
+    // either -- it generates its own maps and deliberately never writes a save.
+    bool runHeadlessSimulation(const std::string& mapPath, int turns,
+                               const std::string& worldName);
+
+    // Scripted screenshot tour (`--screenshots <dir> [save.odsv]`). Walks the
+    // game through a fixed list of screens and writes a PNG of each.
+    //
+    // The alternative was a human with a screenshot key, and that is exactly
+    // what makes documentation rot: the shots are taken once, the UI moves, and
+    // nobody re-takes twelve pictures by hand. This can be re-run after any
+    // change, which is the only reason the README's images can be trusted to
+    // still be the game.
+    void beginScreenshotTour(const std::string& outDir, const std::string& savePath);
+
 private:
+    // Advances the tour by one frame. Returns false when there is nothing left
+    // to shoot, which is the signal for run() to exit.
+    bool tickScreenshotTour();
     enum ScreenState {
         SCREEN_SPLASH,         // startup "Pr1nted presents" fade, shown before the main menu
         SCREEN_MENU,
@@ -398,6 +435,23 @@ private:
      */
     bool m_accountAgreed = false;
     bool m_mpConfirmSlow = false;
+    /** Start game was pressed while somebody was still choosing. */
+    bool m_mpConfirmStart = false;
+    /** Scroll offset for the lobby roster. */
+    int  m_mpRosterScroll = 0;
+    /** Console: scroll, and which row is armed for a kick/ban. */
+    int  m_mpConsoleScroll = 0;
+    std::string m_mpArmedBan;
+    /** Which spectator and which free country the console is offering. */
+    int m_mpSeatWho = 0;
+    int m_mpSeatWhich = 0;
+    /**
+     * Everyone goes back to the lobby once this turn resolves.
+     *
+     * Set during a turn, acted on after it -- stopping mid-turn would throw
+     * away orders people had already given.
+     */
+    bool m_mpReturnAfterTurn = false;
     bool m_mpResume = false;
     /** Search box for the map list, and scroll offsets for both lists. */
     std::string m_mpMapSearch;
@@ -430,6 +484,19 @@ private:
     std::unordered_map<uint16_t, long long> m_mpDeadlineMs;
     /** Milliseconds this player has left, or -1 when there is no timer. */
     long long mpDeadlineLeft(uint16_t peerId, long long nowMs) const;
+    /**
+     * When this turn runs out, on a CLIENT's own clock.
+     *
+     * The host sends how long is left, not a wall-clock time: the two machines
+     * do not agree on what time it is, and a shared absolute instant would be
+     * wrong by whatever their clocks differ by. Anchored on arrival instead.
+     * 0 means no timer.
+     */
+    long long m_mpTurnEndsAtMs = 0;
+    /** Take back "ready". Works for host and client alike. */
+    void mpUnready();
+    /** Whether this player has already declared for this turn. */
+    bool mpAmReady() const;
     /** Resolve now, without waiting for the stragglers. Host only. */
     void mpForceResolve();
     /** Who the turn is waiting on, drawn above the Ready button. */
@@ -446,6 +513,15 @@ private:
 
     class NetHost*    m_netHost = nullptr;
     class NetSession* m_netSession = nullptr;
+
+    /**
+     * Mod messages waiting to be read, across every mod.
+     *
+     * One queue rather than one per mod: a mod that is loaded but never calls
+     * net_recv would otherwise own a queue nothing drains, and this way the
+     * bound is on the game, not on however many mods are installed.
+     */
+    std::deque<NetModMsg> m_mpModInbox;
     class ServerBook* m_serverBook = nullptr;
 
     // Registering a server credential is one blocking HTTPS call, so it runs
@@ -512,6 +588,11 @@ public:
     // Backing for GameState.Write. Every one of these goes through the same
     // code the game itself uses, so a mod cannot reach a state the game could
     // not; each validates and returns false rather than trapping.
+    void        installModBridges();
+    /** Move arrived mod messages into m_mpModInbox, for the Net module. */
+    void        mpDrainModMessages();
+    /** Free sounds a mod started; empty id means every mod's. */
+    void        unloadModSounds(const std::string& modId = std::string());
     bool        modSetCountryTreasury(int cid, double value);
     bool        modAddCountryTreasury(int cid, double delta);
     bool        modSetProvinceOwner(int pid, int toCid);
@@ -679,6 +760,7 @@ public:
     Config m_config;
     std::string m_configPath;
     bool m_draggingFpsSlider = false;
+    bool m_draggingResourceSlider = false;
     bool m_waitingForKey = false;
     int m_rebindingAction = -1;
     int m_settingsScroll = 0;
@@ -767,6 +849,66 @@ public:
     void drawVolumeSlider(int index, int y, int centerX, bool selected);
     /** Nudges a volume row by delta and applies it. Used by LEFT/RIGHT and R. */
     void adjustVolume(int index, float delta);
+
+    // ─── Resource limiter ────────────────────────
+    //
+    // Not a settings row: it is driven from the runtime panel (F10 / Ctrl+L),
+    // where the CPU graph is right next to the slider.
+    /** Slider position (0..1) for a budget, and the inverse. */
+    static float resourceBudgetSliderT(float budget);
+    static float resourceBudgetFromSliderT(float t);
+    /** Pushes the config value into the limiter and re-paces the frame cap. */
+    void applyResourceBudget();
+    // ─── Runtime resource panel (F10) ────────────
+    //
+    // The Settings row is fine for setting a policy before you start, but the
+    // moment you actually want to throttle something is while it is running --
+    // a training session you need to share the machine with, a big map that
+    // turned the fans on. This is the same budget, adjustable in place, with a
+    // graph of what the machine actually did so the setting can be judged
+    // against a measurement rather than a guess.
+    struct PerfSample {
+        float cpuShare;   // process CPU time / wall time, 0..N cores
+        float budget;     // the limit in force when this sample was taken
+        float turnMs;     // last turn's processing time, 0 outside a game
+    };
+    bool m_showResourcePanel = false;
+    std::deque<PerfSample> m_perfHistory;
+    double m_perfLastWall = 0.0;   // wall clock at the last sample
+    double m_perfLastCpu  = 0.0;   // process CPU seconds at the last sample
+    float  m_lastTurnMs = 0.0f;
+    // Rolling window the CPU-share throttle measures against. Short enough to
+    // react within a couple of seconds of a slider move, long enough that a
+    // single expensive turn does not swing it.
+    static constexpr double BUDGET_WINDOW_SECONDS = 4.0;
+    double m_budgetEpochWall = 0.0;   // 0 = window not started
+    double m_budgetEpochCpu  = 0.0;
+    bool m_draggingPanelSlider = false;
+    /** Total CPU seconds this process has burned, or -1 where unsupported. */
+    static double processCpuSeconds();
+    /** Called once per frame; appends to m_perfHistory a few times a second. */
+    void samplePerformance();
+    // ~4 samples a second, 200 of them: a rolling 50 seconds, which is long
+    // enough to see a limit change take effect and short enough to stay live.
+    static constexpr double PERF_SAMPLE_SECONDS = 0.25;
+    static constexpr size_t PERF_HISTORY = 200;
+    Rectangle resourcePanelRect() const;
+    /** Draws the panel. Safe to call with the panel hidden (does nothing). */
+    void drawResourcePanel();
+    /** Handles F10 and the panel's slider. Returns true if it ate the click. */
+    bool updateResourcePanel();
+
+    /**
+     * Duty-cycles the turn loop to the configured budget.
+     *
+     * The simulation is single-threaded and runs as hard as it can, so capping
+     * the frame rate does nothing for it -- during self-play it is the whole
+     * CPU cost. Sleeping for a share of the work just done is what actually
+     * hands the machine back. `workSeconds` is how long the turn took;
+     * `maxSleepSeconds` bounds the pause so an interactive end-turn cannot look
+     * like a hang (self-play raises it, since nothing is waiting on it).
+     */
+    void throttleForBudget(double workSeconds, double maxSleepSeconds = 1.0);
 
     int m_draggingVolume = -1;        // volume row being dragged, -1 when none
     double m_lastVolumePreview = 0.0; // rate-limits the click played while dragging
@@ -898,6 +1040,40 @@ public:
     int m_pendingCountryId = 0;
     std::unordered_map<int, float> m_countryBalances;
     std::vector<int> m_provinceCountryLookup;
+
+    // ─── Province ownership index ────────────────────────────────────────
+    //
+    // cid -> the province ids that country owns.
+    //
+    // Everything that used to ask "which provinces does country X hold?"
+    // answered it by walking the ENTIRE province map and testing each one, and
+    // several of those walks sat inside a per-country loop. refreshIncomeCache
+    // did it twice per country, processRebellions once, and the AI's economy
+    // and war executors once each per decision -- so a 50-country map paid for
+    // a couple of hundred full-map scans every single turn. Measured on a
+    // 30-country self-play map that was the largest single cost in the turn
+    // loop, several times the neural net it was supposedly waiting on.
+    //
+    // Rebuilt once at the top of each turn and spliced on every conquest, so a
+    // per-country pass is O(that country's holdings).
+    std::unordered_map<int, std::vector<int>> m_countryProvinces;
+    /** Full rebuild from current province ownership. O(provinces). */
+    void rebuildCountryProvinceIndex();
+    /**
+     * One province changed hands: move it between the two lists.
+     *
+     * Call it beside every ownership write. Missing a call costs correctness
+     * only until the next turn's rebuild, but a caller that hands back a
+     * province the index still lists will see it skipped by the ownership
+     * re-check every consumer does.
+     */
+    void reindexProvinceOwner(int pid, int oldOwner, int newOwner);
+    /**
+     * Province ids `cid` is believed to own -- a candidate set, not a
+     * guarantee. Consumers re-check `prov.countryId` because a conquest
+     * earlier in the same turn can leave a stale entry behind.
+     */
+    const std::vector<int>& provincesOf(int cid) const;
     std::unordered_map<int, int> m_provinceConquestTurn; // turn# when province was conquered (0 = not conquered)
     std::unordered_map<int, int> m_conqueredProvincePrevOwner; // previous owner of conquered province (for ongoing war debuff)
     std::vector<long long> m_provincePopArray;
@@ -1076,6 +1252,39 @@ public:
     // ─── Rebellion System ─────────────────────────
     int m_nextRebelCid = 60000;
     std::unordered_map<int, float> m_countryPacification;
+
+    // ─── War weariness ────────────────────────────
+    //
+    // Extra unrest, in rebellion-chance percentage points, carried by a country
+    // that was dragged into somebody else's war. This is what an alliance
+    // actually COSTS: before it, honouring one was free, so a policy-gradient
+    // learner correctly concluded that alliances were worth nothing and never
+    // signed any. Added to every province's rebellion chance and decayed a
+    // little each turn, so the price is paid over the years that follow rather
+    // than all at once.
+    std::unordered_map<int, float> m_countryWarWeariness;
+    // Per-pair call cooldown, keyed on (defender, ally). A late-game brawl
+    // declares wars constantly, and without this every one of them re-asked
+    // every ally: measured at ~4 calls a turn between seven countries, which is
+    // both unplayable as a popup stream and meaningless as a decision.
+    std::unordered_map<long long, int> m_callToArmsCooldown;
+    static constexpr int CALL_TO_ARMS_COOLDOWN_TURNS = 30;
+    /** One country answered a call to arms: charge it at home. */
+    void addWarWeariness(int cid, float amount);
+    /** Per-turn decay. Called once from processTurn. */
+    void decayWarWeariness();
+    float warWearinessOf(int cid) const {
+        auto it = m_countryWarWeariness.find(cid);
+        return it == m_countryWarWeariness.end() ? 0.0f : it->second;
+    }
+    /**
+     * Ask every ally of `defenderIso` to join against `attackerIso`.
+     *
+     * A request, not a summons: allies (including the player) can refuse, and
+     * refusing breaks the alliance instead of costing unrest. Accepting joins
+     * the war and adds war weariness.
+     */
+    void issueCallsToArms(const std::string& attackerIso, const std::string& defenderIso);
     // ── Turn history / timelapse (Game_History.cpp) ──
     // Reconstructed purely from the .odsv, so browsing never mutates the
     // running game.
@@ -1126,6 +1335,14 @@ private:
     void openHistoryScreen(const std::string& savePath);
     void refreshHistoryPreview();
     std::string defaultTimelapsePath(const std::string& savePath, int w, int h) const;
+
+    // ─── Screenshot tour state (--screenshots) ───
+    bool m_shotTour = false;
+    std::string m_shotDir;               // where the PNGs land
+    std::string m_shotSave;              // save loaded for the in-game shots
+    int m_shotIndex = 0;                 // which shot in the list
+    int m_shotFrame = 0;                 // frames spent settling on it
+    int m_shotProvince = 0;              // the province the panel shots describe
 
     bool m_inHistory = false;
     std::string m_historySavePath;       // save being browsed
@@ -1185,6 +1402,16 @@ private:
     // Tuned so baseline provinces are stable but claim/war/minority hotspots
     // still revolt (see getProvinceRebellionChance).
     static constexpr float REBELLION_LOYALTY_FLOOR = 6.0f;
+    // Answering a call to arms costs this many points of rebellion chance in
+    // every province, on top of whatever the war itself stirs up. Set against
+    // REBELLION_LOYALTY_FLOOR above: 7 points more than wipes out the baseline
+    // loyalty a well-run country enjoys, so a country that keeps honouring
+    // alliances it cannot afford starts shedding provinces.
+    static constexpr float CALL_TO_ARMS_UNREST = 7.0f;
+    static constexpr float WAR_WEARINESS_MAX = 20.0f;
+    // ~45 turns to work off a single call at full strength. Long enough that a
+    // second call while the first is still hurting is a genuinely bad idea.
+    static constexpr float WAR_WEARINESS_DECAY = 0.15f;
     static constexpr int REBEL_CID_MIN = 60000;
     void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
     void processRebellions(int countryId);

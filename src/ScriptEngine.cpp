@@ -904,9 +904,11 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             for (auto& [id, c] : m_game->m_countries.getAll())
                 if (c.isoA3 == iso) { newCid = id; break; }
             if (newCid < 0) return false;
+            const int oldCid = p->countryId; // read before the write: the index needs both sides
             p->countryId = newCid;
             if ((size_t)pid < m_game->m_provinceCountryLookup.size())
                 m_game->m_provinceCountryLookup[pid] = newCid;
+            m_game->reindexProvinceOwner(pid, oldCid, newCid);
             // Update pixel array
             auto ppIt = m_game->m_provincePixels.find(pid);
             if (ppIt != m_game->m_provincePixels.end()) {

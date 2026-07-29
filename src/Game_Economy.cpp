@@ -13,14 +13,15 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     if (cacheIt != m_countryIncomeCache.end()) return cacheIt->second;
     if (countryId == m_lastIncomeCountryId) return m_cachedIncome;
     CountryIncomeSnapshot cs;
-    for (auto& [pid, p] : m_provinces.getAllProvinces()) {
-        if (p.countryId == countryId) {
-            auto ind = m_provinceIndustry.find(pid);
-            if (ind != m_provinceIndustry.end()) {
-                cs.gross += ind->second.income;
-                cs.resource += ind->second.resourceIncome;
-                cs.pop += ind->second.popIncome;
-            }
+    const auto& allProvs = m_provinces.getAllProvinces();
+    for (int pid : provincesOf(countryId)) {
+        auto pIt = allProvs.find(pid);
+        if (pIt == allProvs.end() || pIt->second.countryId != countryId) continue;
+        auto ind = m_provinceIndustry.find(pid);
+        if (ind != m_provinceIndustry.end()) {
+            cs.gross += ind->second.income;
+            cs.resource += ind->second.resourceIncome;
+            cs.pop += ind->second.popIncome;
         }
     }
     for (auto& [pid, units] : m_provinceArmies) {
@@ -50,8 +51,9 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         }
     }
     std::unordered_set<std::string> processedMinorities;
-    for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
-        if (prov.countryId != countryId) continue;
+    for (int pid : provincesOf(countryId)) {
+        auto pIt = allProvs.find(pid);
+        if (pIt == allProvs.end() || pIt->second.countryId != countryId) continue;
         auto mit = m_provinceMinorities.find(pid);
         if (mit == m_provinceMinorities.end()) continue;
         for (auto& mg : mit->second) {
@@ -116,6 +118,22 @@ void Game::refreshIncomeCache() {
         a.res += ind->second.resourceIncome;
         a.pop += ind->second.popIncome;
     }
+    // Upkeep in one pass each, not one pass per country. Both of these used to
+    // sit inside the per-country loop below, so every army stack and every ship
+    // on the map was visited once for every country in the game.
+    std::unordered_map<int, float> armyUpkeep, navyUpkeep;
+    for (auto& [pid, units] : m_provinceArmies)
+        for (auto& u : units)
+            if (u.countryId > 0) armyUpkeep[u.countryId] += (u.count / 10000.0f) * 0.01f;
+    for (auto& ship : m_ships) {
+        if (ship.countryId <= 0) continue;
+        float& n = navyUpkeep[ship.countryId];
+        if (ship.type == "carrier") n += 25;
+        else if (ship.type == "destroyer") n += 10;
+        n += (ship.crew / 10000.0f) * 0.2f;
+    }
+
+    const auto& allProvs = m_provinces.getAllProvinces();
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID) continue;
         auto& a = incAcc[cid];
@@ -124,16 +142,8 @@ void Game::refreshIncomeCache() {
         cs.resource = a.res;
         cs.pop = a.pop;
         cs.total = a.gross + a.res + a.pop;
-        for (auto& [pid, units] : m_provinceArmies)
-            for (auto& u : units)
-                if (u.countryId == cid)
-                    cs.armyExpenses += (u.count / 10000.0f) * 0.01f;
-        for (auto& ship : m_ships) {
-            if (ship.countryId != cid) continue;
-            if (ship.type == "carrier") cs.navyExpenses += 25;
-            else if (ship.type == "destroyer") cs.navyExpenses += 10;
-            cs.navyExpenses += (ship.crew / 10000.0f) * 0.2f;
-        }
+        { auto it = armyUpkeep.find(cid); if (it != armyUpkeep.end()) cs.armyExpenses = it->second; }
+        { auto it = navyUpkeep.find(cid); if (it != navyUpkeep.end()) cs.navyExpenses = it->second; }
         auto pIt = m_countryActivePolicyIndices.find(cid);
         if (pIt != m_countryActivePolicyIndices.end()) {
             for (int apIdx : pIt->second) {
@@ -145,8 +155,9 @@ void Game::refreshIncomeCache() {
             }
         }
         std::unordered_set<std::string> pm;
-        for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
-            if (prov.countryId != cid) continue;
+        for (int pid : provincesOf(cid)) {
+            auto pIt = allProvs.find(pid);
+            if (pIt == allProvs.end() || pIt->second.countryId != cid) continue;
             auto mit = m_provinceMinorities.find(pid);
             if (mit == m_provinceMinorities.end()) continue;
             for (auto& mg : mit->second) {

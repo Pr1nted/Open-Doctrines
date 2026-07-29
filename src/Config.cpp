@@ -79,6 +79,9 @@ bool Config::load(const std::string& path) {
     showZoom = findBool(json, "showZoom", false);
     showConsole = findBool(json, "showConsole", false);
     fpsTarget = findInt(json, "fpsTarget", 0);
+    // Absent means unlimited: an older config predates the limiter and its
+    // owner never chose to be throttled.
+    resourceBudget = std::clamp(findFloat(json, "resourceBudget", 1.0f), 0.10f, 1.0f);
     aiDifficulty = findInt(json, "aiDifficulty", 1);
     if (aiDifficulty < 0) aiDifficulty = 0;
     if (aiDifficulty > 3) aiDifficulty = 3;
@@ -139,6 +142,7 @@ bool Config::save(const std::string& path) {
     file << "  \"showZoom\": " << (showZoom ? "true" : "false") << ",\n";
     file << "  \"showConsole\": " << (showConsole ? "true" : "false") << ",\n";
     file << "  \"fpsTarget\": " << fpsTarget << ",\n";
+    file << "  \"resourceBudget\": " << resourceBudget << ",\n";
     file << "  \"aiDifficulty\": " << aiDifficulty << ",\n";
     file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
     file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";

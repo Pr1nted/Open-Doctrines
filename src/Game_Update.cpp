@@ -1336,7 +1336,7 @@ void Game::update(float dt) {
                 m_config.flySpeed = FLY_SPEED_VALS[idx];
             } else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                 adjustVolume(m_settingsIndex, dir * 0.05f);
-            }
+        }
         }
 
         // Reset via keyboard (KEY_R on selected item)

@@ -1,7 +1,9 @@
 #pragma once
 #include "NeuralNet.h"
+#include <chrono>
 #include <deque>
 #include <random>
+#include <thread>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -53,8 +55,8 @@ public:
     //           5 propose alliance, 6 propose NAP, 7 propose guarantee
     static constexpr int POL_ACTIONS  = 8;
     // War: 0 hold, 1 recruit, 2 reinforce, 3 attack, 4 declare war,
-    //      5 artillery, 6 offer ceasefire
-    static constexpr int WAR_ACTIONS  = 7;
+    //      5 artillery, 6 offer ceasefire, 7 stage troops in allied territory
+    static constexpr int WAR_ACTIONS  = 8;
     static constexpr int NAVY_ACTIONS = 5;
     static constexpr int DIPLO_ACTIONS = 2; // 0=reject 1=accept
 
@@ -65,6 +67,10 @@ public:
     // (army totals, province counts, frontiers, ships) so per-country feature
     // extraction never rescans the map.
     void beginTurn();
+private:
+    /** The world aggregates, without the per-turn bookkeeping. */
+    void refreshStats();
+public:
     // Decide + enqueue this country's orders through the same pending-order
     // queues the player uses. Call from processCountryTurn, player excluded.
     void takeTurn(int cid);
@@ -76,6 +82,21 @@ public:
     // "They said no" — back the pair off hard rather than re-asking as soon as
     // the ordinary cooldown lapses.
     void noteDiploRejected(int sourceCid, int targetCid);
+    /** Coalition counters for the trainer dashboard. */
+    void noteCallIssued()   { m_trainStats.callsIssued++; }
+    void noteCallAnswered() { m_trainStats.callsAnswered++; }
+    void noteCallRefused()  { m_trainStats.callsRefused++; }
+
+    /**
+     * The map is decided: `cid` won it.
+     *
+     * Flushes every open reward window with a terminal win/loss, which is the
+     * only way the outcome the run is optimising for ever reaches the weights —
+     * map rotation otherwise destroys the AISystem with those windows still
+     * pending, so the last N_STEP turns of every map, including the decisive
+     * ones, trained nothing at all.
+     */
+    void noteVictory(int cid);
 
     void saveModel();
     // Observation mode: load the model and act on it, but never write it back.
@@ -110,6 +131,11 @@ public:
         // cargo brought back to our own ports. Conflating them would flatter the
         // invasion rate with what are really aborted crossings.
         long long embarks = 0, landings = 0, unloadsHome = 0;
+        // Coalition behaviour. callsAnswered/callsRefused is the readout that
+        // says whether alliances mean anything yet; stagingMoves says whether
+        // anyone is using an ally's ground to reach a front.
+        long long callsIssued = 0, callsAnswered = 0, callsRefused = 0;
+        long long stagingMoves = 0;
     };
     const TrainStats& trainStats() const { return m_trainStats; }
     // Mean raw reward per module per turn, last ~600 turns
@@ -118,9 +144,17 @@ public:
     // ── Model/hyperparameter introspection ──
     static constexpr float LR_POLICY = 0.002f;
     static constexpr float LR_VALUE  = 0.005f;
+    // Self-play exploration schedule. Training used to sit at a fixed 10%
+    // random forever, which caps final play strength no matter how long the
+    // run: see difficultyParams.
+    static constexpr float EPSILON_START = 0.15f;
+    static constexpr float EPSILON_FINAL = 0.02f;
+    static constexpr double EPSILON_ANNEAL_UPDATES = 4.0e7;
     long long paramCount() const;              // weights+biases across all nine nets
     unsigned long long totalUpdates() const;   // gradient updates across all nets
     size_t lastSaveBytes() const { return m_lastSaveBytes; }
+    /** Bytes this model would occupy on disk, without writing it. */
+    size_t serializedSize() const;
     void samplingParams(float& temperature, float& epsilon) const {
         difficultyParams(temperature, epsilon);
     }
@@ -155,6 +189,37 @@ private:
         int navalWarTargets = 0;
         struct Frontier { int pid; int enemyCid; };
         std::vector<Frontier> frontiers;
+
+        // ── Staging in allied territory ──
+        // An ally's province that borders a country we are at war with, paired
+        // with one of OUR provinces next to it. Moving troops along that pair
+        // puts an army on a front we have no border of our own on — the whole
+        // point of an alliance, and something the AI simply had no
+        // representation for: `frontiers` only ever held our own provinces, so
+        // no action could name a foreign one.
+        struct Staging { int fromPid; int allyPid; int enemyCid; };
+        std::vector<Staging> staging;
+        // Troops we already have parked on allied soil, and where. Without the
+        // pid list a staged army was a dead end: the attack action only ever
+        // launched from provinces we owned, so troops walked into an ally and
+        // stood there for the rest of the game.
+        long long armyAbroad = 0;
+        std::vector<int> abroadPids;
+
+        // ── Defensive posture ──
+        // A frontier facing a live enemy STACK, not merely a hostile country.
+        // Everything the war module knew about being attacked was "am I at war
+        // with somebody", which is not a fact you can build a frontline from.
+        int threatenedProvinces = 0;    // own provinces with hostile troops adjacent
+        long long enemyAdjArmy = 0;     // hostile troops standing on those borders
+        long long defenderArmy = 0;     // our troops in those same provinces
+        int worstThreatPid = -1;        // the biggest single deficit
+        long long worstDeficit = 0;
+        int provincesLost = 0;          // since last turn
+        // ── Coalition ──
+        long long allyAdjArmy = 0;      // allied troops adjacent to our territory
+        int coBelligerents = 0;         // allies at war with one of our enemies
+        int idleAllies = 0;             // allies at peace while we are at war
     };
     // Reward horizon: each decision is judged by the state change over the
     // NEXT N_STEP turns, not the same turn. One-turn deltas taught passivity —
@@ -180,6 +245,15 @@ private:
         float netIncome = 0;
         float industrySum = 0;
         int researched = 0; // completed research nodes
+        // Was this country under attack when it decided? Ground lost while
+        // nobody was pressing us is map churn; ground lost with enemy stacks on
+        // the border is a defensive failure, and only the second should be
+        // charged to the war module.
+        int threatened = 0;
+        // At war with anyone when the decision was taken. An army is worth
+        // paying for when there is a war to fight and dead weight otherwise,
+        // and the reward could not tell those apart without this.
+        bool atWar = false;
     };
 
     Game* m_g = nullptr;
@@ -192,6 +266,13 @@ private:
     int m_decisionsThisTurn = 0;
 
     std::unordered_map<int, CountryStat> m_stats;      // rebuilt in beginTurn
+    // Relation graph as integer sets, rebuilt in beginTurn. The ISO-keyed
+    // m_relations is fine for the odd query but not for the tens of thousands
+    // the neighbour walks make every turn.
+    std::unordered_map<int, std::unordered_set<int>> m_warWith, m_alliedWith;
+    // Province count at the END of last turn, so "did I just lose ground?" is
+    // answerable from a single turn's stats.
+    std::unordered_map<int, int> m_prevProvinces;
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     std::unordered_map<int, int> m_lastResearchCount;  // for the completions counter
@@ -228,10 +309,47 @@ private:
     float m_rMean[MOD_COUNT] = {0, 0, 0, 0};
     float m_rVar[MOD_COUNT] = {1, 1, 1, 1};
 
+    // ─── Parallel learning step ──────────────────
+    //
+    // One deferred gradient computation. endTurn splits into a cheap serial
+    // phase (rewards, running statistics — order-dependent) that fills this
+    // list, and an expensive parallel phase that drains it. Measured at ~31%
+    // of turn time on a 40-country map, and every item is independent of every
+    // other until the gradients are summed.
+    struct WorkItem {
+        int module = 0;      // MOD_* , or MOD_COUNT for the diplomacy net
+        int action = -1;
+        float norm = 0;      // normalised reward
+        float advantage = 0; // filled in by the worker, for the debug log
+        int cid = 0;
+        std::vector<float> features;
+        std::vector<std::vector<float>> acts; // cached policy activations
+    };
+    std::vector<WorkItem> m_work;
+    struct WorkerScratch {
+        NeuralNet::Scratch policy[MOD_COUNT];
+        NeuralNet::Scratch value[MOD_COUNT];
+        NeuralNet::Scratch diplo;
+        bool ready = false;
+    };
+    std::vector<WorkerScratch> m_scratch;
+    /** Worker count: cores minus one, scaled by the resource limiter. */
+    int learningThreads() const;
+    /** Drains m_work across `learningThreads()` workers and merges gradients. */
+    void runLearningWork();
+
     std::deque<Decision> m_log;
     TrainStats m_trainStats;
     std::deque<float> m_rewardHistory[MOD_COUNT];
     size_t m_lastSaveBytes = 0;
+    // Checkpoint pacing. Losing at most a minute of self-play is a fine trade
+    // for not rewriting a 12 MB file twice a second — see endTurn.
+    static constexpr double SAVE_INTERVAL_SECONDS = 60.0;
+    std::chrono::steady_clock::time_point m_lastSave = std::chrono::steady_clock::now();
+    bool m_modelDirReady = false;
+    // Set by the trainer when a map is decided, so the last window of the
+    // winner's decisions is scored as a win rather than as an ordinary turn.
+    int m_victorCid = -1;
 
     // Research is player-only, so AI countries would report level-0 build caps
     // forever; these give them a baseline capability (research still raises it).
@@ -248,6 +366,16 @@ private:
                     const std::vector<bool>& valid, float& scoreOut,
                     int graveAction = -1);
     void logDecision(int cid, int module, int action, float score, const std::string& label);
+
+    // Defence is issued as a batch, not one province a turn: a country invaded
+    // on six borders needs six answers. Capped so a single country cannot fill
+    // the move queue on its own.
+    static constexpr int MAX_REINFORCE_ORDERS = 4;
+    static constexpr int MAX_GARRISON_ORDERS  = 3;
+    /** Move half the strongest adjacent friendly garrison into `dstPid`. */
+    bool reinforceProvince(int cid, int dstPid);
+    /** Unsampled defensive doctrine — see the note on the definition. */
+    void garrisonReflex(int cid);
 
     // Action execution (mirrors player enqueue rules incl. treasury deduction)
     std::string execEconomy(int cid, int action);

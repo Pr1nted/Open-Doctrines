@@ -33,6 +33,51 @@ public:
     // Softmax is applied internally to the cached logits.
     void policyGradientUpdate(int action, float advantage, float lr);
 
+    // ── Batched policy gradient ──
+    //
+    // REINFORCE with a batch of one is the noisiest estimator there is: every
+    // Adam step chases a single sampled outcome, and the optimiser's moment
+    // estimates spend most of their time undoing the previous sample. The AI
+    // already produces hundreds of experiences per turn, all settling in the
+    // same learning step, so averaging their gradients before taking ONE step
+    // costs nothing and cuts the variance by roughly sqrt(batch).
+    //
+    // Usage: accumulate() with the cached activations restored for each sample,
+    // then flushBatch() once. accumulate() does not touch the weights.
+    void accumulatePolicyGradient(int action, float advantage);
+    void accumulateValueGradient(float target);
+    /** Applies the mean of everything accumulated. No-op on an empty batch. */
+    void flushBatch(float lr);
+    int batchSize() const { return m_batchN; }
+
+    // ── Thread-private accumulation ──
+    //
+    // The learning step is hundreds of independent samples per turn, measured
+    // at ~31% of turn time on a 40-country map. They are independent right up
+    // to the point where their gradients are summed, which is exactly the
+    // shape that parallelises — but the net itself is stateful (activations,
+    // backprop scratch, accumulators), so concurrent callers would trample
+    // each other. A Scratch is one worker's private copy of all of that; the
+    // WEIGHTS stay shared and are only read during accumulation.
+    //
+    // This is also the shape a GPU port would need, so it is not throwaway
+    // work if compute shaders ever become available (they are not on macOS —
+    // Apple's OpenGL stops at 4.1 and compute needs 4.3).
+    struct Scratch {
+        std::vector<std::vector<float>> acts, grads;
+        std::vector<std::vector<float>> gw, gb;  // per-layer gradient sums
+        int n = 0;
+    };
+    void initScratch(Scratch& s) const;
+    /** Forward pass into `s`. Does not touch the net's own activations. */
+    const std::vector<float>& forwardInto(Scratch& s, const std::vector<float>& in) const;
+    /** Overwrite `s.acts` with activations captured earlier by snapshotActs. */
+    static void loadActs(Scratch& s, std::vector<std::vector<float>>&& acts) { s.acts = std::move(acts); }
+    void accumulatePolicyInto(Scratch& s, int action, float advantage) const;
+    void accumulateValueInto(Scratch& s, float target) const;
+    /** Folds a worker's gradients into the shared batch and empties it. */
+    void mergeScratch(Scratch& s);
+
     // Squared-error update for a value head (output size 1): moves output
     // toward `target`. Call forward() first.
     void valueUpdate(float target, float lr);
@@ -89,5 +134,13 @@ private:
     uint64_t m_updates = 0;
     int m_adamT = 0;
 
+    // Batch accumulators, same shape as the weights/biases. Not serialized:
+    // a batch never spans a save.
+    struct LayerGrad { std::vector<float> w, b; };
+    std::vector<LayerGrad> m_batch;
+    int m_batchN = 0;
+
     void backprop(const std::vector<float>& outputGrad, float lr);
+    /** Backward pass that writes into m_batch instead of stepping the weights. */
+    void backpropAccumulate(const std::vector<float>& outputGrad);
 };

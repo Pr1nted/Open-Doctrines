@@ -17,6 +17,16 @@ struct Config {
     bool showZoom = false;
     bool showConsole = false;
     int fpsTarget = 0; // -1=Unlimited, 0=VSync, 10-120=capped
+
+    // Share of this machine the game is allowed to work at, 0.10..1.00.
+    //
+    // Two levers, because the two things that actually burn CPU here are not
+    // the same thing: it caps the frame rate (the render loop, which otherwise
+    // runs flat out at the monitor's refresh or faster), and it duty-cycles the
+    // turn loop (the simulation + AI, which is single-threaded and pegs one
+    // core solid during self-play training). 1.0 means "no limit" and is the
+    // default — nothing is throttled unless the player asks for it.
+    float resourceBudget = 1.0f;
     // AI difficulty: 0=Easy 1=Normal 2=Hard 3=Insane. One shared model —
     // difficulty only changes how deterministically countries follow it.
     int aiDifficulty = 1;

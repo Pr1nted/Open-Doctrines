@@ -31,6 +31,13 @@
 #endif
 #include <ctime>
 #include <random>
+#include <thread>
+#include <deque>
+#ifdef _WIN32
+#include <windows.h>
+#elif !defined(__EMSCRIPTEN__)
+#include <sys/resource.h>
+#endif
 #include "GameInternals.h"
 
 std::string formatPop(long long pop) {
@@ -69,6 +76,10 @@ const int TAB_COUNT = 6;
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
 
+// The resource limiter deliberately does NOT live here. It is a control you
+// want while something is running -- watching the CPU graph react as you drag
+// it -- not a preference you set once in a menu. F10 / Ctrl+L opens it in
+// place, in game and in the trainer alike.
 const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"Back", false, -1}};
 const int DISPLAY_COUNT = 9;
 
@@ -298,15 +309,43 @@ static const char* fpsLabel(int target) {
     return buf;
 }
 
+// ── Resource limiter ──
+// Not a member of Config because applyFpsTarget is a free function that several
+// callers reach without a Config in hand (the trainer, the window setup path).
+static float g_resourceBudget = 1.0f;
+
+void setResourceBudget(float budget) {
+    g_resourceBudget = std::clamp(budget, RESOURCE_BUDGET_MIN, 1.0f);
+}
+float resourceBudget() { return g_resourceBudget; }
+
+int budgetedFpsCeiling() {
+    if (g_resourceBudget >= 0.999f) return 0; // unlimited: don't touch pacing
+    int hz = GetMonitorRefreshRate(GetCurrentMonitor());
+    if (hz <= 0) hz = 60; // headless / driver won't say
+    // Floor of 15: below that the window stops feeling like software, and the
+    // limiter is meant to free the machine up, not to break the game.
+    return std::max(15, (int)lroundf((float)hz * g_resourceBudget));
+}
+
+
 void applyFpsTarget(int target) {
     ClearWindowState(FLAG_VSYNC_HINT);
     SetTargetFPS(0);
+    const int ceiling = budgetedFpsCeiling();
     if (target == 0) {
-        SetWindowState(FLAG_VSYNC_HINT);
+        // VSync and a frame cap are mutually exclusive here: VSync would block
+        // on the swap at the monitor's rate and the cap would never be reached.
+        // A budget below 100% is an explicit request to run slower than the
+        // display, so it wins.
+        if (ceiling > 0) SetTargetFPS(ceiling);
+        else SetWindowState(FLAG_VSYNC_HINT);
     } else if (target > 0) {
-        SetTargetFPS(target);
+        SetTargetFPS(ceiling > 0 ? std::min(target, ceiling) : target);
+    } else if (ceiling > 0) {
+        SetTargetFPS(ceiling); // "unlimited" still respects the budget
     }
-    // target == -1 = unlimited, already set above
+    // target == -1 with no budget = unlimited, already set above
 }
 
 int nearestIndex(float val, float* vals, int count) {
@@ -534,6 +573,12 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // which the Account screen reports rather than failing at a request.
     AccountClient::get().init(m_config.accountIssuer, m_dataDir + "account.json");
 
+    // Restore the session NOW, not on the first visit to the Account screen.
+    // It runs on a worker, so it costs nothing here -- and hosting before ever
+    // opening that screen used to publish an EMPTY nickname, which is why the
+    // host's own row in its own lobby read "someone".
+    AccountClient::get().bootstrap();
+
 #ifndef __EMSCRIPTEN__
     {
         int mon = GetCurrentMonitor();
@@ -577,7 +622,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowPosition(0, 0);
     }
 
+    // Budget first: applyFpsTarget reads it, so setting it afterwards would
+    // leave the first frames running unthrottled.
+    setResourceBudget(m_config.resourceBudget);
     applyFpsTarget(m_config.fpsTarget);
+    // Open the CPU-budget window HERE rather than at the first throttle call.
+    // Everything before that first call -- window creation, loading, generating
+    // the first map -- is real CPU this process spent, and starting the clock
+    // afterwards silently exempted it. On a short run that exemption was the
+    // whole remaining gap between the budget and the measured share.
+    m_budgetEpochWall = GetTime();
+    m_budgetEpochCpu = processCpuSeconds();
 
     initMenuBackground();
 
@@ -892,6 +947,14 @@ void Game::drawConsoleWindow() {
 }
 
 void Game::drawDebugOverlay() {
+    // The resource panel is a system control, not a debug tool, so it draws
+    // before the debugMode gate below. Every one of this function's ~15 call
+    // sites used to be wrapped in `if (m_config.debugMode)`, which meant the
+    // panel was invisible in a normal session no matter what F10 did — the
+    // gate now lives here so the two cannot drift apart again.
+    drawResourcePanel();
+    if (!m_config.debugMode) return;
+
     // Show FPS with GetFPS() when enabled
     if (m_config.showFps) {
         int fps = GetFPS();
@@ -943,6 +1006,10 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Also above the early-out: the resource panel is a system control, not
+        // a game screen, so it has to answer F10 even with a popup up.
+        samplePerformance();
+        updateResourcePanel();
 
         // A network game has to be pumped every frame, not only while the
         // multiplayer screen is up -- it spends its life on the map, and a host
@@ -964,7 +1031,7 @@ void Game::run() {
             // The popup covers the screen with its own dim overlay anyway.
             drawPopup();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
             continue;
         }
@@ -1011,7 +1078,7 @@ void Game::run() {
                 ClearBackground(BLACK);
                 drawSettingsFromMenu();
                 if (m_config.showConsole) drawConsoleWindow();
-                if (m_config.debugMode) drawDebugOverlay();
+                drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
             } else {
                 updateMenuBackground();
@@ -1020,7 +1087,7 @@ void Game::run() {
                 ClearBackground(BLACK);
                 drawMainMenu();
                 if (m_config.showConsole) drawConsoleWindow();
-                if (m_config.debugMode) drawDebugOverlay();
+                drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
             }
         } else if (m_currentScreen == SCREEN_SINGLEPLAYER) {
@@ -1030,7 +1097,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawSingleplayerMenu();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_FILE_BROWSER) {
             if (m_inHistory) {
@@ -1049,7 +1116,7 @@ void Game::run() {
                 ClearBackground(BLACK);
                 drawWorldBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
-                if (m_config.debugMode) drawDebugOverlay();
+                drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
             } else {
                 updateMenuBackground();
@@ -1058,7 +1125,7 @@ void Game::run() {
                 ClearBackground(BLACK);
                 drawFileBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
-                if (m_config.debugMode) drawDebugOverlay();
+                drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
             }
         } else if (m_currentScreen == SCREEN_MAP_SELECT) {
@@ -1068,7 +1135,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawMapBrowser();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_LOADING) {
             // Throttled work: run at most one loading phase per ~33ms (30fps) so the
@@ -1110,7 +1177,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawCountrySelect();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_CREDITS) {
             updateMenuBackground();
@@ -1119,7 +1186,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawCredits();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_COMMUNITY) {
             updateMenuBackground();
@@ -1128,7 +1195,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawCommunityMenu();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_MODS) {
             updateMenuBackground();
@@ -1137,7 +1204,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawModsMenu();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_MULTIPLAYER) {
             updateMultiplayerMenu();
@@ -1145,7 +1212,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawMultiplayerMenu();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_ACCOUNT) {
             updateAccountMenu();
@@ -1153,7 +1220,7 @@ void Game::run() {
             ClearBackground(BLACK);
             drawAccountMenu();
             if (m_config.showConsole) drawConsoleWindow();
-            if (m_config.debugMode) drawDebugOverlay();
+            drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
         } else if (m_currentScreen == SCREEN_MAP_EDITOR) {
             if (m_mapEditor) {
@@ -1176,7 +1243,7 @@ void Game::run() {
                 drawMapEditor();
                 if (m_inSettings) drawPauseMenu();
                 if (m_config.showConsole) drawConsoleWindow();
-                if (m_config.debugMode) drawDebugOverlay();
+                drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
             } else {
                 m_currentScreen = SCREEN_MENU;
@@ -1185,6 +1252,11 @@ void Game::run() {
             update(dt);
             draw();
         }
+
+        // Last thing in the frame, so a shot is always of a screen that has
+        // just been drawn rather than one that is about to be. Inert unless
+        // --screenshots asked for a tour; see Game_Screenshots.cpp.
+        if (m_shotTour && !tickScreenshotTour()) m_running = false;
     }
 }
 
@@ -1265,11 +1337,6 @@ Mood Game::currentMood() {
             ? (float)(mine - m_moodBaseline) / (float)m_moodBaseline : 0.0f;
         m.valence = std::clamp(trend * 10.0f, -1.0f, 1.0f);
 
-        // An active research project is the one thing the player can be busy
-        // with that the map does not show. Scaled by how much of the budget is
-        // actually committed, so a token allocation is a nudge and a real push
-        // is what moves the music -- at the default quarter this barely
-        // registers, and near full commitment it takes over.
         // Money trouble. Deliberately measured as RUNWAY -- how many turns the
         // reserve survives the current bleed -- rather than as a treasury
         // number, because "broke" means nothing without knowing the burn rate:
@@ -1392,6 +1459,12 @@ Mood Game::currentMood() {
             m.valence = std::clamp(m.valence - 0.35f * risk, -1.0f, 1.0f);
         }
 
+        // ── Research ──────────────────────────────────────────────────────
+        // An active research project is the one thing the player can be busy
+        // with that the map does not show. Scaled by how much of the budget is
+        // actually committed, so a token allocation is a nudge and a real push
+        // is what moves the music -- at the default quarter this barely
+        // registers, and near full commitment it takes over.
         if (m_researchActiveNode >= 0) {
             const float commit = std::clamp(m_researchAllocation, 0.0f, 1.0f);
             m.energy  = std::clamp(m.energy  + 0.35f * commit, 0.0f, 1.0f);
@@ -1683,6 +1756,258 @@ void Game::drawVolumeSlider(int index, int y, int centerX, bool selected) {
                      selected || m_draggingVolume == index, /*steps=*/0);
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Settings > Display > Resource Limit
+// ────────────────────────────────────────────────────────────────────────────
+
+float Game::resourceBudgetSliderT(float budget) {
+    return std::clamp((budget - RESOURCE_BUDGET_MIN) / (1.0f - RESOURCE_BUDGET_MIN),
+                      0.0f, 1.0f);
+}
+
+float Game::resourceBudgetFromSliderT(float t) {
+    float b = RESOURCE_BUDGET_MIN + std::clamp(t, 0.0f, 1.0f) * (1.0f - RESOURCE_BUDGET_MIN);
+    // Whole percent, for the same reason the volumes round: the label reads as
+    // an integer percentage and config.json must not disagree with it.
+    return std::clamp(roundf(b * 100.0f) / 100.0f, RESOURCE_BUDGET_MIN, 1.0f);
+}
+
+void Game::applyResourceBudget() {
+    setResourceBudget(m_config.resourceBudget);
+    applyFpsTarget(m_config.fpsTarget);
+    // Restart the measurement window: a slider move should take effect from
+    // now, not be blended with several seconds of usage under the old setting.
+    m_budgetEpochWall = 0.0;
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// Runtime resource panel (F10)
+// ────────────────────────────────────────────────────────────────────────────
+
+double Game::processCpuSeconds() {
+    // The honest measurement. Timing our own loops would only ever count the
+    // work we remembered to instrument, and would miss the driver, the audio
+    // thread and the whole render path; the OS already knows the real number.
+#if defined(_WIN32)
+    FILETIME creation, exit, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user))
+        return -1.0;
+    auto toSec = [](const FILETIME& ft) {
+        ULARGE_INTEGER v; v.LowPart = ft.dwLowDateTime; v.HighPart = ft.dwHighDateTime;
+        return (double)v.QuadPart / 1.0e7; // 100ns ticks
+    };
+    return toSec(kernel) + toSec(user);
+#elif defined(__EMSCRIPTEN__)
+    return -1.0; // no per-process accounting in the browser
+#else
+    struct rusage ru;
+    if (getrusage(RUSAGE_SELF, &ru) != 0) return -1.0;
+    return (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec / 1.0e6 +
+           (double)ru.ru_stime.tv_sec + (double)ru.ru_stime.tv_usec / 1.0e6;
+#endif
+}
+
+void Game::samplePerformance() {
+    const double now = GetTime();
+    if (m_perfLastWall <= 0.0) {          // first call: establish the baseline
+        m_perfLastWall = now;
+        m_perfLastCpu = processCpuSeconds();
+        return;
+    }
+    const double dWall = now - m_perfLastWall;
+    if (dWall < PERF_SAMPLE_SECONDS) return;
+
+    const double cpu = processCpuSeconds();
+    float share = 0.0f;
+    if (cpu >= 0.0 && m_perfLastCpu >= 0.0 && dWall > 0.0)
+        share = (float)((cpu - m_perfLastCpu) / dWall);
+    m_perfLastWall = now;
+    m_perfLastCpu = cpu;
+
+    m_perfHistory.push_back({share, m_config.resourceBudget, m_lastTurnMs});
+    while (m_perfHistory.size() > PERF_HISTORY) m_perfHistory.pop_front();
+}
+
+bool Game::updateResourcePanel() {
+    // Two ways in. F10 is the conventional one, but on a Mac laptop the
+    // function row is media keys by default, so reaching it means holding fn --
+    // and a control you have to look up how to press is a control nobody uses.
+    // Ctrl+L needs no modifier gymnastics and cannot collide with typing.
+    const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    if (IsKeyPressed(KEY_F10) || (ctrl && IsKeyPressed(KEY_L))) {
+        m_showResourcePanel = !m_showResourcePanel;
+        if (!m_showResourcePanel) {
+            m_draggingPanelSlider = false;
+            m_config.save(m_configPath);
+        }
+    }
+    if (!m_showResourcePanel) return false;
+
+    const Rectangle panel = resourcePanelRect();
+    const Rectangle bar = { panel.x + 16, panel.y + 58, panel.width - 32, 8 };
+    const bool wasDragging = m_draggingPanelSlider;
+    float t = resourceBudgetSliderT(m_config.resourceBudget);
+    if (sliderInteract(bar, /*steps=*/0, t, m_draggingPanelSlider)) {
+        m_config.resourceBudget = resourceBudgetFromSliderT(t);
+        applyResourceBudget();
+    }
+    if (wasDragging && !m_draggingPanelSlider) m_config.save(m_configPath);
+
+    // Swallow clicks anywhere on the panel so dragging the slider does not also
+    // select a province through it.
+    return m_draggingPanelSlider || CheckCollisionPointRec(getMouse(), panel);
+}
+
+Rectangle Game::resourcePanelRect() const {
+    const float w = 300.0f, h = 224.0f;
+    return { (float)m_screenW - w - 16.0f, 16.0f, w, h };
+}
+
+void Game::drawResourcePanel() {
+    if (!m_showResourcePanel) return;
+    const Rectangle p = resourcePanelRect();
+    const Color accent = hexToColor(m_config.accentColor);
+
+    DrawRectangleRounded(p, 0.06f, 8, (Color){14, 16, 22, 232});
+    DrawRectangleRoundedLines(p, 0.06f, 8, (Color){255, 255, 255, 40});
+    DrawText("RESOURCE LIMIT", (int)p.x + 16, (int)p.y + 12, 16, accent);
+    DrawText("F10", (int)(p.x + p.width) - 32, (int)p.y + 13, 12, (Color){140, 145, 160, 200});
+
+    // Current setting + what it actually caps the frame rate at.
+    {
+        const int ceiling = budgetedFpsCeiling();
+        std::string label = m_config.resourceBudget >= 0.999f
+            ? std::string("Unlimited")
+            : TextFormat("%d%%   frame cap %d fps",
+                         (int)lroundf(m_config.resourceBudget * 100.0f), ceiling);
+        DrawText(label.c_str(), (int)p.x + 16, (int)p.y + 34, 14, RAYWHITE);
+    }
+
+    const Rectangle bar = { p.x + 16, p.y + 58, p.width - 32, 8 };
+    drawSliderWidget(bar, resourceBudgetSliderT(m_config.resourceBudget),
+                     m_draggingPanelSlider, /*steps=*/0);
+
+    // ── History graph ──
+    const Rectangle g = { p.x + 16, p.y + 88, p.width - 32, 90 };
+    DrawRectangleRec(g, (Color){255, 255, 255, 10});
+    DrawRectangleLinesEx(g, 1, (Color){255, 255, 255, 26});
+
+    // The vertical scale is CPU share of ONE core, headroom to the number of
+    // cores actually present — a share above 1.0 is real and worth seeing, not
+    // a bug, and clamping it at 100% would hide exactly the case the limiter
+    // exists for.
+    float peak = 1.0f;
+    for (const auto& s : m_perfHistory) peak = std::max(peak, s.cpuShare);
+    peak = std::ceil(peak * 2.0f) / 2.0f; // snap to half-core marks
+
+    for (int i = 1; i < 4; ++i) {
+        const float y = g.y + g.height * i / 4.0f;
+        DrawLineV({g.x, y}, {g.x + g.width, y}, (Color){255, 255, 255, 14});
+    }
+
+    if (m_perfHistory.size() >= 2) {
+        const float dx = g.width / (float)(PERF_HISTORY - 1);
+        const float x0 = g.x + g.width - dx * (m_perfHistory.size() - 1);
+        Vector2 prevCpu{}, prevBudget{};
+        for (size_t i = 0; i < m_perfHistory.size(); ++i) {
+            const auto& s = m_perfHistory[i];
+            const float x = x0 + dx * i;
+            const Vector2 cpuPt = {x, g.y + g.height * (1.0f - std::min(s.cpuShare, peak) / peak)};
+            // The limit is drawn on the same axis as the measurement, so
+            // "did the cap actually bite?" is answerable by looking.
+            const Vector2 budPt = {x, g.y + g.height * (1.0f - std::min(s.budget, peak) / peak)};
+            if (i) {
+                DrawLineEx(prevCpu, cpuPt, 1.6f, (Color){120, 220, 160, 235});
+                DrawLineV(prevBudget, budPt, (Color){255, 200, 90, 150});
+            }
+            prevCpu = cpuPt; prevBudget = budPt;
+        }
+    } else {
+        DrawText("sampling...", (int)g.x + 8, (int)(g.y + g.height / 2 - 5), 12,
+                 (Color){150, 150, 160, 180});
+    }
+    DrawText(TextFormat("%.1f cores", peak), (int)g.x + 4, (int)g.y + 3, 10,
+             (Color){170, 175, 190, 190});
+
+    // Legend + live readouts
+    const int ly = (int)(g.y + g.height) + 8;
+    DrawRectangle((int)g.x, ly + 5, 10, 2, (Color){120, 220, 160, 235});
+    DrawText("cpu used", (int)g.x + 14, ly, 11, (Color){170, 180, 190, 210});
+    DrawRectangle((int)g.x + 82, ly + 5, 10, 2, (Color){255, 200, 90, 190});
+    DrawText("limit", (int)g.x + 96, ly, 11, (Color){170, 180, 190, 210});
+
+    const float share = m_perfHistory.empty() ? 0.0f : m_perfHistory.back().cpuShare;
+    std::string live = TextFormat("now %.0f%% of a core", share * 100.0f);
+    if (m_lastTurnMs > 0.0f) live += TextFormat("   turn %.0f ms", m_lastTurnMs);
+    DrawText(live.c_str(), (int)g.x, ly + 18, 12, (Color){200, 205, 215, 225});
+}
+
+void Game::throttleForBudget(double workSeconds, double maxSleepSeconds) {
+#ifdef __EMSCRIPTEN__
+    // Blocking the browser's main thread does not yield the CPU to anything,
+    // it just freezes the page. The frame cap is the only lever in a web build.
+    (void)workSeconds; (void)maxSleepSeconds;
+    return;
+#else
+    const float b = resourceBudget();
+    if (b >= 0.999f) { m_budgetEpochWall = 0.0; return; }
+
+    // CLOSED loop, against measured process CPU.
+    //
+    // This used to size the sleep from the turn's own duration alone: work for
+    // `b` of the time, idle for the rest. That is only correct if the turn is
+    // the only thing burning CPU, and it is not — the render loop runs between
+    // turns, and the learning step now spreads across four worker threads, so
+    // CPU time accrues faster than the one-thread-at-a-time model assumed. The
+    // result was a process measured at 94% of a core while the limiter was set
+    // to 77% and believed it was holding.
+    //
+    // Asking the OS how much CPU we have actually consumed, and sleeping until
+    // the ratio comes back under the budget, targets the number the panel
+    // graphs — every thread, render included — instead of a proxy for it.
+    const double nowWall = GetTime();
+    const double nowCpu = processCpuSeconds();
+    if (nowCpu < 0.0) {
+        // No per-process accounting (web builds): fall back to the old
+        // open-loop estimate rather than not throttling at all.
+        if (workSeconds <= 0.0) return;
+        const double s = std::min(workSeconds * (1.0 / (double)b - 1.0), maxSleepSeconds);
+        if (s > 0.0005) std::this_thread::sleep_for(std::chrono::duration<double>(s));
+        return;
+    }
+    if (m_budgetEpochWall <= 0.0) {          // window not open yet (see init)
+        m_budgetEpochWall = nowWall;
+        m_budgetEpochCpu = nowCpu;
+        return;
+    }
+
+    const double dCpu = nowCpu - m_budgetEpochCpu;
+    const double dWall = nowWall - m_budgetEpochWall;
+    // Wall time that much CPU is allowed to have taken at this budget, minus
+    // what has already elapsed: the sleep this loop still OWES.
+    const double owed = dCpu / (double)b - dWall;
+
+    // The debt is carried, never forgiven. An earlier version rolled the
+    // window on a timer, which reset the baseline to "now" and wiped whatever
+    // overshoot had built up since the last sleep — and because CPU keeps
+    // accruing after each throttle point (the dashboard draw, the next turn's
+    // work), there is always some. That leak was worth a consistent ~20%:
+    // 0.48 cores measured against a 0.40 budget, 0.94 against 0.77.
+    if (owed > 0.0005)
+        std::this_thread::sleep_for(std::chrono::duration<double>(
+            std::min(owed, maxSleepSeconds)));
+
+    // Credit, on the other hand, is bounded. Without this an idle stretch
+    // would bank unlimited entitlement and the next burst would run
+    // unthrottled for as long as the idling lasted.
+    if (owed < -BUDGET_WINDOW_SECONDS) {
+        m_budgetEpochWall = GetTime();
+        m_budgetEpochCpu = processCpuSeconds();
+    }
+#endif
+}
+
 void Game::drawPauseMenu() {
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 160});
 
@@ -1944,6 +2269,7 @@ void Game::drawPauseMenu() {
                 DrawText("VSync", (int)(bar.x + bar.width) - MeasureText("VSync", lbl),
                          ly, lbl, (Color){180, 180, 180, 200});
             }
+
         }
     } else {
         // Main pause menu

@@ -346,6 +346,7 @@ void Game::applyEthnicPolicyEffects(int countryId) {
 
             // Accumulate alignment drift
             float driftThisTurn = 0.0f;
+            float growthPctThisTurn = 0.0f; // summed over categories, applied once below
             for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
                 int oi = -1;
                 if (hasEntry && ci < epIt->second.size()) {
@@ -361,10 +362,11 @@ void Game::applyEthnicPolicyEffects(int countryId) {
                 driftThisTurn += opt.alignmentPerTurn;
                 totalCost += opt.costPerTurn;
 
-                // Population growth (apply per province where minority is present)
-                long long pop = m_provincePopulations[pid];
-                long long growth = (long long)(pop * opt.popGrowthPerTurn / 100.0f);
-                m_provincePopulations[pid] = std::max(0LL, pop + growth);
+                // Population growth: only accumulated here. Applying it inside this
+                // loop compounded the rate once per category (six multiplications a
+                // turn instead of one), which is what let populations blow past 1e15
+                // in long runs.
+                growthPctThisTurn += opt.popGrowthPerTurn;
 
                 // Compass shift toward government
                 if (opt.compassShiftEcon != 0.0f || opt.compassShiftSoc != 0.0f) {
@@ -378,6 +380,28 @@ void Game::applyEthnicPolicyEffects(int countryId) {
                     }
                 }
             }
+
+            // Population growth, applied once per province per turn from the summed
+            // per-category rate.
+            {
+                auto popIt = m_provincePopulations.find(pid);
+                if (popIt != m_provincePopulations.end() && growthPctThisTurn != 0.0f) {
+                    long long pop = popIt->second;
+                    float rate = std::clamp(growthPctThisTurn, -50.0f, 50.0f) / 100.0f;
+                    if (rate > 0.0f) {
+                        // Logistic taper toward MAX_PROVINCE_POP. A bare clamp also
+                        // bounds the value, but it parks every province at exactly the
+                        // ceiling, and a population feature that reads the same for
+                        // every province is no more use to the AI than an overflowing
+                        // one. Tapering keeps provinces spread out below the ceiling.
+                        double headroom = 1.0 - (double)pop / (double)MAX_PROVINCE_POP;
+                        rate *= (float)std::max(0.0, headroom);
+                    }
+                    long long growth = (long long)((double)pop * rate);
+                    popIt->second = std::clamp(pop + growth, 0LL, MAX_PROVINCE_POP);
+                }
+            }
+
             // Ongoing war debuff: if this province was conquered from an enemy,
             // minorities get a per-turn alignment penalty while the war continues
             auto ctIt = m_provinceConquestTurn.find(pid);
@@ -586,7 +610,10 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
             claimUnrest += atWar ? 6.0f : 2.0f;
         }
     }
-    float total = base + polUnrest + ethUnrest + claimUnrest;
+    // War weariness: unrest carried by a country that answered an ally's call
+    // to arms. Country-wide rather than per-province — it is a national mood,
+    // not a local grievance.
+    float total = base + polUnrest + ethUnrest + claimUnrest + warWearinessOf(countryId);
 
     // Active policies advertising "unrest reduction" now actually reduce it.
     // (The effect used to be applied only in getCountryUnrest(), which nothing
