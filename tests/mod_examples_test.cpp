@@ -268,9 +268,14 @@ int main(int argc, char** argv) {
 
     if (paths.empty()) {
         printf("  SKIP  no .odmod files under %s\n", sdk.c_str());
-        printf("        build the examples first (sdk/*/build.sh)\n");
+        printf("        build them with tools/build_sdk_examples.sh\n");
         printf("\n0 checks, 0 failed\n");
-        return 0;
+        // 77, not 0. Returning success here meant this test reported a pass on
+        // all four CI platforms at once, for months, without ever loading a
+        // single example -- the .odmod files are build artifacts and a CI
+        // checkout has none. 77 is the usual "skipped" code, and tests/run_all.sh
+        // records it as a skip rather than counting it as a check that ran.
+        return 77;
     }
 
     std::vector<Capture> caps;

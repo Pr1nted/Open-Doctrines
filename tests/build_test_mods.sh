@@ -31,7 +31,10 @@ find_clang() {
 
 CC="$(find_clang "$(command -v clang || true)" /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang)" || {
     echo "no wasm32-capable clang found; skipping fixture mod build"
-    exit 0
+    # 77 = skipped, not 0. Without a wasm32 clang the entire mod half of the
+    # suite has nothing to load, and reporting that as success is how a run
+    # covering half of what it claims still prints ALL PASSED.
+    exit 77
 }
 
 mkdir -p "$out"

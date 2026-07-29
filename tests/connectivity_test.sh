@@ -25,7 +25,9 @@ if ! command -v node >/dev/null 2>&1; then
     echo "skip: node is not installed, and the stand-in account service needs it"
     echo "      (everything else in tests/run_all.sh still covers each half"
     echo "       separately -- this is the test of the seam between them)"
-    exit 0
+    # 77 = skipped, so the caller can tell "the seam was never tested" from
+    # "the seam works".
+    exit 77
 fi
 
 # The stand-in issuer signs with Ed25519 through WebCrypto, which arrived in
