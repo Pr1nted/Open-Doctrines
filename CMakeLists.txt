@@ -135,6 +135,19 @@ if(OD_ENABLE_MODS)
             EXCLUDE_FROM_ALL          # keep WAMR's install() rules out of ours
         )
         FetchContent_MakeAvailable(wamr)
+
+        # WAMR's wasm_export.h declares its whole API __declspec(dllimport) on
+        # MSVC unless COMPILING_WASM_RUNTIME_API is defined. We link vmlib
+        # STATICALLY, so without this every call resolved to an __imp_ symbol
+        # that no DLL provides -- 22 unresolved externals at link time, on a
+        # Windows build where every source file had compiled cleanly.
+        #
+        # Set as INTERFACE on vmlib rather than on each consumer: six targets
+        # link it, and a define that has to be repeated is a define somebody
+        # forgets on the seventh.
+        if(MSVC AND TARGET vmlib)
+            target_compile_definitions(vmlib INTERFACE COMPILING_WASM_RUNTIME_API)
+        endif()
         set(OD_MODS_BACKEND "wamr")
     endif()
 endif()
@@ -324,7 +337,15 @@ set(GAME_SOURCES
 # The NN inner loops (matvec + Adam) dominate AI training time; fast-math lets
 # the compiler vectorize the sqrt/fma chains. Scoped to this file only so game
 # logic keeps strict IEEE behavior.
-set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+if(MSVC)
+    # Same intent, MSVC's spelling. The GCC/Clang flags were being passed to cl
+    # verbatim, which answered "command line warning D9002: ignoring unknown
+    # option '-O3'" -- so on Windows this file was getting none of the
+    # optimisation the comment above promises, silently.
+    set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
+else()
+    set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+endif()
 
 add_executable(OpenDoctrines ${GAME_SOURCES})
 if(APPLE)
@@ -353,7 +374,16 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/data" "$<TARGET_BUNDLE_CONTENT_DIR:OpenDoctrines>/data"
     )
 elseif(WIN32)
+    # WIN32_EXECUTABLE is what stops a console window appearing behind the game.
+    # It also makes the linker look for WinMain(), which this program does not
+    # have -- it has an ordinary main() -- so the Windows link failed with
+    # "unresolved external symbol WinMain". /ENTRY:mainCRTStartup keeps the
+    # windowed subsystem and points the entry point back at the CRT startup that
+    # calls main(), which is the combination actually wanted.
     set_target_properties(OpenDoctrines PROPERTIES WIN32_EXECUTABLE TRUE)
+    if(MSVC)
+        target_link_options(OpenDoctrines PRIVATE "/ENTRY:mainCRTStartup")
+    endif()
     target_sources(OpenDoctrines PRIVATE "${CMAKE_SOURCE_DIR}/data/Icon/resources.rc")
 endif()
 target_include_directories(OpenDoctrines PRIVATE src tools/map_generator)
