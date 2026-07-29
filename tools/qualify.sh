@@ -232,7 +232,22 @@ OD_DATA_DIR="$sim_out" ${runner[@]+"${runner[@]}"} "$game" \
     --simulate "$root/data/STDmaps/1939.odmap" 5 "Qualify" > "$sim_log" 2>&1
 sim_rc=$?
 grep -E '^\[SIM\]' "$sim_log" || true
-if [ "$sim_rc" -ne 0 ]; then
+# "This machine has no display" and "this build is broken" are different
+# answers and must not be reported as the same one. A hosted macOS runner has
+# no usable GL context -- GLFW says "Failed to find a suitable pixel format" --
+# and there is no xvfb for a Cocoa app, so this check simply cannot run there.
+#
+# It is a SKIP, and a loud one: the step is still printed, still says what it
+# could not do, and the other three platforms still run it for real. Silently
+# passing would turn the one check that proves a build runs into a check that
+# proves nothing.
+if grep -qE 'suitable pixel format|could not open a window|Failed to initialize GLFW' "$sim_log"; then
+    note "SKIPPED -- this machine has no usable display, so the game cannot"
+    note "          open a window here. The build and every other check above"
+    note "          still ran; only 'does it play' is unproven on this runner."
+    echo "  --- what the game said ---"
+    grep -E 'GLFW|could not open a window' "$sim_log" | head -4 | sed 's/^/  /'
+elif [ "$sim_rc" -ne 0 ]; then
     bad "play a real game (the game exited $sim_rc)"
     echo "  --- last 25 lines of $sim_log ---"
     tail -25 "$sim_log" | sed 's/^/  /'

@@ -554,6 +554,27 @@ bool Game::init(int screenW, int screenH, const char* title) {
     if (m_config.fpsTarget == 0) winFlags |= FLAG_VSYNC_HINT;
     SetConfigFlags(winFlags);
     InitWindow(m_screenW, m_screenH, title);
+
+    // InitWindow cannot fail loudly -- it returns void, logs a warning, and
+    // leaves the process running with no window and no GL context. Everything
+    // after this point then dereferences state that was never created, so the
+    // first symptom is a SEGMENTATION FAULT several calls later with nothing
+    // in it that names the real problem.
+    //
+    // This is not only a CI concern. A machine with no GPU driver, a broken
+    // one, an unsupported OpenGL version, or a remote session with no
+    // compositor all land here, and "it crashes on launch" is the worst
+    // possible way to tell somebody their graphics stack cannot run the game.
+    if (!IsWindowReady()) {
+        std::cerr
+            << "OpenDoctrines could not open a window.\n"
+               "  The graphics driver did not provide an OpenGL 3.3 context. "
+               "That usually means\n"
+               "  no GPU driver, a headless session with no display, or a "
+               "remote desktop that does\n"
+               "  not forward OpenGL. The raylib/GLFW warning above says which.\n";
+        return false;
+    }
     SetExitKey(0);
     m_dpiScale = GetWindowScaleDPI().x;
 
