@@ -14,7 +14,7 @@ step "fixture mods"
 
 step "build test targets"
 cmake --build "$build" --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetSeatBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       >/dev/null || { echo "build failed"; exit 1; }
 
 run() {
@@ -31,7 +31,7 @@ run "lobby rules"      "$build/NetLobbyTest"
 run "crypto vectors"   "$build/NetCryptoTest"
 run "join tickets"     "$build/NetTicketTest"
 run "sealed orders"    "$build/NetSealTest"
-run "seats remembered" "$build/NetSeatBookTest"
+run "seats remembered" "$build/NetHostBookTest"
 run "tunnel parsing"   "$build/NetTunnelTest"
 # Binds a loopback port on an OS-chosen number. Opens nothing to the network.
 run "websocket server" "$build/NetWsServerTest"

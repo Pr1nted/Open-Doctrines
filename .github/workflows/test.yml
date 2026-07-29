@@ -1,0 +1,125 @@
+# Does it work, on every platform we ship? Nothing here releases anything.
+#
+# WHY THIS IS A SEPARATE WORKFLOW FROM release-game.yml
+#
+# The release workflow answers "can this be published", and it only runs on a
+# tag. That is the wrong moment to discover a platform is broken: by then the
+# version is bumped, the notes are written and the tag is pushed. This answers
+# "does main work", on every push, and it is the workflow that should be red or
+# green at any given moment.
+#
+# It is also reusable (`workflow_call`), so release-game.yml runs exactly these
+# checks rather than a second copy of them that drifts.
+#
+# WHAT IT COVERS
+#
+#   the mod system   archive, runtime, manager and ABI conformance, plus every
+#                    SDK example rebuilt from source and compared byte for byte
+#                    against the reference implementation
+#   hosting+joining  a real NetHost and four real players over loopback: seats,
+#                    a country claimed twice and refused, a turn, a disconnect,
+#                    a turn resolved WITHOUT that player, and a reconnect that
+#                    returns them to their own country
+#   actually playing loads a shipped scenario, resolves turns, writes a save --
+#                    the check that a build runs at all, which no unit test makes
+#
+# All of it is tools/qualify.sh, one script, so what CI checks and what you can
+# run on your own machine cannot drift apart.
+
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]        # tags are release-game.yml's job, not this one
+  pull_request:
+  workflow_dispatch:
+  workflow_call:               # release-game.yml calls this before publishing
+
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false     # one platform failing must not hide the others
+      matrix:
+        include:
+          - { name: macos-arm64,  os: macos-14 }
+          - { name: macos-x64,    os: macos-13 }
+          - { name: windows-x64,  os: windows-2022 }
+          - { name: linux-x64,    os: ubuntu-22.04 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned, not inherited. The stand-in account service signs with WebCrypto
+      # Ed25519, which arrived in node 18 -- and on older node the file does not
+      # fail with "unsupported algorithm", it fails to PARSE, reporting a bare
+      # `SyntaxError: Unexpected reserved word` pointing at a crypto line.
+      # Ubuntu's own package is node 12, so this is reachable on an ordinary
+      # machine, and the error tells you nothing about the real cause.
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+
+      # Pillow decodes the GIFs the encoder writes. An encoder cannot verify its
+      # own LZW: a stream with a mis-sized code still has a valid header and
+      # still opens.
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install --quiet Pillow
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # raylib's X11/ALSA backend, plus xvfb: the simulation step opens a
+          # window, because the game has one renderer and it is not optional.
+          # A hosted runner has no display.
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev xvfb
+
+      # Windows runs this under Git Bash, which GitHub's Windows images already
+      # have. The suite is bash (tests/run_all.sh, tests/connectivity_test.sh),
+      # so a PowerShell port would be a second implementation to keep in step.
+      - name: Qualify
+        shell: bash
+        run: tools/qualify.sh build
+
+  # The web build is a platform too, and the one where "it compiled" is least
+  # informative: it is the only target that links against different backends
+  # (WsWeb rather than WsNative, PeerLinkWeb rather than PeerLinkNative), so it
+  # is the one most likely to have a file that stopped compiling months ago and
+  # was never noticed. It cannot run tests_all.sh -- there is no shell in a
+  # browser -- so what is checked is that it builds and that the package is
+  # assembled.
+  web:
+    name: web (emscripten)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: latest }
+
+      - name: Build
+        run: |
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+          emmake cmake --build build-web -j 2
+
+      # A link that "succeeded" without producing a loadable module is a
+      # failure that reports success, so name the four files that must exist.
+      - name: The package is complete
+        run: |
+          set -e
+          for f in OpenDoctrines.html OpenDoctrines.js OpenDoctrines.wasm OpenDoctrines.data; do
+            test -s "build-web/$f" || { echo "missing or empty: $f"; exit 1; }
+          done
+          # Music is streamed rather than preloaded, so it has to have been
+          # copied next to the page. A deployment without it is a silent game.
+          test -d build-web/data/audio/music || { echo "streamed music was not copied"; exit 1; }
+          ls -lh build-web/OpenDoctrines.* build-web/data/audio/music | head -20

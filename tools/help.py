@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "build.py",
+        "release.py", "odver.py", "package.py", "build.py", "screenshots.sh",
     ]),
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.sh",
@@ -31,7 +31,13 @@ GROUPS = [
         "sdk_toolchains.sh", "test_all_sdks.sh",
     ]),
     ("Testing multiplayer", [
-        "second_player.sh",
+        "playtest.sh", "second_player.sh",
+    ]),
+    ("Qualifying a platform", [
+        "qualify.sh",
+    ]),
+    ("Training the AI", [
+        "train.sh",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
@@ -66,13 +72,19 @@ def first_line(path):
         if path.endswith(".py"):
             doc = ast.get_docstring(ast.parse(open(path).read())) or ""
             return doc.strip().split("\n")[0]
-        # Shell scripts: the first real comment line after the shebang.
+        # Shell scripts: the first comment line after the shebang that says
+        # something. A bare "#" spacer above the summary is ordinary style, and
+        # reading it as "no header" would only force every script into one
+        # layout to satisfy the checker.
         with open(path) as f:
             for line in f:
                 if line.startswith("#!"):
                     continue
                 if line.startswith("#"):
-                    return line.lstrip("# ").strip()
+                    text = line.lstrip("# ").strip()
+                    if text:
+                        return text
+                    continue
                 if line.strip():
                     break
     except Exception:

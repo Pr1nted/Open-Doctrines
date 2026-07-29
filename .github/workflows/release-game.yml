@@ -2,12 +2,20 @@
 #
 # THE SHAPE
 #
-#   build (matrix)  ->  confirm (manual gate)  ->  publish  ->  itch.io
+#   build (matrix) ─┐
+#                   ├─>  confirm (manual gate)  ->  publish  ->  itch.io
+#   test  (test.yml)┘
 #
-# The gate is the point. Artifacts are built and uploaded first, then the
-# workflow STOPS and waits for a human to download each one, play it, and
-# approve. Nothing is published to players until that happens, so a build that
-# compiles but does not run cannot reach anyone.
+# TWO gates, and they catch different things. `test` is a machine asking "does
+# this work on each platform" -- the mod system, four players hosting and
+# joining, and a real game resolving turns. `confirm` is a human asking the
+# question a machine cannot: is it any good. Nothing is published until both
+# have passed, so neither a build that does not run nor a build that runs badly
+# can reach anyone.
+#
+# `test` is deliberately not restated here; it lives in test.yml so that the
+# release pipeline and the every-push pipeline cannot drift into checking
+# different things.
 #
 # SECRETS
 #
@@ -86,6 +94,30 @@ jobs:
           path: dist/${{ matrix.artifact }}.zip
           retention-days: 14
 
+  # Does it WORK on each platform, not just compile there.
+  #
+  # WHY THIS EXISTS
+  #
+  # `build` above compiles four platforms and tests none of them. That gap is
+  # not theoretical: it is where a chmod() outside its header guard, a
+  # WebSocket backend that stopped compiling when its class became pimpl'd, a
+  # link flag CMake silently de-duplicated, and a tunnel helper with no stub on
+  # non-POSIX platforms all lived. Every one compiled its own translation unit
+  # and died at link or at startup, so every one was invisible to a build gate.
+  #
+  # The checks themselves live in test.yml, which also runs on every push --
+  # calling it rather than restating it is what stops the release pipeline and
+  # the everyday one from drifting into checking different things.
+  #
+  # It GATES the release: `confirm` needs this, so a build whose four-player
+  # check or mod conformance failed never reaches the human approval step. That
+  # is the right way round -- asking someone to play-test a build a machine
+  # already knows is broken wastes the one reviewer the project has. The human
+  # gate is for judging what a machine cannot, not for catching what it can.
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+
   # Arm Linux has no GitHub-hosted runner. Saying so out loud beats quietly
   # shipping three platforms when the release notes claim four.
   note-arm-linux:
@@ -100,7 +132,8 @@ jobs:
 
   confirm:
     name: Play and confirm
-    needs: build
+    # Both: the artifacts have to exist AND the platforms have to have passed.
+    needs: [build, test]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.

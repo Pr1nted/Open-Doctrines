@@ -28,6 +28,27 @@ if ! command -v node >/dev/null 2>&1; then
     exit 0
 fi
 
+# The stand-in issuer signs with Ed25519 through WebCrypto, which arrived in
+# Node 18. Older Node does not fail with "unsupported algorithm" -- it fails to
+# PARSE the file, because the same file uses top-level await, and reports a
+# bare `SyntaxError: Unexpected reserved word` pointing at a crypto line. That
+# is a genuinely misleading way to be told your Node is eight years old, and it
+# cost a full container run to diagnose, so it is checked up front.
+#
+# Ubuntu 22.04's `nodejs` package is 12.22, so `apt-get install nodejs` is
+# enough to hit this on a perfectly ordinary machine.
+node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+if [ "${node_major:-0}" -lt 18 ]; then
+    echo "FAIL: node $(node --version 2>/dev/null) is too old for the stand-in"
+    echo "      account service, which needs WebCrypto Ed25519 (node 18+)."
+    echo
+    echo "      On Ubuntu the distro package is node 12; install a current one:"
+    echo "        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+    echo "        sudo apt-get install -y nodejs"
+    echo "      In CI, use actions/setup-node (release-sdk.yml already does)."
+    exit 1
+fi
+
 step "build"
 cmake --build "$build" --target NetConnectTest >/dev/null || {
     echo "build failed"; exit 1;
@@ -91,6 +112,16 @@ run_case() {
 
 step "a player joins a host"
 run_case join || fail=1
+
+# Three joiners rather than one, because a two-peer test cannot see the things
+# that only go wrong with a party: seats that collide, a country claimed twice,
+# a turn that begins for whoever was pumped last, and a reconnect that hands
+# somebody another player's country. See testParty().
+step "four in one game, including a disconnect and a reconnect"
+run_case party || fail=1
+
+step "a mismatched mod set is refused"
+run_case mods || fail=1
 
 step "a ticket the host cannot verify is refused"
 run_case refuse --wrong-key || fail=1
