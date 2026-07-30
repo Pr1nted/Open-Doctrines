@@ -146,25 +146,56 @@ void testVersionOrdering() {
 #else
     const std::string nul = "/dev/null";
 #endif
-    std::string cmd = "python3 \"" + script + "\" " + joined +
-                      " <" + nul + " 2>" + nul;
+    // "python3" is NOT a safe assumption on Windows, and this is the interpreter
+    // as cmd.exe sees it rather than as the shell running the suite does.
+    // python.org's installer ships python.exe and the `py` launcher; it does not
+    // ship python3.exe. So the name resolved fine in Git Bash -- which is why
+    // tools/qualify.sh's own `command -v python3` check passed -- and then
+    // resolved to nothing inside _popen, and the cross-check reported that it
+    // "produced nothing; run from the repository root" while being run from
+    // exactly there.
+    //
+    // CI never saw it: actions/setup-python creates a python3 alias, so the one
+    // Windows machine this was ever exercised on was the one machine where the
+    // assumption held.
+    //
+    // `py -3` first on Windows, because the launcher is the documented way to
+    // find an interpreter there and it lands in the Windows directory, on PATH
+    // for every process. python3 stays first everywhere else.
+#ifdef _WIN32
+    const char* candidates[] = {"py -3", "python3", "python"};
+#else
+    const char* candidates[] = {"python3", "python"};
+#endif
 
-    FILE* p = OD_POPEN(cmd.c_str(), "r");
     std::string pyOut;
-    if (p) {
-        char buf[512];
-        while (fgets(buf, sizeof buf, p)) pyOut += buf;
-        OD_PCLOSE(p);
+    std::string tried;
+    for (const char* interp : candidates) {
+        std::string cmd = std::string(interp) + " \"" + script + "\" " + joined +
+                          " <" + nul + " 2>" + nul;
+        if (!tried.empty()) tried += ", ";
+        tried += interp;
+
+        FILE* p = OD_POPEN(cmd.c_str(), "r");
+        if (p) {
+            char buf[512];
+            while (fgets(buf, sizeof buf, p)) pyOut += buf;
+            OD_PCLOSE(p);
+        }
+        while (!pyOut.empty() && (pyOut.back() == '\n' || pyOut.back() == '\r'))
+            pyOut.pop_back();
+        if (!pyOut.empty()) break;
     }
     { std::error_code ec; std::filesystem::remove(script, ec); }
-    while (!pyOut.empty() && (pyOut.back() == '\n' || pyOut.back() == '\r'))
-        pyOut.pop_back();
 
     if (pyOut.empty()) {
         // Reported rather than skipped silently: a cross-check that stopped
-        // running is a cross-check that stopped protecting anything.
+        // running is a cross-check that stopped protecting anything. Naming
+        // what was tried matters -- the old message blamed the working
+        // directory, which sent everyone looking in the wrong place.
         check("odver.py cross-check ran", false,
-              "python3 produced nothing; run from the repository root");
+              "no interpreter produced output (tried: " + tried +
+              "); run from the repository root, with python on PATH");
         return;
     }
 

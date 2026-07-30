@@ -29,8 +29,26 @@ find_clang() {
     return 1
 }
 
-CC="$(find_clang "$(command -v clang || true)" /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang)" || {
+# An explicit CC wins, and the search list covers Windows now. Neither was true
+# before, and the combination cost a whole Windows qualification run: LLVM's
+# installer there does not put clang on PATH, nothing in this list looked under
+# "C:\Program Files\LLVM", and there was no way to point the script at one. So
+# the fixture mods did not build, ModRuntimeTest ran 1 check instead of 113 --
+# including the fuel limit, the one thing the run existed to verify -- and the
+# suite said "skipping" rather than "you have no wasm toolchain".
+#
+# CC goes at the FRONT of the search rather than short-circuiting it, so it is
+# preferred but still validated: find_clang only accepts a compiler that really
+# emits wasm32, and an unset or unsuitable CC just falls through to the rest of
+# the list. An empty argument is skipped by the [ -x ] test, so no special case.
+CC="$(find_clang "${CC:-}" \
+                 "$(command -v clang || true)" \
+                 /opt/homebrew/opt/llvm/bin/clang \
+                 /usr/local/opt/llvm/bin/clang \
+                 "/c/Program Files/LLVM/bin/clang.exe" \
+                 "/c/Program Files (x86)/LLVM/bin/clang.exe")" || {
     echo "no wasm32-capable clang found; skipping fixture mod build"
+    echo "  Windows: winget install LLVM.LLVM, or set CC to its clang.exe"
     exit 0
 }
 
