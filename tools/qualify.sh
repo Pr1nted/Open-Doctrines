@@ -176,7 +176,17 @@ fi
 jobs="${OD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
 note "building with -j$jobs (override with OD_JOBS)"
 
-run_step "configure" cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release
+# OD_CMAKE_ARGS is passed straight through to configure. It exists so the Intel
+# macOS build can be qualified on an Apple Silicon machine without a second
+# computer:
+#
+#   OD_CMAKE_ARGS=-DCMAKE_OSX_ARCHITECTURES=x86_64 tools/qualify.sh build-x64
+#
+# clang is universal, so that cross-compiles, and Rosetta runs the resulting
+# x86_64 test binaries. Unquoted on purpose: this is a list of flags, and the one
+# use it has needs word splitting.
+run_step "configure" cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release \
+         ${OD_CMAKE_ARGS:-}
 run_step "build the game" cmake --build "$build" --config Release \
          --target OpenDoctrines -j "$jobs"
 

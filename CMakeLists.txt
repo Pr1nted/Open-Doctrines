@@ -40,7 +40,30 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- Raylib: try system first, fall back to FetchContent ---
-find_package(raylib 5.5 QUIET)
+#
+# ...except when cross-compiling, where a system copy is the wrong answer. A
+# Homebrew raylib is built for the host architecture ONLY, so asking for
+# -DCMAKE_OSX_ARCHITECTURES=x86_64 on Apple Silicon -- which is how the Intel
+# build gets qualified on an M1 with Rosetta rather than on a second machine --
+# linked an arm64 library into an x86_64 target. It failed with a page of
+# undefined raylib symbols (_BeginDrawing, _AttachAudioStreamProcessor, ...) and
+# the single word "x86_64" as the only hint that architecture had anything to do
+# with it. mbedTLS and WAMR were fine, because those are always built from source.
+#
+# A universal build fails the same comparison and lands here too, which is also
+# right: one single-architecture .dylib cannot serve one.
+set(od_system_raylib_ok TRUE)
+if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
+   NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
+    set(od_system_raylib_ok FALSE)
+    message(STATUS "raylib: targeting ${CMAKE_OSX_ARCHITECTURES} on a "
+                   "${CMAKE_HOST_SYSTEM_PROCESSOR} host, so building from source "
+                   "instead of using a host-architecture system copy")
+endif()
+
+if(od_system_raylib_ok)
+    find_package(raylib 5.5 QUIET)
+endif()
 if(NOT raylib_FOUND)
     message(STATUS "raylib not found system-wide, fetching via FetchContent...")
     include(FetchContent)
@@ -123,14 +146,74 @@ if(OD_ENABLE_MODS)
         # option is accepted and does nothing on Windows.
         set(WAMR_BUILD_INSTRUCTION_METERING 1)
 
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+        # CMAKE_SYSTEM_PROCESSOR is the HOST. Wherever the target differs from
+        # the host it is the wrong variable, and WAMR picks its architecture
+        # -- including which invokeNative assembly trampoline to assemble --
+        # from whatever it is told here. Two ways to get it wrong, both hit:
+        #
+        #   macOS    -DCMAKE_OSX_ARCHITECTURES=x86_64 on Apple Silicon (how the
+        #            Intel build is qualified on an M1 under Rosetta) left this
+        #            as arm64, so WAMR was configured "Build as target AARCH64"
+        #            while clang emitted x86_64. Nothing failed at configure or
+        #            link; the runtime was just built for the wrong machine.
+        #
+        #   Windows  -A x64 on an ARM64 Windows host (how the shipped build is
+        #            qualified in a UTM guest) left this as ARM64, so WAMR chose
+        #            invokeNative_aarch64.s -- GAS syntax, which MSVC's armasm64
+        #            cannot assemble. That one DOES fail, twenty minutes in, as
+        #            "unresolved external symbol invokeNative", which names
+        #            neither the architecture nor the file.
+        set(od_wamr_arch "${CMAKE_SYSTEM_PROCESSOR}")
+        if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+            # May be a universal list ("arm64;x86_64"). WAMR takes one target and
+            # a universal build of it is not something this project produces, so
+            # the first entry is the one that decides.
+            list(GET CMAKE_OSX_ARCHITECTURES 0 od_wamr_arch)
+        elseif(CMAKE_GENERATOR_PLATFORM)
+            # Visual Studio generators: -A x64 / -A ARM64 / -A Win32.
+            set(od_wamr_arch "${CMAKE_GENERATOR_PLATFORM}")
+        endif()
+
+        # x64 and Win32 are spellings only the Visual Studio generators use, so
+        # they have to be matched here or -A x64 falls through to the default and
+        # the whole exercise silently does nothing.
+        if(od_wamr_arch MATCHES "arm64|aarch64|ARM64")
             set(WAMR_BUILD_TARGET "AARCH64")
-        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+        elseif(od_wamr_arch MATCHES "x86_64|AMD64|amd64|x64|X64")
             set(WAMR_BUILD_TARGET "X86_64")
+        elseif(od_wamr_arch MATCHES "Win32|win32|X86|x86|i386|i686")
+            set(WAMR_BUILD_TARGET "X86_32")
         elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
             set(WAMR_BUILD_TARGET "X86_32")
         else()
             set(WAMR_BUILD_TARGET "X86_64")
+        endif()
+        message(STATUS "WAMR target architecture: ${WAMR_BUILD_TARGET} (from ${od_wamr_arch})")
+
+        # MSVC cannot build the mod runtime for ARM64, and there is no way around
+        # it here: WAMR ships invokeNative -- the assembly trampoline the
+        # interpreter calls host functions through -- as GAS syntax for AArch64
+        # (invokeNative_aarch64.s) and as MASM only for x64 and ia32. armasm64
+        # cannot assemble GAS, so the symbol is simply never defined.
+        #
+        # Left alone, that costs a full twenty-minute build and then reports
+        # "unresolved external symbol invokeNative", which mentions neither the
+        # architecture, nor the file, nor the fact that this combination has
+        # never been buildable. Both ways out are real, so name them.
+        if(MSVC AND WAMR_BUILD_TARGET STREQUAL "AARCH64")
+            message(FATAL_ERROR
+                "The Gearbox mod runtime cannot be built with MSVC for ARM64.\n"
+                "  WAMR provides invokeNative as MASM for x64 and ia32 only; the\n"
+                "  AArch64 version is GAS assembly, which armasm64 cannot build.\n"
+                "  This fails at LINK, not here, so it is stopped here instead.\n"
+                "\n"
+                "  Build the architecture you ship, which does work:\n"
+                "      cmake -S . -B build-x64 -A x64\n"
+                "  On an ARM64 Windows machine the x64 test binaries then run\n"
+                "  under emulation, which is how this gets qualified in a VM.\n"
+                "\n"
+                "  Or, if you only want the game and not the mod system:\n"
+                "      cmake -S . -B build -DOD_ENABLE_MODS=OFF")
         endif()
 
         # The patch restores the fuel limit in the fast interpreter on compilers
