@@ -54,8 +54,16 @@ CC="$(find_clang "${CC:-}" \
 
 mkdir -p "$out"
 status=0
-# clang++ sits next to clang in every layout we probe for
-CCPP="${CC}++"
+# clang++ sits next to clang in every layout we probe for -- but the name is not
+# always "${CC}++". On Windows CC carries an extension, so that produced
+# "clang.exe++", which is not a program, and the two C++ fixtures (ctortest and
+# reactortest) failed to build while the four C ones succeeded. The suffix has to
+# go on the stem, not the end.
+case "$CC" in
+    *.exe) CCPP="${CC%.exe}++.exe" ;;
+    *)     CCPP="${CC}++" ;;
+esac
+[ -x "$CCPP" ] || echo "warning: no C++ compiler at $CCPP; the .cpp fixtures will fail" >&2
 
 for src in "$here"/mods/*.c "$here"/mods/*.cpp; do
     [ -e "$src" ] || continue
