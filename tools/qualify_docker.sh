@@ -3,7 +3,6 @@
 #
 #   tools/qualify_docker.sh              # linux, this machine's architecture
 #   tools/qualify_docker.sh --amd64      # linux/amd64 (emulated on arm64: slow)
-#   tools/qualify_docker.sh --web        # the emscripten build instead
 #
 # WHY THIS EXISTS
 #
@@ -19,9 +18,21 @@
 #
 # WHAT IT CANNOT COVER, AND WHY THAT MATTERS
 #
-# Linux and the web build. NOT macOS: there is no macOS container image and no
-# legal way to make one. NOT Windows: Windows containers need a Windows host, so
-# they cannot run here at all.
+# Linux. NOT macOS: there is no macOS container image and no legal way to make
+# one. NOT Windows: Windows containers need a Windows host, so they cannot run
+# here at all.
+#
+# And NOT the web build, deliberately. emscripten is a cross-compiler -- its
+# output does not depend on the host -- so a container isolates nothing there,
+# and putting it in one only added a memory ceiling: wasm-opt was SIGKILLed
+# twice inside emscripten/emsdk (a native arm64 image, so not emulation), while
+# the same build succeeds on the host. Build it directly instead:
+#
+#   emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release
+#   emmake cmake --build build-web -j 6
+#
+# then check the four artifacts and data/audio/music, which is what
+# .github/workflows/test.yml does.
 #
 # Those two are exactly where the last two real bugs were -- WAMR's fuel limit
 # silently absent under MSVC, and pack_odmod.sh needing a `zip` binary Git Bash
@@ -38,14 +49,12 @@ set -uo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 platform=""
-mode="linux"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --amd64) platform="--platform=linux/amd64" ;;
         --arm64) platform="--platform=linux/arm64" ;;
-        --web)   mode="web" ;;
-        -h|--help) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
@@ -64,7 +73,7 @@ docker info >/dev/null 2>&1 || {
 # Kept between runs on purpose. A cold configure fetches WAMR and mbedTLS and
 # then builds the world; throwing that away every time would make this too slow
 # to reach for, and the point is that it is cheap enough to actually use.
-out="$root/.docker-build/$mode${platform:+-amd64}"
+out="$root/.docker-build/linux${platform:+-amd64}"
 mkdir -p "$out"
 
 # OD_JOBS, not the core count. This project is memory-hungry to compile and the
@@ -73,24 +82,6 @@ mkdir -p "$out"
 # exactly like a compiler crash. Docker Desktop's default allowance is small.
 jobs="${OD_JOBS:-2}"
 
-if [ "$mode" = "web" ]; then
-    echo "=== web (emscripten), in a container ==="
-    # The same four files and the streamed music that .github/workflows/test.yml
-    # checks, because a link that "succeeded" without producing a loadable
-    # module is a failure that reports success.
-    exec docker run --rm $platform \
-        -v "$root":/repo:ro -v "$out":/build-web -w /repo \
-        emscripten/emsdk:latest bash -c "
-        set -e
-        emcmake cmake -S /repo -B /build-web -DCMAKE_BUILD_TYPE=Release
-        emmake cmake --build /build-web -j $jobs
-        for f in OpenDoctrines.html OpenDoctrines.js OpenDoctrines.wasm OpenDoctrines.data; do
-            test -s /build-web/\$f || { echo \"missing or empty: \$f\"; exit 1; }
-        done
-        test -d /build-web/data/audio/music || { echo 'streamed music was not copied'; exit 1; }
-        ls -lh /build-web/OpenDoctrines.* | head
-    "
-fi
 
 echo "=== linux, in a container ==="
 [ -n "$platform" ] && echo "  ${platform#--platform=} (emulated builds are several times slower)"
