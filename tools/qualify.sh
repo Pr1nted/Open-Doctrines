@@ -151,9 +151,20 @@ if [ "$(node_major)" -lt 18 ]; then
         bad "node 18+ (the stand-in account service needs WebCrypto Ed25519)"
 fi
 
-for tool in cmake node python3; do
+for tool in cmake node; do
     command -v "$tool" >/dev/null || bad "$tool is not installed"
 done
+
+# python is checked by RUNNING one, not by finding the name. `command -v python3`
+# was the old test and it passes against the python3.exe stub Windows keeps in
+# WindowsApps -- which prints an advertisement for the Microsoft Store and exits.
+# So this step said the toolchain was fine and six checks in the suite then
+# failed, on a machine with a perfectly good Python installed as `python`.
+if od_py="$("$root/tools/find_python.sh" 2>/dev/null)"; then
+    note "python: $od_py"
+else
+    bad "a working python3 (the name may resolve to a stub that is not python)"
+fi
 [ "$fail" -eq 0 ] || { printf '\nCannot qualify without the tools above.\n'; exit 1; }
 
 # A display for the steps that need one. Under xvfb-run the whole rest of the

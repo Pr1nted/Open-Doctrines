@@ -49,6 +49,11 @@ sdk/**/package-lock.json
 # (-DOD_MODS_FAST_INTERP=OFF) that the Python SDK requires.
 build-classic/
 
+# Build trees belonging to tools/qualify_docker.sh. Kept between runs so a
+# container run does not re-fetch WAMR and mbedTLS every time, which is what
+# makes it cheap enough to actually reach for.
+.docker-build/
+
 # Python bytecode from tools/
 __pycache__/
 *.pyc

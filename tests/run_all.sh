@@ -7,6 +7,19 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 build="${1:-$root/build}"
 fail=0
 
+# A python that RUNS, not one that merely exists. Windows ships a python3.exe
+# stub that prints an advertisement for the Microsoft Store and exits, so every
+# check below that shells out to python3 failed at once on a machine with a
+# working Python installed as `python`. See tools/find_python.sh.
+PY="$("$root/tools/find_python.sh" 2>/dev/null || true)"
+if [ -z "$PY" ]; then
+    echo "no working python3 was found. The tool index, both binding checks," >&2
+    echo "the notices, the flag licences and the GIF decode all need one." >&2
+    echo "  Windows: install python.org Python, or disable the WindowsApps" >&2
+    echo "           python3 alias in Settings > Apps > App execution aliases." >&2
+    PY=python3      # so the failures below name the command they tried
+fi
+
 step() { printf '\n=== %s ===\n' "$1"; }
 
 step "fixture mods"
@@ -75,35 +88,35 @@ run "game updater"     "$bin/GameUpdatesTest"
 # a stream with a mis-sized code still has a valid header and still opens.
 rm -rf "$build/giftest" && mkdir -p "$build/giftest"
 run "gif encoder"      "$bin/GifEncoderTest" "$build/giftest"
-run "gif decodes back" python3 "$root/tests/gif_encoder_check.py" "$build/giftest"
+run "gif decodes back" $PY "$root/tests/gif_encoder_check.py" "$build/giftest"
 
 run "example mods, all languages" "$bin/ModExamplesTest" "$root/sdk"
 
 step "tool index"
 # Fails if a tool was added without a description or a group, so the
 # index cannot quietly fall behind the directory.
-python3 "$root/tools/help.py" --check || fail=1
+$PY "$root/tools/help.py" --check || fail=1
 
 step "generated bindings vs abi.json"
 # Fails if a generated file was hand-edited or left stale after an ABI
 # change. Regenerate with: python3 tools/gen_bindings.py
-python3 "$root/tools/gen_bindings.py" --check || fail=1
+$PY "$root/tools/gen_bindings.py" --check || fail=1
 
 step "sdk bindings vs abi.json"
-python3 "$root/tools/check_bindings.py" || fail=1
+$PY "$root/tools/check_bindings.py" || fail=1
 
 step "third-party notices vs provenance.json"
 # Fails if a dataset, library or font was added to the build without being
 # recorded, or if NOTICE.md / data/credits.txt were edited by hand instead of
 # regenerated. Attribution that drifts is a licence breach, not a typo.
 # Regenerate with: python3 tools/gen_notices.py
-python3 "$root/tools/gen_notices.py" --check || fail=1
+$PY "$root/tools/gen_notices.py" --check || fail=1
 
 step "flag licences"
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py
-python3 "$root/tools/audit_flag_licenses.py" --check || fail=1
+$PY "$root/tools/audit_flag_licenses.py" --check || fail=1
 
 step "documented example"
 "$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check" || fail=1

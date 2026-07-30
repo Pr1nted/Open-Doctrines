@@ -16,19 +16,30 @@ check="${2:-$root/build/odmod-check}"
 
 CC="${CC:-}"
 if [ -z "$CC" ]; then
+    # The Windows paths matter: LLVM's installer there does not add clang to
+    # PATH, so this skipped on a machine that had just installed it -- while
+    # tests/build_test_mods.sh, with a different list, found one fine.
     for c in "$(command -v clang || true)" \
+             /opt/homebrew/opt/llvm/bin/clang \
+             /usr/local/opt/llvm/bin/clang \
+             "/c/Program Files/LLVM/bin/clang.exe" \
+             "/c/Program Files (x86)/LLVM/bin/clang.exe" \
              /opt/homebrew/Cellar/emscripten/*/libexec/llvm/bin/clang \
-             /usr/local/Cellar/emscripten/*/libexec/llvm/bin/clang \
-             /opt/homebrew/opt/llvm/bin/clang; do
+             /usr/local/Cellar/emscripten/*/libexec/llvm/bin/clang; do
         [ -x "$c" ] || continue
         if "$c" --print-targets 2>/dev/null | grep -qi wasm32; then CC="$c"; break; fi
     done
 fi
 [ -n "$CC" ] || { echo "no wasm32-capable clang; skipping doc example check"; exit 0; }
 
+# A python that runs, not one that merely exists: Windows keeps a python3.exe
+# stub in WindowsApps that prints a Store advertisement and exits.
+PY="$("$root/tools/find_python.sh")" || {
+    echo "no working python3; skipping doc example check"; exit 0; }
+
 rm -rf "$work"; mkdir -p "$work"
 
-python3 - "$root" "$work" <<'PY'
+$PY - "$root" "$work" <<'PY'
 import re, sys
 root, work = sys.argv[1], sys.argv[2]
 src = open(f"{root}/docs/gearbox-sdk.md").read()
@@ -43,7 +54,7 @@ PY
 "$CC" --target=wasm32 -nostdlib -O2 -I "$root/sdk" \
       -Wl,--no-entry -Wl,--allow-undefined -o "$work/mod.wasm" "$work/mod.c"
 
-python3 "$root/tools/wasm_imports.py" "$work/mod.wasm" >/dev/null
+$PY "$root/tools/wasm_imports.py" "$work/mod.wasm" >/dev/null
 "$root/tools/pack_odmod.sh" "$work" "$work/doc.odmod" >/dev/null
 
 if [ -x "$check" ]; then

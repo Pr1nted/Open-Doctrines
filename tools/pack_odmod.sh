@@ -32,7 +32,13 @@ out="${2:-$(basename "$dir").odmod}"
 out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
 rm -f "$out"
 
-python3 - "$dir" "$out" <<'PY'
+# A python that runs, not one that merely exists: Windows keeps a python3.exe
+# stub in WindowsApps that prints a Store advertisement and exits, so the
+# name resolving is not the same as an interpreter being there.
+PY_CMD="$("$(dirname "$0")/find_python.sh")" || {
+    echo "pack_odmod.sh: no working python3 found" >&2; exit 1; }
+
+$PY_CMD - "$dir" "$out" <<'PY'
 import sys, zipfile
 from pathlib import Path
 

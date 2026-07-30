@@ -29,13 +29,13 @@ GROUPS = [
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.sh",
         "check_bindings.py", "wasm_imports.py", "pack_odmod.sh",
-        "sdk_toolchains.sh", "test_all_sdks.sh",
+        "sdk_toolchains.sh", "test_all_sdks.sh", "find_python.sh",
     ]),
     ("Testing multiplayer", [
         "playtest.sh", "second_player.sh",
     ]),
     ("Qualifying a platform", [
-        "qualify.sh",
+        "qualify.sh", "qualify_docker.sh",
     ]),
     ("Training the AI", [
         "train.sh",
