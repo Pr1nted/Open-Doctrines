@@ -38,7 +38,7 @@ GROUPS = [
         "qualify.sh", "qualify_docker.sh",
     ]),
     ("Training the AI", [
-        "train.sh", "train_parallel.py",
+        "train.sh", "train_parallel.py", "ai_benchmark.sh",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
