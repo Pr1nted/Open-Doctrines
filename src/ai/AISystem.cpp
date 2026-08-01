@@ -1381,7 +1381,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             const Country* ec = g.m_countries.getCountry(target);
             g.m_pendingDiplomaticActions.push_back({c->isoA3, ec->isoA3, req, 1});
             diploCoolDown(cid, target);
-            m_trainStats.pactsProposed++;
+            statsFor(cid).pactsProposed++;
             return TextFormat("%s -> %s", req, ec->name.c_str());
         }
         case 8: { // enact whatever calms the country down
@@ -1406,7 +1406,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             }
             if (!best) return "calm: no policy would help";
             g.enactPolicy(cid, best->id);
-            m_trainStats.calmingPolicies++;
+            statsFor(cid).calmingPolicies++;
             return "enact calming policy " + best->id;
         }
         case 9: case 10: { // conciliate / repress a minority
@@ -1472,8 +1472,8 @@ std::string AISystem::execPolitics(int cid, int action) {
             if (bestOpt < 0)
                 return conciliate ? "conciliate: nothing affordable" : "repress: already hardest";
             g.setEthnicPolicyOption(cid, target, bestCat, bestOpt);
-            if (conciliate) m_trainStats.minorityConciliations++;
-            else            m_trainStats.minorityRepressions++;
+            if (conciliate) statsFor(cid).minorityConciliations++;
+            else            statsFor(cid).minorityRepressions++;
             return TextFormat("%s %s: %s -> %s", conciliate ? "conciliate" : "repress",
                               target.c_str(),
                               g.m_ethnicPolicyCategories[bestCat].displayName.c_str(),
@@ -1806,7 +1806,7 @@ std::string AISystem::execWar(int cid, int action) {
                         return std::string("break NAP with ") + ec2->name + " (naval war next turn)";
                     }
                     g.m_pendingDiplomaticActions.push_back({c.isoA3, ec2->isoA3, "declare_war", 1});
-                    m_trainStats.warsDeclared++;
+                    statsFor(cid).warsDeclared++;
                     m_declaredUnprovoked = !navalClaimed;
                     return std::string("declare NAVAL war on ") + ec2->name +
                            (navalClaimed ? " (claims)" : " (overseas)");
@@ -1836,7 +1836,7 @@ std::string AISystem::execWar(int cid, int action) {
             }
 
             g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "declare_war", 1});
-            m_trainStats.warsDeclared++;
+            statsFor(cid).warsDeclared++;
             m_declaredUnprovoked = !targetClaimed;
             return std::string("declare war on ") + ec->name + (targetClaimed ? " (claims)" : "");
         }
@@ -1956,7 +1956,7 @@ std::string AISystem::execWar(int cid, int action) {
                 !terms.ourDropClaims.empty() || !terms.theirDropClaims.empty())
                 g.m_pendingCeasefireTerms[c.isoA3 + "|" + ec->isoA3] = terms;
             diploCoolDown(cid, target);
-            m_trainStats.ceasefiresOffered++;
+            statsFor(cid).ceasefiresOffered++;
             return TextFormat("offer ceasefire (%s) to %s", posture, ec->name.c_str());
         }
         case 7: { // stage troops on allied soil next to a shared enemy
@@ -1990,7 +1990,7 @@ std::string AISystem::execWar(int cid, int action) {
             // Half the garrison: the province we are leaving still has its own
             // border to hold.
             g.m_pendingMoveOrders.push_back({bestFrom, bestTo, 50, cid});
-            m_trainStats.stagingMoves++;
+            statsFor(cid).stagingMoves++;
             return TextFormat("stage troops into allied prov %d from %d", bestTo, bestFrom);
         }
         default: return "hold";
@@ -2281,12 +2281,12 @@ void AISystem::austerityReflex(int cid) {
         }
         if (bestIdx >= 0) {
             g.m_pendingScrapShips.push_back({bestIdx});
-            m_trainStats.shipsScrapped++;
+            statsFor(cid).shipsScrapped++;
             what = "scrapped a warship";
         }
     }
 
-    if (what) m_trainStats.austerityCuts++;
+    if (what) statsFor(cid).austerityCuts++;
     if (what && g.m_config.aiDebug)
         printf("[AI] t%d %s [austerity] %s (net %.1f, treasury %.0f, %.1f turns left)\n",
                m_turn, c->name.c_str(), what, inc.net, c->treasury, runway);
@@ -2422,7 +2422,7 @@ void AISystem::amphibiousReflex(int cid) {
         // In range of a hostile shore: land, now. This is the whole point.
         if (enemyPid >= 0 && enemyD <= LAND_RANGE) {
             g.m_pendingShipDisembarks.push_back({(int)i, enemyPid});
-            m_trainStats.landings++;
+            statsFor(cid).landings++;
             m_landingsThisTurn[cid]++;
             if (g.m_config.aiDebug)
                 printf("[AI] t%d %s [amphib] landing %d troops on prov %d\n",
@@ -2434,7 +2434,7 @@ void AISystem::amphibiousReflex(int cid) {
         if (enemyPid < 0) {
             if (homePid >= 0 && homeD <= LAND_RANGE) {
                 g.m_pendingShipDisembarks.push_back({(int)i, homePid});
-                m_trainStats.unloadsHome++;
+                statsFor(cid).unloadsHome++;
             } else if (homePid >= 0) {
                 double dLon = homeLon - s.lon, dLat = homeLat - s.lat;
                 const double dist = std::max(1e-6, std::hypot(dLon, dLat));
@@ -2634,7 +2634,7 @@ std::string AISystem::execNavy(int cid, int action) {
             for (auto& pe : g.m_pendingEmbarkations)
                 if (pe.provinceId == bestPid) return "embark: pending";
             g.m_pendingEmbarkations.push_back({bestPid, bestG / 2, 1});
-            m_trainStats.embarks++;
+            statsFor(cid).embarks++;
             return TextFormat("embark %d from prov %d", bestG / 2, bestPid);
         }
         case 4: { // amphibious landing: nearest at-war coastal (port) province
@@ -2656,7 +2656,7 @@ std::string AISystem::execNavy(int cid, int action) {
                     double lat = 90.0 - cIt->second.y / mapH * 180.0;
                     if (std::hypot(lon - s.lon, lat - s.lat) > 12.0) continue;
                     g.m_pendingShipDisembarks.push_back({(int)i, pid});
-                    m_trainStats.landings++;
+                    statsFor(cid).landings++;
                     return TextFormat("disembark %d troops at prov %d", s.crew * 100, pid);
                 }
             }
@@ -2680,7 +2680,7 @@ std::string AISystem::execNavy(int cid, int action) {
                     double lat = 90.0 - cIt->second.y / mapH * 180.0;
                     if (std::hypot(lon - s.lon, lat - s.lat) > 12.0) continue;
                     g.m_pendingShipDisembarks.push_back({(int)i, pid});
-                    m_trainStats.unloadsHome++;
+                    statsFor(cid).unloadsHome++;
                     return TextFormat("unload %d troops home at prov %d", s.crew * 100, pid);
                 }
             }
@@ -2727,7 +2727,7 @@ std::string AISystem::execNavy(int cid, int action) {
             }
             if (bestIdx < 0) return "scrap: nothing worth scrapping";
             g.m_pendingScrapShips.push_back({bestIdx});
-            m_trainStats.shipsScrapped++;
+            statsFor(cid).shipsScrapped++;
             return TextFormat("scrap %s #%d (saves %.0f/turn)",
                               g.m_ships[bestIdx].type.c_str(), bestIdx, bestCost);
         }
@@ -2959,7 +2959,7 @@ void AISystem::endTurn() {
         auto lnIt = m_landingsThisTurn.find(cid);
         if (lnIt != m_landingsThisTurn.end()) landNow = lnIt->second;
         const int brokeNow = g.isBankrupt(cid) ? 1 : 0;
-        if (brokeNow) m_trainStats.bankruptTurns++;
+        if (brokeNow) statsFor(cid).bankruptTurns++;
         for (auto& exp : dq) {
             exp.age++;
             exp.rebellions += rebNow;
@@ -2977,7 +2977,7 @@ void AISystem::endTurn() {
             m_lastResearchCount[cid] = researchedNow;
         } else {
             if (researchedNow > lrIt->second)
-                m_trainStats.researchCompleted += researchedNow - lrIt->second;
+                statsFor(cid).researchCompleted += researchedNow - lrIt->second;
             lrIt->second = researchedNow;
         }
 

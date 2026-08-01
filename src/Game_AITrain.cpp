@@ -577,7 +577,13 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         int trainedCount = 0, randomCount = 0;
         int trainedProvinces = 0, randomProvinces = 0;
         int trainedAlive = 0, randomAlive = 0;
-        AISystem::TrainStats stats;
+        // Country-turns per cohort. Every behavioural counter has to be
+        // normalised by the cohort that produced it, not by the map total:
+        // once one side starts losing countries the two denominators diverge,
+        // and dividing both by the same number would report the shrinking side
+        // as busier per country than it is.
+        long long trainedCountryTurns = 0, randomCountryTurns = 0;
+        AISystem::TrainStats stats, rstats;
     };
     std::vector<MapResult> results;
     bool aborted = false;
@@ -688,6 +694,11 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             const int alive = (int)realCount.size();
             r.aliveEnd = alive;
             r.countryTurns += alive;
+            if (vsRandom)
+                for (auto& [cid2, n2] : realCount) {
+                    if (randomCids.count(cid2)) r.randomCountryTurns++;
+                    else                        r.trainedCountryTurns++;
+                }
             if (ownedProvs > 0) {
                 r.largestShare = (double)maxReal / ownedProvs;
                 double h = 0;
@@ -717,7 +728,7 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             }
         }
 
-        if (m_ai) r.stats = m_ai->trainStats();
+        if (m_ai) { r.stats = m_ai->trainStats(); r.rstats = m_ai->randomStats(); }
 
         // Where the two cohorts finished.
         if (vsRandom) {
@@ -782,6 +793,29 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                r.countryTurns ? 100.0 * r.stats.bankruptTurns / r.countryTurns : 0.0,
                r.stats.austerityCuts / kct);
         if (vsRandom) {
+            // Behaviour, side by side. The ratio says the model is losing; only
+            // this says what it is doing differently while it loses.
+            const double mk = r.trainedCountryTurns ? r.trainedCountryTurns / 1000.0 : 1.0;
+            const double rk = r.randomCountryTurns  ? r.randomCountryTurns  / 1000.0 : 1.0;
+            const AISystem::TrainStats& M = r.stats;
+            const AISystem::TrainStats& R = r.rstats;
+            printf("[EVAL]   per 1k country-turns      MODEL     RANDOM\n");
+            printf("[EVAL]     wars declared          %7.2f   %7.2f\n", M.warsDeclared/mk,      R.warsDeclared/rk);
+            printf("[EVAL]     ceasefires offered     %7.2f   %7.2f\n", M.ceasefiresOffered/mk, R.ceasefiresOffered/rk);
+            printf("[EVAL]     pacts proposed         %7.2f   %7.2f\n", M.pactsProposed/mk,     R.pactsProposed/rk);
+            printf("[EVAL]     troops embarked        %7.2f   %7.2f\n", M.embarks/mk,           R.embarks/rk);
+            printf("[EVAL]     landings               %7.2f   %7.2f\n", M.landings/mk,          R.landings/rk);
+            printf("[EVAL]     staging moves          %7.2f   %7.2f\n", M.stagingMoves/mk,      R.stagingMoves/rk);
+            printf("[EVAL]     ships scrapped         %7.2f   %7.2f\n", M.shipsScrapped/mk,     R.shipsScrapped/rk);
+            printf("[EVAL]     austerity cuts         %7.2f   %7.2f\n", M.austerityCuts/mk,     R.austerityCuts/rk);
+            printf("[EVAL]     turns bankrupt         %7.2f   %7.2f\n", M.bankruptTurns/mk,     R.bankruptTurns/rk);
+            printf("[EVAL]     calming policies       %7.2f   %7.2f\n", M.calmingPolicies/mk,   R.calmingPolicies/rk);
+            printf("[EVAL]     minorities conciliated %7.2f   %7.2f\n", M.minorityConciliations/mk, R.minorityConciliations/rk);
+            printf("[EVAL]     minorities repressed   %7.2f   %7.2f\n", M.minorityRepressions/mk,   R.minorityRepressions/rk);
+            printf("[EVAL]     research completed     %7.2f   %7.2f\n", M.researchCompleted/mk, R.researchCompleted/rk);
+            printf("[EVAL]     calls answered/issued  %4lld/%-4lld  %4lld/%-4lld\n",
+                   M.callsAnswered, M.callsIssued, R.callsAnswered, R.callsIssued);
+
             const int total = r.trainedProvinces + r.randomProvinces;
             printf("[EVAL]   MODEL %d provinces (%.0f%%), %d/%d alive | "
                    "RANDOM %d provinces (%.0f%%), %d/%d alive  -> %s\n",

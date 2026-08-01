@@ -2936,7 +2936,7 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
     da.subjectIso = bestEnemy;
     da.turnsRemaining = 1;
     m_pendingDiplomaticActions.push_back(da);
-    if (m_ai) m_ai->noteCallIssued();
+    if (m_ai) m_ai->noteCallIssued(m_playerCountryId);
 
     addNotification("You call " + diploDisplayName(allyIso) + " to arms against " +
                     diploDisplayName(bestEnemy), Color{200, 200, 240, 255}, 7.0f);
@@ -2987,7 +2987,7 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         da.subjectIso = attackerIso;
         da.turnsRemaining = 1;
         m_pendingDiplomaticActions.push_back(da);
-        if (m_ai) m_ai->noteCallIssued();
+        if (m_ai) m_ai->noteCallIssued(cidForIso(defenderIso));
         printf("[WAR] %s calls its ally %s to arms against %s\n",
                defenderIso.c_str(), iso.c_str(), attackerIso.c_str());
     }
@@ -3109,7 +3109,7 @@ void Game::processDiplomaticRequests() {
                     // recursively enlists the entire map.
                     declareWar(da.targetIso, da.subjectIso, false);
                     addWarWeariness(allyCid, CALL_TO_ARMS_UNREST);
-                    if (m_ai) m_ai->noteCallAnswered();
+                    if (m_ai) m_ai->noteCallAnswered(allyCid);
                     printf("[WAR] %s answers %s's call and joins against %s\n",
                            da.targetIso.c_str(), da.sourceIso.c_str(), da.subjectIso.c_str());
                     // The counterpart of the refusal message below. An ally
@@ -3124,7 +3124,7 @@ void Game::processDiplomaticRequests() {
                 } else {
                     m_relations[da.sourceIso][da.targetIso].alliance = false;
                     m_relations[da.targetIso][da.sourceIso].alliance = false;
-                    if (m_ai) { m_ai->noteCallRefused();
+                    if (m_ai) { m_ai->noteCallRefused(allyCid);
                                 m_ai->noteDiploRejected(cidForIso(da.sourceIso), allyCid); }
                     printf("[WAR] %s refuses %s's call to arms; the alliance is over\n",
                            da.targetIso.c_str(), da.sourceIso.c_str());

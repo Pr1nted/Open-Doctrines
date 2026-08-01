@@ -178,9 +178,12 @@ public:
     // the ordinary cooldown lapses.
     void noteDiploRejected(int sourceCid, int targetCid);
     /** Coalition counters for the trainer dashboard. */
-    void noteCallIssued()   { m_trainStats.callsIssued++; }
-    void noteCallAnswered() { m_trainStats.callsAnswered++; }
-    void noteCallRefused()  { m_trainStats.callsRefused++; }
+    // `cid` is the country the event belongs to: the caller for an issued
+    // call, the ally deciding for an answer or a refusal. It selects which
+    // cohort's counters move.
+    void noteCallIssued(int cid)   { statsFor(cid).callsIssued++; }
+    void noteCallAnswered(int cid) { statsFor(cid).callsAnswered++; }
+    void noteCallRefused(int cid)  { statsFor(cid).callsRefused++; }
 
     /**
      * The map is decided: `cid` won it.
@@ -296,6 +299,18 @@ public:
         long long bankruptTurns = 0, austerityCuts = 0;
     };
     const TrainStats& trainStats() const { return m_trainStats; }
+    /**
+     * The control group's counters, when --vs-random has split the map.
+     *
+     * Knowing the model holds less land than a coin flip says nothing about
+     * WHY. These are the same counters kept separately for the random cohort,
+     * so the two can be compared behaviour by behaviour: a model that never
+     * declares war against a random side that declares constantly explains a
+     * land deficit outright, and no amount of staring at the ratio would have
+     * said so. Empty (all zero) when no cohort split is active, because then
+     * every country's counters are in trainStats().
+     */
+    const TrainStats& randomStats() const { return m_randomStats; }
     // Mean raw reward per module per turn, last ~600 turns
     const std::deque<float>* rewardHistory() const { return m_rewardHistory; }
 
@@ -598,6 +613,11 @@ private:
 
     std::deque<Decision> m_log;
     TrainStats m_trainStats;
+    TrainStats m_randomStats;
+    /** Whichever cohort `cid` belongs to. All one pool when no split is set. */
+    TrainStats& statsFor(int cid) {
+        return isRandomCountry(cid) ? m_randomStats : m_trainStats;
+    }
     std::deque<float> m_rewardHistory[MOD_COUNT];
     size_t m_lastSaveBytes = 0;
     // Checkpoint pacing. Losing at most a minute of self-play is a fine trade
