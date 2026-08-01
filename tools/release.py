@@ -55,11 +55,18 @@ AUTHOR_EMAIL = ""          # deliberately empty
 #
 # The cost of that shape is the opposite mistake, and this list has made it:
 # content that is missing is also simply absent, and the game does not complain.
-# Nothing here belongs to a map -- policies.json, starting_policies.json,
-# country_compass.json and the rest are entries INSIDE the .odmap archives
-# under STDmaps/ (Game::initPolicies reads them from m_odmJsonData). A
-# top-level "policies.json" sat in this list for a long time, matched no file,
-# and printed one line about it per package.
+#
+# Most map content genuinely does live INSIDE the .odmap archives under STDmaps/
+# -- starting_policies.json, country_compass.json and the rest are read from
+# m_odmJsonData, not from here. A top-level "policies.json" was once listed for
+# that reason, matched no file, and was removed.
+#
+# It is back, and this time it matches one. The doctrine CATALOGUE is a rule
+# set rather than map content: every shipped map carries a byte-identical copy,
+# and maps that carry none at all -- every procedurally generated map, which is
+# every map the AI trains on -- had no doctrines whatsoever until
+# data/policies.json existed as the fallback. Removing it again would silently
+# switch the whole doctrine system off for generated worlds.
 DATA_ALLOWLIST = [
     "STDmaps",        # the shipped maps
     "audio",          # music and sfx. Its absence did not fail anything: the
@@ -83,6 +90,11 @@ DATA_ALLOWLIST = [
 # Present in a working copy, never in a release. Listed only so the packaging
 # step can say what it left out, which is how you notice a mistake.
 KNOWN_USER_DATA = [
+    "account.json",   # a signed session token for the multiplayer account
+                      # service. Excluded because it is a credential, and named
+                      # here so the packaging step stops flagging it as
+                      # unclassified -- a warning that fires on every release is
+                      # a warning nobody reads when it matters.
     "config.json",    # the developer's own settings
     "saves",          # the developer's own saves
     "custom_maps",    # worlds made or imported locally
