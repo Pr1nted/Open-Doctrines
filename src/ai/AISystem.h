@@ -78,8 +78,16 @@ public:
     //
     // Multiplier on the enemy's army the AI must exceed before it will attack.
     static constexpr double AI_WAR_BAR_CLAIMED         = 0.85; // reconquest: unchanged
-    static constexpr double AI_WAR_BAR_UNCLAIMED       = 2.50; // was 2.00, was 1.05
-    static constexpr double AI_WAR_BAR_UNCLAIMED_NAVAL = 2.75; // was 2.20, was 1.30
+    // BACK TO 2.00 AND 2.20. Raising these to 2.50/2.75 was half of what
+    // produced a policy that declared literally zero wars: measured against a
+    // random-action control on the same maps, 0.00 declarations per thousand
+    // country-turns against random's 3.84 and 4.32. A country that never fights
+    // never takes ground, and the model held 36% of the world to random's 64%
+    // as a direct result. The bar is still nearly twice the 1.05 it started at,
+    // so wars of pure opportunism remain expensive -- they are simply possible
+    // again.
+    static constexpr double AI_WAR_BAR_UNCLAIMED       = 2.00; // 2.50 was too high
+    static constexpr double AI_WAR_BAR_UNCLAIMED_NAVAL = 2.20; // 2.75 was too high
     // Added to the bar when already fighting someone. One front at a time
     // unless the second is genuinely easy.
     static constexpr double AI_WAR_BAR_SECOND_FRONT    = 0.50;

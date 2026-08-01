@@ -3085,6 +3085,19 @@ void AISystem::endTurn() {
                                       + 0.5f * std::tanh((float)now.coBelligerents / 2.0f)
                                       + 0.4f * std::tanh((float)now.pacts / 3.0f)
                                       + 0.5f * std::tanh(dAlign / 10.0f)
+                                      // ...and the LEVEL, not only the change.
+                                      // Alignment is clamped at zero, so a
+                                      // government that has already driven its
+                                      // minorities to the floor sees dAlign = 0
+                                      // from then on and further repression
+                                      // becomes free — which is exactly the
+                                      // state the model converged to, repressing
+                                      // at 207 per thousand country-turns
+                                      // against random's 88 while conciliating
+                                      // at a twelfth of random's rate. This term
+                                      // does not stop pressing once the damage
+                                      // is done.
+                                      + 0.6f * ((now.meanAlignment - 50.0f) / 50.0f)
                                       - 0.4f * (g.warWearinessOf(cid) / Game::WAR_WEARINESS_MAX)
                                       - 0.5f * std::tanh(std::max(0.0f, dWeary) / 5.0f)
                                       + (exp.netIncome > 0 ? 0.2f : -0.2f);
@@ -3125,17 +3138,28 @@ void AISystem::endTurn() {
                 const float phoneyWar =
                     (exp.atWar && exp.threatened == 0 && dProv <= 0.0f) ? -0.5f : 0.0f;
 
-                // The cost of starting it.
+                // The cost of starting it — CHARGED ON THE OUTCOME, not on
+                // the decision.
                 //
-                // Conquest pays, and it should — expansion is what the game is
-                // about. But a war of choice against a neighbour holding no
-                // land we claim also drags in guarantors, burns unrest, and
-                // leaves a claim behind that feeds the next revolt, and none of
-                // that appeared anywhere in the reward. Wars of reconquest are
-                // exempt: retaking claimed land is the war goal, not the
-                // aggression. Small enough that a genuinely profitable conquest
-                // still clears it; large enough that a marginal one does not.
-                const float aggression = exp.aggressor ? -0.8f : 0.0f;
+                // This was a flat -0.8 for any unprovoked declaration, and it
+                // did precisely what a flat certain cost against a slow
+                // uncertain gain always does: the policy stopped declaring war
+                // at all. Measured against a random-action control, 0.00
+                // declarations per thousand country-turns to random's 3.84.
+                // Conquest pays +2.0 x tanh(dProv/3), but a war rarely
+                // concludes inside the twelve-turn reward window, so the -0.8
+                // arrived with certainty while the +2.0 usually arrived after
+                // the window had closed. Expected value said: never fight.
+                //
+                // Now it scales with how the war is actually going. A
+                // declaration that is already taking ground costs nothing —
+                // that is the expansion the game is about. One that has taken
+                // nothing carries the full charge. Wars of reconquest stay
+                // exempt entirely, as before.
+                const float aggression =
+                    exp.aggressor
+                        ? -0.35f * (1.0f - std::tanh(std::max(0.0f, dProv) / 2.0f))
+                        : 0.0f;
 
                 rewards[MOD_WAR]      = global
                                       + 2.0f * std::tanh(dProv / 3.0f)
