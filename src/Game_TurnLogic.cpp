@@ -610,8 +610,13 @@ void Game::restoreRebels(const std::string& savePath) {
             // texture map with no entry for the cid, so every restored
             // breakaway state showed an empty grey rectangle where its flag
             // should be -- in the country panel and everywhere else.
+            // ...but not without a GPU to put it on. FlagRenderer::render ends
+            // in LoadTextureFromImage, and --export-timelapse runs with no
+            // window and therefore no GL context, so the call lands on a null
+            // function pointer and the process dies at address zero. The SVG is
+            // kept either way; a headless GIF export never draws a flag.
             const Country* rc = m_countries.getCountry(cid);
-            if (rc) {
+            if (rc && !m_headless) {
                 auto fit = m_countryFlags.find(cid);
                 if (fit != m_countryFlags.end() && fit->second.id > 0)
                     UnloadTexture(fit->second);
@@ -1487,8 +1492,14 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     if (rebelCid >= (int)m_countryRelationColors.size())
         m_countryRelationColors.resize(rebelCid + 1, Color{80, 80, 80, 255});
 
-    Texture2D tex = FlagRenderer::render(rebel.flagActual, 256, 128, "", &m_odmJsonData);
-    m_countryFlags[rebelCid] = tex;
+    // Same reason as restoreRebels: this ends in LoadTextureFromImage, which
+    // needs a GL context that a headless run does not have. Replaying a save's
+    // history re-creates every rebellion in it, so a timelapse export of any
+    // world that ever had one crashed here at address zero.
+    if (!m_headless) {
+        Texture2D tex = FlagRenderer::render(rebel.flagActual, 256, 128, "", &m_odmJsonData);
+        m_countryFlags[rebelCid] = tex;
+    }
 
     if (m_config.aiDebug)
         printf("[REBELLION] Created '%s' (CID=%d, ISO=%s, %zu provinces, %lld pop, econ=%.1f soc=%.1f)\n",
