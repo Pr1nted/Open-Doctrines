@@ -647,7 +647,11 @@ Image FlagRenderer::rasterizeSVG(const std::string& filePath, int width, int hei
         svgImage = nsvgParseFromFile(fullPath.c_str(), "px", 96.0f);
     }
     if (!svgImage) {
-        printf("[SVG] Failed to parse: %s\n", fullPath.c_str());
+        // Once per flag per load is fine; once per REBEL flag on a training
+        // run that creates hundreds of them is not, and the message is the
+        // same every time.
+        static int reported = 0;
+        if (reported < 20) { printf("[SVG] Failed to parse: %s\n", fullPath.c_str()); ++reported; }
         return {0};
     }
 

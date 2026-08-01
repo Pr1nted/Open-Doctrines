@@ -3805,7 +3805,10 @@ void Game::processPopulation() {
                 float alignPush = (100.0f - align) / 50.0f; // 0 at 100% align, 2.0 at 0% align
                 // Higher unrest + lower alignment = more emigration
                 float surge = refugeeSurge.count(srcPid) ? refugeeSurge[srcPid] : 1.0f;
-                if (surge > 1.0f)
+                // Behind aiDebug: this fires per province per minority per
+                // turn. On a self-play run it was most of a gigabyte an hour of
+                // stdout, and formatting it is not free either.
+                if (surge > 1.0f && m_config.aiDebug)
                     printf("[DIAG] Refugee surge %.1fx in province %d for %s (align=%.0f%%)\n",
                            surge, srcPid, mg.name.c_str(), align);
                 float emiRate = migrationRate * (1.0f + unrest / 50.0f + alignPush) * surge;
@@ -4043,7 +4046,7 @@ void Game::processPopulation() {
                 long long dstPop = m_provincePopulations.count(bestDst) ? m_provincePopulations[bestDst] : 0;
                 // Refugee surge: fleeing conquered/war-torn provinces at much higher rate
                 float cbSurge = refugeeSurge.count(srcPid) ? refugeeSurge[srcPid] : 1.0f;
-                if (cbSurge > 1.0f && cbAlign < 40.0f)
+                if (cbSurge > 1.0f && cbAlign < 40.0f && m_config.aiDebug)
                     printf("[DIAG] Cross-border refugee surge %.1fx in province %d for %s\n",
                            cbSurge, srcPid, mg.name.c_str());
                 float cbRate = (cbSurge > 1.0f && cbAlign < 40.0f) ? crossBorderRefugeeRate : crossBorderRate;

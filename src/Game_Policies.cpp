@@ -475,7 +475,10 @@ void Game::applyEthnicPolicyEffects(int countryId) {
                             auto dr = ar->second.find(prevC->isoA3);
                             if (dr != ar->second.end() && dr->second.war) {
                                 driftThisTurn -= 5.0f;
-                                if (processed.size() < 10) // log first few per country
+                                // Per conquered province per turn, for every
+                                // country at war. Same reason as the refugee
+                                // lines in Game_TurnLogic.
+                                if (processed.size() < 10 && m_config.aiDebug)
                                     printf("[DIAG] War alignment penalty for %s in conquered province %d (%s vs %s): -5/turn\n",
                                            mg.name.c_str(), pid, curC->name.c_str(), prevC->name.c_str());
                             }
