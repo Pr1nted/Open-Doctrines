@@ -1,11 +1,24 @@
 #!/bin/sh
 # Take one AI benchmark reading and append it to the log.
 #
-#   tools/ai_benchmark.sh [maps] [turns]      default 2 maps x 300 turns
+#   tools/ai_benchmark.sh [maps] [turns] [repeats]   default 2 x 300, 3 repeats
 #
 # Plays the trained model against countries choosing uniformly at random from
 # the same legal moves, and records one line of the result. Prints it too, so it
 # is useful interactively as well as from a loop.
+#
+# WHY IT REPEATS
+#
+# The turn simulation is not bit-deterministic. Measured directly: the same
+# model, the same command and the same map seed produced 0.61x and 0.71x on two
+# back-to-back runs, with identical maps, identical cohorts and identical
+# survivors -- only the final province counts drifted a few percent, which in a
+# ratio of two similar numbers is a tenth of a point. A single reading therefore
+# cannot distinguish a real change from that drift.
+#
+# So each measurement is several evals against ONE frozen model (the merge
+# happens once, before any of them), averaged. The logged row carries the range
+# as well as the mean, so the noise is visible rather than implied.
 #
 # WHY IT MERGES FIRST
 #
@@ -36,6 +49,7 @@ LOG="${OD_EVAL_LOG:-/tmp/od-eval.log}"
 SEED="${OD_EVAL_SEED:-20260801}"
 MAPS="${1:-2}"
 TURNS="${2:-300}"
+REPEATS="${3:-${OD_EVAL_REPEATS:-3}}"
 
 BIN=""
 for c in "build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines" \
@@ -77,21 +91,34 @@ done
 [ -f data/ai/model.bin ] || { echo "no data/ai/model.bin to measure" >&2; exit 1; }
 n=$(samples data/ai/model.bin)
 
-out=$("$BIN" --resource-limit 20 --eval-ai "$MAPS" "$TURNS" "$SEED" 2 --vs-random 2>&1)
+# Every repeat measures the SAME model: nothing merges or trains into
+# model.bin between them, so the spread below is pure measurement noise.
+stats=$(
+  i=0
+  while [ "$i" -lt "$REPEATS" ]; do
+    i=$((i + 1))
+    o=$("$BIN" --resource-limit 20 --eval-ai "$MAPS" "$TURNS" "$SEED" 2 --vs-random 2>&1)
+    a=$(printf  '%s\n' "$o" | grep -a 'ADVANTAGE'  | awk '{print $3}' | tr -d 'x')
+    l=$(printf  '%s\n' "$o" | grep -a 'land held'  | awk '{print $4}' | tr -d '%')
+    mw=$(printf '%s\n' "$o" | grep -a 'maps won'   | awk '{print $4}')
+    rw=$(printf '%s\n' "$o" | grep -a 'maps won'   | awk '{print $6}')
+    am=$(printf '%s\n' "$o" | grep -a 'amphibious' | awk '{print $3}' | tr -d '%')
+    ca=$(printf '%s\n' "$o" | grep -a 'coalition'  | awk '{print $3}' | tr -d '%')
+    [ -n "$a" ] && echo "$a $l $mw $rw $am $ca"
+  done
+)
 
-adv=$(printf  '%s\n' "$out" | grep -a 'ADVANTAGE'  | awk '{print $3}')
-land=$(printf '%s\n' "$out" | grep -a 'land held'  | awk '{print $4}')
-won=$(printf  '%s\n' "$out" | grep -a 'maps won'   | sed 's/.*maps won *//')
-amph=$(printf '%s\n' "$out" | grep -a 'amphibious' | awk '{print $3}')
-calls=$(printf '%s\n' "$out"| grep -a 'coalition'  | awk '{print $3}')
+[ -n "$stats" ] || { echo "every evaluation failed; nothing recorded" >&2; exit 1; }
 
-if [ -z "$adv" ]; then
-    echo "the evaluation produced no ADVANTAGE line; full output follows" >&2
-    printf '%s\n' "$out" | tail -20 >&2
-    exit 1
-fi
+summary=$(printf '%s\n' "$stats" | awk '
+    { n++; a+=$1; l+=$2; mw+=$3; rw+=$4; am+=$5; ca+=$6
+      if (n==1 || $1<lo) lo=$1; if (n==1 || $1>hi) hi=$1 }
+    END { printf "%.2f %.2f %.2f %.1f %d %d %.0f %.0f %d", a/n, lo, hi, l/n, mw, rw, am/n, ca/n, n }')
+set -- $summary
+adv="$1"; lo="$2"; hi="$3"; land="$4"; mw="$5"; rw="$6"; amph="$7"; calls="$8"; nrun="$9"
 
-row=$(printf '%s  samples=%-14s ADVANTAGE=%-7s land=%-7s maps=%-22s landings=%-5s calls_answered=%s' \
-    "$(date '+%m-%d %H:%M')" "$n" "$adv" "$land" "$won" "$amph" "$calls")
+row=$(printf '%s  samples=%-14s ADVANTAGE=%-5sx (%s-%s, n=%s)  land=%-6s maps=%s/%s model  landings=%-4s calls_answered=%s' \
+    "$(date '+%m-%d %H:%M')" "$n" "$adv" "$lo" "$hi" "$nrun" \
+    "$land%" "$mw" "$((mw + rw))" "$amph%" "$calls%")
 printf '%s\n' "$row" >> "$LOG"
 printf '%s\n' "$row"
