@@ -117,8 +117,11 @@ summary=$(printf '%s\n' "$stats" | awk '
 set -- $summary
 adv="$1"; lo="$2"; hi="$3"; land="$4"; mw="$5"; rw="$6"; amph="$7"; calls="$8"; nrun="$9"
 
-row=$(printf '%s  samples=%-14s ADVANTAGE=%-5sx (%s-%s, n=%s)  land=%-6s maps=%s/%s model  landings=%-4s calls_answered=%s' \
-    "$(date '+%m-%d %H:%M')" "$n" "$adv" "$lo" "$hi" "$nrun" \
+# The configuration goes in the row. Readings taken at different map counts
+# or turn counts are not comparable with each other, and a log that mixes them
+# without saying so invites exactly the comparison it cannot support.
+row=$(printf '%s  cfg=%sx%sx%s  samples=%-14s ADVANTAGE=%-5sx (%s-%s)  land=%-6s maps=%s/%s model  landings=%-4s calls_answered=%s' \
+    "$(date '+%m-%d %H:%M')" "$MAPS" "$TURNS" "$nrun" "$n" "$adv" "$lo" "$hi" \
     "$land%" "$mw" "$((mw + rw))" "$amph%" "$calls%")
 printf '%s\n' "$row" >> "$LOG"
 printf '%s\n' "$row"
