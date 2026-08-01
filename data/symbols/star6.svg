@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <polygon fill="#fff" points="0,-90 26,-30 90,-30 40,10 55,80 0,45 -55,80 -40,10 -90,-30 -26,-30"/>
-  <polygon fill="#fff" points="0,-80 -23,30 -90,30 -38,-10 -55,-80 0,-45 55,-80 38,-10 90,30 23,30"/>
+  <!-- star6: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-100.000) scale(1.000000)">
+<polygon style="fill:none;stroke:#fff;stroke-width:2.5px" points="148,183.138438763306 4,100 148,16.8615612366939"/>
+	<polygon style="fill:none;stroke:#fff;stroke-width:2.5px" points="52,183.138438763306 52,16.8615612366939 196,100"/>
+  </g>
 </svg>

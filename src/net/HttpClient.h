@@ -79,6 +79,39 @@ struct HttpRequest {
 /** Performs one request. Never throws; failures arrive in `error`. */
 HttpResponse httpRequest(const HttpRequest& request);
 
+/**
+ * Called over and over while a request is blocked waiting for a reply.
+ *
+ * WHY THIS EXISTS
+ *
+ * On desktop an account job runs on a worker thread and the game carries on
+ * drawing. The web build has no threads, so the job runs inline on the frame
+ * thread -- and the device sign-in flow polls for up to ten minutes, waiting
+ * for a person to finish in another tab. For all that time nothing returned to
+ * the frame loop, so the canvas never repainted and the game looked hung. It
+ * was not hung, but "not hung" is not a defence when the screen is frozen.
+ *
+ * The hook lets the waiting code hand a frame back to whoever installed it.
+ * Game installs one that paints a "signing in" screen and watches for Esc, so
+ * the wait is something the player can see and get out of.
+ *
+ * It is called from inside the wait, so it MUST NOT start another request, and
+ * it must be safe to run when no frame is open -- account jobs begin from
+ * update..., before BeginDrawing.
+ */
+using NetWaitHook = void (*)(double elapsedMs);
+void netSetWaitHook(NetWaitHook fn);
+
+/**
+ * Runs the installed hook, if any, telling it how long this wait has lasted.
+ *
+ * The elapsed time is what stops the hook being a nuisance: most requests come
+ * back in well under a second, and covering the screen for those would flash a
+ * waiting panel over the UI every couple of seconds during the sign-in poll.
+ * The hook decides for itself when a wait is long enough to be worth showing.
+ */
+void netRunWaitHook(double elapsedMs);
+
 // --------------------------------------------------------------- helpers ----
 //
 // Just enough JSON to read the account API's replies, which are small, flat and

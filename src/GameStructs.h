@@ -80,6 +80,17 @@ struct PopupEntry {
     std::string targetIso;
     std::string subjectIso;   // used only for a call to arms: the aggressor
     CeasefireTerms terms;     // used only for CEASEFIRE_REQUEST
+
+    /**
+     * Identifies this popup for as long as it is queued.
+     *
+     * Only the front of the queue is on screen; the rest are waiting. The open
+     * sound used to be played when a popup was PUSHED, so a turn that produced
+     * six of them played six chimes at once while five were still invisible,
+     * and then each one appeared in silence. This is what lets the sound follow
+     * the popup that is actually being shown. Set by Game::pushPopup().
+     */
+    unsigned long long id = 0;
 };
 
 // ─── Relations System ───────────────────────────────────────
@@ -284,9 +295,6 @@ struct ResearchNode {
 // Builds the full research-tree node definitions into `out`. Shared by the game
 // (Game::initResearchTrees) and the map editor's research picker.
 void buildResearchNodes(std::vector<ResearchNode>& out);
-
-// Canonical list of selectable country doctrines (index 0 = "None"/empty).
-const std::vector<std::string>& doctrineList();
 
 // ─── Pending Actions (queued for processing on next turn) ────
 struct PendingDiplomaticAction {

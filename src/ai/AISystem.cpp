@@ -49,6 +49,10 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     for (int m = 0; m < MOD_COUNT; ++m)
         m_value[m] = NeuralNet({FEATURE_COUNT, 160, 1}, 200 + m);
     m_diplo = NeuralNet({FEATURE_COUNT, 256, 160, DIPLO_ACTIONS}, 300);
+    // An empty path is a scratch model used for merging peer files, not a
+    // model anybody is training. It loads nothing, saves nothing, and should
+    // say nothing.
+    if (m_modelPath.empty()) return;
     if (loadModel()) {
         printf("[AI] Model loaded from %s (%.1f MB)\n", m_modelPath.c_str(),
                serializedSize() / 1048576.0);
@@ -69,6 +73,10 @@ AISystem::~AISystem() { saveModel(); }
 void AISystem::beginTurn() {
     m_turn++;
     m_decisionsThisTurn = 0;
+    // Landings are counted per turn and accumulated into every open reward
+    // window, exactly like rebellions — so the tally has to be cleared here,
+    // not when it is read.
+    m_landingsThisTurn.clear();
     refreshStats();
     // Baseline for NEXT turn's "did I lose ground?" delta. Recorded here, after
     // refreshStats has consumed the previous baseline, and NOT in the endTurn
@@ -241,6 +249,29 @@ void AISystem::refreshStats() {
             }
         }
     }
+    // Standing agreements, deduplicated across both directions of the relation
+    // graph. Counted here rather than at reward time because the politics
+    // module is judged on how many it is holding, and rescanning the ISO-keyed
+    // relations once per settled experience would be a scan per country turn.
+    {
+        std::unordered_map<int, std::unordered_set<int>> pactWith;
+        for (auto& [isoA, targets] : g.m_relations) {
+            int a = g.cidForIso(isoA);
+            if (a < 0) continue;
+            for (auto& [isoB, rel] : targets) {
+                if (!rel.alliance && !rel.nonAggression && !rel.guarantee) continue;
+                int b = g.cidForIso(isoB);
+                if (b < 0 || b == a) continue;
+                pactWith[a].insert(b);
+                pactWith[b].insert(a);   // a pact recorded on one row binds both
+            }
+        }
+        for (auto& [cid, st] : m_stats) {
+            auto it = pactWith.find(cid);
+            if (it != pactWith.end()) st.pacts = (int)it->second.size();
+        }
+    }
+
     for (auto& [cid, st] : m_stats) {
         auto warIt = m_warWith.find(cid);
         if (warIt == m_warWith.end() || warIt->second.empty()) continue;
@@ -254,6 +285,43 @@ void AISystem::refreshStats() {
                     if (aw->second.count(e)) { shares = true; break; }
             if (shares) st.coBelligerents++;
             else st.idleAllies++;
+        }
+    }
+
+    // ── Minorities, per country ──
+    // Only provinces that actually have minorities are visited, and each
+    // distinct group is measured once per country rather than once per
+    // province — getMinorityAlignmentTrend walks every policy category, so the
+    // per-province version of this would be the same answer computed dozens of
+    // times for a country with a widespread group.
+    {
+        std::unordered_map<int, std::unordered_set<std::string>> byCountry;
+        for (auto& [pid, groups] : g.m_provinceMinorities) {
+            int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
+                            ? g.m_provinceCountryLookup[pid] : 0;
+            if (owner <= 0 || owner >= Game::SPC_CID) continue;
+            for (auto& mg : groups) byCountry[owner].insert(mg.name);
+        }
+        for (auto& [cid, names] : byCountry) {
+            auto sIt = m_stats.find(cid);
+            if (sIt == m_stats.end() || names.empty()) continue;
+            CountryStat& st = sIt->second;
+            st.minorities = (int)names.size();
+            float alignSum = 0, trendSum = 0, costSum = 0;
+            for (const std::string& name : names) {
+                const float a = g.getMinorityAlignment(cid, name);
+                alignSum += a;
+                trendSum += g.getMinorityAlignmentTrend(cid, name);
+                if (a < st.worstAlignment) { st.worstAlignment = a; st.worstMinority = name; }
+                for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                    const int oi = g.ethnicPolicyOption(cid, name, ci);
+                    if (oi >= 0 && oi < (int)g.m_ethnicPolicyCategories[ci].options.size())
+                        costSum += g.m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
+                }
+            }
+            st.meanAlignment = alignSum / names.size();
+            st.minorityTrend = trendSum / names.size();
+            st.minorityCost = costSum;
         }
     }
 
@@ -517,8 +585,39 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // politics module can see the benefit of a pact and never the bill.
     f[74] = g.warWearinessOf(cid) / Game::WAR_WEARINESS_MAX;
 
-    // 75-87: spare. 80-82 and 88-94 are request context, written only by
-    // decideDiplomacy; they stay zero on an ordinary turn.
+    // ── What the fleet costs (75-76) ──
+    // f[5] is the navy's share of EXPENSES, which says nothing about whether
+    // the country can afford it — a country with no other outgoings reads 1.0
+    // there while paying almost nothing. What the scrap action needs is the
+    // bill measured against income, and whether the fleet has anything to do.
+    f[75] = inc.total > 1.0f ? std::min(1.0f, inc.navyExpenses / inc.total) : 0.0f;
+    {
+        auto w = m_warWith.find(cid);
+        const bool atWar = (w != m_warWith.end() && !w->second.empty());
+        const int ships = st.boats + st.destroyers + st.carriers;
+        f[76] = (!atWar && ships > 0 && st.navalTargets == 0 &&
+                 st.navalWarTargets == 0) ? 1.0f : 0.0f;
+    }
+
+    // ── Minorities (77-79, 85-86) ──
+    // f[24] samples raw rebellion chance, which is the SYMPTOM. These are the
+    // cause the politics module can actually act on: how the groups living here
+    // feel, whether the current option set is winning them over or driving them
+    // out, and what that costs.
+    f[77] = st.meanAlignment / 100.0f;
+    f[78] = st.minorities > 0 ? st.worstAlignment / 100.0f : 1.0f;
+    f[79] = std::tanh(st.minorityTrend / 5.0f);
+    f[85] = inc.total > 1.0f ? std::min(1.0f, st.minorityCost / inc.total) : 0.0f;
+    f[86] = std::tanh(st.minorities / 4.0f);
+
+    // An empty treasury (87). Treasury and net income are already in f[0] and
+    // f[1], but "has actually run out" is a state with its own consequences —
+    // twenty points of rebellion chance in every province — and a threshold the
+    // net would otherwise have to infer from two continuous inputs.
+    f[87] = g.isBankrupt(cid) ? 1.0f : 0.0f;
+
+    // 80-84 and 88-94 are request context, written only by decideDiplomacy;
+    // they stay zero on an ordinary turn.
     f[95] = 1.0f; // bias
     // Degenerate late-game state (populations/treasuries overflowing float)
     // leaks inf/NaN into features; one NaN input turns every logit NaN and
@@ -529,19 +628,24 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
 
 // ─── Difficulty / sampling ───────────────────────────────
 
+bool AISystem::selfPlayLearning() const {
+    return m_g && m_g->m_aiTraining && !s_evaluating;
+}
+
 void AISystem::difficultyParams(float& temperature, float& epsilon) const {
     // Self-play training ALWAYS explores, whatever the difficulty setting says.
     // Training on Insane (argmax, no randomness) would freeze the policy on
     // its current best guess forever — exploration is what learning eats.
-    if (m_g->m_aiTraining) {
+    if (selfPlayLearning()) {
         temperature = 1.0f;
         // Annealed, not fixed. A flat 10% random forever is a hard ceiling on
         // how good the policy can ever get: one action in ten is a coin flip no
         // matter how much the net has learned, and those flips are also what
         // the value baseline is fitted against. Decays from 15% toward 2% over
-        // the first few million updates, which on a real run is hours, not
-        // turns — so early exploration is untouched.
-        const double progress = (double)totalUpdates() / (double)EPSILON_ANNEAL_UPDATES;
+        // one policy head's lifetime experience — see EPSILON_ANNEAL_SAMPLES
+        // for why it is one head's count and not the nine-net total.
+        const double progress = (double)m_policy[MOD_WAR].updateCount() /
+                                EPSILON_ANNEAL_SAMPLES;
         const float t = (float)std::min(1.0, progress);
         epsilon = EPSILON_START + (EPSILON_FINAL - EPSILON_START) * t;
         return;
@@ -557,11 +661,16 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
 
 int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
                          const std::vector<bool>& valid, float& scoreOut,
-                         int graveAction) {
+                         int graveAction, const std::vector<float>* logitBias) {
     const std::vector<float>& logits = net.forward(feats);
     scoreOut = 0;
     if (logits.empty()) return 0;
     std::vector<float> masked(logits);
+    // Bias BEFORE masking, so a biased action that is invalid stays invalid
+    // rather than climbing back out of -1e9.
+    if (logitBias)
+        for (size_t i = 0; i < masked.size() && i < logitBias->size(); ++i)
+            masked[i] += (*logitBias)[i];
     int validCount = 0;
     for (size_t i = 0; i < masked.size(); ++i) {
         if (i < valid.size() && !valid[i]) masked[i] = -1e9f;
@@ -571,6 +680,10 @@ int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
 
     float temperature, epsilon;
     difficultyParams(temperature, epsilon);
+    // The control group ignores the model entirely. Not "mostly random" — a
+    // benchmark whose baseline occasionally consults the thing being measured
+    // is not a baseline.
+    if (m_randomThisCountry) epsilon = 1.0f;
 
     int a;
     std::uniform_real_distribution<float> d(0.0f, 1.0f);
@@ -596,7 +709,11 @@ int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
             // Self-play is the exact opposite case: the net cannot learn what
             // war is worth unless it sometimes tries one, so exploration stays
             // unrestricted while training.
-            if ((int)i == graveAction && m_g && !m_g->m_aiTraining) continue;
+            // ...but not for the control group. For them the random pool IS
+            // the whole policy, so removing an action from it removes the
+            // action from their repertoire and quietly handicaps the baseline.
+            if ((int)i == graveAction && !selfPlayLearning() && !m_randomThisCountry)
+                continue;
             pool.push_back((int)i);
         }
         if (!pool.empty()) {
@@ -639,6 +756,8 @@ void AISystem::takeTurn(int cid) {
     const CountryStat& st = m_stats[cid];
     if (st.provinces == 0) return;
 
+    m_randomThisCountry = isRandomCountry(cid);
+
     Experience exp;
     buildFeatures(cid, exp.features);
     exp.provinces = st.provinces;
@@ -648,6 +767,9 @@ void AISystem::takeTurn(int cid) {
     exp.netIncome = g.computeCountryIncome(cid).net;
     exp.industrySum = st.industrySum;
     exp.threatened = st.threatenedProvinces;
+    exp.weariness = g.warWearinessOf(cid);
+    exp.minorityAlignment = st.meanAlignment;
+    exp.pacts = st.pacts;
     {
         auto w = m_warWith.find(cid);
         exp.atWar = (w != m_warWith.end() && !w->second.empty());
@@ -674,19 +796,36 @@ void AISystem::takeTurn(int cid) {
     // note on garrisonReflex: holding a threatened border is not a choice the
     // policy should be gambling on once every eight turns.
     garrisonReflex(cid);
+    // Peacetime housekeeping, same reasoning: neither of these is a gamble.
+    redeployReflex(cid);
+    // Solvency before manpower: austerity cuts things that come back, the
+    // manpower reflex cuts men who do not.
+    austerityReflex(cid);
+    manpowerReflex(cid);
+    // Finish any crossing already under way. Runs BEFORE the navy action is
+    // sampled so that action sees the move orders it has already issued.
+    amphibiousReflex(cid);
 
     validWar(cid, valid);
     // 4 = declare war; see the graveAction note in pickAction.
     a = pickAction(m_policy[MOD_WAR], exp.features, valid, score, /*graveAction=*/4);
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
+    m_declaredUnprovoked = false;
     logDecision(cid, MOD_WAR, a, score, execWar(cid, a));
+    exp.aggressor = m_declaredUnprovoked;
 
     validNavy(cid, valid);
     a = pickAction(m_policy[MOD_NAVY], exp.features, valid, score);
     m_policy[MOD_NAVY].snapshotActs(exp.acts[MOD_NAVY]);
     exp.action[MOD_NAVY] = a; exp.acted[MOD_NAVY] = true;
     logDecision(cid, MOD_NAVY, a, score, execNavy(cid, a));
+
+    // A control-group country's choices are coin flips, so training on them
+    // would be teaching the model to imitate noise. They play; they do not
+    // teach. (Learning is off during evaluation anyway — this makes the
+    // mechanism safe to use anywhere, including a mixed training run.)
+    if (m_randomThisCountry) { m_randomThisCountry = false; return; }
 
     auto& dq = m_pending[cid];
     dq.push_back(std::move(exp));
@@ -738,6 +877,37 @@ void AISystem::validPolitics(int cid, std::vector<bool>& v) {
     // kept proposing forever.
     bool hasNeighbor = !m_stats[cid].frontiers.empty();
     v[5] = v[6] = v[7] = hasNeighbor && diploBudgetReady(cid);
+
+    const CountryStat& st = m_stats[cid];
+    // A calming policy is worth offering only when there is something to calm.
+    // Which policies qualify is decided in exec, which already pays for a scan
+    // of m_allPolicies; repeating that scan in the mask would cost it on every
+    // country's turn instead of only on the turns the action is chosen.
+    v[8] = !g.m_allPolicies.empty() &&
+           (st.meanAlignment < 60.0f || g.m_rebellionsThisTurnByCid[cid] > 0 ||
+            g.warWearinessOf(cid) > 2.0f);
+
+    // Minority policy: only where there are minorities, and only in a direction
+    // that still has somewhere to go.
+    ensureTrendBounds();
+    v[9]  = st.minorities > 0 && st.minorityTrend < m_trendMax - 1e-3f;
+    v[10] = st.minorities > 0 && st.minorityTrend > m_trendMin + 1e-3f;
+}
+
+void AISystem::ensureTrendBounds() const {
+    if (m_trendBoundsReady) return;
+    m_trendMin = m_trendMax = 0.0f;
+    for (const auto& cat : m_g->m_ethnicPolicyCategories) {
+        if (cat.options.empty()) continue;
+        float lo = cat.options[0].alignmentPerTurn, hi = lo;
+        for (const auto& o : cat.options) {
+            lo = std::min(lo, o.alignmentPerTurn);
+            hi = std::max(hi, o.alignmentPerTurn);
+        }
+        m_trendMin += lo;
+        m_trendMax += hi;
+    }
+    m_trendBoundsReady = true;
 }
 
 void AISystem::validWar(int cid, std::vector<bool>& v) {
@@ -821,10 +991,16 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
             if (g.hasResearched(s.node, cid) && c->treasury >= s.cost) { haveShell = true; break; }
     }
     v[5] = anyWarFrontier && haveShell;
-    // Offer ceasefire ONLY when not dominantly winning. A country that
-    // outguns all its war enemies presses the attack instead of white-peacing,
-    // so wars actually reach a conclusion instead of endless skirmish-then-
-    // ceasefire (which left every country alive forever).
+    // Offer ceasefire unless we are so far ahead that the war is nearly won.
+    //
+    // The bar used to be 1.2x, i.e. "only sue for peace while roughly level or
+    // losing", on the reasoning that a winner should press on so wars reach a
+    // conclusion. What it actually produced was long wars: the moment a country
+    // pulled ahead the only exit left was total conquest, and conquest is slow.
+    // 1.6x keeps that intent for a genuinely decisive lead while letting a
+    // country that is merely ahead cash the advantage in — and when it is ahead
+    // it does not offer a white peace, it offers terms (see the posture
+    // selection below), so peace stays worth something.
     // ...and only when there is an enemy we are actually allowed to talk to.
     // The cooldown lives in exec, so the mask offered "sue for peace" to
     // countries with no war at all, or none off cooldown: "ceasefire: no war to
@@ -840,7 +1016,7 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
                     if (diploReady(cid, ocid)) anyReachable = true;
                 }
             }
-    v[6] = anyWar && anyReachable && st.army < (long long)(warEnemyArmy * 1.2);
+    v[6] = anyWar && anyReachable && st.army < (long long)(warEnemyArmy * 1.6);
     // Staging needs an allied crossing that leads somewhere and troops to send.
     v[7] = !st.staging.empty() && st.army > 500;
 }
@@ -858,9 +1034,41 @@ void AISystem::validNavy(int cid, std::vector<bool>& v) {
     // no invasion target anywhere — ~90% of embarkations never produced a
     // landing, so the troops were simply deleted from the land army. That bled
     // armies on every map type and is why the war module sat on "hold".
-    v[3] = st.maxPort >= 1 && st.army > 1000 &&
-           (st.navalTargets > 0 || st.navalWarTargets > 0);
+    // Embark needs a shore we are ALREADY AT WAR WITH, not merely one we could
+    // declare on. navalTargets counts countries a war has not been declared
+    // against yet, and loading troops for a war that has not started is exactly
+    // the churn that produced 1,372 embarkations and 121 landings: the cargo
+    // had nowhere to go, so it sailed about and came home. The pipeline that
+    // works reads declare naval war -> navalWarTargets -> embark -> the
+    // amphibious reflex sails and lands it.
+    v[3] = st.maxPort >= 1 && st.army > 1000 && st.navalWarTargets > 0;
     v[4] = st.boatsWithCrew > 0;
+
+    // ── Scrap: stop paying for a fleet that is not earning it ──
+    //
+    // WARSHIPS ONLY, and that is not an oversight. Upkeep (Game_Economy.cpp) is
+    // 25 a turn for a carrier and 10 for a destroyer, plus a crew charge; a
+    // transport with no cargo is charged nothing at all, so scrapping one saves
+    // exactly nothing and only costs the country the ability to move troops
+    // later. A crewed boat is never scrappable at any price: processScrapShips
+    // reassigns the hull to UNC_CID and the men aboard simply cease to exist.
+    //
+    // 25 a turn is real money at this scale — a small country's whole gross
+    // income was measured at 18 — so an idle carrier is a country that cannot
+    // afford industry because it is paying for a ship with nowhere to sail.
+    const bool haveScrappable = st.destroyers + st.carriers > 0;
+    bool atWar = false;
+    {
+        auto w = m_warWith.find(cid);
+        atWar = (w != m_warWith.end() && !w->second.empty());
+    }
+    CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+    const bool costly = inc.total > 1.0f && inc.navyExpenses > inc.total * 0.15f;
+    const bool broke  = inc.net < 0.0f;
+    // Nothing to fight, nowhere to sail, and more than one hull to pay for.
+    const bool idleFleet = !atWar && st.navalTargets == 0 &&
+                           st.navalWarTargets == 0 && ships > 1;
+    v[5] = haveScrappable && (costly || broke || idleFleet);
 }
 
 // ─── Action execution ────────────────────────────────────
@@ -1066,17 +1274,26 @@ std::string AISystem::execEconomy(int cid, int action) {
 std::string AISystem::execPolitics(int cid, int action) {
     Game& g = *m_g;
     switch (action) {
-        case 1: { // enact the policy closest to this country's compass
+        case 1: { // enact the policy that best fits this country's politics
             const Country* c = g.m_countries.getCountry(cid);
             if (!c) return "policy: no country";
-            const Policy* best = nullptr; float bestDist = 1e9f;
+            // Compass fit was the ONLY criterion here, which made the choice a
+            // deterministic lookup the model could not steer and, worse, one
+            // that ignored the price: an enactable policy the treasury could
+            // technically afford was picked over a free one that did the same
+            // job, every turn, forever. Fit still dominates — a government does
+            // not enact things it disagrees with — but a cheap policy now wins
+            // ties, which over a long game is the difference between a budget
+            // and a slow bleed.
+            const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+            const Policy* best = nullptr; float bestScore = -1e9f;
             for (auto& p : g.m_allPolicies) {
                 if (!g.canCountryEnactPolicy(cid, p)) continue;
-                float dx = p.econShift, dy = p.socShift;
-                // Prefer policies pushing toward the country's own leaning
-                float d = std::fabs(c->compassEconomic / 25.0f - dx) +
-                          std::fabs(c->compassSocial / 25.0f - dy);
-                if (d < bestDist) { bestDist = d; best = &p; }
+                const float d = std::fabs(c->compassEconomic / 25.0f - p.econShift) +
+                                std::fabs(c->compassSocial / 25.0f - p.socShift);
+                float score = -d;
+                if (inc.total > 1.0f) score -= 3.0f * (p.costPerTurn / inc.total);
+                if (score > bestScore) { bestScore = score; best = &p; }
             }
             if (!best) return "policy: none enactable";
             g.enactPolicy(cid, best->id);
@@ -1166,6 +1383,101 @@ std::string AISystem::execPolitics(int cid, int action) {
             diploCoolDown(cid, target);
             m_trainStats.pactsProposed++;
             return TextFormat("%s -> %s", req, ec->name.c_str());
+        }
+        case 8: { // enact whatever calms the country down
+            // The counterpart to case 1. That one asks "what do we believe in";
+            // this asks "what stops the country coming apart", which is a
+            // different question with a different answer, and the module had no
+            // way to express it: its only unrest lever was the pacification
+            // slider, which is money spent to suppress a symptom every turn
+            // rather than a policy that removes the cause once.
+            const Policy* best = nullptr; float bestScore = 0.0f;
+            const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+            for (auto& p : g.m_allPolicies) {
+                if (!g.canCountryEnactPolicy(cid, p)) continue;
+                // publicOpinionShift moves provinces toward the government,
+                // which is exactly what the political half of unrest measures.
+                float score = 2.0f * p.effect.unrestReduction
+                            + 1.0f * std::fabs(p.effect.publicOpinionShift)
+                            + 0.5f * p.effect.minorityGrowthRate;
+                if (score <= 0.0f) continue;
+                if (inc.total > 1.0f) score -= 2.0f * (p.costPerTurn / inc.total);
+                if (score > bestScore) { bestScore = score; best = &p; }
+            }
+            if (!best) return "calm: no policy would help";
+            g.enactPolicy(cid, best->id);
+            m_trainStats.calmingPolicies++;
+            return "enact calming policy " + best->id;
+        }
+        case 9: case 10: { // conciliate / repress a minority
+            // ONE CATEGORY PER TURN, and never by index.
+            //
+            // The option lists are not ordered consistently — "Harsh, Medium,
+            // Light" runs one way and "Full Autonomy, Partial, Suppression" the
+            // other — so stepping an index would liberalise one category and
+            // tighten another in the same breath. alignmentPerTurn is the thing
+            // that actually means "more or less conciliatory", so the step is
+            // taken in that.
+            const bool conciliate = (action == 9);
+            const CountryStat& st = m_stats[cid];
+            if (st.minorities <= 0) return "minority: none here";
+
+            // Conciliation goes to whoever is closest to revolt; repression to
+            // whoever is costing the most, because saving that money is the
+            // only reason to do it.
+            std::string target = st.worstMinority;
+            if (!conciliate) {
+                float worstCost = -1.0f;
+                std::unordered_set<std::string> seen;
+                for (int pid : g.provincesOf(cid)) {
+                    auto mIt = g.m_provinceMinorities.find(pid);
+                    if (mIt == g.m_provinceMinorities.end()) continue;
+                    for (auto& mg : mIt->second) {
+                        if (!seen.insert(mg.name).second) continue;
+                        float cost = 0;
+                        for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                            const int oi = g.ethnicPolicyOption(cid, mg.name, ci);
+                            if (oi >= 0 && oi < (int)g.m_ethnicPolicyCategories[ci].options.size())
+                                cost += g.m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
+                        }
+                        if (cost > worstCost) { worstCost = cost; target = mg.name; }
+                    }
+                }
+            }
+            if (target.empty()) return "minority: no target";
+
+            // Best single change: the largest move in the wanted direction per
+            // unit of extra cost. Ties on cost break toward the bigger move.
+            const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+            const float headroom = std::max(0.0f, inc.total - inc.expenses);
+            size_t bestCat = 0; int bestOpt = -1; float bestScore = 0.0f;
+            for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                const auto& cat = g.m_ethnicPolicyCategories[ci];
+                const int cur = g.ethnicPolicyOption(cid, target, ci);
+                if (cur < 0 || cur >= (int)cat.options.size()) continue;
+                const float curAlign = cat.options[cur].alignmentPerTurn;
+                const float curCost  = cat.options[cur].costPerTurn;
+                for (size_t oi = 0; oi < cat.options.size(); ++oi) {
+                    if ((int)oi == cur) continue;
+                    const float dAlign = cat.options[oi].alignmentPerTurn - curAlign;
+                    const float dCost  = cat.options[oi].costPerTurn - curCost;
+                    if (conciliate ? dAlign <= 0.0f : dAlign >= 0.0f) continue;
+                    // Never sign up for something we cannot pay for.
+                    if (dCost > headroom) continue;
+                    const float gain = conciliate ? dAlign : -dAlign;
+                    const float score = gain / (1.0f + std::max(0.0f, dCost));
+                    if (score > bestScore) { bestScore = score; bestCat = ci; bestOpt = (int)oi; }
+                }
+            }
+            if (bestOpt < 0)
+                return conciliate ? "conciliate: nothing affordable" : "repress: already hardest";
+            g.setEthnicPolicyOption(cid, target, bestCat, bestOpt);
+            if (conciliate) m_trainStats.minorityConciliations++;
+            else            m_trainStats.minorityRepressions++;
+            return TextFormat("%s %s: %s -> %s", conciliate ? "conciliate" : "repress",
+                              target.c_str(),
+                              g.m_ethnicPolicyCategories[bestCat].displayName.c_str(),
+                              g.m_ethnicPolicyCategories[bestCat].options[bestOpt].name.c_str());
         }
         default: return "politics hold";
     }
@@ -1267,7 +1579,12 @@ std::string AISystem::execWar(int cid, int action) {
             return TextFormat("reinforce %d province(s), worst prov %d", issued, ranked[0].second);
         }
         case 3: { // attack the weakest adjacent at-war enemy province we can beat
-            float atkMod = 1.0f; // getTotalEffect is global-player; stay conservative
+            // Our own attack research. This was pinned at 1.0 with the note
+            // "getTotalEffect is global-player; stay conservative" — true at the
+            // time, and it meant the AI planned every assault as if its own
+            // doctrine research did not exist, so it declined attacks it would
+            // in fact have won. getTotalEffect now takes a country.
+            const float atkMod = 1.0f + g.getTotalEffect("armyAtkPct", cid) / 100.0f;
             int bestFrom = -1, bestTo = -1; float bestMargin = 1.05f;
             for (auto& fr : st.frontiers) {
                 if (!atWarWith(fr.enemyCid)) continue;
@@ -1288,7 +1605,10 @@ std::string AISystem::execWar(int cid, int action) {
                     auto ind = g.m_provinceIndustry.find(nid);
                     float fort = ind != g.m_provinceIndustry.end() ? (float)ind->second.fortification : 0.0f;
                     float atk = myG * 0.75f * atkMod;
-                    float def = defG * (1.0f + fort * 0.1f);
+                    // Mirrors processArmyMovement: fortification AND the
+                    // defender's own defensive research.
+                    float def = defG * (1.0f + fort * 0.1f) *
+                                (1.0f + g.getTotalEffect("armyDefPct", nOwner) / 100.0f);
                     float margin = def > 0 ? atk / def : 10.0f;
                     // Claimed provinces are priority targets: taking one both
                     // expands us AND satisfies the claim.
@@ -1322,7 +1642,10 @@ std::string AISystem::execWar(int cid, int action) {
                     auto ind = g.m_provinceIndustry.find(nid);
                     float fort = ind != g.m_provinceIndustry.end() ? (float)ind->second.fortification : 0.0f;
                     float atk = myG * 0.75f * atkMod;
-                    float def = defG * (1.0f + fort * 0.1f);
+                    // Mirrors processArmyMovement: fortification AND the
+                    // defender's own defensive research.
+                    float def = defG * (1.0f + fort * 0.1f) *
+                                (1.0f + g.getTotalEffect("armyDefPct", nOwner) / 100.0f);
                     float margin = def > 0 ? atk / def : 10.0f;
                     auto clIt = g.m_claimsByProvince.find(nid);
                     if (clIt != g.m_claimsByProvince.end())
@@ -1346,6 +1669,36 @@ std::string AISystem::execWar(int cid, int action) {
         }
         case 4: { // declare war: prefer neighbours holding OUR claimed land,
                   // then the weakest beatable one. Claims are the war goal.
+            //
+            // RESTRAINT, WITHOUT PACIFISM.
+            //
+            // The AI declared war whenever it could win a fight, which is not
+            // the same as whenever war is a good idea: it opened fronts while
+            // already fighting two, at parity, on neighbours it had no claim
+            // to, with the home front in revolt. The gates below say when NOT
+            // to, and every one of them is deliberately blind to CLAIMED land
+            // -- retaking territory it claims is the AI's whole war goal and
+            // stays cheap. What gets harder is opportunistic conquest of land
+            // it has no argument for.
+            //
+            // These are heuristics rather than learning, on purpose: the model
+            // is trained and shipped, so "be less aggressive" cannot wait for a
+            // retrain, and a gate the policy cannot talk its way past is the
+            // only kind that holds.
+            int myWars = 0;
+            if (relIt != g.m_relations.end())
+                for (auto& [oiso, r] : relIt->second)
+                    if (r.war) myWars++;
+
+            // Already fighting two? Nothing is worth a third front.
+            if (myWars >= AI_MAX_CONCURRENT_WARS)
+                return "war: already fighting " + std::to_string(myWars);
+
+            // A country coming apart at home does not go looking for more.
+            const float weariness = g.warWearinessOf(cid);
+            if (weariness >= AI_WAR_WEARINESS_BLOCK)
+                return TextFormat("war: too much unrest at home (%.1f)", weariness);
+
             // Which neighbours hold provinces we claim?
             std::unordered_set<int> claimTargets;
             auto myClaims = g.m_claims.find(c.isoA3);
@@ -1359,29 +1712,38 @@ std::string AISystem::execWar(int cid, int action) {
             int target = -1; long long targetArmy = -1;
             bool targetClaimed = false;
             std::unordered_set<int> seen;
+            std::unordered_set<int> napBlocked;   // wanted, but under a pact
             for (auto& fr : st.frontiers) {
                 if (!seen.insert(fr.enemyCid).second) continue;
                 const Country* ec = g.m_countries.getCountry(fr.enemyCid);
                 if (!ec) continue;
-                bool friendly = false, war = false;
+                bool friendly = false, war = false, nap = false;
                 if (relIt != g.m_relations.end()) {
                     auto rr = relIt->second.find(ec->isoA3);
                     if (rr != relIt->second.end()) {
                         war = rr->second.war;
-                        // NAP is breakable (declareWar clears it); allies and
-                        // guaranteed states stay off-limits.
                         friendly = rr->second.alliance || rr->second.guarantee;
+                        nap = rr->second.nonAggression;
                     }
                 }
                 if (war || friendly) continue;
+                // A NAP does not make this target off-limits, but it does mean
+                // the pact has to be broken FIRST -- see the break-then-declare
+                // note where the action is issued. The target is still chosen
+                // here so the AI can want a war it is not yet allowed to start.
+                if (nap) napBlocked.insert(fr.enemyCid);
                 long long ea = m_stats[fr.enemyCid].army;
                 bool claimed = claimTargets.count(fr.enemyCid) > 0;
-                // Relaxed superiority gate — a hard 1.3x bar meant matched
-                // late-game borders were never attackable, so the model could
-                // never even learn aggression at parity. Reconquering CLAIMED
-                // land is worth more risk (it removes unrest + satisfies the
-                // claim), so the bar drops further there.
-                double bar = claimed ? 0.85 : 1.05;
+                // Reconquering CLAIMED land stays cheap: it removes unrest and
+                // satisfies the claim, and it is the expansion that is supposed
+                // to happen. Attacking a neighbour it has NO claim on now needs
+                // a real edge rather than a coin-flip one -- 1.05 meant "very
+                // slightly ahead", which is why the map was permanently on
+                // fire. Land is still taken; it just has to be worth taking.
+                double bar = claimed ? AI_WAR_BAR_CLAIMED : AI_WAR_BAR_UNCLAIMED;
+                // Opening a SECOND war costs more again, claim or no claim: one
+                // front at a time unless the second is genuinely easy.
+                if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
                 if (st.army < (long long)(ea * bar) + 200) continue;
                 // A claimed neighbour beats any unclaimed one; within the same
                 // class, weakest wins.
@@ -1407,21 +1769,30 @@ std::string AISystem::execWar(int cid, int action) {
                     if (landNbr.count(oc) || !seenC.insert(oc).second) continue;
                     const Country* ec2 = g.m_countries.getCountry(oc);
                     if (!ec2) continue;
-                    bool friendly = false, war = false;
+                    bool friendly = false, war = false, nap2 = false;
                     if (relIt != g.m_relations.end()) {
                         auto rr = relIt->second.find(ec2->isoA3);
                         if (rr != relIt->second.end()) {
                             war = rr->second.war;
                             friendly = rr->second.alliance || rr->second.guarantee;
+                            nap2 = rr->second.nonAggression;
                         }
                     }
                     if (war || friendly) continue;
+                    // Same rule as the land path: an overseas pact is broken
+                    // first, not sailed through. A surprise amphibious landing
+                    // on a country you have a pact with is the same violation,
+                    // and was reachable by exactly the same route.
+                    if (nap2) napBlocked.insert(oc);
                     long long ea = m_stats[oc].army;
                     bool claimed = claimTargets.count(oc) > 0;
                     // Amphibious assaults are costlier than a land push (troops
-                    // ferry in piecemeal), so demand a clearer edge unless the
-                    // land is claimed — reconquest is worth the risk.
-                    double bar = claimed ? 1.0 : 1.3;
+                    // ferry in piecemeal), so this already demanded a clearer
+                    // edge. It carries the same second-front surcharge as the
+                    // land path, or restraint would just be a matter of sailing
+                    // round it.
+                    double bar = claimed ? 1.0 : AI_WAR_BAR_UNCLAIMED_NAVAL;
+                    if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
                     if (st.army < (long long)(ea * bar) + 500) continue;
                     if (navalTarget < 0 || (claimed && !navalClaimed) ||
                         (claimed == navalClaimed && ea < bestArmy)) {
@@ -1430,16 +1801,43 @@ std::string AISystem::execWar(int cid, int action) {
                 }
                 if (navalTarget >= 0) {
                     const Country* ec2 = g.m_countries.getCountry(navalTarget);
+                    if (napBlocked.count(navalTarget)) {
+                        g.m_pendingDiplomaticActions.push_back({c.isoA3, ec2->isoA3, "break_nap", 1});
+                        return std::string("break NAP with ") + ec2->name + " (naval war next turn)";
+                    }
                     g.m_pendingDiplomaticActions.push_back({c.isoA3, ec2->isoA3, "declare_war", 1});
                     m_trainStats.warsDeclared++;
+                    m_declaredUnprovoked = !navalClaimed;
                     return std::string("declare NAVAL war on ") + ec2->name +
                            (navalClaimed ? " (claims)" : " (overseas)");
                 }
             }
             if (target < 0) return "war: no suitable target";
             const Country* ec = g.m_countries.getCountry(target);
+
+            // A NON-AGGRESSION PACT IS BROKEN BEFORE IT IS IGNORED.
+            //
+            // declareWar() clears the pact as a side effect, so issuing the
+            // declaration straight away "worked" -- and meant the AI could
+            // attack through a pact in the same turn it was still holding. The
+            // player cannot do that: their Declare War button does not exist
+            // while a NAP stands (Game_Render.cpp), they have to break it and
+            // wait. The AI was simply exempt from a rule the player is held to.
+            //
+            // Breaking it here instead costs the AI one turn and gives the
+            // other side the turn of warning the pact is FOR. The target is
+            // still chosen by the same logic, so this is not the AI refusing to
+            // fight -- the earlier attempt to fix this by treating a NAP as
+            // off-limits outright is what froze the late game, because every
+            // border ended up pacted and nothing could ever be declared again.
+            if (napBlocked.count(target)) {
+                g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "break_nap", 1});
+                return std::string("break NAP with ") + ec->name + " (war next turn)";
+            }
+
             g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "declare_war", 1});
             m_trainStats.warsDeclared++;
+            m_declaredUnprovoked = !targetClaimed;
             return std::string("declare war on ") + ec->name + (targetClaimed ? " (claims)" : "");
         }
         case 5: { // artillery: best researched ammo on an adjacent enemy province
@@ -1682,6 +2080,390 @@ void AISystem::garrisonReflex(int cid) {
     }
 }
 
+// Troops sitting in the interior are troops doing nothing.
+//
+// The AI could only ever move a garrison one hop into an ADJACENT frontier
+// province, and only while at war (garrisonReflex returns early otherwise).
+// So an army raised in a safe heartland province stayed in that province for
+// the rest of the game, however far from any border it was -- the AI behaved
+// as though moving inside its own country required someone to fight.
+//
+// This walks a distance-to-border field outward: every province gets its hop
+// count to the nearest frontier, and any garrison deeper than one hop sends a
+// slice to whichever neighbour is closer to the edge. Over a few turns that
+// drains the interior toward the borders without anyone declaring anything.
+void AISystem::redeployReflex(int cid) {
+    Game& g = *m_g;
+    const CountryStat& st = m_stats[cid];
+    if (st.provinces < 2 || st.army <= 0) return;
+
+    const std::vector<int>& own = g.provincesOf(cid);
+    if (own.size() < 2) return;
+
+    auto garrisonOf = [&](int pid) -> long long {
+        auto it = g.m_provinceArmies.find(pid);
+        if (it == g.m_provinceArmies.end()) return 0;
+        long long n = 0;
+        for (auto& u : it->second) if (u.countryId == cid) n += u.count;
+        return n;
+    };
+
+    // Hops to the nearest province of ours that touches somebody else.
+    std::unordered_map<int, int> depth;
+    std::vector<int> frontier;
+    for (auto& fr : st.frontiers) {
+        if (depth.emplace(fr.pid, 0).second) frontier.push_back(fr.pid);
+    }
+    // A country with no land neighbour still wants its troops near the coast,
+    // but there is no "toward" to move them in -- leave it alone.
+    if (frontier.empty()) return;
+    for (size_t qi = 0; qi < frontier.size(); ++qi) {
+        int pid = frontier[qi];
+        int d = depth[pid];
+        if (d >= 8) continue;                     // deep enough; stop walking
+        auto nIt = g.m_provinceNeighbors.find(pid);
+        if (nIt == g.m_provinceNeighbors.end()) continue;
+        for (int nid : nIt->second) {
+            if (nid < 0 || nid >= (int)g.m_provinceCountryLookup.size()) continue;
+            if (g.m_provinceCountryLookup[nid] != cid) continue;
+            if (depth.emplace(nid, d + 1).second) frontier.push_back(nid);
+        }
+    }
+
+    int issued = 0;
+    for (int pid : own) {
+        if (issued >= MAX_GARRISON_ORDERS) break;
+        auto dIt = depth.find(pid);
+        if (dIt == depth.end() || dIt->second == 0) continue;   // already at the edge
+        long long here = garrisonOf(pid);
+        if (here < 400) continue;               // not worth splitting further
+        bool busy = false;
+        for (auto& mo : g.m_pendingMoveOrders)
+            if (mo.fromProvince == pid && mo.countryId == cid) { busy = true; break; }
+        if (busy) continue;
+        // Step toward the border: any neighbour of ours strictly closer to it.
+        int best = -1, bestDepth = dIt->second;
+        for (int nid : g.m_provinceNeighbors[pid]) {
+            if (nid < 0 || nid >= (int)g.m_provinceCountryLookup.size()) continue;
+            if (g.m_provinceCountryLookup[nid] != cid) continue;
+            auto nd = depth.find(nid);
+            if (nd != depth.end() && nd->second < bestDepth) { bestDepth = nd->second; best = nid; }
+        }
+        if (best < 0) continue;
+        // Half, not all: a province emptied completely invites a revolt and
+        // leaves nothing to slow an enemy that lands behind the line.
+        g.m_pendingMoveOrders.push_back({pid, best, 50, cid});
+        ++issued;
+    }
+    if (issued && g.m_config.aiDebug) {
+        const Country* c = g.m_countries.getCountry(cid);
+        printf("[AI] t%d %s [redeploy] %d interior stack(s) sent toward the border\n",
+               m_turn, c ? c->name.c_str() : "?", issued);
+    }
+}
+
+// An army you cannot pay for is a bankruptcy with extra steps.
+//
+// The AI could recruit but had no way to stand anyone down, so a country that
+// over-raised early carried that upkeep for the rest of the game and slid into
+// the bankruptcy penalties instead of trimming. Disbanding is maintenance, not
+// strategy, so it is a reflex: only when income is actually negative, only
+// from the safest provinces, and never below a floor that would leave the
+// country undefended.
+void AISystem::austerityReflex(int cid) {
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+
+    const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+    if (inc.net >= 0.0f) return;   // paying its way; nothing to do
+
+    // How long the treasury lasts at this rate. Already empty counts as no
+    // runway at all, which is the case the bankruptcy cascade is handling this
+    // same turn — cutting here as well just gets there sooner and cheaper.
+    const double burn = -(double)inc.net;
+    const double runway = burn > 1e-6 ? c->treasury / burn : 1e9;
+    if (runway > AI_AUSTERITY_RUNWAY_TURNS && !g.isBankrupt(cid)) return;
+
+    const char* what = nullptr;
+
+    // ── 1. Discretionary budgets ──
+    // Research and pacification are sliders. They come down first because they
+    // come back up for free the moment income recovers.
+    auto raIt = g.m_countryResearchAllocation.find(cid);
+    if (!what && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.01f) {
+        raIt->second = std::max(0.0f, raIt->second - 0.15f);
+        what = "cut research funding";
+    }
+    auto pacIt = g.m_countryPacification.find(cid);
+    if (!what && pacIt != g.m_countryPacification.end() && pacIt->second > 0.01f) {
+        // Pacification is unrest suppression, and unrest is exactly what an
+        // empty treasury causes — so this is cut second-to-last among the
+        // budgets and never below a quarter while anything else remains.
+        pacIt->second = std::max(0.25f, pacIt->second - 0.125f);
+        if (pacIt->second < 0.25f + 1e-3f && inc.policyCosts <= 0.0f) what = nullptr;
+        else what = "cut pacification";
+    }
+
+    // ── 2. Repeal the costliest doctrine ──
+    if (!what && inc.policyCosts > 0.0f) {
+        auto apIt = g.m_countryActivePolicyIndices.find(cid);
+        if (apIt != g.m_countryActivePolicyIndices.end()) {
+            int bestIdx = -1, bestCost = 0;
+            for (int idx : apIt->second) {
+                if (idx < 0 || idx >= (int)g.m_activePolicies.size()) continue;
+                const ActivePolicy& ap = g.m_activePolicies[idx];
+                if (ap.countryId != cid || ap.turnsRemaining < 0) continue;
+                for (const auto& p : g.m_allPolicies)
+                    if (p.id == ap.policyId) {
+                        if (p.costPerTurn > bestCost) { bestCost = p.costPerTurn; bestIdx = idx; }
+                        break;
+                    }
+            }
+            if (bestIdx >= 0) { g.cancelPolicy(bestIdx); what = "repealed a doctrine"; }
+        }
+    }
+
+    // ── 3. Step one minority settlement back ──
+    // The cheapest single reduction, not the whole bill: this is trimming, and
+    // alignment lost here takes a long time to earn back.
+    if (!what && inc.minorityCosts > 0.0f) {
+        std::unordered_set<std::string> seen;
+        std::string bestName; size_t bestCat = 0; int bestOpt = -1; float bestSaving = 0.0f;
+        for (int pid : g.provincesOf(cid)) {
+            auto mIt = g.m_provinceMinorities.find(pid);
+            if (mIt == g.m_provinceMinorities.end()) continue;
+            for (auto& mg : mIt->second) {
+                if (!seen.insert(mg.name).second) continue;
+                for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                    const auto& cat = g.m_ethnicPolicyCategories[ci];
+                    const int cur = g.ethnicPolicyOption(cid, mg.name, ci);
+                    if (cur < 0) continue;
+                    const float curCost = cat.options[cur].costPerTurn;
+                    if (curCost <= 0.0f) continue;
+                    for (size_t oi = 0; oi < cat.options.size(); ++oi) {
+                        const float saving = curCost - cat.options[oi].costPerTurn;
+                        if (saving <= 0.0f) continue;
+                        // Most money saved per point of goodwill given up.
+                        const float lost = std::max(0.1f, cat.options[cur].alignmentPerTurn -
+                                                          cat.options[oi].alignmentPerTurn);
+                        const float score = saving / lost;
+                        if (score > bestSaving) {
+                            bestSaving = score; bestName = mg.name;
+                            bestCat = ci; bestOpt = (int)oi;
+                        }
+                    }
+                }
+            }
+        }
+        if (bestOpt >= 0) {
+            g.setEthnicPolicyOption(cid, bestName, bestCat, bestOpt);
+            what = "trimmed a minority programme";
+        }
+    }
+
+    // ── 4. Pay off a warship ──
+    // Last, because it is the first thing here that destroys something. Crewed
+    // transports are never touched: the men aboard would go with the hull.
+    if (!what && inc.navyExpenses > 0.0f) {
+        int bestIdx = -1; float bestCost = 0.0f;
+        for (size_t i = 0; i < g.m_ships.size(); ++i) {
+            const auto& s = g.m_ships[i];
+            if (s.countryId != cid || s.crew > 0) continue;
+            const float cost = s.type == "carrier" ? 25.0f
+                             : (s.type == "destroyer" ? 10.0f : 0.0f);
+            if (cost <= bestCost) continue;
+            bool queued = false;
+            for (auto& ss : g.m_pendingScrapShips)
+                if (ss.shipIndex == (int)i) { queued = true; break; }
+            if (queued) continue;
+            bestCost = cost; bestIdx = (int)i;
+        }
+        if (bestIdx >= 0) {
+            g.m_pendingScrapShips.push_back({bestIdx});
+            m_trainStats.shipsScrapped++;
+            what = "scrapped a warship";
+        }
+    }
+
+    if (what) m_trainStats.austerityCuts++;
+    if (what && g.m_config.aiDebug)
+        printf("[AI] t%d %s [austerity] %s (net %.1f, treasury %.0f, %.1f turns left)\n",
+               m_turn, c->name.c_str(), what, inc.net, c->treasury, runway);
+}
+
+void AISystem::manpowerReflex(int cid) {
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+    const CountryStat& st = m_stats[cid];
+    if (st.army <= 0) return;
+
+    // At war you keep the men and find the money elsewhere.
+    auto warIt = m_warWith.find(cid);
+    if (warIt != m_warWith.end() && !warIt->second.empty()) return;
+
+    auto inc = g.computeCountryIncome(cid);
+    // DORMANT AT CURRENT BALANCE, AND DELIBERATELY SO.
+    //
+    // Measured over ~6,600 self-play country-turns: army payroll runs 0.03%
+    // to 0.5% of gross income (0.08 out of 18.4 for a small country, 0.31 out
+    // of 1,097 for a large one) while treasuries sit between 12,000 and
+    // 31,000. Nothing in this economy makes an army worth standing down, so
+    // this reflex correctly almost never fires -- and forcing it to would be
+    // teaching the AI to throw away troops it can easily afford.
+    //
+    // It stays because insolvency IS reachable (processEconomy's bankruptcy
+    // penalties exist for exactly that), and because if army upkeep is ever
+    // rebalanced upward the AI should already know how to respond. The ratio
+    // test is written against gross income rather than a magic number so it
+    // starts working the moment upkeep becomes material.
+    bool insolvent = inc.net < 0.0 && c->treasury <= 25.0;
+    bool bloated = inc.total > 0.0f && inc.armyExpenses > inc.total * 0.33f;
+    if (!insolvent && !bloated) return;
+
+    auto garrisonOf = [&](int pid) -> long long {
+        auto it = g.m_provinceArmies.find(pid);
+        if (it == g.m_provinceArmies.end()) return 0;
+        long long n = 0;
+        for (auto& u : it->second) if (u.countryId == cid) n += u.count;
+        return n;
+    };
+    std::unordered_set<int> frontierPids;
+    for (auto& fr : st.frontiers) frontierPids.insert(fr.pid);
+
+    // Shed a tenth of the army per turn, from the deepest garrisons first, and
+    // never touch a border province.
+    long long target = st.army / 10;
+    if (target < 500) return;
+    std::vector<std::pair<long long, int>> pool;
+    for (int pid : g.provincesOf(cid)) {
+        if (frontierPids.count(pid)) continue;
+        long long n = garrisonOf(pid);
+        if (n >= 500) pool.push_back({n, pid});
+    }
+    if (pool.empty()) return;
+    std::sort(pool.rbegin(), pool.rend());
+
+    long long shed = 0;
+    int orders = 0;
+    for (auto& [n, pid] : pool) {
+        if (shed >= target || orders >= MAX_GARRISON_ORDERS) break;
+        long long take = std::min(n / 2, target - shed);   // never empty it
+        if (take < 250) continue;
+        g.m_pendingDisbandOrders.push_back({pid, (int)take});
+        shed += take;
+        ++orders;
+    }
+    if (orders && g.m_config.aiDebug)
+        printf("[AI] t%d %s [manpower] disbanding %lld men across %d province(s) "
+               "(%s: net %.1f, army costs %.1f of %.1f)\n", m_turn, c->name.c_str(),
+               shed, orders, insolvent ? "insolvent" : "army too costly",
+               inc.net, inc.armyExpenses, inc.total);
+}
+
+void AISystem::amphibiousReflex(int cid) {
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+    auto relIt = g.m_relations.find(c->isoA3);
+    if (relIt == g.m_relations.end()) return;
+
+    const int mapW = g.m_provinces.getWidth(), mapH = g.m_provinces.getHeight();
+    if (mapW <= 0 || mapH <= 0) return;
+
+    auto atWarWith = [&](int otherCid) -> bool {
+        const Country* oc = g.m_countries.getCountry(otherCid);
+        if (!oc) return false;
+        auto rr = relIt->second.find(oc->isoA3);
+        return rr != relIt->second.end() && rr->second.war;
+    };
+    auto portAt = [&](int pid, double& lon, double& lat) -> bool {
+        auto cIt = g.m_provinceCenters.find(pid);
+        if (cIt == g.m_provinceCenters.end()) return false;
+        lon = cIt->second.x / mapW * 360.0 - 180.0;
+        lat = 90.0 - cIt->second.y / mapH * 180.0;
+        return true;
+    };
+
+    // Landing range must exceed the per-turn step, or a fleet can straddle the
+    // gap: 18 degrees of travel against a 12-degree landing window lets a ship
+    // pass from "too far" to "too far on the other side" without ever being
+    // able to unload. Closing speed is reduced near the target for the same
+    // reason — the last approach is made in small steps.
+    const double LAND_RANGE = 12.0;
+    const double FULL_STEP  = 18.0;
+
+    for (size_t i = 0; i < g.m_ships.size(); ++i) {
+        auto& s = g.m_ships[i];
+        if (s.countryId != cid || s.crew <= 0) continue;
+        bool busy = false;
+        for (auto& dd : g.m_pendingShipDisembarks)
+            if (dd.shipIndex == (int)i) { busy = true; break; }
+        if (busy) continue;
+
+        // Nearest hostile port, and nearest of our own, in one pass.
+        int enemyPid = -1, homePid = -1;
+        double enemyD = 1e18, homeD = 1e18;
+        double enemyLon = 0, enemyLat = 0, homeLon = 0, homeLat = 0;
+        for (auto& [pid, port] : g.m_provincePorts) {
+            const Province* p = g.m_provinces.getProvinceById(pid);
+            if (!p) continue;
+            double lon, lat;
+            if (!portAt(pid, lon, lat)) continue;
+            const double d = std::hypot(lon - s.lon, lat - s.lat);
+            if (atWarWith(p->countryId)) {
+                if (d < enemyD) { enemyD = d; enemyPid = pid; enemyLon = lon; enemyLat = lat; }
+            } else if (p->countryId == cid) {
+                if (d < homeD) { homeD = d; homePid = pid; homeLon = lon; homeLat = lat; }
+            }
+        }
+
+        // In range of a hostile shore: land, now. This is the whole point.
+        if (enemyPid >= 0 && enemyD <= LAND_RANGE) {
+            g.m_pendingShipDisembarks.push_back({(int)i, enemyPid});
+            m_trainStats.landings++;
+            m_landingsThisTurn[cid]++;
+            if (g.m_config.aiDebug)
+                printf("[AI] t%d %s [amphib] landing %d troops on prov %d\n",
+                       m_turn, c->name.c_str(), s.crew * 100, enemyPid);
+            continue;
+        }
+        // No war left to fight: put the cargo ashore at home rather than
+        // carrying an army around the ocean for the rest of the game.
+        if (enemyPid < 0) {
+            if (homePid >= 0 && homeD <= LAND_RANGE) {
+                g.m_pendingShipDisembarks.push_back({(int)i, homePid});
+                m_trainStats.unloadsHome++;
+            } else if (homePid >= 0) {
+                double dLon = homeLon - s.lon, dLat = homeLat - s.lat;
+                const double dist = std::max(1e-6, std::hypot(dLon, dLat));
+                const double step = std::min(FULL_STEP, dist);
+                g.m_pendingShipMoveOrders.push_back(
+                    {(int)i, s.lon + dLon / dist * step, s.lat + dLat / dist * step});
+            }
+            continue;
+        }
+
+        // Otherwise close on the target. Already under a move order from the
+        // sampled navy action? Leave it — two orders for one ship in a turn is
+        // the last one winning, which makes the reflex and the policy fight.
+        bool moving = false;
+        for (auto& mo : g.m_pendingShipMoveOrders)
+            if (mo.shipIndex == (int)i) { moving = true; break; }
+        if (moving) continue;
+        double dLon = enemyLon - s.lon, dLat = enemyLat - s.lat;
+        const double dist = std::max(1e-6, std::hypot(dLon, dLat));
+        // Stop just inside landing range rather than on top of the port, so the
+        // next turn lands instead of overshooting.
+        const double want = std::max(0.0, dist - LAND_RANGE * 0.5);
+        const double step = std::min(FULL_STEP, want);
+        if (step <= 0.0) continue;
+        g.m_pendingShipMoveOrders.push_back(
+            {(int)i, s.lon + dLon / dist * step, s.lat + dLat / dist * step});
+    }
+}
+
 std::string AISystem::execNavy(int cid, int action) {
     Game& g = *m_g;
     Country& c = g.m_countries.getAll()[cid];
@@ -1693,6 +2475,39 @@ std::string AISystem::execNavy(int cid, int action) {
         auto rr = relIt->second.find(oc->isoA3);
         return rr != relIt->second.end() && rr->second.war;
     };
+    // Nearest port we or an ally hold. Used when there is no war on, so the
+    // fleet has a station to make for instead of drifting. Skips the port a
+    // ship is already sitting on, or ships would "move" zero degrees forever.
+    auto findHomePort = [&](double fromLon, double fromLat, int& outPid,
+                            double& outLon, double& outLat) -> bool {
+        int mapW = g.m_provinces.getWidth(), mapH = g.m_provinces.getHeight();
+        if (mapW <= 0 || mapH <= 0) return false;
+        double bestD = 1e18;
+        bool found = false;
+        for (auto& [pid, port] : g.m_provincePorts) {
+            const Province* p = g.m_provinces.getProvinceById(pid);
+            if (!p) continue;
+            bool mine = p->countryId == cid;
+            if (!mine && relIt != g.m_relations.end()) {
+                const Country* oc = g.m_countries.getCountry(p->countryId);
+                if (oc) {
+                    auto rr = relIt->second.find(oc->isoA3);
+                    mine = rr != relIt->second.end() && rr->second.alliance;
+                }
+            }
+            if (!mine) continue;
+            auto cIt = g.m_provinceCenters.find(pid);
+            if (cIt == g.m_provinceCenters.end()) continue;
+            double lon = cIt->second.x / mapW * 360.0 - 180.0;
+            double lat = 90.0 - cIt->second.y / mapH * 180.0;
+            double dLon = lon - fromLon, dLat = lat - fromLat;
+            double d = dLon * dLon + dLat * dLat;
+            if (d < 0.25) return false;   // already on station here
+            if (d < bestD) { bestD = d; outPid = pid; outLon = lon; outLat = lat; found = true; }
+        }
+        return found;
+    };
+
     // Nearest at-war enemy province with a port (ports are always coastal)
     auto findEnemyPort = [&](double fromLon, double fromLat, int& outPid,
                              double& outLon, double& outLat) -> bool {
@@ -1748,7 +2563,15 @@ std::string AISystem::execNavy(int cid, int action) {
                     if (mo.shipIndex == (int)i) { busy = true; break; }
                 if (busy) continue;
                 int tp; double tLon, tLat;
-                if (!findEnemyPort(s.lon, s.lat, tp, tLon, tLat)) break;
+                // At war, steam at the enemy. In peacetime the fleet used to
+                // simply stop -- this broke out of the loop and reported "no
+                // at-war enemy owns a port", so every navy in the world sat
+                // wherever it was built until somebody declared war on its
+                // owner. A fleet with nothing to attack still has somewhere to
+                // be: its own ports, which is where it can resupply and where
+                // it covers the coast it is supposed to be covering.
+                if (!findEnemyPort(s.lon, s.lat, tp, tLon, tLat) &&
+                    !findHomePort(s.lon, s.lat, tp, tLon, tLat)) break;
                 double dLon = tLon - s.lon, dLat = tLat - s.lat;
                 double dist = std::sqrt(dLon * dLon + dLat * dLat);
                 const double STEP = 18.0; // degrees per turn — no cross-map teleports
@@ -1756,13 +2579,13 @@ std::string AISystem::execNavy(int cid, int action) {
                 g.m_pendingShipMoveOrders.push_back({(int)i, s.lon + dLon, s.lat + dLat});
                 if (++moved >= 3) break; // a few ships per turn is plenty
             }
-            if (moved) return std::string(TextFormat("move %d ship(s) toward enemy port", moved));
+            if (moved) return std::string(TextFormat("move %d ship(s) to station", moved));
             // "no target" conflated three very different situations, which made
             // the archipelago stall impossible to read off the dashboard.
             {
                 int tp; double tl, ta;
                 if (!findEnemyPort(0, 0, tp, tl, ta))
-                    return "navy move: no at-war enemy owns a port";
+                    return "navy move: every ship already on station";
                 return "navy move: all ships already under orders";
             }
         }
@@ -1869,6 +2692,45 @@ std::string AISystem::execNavy(int cid, int action) {
                 return std::string(TextFormat("disembark: nearest enemy port %.0f deg (need <12)", d));
             }
         }
+        case 5: { // scrap the most expensive warship doing the least
+            // One hull per turn. Scrapping is irreversible and the reward that
+            // justifies it (income recovering) takes a few turns to show up, so
+            // a country that fires this action several turns running should be
+            // deciding that several times, not disposing of its whole navy on
+            // one sampled action.
+            int bestIdx = -1;
+            float bestCost = 0.0f;
+            double bestIdleness = -1.0;
+            for (size_t i = 0; i < g.m_ships.size(); ++i) {
+                auto& s = g.m_ships[i];
+                if (s.countryId != cid) continue;
+                // Never a transport: it is free to keep (see validNavy) and its
+                // crew would be deleted with the hull.
+                if (s.crew > 0) continue;
+                float cost = s.type == "carrier" ? 25.0f : (s.type == "destroyer" ? 10.0f : 0.0f);
+                if (cost <= 0.0f) continue;
+                bool queued = false;
+                for (auto& ss : g.m_pendingScrapShips)
+                    if (ss.shipIndex == (int)i) { queued = true; break; }
+                if (queued) continue;
+                // Idleness: distance to the nearest shore we are fighting on.
+                // With no war on, every ship is equally idle and the tie is
+                // broken on upkeep alone.
+                int tp; double tLon, tLat;
+                double idle = 1e9;
+                if (findEnemyPort(s.lon, s.lat, tp, tLon, tLat))
+                    idle = std::hypot(tLon - s.lon, tLat - s.lat);
+                // Costliest first; among equals, the one furthest from a front.
+                if (cost > bestCost || (cost == bestCost && idle > bestIdleness)) {
+                    bestCost = cost; bestIdleness = idle; bestIdx = (int)i;
+                }
+            }
+            if (bestIdx < 0) return "scrap: nothing worth scrapping";
+            g.m_pendingScrapShips.push_back({bestIdx});
+            m_trainStats.shipsScrapped++;
+            return TextFormat("scrap %s #%d (saves %.0f/turn)",
+                              g.m_ships[bestIdx].type.c_str(), bestIdx, bestCost);
+        }
         default: return "navy hold";
     }
 }
@@ -1884,7 +2746,18 @@ void AISystem::noteDiploRejected(int sourceCid, int targetCid) {
 }
 
 bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
-                               const std::string& sourceIso) {
+                               const std::string& sourceIso,
+                               const std::string& subjectIso) {
+    // The control group answers diplomacy the way it does everything else. The
+    // heuristic gates below still apply to it, because those are machinery
+    // rather than policy and the baseline is meant to differ in exactly one
+    // thing.
+    m_randomThisCountry = isRandomCountry(targetCid);
+    struct ClearFlag {
+        bool& f;
+        ~ClearFlag() { f = false; }
+    } clearFlag{m_randomThisCountry};
+
     std::vector<float> feats;
     buildFeatures(targetCid, feats);
     // Request-specific context in the spare feature slots
@@ -1902,6 +2775,7 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
     // "join a war you did not start, and carry the unrest for it, or lose the
     // ally". The net needs the request type, who it would be fighting, and what
     // it is already carrying at home.
+    std::vector<float> bias;
     if (action == "call_to_arms") {
         feats[80] = 1.0f;
         // The aggressor is the third party here — srcCid is the ally ASKING.
@@ -1910,6 +2784,53 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         const CountryStat& ts = m_stats[targetCid];
         feats[83] = ts.threatenedProvinces > 0 ? 1.0f : 0.0f; // already busy at home?
         feats[84] = std::tanh(ts.provincesLost / 2.0f);
+
+        // ── When the answer is no whatever the net thinks ──
+        //
+        // Each of these is a state in which joining does not merely cost more
+        // than the alliance is worth, it costs more than the country has. They
+        // are checked before the net is consulted, so no sample is recorded:
+        // this is not a decision that was taken, it is one that was not
+        // available. See AI_CALL_* in the header.
+        const char* refuse = nullptr;
+        auto ownWars = m_warWith.find(targetCid);
+        const int myWars = ownWars == m_warWith.end() ? 0 : (int)ownWars->second.size();
+        if (myWars >= AI_CALL_MAX_OWN_WARS)
+            refuse = "already fighting two wars of its own";
+        else if (m_g->warWearinessOf(targetCid) >= AI_CALL_WEARINESS_BLOCK)
+            refuse = "home front already too unhappy";
+        // Being invaded is a reason to stay home; having a neighbour's stack
+        // parked on a quiet border is not, and neither is losing a province to
+        // a rebellion somewhere. The old test fired on either, which on a busy
+        // map is most of the time.
+        else if (ts.threatenedProvinces > 0 && ts.enemyAdjArmy > ts.defenderArmy)
+            refuse = "losing ground on its own borders";
+        else if (!subjectIso.empty()) {
+            // Who we would actually be fighting, and with whom. The aggressor
+            // is the third party in the request, not the ally making it — the
+            // ally's strength is a reason to join, the aggressor's is a reason
+            // not to, and only the caller knows which is which.
+            const int aggCid = m_g->cidForIso(subjectIso);
+            const long long ourSide = std::max(1LL, ts.army + srcArmy);
+            const long long theirArmy = aggCid >= 0 ? m_stats[aggCid].army : 0;
+            if (theirArmy > (long long)(ourSide * AI_CALL_MAX_ENEMY_ODDS))
+                refuse = "the aggressor outguns both of us";
+        }
+        if (refuse) {
+            logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
+                        std::string("REFUSE call_to_arms from ") + sourceIso +
+                        " (" + refuse + ")");
+            return false;
+        }
+
+        // No gate fired: the net decides, but against a thumb on the scale.
+        // Answering is a war and seven points of unrest; the alliance it saves
+        // is worth that only when the net actively wants the fight.
+        bias.assign(DIPLO_ACTIONS, 0.0f);
+        bias[1] = -AI_CALL_RELUCTANCE;
+    } else if (action == "request_nap") {
+        bias.assign(DIPLO_ACTIONS, 0.0f);
+        bias[1] = AI_NAP_WILLINGNESS;
     }
 
     // The deal on the table. Without these the diplomacy net judged a ceasefire
@@ -1936,7 +2857,8 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
 
     std::vector<bool> valid(DIPLO_ACTIONS, true);
     float score;
-    int a = pickAction(m_diplo, feats, valid, score);
+    int a = pickAction(m_diplo, feats, valid, score, /*graveAction=*/-1,
+                       bias.empty() ? nullptr : &bias);
     // Record in the country's experience so the diplo net learns too
     auto it = m_pending.find(targetCid);
     if (it != m_pending.end() && !it->second.empty()) {
@@ -1972,7 +2894,8 @@ void AISystem::endTurn() {
     // All the expensive work (nine nets' worth of forward and backward passes)
     // is deferred into `m_work` and run in parallel below.
     m_work.clear();
-    auto applyUpdate = [&](int cid, Experience& exp, const float* rewards) {
+    auto applyUpdate = [&](int cid, Experience& exp, const float* rewards,
+                           float diploReward) {
         for (int m = 0; m < MOD_COUNT; ++m) rewardSum[m] += rewards[m];
         rewardN++;
         for (int m = 0; m < MOD_COUNT; ++m) {
@@ -1993,9 +2916,20 @@ void AISystem::endTurn() {
             w.cid = cid;
             m_work.push_back(std::move(w));
         }
-        // Diplomacy net learns with the politics reward
+        // Diplomacy has its own reward, normalised against the politics
+        // statistics.
+        //
+        // It used to be scored on the politics reward outright, which is
+        // dominated by rebellions and by the coalition the POLITICS module
+        // built. Answering a call to arms is a war and seven points of unrest,
+        // and neither of those moved that number enough to matter — so the one
+        // head whose entire job is saying yes or no was being told almost
+        // nothing about what its answers cost. Sharing the running mean and
+        // variance is deliberate: the two rewards are built from the same tanh
+        // terms at the same scale, and giving diplomacy its own statistics
+        // would change the model file format for no measurable gain.
         if (exp.acted[MOD_COUNT] && exp.action[MOD_COUNT] >= 0) {
-            float dev = rewards[MOD_POLITICS] - m_rMean[MOD_POLITICS];
+            float dev = diploReward - m_rMean[MOD_POLITICS];
             float norm = dev / std::sqrt(m_rVar[MOD_POLITICS] + 1e-4f);
             WorkItem w;
             w.module = MOD_COUNT; // diplo
@@ -2021,7 +2955,17 @@ void AISystem::endTurn() {
         int rebNow = 0;
         auto rbIt = g.m_rebellionsThisTurnByCid.find(cid);
         if (rbIt != g.m_rebellionsThisTurnByCid.end()) rebNow = rbIt->second;
-        for (auto& exp : dq) { exp.age++; exp.rebellions += rebNow; }
+        int landNow = 0;
+        auto lnIt = m_landingsThisTurn.find(cid);
+        if (lnIt != m_landingsThisTurn.end()) landNow = lnIt->second;
+        const int brokeNow = g.isBankrupt(cid) ? 1 : 0;
+        if (brokeNow) m_trainStats.bankruptTurns++;
+        for (auto& exp : dq) {
+            exp.age++;
+            exp.rebellions += rebNow;
+            exp.landings += landNow;
+            exp.bankruptTurns += brokeNow;
+        }
 
         // Research completions counter (per turn, not per window). First sight
         // of a country just records its baseline — otherwise every node the
@@ -2042,16 +2986,27 @@ void AISystem::endTurn() {
         while (!dq.empty() && (dead || dq.front().age >= N_STEP)) {
             Experience& exp = dq.front();
             float rewards[MOD_COUNT];
+            float diploReward = 0.0f;
+            auto standing = m_finalStanding.find(cid);
             if (dead) {
                 // Terminal: being eliminated is the worst possible outcome —
                 // every decision in the final window shares the blame.
                 for (int m = 0; m < MOD_COUNT; ++m) rewards[m] = -4.0f;
+                diploReward = -4.0f;
             } else if (m_victorCid == cid) {
                 // ...and the mirror of it. Elimination was worth -4 while
                 // WINNING the map was worth nothing beyond the ordinary
                 // province delta, so the objective the whole self-play run
                 // exists to optimise was the one outcome carrying no signal.
                 for (int m = 0; m < MOD_COUNT; ++m) rewards[m] = 4.0f;
+                diploReward = 4.0f;
+            } else if (standing != m_finalStanding.end()) {
+                // The map ended without being decided — see noteMapEnd. How
+                // much of the world this country finished holding, on the same
+                // scale as the win/loss terminals but with a smaller range,
+                // because surviving big is evidence and winning is proof.
+                for (int m = 0; m < MOD_COUNT; ++m) rewards[m] = standing->second;
+                diploReward = standing->second;
             } else {
                 float dProv = (float)(now.provinces - exp.provinces);
                 float dTre = (float)(c->treasury - exp.treasury);
@@ -2077,23 +3032,61 @@ void AISystem::endTurn() {
                 // that cross-talk was the single largest brake on learning.
                 // It is not zero, because survival really is a shared outcome —
                 // it is just no longer the whole signal.
+                // Running out of money is now a shared failure, because it is
+                // caused by four modules between them — research and hulls from
+                // economy, doctrines and minority settlements from politics,
+                // the army from war — and felt by all of them.
+                const float broke = std::tanh((float)exp.bankruptTurns / 4.0f);
                 float global = 0.6f * std::tanh(dProv / 3.0f)
                              + 0.2f * std::tanh(dTre / 100.0f)
                              + 0.3f * std::tanh(dNet / 15.0f)
-                             - 0.8f * std::tanh(rebels / 2.0f);
+                             - 0.8f * std::tanh(rebels / 2.0f)
+                             - 0.5f * broke;
                 // Each module is now judged mostly on what it actually controls.
                 rewards[MOD_ECONOMY]  = global
+                                      // ...and the economy module's failure in
+                                      // particular. Growing income is what it is
+                                      // paid for; an empty treasury is what
+                                      // happens when it never stops spending.
+                                      - 1.2f * broke
                                       + 1.2f * std::tanh(dNet / 15.0f)
                                       + 1.0f * std::tanh(dInd / 3.0f)
                                       + 0.8f * std::tanh(dResearch / 2.0f)
                                       + 0.3f * std::tanh(dTre / 100.0f);
+                // What the country agreed to carry over the window. The LEVEL
+                // of war weariness barely moves when a country takes on one
+                // more commitment; the change over twelve turns is the bill for
+                // whatever it took on, and it is the only term that makes
+                // answering a call to arms cost anything at all.
+                float dWeary = g.warWearinessOf(cid) - exp.weariness;
+
                 // Politics owns unrest, and now also owns the coalition: an
                 // ally who fights alongside us is what the module bought, and
                 // war weariness is what it paid.
+                //
+                // Standing agreements are now worth something in their own
+                // right. Every diplomatic term here used to be conditional on a
+                // war — co-belligerents, weariness — so a country at peace with
+                // six neighbours scored exactly as well as one with none, and
+                // "make friends" was a strategy the reward could not express.
+                // It is a small term on purpose: pacts are a means to being
+                // left alone, not a score to farm.
+                // How the country's minorities came to feel about it over the
+                // window. Repression is not simply punished: it is free, and a
+                // government that can absorb the resentment keeps the money —
+                // which is exactly the trade the reward should be putting to
+                // the module rather than deciding for it. What makes the trade
+                // real is that alignment drives rebellion chance, and the
+                // rebellion term above is the largest in this reward.
+                float dAlign = now.meanAlignment - exp.minorityAlignment;
+
                 rewards[MOD_POLITICS] = global
                                       - 2.5f * std::tanh(rebels / 2.0f)
                                       + 0.5f * std::tanh((float)now.coBelligerents / 2.0f)
+                                      + 0.4f * std::tanh((float)now.pacts / 3.0f)
+                                      + 0.5f * std::tanh(dAlign / 10.0f)
                                       - 0.4f * (g.warWearinessOf(cid) / Game::WAR_WEARINESS_MAX)
+                                      - 0.5f * std::tanh(std::max(0.0f, dWeary) / 5.0f)
                                       + (exp.netIncome > 0 ? 0.2f : -0.2f);
                 // War owns territory in BOTH directions. Ground lost is now
                 // punished explicitly rather than showing up as a slightly
@@ -2132,20 +3125,76 @@ void AISystem::endTurn() {
                 const float phoneyWar =
                     (exp.atWar && exp.threatened == 0 && dProv <= 0.0f) ? -0.5f : 0.0f;
 
+                // The cost of starting it.
+                //
+                // Conquest pays, and it should — expansion is what the game is
+                // about. But a war of choice against a neighbour holding no
+                // land we claim also drags in guarantors, burns unrest, and
+                // leaves a claim behind that feeds the next revolt, and none of
+                // that appeared anywhere in the reward. Wars of reconquest are
+                // exempt: retaking claimed land is the war goal, not the
+                // aggression. Small enough that a genuinely profitable conquest
+                // still clears it; large enough that a marginal one does not.
+                const float aggression = exp.aggressor ? -0.8f : 0.0f;
+
                 rewards[MOD_WAR]      = global
                                       + 2.0f * std::tanh(dProv / 3.0f)
                                       - 2.0f * std::tanh(std::max(0.0f, dLost) / 2.0f)
                                       + armyTerm
-                                      + phoneyWar;
-                rewards[MOD_NAVY]     = global + 0.5f * std::tanh(dShips / 2.0f)
-                                      + 0.8f * std::tanh(dProv / 3.0f);
+                                      + phoneyWar
+                                      + aggression;
+                // The navy is scored on what it delivers ashore and on what it
+                // costs. Ship COUNT used to be rewarded outright, which paid
+                // the module to build a fleet and never to notice the fleet was
+                // idle — the exact incentive the army term was rewritten to
+                // remove. Hulls are worth having when there is a crossing to
+                // make; otherwise they are 10 to 25 a turn each.
+                const bool fleetUseful = exp.atWar || now.navalTargets > 0 ||
+                                         now.navalWarTargets > 0;
+                rewards[MOD_NAVY]     = global
+                                      + (fleetUseful ? 0.5f * std::tanh(dShips / 2.0f)
+                                                     : -0.4f * std::tanh(std::max(0.0f, dShips) / 2.0f))
+                                      + 0.8f * std::tanh(dProv / 3.0f)
+                                      // Troops actually put ashore on a hostile
+                                      // coast. The ground a landing wins often
+                                      // falls outside the twelve-turn window,
+                                      // so without this the module is paid for
+                                      // the invasion only when it happens to
+                                      // conclude quickly — and charged for the
+                                      // army and the hulls every other time.
+                                      + 1.0f * std::tanh((float)exp.landings / 1.5f);
+
+                // Diplomacy answers requests, so it is judged on what its answer
+                // did to this country — and, crucially, on BOTH answers.
+                //
+                // The first version of this charged the full war weariness of
+                // accepting a call to arms (seven of a maximum twenty, worth
+                // about -0.89 here) while the alliance a refusal destroys was
+                // worth 0.3 x tanh, roughly -0.05 at the margin. Faced with an
+                // eighteen-to-one asymmetry the policy correctly learned to
+                // refuse everything, and the observed behaviour — an AI that
+                // declines essentially every call — was the reward working as
+                // written rather than the model failing.
+                //
+                // Agreements lost is now its own term, and the weariness weight
+                // comes down to meet it. The two costs are then within a factor
+                // of two of each other, which makes the answer depend on the
+                // situation, which is the only thing worth learning here.
+                const float pactsLost = (float)std::max(0, exp.pacts - now.pacts);
+                diploReward = global
+                            + 0.6f * std::tanh((float)now.coBelligerents / 2.0f)
+                            + 0.3f * std::tanh((float)now.pacts / 3.0f)
+                            - 0.8f * std::tanh(pactsLost)
+                            - 0.6f * std::tanh(std::max(0.0f, dWeary) / 5.0f)
+                            - 1.2f * std::tanh(std::max(0.0f, dLost) / 2.0f);
             }
             // tanh(NaN) is still NaN: overflowed treasuries/incomes must not
             // poison the weight update (a single NaN reward corrupts the net
             // permanently, including the model file saved to disk).
             for (int m = 0; m < MOD_COUNT; ++m)
                 if (!std::isfinite(rewards[m])) rewards[m] = 0.0f;
-            applyUpdate(cid, exp, rewards);
+            if (!std::isfinite(diploReward)) diploReward = 0.0f;
+            applyUpdate(cid, exp, rewards, diploReward);
             dq.pop_front();
         }
 
@@ -2164,7 +3213,7 @@ void AISystem::endTurn() {
         m_policy[m].flushBatch(LR_POLICY);
         m_value[m].flushBatch(LR_VALUE);
     }
-    m_diplo.flushBatch(LR_POLICY);
+    m_diplo.flushBatch(LR_DIPLO);
 
     // Reward trend feed for the trainer dashboard
     if (rewardN > 0) {
@@ -2322,6 +3371,40 @@ void AISystem::noteVictory(int cid) {
     m_victorCid = -1;
 }
 
+void AISystem::noteMapEnd() {
+    // Where everyone finished. refreshStats has already run for this turn, but
+    // the trainer calls this after a turn has resolved, so take the current
+    // picture rather than trusting whatever the last beginTurn saw.
+    refreshStats();
+    int total = 0;
+    for (auto& [cid, st] : m_stats)
+        if (cid < Game::REBEL_CID_MIN) total += st.provinces;
+    if (total <= 0) { m_pending.clear(); return; }
+
+    // Share of the world, mapped onto [-2, +2]: half the range the decisive
+    // terminals use. A country holding an average slice scores nothing either
+    // way; the signal is in finishing well above or well below what an equal
+    // split would have given, which is the only thing a map that never resolved
+    // can honestly say about the countries on it.
+    int realCountries = 0;
+    for (auto& [cid, st] : m_stats)
+        if (cid < Game::REBEL_CID_MIN && st.provinces > 0) realCountries++;
+    const float fairShare = realCountries > 0 ? 1.0f / realCountries : 1.0f;
+    m_finalStanding.clear();
+    for (auto& [cid, st] : m_stats) {
+        if (cid >= Game::REBEL_CID_MIN || st.provinces <= 0) continue;
+        const float share = (float)st.provinces / (float)total;
+        m_finalStanding[cid] = 2.0f * std::tanh((share - fairShare) / fairShare);
+    }
+
+    // Force every window closed: endTurn only settles experiences that have
+    // aged N_STEP turns, and there is no next turn to age them in.
+    for (auto& [c, dq] : m_pending)
+        for (auto& exp : dq) exp.age = N_STEP;
+    endTurn();
+    m_finalStanding.clear();
+}
+
 void AISystem::calibrateRewardScale(const std::vector<float>& perTurnProvinceDeltas) {
     if (perTurnProvinceDeltas.empty()) return;
     // Seed reward statistics from historical province churn so early-game
@@ -2350,6 +3433,7 @@ static void appendBlob(std::vector<uint8_t>& out, const std::vector<uint8_t>& bl
 }
 
 bool AISystem::s_readOnlyModel = false;
+bool AISystem::s_evaluating = false;
 
 void AISystem::saveModel() {
     // Observation mode: act on the trained model but never write it back, so a
@@ -2415,6 +3499,102 @@ void AISystem::saveModel() {
     m_lastSaveBytes = out.size();
     printf("[AI] Model saved (%zu bytes, %llu updates)\n", out.size(),
            (unsigned long long)m_policy[0].updateCount());
+}
+
+int AISystem::syncWithPeers(const std::vector<std::string>& peerPaths, float alpha) {
+    if (peerPaths.empty() || alpha <= 0.0f) return 0;
+    // Peers are read one at a time into a scratch model and blended in, rather
+    // than all held at once and averaged: nine nets is ~12 MB, and a run with
+    // several workers would otherwise have every worker holding every peer.
+    AISystem scratch(m_g, std::string());   // empty path: never loads, never saves
+    int merged = 0;
+    for (const std::string& path : peerPaths) {
+        scratch.m_modelPath = path;
+        if (!scratch.loadModel()) continue;   // not written yet, or mid-rename
+        // Each peer gets an equal share of the move, so the result is a step
+        // toward the MEAN of the peers rather than toward whichever was read
+        // last. Recomputed per peer because a missing file changes the divisor.
+        const float share = alpha / (float)peerPaths.size();
+        bool ok = true;
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            ok &= m_policy[m].blendToward(scratch.m_policy[m], share);
+            ok &= m_value[m].blendToward(scratch.m_value[m], share);
+        }
+        ok &= m_diplo.blendToward(scratch.m_diplo, share);
+        if (!ok) {
+            printf("[AI] peer %s has a different architecture — skipped\n", path.c_str());
+            continue;
+        }
+        // The reward statistics are a running mean and variance, so averaging
+        // them is exactly right: they describe the same quantity measured on
+        // different maps.
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            m_rMean[m] = (1.0f - share) * m_rMean[m] + share * scratch.m_rMean[m];
+            m_rVar[m]  = (1.0f - share) * m_rVar[m]  + share * scratch.m_rVar[m];
+            if (!(m_rVar[m] > 1e-6f)) m_rVar[m] = 1.0f;
+        }
+        ++merged;
+    }
+    // The scratch model's destructor saves to whatever m_modelPath holds, and
+    // that is currently the last peer we read. Leaving it set would have every
+    // worker overwrite one of its peers' files with a stale copy of itself on
+    // the way out of this function.
+    scratch.m_modelPath.clear();
+    return merged;
+}
+
+bool AISystem::mergeModelFiles(const std::string& outPath,
+                               const std::vector<std::string>& inPaths) {
+    if (inPaths.empty()) return false;
+    // Read-only for the whole of this, so no destructor writes anything back
+    // over an input file. The one intended write happens explicitly below.
+    const bool wasReadOnly = s_readOnlyModel;
+    s_readOnlyModel = true;
+    bool result = false;
+    {
+    AISystem acc(nullptr, inPaths[0]);
+    if (!acc.loadModel()) {
+        fprintf(stderr, "[AI] merge: cannot read %s\n", inPaths[0].c_str());
+        s_readOnlyModel = wasReadOnly;
+        return false;
+    }
+    int n = 1;
+    for (size_t i = 1; i < inPaths.size(); ++i) {
+        // Equal weighting: after k files the accumulator must move 1/(k+1) of
+        // the way toward the next, or the first file read would dominate.
+        const float share = 1.0f / (float)(n + 1);
+        AISystem peer(nullptr, inPaths[i]);
+        if (!peer.loadModel()) {
+            fprintf(stderr, "[AI] merge: cannot read %s — skipped\n", inPaths[i].c_str());
+            continue;
+        }
+        bool ok = true;
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            ok &= acc.m_policy[m].blendToward(peer.m_policy[m], share);
+            ok &= acc.m_value[m].blendToward(peer.m_value[m], share);
+        }
+        ok &= acc.m_diplo.blendToward(peer.m_diplo, share);
+        if (!ok) {
+            fprintf(stderr, "[AI] merge: %s has a different architecture — skipped\n",
+                    inPaths[i].c_str());
+            continue;
+        }
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            acc.m_rMean[m] = (1.0f - share) * acc.m_rMean[m] + share * peer.m_rMean[m];
+            acc.m_rVar[m]  = (1.0f - share) * acc.m_rVar[m]  + share * peer.m_rVar[m];
+            if (!(acc.m_rVar[m] > 1e-6f)) acc.m_rVar[m] = 1.0f;
+        }
+        ++n;
+    }
+    acc.m_modelPath = outPath;
+    s_readOnlyModel = false;
+    acc.saveModel();
+    s_readOnlyModel = true;   // acc's own destructor must not write again
+    printf("[AI] merged %d model(s) into %s\n", n, outPath.c_str());
+    result = true;
+    }
+    s_readOnlyModel = wasReadOnly;
+    return result;
 }
 
 size_t AISystem::serializedSize() const {

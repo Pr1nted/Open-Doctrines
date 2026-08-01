@@ -1,21 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <g fill="#fff">
-    <circle cx="0" cy="0" r="30"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(0)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(22.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(45)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(67.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(90)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(112.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(135)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(157.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(180)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(202.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(225)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(247.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(270)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(292.5)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(315)"/>
-    <polygon points="-6,-80 6,-80 4,-40 -4,-40" transform="rotate(337.5)"/>
+  <!-- sun: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-100.000) scale(16.666667)">
+<path style="fill:#fff;fill-opacity:1;fill-rule:nonzero;stroke:#fff;stroke-width:.99975;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1" d="M6 5.102a.899.899 0 1 0 0 1.797.899.899 0 0 0 0-1.797Z"/><path style="fill:none;stroke:#fff;stroke-width:.99975;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1" d="M11 6A5 5 0 1 0 1 6a5 5 0 0 0 10 0z"/>
   </g>
 </svg>

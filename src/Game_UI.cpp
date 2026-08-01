@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "SaveManager.h"
@@ -39,7 +40,20 @@ void Game::pushPopup(PopupType type, const std::string& title, const std::string
     entry.action = action;
     entry.sourceIso = sourceIso;
     entry.targetIso = targetIso;
+    entry.id = ++m_popupNextId;
     m_popupQueue.push_back(entry);
+    // No sound here. Queueing is not appearing -- see PopupEntry::id and
+    // announceFrontPopup(), which plays it when this one reaches the screen.
+}
+
+void Game::announceFrontPopup() {
+    if (m_popupQueue.empty()) {
+        m_popupAnnouncedId = 0;    // nothing showing; the next one is new again
+        return;
+    }
+    const unsigned long long front = m_popupQueue.front().id;
+    if (front == m_popupAnnouncedId) return;
+    m_popupAnnouncedId = front;
     Audio::get().playSfx("panel_open");
 }
 
@@ -48,14 +62,45 @@ namespace {
 // already duplicating these numbers, and making the height depend on the terms
 // panel would have let them drift, putting the buttons somewhere the click
 // handler was not looking.
+// Every offset in an expanded ceasefire popup, from one place. The summary
+// above the terms is as many lines as the offer has clauses, so a fixed
+// terms-panel top put the divider through the last line of a busy offer -- and
+// the map has to be hit-tested by updatePopup() at exactly the rectangle
+// drawPopup() drew it into.
+struct CeasefireLayout {
+    int termsY;   // top of the itemised rows, relative to popY
+    int mapY;     // top of the map slot, relative to popY
+    int mapH;
+    int height;   // popup height with the terms panel open
+};
+CeasefireLayout ceasefireLayout(const PopupEntry& p) {
+    int lines = 1;
+    for (char c : p.message) if (c == '\n') lines++;
+
+    CeasefireLayout L{};
+    L.termsY = 60 + lines * 22 + 14;                  // title, message, divider
+    const int rowsH = (24 + 3 * 20) + 10 + (24 + 3 * 20);   // two sections
+    L.mapY   = L.termsY + rowsH + 12;
+    L.mapH   = 150;
+    // map, gap, "Hide full terms", the Accept/Reject row, bottom margin
+    L.height = L.mapY + L.mapH + 8 + 46 + 40 + 20;
+    return L;
+}
+
 void popupGeometry(const PopupEntry& p, bool showTerms, int& w, int& h) {
     if (p.type == PopupType::CEASEFIRE_REQUEST) {
         w = 560;
-        h = showTerms ? 590 : 360;
+        h = showTerms ? ceasefireLayout(p).height
+                      : std::max(360, ceasefireLayout(p).termsY + 46 + 60);
     } else {
         w = 480;
         h = 260;
     }
+}
+
+Rectangle popupTermsMapRect(const PopupEntry& p, int popX, int popY, int popW) {
+    CeasefireLayout L = ceasefireLayout(p);
+    return {(float)(popX + 30), (float)(popY + L.mapY), (float)(popW - 60), (float)L.mapH};
 }
 }  // namespace
 
@@ -133,7 +178,7 @@ void Game::drawPopup() {
             };
 
             Color accent = hexToColor(m_config.accentColor);
-            int ty = popY + 150;
+            int ty = popY + ceasefireLayout(popup).termsY;
             int tx = popX + 30;
             DrawLine(tx, ty - 12, popX + popW - 30, ty - 12, Color{70, 70, 95, 255});
 
@@ -162,6 +207,16 @@ void Game::drawPopup() {
                 popup.terms.ourDropClaims.empty() && popup.terms.theirDropClaims.empty()) {
                 ty += 8;
                 DrawText("A white peace: nothing changes hands.", tx, ty, 14, accent);
+            } else {
+                // A list of province NUMBERS is not something anyone can judge
+                // an offer from. "Provinces: 854, 1283, 1290" tells the player
+                // nothing about whether they are being asked for a border strip
+                // or for half the country. The composer screen has always had a
+                // map; the offer you RECEIVE had only the numbers.
+                Rectangle mr = popupTermsMapRect(popup, popX, popY, popW);
+                drawCeasefireTermsMap(popup.terms, popup.id, (int)mr.x, (int)mr.y,
+                                      (int)mr.width, (int)mr.height);
+                ty = (int)(mr.y + mr.height) + 8;
             }
         }
     }
@@ -199,6 +254,9 @@ void Game::drawPopup() {
 }
 
 void Game::updatePopup() {
+    // Before the early-out: this is also how "the queue emptied" is noticed, so
+    // the next popup after a quiet spell still announces itself.
+    announceFrontPopup();
     if (m_popupQueue.empty()) return;
 
     auto& popup = m_popupQueue.front();
@@ -211,7 +269,16 @@ void Game::updatePopup() {
     int btnW = 140, btnH = 40;
     int btnY = popY + popH - btnH - 20;
 
+    // Before the click gate below: zoom is a wheel event and panning happens
+    // while the button is held, neither of which is a release.
+    bool wasDragging = m_popupTermsMapDragging;
+    if (popup.type == PopupType::CEASEFIRE_REQUEST && m_popupShowTerms &&
+        m_popupTermsMapKey == popup.id)
+        updateCeasefireTermsMap(popupTermsMapRect(popup, popX, popY, popW));
+
     if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return;
+    // The release that ends a pan is not a click on anything.
+    if (wasDragging) return;
 
     if (popup.type == PopupType::CEASEFIRE_REQUEST) {
         Rectangle termsBtn = {(float)(popX + (popW - 200) / 2), (float)(btnY - 46),
@@ -309,6 +376,320 @@ void Game::updatePopup() {
         if (CheckCollisionPointRec(mouse, okBtn)) {
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+        }
+    }
+}
+
+// See src/TextInput.h. A free function rather than a Game method because the
+// map editor's fields need it too and MapEditor is not a Game.
+bool odTextEditKeys(std::string& field, size_t maxLen, const char* forbidden,
+                    bool digitsOnly) {
+    bool changed = false;
+    auto allowed = [&](char ch) {
+        if (ch < 32 || ch >= 127) return false;
+        if (digitsOnly && (ch < '0' || ch > '9')) return false;
+        for (const char* f = forbidden; f && *f; ++f)
+            if (*f == ch) return false;
+        return true;
+    };
+
+    // Backspace and Delete both take the last character: these fields have no
+    // caret to be in front of or behind. Repeat is included so holding the key
+    // clears a field, which the map editor's fields already did and the game's
+    // did not.
+    bool del = IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE) ||
+               IsKeyPressed(KEY_DELETE)    || IsKeyPressedRepeat(KEY_DELETE);
+    if (del && !field.empty()) {
+        field.pop_back();
+        Audio::get().playSfx("key_type", 0.12f);
+        changed = true;
+    }
+
+    // Ctrl+V, and Cmd+V too -- on macOS Ctrl+V is not what anyone presses.
+    bool paste = (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                  IsKeyDown(KEY_LEFT_SUPER)   || IsKeyDown(KEY_RIGHT_SUPER)) &&
+                 IsKeyPressed(KEY_V);
+    if (paste) {
+        const char* clip = GetClipboardText();
+        if (clip && *clip) {
+            size_t before = field.size();
+            for (const char* q = clip; *q && field.size() < maxLen; ++q) {
+                // A pasted newline or tab ends the value rather than joining
+                // it: people copy a line out of a terminal, trailing break and
+                // all, and a control character in a hostname or a filename is
+                // never what they meant.
+                if (*q == '\n' || *q == '\r' || *q == '\t') break;
+                if (allowed(*q)) field += *q;
+            }
+            if (field.size() != before) {
+                Audio::get().playSfx("key_type", 0.12f);
+                changed = true;
+            }
+        }
+    }
+    return changed;
+}
+
+// Where the offered land actually is.
+//
+// Crops the political map to everything the terms touch and shades each
+// province in the colour of whoever ends up holding it: green for land coming
+// to us, red for land going away, amber for a claim being dropped. The shapes
+// are the point -- a dot at a province centre says where the land is but not
+// whether the offer is a border strip or half a country.
+//
+// The shading is rastered once per offer into a crop-sized buffer and cached
+// under the popup's id, so the frames after the first cost one extra
+// DrawTexturePro. A crop-sized buffer is what makes that affordable: the
+// composer screen's equivalent overlay spans the whole world, which at this
+// map's resolution is tens of millions of pixels.
+void Game::drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long cacheKey,
+                                 int x, int y, int w, int h) {
+    if (w < 40 || h < 30) return;
+    int texW = m_provinces.getWidth(), texH = m_provinces.getHeight();
+    if (texW <= 0 || texH <= 0 || m_politicalTex.id == 0) return;
+
+    // `lean` is the diagonal the stripes run along. Colour alone is not enough:
+    // a green province on a green country reads as unmarked, and the countries
+    // are not going to change colour to suit the offer.
+    struct Mark { int pid; Color col; int lean; };
+    std::vector<Mark> marks;
+    for (int pid : terms.ourProvs)        marks.push_back({pid, Color{120, 210, 140, 255},  1});
+    for (int pid : terms.theirProvs)      marks.push_back({pid, Color{225, 130, 120, 255}, -1});
+    for (int pid : terms.ourDropClaims)   marks.push_back({pid, Color{225, 190, 110, 255},  1});
+    for (int pid : terms.theirDropClaims) marks.push_back({pid, Color{225, 190, 110, 255}, -1});
+    if (marks.empty()) return;
+
+    // One raster pass per offer. Everything below the rebuild reads the cache.
+    if (m_popupTermsMapKey != cacheKey || m_popupTermsMapTex.id == 0) {
+        m_popupTermsMapKey = cacheKey;
+        m_popupTermsMapEmpty = true;
+
+        // Bounding box of the land in question, padded so it has context around it.
+        int minPx = texW, maxPx = 0, minPy = texH, maxPy = 0;
+        for (auto& m : marks) {
+            auto it = m_provincePixels.find(m.pid);
+            if (it == m_provincePixels.end() || it->second.empty()) continue;
+            for (int idx : it->second) {
+                int px = idx % texW, py = idx / texW;
+                if (px < minPx) minPx = px;
+                if (px > maxPx) maxPx = px;
+                if (py < minPy) minPy = py;
+                if (py > maxPy) maxPy = py;
+            }
+            m_popupTermsMapEmpty = false;
+        }
+        if (m_popupTermsMapEmpty) return;
+
+        int padX = std::max((maxPx - minPx) / 2, 120);
+        int padY = std::max((maxPy - minPy) / 2, 120);
+        int sx = std::max(0, minPx - padX), sy = std::max(0, minPy - padY);
+        int sw = std::min(texW - sx, (maxPx - minPx) + 2 * padX);
+        int sh = std::min(texH - sy, (maxPy - minPy) + 2 * padY);
+        if (sw <= 0 || sh <= 0) { m_popupTermsMapEmpty = true; return; }
+        m_popupTermsMapSrcX = sx; m_popupTermsMapSrcY = sy;
+        m_popupTermsMapSrcW = sw; m_popupTermsMapSrcH = sh;
+        // A new offer starts fitted to its own terms, not wherever the last one
+        // was left pointing.
+        m_popupTermsMapZoom = 1.0f;
+        m_popupTermsMapCx = sx + sw * 0.5f;
+        m_popupTermsMapCy = sy + sh * 0.5f;
+        m_popupTermsMapDragging = false;
+
+        // Shade at the crop's own resolution, capped. The cap is well above the
+        // ~500px slot because the map zooms: at 6x the visible sixth of the crop
+        // still has to hold up, and shading that blurs while the political map
+        // under it sharpens is worse than not zooming at all.
+        const int CAP = 2048;
+        float shrink = std::min(1.0f, std::min((float)CAP / sw, (float)CAP / sh));
+        int ovW = std::max(1, (int)(sw * shrink));
+        int ovH = std::max(1, (int)(sh * shrink));
+        m_popupTermsMapBuf.assign((size_t)ovW * ovH, Color{0, 0, 0, 0});
+        for (auto& m : marks) {
+            auto it = m_provincePixels.find(m.pid);
+            if (it == m_provincePixels.end()) continue;
+            Color solid{m.col.r, m.col.g, m.col.b, 235};
+            Color wash {m.col.r, m.col.g, m.col.b, 110};
+            for (int idx : it->second) {
+                int px = idx % texW - sx, py = idx / texW - sy;
+                if (px < 0 || py < 0 || px >= sw || py >= sh) continue;
+                int ox = px * ovW / sw, oy = py * ovH / sh;
+                // Striped in OVERLAY space, not map space: in map space the
+                // period would be sub-pixel on a big crop and come out as moire.
+                bool bar = ((ox + m.lean * oy) % 8 + 8) % 8 < 5;
+                m_popupTermsMapBuf[(size_t)oy * ovW + ox] = bar ? solid : wash;
+            }
+        }
+
+        if (m_popupTermsMapTex.id > 0) UnloadTexture(m_popupTermsMapTex);
+        Image img{};
+        img.data = m_popupTermsMapBuf.data();
+        img.width = ovW;
+        img.height = ovH;
+        img.mipmaps = 1;
+        img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        m_popupTermsMapTex = LoadTextureFromImage(img);
+        // Panning past the crop asks for texels outside [0,1]. The default wrap
+        // repeats them, which would paste a ghost of the offer over unrelated
+        // land; clamped, the transparent border is what extends instead. The
+        // crop is padded by >=120px, so that border is always transparent.
+        SetTextureWrap(m_popupTermsMapTex, TEXTURE_WRAP_CLAMP);
+    }
+    if (m_popupTermsMapEmpty || m_popupTermsMapTex.id == 0) return;
+
+    Rectangle slot{(float)x, (float)y, (float)w, (float)h};
+    Rectangle v = ceasefireTermsMapView(slot);
+
+    // The crop the shading was rastered for. The view can wander off it once the
+    // player pans or zooms out, which is what the clamped wrap mode set at
+    // upload time is for: outside the crop there is nothing to shade anyway.
+    float cropX = (float)m_popupTermsMapSrcX, cropY = (float)m_popupTermsMapSrcY;
+    float cropW = (float)m_popupTermsMapSrcW, cropH = (float)m_popupTermsMapSrcH;
+    float ovW = (float)m_popupTermsMapTex.width, ovH = (float)m_popupTermsMapTex.height;
+
+    DrawRectangle(x, y, w, h, Color{12, 14, 22, 255});
+    BeginScissorMode(x, y, w, h);
+    DrawTexturePro(m_politicalTex, v, slot, {0, 0}, 0.0f, WHITE);
+    DrawTexturePro(m_popupTermsMapTex,
+                   {(v.x - cropX) / cropW * ovW, (v.y - cropY) / cropH * ovH,
+                    v.width / cropW * ovW, v.height / cropH * ovH},
+                   slot, {0, 0}, 0.0f, WHITE);
+
+    // A province small enough that its shading is a couple of pixels at this
+    // zoom would otherwise be invisible. Pin those, and only those -- a dot on
+    // every province buries the shapes the map exists to show, and zooming in
+    // is exactly how you stop needing the pin.
+    float areaScale = (slot.width / v.width) * (slot.height / v.height);
+    for (auto& m : marks) {
+        auto pIt = m_provincePixels.find(m.pid);
+        if (pIt == m_provincePixels.end()) continue;
+        if (pIt->second.size() * areaScale > 16.0f) continue;
+        auto cIt = m_provinceCenters.find(m.pid);
+        if (cIt == m_provinceCenters.end()) continue;
+        float fx = slot.x + (cIt->second.x - v.x) / v.width * slot.width;
+        float fy = slot.y + (cIt->second.y - v.y) / v.height * slot.height;
+        if (fx < slot.x || fx > slot.x + slot.width ||
+            fy < slot.y || fy > slot.y + slot.height) continue;
+        DrawCircle((int)fx, (int)fy, 4.5f, Color{0, 0, 0, 170});
+        DrawCircle((int)fx, (int)fy, 3.0f, m.col);
+    }
+    EndScissorMode();
+    DrawRectangleLines(x, y, w, h, Color{90, 95, 125, 220});
+
+    // Say so: a map you can zoom looks exactly like one you cannot.
+    const char* hint = m_popupTermsMapZoom > 1.01f || m_popupTermsMapZoom < 0.99f
+                     ? TextFormat("%.1fx  right-click resets", m_popupTermsMapZoom)
+                     : "scroll to zoom, drag to pan";
+    int hw = MeasureText(hint, 11);
+    DrawRectangle(x + w - hw - 12, y + 4, hw + 8, 15, Color{12, 14, 22, 170});
+    DrawText(hint, x + w - hw - 8, y + 6, 11, Color{170, 176, 195, 255});
+
+    // Legend, so the colours mean something without a manual. Measured before
+    // it is drawn: it sits on the map, and panning decides what is underneath.
+    struct Key { Color c; const char* t; };
+    std::vector<Key> keys;
+    if (!terms.ourProvs.empty())   keys.push_back({Color{120, 210, 140, 255}, "you gain"});
+    if (!terms.theirProvs.empty()) keys.push_back({Color{225, 130, 120, 255}, "you cede"});
+    if (!terms.ourDropClaims.empty() || !terms.theirDropClaims.empty())
+        keys.push_back({Color{225, 190, 110, 255}, "claim dropped"});
+    int lw = 0;
+    for (auto& k : keys) lw += 24 + MeasureText(k.t, 11);
+    if (lw > 0) {
+        int lx = x + 6, ly = y + h - 16;
+        DrawRectangle(lx - 4, ly - 3, lw, 17, Color{12, 14, 22, 180});
+        for (auto& k : keys) {
+            DrawCircle(lx + 4, ly + 5, 3.5f, k.c);
+            DrawText(k.t, lx + 12, ly, 11, Color{200, 205, 220, 255});
+            lx += 24 + MeasureText(k.t, 11);
+        }
+    }
+}
+
+// The window onto the province texture that the terms map is showing.
+//
+// Derived every frame from zoom and centre rather than stored, so the clamps
+// below are the only thing that decides where the edges of the world are. The
+// auto-fit crop is first widened to the slot's aspect: a view that matches the
+// slot fills it, and dragging then moves the land by exactly the mouse delta.
+Rectangle Game::ceasefireTermsMapView(Rectangle slot) const {
+    float texW = (float)m_provinces.getWidth(), texH = (float)m_provinces.getHeight();
+    float sw = (float)m_popupTermsMapSrcW, sh = (float)m_popupTermsMapSrcH;
+    if (texW <= 0 || texH <= 0 || sw <= 0 || sh <= 0 || slot.width <= 0 || slot.height <= 0)
+        return {0, 0, texW, texH};
+
+    float slotAspect = slot.width / slot.height;
+    float baseW = sw, baseH = sh;
+    if (sw / sh < slotAspect) baseW = sh * slotAspect;
+    else                      baseH = sw / slotAspect;
+
+    float vw = baseW / m_popupTermsMapZoom;
+    float vh = baseH / m_popupTermsMapZoom;
+    // Never wider than the world, and never so far off the edge that half the
+    // slot is empty space.
+    if (vw > texW) { vw = texW; vh = vw / slotAspect; }
+    if (vh > texH) { vh = texH; vw = vh * slotAspect; }
+    float cx = std::min(std::max(m_popupTermsMapCx, vw * 0.5f), texW - vw * 0.5f);
+    float cy = std::min(std::max(m_popupTermsMapCy, vh * 0.5f), texH - vh * 0.5f);
+    return {cx - vw * 0.5f, cy - vh * 0.5f, vw, vh};
+}
+
+// Wheel zooms about the cursor, left-drag pans. Called from updatePopup()
+// before its click handling, so a drag that happens to end over a button does
+// not also press it.
+void Game::updateCeasefireTermsMap(Rectangle slot) {
+    if (m_popupTermsMapEmpty || m_popupTermsMapSrcW <= 0) return;
+    Vector2 mouse = getMouse();
+    bool over = CheckCollisionPointRec(mouse, slot);
+
+    float wheel = GetMouseWheelMove();
+    if (over && wheel != 0.0f) {
+        Rectangle before = ceasefireTermsMapView(slot);
+        // Where the cursor is pointing, as a fraction of the slot and as a point
+        // on the map. Holding that point still is what makes the wheel feel like
+        // it is zooming the map rather than scrolling it.
+        float fx = (mouse.x - slot.x) / slot.width;
+        float fy = (mouse.y - slot.y) / slot.height;
+        float px = before.x + fx * before.width;
+        float py = before.y + fy * before.height;
+
+        m_popupTermsMapZoom = std::min(8.0f, std::max(0.25f,
+            m_popupTermsMapZoom * (wheel > 0 ? 1.2f : 1.0f / 1.2f)));
+
+        // Re-centre against the NEW view size, then let the shared clamp in
+        // ceasefireTermsMapView decide whether the edges allow it.
+        Rectangle after = ceasefireTermsMapView(slot);
+        m_popupTermsMapCx = px + (0.5f - fx) * after.width;
+        m_popupTermsMapCy = py + (0.5f - fy) * after.height;
+    }
+
+    // Zoomed in on the wrong end of a two-front offer, there is otherwise no way
+    // back to the view that showed the whole deal short of closing the popup.
+    if (over && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        m_popupTermsMapZoom = 1.0f;
+        m_popupTermsMapCx = m_popupTermsMapSrcX + m_popupTermsMapSrcW * 0.5f;
+        m_popupTermsMapCy = m_popupTermsMapSrcY + m_popupTermsMapSrcH * 0.5f;
+    }
+
+    if (over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        m_popupTermsMapDragging = true;
+        m_popupTermsMapDragPrev = mouse;
+    }
+    if (m_popupTermsMapDragging) {
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            m_popupTermsMapDragging = false;
+        } else {
+            Rectangle v = ceasefireTermsMapView(slot);
+            // Screen pixels to map pixels. Dragging right pulls the land right,
+            // so the view moves left.
+            m_popupTermsMapCx -= (mouse.x - m_popupTermsMapDragPrev.x) * v.width / slot.width;
+            m_popupTermsMapCy -= (mouse.y - m_popupTermsMapDragPrev.y) * v.height / slot.height;
+            // The clamp lives in the view; fold it back so the centre cannot
+            // build up a debt of off-map drag that has to be paid back before
+            // the map moves again.
+            Rectangle c = ceasefireTermsMapView(slot);
+            m_popupTermsMapCx = c.x + c.width * 0.5f;
+            m_popupTermsMapCy = c.y + c.height * 0.5f;
+            m_popupTermsMapDragPrev = mouse;
         }
     }
 }
@@ -1012,9 +1393,19 @@ std::string Game::saveStateJson() {
         j["balances"][std::to_string(cid)] = bal;
     }
 
-    // Minority alignment drift
-    for (auto& [name, drift] : m_minorityAlignmentDrift) {
-        j["alignmentDrift"][name] = drift;
+    // Minority alignment drift and minority policy, both per country.
+    //
+    // "alignmentDrift" (a flat minority -> float map) is the pre-per-country
+    // shape and is still READ on load, so old saves keep their numbers. It is
+    // no longer written: a save that emitted both would be ambiguous about
+    // which one wins, and the country-keyed map is strictly more information.
+    for (auto& [cid, byName] : m_minorityAlignmentDrift) {
+        auto& node = j["alignmentDriftByCountry"][std::to_string(cid)];
+        for (auto& [name, drift] : byName) node[name] = drift;
+    }
+    for (auto& [cid, byName] : m_ethnicPolicies) {
+        auto& node = j["ethnicPolicies"][std::to_string(cid)];
+        for (auto& [name, opts] : byName) node[name] = opts;
     }
 
     // Claims pending
@@ -1285,10 +1676,38 @@ void Game::loadStateJson(const std::string& json) {
         }
     }
 
-    // Minority alignment drift
-    if (j.contains("alignmentDrift")) {
-        for (auto& [key, val] : j["alignmentDrift"].items()) {
-            m_minorityAlignmentDrift[key] = val.get<float>();
+    // Minority alignment drift, per country.
+    if (j.contains("alignmentDriftByCountry")) {
+        for (auto& [cidKey, node] : j["alignmentDriftByCountry"].items()) {
+            const int cid = std::stoi(cidKey);
+            for (auto& [name, val] : node.items())
+                m_minorityAlignmentDrift[cid][name] = val.get<float>();
+        }
+    } else if (j.contains("alignmentDrift")) {
+        // MIGRATION. Before minority policy was a country's own, drift was one
+        // number per minority for the entire world. There is no way to work out
+        // retroactively which government earned which part of it, and dropping
+        // it would hand every country on an old save a clean slate — turning a
+        // long-running grievance into contentment on load. Copying the world
+        // figure to every country preserves the state that was actually being
+        // simulated; the moment play resumes, the values diverge on their own.
+        std::vector<int> realCountries;
+        for (auto& [cid, c] : m_countries.getAll())
+            if (cid > 0 && cid < SPC_CID) realCountries.push_back(cid);
+        for (auto& [name, val] : j["alignmentDrift"].items()) {
+            const float drift = val.get<float>();
+            for (int cid : realCountries) m_minorityAlignmentDrift[cid][name] = drift;
+        }
+    }
+
+    // Minority policy, per country. Absent on a pre-per-country save, in which
+    // case every country simply starts from the category defaults — the same
+    // place the old global table started before the player touched it.
+    if (j.contains("ethnicPolicies")) {
+        for (auto& [cidKey, node] : j["ethnicPolicies"].items()) {
+            const int cid = std::stoi(cidKey);
+            for (auto& [name, val] : node.items())
+                m_ethnicPolicies[cid][name] = val.get<std::vector<int>>();
         }
     }
 

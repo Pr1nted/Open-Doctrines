@@ -97,7 +97,8 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(TOOLS_DIR)
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 STDMAPS = os.path.join(DATA_DIR, "STDmaps")
-SCENARIO_DIR = os.path.join(TOOLS_DIR, "data", "scenarios")
+TOOLS_DATA = os.path.join(TOOLS_DIR, "data")
+SCENARIO_DIR = os.path.join(TOOLS_DATA, "scenarios")
 DEFAULT_BASE = os.path.join(STDMAPS, "map.odmap")
 
 MAP_W, MAP_H = 8192, 4096
@@ -553,6 +554,41 @@ def apply_geometry(base, remap, files, owner, cid_of):
     return new_prov
 
 
+# ── censoring ───────────────────────────────────────────────────────
+# "Show actual flags" is a censoring option, not a flag randomiser. Turning it
+# off used to hand every power with a real flag a solid rectangle in its map
+# colour -- 28 of 65 nations in 1939, including Ireland, Luxembourg and Panama,
+# none of which has anything to censor. What it produces now:
+#
+#   authored `flag_censored`  -> that design (the 1939 Reich tricolour)
+#   listed in scenario_flags  -> the real flag, mosaicked by the renderer
+#   anything else             -> the real flag, untouched; the toggle is a no-op
+#
+# which is the shape data/STDmaps/map.odmap already had and the scenarios did
+# not. The list lives in tools/data/scenario_flags.json so this generator and
+# tools/fix_censored_flags.py cannot disagree about it.
+def censor_set():
+    try:
+        with open(os.path.join(TOOLS_DATA, "scenario_flags.json")) as f:
+            return set(json.load(f).get("censor", []))
+    except Exception:
+        return set()
+
+
+def censored_flag_for(power, actual):
+    """The `flag_censored` entry for one power, given its `flag_actual`."""
+    authored = power.get("flag_censored")
+    if authored:
+        return dict(authored, censored=True)
+    name = power.get("flag_file") or ""
+    if not name and isinstance(actual, dict) and actual.get("image"):
+        name = os.path.splitext(os.path.basename(actual["image"]))[0]
+    # `censored` omitted rather than written false, which is how the base map
+    # spells it -- so regenerating a scenario produces no diff against a map
+    # tools/fix_censored_flags.py has already corrected.
+    return dict(actual, censored=True) if name in censor_set() else dict(actual)
+
+
 # ── country table ───────────────────────────────────────────────────
 def build_countries(base, scen, owner):
     """countries.json for the scenario, plus power iso -> cid."""
@@ -579,26 +615,20 @@ def build_countries(base, scen, owner):
         # Nothing here downloads artwork, so a scenario adds no licence surface.
         if power.get("flag_file"):
             # A real historical flag, downloaded by download_scenario_flags.py
-            # and rasterised into data/flags/. `flag_censored` stays procedural
-            # so the game's showActualFlags toggle has something to switch to --
-            # that setting exists precisely for the 1939 German flag.
+            # and rasterised into data/flags/.
             actual = {"image": "flags/" + power["flag_file"] + ".png"}
-            censored = dict(power.get("flag_censored")
-                            or {"type": "solid", "colors": [power["color"]]})
-            censored["censored"] = True
             used_flag_files.add(power["flag_file"])
         elif power.get("flag_from") and power["flag_from"] in flag_by_iso:
-            actual, censored = flag_by_iso[power["flag_from"]]
+            actual = flag_by_iso[power["flag_from"]][0]
         elif power.get("flag"):
             actual = dict(power["flag"])
-            censored = dict(power.get("flag_censored", power["flag"]))
-            censored["censored"] = True
         else:
             r, g, b = hex_to_rgb(power["color"])
             light = "#%02x%02x%02x" % (min(r + 60, 255), min(g + 60, 255), min(b + 60, 255))
             dark = "#%02x%02x%02x" % (max(r - 50, 0), max(g - 50, 0), max(b - 50, 0))
             actual = {"type": "hstripes_3", "colors": [dark, power["color"], light]}
-            censored = dict(actual, censored=True)
+
+        censored = censored_flag_for(power, actual)
 
         out[str(cid)] = {
             "id": cid,

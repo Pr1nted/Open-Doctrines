@@ -95,6 +95,11 @@ public:
      * runs dry and the music stutters. Calling this from inside the long
      * operations keeps it fed. It does NOT advance the playlist or run fades:
      * those need a real frame delta, and a loading step is not one.
+     *
+     * On the web it additionally hands the thread back to the browser, because
+     * there the audio callback runs on this same thread and a refilled buffer
+     * that nobody drains still loops. Rate-limited internally, so it is safe to
+     * call from inside a loop.
      */
     void pump();
 
@@ -308,4 +313,5 @@ private:
     std::thread m_bgThread;
     std::atomic<bool> m_bgRunning{false};
     int m_bgDepth = 0;            // main-thread only; begin/end nesting count
+    double m_lastPumpMs = 0.0;    // web: last time pump() yielded to the browser
 };

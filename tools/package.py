@@ -78,15 +78,30 @@ def main():
     # --- the binary ---
     base = os.path.basename(args.binary.rstrip("/"))
     dst_bin = os.path.join(out, base)
-    if os.path.isdir(args.binary):          # macOS .app bundle
+    bundle = os.path.isdir(args.binary)     # macOS .app bundle
+    if bundle:
         shutil.copytree(args.binary, dst_bin, symlinks=True)
+        # A built bundle's Contents/data is a SYMLINK to the source tree, so
+        # that a developer can edit data without relinking (see CMakeLists.txt).
+        # symlinks=True above copies it as a symlink, which is right for
+        # everything else in the bundle and wrong for this one: the link holds
+        # an absolute path into the machine that built it, so a zip built on CI
+        # ships an app pointing at a checkout under /Users/runner. Drop the
+        # link; the real data is written over the same name below.
+        link = os.path.join(dst_bin, "Contents", "data")
+        if os.path.islink(link):
+            os.unlink(link)
     else:
         shutil.copy2(args.binary, dst_bin)
         os.chmod(dst_bin, 0o755)
     print(f"  binary   {base}  ({human(tree_size(dst_bin))})")
 
     # --- data, allowlisted ---
-    dst_data = os.path.join(out, "data")
+    # Beside the executable, which is where the game looks for it (Game::init)
+    # and the only shape the updater accepts (GameUpdates::runUpdate). In a
+    # bundle the executable is in Contents/MacOS/, so its data is Contents/data.
+    dst_data = os.path.join(dst_bin, "Contents", "data") if bundle \
+               else os.path.join(out, "data")
     os.makedirs(dst_data)
     shipped, missing = [], []
     for name in rel.DATA_ALLOWLIST:
@@ -139,6 +154,27 @@ def main():
     # runtime as a first action.
     for d in ("saves", "custom_maps", "mods", "exports"):
         os.makedirs(os.path.join(dst_data, d), exist_ok=True)
+
+    # --- would the game find any of this? ---
+    # Mirrors Game::init(): data/ beside the executable, else one level up, and
+    # whichever has fonts/ in it wins. Asserted here rather than discovered by a
+    # player, because a package whose data is in the wrong place still STARTS --
+    # with the stock font, no audio and no maps, and no error saying so. That is
+    # what shipped for as long as the packaged layout and the resolution rule
+    # disagreed, and a check that runs on every package is what stops it
+    # happening again quietly.
+    exe_dir = os.path.join(dst_bin, "Contents", "MacOS") if bundle else out
+    found = None
+    for where in ("data", os.path.join("..", "data")):
+        cand = os.path.normpath(os.path.join(exe_dir, where))
+        if os.path.isdir(os.path.join(cand, "fonts")):
+            found = cand
+            break
+    if found != os.path.normpath(dst_data):
+        print("\nFAILED: the game would not find this package's data", file=sys.stderr)
+        print(f"    packaged into:  {os.path.normpath(dst_data)}", file=sys.stderr)
+        print(f"    game would use: {found}", file=sys.stderr)
+        return 1
 
     with open(os.path.join(out, "VERSION"), "w") as f:
         f.write(str(version) + "\n")

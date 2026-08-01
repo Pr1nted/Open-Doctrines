@@ -466,7 +466,20 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     metaJson += "}\n";
     mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
 
-    // Copy turn files + state.json
+    // Everything the archive already held, except the three entries this
+    // function regenerates.
+    //
+    // This used to copy ONLY turns/* and state.json, which made a
+    // "touch the timestamp" call quietly destructive: rebels.json and every
+    // rebellion/<cid>.svg were dropped on the floor. Clicking a save in the load
+    // browser calls this before loading it, so a breakaway state's name, colour
+    // and flag were deleted by the act of opening the game they belonged to.
+    // What came back was whatever synthesizeMissingRebels() could invent from
+    // the province ids alone -- "Rebel State 84", a hashed colour, no flag.
+    //
+    // Listing what to KEEP is what made that possible. This lists what to
+    // REPLACE instead, so an entry nothing here knows about survives by
+    // default rather than by being remembered.
     {
         mz_zip_archive srcZip{};
         if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
@@ -474,14 +487,14 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
                 if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
-                if (strstr(st.m_filename, "turns/") == st.m_filename ||
-                    strcmp(st.m_filename, "state.json") == 0) {
-                    size_t sz = 0;
-                    void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                    if (d) {
-                        mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                        free(d);
-                    }
+                if (strcmp(st.m_filename, "map.odmap") == 0 ||
+                    strcmp(st.m_filename, "metadata.json") == 0 ||
+                    strcmp(st.m_filename, "index.json") == 0) continue;
+                size_t sz = 0;
+                void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
+                if (d) {
+                    mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
+                    free(d);
                 }
             }
             mz_zip_reader_end(&srcZip);
@@ -808,6 +821,21 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
                 strcmp(st.m_filename, "state.json") == 0) {
                 continue;
             }
+            // Anything the caller is supplying is a REPLACEMENT, not a second
+            // copy. Without this, saving a game that already had rebels.json in
+            // its archive wrote both the old entry and the new one under the
+            // same name -- and a zip lookup answers with the FIRST match, so
+            // every later load read the stale copy. Rebel states created after
+            // a save were therefore never seen again: their provinces came back
+            // owned by a country that was not in the file, and got placeholder
+            // "Rebel State N" identities. appendTurn already skipped overrides;
+            // this path did not, and it also grew the archive by a full set of
+            // duplicates every time it ran.
+            bool overridden = false;
+            for (auto& [n, c] : extraFiles)
+                if (n == st.m_filename) { overridden = true; break; }
+            if (overridden) continue;
+
             size_t sz = 0;
             void* d = mz_zip_reader_extract_to_heap(&tmpZip, i, &sz, 0);
             if (d) {

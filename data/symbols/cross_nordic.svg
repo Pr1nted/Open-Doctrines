@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <rect fill="#fff" height="160" width="160" x="-80" y="-80"/>
-  <rect fill="#e00" height="160" width="20" x="-20" y="-80"/>
-  <rect fill="#e00" height="20" width="160" x="-80" y="-15"/>
+  <!-- cross_nordic: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-66.650) scale(0.500000)">
+<g id="svgg"><path id="path0" d="M141.016 59.863 L 141.016 119.727 70.508 119.727 L 0.000 119.727 0.000 133.301 L 0.000 146.875 70.508 146.875 L 141.016 146.875 141.016 206.738 L 141.016 266.602 154.688 266.602 L 168.359 266.602 168.359 206.738 L 168.359 146.875 284.180 146.875 L 400.000 146.875 400.000 133.301 L 400.000 119.727 284.180 119.727 L 168.359 119.727 168.359 59.863 L 168.359 0.000 154.688 0.000 L 141.016 0.000 141.016 59.863 " stroke="none" fill="#fff" fill-rule="evenodd"></path></g>
+  </g>
 </svg>

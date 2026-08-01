@@ -17,6 +17,57 @@ void Game::clearClaimsView() {
     m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
 }
 
+void Game::grantClaim(const std::string& claimantIso, int pid) {
+    if (claimantIso.empty() || pid <= 0) return;
+    auto& cl = m_claims[claimantIso];
+    if (std::find(cl.begin(), cl.end(), pid) == cl.end()) cl.push_back(pid);
+    // Checked separately rather than under the same early-out: a world saved
+    // by a build that only wrote one of the two indexes loads with them
+    // already disagreeing, and the repair belongs here.
+    auto& rev = m_claimsByProvince[pid];
+    if (std::find(rev.begin(), rev.end(), claimantIso) == rev.end())
+        rev.push_back(claimantIso);
+}
+
+// === dropSelfOwnedClaims ===
+// A claim is a demand for land you do not have, so holding the land ends it.
+// Transfers clear the new owner's claim as they happen now, but a world saved
+// before they did -- or a scenario that ships a country claiming its own
+// ground -- loads with claims that can never be satisfied because they already
+// are: painted contested on the overlay, listed under "Claimed by" on your own
+// province, and feeding the AI's reconquer-our-land war bar for ever.
+void Game::dropSelfOwnedClaims() {
+    std::vector<std::pair<std::string, int>> stale;
+    for (auto& [iso, pids] : m_claims) {
+        const int cid = cidForIso(iso);
+        if (cid <= 0) continue;
+        for (int pid : pids) {
+            const Province* p = m_provinces.getProvinceById(pid);
+            if (p && p->countryId == cid) stale.emplace_back(iso, pid);
+        }
+    }
+    for (auto& [iso, pid] : stale) revokeClaim(iso, pid);
+    if (!stale.empty())
+        printf("[CLAIM] dropped %zu claim(s) on ground the claimant already holds\n",
+               stale.size());
+}
+
+void Game::revokeClaim(const std::string& claimantIso, int pid) {
+    if (claimantIso.empty() || pid <= 0) return;
+    auto it = m_claims.find(claimantIso);
+    if (it != m_claims.end()) {
+        auto& v = it->second;
+        v.erase(std::remove(v.begin(), v.end(), pid), v.end());
+        if (v.empty()) m_claims.erase(it);
+    }
+    auto bp = m_claimsByProvince.find(pid);
+    if (bp != m_claimsByProvince.end()) {
+        auto& v = bp->second;
+        v.erase(std::remove(v.begin(), v.end(), claimantIso), v.end());
+        if (v.empty()) m_claimsByProvince.erase(bp);
+    }
+}
+
 bool Game::isCountryInvolvedInClaims(int countryId, int claimantCid) {
     if (claimantCid <= 0) return false;
     if (countryId == claimantCid) return true;

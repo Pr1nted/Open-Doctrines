@@ -1,7 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
   <g fill="#fff">
-    <circle cx="0" cy="0" r="50"/>
-    <circle cx="0" cy="0" fill="#000" r="25"/>
+    <!-- Body and hub as one evenodd path, so the hub is a HOLE. It used to be
+         a black circle painted over the body, which is only a hole against a
+         black background; anywhere else it rasterised as opaque black. The two
+         circles are concentric, so evenodd is enough here - unlike the
+         crescents, where the cutout is not nested and needs an explicit arc.
+         The teeth stay separate shapes: they overlap the body's rim, and
+         inside one evenodd path that overlap would cancel out to holes. -->
+    <path fill-rule="evenodd" d="M -50,0 A 50,50 0 1,0 50,0 A 50,50 0 1,0 -50,0 Z
+                                 M -25,0 A 25,25 0 1,0 25,0 A 25,25 0 1,0 -25,0 Z"/>
     <rect height="25" rx="2" transform="rotate(0)" width="16" x="-8" y="-70"/>
     <rect height="25" rx="2" transform="rotate(30)" width="16" x="-8" y="-70"/>
     <rect height="25" rx="2" transform="rotate(60)" width="16" x="-8" y="-70"/>

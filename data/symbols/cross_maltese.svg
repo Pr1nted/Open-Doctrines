@@ -1,3 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <path d="M-30-80 L-10-30 L30-30 L50-80 L30-10 L80 0 L30 10 L50 80 L30 30 L-10 30 L-30 80 L-10 10 L-80 0 L-10-10 Z" fill="#fff"/>
+  <!-- cross_maltese: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-100.000) scale(50.000000)">
+<path fill="#fff" d="m1 0 1 1 1-1-2 4 1-1 1 1ZM0 3l1-1-1-1 4 2-1-1 1-1Z"/>
+  </g>
 </svg>

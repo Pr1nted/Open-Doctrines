@@ -144,6 +144,45 @@ void Game::initEthnicPolicyCategories() {
     });
 }
 
+std::vector<int> Game::defaultEthnicPolicyOptions() const {
+    std::vector<int> out(m_ethnicPolicyCategories.size(), 0);
+    for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ++ci)
+        for (size_t oi = 0; oi < m_ethnicPolicyCategories[ci].options.size(); ++oi)
+            if (m_ethnicPolicyCategories[ci].options[oi].isDefault) { out[ci] = (int)oi; break; }
+    return out;
+}
+
+int Game::ethnicPolicyOption(int countryId, const std::string& minorityName, size_t ci) const {
+    if (ci >= m_ethnicPolicyCategories.size()) return -1;
+    auto cIt = m_ethnicPolicies.find(countryId);
+    if (cIt != m_ethnicPolicies.end()) {
+        auto mIt = cIt->second.find(minorityName);
+        if (mIt != cIt->second.end() && ci < mIt->second.size()) {
+            const int oi = mIt->second[ci];
+            if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size()) return oi;
+        }
+    }
+    for (size_t oi = 0; oi < m_ethnicPolicyCategories[ci].options.size(); ++oi)
+        if (m_ethnicPolicyCategories[ci].options[oi].isDefault) return (int)oi;
+    return 0;
+}
+
+void Game::setEthnicPolicyOption(int countryId, const std::string& minorityName,
+                                 size_t ci, int option) {
+    if (ci >= m_ethnicPolicyCategories.size()) return;
+    if (option < 0 || option >= (int)m_ethnicPolicyCategories[ci].options.size()) return;
+    auto& row = m_ethnicPolicies[countryId][minorityName];
+    // A partially filled row is a trap: every reader indexes by category, so a
+    // row shorter than the category list silently answers "default" for the
+    // tail. Fill it out before writing into it.
+    if (row.size() != m_ethnicPolicyCategories.size()) {
+        std::vector<int> def = defaultEthnicPolicyOptions();
+        for (size_t k = 0; k < row.size() && k < def.size(); ++k) def[k] = row[k];
+        row = std::move(def);
+    }
+    row[ci] = option;
+}
+
 void Game::initCountryCompass() {
     // Fill in countries not already loaded from country_compass.json FROM THEIR
     // OWN COMPASS, not {0,0}. Political unrest is measured as a province's
@@ -200,16 +239,15 @@ void Game::applyStartingPolicies() {
             shiftCountryCompass(cid, pit->econShift, pit->socShift);
         }
 
-        // Also apply starting minority policies (ethnic defaults)
+        // Also apply starting minority policies (ethnic defaults). These are
+        // already per-country in the map data (isoA3 -> minority -> options);
+        // they used to be flattened into one world-wide table, so whichever
+        // country the loader reached first set the policy for everybody and the
+        // rest were dropped on the floor.
         auto smpIt = m_startingMinorityPolicies.find(c.isoA3);
-        if (smpIt != m_startingMinorityPolicies.end()) {
-            for (auto& [mname, opts] : smpIt->second) {
-                auto epIt = m_ethnicPolicies.find(mname);
-                if (epIt == m_ethnicPolicies.end()) {
-                    m_ethnicPolicies[mname] = opts;
-                }
-            }
-        }
+        if (smpIt != m_startingMinorityPolicies.end())
+            for (auto& [mname, opts] : smpIt->second)
+                m_ethnicPolicies[cid][mname] = opts;
     }
 }
  
@@ -340,23 +378,11 @@ void Game::applyEthnicPolicyEffects(int countryId) {
             if (processed.count(mg.name)) continue;
             processed.insert(mg.name);
 
-            // Compute the current option indices (from m_ethnicPolicies or defaults)
-            auto epIt = m_ethnicPolicies.find(mg.name);
-            bool hasEntry = (epIt != m_ethnicPolicies.end());
-
-            // Accumulate alignment drift
+            // Accumulate alignment drift, from THIS country's option set.
             float driftThisTurn = 0.0f;
             float growthPctThisTurn = 0.0f; // summed over categories, applied once below
             for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
-                int oi = -1;
-                if (hasEntry && ci < epIt->second.size()) {
-                    oi = epIt->second[ci];
-                } else {
-                    // Use default option
-                    for (size_t oi2 = 0; oi2 < m_ethnicPolicyCategories[ci].options.size(); oi2++) {
-                        if (m_ethnicPolicyCategories[ci].options[oi2].isDefault) { oi = (int)oi2; break; }
-                    }
-                }
+                const int oi = ethnicPolicyOption(countryId, mg.name, ci);
                 if (oi < 0 || oi >= (int)m_ethnicPolicyCategories[ci].options.size()) continue;
                 auto& opt = m_ethnicPolicyCategories[ci].options[oi];
                 driftThisTurn += opt.alignmentPerTurn;
@@ -424,7 +450,7 @@ void Game::applyEthnicPolicyEffects(int countryId) {
                     }
                 }
             }
-            m_minorityAlignmentDrift[mg.name] += driftThisTurn;
+            m_minorityAlignmentDrift[countryId][mg.name] += driftThisTurn;
         }
     }
 
@@ -442,17 +468,11 @@ void Game::updatePolicies() {
     if (m_playerCountryId > 0 && (!m_claimsPendingDrop.empty() || !m_claimsPendingAdd.empty())) {
         const Country* pc2 = m_countries.getCountry(m_playerCountryId);
         if (pc2) {
-            for (int pid : m_claimsPendingDrop) {
-                auto& cl = m_claims[pc2->isoA3];
-                cl.erase(std::remove(cl.begin(), cl.end(), pid), cl.end());
-                auto& bp = m_claimsByProvince[pid];
-                bp.erase(std::remove(bp.begin(), bp.end(), pc2->isoA3), bp.end());
-                if (bp.empty()) m_claimsByProvince.erase(pid);
-            }
-            for (int pid : m_claimsPendingAdd) {
-                if (std::find(m_claims[pc2->isoA3].begin(), m_claims[pc2->isoA3].end(), pid) == m_claims[pc2->isoA3].end())
-                    m_claims[pc2->isoA3].push_back(pid);
-            }
+            for (int pid : m_claimsPendingDrop) revokeClaim(pc2->isoA3, pid);
+            // The add half used to touch m_claims only, so a claim staked from
+            // the Claims tab never showed up under "Claimed by" and never
+            // stirred any unrest in the province it was staked on.
+            for (int pid : m_claimsPendingAdd) grantClaim(pc2->isoA3, pid);
             if (m_renderer && m_showClaims && m_playerCountryId > 0) {
                 m_lastClaimsCountryId = m_playerCountryId;
                 generateClaimsTexture();
@@ -583,7 +603,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     auto mit = m_provinceMinorities.find(provinceId);
     if (mit != m_provinceMinorities.end()) {
         for (auto& mg : mit->second) {
-            float align = getMinorityAlignment(mg.name);
+            float align = getMinorityAlignment(countryId, mg.name);
             float coeff = (100.0f - align) / 100.0f;
             float pct01 = mg.pct * 0.01f;
             ethUnrest += (coeff * pct01) * (coeff * pct01) * 5.0f;
@@ -614,6 +634,13 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // to arms. Country-wide rather than per-province — it is a national mood,
     // not a local grievance.
     float total = base + polUnrest + ethUnrest + claimUnrest + warWearinessOf(countryId);
+
+    // An empty treasury is felt everywhere at once. Unlike the weariness term
+    // this does not accumulate or decay — it is on while the country cannot pay
+    // for itself and off the turn it can, which makes solvency something a
+    // government can see the value of immediately rather than several turns
+    // later. See BANKRUPTCY_UNREST_PCT.
+    if (m_bankruptCountries.count(countryId)) total += BANKRUPTCY_UNREST_PCT;
 
     // Active policies advertising "unrest reduction" now actually reduce it.
     // (The effect used to be applied only in getCountryUnrest(), which nothing
@@ -660,37 +687,26 @@ float Game::getProvinceRebellionChance(int provinceId) const {
     return getProvinceRebellionChance(provinceId, m_playerCountryId);
 }
 
-float Game::getMinorityAlignment(const std::string& minorityName) const {
+// How a minority feels about the government it lives under — which is now a
+// question about a specific government, not about the minority in the abstract.
+// A group can be loyal in one country and in open revolt across the border,
+// which is the point of letting each government set its own policy.
+float Game::getMinorityAlignment(int countryId, const std::string& minorityName) const {
     float align = 50.0f;
-
-    // Cumulative drift from ethnic policies (applied per turn)
-    auto dit = m_minorityAlignmentDrift.find(minorityName);
-    if (dit != m_minorityAlignmentDrift.end()) {
-        align += dit->second;
+    auto cIt = m_minorityAlignmentDrift.find(countryId);
+    if (cIt != m_minorityAlignmentDrift.end()) {
+        auto dit = cIt->second.find(minorityName);
+        if (dit != cIt->second.end()) align += dit->second;
     }
-
     return std::max(0.0f, std::min(100.0f, align));
 }
 
-float Game::getMinorityAlignmentTrend(const std::string& minorityName) const {
+float Game::getMinorityAlignmentTrend(int countryId, const std::string& minorityName) const {
     float trend = 0.0f;
-    bool found = false;
-    const std::vector<int>* opts = nullptr;
-    auto epIt = m_ethnicPolicies.find(minorityName);
-    if (epIt != m_ethnicPolicies.end()) { opts = &epIt->second; found = true; }
-
     for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
-        int oi = -1;
-        if (found && opts && ci < opts->size()) {
-            oi = (*opts)[ci];
-        } else {
-            for (size_t oi2 = 0; oi2 < m_ethnicPolicyCategories[ci].options.size(); oi2++) {
-                if (m_ethnicPolicyCategories[ci].options[oi2].isDefault) { oi = (int)oi2; break; }
-            }
-        }
-        if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size()) {
+        const int oi = ethnicPolicyOption(countryId, minorityName, ci);
+        if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size())
             trend += m_ethnicPolicyCategories[ci].options[oi].alignmentPerTurn;
-        }
     }
     return trend;
 }
@@ -1265,7 +1281,7 @@ void Game::drawAnalysisTab() {
         auto mit = m_provinceMinorities.find(pid);
         if (mit != m_provinceMinorities.end()) {
             for (auto& mg : mit->second) {
-                float align = getMinorityAlignment(mg.name);
+                float align = getMinorityAlignment(m_playerCountryId, mg.name);
                 float coeff = (100.0f - align) / 100.0f;
                 float pct01 = mg.pct * 0.01f;
                 ethUnrest += (coeff * pct01) * (coeff * pct01) * 5.0f;
@@ -1392,11 +1408,9 @@ void Game::drawAnalysisTab() {
                 else snprintf(ps, sizeof(ps), "%lld", ma.pop);
                 DrawText(ps, leftX + mcP, dy + 1, 13, LIGHTGRAY);
 
-                float align = getMinorityAlignment(ma.name);
-                float trend = getMinorityAlignmentTrend(ma.name);
-                float drift = 0;
-                auto dit = m_minorityAlignmentDrift.find(ma.name);
-                if (dit != m_minorityAlignmentDrift.end()) drift = dit->second;
+                float align = getMinorityAlignment(m_playerCountryId, ma.name);
+                float trend = getMinorityAlignmentTrend(m_playerCountryId, ma.name);
+                float drift = align - 50.0f;   // the same number, relative to neutral
 
                 Color ac = align < 30 ? RED : (align < 60 ? ORANGE : GREEN);
                 DrawText(TextFormat("%.0f%%", align), leftX + mcA, dy + 1, 13, ac);
@@ -1535,7 +1549,7 @@ void Game::drawEthnicTab() {
         for (size_t ei = 0; ei < entries.size(); ei++) {
             auto& e = entries[ei];
             bool isSel = ((int)ei == m_selectedEthnicity);
-            float align = getMinorityAlignment(e.name);
+            float align = getMinorityAlignment(m_playerCountryId, e.name);
             Color ac = align < 30 ? RED : (align < 60 ? ORANGE : GREEN);
 
             DrawRectangle(leftX, dy, panelW, rowH, isSel ? Color{60, 60, 80, 200} : Color{30, 30, 40, 180});
@@ -1556,15 +1570,7 @@ void Game::drawEthnicTab() {
             int xOff = leftX + 20;
             for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
                 auto& cat = m_ethnicPolicyCategories[ci];
-                int optIdx = 0;
-                auto epIt = m_ethnicPolicies.find(e.name);
-                if (epIt != m_ethnicPolicies.end() && ci < epIt->second.size()) {
-                    optIdx = epIt->second[ci];
-                } else {
-                    for (size_t oi = 0; oi < cat.options.size(); oi++) {
-                        if (cat.options[oi].isDefault) { optIdx = (int)oi; break; }
-                    }
-                }
+                const int optIdx = ethnicPolicyOption(m_playerCountryId, e.name, ci);
 
                 DrawText(cat.displayName.c_str(), xOff, dy, 12, Color{200, 180, 150, 255});
                 int rx = xOff + 200;
@@ -1657,18 +1663,12 @@ void Game::updateEthnicTab() {
                     int nameW = MeasureText(m_ethnicPolicyCategories[ci].options[oi].name.c_str(), 12);
                     Rectangle optRect = {(float)rx, (float)(rdy - 2), (float)(nameW + 18), 18};
                     if (CheckCollisionPointRec(mouse, optRect)) {
-                        auto& vec = m_ethnicPolicies[entries[ei].name];
-                        if (vec.size() != m_ethnicPolicyCategories.size()) {
-                            vec.resize(m_ethnicPolicyCategories.size());
-                            for (size_t ci2 = 0; ci2 < m_ethnicPolicyCategories.size(); ci2++) {
-                                int def = 0;
-                                for (size_t oi2 = 0; oi2 < m_ethnicPolicyCategories[ci2].options.size(); oi2++) {
-                                    if (m_ethnicPolicyCategories[ci2].options[oi2].isDefault) { def = (int)oi2; break; }
-                                }
-                                vec[ci2] = def;
-                            }
-                        }
-                        vec[ci] = (int)oi;
+                        // The player edits THEIR government's policy, not the
+                        // world's. setEthnicPolicyOption fills a defaulted row
+                        // on first touch, which is what the open-coded resize
+                        // here was doing.
+                        setEthnicPolicyOption(m_playerCountryId, entries[ei].name,
+                                              ci, (int)oi);
                         return;
                     }
                     rx = rx + nameW + 30;

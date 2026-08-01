@@ -216,6 +216,68 @@ if(OD_ENABLE_MODS)
                 "      cmake -S . -B build -DOD_ENABLE_MODS=OFF")
         endif()
 
+        # WAMR picks its platform layer the same way it picked its architecture:
+        # from the host. Its CMakeLists does
+        #     string(TOLOWER ${CMAKE_HOST_SYSTEM_NAME} WAMR_BUILD_PLATFORM)
+        # which is right whenever host and target agree, and wrong in exactly
+        # the case the mingw toolchain exists for. Cross-compiling to Windows
+        # from this Mac built core/shared/platform/DARWIN against a Windows
+        # sysroot and stopped at "poll.h: No such file or directory" -- a header
+        # the target does not have, named by a file the target should never have
+        # been compiling.
+        #
+        # CMAKE_SYSTEM_NAME is the target, and lowercased it already spells the
+        # three directory names under core/shared/platform that this project
+        # ships: Windows -> windows, Darwin -> darwin, Linux -> linux.
+        if(NOT DEFINED WAMR_BUILD_PLATFORM)
+            string(TOLOWER "${CMAKE_SYSTEM_NAME}" WAMR_BUILD_PLATFORM)
+            message(STATUS "WAMR target platform: ${WAMR_BUILD_PLATFORM} "
+                           "(from CMAKE_SYSTEM_NAME, not the host)")
+        endif()
+
+        # WAMR traps out-of-bounds wasm memory access in hardware where it can:
+        # guard pages, plus a handler to turn the fault into a wasm trap. On
+        # Windows that handler is __try/__except -- Structured Exception
+        # Handling, an MSVC extension. MSVC compiles it, which is why the
+        # shipped Windows build is unaffected and keeps hardware checks.
+        #
+        # mingw's gcc has no __try, so a cross-build stops at
+        #     wasm_runtime.c:3619: '__try' undeclared
+        # after twenty minutes. The code is inside #ifdef OS_ENABLE_HW_BOUND_CHECK,
+        # so turning that off is what makes the mod runtime buildable there at
+        # all -- the alternative is a Windows build with no mod system, which is
+        # what -DOD_ENABLE_MODS=OFF gives and is not the same product.
+        #
+        # What is given up is the mechanism, NOT the check: WAMR falls back to
+        # bounds-checking every access in software. Slower, equally safe, and it
+        # applies only to a mingw-cross build -- never to what CI ships.
+        if(WIN32 AND NOT MSVC)
+            set(WAMR_DISABLE_HW_BOUND_CHECK 1)
+            message(STATUS "WAMR: software bounds checks (no __try on this "
+                           "compiler); hardware checks need MSVC")
+        endif()
+
+        # WAMR contradicts itself about assemblers on mingw, and the result is a
+        # link error rather than a build error.
+        #
+        # invokeNative is the assembly trampoline the interpreter calls host
+        # functions through. WAMR picks the right SOURCE for mingw --
+        # iwasm_common.cmake tests `if (NOT MINGW)` and chooses
+        # invokeNative_mingw_x64.s, GAS syntax. But runtime_lib.cmake picks the
+        # ASSEMBLER by platform alone:
+        #     if (WAMR_BUILD_PLATFORM STREQUAL "windows") enable_language(ASM_MASM)
+        # MASM claims .asm and not .s, so the file it deliberately selected has
+        # no assembler, is quietly dropped, and the failure surfaces only at
+        # link as "undefined reference to `invokeNative'" -- with no object file
+        # anywhere to explain it.
+        #
+        # Enabling ASM alongside gives .s a compiler again. MSVC is untouched:
+        # there MASM is correct, invokeNative_em64.asm is the file selected, and
+        # this branch never runs.
+        if(WIN32 AND NOT MSVC)
+            enable_language(ASM)
+        endif()
+
         # The patch restores the fuel limit in the fast interpreter on compilers
         # without computed goto -- MSVC, so Windows. Applied on every platform,
         # not just MSVC: the edit is a no-op for the branch gcc and clang
@@ -231,6 +293,28 @@ if(OD_ENABLE_MODS)
                           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_fast_interp_metering.cmake
         )
         FetchContent_MakeAvailable(wamr)
+
+        # WAMR's own CMakeLists ends vmlib's link line with
+        #     target_link_libraries(vmlib PUBLIC ... -lm -ldl ...)
+        # unconditionally, on every platform. -ldl is POSIX dynamic loading,
+        # which Windows does not have and mingw's ld does not fake:
+        #     cannot find -ldl: Invalid argument
+        # and because it is PUBLIC it reaches this project's link line, not just
+        # WAMR's own. MSVC never sees it -- its generator does not pass through
+        # -l flags -- so the shipped Windows build has always linked fine and
+        # this is invisible outside a mingw cross-build.
+        #
+        # -lm is left alone: mingw does provide a libm, if only a stub.
+        if(WIN32 AND NOT MSVC AND TARGET vmlib)
+            foreach(prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+                get_target_property(od_vmlib_libs vmlib ${prop})
+                if(od_vmlib_libs)
+                    list(REMOVE_ITEM od_vmlib_libs "-ldl")
+                    set_target_properties(vmlib PROPERTIES ${prop} "${od_vmlib_libs}")
+                endif()
+            endforeach()
+            message(STATUS "WAMR: dropped -ldl from vmlib (no libdl on Windows)")
+        endif()
 
         # WAMR's wasm_export.h declares its whole API __declspec(dllimport) on
         # MSVC unless COMPILING_WASM_RUNTIME_API is defined. We link vmlib
@@ -357,6 +441,11 @@ set(GAME_SOURCES
     main.cpp
     src/Game.cpp
     src/GameUpdates.cpp
+    # Built on every platform even though only the web build has the menu
+    # entries: the archive half is ordinary std::filesystem and miniz, and a
+    # file that compiles only under Emscripten is a file that breaks without
+    # anyone noticing until a web build is attempted.
+    src/OdState.cpp
     src/Game_Account.cpp
     src/Game_Browsers.cpp
     src/Game_Claims.cpp
@@ -512,7 +601,25 @@ if(EMSCRIPTEN)
         "-sUSE_GLFW=3"
         # emscripten_websocket_*; the browser does the TLS.
         "-lwebsocket.js"
+        # emscripten_fetch(), which is how the web build reaches the account
+        # service -- see the browser backend in src/net/HttpClient.cpp. Without
+        # this the calls link but the symbol does nothing at runtime.
+        "-sFETCH=1"
+        # Not optional, and not only for load times: the browser build is
+        # single-threaded, so ASYNCIFY is what lets a synchronous-looking call
+        # (an account request, a music refill during a blocking load) hand the
+        # thread back to the browser and resume.
         "-sASYNCIFY"
+        # The unwind buffer, NOT the C stack. It holds one entry per frame that
+        # is live when something calls emscripten_sleep, and the default is
+        # 4 KB -- which is fine for a shallow yield and not fine for a deep one.
+        # Signing in yields from the bottom of
+        #     run -> account menu -> runJob -> std::function -> httpRequest
+        # and overflowing this does not fail gracefully, it aborts the module:
+        # the tab dies at the moment of the call and the console shows a wasm
+        # trap rather than anything about accounts. The music pump yields from a
+        # much shallower place, which is why that one worked and this did not.
+        "-sASYNCIFY_STACK_SIZE=65536"
         # The Gearbox ABI has i64 returns (fuel_budget, province_population).
         # Without BigInt they cannot cross the JS boundary that the browser mod
         # backend goes through.
@@ -576,7 +683,21 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_SOURCE_DIR}/data/audio/music"
                 "$<TARGET_FILE_DIR:OpenDoctrines>/data/audio/music"
-        COMMENT "Copying streamable music next to the page"
+        # The favicon shell.html asks for. It has to be a real file NEXT TO the
+        # page, not the copy inside data/: a <link rel="icon"> is fetched by the
+        # browser over HTTP, and the preloaded data/ only exists inside the
+        # module's virtual filesystem, which the browser cannot see. So the tag
+        # resolved to nothing and every session logged a 404 for it.
+        #
+        # packaging/web/favicon.png rather than data/Icon/icon.png, which is
+        # 1024x1024 and 663 KB -- the app icon, sized for a dock. Shipping that
+        # as a tab icon means every visitor downloads it to draw sixteen pixels.
+        # The packaged one is 128x128 and 20 KB; regenerate it from the app icon
+        # with tools/generate_web_favicon.py if the icon ever changes.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/packaging/web/favicon.png"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/icon.png"
+        COMMENT "Copying streamable music and the favicon next to the page"
         VERBATIM)
 else()
     find_package(Threads REQUIRED)
@@ -925,16 +1046,88 @@ if(OD_MODS_BACKEND STREQUAL "wamr")
 endif()
 
 # --- Install rules ---
+#
+# THE LAYOUT IS NOT A FREE CHOICE
+#
+# data/ goes BESIDE the executable, because two other things already require
+# exactly that and an installer that disagrees produces a game that does not
+# work:
+#
+#   * the updater refuses an archive whose binary and data/ are not siblings,
+#     and unpacks it into the executable's own directory -- see
+#     GameUpdates::runUpdate() and installDir();
+#   * tools/package.py builds the release zips that way, and Game::init()
+#     resolves data/ from the executable to match.
+#
+# This file used to install to bin/ and share/OpenDoctrines/, the ordinary Unix
+# prefix layout, and nothing at all read it. The game looked beside its own
+# binary, found nothing, and started anyway with no fonts, no audio and no maps
+# -- while the NSIS Start-menu shortcut pointed at $INSTDIR\OpenDoctrines.exe
+# and the executable sat in bin/. Making the layout flat is what fixes that
+# shortcut too.
+#
+# macOS differs in shape, not in rule: its executable is inside
+# OpenDoctrines.app/Contents/MacOS/, so the bundle's data belongs at
+# Contents/data/. Game::init() tries both, in that order.
 if(APPLE)
     install(TARGETS OpenDoctrines BUNDLE DESTINATION .)
+
+    # The build tree's Contents/data is a SYMLINK to ${CMAKE_SOURCE_DIR}/data
+    # (the POST_BUILD step above), which is what lets a developer edit data
+    # without relinking. It must never be what ships: it is an absolute path
+    # into the machine that built it, so a DMG built on CI installs an app
+    # pointing at a checkout under /Users/runner that the player does not have.
+    # Unlink it, then install the real thing over the same name.
+    #
+    # file(REMOVE) unlinks the symlink itself. REMOVE_RECURSE would follow it
+    # and delete the source tree's data/, so do not "tidy" this into that.
+    install(CODE "file(REMOVE \"\${CMAKE_INSTALL_PREFIX}/OpenDoctrines.app/Contents/data\")")
+    set(OD_INSTALL_DATA_DIR "OpenDoctrines.app/Contents/data")
+    set(OD_INSTALL_BIN_DIR  "OpenDoctrines.app/Contents/MacOS")
 else()
-    install(TARGETS OpenDoctrines RUNTIME DESTINATION bin)
+    install(TARGETS OpenDoctrines RUNTIME DESTINATION .)
+    set(OD_INSTALL_DATA_DIR "data")
+    set(OD_INSTALL_BIN_DIR  ".")
 endif()
-install(DIRECTORY data/ DESTINATION share/OpenDoctrines/data
-    FILES_MATCHING PATTERN "*"
-    PATTERN ".DS_Store" EXCLUDE)
+
+# What a shipped copy of data/ contains.
+#
+# An ALLOWLIST, for the reason tools/release.py gives about the zips: with a
+# denylist the next new kind of local state -- a cache, an export folder, the
+# cloudflared binary the game downloads for itself -- ships to players because
+# nobody remembered to exclude it. Unlisted is absent, and adding content is a
+# deliberate edit. Installing all of data/ put the developer's own saves,
+# settings and locally installed mods inside every installer; it mattered less
+# when this landed in a share/ nothing read, and not at all once it landed
+# where the game actually looks.
+#
+# KEEP IN STEP WITH DATA_ALLOWLIST IN tools/release.py. That list is the
+# authority -- it is what the zips are built from -- and an installer that
+# disagrees with the zip is two different games under one version number.
+set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses ai
+                    tips.json credits.txt)
+
+# A name that matches no file is what a stale entry looks like, and the failure
+# it causes is silent: the item is simply not in the installer, and the game
+# starts without it. release.py listed a "policies.json" that matched nothing
+# for a long time, and shipped without audio/ for want of a line.
+foreach(item IN LISTS OD_SHIPPED_DATA)
+    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/data/${item}")
+        message(FATAL_ERROR
+            "OD_SHIPPED_DATA names data/${item}, which does not exist. Either "
+            "it was removed and this list is stale, or the checkout is "
+            "incomplete. This list and DATA_ALLOWLIST in tools/release.py must "
+            "agree with each other and with what is on disk.")
+    endif()
+    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/data/${item}")
+        install(DIRECTORY "data/${item}" DESTINATION "${OD_INSTALL_DATA_DIR}"
+                PATTERN ".DS_Store" EXCLUDE)
+    else()
+        install(FILES "data/${item}" DESTINATION "${OD_INSTALL_DATA_DIR}")
+    endif()
+endforeach()
 if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
-    install(FILES LICENSE README.md DESTINATION share/OpenDoctrines/)
+    install(FILES LICENSE README.md DESTINATION .)
 endif()
 
 # CPack configuration
@@ -984,6 +1177,15 @@ endif()
 # See GameUpdates::managedInstall(). Without this an installed copy would try
 # to rename its own binary underneath the installer that owns it, and on
 # Windows that means the uninstaller's file list stops matching what is on disk.
+#
+# It goes BESIDE THE EXECUTABLE, because managedInstall() looks for it at
+# installDir(), which is the executable's own directory. Installing it to the
+# prefix root instead is not a near miss: on Windows the marker landed at
+# $INSTDIR while the game looked in $INSTDIR\bin, and on macOS it landed at the
+# top of the disk image, where the player leaves it behind -- they drag the
+# .app across, not the window's contents. Either way managedInstall() answered
+# false and the installed copy went on updating itself, which is the one thing
+# this file exists to prevent.
 if(NOT EMSCRIPTEN)
     file(WRITE "${CMAKE_BINARY_DIR}/MANAGED"
          "This copy of OpenDoctrines was put here by an installer, a store or a\n"
@@ -991,7 +1193,7 @@ if(NOT EMSCRIPTEN)
          "the same way you installed it.\n\n"
          "Delete this file only if you moved the game somewhere you manage\n"
          "yourself and want it to update itself again.\n")
-    install(FILES "${CMAKE_BINARY_DIR}/MANAGED" DESTINATION .)
+    install(FILES "${CMAKE_BINARY_DIR}/MANAGED" DESTINATION "${OD_INSTALL_BIN_DIR}")
 endif()
 
 include(CPack)

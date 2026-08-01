@@ -9,6 +9,7 @@
 // baseline and applying every delta up to it.
 
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "GifEncoder.h"
@@ -656,8 +657,7 @@ void Game::updateHistoryScreen() {
                 m_historyDestPath.push_back((char)c);
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_historyDestPath.empty())
-            m_historyDestPath.pop_back();
+        odTextEditKeys(m_historyDestPath, 400);
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) m_historyEditingDest = false;
         return;
     }

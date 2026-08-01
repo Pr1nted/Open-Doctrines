@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
@@ -1141,8 +1142,7 @@ void Game::update(float dt) {
                 if (c >= 32 && c <= 126) m_keybindFilter += (char)c;
                 c = GetCharPressed();
             }
-            if (IsKeyPressed(KEY_BACKSPACE) && !m_keybindFilter.empty()) {
-                m_keybindFilter.pop_back();
+            if (odTextEditKeys(m_keybindFilter, 64)) {
             }
             if (IsKeyPressed(KEY_ESCAPE)) {
                 m_keybindFilterActive = false;
@@ -1160,7 +1160,7 @@ void Game::update(float dt) {
                 else if (c == '.' && m_editBuffer.find('.') == std::string::npos) m_editBuffer += '.';
                 c = GetCharPressed();
             }
-            if (IsKeyPressed(KEY_BACKSPACE) && !m_editBuffer.empty()) m_editBuffer.pop_back();
+            odTextEditKeys(m_editBuffer, 256);
             if (IsKeyPressed(KEY_ENTER)) {
                 float val = std::strtof(m_editBuffer.c_str(), nullptr);
                 if (m_settingsTab == 0 && m_settingsIndex == 2) {

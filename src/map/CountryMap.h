@@ -18,7 +18,6 @@ struct Country {
     double treasury = 0.0;
     float compassEconomic = 0.0f;  // -100 (left) to +100 (right)
     float compassSocial = 0.0f;    // -100 (auth) to +100 (libertarian)
-    std::string doctrine;          // doctrine ID, empty = none
     std::vector<std::string> research; // researched tech node IDs
 };
 

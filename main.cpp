@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
+#include <string>
+#include <vector>
 
 int main(int argc, char** argv) {
     // --ai-readonly: use the trained model but never save over it. Intended for
@@ -18,11 +20,13 @@ int main(int argc, char** argv) {
                          "data/ai/model.bin" << std::endl;
         }
 
-    // Training has nobody listening. This has to be decided before init(),
-    // which is where the device would otherwise be opened -- and the headless
-    // machines that run training are the ones least likely to have one.
+    // Training has nobody listening, and neither does a measurement run. This
+    // has to be decided before init(), which is where the device would
+    // otherwise be opened -- and the headless machines that run training are
+    // the ones least likely to have one.
     for (int i = 1; i < argc; ++i)
-        if (strcmp(argv[i], "--train-ai") == 0) Audio::s_disabled = true;
+        if (strcmp(argv[i], "--train-ai") == 0 || strcmp(argv[i], "--eval-ai") == 0)
+            Audio::s_disabled = true;
 
     // --export-timelapse <save.odsv> [out.gif] [WxH] [political|population|troops]
     // Headless: no window, no audio, no UI. Runs before anything is initialised.
@@ -52,6 +56,22 @@ int main(int argc, char** argv) {
         Game g;
         bool ok = g.exportTimelapseHeadless(save, out, w, h, 6, view);
         return ok ? 0 : 1;
+    }
+
+    // --merge-ai <out.bin> <in1.bin> <in2.bin> ...
+    // Averages several model files into one. The end of a parallel training
+    // run: each worker leaves its own model behind and this folds them into the
+    // shared data/ai/model.bin the game actually loads. No window, no world.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--merge-ai") != 0) continue;
+        std::vector<std::string> inputs;
+        for (int k = i + 2; k < argc && strncmp(argv[k], "--", 2) != 0; ++k)
+            inputs.push_back(argv[k]);
+        if (i + 1 >= argc || inputs.empty()) {
+            fprintf(stderr, "--merge-ai needs an output path and at least one input\n");
+            return 2;
+        }
+        return AISystem::mergeModelFiles(argv[i + 1], inputs) ? 0 : 1;
     }
 
     // --simulate <map.odmap> <turns> [world name]
@@ -104,6 +124,27 @@ int main(int argc, char** argv) {
     if (!game.init(1600, 900, "OpenDoctrines")) {
         return 1;
     }
+
+    // --resource-limit <percent>: cap this session at a share of the machine,
+    // for the length of this run only.
+    //
+    // The setting already exists (Settings > Display, and the F10 / Ctrl+L
+    // panel) and is persisted in config.json. What did not exist was a way to
+    // ask for it on the command line, which is exactly what an overnight
+    // training run needs: leaving the machine usable is a property of THIS
+    // invocation, not a preference to be written back and silently inherited by
+    // the next normal game. Applied without saving for that reason.
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (strcmp(argv[i], "--resource-limit") != 0) continue;
+        const double pct = atof(argv[i + 1]);
+        if (pct <= 0.0) {
+            fprintf(stderr, "--resource-limit takes a percentage, e.g. 90\n");
+            return 2;
+        }
+        // Accept "90" and "0.9" as the same thing: the panel reads in percent,
+        // the config file stores a fraction, and both spellings get typed.
+        game.setSessionResourceLimit((float)(pct > 1.0 ? pct / 100.0 : pct));
+    }
     if (!shotDir.empty()) {
         game.beginScreenshotTour(shotDir, shotSave);
         game.run();
@@ -118,8 +159,33 @@ int main(int argc, char** argv) {
     // with jittered parameters so the shared model learns strategy instead of
     // memorising one geography. Model persists in data/ai/model.bin and is
     // picked up automatically by normal games.
-    if (argc > 1 && strcmp(argv[1], "--train-ai") == 0) {
-        int maps      = argc > 2 ? atoi(argv[2]) : 0;
+    //
+    // The mode flag may sit anywhere in the line, so `--resource-limit 90
+    // --train-ai 0 10000` works. Its positional arguments are the words that
+    // FOLLOW it, up to the next flag — reading them from fixed argv slots meant
+    // the mode had to be argv[1], and putting anything before it silently
+    // turned training off while looking like it had worked.
+    auto positionals = [&](const char* flag) {
+        std::vector<const char*> out;
+        for (int i = 1; i < argc; ++i) {
+            if (strcmp(argv[i], flag) != 0) continue;
+            for (int k = i + 1; k < argc && strncmp(argv[k], "--", 2) != 0; ++k)
+                out.push_back(argv[k]);
+            out.insert(out.begin(), argv[i]); // marker: the flag was present
+            break;
+        }
+        return out;
+    };
+    auto argAt = [](const std::vector<const char*>& v, size_t n) -> const char* {
+        return n + 1 < v.size() ? v[n + 1] : nullptr;   // v[0] is the flag itself
+    };
+
+    if (const auto tv = positionals("--train-ai"); !tv.empty()) {
+        const char* a1 = argAt(tv, 0);
+        const char* a2 = argAt(tv, 1);
+        const char* a3 = argAt(tv, 2);
+        const char* a4 = argAt(tv, 3);
+        int maps      = a1 ? atoi(a1) : 0;
         // Per-map turn cap. Maps normally rotate earlier — when decided (one
         // country left) or strategically frozen (no real conquest for
         // ~1500 turns). This cap is the hard ceiling: with the stagnation
@@ -127,19 +193,69 @@ int main(int argc, char** argv) {
         // rotating — long enough to play out mid/late-game naval & research
         // arcs, short enough to keep rotating geographies so the shared model
         // learns strategy rather than memorising one map.
-        int turns     = argc > 3 ? atoi(argv[3]) : 3000;
-        int countries = argc > 4 ? atoi(argv[4]) : 0;
-        unsigned seed = argc > 5 ? (unsigned)strtoul(argv[5], nullptr, 10)
-                                 : (unsigned)time(nullptr);
+        int turns     = a2 ? atoi(a2) : 3000;
+        int countries = a3 ? atoi(a3) : 0;
+        unsigned seed = a4 ? (unsigned)strtoul(a4, nullptr, 10)
+                           : (unsigned)time(nullptr);
         if (turns < 1) turns = 3000;
+        // --worker <id> --workers <n>: one process of a parallel pool. Each
+        // gets its own model file and periodically averages toward its peers.
+        // See tools/train_parallel.py, which launches a pool and merges after.
+        int workerId = -1, workerCount = 0;
+        for (int i = 1; i + 1 < argc; ++i) {
+            if (strcmp(argv[i], "--worker") == 0)  workerId = atoi(argv[i + 1]);
+            if (strcmp(argv[i], "--workers") == 0) workerCount = atoi(argv[i + 1]);
+        }
+        if (workerCount > 1) game.setAIWorker(workerId, workerCount);
         game.runAITraining(maps, turns, countries, seed);
         return 0;
     }
 
+    // Headless AI measurement:
+    //   OpenDoctrines --eval-ai [maps] [turnsPerMap] [seed] [difficulty]
+    //   maps       default 8 — one per scenario archetype, so a run covers
+    //              pangaea through cold war exactly once
+    //   seed       default is a CONSTANT, not the clock: map N must be the same
+    //              world in every run or two results are not comparable
+    //   difficulty 0 easy, 1 normal, 2 hard (default), 3 insane/argmax
+    //   --vs-random  half the countries play uniformly at random instead of
+    //                from the model, matched by starting size, so the report
+    //                can answer whether the model beats a coin flip
+    // Never writes the model, never writes a save. Safe to run while a
+    // --train-ai session is going.
+    if (const auto ev = positionals("--eval-ai"); !ev.empty()) {
+        const char* a1 = argAt(ev, 0);
+        const char* a2 = argAt(ev, 1);
+        const char* a3 = argAt(ev, 2);
+        const char* a4 = argAt(ev, 3);
+        int maps       = a1 ? atoi(a1) : 8;
+        int turns      = a2 ? atoi(a2) : 3000;
+        unsigned seed  = a3 ? (unsigned)strtoul(a3, nullptr, 10) : 20260801u;
+        int difficulty = a4 ? atoi(a4) : 2;
+        if (maps < 1) maps = 8;
+        if (turns < 1) turns = 3000;
+        // --vs-random: split each map into a model cohort and a coin-flip
+        // cohort and report which one ends up holding the world. A separate
+        // flag rather than a fifth positional, because it changes what the run
+        // MEANS and should be readable at a glance in a shell history.
+        bool vsRandom = false;
+        for (int i = 1; i < argc; ++i)
+            if (strcmp(argv[i], "--vs-random") == 0) vsRandom = true;
+        game.runAIEvaluation(maps, turns, seed, difficulty, vsRandom);
+        return 0;
+    }
+
     // If save file provided as argument, load it. Skip flags so
-    // `--ai-readonly` on its own isn't mistaken for a save path.
+    // `--ai-readonly` on its own isn't mistaken for a save path — and skip the
+    // VALUE of a flag that takes one, or `--resource-limit 90` would send the
+    // loader looking for a save file called "90".
     for (int i = 1; i < argc; ++i) {
-        if (strncmp(argv[i], "--", 2) == 0) continue;
+        if (strncmp(argv[i], "--", 2) == 0) {
+            if (strcmp(argv[i], "--resource-limit") == 0 ||
+                strcmp(argv[i], "--worker") == 0 ||
+                strcmp(argv[i], "--workers") == 0) ++i;
+            continue;
+        }
         game.loadSaveAndStart(std::string(argv[i]));
         break;
     }

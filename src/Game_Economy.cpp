@@ -59,17 +59,8 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         for (auto& mg : mit->second) {
             if (processedMinorities.count(mg.name)) continue;
             processedMinorities.insert(mg.name);
-            auto epIt = m_ethnicPolicies.find(mg.name);
-            bool hasEntry = (epIt != m_ethnicPolicies.end());
             for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
-                int oi = -1;
-                if (hasEntry && ci < epIt->second.size()) {
-                    oi = epIt->second[ci];
-                } else {
-                    for (size_t oi2 = 0; oi2 < m_ethnicPolicyCategories[ci].options.size(); oi2++) {
-                        if (m_ethnicPolicyCategories[ci].options[oi2].isDefault) { oi = (int)oi2; break; }
-                    }
-                }
+                const int oi = ethnicPolicyOption(countryId, mg.name, ci);
                 if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size())
                     cs.minorityCosts += m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
             }
@@ -163,15 +154,8 @@ void Game::refreshIncomeCache() {
             for (auto& mg : mit->second) {
                 if (pm.count(mg.name)) continue;
                 pm.insert(mg.name);
-                auto epIt = m_ethnicPolicies.find(mg.name);
-                bool hasEntry = (epIt != m_ethnicPolicies.end());
                 for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
-                    int oi = -1;
-                    if (hasEntry && ci < epIt->second.size()) oi = epIt->second[ci];
-                    else {
-                        for (size_t oi2 = 0; oi2 < m_ethnicPolicyCategories[ci].options.size(); oi2++)
-                            if (m_ethnicPolicyCategories[ci].options[oi2].isDefault) { oi = (int)oi2; break; }
-                    }
+                    const int oi = ethnicPolicyOption(cid, mg.name, ci);
                     if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size())
                         cs.minorityCosts += m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
                 }

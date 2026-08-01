@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Seven-pointed star, as on the Iraqi and Jordanian flags.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
+  <g fill="#fff">
+    <polygon points="0.00,-92.00 18.22,-37.84 71.93,-57.36 40.95,-9.35 89.69,20.47 32.84,26.19 39.92,82.89 0.00,42.00 -39.92,82.89 -32.84,26.19 -89.69,20.47 -40.95,-9.35 -71.93,-57.36 -18.22,-37.84"/>
+  </g>
+</svg>

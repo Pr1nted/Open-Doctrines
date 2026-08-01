@@ -98,24 +98,17 @@ void Game::progressCountryResearch(int countryId) {
     }
 }
 
-const std::vector<std::string>& doctrineList() {
-    static const std::vector<std::string> kDoctrines = {
-        "",                    // none
-        "Blitzkrieg",
-        "Mobile Warfare",
-        "Attrition Warfare",
-        "Trench Warfare",
-        "People's War",
-        "Total War",
-        "Fortress Doctrine",
-        "Deterrence",
-        "Naval Supremacy",
-        "Air Superiority",
-        "Combined Arms",
-        "Guerrilla Warfare",
-    };
-    return kDoctrines;
-}
+// A doctrineList() used to live here: thirteen names (Blitzkrieg, Trench
+// Warfare, Fortress Doctrine...) that a country could be tagged with. Nothing
+// ever called it, and Country::doctrine, which it was meant to populate, was
+// written by the map editor's exporter and read by nobody. No combat, economy
+// or unrest calculation looked at it, so a country's "doctrine" was a label
+// with no consequences. Both are gone.
+//
+// The doctrines that DO exist are elsewhere and are real: the Politics screen
+// (titled "Doctrines" in the UI) enacts entries from m_allPolicies, and the
+// research tree has nodes like total_war and fortress_doctrine with actual
+// modifiers behind them.
 
 void buildResearchNodes(std::vector<ResearchNode>& out) {
     std::vector<ResearchNode>& m_researchNodes = out; // alias so the body below reads naturally
@@ -494,10 +487,26 @@ int Game::getResearchedPortLevel(int countryId) const {
     return maxLevel;
 }
 
-float Game::getTotalEffect(const std::string& effectField) const {
+// Sum of one research modifier across everything `countryId` has researched.
+//
+// This used to read ResearchNode::researched, a single flag on the shared node
+// list — which is the PLAYER's tree, because that is the only tree the research
+// screen ever writes to. Every caller therefore applied the player's bonuses to
+// whoever happened to be fighting: an AI country that had completed Total War
+// Doctrine got the unlock and none of the +20% attack, while the player's
+// research quietly buffed every AI army on the map as well as their own.
+//
+// The per-country set is authoritative when it exists, with the same fallback
+// to the shared flag that getResearchedFortLevel and its siblings use, so a map
+// or save that predates per-country research still behaves as it did.
+float Game::getTotalEffect(const std::string& effectField, int countryId) const {
+    const int cid = (countryId >= 0) ? countryId : m_playerCountryId;
+    auto cit = m_countryResearched.find(cid);
+    const std::unordered_set<std::string>* own =
+        (cit != m_countryResearched.end() && !cit->second.empty()) ? &cit->second : nullptr;
     float total = 0;
     for (const auto& n : m_researchNodes) {
-        if (!n.researched) continue;
+        if (own ? !own->count(n.id) : !n.researched) continue;
         if (effectField == "armyDefPct") total += n.armyDefPct;
         else if (effectField == "armyAtkPct") total += n.armyAtkPct;
         else if (effectField == "conscriptionCostPct") total += n.conscriptionCostPct;

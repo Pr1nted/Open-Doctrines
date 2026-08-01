@@ -1,9 +1,11 @@
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
 #include "GameUpdates.h"
+#include "OdState.h"
 #include "SaveManager.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -559,6 +561,19 @@ void Game::drawMainMenu() {
         }
     }
 
+    // What just happened to the player's .odstate, under the buttons. It has to
+    // be said somewhere: a save that silently failed and one that silently
+    // succeeded look identical from in here.
+    if (m_odStateMsgTimer > 0.0f && !m_odStateMsg.empty()) {
+        int msgFs = 16;
+        int msgW = MeasureText(m_odStateMsg.c_str(), msgFs);
+        int msgY = startY + count * itemH + 10;
+        float ma = m_odStateMsgTimer < 1.0f ? m_odStateMsgTimer : 1.0f;   // fade out
+        Color msgCol = m_odStateMsgBad ? Color{235, 110, 110, 255} : Color{150, 210, 150, 255};
+        DrawText(m_odStateMsg.c_str(), centerX - msgW / 2 + btnDX, msgY, msgFs,
+                 fade(ColorAlpha(msgCol, ma)));
+    }
+
     // Top-right icons: Settings (gear) and Quit (X)
     int iconSize = 36;
     int iconY = 16 + iconDY;
@@ -627,6 +642,9 @@ void Game::drawMainMenu() {
     }
 
     if (m_updatePanel) drawUpdatePanel();
+    // Last, so it covers everything above -- it owns the keyboard while it is
+    // up and must look like it does.
+    drawOdStatePrompt();
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -928,6 +946,15 @@ void Game::updateMainMenu() {
         return;
     }
 
+    // A prompt owns the keyboard while it is up: the menu must not also act on
+    // the Enter that dismisses it, or on the letters being typed into a
+    // filename. Everything below this point is skipped until it closes.
+    if (m_odStateMsgTimer > 0.0f) m_odStateMsgTimer -= GetFrameTime();
+#ifdef __EMSCRIPTEN__
+    pollOdStateImport();
+#endif
+    if (m_odStatePrompt != ODP_NONE) { updateOdStatePrompt(); return; }
+
     int count = MAIN_MENU_COUNT;
 
     if (m_menuFeedbackTimer > 0) {
@@ -1025,6 +1052,12 @@ void Game::updateMainMenu() {
                 m_creditsScroll = 0.0f;
                 m_currentScreen = SCREEN_CREDITS;
                 break;
+            case 7: // Save .odstate
+                openOdStateSave();
+                break;
+            case 8: // Load .odstate
+                openOdStateLoad();
+                break;
         }
     }
 
@@ -1039,6 +1072,257 @@ void Game::updateMainMenu() {
         if (quitHover) {
             m_running = false;
         }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// .odstate — the player's whole data/ out of the game and back into it
+// ────────────────────────────────────────────────────────────────────────────
+
+void Game::setOdStateMsg(const std::string& msg, bool bad) {
+    m_odStateMsg = msg;
+    m_odStateMsgBad = bad;
+    m_odStateMsgTimer = bad ? 9.0f : 6.0f;   // a failure is worth reading twice
+}
+
+void Game::openOdStateSave() {
+    // The name is asked for rather than assumed. A player exporting three times
+    // in an evening wants to tell them apart, and only they know what by.
+    m_odStateName = OdState::suggestedFilename();
+    m_odStatePrompt = ODP_SAVE_NAME;
+    Audio::get().playSfx("click_light");
+}
+
+void Game::openOdStateLoad() {
+#ifdef __EMSCRIPTEN__
+    // The browser's own picker, opened from inside this click. A file dialog
+    // raised outside a user gesture is blocked, so this cannot be deferred to a
+    // later frame the way the desktop list can.
+    OdState::webPickFile();
+    setOdStateMsg("Choose a .odstate file to restore...", false);
+    m_odStateMsgTimer = 20.0f;   // the player is off in a file dialog
+#else
+    // Desktop has no native file dialog here, and adding one would mean a
+    // platform toolkit per platform. The game already lists its own files
+    // everywhere else, so it lists these too.
+    m_odStateFiles = OdState::findArchives(m_dataDir);
+    m_odStatePick = 0;
+    if (m_odStateFiles.empty()) {
+        setOdStateMsg("No .odstate files in " + OdState::defaultSaveDir(m_dataDir), true);
+        return;
+    }
+    m_odStatePrompt = ODP_PICK_FILE;
+    Audio::get().playSfx("click_light");
+#endif
+}
+
+void Game::applyOdStateLoad(const std::string& path, bool modsAccepted) {
+    // Asked before unpacking, because after unpacking the mods are already in.
+    if (!modsAccepted) {
+        int mods = OdState::countMods(path);
+        if (mods > 0) {
+            m_odStatePending = path;
+            m_odStatePendingMods = mods;
+            m_odStatePrompt = ODP_MODS_WARNING;
+            return;
+        }
+        if (mods < 0) { setOdStateMsg("That file is not a readable .odstate archive", true); return; }
+    }
+
+    std::string err;
+    int n = 0;
+    if (OdState::load(m_dataDir, path, err, &n)) {
+        // config.json is read once during init(), so a restored one changes
+        // nothing until it is read again -- the player would otherwise restore
+        // their state and find their settings still at the defaults.
+        m_config.load(m_configPath);
+        // Same for mods: ModManager holds the list it scanned at startup, and a
+        // restored mods/ that nothing rescans is a directory of files the game
+        // does not know are there.
+        ModManager::get().rescan();
+        setOdStateMsg(err.empty() ? ("Restored " + std::to_string(n) + " files") : err,
+                      !err.empty());
+        Audio::get().playSfx("click_light");
+    } else {
+        setOdStateMsg(err, true);
+    }
+}
+
+#ifdef __EMSCRIPTEN__
+void Game::pollOdStateImport() {
+    std::string incoming;
+    if (!OdState::webTakeImport(incoming)) return;
+    applyOdStateLoad(incoming, false);
+    // Left in MEMFS while a mods warning is up: the answer still needs the file.
+    if (m_odStatePrompt != ODP_MODS_WARNING) std::remove(incoming.c_str());
+}
+#endif
+
+void Game::updateOdStatePrompt() {
+    if (m_odStatePrompt == ODP_NONE) return;
+
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        m_odStatePrompt = ODP_NONE;
+        m_odStatePending.clear();
+        Audio::get().playSfx("click_light");
+        return;
+    }
+
+    if (m_odStatePrompt == ODP_SAVE_NAME) {
+        int c = GetCharPressed();
+        while (c > 0) {
+            // A filename, not a path. A separator typed here would write
+            // somewhere other than the directory the player was just shown.
+            if (c >= 32 && c <= 126 && c != '/' && c != '\\' && c != ':' &&
+                m_odStateName.size() < 64) {
+                Audio::get().playSfx("key_type", 0.12f);
+                m_odStateName += (char)c;
+            }
+            c = GetCharPressed();
+        }
+        odTextEditKeys(m_odStateName, 64, "/\\:");
+
+        if (IsKeyPressed(KEY_ENTER)) {
+            std::string name = m_odStateName;
+            if (name.empty()) name = OdState::suggestedFilename();
+            const std::string ext = ".odstate";
+            if (name.size() < ext.size() ||
+                name.compare(name.size() - ext.size(), ext.size(), ext) != 0)
+                name += ext;
+
+            std::string err;
+            int n = 0;
+#ifdef __EMSCRIPTEN__
+            // Written inside MEMFS and handed to the browser second; nothing
+            // here reaches the player's disk directly.
+            const std::string tmp = "/odstate_out.odstate";
+            if (OdState::save(m_dataDir, tmp, err, &n)) {
+                OdState::webDownload(tmp, name);
+                std::remove(tmp.c_str());
+                setOdStateMsg("Downloaded " + name + "  (" + std::to_string(n) + " files)", false);
+            } else {
+                setOdStateMsg(err, true);
+            }
+#else
+            std::string dest = OdState::defaultSaveDir(m_dataDir) + "/" + name;
+            if (OdState::save(m_dataDir, dest, err, &n))
+                setOdStateMsg("Saved " + dest + "  (" + std::to_string(n) + " files)", false);
+            else
+                setOdStateMsg(err, true);
+#endif
+            m_odStatePrompt = ODP_NONE;
+        }
+        return;
+    }
+
+    if (m_odStatePrompt == ODP_PICK_FILE) {
+        int count = (int)m_odStateFiles.size();
+        if (count == 0) { m_odStatePrompt = ODP_NONE; return; }
+        if (IsKeyPressed(KEY_UP))   { m_odStatePick = (m_odStatePick + count - 1) % count; Audio::get().playSfx("hover"); }
+        if (IsKeyPressed(KEY_DOWN)) { m_odStatePick = (m_odStatePick + 1) % count;         Audio::get().playSfx("hover"); }
+        if (IsKeyPressed(KEY_ENTER)) {
+            std::string chosen = m_odStateFiles[m_odStatePick];
+            m_odStatePrompt = ODP_NONE;
+            applyOdStateLoad(chosen, false);   // may raise the mods warning
+        }
+        return;
+    }
+
+    if (m_odStatePrompt == ODP_MODS_WARNING) {
+        // Enter is deliberately NOT the accept key. This prompt appears at the
+        // end of a flow driven by Enter, and a player still pressing it would
+        // accept executable content without having read anything.
+        if (IsKeyPressed(KEY_Y)) {
+            std::string path = m_odStatePending;
+            m_odStatePending.clear();
+            m_odStatePrompt = ODP_NONE;
+            applyOdStateLoad(path, true);
+#ifdef __EMSCRIPTEN__
+            std::remove(path.c_str());
+#endif
+        } else if (IsKeyPressed(KEY_N)) {
+            m_odStatePrompt = ODP_NONE;
+            m_odStatePending.clear();
+            setOdStateMsg("Restore cancelled", false);
+        }
+        return;
+    }
+}
+
+void Game::drawOdStatePrompt() {
+    if (m_odStatePrompt == ODP_NONE) return;
+
+    // Over everything, and dark enough that the menu behind is plainly not what
+    // the keyboard is talking to.
+    DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 190});
+    int boxW = 620, boxH = 190;
+    if (m_odStatePrompt == ODP_PICK_FILE)
+        boxH = 130 + std::min((int)m_odStateFiles.size(), 8) * 26;
+    int boxX = m_screenW / 2 - boxW / 2;
+    int boxY = m_screenH / 2 - boxH / 2;
+    Color accent = hexToColor(m_config.accentColor);
+    DrawRectangleRounded({(float)boxX, (float)boxY, (float)boxW, (float)boxH}, 0.05f, 8, {18, 18, 22, 245});
+    DrawRectangleRoundedLines({(float)boxX, (float)boxY, (float)boxW, (float)boxH}, 0.05f, 8, accent);
+
+    int pad = 22;
+    int y = boxY + pad;
+
+    if (m_odStatePrompt == ODP_SAVE_NAME) {
+        DrawText("Save your progress as", boxX + pad, y, 22, accent);
+        y += 34;
+#ifdef __EMSCRIPTEN__
+        const char* where = "Your browser will download it. Keep it safe -- closing this tab loses everything else.";
+#else
+        static std::string whereBuf;
+        whereBuf = "Written to " + OdState::defaultSaveDir(m_dataDir);
+        const char* where = whereBuf.c_str();
+#endif
+        DrawText(where, boxX + pad, y, 14, Color{150, 150, 160, 255});
+        y += 30;
+
+        Rectangle field = {(float)(boxX + pad), (float)y, (float)(boxW - pad * 2), 34.0f};
+        DrawRectangleRounded(field, 0.2f, 6, {30, 30, 36, 255});
+        DrawRectangleRoundedLines(field, 0.2f, 6, Color{90, 90, 100, 255});
+        std::string shown = m_odStateName;
+        if (((int)(GetTime() * 2)) % 2 == 0) shown += "_";      // caret
+        DrawText(shown.c_str(), boxX + pad + 8, y + 8, 18, WHITE);
+        y += 46;
+        DrawText("Enter to save     Esc to cancel", boxX + pad, y, 14, Color{140, 140, 150, 255});
+        return;
+    }
+
+    if (m_odStatePrompt == ODP_PICK_FILE) {
+        DrawText("Restore which .odstate?", boxX + pad, y, 22, accent);
+        y += 36;
+        int shown = std::min((int)m_odStateFiles.size(), 8);
+        int first = std::max(0, std::min(m_odStatePick - shown + 1, (int)m_odStateFiles.size() - shown));
+        for (int i = 0; i < shown; ++i) {
+            int idx = first + i;
+            bool sel = (idx == m_odStatePick);
+            std::string base = m_odStateFiles[idx];
+            auto slash = base.find_last_of('/');
+            if (slash != std::string::npos) base = base.substr(slash + 1);
+            if (sel) DrawRectangle(boxX + pad - 6, y - 3, boxW - pad * 2 + 12, 24, {255, 255, 255, 18});
+            DrawText(base.c_str(), boxX + pad, y, 17, sel ? WHITE : Color{160, 160, 170, 255});
+            y += 26;
+        }
+        y += 8;
+        DrawText("Enter to restore     Esc to cancel", boxX + pad, y, 14, Color{140, 140, 150, 255});
+        return;
+    }
+
+    if (m_odStatePrompt == ODP_MODS_WARNING) {
+        DrawText("This archive contains mods", boxX + pad, y, 22, Color{240, 190, 90, 255});
+        y += 34;
+        DrawText(TextFormat("%d installed mod%s will be restored along with your saves.",
+                            m_odStatePendingMods, m_odStatePendingMods == 1 ? "" : "s"),
+                 boxX + pad, y, 16, Color{215, 215, 225, 255});
+        y += 24;
+        DrawText("Mods run code inside the game. Restore them only from an archive you trust.",
+                 boxX + pad, y, 15, Color{190, 190, 200, 255});
+        y += 34;
+        DrawText("Y  restore everything        N  cancel", boxX + pad, y, 16, WHITE);
+        return;
     }
 }
 
@@ -1225,52 +1509,84 @@ void Game::drawCountrySelect() {
     if (m_pendingCountryId > 0) {
         const Country* c = m_countries.getCountry(m_pendingCountryId);
         if (c) {
-            int popW = 400;
-            int popH = 150;
-            int popX = (m_screenW - popW) / 2;
-            int popY = (m_screenH - popH) / 2;
+            const CountryConfirmLayout L = countryConfirmLayout();
 
             // Dim background
             DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 120});
 
-            // Popup box
-            DrawRectangleRounded({(float)popX, (float)popY, (float)popW, (float)popH}, 0.2f, 8, {30, 30, 50, 255});
-            DrawRectangleRoundedLines({(float)popX, (float)popY, (float)popW, (float)popH}, 0.2f, 8, {100, 100, 160, 255});
+            DrawRectangleRounded(L.box, 0.2f, 8, {30, 30, 50, 255});
+            DrawRectangleRoundedLines(L.box, 0.2f, 8, {100, 100, 160, 255});
 
             std::string question = "Play as " + c->name + "?";
-            DrawText(question.c_str(), popX + (popW - MeasureText(question.c_str(), 24)) / 2, popY + 30, 24, WHITE);
+            DrawText(question.c_str(),
+                     (int)(L.box.x + (L.box.width - MeasureText(question.c_str(), 24)) / 2),
+                     (int)L.questionY, 24, WHITE);
 
-            // Flag in popup
+            // The flag keeps its own aspect ratio inside L.flag rather than
+            // being stretched to fill it: a 3:2 ensign and a 2:1 banner are not
+            // the same picture, and one of them was coming out wrong.
             auto fit = m_countryFlags.find(m_pendingCountryId);
-            if (fit != m_countryFlags.end() && fit->second.id > 0) {
-                int flagW = 120, flagH = 60;
-                float scale = (float)flagH / fit->second.height;
+            if (fit != m_countryFlags.end() && fit->second.id > 0 && fit->second.height > 0) {
+                float scale = L.flag.height / (float)fit->second.height;
                 float drawW = fit->second.width * scale;
+                if (drawW > L.flag.width) {          // very wide ensign: fit by width instead
+                    scale = L.flag.width / (float)fit->second.width;
+                    drawW = L.flag.width;
+                }
+                const float drawH = fit->second.height * scale;
                 DrawTexturePro(fit->second,
                     {0, 0, (float)fit->second.width, (float)fit->second.height},
-                    {(float)(popX + (popW - drawW) / 2), (float)(popY + 60), drawW, (float)flagH},
+                    {L.flag.x + (L.flag.width - drawW) / 2,
+                     L.flag.y + (L.flag.height - drawH) / 2, drawW, drawH},
                     {0, 0}, 0, WHITE);
             } else {
-                DrawRectangle(popX + (popW - 120) / 2, popY + 60, 120, 60, c->color);
+                DrawRectangle((int)(L.flag.x + L.flag.width / 4), (int)L.flag.y,
+                              (int)(L.flag.width / 2), (int)L.flag.height, c->color);
             }
 
-            // Yes button
-            int btnW = 80, btnH = 35;
-            int yesX = popX + (popW / 2 - btnW) / 2;
-            int btnY = popY + popH - btnH - 20;
-            DrawRectangleRounded({(float)yesX, (float)btnY, (float)btnW, (float)btnH}, 0.3f, 6, {50, 180, 70, 255});
-            DrawText("Yes", yesX + (btnW - MeasureText("Yes", 20)) / 2, btnY + (btnH - 20) / 2, 20, WHITE);
+            DrawRectangleRounded(L.yes, 0.3f, 6, {50, 180, 70, 255});
+            DrawText("Yes", (int)(L.yes.x + (L.yes.width - MeasureText("Yes", 20)) / 2),
+                     (int)(L.yes.y + (L.yes.height - 20) / 2), 20, WHITE);
 
-            // No button
-            int noX = popX + popW / 2 + (popW / 2 - btnW) / 2;
-            DrawRectangleRounded({(float)noX, (float)btnY, (float)btnW, (float)btnH}, 0.3f, 6, {200, 60, 60, 255});
-            DrawText("No", noX + (btnW - MeasureText("No", 20)) / 2, btnY + (btnH - 20) / 2, 20, WHITE);
+            DrawRectangleRounded(L.no, 0.3f, 6, {200, 60, 60, 255});
+            DrawText("No", (int)(L.no.x + (L.no.width - MeasureText("No", 20)) / 2),
+                     (int)(L.no.y + (L.no.height - 20) / 2), 20, WHITE);
         }
     }
 
     // ESC hint
     const char* escHint = "ESC: back to menu";
     DrawText(escHint, centerX - MeasureText(escHint, 14) / 2, m_screenH - 8, 14, GRAY);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// countryConfirmLayout
+// ────────────────────────────────────────────────────────────────────────────
+Game::CountryConfirmLayout Game::countryConfirmLayout() const {
+    // The box was 150 tall and could not hold what was put in it. The flag was
+    // drawn at +60 with a height of 60, so it ended at +120; the buttons sat at
+    // popH-35-20 = +95. Twenty-five pixels of overlap, which is why the flag
+    // appeared to be behind Yes and No and looked enormous -- it was not
+    // oversized so much as sharing its space with the buttons.
+    constexpr float kW = 400, kH = 200;
+    constexpr float kBtnW = 90, kBtnH = 38;
+
+    CountryConfirmLayout L;
+    L.box = {(float)((m_screenW - (int)kW) / 2), (float)((m_screenH - (int)kH) / 2), kW, kH};
+    L.questionY = L.box.y + 24;
+
+    // Between the question and the buttons, with room to spare on both sides.
+    //
+    // A confirmation, not a flag viewer. 66 tall filled most of the box and
+    // read as the subject of the dialog rather than a label on it -- the
+    // question is what the player is answering. 44 is enough to recognise a
+    // flag by and leaves the box breathing room.
+    L.flag = {L.box.x + 70, L.box.y + 60, kW - 140, 44};
+
+    const float btnY = L.box.y + kH - kBtnH - 22;
+    L.yes = {L.box.x + (kW / 2 - kBtnW) / 2, btnY, kBtnW, kBtnH};
+    L.no  = {L.box.x + kW / 2 + (kW / 2 - kBtnW) / 2, btnY, kBtnW, kBtnH};
+    return L;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1301,24 +1617,10 @@ void Game::updateCountrySelect() {
         (float)specBtnH
     };
 
-    // Confirmation popup button rects
-    int popW = 400, popH = 150;
-    int popX = (m_screenW - popW) / 2;
-    int popY = (m_screenH - popH) / 2;
-    int btnW = 80, btnH = 35;
-    int btnY = popY + popH - btnH - 20;
-    Rectangle yesRect = {
-        (float)(popX + (popW / 2 - btnW) / 2),
-        (float)btnY,
-        (float)btnW,
-        (float)btnH
-    };
-    Rectangle noRect = {
-        (float)(popX + popW / 2 + (popW / 2 - btnW) / 2),
-        (float)btnY,
-        (float)btnW,
-        (float)btnH
-    };
+    // From the one layout the popup is drawn with, so these cannot drift apart.
+    const CountryConfirmLayout confirm = countryConfirmLayout();
+    const Rectangle yesRect = confirm.yes;
+    const Rectangle noRect  = confirm.no;
 
     // --- Hover detection ---
     if (m_pendingCountryId == 0) {
@@ -1604,8 +1906,7 @@ void Game::updateSettingsFromMenu() {
             if (c >= 32 && c <= 126) m_keybindFilter += (char)c;
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_keybindFilter.empty()) {
-            m_keybindFilter.pop_back();
+        if (odTextEditKeys(m_keybindFilter, 64)) {
         }
         if (IsKeyPressed(KEY_ESCAPE)) {
             m_keybindFilterActive = false;
@@ -1623,7 +1924,7 @@ void Game::updateSettingsFromMenu() {
             else if (c == '.' && m_editBuffer.find('.') == std::string::npos) m_editBuffer += '.';
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_editBuffer.empty()) m_editBuffer.pop_back();
+        odTextEditKeys(m_editBuffer, 256);
         if (IsKeyPressed(KEY_ENTER)) {
             float val = std::strtof(m_editBuffer.c_str(), nullptr);
             if (m_settingsTab == 0 && m_settingsIndex == 2) {

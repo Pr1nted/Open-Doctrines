@@ -1,0 +1,129 @@
+{
+  "$comment": "Provenance for data/symbols/. Hand-written, unlike flags.json which tools/audit_flag_licenses.py regenerates -- there are 28 symbols, not 214, and most are the project's own work. Every entry sourced from Wikimedia Commons must name its licence and any obligation, on the same terms the flags are held to: see data/licenses/FLAGS.md for why that discipline exists.",
+  "source": "Wikimedia Commons, where a file is not own work",
+  "symbols": {
+    "eagle_nazi.svg": {
+      "file": "Reichsadler.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Reichsadler.svg",
+      "license": "Public domain",
+      "artist": "RsVe.",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "anchor.svg": {
+      "file": "Anchor pictogram.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Anchor_pictogram.svg",
+      "license": "Public domain",
+      "artist": "egg extracted the symbol out of the coat of arms",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "cross_latin.svg": {
+      "file": "Christian cross.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Christian_cross.svg",
+      "license": "Public domain",
+      "artist": "Boris23 (talk · contribs)",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "cross_maltese.svg": {
+      "file": "Maltese Cross simplest.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Maltese_Cross_simplest.svg",
+      "license": "CC BY 4.0",
+      "artist": "Iketsi",
+      "obligation": "attribution",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "cross_nordic.svg": {
+      "file": "Nordic cross.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Nordic_cross.svg",
+      "license": "CC BY-SA 4.0",
+      "artist": "RootOfAllLight",
+      "obligation": "attribution + share-alike on the image",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "cross_pattee.svg": {
+      "file": "Cross-Pattee-Heraldry.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Cross-Pattee-Heraldry.svg",
+      "license": "Public domain",
+      "artist": "Masturbius based on original PNG and PostScript source by AnonMoos, AnonMoos",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "cross_saltir.svg": {
+      "file": "Saltire cross icon.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Saltire_cross_icon.svg",
+      "license": "CC BY-SA 3.0",
+      "artist": "Evgeni Moryakov",
+      "obligation": "attribution + share-alike on the image",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "crossed_swords.svg": {
+      "file": "Crossed swords symbol.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Crossed_swords_symbol.svg",
+      "license": "CC BY-SA 4.0",
+      "artist": "Kwamikagami",
+      "obligation": "attribution + share-alike on the image",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "star5.svg": {
+      "file": "Five Pointed Star Solid.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Five_Pointed_Star_Solid.svg",
+      "license": "Public domain",
+      "artist": "Indolences",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "star6.svg": {
+      "file": "Regular hexagram.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Regular_hexagram.svg",
+      "license": "CC0",
+      "artist": "OfficialURL",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "star_4.svg": {
+      "file": "Four points star.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Four_points_star.svg",
+      "license": "Public domain",
+      "artist": "Florixc",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "star_of_david.svg": {
+      "file": "Star of David.svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Star_of_David.svg",
+      "license": "Public domain",
+      "artist": "Zscout370",
+      "obligation": "none",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    },
+    "sun.svg": {
+      "file": "Sun symbol (bold).svg",
+      "source": "https://commons.wikimedia.org/wiki/File:Sun_symbol_(bold).svg",
+      "license": "CC BY-SA 4.0",
+      "artist": "Kwamikagami",
+      "obligation": "attribution + share-alike on the image",
+      "modifications": "Recoloured white and refitted to the -100 -100 200 200 symbol viewBox. Neither is authorship."
+    }
+  },
+  "own_work": {
+    "$comment": "Project's own SVGs, carrying no third-party obligation. Those marked 'drawn' are produced by tools/generate_symbols.py; the rest are hand-authored paths. The reason each is not taken from Commons is recorded here and in that tool. There is no generic eagle.svg: it did not read as a bird and no Commons candidate survives nanosvg, so the symbol was removed.",
+    "files": {
+      "circle_stars": "drawn: the Commons version uses <use> and rendered blank",
+      "crescent": "own path with a real cut-out; Commons version is CC BY-SA for no gain",
+      "crescent_star": "as crescent",
+      "diamond": "trivial shape; Commons version carries <use> and <text>",
+      "fasces": "Commons file uses gradient+filter, renders unreadable",
+      "gear": "own evenodd path with a real hub hole",
+      "hammer_sickle": "drawn: the Commons version uses a gradient",
+      "mountain": "drawn: no usable Commons candidate",
+      "rose": "drawn: the Commons version rendered as a solid blob",
+      "sun_wavy": "Commons heraldic suns are detailed linework",
+      "swastika": "drawn: geometric; censored in game either way",
+      "sword": "drawn: Commons search surfaced militant-group flags, not a symbol",
+      "torch": "drawn: Commons candidates are detailed linework",
+      "tree": "drawn: Commons candidates are detailed linework"
+    }
+  }
+}

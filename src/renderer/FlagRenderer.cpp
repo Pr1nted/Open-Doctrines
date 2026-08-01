@@ -362,19 +362,34 @@ void FlagRenderer::drawBorder(Image* img, int w, int h, const std::vector<Color>
 
 void FlagRenderer::drawSunburst(Image* img, int w, int h, const std::vector<Color>& colors) {
     Color bg = getColor(colors, 0, DARKGRAY);
-    Color ray = getColor(colors, 1, WHITE);
     fillImage(img, bg);
-    int cx = w / 2, cy = h / 2;
-    int maxR = (int)sqrtf((float)(cx * cx + cy * cy));
-    // Draw alternating rays
-    for (int a = 0; a < 360; a += 15) {
-        float rad = a * 3.14159f / 180.0f;
-        float cosA = cos(rad), sinA = sin(rad);
-        for (int r = 0; r < maxR; ++r) {
-            int px = cx + (int)(cosA * r);
-            int py = cy + (int)(sinA * r);
-            if (px >= 0 && px < w && py >= 0 && py < h)
-                ImageDrawPixel(img, px, py, ray);
+
+    // Wedges, not hairlines. The previous version walked each ray outwards
+    // plotting a single pixel per radius step, so the rays stayed one pixel
+    // wide while the gaps between them grew -- at flag size that is a flat
+    // field with a few faint threads on it, not a sunburst. It also read only
+    // two colours, so a three-colour sunburst silently lost its third.
+    std::vector<Color> rays;
+    for (size_t i = 1; i < colors.size(); ++i) rays.push_back(colors[i]);
+    if (rays.empty()) rays.push_back(WHITE);
+
+    const int   kWedges = 12;
+    const float kTwoPi  = 6.28318530f;
+    const float cx = w * 0.5f, cy = h * 0.5f;
+
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float a = atan2f((float)y - cy, (float)x - cx);
+            if (a < 0.0f) a += kTwoPi;
+            int idx = (int)(a / kTwoPi * kWedges) % kWedges;
+            if (rays.size() == 1) {
+                // One ray colour: alternate it with the field, or the whole
+                // flag would come out a single flat colour.
+                if (idx & 1) continue;
+                ImageDrawPixel(img, x, y, rays[0]);
+            } else {
+                ImageDrawPixel(img, x, y, rays[idx % rays.size()]);
+            }
         }
     }
 }

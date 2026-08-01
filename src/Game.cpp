@@ -2,6 +2,7 @@
 #include "Game.h"
 #include "Audio.h"
 #include "net/AccountClient.h"
+#include "net/HttpClient.h"   // netSetWaitHook: the frame drawn while a request waits
 #include "SaveManager.h"
 #include "Keybinds.h"
 #include "ai/AISystem.h"
@@ -11,6 +12,30 @@
 #include "raymath.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
+
+// Make the canvas' backing store, its CSS box and the browser viewport one and
+// the same size, so nothing is scaled and a mouse coordinate means what it
+// says. Returns the size it settled on. See the long note in Game::init().
+//
+// devicePixelRatio is deliberately NOT applied. Multiplying the backing store
+// by it would sharpen the render and immediately reintroduce the very mismatch
+// this exists to remove, since the CSS box stays in CSS pixels; sharper text is
+// not worth an input layer that lies.
+EM_JS(int, odFitCanvasJS, (), {
+    var c = document.getElementById('canvas');
+    if (!c) return 0;
+    var w = window.innerWidth | 0, h = window.innerHeight | 0;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    // Explicit pixels, not 100vw/100vh: those are resolved against the viewport
+    // and can disagree with innerWidth when a scrollbar appears, which is one
+    // more way for the two boxes to drift apart.
+    c.style.width = w + 'px';
+    c.style.height = h + 'px';
+    return (w << 16) | h;
+});
 #endif
 #include <iostream>
 #include <fstream>
@@ -68,10 +93,27 @@ std::string formatPop(long long pop) {
     return std::to_string(pop);
 }
 
+// Garrison strength, which is stored in men but shown a hundred to the number.
+// Truncating that division reported every unit under 100 men as "0 soldiers" --
+// and combat deliberately manufactures those: a beaten attacker leaves at least
+// one survivor behind (processMoveOrders), and a bombarded garrison is whatever
+// the shelling left of it. A unit that is standing there has to read as
+// something, so anything that rounds away is "<1" rather than nothing.
+std::string formatTroops(long long men) {
+    if (men <= 0) return "0";
+    long long shown = men / 100;
+    return shown > 0 ? formatPop(shown) : "<1";
+}
+
 const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Quit to Menu"};
 const int MENU_COUNT = 4;
-const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits"};
-const int MAIN_MENU_COUNT = 7;
+// .odstate is on every build, not just the web one. The browser is where it is
+// indispensable -- data/ there is an Emscripten MEMFS that dies with the tab --
+// but "put my whole setup on a stick and carry it to another machine" is not a
+// web-only wish, and a menu that differs per platform is one more thing for a
+// player to be told about. See OdState.h.
+const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate"};
+const int MAIN_MENU_COUNT = 9;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 
@@ -516,14 +558,107 @@ static void unloadBorderTexture(Texture2D& tex) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+// The frame drawn while an account request is waiting.
+//
+// Installed as the network layer's wait hook (NetWaitHook in HttpClient.h). The
+// web build runs account jobs inline on the frame thread, so during a sign-in
+// the frame loop is not running and nothing else can repaint -- this is the
+// only thing between the player and a frozen canvas.
+//
+// Deliberately NOT a game frame: no update(), no screen dispatch, nothing that
+// touches state the job in progress is halfway through changing. It polls
+// input, paints, and offers a way out. Safe to call with no frame open, which
+// is the case here -- account jobs start from updateAccountMenu(), before
+// BeginDrawing.
+static Game* g_waitHookGame = nullptr;
+
+void Game::odAccountWaitFrame(double elapsedMs) {
+    if (!g_waitHookGame) return;
+    // Short requests are not worth a screen. The sign-in poll runs one request
+    // every two seconds from update(), and painting this over the account
+    // screen each time would strobe a panel over the very buttons the player is
+    // being asked to use. Only a request that is genuinely dragging gets shown.
+    if (elapsedMs < 600.0) return;
+
+    const Color accent = hexToColor(g_waitHookGame->m_config.accentColor);
+    const int w = GetScreenWidth(), h = GetScreenHeight();
+    BeginDrawing();
+    ClearBackground(Color{10, 12, 18, 255});
+
+    const char* title = "Signing in...";
+    const char* line1 = "Finish in the tab that opened, then come back here.";
+    const char* line2 = "Esc  cancel";
+    const int ts = 28, ls = 16;
+    DrawText(title, w / 2 - MeasureText(title, ts) / 2, h / 2 - 44, ts, accent);
+    DrawText(line1, w / 2 - MeasureText(line1, ls) / 2, h / 2 + 4, ls,
+             Color{170, 175, 190, 255});
+    DrawText(line2, w / 2 - MeasureText(line2, ls) / 2, h / 2 + 34, ls,
+             Color{130, 135, 150, 255});
+
+    // Something moving, so a slow reply reads as waiting rather than hung.
+    const float t = (float)GetTime();
+    for (int i = 0; i < 3; ++i) {
+        const float a = 0.35f + 0.65f * (0.5f + 0.5f * sinf(t * 3.0f - i * 0.6f));
+        DrawCircle(w / 2 - 18 + i * 18, h / 2 - 78, 4.0f, ColorAlpha(accent, a));
+    }
+    EndDrawing();
+
+    // IsKeyDown, not IsKeyPressed. EndDrawing polls input itself, so the
+    // press/release edge this loop sees is not the one a frame loop would --
+    // an Esc could land entirely between two polls and be missed. For a cancel,
+    // "is it held" is the question that actually gets answered reliably.
+    if (IsKeyDown(KEY_ESCAPE)) AccountClient::get().cancelSignIn();
+}
+
+void Game::odFitCanvasToWindow() {
+    int packed = odFitCanvasJS();
+    if (packed <= 0) return;
+    int w = (packed >> 16) & 0xFFFF, h = packed & 0xFFFF;
+    if (w < 1 || h < 1) return;
+
+    // raylib caches its own screen size and does not notice the canvas being
+    // resized from JavaScript, so it is told twice over: once through the
+    // canvas element, once through its own API. Without the second call
+    // GetScreenWidth() keeps reporting the old size and the UI is laid out for
+    // a canvas that no longer exists.
+    emscripten_set_canvas_element_size("#canvas", w, h);
+    SetWindowSize(w, h);
+    m_screenW = w;
+    m_screenH = h;
+}
+#endif
+
 bool Game::init(int screenW, int screenH, const char* title) {
 #ifdef __EMSCRIPTEN__
     // On Emscripten, GetApplicationDirectory() returns a URL, not a filesystem path.
     // Data is preloaded into the virtual FS at /data/ via --preload-file.
     m_dataDir = "/data/";
 #else
+    // data/ sits beside the executable. That is not a preference: the updater
+    // refuses an archive whose binary and data/ are not siblings and then
+    // unpacks it into the executable's own directory (GameUpdates::runUpdate),
+    // and tools/package.py builds the zips that way.
+    //
+    // The macOS bundle is the exception in shape only. Its executable lives in
+    // OpenDoctrines.app/Contents/MacOS/, and its data one level up at
+    // Contents/data/, so both places are tried in that order.
+    //
+    // What is looked for is data/fonts, not data/ -- a build tree can hold a
+    // build/data/ left behind by the map generator, a directory with the right
+    // name and none of the right contents. Choosing that one starts the game
+    // with no fonts, no audio and no maps, and it DOES start, which is exactly
+    // how a wrong data directory goes unnoticed.
     std::string appDir = GetApplicationDirectory();
+    if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
+        appDir += '/';
     m_dataDir = appDir + "../data/";
+    for (const char* rel : {"data/", "../data/"}) {
+        if (DirectoryExists((appDir + rel + "fonts").c_str())) {
+            m_dataDir = appDir + rel;
+            break;
+        }
+    }
 
     // A second copy of the game on the same machine needs its own account,
     // config and saves -- otherwise the two instances fight over one
@@ -623,11 +758,47 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowPosition((mw - m_screenW) / 2, (mh - m_screenH) / 2);
     }
 #else
-    // GLFW sets canvas.style.width/height as inline styles, overriding our CSS.
-    // Clear them so canvas{width:100vw;height:100vh} takes effect.
+    // THE CANVAS HAS THREE SIZES AND THEY MUST ALL BE THE SAME ONE.
+    //
+    //   canvas.width/height   the backing store raylib renders into
+    //   canvas.style          the CSS box the browser paints it in
+    //   GetScreenWidth()      what the game lays its UI out against
+    //
+    // shell.html asks for width:100vw;height:100vh, which sets only the CSS
+    // box. The backing store keeps whatever size it was created at, so the
+    // browser stretches one onto the other -- per axis, by different amounts.
+    // Emscripten then converts every mouse event by canvas.width/rect.width,
+    // so the pointer is scaled by those same two different factors. Measured
+    // on a stretched canvas: a click at CSS (300,445) reached the game as
+    // (1083,743) -- x multiplied by 3.61, y by 1.67. The player clicks a menu
+    // item and the game hit-tests somewhere else entirely, which is the click
+    // offset.
+    //
+    // Fixing the CSS alone would leave the render distorted; fixing the
+    // backing store alone would leave it mismatched again on the next resize.
+    // So all three are set together, here and on every resize.
+    odFitCanvasToWindow();
+
+    // Gives the network layer something to repaint with while it blocks the
+    // frame thread. See odAccountWaitFrame() above.
+    g_waitHookGame = this;
+    netSetWaitHook(&Game::odAccountWaitFrame);
+
+    // Closing the tab is how a web player loses everything, and nothing about
+    // the game says so: data/ is a MEMFS that exists only while the page does,
+    // so saving "works", reports success, and is gone on reload. This is the
+    // one moment it can still be said.
+    //
+    // The text is the browser's, not ours -- every current browser replaced the
+    // page-supplied message with a generic one years ago, to stop pages using
+    // it to bully people into staying. Setting returnValue is what still asks
+    // for the prompt at all. Browsers also require the player to have
+    // interacted with the page first, so this cannot fire on a tab nobody
+    // touched. Both are why the dialog is a warning and .odstate is the actual
+    // answer.
     emscripten_run_script(
-        "var c=document.getElementById('canvas');"
-        "if(c){c.style.width='100vw';c.style.height='100vh';}"
+        "window.addEventListener('beforeunload',function(e){"
+        "e.preventDefault();e.returnValue='';return '';});"
     );
 
     // KNOWN BUG, not yet fixed: on first load the game renders into a ~400x300
@@ -1067,6 +1238,18 @@ void Game::run() {
             continue;
         }
         
+#ifdef __EMSCRIPTEN__
+        // Before IsWindowResized() is consulted, not after: the browser window
+        // is the authority on the web, and re-fitting here is what turns a
+        // browser resize into a raylib resize at all. Cheap -- the JS side only
+        // touches the canvas when the numbers actually differ.
+        if (GetScreenWidth() != m_screenW || GetScreenHeight() != m_screenH ||
+            m_odCanvasCheck-- <= 0) {
+            m_odCanvasCheck = 30;          // ~twice a second, to catch a resize
+            odFitCanvasToWindow();          // the game was never told about
+        }
+#endif
+
         if (IsWindowResized()) {
             m_screenW = GetScreenWidth();
             m_screenH = GetScreenHeight();
@@ -1803,6 +1986,17 @@ float Game::resourceBudgetFromSliderT(float t) {
     return std::clamp(roundf(b * 100.0f) / 100.0f, RESOURCE_BUDGET_MIN, 1.0f);
 }
 
+void Game::setSessionResourceLimit(float budget) {
+    // Deliberately does NOT call m_config.save(). A limit asked for on the
+    // command line describes this run; writing it back would leave the next
+    // ordinary game quietly capped at whatever an overnight trainer wanted, and
+    // the player would have no idea why the game felt slow.
+    m_config.resourceBudget = std::clamp(budget, RESOURCE_BUDGET_MIN, 1.0f);
+    applyResourceBudget();
+    printf("[LIMIT] This session is capped at %d%% of the machine\n",
+           (int)lroundf(m_config.resourceBudget * 100.0f));
+}
+
 void Game::applyResourceBudget() {
     setResourceBudget(m_config.resourceBudget);
     applyFpsTarget(m_config.fpsTarget);
@@ -2430,6 +2624,102 @@ std::string flagPatternToSvg(const FlagPattern& fp, int w, int h, const std::uno
     svg += buf;
     svg += "</svg>";
     return svg;
+}
+
+// The inverse of CountryMap's parseFlag(), so a flag that only exists at
+// runtime -- a rebel's -- can be written into a save and come back as itself.
+// Names must match parseFlag/parseSymbolType exactly; anything they cannot read
+// silently degrades to a solid colour, which is how a breakaway state ends up
+// looking like a grey box.
+std::string flagPatternToJsonString(const FlagPattern& fp) {
+    nlohmann::json f;
+    if (!fp.imagePath.empty()) { f["image"] = fp.imagePath; f["censored"] = fp.censored; return f.dump(); }
+
+    const char* tn = "solid";
+    switch (fp.type) {
+        case FlagType::HSTRIPES_2:      tn = "hstripes_2"; break;
+        case FlagType::HSTRIPES_3:      tn = "hstripes_3"; break;
+        case FlagType::HSTRIPES_N:      tn = "hstripes_n"; break;
+        case FlagType::VSTRIPES_2:      tn = "vstripes_2"; break;
+        case FlagType::VSTRIPES_3:      tn = "vstripes_3"; break;
+        case FlagType::VSTRIPES_N:      tn = "vstripes_n"; break;
+        case FlagType::DIAGONAL_L:      tn = "diagonal_l"; break;
+        case FlagType::DIAGONAL_R:      tn = "diagonal_r"; break;
+        case FlagType::TRIANGLE:        tn = "triangle"; break;
+        case FlagType::TRIANGLE_DOUBLE: tn = "triangle_double"; break;
+        case FlagType::QUARTERED:       tn = "quartered"; break;
+        case FlagType::SALTIR:          tn = "saltir"; break;
+        case FlagType::CANTON:          tn = "canton"; break;
+        case FlagType::PALE:            tn = "pale"; break;
+        case FlagType::FESS:            tn = "fess"; break;
+        case FlagType::CROSS_NORDIC:    tn = "cross_nordic"; break;
+        case FlagType::CROSS_GREEK:     tn = "cross_greek"; break;
+        case FlagType::STRIPED_EDGE:    tn = "striped_edge"; break;
+        case FlagType::SUNBURST:        tn = "sunburst"; break;
+        case FlagType::SOLID: default:  tn = "solid"; break;
+    }
+    f["type"] = tn;
+    f["censored"] = fp.censored;
+    f["starCount"] = fp.starCount;
+
+    auto hexOf = [](Color c) {
+        char buf[8]; snprintf(buf, sizeof(buf), "#%02x%02x%02x", c.r, c.g, c.b);
+        return std::string(buf);
+    };
+    nlohmann::json cols = nlohmann::json::array();
+    for (auto& c : fp.colors) cols.push_back(hexOf(c));
+    f["colors"] = cols;
+
+    if (!fp.symbols.empty()) {
+        nlohmann::json syms = nlohmann::json::array();
+        for (auto& sym : fp.symbols) {
+            const char* st = nullptr;
+            switch (sym.type) {
+                case SymbolType::STAR_5:         st = "star_5"; break;
+                case SymbolType::STAR_6:         st = "star_6"; break;
+                case SymbolType::STAR_7:         st = "star_7"; break;
+                case SymbolType::STARS_CIRCLE:   st = "stars_circle"; break;
+                case SymbolType::STARS_GRID:     st = "stars_grid"; break;
+                case SymbolType::CRESCENT:       st = "crescent"; break;
+                case SymbolType::CRESCENT_STAR:  st = "crescent_star"; break;
+                case SymbolType::SUN:            st = "sun"; break;
+                case SymbolType::SUN_RAYS:       st = "sun_rays"; break;
+                case SymbolType::CROSS_LATIN:    st = "cross_latin"; break;
+                case SymbolType::CROSS_SALTIR:   st = "cross_saltir"; break;
+                case SymbolType::CROSS_MALTESE:  st = "cross_maltese"; break;
+                case SymbolType::CIRCLE:         st = "circle"; break;
+                case SymbolType::DISC:           st = "disc"; break;
+                case SymbolType::TRIANGLE:       st = "triangle"; break;
+                case SymbolType::DIAMOND:        st = "diamond"; break;
+                case SymbolType::GEAR:           st = "gear"; break;
+                case SymbolType::HAMMER_SICKLE:  st = "hammer_sickle"; break;
+                case SymbolType::SWASTIKA:       st = "swastika"; break;
+                case SymbolType::SWORD:          st = "sword"; break;
+                case SymbolType::CROSSED_SWORDS: st = "crossed_swords"; break;
+                case SymbolType::MOUNTAIN:       st = "mountain"; break;
+                case SymbolType::TREE:           st = "tree"; break;
+                case SymbolType::TEXT_BLOCK:     st = "text_block"; break;
+                case SymbolType::COAT_ARMS:      st = "coat_arms"; break;
+                case SymbolType::CENSOR_BAR:     st = "censor_bar"; break;
+                default: break;   // NONE and anything new: nothing to write
+            }
+            if (!st) continue;
+            nlohmann::json s;
+            s["type"] = st;
+            s["count"] = sym.count;
+            s["text"] = sym.text;
+            s["x"] = sym.x;
+            s["y"] = sym.y;
+            s["size"] = sym.size;
+            s["rotation"] = sym.rotation;
+            nlohmann::json sc = nlohmann::json::array();
+            for (auto& c : sym.colors) sc.push_back(hexOf(c));
+            s["colors"] = sc;
+            syms.push_back(s);
+        }
+        f["symbols"] = syms;
+    }
+    return f.dump();
 }
 
 void Game::runMapScripts() {

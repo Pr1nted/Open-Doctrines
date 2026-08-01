@@ -10,6 +10,9 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -20,6 +23,38 @@ namespace {
 // The device flow's own recommended interval, and a ceiling on how long we
 // will sit at the consent screen before giving up.
 constexpr int  kPollIntervalMs = 2000;
+
+// Waiting, in a way that works on both builds.
+//
+// std::this_thread::sleep_for is a BUSY WAIT in a single-threaded emscripten
+// build: there is no other thread to run and no yield to the browser, so the
+// tab stops answering anything -- input, rendering, its own network callbacks
+// -- for the whole duration. A two-second poll interval inside a sign-in loop
+// that runs for minutes is a hung page, not a slow one, and the reply it is
+// waiting for can never arrive because the callback that would deliver it
+// cannot run either.
+//
+// ASYNCIFY unwinds to the browser and resumes here, which keeps the tab alive
+// and lets the fetch complete. The game does not render while a sign-in is
+// waiting -- that needs AccountClient to be driven from the frame loop, which
+// is the real fix -- but the page stays responsive and the flow completes.
+static void netWait(int ms) {
+#ifdef __EMSCRIPTEN__
+    // Broken into frame-sized slices rather than one long sleep. Two seconds of
+    // emscripten_sleep keeps the tab alive but hands nothing back to the game,
+    // and this runs in a loop that can last ten minutes while somebody signs in
+    // elsewhere -- which is precisely how the screen ended up frozen. Each
+    // slice gives the wait hook a frame. See NetWaitHook in HttpClient.h.
+    const int slice = 16;
+    const double started = emscripten_get_now();
+    for (int left = ms; left > 0; left -= slice) {
+        netRunWaitHook(emscripten_get_now() - started);
+        emscripten_sleep((unsigned)std::min(slice, left));
+    }
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+#endif
+}
 constexpr int  kLoginTimeoutMs = 10 * 60 * 1000;
 
 constexpr size_t kMaxTokenBytes = 8 * 1024;
@@ -96,6 +131,30 @@ struct AccountClient::Impl {
     std::string token;            // session token; never leaves this process
     std::string signupTicket;     // set between sign-in and account creation
     std::string deleteConfirm;
+
+    // ── Web: the sign-in poll, driven a step at a time from update() ─────
+    //
+    // On desktop the poll is a loop on a worker thread. In a browser there is
+    // no worker, so that loop ran inline on the frame thread and the game never
+    // drew again until sign-in finished -- for up to ten minutes. The screen it
+    // was preventing from drawing is the one with the "Open" button on it, so
+    // the player could not reach the page they were being asked to visit, nor
+    // the Cancel button beside it. A waiting screen that hides the way forward
+    // is worse than a slow one.
+    //
+    // Kept here so update() can take one step per interval instead: the frame
+    // loop keeps running, WaitingForBrowser draws normally, and "Open" is a
+    // real click -- which also matters because a browser blocks window.open
+    // that does not come from a user gesture.
+    std::string pollBody;         // empty when no sign-in is in flight
+    std::string pollProviderLabel;
+    Status      pollRestingStatus = Status::SignedOut;
+    bool        pollLinkMode = false;
+    double      pollDeadlineMs = 0.0;   // emscripten_get_now() scale
+    double      pollNextAtMs = 0.0;
+
+    /** One /auth/poll round trip. True when the sign-in reached a conclusion. */
+    bool pollSignInStep();
 
     std::atomic<bool> busy{false};
     std::atomic<bool> cancelRequested{false};
@@ -298,6 +357,70 @@ void AccountClient::Impl::joinWorker() {
     if (worker.joinable()) worker.join();
 }
 
+bool AccountClient::Impl::pollSignInStep() {
+    std::string body, providerLabel;
+    Status resting;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (pollBody.empty()) return false;
+        body = pollBody;
+        providerLabel = pollProviderLabel;
+        resting = pollRestingStatus;
+    }
+
+    auto finish = [&](Status s) {
+        std::lock_guard<std::mutex> lock(mutex);
+        pollBody.clear();
+        status = s;
+    };
+
+    if (cancelRequested.load()) { finish(resting); return true; }
+
+    HttpRequest poll = baseRequest("POST", "/auth/poll", false);
+    poll.body = body;
+    const HttpResponse res = httpRequest(poll);
+    if (!res.ok()) return false;             // transient; the deadline backstops it
+
+    const std::string state = httpJsonString(res.body, "status", 32);
+    if (state == "pending") return false;
+
+    if (state == "error") {
+        const std::string why = httpJsonString(res.body, "message", 512);
+        setMessage(why.empty() ? "sign-in failed" : why, true);
+        finish(resting);
+        return true;
+    }
+
+    const std::string kind = httpJsonString(res.body, "kind", 32);
+    if (kind == "session") {
+        const std::string token = httpJsonString(res.body, "token", 4096);
+        if (token.empty()) { finish(resting); return true; }
+        saveToken(token);
+        applyAccountJson(res.body);
+        finish(Status::SignedIn);
+        return true;
+    }
+    if (kind == "linked") {
+        applyAccountJson(res.body);
+        setMessage(providerLabel + " linked to your account.", false);
+        finish(Status::SignedIn);
+        return true;
+    }
+    if (kind == "signup") {
+        const std::string ticket = httpJsonString(res.body, "ticket", 4096);
+        const std::string suggested = httpJsonString(res.body, "suggested", 64);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            signupTicket = ticket;
+            account.nickname = suggested;   // a starting point; nothing is stored yet
+        }
+        finish(Status::NeedsNickname);
+        return true;
+    }
+    finish(resting);
+    return true;
+}
+
 void AccountClient::Impl::runJob(std::function<void()> job) {
     joinWorker();
     busy.store(true);
@@ -429,6 +552,36 @@ void AccountClient::update() {
         pending.swap(m_impl->results);
     }
     for (auto& fn : pending) fn();
+
+#ifdef __EMSCRIPTEN__
+    // The web build's sign-in poll, one step per interval. This is the loop
+    // that used to run inline and freeze the game -- see the pollBody block in
+    // Impl. Each step is a single short request, so the frame it costs is the
+    // round trip and nothing more.
+    bool due = false;
+    double deadlineMs = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (!m_impl->pollBody.empty()) {
+            const double now = emscripten_get_now();
+            deadlineMs = m_impl->pollDeadlineMs;
+            if (now >= m_impl->pollNextAtMs) {
+                m_impl->pollNextAtMs = now + (double)kPollIntervalMs;
+                due = true;
+            }
+        }
+    }
+    if (due) {
+        if (emscripten_get_now() > deadlineMs) {
+            m_impl->setMessage("that timed out. Try again.", true);
+            std::lock_guard<std::mutex> lock(m_impl->mutex);
+            m_impl->status = m_impl->pollRestingStatus;
+            m_impl->pollBody.clear();
+        } else {
+            m_impl->pollSignInStep();
+        }
+    }
+#endif
 }
 
 void AccountClient::shutdown() {
@@ -563,8 +716,25 @@ bool AccountClient::beginFlow(AuthProvider provider, bool link) {
         const std::string pollBody =
             "{\"pollSecret\":\"" + httpJsonEscape(pollSecret) + "\"}";
 
+#ifdef __EMSCRIPTEN__
+        // Hand the polling to update() and get off the frame thread. Everything
+        // above this point is two short requests; everything below is the long
+        // wait, and the long wait is what must not be held here. See the
+        // pollBody block in Impl.
+        {
+            std::lock_guard<std::mutex> lock(impl->mutex);
+            impl->pollBody = pollBody;
+            impl->pollProviderLabel = providerLabel;
+            impl->pollRestingStatus = resting;
+            impl->pollLinkMode = link;
+            impl->pollDeadlineMs = emscripten_get_now() + (double)kLoginTimeoutMs;
+            impl->pollNextAtMs = emscripten_get_now() + (double)kPollIntervalMs;
+        }
+        return;
+#endif
+
         while (!impl->cancelRequested.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+            netWait(kPollIntervalMs);
             if (impl->cancelRequested.load()) break;
             if (std::chrono::steady_clock::now() > deadline) {
                 impl->setMessage("that timed out. Try again.", true);
@@ -676,6 +846,10 @@ void AccountClient::cancelSignIn() {
     m_impl->cancelRequested.store(true);
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     if (m_impl->status == Status::WaitingForBrowser) m_impl->status = Status::SignedOut;
+    // Also stops the web build's per-frame poll. Without this, cancelling set
+    // the status back but update() kept polling for the full ten minutes, and
+    // a late reply could sign the player in after they had said no.
+    m_impl->pollBody.clear();
 }
 
 bool AccountClient::createAccount(const std::string& nickname) {

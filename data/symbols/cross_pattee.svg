@@ -1,3 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <path d="M-25-100 L25-100 L25-25 L100-25 L100 25 L25 25 L25 100 L-25 100 L-25 25 L-100 25 L-100-25 L-25-25 Z" fill="#fff"/>
+  <!-- cross_pattee: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-111.111,-111.111) scale(0.370370)">
+<path d="M30,144.097 C96.9686,223.907,195.815,270,300,270 C404.185,270,503.031,223.907,570,144.097 V455.903 C503.031,376.093,404.185,330,300,330 C195.815,330,96.9686,376.093,30,455.903Z
+M455.903,30 C376.093,96.9686,330,195.815,330,300 C330,404.185,376.093,503.031,455.903,570 H144.097 C223.907,503.031,270,404.185,270,300 C270,195.815,223.907,96.9686,144.097,30Z"/>
+  </g>
 </svg>

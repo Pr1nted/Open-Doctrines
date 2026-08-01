@@ -82,6 +82,21 @@ public:
     // toward `target`. Call forward() first.
     void valueUpdate(float target, float lr);
 
+    /**
+     * Move this net's weights `alpha` of the way toward `other`'s.
+     *
+     * The merge step for parallel training: several processes each play their
+     * own worlds against their own copy of the model, and periodically pull
+     * toward the average of their peers. At alpha 0 nothing happens; at 1 this
+     * net becomes the other. Adam's moment estimates are blended too — leaving
+     * them behind would pair freshly-averaged weights with a momentum vector
+     * describing a trajectory those weights were never on.
+     *
+     * Returns false if the architectures differ, in which case nothing is
+     * touched: a peer file from a different build must not be half-absorbed.
+     */
+    bool blendToward(const NeuralNet& other, float alpha);
+
     // Serialization: binary blob with magic + architecture; load fails (returns
     // false) on any mismatch rather than half-loading.
     bool save(const std::string& path) const;

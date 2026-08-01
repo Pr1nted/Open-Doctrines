@@ -1,10 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Rose face-on: five petals round a centre, deliberately not touching.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <circle cx="0" cy="0" r="40"/>
-    <path d="M0-70 C30-70 50-50 40-20 C50-40 30-60 0-60Z" transform="rotate(0)"/>
-    <path d="M0-70 C30-70 50-50 40-20 C50-40 30-60 0-60Z" transform="rotate(45)"/>
-    <path d="M0-70 C30-70 50-50 40-20 C50-40 30-60 0-60Z" transform="rotate(90)"/>
-    <path d="M0-70 C30-70 50-50 40-20 C50-40 30-60 0-60Z" transform="rotate(135)"/>
-    <rect height="30" rx="2" width="6" x="-3" y="-10"/>
+    <circle cx="0.00" cy="-44.00" r="25.0"/>
+    <circle cx="41.85" cy="-13.60" r="25.0"/>
+    <circle cx="25.86" cy="35.60" r="25.0"/>
+    <circle cx="-25.86" cy="35.60" r="25.0"/>
+    <circle cx="-41.85" cy="-13.60" r="25.0"/>
+    <circle cx="0" cy="0" r="15.0"/>
   </g>
 </svg>

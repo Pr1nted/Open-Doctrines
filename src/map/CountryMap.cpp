@@ -120,8 +120,9 @@ bool CountryMap::loadFromJson(const std::string& jsonStr) {
                 c.compassEconomic = val["compass_economic"].get<float>();
             if (val.contains("compass_social"))
                 c.compassSocial = val["compass_social"].get<float>();
-            if (val.contains("doctrine"))
-                c.doctrine = val["doctrine"].get<std::string>();
+            // "doctrine" may still appear in older countries.json files. It was
+            // a per-country string that nothing ever read -- no combat, economy
+            // or unrest maths touched it -- so it is ignored rather than loaded.
             if (val.contains("research")) {
                 for (auto& r : val["research"])
                     c.research.push_back(r.get<std::string>());

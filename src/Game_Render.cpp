@@ -897,8 +897,7 @@ void Game::drawCountryPanel() {
             for (auto& unit : armyIt->second) {
                 const Country* c = m_countries.getCountry(unit.countryId);
                 const char* cname = c ? c->name.c_str() : "Unknown";
-                long long disp = unit.count / 100;
-                DrawText(TextFormat("%s: %s soldiers", cname, formatPop(disp).c_str()),
+                DrawText(TextFormat("%s: %s soldiers", cname, formatTroops(unit.count).c_str()),
                          rX, lineY, 14, LIGHTGRAY);
                 lineY += 18;
             }
@@ -1022,6 +1021,11 @@ void Game::drawCountryPanel() {
             std::vector<ActBtn> acts;
 
             if (hasAlly) {
+                // Only an ally can be called, and only into a war that already
+                // exists -- requestAllyJoinWar() re-checks both and says why if
+                // it refuses, so this is enabled whenever the player is at war
+                // with anyone rather than duplicating the eligibility rules.
+                acts.push_back({"Call to Arms", "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
                 acts.push_back({"Break Alliance", "break_alliance", anyDiploPending && !hasPending("break_alliance")});
                 acts.push_back({"Request Mutual Guarantee", "add_guarantee", anyDiploPending && !hasPending("add_guarantee")});
             } else if (hasGuar) {
@@ -1105,6 +1109,15 @@ void Game::drawCountryPanel() {
                         m_ceasefireSelectMode = 0;
                         m_ceasefireOverlayDirty = true;
                         m_inCeasefireScreen = true;
+                    } else if (ab.action == "call_to_arms") {
+                        // Not queued blind: this one can be refused for reasons
+                        // the player cannot see from the panel (no war they
+                        // could join, already asked recently), and a button
+                        // that silently does nothing is worse than one that
+                        // says why.
+                        std::string why;
+                        if (!requestAllyJoinWar(targetC->isoA3, why))
+                            addNotification(why, Color{220, 170, 90, 255}, 5.0f);
                     } else {
                         m_pendingDiplomaticActions.push_back({playerC->isoA3, targetC->isoA3, ab.action, 1});
                     }
@@ -1439,7 +1452,7 @@ void Game::drawCountryPanel() {
                 Color cBg = Color{80, 30, 20, 220};
                 Color cBd = Color{180, 80, 50, 200};
 if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
-                TextFormat("Cancel (%s, $%.0f)", formatPop(pr.count / 100).c_str(), currentCost),
+                TextFormat("Cancel (%s, $%.0f)", formatTroops(pr.count).c_str(), currentCost),
                 false, cBg, cBd)) {
                     treasury += currentCost;
                     m_pendingRecruitments.erase(m_pendingRecruitments.begin() + pri);
@@ -2043,18 +2056,35 @@ void Game::drawInner() {
             float h = soldierSize * 1.3f;
             float topY = sy - h * 0.5f;
             float botY = sy + h * 0.5f;
-            // Shadow behind body triangle
+            // THE TORSO WAS NEVER DRAWN. DrawTriangle wants its vertices
+            // counter-clockwise -- raylib says so in the header, and rlgl culls
+            // back faces -- and these two were the only triangles in the file
+            // wound the other way: shoulders-left, shoulders-right, feet. Every
+            // triangle that does appear (the ships just below, the map icons
+            // above) goes top, bottom-left, bottom-right. So the soldier was a
+            // floating head with a number over it. Order is now
+            // shoulder-left, feet, shoulder-right, which is the same winding as
+            // the ships and leaves the shape itself unchanged.
+            //
+            // The body carries the OWNER's colour rather than being white,
+            // because the question being asked of this icon is "whose army is
+            // standing here" -- on foreign soil the province underneath is the
+            // other country's colour, so a white body answered nothing. White
+            // is kept for the outline and the head, which is what keeps the
+            // silhouette readable over a province of a similar colour.
             DrawTriangle({sx - bodyW / 2 + 2, topY + 2},
-                         {sx + bodyW / 2 + 2, topY + 2},
-                         {sx + 2, botY + 2}, Color{0, 0, 0, 80});
-            // White body triangle (shoulders → feet)
+                         {sx + 2, botY + 2},
+                         {sx + bodyW / 2 + 2, topY + 2}, Color{0, 0, 0, 80});
             DrawTriangle({sx - bodyW / 2, topY},
-                         {sx + bodyW / 2, topY},
-                         {sx, botY}, WHITE);
-            // Country-coloured head (circle on top)
+                         {sx, botY},
+                         {sx + bodyW / 2, topY}, accent);
+            DrawTriangleLines({sx - bodyW / 2, topY},
+                              {sx, botY},
+                              {sx + bodyW / 2, topY}, WHITE);
             float headR = bodyW * 0.28f;
-            DrawCircleV({sx, topY - headR * 0.3f}, headR, accent);
-            const char* countTxt = TextFormat("%s", formatPop(displayCount).c_str());
+            DrawCircleV({sx, topY - headR * 0.3f}, headR, WHITE);
+            DrawCircleLinesV({sx, topY - headR * 0.3f}, headR, Color{0, 0, 0, 120});
+            const char* countTxt = TextFormat("%s", formatTroops(totalCount).c_str());
             int fs = (int)(11 * cam.zoom);
             if (fs < 8) fs = 8;
             int tw = MeasureText(countTxt, fs);

@@ -312,6 +312,10 @@ mod that traps because of it is a bug in the mod.
         body = body.replace("](../docs/", "](https://github.com/Pr1nted/Open-Doctrines/blob/main/docs/")
         pages[dst] = GENERATED + body
 
+    # AI-Architecture.md is hand-written and lives only in wiki/. It is listed
+    # here because this generator owns the sidebar: leaving it out would drop the
+    # link from the published wiki on the next run, while the page itself
+    # survived — a page nothing links to.
     pages["_Sidebar.md"] = GENERATED + """### Gearbox
 - [Home](Home)
 - [Getting Started](Getting-Started)
@@ -319,6 +323,9 @@ mod that traps because of it is a bug in the mod.
 - [Capability Modules](Capability-Modules)
 - [Languages](Languages)
 - [Troubleshooting](Troubleshooting)
+
+### Engine
+- [AI Architecture](AI-Architecture)
 """
 
     for name, body in pages.items():

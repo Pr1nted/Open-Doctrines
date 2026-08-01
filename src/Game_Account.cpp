@@ -11,6 +11,7 @@
 // read is the one that would be wrong.
 
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "net/AccountClient.h"
@@ -189,8 +190,7 @@ void Game::updateAccountMenu() {
             }
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_accountNickField.empty()) {
-            m_accountNickField.pop_back();
+        if (odTextEditKeys(m_accountNickField, 24)) {
         }
     }
 

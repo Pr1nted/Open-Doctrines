@@ -1,4 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <circle cx="20" cy="0" fill="#fff" r="80"/>
-  <circle cx="45" cy="0" fill="#000" r="70"/>
+  <!-- One path, not a white circle with a black one over it. The black circle
+       was never a hole: it read as a crescent only against a black background
+       and rasterised to opaque black everywhere else - at 96px it produced
+       more black pixels than white ones. The bite is cut here instead. The
+       outer arc is circle (20,0) r80, the inner arc circle (45,0) r70, and
+       they meet at their two intersections, (62.5, +/-67.7772). Those numbers
+       ARE that intersection, so moving either circle means recomputing them.
+       fill-rule would not do: the circles are not nested, so evenodd leaves
+       the part of the inner circle sticking out past the outer one filled. -->
+  <path fill="#fff" d="M 62.5,-67.7772 A 80,80 0 1,0 62.5,67.7772 A 70,70 0 1,1 62.5,-67.7772 Z"/>
 </svg>

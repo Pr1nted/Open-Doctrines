@@ -15,6 +15,7 @@
 #include <random>
 #include <cstdio>
 #include <deque>
+#include <set>
 #include <unordered_set>
 
 // === isProvinceCoastal ===
@@ -167,6 +168,14 @@ void Game::rebuildCountryProvinceIndex() {
 
 void Game::reindexProvinceOwner(int pid, int oldOwner, int newOwner) {
     if (oldOwner == newOwner) return;
+    // The gradient that shades each country inward from its coastline and
+    // borders is a distance field, and a distance field computed for the OLD
+    // borders is wrong the moment a province changes hands. It was only ever
+    // rebuilt on load, sync and replay -- never in play -- so after a conquest
+    // the shading still faded toward a border that no longer existed, and the
+    // 1px dark line in generatePoliticalTexture() was added to paper over it.
+    // Mark it here, where every owner change in the game already passes.
+    m_gradientDirty = true;
     if (oldOwner > 0) {
         auto it = m_countryProvinces.find(oldOwner);
         if (it != m_countryProvinces.end()) {
@@ -190,6 +199,19 @@ const std::vector<int>& Game::provincesOf(int cid) const {
 void Game::processTurn() {
     // Lambda to draw a loading screen frame (no-op if loading screen not active)
     auto drawFrame = [&](float pct, const char* status) {
+        // BEFORE the early-out, and that ordering is the whole point.
+        //
+        // Feeding the audio used to happen inside setLoadingProgress(), below
+        // this line -- so a turn processed WITHOUT the loading screen fed it
+        // exactly never. On the web that means the browser's audio callback
+        // never gets the thread back for the length of the turn, and the
+        // "process turn" sound that plays at the start of it repeats for as
+        // long as the turn takes. The sound is not looping; it is the last
+        // buffer being replayed because nothing drained it.
+        //
+        // Whether a progress bar is on screen has nothing to do with whether
+        // the speakers need feeding.
+        Audio::get().pump();
         if (!m_showLoadingScreen) return;
         setLoadingProgress(pct, status);
         BeginDrawing();
@@ -221,7 +243,7 @@ void Game::processTurn() {
     m_rebellionsThisTurnByCid.clear();
     // Country AI: created lazily on the first processed turn so map load stays
     // instant; the model persists across saves in the game data directory.
-    if (!m_ai) m_ai = new AISystem(this, m_dataDir + "ai/model.bin");
+    if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
     m_ai->beginTurn();
     drawFrame(0.02f, "Processing countries...");
     // Process per-country actions in batches with loading frames
@@ -246,6 +268,11 @@ void Game::processTurn() {
     for (int cid : turnCids) {
         if (!m_countries.getCountry(cid)) continue; // eliminated mid-turn
         processCountryTurn(cid);
+        // Every country, not every batch. The progress bar only needs redrawing
+        // occasionally; the audio needs feeding continuously, and one country's
+        // turn on a large map is already long enough to be heard. pump()
+        // rate-limits itself, so the extra calls cost nothing.
+        Audio::get().pump();
         processedCountries++;
         batchCounter++;
         if (batchCounter >= BATCH_SIZE || processedCountries >= totalCountries) {
@@ -549,6 +576,13 @@ std::string Game::buildRebelsJson() const {
         e["treasury"] = c.treasury;
         e["compass_economic"] = c.compassEconomic;
         e["compass_social"] = c.compassSocial;
+        // The flag as a PATTERN, which is the only form that survives. The
+        // rebellion/<cid>.svg written alongside this is a flat rectangle of the
+        // primary colour -- flagPatternToSvg does not draw stripes or symbols --
+        // and nothing ever rasterised it back anyway, so a reloaded breakaway
+        // had no flag at all.
+        e["flag_actual"] = nlohmann::json::parse(flagPatternToJsonString(c.flagActual));
+        e["flag_censored"] = nlohmann::json::parse(flagPatternToJsonString(c.flagCensored));
         root[std::to_string(cid)] = e;
     }
     if (root.empty()) return std::string();
@@ -571,6 +605,18 @@ void Game::restoreRebels(const std::string& savePath) {
             if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
             std::string svg = SaveManager::readEntry(savePath, "rebellion/" + cidStr + ".svg");
             if (!svg.empty()) m_rebelFlagSvgs[cid] = svg;
+            // Rasterise the flag, exactly as createRebelCountry does at the
+            // moment of the rebellion. Loading the record alone left the
+            // texture map with no entry for the cid, so every restored
+            // breakaway state showed an empty grey rectangle where its flag
+            // should be -- in the country panel and everywhere else.
+            const Country* rc = m_countries.getCountry(cid);
+            if (rc) {
+                auto fit = m_countryFlags.find(cid);
+                if (fit != m_countryFlags.end() && fit->second.id > 0)
+                    UnloadTexture(fit->second);
+                m_countryFlags[cid] = FlagRenderer::render(rc->flagActual, 256, 128, "", &m_odmJsonData);
+            }
         }
         std::cout << "  Restored " << j.size() << " rebel countries" << std::endl;
     } catch (...) { std::cerr << "  Failed to parse rebels.json" << std::endl; }
@@ -1273,13 +1319,19 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         placeSymbol(ft);
         int symRoll = rand() % 100;
         if (extremeRadical && symRoll < 3) {  // <--- MUCH rarer: 3% instead of 30%
-            pickSVG("swastika.svg");
+            // Both are censored symbols, and both are reached only here.
+            pickSVG(rand() % 2 == 0 ? "swastika.svg" : "eagle_nazi.svg");
             symbol.size = 0.35f;
         } else if (symRoll < 30) {
             pickSVG("cross_latin.svg");
             symbol.size = 0.38f;
         } else if (symRoll < 55) {
-            pickSVG(rand() % 2 == 0 ? "eagle.svg" : "star5.svg");
+            // There is no generic eagle. The hand-drawn one did not read as a
+            // bird at any size a flag is drawn, and Wikimedia's heraldic eagles
+            // are 100 KB of linework that nanosvg renders as noise -- so it was
+            // removed rather than shipped looking wrong. eagle_nazi.svg stays,
+            // because a silhouette with a wreath survives being small.
+            pickSVG(rand() % 2 == 0 ? "sun.svg" : "star5.svg");
             symbol.size = 0.35f;
         } else if (symRoll < 75) {
             pickSVG("fasces.svg");
@@ -1398,8 +1450,13 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     FlagPattern flagCensored = flag;
     bool hasHate = false;
     for (auto& sym : flagCensored.symbols) {
+        // Matched on the FILENAME. "eagle_nazi" is tested rather than "eagle"
+        // so that the match stays exact if a generic eagle is ever added back:
+        // "eagle.svg" does not contain "eagle_nazi", so it could not be
+        // censored by accident. There is no generic eagle at present.
         if (sym.type == SymbolType::SVG_FILE &&
             (sym.text.find("swastika") != std::string::npos ||
+             sym.text.find("eagle_nazi") != std::string::npos ||
              sym.text.find("hammer_sickle") != std::string::npos)) {
             hasHate = true;
             sym.type = SymbolType::CENSOR_BAR;
@@ -1684,17 +1741,8 @@ void Game::processRebellions(int countryId) {
         std::string parentIso = m_countries.getAll()[countryId].isoA3;
         if (!parentIso.empty()) {
             for (int pid : faction) {
-                auto& cl = m_claims[parentIso];
-                if (std::find(cl.begin(), cl.end(), pid) == cl.end()) {
-                    cl.push_back(pid);
-                    // Keep the reverse index in sync — it used to be skipped,
-                    // so rebellion claims produced no unrest until a save
-                    // reload rebuilt m_claimsByProvince from m_claims.
-                    auto& rev = m_claimsByProvince[pid];
-                    if (std::find(rev.begin(), rev.end(), parentIso) == rev.end())
-                        rev.push_back(parentIso);
-                    printf("[CLAIM] %s -> province %d (rebellion claim)\n", parentIso.c_str(), pid);
-                }
+                grantClaim(parentIso, pid);
+                printf("[CLAIM] %s -> province %d (rebellion claim)\n", parentIso.c_str(), pid);
             }
         }
 
@@ -1714,7 +1762,237 @@ void Game::processEconomy(int countryId) {
     auto& treasury = m_countries.getAll()[countryId].treasury;
     float net = cs.total - cs.expenses;
     treasury += net;
-    if (treasury < 0) treasury = 0;
+
+    // GOING BROKE USED TO BE FREE. The line here was `if (treasury < 0)
+    // treasury = 0;` -- the shortfall was deleted and the turn moved on, so a
+    // country could keep a fleet and an army it had no income for, for ever.
+    // Nothing anywhere else noticed, because nothing else looked.
+    if (treasury >= 0.0) { m_bankruptCountries.erase(countryId); return; }
+    const float shortfall = (float)(-treasury);
+    treasury = 0.0;
+    m_bankruptCountries.insert(countryId);
+    applyBankruptcyPenalties(countryId, shortfall, cs);
+}
+
+// === applyBankruptcyPenalties ===
+//
+// THE ORDER IS DELIBERATE, AND IT IS NOT THE OBVIOUS ONE.
+//
+// Cheapest to lose first, and "cheapest" here is measured in what it costs to
+// undo, not in what it feels like:
+//
+//   budgets   free to cut and reversible next turn
+//   policies  re-enactable, at the price of an implementation delay
+//   minority  a slider, but the alignment it costs takes many turns to win back
+//   ships     a carrier is 25/turn, a destroyer 10 (Game_Economy.cpp)
+//   troops    10,000 men are 0.01/turn
+//
+// The two middle steps were missing entirely, and their absence was a trap: a
+// country whose expenses were political — a stack of doctrines, a generous
+// minority settlement — could sell its whole fleet and disband its whole army
+// and still be bankrupt the next turn, because the cascade could not reach the
+// thing it was actually paying for. It would then sit at maximum unrest with
+// nothing left to give. Now every recurring cost is reachable, which is what
+// makes BANKRUPTCY_UNREST_PCT a punishment rather than a death sentence.
+//
+// Those army numbers are why troops are not first. Closing a one-carrier
+// shortfall out of the army means disbanding twenty-five million men -- most
+// countries would lose their entire army and still be bankrupt, having saved
+// almost nothing. Scrapping the ship fixes it outright. Disbanding stays in the
+// cascade for the case where the army genuinely IS the expense.
+//
+// Whatever is still unpaid after all three becomes unrest, which is the point:
+// a country that cannot pay for itself and has nothing left to sell is a
+// country in trouble, and it should show.
+void Game::applyBankruptcyPenalties(int countryId, float shortfall,
+                                    const CountryIncomeSnapshot& cs) {
+    if (countryId <= 0 || countryId >= SPC_CID) return;
+    const bool isPlayer = (countryId == m_playerCountryId);
+    float remaining = shortfall;
+
+    // ── 1. Discretionary budgets ────────────────────────────────────────
+    // computeCountryIncome() already scales these down to what is affordable,
+    // so this recovers nothing THIS turn. It is still done, and done first,
+    // because the slider otherwise sits where the player left it and silently
+    // funds nothing every turn afterwards -- the budget has to actually come
+    // down, not just go unpaid.
+    bool cutBudgets = false;
+    if (isPlayer) {
+        if (m_researchAllocation > 0.0f || m_pacificationAllocation > 0.0f) cutBudgets = true;
+        m_researchAllocation = 0.0f;
+        m_pacificationAllocation = 0.0f;
+    } else {
+        auto ra = m_countryResearchAllocation.find(countryId);
+        auto pa = m_countryPacification.find(countryId);
+        if ((ra != m_countryResearchAllocation.end() && ra->second > 0.0f) ||
+            (pa != m_countryPacification.end() && pa->second > 0.0f)) cutBudgets = true;
+        m_countryResearchAllocation[countryId] = 0.0f;
+        m_countryPacification[countryId] = 0.0f;
+    }
+
+    // ── 2. Repeal doctrines, dearest first ──────────────────────────────
+    // Reversible: the policy can be enacted again once the country can pay for
+    // it, at the cost of waiting out its implementation turns.
+    int repealed = 0;
+    if (remaining > 0.0f) {
+        auto apIt = m_countryActivePolicyIndices.find(countryId);
+        if (apIt != m_countryActivePolicyIndices.end()) {
+            std::vector<std::pair<int, int>> costly;  // (costPerTurn, activeIndex)
+            for (int idx : apIt->second) {
+                if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
+                const ActivePolicy& ap = m_activePolicies[idx];
+                if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
+                for (const auto& p : m_allPolicies)
+                    if (p.id == ap.policyId) {
+                        if (p.costPerTurn > 0) costly.push_back({p.costPerTurn, idx});
+                        break;
+                    }
+            }
+            std::sort(costly.begin(), costly.end(),
+                      [](const auto& a, const auto& b) { return a.first > b.first; });
+            for (const auto& [cost, idx] : costly) {
+                if (remaining <= 0.0f) break;
+                cancelPolicy(idx);
+                remaining -= (float)cost;
+                repealed++;
+            }
+        }
+    }
+
+    // ── 3. Minority settlements back to their free options ──────────────
+    // Every category has an option that costs nothing. Dropping to it saves the
+    // whole minority bill at once, and is paid for in alignment — which is the
+    // right price for a government that has run out of money, and one it will
+    // spend the next fifty turns earning back.
+    int minorityCut = 0;
+    if (remaining > 0.0f && cs.minorityCosts > 0.0f) {
+        std::unordered_set<std::string> seen;
+        for (int pid : provincesOf(countryId)) {
+            if (remaining <= 0.0f) break;
+            auto mIt = m_provinceMinorities.find(pid);
+            if (mIt == m_provinceMinorities.end()) continue;
+            for (auto& mg : mIt->second) {
+                if (remaining <= 0.0f) break;
+                if (!seen.insert(mg.name).second) continue;
+                for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ++ci) {
+                    const int cur = ethnicPolicyOption(countryId, mg.name, ci);
+                    if (cur < 0) continue;
+                    const float curCost = m_ethnicPolicyCategories[ci].options[cur].costPerTurn;
+                    if (curCost <= 0.0f) continue;
+                    // The cheapest option in this category, preferring the one
+                    // that gives up the least goodwill among the free ones.
+                    int best = cur; float bestCost = curCost, bestAlign = -1e9f;
+                    for (size_t oi = 0; oi < m_ethnicPolicyCategories[ci].options.size(); ++oi) {
+                        const auto& o = m_ethnicPolicyCategories[ci].options[oi];
+                        if (o.costPerTurn > bestCost) continue;
+                        if (o.costPerTurn < bestCost ||
+                            o.alignmentPerTurn > bestAlign) {
+                            bestCost = o.costPerTurn;
+                            bestAlign = o.alignmentPerTurn;
+                            best = (int)oi;
+                        }
+                    }
+                    if (best == cur) continue;
+                    setEthnicPolicyOption(countryId, mg.name, ci, best);
+                    remaining -= (curCost - bestCost);
+                    minorityCut++;
+                    if (remaining <= 0.0f) break;
+                }
+            }
+        }
+    }
+
+    // ── 4. Scrap ships, dearest first ───────────────────────────────────
+    // Marked rather than erased: cleanupSunkShips() already removes UNC_CID
+    // ships and shifts every pending order index that pointed past them, and
+    // that index bookkeeping is not worth writing a second time.
+    // Gathered and sorted once, for the same reason as the army below.
+    int scrapped = 0;
+    if (remaining > 0.0f) {
+        std::vector<std::pair<float, int>> fleet;   // (saving, index)
+        for (size_t i = 0; i < m_ships.size(); ++i) {
+            if (m_ships[i].countryId != countryId) continue;
+            float saving = (m_ships[i].type == "carrier")   ? 25.0f
+                         : (m_ships[i].type == "destroyer") ? 10.0f : 0.0f;
+            saving += (m_ships[i].crew / 10000.0f) * 0.2f;
+            if (saving > 0.0f) fleet.push_back({saving, (int)i});
+        }
+        std::sort(fleet.begin(), fleet.end(),
+                  [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (const auto& [saving, idx] : fleet) {
+            if (remaining <= 0.0f) break;
+            m_ships[idx].countryId = UNC_CID;   // cleanupSunkShips() collects it
+            remaining -= saving;
+            scrapped++;
+        }
+    }
+
+    // ── 5. Disband troops ───────────────────────────────────────────────
+    // Largest stacks first, so a bankrupt country loses its field army before
+    // its garrisons rather than being hollowed out everywhere at once.
+    long long disbanded = 0;
+    if (remaining > 0.0f) {
+        // 0.01 per 10,000 men, so one unit of upkeep is a million men.
+        long long menNeeded = (long long)(remaining * 1000000.0f);
+
+        // Gathered ONCE and sorted, not re-scanned per stack. The first version
+        // searched the whole province-army map for the largest unit on every
+        // iteration, which is a full map scan per stack drained -- with a
+        // shortfall big enough to need thousands of stacks that is quadratic,
+        // and it hung the game on turn one of a forced test. Nothing is erased
+        // during the walk either, so these pointers stay valid; the empties are
+        // swept afterwards.
+        std::vector<ArmyUnit*> mine;
+        for (auto& [pid, units] : m_provinceArmies)
+            for (auto& u : units)
+                if (u.countryId == countryId && u.count > 0) mine.push_back(&u);
+        std::sort(mine.begin(), mine.end(),
+                  [](const ArmyUnit* a, const ArmyUnit* b) { return a->count > b->count; });
+
+        for (ArmyUnit* u : mine) {
+            if (menNeeded <= 0) break;
+            const long long take = std::min<long long>(u->count, menNeeded);
+            u->count -= take;
+            disbanded += take;
+            menNeeded -= take;
+        }
+        if (disbanded > 0) {
+            for (auto& [pid, units] : m_provinceArmies)
+                units.erase(std::remove_if(units.begin(), units.end(),
+                                           [](const ArmyUnit& u) { return u.count <= 0; }),
+                            units.end());
+        }
+        remaining -= (float)disbanded / 1000000.0f;
+    }
+
+    // ── 6. What is still unpaid becomes unrest ──────────────────────────
+    float unrest = 0.0f;
+    if (remaining > 0.0f) {
+        // Scaled by how deep the hole is relative to what the country earns: a
+        // rounding-error shortfall is not the same event as owing a year's
+        // income, and a flat number would treat them alike.
+        const float severity = (cs.total > 0.01f) ? std::min(2.0f, remaining / cs.total) : 2.0f;
+        unrest = BANKRUPTCY_UNREST_PER_TURN * (0.5f + severity);
+        addWarWeariness(countryId, unrest);
+    }
+
+    if (isPlayer) {
+        std::string msg = "BANKRUPT — the treasury is empty.";
+        if (cutBudgets) msg += " Research and pacification funding cut to zero.";
+        if (repealed > 0) msg += " " + std::to_string(repealed) +
+                                 (repealed == 1 ? " doctrine repealed." : " doctrines repealed.");
+        if (minorityCut > 0) msg += " Minority programmes cut back.";
+        if (scrapped > 0) msg += " " + std::to_string(scrapped) +
+                                 (scrapped == 1 ? " ship scrapped." : " ships scrapped.");
+        if (disbanded > 0) msg += " " + formatPop(disbanded / 100) + " troops disbanded.";
+        if (unrest > 0.0f) msg += " Unrest is rising.";
+        addNotification(msg, Color{235, 110, 110, 255}, 10.0f);
+        Audio::get().playSfx("deny");
+    }
+    printf("[ECONOMY] %d bankrupt: short %.2f, %d doctrine(s) repealed, %d minority cut(s), "
+           "%d ships scrapped, %lld troops disbanded, unrest +%.1f (+%.0f%% rebellion while broke)\n",
+           countryId, shortfall, repealed, minorityCut, scrapped, disbanded, unrest,
+           BANKRUPTCY_UNREST_PCT);
 }
 
 // === processShipBombardOrders ===
@@ -1868,10 +2146,12 @@ void Game::processShipDisembarks(int countryId) {
         auto eIt = std::find_if(dstArmies.begin(), dstArmies.end(),
             [&](auto& u) { return u.countryId != countryId && u.countryId > 0 && !areAllied(countryId, u.countryId); });
         if (eIt != dstArmies.end()) {
-            // Combat: attackers (crew) vs defenders (enemy troops + fort)
-            float atkMod = 1.0f + getTotalEffect("armyAtkPct") / 100.0f;
+            // Combat: attackers (crew) vs defenders (enemy troops + fort).
+            // Both modifiers are now the RESPECTIVE country's own research.
+            float atkMod = 1.0f + getTotalEffect("armyAtkPct", countryId) / 100.0f;
+            float defMod = 1.0f + getTotalEffect("armyDefPct", eIt->countryId) / 100.0f;
             int atkPower = (int)(crew * atkMod);
-            int defPower = (int)(eIt->count * (1.0f + fortDef / 100.0f));
+            int defPower = (int)(eIt->count * (1.0f + fortDef / 100.0f) * defMod);
             if (atkPower > defPower) {
                 int remaining = atkPower - defPower;
                 eIt->count = 0;
@@ -1887,33 +2167,16 @@ void Game::processShipDisembarks(int countryId) {
                     auto minIt = m_provinceMinorities.find(pid);
                     if (minIt != m_provinceMinorities.end())
                         for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[mg.name] -= 25.0f;
+                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
                 }
                 // Auto-claim: previous owner claims this province (skip UNC/BLC)
                 if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    const Country* prevC = m_countries.getCountry(prevOwner);
-                    if (prevC && dst->id > 0) {
-                        auto& claimList = m_claims[prevC->isoA3];
-                        if (std::find(claimList.begin(), claimList.end(), dst->id) == claimList.end()) {
-                            claimList.push_back(dst->id);
-                            m_claimsByProvince[dst->id].push_back(prevC->isoA3);
-                        }
-                    }
+                    if (const Country* prevC = m_countries.getCountry(prevOwner))
+                        grantClaim(prevC->isoA3, dst->id);
                 }
                 // Remove claim if conqueror claimed this province
-                {
-                    const Country* conqueror = m_countries.getCountry(countryId);
-                    if (conqueror) {
-                        auto& cl = m_claims[conqueror->isoA3];
-                        auto cp = std::find(cl.begin(), cl.end(), dst->id);
-                        if (cp != cl.end()) {
-                            cl.erase(cp);
-                            auto& bp = m_claimsByProvince[dst->id];
-                            bp.erase(std::remove(bp.begin(), bp.end(), conqueror->isoA3), bp.end());
-                            if (bp.empty()) m_claimsByProvince.erase(dst->id);
-                        }
-                    }
-                }
+                if (const Country* conqueror = m_countries.getCountry(countryId))
+                    revokeClaim(conqueror->isoA3, dst->id);
                 // Place remaining troops (survivors keep same ratio)
                 int survivingTroops = (atkMod > 0) ? (int)(remaining / atkMod) : crew;
                 auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
@@ -1949,33 +2212,16 @@ void Game::processShipDisembarks(int countryId) {
                     auto minIt = m_provinceMinorities.find(pid);
                     if (minIt != m_provinceMinorities.end())
                         for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[mg.name] -= 25.0f;
+                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
                 }
                 // Auto-claim: previous owner claims this province (skip UNC/BLC)
                 if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    const Country* prevC = m_countries.getCountry(prevOwner);
-                    if (prevC && dst->id > 0) {
-                        auto& claimList = m_claims[prevC->isoA3];
-                        if (std::find(claimList.begin(), claimList.end(), dst->id) == claimList.end()) {
-                            claimList.push_back(dst->id);
-                            m_claimsByProvince[dst->id].push_back(prevC->isoA3);
-                        }
-                    }
+                    if (const Country* prevC = m_countries.getCountry(prevOwner))
+                        grantClaim(prevC->isoA3, dst->id);
                 }
                 // Remove claim if conqueror claimed this province
-                {
-                    const Country* conqueror = m_countries.getCountry(countryId);
-                    if (conqueror) {
-                        auto& cl = m_claims[conqueror->isoA3];
-                        auto cp = std::find(cl.begin(), cl.end(), dst->id);
-                        if (cp != cl.end()) {
-                            cl.erase(cp);
-                            auto& bp = m_claimsByProvince[dst->id];
-                            bp.erase(std::remove(bp.begin(), bp.end(), conqueror->isoA3), bp.end());
-                            if (bp.empty()) m_claimsByProvince.erase(dst->id);
-                        }
-                    }
-                }
+                if (const Country* conqueror = m_countries.getCountry(countryId))
+                    revokeClaim(conqueror->isoA3, dst->id);
             }
             auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
                 [&](auto& u) { return u.countryId == countryId; });
@@ -2222,13 +2468,16 @@ void Game::processArmyMovement(int countryId) {
         auto eIt = std::find_if(dstArmies.begin(), dstArmies.end(),
             [&](auto& u) { return u.countryId != countryId && u.countryId > 0 && !areAllied(countryId, u.countryId); });
         if (eIt != dstArmies.end()) {
-            // Combat: attacker vs defender
-            float atkMod = 1.0f + getTotalEffect("armyAtkPct") / 100.0f;
-            float defMod = 1.0f;
-            auto eCit = m_countryCompass.find(eIt->countryId);
-            if (eCit != m_countryCompass.end()) {
-                defMod = 1.0f;
-            }
+            // Combat: attacker vs defender, each with their OWN research.
+            //
+            // defMod used to be a placeholder: it looked up the defender's
+            // compass, ignored what it found, and assigned 1.0 either way. The
+            // effect it should have been reading, armyDefPct, had no call site
+            // anywhere in the game — so Fortress Doctrine's "+25% defence", and
+            // every other defensive tech, did nothing at all while Total War's
+            // "+20% attack" worked.
+            float atkMod = 1.0f + getTotalEffect("armyAtkPct", countryId) / 100.0f;
+            float defMod = 1.0f + getTotalEffect("armyDefPct", eIt->countryId) / 100.0f;
             int atkPower = (int)(toMove * atkMod);
             int defPower = (int)(eIt->count * (1.0f + fortDef / 100.0f) * defMod);
                 int prevOwner = dst->countryId;
@@ -2237,14 +2486,8 @@ void Game::processArmyMovement(int countryId) {
                     eIt->count = 0;
                     // Auto-claim: previous owner claims this province (skip UNC/BLC)
                     if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                        const Country* prevC = m_countries.getCountry(prevOwner);
-                        if (prevC && dst->id > 0) {
-                            auto& claimList = m_claims[prevC->isoA3];
-                            if (std::find(claimList.begin(), claimList.end(), dst->id) == claimList.end()) {
-                                claimList.push_back(dst->id);
-                                m_claimsByProvince[dst->id].push_back(prevC->isoA3);
-                            }
-                        }
+                        if (const Country* prevC = m_countries.getCountry(prevOwner))
+                            grantClaim(prevC->isoA3, dst->id);
                     }
                     dst->countryId = countryId;
                 // Update pixel lookup arrays + countryPixels
@@ -2257,22 +2500,11 @@ void Game::processArmyMovement(int countryId) {
                     auto minIt = m_provinceMinorities.find(mo.toProvince);
                     if (minIt != m_provinceMinorities.end())
                         for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[mg.name] -= 25.0f;
+                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
                 }
                 // Remove claim if conqueror claimed this province
-                {
-                    const Country* conqueror = m_countries.getCountry(countryId);
-                    if (conqueror) {
-                        auto& cl = m_claims[conqueror->isoA3];
-                        auto cp = std::find(cl.begin(), cl.end(), dst->id);
-                        if (cp != cl.end()) {
-                            cl.erase(cp);
-                            auto& bp = m_claimsByProvince[dst->id];
-                            bp.erase(std::remove(bp.begin(), bp.end(), conqueror->isoA3), bp.end());
-                            if (bp.empty()) m_claimsByProvince.erase(dst->id);
-                        }
-                    }
-                }
+                if (const Country* conqueror = m_countries.getCountry(countryId))
+                    revokeClaim(conqueror->isoA3, dst->id);
                 // Place remaining troops (survivors keep same ratio)
                 int survivingTroops = (atkMod > 0) ? (int)(remaining / atkMod) : toMove;
                 auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
@@ -2292,14 +2524,8 @@ void Game::processArmyMovement(int countryId) {
             if (dst->countryId != countryId && dst->countryId > 0 && !areAllied(countryId, dst->countryId)) {
                 int prevOwner = dst->countryId;
                 if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    const Country* prevC = m_countries.getCountry(prevOwner);
-                    if (prevC && dst->id > 0) {
-                        auto& claimList = m_claims[prevC->isoA3];
-                        if (std::find(claimList.begin(), claimList.end(), dst->id) == claimList.end()) {
-                            claimList.push_back(dst->id);
-                            m_claimsByProvince[dst->id].push_back(prevC->isoA3);
-                        }
-                    }
+                    if (const Country* prevC = m_countries.getCountry(prevOwner))
+                        grantClaim(prevC->isoA3, dst->id);
                 }
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
@@ -2309,18 +2535,9 @@ void Game::processArmyMovement(int countryId) {
                 auto minIt = m_provinceMinorities.find(mo.toProvince);
                 if (minIt != m_provinceMinorities.end())
                     for (auto& mg : minIt->second)
-                        m_minorityAlignmentDrift[mg.name] -= 25.0f;
-                const Country* conqueror = m_countries.getCountry(countryId);
-                if (conqueror) {
-                    auto& cl = m_claims[conqueror->isoA3];
-                    auto cp = std::find(cl.begin(), cl.end(), dst->id);
-                    if (cp != cl.end()) {
-                        cl.erase(cp);
-                        auto& bp = m_claimsByProvince[dst->id];
-                        bp.erase(std::remove(bp.begin(), bp.end(), conqueror->isoA3), bp.end());
-                        if (bp.empty()) m_claimsByProvince.erase(dst->id);
-                    }
-                }
+                        m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
+                if (const Country* conqueror = m_countries.getCountry(countryId))
+                    revokeClaim(conqueror->isoA3, dst->id);
             }
             // Move troops in
             auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
@@ -2358,7 +2575,10 @@ void Game::processNavyCombat(int countryId) {
         auto& tgt = m_ships[eo.targetIndex];
         if (src.countryId != countryId || tgt.countryId <= 0 || tgt.countryId == UNC_CID) { ++i; continue; }
 
-        float atkMod = 1.0f + getTotalEffect("navyAtkPct") / 100.0f;
+        // navyDefPct was in the same state armyDefPct was: defined on the nodes,
+        // summed by getTotalEffect, and read by nobody.
+        float atkMod = 1.0f + getTotalEffect("navyAtkPct", countryId) / 100.0f;
+        float defMod = 1.0f + getTotalEffect("navyDefPct", tgt.countryId) / 100.0f;
         float dx = (float)(src.lon - tgt.lon), dy = (float)(src.lat - tgt.lat);
         float dist = sqrtf(dx*dx + dy*dy);
         // Closer = more damage: 1.0 at point blank, 0.1 at 15+ units
@@ -2371,7 +2591,7 @@ void Game::processNavyCombat(int countryId) {
         else if (src.type == "frigate") baseDmg = 20;
         else if (src.type == "boat") baseDmg = 5;
 
-        int damage = (int)(baseDmg * atkMod * distFactor);
+        int damage = (int)(baseDmg * atkMod * distFactor / std::max(0.1f, defMod));
         if (damage < 1) damage = 1;
         tgt.health -= damage;
 
@@ -2482,6 +2702,14 @@ void Game::eliminateDefeatedCountries() {
 // The one place wars start. Guarantee semantics: a guarantee on the DEFENDER
 // obliges the guarantor to enter the war against the attacker. Guarantees are
 // stored one-directionally in places, so both directions are checked.
+//
+// Only wars that START here carry that obligation. A war a map ships already
+// set in relations.json is the situation its author chose, not a declaration
+// this code gets to react to -- and it cannot tell attacker from defender in
+// one anyway, so honouring guarantees over it produces nonsense like France
+// and Poland opening the war as co-aggressors on the same turn. A map is free
+// to set a guarantor sitting out a war it guaranteed; the rule governs what
+// happens from there.
 void Game::applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso) {
     int attackerCid = cidForIso(attackerIso);
     int defenderCid = cidForIso(defenderIso);
@@ -2504,9 +2732,25 @@ void Game::applyWarKinPenalty(const std::string& attackerIso, const std::string&
         for (auto& mg : mit->second) {
             auto dpIt = defenderMinPop.find(mg.name);
             if (dpIt != defenderMinPop.end() && dpIt->second >= 500000)
-                m_minorityAlignmentDrift[mg.name] -= 30.0f;
+                m_minorityAlignmentDrift[attackerCid][mg.name] -= 30.0f;
         }
     }
+}
+
+bool Game::hasRelation(const std::string& isoA, const std::string& isoB,
+                       bool CountryRelation::*flag) const {
+    if (isoA.empty() || isoB.empty() || isoA == isoB) return false;
+    auto row = m_relations.find(isoA);
+    if (row != m_relations.end()) {
+        auto cell = row->second.find(isoB);
+        if (cell != row->second.end() && cell->second.*flag) return true;
+    }
+    row = m_relations.find(isoB);
+    if (row != m_relations.end()) {
+        auto cell = row->second.find(isoA);
+        if (cell != row->second.end() && cell->second.*flag) return true;
+    }
+    return false;
 }
 
 void Game::declareWar(const std::string& attackerIso, const std::string& defenderIso,
@@ -2550,17 +2794,9 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
     std::vector<std::string> guarantors;
     for (auto& [isoA, targets] : m_relations) {
         if (isoA == attackerIso || isoA == defenderIso) continue;
-        bool guards = false;
-        auto it = targets.find(defenderIso);
-        if (it != targets.end() && it->second.guarantee) guards = true;
-        if (!guards) {
-            auto dIt = m_relations.find(defenderIso);
-            if (dIt != m_relations.end()) {
-                auto rIt = dIt->second.find(isoA);
-                if (rIt != dIt->second.end() && rIt->second.guarantee) guards = true;
-            }
-        }
-        if (guards && cidForIso(isoA) >= 0) guarantors.push_back(isoA);
+        if (hasRelation(isoA, defenderIso, &CountryRelation::guarantee) &&
+            cidForIso(isoA) >= 0)
+            guarantors.push_back(isoA);
     }
     for (auto& g : guarantors) {
         printf("[WAR] %s honours its guarantee of %s and joins against %s\n",
@@ -2595,25 +2831,135 @@ void Game::decayWarWeariness() {
     }
 }
 
+// What a diplomatic request was ASKING FOR, in words a player recognises.
+// Returns nullptr for anything that is not one of the three proposals, which
+// is what keeps break_* and the ceasefire flow out of these notifications.
+static const char* diploRequestPhrase(const std::string& action) {
+    if (action == "request_alliance")  return "an alliance";
+    if (action == "request_guarantee") return "a mutual guarantee";
+    if (action == "request_nap")       return "a non-aggression pact";
+    return nullptr;
+}
+
+// A country's name if we have one, its ISO code otherwise. "SWE accepted" is a
+// worse sentence than "Sweden accepted", and the ISO is what was being shown.
+std::string Game::diploDisplayName(const std::string& iso) const {
+    const int cid = cidForIso(iso);
+    if (cid >= 0) {
+        if (const Country* c = m_countries.getCountry(cid))
+            if (!c->name.empty()) return c->name;
+    }
+    return iso;
+}
+
+bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
+    const Country* me = m_countries.getCountry(m_playerCountryId);
+    if (!me || allyIso.empty()) { outWhy = "No country selected."; return false; }
+    const std::string myIso = me->isoA3;
+
+    auto myRels = m_relations.find(myIso);
+    if (myRels == m_relations.end()) { outWhy = "You have no relations yet."; return false; }
+    // Either direction: the panel offers the button on a reverse-only alliance
+    // (a scenario writing MCK->JPN and nothing back), and refusing here on the
+    // same relation the button was drawn from is just a button that lies.
+    if (!hasRelation(myIso, allyIso, &CountryRelation::alliance)) {
+        outWhy = "Only an ally can be called to arms.";
+        return false;
+    }
+
+    // Which war? The ally is asked about ONE enemy, so it has to be chosen
+    // rather than left ambiguous: the strongest enemy they are not already
+    // fighting. Strongest because that is the one help is actually worth
+    // asking for, and "not already fighting" because asking someone to join a
+    // war they are in is nothing.
+    const int allyCid = cidForIso(allyIso);
+    if (allyCid < 0) { outWhy = "That country no longer exists."; return false; }
+
+    // Our wars, from whichever side recorded them.
+    std::unordered_set<std::string> enemies;
+    for (auto& [iso, rel] : myRels->second)
+        if (rel.war) enemies.insert(iso);
+    for (auto& [iso, targets] : m_relations) {
+        auto it = targets.find(myIso);
+        if (it != targets.end() && it->second.war) enemies.insert(iso);
+    }
+
+    // One pass over the armies rather than one per candidate enemy: the map has
+    // thousands of provinces and this runs on a button press.
+    std::unordered_map<int, long long> armyByCid;
+    for (auto& [pid, units] : m_provinceArmies)
+        for (auto& u : units) armyByCid[u.countryId] += u.count;
+
+    std::string bestEnemy;
+    long long bestArmy = -1;
+    for (const std::string& iso : enemies) {
+        if (iso == allyIso || iso == myIso) continue;
+        if (hasRelation(allyIso, iso, &CountryRelation::war)) continue;   // already in it
+        const int ecid = cidForIso(iso);
+        if (ecid < 0 || ecid >= SPC_CID) continue;
+        auto ait = armyByCid.find(ecid);
+        const long long army = (ait == armyByCid.end()) ? 0 : ait->second;
+        // ISO tie-break: `enemies` is unordered, and self-play has to replay.
+        if (army > bestArmy || (army == bestArmy && iso < bestEnemy))
+            { bestArmy = army; bestEnemy = iso; }
+    }
+    if (bestEnemy.empty()) {
+        outWhy = "No war they could join.";
+        return false;
+    }
+
+    // The same cooldown the automatic calls use, and the same key, so a player
+    // ask and a defensive ask cannot both land on one ally in the same breath.
+    const long long key = ((long long)m_playerCountryId << 24) | (long long)allyCid;
+    auto cd = m_callToArmsCooldown.find(key);
+    if (cd != m_callToArmsCooldown.end() && m_turnNumber < cd->second) {
+        outWhy = "You have already called them recently.";
+        return false;
+    }
+    m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
+
+    PendingDiplomaticAction da;
+    da.sourceIso = myIso;
+    da.targetIso = allyIso;
+    da.action = "call_to_arms";
+    da.subjectIso = bestEnemy;
+    da.turnsRemaining = 1;
+    m_pendingDiplomaticActions.push_back(da);
+    if (m_ai) m_ai->noteCallIssued();
+
+    addNotification("You call " + diploDisplayName(allyIso) + " to arms against " +
+                    diploDisplayName(bestEnemy), Color{200, 200, 240, 255}, 7.0f);
+    printf("[WAR] %s calls its ally %s to arms against %s (player)\n",
+           myIso.c_str(), allyIso.c_str(), bestEnemy.c_str());
+    outWhy.clear();
+    return true;
+}
+
 void Game::issueCallsToArms(const std::string& attackerIso, const std::string& defenderIso) {
     if (attackerIso.empty() || defenderIso.empty()) return;
-    auto defRels = m_relations.find(defenderIso);
-    if (defRels == m_relations.end()) return;
 
     // Collect first: pushing onto m_pendingDiplomaticActions is safe, but
     // reading m_relations while a later declareWar rewrites it is not.
+    // The defender's allies, from whichever side of the pair recorded the
+    // alliance — a scenario that wrote only the ally's row used to leave the
+    // defender standing alone.
+    std::set<std::string> defAllies;
+    auto defRels = m_relations.find(defenderIso);
+    if (defRels != m_relations.end())
+        for (auto& [iso, rel] : defRels->second)
+            if (rel.alliance) defAllies.insert(iso);
+    for (auto& [iso, targets] : m_relations) {
+        auto it = targets.find(defenderIso);
+        if (it != targets.end() && it->second.alliance) defAllies.insert(iso);
+    }
+
     std::vector<std::string> allies;
-    for (auto& [iso, rel] : defRels->second) {
-        if (!rel.alliance) continue;
-        if (iso == attackerIso) continue; // the alliance the attack just broke
+    for (const std::string& iso : defAllies) {
+        if (iso == attackerIso || iso == defenderIso) continue; // the alliance the attack just broke
         int cid = cidForIso(iso);
         if (cid < 0 || cid >= SPC_CID) continue;
         // Already fighting them? Nothing to ask for.
-        auto ar = m_relations.find(iso);
-        if (ar != m_relations.end()) {
-            auto rr = ar->second.find(attackerIso);
-            if (rr != ar->second.end() && rr->second.war) continue;
-        }
+        if (hasRelation(iso, attackerIso, &CountryRelation::war)) continue;
         // One ask per pair per cooldown. An ally who already marched, or who
         // already said no, should not be re-asked every time a new front opens.
         const long long key = ((long long)cidForIso(defenderIso) << 24) | (long long)cid;
@@ -2744,7 +3090,8 @@ void Game::processDiplomaticRequests() {
                 int allyCid = cidForIso(da.targetIso);
                 bool accept = false;
                 if (allyCid >= 0 && allyCid != m_playerCountryId && m_ai)
-                    accept = m_ai->decideDiplomacy(allyCid, da.action, da.sourceIso);
+                    accept = m_ai->decideDiplomacy(allyCid, da.action, da.sourceIso,
+                                                   da.subjectIso);
                 if (accept) {
                     // No further chaining: the ally's own guarantors and allies
                     // are not dragged in as well, or one border incident
@@ -2754,6 +3101,15 @@ void Game::processDiplomaticRequests() {
                     if (m_ai) m_ai->noteCallAnswered();
                     printf("[WAR] %s answers %s's call and joins against %s\n",
                            da.targetIso.c_str(), da.sourceIso.c_str(), da.subjectIso.c_str());
+                    // The counterpart of the refusal message below. An ally
+                    // marching because you asked is the single most useful
+                    // thing diplomacy does, and it was reported only to stdout.
+                    if (!playerIso.empty() && da.sourceIso == playerIso) {
+                        addNotification(diploDisplayName(da.targetIso) + " answers your call and joins the war against " +
+                                        diploDisplayName(da.subjectIso),
+                                        Color{140, 220, 150, 255}, 8.0f);
+                        Audio::get().playSfx("deal_accepted");
+                    }
                 } else {
                     m_relations[da.sourceIso][da.targetIso].alliance = false;
                     m_relations[da.targetIso][da.sourceIso].alliance = false;
@@ -2761,9 +3117,12 @@ void Game::processDiplomaticRequests() {
                                 m_ai->noteDiploRejected(cidForIso(da.sourceIso), allyCid); }
                     printf("[WAR] %s refuses %s's call to arms; the alliance is over\n",
                            da.targetIso.c_str(), da.sourceIso.c_str());
-                    if (!playerIso.empty() && da.sourceIso == playerIso)
-                        addNotification(da.targetIso + " refused your call to arms",
-                                        ORANGE, 8.0f);
+                    if (!playerIso.empty() && da.sourceIso == playerIso) {
+                        addNotification(diploDisplayName(da.targetIso) +
+                                        " refused your call to arms — the alliance is over",
+                                        Color{235, 130, 90, 255}, 8.0f);
+                        Audio::get().playSfx("deal_rejected");
+                    }
                 }
                 m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
                 continue;
@@ -2778,12 +3137,34 @@ void Game::processDiplomaticRequests() {
                     if (m_config.aiDebug)
                         printf("[DIPLO] %s rejected %s from %s\n", da.targetIso.c_str(),
                                da.action.c_str(), da.sourceIso.c_str());
-                    if (!playerIso.empty() && da.sourceIso == playerIso)
-                        addNotification(da.targetIso + " rejected your request", ORANGE, 6.0f);
+                    if (!playerIso.empty() && da.sourceIso == playerIso) {
+                        // Naming the request matters: a player who asked three
+                        // countries for three different things in one turn was
+                        // told only that somebody "rejected your request".
+                        const char* what = diploRequestPhrase(da.action);
+                        addNotification(diploDisplayName(da.targetIso) + " declined your offer of " +
+                                        (what ? what : "an agreement"),
+                                        Color{235, 130, 90, 255}, 7.0f);
+                        Audio::get().playSfx("deal_rejected");
+                    }
                     m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
                     continue;
                 }
             }
+            // Reaching here means the request was NOT refused, so it is about
+            // to be applied. Acceptance was entirely silent before this: the
+            // relation appeared on the diplomacy screen and nothing ever said
+            // it had happened, so the only way to learn an alliance had been
+            // agreed was to go looking for it. Said once, here, rather than in
+            // each of the three branches below.
+            if (!playerIso.empty() && da.sourceIso == playerIso) {
+                if (const char* what = diploRequestPhrase(da.action)) {
+                    addNotification(diploDisplayName(da.targetIso) + " accepted your offer of " + what,
+                                    Color{140, 220, 150, 255}, 7.0f);
+                    Audio::get().playSfx("deal_accepted");
+                }
+            }
+
             // Apply the diplomatic action
             auto& rels = m_relations[da.sourceIso];
             auto& rt = rels[da.targetIso];
@@ -3094,6 +3475,16 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
                 tp.insert(tp.end(), moved.begin(), moved.end());
             }
         }
+
+        // A claim is a demand for land you do not have. Winning the land ends
+        // the demand -- so the new owner's own claim on this province is now
+        // meaningless, and leaving it in place kept the province painted as
+        // contested on the claims overlay, kept listing us under "Claimed by"
+        // on ground we had just been ceded, kept it feeding the AI's
+        // "reconquer our claimed land" war bar, and let a country justify a
+        // fresh war over ground it already held.
+        if (const Country* toC = m_countries.getCountry(toCid))
+            revokeClaim(toC->isoA3, pid);
 }
 
 void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted) {
@@ -3135,14 +3526,7 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     }
 
     auto dropClaim = [&](const std::string& claimantIso, int pid) {
-        auto it = m_claims.find(claimantIso);
-        if (it == m_claims.end()) return;
-        it->second.erase(std::remove(it->second.begin(), it->second.end(), pid), it->second.end());
-        auto bpIt = m_claimsByProvince.find(pid);
-        if (bpIt != m_claimsByProvince.end()) {
-            bpIt->second.erase(std::remove(bpIt->second.begin(), bpIt->second.end(), claimantIso), bpIt->second.end());
-            if (bpIt->second.empty()) m_claimsByProvince.erase(pid);
-        }
+        revokeClaim(claimantIso, pid);
         printf("[CEASEFIRE] %s dropped claim on province %d\n", claimantIso.c_str(), pid);
     };
     for (int pid : terms.ourDropClaims) dropClaim(sourceIso, pid);
@@ -3291,12 +3675,24 @@ void Game::processUpgrades() {
                 if (node.invested >= node.cost) {
                     m_countryResearched[m_playerCountryId].insert(node.id);
                     node.researched = true;
+                    // Clearing m_researchActiveNode is not enough to stop the
+                    // node DRAWING as in-progress: the tree tests node.inProgress
+                    // for that (drawResearchTree), and it is per-node state that
+                    // nothing else resets. Left set, a finished technology kept
+                    // its progress bar at full for the rest of the game and
+                    // never showed DONE. Game::spendResearchPoints() -- the
+                    // other place research can complete -- has always cleared
+                    // both; this path is the one that forgot.
+                    node.inProgress = false;
                     Audio::get().playSfx("research_complete");
                     printf("[RESEARCH] %s completed!\n", node.name.c_str());
                     m_researchActiveNode = -1;
                     m_researchAlert = true; // highlight the sidebar button until it's opened
                 }
             } else {
+                // Already researched -- by the other path, or by a load. The
+                // same flag has to come down here too, or the bar survives.
+                node.inProgress = false;
                 m_researchActiveNode = -1;
             }
         }
@@ -3333,9 +3729,7 @@ void Game::processPopulation() {
     }
 
     // Phase 2: ethnic migration — minorities move toward economically better provinces
-    float baseMigrationRate = 0.005f; // 0.5% base migration per turn
-    float migrationBonus = getTotalEffect("migrationRate"); // research modifier (e.g., +0.01 = +1%)
-    float migrationRate = baseMigrationRate * (1.0f + migrationBonus);
+    const float baseMigrationRate = 0.005f; // 0.5% base migration per turn
 
     // Compute refugee surge multiplier for recently conquered provinces
     std::unordered_map<int, float> refugeeSurge;
@@ -3376,6 +3770,12 @@ void Game::processPopulation() {
 
     for (auto& [cid, pids] : countryProvinces) {
         if (cid == SPC_CID) continue;
+        // This country's own migration research, not the player's. The bonus
+        // was hoisted out of the loop and read the global tree, so a player who
+        // researched better internal migration sped it up for every country on
+        // the map at once.
+        const float migrationRate =
+            baseMigrationRate * (1.0f + getTotalEffect("migrationRate", cid));
         // Collect all minority groups present in this country
         struct MigrantGroup { std::string name; long long totalPop; int sourcePid; float attr; };
         std::vector<MigrantGroup> migrants;
@@ -3390,7 +3790,7 @@ void Game::processPopulation() {
                 long long minorityPop = (long long)(srcPop * mg.pct / 100.0f);
                 if (minorityPop < 1000) continue; // need at least 1k minority individuals
                 float unrest = provinceUnrest.count(srcPid) ? provinceUnrest[srcPid] : 0;
-                float align = getMinorityAlignment(mg.name);
+                float align = getMinorityAlignment(cid, mg.name);
                 float alignPush = (100.0f - align) / 50.0f; // 0 at 100% align, 2.0 at 0% align
                 // Higher unrest + lower alignment = more emigration
                 float surge = refugeeSurge.count(srcPid) ? refugeeSurge[srcPid] : 1.0f;
@@ -3513,10 +3913,14 @@ void Game::processPopulation() {
     // Phase 2b: Cross-border ethnic migration
     // Minorities migrate between countries at a reduced rate,
     // driven by unrest at source and economic opportunity at destination
-    float crossBorderRate = baseMigrationRate * 0.2f * (1.0f + migrationBonus);
-    float crossBorderRefugeeRate = baseMigrationRate * 1.5f * (1.0f + migrationBonus); // high rate for refugees fleeing conquered provinces
     for (auto& [cid, pids] : countryProvinces) {
         if (cid == SPC_CID) continue;
+        // Rates from the SOURCE country's own research, for the same reason as
+        // the within-country phase above.
+        const float migrationBonus = getTotalEffect("migrationRate", cid);
+        const float crossBorderRate = baseMigrationRate * 0.2f * (1.0f + migrationBonus);
+        // High rate for refugees fleeing conquered provinces.
+        const float crossBorderRefugeeRate = baseMigrationRate * 1.5f * (1.0f + migrationBonus);
 
         // Compute per-country immigration boost from policies (once per country, not per province)
         std::unordered_map<int, float> immigBoostByCountry;
@@ -3552,7 +3956,7 @@ void Game::processPopulation() {
                 if (minorityPop < 1000) continue;
 
                 // Low alignment lowers the unrest threshold for cross-border migration (refugee effect)
-                float cbAlign = getMinorityAlignment(mg.name);
+                float cbAlign = getMinorityAlignment(cid, mg.name);
                 float cbMinUnrest = (cbAlign < 30.0f) ? 1.0f : 5.0f;
                 if (srcUnrest < cbMinUnrest) continue;
 
@@ -3693,7 +4097,7 @@ void Game::processPopulation() {
         auto mit = m_provinceMinorities.find(pid);
         if (mit != m_provinceMinorities.end()) {
             for (auto& mg : mit->second) {
-                float align = getMinorityAlignment(mg.name);
+                float align = getMinorityAlignment(p.countryId, mg.name);
                 if (align < 40.0f)
                     minorityUnrest += mg.pct * 0.3f * (1.0f - align / 40.0f);
             }

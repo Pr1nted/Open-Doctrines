@@ -883,11 +883,14 @@ ProceduralOutput generateProcedural(
         char hex[8]; snprintf(hex, sizeof(hex), "#%02x%02x%02x", col.r, col.g, col.b);
         entry["color"] = std::string(hex);
         entry["flag_actual"] = genFlag(cid, col.r, col.g, col.b);
-        entry["flag_censored"] = genFlag(cid + 1000, col.r, col.g, col.b);
+        // The same flag, not a second roll of the generator. "Show actual
+        // flags" censors; it does not reshuffle. genFlag picks from a symbol
+        // set with no hate symbols in it (see the note above the sets), so a
+        // generated country has nothing to censor and its entry is its flag.
+        entry["flag_censored"] = entry["flag_actual"];
         entry["treasury"] = 5000.0;
         entry["compass_economic"] = (float)((cid * 7 + 3) % 201 - 100) * 0.5f; // -50..+50
         entry["compass_social"] = (float)((cid * 13 + 7) % 201 - 100) * 0.5f;   // -50..+50
-        entry["doctrine"] = "";
         entry["research"] = nlohmann::json::array();
         countriesJson[std::to_string(cid)] = entry;
     }

@@ -18,6 +18,7 @@
 // Neither is buried in a policy nobody reads. See net/PRIVACY.md.
 
 #include "Game.h"
+#include "TextInput.h"
 
 #include <cstring>
 #if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
@@ -795,7 +796,7 @@ void Game::updateMultiplayerMenu() {
                 if (ok && target->size() < limit) *target += (char)c;
                 c = GetCharPressed();
             }
-            if (IsKeyPressed(KEY_BACKSPACE) && !target->empty()) target->pop_back();
+            odTextEditKeys(*target, (size_t)limit);
             if (IsKeyPressed(KEY_TAB)) m_mpFocus = (m_mpFocus + 1) % 6;
         }
     }
@@ -903,25 +904,30 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     //         NetHost::open() begins by binding a listening socket. No amount
     //         of work on this build changes that; it needs the relay described
     //         in docs/multiplayer.md, which the host does not use yet.
-    //   Join  needs a signed join ticket, which needs an HTTPS call to the
-    //         account service, and httpRequest() has no emscripten
-    //         implementation. That one is a to-do, not a wall.
+    //   Join  WORKS NOW. It needs a signed join ticket, which needs an HTTPS
+    //         call to the account service; httpRequest() has a browser backend
+    //         built on fetch() as of this change, so the button below is real.
     //
-    // Drawn as text rather than as disabled buttons because a greyed-out button
-    // invites a player to hunt for the setting that un-greys it.
-    DrawText("Multiplayer needs the desktop version.",
-             centerX - MeasureText("Multiplayer needs the desktop version.", 20) / 2,
-             y, 20, Color{210, 190, 140, 255});
-    y += 30;
-    const char* l1 = "A browser tab cannot listen for players, so it cannot host.";
-    const char* l2 = "Signing in is not implemented here yet, so it cannot join.";
-    DrawText(l1, centerX - MeasureText(l1, 15) / 2, y, 15, Color{150, 160, 180, 255});
+    // Only the host half is still a limit, so only the host half is said.
+    const int btnW = 260, btnH = 52;
+    const MpButton joinWeb = buttonAt((float)(centerX - btnW / 2), (float)y,
+                                      (float)btnW, (float)btnH, mouse);
+    drawButton(joinWeb, "Join by code", 20, Color{40, 52, 68, 230},
+               Color{120, 150, 190, 210});
+    if (click && joinWeb.hovered) {
+        m_mpCodeField.clear();
+        m_mpAddressField.clear();
+        m_mpPage = MpPage::Join;
+        m_mpIpWarningAccepted = false;
+        m_mpFocus = 0;
+    }
+    y += btnH + 18;
+
+    const char* h1 = "A browser tab cannot listen for players, so it cannot host.";
+    const char* h2 = "Join a game someone else is hosting, or host from the desktop build.";
+    DrawText(h1, centerX - MeasureText(h1, 15) / 2, y, 15, Color{150, 160, 180, 255});
     y += 21;
-    DrawText(l2, centerX - MeasureText(l2, 15) / 2, y, 15, Color{150, 160, 180, 255});
-    y += 26;
-    const char* l3 = "Everything else -- the map, the map editor and mods -- works here.";
-    DrawText(l3, centerX - MeasureText(l3, 15) / 2, y, 15, Color{130, 140, 160, 255});
-    (void)click;
+    DrawText(h2, centerX - MeasureText(h2, 15) / 2, y, 15, Color{130, 140, 160, 255});
 #else
     const int btnW = 260, btnH = 52, gap = 16;
     const MpButton join = buttonAt((float)(centerX - btnW - gap / 2), (float)y,

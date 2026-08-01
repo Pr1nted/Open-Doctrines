@@ -1,6 +1,23 @@
 {
  "$comment": "Historical flags for scenario powers, keyed by the scenario-local code in tools/data/scenarios/*.json. Downloaded from Wikimedia Commons by tools/download_scenario_flags.py into data/flags/, rendered to PNG by prerender_problematic_flags.py, and licence-audited by audit_flag_licenses.py exactly like the modern flags. A power with no entry here falls back to a procedural pattern, which is fine for an occupation administration and poor for a great power.",
  "schema": 1,
+ "$censor_comment": "Flag basenames (as used in data/flags/<name>.png) that the game's \"Show actual flags\" toggle is FOR. Turning that setting off is a censoring option, not a flag randomiser: a nation listed here has its real flag mosaicked, a nation with an authored `flag_censored` in tools/data/scenarios/*.json gets that design instead, and every other nation keeps its flag exactly as it is. The set is swastika- and communist-state flags, matching the base map.odmap (which already censors CHN, PRK, VNM, LAO, AGO, MOZ) and the swastika/eagle_nazi/hammer_sickle list the game hard-codes for rebel flags in Game_TurnLogic.cpp.",
+ "censor": [
+  "SOV",
+  "RUS_SFSR",
+  "CCP",
+  "CHN_PRC",
+  "CHN",
+  "DDR",
+  "YUG_SFR",
+  "MNG_MPR1939",
+  "MNG_1945",
+  "VNM",
+  "LAO",
+  "PRK",
+  "AGO",
+  "MOZ"
+ ],
  "flags": {
   "GER_EMPIRE": "Flag of Germany (1867–1918).svg",
   "GER_REICH": "Flag of Germany (1935–1945).svg",
@@ -32,6 +49,20 @@
   "BGR_KINGDOM": "Flag of Bulgaria.svg",
   "GRC_KINGDOM": "Flag of Greece (1822-1978).svg",
   "PRT_1911": "Flag of Portugal.svg",
-  "FIN_1918": "Flag of Finland.svg"
+  "FIN_1918": "Flag of Finland.svg",
+  "TIB": "Flag of Tibet (1916-1951).svg",
+  "MCK": "Flag of Manchukuo.svg",
+  "MNE_KINGDOM": "Flag of Montenegro (1905–1918).svg",
+  "EGY_KINGDOM": "Flag of Egypt (1922-1958).svg",
+  "IRQ_KINGDOM": "Flag of Iraq (1924–1959).svg",
+  "YEM_KINGDOM": "Flag of the Mutawakkilite Kingdom of Yemen.svg",
+  "SYR_1932": "Flag of Syria (1930–1958, 1961–1963).svg",
+  "MNG_BOGD": "Flag of Mongolia (1911—1921).svg",
+  "MNG_MPR1939": "Flag of the Mongolian People's Republic (1940–1945).svg",
+  "VNM_SOUTH": "Flag of South Vietnam.svg",
+  "NPL_PRE1962": "Flag of Nepal (1743–1962).svg",
+  "BTN_1949": "Flag of Bhutan (1949–1956).svg",
+  "NEJD": "Flag of the Emirate of Nejd and Hasa.svg",
+  "HEJAZ": "Flag of Hejaz (1917).svg"
  }
 }

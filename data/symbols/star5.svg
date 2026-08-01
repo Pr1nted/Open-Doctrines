@@ -1,3 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <polygon fill="#fff" points="0,-90 22,-28 90,-28 38,12 55,80 0,42 -55,80 -38,12 -90,-28 -22,-28"/>
+  <!-- star5: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-94.231) scale(0.769231)">
+<path d="m56,237 74-228 74,228L10,96h240"/>
+  </g>
 </svg>

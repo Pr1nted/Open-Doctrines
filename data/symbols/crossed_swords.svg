@@ -1,14 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <g fill="#fff">
-    <g transform="rotate(30)">
-      <rect height="60" width="12" x="-6" y="-80"/>
-      <rect height="10" width="50" x="-25" y="-80"/>
-      <rect height="30" width="12" x="-6" y="-20"/>
-    </g>
-    <g transform="rotate(-30)">
-      <rect height="60" width="12" x="-6" y="-80"/>
-      <rect height="10" width="50" x="-25" y="-80"/>
-      <rect height="30" width="12" x="-6" y="-20"/>
-    </g>
+  <!-- crossed_swords: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-100.000,-100.000) scale(16.666667)">
+<path d="m2.424 9.825 10-10m0 10-10-10M5.52 6.727a1.873 1.873 0 0 0-2.651 0 1.873 1.873 0 0 0 0 2.652m9.11 0a1.873 1.873 0 0 0 0-2.652 1.873 1.873 0 0 0-2.651 0" style="fill:none;stroke:#fff;stroke-width:.60000002;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1" transform="translate(-1.424 1.176)"/>
   </g>
 </svg>

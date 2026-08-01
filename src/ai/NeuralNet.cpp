@@ -408,6 +408,37 @@ static const uint32_t NN_MAGIC = 0x4F44414Eu; // "NADO"
 // training keeps its optimizer momentum instead of cold-starting Adam.
 static const uint32_t NN_VERSION = 2;
 
+bool NeuralNet::blendToward(const NeuralNet& other, float alpha) {
+    if (m_sizes != other.m_sizes || m_layers.size() != other.m_layers.size())
+        return false;
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
+    if (alpha <= 0.0f) return true;
+    const float keep = 1.0f - alpha;
+    auto mix = [&](std::vector<float>& a, const std::vector<float>& b) {
+        if (a.size() != b.size()) return;
+        for (size_t i = 0; i < a.size(); ++i) {
+            const float v = keep * a[i] + alpha * b[i];
+            // A peer that went non-finite must not take this one with it. The
+            // model file is scrubbed on load for the same reason.
+            a[i] = std::isfinite(v) ? v : a[i];
+        }
+    };
+    for (size_t l = 0; l < m_layers.size(); ++l) {
+        Layer& A = m_layers[l];
+        const Layer& B = other.m_layers[l];
+        mix(A.w, B.w);   mix(A.b, B.b);
+        mix(A.mw, B.mw); mix(A.vw, B.vw);
+        mix(A.mb, B.mb); mix(A.vb, B.vb);
+    }
+    // Experience is additive across workers: two processes that have each seen
+    // a million samples have, between them, produced a model informed by two
+    // million. The Adam step counter is NOT — it indexes the bias correction,
+    // and inflating it would flatten the correction for everyone.
+    m_updates = std::max(m_updates, other.m_updates);
+    m_adamT = std::max(m_adamT, other.m_adamT);
+    return true;
+}
+
 void NeuralNet::serialize(std::vector<uint8_t>& out) const {
     auto put32 = [&](uint32_t v) {
         out.push_back(v & 0xFF); out.push_back((v >> 8) & 0xFF);

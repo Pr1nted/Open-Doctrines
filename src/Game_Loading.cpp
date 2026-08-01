@@ -424,6 +424,11 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
             m_countrySelectIndex = -1; // -1 = no country selected
             m_countrySelectScroll = 0;
 
+            // Claims on ground the claimant already holds are bookkeeping that
+            // cannot mean anything, so they are cleaned up here. Relations are
+            // NOT: whatever the map declared is the situation the map wanted.
+            dropSelfOwnedClaims();
+
             // Reset renderer state for country selection mode
             m_renderer->setSelectedProvince(0);
             m_renderer->rebuildSelectionGlow();
@@ -750,10 +755,63 @@ void Game::buildPopulationLookups() {
     generatePoliticalTexture();
 }
 
+// The inward shading every country carries is a distance field: 0 on a border
+// pixel, growing to 60 as you move into the interior. It has to be rebuilt
+// whenever a border moves, which before this was only on load, sync and
+// replay -- so in a running game the shading kept fading toward borders that
+// had been redrawn turns ago.
+//
+// One full-raster BFS. Cheap enough once per turn, far too expensive per
+// frame, which is why the caller checks m_gradientDirty first.
+void Game::rebuildGradientField() {
+    const Image& provImg = m_provinces.getImage();
+    int w2 = provImg.width, h2 = provImg.height;
+    int totalPixels = w2 * h2;
+    if ((int)m_pixelCountryArray.size() != totalPixels) return;
+
+    struct QE2 { int idx; uint8_t dist; };
+    std::vector<QE2> queue;
+    m_gradientDist.assign(totalPixels, 255);
+    auto enqueue = [&](int idx, uint8_t d) {
+        if (idx < 0 || idx >= totalPixels) return;
+        if (m_gradientDist[idx] <= d) return;
+        m_gradientDist[idx] = d;
+        queue.push_back({idx, d});
+    };
+    for (int y = 0; y < h2; ++y) {
+        for (int x = 0; x < w2; ++x) {
+            int i = y * w2 + x;
+            int cid = m_pixelCountryArray[i];
+            int nx[4] = {x-1, x+1, x, x};
+            int ny[4] = {y, y, y-1, y+1};
+            for (int k = 0; k < 4; ++k) {
+                if (nx[k] < 0 || nx[k] >= w2) continue;
+                if (ny[k] < 0 || ny[k] >= h2) continue;
+                if (m_pixelCountryArray[ny[k] * w2 + nx[k]] != cid) { enqueue(i, 0); break; }
+            }
+        }
+    }
+    size_t qpos = 0;
+    while (qpos < queue.size()) {
+        QE2 cur = queue[qpos++];
+        if (cur.dist >= 60) continue;
+        int x = cur.idx % w2, y = cur.idx / w2;
+        int nx[8] = {x-1, x+1, x, x, x-1, x-1, x+1, x+1};
+        int ny[8] = {y, y, y-1, y+1, y-1, y+1, y-1, y+1};
+        for (int k = 0; k < 8; ++k) {
+            if (nx[k] < 0 || nx[k] >= w2 || ny[k] < 0 || ny[k] >= h2) continue;
+            enqueue(ny[k] * w2 + nx[k], cur.dist + ((k < 4) ? 2 : 3));
+        }
+    }
+    m_gradientDirty = false;
+}
+
 void Game::generatePoliticalTexture() {
     int w = m_provinces.getWidth();
     int h = m_provinces.getHeight();
     int total = w * h;
+    // Borders moved since the field was built, so rebuild it before shading.
+    if (m_gradientDirty) rebuildGradientField();
     if ((int)m_politicalPixelBuffer.size() != total || (int)m_gradientDist.size() != total) {
         return;
     }
@@ -1177,6 +1235,15 @@ void Game::computeCountryLabels() {
     std::unordered_set<int64_t> allAdjPairs;
 
     for (int y = 0; y < h; ++y) {
+        // The longest uninterrupted stretch of work in the whole load: a
+        // 8192x4096 raster is 33 million pixels, each looking at four
+        // neighbours, and until it finishes nothing else on this thread runs.
+        // On the web that includes the browser's audio callback, so the music
+        // repeats the last fraction of a second it was given for as long as
+        // this takes. Once a row is often enough; pump() rate-limits itself to
+        // about one turn per frame, so the scan pays almost nothing for it.
+        if ((y & 63) == 0) Audio::get().pump();
+
         for (int x = 0; x < w; ++x) {
             int idx = (y * w + x) * 4;
             int pid = (pixels[idx] << 16) | (pixels[idx + 1] << 8) | pixels[idx + 2];
@@ -1875,6 +1942,13 @@ void Game::unloadGameData() {
     unload(m_iconClaims);
     unload(m_iconResearch);
     unload(m_ceasefireOverlayTex);
+    unload(m_popupTermsMapTex);
+    // Province ids belong to the map being torn down, so the cached shading is
+    // meaningless against the next one. Key 0 is never a popup id (pushPopup
+    // pre-increments), so this forces a rebuild rather than matching by luck.
+    std::vector<Color>().swap(m_popupTermsMapBuf);
+    m_popupTermsMapKey = 0;
+    m_popupTermsMapEmpty = false;
 
     // Delete renderer
     delete m_renderer;
@@ -1936,6 +2010,10 @@ void Game::unloadGameData() {
     m_ethnicPolicies.clear();
     m_ethnicPolicyCategories.clear();
     m_minorityAlignmentDrift.clear();
+    // Or the next world's countries inherit twenty points of rebellion chance
+    // from whoever went broke in the last one. Training rotates maps in-process,
+    // so this is not a theoretical leak.
+    m_bankruptCountries.clear();
     m_minorityColors.clear();
     m_startingPolicies.clear();
     m_startingMinorityPolicies.clear();
@@ -2604,51 +2682,21 @@ void Game::rebuildOwnershipPixels() {
         if (cid > 0 && cid < (int)m_countryPixels.size())
             m_countryPixels[cid].push_back(i);
     }
-    // Recompute gradient distance field for updated borders
-    {
-        struct QE2 { int idx; uint8_t dist; };
-        std::vector<QE2> queue;
-        auto enqueue = [&](int idx, uint8_t d) {
-            if (idx < 0 || idx >= totalPixels) return;
-            if (m_gradientDist.size() != (size_t)totalPixels) return;
-            if (m_gradientDist[idx] <= d) return;
-            m_gradientDist[idx] = d;
-            queue.push_back({idx, d});
-        };
-        m_gradientDist.assign(totalPixels, 255);
-        for (int y = 0; y < h2; ++y) {
-            for (int x = 0; x < w2; ++x) {
-                int i = y * w2 + x;
-                int cid = m_pixelCountryArray[i];
-                int nx[4] = {x-1, x+1, x, x};
-                int ny[4] = {y, y, y-1, y+1};
-                for (int k = 0; k < 4; ++k) {
-                    if (nx[k] < 0 || nx[k] >= w2) continue;
-                    if (ny[k] < 0 || ny[k] >= h2) continue;
-                    int ni = ny[k] * w2 + nx[k];
-                    if (m_pixelCountryArray[ni] != cid) {
-                        enqueue(i, 0);
-                        break;
-                    }
-                }
-            }
-        }
-        size_t qpos = 0;
-        while (qpos < queue.size()) {
-            QE2 cur = queue[qpos++];
-            if (cur.dist >= 60) continue;
-            int x = cur.idx % w2;
-            int y = cur.idx / w2;
-            int nx[8] = {x-1, x+1, x, x, x-1, x-1, x+1, x+1};
-            int ny[8] = {y, y, y-1, y+1, y-1, y+1, y-1, y+1};
-            for (int k = 0; k < 8; ++k) {
-                if (nx[k] < 0 || nx[k] >= w2 || ny[k] < 0 || ny[k] >= h2) continue;
-                int step = (k < 4) ? 2 : 3;
-                enqueue(ny[k] * w2 + nx[k], cur.dist + step);
-            }
-        }
-    }
+    rebuildGradientField();
 
+    // AND THEN USE IT. The loop above fills m_politicalPixelBuffer with each
+    // country's FLAT colour, and the block after it recomputes the distance
+    // field -- but nothing ever applied one to the other, so the field was
+    // rebuilt and thrown away. The political map came back from a load or a
+    // multiplayer sync correctly RECOLOURED and completely flat: no border
+    // shading and no dark boundary line, because both of those are what
+    // generatePoliticalTexture() adds on top. That is the whole bug -- the
+    // colour changed and the gradient did not.
+    //
+    // It belongs here rather than at the call sites: all three of them
+    // (replaySaveTurns, and two in Game_Multiplayer) had the same omission, so
+    // a fourth would have made it again.
+    if (m_renderer) generatePoliticalTexture();
 }
 
 bool Game::replaySaveTurns(const std::string& savePath) {

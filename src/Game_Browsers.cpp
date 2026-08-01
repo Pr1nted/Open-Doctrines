@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "SaveManager.h"
 #include "GameInternals.h"
@@ -651,8 +652,7 @@ void Game::updateWorldBrowser() {
             }
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_renameWorldNewName.empty())
-            m_renameWorldNewName.pop_back();
+        odTextEditKeys(m_renameWorldNewName, 64, "/\\:");
 
         if (IsKeyPressed(KEY_ENTER) && !m_renameWorldNewName.empty()) {
             // Handle duplicate names by appending (1), (2), etc.
@@ -1536,10 +1536,40 @@ void Game::drawMapBrowser() {
             DrawText("i", infoX - iW / 2, infoY - 9, 18, circleBorder);
 
             // Delete button (custom only)
+            //
+            // THIS WAS NEVER DRAWN. The click handler in updateMapSelect() has
+            // always tested a 30x30 rect here and raised the confirmation
+            // dialog, and the dialog itself is fully written -- but nothing put
+            // anything on screen, so the whole feature was an invisible hotspot
+            // in the corner of a card. "There is no way to delete a custom
+            // world" was true of the interface and false of the code.
+            //
+            // Geometry is duplicated from the click handler because the two are
+            // in different functions; if either moves, move both.
             if (!entry.isStandard) {
                 std::string ver = "v" + entry.id;
                 int verW = MeasureText(ver.c_str(), 11);
                 DrawText(ver.c_str(), cardX + cardW - verW - 14, y + 14, 11, Color{100, 100, 110, 200});
+
+                const Rectangle del = {(float)(cardX + cardW - 44), (float)(y + cardH - 36), 30, 30};
+                const bool delHov = CheckCollisionPointRec(mouse, del);
+                DrawRectangleRounded(del, 0.25f, 6,
+                                     delHov ? Color{170, 45, 45, 235} : Color{70, 34, 34, 200});
+                DrawRectangleRoundedLines(del, 0.25f, 6,
+                                          delHov ? Color{235, 110, 110, 255} : Color{120, 60, 60, 200});
+                // A lid and a bin, at this size just three strokes and a bar.
+                const Color ink = delHov ? WHITE : Color{200, 150, 150, 230};
+                const int cx = (int)(del.x + del.width / 2), top = (int)(del.y + 9);
+                DrawRectangle(cx - 8, top, 16, 2, ink);                 // lid
+                DrawRectangle(cx - 3, top - 3, 6, 2, ink);              // handle
+                DrawRectangleLines(cx - 6, top + 3, 12, 11, ink);       // body
+                DrawRectangle(cx - 2, top + 5, 1, 7, ink);              // ribs
+                DrawRectangle(cx + 1, top + 5, 1, 7, ink);
+                if (delHov) {
+                    const char* tip = "Delete";
+                    DrawText(tip, (int)del.x - MeasureText(tip, 11) - 6,
+                             (int)del.y + 9, 11, Color{235, 150, 150, 235});
+                }
             }
         }
     }
@@ -1595,8 +1625,7 @@ void Game::updateMapBrowser() {
             }
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_newWorldName.empty())
-            m_newWorldName.pop_back();
+        odTextEditKeys(m_newWorldName, 64, "/\\:");
 
         if (IsKeyPressed(KEY_ENTER) && !m_newWorldName.empty()) {
             // Handle duplicate names by appending (1), (2), etc.
@@ -1672,8 +1701,7 @@ void Game::updateMapBrowser() {
             }
             c = GetCharPressed();
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && !m_importName.empty())
-            m_importName.pop_back();
+        odTextEditKeys(m_importName, 64, "/\\:");
 
         if (IsKeyPressed(KEY_ENTER) && !m_importName.empty()) {
             executeMapImport();

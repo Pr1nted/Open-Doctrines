@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Conifer: three tiers and a trunk.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <polygon points="0,-80 -70,20 70,20"/>
-    <polygon points="0,-40 -60,40 60,40"/>
-    <rect height="50" width="20" x="-10" y="20"/>
+    <polygon points="0,-86 -30,-30 30,-30"/>
+    <polygon points="0,-58 -44,10 44,10"/>
+    <polygon points="0,-28 -58,48 58,48"/>
+    <rect x="-11" y="44" width="22" height="42"/>
   </g>
 </svg>

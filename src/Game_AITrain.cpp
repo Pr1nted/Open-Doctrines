@@ -92,7 +92,34 @@ void drawSparkline(const std::deque<float>& hist, Rectangle box, Color col, cons
 }
 } // namespace
 
+void Game::setAIWorker(int id, int count) {
+    if (count <= 1 || id < 0 || id >= count) return;
+    m_aiWorkerId = id;
+    m_aiWorkerCount = count;
+    m_aiModelPath = TextFormat("ai/model.w%d.bin", id);
+    // Seed a fresh worker from the shared model if it has no file of its own,
+    // so a pool starts from the training already done rather than from noise.
+    // Copied rather than symlinked: the whole point is that workers diverge.
+    const std::string own = m_dataDir + m_aiModelPath;
+    const std::string shared = m_dataDir + "ai/model.bin";
+    if (!FileExists(own.c_str()) && FileExists(shared.c_str())) {
+        int len = 0;
+        if (unsigned char* data = LoadFileData(shared.c_str(), &len)) {
+            SaveFileData(own.c_str(), data, len);
+            UnloadFileData(data);
+            printf("[TRAIN] worker %d seeded from ai/model.bin\n", id);
+        }
+    }
+    printf("[TRAIN] worker %d of %d — model %s\n", id, count, m_aiModelPath.c_str());
+}
+
 void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigned int baseSeed) {
+    // A training run is something you watch, and usually something you watch
+    // through a pipe or a redirect -- which makes stdout fully buffered, so
+    // hours of [TRAIN] and [AI] output sit in a 4 KB buffer instead of
+    // appearing. Line buffering costs nothing here and is the difference
+    // between a log you can tail and one that looks like a hung process.
+    setvbuf(stdout, nullptr, _IOLBF, 0);
     const bool infinite = numMaps <= 0;
     printf("[TRAIN] Self-play: %s x %d turn(s)%s, base seed %u\n",
            infinite ? "endless maps" : TextFormat("%d map(s)", numMaps), turnsPerMap,
@@ -105,6 +132,12 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
     std::mt19937 rng(baseSeed);
     long long totalTurns = 0;
     bool aborted = false;
+    // Pool synchronisation cadence. Long enough that a worker has learned
+    // something worth sharing, short enough that the copies cannot drift far
+    // apart — averaging is only a good approximation of a summed gradient
+    // while the things being averaged are still near each other.
+    const double PEER_SYNC_SECONDS = 120.0;
+    double lastPeerSync = GetTime();
 
     // Training must never wait on the display: VSync would add up to 16ms per
     // turn once the simulation itself gets fast. Restored on exit.
@@ -319,13 +352,39 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             if ((t + 1) % 100 == 0) {
                 const auto& ts2 = m_ai ? m_ai->trainStats() : AISystem::TrainStats{};
                 printf("[TRAIN] map %d turn %d/%d (%.4f s/turn, %d alive) "
-                       "embarks=%lld landings=%lld home=%lld | "
+                       "embarks=%lld landings=%lld home=%lld scrapped=%lld | "
                        "calls=%lld answered=%lld refused=%lld staging=%lld\n",
                        m + 1, t + 1, turnsPerMap, mapSecs / (t + 1), alive,
-                       ts2.embarks, ts2.landings, ts2.unloadsHome,
+                       ts2.embarks, ts2.landings, ts2.unloadsHome, ts2.shipsScrapped,
                        ts2.callsIssued, ts2.callsAnswered, ts2.callsRefused,
                        ts2.stagingMoves);
             }
+            // ── Pool sync ──
+            // Save our own file, then pull part of the way toward the mean of
+            // the peers. Doing it on a wall clock rather than a turn count
+            // keeps every worker on roughly the same rhythm even though they
+            // are on different maps at different speeds, and it is the same
+            // reasoning the checkpoint interval uses.
+            //
+            // A THIRD of the way, not all of it: pulling fully to the mean each
+            // time would erase whatever a worker had just learned between
+            // syncs, which is the only thing it contributes.
+            if (m_aiWorkerCount > 1 && m_ai) {
+                const double nowSec = GetTime();
+                if (nowSec - lastPeerSync >= PEER_SYNC_SECONDS) {
+                    lastPeerSync = nowSec;
+                    m_ai->saveModel();
+                    std::vector<std::string> peers;
+                    for (int w = 0; w < m_aiWorkerCount; ++w) {
+                        if (w == m_aiWorkerId) continue;
+                        peers.push_back(m_dataDir + TextFormat("ai/model.w%d.bin", w));
+                    }
+                    const int merged = m_ai->syncWithPeers(peers, 0.33f);
+                    printf("[TRAIN] worker %d synced with %d/%zu peer(s)\n",
+                           m_aiWorkerId, merged, peers.size());
+                }
+            }
+
             if (!drawFrame) { PollInputEvents(); continue; }
             lastFrameSec = mapSecs;
             refreshMiniMap();
@@ -354,10 +413,16 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                          40, 100, 20, LIGHTGRAY);
                 // Coalition readout: whether alliances have started to mean
                 // anything, and whether anyone is using one to reach a front.
-                DrawText(TextFormat("calls to arms %lld  answered %lld  refused %lld   staged into allied land %lld",
+                DrawText(TextFormat("calls to arms %lld  answered %lld  refused %lld   staged into allied land %lld   ships scrapped %lld",
                                     ts.callsIssued, ts.callsAnswered, ts.callsRefused,
-                                    ts.stagingMoves),
+                                    ts.stagingMoves, ts.shipsScrapped),
                          40, 122, 18, {170, 200, 255, 230});
+                // Domestic government: what kind of states self-play produces.
+                DrawText(TextFormat("calming policies %lld   minorities conciliated %lld  repressed %lld   "
+                                    "bankrupt turns %lld   austerity cuts %lld",
+                                    ts.calmingPolicies, ts.minorityConciliations,
+                                    ts.minorityRepressions, ts.bankruptTurns, ts.austerityCuts),
+                         40, 142, 18, {230, 200, 170, 230});
                 // Reward trends per module — the actual "is it learning" view:
                 // rising lines mean the average country is doing better.
                 static const char* RLBL[] = {"economy reward", "politics reward", "war reward", "navy reward"};
@@ -365,9 +430,9 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                                              {255, 140, 120, 255}, {180, 160, 255, 255}};
                 for (int mm = 0; mm < 4; ++mm)
                     drawSparkline(m_ai->rewardHistory()[mm],
-                                  {40.0f + (mm % 2) * 215.0f, 150.0f + (mm / 2) * 62.0f, 205.0f, 56.0f},
+                                  {40.0f + (mm % 2) * 215.0f, 170.0f + (mm / 2) * 62.0f, 205.0f, 56.0f},
                                   RCOL[mm], RLBL[mm]);
-                int y = 286;
+                int y = 306;
                 for (const auto& line : m_ai->debugLines(14)) {
                     DrawText(line.c_str(), 40, y, 12, {180, 200, 180, 220});
                     y += 14;
@@ -392,7 +457,7 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                 DrawText(TextFormat("%lld parameters in 9 nets (%.1f MB on disk)",
                                     m_ai->paramCount(), m_ai->lastSaveBytes() / 1048576.0),
                          ix, iy, 14, dim); iy += 18;
-                DrawText(TextFormat("policy 96-512-320-A x4   value 96-160-1 x4   diplo 96-256-160-2"),
+                DrawText("policy 96-512-320-A x4   value 96-160-1 x4   diplo 96-256-160-2",
                          ix, iy, 14, dim); iy += 18;
                 DrawText(TextFormat("%llu gradient updates lifetime   lr policy %.3f / value %.3f",
                                     m_ai->totalUpdates(), AISystem::LR_POLICY, AISystem::LR_VALUE),
@@ -413,6 +478,14 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             EndDrawing();
 
         }
+        // Settle whatever is still open before the world (and the AISystem with
+        // it) is torn down. A map that was WON already flushed through
+        // noteVictory and cleared m_pending, so this is a no-op there; every
+        // other exit from the loop — turn cap, stagnation, the window closing —
+        // used to drop the last N_STEP turns of every country's decisions
+        // unscored, and with them the only statement the run could make about
+        // who finished the map ahead.
+        if (m_ai) m_ai->noteMapEnd();
         m_aiTraining = false;
         if (m_ai) m_ai->saveModel();
     }
@@ -429,6 +502,416 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
     unloadGameData(); // final model save + teardown
     // The throwaway training map shouldn't linger in the custom-maps menu
     remove((m_dataDir + TextFormat("custom_maps/__ai_training_%d__.odmap", (int)getpid())).c_str());
+}
+
+// ─── Measuring the model ─────────────────────────────────
+// `OpenDoctrines --eval-ai [maps] [turnsPerMap] [seed] [difficulty]`
+//
+// Training tells you the reward went up. It cannot tell you the AI got better,
+// because the reward function is one of the things that keeps changing: every
+// time a term is added or reweighted the sparklines are measuring a different
+// quantity, and comparing yesterday's curve to today's is comparing two
+// different questions. This plays the model instead and counts what it did.
+//
+// Three properties make the numbers comparable across model versions:
+//
+//   Fixed seeds.  The default seed is a constant, not the clock, so map N is
+//                 the same world in every run. The turn resolver and the AI's
+//                 own RNG are both deterministic, so the whole run is.
+//   No learning.  The model is loaded read-only and never updated. What is
+//                 measured is the file on disk, not a moving target — and a
+//                 training session can keep running in another process without
+//                 the two fighting over data/ai/model.bin.
+//   No training-mode sampling.  Self-play deliberately injects exploration
+//                 noise. A measurement that inherits it is measuring dice.
+//                 Sampling here comes from the difficulty setting, the same way
+//                 a real game samples it.
+//
+// Counters are reported per thousand country-turns, because every one of them
+// scales with how many countries are alive; a raw total says more about the
+// scenario's country count than about the model. The last line is machine
+// readable on purpose: two runs of this are meant to be diffed.
+void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
+                           int difficulty, bool vsRandom) {
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+
+    // Read-only before the first AISystem is constructed (that happens lazily
+    // inside the first processTurn), so no path through this can write the
+    // model — including the destructor's save on teardown.
+    AISystem::s_readOnlyModel = true;
+    AISystem::s_evaluating = true;
+    const bool savedLearning = m_config.aiLearning;
+    const int savedDifficulty = m_config.aiDifficulty;
+    m_config.aiLearning = false;
+    m_config.aiDifficulty = std::clamp(difficulty, 0, 3);
+    static const char* DIFF_NAMES[] = {"easy", "normal", "hard", "insane"};
+
+    printf("[EVAL] %d map(s) x %d turn(s), seed %u, difficulty %s\n",
+           numMaps, turnsPerMap, baseSeed, DIFF_NAMES[m_config.aiDifficulty]);
+    printf("[EVAL] Model: %sai/model.bin (read-only — training may keep running)\n",
+           m_dataDir.c_str());
+
+    applyFpsTarget(-1);
+    auto runStart = std::chrono::steady_clock::now();
+    std::mt19937 rng(baseSeed);
+
+    // One row per map, aggregated at the end.
+    struct MapResult {
+        const char* scenario = "";
+        int seed = 0, startCountries = 0, turns = 0;
+        int aliveEnd = 0;
+        double largestShare = 0;    // biggest country's share of owned land
+        double concentration = 0;   // sum of squared shares: 1.0 = one owner
+        const char* outcome = "cap";
+        long long countryTurns = 0; // sum of alive counts over the map
+        long long rebellions = 0;
+        // Mean minority alignment across every real country at the end, and how
+        // many of them ended up below the 40% mark where minority unrest starts
+        // feeding rebellion chance. A model that governs well should hold this
+        // up; one that only knows how to repress will drive it down and pay for
+        // it in revolts a hundred turns later.
+        double meanAlignEnd = 50.0;
+        double disaffectedShare = 0.0;
+        // Control-group comparison (--vs-random). Counts at the start, land and
+        // survivors at the end.
+        int trainedCount = 0, randomCount = 0;
+        int trainedProvinces = 0, randomProvinces = 0;
+        int trainedAlive = 0, randomAlive = 0;
+        AISystem::TrainStats stats;
+    };
+    std::vector<MapResult> results;
+    bool aborted = false;
+
+    for (int m = 0; m < numMaps && !aborted; ++m) {
+        const Scenario& sc = SCENARIOS[m % SCENARIO_COUNT];
+        MapEditor::GeneratorParams p;
+        p.seed = (int)(rng() & 0x7FFFFFFF);
+        p.landCoverage = randRange(rng, sc.landMin, sc.landMax);
+        p.numContinents = randRange(rng, sc.contMin, sc.contMax);
+        p.jaggedness = randRange(rng, sc.jagMin, sc.jagMax);
+        p.provinceDensity = randRange(rng, sc.densMin, sc.densMax);
+        p.numCountries = randRange(rng, sc.countriesMin, sc.countriesMax);
+
+        unloadGameData();
+        // A distinct name from the trainer's, so an eval run and a training run
+        // side by side cannot delete each other's scratch map even if they
+        // somehow shared a pid.
+        std::string mapName = TextFormat("__ai_eval_%d__", (int)getpid());
+        std::string odmPath;
+        {
+            MapEditor ed;
+            ed.init(m_screenW, m_screenH, m_dataDir);
+            odmPath = ed.generateAndExportHeadless(p, mapName.c_str());
+        }
+        if (odmPath.empty()) {
+            printf("[EVAL] map %d: generation failed, skipping\n", m + 1);
+            continue;
+        }
+        if (WindowShouldClose()) break;
+
+        startLoading(odmPath);
+        while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE)
+            updateLoading();
+        if (m_loadingFailed) {
+            printf("[EVAL] map %d: load failed, skipping\n", m + 1);
+            continue;
+        }
+        hideLoadingScreen();
+        m_currentSavePath.clear();  // never write an .odsv
+        m_playerCountryId = 0;      // spectator: every country is AI-driven
+        // Reuses the training loop's headless shortcuts (no political texture,
+        // no label raster, no pixel bookkeeping). s_evaluating is what keeps
+        // this from also inheriting the training exploration schedule.
+        m_aiTraining = true;
+
+        MapResult r;
+        r.scenario = sc.name;
+        r.seed = p.seed;
+        r.startCountries = p.numCountries;
+
+        // ── Matched cohorts ──
+        //
+        // Alternating country ids would work only if id correlated with nothing;
+        // it correlates with generation order, which correlates with position.
+        // Ranking by starting size and alternating down the list gives both
+        // cohorts the same spread of strong and weak starts, so a difference at
+        // the end is a difference in play rather than in dealt hands. The seed
+        // is fixed, so the split is identical in every run of this map.
+        std::unordered_set<int> randomCids;
+        if (vsRandom) {
+            std::unordered_map<int, int> startSize;
+            for (int owner : m_provinceCountryLookup)
+                if (owner > 0 && owner < REBEL_CID_MIN) startSize[owner]++;
+            std::vector<std::pair<int, int>> ranked; // (provinces, cid)
+            ranked.reserve(startSize.size());
+            for (auto& [cid2, n] : startSize) ranked.push_back({n, cid2});
+            // Descending by size, cid as the tie-break so the order is total
+            // and the split is reproducible.
+            std::sort(ranked.begin(), ranked.end(), [](auto& a, auto& b) {
+                if (a.first != b.first) return a.first > b.first;
+                return a.second < b.second;
+            });
+            for (size_t k = 1; k < ranked.size(); k += 2) randomCids.insert(ranked[k].second);
+            r.trainedCount = (int)(ranked.size() - randomCids.size());
+            r.randomCount = (int)randomCids.size();
+        }
+        // processTurn builds the AISystem lazily on its first call, which is one
+        // turn too late to tell it who is in the control group. Build it here
+        // instead; the lazy path then finds it already present.
+        if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
+        m_ai->setRandomCountries(randomCids);
+
+        printf("[EVAL] map %d/%d [%s] seed=%d countries=%d%s\n",
+               m + 1, numMaps, sc.name, p.seed, p.numCountries,
+               vsRandom ? TextFormat("  (%d model vs %d random)", r.trainedCount, r.randomCount) : "");
+
+        const int STAGNATION_TURNS = 1500;
+        int bestTerritory = 0, fewestAlive = 1 << 30, turnsSinceProgress = 0;
+        auto mapStart = std::chrono::steady_clock::now();
+
+        for (int t = 0; t < turnsPerMap; ++t) {
+            if (WindowShouldClose()) { aborted = true; break; }
+            processTurn();
+            r.turns = t + 1;
+
+            for (auto& [cid, n] : m_rebellionsThisTurnByCid)
+                if (cid > 0) r.rebellions += n;
+
+            std::unordered_map<int, int> realCount;
+            int maxReal = 0, ownedProvs = 0;
+            for (int owner : m_provinceCountryLookup)
+                if (owner > 0 && owner < REBEL_CID_MIN) {
+                    int n = ++realCount[owner];
+                    if (n > maxReal) maxReal = n;
+                    ownedProvs++;
+                }
+            const int alive = (int)realCount.size();
+            r.aliveEnd = alive;
+            r.countryTurns += alive;
+            if (ownedProvs > 0) {
+                r.largestShare = (double)maxReal / ownedProvs;
+                double h = 0;
+                for (auto& [cid, n] : realCount) {
+                    const double s = (double)n / ownedProvs;
+                    h += s * s;
+                }
+                r.concentration = h;
+            }
+
+            if (alive <= 1) { r.outcome = "decided"; break; }
+            if (maxReal > bestTerritory || alive < fewestAlive) {
+                bestTerritory = std::max(bestTerritory, maxReal);
+                fewestAlive = std::min(fewestAlive, alive);
+                turnsSinceProgress = 0;
+            } else if (++turnsSinceProgress >= STAGNATION_TURNS) {
+                r.outcome = "frozen";
+                break;
+            }
+
+            PollInputEvents();  // or the compositor decides the process hung
+            if ((t + 1) % 250 == 0) {
+                double secs = std::chrono::duration<double>(
+                                  std::chrono::steady_clock::now() - mapStart).count();
+                printf("[EVAL]   turn %d/%d  %d alive  largest %.1f%%  (%.3f s/turn)\n",
+                       t + 1, turnsPerMap, alive, r.largestShare * 100, secs / (t + 1));
+            }
+        }
+
+        if (m_ai) r.stats = m_ai->trainStats();
+
+        // Where the two cohorts finished.
+        if (vsRandom) {
+            std::unordered_map<int, int> held;
+            for (int owner : m_provinceCountryLookup)
+                if (owner > 0 && owner < REBEL_CID_MIN) held[owner]++;
+            for (auto& [cid2, n] : held) {
+                if (randomCids.count(cid2)) { r.randomProvinces += n; r.randomAlive++; }
+                else                        { r.trainedProvinces += n; r.trainedAlive++; }
+            }
+        }
+
+        // Minority standing at the end of the map, measured once rather than
+        // sampled per turn: it is a slow-moving quantity and the walk is over
+        // every province that has minorities.
+        {
+            std::unordered_map<int, std::unordered_set<std::string>> byCountry;
+            for (auto& [pid, groups] : m_provinceMinorities) {
+                if (pid < 0 || pid >= (int)m_provinceCountryLookup.size()) continue;
+                const int owner = m_provinceCountryLookup[pid];
+                if (owner <= 0 || owner >= REBEL_CID_MIN) continue;
+                for (auto& mg : groups) byCountry[owner].insert(mg.name);
+            }
+            double sum = 0; long long n = 0, disaffected = 0;
+            for (auto& [cid, names] : byCountry)
+                for (const std::string& name : names) {
+                    const float a = getMinorityAlignment(cid, name);
+                    sum += a; ++n;
+                    if (a < 40.0f) ++disaffected;
+                }
+            if (n > 0) {
+                r.meanAlignEnd = sum / n;
+                r.disaffectedShare = (double)disaffected / n;
+            }
+        }
+        m_aiTraining = false;
+
+        const double kct = r.countryTurns > 0 ? r.countryTurns / 1000.0 : 1.0;
+        printf("[EVAL]   %s after %d turns | alive %d/%d | largest %.1f%% | concentration %.3f\n",
+               r.outcome, r.turns, r.aliveEnd, r.startCountries,
+               r.largestShare * 100, r.concentration);
+        printf("[EVAL]   per 1k country-turns: wars %.2f  ceasefires %.2f  pacts %.2f  "
+               "rebellions %.2f  research %.2f\n",
+               r.stats.warsDeclared / kct, r.stats.ceasefiresOffered / kct,
+               r.stats.pactsProposed / kct, r.rebellions / kct,
+               r.stats.researchCompleted / kct);
+        printf("[EVAL]   calls %lld answered %lld refused %lld (%.0f%% refused)  staged %lld\n",
+               r.stats.callsIssued, r.stats.callsAnswered, r.stats.callsRefused,
+               r.stats.callsIssued ? 100.0 * r.stats.callsRefused / r.stats.callsIssued : 0.0,
+               r.stats.stagingMoves);
+        printf("[EVAL]   embarks %lld landings %lld (%.0f%% reached a hostile shore)  "
+               "home %lld  scrapped %lld\n",
+               r.stats.embarks, r.stats.landings,
+               r.stats.embarks ? 100.0 * r.stats.landings / r.stats.embarks : 0.0,
+               r.stats.unloadsHome, r.stats.shipsScrapped);
+        printf("[EVAL]   minorities: mean alignment %.0f%%, %.0f%% disaffected | "
+               "conciliated %lld  repressed %lld  calming policies %lld\n",
+               r.meanAlignEnd, r.disaffectedShare * 100,
+               r.stats.minorityConciliations, r.stats.minorityRepressions,
+               r.stats.calmingPolicies);
+        printf("[EVAL]   solvency: %.1f%% of country-turns bankrupt, %.2f austerity cuts per 1k\n",
+               r.countryTurns ? 100.0 * r.stats.bankruptTurns / r.countryTurns : 0.0,
+               r.stats.austerityCuts / kct);
+        if (vsRandom) {
+            const int total = r.trainedProvinces + r.randomProvinces;
+            printf("[EVAL]   MODEL %d provinces (%.0f%%), %d/%d alive | "
+                   "RANDOM %d provinces (%.0f%%), %d/%d alive  -> %s\n",
+                   r.trainedProvinces, total ? 100.0 * r.trainedProvinces / total : 0.0,
+                   r.trainedAlive, r.trainedCount,
+                   r.randomProvinces, total ? 100.0 * r.randomProvinces / total : 0.0,
+                   r.randomAlive, r.randomCount,
+                   r.trainedProvinces > r.randomProvinces ? "MODEL WINS"
+                     : (r.trainedProvinces < r.randomProvinces ? "RANDOM WINS" : "draw"));
+        }
+        results.push_back(r);
+    }
+
+    // ── Aggregate ──
+    long long totalTurns = 0, totalCountryTurns = 0, decided = 0, frozen = 0;
+    long long wars = 0, ceases = 0, pacts = 0, rebels = 0, research = 0;
+    long long calls = 0, answered = 0, refused = 0, staged = 0;
+    long long embarks = 0, landings = 0, home = 0, scrapped = 0;
+    long long conciliated = 0, repressed = 0, calming = 0;
+    long long bankruptTurns = 0, austerityCuts = 0;
+    long long trainedProv = 0, randomProv = 0, trainedAlive = 0, randomAlive = 0;
+    long long trainedStart = 0, randomStart = 0, modelWins = 0, randomWins = 0;
+    double aliveFrac = 0, largest = 0, conc = 0, meanAlign = 0, disaffected = 0;
+    for (const MapResult& r : results) {
+        totalTurns += r.turns;
+        totalCountryTurns += r.countryTurns;
+        if (std::string(r.outcome) == "decided") decided++;
+        if (std::string(r.outcome) == "frozen") frozen++;
+        wars += r.stats.warsDeclared;      ceases += r.stats.ceasefiresOffered;
+        pacts += r.stats.pactsProposed;    rebels += r.rebellions;
+        research += r.stats.researchCompleted;
+        calls += r.stats.callsIssued;      answered += r.stats.callsAnswered;
+        refused += r.stats.callsRefused;   staged += r.stats.stagingMoves;
+        embarks += r.stats.embarks;        landings += r.stats.landings;
+        home += r.stats.unloadsHome;       scrapped += r.stats.shipsScrapped;
+        bankruptTurns += r.stats.bankruptTurns;
+        austerityCuts += r.stats.austerityCuts;
+        conciliated += r.stats.minorityConciliations;
+        repressed += r.stats.minorityRepressions;
+        calming += r.stats.calmingPolicies;
+        aliveFrac += r.startCountries > 0 ? (double)r.aliveEnd / r.startCountries : 0.0;
+        largest += r.largestShare;
+        conc += r.concentration;
+        meanAlign += r.meanAlignEnd;
+        disaffected += r.disaffectedShare;
+        trainedProv += r.trainedProvinces;   randomProv += r.randomProvinces;
+        trainedAlive += r.trainedAlive;      randomAlive += r.randomAlive;
+        trainedStart += r.trainedCount;      randomStart += r.randomCount;
+        if (r.trainedProvinces > r.randomProvinces) modelWins++;
+        else if (r.trainedProvinces < r.randomProvinces) randomWins++;
+    }
+    const double n = results.empty() ? 1.0 : (double)results.size();
+    const double kct = totalCountryTurns > 0 ? totalCountryTurns / 1000.0 : 1.0;
+    const double mins = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - runStart).count() / 60.0;
+
+    printf("\n[EVAL] ===== %zu map(s), %lld turns, %.1f min, difficulty %s%s =====\n",
+           results.size(), totalTurns, mins, DIFF_NAMES[m_config.aiDifficulty],
+           aborted ? " (ABORTED — partial)" : "");
+    printf("[EVAL] outcome        %lld decided, %lld frozen, %zu hit the turn cap\n",
+           decided, frozen, results.size() - (size_t)decided - (size_t)frozen);
+    printf("[EVAL] survival       %.1f%% of countries still alive at the end\n", 100.0 * aliveFrac / n);
+    printf("[EVAL] largest power  %.1f%% of the owned world\n", 100.0 * largest / n);
+    printf("[EVAL] concentration  %.3f  (1.000 = one country owns everything)\n", conc / n);
+    printf("[EVAL] war            %.2f declarations, %.2f ceasefire offers per 1k country-turns\n",
+           wars / kct, ceases / kct);
+    printf("[EVAL] diplomacy      %.2f pacts proposed per 1k country-turns\n", pacts / kct);
+    printf("[EVAL] coalition      %.0f%% of %lld calls to arms answered, %lld staging moves\n",
+           calls ? 100.0 * answered / calls : 0.0, calls, staged);
+    printf("[EVAL] amphibious     %.0f%% of %lld embarkations reached a hostile shore (%lld came home)\n",
+           embarks ? 100.0 * landings / embarks : 0.0, embarks, home);
+    printf("[EVAL] fleet          %.2f hulls scrapped per 1k country-turns\n", scrapped / kct);
+    printf("[EVAL] unrest         %.2f rebellions, %.2f research nodes per 1k country-turns\n",
+           rebels / kct, research / kct);
+    printf("[EVAL] minorities     mean alignment %.0f%%, %.0f%% of groups disaffected (<40%%)\n",
+           meanAlign / n, 100.0 * disaffected / n);
+    printf("[EVAL] governing      %.2f conciliations, %.2f repressions, %.2f calming policies "
+           "per 1k country-turns\n", conciliated / kct, repressed / kct, calming / kct);
+    // The headline solvency number. Bankruptcy costs twenty points of rebellion
+    // chance in every province, so a high figure here explains a high one two
+    // lines up.
+    printf("[EVAL] solvency       %.1f%% of country-turns spent bankrupt, "
+           "%.2f austerity cuts per 1k\n",
+           totalCountryTurns ? 100.0 * bankruptTurns / totalCountryTurns : 0.0,
+           austerityCuts / kct);
+    // One line, stable field order, for diffing two model versions.
+    if (vsRandom) {
+        const long long tot = trainedProv + randomProv;
+        const double share = tot ? 100.0 * trainedProv / tot : 0.0;
+        // Survival rates rather than raw counts: the cohorts are the same size
+        // by construction, but a map that ends early leaves both incomplete.
+        const double tSurv = trainedStart ? 100.0 * trainedAlive / trainedStart : 0.0;
+        const double rSurv = randomStart ? 100.0 * randomAlive / randomStart : 0.0;
+        printf("\n[EVAL] ----- MODEL vs RANDOM -----\n");
+        printf("[EVAL] maps won       %lld model, %lld random, %zu drawn\n",
+               modelWins, randomWins, results.size() - (size_t)modelWins - (size_t)randomWins);
+        printf("[EVAL] land held      %.1f%% model / %.1f%% random  (50%% = no better than a coin flip)\n",
+               share, 100.0 - share);
+        printf("[EVAL] survival       %.0f%% of model countries, %.0f%% of random countries\n",
+               tSurv, rSurv);
+        // One number to watch across model versions. Below 1.0 the trained
+        // policy is losing to random selection, which no reward curve will tell
+        // you and which has exactly one honest interpretation.
+        printf("[EVAL] ADVANTAGE      %.2fx the land a coin flip holds\n",
+               randomProv ? (double)trainedProv / randomProv
+                          : (trainedProv ? 99.0 : 1.0));
+    }
+
+    printf("[EVAL] CSV,maps,turns,decided,frozen,alive_pct,largest_pct,herfindahl,"
+           "wars_k,ceasefires_k,pacts_k,calls_answered_pct,landing_pct,scrap_k,rebellions_k,"
+           "align_pct,disaffected_pct,conciliate_k,repress_k,calming_k,"
+           "vs_random,model_land_pct,model_wins,random_wins,bankrupt_pct\n");
+    printf("[EVAL] CSV,%zu,%lld,%lld,%lld,%.2f,%.2f,%.4f,%.3f,%.3f,%.3f,%.2f,%.2f,%.3f,%.3f,"
+           "%.2f,%.2f,%.3f,%.3f,%.3f\n",
+           results.size(), totalTurns, decided, frozen, 100.0 * aliveFrac / n,
+           100.0 * largest / n, conc / n, wars / kct, ceases / kct, pacts / kct,
+           calls ? 100.0 * answered / calls : 0.0,
+           embarks ? 100.0 * landings / embarks : 0.0, scrapped / kct, rebels / kct,
+           meanAlign / n, 100.0 * disaffected / n,
+           conciliated / kct, repressed / kct, calming / kct);
+    printf("[EVAL] CSV_EXTRA,%d,%.2f,%lld,%lld,%.2f\n", vsRandom ? 1 : 0,
+           (trainedProv + randomProv) ? 100.0 * trainedProv / (trainedProv + randomProv) : 0.0,
+           modelWins, randomWins,
+           totalCountryTurns ? 100.0 * bankruptTurns / totalCountryTurns : 0.0);
+
+    m_config.aiLearning = savedLearning;
+    m_config.aiDifficulty = savedDifficulty;
+    applyFpsTarget(m_config.fpsTarget);
+    unloadGameData();
+    remove((m_dataDir + TextFormat("custom_maps/__ai_eval_%d__.odmap", (int)getpid())).c_str());
 }
 
 // ─── Unattended self-play on a shipped scenario ──────────

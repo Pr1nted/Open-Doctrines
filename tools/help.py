@@ -52,17 +52,24 @@ GROUPS = [
         "generate_minority_policies.py", "generate_political_compass.py",
         "generate_relations.py", "generate_resources.py", "generate_claims.py",
         "generate_navy.py", "generate_ships_fast.py", "boost_economies.py",
+        "fix_1939_history.py", "fix_map_history.py", "fix_map_colors.py",
+        "carve_states.py", "carve_borders.py",
+        "check_map_history.py",
     ]),
     ("Licensing and provenance", [
         "gen_notices.py", "audit_flag_licenses.py",
     ]),
     ("Flags, icons and symbols", [
         "download_flags.py", "download_flags_fast.py",
-        "download_scenario_flags.py", "patch_flag_images.py",
+        "download_scenario_flags.py", "attach_scenario_flags.py",
+        "patch_flag_images.py",
         "generate_flag_svgs.py", "prerender_problematic_flags.py",
-        "download_wiki_symbols.py", "generate_svg_symbols.py",
+        "download_wiki_symbols.py", "download_symbols.py",
+        "generate_svg_symbols.py",
+        "generate_symbols.py",
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
-        "generate_icons.py",
+        "sync_map_symbols.py",
+        "generate_icons.py", "generate_web_favicon.py",
     ]),
 ]
 

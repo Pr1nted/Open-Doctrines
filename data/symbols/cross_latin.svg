@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <rect fill="#fff" height="180" width="20" x="-10" y="-90"/>
-  <rect fill="#fff" height="40" width="100" x="-50" y="-20"/>
+  <!-- cross_latin: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-71.631,-100.000) scale(0.354610)">
+<title>Christian Cross</title>
+<path stroke="#fff" stroke-width="80" d="m202,2V562M2,202H402"/>
+  </g>
 </svg>

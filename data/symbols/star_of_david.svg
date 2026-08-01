@@ -1,4 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <polygon fill="none" points="0,-80 70,60 -70,60" stroke="#fff" stroke-linejoin="round" stroke-width="15"/>
-  <polygon fill="none" points="0,80 70,-60 -70,-60" stroke="#fff" stroke-linejoin="round" stroke-width="15"/>
+  <!-- star_of_david: from Wikimedia Commons, recoloured white and refitted.
+       Regenerate with tools/download_symbols.py; licence and source
+       are in data/licenses/symbols.json. Do not hand-edit. -->
+  <g fill="#fff" transform="translate(-86.603,-100.000) scale(0.288675)">
+<path d="M 47.631413,492.11477 552.36859,492.11491 300,54.999953 Z M 300,637.81981 552.36851,200.70493 47.631403,200.70481 Z" fill="none" stroke="#fff" stroke-width="55"/>
+  </g>
 </svg>

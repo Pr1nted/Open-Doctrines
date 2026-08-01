@@ -201,12 +201,30 @@ OpenDoctrines --simulate data/STDmaps/1939.odmap 40 "My World"
 OpenDoctrines --export-timelapse save.odsv out.gif 960x480 political
 OpenDoctrines --screenshots docs/img save.odsv
 OpenDoctrines --train-ai
+OpenDoctrines --eval-ai
 ```
 
 `--simulate` plays a scenario with every country AI-driven and leaves a save
 with its full turn history — which is where the timelapses above come from. It
 is also the smallest end-to-end check that a build actually works: it loads a
 map, resolves turns and writes an archive with nobody at the keyboard.
+
+`--train-ai [maps] [turnsPerMap] [countries] [seed]` runs self-play on freshly
+generated maps and improves `data/ai/model.bin`. `--eval-ai [maps]
+[turnsPerMap] [seed] [difficulty]` plays that model over a fixed set of seeded
+maps *without* learning from them and reports what it did, so two model versions
+can be compared on the same worlds. Add `--vs-random` to it and half the
+countries play uniformly at random instead — the one measurement with an
+absolute answer:
+
+```bash
+tools/train_parallel.py --workers 3 --limit 90    # several worlds at once
+OpenDoctrines --eval-ai --vs-random               # does it beat a coin flip?
+```
+
+Add `--resource-limit 90` to cap any run at a share of the machine for that run
+only. See [the AI architecture page](wiki/AI-Architecture.md) for what the model
+is and how it is trained.
 
 ## Tests
 

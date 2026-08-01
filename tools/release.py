@@ -52,15 +52,26 @@ AUTHOR_EMAIL = ""          # deliberately empty
 # kind of user file -- a new export folder, a new cache -- ships to players
 # because nobody remembered to exclude it. Here anything unlisted is simply
 # absent, and adding shipped content is a deliberate edit.
+#
+# The cost of that shape is the opposite mistake, and this list has made it:
+# content that is missing is also simply absent, and the game does not complain.
+# Nothing here belongs to a map -- policies.json, starting_policies.json,
+# country_compass.json and the rest are entries INSIDE the .odmap archives
+# under STDmaps/ (Game::initPolicies reads them from m_odmJsonData). A
+# top-level "policies.json" sat in this list for a long time, matched no file,
+# and printed one line about it per package.
 DATA_ALLOWLIST = [
     "STDmaps",        # the shipped maps
+    "audio",          # music and sfx. Its absence did not fail anything: the
+                      # game starts, reports "Audio ready (0 sounds, 0 tracks)"
+                      # and plays in silence, so every release before this line
+                      # existed shipped a silent game.
     "flags",
     "fonts",
     "icons",
     "symbols",
     "licenses",
     "ai",             # the trained model is game content
-    "policies.json",
     "tips.json",
     "credits.txt",
 ]
@@ -76,6 +87,11 @@ KNOWN_USER_DATA = [
     "timelapses",
     "mods",           # locally installed mods, and their storage
     "mods.json",      # which mods were enabled, and their grants
+    "tools",          # cloudflared, which the game downloads for itself when a
+                      # host asks for a tunnel (src/net/TunnelInstall.cpp). It
+                      # is fetched per-platform and verified on arrival, so
+                      # shipping one machine's copy would add ~37 MB to every
+                      # download and be the wrong binary for most of them.
     ".DS_Store",      # macOS leaves these everywhere
     "Icon\r",         # macOS custom-folder-icon marker; the name really does
     "Icon",           # end in a carriage return, so both spellings are listed

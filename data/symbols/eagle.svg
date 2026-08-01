@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <g fill="#fff">
-    <path d="M0-70 C-30-70 -40-50 -50-30 L-80-20 L-60-10 L-70 10 L-40 0 L-30 30 L0 20 L30 30 L40 0 L70 10 L60-10 L80-20 L50-30 C40-50 30-70 0-70Z"/>
-    <circle cx="-20" cy="-40" r="8"/>
-    <circle cx="20" cy="-40" r="8"/>
-    <polygon points="0,10 -10,30 10,30"/>
-  </g>
-</svg>

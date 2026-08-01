@@ -19,6 +19,9 @@ struct Setting { const char* label; bool isValue; int actionId; };
 
 Color hexToColor(int hex);
 std::string formatPop(long long pop);
+std::string formatTroops(long long men);
+// FlagPattern -> the JSON shape CountryMap::parseFlag() reads back.
+std::string flagPatternToJsonString(const FlagPattern& fp);
 
 extern const char* MENU_ITEMS[];
 extern const int MENU_COUNT;

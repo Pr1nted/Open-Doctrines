@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
 #include "json.hpp"
 
@@ -33,13 +34,23 @@ namespace {
 // takes plain C callbacks. There is one Audio.
 std::string g_fetching;      // VFS path in flight; empty when idle
 
+// Tracks whose bytes did not arrive. "Not retried" was the intent, but nothing
+// wrote it down: the picker asks for a track every time it wants music, and a
+// failure only cleared g_fetching, so the very next frame asked again. With the
+// music directory missing that is one request per frame per track, forever --
+// hundreds of identical failures in the console and a server being hammered for
+// files it does not have. Remembering the failures is what makes "not retried"
+// true.
+std::unordered_set<std::string> g_unavailable;
+
 void onMusicFetched(const char*) { g_fetching.clear(); }
 
 void onMusicFailed(const char* file) {
-    // Not fatal and not retried: a track whose bytes will not arrive is one
-    // track. Clearing the slot lets the picker choose a different one, and it
-    // will, because startTrack failing leaves m_needPick set.
+    // Not fatal: a track whose bytes will not arrive is one track. Clearing the
+    // slot lets the picker choose a different one, and it will, because
+    // startTrack failing leaves m_needPick set.
     std::cerr << "  Music download failed: " << (file ? file : "?") << std::endl;
+    if (!g_fetching.empty()) g_unavailable.insert(g_fetching);
     g_fetching.clear();
 }
 #endif
@@ -63,6 +74,7 @@ bool musicFetchInFlight() {
 bool musicEnsureLocal(const std::string& path) {
     if (FileExists(path.c_str())) return true;
 #ifdef __EMSCRIPTEN__
+    if (g_unavailable.count(path)) return false;   // asked once, answered no
     if (!g_fetching.empty()) return false;         // one at a time
     // The copy next to the page mirrors the VFS layout exactly, so the URL is
     // the VFS path without its leading slash. See the POST_BUILD copy in
@@ -777,6 +789,35 @@ void Audio::pump() {
     if (m_bgRunning.load(std::memory_order_acquire)) return;
     if (m_prev.loaded) UpdateMusicStream(m_prev.music);
     if (m_cur.loaded)  UpdateMusicStream(m_cur.music);
+
+#ifdef __EMSCRIPTEN__
+    // REFILLING THE BUFFER IS NOT ENOUGH IN A BROWSER.
+    //
+    // The web build has no threads, so miniaudio's callback -- the one that
+    // DRAINS the buffer and hands samples to Web Audio -- runs on this thread,
+    // the same one a loading phase blocks for seconds at a time. Feeding a
+    // buffer nobody is emptying changes nothing: the browser replays whatever
+    // it last received, and that is the fragment of a track that loops over the
+    // whole loading screen.
+    //
+    // The callback needs the thread back, and ASYNCIFY is what can give it:
+    // this unwinds to the browser, lets it run its event loop -- audio
+    // included -- and resumes on the next line. It is safe here specifically
+    // because Game::run() is an ordinary blocking loop rather than an
+    // emscripten_set_main_loop callback, so this returns where it left off
+    // instead of re-entering the frame.
+    //
+    // Desktop keeps the helper thread and never reaches this.
+    //
+    // Rate-limited so this is safe to call from inside a loop: unwinding and
+    // rewinding the stack is not free, and one turn per frame's worth of time
+    // is all the audio callback needs. Without the limit, adding this call to a
+    // per-province loop would cost more than the loading it is protecting.
+    double nowMs = emscripten_get_now();
+    if (nowMs - m_lastPumpMs < 16.0) return;
+    m_lastPumpMs = nowMs;
+    emscripten_sleep(0);
+#endif
 }
 
 void Audio::backgroundPumpLoop() {

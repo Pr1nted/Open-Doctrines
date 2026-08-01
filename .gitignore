@@ -104,3 +104,17 @@ tools/playtest-mod/bridge-check.odmod
 # them. tools/package.py already excluded it from releases; this excludes it
 # from the repository too.
 data/config.json
+
+# Transient AI training artifacts.
+#
+# data/ai/model.bin IS tracked -- it is the trained model the game ships with.
+# These are not: the per-worker copies a parallel pool trains against
+# (tools/train_parallel.py), the backup that launcher takes before merging them
+# back, and the scratch map directory a training round exports into. All three
+# are 5-12 MB apiece and regenerate on every run.
+data/ai/model.w*.bin
+data/ai/model.bin.prev
+data/ai/*.tmp
+data/tmp_export___ai_training_*/
+data/custom_maps/__ai_training_*.odmap
+data/custom_maps/__ai_eval_*.odmap

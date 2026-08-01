@@ -50,11 +50,52 @@ public:
     // Public wrapper for loading a save file from command line
     void loadSaveAndStart(const std::string& savePath);
 
+    /**
+     * Cap this run at `budget` (0..1) of the machine, without persisting it.
+     *
+     * Backs `--resource-limit`. The same value the F10 panel and the settings
+     * slider drive, applied for the length of the process only — a limit typed
+     * on a command line describes this invocation, not the player's preference,
+     * and writing it into config.json would cap the next ordinary game too.
+     */
+    void setSessionResourceLimit(float budget);
+
     // Headless AI self-play training (`--train-ai`): generate a procedural
     // map, play N turns with every country AI-driven, then rotate to a fresh
     // map so the model never overfits one geography. Model persists to
     // data/ai/model.bin between maps and runs.
     void runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigned int baseSeed);
+
+    /**
+     * Run this process as one worker of a parallel training pool.
+     *
+     * `id` of 0..count-1 selects this worker's own model file
+     * (data/ai/model.w<id>.bin) and the peers it periodically averages toward.
+     * Without this a second --train-ai process would train against the same
+     * data/ai/model.bin as the first and the two would overwrite each other
+     * every minute, which is worse than not running the second one at all.
+     */
+    void setAIWorker(int id, int count);
+
+    // Headless AI MEASUREMENT (`--eval-ai`). Plays the trained model over a
+    // fixed set of seeded maps without learning from them, and reports what it
+    // actually did: how often maps resolve, how concentrated the world ends up,
+    // how much war and diplomacy per country-turn, how many amphibious
+    // operations reach a shore, how many calls to arms are answered.
+    //
+    // Training's reward sparklines cannot answer "did it get better", because
+    // the reward function itself keeps changing and a rising line may only mean
+    // the yardstick moved. This is the yardstick that does not move: the model
+    // is loaded read-only, sampling comes from the difficulty setting rather
+    // than the training exploration schedule, and the seeds are constants — so
+    // two runs against two model files are directly comparable.
+    // `vsRandom` splits every map's countries into two matched cohorts: half
+    // driven by the model, half picking uniformly at random from the same
+    // validity masks with the same reflexes and the same restraint constants.
+    // The report then answers the only question with an absolute answer — does
+    // the trained policy beat a coin flip, and by how much.
+    void runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
+                         int difficulty, bool vsRandom);
 
     // Unattended self-play on a REAL scenario (`--simulate`). Loads a shipped
     // .odmap through the ordinary menu pipeline, creates the .odsv the menu
@@ -194,9 +235,69 @@ private:
     int drawBreakdownRow(int x, int y, int valX, const char* label, const char* value, Color col, bool highlight);
     void recordIncomeSnapshot();
 
+#ifdef __EMSCRIPTEN__
+    // Canvas backing store, CSS box and raylib's screen size, all set to the
+    // browser viewport. Called at startup and whenever the window changes: if
+    // any two of them disagree the browser scales one onto the other and every
+    // mouse coordinate is wrong by that factor. See Game::init().
+    void odFitCanvasToWindow();
+    int m_odCanvasCheck = 0;   // frames until the next size re-check
+
+    // The frame painted while an account request blocks the frame thread.
+    // A STATIC MEMBER rather than a free function so it can still be handed
+    // over as a plain function pointer while reading the player's accent
+    // colour out of m_config. See NetWaitHook in net/HttpClient.h.
+    static void odAccountWaitFrame(double elapsedMs);
+#endif
+
+    // The "Play as X?" popup on the country-select screen. Returned as one
+    // layout rather than recomputed in both places: draw and update each had
+    // their own copy of popW/popH/btnY, so a change to the box size moved the
+    // buttons on screen without moving where a click counted.
+    struct CountryConfirmLayout {
+        Rectangle box{}, flag{}, yes{}, no{};
+        float questionY = 0;
+    };
+    CountryConfirmLayout countryConfirmLayout() const;
+
     // Main menu
     void drawMainMenu();
     void updateMainMenu();
+
+    // .odstate: the whole of the player's data/ in one file, and the way back
+    // in. Every build has it. See OdState.h.
+    //
+    // Nothing here acts on a single click. Saving asks for a name first, and
+    // loading asks which file and -- if the archive carries mods -- whether the
+    // player really wants executable content put back. A one-click restore that
+    // silently reinstates mods is the version of this feature not to build.
+    enum OdStatePrompt {
+        ODP_NONE = 0,
+        ODP_SAVE_NAME,     // typing the filename to write
+        ODP_PICK_FILE,     // desktop: choosing among exports/*.odstate
+        ODP_MODS_WARNING,  // confirming an archive that contains mods
+    };
+    void openOdStateSave();
+    void openOdStateLoad();
+    void drawOdStatePrompt();
+    void updateOdStatePrompt();
+    void applyOdStateLoad(const std::string& path, bool modsAccepted);
+    void setOdStateMsg(const std::string& msg, bool bad);
+
+    OdStatePrompt m_odStatePrompt = ODP_NONE;
+    std::string m_odStateName;                  // edited in ODP_SAVE_NAME
+    std::vector<std::string> m_odStateFiles;    // listed in ODP_PICK_FILE
+    int m_odStatePick = 0;
+    std::string m_odStatePending;               // archive awaiting the mods answer
+    int m_odStatePendingMods = 0;
+    std::string m_odStateMsg;                   // shown under the menu buttons
+    float m_odStateMsgTimer = 0.0f;             // seconds left; <= 0 means hidden
+    bool m_odStateMsgBad = false;               // colours it as a failure
+#ifdef __EMSCRIPTEN__
+    // The browser hands a chosen file back asynchronously, so the menu asks
+    // once a frame whether one has arrived.
+    void pollOdStateImport();
+#endif
     // The "!" beside the version in the main menu, and the panel it opens.
     // Returns the clickable rect so update and draw cannot disagree about
     // where the badge is.
@@ -676,6 +777,14 @@ public:
     void drawPopup();
     void updatePopup();
 
+    // Plays the open sound for the popup that has just reached the FRONT of the
+    // queue, which is the only one on screen. Queueing used to play it, so a
+    // turn that produced several popups played them all at once and then showed
+    // each one silently. See PopupEntry::id.
+    void announceFrontPopup();
+    unsigned long long m_popupNextId = 0;      // stamps each queued popup
+    unsigned long long m_popupAnnouncedId = 0; // the one already chimed for
+
     // License popup
     bool m_showLicensePopup = false;
     int m_licenseEntryIndex = -1;
@@ -1084,6 +1193,11 @@ public:
     std::vector<Color> m_populationPixelBuffer;
     std::vector<Color> m_politicalPixelBuffer;
     std::vector<uint8_t> m_gradientDist; // distance-to-border (0-255, capped at ~30)
+    // Set by reindexProvinceOwner whenever a province changes hands; cleared
+    // by rebuildGradientField(). Rebuilding is a full-raster BFS, so it runs
+    // once per turn that actually moved territory rather than every frame.
+    bool m_gradientDirty = false;
+    void rebuildGradientField();
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();
     void buildPopulationLookups();
@@ -1136,6 +1250,14 @@ public:
     void generateClaimsTexture();
     void clearClaimsView();
     bool isCountryInvolvedInClaims(int countryId, int claimantCid);
+    // m_claims and m_claimsByProvince are one fact stored twice, and every
+    // caller used to open-code both halves. Sites that forgot the reverse index
+    // left the claims panel, the unrest maths and the rebellion odds reading a
+    // claim the claimant no longer had. Every write goes through these.
+    void grantClaim(const std::string& claimantIso, int pid);
+    void revokeClaim(const std::string& claimantIso, int pid);
+    // Load-time repair: a claim on a province the claimant already owns.
+    void dropSelfOwnedClaims();
 
     // ─── Claims overlay panel ─────────────────────
     bool m_inClaims = false;
@@ -1180,8 +1302,21 @@ public:
     std::vector<std::pair<int, Rectangle>> m_analysisGoToButtons;
 
     std::vector<EthnicPolicyCategory> m_ethnicPolicyCategories;
-    std::unordered_map<std::string, std::vector<int>> m_ethnicPolicies; // minorityName -> option indices
-    std::unordered_map<std::string, float> m_minorityAlignmentDrift; // cumulative drift
+
+    // ── Minority policy is a COUNTRY's policy, not the world's ──────────
+    //
+    // Both of these used to be keyed on the minority name alone. One table for
+    // the whole map meant a single government's treatment of, say, the
+    // Kortorians was the treatment every government gave them, and only the
+    // player could edit it — so every AI country's rebellion risk (alignment
+    // feeds straight into getProvinceRebellionChance) was being driven by a
+    // screen the AI could not reach. Keying on the country makes minority
+    // policy something each government owns, answers for, and can be judged on.
+    //
+    // countryId -> minority name -> one option index per category.
+    std::unordered_map<int, std::unordered_map<std::string, std::vector<int>>> m_ethnicPolicies;
+    // countryId -> minority name -> cumulative alignment drift.
+    std::unordered_map<int, std::unordered_map<std::string, float>> m_minorityAlignmentDrift;
 
     // Per-country starting minority ethnic policy defaults (isoA3 -> minorityName -> option indices)
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> m_startingMinorityPolicies;
@@ -1207,8 +1342,25 @@ public:
     void drawAnalysisTab();
     float getProvinceRebellionChance(int provinceId) const;
     float getProvinceRebellionChance(int provinceId, int countryId) const;
-    float getMinorityAlignment(const std::string& minorityName) const;
-    float getMinorityAlignmentTrend(const std::string& minorityName) const;
+    /** How well `minorityName` is disposed toward `countryId`'s government, 0-100. */
+    float getMinorityAlignment(int countryId, const std::string& minorityName) const;
+    /** Alignment change per turn implied by `countryId`'s current option set. */
+    float getMinorityAlignmentTrend(int countryId, const std::string& minorityName) const;
+    /**
+     * The option `countryId` has chosen for `minorityName` in category `ci`.
+     *
+     * Falls back to the category's default when the country has never touched
+     * it, which is the same "or the default" dance four separate call sites
+     * used to open-code — including one that got it subtly wrong by treating a
+     * short option vector as "no entry" for every category rather than for the
+     * missing ones.
+     */
+    int ethnicPolicyOption(int countryId, const std::string& minorityName, size_t ci) const;
+    /** Set one category, creating a fully defaulted row for the country if needed. */
+    void setEthnicPolicyOption(int countryId, const std::string& minorityName,
+                               size_t ci, int option);
+    /** Every category's default, in order. Used to seed a country's first row. */
+    std::vector<int> defaultEthnicPolicyOptions() const;
     void initEthnicPolicyCategories();
     void drawEthnicTab();
     void updateEthnicTab();
@@ -1285,6 +1437,22 @@ public:
      * the war and adds war weariness.
      */
     void issueCallsToArms(const std::string& attackerIso, const std::string& defenderIso);
+
+    /** A country's name for player-facing text, falling back to its ISO code. */
+    std::string diploDisplayName(const std::string& iso) const;
+
+    /**
+     * Asks one ALLY to join a war this country is already fighting.
+     *
+     * issueCallsToArms() only fires for a defender, at the instant war is
+     * declared on them. Nothing could ask afterwards, and nothing could ask at
+     * all for a war you started -- so an alliance was only ever worth anything
+     * to whoever was attacked. This is the deliberate version: pick an ally,
+     * pick the enemy, and let them decide.
+     *
+     * Returns false (and explains why) when the ask is not available.
+     */
+    bool requestAllyJoinWar(const std::string& allyIso, std::string& outWhy);
     // ── Turn history / timelapse (Game_History.cpp) ──
     // Reconstructed purely from the .odsv, so browsing never mutates the
     // running game.
@@ -1397,6 +1565,12 @@ private:
     void declareWar(const std::string& attackerIso, const std::string& defenderIso,
                     bool chainGuarantees = true);
     void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
+    // A treaty binds both signatories, but scenario relations.json writes one
+    // row per country and authors routinely fill in only one of them. Reads
+    // that care about the treaty rather than about who recorded it go through
+    // here; `flag` is one of CountryRelation's bools.
+    bool hasRelation(const std::string& isoA, const std::string& isoB,
+                     bool CountryRelation::*flag) const;
     // Inherent civil order subtracted from every province's rebellion chance —
     // makes stability the default and rebellion a grievance-driven exception.
     // Tuned so baseline provinces are stable but claim/war/minority hotspots
@@ -1408,6 +1582,38 @@ private:
     // loyalty a well-run country enjoys, so a country that keeps honouring
     // alliances it cannot afford starts shedding provinces.
     static constexpr float CALL_TO_ARMS_UNREST = 7.0f;
+
+    /**
+     * Unrest added per turn a country spends bankrupt, before severity scaling.
+     *
+     * Sustained bankruptcy should reach WAR_WEARINESS_MAX in a handful of
+     * turns: the point is that a country which cannot pay for itself and has
+     * already sold its fleet is in real trouble, not mildly inconvenienced.
+     * Scaled by how deep the shortfall is against income -- see
+     * applyBankruptcyPenalties().
+     */
+    static constexpr float BANKRUPTCY_UNREST_PER_TURN = 2.5f;
+
+    /**
+     * Percentage points added to EVERY province's rebellion chance while the
+     * country is bankrupt.
+     *
+     * The weariness above accumulates slowly and decays; this does not. It is a
+     * flat, immediate, visible consequence of an empty treasury, and it is
+     * deliberately large — twenty points against a loyalty floor and a
+     * pacification budget that tops out at fifty is the difference between a
+     * quiet country and one coming apart. Going broke should be the worst thing
+     * that can happen to a government short of losing a war.
+     *
+     * It applies only while the treasury is actually empty, and the cascade in
+     * applyBankruptcyPenalties() can always reach solvency — budgets, policies,
+     * minority spending, ships and finally troops — so this is a state a
+     * country can always get out of, not a spiral it cannot escape.
+     */
+    static constexpr float BANKRUPTCY_UNREST_PCT = 20.0f;
+    /** Countries whose treasury emptied this turn. Cleared when solvent. */
+    std::unordered_set<int> m_bankruptCountries;
+    bool isBankrupt(int cid) const { return m_bankruptCountries.count(cid) > 0; }
     static constexpr float WAR_WEARINESS_MAX = 20.0f;
     // ~45 turns to work off a single call at full strength. Long enough that a
     // second call while the first is still hurting is a genuinely bad idea.
@@ -1419,6 +1625,10 @@ private:
     // ── Country AI (neural-net RL, see src/ai/) ──
     // Created lazily on the first processed turn; owns its model file.
     AISystem* m_ai = nullptr;
+    // Model file this process trains, relative to the data directory. A pool
+    // worker points somewhere of its own; everything else uses the shared one.
+    std::string m_aiModelPath = "ai/model.bin";
+    int m_aiWorkerId = -1, m_aiWorkerCount = 0;
     // Self-play training mode: skips political-texture/label/delta work in
     // processTurn so turns run as fast as the simulation allows.
     bool m_aiTraining = false;
@@ -1437,7 +1647,8 @@ private:
     int getResearchedFortLevel(int countryId = -1) const;
     int getResearchedIndustryLevel(int countryId = -1) const;
     int getResearchedPortLevel(int countryId = -1) const;
-    float getTotalEffect(const std::string& effectField) const;
+    /** Sum of one modifier over `countryId`'s researched nodes (-1 = player). */
+    float getTotalEffect(const std::string& effectField, int countryId = -1) const;
 
     // ── Per-country research (AI countries; the player keeps the global tree
     // UI). Completion lands in m_countryResearched, which every effect query
@@ -1572,6 +1783,37 @@ private:
     void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false);
 
     void drawCeasefireScreen();
+    // A thumbnail of the political map cropped to the land an offer touches,
+    // with every province in the terms shaded by who ends up holding it. Used by
+    // the incoming-offer popup, which otherwise showed only province numbers.
+    // `cacheKey` identifies the offer (the popup's id): the shading is rastered
+    // once per offer and reused for every frame the panel stays open.
+    void drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long cacheKey,
+                               int x, int y, int w, int h);
+    // Wheel-zoom and drag-pan for the map above. Handled from updatePopup(), so
+    // it reads the same view rect the last frame drew.
+    void updateCeasefireTermsMap(Rectangle slot);
+    // The part of the province texture the terms map is currently showing, in
+    // texture pixels, for a given on-screen slot. Fills the slot exactly (the
+    // auto-fit crop is widened to the slot's aspect), so zoom and pan have no
+    // letterbox to fight with.
+    Rectangle ceasefireTermsMapView(Rectangle slot) const;
+    // Shading for the map above, plus the crop it was built for. Sized to the
+    // crop rather than the whole world -- a full-map buffer is tens of millions
+    // of pixels, and this one is on screen at thumbnail size.
+    std::vector<Color> m_popupTermsMapBuf;
+    Texture2D m_popupTermsMapTex{};
+    unsigned long long m_popupTermsMapKey = 0;   // popup id the cache belongs to
+    bool m_popupTermsMapEmpty = false;           // key resolved to nothing drawable
+    int m_popupTermsMapSrcX = 0, m_popupTermsMapSrcY = 0;
+    int m_popupTermsMapSrcW = 0, m_popupTermsMapSrcH = 0;
+    // View on top of that crop. The centre is absolute (texture pixels) rather
+    // than an offset, because clamping the view to the map's edges has to be
+    // able to stop the centre moving without leaving a stale offset behind.
+    float m_popupTermsMapZoom = 1.0f;
+    float m_popupTermsMapCx = 0.0f, m_popupTermsMapCy = 0.0f;
+    bool m_popupTermsMapDragging = false;
+    Vector2 m_popupTermsMapDragPrev{0, 0};
     void updateCeasefireScreen();
 
     // ─── Turn processing state ───
@@ -1602,6 +1844,16 @@ private:
     void processDiplomaticRequests();
     void processUpgrades();
     void processEconomy(int countryId);
+
+    /**
+     * The cascade that runs when a turn ends with the treasury short.
+     *
+     * Budgets, then ships, then troops, then unrest for whatever is still
+     * unpaid. The order is by what each saves per thing lost, not by what
+     * hurts least -- the reasoning, with the numbers, is on the definition.
+     */
+    void applyBankruptcyPenalties(int countryId, float shortfall,
+                                  const CountryIncomeSnapshot& cs);
     void processPopulation();
     std::string saveStateJson();
     void loadStateJson(const std::string& json);

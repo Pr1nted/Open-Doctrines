@@ -226,6 +226,14 @@
    "url": "",
    "obligation": "none"
   },
+  "BTN_1949": {
+   "file": "Flag of Bhutan (1949\u20131956).svg",
+   "license": "Public domain",
+   "artist": "See File history below for details.",
+   "credit": "Own work",
+   "url": "",
+   "obligation": "none"
+  },
   "BWA": {
    "file": "Flag of Botswana.svg",
    "license": "Public domain",
@@ -455,6 +463,14 @@
    "license": "Public domain",
    "artist": "See File history below for details.",
    "credit": "Derived from Part IV Article (223) of the Constitution of The Arab Republic of Egypt. Colors based on IOC12.",
+   "url": "",
+   "obligation": "none"
+  },
+  "EGY_KINGDOM": {
+   "file": "Flag of Egypt (1922-1958).svg",
+   "license": "Public domain",
+   "artist": "Mysid",
+   "credit": "Own work using: https://www.fotw.info/flags/eg-kingd.html",
    "url": "",
    "obligation": "none"
   },
@@ -690,6 +706,14 @@
    "url": "",
    "obligation": "none"
   },
+  "HEJAZ": {
+   "file": "Flag of Hejaz (1917).svg",
+   "license": "Public domain",
+   "artist": "Orange Tuesday at English Wikipedia / (Original text: Orange Tuesday (talk))",
+   "credit": "self-made, Own work based on: Arab Revolt flag.svg",
+   "url": "",
+   "obligation": "none"
+  },
   "HKG": {
    "file": "Flag of Hong Kong.svg",
    "license": "Public domain",
@@ -794,6 +818,14 @@
    "url": "",
    "obligation": "none"
   },
+  "IRQ_KINGDOM": {
+   "file": "Flag of Iraq (1924\u20131959).svg",
+   "license": "Public domain",
+   "artist": "",
+   "credit": "",
+   "url": "",
+   "obligation": "none"
+  },
   "ISL": {
    "file": "Flag of Iceland.svg",
    "license": "Public domain",
@@ -885,7 +917,7 @@
   "KHM": {
    "file": "Flag of Cambodia.svg",
    "license": "Public domain",
-   "artist": "Unknown",
+   "artist": "Unknown authorUnknown author",
    "credit": "Cambodia",
    "url": "",
    "obligation": "none"
@@ -986,6 +1018,14 @@
    "url": "",
    "obligation": "none"
   },
+  "MCK": {
+   "file": "Flag of Manchukuo.svg",
+   "license": "Public domain",
+   "artist": "Urmas",
+   "credit": "Own work",
+   "url": "",
+   "obligation": "none"
+  },
   "MDA": {
    "file": "Flag of Moldova.svg",
    "license": "Public domain",
@@ -1034,6 +1074,14 @@
    "url": "",
    "obligation": "none"
   },
+  "MNE_KINGDOM": {
+   "file": "Flag of Montenegro (1905\u20131918).svg",
+   "license": "Public domain",
+   "artist": "w:Kingdom of Montenegro (Vector graphics image by B1mbo)",
+   "credit": "File:Coat of arms of the Kingdom of Montenegro.svg File:Zastave Kraljevine Crne Gore.jpg File:Flag of Nicolas I of Montenegro.jpg",
+   "url": "",
+   "obligation": "none"
+  },
   "MNG": {
    "file": "Flag of Mongolia.svg",
    "license": "Public domain",
@@ -1049,6 +1097,22 @@
    "credit": "Adapted from :Image: [1]",
    "url": "",
    "obligation": "none"
+  },
+  "MNG_BOGD": {
+   "file": "Flag of Mongolia (1911\u20141921).svg",
+   "license": "Public domain",
+   "artist": "Orange Tuesday",
+   "credit": "This vector image includes elements that have been taken or adapted from this file:",
+   "url": "",
+   "obligation": "none"
+  },
+  "MNG_MPR1939": {
+   "file": "Flag of the Mongolian People's Republic (1940\u20131945).svg",
+   "license": "CC BY-SA 4.0",
+   "artist": "Ericmetro",
+   "credit": "Own work",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
   },
   "MOZ": {
    "file": "Flag of Mozambique.svg",
@@ -1106,6 +1170,14 @@
    "url": "",
    "obligation": "none"
   },
+  "NEJD": {
+   "file": "Flag of the Emirate of Nejd and Hasa.svg",
+   "license": "CC BY-SA 3.0",
+   "artist": "DavidFirst",
+   "credit": "based on Darahfoundation",
+   "url": "http://creativecommons.org/licenses/by-sa/3.0/",
+   "obligation": "attribution + share-alike on the image"
+  },
   "NER": {
    "file": "Flag of Niger.svg",
    "license": "Public domain",
@@ -1153,6 +1225,14 @@
    "credit": "Constitution of The Kingdom of Nepal, Article 5, Schedule 1 [1]",
    "url": "",
    "obligation": "none"
+  },
+  "NPL_PRE1962": {
+   "file": "Flag of Nepal (1743\u20131962).svg",
+   "license": "CC BY-SA 3.0",
+   "artist": "Orange Tuesday",
+   "credit": "Own work based on: http://www.fotw.us/flags/np.html",
+   "url": "https://creativecommons.org/licenses/by-sa/3.0",
+   "obligation": "attribution + share-alike on the image"
   },
   "NZL": {
    "file": "Flag of New Zealand.svg",
@@ -1490,6 +1570,14 @@
    "url": "",
    "obligation": "none"
   },
+  "SYR_1932": {
+   "file": "Flag of Syria (1930\u20131958, 1961\u20131963).svg",
+   "license": "Public domain",
+   "artist": "See File history below for details.",
+   "credit": "Own work. Based on this source: Flags of the World - Historical Flags Since 1932 (Syria) and [1]",
+   "url": "",
+   "obligation": "none"
+  },
   "TCD": {
    "file": "Flag of Chad.svg",
    "license": "Public domain",
@@ -1521,6 +1609,14 @@
    "credit": "Own work",
    "url": "",
    "obligation": "none"
+  },
+  "TIB": {
+   "file": "Flag of Tibet (1916-1951).svg",
+   "license": "CC BY-SA 4.0",
+   "artist": "Felipe Fidelis Tobias",
+   "credit": "Own work",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
   },
   "TJK": {
    "file": "Flag of Tajikistan.svg",
@@ -1634,6 +1730,14 @@
    "url": "",
    "obligation": "none"
   },
+  "VNM_SOUTH": {
+   "file": "Flag of South Vietnam.svg",
+   "license": "Public domain",
+   "artist": "(many, see history)",
+   "credit": "(see history);",
+   "url": "",
+   "obligation": "none"
+  },
   "VUT": {
    "file": "Flag of Vanuatu.svg",
    "license": "Public domain",
@@ -1671,6 +1775,14 @@
    "license": "Public domain",
    "artist": "Nightstallion et al., see File history below for details.",
    "credit": "Presidency Council Resolution No. (1) of 1990 Regarding the National Flag CONSTRUCTION SHEET:",
+   "url": "",
+   "obligation": "none"
+  },
+  "YEM_KINGDOM": {
+   "file": "Flag of the Mutawakkilite Kingdom of Yemen.svg",
+   "license": "Public domain",
+   "artist": "Urmas (SVG file)",
+   "credit": "No machine-readable source provided. Own work assumed (based on copyright claims).",
    "url": "",
    "obligation": "none"
   },

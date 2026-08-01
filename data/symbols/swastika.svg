@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Swastika. Censored in game - see Game::buildRebelFlag.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <rect height="120" width="60" x="-30" y="-60"/>
-    <rect height="60" width="120" x="-60" y="-30"/>
-    <rect height="30" width="30" x="-60" y="-60"/>
-    <rect height="30" width="30" x="30" y="-60"/>
-    <rect height="30" width="30" x="-60" y="30"/>
-    <rect height="30" width="30" x="30" y="30"/>
+    <g fill="none" stroke="#fff" stroke-width="22" stroke-linecap="butt">
+      <path d="M -58.0,-58.0 L -58.0,0 L 58.0,0 L 58.0,58.0"/>
+      <path d="M -58.0,58.0 L 0,58.0 L 0,-58.0 L 58.0,-58.0"/>
+    </g>
   </g>
 </svg>

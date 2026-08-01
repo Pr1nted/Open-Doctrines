@@ -241,12 +241,14 @@ long long httpParseDate(const std::string& value) {
 
 // --------------------------------------------------------------- request ----
 
-#if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
+// Whoever wants a frame while the network is waiting. See NetWaitHook.
+static NetWaitHook g_waitHook = nullptr;
+void netSetWaitHook(NetWaitHook fn) { g_waitHook = fn; }
+void netRunWaitHook(double elapsedMs) { if (g_waitHook) g_waitHook(elapsedMs); }
 
-#include "TlsSocket.h"
-
-#include <chrono>
-
+// Shared by every backend. The rules these encode -- never send a credential in
+// clear, never let one smuggle a header -- are properties of the request, not
+// of the transport, so a second backend must not get its own version of them.
 namespace {
 
 HttpResponse failure(const std::string& text) {
@@ -267,7 +269,33 @@ bool headerSafe(const std::string& value) {
     return true;
 }
 
+// The scheme/credential check both backends must pass before anything is sent.
+// Returns an error sentence, or empty when the request may proceed.
+std::string refuseUnsafeRequest(const HttpRequest& request, const NetUrl& url) {
+    if (!url.secure) {
+        if (!request.allowInsecure || !isLocalhost(url.host)) {
+            // A bearer token on a plaintext connection is readable by anyone on
+            // the path. The localhost carve-out exists for `wrangler dev` and is
+            // deliberately not reachable for any other host.
+            return "refusing to send account credentials over an "
+                   "unencrypted connection";
+        }
+    }
+    if (!headerSafe(request.bearer) || !headerSafe(request.adminSecret))
+        return "that credential contains characters that cannot be sent";
+    return "";
+}
+
 }  // namespace
+
+#if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
+
+#include "TlsSocket.h"
+
+#include <chrono>
+
+// (failure/isLocalhost/headerSafe moved above the backend split -- the web
+//  backend enforces the same rules and there must not be two copies of them.)
 
 HttpResponse httpRequest(const HttpRequest& request) {
     NetUrl url;
@@ -394,13 +422,161 @@ HttpResponse httpRequest(const HttpRequest& request) {
 
 #elif defined(__EMSCRIPTEN__)
 
-// The browser build reaches the account API through fetch(), which handles
-// TLS, DNS and CORS. Not yet implemented: the web build cannot sign in, and
-// says so rather than appearing to try.
-HttpResponse httpRequest(const HttpRequest&) {
-    HttpResponse r;
-    r.error = "signing in from the web build is not supported yet";
-    return r;
+// The browser build reaches the account API through the Fetch API, which
+// handles TLS, DNS and redirects for us. Two things differ from the desktop
+// path and both change how failures read:
+//
+//   CORS is the BROWSER's rule, not ours. The account service has to send
+//   Access-Control-Allow-Origin, and has to allow Authorization and
+//   Content-Type on the preflight, or the request never leaves the tab. The
+//   browser deliberately keeps the reason vague, so a refusal here looks
+//   exactly like an unreachable server -- which is why the message below says
+//   so instead of guessing.
+//
+//   httpRequest() is synchronous by signature and fetch is not. ASYNCIFY is
+//   what bridges that: the wait loop unwinds to the browser and resumes when a
+//   callback has run. It is also why this must never be called from a context
+//   that cannot be unwound.
+
+#include <emscripten/emscripten.h>   // emscripten_sleep, emscripten_get_now
+#include <emscripten/fetch.h>
+
+namespace {
+
+struct FetchState {
+    bool         done      = false;
+    bool         abandoned = false;   // the caller gave up; the callback owns this now
+    HttpResponse res;
+};
+
+// Both callbacks end here. `f` is closed last, and the state is freed only when
+// the caller has already walked away -- otherwise the caller frees it.
+void finishFetch(emscripten_fetch_t* f, FetchState* st) {
+    st->done = true;
+    const bool orphan = st->abandoned;
+    emscripten_fetch_close(f);
+    if (orphan) delete st;            // nobody is waiting for this any more
+}
+
+void onFetchSucceeded(emscripten_fetch_t* f) {
+    auto* st = static_cast<FetchState*>(f->userData);
+    st->res.status = f->status;
+    if (f->data && f->numBytes > 0)
+        st->res.body.assign(f->data, f->data + f->numBytes);
+
+    // The issuer's clock, for the same reason the desktop backend reads it:
+    // join tickets expire in two minutes and a wrong local clock rejects every
+    // player with no symptom but "nobody can join". See NetIssuerClock.
+    const size_t len = emscripten_fetch_get_response_headers_length(f);
+    if (len > 0) {
+        std::string headers(len + 1, '\0');
+        emscripten_fetch_get_response_headers(f, headers.data(), len + 1);
+        for (size_t i = 0; i < headers.size();) {
+            size_t eol = headers.find('\n', i);
+            if (eol == std::string::npos) eol = headers.size();
+            std::string line = headers.substr(i, eol - i);
+            if (line.size() > 5) {
+                std::string name = line.substr(0, 5);
+                for (auto& c : name) c = (char)tolower((unsigned char)c);
+                if (name == "date:") {
+                    size_t v = line.find(':');
+                    std::string value = line.substr(v + 1);
+                    while (!value.empty() && (value.front() == ' ')) value.erase(value.begin());
+                    while (!value.empty() && (value.back() == '\r' || value.back() == ' '))
+                        value.pop_back();
+                    st->res.serverTime = httpParseDate(value);
+                }
+            }
+            i = eol + 1;
+        }
+    }
+    finishFetch(f, st);
+}
+
+void onFetchFailed(emscripten_fetch_t* f) {
+    auto* st = static_cast<FetchState*>(f->userData);
+    st->res.status = f->status;
+    // status 0 means the request never reached a server -- offline, DNS, or a
+    // CORS refusal, which the browser will not distinguish for us.
+    st->res.error = (f->status == 0)
+        ? "could not reach the account service from the browser (it may be "
+          "offline, or may not allow requests from this page)"
+        : "the account service replied with an error";
+    finishFetch(f, st);
+}
+
+}  // namespace
+
+HttpResponse httpRequest(const HttpRequest& request) {
+    NetUrl url;
+    if (!NetUrl::parse(request.url, url)) return failure("that is not a usable address");
+    const std::string refusal = refuseUnsafeRequest(request, url);
+    if (!refusal.empty()) return failure(refusal);
+
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    snprintf(attr.requestMethod, sizeof(attr.requestMethod), "%s", request.method.c_str());
+    attr.attributes   = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.timeoutMSecs = (unsigned long)request.timeoutMs;
+    attr.onsuccess    = onFetchSucceeded;
+    attr.onerror      = onFetchFailed;
+
+    // Header array and body must outlive the call to emscripten_fetch(), which
+    // returns before the request is sent. Both live until the wait below ends.
+    std::vector<const char*> headers;
+    headers.push_back("Accept");
+    headers.push_back("application/json");
+    if (!request.body.empty()) {
+        headers.push_back("Content-Type");
+        headers.push_back("application/json");
+    }
+    std::string bearerValue;
+    if (!request.bearer.empty()) {
+        bearerValue = "Bearer " + request.bearer;
+        headers.push_back("Authorization");
+        headers.push_back(bearerValue.c_str());
+    }
+    if (!request.adminSecret.empty()) {
+        headers.push_back("x-od-admin");
+        headers.push_back(request.adminSecret.c_str());
+    }
+    headers.push_back(nullptr);
+    attr.requestHeaders = headers.data();
+
+    if (!request.body.empty()) {
+        attr.requestData     = request.body.data();
+        attr.requestDataSize = request.body.size();
+    }
+
+    // Heap-allocated, because if the wait gives up the callback still owns a
+    // pointer to it. Writing a reply into a stack frame that has returned is
+    // the one way this could corrupt memory rather than merely fail.
+    auto* st = new FetchState();
+    attr.userData = st;
+
+    emscripten_fetch(&attr, request.url.c_str());
+
+    // fetch's own timeout should fire first; this is the backstop for the case
+    // where it does not, and it deliberately does not free the state.
+    const double startedMs = emscripten_get_now();
+    const double deadline = startedMs + (double)request.timeoutMs + 2000.0;
+    while (!st->done) {
+        if (emscripten_get_now() > deadline) {
+            st->abandoned = true;      // the callback will free it, whenever it runs
+            return failure("the account service did not reply in time");
+        }
+        // A frame for whoever is watching, then back to the browser. Without
+        // the hook this loop kept the tab alive and the canvas frozen.
+        netRunWaitHook(emscripten_get_now() - startedMs);
+        emscripten_sleep(10);          // unwinds to the browser, resumes here
+    }
+
+    HttpResponse res = std::move(st->res);
+    delete st;
+
+    if (res.error.empty() && res.body.size() > request.maxResponseBytes)
+        return failure("the server sent an oversized reply");
+    return res;
 }
 
 #else

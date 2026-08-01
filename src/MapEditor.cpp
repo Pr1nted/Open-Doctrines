@@ -10,6 +10,7 @@
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
+#include "TextInput.h"
 #include "ProceduralGenerator.h"
 #include "Audio.h"
 #include "ScriptEngine.h"
@@ -2756,7 +2757,6 @@ std::string MapEditor::buildCountriesJson() const {
         e["treasury"] = c.treasury;
         e["compass_economic"] = c.compassEconomic;
         e["compass_social"] = c.compassSocial;
-        e["doctrine"] = c.doctrine;
         nlohmann::json rarr = nlohmann::json::array();
         for (auto& r : c.research) rarr.push_back(r);
         e["research"] = rarr;
@@ -3734,8 +3734,7 @@ void MapEditor::drawPickerOverlay() {
         if (key >= 32 && key < 127 && m_pickerQuery.size() < 40) m_pickerQuery.push_back((char)key);
         key = GetCharPressed();
     }
-    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_pickerQuery.empty())
-        m_pickerQuery.pop_back();
+    odTextEditKeys(m_pickerQuery, 40);
 
     // Build the filtered option list: (display label, payload)
     // payload = ethnicity name (mode 0) or country id as string (mode 1, via parallel vector)
@@ -4535,7 +4534,7 @@ void MapEditor::updateGeneratorPanel() {
             if (key >= '0' && key <= '9' && m_seedText.size() < 10) m_seedText.push_back((char)key);
             key = GetCharPressed();
         }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_seedText.empty()) m_seedText.pop_back();
+        odTextEditKeys(m_seedText, 10, "", true);
         if (IsKeyPressed(KEY_ENTER)) { m_genParams.seed = std::max(0, atoi(m_seedText.c_str())); m_editingSeed = false; }
         if (IsKeyPressed(KEY_ESCAPE)) m_editingSeed = false;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, seedRect)) m_editingSeed = false;
@@ -4587,7 +4586,7 @@ void MapEditor::updateGeneratorPanel() {
             if (key >= '0' && key <= '9' && m_countryCountText.size() < 4) m_countryCountText.push_back((char)key);
             key = GetCharPressed();
         }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_countryCountText.empty()) m_countryCountText.pop_back();
+        odTextEditKeys(m_countryCountText, 4, "", true);
         if (IsKeyPressed(KEY_ENTER)) { m_genParams.numCountries = std::max(1, std::min(300, atoi(m_countryCountText.c_str()))); m_editingCountryCount = false; }
         if (IsKeyPressed(KEY_ESCAPE)) m_editingCountryCount = false;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, cntText)) m_editingCountryCount = false;
@@ -4881,8 +4880,7 @@ void MapEditor::drawProvincePanel() {
                 if (key >= '0' && key <= '9' && m_provPopEditText.size() < 12) m_provPopEditText.push_back((char)key);
                 key = GetCharPressed();
             }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_provPopEditText.empty())
-                m_provPopEditText.pop_back();
+            odTextEditKeys(m_provPopEditText, 12, "", true);
             bool commit = IsKeyPressed(KEY_ENTER);
             bool clickAway = inputOk && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, popRect);
             if (commit || clickAway) {
@@ -5147,7 +5145,7 @@ void MapEditor::updateCountryPanel() {
                     m_editingNameText.push_back((char)key);
                 key = GetCharPressed();
             }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_editingNameText.empty()) m_editingNameText.pop_back();
+            odTextEditKeys(m_editingNameText, 40);
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
                 if (!m_editingNameText.empty() && IsKeyPressed(KEY_ENTER)) {
                     it->second.name = m_editingNameText;
@@ -5286,7 +5284,7 @@ void MapEditor::updateCountryPanel() {
                 m_dirty = true;
             }
             editY += 30;
-            // ── Research / doctrine set-mode overlays (separate buttons) ──
+            // ── Research / policy set-mode overlays (separate buttons) ──
             editY += 6;
             int halfW = (listW - 8) / 2;
             Rectangle resBtn = {(float)px, (float)editY, (float)halfW, 28};
@@ -5535,7 +5533,7 @@ void MapEditor::drawCountryPanel() {
             DrawText("Lib", (int)(px + sliderW - 20), editY + 26, 9, GRAY);
             editY += 42;
 
-            // ── Research & doctrine summary + set-mode buttons ──
+            // ── Research & policy summary + set-mode buttons ──
             editY += 6;
             int halfW = (listW - 8) / 2;
             Rectangle resBtn = {(float)px, (float)editY, (float)halfW, 28};
@@ -5555,7 +5553,7 @@ void MapEditor::drawCountryPanel() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Research/doctrine "set mode" overlay
+//  Research/policy "set mode" overlay
 //  Mirrors the in-game research tree (Game::drawResearchTab) but clicking a
 //  node toggles it as pre-researched for the selected country.
 // ════════════════════════════════════════════════════════════════
@@ -6387,8 +6385,7 @@ bool MapEditor::drawIntField(Rectangle r, long long& value, long long lo, long l
             if (key >= '0' && key <= '9' && editBuf.size() < 12) editBuf.push_back((char)key);
             key = GetCharPressed();
         }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !editBuf.empty())
-            editBuf.pop_back();
+        odTextEditKeys(editBuf, 256);
         bool commit = IsKeyPressed(KEY_ENTER);
         bool clickAway = inputOk && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, r);
         if (commit || clickAway) {
@@ -6622,8 +6619,7 @@ void MapEditor::drawNavyPanel() {
             if (key >= 32 && key < 127 && m_navySearchQuery.size() < 40) m_navySearchQuery.push_back((char)key);
             key = GetCharPressed();
         }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_navySearchQuery.empty())
-            m_navySearchQuery.pop_back();
+        odTextEditKeys(m_navySearchQuery, 40);
         bool clickAway = inputOk && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(navyMouse, searchRect);
         if (clickAway || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) m_navySearchFocused = false;
     }
@@ -6839,8 +6835,7 @@ void MapEditor::drawScriptPanel() {
                     m_scriptRenameText.push_back((char)key);
                 key = GetCharPressed();
             }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_scriptRenameText.empty())
-                m_scriptRenameText.pop_back();
+            odTextEditKeys(m_scriptRenameText, 64);
             if (IsKeyPressed(KEY_ENTER)) {
                 std::string oldName = names[m_scriptSel];
                 std::string newName = m_scriptRenameText;
@@ -7983,8 +7978,7 @@ void MapEditor::drawMetadataPanel() {
                     m_dateYearText.push_back((char)key);
                 key = GetCharPressed();
             }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_dateYearText.empty())
-                m_dateYearText.pop_back();
+            odTextEditKeys(m_dateYearText, 6, "", true);
             bool commit = IsKeyPressed(KEY_ENTER);
             bool cancel = IsKeyPressed(KEY_ESCAPE);
             bool clickAway = inputOk && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mouse, yearRect);
@@ -8131,8 +8125,8 @@ void MapEditor::drawMetadataPanel() {
                 m_licenseText.push_back('\n');
                 trackChange();
             }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_licenseText.empty()) {
-                m_licenseText.pop_back();
+            if (odTextEditKeys(m_licenseText, 200)) {
+                
                 trackChange();
             }
             if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
@@ -8179,7 +8173,7 @@ void MapEditor::drawMetadataPanel() {
                 m_metaEditText.push_back((char)key);
             key = GetCharPressed();
         }
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !m_metaEditText.empty()) m_metaEditText.pop_back();
+        odTextEditKeys(m_metaEditText, 60);
         if (IsKeyPressed(KEY_ENTER)) commitField();
         else if (IsKeyPressed(KEY_ESCAPE)) m_metaEditField = -1;
         else if (!focusedThisFrame && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&

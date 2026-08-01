@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Two peaks; the notch between them is what makes it a range.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <polygon points="-80,80 0,-60 80,80"/>
-    <polygon points="-30,-30 -10,-60 10,-30"/>
-    <polygon points="20,10 40,-20 60,10"/>
+    <polygon points="-46,-14 -86,58 -6,58"/>
+    <polygon points="24,-72 -20,58 82,58"/>
   </g>
 </svg>
