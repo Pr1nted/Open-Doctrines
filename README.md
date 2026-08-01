@@ -260,6 +260,15 @@ Alpha, and the honest version of that word:
   qualified — the four-platform matrix in `.github/workflows/release-game.yml`
   compiles them, and "it compiled" is not "somebody played it". Qualifying them
   means `tests/run_all.sh` and `tools/playtest.sh --verify` passing on each.
+- **The AI is not yet a real opponent.** It is a neural network trained by
+  self-play, and it is still learning: on this build it holds 36% of the world
+  against countries that pick uniformly at random from the same legal moves, so
+  it is currently *losing* to chance. It defends its borders, mounts amphibious
+  invasions, negotiates and governs — the mechanisms work — but it will not
+  outplay you, and the difficulty setting changes how much noise it adds to its
+  own choices rather than how well it plays. Retraining is ongoing. Measure the
+  current build yourself with `OpenDoctrines --eval-ai --vs-random`; the line to
+  read is `ADVANTAGE`, where 1.0 means "no better than a coin flip".
 - Multiplayer works: hosting, joining, seats, turns, disconnects and reconnects
   are built and tested. There is **no dedicated server** yet — hosting means a
   running copy of the game, and closing it ends the session.
