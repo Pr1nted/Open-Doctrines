@@ -1105,7 +1105,7 @@ endif()
 # authority -- it is what the zips are built from -- and an installer that
 # disagrees with the zip is two different games under one version number.
 set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses ai
-                    tips.json credits.txt)
+                    tips.json credits.txt policies.json)
 
 # A name that matches no file is what a stale entry looks like, and the failure
 # it causes is silent: the item is simply not in the installer, and the game

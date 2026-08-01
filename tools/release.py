@@ -74,6 +74,10 @@ DATA_ALLOWLIST = [
     "ai",             # the trained model is game content
     "tips.json",
     "credits.txt",
+    "policies.json",  # the doctrine catalogue. Shipped maps carry their own
+                      # copy inside the .odmap; this is the fallback every
+                      # other map uses, including generated ones, which is
+                      # every map the AI trains on.
 ]
 
 # Present in a working copy, never in a release. Listed only so the packaging

@@ -19,15 +19,48 @@
 void Game::initPolicies() {
     m_allPolicies.clear();
     
+    // THE CATALOGUE IS A RULE SET, NOT MAP CONTENT.
+    //
+    // It used to be read from the .odmap archive and nowhere else. Every
+    // shipped map carries a byte-identical copy of it — same 15,943 bytes,
+    // same hash, six times over — which is the shape of a global rule that got
+    // filed as per-map data.
+    //
+    // What that cost was invisible and large: procedurally generated maps carry
+    // no policies.json, and generated maps are the ONLY maps the AI trains on.
+    // So m_allPolicies was empty for every turn of every self-play run,
+    // validPolitics masked out enact/cancel/calming permanently, policy costs
+    // were always zero, and the model reached the shipped scenarios — where 15
+    // of the 17 are enactable — having never once seen a doctrine exist. The
+    // game is named after them.
+    //
+    // The archive still wins when it has one, because a map that ships its own
+    // catalogue is a map deliberately changing the rules, and that is a
+    // capability worth keeping. The data directory is the fallback, so any map
+    // without one gets the standard set instead of nothing at all.
     std::string json;
     auto it = m_odmJsonData.find("policies.json");
     if (it != m_odmJsonData.end()) {
         json = it->second;
     } else {
-        if (m_origCerr) { std::ostream origErr(m_origCerr); origErr << "policies.json not found in .odmap archive" << std::endl; }
-        return;
+        const std::string path = m_dataDir + "policies.json";
+        std::ifstream f(path);
+        if (!f) f.open("data/policies.json");
+        if (f) {
+            std::stringstream ss;
+            ss << f.rdbuf();
+            json = ss.str();
+        }
+        if (json.empty()) {
+            if (m_origCerr) {
+                std::ostream origErr(m_origCerr);
+                origErr << "policies.json found in neither the .odmap archive nor "
+                        << path << " — no doctrines will be available" << std::endl;
+            }
+            return;
+        }
     }
-    
+
     try {
         auto j = nlohmann::json::parse(json);
         for (auto& p : j["policies"]) {
