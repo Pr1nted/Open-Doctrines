@@ -1425,52 +1425,81 @@ std::string AISystem::execPolitics(int cid, int action) {
             // Conciliation goes to whoever is closest to revolt; repression to
             // whoever is costing the most, because saving that money is the
             // only reason to do it.
-            std::string target = st.worstMinority;
-            if (!conciliate) {
-                float worstCost = -1.0f;
+            // EVERY minority is a candidate, in preference order -- not one.
+            //
+            // This used to commit to a single target: the least reconciled for
+            // conciliation, the most expensive for repression. The validity
+            // mask, meanwhile, asks whether the country's MEAN trend still has
+            // room to move, which it does whenever ANY minority does. So a
+            // country whose costliest group was already at the harshest setting
+            // in every category was offered the action, picked it, and got back
+            // "repress: already hardest" -- every turn, for the rest of the
+            // game. Seen on a live run at turn 3534: two of the four countries
+            // on screen were doing exactly that, and the wasted decision was
+            // still being recorded and still generating a gradient, teaching
+            // the politics head that the action is safe and free.
+            //
+            // Ordered by preference and then walked until one yields a step, so
+            // the executor can always do what the mask promised.
+            std::vector<std::pair<float, std::string>> candidates;
+            {
                 std::unordered_set<std::string> seen;
                 for (int pid : g.provincesOf(cid)) {
                     auto mIt = g.m_provinceMinorities.find(pid);
                     if (mIt == g.m_provinceMinorities.end()) continue;
                     for (auto& mg : mIt->second) {
                         if (!seen.insert(mg.name).second) continue;
-                        float cost = 0;
-                        for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
-                            const int oi = g.ethnicPolicyOption(cid, mg.name, ci);
-                            if (oi >= 0 && oi < (int)g.m_ethnicPolicyCategories[ci].options.size())
-                                cost += g.m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
+                        if (conciliate) {
+                            // Least reconciled first: lowest alignment ranks top.
+                            candidates.push_back({-g.getMinorityAlignment(cid, mg.name), mg.name});
+                        } else {
+                            float cost = 0;
+                            for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                                const int oi = g.ethnicPolicyOption(cid, mg.name, ci);
+                                if (oi >= 0 && oi < (int)g.m_ethnicPolicyCategories[ci].options.size())
+                                    cost += g.m_ethnicPolicyCategories[ci].options[oi].costPerTurn;
+                            }
+                            candidates.push_back({cost, mg.name});   // dearest first
                         }
-                        if (cost > worstCost) { worstCost = cost; target = mg.name; }
                     }
                 }
+                std::sort(candidates.rbegin(), candidates.rend());
             }
-            if (target.empty()) return "minority: no target";
+            if (candidates.empty()) return "minority: none here";
 
             // Best single change: the largest move in the wanted direction per
             // unit of extra cost. Ties on cost break toward the bigger move.
             const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
             const float headroom = std::max(0.0f, inc.total - inc.expenses);
-            size_t bestCat = 0; int bestOpt = -1; float bestScore = 0.0f;
-            for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
-                const auto& cat = g.m_ethnicPolicyCategories[ci];
-                const int cur = g.ethnicPolicyOption(cid, target, ci);
-                if (cur < 0 || cur >= (int)cat.options.size()) continue;
-                const float curAlign = cat.options[cur].alignmentPerTurn;
-                const float curCost  = cat.options[cur].costPerTurn;
-                for (size_t oi = 0; oi < cat.options.size(); ++oi) {
-                    if ((int)oi == cur) continue;
-                    const float dAlign = cat.options[oi].alignmentPerTurn - curAlign;
-                    const float dCost  = cat.options[oi].costPerTurn - curCost;
-                    if (conciliate ? dAlign <= 0.0f : dAlign >= 0.0f) continue;
-                    // Never sign up for something we cannot pay for.
-                    if (dCost > headroom) continue;
-                    const float gain = conciliate ? dAlign : -dAlign;
-                    const float score = gain / (1.0f + std::max(0.0f, dCost));
-                    if (score > bestScore) { bestScore = score; bestCat = ci; bestOpt = (int)oi; }
+            std::string target;
+            size_t bestCat = 0; int bestOpt = -1;
+            for (const auto& [rank, name] : candidates) {
+                (void)rank;
+                float bestScore = 0.0f;
+                size_t cat = 0; int opt = -1;
+                for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
+                    const auto& c2 = g.m_ethnicPolicyCategories[ci];
+                    const int cur = g.ethnicPolicyOption(cid, name, ci);
+                    if (cur < 0 || cur >= (int)c2.options.size()) continue;
+                    const float curAlign = c2.options[cur].alignmentPerTurn;
+                    const float curCost  = c2.options[cur].costPerTurn;
+                    for (size_t oi = 0; oi < c2.options.size(); ++oi) {
+                        if ((int)oi == cur) continue;
+                        const float dAlign = c2.options[oi].alignmentPerTurn - curAlign;
+                        const float dCost  = c2.options[oi].costPerTurn - curCost;
+                        if (conciliate ? dAlign <= 0.0f : dAlign >= 0.0f) continue;
+                        // Never sign up for something we cannot pay for.
+                        if (dCost > headroom) continue;
+                        const float gain = conciliate ? dAlign : -dAlign;
+                        const float score = gain / (1.0f + std::max(0.0f, dCost));
+                        if (score > bestScore) { bestScore = score; cat = ci; opt = (int)oi; }
+                    }
                 }
+                if (opt >= 0) { target = name; bestCat = cat; bestOpt = opt; break; }
             }
             if (bestOpt < 0)
-                return conciliate ? "conciliate: nothing affordable" : "repress: already hardest";
+                return conciliate ? "conciliate: nothing affordable anywhere"
+                                  : "repress: every minority already at the harshest";
             g.setEthnicPolicyOption(cid, target, bestCat, bestOpt);
             if (conciliate) statsFor(cid).minorityConciliations++;
             else            statsFor(cid).minorityRepressions++;
@@ -3037,11 +3066,44 @@ void AISystem::endTurn() {
                 // economy, doctrines and minority settlements from politics,
                 // the army from war — and felt by all of them.
                 const float broke = std::tanh((float)exp.bankruptTurns / 4.0f);
+                // THE IDLE TAX. The peacetime counterpart of the phoney-war
+                // tax the war module already carries.
+                //
+                // Nothing charged a country for standing still. With no war on,
+                // holding produced a delta of zero on every term, which reads
+                // as "neutral" — but an action that changes nothing also has no
+                // VARIANCE, and a policy gradient with a value baseline will
+                // take a certain zero over a risky positive every time. So the
+                // modules collapsed onto hold / hold / save money, and the map
+                // stopped moving. Observed directly on a live run at turn 3534:
+                // every country on screen, every module, doing nothing, with
+                // the war module's mean reward sitting at -0.15 while politics
+                // sat at +0.50.
+                //
+                // Charged only when the whole twelve-turn window really was
+                // inert — no ground either way, nothing built, nothing
+                // researched, no change in the army, and not at war — so a
+                // country quietly building or negotiating is untouched.
+                //
+                // It differentiates rather than offsets: if EVERY country is
+                // idle the term is constant and the reward normalisation
+                // removes it, so this does not dig a policy out of a total
+                // collapse on its own. What it does is make the exploration
+                // that already happens land on the right side of the
+                // comparison.
+                const bool inert = !exp.atWar
+                                && dProv == 0.0f
+                                && dInd == 0.0f
+                                && dResearch == 0.0f
+                                && std::fabs(dArmy) < 500.0f;
+                const float idle = inert ? -0.3f : 0.0f;
+
                 float global = 0.6f * std::tanh(dProv / 3.0f)
                              + 0.2f * std::tanh(dTre / 100.0f)
                              + 0.3f * std::tanh(dNet / 15.0f)
                              - 0.8f * std::tanh(rebels / 2.0f)
-                             - 0.5f * broke;
+                             - 0.5f * broke
+                             + idle;
                 // Each module is now judged mostly on what it actually controls.
                 rewards[MOD_ECONOMY]  = global
                                       // ...and the economy module's failure in
