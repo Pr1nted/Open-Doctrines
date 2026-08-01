@@ -38,7 +38,7 @@ GROUPS = [
         "qualify.sh", "qualify_docker.sh",
     ]),
     ("Training the AI", [
-        "train.sh",
+        "train.sh", "train_parallel.py",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
@@ -64,6 +64,7 @@ GROUPS = [
         "download_scenario_flags.py", "attach_scenario_flags.py",
         "patch_flag_images.py",
         "generate_flag_svgs.py", "prerender_problematic_flags.py",
+        "fix_censored_flags.py",
         "download_wiki_symbols.py", "download_symbols.py",
         "generate_svg_symbols.py",
         "generate_symbols.py",
