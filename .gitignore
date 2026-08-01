@@ -118,3 +118,8 @@ data/ai/*.tmp
 data/tmp_export___ai_training_*/
 data/custom_maps/__ai_training_*.odmap
 data/custom_maps/__ai_eval_*.odmap
+
+# Scratch build trees. build/, build-release/, build-web/ and build-classic/
+# are named above; this catches the ad-hoc ones (build-verify, build-aieval...)
+# that get made to test something without disturbing a running build.
+build-*/
