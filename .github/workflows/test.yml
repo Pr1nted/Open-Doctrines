@@ -175,6 +175,31 @@ jobs:
           for f in OpenDoctrines.html OpenDoctrines.js OpenDoctrines.wasm OpenDoctrines.data; do
             test -s "build-web/$f" || { echo "missing or empty: $f"; exit 1; }
           done
+          # index.html as well, because it is the only entry point a host looks
+          # for. itch.io runs the game in an iframe and serves index.html from
+          # the root of the upload; without it the page is a 404 and the build
+          # is unshippable while looking perfectly fine here.
+          test -s build-web/index.html || { echo "missing: index.html"; exit 1; }
+
+          # NOTHING PRIVATE IN THE PRELOAD.
+          #
+          # OpenDoctrines.data is one blob served to every visitor, and it used
+          # to be built from the working copy with a handful of exclusions -- a
+          # denylist, which on a developer's machine swept in saves, settings
+          # and data/account.json, a signed session token for the account
+          # service. It is built from OD_SHIPPED_DATA now. This asserts that,
+          # because the failure is invisible: the package works perfectly and
+          # simply also contains things it should not.
+          # Checked against the .js, not the .data: file_packager writes the
+          # bytes into the .data and the PATH MANIFEST into the loader script,
+          # so the names only exist here. Grepping the blob would pass whatever
+          # was in it.
+          for leak in /data/account.json /data/config.json /data/mods.json \
+                      /data/saves/ /data/custom_maps/ /data/ai/model.w; do
+            if grep -qaF "$leak" build-web/OpenDoctrines.js; then
+              echo "PRIVATE DATA IN THE WEB PRELOAD: $leak"; exit 1
+            fi
+          done
           # Music is streamed rather than preloaded, so it has to have been
           # copied next to the page. A deployment without it is a silent game.
           test -d build-web/data/audio/music || { echo "streamed music was not copied"; exit 1; }

@@ -623,8 +623,67 @@ elseif(OD_MODS_BACKEND STREQUAL "web")
     target_compile_definitions(OpenDoctrines PRIVATE OD_MODS_WEB=1)
 endif()
 
+# What a shipped copy of data/ contains.
+#
+# An ALLOWLIST, for the reason tools/release.py gives about the zips: with a
+# denylist the next new kind of local state -- a cache, an export folder, the
+# cloudflared binary the game downloads for itself -- ships to players because
+# nobody remembered to exclude it. Unlisted is absent, and adding content is a
+# deliberate edit. Installing all of data/ put the developer's own saves,
+# settings and locally installed mods inside every installer; it mattered less
+# when this landed in a share/ nothing read, and not at all once it landed
+# where the game actually looks.
+#
+# KEEP IN STEP WITH DATA_ALLOWLIST IN tools/release.py. That list is the
+# authority -- it is what the zips are built from -- and an installer that
+# disagrees with the zip is two different games under one version number.
+#
+# Entries may name a path inside data/, not only a top-level item. ai/model.bin
+# is one: data/ai is the trainer's workspace as well as the home of the shipped
+# model, so listing "ai" shipped every per-worker checkpoint and hand-made
+# backup that training happened to leave there -- 125 MB installed against the
+# 12 MB the game reads. Naming the file keeps this list an allowlist all the
+# way down.
+#
+# It lives HERE, above the Emscripten block, because the web preload is built
+# from it too. The install rules that also read it are much further down.
+set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
+                    ai/model.bin tips.json credits.txt policies.json)
+
 if(EMSCRIPTEN)
     set_target_properties(OpenDoctrines PROPERTIES SUFFIX ".html")
+
+    # Stage exactly what ships, and preload THAT.
+    #
+    # --preload-file took ${CMAKE_SOURCE_DIR}/data wholesale, with three
+    # --exclude-file patterns trimming it. That is a denylist, and it is the one
+    # place in this project that still was: everything not named got in. On CI,
+    # cloning fresh, that is only the shipped content. On a working copy it is
+    # also the developer's saves, their config.json, their locally installed
+    # mods -- and data/account.json, which is a SIGNED SESSION TOKEN for the
+    # multiplayer account service. All of it baked into OpenDoctrines.data and
+    # served to every player who opens the page.
+    #
+    # So the same OD_SHIPPED_DATA the installers use decides this too. Anything
+    # unlisted cannot reach the web build however the machine that built it
+    # happens to be arranged.
+    #
+    # Staged at CONFIGURE time because --preload-file is read at link time and
+    # the directory has to exist by then. The cost is that adding a file to
+    # data/ needs cmake re-run before the web build sees it; that is a fair
+    # trade for a package that cannot leak.
+    set(OD_WEB_DATA "${CMAKE_BINARY_DIR}/web-data")
+    file(REMOVE_RECURSE "${OD_WEB_DATA}")
+    foreach(item IN LISTS OD_SHIPPED_DATA)
+        if(NOT EXISTS "${CMAKE_SOURCE_DIR}/data/${item}")
+            message(FATAL_ERROR
+                "OD_SHIPPED_DATA names data/${item}, which does not exist.")
+        endif()
+        get_filename_component(od_web_parent "${item}" DIRECTORY)
+        file(COPY "${CMAKE_SOURCE_DIR}/data/${item}"
+             DESTINATION "${OD_WEB_DATA}/${od_web_parent}")
+    endforeach()
+
     target_compile_options(OpenDoctrines PRIVATE )
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
@@ -670,17 +729,22 @@ if(EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMAXIMUM_MEMORY=4GB"
         "--shell-file" "${CMAKE_SOURCE_DIR}/shell.html"
-        "--preload-file" "${CMAKE_SOURCE_DIR}/data@/data"
+        # The STAGED copy, never ${CMAKE_SOURCE_DIR}/data. See the staging step
+        # above: preloading the working copy put whatever was lying in data/
+        # inside a file served to every player, including data/account.json --
+        # a live session token for the multiplayer account service.
+        "--preload-file" "${OD_WEB_DATA}@/data"
         # The preload is downloaded in full before the menu draws, so anything
-        # in data/ that the browser cannot use is time the player waits for
-        # nothing. Two things qualify outright:
-        #   tools/      cloudflared, a 37 MB arm64 Mach-O executable used to
-        #               open a host tunnel. Tunnel.cpp is compiled out entirely
-        #               under __EMSCRIPTEN__ -- a page cannot spawn a process,
-        #               so the web build has no code path that could reach it.
+        # in it that the browser cannot use is time the player waits for
+        # nothing. What the allowlist cannot express is trimmed here, because
+        # these are parts of a directory that ships rather than directories
+        # that do not:
         #   audio/midi/ editable sources for the music. The loader scans
         #               audio/music only; see data/audio/README.md.
-        # Together they were 42 MB of a 145 MB package.
+        #
+        # data/tools/ used to need a pattern too -- cloudflared, a 37 MB
+        # executable a page can never spawn. It no longer does: the staging step
+        # above copies only what OD_SHIPPED_DATA names, and tools/ is not on it.
         #
         # Written as --exclude-file=PATTERN, one argument, NOT as the two
         # arguments em++ also accepts. CMake de-duplicates repeated link
@@ -689,7 +753,6 @@ if(EMSCRIPTEN)
         # `--exclude-file A B` -- leaving B as a bare argument that em++ then
         # looked for as an input file and failed the link on. Joining the flag
         # to its value makes the two strings different, so neither is dropped.
-        "--exclude-file=*/tools/*"
         "--exclude-file=*/audio/midi/*"
         # The music itself: 52 MB of .ogg, a third of the package, and none of
         # it is needed before the main menu draws. Streamed instead -- Audio.cpp
@@ -726,7 +789,22 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_SOURCE_DIR}/packaging/web/favicon.png"
                 "$<TARGET_FILE_DIR:OpenDoctrines>/icon.png"
-        COMMENT "Copying streamable music and the favicon next to the page"
+        # index.html, because that is the only entry point a host will look for.
+        #
+        # The target's own suffix makes OpenDoctrines.html, which is right for
+        # opening a file directly and wrong for every host that serves a
+        # directory -- itch.io in particular runs the game in an iframe and
+        # requires index.html at the root of the upload. Without it the page is
+        # a file listing, or a 404.
+        #
+        # A COPY, not a rename: the .html only references OpenDoctrines.js by
+        # name, so both names work and load the same module. Keeping the
+        # original means test.yml's package check and anything else looking for
+        # OpenDoctrines.html go on working.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:OpenDoctrines>"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/index.html"
+        COMMENT "Copying streamable music, the favicon and index.html next to the page"
         VERBATIM)
 else()
     find_package(Threads REQUIRED)
@@ -1119,29 +1197,9 @@ else()
     set(OD_INSTALL_BIN_DIR  ".")
 endif()
 
-# What a shipped copy of data/ contains.
-#
-# An ALLOWLIST, for the reason tools/release.py gives about the zips: with a
-# denylist the next new kind of local state -- a cache, an export folder, the
-# cloudflared binary the game downloads for itself -- ships to players because
-# nobody remembered to exclude it. Unlisted is absent, and adding content is a
-# deliberate edit. Installing all of data/ put the developer's own saves,
-# settings and locally installed mods inside every installer; it mattered less
-# when this landed in a share/ nothing read, and not at all once it landed
-# where the game actually looks.
-#
-# KEEP IN STEP WITH DATA_ALLOWLIST IN tools/release.py. That list is the
-# authority -- it is what the zips are built from -- and an installer that
-# disagrees with the zip is two different games under one version number.
-#
-# Entries may name a path inside data/, not only a top-level item. ai/model.bin
-# is one: data/ai is the trainer's workspace as well as the home of the shipped
-# model, so listing "ai" shipped every per-worker checkpoint and hand-made
-# backup that training happened to leave there -- 125 MB installed against the
-# 12 MB the game reads. Naming the file keeps this list an allowlist all the
-# way down.
-set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
-                    ai/model.bin tips.json credits.txt policies.json)
+# OD_SHIPPED_DATA is defined near the top of this file, above the Emscripten
+# block, because the web preload is built from the same list -- there is one
+# answer to "what does a player receive" and all three packagers give it.
 
 # A name that matches no file is what a stale entry looks like, and the failure
 # it causes is silent: the item is simply not in the installer, and the game

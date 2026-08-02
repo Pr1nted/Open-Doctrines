@@ -125,6 +125,55 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # The browser build is a platform too, and the only one a player can try
+  # without downloading anything -- which on itch.io is the difference between a
+  # page people click and a page people bounce off.
+  #
+  # Built here rather than reused from test.yml, because that job proves it
+  # compiles and then throws the result away. This one keeps it.
+  web:
+    name: Build web
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: latest }
+
+      - name: Build
+        run: |
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+          emmake cmake --build build-web -j 4
+
+      - name: Package
+        run: |
+          set -e
+          # FLAT, with index.html at the root.
+          #
+          # Every desktop zip here wraps its payload in a single top-level
+          # folder, which is right for something a player extracts and wrong for
+          # this: itch.io serves the root of the upload straight into an iframe,
+          # so a folder gives a directory listing instead of a game.
+          out=dist/OpenDoctrines-web
+          mkdir -p "$out"
+          cp build-web/index.html \
+             build-web/OpenDoctrines.js \
+             build-web/OpenDoctrines.wasm \
+             build-web/OpenDoctrines.data \
+             build-web/icon.png "$out/"
+          # The streamed music, which is deliberately NOT in the preload and so
+          # has to sit beside the page under the path the loader asks for.
+          cp -r build-web/data "$out/data"
+          (cd "$out" && zip -qr ../OpenDoctrines-web.zip .)
+          ls -lh dist/OpenDoctrines-web.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-web
+          path: dist/OpenDoctrines-web.zip
+          retention-days: 14
+          if-no-files-found: error
+
   # Does it WORK on each platform, not just compile there.
   #
   # WHY THIS EXISTS
@@ -164,7 +213,7 @@ jobs:
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test]
+    needs: [build, test, web]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.
@@ -246,9 +295,14 @@ jobs:
           for z in artifacts/**/*.zip; do
             name=$(basename "$z" .zip)
             channel=$(printf '%s' "$name" | sed 's/^OpenDoctrines-//')
-            mkdir -p "itchmark/$name"
-            cp MANAGED "itchmark/$name/MANAGED"
-            (cd itchmark && zip -q "../$z" "$name/MANAGED")
+            # Not the web upload. It is flat, so there is no <folder>/ to put
+            # the marker in, and nothing to mark: a page in an iframe has no
+            # installed copy and no updater to hold off.
+            if [ "$channel" != "web" ]; then
+              mkdir -p "itchmark/$name"
+              cp MANAGED "itchmark/$name/MANAGED"
+              (cd itchmark && zip -q "../$z" "$name/MANAGED")
+            fi
             echo "pushing $z -> $ITCH_TARGET:$channel"
             ./butler push "$z" "$ITCH_TARGET:$channel" \
                      --userversion "${GITHUB_REF_NAME#v}"
