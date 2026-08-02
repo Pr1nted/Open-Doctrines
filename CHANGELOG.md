@@ -1,5 +1,68 @@
 # Changelog
 
+## game 1.0.5a
+
+Mostly repairs, and several of them are things that never worked at all.
+
+**If you are on 1.0.4a you must install this one by hand.** The in-game updater
+in 1.0.4a asks GitHub a question that can never return an answer, so it will
+never offer you this release. That is fixed here; from 1.0.5a onwards the game
+can update itself again.
+
+## Things that never worked
+
+**Signing in.** Every shipped copy said "No account service is configured" and
+told you to edit a file that is not in the download. It could not be followed by
+anyone who did not build the game themselves. The account service is now part of
+the build.
+
+**Updating.** The updater asked GitHub for the "latest release", an endpoint that
+skips pre-releases by design -- and every alpha is one. It answered "nothing
+found" for the entire life of the game, so no copy has ever been offered an
+update. It now asks a question that has an answer.
+
+**Playing in the browser on an ordinary machine.** The web build demanded 2 GB of
+memory before it drew anything, and a scenario needs a good deal more on top of
+that. Machines that could not spare it got a working menu and scenarios that
+would not load. It now starts at 512 MB and grows only as needed.
+
+**Exporting a timelapse GIF on Windows**, and **opening a multiplayer tunnel on
+Windows**. Both ran commands that only exist on macOS and Linux.
+
+**Playing at all, if your Windows account name is not plain English.** Every file
+the game opened went through a text encoding that cannot represent most names, so
+a Cyrillic or Japanese account name meant every single file failed to open. The
+game started into a world with no fonts, no maps and no scenarios, and said
+nothing about why.
+
+## Things that now explain themselves
+
+Several failures used to end in silence, which is the worst way to meet one.
+
+- A scenario that fails to load now says which file and what tends to cause it,
+  instead of returning you to the menu with no message.
+- An empty scenario list now says the data folder is missing, and names where it
+  looked. The most common cause is running the game from inside the .zip; the
+  download now carries a READ ME FIRST explaining it.
+- A graphics driver too old for the game now says so in a dialog rather than the
+  game appearing not to start.
+- Music no longer loops a fragment while the browser asks whether you meant to
+  leave the page.
+
+## Under the hood
+
+The Windows build is now actually run by the build server rather than only
+compiled there, including a full packaged copy playing a real scenario, so the
+class of fault above cannot reach a release unseen again.
+
+## Before you install
+
+Both the zip and the installer are **unsigned**. Windows SmartScreen and macOS
+Gatekeeper will warn on first launch; the README explains how to get past each.
+
+There is no Linux Arm build. GitHub hosts no Arm Linux runner, so that platform
+builds from source.
+
 ## game 1.0.4a
 
 The first public release of the OpenDoctrines alpha.
