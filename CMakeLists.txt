@@ -488,6 +488,9 @@ set(GAME_SOURCES
     # MessageBoxA, the one call a fatal startup error needs. See its header.
     src/WinFatalDialog.cpp
     src/GameUpdates.cpp
+    # curl as a child process, shared by the updater and the tunnel helper so
+    # the two cannot drift back into having different answers. See its header.
+    src/util/RunCurl.cpp
     # Built on every platform even though only the web build has the menu
     # entries: the archive half is ordinary std::filesystem and miniz, and a
     # file that compiles only under Emscripten is a file that breaks without
@@ -1119,6 +1122,7 @@ target_include_directories(GifEncoderTest PRIVATE src)
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp
+    src/util/RunCurl.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c

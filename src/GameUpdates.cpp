@@ -1,5 +1,6 @@
 #include "GameUpdates.h"
 #include "util/Sha256.h"
+#include "util/RunCurl.h"
 
 #include <algorithm>
 #include <chrono>
@@ -61,70 +62,6 @@ constexpr const char* kReleasePage =
 
 // ------------------------------------------------------------ subprocess ---
 
-// Runs curl with the given arguments, never through a shell, so nothing in a
-// URL can be read as a command. Output goes to a file rather than a pipe:
-// there is then no stdout plumbing to get wrong on either platform, and the
-// partially written file is what the progress poll measures.
-//
-// `expectedSize` and `percent` are optional; when both are given the caller
-// gets live progress while the child runs.
-bool runCurl(const std::vector<std::string>& args, long long expectedSize,
-             std::atomic<int>* percent, const std::string& progressFile) {
-    auto poll = [&]() {
-        if (!percent || expectedSize <= 0) return;
-        std::error_code ec;
-        auto n = (long long)fs::file_size(progressFile, ec);
-        if (!ec) percent->store((int)std::min(100LL, n * 100 / expectedSize));
-    };
-
-#if defined(_WIN32)
-    std::string cmd = "curl.exe";
-    for (const auto& a : args) cmd += " " + a;   // args are validated, no quoting games
-    STARTUPINFOA si{}; si.cb = sizeof si;
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;                    // no console flash
-    PROCESS_INFORMATION pi{};
-    std::vector<char> mutableCmd(cmd.begin(), cmd.end());
-    mutableCmd.push_back('\0');
-    if (!CreateProcessA(nullptr, mutableCmd.data(), nullptr, nullptr, FALSE,
-                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
-        return false;
-    DWORD rc = 1;
-    for (;;) {
-        if (WaitForSingleObject(pi.hProcess, 150) == WAIT_OBJECT_0) break;
-        poll();
-    }
-    GetExitCodeProcess(pi.hProcess, &rc);
-    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    return rc == 0;
-#else
-    pid_t pid = fork();
-    if (pid < 0) return false;
-    if (pid == 0) {
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) {
-            dup2(devnull, STDOUT_FILENO);
-            dup2(devnull, STDERR_FILENO);
-            close(devnull);
-        }
-        std::vector<char*> argv;
-        argv.push_back(const_cast<char*>("curl"));
-        for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
-        argv.push_back(nullptr);
-        execvp("curl", argv.data());
-        _exit(127);
-    }
-    int status = 0;
-    for (;;) {
-        pid_t r = waitpid(pid, &status, WNOHANG);
-        if (r == pid) break;
-        if (r < 0) return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        poll();
-    }
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-#endif
-}
 
 // Fetches a URL to a file. -f turns an HTTP error into a failure rather than a
 // body we would go on to parse; --proto/--proto-redir keep every hop https,
@@ -145,7 +82,7 @@ bool fetchToFile(const std::string& url, const std::string& dest,
         "-o", dest,
         url,
     };
-    if (!runCurl(args, expectedSize, percent, dest)) { fs::remove(dest, ec); return false; }
+    if (!odproc::runCurl(args, expectedSize, percent, dest)) { fs::remove(dest, ec); return false; }
     return fs::exists(dest, ec);
 }
 

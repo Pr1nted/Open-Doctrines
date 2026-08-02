@@ -6,6 +6,7 @@
 
 #include "HttpClient.h"
 #include "util/Sha256.h"
+#include "util/RunCurl.h"
 
 #include <atomic>
 #include <cstdio>
@@ -221,11 +222,26 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
         // is what --proto and --proto-redir pin down. This is the same approach
         // the game's own updater uses to fetch its releases.
         {
-            const std::string cmd =
-                "curl -fsSL --proto '=https' --proto-redir '=https' "
-                "--max-time 300 --max-filesize " + std::to_string(kMaxAssetBytes) +
-                " -o '" + staged.string() + "' '" + url + "' 2>/dev/null";
-            if (std::system(cmd.c_str()) != 0) {
+            // Separate argv entries, never a shell string. This was
+            // std::system() with single-quoted arguments, which is wrong twice:
+            // single quotes do not quote in cmd.exe -- they are ordinary
+            // characters -- so it could never have worked on Windows at all,
+            // and `url` comes from GitHub's API, so interpolating it into a
+            // shell command is the shape of a command injection. The host
+            // prefix is checked above, but that check does not reject quotes.
+            //
+            // odproc::runCurl is the same helper the game updater uses, which
+            // is where this approach was already written down.
+            const std::vector<std::string> args = {
+                "-fsSL",
+                "--proto",       "=https",
+                "--proto-redir", "=https",
+                "--max-time",    "300",
+                "--max-filesize", std::to_string(kMaxAssetBytes),
+                "-o",            staged.string(),
+                url,
+            };
+            if (!odproc::runCurl(args)) {
                 fs::remove(staged, ec);
                 impl->set(TunnelInstallStatus::Phase::Failed,
                           "The download did not complete. Check your connection and "
