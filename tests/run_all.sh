@@ -118,6 +118,35 @@ step "flag licences"
 # from Wikimedia with: python3 tools/audit_flag_licenses.py
 $PY "$root/tools/audit_flag_licenses.py" --check || fail=1
 
+step "the Windows manifest is valid XML"
+# One second here against ten minutes there. The manifest is embedded by the
+# linker on Windows only, so a malformed one fails nowhere except a Windows CI
+# job, at link time, as "LNK1327: failure during running mt.exe".
+#
+# The trap is specific and easy to walk into twice: this project writes an em
+# dash as two hyphens, and XML forbids two hyphens inside a comment. That is
+# exactly how the first version of this file broke the Windows build.
+$PY - "$root/packaging/windows/OpenDoctrines.manifest" <<'PY' || fail=1
+import re, sys, xml.dom.minidom
+path = sys.argv[1]
+src = open(path, encoding="utf-8").read()
+try:
+    xml.dom.minidom.parseString(src)
+except Exception as e:
+    print(f"  {path} is not valid XML: {e}")
+    sys.exit(1)
+bad = sum(c.count("--") for c in re.findall(r"<!--(.*?)-->", src, re.S))
+if bad:
+    print(f"  {path}: {bad} double hyphen(s) inside an XML comment.")
+    print("  XML forbids them; mt.exe fails the Windows link with c1010070.")
+    sys.exit(1)
+if "activeCodePage" not in src:
+    print(f"  {path}: no activeCodePage. Narrow paths fall back to the ANSI")
+    print("  code page, and players with non-ASCII account names lose every file.")
+    sys.exit(1)
+print("  manifest: valid XML, UTF-8 code page declared")
+PY
+
 step "documented example"
 "$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check" || fail=1
 

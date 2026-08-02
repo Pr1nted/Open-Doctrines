@@ -1,31 +1,36 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  Makes the process treat narrow (char*) paths as UTF-8 instead of the machine's
-  ANSI code page.
+  Makes the process treat narrow (char*) paths as UTF-8 instead of the
+  machine's ANSI code page.
 
   WHY THIS FILE EXISTS
 
   Every path in this game is a std::string. It reaches fopen(), std::ifstream,
-  std::filesystem::path and miniz as narrow bytes, and on Windows that means
-  those bytes are interpreted in the ACTIVE ANSI CODE PAGE -- which is per
-  machine and cannot represent most of Unicode.
+  std::filesystem::path and miniz as narrow bytes, and on Windows those bytes
+  are interpreted in the active ANSI code page, which is per machine and
+  cannot represent most of Unicode.
 
-  The installer puts the game under %LOCALAPPDATA%, i.e. C:\Users\<name>\...,
-  so the player's own account name is part of every path the game opens. When
-  that name contains characters the machine's code page cannot encode -- a
-  Japanese or Cyrillic name on a Western-locale Windows, an emoji, an accent
-  outside the page -- the bytes Windows hands back are lossy, every open fails,
-  and the game starts into a world with no fonts, no maps and no scenarios. It
-  does not crash and it says nothing, because each individual open merely
-  returned false.
+  The installer puts the game under %LOCALAPPDATA%, that is
+  C:\Users\<name>\..., so the player's own account name is part of every path
+  the game opens. When that name contains characters the machine's code page
+  cannot encode (a Japanese or Cyrillic name on a Western locale Windows, an
+  emoji, an accent outside the page) the bytes Windows hands back are lossy,
+  every open fails, and the game starts into a world with no fonts, no maps
+  and no scenarios. It does not crash and it says nothing, because each
+  individual open merely returned false.
 
   Declaring UTF-8 makes the whole ANSI family speak UTF-8 instead: the same
   narrow calls, consistently encoded, with no code changes anywhere. It is the
-  documented fix for exactly this, and it is why this is a manifest rather than
-  a rewrite of every path in the project to wide strings.
+  documented fix for exactly this, and it is why this is a manifest rather
+  than a rewrite of every path in the project to wide strings.
 
   Windows 10 1903 and later honour it. Older versions ignore the setting and
   behave exactly as they do today, so this cannot make anything worse.
+
+  NOTE FOR EDITORS: this is XML, so a double hyphen may not appear inside a
+  comment. The em dash written as two hyphens everywhere else in this project
+  is what made mt.exe reject an earlier version of this file with
+  "c1010070: Failed to load and parse the manifest", failing the Windows link.
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
