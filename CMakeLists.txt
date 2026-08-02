@@ -36,6 +36,31 @@ project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 
+# Link the MSVC runtime STATICALLY, so a Windows build needs nothing installed
+# before it will start.
+#
+# The default is /MD, which leaves VCRUNTIME140.dll, VCRUNTIME140_1.dll and
+# MSVCP140.dll as external dependencies. Those are not part of Windows -- they
+# arrive with the Visual C++ Redistributable -- and the packages ship no DLLs at
+# all. On a machine without the redistributable a GUI-subsystem executable dies
+# before main(), with no window and frequently no message: the player
+# double-clicks the game and nothing whatsoever happens. v1.0.3a shipped that
+# way and did not start.
+#
+# Static rather than copying the three DLLs beside the exe, because the zip is a
+# real distribution channel and so is itch: the itch app unpacks a zip and runs
+# what is inside, with no installer anywhere in the path to deliver a
+# redistributable first. One setting fixes every channel at once; app-local DLLs
+# would have to be got right in the zip, the NSIS installer and the itch upload
+# separately, and the failure when one is missed is this same silent one.
+#
+# It must be set before any target is created, and it needs policy CMP0091,
+# which the cmake_minimum_required(3.20) at the top of this file already selects.
+# MSVC is only defined once project() has run, hence the position here.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
