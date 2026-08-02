@@ -68,6 +68,40 @@ if ! curl -sf --max-time 15 "$ISSUER/.well-known/od-keys.json" >/dev/null; then
 fi
 echo "ok    the account service answers and publishes a key"
 
+# The two documents the Account screen sends players to, checked against the
+# copies in this tree.
+#
+# This is the drift the rest of the script cannot see. /terms was written,
+# committed, wired into the Worker and linked from a button in the game, and
+# answered 404 on the deployed service for a week -- because the route existed
+# in the repository and the DEPLOYMENT predated it. Nothing failed: the tests
+# pass against the source, and the source was never the thing serving players.
+#
+# A mismatch is a stale deployment, not a broken document. Fix it with
+# `cd net && npx wrangler deploy`.
+step "the documents a player agrees to"
+docs_rc=0
+for doc in privacy terms; do
+    case "$doc" in
+        privacy) repo="$root/net/PRIVACY.md" ;;
+        terms)   repo="$root/net/TERMS.md" ;;
+    esac
+    served="$(curl -sf --max-time 15 "$ISSUER/$doc")" || {
+        echo "FAIL  $ISSUER/$doc does not answer -- the deployed Worker predates it"
+        docs_rc=1; continue
+    }
+    if [ -z "$served" ]; then
+        echo "FAIL  $ISSUER/$doc is empty"
+        docs_rc=1
+    elif [ "$served" != "$(cat "$repo")" ]; then
+        echo "FAIL  $ISSUER/$doc differs from $(basename "$repo") -- deploy the Worker"
+        docs_rc=1
+    else
+        echo "ok    $doc matches $(basename "$repo")"
+    fi
+done
+[ "$docs_rc" -eq 0 ] || exit 1
+
 step "build"
 cmake --build "$build" --target NetConnectTest >/dev/null || {
     echo "build failed"; exit 1;
