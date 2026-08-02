@@ -1,5 +1,79 @@
 # Changelog
 
+## game 1.0.4a
+
+The first public release of the OpenDoctrines alpha.
+
+Six historical scenarios on a 1641-province world map, a map editor for building
+your own, multiplayer that needs no port forwarding, and a mod SDK for thirteen
+languages. Playable in the browser as well as on Windows, macOS and Linux.
+
+Alpha means it is playable from end to end and is not finished. The README's
+Status section says which platforms have actually been sat down in front of.
+
+## The AI fights again
+
+The learned AI had gone quiet -- declaring no wars at all, 0.00 per thousand
+country-turns against 4.72 for a control that picks at random, and playing the
+map as though the only safe move were no move. Four separate causes, each enough
+on its own:
+
+- Wars were charged twice, once as aggression and once as a phoney-war penalty,
+  so a war that went well still cost more than never declaring one.
+- The idle penalty was combined across every module, so the war module could sit
+  out an entire game uncharged as long as the economy was busy.
+- The action mask offered wars the executor then refused to declare, so the
+  policy was rewarded for choosing something that never happened.
+- Rebel countries were counted in the trained AI's own statistics, making its
+  behaviour unreadable exactly when it needed reading.
+
+It now takes 32.4% of the land it plays for, up from 13.4%, and declares 1.73
+wars per thousand country-turns. It still loses games it should win. That is
+what the alpha label is for, and the game says so in as many words.
+
+## Rebellions settle down
+
+A province that put down a revolt could revolt again the next turn, because the
+roll had no memory of the one before it. Across a 250-turn game that compounded
+into 945 revolts and 921 rebellion wars, with one province rising 25 times.
+Provinces now hold a cooldown once a rebellion is resolved: about 450 revolts
+over the same game, and no province rising more than four times.
+
+## Windows starts
+
+The Windows build did not run. Double-clicking it did nothing at all -- no
+window, no error, no crash dialog -- on any machine without the Visual C++
+redistributable installed, because the executable depended on DLLs that are not
+part of Windows and the package shipped none. The C++ runtime is now linked into
+the executable, so there is nothing to install first.
+
+And when the graphics driver genuinely cannot run the game, it now says so in a
+dialog naming the cause, instead of vanishing silently. OpenGL 3.3 is required;
+a machine without it gets an explanation rather than nothing.
+
+## Play it in the browser
+
+The web build ships as a release of its own, so the game can be tried without
+downloading anything.
+
+## Smaller downloads
+
+The installers carried the AI trainer's entire workspace -- per-worker
+checkpoints, backups, superseded models -- because the shipped data was chosen a
+directory at a time and that directory doubles as scratch space. Installed size
+drops from about 215 MB to 102 MB, with no change to what the game reads. The
+browser build had the same problem in a worse place, and is down from 118 MB to
+75 MB.
+
+## Before you install
+
+Both the zip and the installer are **unsigned**. Windows SmartScreen and macOS
+Gatekeeper will warn on first launch; the README explains how to get past each.
+Code signing needs a certificate this project does not have yet.
+
+There is no Linux Arm build. GitHub hosts no Arm Linux runner, so that platform
+builds from source.
+
 ## game 1.0.3a
 
 The first tagged release of the OpenDoctrines alpha.
