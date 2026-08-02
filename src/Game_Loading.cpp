@@ -668,6 +668,7 @@ void Game::buildPopulationLookups() {
     // dozen map rotations). Clear both before repopulating.
     m_countryPixels.clear();
     m_provincePixels.clear();
+    m_coastalCache.clear();   // answers belong to the map that is going away
     m_countryPixels.resize(maxCid + 1);
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
 
@@ -2787,6 +2788,7 @@ void Game::startNewGame(const std::string& mapName) {
     m_countryCenters.clear();
     m_countryLabels.clear();
     m_provincePixels.clear();
+    m_coastalCache.clear();   // answers belong to the map that is going away
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
@@ -2878,6 +2880,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_countryCenters.clear();
     m_countryLabels.clear();
     m_provincePixels.clear();
+    m_coastalCache.clear();   // answers belong to the map that is going away
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
@@ -2993,6 +2996,7 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_countryCenters.clear();
     m_countryLabels.clear();
     m_provincePixels.clear();
+    m_coastalCache.clear();   // answers belong to the map that is going away
     m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();

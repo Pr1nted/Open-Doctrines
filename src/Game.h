@@ -1726,6 +1726,17 @@ private:
     std::vector<PendingShipDisembark> m_pendingShipDisembarks;
 
     bool isProvinceCoastal(int pid) const;
+    /**
+     * Answers for isProvinceCoastal, which the province panel asks every frame.
+     *
+     * The answer cannot change while a map is loaded -- it is a question about
+     * the land/sea image, not about anything the player does -- but working it
+     * out means walking every pixel of the province and flood-filling the water
+     * around it. Cheap once, wasteful sixty times a second on a large province.
+     *
+     * Cleared with m_provincePixels when a map loads; see Game_Loading.cpp.
+     */
+    mutable std::unordered_map<int, bool> m_coastalCache;
     void processArtilleryOrders(int countryId);
     void processShipBombardOrders(int countryId);
     void processShipDisembarks(int countryId);

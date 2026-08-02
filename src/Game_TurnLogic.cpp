@@ -20,49 +20,91 @@
 
 // === isProvinceCoastal ===
 bool Game::isProvinceCoastal(int pid) const {
+    auto cached = m_coastalCache.find(pid);
+    if (cached != m_coastalCache.end()) return cached->second;
+
     auto it = m_provincePixels.find(pid);
-    if (it == m_provincePixels.end()) return false;
+    if (it == m_provincePixels.end()) return false;   // not cached: no province yet
+
+    // Every return below this point goes through here, so the walk happens once
+    // per province per map rather than once per frame.
+    struct Memo {
+        std::unordered_map<int, bool>& cache;
+        int pid;
+        bool value = false;
+        ~Memo() { cache[pid] = value; }
+    } memo{m_coastalCache, pid};
+    auto answer = [&](bool v) { memo.value = v; return v; };
     int w = m_landSea.getWidth();
     int h = m_landSea.getHeight();
-    // Find first adjacent water pixel
-    int waterIdx = -1;
+
+    // EVERY water body this province touches, not just the first one found.
+    //
+    // This used to take the first adjacent water pixel in pixel order and
+    // measure only that body. A province touching both a lagoon and the open
+    // sea was therefore judged by whichever the raster order happened to reach
+    // first: hit the lagoon, and the province was declared land-locked with the
+    // Mediterranean along its other edge. Which one came first was an accident
+    // of pixel layout, so the result looked arbitrary and was.
+    //
+    // Measured on the 1939 map, that mistake covered 127 provinces -- 9 of them
+    // French, 22 British, 21 American -- each one a coastline where the player
+    // could see the sea and the game refused a port. It was reported as exactly
+    // that.
+    //
+    // So: gather the water pixels around the province, and ask whether ANY of
+    // the bodies they belong to is big enough to be a sea.
+    static const int MIN_WATER_BODY = 75;
+    const int dx[4] = {1, -1, 0, 0};
+    const int dy[4] = {0, 0, 1, -1};
+
+    std::vector<int> seeds;
     for (int idx : it->second) {
         int px = idx % w;
         int py = idx / w;
-        if (px > 0 && !m_landSea.isLand(px - 1, py)) { waterIdx = py * w + (px - 1); break; }
-        if (px < w - 1 && !m_landSea.isLand(px + 1, py)) { waterIdx = py * w + (px + 1); break; }
-        if (py > 0 && !m_landSea.isLand(px, py - 1)) { waterIdx = (py - 1) * w + px; break; }
-        if (py < h - 1 && !m_landSea.isLand(px, py + 1)) { waterIdx = (py + 1) * w + px; break; }
-    }
-    if (waterIdx < 0) return false;
-    // BFS to count water body size — stop early if it exceeds threshold
-    static const int MIN_WATER_BODY = 75;
-    int dx[4] = {1, -1, 0, 0};
-    int dy[4] = {0, 0, 1, -1};
-    std::vector<int> stack;
-    std::unordered_set<int> visited;
-    stack.push_back(waterIdx);
-    visited.insert(waterIdx);
-    int count = 0;
-    while (!stack.empty() && count < MIN_WATER_BODY) {
-        int idx = stack.back();
-        stack.pop_back();
-        count++;
-        int cx = idx % w;
-        int cy = idx / w;
         for (int d = 0; d < 4; ++d) {
-            int nx = cx + dx[d];
-            int ny = cy + dy[d];
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-                int nIdx = ny * w + nx;
-                if (visited.find(nIdx) == visited.end() && !m_landSea.isLand(nx, ny)) {
-                    visited.insert(nIdx);
-                    stack.push_back(nIdx);
+            int nx = px + dx[d];
+            int ny = py + dy[d];
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h && !m_landSea.isLand(nx, ny))
+                seeds.push_back(ny * w + nx);
+        }
+    }
+    if (seeds.empty()) return answer(false);
+
+    // Pixels already accounted for by a body that turned out to be TOO SMALL.
+    // Seeds inside one are skipped, so each pond is measured once however many
+    // of the province's pixels touch it. A body that reaches the threshold ends
+    // the search immediately, so nothing is gained by recording those.
+    std::unordered_set<int> knownSmall;
+
+    for (int seed : seeds) {
+        if (knownSmall.count(seed)) continue;
+
+        std::vector<int> stack{seed};
+        std::unordered_set<int> visited{seed};
+        int count = 0;
+        while (!stack.empty() && count < MIN_WATER_BODY) {
+            int idx = stack.back();
+            stack.pop_back();
+            count++;
+            int cx = idx % w;
+            int cy = idx / w;
+            for (int d = 0; d < 4; ++d) {
+                int nx = cx + dx[d];
+                int ny = cy + dy[d];
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                    int nIdx = ny * w + nx;
+                    if (visited.find(nIdx) == visited.end() && !m_landSea.isLand(nx, ny)) {
+                        visited.insert(nIdx);
+                        stack.push_back(nIdx);
+                    }
                 }
             }
         }
+        if (count >= MIN_WATER_BODY) return answer(true);   // open water: coastal
+        knownSmall.insert(visited.begin(), visited.end());
     }
-    return count >= MIN_WATER_BODY;
+    return answer(false);
 }
 
 // === processArtilleryOrders ===
