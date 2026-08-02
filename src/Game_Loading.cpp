@@ -1437,7 +1437,7 @@ bool Game::loadFromFiles() {
                 int pid = std::stoi(provStr);
                 float left = comp["left"].get<float>();
                 float auth = comp["auth"].get<float>();
-                m_provinceCompass[pid] = {left, auth};
+                m_provinceCompass[pid] = {-left, -auth};   // see the note at the country loader
             }
         } catch (...) {}
     }
@@ -1519,15 +1519,38 @@ bool Game::loadFromFiles() {
                 // Find country ID by ISO
                 for (auto& [cid, c] : m_countries.getAll()) {
                     if (c.isoA3 == iso) {
-                        // NOT negated. m_provinceCompass stores the same
-                        // generator's numbers verbatim, and the two are compared
-                        // directly (getProvinceRebellionChance), so flipping one
-                        // side turned that distance into a sum: every province
-                        // read as ~2x its compass away from its own government.
-                        // That put ~26 countries per turn over the rebellion
-                        // threshold on the modern map. It also made Russia
-                        // (auth 85) load as a libertarian state.
-                        m_countryCompass[cid] = {left, auth};
+                        // NEGATED, and both axes, and on BOTH sides.
+                        //
+                        // The file speaks in "left" and "auth": positive means
+                        // more left, more authoritarian. PoliticalCompass means
+                        // the opposite on both axes -- economic runs -100 left
+                        // to +100 right, social -100 authoritarian to +100
+                        // libertarian -- and everything downstream reads it that
+                        // way: the doctrine requirements in policies.json, the
+                        // compass shifts a doctrine applies, and the compass
+                        // widget, which plots +economic toward the label reading
+                        // RIGHT.
+                        //
+                        // Storing the file's numbers unconverted inverted every
+                        // one of those. The Soviet Union (left 95) loaded as
+                        // hard right: it could not enact land reform, state
+                        // industry, worker rights or a wealth tax, and could
+                        // privatise freely. Germany (left -55) loaded as hard
+                        // left and had the exact opposite menu. France (left 20)
+                        // was drawn on the right of her own compass, which is
+                        // how it was reported: a player trying to take France
+                        // left, told the doctrines were unavailable.
+                        //
+                        // The earlier note here was right that flipping ONE side
+                        // is a bug -- m_provinceCompass is compared against this
+                        // directly in getProvinceRebellionChance, so negating
+                        // only one turns that distance into a sum, and every
+                        // province reads as twice its real distance from its
+                        // government. That is why both sides are negated
+                        // together. The rebellion code uses |x|+|y| and
+                        // sqrt(dx^2+dy^2), and neither changes when both sides
+                        // flip sign.
+                        m_countryCompass[cid] = {-left, -auth};
                         break;
                     }
                 }
@@ -1782,7 +1805,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     int pid = std::stoi(provStr);
                     float left = comp["left"].get<float>();
                     float auth = comp["auth"].get<float>();
-                    m_provinceCompass[pid] = {left, auth};
+                    m_provinceCompass[pid] = {-left, -auth};   // see the note at the country loader
                 }
             } catch (...) {}
             break;
@@ -1821,9 +1844,10 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     float auth = comp["auth"].get<float>();
                     for (auto& [cid, c] : m_countries.getAll()) {
                         if (c.isoA3 == iso) {
-                            // Un-negated, to match m_provinceCompass — see the
-                            // loose-file loader above.
-                            m_countryCompass[cid] = {left, auth};
+                            // Negated on both axes, exactly as m_provinceCompass
+                            // is — see the loose-file loader above for why the
+                            // two must always be converted together.
+                            m_countryCompass[cid] = {-left, -auth};
                             break;
                         }
                     }

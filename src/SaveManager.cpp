@@ -223,7 +223,7 @@ bool SaveManager::createSave(const std::string& odsvPath,
     metaJson += "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n";
     metaJson += "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n";
     metaJson += "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n";
-    metaJson += "  \"country_compasses\": {\n";
+    metaJson += "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
     bool first = true;
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
@@ -303,7 +303,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
         "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
         "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"country_compasses\": {\n";
+        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
     bool first = true;
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
@@ -447,7 +447,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     metaJson += "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n";
     metaJson += "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n";
     metaJson += "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n";
-    metaJson += "  \"country_compasses\": {\n";
+    metaJson += "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
     bool first = true;
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
@@ -550,12 +550,22 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
         meta.shipCount = j.value("ship_count", 0);
         meta.playerCountryId = j.value("player_country_id", 0);
 
+        // Convention 1 stored the map file's own numbers: positive meant more
+        // LEFT and more AUTHORITARIAN, the opposite of what PoliticalCompass
+        // means on both axes. Every save written before that was fixed carries
+        // those, and reading them as-is is the bug itself -- the Soviet Union
+        // comes back as hard right and cannot enact a single left doctrine.
+        //
+        // Absent means 1, because that is what every save that lacks the field
+        // was written by. Saves from here on say 2 and are taken at face value.
+        const int compassConvention = j.value("compass_convention", 1);
+        const float compassSign = (compassConvention < 2) ? -1.0f : 1.0f;
         if (j.contains("country_compasses")) {
             for (auto& [cidStr, compass] : j["country_compasses"].items()) {
                 int cid = std::stoi(cidStr);
                 float econ = compass.value("economic", 0.0f);
                 float soc = compass.value("social", 0.0f);
-                meta.countryCompasses[cid] = {econ, soc};
+                meta.countryCompasses[cid] = {econ * compassSign, soc * compassSign};
             }
         }
         if (j.contains("country_treasuries")) {
@@ -741,7 +751,7 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
         "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
         "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
         "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"country_compasses\": {\n";
+        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
     bool first = true;
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
@@ -870,7 +880,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
         "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
         "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
         "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"country_compasses\": {\n";
+        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
     bool first = true;
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
