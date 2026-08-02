@@ -703,11 +703,36 @@ bool Game::init(int screenW, int screenH, const char* title) {
     if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
         appDir += '/';
     m_dataDir = appDir + "../data/";
+    bool foundData = false;
     for (const char* rel : {"data/", "../data/"}) {
         if (DirectoryExists((appDir + rel + "fonts").c_str())) {
             m_dataDir = appDir + rel;
+            foundData = true;
             break;
         }
+    }
+
+    // ...and say so when neither matched, because the comment above is right
+    // that it otherwise goes unnoticed. The game starts either way: the menu
+    // draws with raylib's built-in font, and what the player sees is a game
+    // with no scenarios in it -- which reads as "the scenario list is broken"
+    // rather than "the data folder is not where the program is looking".
+    //
+    // Not fatal. A copy with no data is useless, but guessing wrong here and
+    // refusing to start would be worse than a game that runs and explains
+    // itself, and there may be layouts neither probe anticipates.
+    if (!foundData) {
+        const std::string msg =
+            "OpenDoctrines could not find its data folder.\n\n"
+            "It looked for one beside the program and one level up, and neither "
+            "contained the game's fonts and maps. The game will start, but it "
+            "will have no scenarios, fonts or audio.\n\n"
+            "Looked in:\n  " + appDir + "data\n  " + appDir + "../data\n\n"
+            "This usually means the download was extracted without its data "
+            "folder, or the program was moved out of the folder it came in. "
+            "OpenDoctrines and data must stay together.";
+        std::cerr << msg << "\n";
+        odFatalDialog("OpenDoctrines", msg.c_str());
     }
 
     // A second copy of the game on the same machine needs its own account,
@@ -874,9 +899,44 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // interacted with the page first, so this cannot fire on a tab nobody
     // touched. Both are why the dialog is a warning and .odstate is the actual
     // answer.
+    // Silence the music before the dialog appears, and only then ask for it.
+    //
+    // Audio::pump() explains why a stalled main thread loops a fragment of a
+    // track: the web build has no threads, so miniaudio's drain callback runs
+    // on the same thread, and the browser replays whatever it last received.
+    // pump() fixes that for OUR blocking loops by yielding to the browser.
+    //
+    // It cannot fix this one. A beforeunload dialog blocks the main thread from
+    // outside: no game code runs at all while it is up, so there is nothing left
+    // that could yield, and the last fragment loops under the dialog for as long
+    // as the player reads it. The only moment left to act is this handler, which
+    // runs BEFORE the browser shows the prompt.
+    //
+    // Suspending the AudioContext stops the graph rather than starving it, so
+    // the result is silence instead of a stuck loop. Only contexts that were
+    // actually running are touched, and only those are resumed, so a device the
+    // game had already suspended stays that way. If the player cancels, focus
+    // comes back to the page and the music resumes where it left off.
     emscripten_run_script(
+        "window.__odSuspendedAudio=[];"
+        "window.__odAudioSuspend=function(){try{"
+        "var d=(window.miniaudio&&window.miniaudio.devices)||[];"
+        "window.__odSuspendedAudio=[];"
+        "for(var i=0;i<d.length;i++){var x=d[i];"
+        "if(x&&x.webaudio&&x.webaudio.state==='running'){"
+        "x.webaudio.suspend();window.__odSuspendedAudio.push(x.webaudio);}}"
+        "}catch(e){}};"
+        "window.__odAudioResume=function(){try{"
+        "var s=window.__odSuspendedAudio||[];"
+        "for(var i=0;i<s.length;i++){s[i].resume();}"
+        "window.__odSuspendedAudio=[];"
+        "}catch(e){}};"
         "window.addEventListener('beforeunload',function(e){"
+        "window.__odAudioSuspend();"
         "e.preventDefault();e.returnValue='';return '';});"
+        "window.addEventListener('focus',function(){window.__odAudioResume();});"
+        "document.addEventListener('visibilitychange',function(){"
+        "if(!document.hidden)window.__odAudioResume();});"
     );
 
     // KNOWN BUG, not yet fixed: on first load the game renders into a ~400x300
