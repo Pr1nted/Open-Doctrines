@@ -96,6 +96,37 @@ def main():
         os.chmod(dst_bin, 0o755)
     print(f"  binary   {base}  ({human(tree_size(dst_bin))})")
 
+    # --- how to start it, in the folder they are already looking at ---
+    #
+    # The installer has always carried README.md; the zip carried nothing at
+    # all. That gap has a cost: the most common way a zip-shipped Windows game
+    # fails is a player double-clicking the .exe INSIDE the archive, which
+    # Explorer happily runs by extracting that one file to a temporary folder
+    # and leaving data/ behind. The game then starts, draws a menu, and has no
+    # scenarios -- which is indistinguishable from a broken game and is exactly
+    # what one review said before going quiet.
+    #
+    # A file named so it sorts first, saying the one thing that matters.
+    readme = os.path.join(out, "READ ME FIRST.txt")
+    with open(readme, "w", encoding="utf-8") as f:
+        f.write(
+            "OpenDoctrines\n"
+            "=============\n\n"
+            "EXTRACT THIS WHOLE FOLDER FIRST, then run the game from where you\n"
+            "extracted it.\n\n"
+            "Running the program directly from inside the .zip does not work.\n"
+            "Windows copies only that one file to a temporary folder, leaving\n"
+            "the data folder behind, and the game starts with no scenarios in\n"
+            "it.\n\n"
+            "The program and the 'data' folder must stay together. If you move\n"
+            "the game, move the whole folder.\n\n"
+            "This build is not code-signed, so Windows SmartScreen and macOS\n"
+            "Gatekeeper will warn the first time you run it.\n\n"
+            "Full documentation, and where to report a problem:\n"
+            "  https://github.com/Pr1nted/Open-Doctrines\n"
+        )
+    print(f"  readme   READ ME FIRST.txt")
+
     # --- data, allowlisted ---
     # Beside the executable, which is where the game looks for it (Game::init)
     # and the only shape the updater accepts (GameUpdates::runUpdate). In a

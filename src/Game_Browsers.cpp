@@ -1447,6 +1447,42 @@ void Game::drawMapBrowser() {
     int maxScroll = std::max(0, totalItems - maxVisibleCards);
     m_mapScroll = std::clamp(m_mapScroll, 0, maxScroll);
 
+    // An empty Standard Worlds tab means the game cannot see its own maps.
+    //
+    // Six scenarios ship with every copy, so this list is never legitimately
+    // empty -- if it is, data/STDmaps is not where the game is looking. Until
+    // this was drawn the player got a blank panel under a title, which says
+    // nothing and is indistinguishable from a game that simply has no content.
+    // The most common way to arrive here is the most ordinary: running
+    // OpenDoctrines.exe straight out of the zip in Explorer, which extracts
+    // that one file to a temporary folder and leaves data/ behind.
+    //
+    // The Custom Worlds tab IS legitimately empty for most players, so this is
+    // only for the standard one.
+    if (m_mapTabIndex == 0 && visible.empty()) {
+        const int fs = 18;
+        const char* lines[] = {
+            "No scenarios found.",
+            "",
+            "The game shipped with six, so its data folder is missing or",
+            "was not extracted alongside the program.",
+            "",
+            "If you ran OpenDoctrines from inside the .zip, extract the",
+            "whole folder first and run it from there.",
+        };
+        int y = listStartY + 40;
+        for (const char* l : lines) {
+            const int w = MeasureText(l, fs);
+            DrawText(l, centerX - w / 2, y, fs,
+                     (l == lines[0]) ? Color{255, 150, 150, 255}
+                                     : Color{190, 190, 200, 220});
+            y += fs + 8;
+        }
+        const std::string where = "Looking in: " + m_dataDir + "STDmaps";
+        const int ww = MeasureText(where.c_str(), 14);
+        DrawText(where.c_str(), centerX - ww / 2, y + 10, 14, Color{130, 130, 145, 200});
+    }
+
     // Draw cards
     for (int vi = 0; vi < totalItems; ++vi) {
         int y = listStartY + (vi - m_mapScroll) * (cardH + cardGap);
