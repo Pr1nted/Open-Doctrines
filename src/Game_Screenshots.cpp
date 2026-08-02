@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -63,9 +64,16 @@ void Game::beginScreenshotTour(const std::string& outDir, const std::string& sav
     m_shotIndex = 0;
     m_shotFrame = 0;
     if (!m_shotDir.empty() && m_shotDir.back() == '/') m_shotDir.pop_back();
-    std::string mk = "mkdir -p \"" + m_shotDir + "\"";
-    if (system(mk.c_str()) != 0)
-        fprintf(stderr, "[SHOT] could not create %s\n", m_shotDir.c_str());
+    // Same reason as the GIF export in Game_History.cpp: "mkdir -p" is a POSIX
+    // command that cmd.exe does not have, and it spawns a shell to do what one
+    // library call does on every platform.
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(m_shotDir, ec);
+        if (ec)
+            fprintf(stderr, "[SHOT] could not create %s: %s\n",
+                    m_shotDir.c_str(), ec.message().c_str());
+    }
 
     // The tour starts on the main menu, never on the splash: the splash is a
     // timed fade, so shooting it means racing it.

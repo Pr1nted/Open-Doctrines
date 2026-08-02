@@ -14,6 +14,7 @@
 #include "GameInternals.h"
 #include "GifEncoder.h"
 #include "SaveManager.h"
+#include <filesystem>   // create_directories, for the GIF export's parent dir
 #include "json.hpp"
 #include "miniz.h"
 #include <algorithm>
@@ -425,10 +426,25 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
     std::string writePath = "/tmp_timelapse.gif";
 #else
     std::string writePath = destPath;
-    // Make sure the parent directory exists (best effort).
-    auto slash = writePath.find_last_of('/');
-    if (slash != std::string::npos)
-        system(("mkdir -p \"" + writePath.substr(0, slash) + "\"").c_str());
+    // The parent directory, made without a shell.
+    //
+    // This was system("mkdir -p \"...\""), which is a POSIX command, and it
+    // failed on Windows in two separate ways at once. cmd.exe's mkdir has no
+    // -p, so the call created a directory literally named "-p" beside the game
+    // and not the one that was wanted. And the path was split on '/' alone: a
+    // Windows path arrives with backslashes, so there was no '/' to find, the
+    // whole branch was skipped, and no directory was created at all. Either way
+    // GifEncoder::begin() then failed and the player was told "Could not create
+    // GIF at that path" -- about a path that was fine, for want of a folder.
+    //
+    // std::filesystem understands both separators and needs no shell, so this
+    // also stops a console window flashing over the game on every export.
+    {
+        std::error_code ec;
+        const std::filesystem::path parent =
+            std::filesystem::path(writePath).parent_path();
+        if (!parent.empty()) std::filesystem::create_directories(parent, ec);
+    }
 #endif
 
     GifEncoder gif;
