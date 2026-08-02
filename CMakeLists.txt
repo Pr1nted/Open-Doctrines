@@ -770,7 +770,19 @@ if(EMSCRIPTEN)
         # so exporting the set costs nothing and removes a whole class of
         # "worked until it ran" failure.
         "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','HEAP8','HEAPU8','HEAP16','HEAPU16','HEAP32','HEAPU32','HEAP64','HEAPU64','HEAPF32','HEAPF64']"
-        "-sTOTAL_MEMORY=2GB"
+        # Start small and grow. This asked for 2 GB BEFORE the page drew
+        # anything, which is a demand a great many machines simply refuse: a
+        # browser tab that cannot get its initial heap does not degrade, it
+        # fails, and on the machines that do grant it there is then nothing
+        # left for the 128 MB RGBA map images a scenario decodes. Either way
+        # the player meets it as a game whose menu works and whose scenarios
+        # do not load.
+        #
+        # ALLOW_MEMORY_GROWTH exists so the initial figure does not have to be
+        # the worst case. 512 MB starts on hardware 2 GB turns away, and the
+        # ceiling below is unchanged, so a machine that CAN spare 2 GB still
+        # gets it -- just when it is needed rather than before the title.
+        "-sINITIAL_MEMORY=512MB"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMAXIMUM_MEMORY=4GB"
         "--shell-file" "${CMAKE_SOURCE_DIR}/shell.html"
