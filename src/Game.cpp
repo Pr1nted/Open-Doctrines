@@ -712,13 +712,31 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // compositor all land here, and "it crashes on launch" is the worst
     // possible way to tell somebody their graphics stack cannot run the game.
     if (!IsWindowReady()) {
-        std::cerr
-            << "OpenDoctrines could not open a window.\n"
-               "  The graphics driver did not provide an OpenGL 3.3 context. "
-               "That usually means\n"
-               "  no GPU driver, a headless session with no display, or a "
-               "remote desktop that does\n"
-               "  not forward OpenGL. The raylib/GLFW warning above says which.\n";
+        static const char* kNoWindow =
+            "OpenDoctrines could not open a window.\n\n"
+            "The graphics driver did not provide an OpenGL 3.3 context. That "
+            "usually means no GPU driver, a headless session with no display, "
+            "or a remote desktop or virtual machine that does not forward "
+            "OpenGL.";
+        std::cerr << kNoWindow << "\n";
+
+        // ...and on Windows, say it somewhere a player can actually see.
+        //
+        // The Windows build is a GUI-subsystem binary, which means it has no
+        // console attached and the line above goes nowhere at all. The effect
+        // is that the one failure most in need of an explanation was the one
+        // nobody could read: the player double-clicks the game and NOTHING
+        // happens. No window, no error, no crash dialog -- indistinguishable
+        // from the executable being corrupt.
+        //
+        // A message box needs no console, no log file and no instructions.
+        // Redirecting stdout to a file does reach this text, but only if you
+        // already know to try, which is precisely the knowledge somebody hitting
+        // this does not have.
+#ifdef _WIN32
+        MessageBoxA(nullptr, kNoWindow, "OpenDoctrines",
+                    MB_OK | MB_ICONERROR);
+#endif
         return false;
     }
     SetExitKey(0);
