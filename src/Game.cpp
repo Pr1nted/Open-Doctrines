@@ -712,28 +712,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
         }
     }
 
-    // ...and say so when neither matched, because the comment above is right
-    // that it otherwise goes unnoticed. The game starts either way: the menu
-    // draws with raylib's built-in font, and what the player sees is a game
-    // with no scenarios in it -- which reads as "the scenario list is broken"
-    // rather than "the data folder is not where the program is looking".
-    //
-    // Not fatal. A copy with no data is useless, but guessing wrong here and
-    // refusing to start would be worse than a game that runs and explains
-    // itself, and there may be layouts neither probe anticipates.
-    if (!foundData) {
-        const std::string msg =
-            "OpenDoctrines could not find its data folder.\n\n"
-            "It looked for one beside the program and one level up, and neither "
-            "contained the game's fonts and maps. The game will start, but it "
-            "will have no scenarios, fonts or audio.\n\n"
-            "Looked in:\n  " + appDir + "data\n  " + appDir + "../data\n\n"
-            "This usually means the download was extracted without its data "
-            "folder, or the program was moved out of the folder it came in. "
-            "OpenDoctrines and data must stay together.";
-        std::cerr << msg << "\n";
-        odFatalDialog("OpenDoctrines", msg.c_str());
-    }
+    (void)foundData;   // the probe's answer is not the final one; see below
 
     // A second copy of the game on the same machine needs its own account,
     // config and saves -- otherwise the two instances fight over one
@@ -746,6 +725,35 @@ bool Game::init(int screenW, int screenH, const char* title) {
             m_dataDir = d;
             std::cout << "Data directory overridden: " << m_dataDir << std::endl;
         }
+    }
+
+    // ...and now say so if the directory actually chosen has no data in it.
+    //
+    // AFTER the override, and testing the FINAL directory rather than the
+    // probe's answer. Checking the probe was wrong twice: a run with
+    // OD_DATA_DIR set has a perfectly good data directory that the probe never
+    // looked at, so every such run was told its data was missing -- and on
+    // Windows that meant a modal dialog on a machine with nobody to dismiss it.
+    // The CI job did not fail, it HUNG, until the thirty-minute timeout killed
+    // it. A message about a missing folder is worth having; one that can stop
+    // an automated run dead is not.
+    //
+    // Not fatal even now. A copy with no data is useless, but refusing to start
+    // on a guess is worse than starting and explaining, and there may be
+    // layouts neither probe anticipates.
+    if (!DirectoryExists((m_dataDir + "fonts").c_str())) {
+        const std::string msg =
+            "OpenDoctrines could not find its data folder.\n\n"
+            "It looked for one beside the program and one level up, and neither "
+            "contained the game's fonts and maps. The game will start, but it "
+            "will have no scenarios, fonts or audio.\n\n"
+            "Looked in:\n  " + appDir + "data\n  " + appDir + "../data\n"
+            "Using:\n  " + m_dataDir + "\n\n"
+            "This usually means the download was extracted without its data "
+            "folder, or the program was moved out of the folder it came in. "
+            "OpenDoctrines and data must stay together.";
+        std::cerr << msg << "\n";
+        odFatalDialog("OpenDoctrines", msg.c_str());
     }
 #endif
     m_configPath = m_dataDir + "config.json";

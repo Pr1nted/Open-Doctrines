@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "Audio.h"
 #include "ai/AISystem.h"
+#include "WinFatalDialog.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
@@ -9,6 +10,22 @@
 #include <vector>
 
 int main(int argc, char** argv) {
+    // No dialogs in a run with nobody at the keyboard.
+    //
+    // A message box blocks the thread that raised it until it is dismissed, so
+    // on a build server or inside a script it does not report a failure, it
+    // becomes one. A Windows CI job hung for its full thirty-minute timeout on
+    // a startup message nobody could click OK on, and every one of these modes
+    // is meant to run unattended. The text still goes to stderr.
+    for (int i = 1; i < argc; ++i) {
+        static const char* kHeadless[] = {
+            "--train-ai", "--eval-ai", "--simulate", "--screenshots",
+            "--export-timelapse", "--merge-ai", "--reset-ai-head",
+        };
+        for (const char* f : kHeadless)
+            if (strcmp(argv[i], f) == 0) { odSuppressFatalDialogs(); break; }
+    }
+
     // --ai-readonly: use the trained model but never save over it. Intended for
     // watching current AI behaviour in a real game while a --train-ai session
     // runs in parallel; without it both processes write data/ai/model.bin every

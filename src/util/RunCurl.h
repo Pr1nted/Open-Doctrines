@@ -31,4 +31,14 @@ bool runCurl(const std::vector<std::string>& args,
              std::atomic<int>* percent = nullptr,
              const std::string& progressFile = std::string());
 
+// The same thing for any other program. runCurl is this with "curl".
+//
+// Used for tar, which unpacks the macOS cloudflared download. That was a shell
+// string too, with single-quoted paths -- so a home directory containing an
+// apostrophe, which is an ordinary thing for a surname to have, ended the quote
+// early and the unpack failed. As argv there is nothing to quote and nothing to
+// end.
+bool runTool(const std::string& program,
+             const std::vector<std::string>& args);
+
 }  // namespace odproc

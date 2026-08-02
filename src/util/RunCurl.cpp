@@ -58,10 +58,12 @@ std::string quoteArg(const std::string& a) {
 }
 #endif
 
-}  // namespace
-
-bool runCurl(const std::vector<std::string>& args, long long expectedSize,
-             std::atomic<int>* percent, const std::string& progressFile) {
+// The whole of runCurl and runTool. `program` is the executable; args are argv
+// entries and are never concatenated into anything a shell would parse.
+bool runProgram(const std::string& program,
+                const std::vector<std::string>& args,
+                long long expectedSize, std::atomic<int>* percent,
+                const std::string& progressFile) {
     auto poll = [&]() {
         if (!percent || expectedSize <= 0 || progressFile.empty()) return;
         std::error_code ec;
@@ -70,7 +72,7 @@ bool runCurl(const std::vector<std::string>& args, long long expectedSize,
     };
 
 #if defined(_WIN32)
-    std::string cmd = "curl.exe";
+    std::string cmd = quoteArg(program);
     for (const auto& a : args) cmd += " " + quoteArg(a);
 
     STARTUPINFOA si{}; si.cb = sizeof si;
@@ -101,10 +103,10 @@ bool runCurl(const std::vector<std::string>& args, long long expectedSize,
             close(devnull);
         }
         std::vector<char*> argv;
-        argv.push_back(const_cast<char*>("curl"));
+        argv.push_back(const_cast<char*>(program.c_str()));
         for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
         argv.push_back(nullptr);
-        execvp("curl", argv.data());
+        execvp(program.c_str(), argv.data());
         _exit(127);
     }
     int status = 0;
@@ -117,6 +119,21 @@ bool runCurl(const std::vector<std::string>& args, long long expectedSize,
     }
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 #endif
+}
+
+}  // namespace
+
+bool runCurl(const std::vector<std::string>& args, long long expectedSize,
+             std::atomic<int>* percent, const std::string& progressFile) {
+#if defined(_WIN32)
+    return runProgram("curl.exe", args, expectedSize, percent, progressFile);
+#else
+    return runProgram("curl", args, expectedSize, percent, progressFile);
+#endif
+}
+
+bool runTool(const std::string& program, const std::vector<std::string>& args) {
+    return runProgram(program, args, 0, nullptr, std::string());
 }
 
 }  // namespace odproc

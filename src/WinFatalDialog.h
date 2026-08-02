@@ -23,4 +23,17 @@
 // whole, because nothing here touches raylib and so nothing here can collide.
 //
 // A no-op everywhere but Windows, so callers need no #ifdef of their own.
+//
+// It is ALSO a no-op whenever nobody can click OK. A message box blocks the
+// thread that raised it until it is dismissed, so on a machine with no one at
+// the keyboard it does not report a failure -- it becomes one. A CI job hung
+// for the full thirty-minute timeout on exactly this, and a player's batch
+// script would hang the same way with no window to show for it.
+//
+// Silenced by odSuppressFatalDialogs(), which main() calls for every headless
+// mode, and automatically when CI is set in the environment.
 void odFatalDialog(const char* title, const char* body);
+
+// Call before anything that might fail, for any run with no interactive user.
+// The message still goes to stderr; only the blocking dialog is dropped.
+void odSuppressFatalDialogs();

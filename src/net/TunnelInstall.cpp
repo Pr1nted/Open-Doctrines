@@ -287,9 +287,16 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
             // tar is on every macOS and Linux machine. The archive contains a
             // single `cloudflared`, and it is extracted into the tools
             // directory rather than anywhere the archive gets to choose.
-            const std::string cmd = "tar -xzf '" + staged.string() + "' -C '" +
-                                    std::string(toolsDir) + "' cloudflared 2>/dev/null";
-            if (std::system(cmd.c_str()) != 0) {
+            // argv, not a shell string. The single-quoted version this replaces
+            // ended its own quote on any path containing an apostrophe, which
+            // "/Users/o'brien" is: an ordinary surname was enough to make the
+            // unpack fail. As separate arguments a quote is just a character.
+            const std::vector<std::string> tarArgs = {
+                "-xzf", staged.string(),
+                "-C",   std::string(toolsDir),
+                "cloudflared",
+            };
+            if (!odproc::runTool("tar", tarArgs)) {
                 impl->set(TunnelInstallStatus::Phase::Failed,
                           "The download could not be unpacked.");
                 fs::remove(staged, ec);
