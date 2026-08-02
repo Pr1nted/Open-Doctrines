@@ -1,0 +1,49 @@
+# Does the itch.io credential actually work?
+#
+# The release pipeline pushes to itch as its very last step, which is the worst
+# place to discover a bad key: the build is done, the GitHub release is already
+# public, and the only symptom is a warning in a log nobody is reading. Worse,
+# the push step is deliberately forgiving -- a missing key warns and exits 0,
+# because a missing itch key is not a reason to withhold a GitHub release -- so
+# a key that is absent and a key that is wrong look identical from the outside.
+#
+# This asks the question on its own, in a few seconds, before any of that.
+#
+# It is READ-ONLY. `butler status` names the channels and their most recent
+# builds; it uploads nothing and changes nothing, so running it can never
+# publish by accident.
+name: Check itch.io credentials
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: butler status
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask itch.io who we are
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          # Told apart on purpose. "Not set" and "set but rejected" need
+          # different fixes, and a single "itch failed" would hide which.
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "BUTLER_API_KEY is not set on this repository."
+            echo "Add it with: gh secret set BUTLER_API_KEY"
+            exit 1
+          fi
+          if [ -z "$ITCH_TARGET" ]; then
+            echo "ITCH_TARGET is not set (expected user/game)."
+            exit 1
+          fi
+          echo "Target: $ITCH_TARGET"
+
+          curl -sL -o butler.zip \
+            https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip && chmod +x butler
+
+          # Never echo the key. GitHub masks secret VALUES in logs, but that
+          # masking is a safety net, not a licence to print them.
+          ./butler status "$ITCH_TARGET"
