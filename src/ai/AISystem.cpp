@@ -48,6 +48,12 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     m_policy[MOD_NAVY]     = NeuralNet({FEATURE_COUNT, 512, 320, NAVY_ACTIONS}, 104);
     for (int m = 0; m < MOD_COUNT; ++m)
         m_value[m] = NeuralNet({FEATURE_COUNT, 160, 1}, 200 + m);
+    // Q shares the policy's shape because it answers a question of the same
+    // size -- one number per action -- and its own seeds so it does not start
+    // life as a copy of the actor it is meant to improve on.
+    static constexpr int ACTS_[MOD_COUNT] = {ECON_ACTIONS, POL_ACTIONS, WAR_ACTIONS, NAVY_ACTIONS};
+    for (int m = 0; m < MOD_COUNT; ++m)
+        m_q[m] = NeuralNet({FEATURE_COUNT, 512, 320, ACTS_[m]}, 400 + m);
     m_diplo = NeuralNet({FEATURE_COUNT, 256, 160, DIPLO_ACTIONS}, 300);
     // An empty path is a scratch model used for merging peer files, not a
     // model anybody is training. It loads nothing, saves nothing, and should
@@ -803,14 +809,49 @@ void AISystem::takeTurn(int cid) {
     std::vector<bool> valid;
     float score;
 
+    // Q as a nudge on the policy's logits.
+    //
+    // REINFORCE only ever moves the logit of the action it happened to sample,
+    // so the actor learns slowly which of eight war actions is the good one and
+    // says nothing at all about the seven it did not try. Q was trained on the
+    // same target for whichever action WAS taken, across every country and
+    // every turn, so it holds an opinion about all of them. Adding it here
+    // makes the choice a policy-improvement step over the actor rather than a
+    // straight sample from it.
+    //
+    // CENTRED, because a constant added to every logit changes nothing after a
+    // softmax -- what should move is the preference between actions, not the
+    // overall confidence, which temperature owns.
+    //
+    // INERT UNTIL TRAINED, and that guard is not optional: every model file
+    // written before this existed carries no Q head at all, so it starts from
+    // noise. Blending noise into a policy with millions of updates behind it
+    // would make the shipped AI worse the moment this shipped, and it would
+    // look like the actor had regressed.
+    std::vector<float> qbias;
+    auto qBiasFor = [&](int m) -> const std::vector<float>* {
+        if (Q_BLEND <= 0.0f) return nullptr;
+        if (m_q[m].updateCount() < Q_WARMUP_UPDATES) return nullptr;
+        const std::vector<float>& q = m_q[m].forward(exp.features);
+        if (q.empty()) return nullptr;
+        float mean = 0.0f;
+        for (float v : q) mean += v;
+        mean /= (float)q.size();
+        qbias.assign(q.size(), 0.0f);
+        for (size_t i = 0; i < q.size(); ++i) qbias[i] = Q_BLEND * (q[i] - mean);
+        return &qbias;
+    };
+
     validEconomy(cid, valid);
-    int a = pickAction(m_policy[MOD_ECONOMY], exp.features, valid, score);
+    int a = pickAction(m_policy[MOD_ECONOMY], exp.features, valid, score,
+                       /*graveAction=*/-1, qBiasFor(MOD_ECONOMY));
     m_policy[MOD_ECONOMY].snapshotActs(exp.acts[MOD_ECONOMY]);
     exp.action[MOD_ECONOMY] = a; exp.acted[MOD_ECONOMY] = true;
     logDecision(cid, MOD_ECONOMY, a, score, execEconomy(cid, a));
 
     validPolitics(cid, valid);
-    a = pickAction(m_policy[MOD_POLITICS], exp.features, valid, score);
+    a = pickAction(m_policy[MOD_POLITICS], exp.features, valid, score,
+                   /*graveAction=*/-1, qBiasFor(MOD_POLITICS));
     m_policy[MOD_POLITICS].snapshotActs(exp.acts[MOD_POLITICS]);
     exp.action[MOD_POLITICS] = a; exp.acted[MOD_POLITICS] = true;
     logDecision(cid, MOD_POLITICS, a, score, execPolitics(cid, a));
@@ -831,7 +872,8 @@ void AISystem::takeTurn(int cid) {
 
     validWar(cid, valid);
     // 4 = declare war; see the graveAction note in pickAction.
-    a = pickAction(m_policy[MOD_WAR], exp.features, valid, score, /*graveAction=*/4);
+    a = pickAction(m_policy[MOD_WAR], exp.features, valid, score, /*graveAction=*/4,
+                   qBiasFor(MOD_WAR));
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
     m_declaredUnprovoked = false;
@@ -839,7 +881,8 @@ void AISystem::takeTurn(int cid) {
     exp.aggressor = m_declaredUnprovoked;
 
     validNavy(cid, valid);
-    a = pickAction(m_policy[MOD_NAVY], exp.features, valid, score);
+    a = pickAction(m_policy[MOD_NAVY], exp.features, valid, score,
+                   /*graveAction=*/-1, qBiasFor(MOD_NAVY));
     m_policy[MOD_NAVY].snapshotActs(exp.acts[MOD_NAVY]);
     exp.action[MOD_NAVY] = a; exp.acted[MOD_NAVY] = true;
     logDecision(cid, MOD_NAVY, a, score, execNavy(cid, a));
@@ -2960,8 +3003,11 @@ void AISystem::endTurn() {
     // All the expensive work (nine nets' worth of forward and backward passes)
     // is deferred into `m_work` and run in parallel below.
     m_work.clear();
+    // `nextFeats` is the state the window ended in, or nullptr when the window
+    // ended the episode. See WorkItem::nextFeatures for why it exists.
     auto applyUpdate = [&](int cid, Experience& exp, const float* rewards,
-                           float diploReward) {
+                           float diploReward,
+                           const std::vector<float>* nextFeats = nullptr) {
         for (int m = 0; m < MOD_COUNT; ++m) rewardSum[m] += rewards[m];
         rewardN++;
         for (int m = 0; m < MOD_COUNT; ++m) {
@@ -2980,6 +3026,10 @@ void AISystem::endTurn() {
             w.features = exp.features;
             w.acts = std::move(exp.acts[m]);
             w.cid = cid;
+            if (nextFeats) {
+                w.nextFeatures = *nextFeats;
+                w.bootDiscount = BOOTSTRAP_DISCOUNT;
+            }
             m_work.push_back(std::move(w));
         }
         // Diplomacy has its own reward, normalised against the politics
@@ -3054,6 +3104,10 @@ void AISystem::endTurn() {
         }
 
         float dNetNow = dead ? 0.0f : g.computeCountryIncome(cid).net;
+
+        // Filled lazily below, and only for countries that actually mature a
+        // window this turn: buildFeatures is not free and most do not.
+        std::vector<float> bootFeatures;
 
         while (!dq.empty() && (dead || dq.front().age >= N_STEP)) {
             Experience& exp = dq.front();
@@ -3153,7 +3207,7 @@ void AISystem::endTurn() {
                 float global = 0.6f * std::tanh(dProv / 3.0f)
                              + 0.2f * std::tanh(dTre / 100.0f)
                              + 0.3f * std::tanh(dNet / 15.0f)
-                             - 0.8f * std::tanh(rebels / 2.0f)
+                             - UNREST_WEIGHT * std::tanh(rebels / 2.0f)
                              - 0.5f * broke;
                 // Each module is now judged mostly on what it actually controls.
                 rewards[MOD_ECONOMY]  = global
@@ -3266,7 +3320,7 @@ void AISystem::endTurn() {
                 // gaining nothing really is stalling.
                 const float phoneyWar =
                     (exp.atWar && exp.warTurns >= N_STEP &&
-                     exp.threatened == 0 && dProv <= 0.0f) ? -0.5f : 0.0f;
+                     exp.threatened == 0 && dProv <= 0.0f) ? WAR_PHONEY_CHARGE : 0.0f;
 
                 // The cost of starting it — CHARGED ON THE OUTCOME, not on
                 // the decision.
@@ -3288,7 +3342,7 @@ void AISystem::endTurn() {
                 // exempt entirely, as before.
                 const float aggression =
                     exp.aggressor
-                        ? -0.35f * (1.0f - std::tanh(std::max(0.0f, dProv) / 2.0f))
+                        ? WAR_AGGRESSION_CHARGE * (1.0f - std::tanh(std::max(0.0f, dProv) / 2.0f))
                         : 0.0f;
 
                 rewards[MOD_WAR]      = global
@@ -3354,7 +3408,22 @@ void AISystem::endTurn() {
             for (int m = 0; m < MOD_COUNT; ++m)
                 if (!std::isfinite(rewards[m])) rewards[m] = 0.0f;
             if (!std::isfinite(diploReward)) diploReward = 0.0f;
-            applyUpdate(cid, exp, rewards, diploReward);
+
+            // Where the window ended, so the decision that opened it can be
+            // credited with what the country went on to be worth. Built once
+            // per country per flush and shared by every window maturing in this
+            // pass -- they all end in the same present.
+            //
+            // TERMINAL cases get none of it, and the distinction matters more
+            // than the arithmetic: elimination already scores -4 and winning
+            // the map +4, and adding the value of a state that does not exist
+            // on top of either would dilute the only two unambiguous outcomes
+            // the game produces.
+            const bool episodeOver = dead || m_victorCid == cid ||
+                                     standing != m_finalStanding.end();
+            if (!episodeOver && bootFeatures.empty()) buildFeatures(cid, bootFeatures);
+            applyUpdate(cid, exp, rewards, diploReward,
+                        episodeOver ? nullptr : &bootFeatures);
             dq.pop_front();
         }
 
@@ -3456,12 +3525,38 @@ void AISystem::runLearningWork() {
                 continue;
             }
             const int m = w.module;
-            // Value baseline: V(s) trained toward the normalised reward.
+
+            // The target is this window's reward PLUS what the state it ended
+            // in is worth. Without the second half the learner could not see
+            // past N_STEP turns, which is shorter than a war -- see
+            // WorkItem::nextFeatures.
+            //
+            // V(s') is read from the value net as it stands, not backpropagated
+            // through: this is a bootstrapped target, and letting the gradient
+            // chase its own estimate is how these diverge.
+            float target = w.norm;
+            if (w.bootDiscount > 0.0f && !w.nextFeatures.empty()) {
+                m_value[m].forwardInto(ws.valueNext[m], w.nextFeatures);
+                target += w.bootDiscount * ws.valueNext[m].acts.back()[0];
+            }
+            // Clamped in the same units the baseline is, so one absurd
+            // bootstrap cannot drag the value head somewhere it will take
+            // thousands of updates to come back from.
+            target = std::clamp(target, -6.0f, 6.0f);
+
+            // Value baseline: V(s) trained toward that target.
             m_value[m].forwardInto(ws.value[m], w.features);
             const float baseline = ws.value[m].acts.back()[0];
-            const float advantage = std::clamp(w.norm - baseline, -3.0f, 3.0f);
+            const float advantage = std::clamp(target - baseline, -3.0f, 3.0f);
             w.advantage = advantage;
-            m_value[m].accumulateValueInto(ws.value[m], w.norm);
+            m_value[m].accumulateValueInto(ws.value[m], target);
+
+            // Q(s,a) toward the same target, on the taken action only. The
+            // window says what THIS action was worth and nothing about the
+            // others, so the others must get no gradient -- see
+            // accumulateActionValueInto.
+            m_q[m].forwardInto(ws.q[m], w.features);
+            m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
             // Activations were snapshotted at decision time — reusing them
             // replaces a full policy re-forward with a couple of vector moves.
             if (!w.acts.empty()) NeuralNet::loadActs(ws.policy[m], std::move(w.acts));
@@ -3479,6 +3574,11 @@ void AISystem::runLearningWork() {
             for (int m = 0; m < MOD_COUNT; ++m) {
                 m_policy[m].initScratch(ws.policy[m]);
                 m_value[m].initScratch(ws.value[m]);
+                // The bootstrap's own scratch, same shape, initialised with the
+                // rest. Forgetting this one is a forward pass into unallocated
+                // activations.
+                m_value[m].initScratch(ws.valueNext[m]);
+                m_q[m].initScratch(ws.q[m]);
             }
             m_diplo.initScratch(ws.diplo);
             ws.ready = true;
@@ -3622,13 +3722,19 @@ void AISystem::saveModel() {
     std::vector<uint8_t> out;
     const char magic[4] = {'O', 'D', 'A', 'I'};
     out.insert(out.end(), magic, magic + 4);
-    out.push_back(2); // format version (2 = reward statistics ride along)
-    out.push_back(MOD_COUNT * 2 + 1); // net count
+    // 3 = the action-value heads ride along too. A v2 reader would refuse this
+    // file on the net count alone, which is the correct failure: it would
+    // otherwise read Q weights as if they were something else.
+    out.push_back(3);
+    out.push_back(MOD_COUNT * 3 + 1); // net count: policy, value, Q, diplo
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
     }
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_value[m].serialize(b); appendBlob(out, b);
+    }
+    for (int m = 0; m < MOD_COUNT; ++m) {
+        std::vector<uint8_t> b; m_q[m].serialize(b); appendBlob(out, b);
     }
     { std::vector<uint8_t> b; m_diplo.serialize(b); appendBlob(out, b); }
     // Reward normalisation statistics.
@@ -3839,9 +3945,14 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion != 1 && fileVersion != 2) return false;
-    int count = buf[5];
-    if (count != MOD_COUNT * 2 + 1) return false;
+    if (fileVersion < 1 || fileVersion > 3) return false;
+    const int count = buf[5];
+    // v1/v2 carry no Q heads. Those files are every hour of training done
+    // before this existed, so they load and simply leave Q at its initial
+    // weights -- which Q_WARMUP_UPDATES then keeps out of the way until it has
+    // learned something.
+    const bool hasQ = (count == MOD_COUNT * 3 + 1);
+    if (!hasQ && count != MOD_COUNT * 2 + 1) return false;
     size_t p = 6;
     auto readBlob = [&](NeuralNet& net) -> bool {
         if (p + 4 > buf.size()) return false;
@@ -3854,6 +3965,8 @@ bool AISystem::loadModel() {
     };
     for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_policy[m])) return false;
     for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_value[m])) return false;
+    if (hasQ)
+        for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_q[m])) return false;
     if (!readBlob(m_diplo)) return false;
     if (fileVersion >= 2 && p + 4 <= buf.size()) {
         uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) | ((uint32_t)buf[p+3] << 24);

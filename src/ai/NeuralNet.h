@@ -75,6 +75,16 @@ public:
     static void loadActs(Scratch& s, std::vector<std::vector<float>>&& acts) { s.acts = std::move(acts); }
     void accumulatePolicyInto(Scratch& s, int action, float advantage) const;
     void accumulateValueInto(Scratch& s, float target) const;
+    /**
+     * Regress ONE output toward a target, leaving the others alone.
+     *
+     * This is what an action-value head needs: a window teaches what the action
+     * actually taken was worth and says nothing about the ones that were not,
+     * so every other output must receive no gradient at all. Regressing the
+     * whole vector toward the same number would train Q to be flat, which is
+     * the one shape that makes it useless for choosing between actions.
+     */
+    void accumulateActionValueInto(Scratch& s, int action, float target) const;
     /** Folds a worker's gradients into the shared batch and empties it. */
     void mergeScratch(Scratch& s);
 

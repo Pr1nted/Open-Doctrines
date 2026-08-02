@@ -496,6 +496,84 @@ private:
     // credited to nothing.
     static constexpr int N_STEP = 12;
 
+    /**
+     * What the state at the END of a reward window is worth to the decision
+     * that opened it. Per WINDOW, not per turn -- one step here is N_STEP turns.
+     *
+     * 0.9 gives an effective horizon of about ten windows, i.e. 120 turns,
+     * against the 12 it had when the window's own reward was the entire target.
+     * A whole war now fits inside what a decision can be credited for.
+     *
+     * Zero restores the old behaviour exactly, which is what makes this a
+     * one-line experiment rather than a rewrite.
+     */
+    static constexpr float BOOTSTRAP_DISCOUNT = 0.9f;
+
+    /**
+     * How loudly Q is allowed to argue with the policy. 0 disables it entirely
+     * and restores pure REINFORCE action selection.
+     *
+     * Q is trained toward the same normalised target the value head is, so its
+     * spread is in reward standard deviations -- roughly the same scale the
+     * policy's logits end up at, which is why 1.0 is a sensible starting point
+     * rather than an arbitrary one. Turn it up and the actor becomes a prior
+     * the critic overrules; turn it down and the critic only breaks ties.
+     */
+    static constexpr float Q_BLEND = 1.0f;
+
+    /**
+     * Updates a Q head needs before it is allowed to influence anything.
+     *
+     * Every model file written before Q existed has no Q head, so it starts
+     * from random weights. An untrained critic overruling a policy with
+     * millions of updates behind it does not degrade gracefully -- it looks
+     * exactly like the actor having forgotten how to play. Below this count
+     * Q is trained and ignored.
+     */
+    static constexpr uint64_t Q_WARMUP_UPDATES = 2000000;
+
+    /**
+     * What a war costs the war module beyond what the fighting itself costs.
+     *
+     * BOTH ARE ZERO NOW, and the reason is BOOTSTRAP_DISCOUNT rather than a
+     * change of heart about aggression.
+     *
+     * These charges existed to stand in for a payoff the learner could not see.
+     * The comments below them say so outright: conquest pays +2.0 x tanh(dProv)
+     * but "a war rarely concludes inside the twelve-turn reward window", so the
+     * gain landed after the window closed while the cost landed inside it, and
+     * the policy read the arithmetic and stopped fighting. The answer at the
+     * time was to shrink and reshape the charges until war was affordable
+     * again.
+     *
+     * The value bootstrap removes the premise. A decision is now credited with
+     * what the country is worth at the END of its window, so a war that takes
+     * forty turns to pay off is visible to the update that started it. With the
+     * horizon fixed, these terms stop being a correction and become a thumb on
+     * the scale -- and the measurement says which way it was pressing: against
+     * a control that invades at random, the trained policy declared 2.34 wars
+     * per thousand country-turns to the control's 10.64, and held 42% of the
+     * world to its 58%, at equal survival.
+     *
+     * Restore either by setting it back: -0.5 and -0.35 are what they were.
+     */
+    static constexpr float WAR_PHONEY_CHARGE     = 0.0f;  // was -0.5
+    static constexpr float WAR_AGGRESSION_CHARGE = 0.0f;  // was -0.35
+
+    /**
+     * How much unrest counts against every module's shared reward.
+     *
+     * Halved from 0.8, because conquest CAUSES rebellions: newly taken
+     * provinces are the unhappy ones. At full price this was the anti-war
+     * charge arriving again through a side door, and it applied to the economy
+     * and navy modules too, which do not choose the wars.
+     *
+     * Not removed. Unrest that is actually costing provinces is already priced
+     * by the dLost term; this is what remains for unrest that has not cost
+     * anything yet, and a country tearing itself apart should still notice.
+     */
+    static constexpr float UNREST_WEIGHT = 0.4f;  // was 0.8
+
     struct Experience {
         std::vector<float> features;
         int action[MOD_COUNT + 1] = {-1, -1, -1, -1, -1}; // +1 = diplo slot
@@ -570,6 +648,27 @@ private:
     std::string m_modelPath;
     NeuralNet m_policy[MOD_COUNT];
     NeuralNet m_value[MOD_COUNT];
+    /**
+     * Q(s,a): what each action in this state turned out to be worth.
+     *
+     * The policy is trained by REINFORCE, which nudges the logit of whatever
+     * was sampled by its advantage. That is a slow and noisy way to discover
+     * that one action is better than another, and at decision time the net has
+     * nothing to say about the actions it did NOT sample.
+     *
+     * A value head cannot fill that gap: V(s) scores the STATE, so it is the
+     * same number whichever action is being considered. Ranking actions needs a
+     * per-action estimate, and without a forward model -- the game cannot cheaply
+     * answer "what would the world look like if I declared war on France" --
+     * that estimate has to be learned rather than searched for.
+     *
+     * So Q is trained on the same bootstrapped target the value head gets, but
+     * written to the taken action's output alone, and at decision time it is
+     * blended into the policy's logits. That makes action selection a
+     * policy-improvement step over the actor instead of a straight sample from
+     * it, which is the model-free half of what a one-ply search would buy.
+     */
+    NeuralNet m_q[MOD_COUNT];
     NeuralNet m_diplo;
     std::mt19937 m_rng{1337}; // fixed seed: identical state -> identical picks
     int m_turn = 0;
@@ -634,16 +733,41 @@ private:
     struct WorkItem {
         int module = 0;      // MOD_* , or MOD_COUNT for the diplomacy net
         int action = -1;
-        float norm = 0;      // normalised reward
+        float norm = 0;      // normalised reward for THIS window
         float advantage = 0; // filled in by the worker, for the debug log
         int cid = 0;
         std::vector<float> features;
         std::vector<std::vector<float>> acts; // cached policy activations
+        /**
+         * The state the window ended in, and what a value there is worth.
+         *
+         * Without these the learner's horizon is exactly N_STEP turns: the
+         * target was the window's own reward and nothing else, so anything a
+         * decision caused after twelve turns was invisible to it. That is
+         * shorter than a war. An invasion launched at turn 40 and won at turn
+         * 70 trained as twelve turns of cost and no gain whatsoever.
+         *
+         * With them the target becomes reward + BOOTSTRAP_DISCOUNT * V(end of
+         * window), so value propagates backwards one window at a time and the
+         * effective horizon stops being a constant.
+         *
+         * Empty features, or a zero discount, means the window ended the
+         * episode -- the country was eliminated or the map was decided -- and a
+         * terminal state is worth nothing by definition.
+         */
+        std::vector<float> nextFeatures;
+        float bootDiscount = 0.0f;
     };
     std::vector<WorkItem> m_work;
     struct WorkerScratch {
         NeuralNet::Scratch policy[MOD_COUNT];
         NeuralNet::Scratch value[MOD_COUNT];
+        // A SECOND value scratch, for V(end of window). It cannot share the one
+        // above: that holds the activations the value update backpropagates
+        // through, and evaluating the bootstrap into it would overwrite them
+        // with the wrong state's.
+        NeuralNet::Scratch valueNext[MOD_COUNT];
+        NeuralNet::Scratch q[MOD_COUNT];
         NeuralNet::Scratch diplo;
         bool ready = false;
     };
