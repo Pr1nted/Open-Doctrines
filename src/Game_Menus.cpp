@@ -667,11 +667,38 @@ void Game::drawMainMenu() {
         DrawRectangleRoundedLines(r, 0.4f, 8, fade(ColorAlpha(accent, 0.8f)));
         // A gentle pulse, so it reads as new without demanding attention.
         float pulse = 0.75f + 0.25f * sinf((float)GetTime() * 3.0f);
-        DrawCircle((int)r.x + 14, (int)(r.y + r.height / 2), 7,
-                   fade(ColorAlpha(accent, pulse)));
-        DrawText("!", (int)r.x + 11, (int)(r.y + r.height / 2) - 7, 16,
-                 fade(Color{20, 20, 25, 255}));
-        DrawText("Update available", (int)r.x + 28, (int)(r.y + r.height / 2) - 7, 14,
+        const int badgeR = 7;
+        const int dotX = (int)r.x + 14;
+        const int dotY = (int)(r.y + r.height / 2);
+        DrawCircle(dotX, dotY, (float)badgeR, fade(ColorAlpha(accent, pulse)));
+
+        // The mark is DRAWN, not typed, and that is the fix rather than a
+        // flourish.
+        //
+        // As text it never fitted. DrawText positions a glyph by the top-left
+        // of its LINE BOX, and the box is as tall as the font size -- so a 16px
+        // "!" in a circle 14px across overflowed it, and the ink sits high
+        // inside its own box, so centring the box still left the mark high. The
+        // old code answered both with a hand-tuned offset that was simply wrong
+        // in a different direction, and at this size one pixel is visible.
+        //
+        // Two rectangles have none of those problems: the ink is exactly what
+        // is asked for, it is symmetric about the circle's centre by
+        // construction, and it stays crisp because the edges land on pixels
+        // instead of on a scaled glyph. Sized from badgeR so the two cannot
+        // drift apart if the badge ever changes.
+        const Color ink = fade(Color{20, 20, 25, 255});
+        const int barW = std::max(2, badgeR / 3);          // 2 at r=7
+        const int barH = std::max(3, (badgeR * 5) / 7);    // 5 at r=7
+        const int gap  = std::max(1, badgeR / 7);          // 1 at r=7
+        // Whole ink height is barH + gap + barW, centred on dotY.
+        const int inkTop = dotY - (barH + gap + barW) / 2;
+        DrawRectangle(dotX - barW / 2, inkTop, barW, barH, ink);
+        DrawRectangle(dotX - barW / 2, inkTop + barH + gap, barW, barW, ink);
+
+        // The label sits on the same centre line, by the same rule.
+        const int labelSize = 14;
+        DrawText("Update available", (int)r.x + 28, dotY - labelSize / 2, labelSize,
                  fade(hov ? WHITE : Color{200, 200, 210, 255}));
     }
 
