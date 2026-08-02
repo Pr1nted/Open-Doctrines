@@ -27,6 +27,11 @@ AGENTS.md
 data/projects/
 # Exported playthrough timelapses
 data/timelapses/
+# Saved games. The game writes them inside the repo, and package.py has always
+# treated them as user data too private to ship; the repository had no matching
+# rule, so they sat untracked and made the tree dirty enough for release.py to
+# refuse to cut a release.
+data/saves/
 # The signed-in account's session token. The app bundle's data/ is a symlink
 # to this directory, so the game writes it here -- inside the repo.
 data/account.json
@@ -115,6 +120,12 @@ data/config.json
 data/ai/model.w*.bin
 data/ai/model.bin.prev
 data/ai/*.tmp
+# Hand-made checkpoints taken before a change that cannot be undone by
+# training -- resetting a module head, or altering what the reward means.
+# Worth keeping on disk to roll back to, never worth committing: each is a
+# 12 MB copy of a file that is already tracked.
+data/ai/model.pre-*.bin
+data/ai/pre-reset-workers/
 data/tmp_export___ai_training_*/
 data/custom_maps/__ai_training_*.odmap
 data/custom_maps/__ai_eval_*.odmap
