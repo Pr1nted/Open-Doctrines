@@ -40,10 +40,41 @@ jobs:
           fi
           echo "Target: $ITCH_TARGET"
 
+          # Does the key authenticate at all? Ask itch directly, because
+          # `butler status` alone cannot answer it: it prints "No channel
+          # found" both for a game that exists and has never had a build, and
+          # for a target that is not there. Those need opposite fixes.
+          #
+          # Never echo the key. GitHub masks secret VALUES in logs, but that
+          # masking is a safety net, not a licence to print them.
+          me=$(curl -s -H "Authorization: $BUTLER_API_KEY" \
+                 https://itch.io/api/1/key/me)
+          if ! printf '%s' "$me" | jq -e .user.username > /dev/null 2>&1; then
+            echo "The key was REJECTED by itch.io."
+            echo "Response: $(printf '%s' "$me" | jq -r '.errors // "unparseable"')"
+            exit 1
+          fi
+          echo "Key accepted. Account: $(printf '%s' "$me" | jq -r .user.username)"
+
+          # Does the game itself exist? butler pushes builds to a game; it does
+          # not create one. A release approved against a target that is not
+          # there fails at the very last step, after publishing to GitHub.
+          game=${ITCH_TARGET#*/}
+          if curl -s -H "Authorization: $BUTLER_API_KEY" \
+               https://itch.io/api/1/key/my-games \
+             | jq -e --arg g "$game" \
+                 '.games[] | select(.url | endswith("/" + $g))' > /dev/null; then
+            echo "Game page exists: $ITCH_TARGET"
+          else
+            echo "NO GAME at $ITCH_TARGET. butler creates channels, not games."
+            echo "Create the project on itch.io first, or fix the ITCH_TARGET"
+            echo "variable. Your projects:"
+            curl -s -H "Authorization: $BUTLER_API_KEY" \
+              https://itch.io/api/1/key/my-games | jq -r '.games[]?.url'
+            exit 1
+          fi
+
           curl -sL -o butler.zip \
             https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip && chmod +x butler
-
-          # Never echo the key. GitHub masks secret VALUES in logs, but that
-          # masking is a safety net, not a licence to print them.
           ./butler status "$ITCH_TARGET"
