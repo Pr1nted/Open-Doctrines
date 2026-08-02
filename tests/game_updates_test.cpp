@@ -246,9 +246,51 @@ void testParsingAReleaseReply() {
           GameUpdates::parseRelease(good, "OpenDoctrines-solaris-sparc", w));
     check("...but offers no download", w.assetUrl.empty(), w.assetUrl);
 
+    // THE LIST ENDPOINT.
+    //
+    // check() asks /releases, not /releases/latest, because "latest" skips
+    // prereleases and every alpha this project ships is flagged as one -- that
+    // endpoint answered 404 for the whole life of the game and no copy was ever
+    // offered an update. The list returns an ARRAY, newest first.
+    {
+        std::string arr = "[\n" + good + ",\n" + R"({
+          "tag_name": "v1.3.0r",
+          "html_url": "https://github.com/Pr1nted/Open-Doctrines/releases/tag/v1.3.0r",
+          "assets": [
+            {"name": "OpenDoctrines-linux-x64.zip",
+             "size": 1,
+             "browser_download_url": "https://github.com/Pr1nted/Open-Doctrines/releases/download/v1.3.0r/OpenDoctrines-linux-x64.zip"}
+          ]
+        })" + "\n]";
+
+        GameUpdates::Status a;
+        check("an array of releases parses", GameUpdates::parseRelease(arr, plat, a));
+        check("and the NEWEST is the one taken", a.latest == "1.4.0r", a.latest);
+        check("with the newest release's asset", a.assetSize == 4242, std::to_string(a.assetSize));
+
+        // The failure this guards against, which is silent rather than loud:
+        // the newest release has no build for this platform, so a parser that
+        // scanned the whole array would walk on into the OLDER release, find
+        // its zip, and hand the player 1.3.0r's download under 1.4.0r's version
+        // number. Reporting the release with no download is the correct answer.
+        GameUpdates::Status x;
+        check("a platform missing from the newest release still reports it",
+              GameUpdates::parseRelease(arr, "OpenDoctrines-windows-x64", x));
+        check("...and must NOT fall through to an older release's asset",
+              x.assetUrl.empty(), x.assetUrl);
+
+        // A body containing braces and quotes must not end the object early.
+        std::string braces = R"([{"tag_name":"v2.0.0r","body":"fixes {a} and \"b\"","assets":[]}])";
+        GameUpdates::Status b;
+        check("braces and quotes in the notes do not truncate the object",
+              GameUpdates::parseRelease(braces, plat, b) && b.latest == "2.0.0r", b.latest);
+    }
+
     // Hostile and broken input. None of it may produce a usable update.
     struct { const char* what; std::string body; } bad[] = {
         {"an empty reply", ""},
+        {"no releases at all", "[]"},
+        {"an array that is cut off mid-release", R"([{"tag_name": "v1.4.0r", "asse)"},
         {"a reply with no tag", R"({"html_url": "https://github.com/x"})"},
         {"a tag that is not a version", R"({"tag_name": "latest"})"},
         {"a tag that is prose", R"({"tag_name": "the newest one ever"})"},

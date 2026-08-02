@@ -40,10 +40,24 @@ std::string g_installDir;
 // objects.githubusercontent.com after a redirect, so that name is allowed too
 // -- but only as a redirect target curl follows, never as a URL taken from the
 // reply body.
+// /releases, NOT /releases/latest, and that is the difference between an
+// updater that works and one that silently never fires.
+//
+// GitHub's "latest" endpoint skips prereleases by design, and release-game.yml
+// marks every version whose state letter is not 'r' as a prerelease -- which is
+// every alpha and beta this project has ever published. So /releases/latest
+// answered 404 for the entire life of the game: every copy checked for updates,
+// got nothing, and reported itself up to date. v1.0.4a players could not have
+// been offered v1.0.5a at all.
+//
+// The list endpoint returns published releases newest first and includes
+// prereleases. Drafts are not returned to an unauthenticated caller, which is
+// what we want: an unpublished release is not an update.
 constexpr const char* kApiLatest =
-    "https://api.github.com/repos/Pr1nted/Open-Doctrines/releases/latest";
+    "https://api.github.com/repos/Pr1nted/Open-Doctrines/releases";
+// Likewise: the /releases/latest PAGE 404s when every release is a prerelease.
 constexpr const char* kReleasePage =
-    "https://github.com/Pr1nted/Open-Doctrines/releases/latest";
+    "https://github.com/Pr1nted/Open-Doctrines/releases";
 
 // ------------------------------------------------------------ subprocess ---
 
@@ -360,9 +374,48 @@ bool GameUpdates::isReleaseHostUrl(const std::string& url) {
 
 // ---------------------------------------------------------------- parsing --
 
-bool GameUpdates::parseRelease(const std::string& body, const std::string& platform,
+// The newest release, as a document of its own.
+//
+// /releases returns an ARRAY. Everything below reads ONE release by scanning
+// forward for field names, and letting that loose on an array would not merely
+// be untidy -- it would pair a new version number with an old download. The tag
+// is taken from the first release, but the asset walk stops at the first
+// matching name anywhere in the body, so a newest release that happens to lack
+// this platform's zip would hand back the PREVIOUS release's asset under the
+// newest release's version. The player would be told 1.0.5a and given 1.0.4a.
+//
+// So the first element is cut out and parsed alone. Brace counting, with string
+// and escape awareness, because a release body is player-written text and may
+// contain braces and quotes.
+//
+// A bare object (a single release, which is what /releases/latest used to
+// return, and what the tests hand in) is returned unchanged.
+static std::string firstReleaseObject(const std::string& body) {
+    size_t i = body.find_first_not_of(" \t\r\n");
+    if (i == std::string::npos) return {};
+    if (body[i] != '[') return body;
+
+    size_t start = body.find('{', i);
+    if (start == std::string::npos) return {};   // [] -- no releases at all
+    int depth = 0;
+    bool inStr = false, esc = false;
+    for (size_t p = start; p < body.size(); ++p) {
+        const char c = body[p];
+        if (esc)          { esc = false; continue; }
+        if (inStr)        { if (c == '\\') esc = true; else if (c == '"') inStr = false; continue; }
+        if (c == '"')     { inStr = true; continue; }
+        if (c == '{')     { ++depth; }
+        else if (c == '}' && --depth == 0) return body.substr(start, p - start + 1);
+    }
+    return {};   // truncated or unbalanced: no release rather than a wrong one
+}
+
+bool GameUpdates::parseRelease(const std::string& raw, const std::string& platform,
                                Status& out) {
-    if (body.empty() || body.size() > 4u * 1024 * 1024) return false;
+    if (raw.empty() || raw.size() > 4u * 1024 * 1024) return false;
+
+    const std::string body = firstReleaseObject(raw);
+    if (body.empty()) return false;
 
     std::string tag = jsonString(body, 0, "tag_name", 32);
     if (tag.empty()) return false;
