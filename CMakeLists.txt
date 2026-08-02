@@ -465,6 +465,10 @@ message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    # Built everywhere, a no-op off Windows. It is separate from Game.cpp
+    # because Game.cpp must include <windows.h> with NOUSER -- which removes
+    # MessageBoxA, the one call a fatal startup error needs. See its header.
+    src/WinFatalDialog.cpp
     src/GameUpdates.cpp
     # Built on every platform even though only the web build has the menu
     # entries: the archive half is ordinary std::filesystem and miniz, and a

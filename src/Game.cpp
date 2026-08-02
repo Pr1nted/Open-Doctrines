@@ -1,5 +1,6 @@
 #include "GameUpdates.h"
 #include "Game.h"
+#include "WinFatalDialog.h"
 #include "Audio.h"
 #include "net/AccountClient.h"
 #include "net/HttpClient.h"   // netSetWaitHook: the frame drawn while a request waits
@@ -659,15 +660,16 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
     if (std::strstr(line, "does not appear to support OpenGL") ||
         std::strstr(line, "Failed to find a suitable pixel format") ||
         std::strstr(line, "Failed to initialize GLFW")) {
-        MessageBoxA(nullptr,
+        // odFatalDialog, not MessageBoxA: this file includes <windows.h> with
+        // NOUSER, which removes it. See src/WinFatalDialog.h.
+        odFatalDialog("OpenDoctrines",
             "OpenDoctrines could not open a window.\n\n"
             "This computer's graphics driver does not provide OpenGL 3.3, "
             "which the game needs in order to draw anything.\n\n"
             "The usual causes are a missing or very old graphics driver, a "
             "virtual machine without 3D acceleration, or a remote desktop "
             "session that does not forward OpenGL.\n\n"
-            "Updating the graphics driver is the first thing to try.",
-            "OpenDoctrines", MB_OK | MB_ICONERROR);
+            "Updating the graphics driver is the first thing to try.");
         // Leave now rather than return. raylib faults immediately after this
         // warning, and that crash would replace the message just shown with
         // Windows' own, which explains nothing.
@@ -787,8 +789,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
         // already know to try, which is precisely the knowledge somebody hitting
         // this does not have.
 #ifdef _WIN32
-        MessageBoxA(nullptr, kNoWindow, "OpenDoctrines",
-                    MB_OK | MB_ICONERROR);
+        odFatalDialog("OpenDoctrines", kNoWindow);
 #endif
         return false;
     }
