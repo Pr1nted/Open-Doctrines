@@ -1584,6 +1584,30 @@ private:
     static constexpr float CALL_TO_ARMS_UNREST = 7.0f;
 
     /**
+     * Turns a province cannot revolt again for after it has just revolted.
+     *
+     * WITHOUT THIS, PUTTING A REVOLT DOWN ACHIEVES NOTHING.
+     *
+     * A rebellion was a Bernoulli trial run fresh every turn, and nothing about
+     * having just had one changed the odds of the next. So a province whose
+     * unrest cleared the threshold would revolt, be reconquered, and revolt
+     * again for as long as the grievance stood -- which is for ever, because
+     * crushing a revolt does not move a compass, a minority or a treasury.
+     *
+     * Measured on a 250-turn run of the shipped 1939 scenario: 945 revolts
+     * across 484 provinces, one province rising 25 separate times, 921
+     * rebellion wars against 187 real ones, and rebel state ids past R1900. The
+     * map does not fracture dramatically, it flickers.
+     *
+     * Forty turns is deliberately long. It is not "the garrison is still
+     * there"; it is "this province rose, it was put down, and that is a thing
+     * that happened rather than weather". A government that never addresses the
+     * grievance still sees the province rise again -- just a handful of times
+     * across a long game instead of every tenth turn.
+     */
+    static constexpr int REBELLION_COOLDOWN_TURNS = 40;
+
+    /**
      * Unrest added per turn a country spends bankrupt, before severity scaling.
      *
      * Sustained bankruptcy should reach WAR_WEARINESS_MAX in a handful of
@@ -1635,6 +1659,14 @@ private:
     // Rebellions that fired this turn, per country — cleared at processTurn
     // start. The AI reads it both as a feature and as a punishment signal.
     std::unordered_map<int, int> m_rebellionsThisTurnByCid;
+    // pid -> turns before this province may revolt again. Set when it revolts,
+    // counted down once a turn, entry erased at zero — so the map holds only
+    // provinces actually cooling down, not one entry per province on the map.
+    // Owner-independent on purpose: conquering a province that has just risen
+    // does not hand the new owner a fresh revolt.
+    std::unordered_map<int, int> m_provinceRebellionCooldown;
+    /** Per-turn countdown for m_provinceRebellionCooldown. */
+    void decayRebellionCooldowns();
     // Countries already reduced to zero provinces and disbanded, so the
     // per-turn elimination sweep does the (once-only) teardown and log line
     // exactly once instead of re-running it every turn for every dead shell —

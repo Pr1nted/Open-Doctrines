@@ -2032,6 +2032,9 @@ void Game::unloadGameData() {
     // Country ids are reused across maps, so leaving this behind would charge a
     // fresh country for a war the previous map's cid 7 was dragged into.
     m_countryWarWeariness.clear();
+    // Province ids are reused across maps too, so a cooldown left behind would
+    // silently make an unrelated province on the next map unrebellable.
+    m_provinceRebellionCooldown.clear();
     m_callToArmsCooldown.clear();
     m_countryBalances.clear();
     m_pendingCeasefireTerms.clear();

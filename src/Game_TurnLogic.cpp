@@ -302,6 +302,7 @@ void Game::processTurn() {
     drawFrame(0.58f, "Updating policies...");
     updatePolicies();
     decayWarWeariness();
+    decayRebellionCooldowns();
     auto t6 = std::chrono::steady_clock::now();
     drawFrame(0.60f, "Eliminating defeated countries...");
     eliminateDefeatedCountries();
@@ -1696,6 +1697,11 @@ void Game::processRebellions(int countryId) {
         int rebelCid = allocateRebelCid();
         createRebelCountry(rebelCid, countryId, faction);
         m_rebellionsThisTurnByCid[countryId]++;
+        // This province has now had its revolt. Whatever happens to it next --
+        // the rebel holds it, the parent retakes it, a third party takes it --
+        // it does not rise again for a while. Without this the same province
+        // simply re-rolled its grievance every turn for the rest of the game.
+        for (int pid : faction) m_provinceRebellionCooldown[pid] = REBELLION_COOLDOWN_TURNS;
 
         // The survivors of the uprising are now standing inside a country that
         // did not exist a moment ago and that their owner is automatically at
@@ -2832,6 +2838,14 @@ void Game::addWarWeariness(int cid, float amount) {
     // Capped: weariness should make holding a country together hard, not make
     // total collapse arithmetically certain the moment two allies call.
     w = std::min(WAR_WEARINESS_MAX, w + amount);
+}
+
+void Game::decayRebellionCooldowns() {
+    for (auto it = m_provinceRebellionCooldown.begin();
+         it != m_provinceRebellionCooldown.end(); ) {
+        if (--it->second <= 0) it = m_provinceRebellionCooldown.erase(it);
+        else ++it;
+    }
 }
 
 void Game::decayWarWeariness() {

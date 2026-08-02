@@ -610,6 +610,15 @@ float Game::getCountryUnrest(int countryId) const {
 }
 
 float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
+    // A province that has just risen cannot rise again yet. Gated here rather
+    // than in processRebellions so the number the player reads is the number
+    // that governs: this IS the chance the province revolts this turn, and
+    // during the cooldown it is genuinely zero. See REBELLION_COOLDOWN_TURNS.
+    {
+        auto cdIt = m_provinceRebellionCooldown.find(provinceId);
+        if (cdIt != m_provinceRebellionCooldown.end() && cdIt->second > 0) return 0.0f;
+    }
+
     float polUnrest = 0.0f, ethUnrest = 0.0f;
 
     // Baseline: a centrist, well-governed province is STABLE (near-zero). The

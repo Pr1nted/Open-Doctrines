@@ -1436,6 +1436,13 @@ std::string Game::saveStateJson() {
         if (val > 0.0f) j["warWeariness"][std::to_string(cid)] = val;
     }
 
+    // Post-revolt cooldowns, for the same reason: without them a save/load
+    // makes every province that has just been pacified immediately eligible to
+    // rise again, and reloading becomes a way to re-roll the map.
+    for (auto& [pid, turns] : m_provinceRebellionCooldown) {
+        if (turns > 0) j["rebellionCooldown"][std::to_string(pid)] = turns;
+    }
+
     // Diplomatic relations. These were previously not persisted anywhere, so
     // every war/alliance declared in-game was silently lost on load.
     for (auto& [isoA, targets] : m_relations) {
@@ -1746,6 +1753,15 @@ void Game::loadStateJson(const std::string& json) {
     if (j.contains("warWeariness")) {
         for (auto& [key, val] : j["warWeariness"].items()) {
             m_countryWarWeariness[std::stoi(key)] = val.get<float>();
+        }
+    }
+
+    // Post-revolt cooldowns (see saveStateJson). Absent from older saves, which
+    // simply load with nothing cooling down.
+    if (j.contains("rebellionCooldown")) {
+        for (auto& [key, val] : j["rebellionCooldown"].items()) {
+            const int turns = val.get<int>();
+            if (turns > 0) m_provinceRebellionCooldown[std::stoi(key)] = turns;
         }
     }
 
