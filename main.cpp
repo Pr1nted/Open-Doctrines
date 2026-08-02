@@ -74,6 +74,28 @@ int main(int argc, char** argv) {
         return AISystem::mergeModelFiles(argv[i + 1], inputs) ? 0 : 1;
     }
 
+    // --reset-ai-head <model.bin> <econ|politics|war|navy>
+    // Discards one module's policy, value baseline and reward statistics and
+    // leaves the other three untouched. What to run after correcting a reward
+    // the policy has already converged against: see AISystem::resetModuleHead.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--reset-ai-head") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--reset-ai-head needs a model path and a module name\n");
+            return 2;
+        }
+        static const char* NAMES[] = {"econ", "politics", "war", "navy"};
+        int mod = -1;
+        for (int m = 0; m < 4; ++m)
+            if (strcmp(argv[i + 2], NAMES[m]) == 0) { mod = m; break; }
+        if (mod < 0) {
+            fprintf(stderr, "--reset-ai-head: module must be one of "
+                            "econ, politics, war, navy\n");
+            return 2;
+        }
+        return AISystem::resetModuleHead(argv[i + 1], mod) ? 0 : 1;
+    }
+
     // --simulate <map.odmap> <turns> [world name]
     // Unattended self-play on a shipped scenario. Leaves behind an .odsv with a
     // real turn history -- what --export-timelapse needs, and what a fresh

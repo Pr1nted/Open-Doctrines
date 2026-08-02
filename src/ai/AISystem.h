@@ -245,6 +245,22 @@ public:
     /** Average several model files into one. Backs `--merge-ai`. */
     static bool mergeModelFiles(const std::string& outPath,
                                 const std::vector<std::string>& inPaths);
+    /**
+     * Throw away one module's learning and leave the rest alone.
+     * Backs `--reset-ai-head`. `module` is a MOD_* index.
+     *
+     * For when a reward function is corrected after the policy has already
+     * converged on the old one. A converged softmax puts almost no mass on the
+     * actions it has learned to avoid, so the corrected reward is never
+     * sampled often enough to pay — the head has to be told, not persuaded.
+     *
+     * Resets the module's POLICY, its VALUE baseline and its reward
+     * normalisation statistics together, because they only mean anything as a
+     * set: a baseline fitted to the old policy's returns would score a fresh
+     * policy's every move as a large surprise, and the running mean and
+     * variance describe a reward distribution that no longer exists.
+     */
+    static bool resetModuleHead(const std::string& modelPath, int module);
 
     void saveModel();
     // Observation mode: load the model and act on it, but never write it back.
@@ -516,6 +532,19 @@ private:
         // paying for when there is a war to fight and dead weight otherwise,
         // and the reward could not tell those apart without this.
         bool atWar = false;
+        // How long that war had already been running when the decision was
+        // taken, in turns. The phoney-war charge is for STALLING, and a war
+        // that started this turn has not had the chance yet: mobilising,
+        // marching and winning the first battle do not fit inside one window.
+        // Charging it from turn one is what made the total price of a
+        // declaration exceed the flat penalty it was supposed to replace.
+        int warTurns = 0;
+        // Was there a war at ANY point in the window, rather than only at the
+        // snapshot? `atWar` is read before the war module acts, so the window a
+        // country declares war in has atWar == false — and a war-module
+        // idleness charge keyed on the snapshot would fire on precisely the
+        // turn the module did the most decisive thing it can do.
+        bool warInWindow = false;
         // War weariness before the decision. The politics reward already
         // charged for the LEVEL, which barely moves when a country agrees to
         // one more war; the DELTA over the window is the actual bill for
@@ -554,6 +583,11 @@ private:
     // Province count at the END of last turn, so "did I just lose ground?" is
     // answerable from a single turn's stats.
     std::unordered_map<int, int> m_prevProvinces;
+    // cid -> the turn its current, unbroken run of being at war began. Erased
+    // the moment it is at peace, so the entry always describes ONE war period
+    // and Experience::warTurns is its age. Maintained in beginTurn only:
+    // refreshStats runs twice a turn and counting there would double.
+    std::unordered_map<int, int> m_warSince;
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     std::unordered_map<int, int> m_lastResearchCount;  // for the completions counter
@@ -622,10 +656,25 @@ private:
     std::deque<Decision> m_log;
     TrainStats m_trainStats;
     TrainStats m_randomStats;
-    /** Whichever cohort `cid` belongs to. All one pool when no split is set. */
-    TrainStats& statsFor(int cid) {
-        return isRandomCountry(cid) ? m_randomStats : m_trainStats;
-    }
+    // Rebels belong to NEITHER cohort, and until they had somewhere of their
+    // own to go they were counted as the model's.
+    //
+    // Every country takes an AI turn, rebels included (processCountryTurn
+    // excludes only UNC/BLC/SPC), so a map with 113 rebellions per thousand
+    // country-turns puts thousands of rebel decisions through statsFor. The
+    // old two-way split sent all of them to m_trainStats, while the trainer's
+    // denominator (trainedCountryTurns) counts real model countries only. The
+    // result was rates that cannot physically happen: 3,371 repressions per
+    // 1,000 model country-turns, when a country can repress at most once a
+    // turn. Nothing reads this bucket; it exists so the other two stay clean.
+    TrainStats m_rebelStats;
+    /**
+     * Whichever cohort `cid` belongs to. All one pool when no split is set.
+     *
+     * Out of line because it needs Game::REBEL_CID_MIN and Game is only
+     * forward-declared here.
+     */
+    TrainStats& statsFor(int cid);
     std::deque<float> m_rewardHistory[MOD_COUNT];
     size_t m_lastSaveBytes = 0;
     // Checkpoint pacing. Losing at most a minute of self-play is a fine trade
@@ -761,6 +810,31 @@ private:
     void validPolitics(int cid, std::vector<bool>& out);
     void validWar(int cid, std::vector<bool>& out);
     void validNavy(int cid, std::vector<bool>& out);
+
+    /**
+     * The declaration this country would actually issue, if any.
+     *
+     * ONE function so the mask and the executor cannot disagree.
+     *
+     * They did, badly. validWar offered "declare war" whenever the country had
+     * any non-friendly neighbour and any army at all, while execWar refused
+     * unless it was under the concurrent-war cap, under the weariness cap, and
+     * holding AI_WAR_BAR_* times the target's army — so the action was offered
+     * constantly and answered "war: no suitable target". Every one of those was
+     * a recorded decision with a gradient behind it, teaching the war head that
+     * declaring war is a no-op. This is the same mask/executor mismatch that
+     * had the politics head choosing "repress" into "already hardest" forever;
+     * it is fixed the same way, by making the mask ask the executor.
+     *
+     * Returns false when no declaration is possible. `out` is untouched then.
+     */
+    struct WarTarget {
+        int cid = -1;           // who to declare on
+        bool claimed = false;   // they hold land we claim: a war of reconquest
+        bool naval = false;     // overseas, reached by sea rather than a border
+        bool napBlocked = false;// a pact stands and must be broken first
+    };
+    bool findWarTarget(int cid, WarTarget& out);
 
     bool loadModel();
 };

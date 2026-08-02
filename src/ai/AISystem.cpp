@@ -68,6 +68,14 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
 
 AISystem::~AISystem() { saveModel(); }
 
+// Rebels are their own bucket -- see the note on m_rebelStats. Everything else
+// splits by cohort, and with no --vs-random split m_randomCids is empty, so
+// every real country lands in m_trainStats exactly as before.
+AISystem::TrainStats& AISystem::statsFor(int cid) {
+    if (cid >= Game::REBEL_CID_MIN) return m_rebelStats;
+    return isRandomCountry(cid) ? m_randomStats : m_trainStats;
+}
+
 // ─── World cache ─────────────────────────────────────────
 
 void AISystem::beginTurn() {
@@ -83,6 +91,16 @@ void AISystem::beginTurn() {
     // refresh — otherwise the mid-turn refresh would reset the comparison and
     // provincesLost would read zero forever.
     for (auto& [cid, st] : m_stats) m_prevProvinces[cid] = st.provinces;
+    // How long each country has been at war without a break. Here and not in
+    // refreshStats: that runs again in endTurn, and a war would age two turns
+    // for every turn played. emplace leaves an existing start turn alone, so
+    // the entry survives for as long as the war does.
+    for (auto& [cid, st] : m_stats) {
+        (void)st;
+        auto w = m_warWith.find(cid);
+        if (w != m_warWith.end() && !w->second.empty()) m_warSince.emplace(cid, m_turn);
+        else                                           m_warSince.erase(cid);
+    }
 }
 
 void AISystem::refreshStats() {
@@ -774,6 +792,11 @@ void AISystem::takeTurn(int cid) {
         auto w = m_warWith.find(cid);
         exp.atWar = (w != m_warWith.end() && !w->second.empty());
     }
+    exp.warInWindow = exp.atWar;
+    if (exp.atWar) {
+        auto ws = m_warSince.find(cid);
+        if (ws != m_warSince.end()) exp.warTurns = m_turn - ws->second;
+    }
     auto resIt2 = g.m_countryResearched.find(cid);
     exp.researched = resIt2 != g.m_countryResearched.end() ? (int)resIt2->second.size() : 0;
 
@@ -910,6 +933,156 @@ void AISystem::ensureTrendBounds() const {
     m_trendBoundsReady = true;
 }
 
+// See the declaration in AISystem.h for why the mask and the executor share
+// this. The logic below is execWar case 4's, moved verbatim rather than
+// reimplemented -- two copies of a rule this fiddly would drift within a week.
+bool AISystem::findWarTarget(int cid, WarTarget& out) {
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return false;
+    const CountryStat& st = m_stats[cid];
+    if (st.army <= 0) return false;
+    auto relIt = g.m_relations.find(c->isoA3);
+
+    // RESTRAINT, WITHOUT PACIFISM.
+    //
+    // The AI declared war whenever it could win a fight, which is not the same
+    // as whenever war is a good idea: it opened fronts while already fighting
+    // two, at parity, on neighbours it had no claim to, with the home front in
+    // revolt. The gates below say when NOT to, and every one of them is
+    // deliberately blind to CLAIMED land -- retaking territory it claims is the
+    // AI's whole war goal and stays cheap. What gets harder is opportunistic
+    // conquest of land it has no argument for.
+    //
+    // These are heuristics rather than learning, on purpose: the model is
+    // trained and shipped, so "be less aggressive" cannot wait for a retrain,
+    // and a gate the policy cannot talk its way past is the only kind that
+    // holds.
+    int myWars = 0;
+    if (relIt != g.m_relations.end())
+        for (auto& [oiso, r] : relIt->second)
+            if (r.war) myWars++;
+
+    // Already fighting two? Nothing is worth a third front.
+    if (myWars >= AI_MAX_CONCURRENT_WARS) return false;
+    // A country coming apart at home does not go looking for more.
+    if (g.warWearinessOf(cid) >= AI_WAR_WEARINESS_BLOCK) return false;
+
+    // Which neighbours hold provinces we claim?
+    std::unordered_set<int> claimTargets;
+    auto myClaims = g.m_claims.find(c->isoA3);
+    if (myClaims != g.m_claims.end())
+        for (int pid : myClaims->second) {
+            int owner = pid < (int)g.m_provinceCountryLookup.size()
+                            ? g.m_provinceCountryLookup[pid] : 0;
+            if (owner > 0 && owner != cid && owner < Game::SPC_CID)
+                claimTargets.insert(owner);
+        }
+
+    int target = -1; long long targetArmy = -1;
+    bool targetClaimed = false;
+    std::unordered_set<int> seen;
+    std::unordered_set<int> napBlocked;   // wanted, but under a pact
+    for (auto& fr : st.frontiers) {
+        if (!seen.insert(fr.enemyCid).second) continue;
+        const Country* ec = g.m_countries.getCountry(fr.enemyCid);
+        if (!ec) continue;
+        bool friendly = false, war = false, nap = false;
+        if (relIt != g.m_relations.end()) {
+            auto rr = relIt->second.find(ec->isoA3);
+            if (rr != relIt->second.end()) {
+                war = rr->second.war;
+                friendly = rr->second.alliance || rr->second.guarantee;
+                nap = rr->second.nonAggression;
+            }
+        }
+        if (war || friendly) continue;
+        // A NAP does not make this target off-limits, but it does mean the pact
+        // has to be broken FIRST -- see the break-then-declare note where the
+        // action is issued. The target is still chosen here so the AI can want
+        // a war it is not yet allowed to start.
+        if (nap) napBlocked.insert(fr.enemyCid);
+        long long ea = m_stats[fr.enemyCid].army;
+        bool claimed = claimTargets.count(fr.enemyCid) > 0;
+        // Reconquering CLAIMED land stays cheap: it removes unrest and
+        // satisfies the claim, and it is the expansion that is supposed to
+        // happen. Attacking a neighbour it has NO claim on now needs a real
+        // edge rather than a coin-flip one -- 1.05 meant "very slightly ahead",
+        // which is why the map was permanently on fire. Land is still taken; it
+        // just has to be worth taking.
+        double bar = claimed ? AI_WAR_BAR_CLAIMED : AI_WAR_BAR_UNCLAIMED;
+        // Opening a SECOND war costs more again, claim or no claim: one front
+        // at a time unless the second is genuinely easy.
+        if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
+        if (st.army < (long long)(ea * bar) + 200) continue;
+        // A claimed neighbour beats any unclaimed one; within the same class,
+        // weakest wins.
+        if (target < 0 || (claimed && !targetClaimed) ||
+            (claimed == targetClaimed && ea < targetArmy)) {
+            target = fr.enemyCid; targetArmy = ea; targetClaimed = claimed;
+        }
+    }
+    if (target >= 0) {
+        out.cid = target;
+        out.claimed = targetClaimed;
+        out.naval = false;
+        out.napBlocked = napBlocked.count(target) > 0;
+        return true;
+    }
+
+    // Naval fallback: no reachable land target, but we have a port and an army
+    // -- declare war on the weakest beatable OVERSEAS coastal enemy (one that
+    // owns a port to land at) so the navy module can embark, sail, and invade
+    // it. This is the unlock that lets the AI cross water for territory instead
+    // of only fighting land borders.
+    if (st.maxPort < 1 || st.army <= 1000) return false;
+    std::unordered_set<int> landNbr;
+    for (auto& fr : st.frontiers) landNbr.insert(fr.enemyCid);
+    std::unordered_set<int> seenC;
+    long long bestArmy = -1; int navalTarget = -1; bool navalClaimed = false;
+    for (auto& [ppid, port] : g.m_provincePorts) {
+        int oc = (ppid >= 0 && ppid < (int)g.m_provinceCountryLookup.size())
+                     ? g.m_provinceCountryLookup[ppid] : 0;
+        if (oc <= 0 || oc == cid || oc >= Game::REBEL_CID_MIN) continue;
+        if (landNbr.count(oc) || !seenC.insert(oc).second) continue;
+        const Country* ec2 = g.m_countries.getCountry(oc);
+        if (!ec2) continue;
+        bool friendly = false, war = false, nap2 = false;
+        if (relIt != g.m_relations.end()) {
+            auto rr = relIt->second.find(ec2->isoA3);
+            if (rr != relIt->second.end()) {
+                war = rr->second.war;
+                friendly = rr->second.alliance || rr->second.guarantee;
+                nap2 = rr->second.nonAggression;
+            }
+        }
+        if (war || friendly) continue;
+        // Same rule as the land path: an overseas pact is broken first, not
+        // sailed through. A surprise amphibious landing on a country you have a
+        // pact with is the same violation, and was reachable by the same route.
+        if (nap2) napBlocked.insert(oc);
+        long long ea = m_stats[oc].army;
+        bool claimed = claimTargets.count(oc) > 0;
+        // Amphibious assaults are costlier than a land push (troops ferry in
+        // piecemeal), so this already demanded a clearer edge. It carries the
+        // same second-front surcharge as the land path, or restraint would just
+        // be a matter of sailing round it.
+        double bar = claimed ? 1.0 : AI_WAR_BAR_UNCLAIMED_NAVAL;
+        if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
+        if (st.army < (long long)(ea * bar) + 500) continue;
+        if (navalTarget < 0 || (claimed && !navalClaimed) ||
+            (claimed == navalClaimed && ea < bestArmy)) {
+            navalTarget = oc; bestArmy = ea; navalClaimed = claimed;
+        }
+    }
+    if (navalTarget < 0) return false;
+    out.cid = navalTarget;
+    out.claimed = navalClaimed;
+    out.naval = true;
+    out.napBlocked = napBlocked.count(navalTarget) > 0;
+    return true;
+}
+
 void AISystem::validWar(int cid, std::vector<bool>& v) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -946,37 +1119,31 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
         if (canReinforce) break;
     }
     v[2] = st.army > 0 && canReinforce;
-    // attack / declare war / artillery need frontier context; cheap checks only
-    bool anyWarFrontier = false, anyDeclarable = false;
+    // attack / artillery need frontier context; cheap checks only. Whether a
+    // neighbour is DECLARABLE is no longer decided here — see v[4] below.
+    bool anyWarFrontier = false;
     auto relIt = g.m_relations.find(c->isoA3);
     std::unordered_set<int> seen;
     for (auto& fr : st.frontiers) {
         if (!seen.insert(fr.enemyCid).second) continue;
         const Country* ec = g.m_countries.getCountry(fr.enemyCid);
         if (!ec) continue;
-        bool war = false, friendly = false;
-        if (relIt != g.m_relations.end()) {
-            auto rr = relIt->second.find(ec->isoA3);
-            if (rr != relIt->second.end()) {
-                war = rr->second.war;
-                // A NAP is breakable-for-war (declareWar clears it); only a
-                // real alliance or a guarantee makes a neighbour off-limits.
-                // Without this the AI pacts every border shut and can never
-                // choose war again — the late-game freeze you saw.
-                friendly = rr->second.alliance || rr->second.guarantee;
-            }
-        }
-        if (war) anyWarFrontier = true;
-        else if (!friendly) anyDeclarable = true;
+        if (relIt == g.m_relations.end()) continue;
+        auto rr = relIt->second.find(ec->isoA3);
+        if (rr != relIt->second.end() && rr->second.war) { anyWarFrontier = true; break; }
     }
-    // Overseas foes are declarable too, provided we can actually project power
-    // (own a port + a real army). exec picks the land target first, then falls
-    // back to the weakest beatable coastal enemy across the water.
-    bool navalDeclarable = st.maxPort >= 1 && st.army > 1000 && st.navalTargets > 0;
     // Attack is also possible from an army standing on allied ground, which is
     // the only way a staged force is ever any use.
     v[3] = (anyWarFrontier || !st.abroadPids.empty()) && st.army > 0;
-    v[4] = (anyDeclarable || navalDeclarable) && st.army > 0;
+    // Declare war: offered only when there is a declaration the executor would
+    // actually issue. This asks the same function exec does -- see
+    // findWarTarget for what the old "any non-friendly neighbour and any army"
+    // test was costing. It also subsumes the overseas case, which used to need
+    // a separate navalDeclarable test here that did not match exec's.
+    {
+        WarTarget wt;
+        v[4] = findWarTarget(cid, wt);
+    }
     // Artillery needs SHELLS. The comment used to say "ammo checked at exec",
     // which is true and is exactly the problem: exec answered "artillery: no
     // researched ammo" 3,271 times in a 400-turn run, because AI countries
@@ -1699,150 +1866,15 @@ std::string AISystem::execWar(int cid, int action) {
         case 4: { // declare war: prefer neighbours holding OUR claimed land,
                   // then the weakest beatable one. Claims are the war goal.
             //
-            // RESTRAINT, WITHOUT PACIFISM.
-            //
-            // The AI declared war whenever it could win a fight, which is not
-            // the same as whenever war is a good idea: it opened fronts while
-            // already fighting two, at parity, on neighbours it had no claim
-            // to, with the home front in revolt. The gates below say when NOT
-            // to, and every one of them is deliberately blind to CLAIMED land
-            // -- retaking territory it claims is the AI's whole war goal and
-            // stays cheap. What gets harder is opportunistic conquest of land
-            // it has no argument for.
-            //
-            // These are heuristics rather than learning, on purpose: the model
-            // is trained and shipped, so "be less aggressive" cannot wait for a
-            // retrain, and a gate the policy cannot talk its way past is the
-            // only kind that holds.
-            int myWars = 0;
-            if (relIt != g.m_relations.end())
-                for (auto& [oiso, r] : relIt->second)
-                    if (r.war) myWars++;
-
-            // Already fighting two? Nothing is worth a third front.
-            if (myWars >= AI_MAX_CONCURRENT_WARS)
-                return "war: already fighting " + std::to_string(myWars);
-
-            // A country coming apart at home does not go looking for more.
-            const float weariness = g.warWearinessOf(cid);
-            if (weariness >= AI_WAR_WEARINESS_BLOCK)
-                return TextFormat("war: too much unrest at home (%.1f)", weariness);
-
-            // Which neighbours hold provinces we claim?
-            std::unordered_set<int> claimTargets;
-            auto myClaims = g.m_claims.find(c.isoA3);
-            if (myClaims != g.m_claims.end())
-                for (int pid : myClaims->second) {
-                    int owner = pid < (int)g.m_provinceCountryLookup.size()
-                                    ? g.m_provinceCountryLookup[pid] : 0;
-                    if (owner > 0 && owner != cid && owner < Game::SPC_CID)
-                        claimTargets.insert(owner);
-                }
-            int target = -1; long long targetArmy = -1;
-            bool targetClaimed = false;
-            std::unordered_set<int> seen;
-            std::unordered_set<int> napBlocked;   // wanted, but under a pact
-            for (auto& fr : st.frontiers) {
-                if (!seen.insert(fr.enemyCid).second) continue;
-                const Country* ec = g.m_countries.getCountry(fr.enemyCid);
-                if (!ec) continue;
-                bool friendly = false, war = false, nap = false;
-                if (relIt != g.m_relations.end()) {
-                    auto rr = relIt->second.find(ec->isoA3);
-                    if (rr != relIt->second.end()) {
-                        war = rr->second.war;
-                        friendly = rr->second.alliance || rr->second.guarantee;
-                        nap = rr->second.nonAggression;
-                    }
-                }
-                if (war || friendly) continue;
-                // A NAP does not make this target off-limits, but it does mean
-                // the pact has to be broken FIRST -- see the break-then-declare
-                // note where the action is issued. The target is still chosen
-                // here so the AI can want a war it is not yet allowed to start.
-                if (nap) napBlocked.insert(fr.enemyCid);
-                long long ea = m_stats[fr.enemyCid].army;
-                bool claimed = claimTargets.count(fr.enemyCid) > 0;
-                // Reconquering CLAIMED land stays cheap: it removes unrest and
-                // satisfies the claim, and it is the expansion that is supposed
-                // to happen. Attacking a neighbour it has NO claim on now needs
-                // a real edge rather than a coin-flip one -- 1.05 meant "very
-                // slightly ahead", which is why the map was permanently on
-                // fire. Land is still taken; it just has to be worth taking.
-                double bar = claimed ? AI_WAR_BAR_CLAIMED : AI_WAR_BAR_UNCLAIMED;
-                // Opening a SECOND war costs more again, claim or no claim: one
-                // front at a time unless the second is genuinely easy.
-                if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
-                if (st.army < (long long)(ea * bar) + 200) continue;
-                // A claimed neighbour beats any unclaimed one; within the same
-                // class, weakest wins.
-                if (target < 0 || (claimed && !targetClaimed) ||
-                    (claimed == targetClaimed && ea < targetArmy)) {
-                    target = fr.enemyCid; targetArmy = ea; targetClaimed = claimed;
-                }
-            }
-            // Naval fallback: no reachable land target, but we have a port and
-            // an army — declare war on the weakest beatable OVERSEAS coastal
-            // enemy (one that owns a port to land at) so the navy module can
-            // embark, sail, and invade it. This is the unlock that lets the AI
-            // cross water for territory instead of only fighting land borders.
-            if (target < 0 && st.maxPort >= 1 && st.army > 1000) {
-                std::unordered_set<int> landNbr;
-                for (auto& fr : st.frontiers) landNbr.insert(fr.enemyCid);
-                std::unordered_set<int> seenC;
-                long long bestArmy = -1; int navalTarget = -1; bool navalClaimed = false;
-                for (auto& [ppid, port] : g.m_provincePorts) {
-                    int oc = (ppid >= 0 && ppid < (int)g.m_provinceCountryLookup.size())
-                                 ? g.m_provinceCountryLookup[ppid] : 0;
-                    if (oc <= 0 || oc == cid || oc >= Game::REBEL_CID_MIN) continue;
-                    if (landNbr.count(oc) || !seenC.insert(oc).second) continue;
-                    const Country* ec2 = g.m_countries.getCountry(oc);
-                    if (!ec2) continue;
-                    bool friendly = false, war = false, nap2 = false;
-                    if (relIt != g.m_relations.end()) {
-                        auto rr = relIt->second.find(ec2->isoA3);
-                        if (rr != relIt->second.end()) {
-                            war = rr->second.war;
-                            friendly = rr->second.alliance || rr->second.guarantee;
-                            nap2 = rr->second.nonAggression;
-                        }
-                    }
-                    if (war || friendly) continue;
-                    // Same rule as the land path: an overseas pact is broken
-                    // first, not sailed through. A surprise amphibious landing
-                    // on a country you have a pact with is the same violation,
-                    // and was reachable by exactly the same route.
-                    if (nap2) napBlocked.insert(oc);
-                    long long ea = m_stats[oc].army;
-                    bool claimed = claimTargets.count(oc) > 0;
-                    // Amphibious assaults are costlier than a land push (troops
-                    // ferry in piecemeal), so this already demanded a clearer
-                    // edge. It carries the same second-front surcharge as the
-                    // land path, or restraint would just be a matter of sailing
-                    // round it.
-                    double bar = claimed ? 1.0 : AI_WAR_BAR_UNCLAIMED_NAVAL;
-                    if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
-                    if (st.army < (long long)(ea * bar) + 500) continue;
-                    if (navalTarget < 0 || (claimed && !navalClaimed) ||
-                        (claimed == navalClaimed && ea < bestArmy)) {
-                        navalTarget = oc; bestArmy = ea; navalClaimed = claimed;
-                    }
-                }
-                if (navalTarget >= 0) {
-                    const Country* ec2 = g.m_countries.getCountry(navalTarget);
-                    if (napBlocked.count(navalTarget)) {
-                        g.m_pendingDiplomaticActions.push_back({c.isoA3, ec2->isoA3, "break_nap", 1});
-                        return std::string("break NAP with ") + ec2->name + " (naval war next turn)";
-                    }
-                    g.m_pendingDiplomaticActions.push_back({c.isoA3, ec2->isoA3, "declare_war", 1});
-                    statsFor(cid).warsDeclared++;
-                    m_declaredUnprovoked = !navalClaimed;
-                    return std::string("declare NAVAL war on ") + ec2->name +
-                           (navalClaimed ? " (claims)" : " (overseas)");
-                }
-            }
-            if (target < 0) return "war: no suitable target";
-            const Country* ec = g.m_countries.getCountry(target);
+            // The choice itself, and every gate on it, now lives in
+            // findWarTarget -- which validWar consults too, so this can no
+            // longer be reached with nothing to declare on. It still can be
+            // reached with a pact in the way, which is a real answer rather
+            // than a wasted turn: the pact is broken this turn, war follows.
+            WarTarget wt;
+            if (!findWarTarget(cid, wt)) return "war: no suitable target";
+            const Country* ec = g.m_countries.getCountry(wt.cid);
+            if (!ec) return "war: target vanished";
 
             // A NON-AGGRESSION PACT IS BROKEN BEFORE IT IS IGNORED.
             //
@@ -1859,15 +1891,20 @@ std::string AISystem::execWar(int cid, int action) {
             // fight -- the earlier attempt to fix this by treating a NAP as
             // off-limits outright is what froze the late game, because every
             // border ended up pacted and nothing could ever be declared again.
-            if (napBlocked.count(target)) {
+            if (wt.napBlocked) {
                 g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "break_nap", 1});
-                return std::string("break NAP with ") + ec->name + " (war next turn)";
+                return std::string("break NAP with ") + ec->name +
+                       (wt.naval ? " (naval war next turn)" : " (war next turn)");
             }
 
             g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "declare_war", 1});
             statsFor(cid).warsDeclared++;
-            m_declaredUnprovoked = !targetClaimed;
-            return std::string("declare war on ") + ec->name + (targetClaimed ? " (claims)" : "");
+            m_declaredUnprovoked = !wt.claimed;
+            if (wt.naval)
+                return std::string("declare NAVAL war on ") + ec->name +
+                       (wt.claimed ? " (claims)" : " (overseas)");
+            return std::string("declare war on ") + ec->name +
+                   (wt.claimed ? " (claims)" : "");
         }
         case 5: { // artillery: best researched ammo on an adjacent enemy province
             struct Ammo { const char* type; const char* node; float cost; };
@@ -2989,11 +3026,17 @@ void AISystem::endTurn() {
         if (lnIt != m_landingsThisTurn.end()) landNow = lnIt->second;
         const int brokeNow = g.isBankrupt(cid) ? 1 : 0;
         if (brokeNow) statsFor(cid).bankruptTurns++;
+        // refreshStats ran at the top of endTurn, so this is the state AFTER
+        // the turn resolved — which is the only place a war declared during it
+        // is visible.
+        auto wwIt = m_warWith.find(cid);
+        const bool atWarNow = wwIt != m_warWith.end() && !wwIt->second.empty();
         for (auto& exp : dq) {
             exp.age++;
             exp.rebellions += rebNow;
             exp.landings += landNow;
             exp.bankruptTurns += brokeNow;
+            exp.warInWindow = exp.warInWindow || atWarNow;
         }
 
         // Research completions counter (per turn, not per window). First sight
@@ -3066,8 +3109,7 @@ void AISystem::endTurn() {
                 // economy, doctrines and minority settlements from politics,
                 // the army from war — and felt by all of them.
                 const float broke = std::tanh((float)exp.bankruptTurns / 4.0f);
-                // THE IDLE TAX. The peacetime counterpart of the phoney-war
-                // tax the war module already carries.
+                // THE IDLE TAX, PER MODULE.
                 //
                 // Nothing charged a country for standing still. With no war on,
                 // holding produced a delta of zero on every term, which reads
@@ -3075,35 +3117,44 @@ void AISystem::endTurn() {
                 // VARIANCE, and a policy gradient with a value baseline will
                 // take a certain zero over a risky positive every time. So the
                 // modules collapsed onto hold / hold / save money, and the map
-                // stopped moving. Observed directly on a live run at turn 3534:
-                // every country on screen, every module, doing nothing, with
-                // the war module's mean reward sitting at -0.15 while politics
-                // sat at +0.50.
+                // stopped moving.
                 //
-                // Charged only when the whole twelve-turn window really was
-                // inert — no ground either way, nothing built, nothing
-                // researched, no change in the army, and not at war — so a
-                // country quietly building or negotiating is untouched.
+                // The first version of this lived in `global` and asked whether
+                // the WHOLE COUNTRY was inert: no ground, nothing built,
+                // nothing researched, no army change, not at war — all at once.
+                // Two things were wrong with that.
                 //
-                // It differentiates rather than offsets: if EVERY country is
-                // idle the term is constant and the reward normalisation
-                // removes it, so this does not dig a policy out of a total
-                // collapse on its own. What it does is make the exploration
-                // that already happens land on the right side of the
-                // comparison.
-                const bool inert = !exp.atWar
-                                && dProv == 0.0f
-                                && dInd == 0.0f
-                                && dResearch == 0.0f
-                                && std::fabs(dArmy) < 500.0f;
-                const float idle = inert ? -0.3f : 0.0f;
+                // It could not bind the module it was aimed at. The test is an
+                // AND across four modules' effects, so the economy laying down
+                // one industry point exempted the war module from the charge
+                // meant to price ITS passivity. Measured after that change: the
+                // model cohort declared 0.00 wars per thousand country-turns
+                // against the random control's 4.72 and 7.09, unchanged.
+                //
+                // And it was too small to reorder anything. At -0.3 it sat
+                // below the -0.5 phoney-war charge, so "stay at peace and do
+                // nothing" remained strictly cheaper than "be at war and not
+                // winning yet" — which is the exact comparison the war head was
+                // getting wrong.
+                //
+                // Charged per module now, to the module that could have done
+                // something about it, and the war module's charge is set equal
+                // to its phoney-war charge so idling is never the cheap option.
+                // Politics has no term here on purpose: repression, doctrines
+                // and pacts leave no trace in any of these deltas, so any
+                // inertness test for it would be measuring the other modules.
+                const bool econIdle = dInd == 0.0f && dResearch == 0.0f && dShips == 0.0f;
+                // Not `exp.atWar`: that is read before the war module acts, so
+                // the window a country declares war in looks peaceful and the
+                // most decisive action available would be charged for idleness.
+                const bool warIdle = !exp.warInWindow && dProv == 0.0f
+                                  && std::fabs(dArmy) < 500.0f;
 
                 float global = 0.6f * std::tanh(dProv / 3.0f)
                              + 0.2f * std::tanh(dTre / 100.0f)
                              + 0.3f * std::tanh(dNet / 15.0f)
                              - 0.8f * std::tanh(rebels / 2.0f)
-                             - 0.5f * broke
-                             + idle;
+                             - 0.5f * broke;
                 // Each module is now judged mostly on what it actually controls.
                 rewards[MOD_ECONOMY]  = global
                                       // ...and the economy module's failure in
@@ -3114,7 +3165,8 @@ void AISystem::endTurn() {
                                       + 1.2f * std::tanh(dNet / 15.0f)
                                       + 1.0f * std::tanh(dInd / 3.0f)
                                       + 0.8f * std::tanh(dResearch / 2.0f)
-                                      + 0.3f * std::tanh(dTre / 100.0f);
+                                      + 0.3f * std::tanh(dTre / 100.0f)
+                                      + (econIdle ? -0.3f : 0.0f);
                 // What the country agreed to carry over the window. The LEVEL
                 // of war weariness barely moves when a country takes on one
                 // more commitment; the change over twelve turns is the bill for
@@ -3197,8 +3249,24 @@ void AISystem::endTurn() {
                 // sue for peace. It deliberately does NOT apply while
                 // threatened: a country holding its own border against an
                 // invasion is doing its job, not stalling.
+                //
+                // ...AND NOT TO A WAR THAT HAS ONLY JUST STARTED.
+                //
+                // This is a charge for stalling, and it was landing on wars
+                // that had had no chance to move yet. Between it and the
+                // aggression charge below, the price of an unproductive
+                // declaration was -0.35 in the opening window and -0.5 in every
+                // window after it — comfortably more than the flat -0.8 that
+                // was removed for teaching the policy never to declare war at
+                // all, and applied for as long as the war lasted rather than
+                // once. The policy read the arithmetic correctly and stopped
+                // declaring: 0.00 per thousand country-turns against a random
+                // control's 4.72. One window of grace from the start of the war
+                // covers mobilising and reaching the border; after that,
+                // gaining nothing really is stalling.
                 const float phoneyWar =
-                    (exp.atWar && exp.threatened == 0 && dProv <= 0.0f) ? -0.5f : 0.0f;
+                    (exp.atWar && exp.warTurns >= N_STEP &&
+                     exp.threatened == 0 && dProv <= 0.0f) ? -0.5f : 0.0f;
 
                 // The cost of starting it — CHARGED ON THE OUTCOME, not on
                 // the decision.
@@ -3228,6 +3296,12 @@ void AISystem::endTurn() {
                                       - 2.0f * std::tanh(std::max(0.0f, dLost) / 2.0f)
                                       + armyTerm
                                       + phoneyWar
+                                      // Equal to phoneyWar, deliberately: a
+                                      // module that sits out the whole window
+                                      // at peace is charged exactly what one
+                                      // that sits out a war is, so peace is
+                                      // never the cheap way to avoid the tax.
+                                      + (warIdle ? -0.5f : 0.0f)
                                       + aggression;
                 // The navy is scored on what it delivers ashore and on what it
                 // costs. Ship COUNT used to be rewarded outright, which paid
@@ -3286,6 +3360,9 @@ void AISystem::endTurn() {
 
         if (dead) {
             m_lastResearchCount.erase(cid);
+            // beginTurn only walks live countries, so an eliminated one would
+            // keep its war-start turn forever.
+            m_warSince.erase(cid);
             it = m_pending.erase(it);
         } else {
             ++it;
@@ -3677,6 +3754,46 @@ bool AISystem::mergeModelFiles(const std::string& outPath,
     acc.saveModel();
     s_readOnlyModel = true;   // acc's own destructor must not write again
     printf("[AI] merged %d model(s) into %s\n", n, outPath.c_str());
+    result = true;
+    }
+    s_readOnlyModel = wasReadOnly;
+    return result;
+}
+
+bool AISystem::resetModuleHead(const std::string& modelPath, int module) {
+    if (module < 0 || module >= MOD_COUNT) {
+        fprintf(stderr, "[AI] reset: no such module %d\n", module);
+        return false;
+    }
+    // Same discipline as mergeModelFiles: read-only for the whole of this so no
+    // destructor writes anything back, with one explicit save at the end.
+    const bool wasReadOnly = s_readOnlyModel;
+    s_readOnlyModel = true;
+    bool result = false;
+    {
+    AISystem a(nullptr, modelPath);
+    if (!a.loadModel()) {
+        fprintf(stderr, "[AI] reset: cannot read %s\n", modelPath.c_str());
+        s_readOnlyModel = wasReadOnly;
+        return false;
+    }
+    const long long before = (long long)a.m_policy[module].updateCount();
+    // The same architectures and seeds the constructor uses, so a reset head is
+    // indistinguishable from a fresh one.
+    static const int ACTIONS[MOD_COUNT] =
+        {ECON_ACTIONS, POL_ACTIONS, WAR_ACTIONS, NAVY_ACTIONS};
+    a.m_policy[module] = NeuralNet({FEATURE_COUNT, 512, 320, ACTIONS[module]},
+                                   (uint32_t)(101 + module));
+    a.m_value[module]  = NeuralNet({FEATURE_COUNT, 160, 1}, (uint32_t)(200 + module));
+    a.m_rMean[module] = 0.0f;
+    a.m_rVar[module]  = 1.0f;
+    a.m_modelPath = modelPath;
+    s_readOnlyModel = false;
+    a.saveModel();
+    s_readOnlyModel = true;   // a's own destructor must not write again
+    printf("[AI] reset the %s head in %s (discarded %lld updates); "
+           "every other module kept\n",
+           MODULE_NAMES[module], modelPath.c_str(), before);
     result = true;
     }
     s_readOnlyModel = wasReadOnly;
