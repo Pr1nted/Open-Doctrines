@@ -615,6 +615,24 @@ elseif(WIN32)
     set_target_properties(OpenDoctrines PROPERTIES WIN32_EXECUTABLE TRUE)
     if(MSVC)
         target_link_options(OpenDoctrines PRIVATE "/ENTRY:mainCRTStartup")
+
+        # Narrow paths mean UTF-8, not the machine's ANSI code page.
+        #
+        # Every path here is a std::string handed to fopen, std::ifstream,
+        # std::filesystem and miniz. On Windows those bytes are read in the
+        # active ANSI code page, which cannot represent most of Unicode -- and
+        # the installer puts the game under C:\Users\<name>\, so the player's
+        # account name is part of every path the game opens. A name the code
+        # page cannot encode makes every open fail, and the game starts with no
+        # fonts, maps or scenarios while saying nothing, because each open only
+        # returned false. See the manifest for the full note.
+        #
+        # /MANIFEST:EMBED merges this with the default manifest the linker
+        # generates rather than replacing it; supplying one through the .rc
+        # instead collides with that default.
+        target_link_options(OpenDoctrines PRIVATE
+            "/MANIFEST:EMBED"
+            "/MANIFESTINPUT:${CMAKE_SOURCE_DIR}/packaging/windows/OpenDoctrines.manifest")
     endif()
     target_sources(OpenDoctrines PRIVATE "${CMAKE_SOURCE_DIR}/data/Icon/resources.rc")
 endif()
