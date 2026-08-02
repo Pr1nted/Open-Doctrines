@@ -603,8 +603,13 @@ bool MapEditor::loadExistingMap(const std::string& path) {
             auto j = nlohmann::json::parse(pc);
             for (auto& [pidStr, comp] : j.items()) {
                 EditorProvinceData& d = m_provinceData[std::stoi(pidStr)];
-                d.compassEconomic = comp.value("left", 0.0f);
-                d.compassSocial = comp.value("auth", 0.0f);
+                // "left" and "auth" are the file's convention: positive is
+                // further left, further authoritarian. compassEconomic and
+                // compassSocial are PoliticalCompass's: -100 left to +100
+                // right, -100 authoritarian to +100 libertarian. Opposite on
+                // both axes, so the sign flips crossing the boundary.
+                d.compassEconomic = -comp.value("left", 0.0f);
+                d.compassSocial = -comp.value("auth", 0.0f);
             }
         }
     } catch (...) { std::cout << "  Bad political_compass.json in imported map\n"; }
@@ -2640,7 +2645,15 @@ std::string MapEditor::buildProvinceCompassJson() const {
     nlohmann::json cj = nlohmann::json::object();
     for (auto& [pid, d] : m_provinceData) {
         if (d.compassEconomic == 0.0f && d.compassSocial == 0.0f) continue;
-        cj[std::to_string(pid)] = {{"left", d.compassEconomic}, {"auth", d.compassSocial}};
+        // Negated on the way out, so the key named "left" holds a number that
+        // MEANS left. It did not: this wrote economic-convention values under
+        // left/auth names, which made a generated map's province compasses the
+        // mirror of a shipped map's while sharing the file format. The game
+        // converts left/auth on load, so the two disagreed by a sign, the
+        // province-to-government distance became a sum, and generated maps
+        // dissolved -- 24,030 countries alive by turn 14 of a training run.
+        cj[std::to_string(pid)] = {{"left", -d.compassEconomic},
+                                   {"auth", -d.compassSocial}};
     }
     return cj.empty() ? std::string() : cj.dump(2);
 }
@@ -3467,8 +3480,9 @@ bool MapEditor::loadProject(const std::string& path) {
                     auto j = nlohmann::json::parse(pc);
                     for (auto& [pidStr, comp] : j.items()) {
                         EditorProvinceData& d = m_provinceData[std::stoi(pidStr)];
-                        d.compassEconomic = comp.value("left", 0.0f);
-                        d.compassSocial = comp.value("auth", 0.0f);
+                        // Same conversion as the loader above.
+                        d.compassEconomic = -comp.value("left", 0.0f);
+                        d.compassSocial = -comp.value("auth", 0.0f);
                     }
                 }
             } catch (...) { std::cout << "  Bad political_compass.json in project\n"; }
