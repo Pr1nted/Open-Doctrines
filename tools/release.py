@@ -78,7 +78,15 @@ DATA_ALLOWLIST = [
     "icons",
     "symbols",
     "licenses",
-    "ai",             # the trained model is game content
+    "ai/model.bin",   # the trained model is game content. NAMED FILE, not the
+                      # directory: data/ai/ is also the trainer's workspace, and
+                      # listing "ai" made this one entry a denylist-shaped hole
+                      # in an otherwise allowlisted list -- whatever training
+                      # left lying about shipped with it. A staged install grew
+                      # to 125 MB against the 12 MB the game reads: four
+                      # per-worker model.wN.bin, model.bin.prev, two hand-made
+                      # checkpoints and a folder of superseded workers. The game
+                      # loads model.bin and nothing else, so name it.
     "tips.json",
     "credits.txt",
     "policies.json",  # the doctrine catalogue. Shipped maps carry their own

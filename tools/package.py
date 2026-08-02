@@ -110,6 +110,10 @@ def main():
             missing.append(name)
             continue
         d = os.path.join(dst_data, name)
+        # An entry may name a path inside data/, not just a top-level item --
+        # "ai/model.bin" ships one file out of the trainer's workspace. Its
+        # parent has to exist first, and copytree/copy2 will not make it.
+        os.makedirs(os.path.dirname(d), exist_ok=True)
         if os.path.isdir(s):
             shutil.copytree(s, d, symlinks=False,
                             ignore=shutil.ignore_patterns(".DS_Store", "Icon*"))
@@ -129,7 +133,11 @@ def main():
 
     # --- what was deliberately left out ---
     present = set(os.listdir(src_data)) if os.path.isdir(src_data) else set()
-    excluded = sorted(present - set(rel.DATA_ALLOWLIST))
+    # Compare top-level names against top-level names. An entry like
+    # "ai/model.bin" contributes "ai", or data/ai would be reported as excluded
+    # -- and flagged as unclassified -- while it was in fact partly shipped.
+    allowed_top = {name.split("/", 1)[0] for name in rel.DATA_ALLOWLIST}
+    excluded = sorted(present - allowed_top)
     if excluded:
         print("  excluded (user data / local state):")
         for e in excluded:

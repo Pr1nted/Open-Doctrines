@@ -1104,8 +1104,15 @@ endif()
 # KEEP IN STEP WITH DATA_ALLOWLIST IN tools/release.py. That list is the
 # authority -- it is what the zips are built from -- and an installer that
 # disagrees with the zip is two different games under one version number.
-set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses ai
-                    tips.json credits.txt policies.json)
+#
+# Entries may name a path inside data/, not only a top-level item. ai/model.bin
+# is one: data/ai is the trainer's workspace as well as the home of the shipped
+# model, so listing "ai" shipped every per-worker checkpoint and hand-made
+# backup that training happened to leave there -- 125 MB installed against the
+# 12 MB the game reads. Naming the file keeps this list an allowlist all the
+# way down.
+set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
+                    ai/model.bin tips.json credits.txt policies.json)
 
 # A name that matches no file is what a stale entry looks like, and the failure
 # it causes is silent: the item is simply not in the installer, and the game
@@ -1119,11 +1126,18 @@ foreach(item IN LISTS OD_SHIPPED_DATA)
             "incomplete. This list and DATA_ALLOWLIST in tools/release.py must "
             "agree with each other and with what is on disk.")
     endif()
+    # An entry that names a path keeps that path in the install tree, so
+    # ai/model.bin lands at data/ai/model.bin and not at data/model.bin, where
+    # the game does not look. For a plain name the parent is empty and this is
+    # the same rule it always was.
+    get_filename_component(od_item_parent "${item}" DIRECTORY)
     if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/data/${item}")
-        install(DIRECTORY "data/${item}" DESTINATION "${OD_INSTALL_DATA_DIR}"
+        install(DIRECTORY "data/${item}"
+                DESTINATION "${OD_INSTALL_DATA_DIR}/${od_item_parent}"
                 PATTERN ".DS_Store" EXCLUDE)
     else()
-        install(FILES "data/${item}" DESTINATION "${OD_INSTALL_DATA_DIR}")
+        install(FILES "data/${item}"
+                DESTINATION "${OD_INSTALL_DATA_DIR}/${od_item_parent}")
     endif()
 endforeach()
 if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
