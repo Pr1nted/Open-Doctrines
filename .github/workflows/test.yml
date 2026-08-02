@@ -106,6 +106,42 @@ jobs:
       # Windows runs this under Git Bash, which GitHub's Windows images already
       # have. The suite is bash (tests/run_all.sh, tests/connectivity_test.sh),
       # so a PowerShell port would be a second implementation to keep in step.
+      # Software OpenGL, so that "does it actually run" is not skipped on the
+      # one platform where it always was.
+      #
+      # A hosted Windows runner has no GPU. WGL answers "The driver does not
+      # appear to support OpenGL", raylib faults inside InitWindow(), and
+      # qualify.sh reports the window step as SKIPPED -- correctly, because a
+      # machine that cannot draw is not a broken build. The cost was that
+      # Windows proved it COMPILED and never once proved it STARTS, and that is
+      # the gap v1.0.3a shipped through: an executable that did not run at all,
+      # on the only platform whose run check never ran.
+      #
+      # Mesa's llvmpipe is a complete OpenGL implementation in software. Copied
+      # beside the executable it overrides opengl32.dll for that process alone.
+      # Purely a test dependency: nothing here is packaged, installed or shipped.
+      #
+      # Pinned, not "latest". A test aid that changes under you turns an
+      # unrelated push red and costs an afternoon finding out why.
+      - name: Software OpenGL (Mesa llvmpipe)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          ver=26.1.4
+          curl -sL --fail -o mesa.7z \
+            "https://github.com/pal1000/mesa-dist-win/releases/download/$ver/mesa3d-$ver-release-msvc.7z"
+          7z x -y -omesa mesa.7z > /dev/null
+          # The whole x64 payload, not opengl32.dll alone: current Mesa splits
+          # the driver across several DLLs that opengl32.dll loads by name from
+          # its own directory, and copying one file gets a loader error instead
+          # of a working context.
+          gl=$(find mesa -path '*x64*' -name opengl32.dll | head -1)
+          if [ -z "$gl" ]; then echo "no x64 opengl32.dll in the archive"; exit 1; fi
+          echo "OD_SOFTWARE_GL_DIR=$(dirname "$gl")" >> "$GITHUB_ENV"
+          # llvmpipe explicitly. Left to itself Mesa may pick the d3d12 driver
+          # and hand back the same absent GPU this exists to work around.
+          echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+
       - name: Qualify
         shell: bash
         run: tools/qualify.sh build

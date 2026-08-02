@@ -43,7 +43,9 @@ EM_JS(int, odFitCanvasJS, (), {
 #include <cmath>
 #include <algorithm>
 #include <chrono>
+#include <cstdarg>   // va_list, for the Windows GL trace-log interceptor
 #include <cstdio>
+#include <cstring>   // strstr, likewise
 #include <string>
 #include <unordered_set>
 #ifdef _WIN32
@@ -629,6 +631,52 @@ void Game::odFitCanvasToWindow() {
 }
 #endif
 
+#ifdef _WIN32
+// Why this exists when init() already checks IsWindowReady() further down.
+//
+// When WGL refuses an OpenGL context, raylib logs the GLFW error as a warning
+// and then FAULTS INSIDE InitWindow(). It never returns, so IsWindowReady() is
+// never reached and the explanation written just after it never runs. On a
+// GUI-subsystem binary, which has no console, the player sees the game do
+// nothing whatsoever: no window, no error, no crash dialog. Indistinguishable
+// from a corrupt download, and the single most likely way for a Windows player
+// with an old driver to meet this game.
+//
+// So it has to be said from inside raylib's own log, while there is still a
+// process to say it with. Matching on message text is unpleasant, but raylib
+// offers no other signal: InitWindow() returns void, and the failure is a
+// LOG_WARNING rather than a return code.
+//
+// The strings are the ones tools/qualify.sh already matches for this exact
+// purpose. KEEP THE TWO LISTS IN STEP.
+namespace {
+void odWindowsGlTraceLog(int level, const char* text, va_list args) {
+    (void)level;
+    char line[1024];
+    vsnprintf(line, sizeof(line), text, args);
+    std::fprintf(stderr, "%s\n", line);
+
+    if (std::strstr(line, "does not appear to support OpenGL") ||
+        std::strstr(line, "Failed to find a suitable pixel format") ||
+        std::strstr(line, "Failed to initialize GLFW")) {
+        MessageBoxA(nullptr,
+            "OpenDoctrines could not open a window.\n\n"
+            "This computer's graphics driver does not provide OpenGL 3.3, "
+            "which the game needs in order to draw anything.\n\n"
+            "The usual causes are a missing or very old graphics driver, a "
+            "virtual machine without 3D acceleration, or a remote desktop "
+            "session that does not forward OpenGL.\n\n"
+            "Updating the graphics driver is the first thing to try.",
+            "OpenDoctrines", MB_OK | MB_ICONERROR);
+        // Leave now rather than return. raylib faults immediately after this
+        // warning, and that crash would replace the message just shown with
+        // Windows' own, which explains nothing.
+        ExitProcess(1);
+    }
+}
+} // namespace
+#endif
+
 bool Game::init(int screenW, int screenH, const char* title) {
 #ifdef __EMSCRIPTEN__
     // On Emscripten, GetApplicationDirectory() returns a URL, not a filesystem path.
@@ -699,6 +747,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     int winFlags = FLAG_WINDOW_RESIZABLE;
     if (m_config.fpsTarget == 0) winFlags |= FLAG_VSYNC_HINT;
     SetConfigFlags(winFlags);
+#ifdef _WIN32
+    // Before InitWindow, because the failure it catches happens inside it and
+    // never comes back out. See odWindowsGlTraceLog above.
+    SetTraceLogCallback(odWindowsGlTraceLog);
+#endif
     InitWindow(m_screenW, m_screenH, title);
 
     // InitWindow cannot fail loudly -- it returns void, logs a warning, and
@@ -739,6 +792,12 @@ bool Game::init(int screenW, int screenH, const char* title) {
 #endif
         return false;
     }
+#ifdef _WIN32
+    // The window exists, so the interceptor has done its job. Hand logging back
+    // to raylib's default, which the console redirect below then picks up --
+    // the callback writes to C stderr and would bypass it.
+    SetTraceLogCallback(nullptr);
+#endif
     SetExitKey(0);
     m_dpiScale = GetWindowScaleDPI().x;
 

@@ -216,6 +216,33 @@ if [ -z "$game" ]; then
 fi
 note "binary: $game"
 
+# Software OpenGL, for a machine with no GPU of its own.
+#
+# Set OD_SOFTWARE_GL_DIR to a directory of OpenGL DLLs -- Mesa's x64 payload --
+# and they are copied beside the game before the window step below. Windows
+# resolves a DLL next to the executable before the system copy, so this replaces
+# opengl32.dll FOR THIS PROCESS ONLY: nothing is installed and nothing outside
+# the build directory is touched.
+#
+# It exists because Windows was the one platform where the window step could
+# never run. A hosted runner has no GPU, WGL refuses, and the step below
+# correctly reports SKIPPED -- which left CI proving the Windows build compiled
+# and never proving it starts. That is precisely the gap v1.0.3a shipped
+# through: an executable that could not start at all, on the only platform
+# whose "does it run" check was permanently skipped.
+#
+# Unset, everything behaves exactly as before. This is a TEST aid; none of it
+# is packaged or shipped.
+if [ -n "${OD_SOFTWARE_GL_DIR:-}" ]; then
+    if [ -d "$OD_SOFTWARE_GL_DIR" ]; then
+        cp "$OD_SOFTWARE_GL_DIR"/*.dll "$(dirname "$game")/" 2>/dev/null \
+            && note "software OpenGL: copied beside the game from $OD_SOFTWARE_GL_DIR" \
+            || note "software OpenGL: no DLLs copied from $OD_SOFTWARE_GL_DIR"
+    else
+        note "OD_SOFTWARE_GL_DIR is set but is not a directory: $OD_SOFTWARE_GL_DIR"
+    fi
+fi
+
 # ------------------------------------------------------------------ tests ---
 run_step "the whole test suite" "$root/tests/run_all.sh" "$build"
 
