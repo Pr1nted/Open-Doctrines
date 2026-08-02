@@ -5,6 +5,19 @@
 #include <iostream>
 #include <vector>
 
+// Set by the release build (see CMakeLists.txt). Guarded so this file still
+// compiles in a target that does not define it -- an unset build gets "",
+// which is the "offer no sign-in" behaviour the comment on accountIssuer
+// describes.
+#ifndef OD_ACCOUNT_ISSUER
+#define OD_ACCOUNT_ISSUER ""
+#endif
+
+const std::string& bakedAccountIssuer() {
+    static const std::string kIssuer = OD_ACCOUNT_ISSUER;
+    return kIssuer;
+}
+
 static float findFloat(const std::string& json, const std::string& key, float def) {
     auto pos = json.find('"' + key + '"');
     if (pos == std::string::npos) return def;
@@ -109,7 +122,15 @@ bool Config::load(const std::string& path) {
     // there. The release workflow sets this; nothing else does.
     //
     // A config.json value still wins, so a player can point at their own.
-    accountIssuer = findConfigString(json, "accountIssuer", OD_ACCOUNT_ISSUER);
+    accountIssuer = findConfigString(json, "accountIssuer", bakedAccountIssuer());
+
+    // An EMPTY value in the file means "nobody ever set one", not "this build
+    // has no service". save() writes every field on every settings change, so a
+    // copy that once ran without a baked-in issuer -- v1.0.4a, or any build
+    // made from source before one was set -- has "accountIssuer": "" on disk
+    // and would carry that emptiness forward through every later version,
+    // sign-in staying unavailable for as long as the file survives.
+    if (accountIssuer.empty()) accountIssuer = bakedAccountIssuer();
     serverCredential = findConfigString(json, "serverCredential", "");
     accountAgreed = findBool(json, "accountAgreed", false);
 

@@ -3,6 +3,15 @@
 
 struct Color;
 
+/**
+ * The account service this build was compiled against, or "" if none.
+ *
+ * Defined in Config.cpp, which is where OD_ACCOUNT_ISSUER is visible -- and a
+ * function rather than the macro itself so every reader gets the same value
+ * whether or not its translation unit was built with the definition.
+ */
+const std::string& bakedAccountIssuer();
+
 struct Config {
     float flySpeed = 2.0f;
     float maxZoom = 5.0f;
@@ -79,11 +88,19 @@ struct Config {
     // Where the account service lives, e.g.
     // "https://opendoctrines-net.example.workers.dev".
     //
-    // Empty by default, and an empty value means the game offers no sign-in at
-    // all rather than guessing at a host. There is no baked-in default because
-    // whoever builds this may not be running the official one, and a hardcoded
-    // fallback would quietly send their players' logins somewhere else.
-    std::string accountIssuer;
+    // Defaults to whatever this build was compiled against -- empty for a
+    // source build, so it offers no sign-in rather than guessing at a host,
+    // because whoever built it may be running their own service and a
+    // hardcoded fallback would quietly send their players' logins to ours.
+    //
+    // INITIALISED HERE, not only in load(). load() returns early when there is
+    // no config.json, so a build that set an issuer still came up with an empty
+    // one on any copy that has no such file -- which is EVERY web build, where
+    // config.json is user data and is deliberately not in the preload, and every
+    // fresh desktop install before its first save. The Account screen then said
+    // no service was configured and told the player to edit a file they do not
+    // have. A value in config.json still wins, so a player can point at another.
+    std::string accountIssuer = bakedAccountIssuer();
 
     /**
      * Proves WHICH server this machine is, when hosting.
