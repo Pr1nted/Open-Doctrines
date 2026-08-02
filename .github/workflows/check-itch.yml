@@ -66,12 +66,18 @@ jobs:
                  '.games[] | select(.url | endswith("/" + $g))' > /dev/null; then
             echo "Game page exists: $ITCH_TARGET"
           else
-            echo "NO GAME at $ITCH_TARGET. butler creates channels, not games."
-            echo "Create the project on itch.io first, or fix the ITCH_TARGET"
-            echo "variable. Your projects:"
+            # A WARNING, not a failure, because this lookup is not authoritative
+            # and has already cried wolf: it reported NO GAME for a target butler
+            # had pushed five channels to minutes earlier. my-games matches on
+            # the URL slug, which a project rename breaks, and it does not list
+            # every project state. butler is the real test -- it cannot push to
+            # a game that does not exist.
+            echo "::warning title=itch game not listed::my-games did not list \
+            $ITCH_TARGET. That may just mean the project was renamed or is not \
+            listed by this endpoint; if the push below works, the game exists."
+            echo "Projects this key can see:"
             curl -s -H "Authorization: $BUTLER_API_KEY" \
-              https://itch.io/api/1/key/my-games | jq -r '.games[]?.url'
-            exit 1
+              https://itch.io/api/1/key/my-games | jq -r '.games[]?.url // empty'
           fi
 
           curl -sL -o butler.zip \

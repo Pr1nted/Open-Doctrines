@@ -97,7 +97,19 @@ bool Config::load(const std::string& path) {
     modUpdateChecks = findBool(json, "modUpdateChecks", false);
     gameUpdateChecks = findBool(json, "gameUpdateChecks", true);
     accentColor = findInt(json, "accentColor", 0xFFD700);
-    accountIssuer = findConfigString(json, "accountIssuer", "");
+    // OD_ACCOUNT_ISSUER is baked in at BUILD time, and is empty unless the
+    // person building set it. See the note in Config.h: a source build must not
+    // guess at a host, because whoever made it may be running their own and a
+    // hardcoded fallback would send their players' logins somewhere else.
+    //
+    // What that reasoning did not cover is the OFFICIAL build. config.json is
+    // user data and is deliberately never packaged, so there was nowhere for a
+    // release to carry this -- and every shipped copy offered no sign-in at
+    // all, on every platform, telling the player to edit a file that is not
+    // there. The release workflow sets this; nothing else does.
+    //
+    // A config.json value still wins, so a player can point at their own.
+    accountIssuer = findConfigString(json, "accountIssuer", OD_ACCOUNT_ISSUER);
     serverCredential = findConfigString(json, "serverCredential", "");
     accountAgreed = findBool(json, "accountAgreed", false);
 

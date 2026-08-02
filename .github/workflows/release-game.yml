@@ -74,7 +74,18 @@ jobs:
             libxinerama-dev libwayland-dev libxkbcommon-dev
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        # OD_ACCOUNT_ISSUER is what makes sign-in exist in a shipped copy.
+        # Empty by default on purpose (a source build must not point at our
+        # service), and there is nowhere else a release can carry it: config.json
+        # is user data and never packaged. v1.0.4a shipped without it and every
+        # player got "No account service is configured", pointing them at a file
+        # they do not have.
+        #
+        # Written here rather than in a repository variable so it cannot be
+        # silently unset -- an empty value reproduces exactly that bug, quietly.
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
@@ -142,7 +153,9 @@ jobs:
 
       - name: Build
         run: |
-          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+          # Same reason as the desktop configure above.
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
           emmake cmake --build build-web -j 4
 
       - name: Package

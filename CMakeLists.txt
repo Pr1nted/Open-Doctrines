@@ -369,6 +369,24 @@ message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 # already has the certificate store, and would not permit a raw socket anyway.
 option(OD_ENABLE_NET "Build the multiplayer transport" ON)
 
+# Which account service a build points at, baked in at compile time.
+#
+# EMPTY BY DEFAULT, and that is not an oversight -- see the note on
+# Config::accountIssuer. A build made by somebody else must not guess at a host,
+# because they may be running their own service and a hardcoded fallback would
+# quietly send their players' logins to ours.
+#
+# What that left unanswered is how the OFFICIAL build carries the official one.
+# It cannot come from data/config.json: that file is user data, deliberately
+# absent from every zip and installer. So v1.0.4a shipped with sign-in disabled
+# on all four platforms, telling players to add a key to a file they do not
+# have. This is where the release sets it, and nothing else does.
+#
+# A value in config.json still overrides it, so a player can point at their own.
+set(OD_ACCOUNT_ISSUER "" CACHE STRING
+    "Account service URL baked into the build (empty = no sign-in offered)")
+message(STATUS "Account service: ${OD_ACCOUNT_ISSUER}")
+
 set(OD_NET_BACKEND "none")
 if(OD_ENABLE_NET)
     if(EMSCRIPTEN)
@@ -610,6 +628,12 @@ if(OD_NET_BACKEND STREQUAL "mbedtls")
 elseif(OD_NET_BACKEND STREQUAL "browser")
     target_compile_definitions(OpenDoctrines PRIVATE OD_ENABLE_NET=1)
 endif()
+
+# Quoted through to the compiler so Config.cpp can use it as a string literal.
+# Always defined, so the source needs no #ifdef and an unset build simply gets
+# "" -- which is exactly the "offer no sign-in" behaviour it had before.
+target_compile_definitions(OpenDoctrines PRIVATE
+                           OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
 
 if(OD_P2P_DEFS)
     target_link_libraries(OpenDoctrines ${OD_P2P_LIBS})
