@@ -83,9 +83,14 @@ jobs:
         #
         # Written here rather than in a repository variable so it cannot be
         # silently unset -- an empty value reproduces exactly that bug, quietly.
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
+        #
+        # ONE LINE, and it has to stay one line. This step declares no shell, so
+        # it runs in bash on Linux and macOS and in POWERSHELL on Windows, where
+        # `\` is not a line continuation -- it is a path separator. Splitting
+        # this across lines broke the Windows configure and nothing else, which
+        # is the confusing way for it to fail: three platforms green, one red,
+        # in a step that had not changed on any of them.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
