@@ -146,6 +146,82 @@ jobs:
         shell: bash
         run: tools/qualify.sh build
 
+      # THE PACKAGED COPY, not the build tree.
+      #
+      # Everything above runs the game out of build/, with OD_DATA_DIR pointed
+      # at a directory of symlinks. That is the one layout no player ever has,
+      # and it is the blind spot that "works for the developer, broken for the
+      # player" bugs live in: a data folder resolved from the executable, a
+      # directory that exists only in a working copy, a file the packagers were
+      # never told to ship. Every one of those passes every check above.
+      #
+      # So this runs what tools/package.py actually ships -- the same tree the
+      # zips and the installer are built from -- from a working directory that
+      # is not the game's own, with no OD_DATA_DIR. The game has to find its own
+      # data the way a player's copy does, and then play a real scenario out of
+      # it.
+      - name: The packaged copy runs
+        shell: bash
+        run: |
+          set -e
+          BIN=build/OpenDoctrines
+          [ -d "build/OpenDoctrines.app" ] && BIN=build/OpenDoctrines.app
+          [ -f "build/Release/OpenDoctrines.exe" ] && BIN=build/Release/OpenDoctrines.exe
+          python3 tools/package.py --binary "$BIN" --out dist/pkg
+
+          if [ -d dist/pkg/OpenDoctrines.app ]; then
+            GAME="$PWD/dist/pkg/OpenDoctrines.app/Contents/MacOS/OpenDoctrines"
+            DATA="$PWD/dist/pkg/OpenDoctrines.app/Contents/data"
+          elif [ -f dist/pkg/OpenDoctrines.exe ]; then
+            GAME="$PWD/dist/pkg/OpenDoctrines.exe"; DATA="$PWD/dist/pkg/data"
+          else
+            GAME="$PWD/dist/pkg/OpenDoctrines"; DATA="$PWD/dist/pkg/data"
+          fi
+
+          # Software GL beside the PACKAGED binary. qualify.sh copied it next to
+          # the build-tree one, which is a different directory, so without this
+          # the Windows run would report "no display" and skip the very check
+          # this step exists to make.
+          if [ -n "${OD_SOFTWARE_GL_DIR:-}" ] && [ -d "${OD_SOFTWARE_GL_DIR}" ]; then
+            cp "$OD_SOFTWARE_GL_DIR"/*.dll "$(dirname "$GAME")/" 2>/dev/null || true
+          fi
+
+          # The empty-array idiom from qualify.sh: macOS ships bash 3.2, where
+          # expanding an empty array under set -u is an error.
+          runner=()
+          if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
+            runner=(xvfb-run -a)
+          fi
+
+          # Somewhere that is NOT the game's folder, so nothing can resolve
+          # through the current directory by accident.
+          mkdir -p "$RUNNER_TEMP/od-pkg-cwd"
+          cd "$RUNNER_TEMP/od-pkg-cwd"
+
+          set +e
+          ${runner[@]+"${runner[@]}"} "$GAME" \
+              --simulate "$DATA/STDmaps/1939.odmap" 3 PkgCheck > pkg.log 2>&1
+          rc=$?
+          set -e
+          grep -aE '^\[SIM\]|could not find its data folder' pkg.log || true
+
+          # A machine that cannot draw is not a broken package -- same rule, and
+          # the same list of ways each platform words it, as qualify.sh.
+          if grep -qaE 'suitable pixel format|does not appear to support OpenGL|could not open a window|Failed to initialize GLFW|GLX' pkg.log; then
+            echo "::notice title=packaged run skipped::no usable display on this runner"
+            exit 0
+          fi
+          if grep -qa 'could not find its data folder' pkg.log; then
+            echo "THE PACKAGED COPY COULD NOT FIND ITS OWN DATA."
+            tail -30 pkg.log; exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "The packaged copy exited $rc."; tail -30 pkg.log; exit 1
+          fi
+          grep -qa '^\[SIM\] turn 3/3' pkg.log || {
+            echo "The packaged copy did not play three turns."; tail -30 pkg.log; exit 1; }
+          echo "OK: the packaged copy found its own data and played 1939."
+
   # The web build is a platform too, and the one where "it compiled" is least
   # informative: it is the only target that links against different backends
   # (WsWeb rather than WsNative, PeerLinkWeb rather than PeerLinkNative), so it
