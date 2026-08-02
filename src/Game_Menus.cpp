@@ -617,6 +617,46 @@ void Game::drawMainMenu() {
     // Version info
     DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade(Color{80, 80, 90, 200}));
 
+    // Why the last load failed, if it did.
+    //
+    // A failed load drops the player back here. Until this was drawn it did so
+    // in complete silence: pick a scenario, watch the loading screen flicker,
+    // end up on the menu with no idea why. That is what "scenarios do not load"
+    // looks like from the outside, and it reads identically whether the map file
+    // is missing, the download was truncated, or antivirus ate the data folder.
+    // The reasons existed all along, on std::cerr, which a Windows GUI build
+    // does not have.
+    //
+    // Drawn above the menu's own text rather than over it, and cleared the
+    // moment another load starts.
+    if (!m_loadError.empty()) {
+        const int pad = 10;
+        const int fs  = 15;
+        std::vector<std::string> lines;
+        {
+            std::string cur;
+            for (char ch : m_loadError) {
+                if (ch == '\n') { lines.push_back(cur); cur.clear(); }
+                else cur += ch;
+            }
+            lines.push_back(cur);
+        }
+        int wide = 0;
+        for (const auto& l : lines) wide = std::max(wide, MeasureText(l.c_str(), fs));
+
+        const int boxH = (int)lines.size() * (fs + 4) + pad * 2;
+        const int boxW = wide + pad * 2;
+        const int boxX = m_screenW / 2 - boxW / 2;
+        const int boxY = m_screenH - boxH - 40;
+
+        DrawRectangle(boxX, boxY, boxW, boxH, ColorAlpha(Color{40, 10, 10, 255}, a * 0.92f));
+        DrawRectangleLines(boxX, boxY, boxW, boxH, fade(Color{200, 70, 70, 255}));
+        for (size_t i = 0; i < lines.size(); ++i)
+            DrawText(lines[i].c_str(), boxX + pad,
+                     boxY + pad + (int)i * (fs + 4), fs,
+                     fade(Color{255, 190, 190, 255}));
+    }
+
     // The "!" — only ever drawn when a newer release actually exists, so its
     // presence is information rather than decoration.
     if (GameUpdates::get().updateAvailable()) {

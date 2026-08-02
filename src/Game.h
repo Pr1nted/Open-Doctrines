@@ -190,6 +190,20 @@ private:
     int m_loadingResIdx = 0;
     bool m_loadingShouldCreateSave = false;
     bool m_loadingFailed = false;
+    /**
+     * Why the last load failed, in words a player can act on.
+     *
+     * A failed load sends the player back to the main menu and, until this
+     * existed, said nothing at all: they picked a scenario, the loading screen
+     * flickered, and they were back where they started. That is reported as
+     * "scenarios do not load", and it is indistinguishable from a broken
+     * scenario list, a corrupt download or a missing data folder -- which need
+     * completely different fixes. The reasons were written to std::cerr, which
+     * on a Windows GUI build goes nowhere at all.
+     *
+     * Cleared when a load starts, drawn on the menu while it is set.
+     */
+    std::string m_loadError;
     double m_lastLoadingWork = 0.0;  // for work throttling
     std::string m_loadingWorldName;
     void startLoading(const std::string& odmPath);

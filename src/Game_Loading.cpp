@@ -106,6 +106,7 @@ void Game::startLoading(const std::string& odmPath) {
     m_loadingTempOdm.clear();
     m_loadingResIdx = 0;
     m_loadingFailed = false;
+    m_loadError.clear();
     std::cout << "Started async loading: " << odmPath << std::endl;
 }
 
@@ -117,6 +118,7 @@ void Game::startLoadingSave(const std::string& savePath) {
     m_loadingOdmPath.clear();
     m_loadingResIdx = 0;
     m_loadingFailed = false;
+    m_loadError.clear();
     std::cout << "Started async save loading: " << savePath << std::endl;
 }
 
@@ -129,6 +131,8 @@ void Game::updateLoading() {
             std::vector<uint8_t> odmData = SaveManager::extractODM(m_loadingSavePath);
             if (odmData.empty()) {
                 std::cerr << "  Failed to extract .odmap from " << m_loadingSavePath << std::endl;
+                m_loadError = "That save file has no map inside it, or could not "
+                              "be read:\n" + m_loadingSavePath;
                 m_loadingFailed = true;
                 m_loadingPhase = LOAD_DONE;
                 hideLoadingScreen();
@@ -139,6 +143,8 @@ void Game::updateLoading() {
                 std::ofstream out(m_loadingTempOdm, std::ios::binary);
                 if (!out) {
                     std::cerr << "  Failed to write temp .odmap" << std::endl;
+                    m_loadError = "The map could not be unpacked from the save. "
+                                  "The game could not write to:\n" + m_loadingTempOdm;
                     m_loadingFailed = true;
                     m_loadingPhase = LOAD_DONE;
                     hideLoadingScreen();
@@ -159,6 +165,14 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
         odmOk = loadFromFiles();
     }
     if (!odmOk) {
+        // The one that a player actually hits. loadFromODM() failing means the
+        // .odmap could not be opened or parsed, and loadFromFiles() cannot
+        // rescue it in a shipped copy: it reads loose JSON that is not
+        // packaged, so it only ever succeeds in a working tree.
+        m_loadError = "This map could not be loaded:\n" + m_loadingOdmPath +
+                      "\n\nThe file may be missing, incomplete or blocked by "
+                      "security software. Check that the game's data folder is "
+                      "intact.";
         m_loadingFailed = true;
         m_loadingPhase = LOAD_DONE;
         hideLoadingScreen();
