@@ -112,6 +112,11 @@ tools/gearbox build my-mod      # compile, pack and verify -> my-mod.odmod
 [ABI reference](docs/gearbox-abi.md) ·
 [Troubleshooting](docs/gearbox-troubleshooting.md)
 
+The same material is written up as a wiki, in two places that stay in step: the
+[Wiki tab](https://github.com/Pr1nted/Open-Doctrines/wiki) for reading, and
+[`wiki/`](wiki/) for reading it here beside the code, with the history and the
+diffs. The tree is the source; the Wiki tab is published from it.
+
 ## Installing
 
 ### macOS — the first launch needs one extra step

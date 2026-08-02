@@ -16,6 +16,8 @@ into your memory after a call returns.
 - **GameState.Read** (`gearbox:gamestate.read`): [turn_number](#turn-number), [country_count](#country-count), [country_at](#country-at), [country_name](#country-name), [country_treasury](#country-treasury), [country_province_count](#country-province-count), [province_population](#province-population), [province_owner](#province-owner)
 - **UI** (`gearbox:ui`): [panel_register](#panel-register), [draw_rect](#draw-rect), [draw_text](#draw-text), [button](#button)
 - **Assets** (`gearbox:assets`): [size](#size), [read](#read)
+- **Audio** (`gearbox:audio`): [play](#play), [stop](#stop), [set_volume](#set-volume), [is_playing](#is-playing)
+- **Net** (`gearbox:net`): [send](#send), [recv](#recv), [peer_count](#peer-count), [self_peer](#self-peer), [is_host](#is-host)
 - **WasiStub** (`wasi_snapshot_preview1`): [fd_write](#fd-write), [proc_exit](#proc-exit), [random_get](#random-get), [clock_time_get](#clock-time-get), [environ_sizes_get](#environ-sizes-get), [environ_get](#environ-get), [args_sizes_get](#args-sizes-get), [args_get](#args-get), [fd_close](#fd-close), [fd_fdstat_get](#fd-fdstat-get), [fd_prestat_get](#fd-prestat-get), [fd_prestat_dir_name](#fd-prestat-dir-name), [fd_read](#fd-read), [fd_seek](#fd-seek), [path_open](#path-open), [clock_res_get](#clock-res-get), [sched_yield](#sched-yield), [fd_advise](#fd-advise), [fd_allocate](#fd-allocate), [fd_datasync](#fd-datasync), [fd_sync](#fd-sync), [fd_fdstat_set_flags](#fd-fdstat-set-flags), [fd_filestat_get](#fd-filestat-get), [fd_tell](#fd-tell), [fd_renumber](#fd-renumber), [fd_filestat_set_size](#fd-filestat-set-size), [fd_filestat_set_times](#fd-filestat-set-times), [fd_pread](#fd-pread), [fd_pwrite](#fd-pwrite), [fd_readdir](#fd-readdir), [path_create_directory](#path-create-directory), [path_remove_directory](#path-remove-directory), [path_unlink_file](#path-unlink-file), [path_filestat_get](#path-filestat-get), [path_symlink](#path-symlink), [path_readlink](#path-readlink), [path_rename](#path-rename), [path_link](#path-link), [path_filestat_set_times](#path-filestat-set-times), [poll_oneoff](#poll-oneoff), [sock_accept](#sock-accept), [sock_recv](#sock-recv), [sock_send](#sock-send), [sock_shutdown](#sock-shutdown)
 - **Storage** (`gearbox:storage`): [get](#get), [set](#set), [remove](#remove)
 - **Map** (`gearbox:map`): [width](#width), [height](#height), [province_count](#province-count), [province_at](#province-at), [province_name](#province-name), [province_center_x](#province-center-x), [province_center_y](#province-center-y), [province_is_land](#province-is-land), [province_neighbor_count](#province-neighbor-count), [province_neighbor_at](#province-neighbor-at)
@@ -306,6 +308,135 @@ Byte size of one of your own data/ files, or 0 if there is no such asset. Names 
 **Returns:** `i32`
 
 Two-call sizing, like country_name. Writes at most cap bytes and returns the asset's full size. The name is looked up in your package's entry list, never resolved as a filesystem path.
+
+## Audio
+
+Import module `gearbox:audio`. Requires the `Audio` capability in your manifest.
+
+### play
+
+```wat
+(import "gearbox:audio" "play" (func (param i32 i32 f32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `path` | `i32` | pointer into your memory |
+| `path_len` | `i32` | byte length |
+| `volume` | `f32` |  |
+
+**Returns:** `i32`
+
+Play a sound from your own mod's assets. `path` is relative to your mod root; a path outside it is refused rather than resolved. Volume is 0..1 and is multiplied by the player's own effects setting, so a mod cannot be louder than they allowed. Returns a handle, or 0 if it could not be played.
+
+### stop
+
+```wat
+(import "gearbox:audio" "stop" (func (param i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `handle` | `i32` |  |
+
+**Returns:** nothing
+
+Stop a sound this mod started. A handle belonging to another mod, or one that already finished, does nothing.
+
+### set_volume
+
+```wat
+(import "gearbox:audio" "set_volume" (func (param i32 f32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `handle` | `i32` |  |
+| `volume` | `f32` |  |
+
+**Returns:** nothing
+
+Change the volume of a playing sound, 0..1, again scaled by the player's setting.
+
+### is_playing
+
+```wat
+(import "gearbox:audio" "is_playing" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `handle` | `i32` |  |
+
+**Returns:** `i32`
+
+Whether that handle is still making sound.
+
+## Net
+
+Import module `gearbox:net`. Requires the `Net` capability in your manifest.
+
+### send
+
+```wat
+(import "gearbox:net" "send" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `peer` | `i32` |  |
+| `data` | `i32` | pointer into your memory |
+| `data_len` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Send a message to the same mod running on another peer. `peer` is a peer id -- the value `recv` reported in `from_peer` -- and -1 broadcasts to every other peer, the host included. There is no fixed id for the host: a host that plays holds an ordinary seat, and a dedicated one holds none. The host stamps your mod id on the message, so you cannot send as another mod, and it never carries game traffic: orders, deltas and chat do not travel here. Messages larger than 8192 bytes are refused. Returns 0 if this is not a network game, or the message was too large.
+
+### recv
+
+```wat
+(import "gearbox:net" "recv" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `out` | `i32` | pointer into your memory |
+| `out_len` | `i32` | byte length |
+| `from_peer` | `i32` | pointer into your memory |
+
+**Returns:** `i32`
+
+Take the next message addressed to this mod, writing it into `out` and the sender's peer id into `from_peer`. Returns the number of bytes written, or 0 when the queue is empty. A message longer than `out_len` is truncated rather than dropped, so a small buffer loses data instead of stalling the queue.
+
+### peer_count
+
+```wat
+(import "gearbox:net" "peer_count" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+How many players this session has, a playing host included. 0 when this is not a network game, which is how a mod tells the difference. Spectators are not counted.
+
+### self_peer
+
+```wat
+(import "gearbox:net" "self_peer" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+This machine's own peer id. 0 means this is not a network game, or this is a dedicated host holding no seat -- a host that plays has an ordinary peer id like anyone else, so do not use this to tell host from client. `is_host` is that question.
+
+### is_host
+
+```wat
+(import "gearbox:net" "is_host" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+Whether this copy is the authoritative one. A mod that computes anything the game depends on must do it here and send the result, not compute it separately on each machine.
 
 ## WasiStub
 
@@ -1484,10 +1615,12 @@ that many bytes, so an older mod is safe against a newer host.
 | 16 | `platform` | `u8` | enum:platform |
 | 17 | `is_web` | `u8` | 1 under Emscripten. Fuel is NOT enforced there. |
 | 18 | `is_headless` | `u8` | 1 when there is no renderer. UI imports no-op. |
-| 19 | `reserved0` | `u8` |  |
+| 19 | `net_role` | `u8` | enum:net_role. 0 in singleplayer, which is what an older mod reading this byte as reserved already saw. |
 | 20 | `screen_w` | `u32` | 0 when headless |
 | 24 | `screen_h` | `u32` | 0 when headless |
 
 **`log_level`** — `TRACE`=0, `INFO`=1, `WARN`=2, `ERROR`=3
 
 **`platform`** — `UNKNOWN`=0, `WINDOWS`=1, `MACOS`=2, `LINUX`=3, `WEB`=4
+
+**`net_role`** — `STANDALONE`=0, `CLIENT`=1, `SERVER`=2, `HOST_PLAYER`=3

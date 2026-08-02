@@ -252,7 +252,7 @@ python3 tools/wasm_imports.py mod.wasm
 Stray imports are the failure mode for every language, and catching them at this
 point saves a confusing debugging session later. The full list of common
 offenders is in
-[gearbox-troubleshooting.md §7](Troubleshooting).
+[gearbox-troubleshooting.md §7](Troubleshooting.md).
 
 Work from [`sdk/abi.json`](https://github.com/Pr1nted/Open-Doctrines/blob/main/sdk/abi.json) rather than from another binding —
 it is machine-readable, so for many languages you can generate the declarations

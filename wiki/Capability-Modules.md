@@ -23,6 +23,8 @@ it asked for**.
 | `Map` | Province geometry and adjacency | `width`, `height`, `province_count`, `province_at`, `province_name`, `province_center_x`, `province_center_y`, `province_is_land`, `province_neighbor_count`, `province_neighbor_at` | yes | implemented |
 | `Diplomacy` | Read and propose diplomatic actions | `at_war`, `allied`, `non_aggression`, `guaranteed`, `propose_war` | yes | implemented |
 | `Storage` | Persistent key-value store namespaced to your mod id | `get`, `set`, `remove` | yes | implemented |
+| `Audio` | Play and stop sounds from your own mod's assets | `play`, `stop`, `set_volume`, `is_playing` | yes | implemented |
+| `Net` | Send and receive messages between copies of YOUR OWN mod | `send`, `recv`, `peer_count`, `self_peer`, `is_host` | yes | implemented |
 | `WasiStub` | Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock. | `fd_write`, `proc_exit`, `random_get`, `clock_time_get`, `environ_sizes_get`, `environ_get`, `args_sizes_get`, `args_get`, `fd_close`, `fd_fdstat_get`, `fd_prestat_get`, `fd_prestat_dir_name`, `fd_read`, `fd_seek`, `path_open`, `clock_res_get`, `sched_yield`, `fd_advise`, `fd_allocate`, `fd_datasync`, `fd_sync`, `fd_fdstat_set_flags`, `fd_filestat_get`, `fd_tell`, `fd_renumber`, `fd_filestat_set_size`, `fd_filestat_set_times`, `fd_pread`, `fd_pwrite`, `fd_readdir`, `path_create_directory`, `path_remove_directory`, `path_unlink_file`, `path_filestat_get`, `path_symlink`, `path_readlink`, `path_rename`, `path_link`, `path_filestat_set_times`, `poll_oneoff`, `sock_accept`, `sock_recv`, `sock_send`, `sock_shutdown` | yes | implemented |
 
 `GameProcess` grants no imports — it gates whether the host *calls* your

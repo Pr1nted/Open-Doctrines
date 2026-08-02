@@ -2,7 +2,7 @@
 # Gearbox — the OpenDoctrines mod API
 
 Gearbox v1.0. A mod is a WebAssembly module that imports
-88 host functions and exports up to 5 of its own. That is
+97 host functions and exports up to 5 of its own. That is
 the whole contract — there is no framework and no runtime to learn.
 
 Mods are sandboxed with **no ambient authority**: no filesystem, no network, no
@@ -14,15 +14,17 @@ your module.
 
 | | |
 |---|---|
-| **[Getting Started](Getting-Started)** | Install, build and load your first mod with one command. |
-| **[API Reference](API-Reference)** | Every function, its exact signature and semantics. |
-| **[Capability Modules](Capability-Modules)** | What each permission grants, and what it costs you in user trust. |
-| **[Languages](Languages)** | Which languages work today, with sizes. |
-| **[Troubleshooting](Troubleshooting)** | Every rejection message, its cause and its fix. |
+| **[Getting Started](Getting-Started.md)** | Install, build and load your first mod with one command. |
+| **[API Reference](API-Reference.md)** | Every function, its exact signature and semantics. |
+| **[Capability Modules](Capability-Modules.md)** | What each permission grants, and what it costs you in user trust. |
+| **[Languages](Languages.md)** | Which languages work today, with sizes. |
+| **[Troubleshooting](Troubleshooting.md)** | Every rejection message, its cause and its fix. |
+
+The engine's own pages sit beside these: [AI Architecture](AI-Architecture.md).
 
 ## What a mod can do today
 
-Working: **Core, GameState.Read, UI, Assets, GameProcess, GameState.Write, Neural, Map, Diplomacy, Storage, WasiStub**.
+Working: **Core, GameState.Read, UI, Assets, GameProcess, GameState.Write, Neural, Map, Diplomacy, Storage, Audio, Net, WasiStub**.
 
 Every capability module is implemented. A mod can read the world, change it,
 draw panels, run code on turn boundaries, read the map, read and propose

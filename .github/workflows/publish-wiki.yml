@@ -1,0 +1,60 @@
+# Keeps the Wiki tab equal to wiki/ in the tree.
+#
+# The wiki is a second git repository (<repo>.wiki.git) that a normal push does
+# not touch. That is why this exists: the pages were written, generated from
+# sdk/abi.json, reviewed and merged, and the Wiki tab stayed empty for as long
+# as publishing was a command somebody had to remember. It is now the same
+# event as merging the page.
+#
+# The tree is the source. Nothing here edits wiki/ -- it regenerates it to
+# prove the committed pages still match sdk/abi.json, and refuses to publish if
+# they do not, because the moment pages become documentation people read is the
+# wrong moment to ship an API reference that has fallen behind the host.
+#
+# THE WIKI REPOSITORY MUST EXIST FIRST. GitHub creates it with its first page
+# and offers no API for that, so it is one manual click, once, ever:
+# https://github.com/Pr1nted/Open-Doctrines/wiki -> "Create the first page".
+# Until then this job fails with those instructions rather than silently doing
+# nothing.
+
+name: Publish wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - "sdk/abi.json"                     # the API reference is generated from it
+      - "docs/gearbox-troubleshooting.md"  # passed through to Troubleshooting
+      - "docs/gearbox-languages.md"        # passed through to Languages
+      - "tools/gen_wiki.py"
+      - "tools/publish_wiki.py"
+      - ".github/workflows/publish-wiki.yml"
+  workflow_dispatch:                       # publish by hand after the first page
+
+# One publish at a time. Two runs pushing to the same wiki repository race, and
+# the loser fails on a non-fast-forward for a reason that has nothing to do with
+# what changed.
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # the wiki repository is written with this token
+    steps:
+      - uses: actions/checkout@v5
+
+      # Fails when wiki/ no longer matches sdk/abi.json, and says which pages.
+      # Separate from the publish step so a stale page reads as "regenerate the
+      # wiki", not as "publishing is broken".
+      - name: Check wiki/ is generated from current sources
+        run: python3 tools/gen_wiki.py --check
+
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/publish_wiki.py

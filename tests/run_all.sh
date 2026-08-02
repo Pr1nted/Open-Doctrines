@@ -105,6 +105,14 @@ $PY "$root/tools/gen_bindings.py" --check || fail=1
 step "sdk bindings vs abi.json"
 $PY "$root/tools/check_bindings.py" || fail=1
 
+step "wiki vs abi.json"
+# The wiki is generated from the same file the bindings are, and it is
+# PUBLISHED -- .github/workflows/publish-wiki.yml pushes wiki/ to the Wiki tab
+# on every merge that touches it. So a stale page here is not a stale file in a
+# tree, it is a wrong API reference on the public wiki, promising functions the
+# host does not have. Regenerate with: python3 tools/gen_wiki.py
+$PY "$root/tools/gen_wiki.py" --check || fail=1
+
 step "third-party notices vs provenance.json"
 # Fails if a dataset, library or font was added to the build without being
 # recorded, or if NOTICE.md / data/credits.txt were edited by hand instead of
