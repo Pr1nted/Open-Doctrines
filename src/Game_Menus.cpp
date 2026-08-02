@@ -25,6 +25,44 @@
 #endif
 #include <ctime>
 
+namespace {
+
+// Whether this build has a desktop to quit to.
+//
+// FALSE ON THE WEB, and everything that offers to leave the game asks this
+// first. Leaving in a browser means closing the tab, which the page cannot do
+// for you: all the game can do is stop its own frame loop, which leaves the
+// canvas frozen on whatever it drew last with no way back but a reload. So the
+// button and the Escape shortcut did not quit anything -- they broke the page,
+// and looked like a crash while doing it.
+#ifdef __EMSCRIPTEN__
+constexpr bool kCanQuitToDesktop = false;
+#else
+constexpr bool kCanQuitToDesktop = true;
+#endif
+
+// Where the menu's top-right icons sit.
+//
+// Here rather than in each of the two functions that need them, because the
+// drawing and the click handling work in different places and have to agree on
+// the same rectangles -- and now also on how many there are.
+constexpr int kMenuIconSize = 36;
+
+Rectangle menuQuitIconRect(int screenW, int dy) {
+    return { (float)(screenW - 16 - kMenuIconSize), (float)(16 + dy),
+             (float)kMenuIconSize, (float)kMenuIconSize };
+}
+
+// The gear takes the corner when there is no quit icon beside it, rather than
+// staying put and leaving a hole where the X used to be.
+Rectangle menuGearIconRect(int screenW, int dy) {
+    const float rightmost = (float)(screenW - 16 - kMenuIconSize);
+    return { kCanQuitToDesktop ? rightmost - 16 - kMenuIconSize : rightmost,
+             (float)(16 + dy), (float)kMenuIconSize, (float)kMenuIconSize };
+}
+
+}  // namespace
+
 // ────────────────────────────────────────────────────────────────────────────
 // clearThumbCache
 // ────────────────────────────────────────────────────────────────────────────
@@ -574,21 +612,18 @@ void Game::drawMainMenu() {
                  fade(ColorAlpha(msgCol, ma)));
     }
 
-    // Top-right icons: Settings (gear) and Quit (X)
-    int iconSize = 36;
-    int iconY = 16 + iconDY;
-    int quitX = m_screenW - 16 - iconSize;
-    int gearX = quitX - 16 - iconSize;
+    // Top-right icons: Settings (gear), and Quit (X) where there is somewhere
+    // to quit to -- see kCanQuitToDesktop.
 
     // Gear icon (settings) — reuse style from world browser
     {
-        Rectangle gearRect = {(float)gearX, (float)iconY, (float)iconSize, (float)iconSize};
+        Rectangle gearRect = menuGearIconRect(m_screenW, iconDY);
         bool gearHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, gearRect);
         Color gearBg = gearHover ? Color{255, 255, 255, 24} : BLANK;
         DrawRectangleRounded(gearRect, 0.3f, 6, fade(gearBg));
 
-        int gcx = gearX + iconSize / 2;
-        int gcy = iconY + iconSize / 2;
+        int gcx = (int)gearRect.x + kMenuIconSize / 2;
+        int gcy = (int)gearRect.y + kMenuIconSize / 2;
         Color gearColor = fade(gearHover ? Color{220, 220, 230, 255} : Color{160, 160, 170, 200});
         DrawCircle(gcx, gcy, 7, gearColor);
         for (int t = 0; t < 8; ++t) {
@@ -600,14 +635,14 @@ void Game::drawMainMenu() {
     }
 
     // Quit X icon
-    {
-        Rectangle quitRect = {(float)quitX, (float)iconY, (float)iconSize, (float)iconSize};
+    if constexpr (kCanQuitToDesktop) {
+        Rectangle quitRect = menuQuitIconRect(m_screenW, iconDY);
         bool quitHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, quitRect);
         Color quitBg = quitHover ? Color{255, 64, 64, 32} : BLANK;
         DrawRectangleRounded(quitRect, 0.2f, 8, fade(quitBg));
 
-        int cx = quitX + iconSize / 2;
-        int cy = iconY + iconSize / 2;
+        int cx = (int)quitRect.x + kMenuIconSize / 2;
+        int cy = (int)quitRect.y + kMenuIconSize / 2;
         int arm = 8;
         Color xColor = fade(quitHover ? Color{255, 80, 80, 255} : Color{160, 160, 170, 200});
         DrawLine(cx - arm, cy - arm, cx + arm, cy + arm, xColor);
@@ -1038,7 +1073,9 @@ void Game::updateMainMenu() {
 
     if (IsKeyPressed(KEY_UP)) { m_menuIndex = (m_menuIndex + count - 1) % count; Audio::get().playSfx("hover"); }
     if (IsKeyPressed(KEY_DOWN)) { m_menuIndex = (m_menuIndex + 1) % count; Audio::get().playSfx("hover"); }
-    if (IsKeyPressed(KEY_ESCAPE)) { m_running = false; return; }
+    if constexpr (kCanQuitToDesktop) {
+        if (IsKeyPressed(KEY_ESCAPE)) { m_running = false; return; }
+    }
 
     Vector2 mouse = getMouse();
     int hovered = -1;
@@ -1067,15 +1104,12 @@ void Game::updateMainMenu() {
     }
     if (activate) Audio::get().playSfx("click_heavy");
 
-    // Check top-right icon clicks
-    int iconSize = 36;
-    int iconY = 16;
-    int quitX = m_screenW - 16 - iconSize;
-    int gearX = quitX - 16 - iconSize;
-
-    // Check if mouse is over gear or quit icon (for activate with mouse)
-    bool gearHover = CheckCollisionPointRec(mouse, {(float)gearX, (float)iconY, (float)iconSize, (float)iconSize});
-    bool quitHover = CheckCollisionPointRec(mouse, {(float)quitX, (float)iconY, (float)iconSize, (float)iconSize});
+    // Check top-right icon clicks. The quit icon is not drawn on the web, so
+    // nothing here may answer for where it would have been -- an invisible
+    // hitbox in the corner is worse than the button was.
+    bool gearHover = CheckCollisionPointRec(mouse, menuGearIconRect(m_screenW, 0));
+    bool quitHover = kCanQuitToDesktop &&
+                     CheckCollisionPointRec(mouse, menuQuitIconRect(m_screenW, 0));
 
     if (activate) {
         m_menuIndex = std::clamp(m_menuIndex, 0, count - 1);
