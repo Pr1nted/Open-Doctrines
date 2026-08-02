@@ -527,37 +527,68 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
     return total;
 }
 
-bool Game::canCountryEnactPolicy(int countryId, const Policy& p) const {
+// Why this country cannot enact this doctrine, in words a player can act on.
+// Empty means it can.
+//
+// This exists because the doctrine screen used to answer the question wrongly.
+// It drew "X Conflicts with: ..." under any doctrine that HAD incompatibilities,
+// whether or not a single one of them was in force, and said nothing at all
+// about the reason it was actually greyed out -- which is usually the treasury
+// or the compass. A player read the conflict list as the explanation, went to
+// the Active tab, found none of those doctrines there, and reported that the
+// game was blocking them for no reason. It was; it just was not that reason.
+//
+// canCountryEnactPolicy is now this function asking whether it found anything,
+// so the button and the explanation cannot disagree about why.
+std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     auto it = m_countryCompass.find(countryId);
-    if (it == m_countryCompass.end()) {
-        return false;
-    }
+    if (it == m_countryCompass.end())
+        return "This country has no political compass.";
     const auto& pc = it->second;
-    if (pc.economic < p.minEcon || pc.economic > p.maxEcon) {
-        return false;
-    }
-    if (pc.social < p.minSoc || pc.social > p.maxSoc) {
-        return false;
-    }
+
+    // economic runs -100 (left) to +100 (right); social -100 (authoritarian)
+    // to +100 (libertarian). See PoliticalCompass.
+    if (pc.economic < p.minEcon)
+        return TextFormat("Your economy is too far left for this (%.0f; needs %.0f or higher).",
+                          pc.economic, p.minEcon);
+    if (pc.economic > p.maxEcon)
+        return TextFormat("Your economy is too far right for this (%.0f; needs %.0f or lower).",
+                          pc.economic, p.maxEcon);
+    if (pc.social < p.minSoc)
+        return TextFormat("Your government is too authoritarian for this (%.0f; needs %.0f or higher).",
+                          pc.social, p.minSoc);
+    if (pc.social > p.maxSoc)
+        return TextFormat("Your government is too libertarian for this (%.0f; needs %.0f or lower).",
+                          pc.social, p.maxSoc);
+
+    auto displayName = [&](const std::string& id) {
+        for (const auto& q : m_allPolicies)
+            if (q.id == id) return q.name;
+        return id;
+    };
+
     for (const auto& ap : m_activePolicies) {
-        if (ap.countryId == countryId && ap.policyId == p.id && ap.turnsRemaining >= 0) {
-            return false;
-        }
-        if (ap.countryId == countryId && ap.turnsRemaining >= 0) {
-            for (const auto& inc : p.incompatibleWith) {
-                if (ap.policyId == inc) {
-                    return false;
-                }
-            }
-        }
+        if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
+        if (ap.policyId == p.id)
+            return ap.turnsRemaining > 0 ? "Already being implemented."
+                                         : "Already in force.";
+        for (const auto& inc : p.incompatibleWith)
+            if (ap.policyId == inc)
+                return "Conflicts with " + displayName(inc) +
+                       ", which is active. Repeal it first.";
     }
+
     auto cs = computeCountryIncome(countryId);
     float available = cs.total - (cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts);
     available = std::max(0.0f, available);
-    if (p.costPerTurn > 0 && available < p.costPerTurn) {
-        return false;
-    }
-    return true;
+    if (p.costPerTurn > 0 && available < p.costPerTurn)
+        return TextFormat("Costs %d/turn and only %.0f is spare.", p.costPerTurn, available);
+
+    return "";
+}
+
+bool Game::canCountryEnactPolicy(int countryId, const Policy& p) const {
+    return policyBlockReason(countryId, p).empty();
 }
 
 void Game::drawResearchTab() {

@@ -1436,6 +1436,25 @@ std::string Game::saveStateJson() {
         if (val > 0.0f) j["warWeariness"][std::to_string(cid)] = val;
     }
 
+    // Where each government now stands, which is not where the map started it.
+    //
+    // Doctrines move it: shiftCountryCompass() runs while one is being
+    // implemented and every turn it stays in force, and that drift is the whole
+    // point of enacting them. None of it was written down. A load rebuilt the
+    // compass from the map file, so every government snapped back to its 1939
+    // position while keeping the doctrines it had passed to get away from it --
+    // and since doctrine availability is decided by the compass, a player who
+    // had worked their way left found the left doctrines locked again on
+    // reload.
+    //
+    // Written for every country, not only the player's: the AI shifts too, and
+    // a world that resets its politics on load is a different world.
+    for (auto& [cid, pc] : m_countryCompass) {
+        auto& node = j["countryCompass"][std::to_string(cid)];
+        node["economic"] = pc.economic;
+        node["social"] = pc.social;
+    }
+
     // Post-revolt cooldowns, for the same reason: without them a save/load
     // makes every province that has just been pacified immediately eligible to
     // rise again, and reloading becomes a way to re-roll the map.
@@ -1753,6 +1772,20 @@ void Game::loadStateJson(const std::string& json) {
     if (j.contains("warWeariness")) {
         for (auto& [key, val] : j["warWeariness"].items()) {
             m_countryWarWeariness[std::stoi(key)] = val.get<float>();
+        }
+    }
+
+    // Government positions (see saveStateJson). Absent from saves written
+    // before this was recorded, which load as they always did -- from the map's
+    // starting positions -- rather than with everyone at dead centre.
+    //
+    // Applied AFTER the map has been read, so it overwrites the starting
+    // values rather than being overwritten by them.
+    if (j.contains("countryCompass")) {
+        for (auto& [key, node] : j["countryCompass"].items()) {
+            const int cid = std::stoi(key);
+            m_countryCompass[cid] = { node.value("economic", 0.0f),
+                                      node.value("social",   0.0f) };
         }
     }
 

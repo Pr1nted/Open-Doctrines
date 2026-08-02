@@ -958,31 +958,34 @@ int xw = MeasureText("X", 20);
                     tx += MeasureText(p.tradeoffs.costs[g].c_str(), 12) + 24;
                 }
 
-                // Incompatibility warning - red highlight for conflicts with ACTIVE/implementing policies
-                if (!p.incompatibleWith.empty()) {
-                    std::string inc = "X Conflicts with: ";
-                    bool hasConflict = false;
+                // THE REASON, when there is one -- not a list of doctrines that
+                // merely could conflict.
+                //
+                // This line used to read "X Conflicts with: <every
+                // incompatibility this doctrine declares>" whenever the doctrine
+                // declared any, in force or not, and nothing else was ever
+                // written. So a doctrine greyed out for want of income accused
+                // three doctrines the player had never enacted. One went looking
+                // in the Active tab, found none of them, and reported the game
+                // as blocking him for no reason.
+                //
+                // Blocked: say which of the reasons it actually is. Available:
+                // the incompatibilities are still worth knowing, but as
+                // information about the future rather than an accusation.
+                const std::string why = policyBlockReason(m_playerCountryId, p);
+                if (!why.empty()) {
+                    DrawText(why.c_str(), 30, y + 116, 10, Color{255, 130, 130, 255});
+                } else if (!p.incompatibleWith.empty()) {
+                    std::string inc = "Cannot be combined with: ";
                     for (size_t ic = 0; ic < p.incompatibleWith.size(); ++ic) {
-                        // Check if this incompatible policy is active
-                        bool isActiveConflict = false;
-                        for (const auto& ap : m_activePolicies) {
-                            if (ap.countryId != m_playerCountryId) continue;
-                            if (ap.turnsRemaining == -1) continue;
-                            if (ap.policyId == p.incompatibleWith[ic]) {
-                                isActiveConflict = true;
-                                break;
-                            }
-                        }
                         if (ic > 0) inc += ", ";
+                        bool named = false;
                         for (const auto& pol : m_allPolicies) {
-                            if (pol.id == p.incompatibleWith[ic]) {
-                                inc += pol.name;
-                                break;
-                            }
+                            if (pol.id == p.incompatibleWith[ic]) { inc += pol.name; named = true; break; }
                         }
-                        if (isActiveConflict) hasConflict = true;
+                        if (!named) inc += p.incompatibleWith[ic];
                     }
-                    DrawText(inc.c_str(), 30, y + 116, 10, hasConflict ? RED : Color{255, 200, 100, 200});
+                    DrawText(inc.c_str(), 30, y + 116, 10, Color{200, 180, 120, 200});
                 }
 
                 // Enact button

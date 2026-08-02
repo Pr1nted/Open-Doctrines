@@ -1345,6 +1345,15 @@ public:
     void applyStartingPolicies();
     void updatePolicies();  // called each turn
     bool canCountryEnactPolicy(int countryId, const Policy& p) const;
+    /**
+     * Why this country cannot enact this doctrine, or "" if it can.
+     *
+     * canCountryEnactPolicy is this asking whether it found anything, so the
+     * greyed-out button and the sentence under it can never disagree about the
+     * reason -- which they did: the screen blamed conflicting doctrines for
+     * every refusal, including the many that were really about the treasury.
+     */
+    std::string policyBlockReason(int countryId, const Policy& p) const;
     void enactPolicy(int countryId, const std::string& policyId, int targetProvince = -1, const std::string& targetMinority = "");
     void cancelPolicy(int activePolicyIndex);
     void applyPolicyEffects(int countryId);
