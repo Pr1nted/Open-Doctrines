@@ -18,12 +18,92 @@ Stop with Ctrl-C. The merge still runs.
 """
 
 import argparse
+import math
 import os
+import random
+import struct
 import shutil
 import signal
 import subprocess
 import sys
 import time
+
+
+# ── Population-based training ──────────────────────────────────────────────
+#
+# PPO_ENTROPY was set by hand, then measured, then set back by hand -- a
+# controlled A/B that cost eighty minutes of training and fifty of evaluation to
+# move one number. With several workers already running side by side, the pool
+# IS a population: give each worker its own hyperparameters, and periodically
+# let the ones that are losing copy the ones that are winning and jitter from
+# there. Same wall-clock, and the search happens for free.
+#
+# Fitness is the worker's own running reward mean, which is serialised in the
+# model file (see saveModel's reward-statistics blob). It is the only per-worker
+# quality signal available without stopping to run an evaluation, and it is
+# comparable across workers because every worker optimises the same reward.
+PBT_INTERVAL = 1800          # seconds between exploit/explore rounds
+PBT_HYPERS = {
+    # name -> (default, low, high). Sampled log-uniformly around the default.
+    "OD_PPO_ENTROPY": (0.01, 0.003, 0.05),
+    "OD_N_STEP":      (12,   6,     24),
+}
+
+
+def _sample_hypers(rng, w):
+    """Worker 0 always runs the defaults, so the population keeps a control."""
+    env = {}
+    for name, (dflt, lo, hi) in PBT_HYPERS.items():
+        if w == 0:
+            env[name] = dflt
+            continue
+        lo_l, hi_l = math.log(lo), math.log(hi)
+        val = math.exp(rng.uniform(lo_l, hi_l))
+        env[name] = int(round(val)) if name == "OD_N_STEP" else round(val, 5)
+    return env
+
+
+def _perturb(rng, hypers):
+    """Explore: nudge by a factor, clamped to the declared range."""
+    out = {}
+    for name, val in hypers.items():
+        dflt, lo, hi = PBT_HYPERS[name]
+        val = float(val) * rng.choice([0.8, 1.25])
+        val = max(lo, min(hi, val))
+        out[name] = int(round(val)) if name == "OD_N_STEP" else round(val, 5)
+    return out
+
+
+def _fitness(path):
+    """Mean of the per-module running reward means, or None if unreadable.
+
+    The reward-statistics blob is the LAST blob in the file: MOD_COUNT pairs of
+    (mean, variance) floats. Parsed defensively -- a worker mid-save, or a model
+    from a different build, must not take the whole pool down.
+    """
+    try:
+        with open(path, "rb") as f:
+            d = f.read()
+        if len(d) < 6 or d[:4] != b"ODAI":
+            return None
+        p = 6
+        blobs = []
+        while p + 4 <= len(d):
+            ln = int.from_bytes(d[p:p + 4], "little"); p += 4
+            if p + ln > len(d):
+                return None
+            blobs.append(d[p:p + ln]); p += ln
+        if not blobs:
+            return None
+        stats = blobs[-1]
+        if len(stats) < 8 or len(stats) % 8 != 0:
+            return None
+        vals = struct.unpack("<" + "f" * (len(stats) // 4), stats)
+        means = vals[0::2]
+        return sum(means) / len(means) if means else None
+    except OSError:
+        return None
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data", "ai")
@@ -78,6 +158,9 @@ def main():
     ap.add_argument("--limit", type=float, default=0,
                     help="total percent of the machine to use, split across workers")
     ap.add_argument("--seed", type=int, default=0, help="base seed (0 = clock)")
+    ap.add_argument("--pbt", action="store_true",
+                    help="population-based training: per-worker hyperparameters, "
+                         "periodically exploited and perturbed")
     ap.add_argument("extra", nargs="*", help="extra args passed to every worker")
     args = ap.parse_args()
 
@@ -97,6 +180,9 @@ def main():
     per_worker_limit = (args.limit / n) if args.limit > 0 else 0
 
     procs = []
+    worker_cmds = {}
+    hypers = {}
+    rng = random.Random(base_seed)
     for w in range(n):
         cmd = [binary]
         if per_worker_limit > 0:
@@ -104,8 +190,16 @@ def main():
         cmd += ["--train-ai", "0", str(args.turns), "0", str(base_seed + w * 7919)]
         cmd += ["--worker", str(w), "--workers", str(n)]
         cmd += args.extra
+        worker_cmds[w] = list(cmd)
         print("[POOL] " + " ".join(cmd))
-        procs.append(subprocess.Popen(cmd, cwd=ROOT))
+        env = os.environ.copy()
+        if args.pbt:
+            hypers[w] = _sample_hypers(rng, w)
+            for k, v in hypers[w].items():
+                env[k] = str(v)
+            print(f"[PBT]  worker {w}: " +
+                  " ".join(f"{k}={v}" for k, v in hypers[w].items()))
+        procs.append(subprocess.Popen(cmd, cwd=ROOT, env=env))
         # Stagger: generating a world peaks well above its resident size, and
         # several workers generating at the same moment is the one point where a
         # pool that fits comfortably can still be killed for memory.
@@ -113,8 +207,55 @@ def main():
 
     print(f"[POOL] {n} worker(s) running. Ctrl-C to stop and merge.")
     try:
+        next_pbt = time.time() + PBT_INTERVAL
         while any(p.poll() is None for p in procs):
             time.sleep(2)
+            if not args.pbt or time.time() < next_pbt:
+                continue
+            next_pbt = time.time() + PBT_INTERVAL
+            # EXPLOIT then EXPLORE. Rank the workers by the fitness stored in
+            # their own model file; the worst copies the best's WEIGHTS as well
+            # as its hyperparameters, then jitters them. Copying the weights is
+            # the part that makes this population-based rather than a random
+            # sweep: a good setting is worth little without the progress it
+            # made.
+            scored = []
+            for w in range(n):
+                fit = _fitness(os.path.join(DATA, f"model.w{w}.bin"))
+                if fit is not None:
+                    scored.append((fit, w))
+            if len(scored) < 2:
+                print("[PBT]  not enough readable models to rank; skipping round")
+                continue
+            scored.sort()
+            worst_fit, worst = scored[0]
+            best_fit, best = scored[-1]
+            if worst == best:
+                continue
+            print(f"[PBT]  best w{best} ({best_fit:+.4f}) -> worst w{worst} "
+                  f"({worst_fit:+.4f})")
+            # A live worker is writing its model file; stop it before copying
+            # over it, then relaunch with the inherited-and-jittered settings.
+            if procs[worst].poll() is None:
+                procs[worst].send_signal(signal.SIGTERM)
+                deadline = time.time() + 30
+                while procs[worst].poll() is None and time.time() < deadline:
+                    time.sleep(0.5)
+                if procs[worst].poll() is None:
+                    procs[worst].kill()
+            try:
+                shutil.copy2(os.path.join(DATA, f"model.w{best}.bin"),
+                             os.path.join(DATA, f"model.w{worst}.bin"))
+            except OSError as e:
+                print(f"[PBT]  copy failed ({e}); leaving worker {worst} as it was")
+                continue
+            hypers[worst] = _perturb(rng, hypers.get(best, {}))
+            env = os.environ.copy()
+            for k, v in hypers[worst].items():
+                env[k] = str(v)
+            print(f"[PBT]  worker {worst} restarts with " +
+                  " ".join(f"{k}={v}" for k, v in hypers[worst].items()))
+            procs[worst] = subprocess.Popen(worker_cmds[worst], cwd=ROOT, env=env)
     except KeyboardInterrupt:
         print("\n[POOL] stopping workers...")
         for p in procs:

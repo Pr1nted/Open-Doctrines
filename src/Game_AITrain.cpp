@@ -200,6 +200,11 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         const Scenario& sc = SCENARIOS[m % SCENARIO_COUNT];
         MapEditor::GeneratorParams p;
         p.seed = (int)(rng() & 0x7FFFFFFF);
+        // Same reasoning as the evaluation loop below: turn logic uses rand(),
+        // and raylib seeds it from the clock. Training tolerates noise better
+        // than measurement does, but a training run that cannot be replayed
+        // cannot be debugged either.
+        srand((unsigned int)p.seed);
         p.landCoverage = randRange(rng, sc.landMin, sc.landMax);
         p.numContinents = randRange(rng, sc.contMin, sc.contMax);
         p.jaggedness = randRange(rng, sc.jagMin, sc.jagMax);
@@ -595,6 +600,27 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         const Scenario& sc = SCENARIOS[m % SCENARIO_COUNT];
         MapEditor::GeneratorParams p;
         p.seed = (int)(rng() & 0x7FFFFFFF);
+        // SEED THE C PRNG, PER MAP, FROM THE MAP'S OWN SEED.
+        //
+        // Turn logic calls rand() directly -- combat damage rolls, rebellion
+        // chances, breakaway naming. raylib's InitWindow calls
+        // SetRandomSeed(time(NULL)), which on this build is srand(time(NULL)),
+        // so that stream was seeded from the WALL CLOCK and every run of the
+        // same seed played a different game.
+        //
+        // Measured before this line existed: two --eval-ai runs of seed 4242,
+        // identical in every other respect, diverged on TURN 2 (province
+        // ownership and treasury identical, army counts not -- combat rolls)
+        // and finished 0.32x against 0.54x ADVANTAGE. That spread is larger
+        // than most effects worth measuring, and it silently inflated every
+        // interval and invalidated every cross-run comparison.
+        //
+        // Seeded from p.seed rather than once per process on purpose: map N
+        // must play the same way whether it is the first map of the run or the
+        // fourth, or --maps would change the result of every map after the
+        // first.
+        srand((unsigned int)p.seed);
+
         p.landCoverage = randRange(rng, sc.landMin, sc.landMax);
         p.numContinents = randRange(rng, sc.contMin, sc.contMax);
         p.jaggedness = randRange(rng, sc.jagMin, sc.jagMax);
@@ -860,6 +886,71 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             };
             ledger("MODEL",  r.trainedStartProv, r.trainedProvinces, M);
             ledger("RANDOM", r.randomStartProv,  r.randomProvinces,  R);
+
+            // WHAT THE WAR MODULE DOES WITH ITS TURN. The ledger says the model
+            // shrinks because it wins fewer battles; this says whether that is
+            // because attack was never on the menu or because it was declined.
+            // "take" is chosen/offered: the control group is uniform over
+            // whatever is valid, so its take rate IS the availability baseline,
+            // and any action where the model sits far below it is a preference
+            // the policy learned rather than a constraint the game imposed.
+            static const char* ECON_NAME[AISystem::ECON_ACTIONS] = {
+                "save", "industry", "fort", "port", "specialize", "destroyer",
+                "carrier", "fund up", "fund down", "focus bldg", "focus army",
+                "focus navy"};
+            printf("[EVAL]   -- econ action: offered / chosen (take%%) --\n");
+            for (int i = 0; i < AISystem::ECON_ACTIONS; ++i) {
+                const double mt = M.econOffered[i] ? 100.0 * M.econChosen[i] / M.econOffered[i] : 0.0;
+                const double rt = R.econOffered[i] ? 100.0 * R.econChosen[i] / R.econOffered[i] : 0.0;
+                printf("[EVAL]     %-11s %7lld/%-7lld (%4.1f%%)  %7lld/%-7lld (%4.1f%%)\n",
+                       ECON_NAME[i], M.econOffered[i], M.econChosen[i], mt,
+                       R.econOffered[i], R.econChosen[i], rt);
+            }
+            printf("[EVAL]     research picks         %7lld   %7lld\n",
+                   M.researchPicked, R.researchPicked);
+            printf("[EVAL]       ...armed a node      %7lld   %7lld\n",
+                   M.researchArmed, R.researchArmed);
+            printf("[EVAL]       ...nothing left      %7lld   %7lld\n",
+                   M.researchNothingLeft, R.researchNothingLeft);
+            printf("[EVAL]     funded turns on a node %7lld   %7lld\n",
+                   M.researchFundedTurns, R.researchFundedTurns);
+            printf("[EVAL]     stalled unfunded turns %7lld   %7lld\n",
+                   M.researchStalls, R.researchStalls);
+            printf("[EVAL]     nodes completed        %7lld   %7lld\n",
+                   M.researchCompleted, R.researchCompleted);
+
+            static const char* WAR_NAME[AISystem::WAR_ACTIONS] = {
+                "hold", "recruit", "reinforce", "attack",
+                "declare war", "artillery", "ceasefire", "stage"};
+            // THE OFFENSIVE FUNNEL. Raw battle counts compare nothing when the
+            // two cohorts spend different amounts of time at war; these are the
+            // stages between "at war" and "province taken".
+            printf("[EVAL]   -- offensive funnel --\n");
+            printf("[EVAL]     country-turns at war   %7lld   %7lld\n", M.turnsAtWar,     R.turnsAtWar);
+            printf("[EVAL]     attack orders issued   %7lld   %7lld\n", M.attackIssued,   R.attackIssued);
+            printf("[EVAL]     attack: no target      %7lld   %7lld\n", M.attackNoTarget, R.attackNoTarget);
+            printf("[EVAL]     attack: order pending  %7lld   %7lld\n", M.attackPending,  R.attackPending);
+            {
+                auto rate = [](long long num, long long den) { return den ? (double)num / den : 0.0; };
+                printf("[EVAL]     battles won / turn at war  %7.3f   %7.3f\n",
+                       rate(M.provTakenInBattle, M.turnsAtWar),
+                       rate(R.provTakenInBattle, R.turnsAtWar));
+                printf("[EVAL]     battles won / attack issued %6.3f   %7.3f\n",
+                       rate(M.provTakenInBattle, M.attackIssued),
+                       rate(R.provTakenInBattle, R.attackIssued));
+                printf("[EVAL]     attacks issued / turn at war %5.3f   %7.3f\n",
+                       rate(M.attackIssued, M.turnsAtWar),
+                       rate(R.attackIssued, R.turnsAtWar));
+            }
+
+            printf("[EVAL]   -- war action: offered / chosen (take%%) --\n");
+            for (int i = 0; i < AISystem::WAR_ACTIONS; ++i) {
+                const double mt = M.warOffered[i] ? 100.0 * M.warChosen[i] / M.warOffered[i] : 0.0;
+                const double rt = R.warOffered[i] ? 100.0 * R.warChosen[i] / R.warOffered[i] : 0.0;
+                printf("[EVAL]     %-11s %7lld/%-7lld (%4.1f%%)  %7lld/%-7lld (%4.1f%%)\n",
+                       WAR_NAME[i], M.warOffered[i], M.warChosen[i], mt,
+                       R.warOffered[i], R.warChosen[i], rt);
+            }
 
             const int total = r.trainedProvinces + r.randomProvinces;
             printf("[EVAL]   MODEL %d provinces (%.0f%%), %d/%d alive | "

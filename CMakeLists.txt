@@ -880,8 +880,24 @@ if(APPLE)
     if(NOT EMSCRIPTEN)
         target_link_libraries(OpenDoctrines "-framework Accelerate")
         # ACCELERATE_NEW_LAPACK selects the modern (non-deprecated) CBLAS headers.
-        target_compile_definitions(OpenDoctrines PRIVATE
-                                   OD_USE_ACCELERATE=1 ACCELERATE_NEW_LAPACK=1)
+        # OD_USE_ACCELERATE is deliberately NOT defined by default.
+        #
+        # It routes the neural net's forward pass through Accelerate's sgemv,
+        # which is mathematically identical to the scalar loop but is NOT
+        # reproducible against itself at every input width: measured on
+        # 2026-08-03, three identical --eval-ai runs of one model returned
+        # 1.08x at 96 features and 0.83x / 1.34x / 0.87x at 104. A last-bit
+        # difference flips an occasional sampled action and the games diverge
+        # from there, which makes every AI measurement unrepeatable and
+        # silently widens every confidence interval.
+        #
+        # The speedup it buys is not measurable here: a 400-turn, 2-map
+        # evaluation ran 39.51s with it and 39.00s without, because the game
+        # simulation dominates and the nets are a rounding error in it. A
+        # reproducible benchmark is worth far more than a speedup that does not
+        # show up. Define OD_USE_ACCELERATE=1 to opt back in if a net-heavy
+        # workload ever proves otherwise.
+        target_compile_definitions(OpenDoctrines PRIVATE ACCELERATE_NEW_LAPACK=1)
     endif()
 endif()
 

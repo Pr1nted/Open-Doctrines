@@ -527,6 +527,34 @@ void Game::processTurn() {
     drawFrame(1.0f, "Done!");
     if (m_config.aiDebug) printf("[TURN] Turn %d processed.\n", turnNum);
 
+    // DETERMINISM TRACE. OD_DET_TRACE=1 prints a hash of the world after every
+    // turn, so two runs of the same seed can be diffed to find the exact turn
+    // they first disagree -- which is the only cheap way to localise a
+    // divergence in a 400-turn simulation.
+    //
+    // Every accumulation below is COMMUTATIVE (+= into a sum, never a sequence
+    // mix) wherever it walks an unordered container. A hash that depends on
+    // iteration order would report a divergence whenever the containers merely
+    // rehashed differently, which is exactly the false positive that would send
+    // someone hunting a bug that is not there.
+    static const bool detTrace = std::getenv("OD_DET_TRACE") != nullptr;
+    if (detTrace) {
+        uint64_t owners = 0, armies = 0, money = 0;
+        for (size_t pid = 0; pid < m_provinceCountryLookup.size(); ++pid)
+            owners += (uint64_t)(pid + 1) * 1000003ULL *
+                      (uint64_t)(m_provinceCountryLookup[pid] + 1);
+        for (const auto& [pid, units] : m_provinceArmies)
+            for (const auto& u : units)
+                armies += (uint64_t)(pid + 1) * 7919ULL +
+                          (uint64_t)(u.countryId + 1) * 104729ULL + (uint64_t)u.count;
+        for (const auto& [cid, c] : m_countries.getAll())
+            money += (uint64_t)(cid + 1) * 31ULL + (uint64_t)(int64_t)llround(c.treasury);
+        printf("[DET] turn=%d owners=%llu armies=%llu money=%llu\n", turnNum,
+               (unsigned long long)owners, (unsigned long long)armies,
+               (unsigned long long)money);
+        fflush(stdout);
+    }
+
     // Resource limiter. The frame cap in Settings > Display does nothing for
     // this loop -- it is single-threaded, runs as hard as the machine allows,
     // and during self-play it IS the CPU load. Idling for a share of the work

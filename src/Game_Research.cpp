@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "Audio.h"
 #include "GameInternals.h"
+#include "ai/AISystem.h"   // noteResearchStall, called from progressCountryResearch
 #include "Keybinds.h"
 #include "raymath.h"
 #include <iostream>
@@ -69,7 +70,15 @@ bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
 void Game::progressCountryResearch(int countryId) {
     if (countryId == m_playerCountryId) return;
     auto raIt = m_countryResearchAllocation.find(countryId);
-    if (raIt == m_countryResearchAllocation.end() || raIt->second <= 0.001f) return;
+    if (raIt == m_countryResearchAllocation.end() || raIt->second <= 0.001f) {
+        // Unfunded. Worth counting only when a node is actually waiting on the
+        // money -- that is the locked-out case, not merely a country that has
+        // never started researching.
+        auto acIt = m_countryResearchActive.find(countryId);
+        if (m_ai && acIt != m_countryResearchActive.end() && acIt->second >= 0)
+            m_ai->noteResearchStall(countryId);
+        return;
+    }
 
     auto cs = computeCountryIncome(countryId); // O(1) while the turn cache is hot
     int rp = 1 + (int)sqrtf(cs.researchCost * 0.5f);
@@ -84,9 +93,11 @@ void Game::progressCountryResearch(int countryId) {
     int& invested = m_countryResearchInvested[countryId];
     if (m_countryResearched[countryId].count(node.id)) { active = -1; invested = 0; return; }
 
+    if (m_ai) m_ai->noteResearchFunded(countryId);
     int toSpend = std::min(pts, node.cost - invested);
     if (toSpend > 0) { invested += toSpend; pts -= toSpend; }
     if (invested >= node.cost) {
+        if (m_ai) m_ai->noteResearchDone(countryId);
         m_countryResearched[countryId].insert(node.id);
         active = -1;
         invested = 0;

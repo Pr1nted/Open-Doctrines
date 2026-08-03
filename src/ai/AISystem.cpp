@@ -42,10 +42,17 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // each policy net is 96->512->320->N (~215k params). Still fast — a
     // forward pass is ~0.2M multiply-adds, so hundreds of countries per turn
     // stay in the low milliseconds.
-    m_policy[MOD_ECONOMY]  = NeuralNet({FEATURE_COUNT, 512, 320, ECON_ACTIONS}, 101);
-    m_policy[MOD_POLITICS] = NeuralNet({FEATURE_COUNT, 512, 320, POL_ACTIONS},  102);
-    m_policy[MOD_WAR]      = NeuralNet({FEATURE_COUNT, 512, 320, WAR_ACTIONS},  103);
-    m_policy[MOD_NAVY]     = NeuralNet({FEATURE_COUNT, 512, 320, NAVY_ACTIONS}, 104);
+    // One encoder, eight heads. See TRUNK_OUT.
+    m_trunk = NeuralNet({FEATURE_COUNT, 512, TRUNK_OUT}, 100);
+    m_trunk.setTanhOutput(true);
+    m_relEncoder = NeuralNet({REL_FEATURES, REL_EMBED}, 106);
+    m_relEncoder.setTanhOutput(true);
+    m_relScore   = NeuralNet({REL_EMBED, 1}, 107);
+    m_stanceHead = NeuralNet({TRUNK_OUT, STANCE_COUNT}, 105);
+    m_policy[MOD_ECONOMY]  = NeuralNet({TRUNK_OUT, ECON_ACTIONS}, 101);
+    m_policy[MOD_POLITICS] = NeuralNet({TRUNK_OUT, POL_ACTIONS},  102);
+    m_policy[MOD_WAR]      = NeuralNet({TRUNK_OUT, WAR_ACTIONS},  103);
+    m_policy[MOD_NAVY]     = NeuralNet({TRUNK_OUT, NAVY_ACTIONS}, 104);
     for (int m = 0; m < MOD_COUNT; ++m)
         m_value[m] = NeuralNet({FEATURE_COUNT, 160, 1}, 200 + m);
     // Q shares the policy's shape because it answers a question of the same
@@ -53,8 +60,8 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // life as a copy of the actor it is meant to improve on.
     static constexpr int ACTS_[MOD_COUNT] = {ECON_ACTIONS, POL_ACTIONS, WAR_ACTIONS, NAVY_ACTIONS};
     for (int m = 0; m < MOD_COUNT; ++m)
-        m_q[m] = NeuralNet({FEATURE_COUNT, 512, 320, ACTS_[m]}, 400 + m);
-    m_diplo = NeuralNet({FEATURE_COUNT, 256, 160, DIPLO_ACTIONS}, 300);
+        m_q[m] = NeuralNet({TRUNK_OUT, ACTS_[m]}, 400 + m);
+    m_diplo = NeuralNet({TRUNK_OUT, DIPLO_ACTIONS}, 300);
     // Own state and one candidate in, one score out. Scored once per candidate
     // and softmaxed across them, so the output is deliberately a single number
     // rather than a fixed-width action layer -- the candidate list changes size
@@ -79,6 +86,7 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
 }
 
 AISystem::~AISystem() {
+    recordLeagueOutcome();
     saveModel();
     // AND HERE, not only on the periodic save. This object is destroyed and
     // rebuilt on every map rotation, and a map can easily be shorter than
@@ -131,6 +139,8 @@ void AISystem::beginTurn() {
     // not when it is read.
     m_landingsThisTurn.clear();
     refreshStats();
+    updateWorld();
+    updateTrends();
 
     // This map's frozen opponent, drawn once the world exists.
     //
@@ -476,6 +486,164 @@ static inline float nlog(double v, double scale) {
     return (float)std::tanh(std::log1p(std::max(0.0, v)) / scale);
 }
 
+
+// ─── Trends ──────────────────────────────────────────────
+//
+// The eight features at the end of the observation; see FEATURE_COUNT.
+//
+// Every read below is of state that already exists this turn. Nothing here may
+// call anything with a per-turn cache -- that is what broke determinism the
+// first time this was written.
+
+AISystem::TrendPoint AISystem::sampleTrend(int cid) const {
+    TrendPoint t;
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    auto sIt = m_stats.find(cid);
+    if (!c || sIt == m_stats.end()) return t;
+    const CountryStat& st = sIt->second;
+    t.turn       = m_turn;
+    t.provinces  = (float)st.provinces;
+    t.army       = (float)st.army;
+    t.industry   = st.industrySum;
+    t.population = (float)st.population;
+    t.treasury   = (float)c->treasury;
+    t.align      = st.meanAlignment;
+    t.weariness  = g.warWearinessOf(cid);
+    // What is standing across our borders. A neighbour massing troops is the
+    // most actionable thing a turn-based AI can notice, and the observation had
+    // no representation for it at all. Accumulated as an integer count, so the
+    // sum does not depend on the order the province map is walked.
+    long long enemy = 0;
+    for (const auto& fr : st.frontiers) {
+        auto aIt = g.m_provinceArmies.find(fr.pid);
+        if (aIt == g.m_provinceArmies.end()) continue;
+        for (const auto& u : aIt->second)
+            if (u.countryId != cid) enemy += u.count;
+    }
+    t.threat = (float)enemy;
+    return t;
+}
+
+void AISystem::updateWorld() {
+    Game& g = *m_g;
+    WorldSnapshot w;
+    w.turn = m_turn;
+    std::vector<std::pair<int, int>> byLand;   // (provinces, cid)
+    byLand.reserve(m_stats.size());
+    long long total = 0;
+    int alive = 0, atWar = 0;
+    double unrestSum = 0.0;
+    for (const auto& [cid, st] : m_stats) {
+        if (cid >= Game::REBEL_CID_MIN) continue;   // rebels are not powers
+        if (st.provinces <= 0) continue;
+        byLand.push_back({st.provinces, cid});
+        total += st.provinces;
+        alive++;
+        if (foreignWarCount(cid) > 0) atWar++;
+        unrestSum += g.warWearinessOf(cid);
+    }
+    w.totalProvinces = total;
+    if (alive > 0 && total > 0) {
+        double hh = 0.0;
+        int largest = 0;
+        for (const auto& [prov, cid] : byLand) {
+            (void)cid;
+            const double share = (double)prov / (double)total;
+            hh += share * share;
+            if (prov > largest) largest = prov;
+        }
+        w.herfindahl   = (float)hh;
+        w.largestShare = (float)largest / (float)total;
+        w.atWarFrac    = (float)atWar / (float)alive;
+        // Normalised against a typical map rather than reported raw: what the
+        // policy needs is "crowded or empty", not a headcount.
+        w.aliveNorm    = std::tanh((float)alive / 40.0f);
+        w.meanUnrest   = (float)(unrestSum / alive);
+        // Ranked once here so buildFeatures stays O(1) per country. Sorting
+        // pairs breaks ties by cid, so the order does not depend on how the
+        // stats map happened to be walked.
+        std::sort(byLand.begin(), byLand.end());
+        for (size_t i = 0; i < byLand.size(); ++i)
+            w.rank[byLand[i].second] =
+                byLand.size() > 1 ? (float)i / (float)(byLand.size() - 1) : 1.0f;
+    }
+    m_world = std::move(w);
+}
+
+void AISystem::updateTrends() {
+    for (const auto& [cid, st] : m_stats) {
+        (void)st;
+        auto it = m_trend.find(cid);
+        if (it == m_trend.end() || m_turn - it->second.turn >= TREND_WINDOW)
+            m_trend[cid] = sampleTrend(cid);
+    }
+}
+
+
+void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
+                               std::vector<float>& pooled) {
+    cand.clear();
+    pooled.assign(REL_EMBED, 0.0f);
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    auto sIt = m_stats.find(cid);
+    if (!c || sIt == m_stats.end()) return;
+    const CountryStat& st = sIt->second;
+
+    std::vector<std::pair<long long, int>> nb;
+    std::unordered_set<int> seen;
+    for (const auto& fr : st.frontiers) {
+        if (fr.enemyCid <= 0 || fr.enemyCid == cid) continue;
+        if (!seen.insert(fr.enemyCid).second) continue;
+        auto nIt = m_stats.find(fr.enemyCid);
+        if (nIt == m_stats.end()) continue;
+        nb.push_back({nIt->second.army, fr.enemyCid});
+    }
+    if (nb.empty()) return;
+    std::sort(nb.rbegin(), nb.rend());
+    if ((int)nb.size() > REL_MAX) nb.resize(REL_MAX);
+
+    const double myArmy = (double)std::max(1LL, st.army);
+    const double myProv = (double)std::max(1, st.provinces);
+    auto relIt = g.m_relations.find(c->isoA3);
+    for (const auto& [army, ocid] : nb) {
+        (void)army;
+        auto oIt = m_stats.find(ocid);
+        if (oIt == m_stats.end()) continue;
+        const CountryStat& o = oIt->second;
+        const Country* oc = g.m_countries.getCountry(ocid);
+        std::vector<float> r((size_t)REL_FEATURES, 0.0f);
+        r[0] = (float)std::tanh(std::log1p((double)o.army / myArmy));
+        r[1] = (float)std::tanh(std::log1p((double)o.provinces / myProv));
+        r[2] = std::tanh(o.industrySum / 20.0f);
+        r[3] = oc ? std::tanh((float)oc->treasury / 500.0f) : 0.0f;
+        if (relIt != g.m_relations.end() && oc) {
+            auto rr = relIt->second.find(oc->isoA3);
+            if (rr != relIt->second.end()) {
+                r[4] = rr->second.war ? 1.0f : 0.0f;
+                r[5] = rr->second.alliance ? 1.0f : 0.0f;
+            }
+        }
+        r[6] = std::tanh(g.warWearinessOf(ocid) / 5.0f);
+        r[7] = (float)std::min(1.0, (double)o.claimsAgainstMe / 4.0);
+        cand.push_back(std::move(r));
+    }
+
+    // Encode, score, pool. forward() is used rather than forwardInto because
+    // this runs on the decision path, single-threaded, once per country-turn.
+    std::vector<std::vector<float>> emb;
+    std::vector<float> scores;
+    emb.reserve(cand.size()); scores.reserve(cand.size());
+    for (const auto& r : cand) {
+        emb.push_back(m_relEncoder.forward(r));
+        scores.push_back(m_relScore.forward(emb.back())[0]);
+    }
+    std::vector<float> attn;
+    NeuralNet::attentionPool(emb, scores, pooled, attn);
+    if ((int)pooled.size() != REL_EMBED) pooled.assign(REL_EMBED, 0.0f);
+}
+
 void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f.assign(FEATURE_COUNT, 0.0f);
     Game& g = *m_g;
@@ -692,6 +860,61 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // 80-84 and 88-94 are request context, written only by decideDiplomacy;
     // they stay zero on an ordinary turn.
     f[95] = 1.0f; // bias
+
+    // 96-103: TRENDS -- direction and pace, against a baseline up to
+    // TREND_WINDOW turns old. Squashed, so a runaway late-game value cannot
+    // swamp the input the way a raw delta would.
+    {
+        auto tIt = m_trend.find(cid);
+        if (tIt != m_trend.end() && tIt->second.turn >= 0) {
+            const TrendPoint& p = tIt->second;
+            const TrendPoint  n = sampleTrend(cid);
+            f[96]  = std::tanh((n.provinces  - p.provinces)  / 3.0f);
+            f[97]  = std::tanh((n.army       - p.army)       / 20000.0f);
+            f[98]  = std::tanh((n.industry   - p.industry)   / 3.0f);
+            f[99]  = std::tanh((n.population - p.population) / 500000.0f);
+            f[100] = std::tanh((n.treasury   - p.treasury)   / 150.0f);
+            f[101] = std::tanh((n.threat     - p.threat)     / 20000.0f);
+            f[102] = std::tanh((n.align      - p.align)      / 10.0f);
+            f[103] = std::tanh((n.weariness  - p.weariness)  / 5.0f);
+        }
+    }
+
+    // 116-139: THE NEIGHBOURS, attention-pooled. See REL_FEATURES.
+    {
+        std::vector<std::vector<float>> cand;
+        std::vector<float> pooled;
+        buildRelational(cid, cand, pooled);
+        for (int i = 0; i < REL_EMBED && i < (int)pooled.size(); ++i)
+            f[116 + i] = pooled[i];
+        m_lastRelCand = std::move(cand);
+    }
+
+    // 112-115: THE STANCE in force. Set on a previous turn (see STANCE_WINDOW),
+    // so the head that picks it never reads its own output on the same turn.
+    {
+        const int sc = stanceOf(cid);
+        if (sc >= 0 && sc < STANCE_COUNT) f[112 + sc] = 1.0f;
+    }
+
+    // 104-111: THE WORLD, not us. See WORLD_FEATURES -- the value head was
+    // judging a position with no idea what shape the map around it was in.
+    {
+        const WorldSnapshot& w = m_world;
+        f[104] = w.herfindahl;
+        f[105] = w.largestShare;
+        f[106] = w.totalProvinces > 0
+                     ? (float)st.provinces / (float)w.totalProvinces : 0.0f;
+        auto wrIt = w.rank.find(cid);
+        f[107] = wrIt != w.rank.end() ? wrIt->second : 0.0f;
+        f[108] = w.atWarFrac;
+        f[109] = w.aliveNorm;
+        f[110] = std::tanh(w.meanUnrest / 5.0f);
+        // Where we are in the game. Holding half the map on turn 30 and on turn
+        // 380 are not the same position, and nothing said which one it was.
+        f[111] = std::tanh((float)m_turn / 200.0f);
+    }
+
     // Degenerate late-game state (populations/treasuries overflowing float)
     // leaks inf/NaN into features; one NaN input turns every logit NaN and
     // poisons weight updates. Zero them at the source.
@@ -862,6 +1085,7 @@ void AISystem::takeTurn(int cid) {
     }
     auto resIt2 = g.m_countryResearched.find(cid);
     exp.researched = resIt2 != g.m_countryResearched.end() ? (int)resIt2->second.size() : 0;
+    exp.relCand = m_lastRelCand;
 
     std::vector<bool> valid;
     float score;
@@ -885,6 +1109,33 @@ void AISystem::takeTurn(int cid) {
     // noise. Blending noise into a policy with millions of updates behind it
     // would make the shipped AI worse the moment this shipped, and it would
     // look like the actor had regressed.
+    // ONE trunk pass for this country's turn; every head below reads it.
+    // Copied rather than referenced: forward() returns the net's own buffer,
+    // and a league country runs a different trunk a few lines down.
+    const std::vector<float> emb =
+        m_leagueThisCountry ? m_leagueTrunk.forward(exp.features)
+                            : m_trunk.forward(exp.features);
+
+    // ── The stance, re-chosen every STANCE_WINDOW turns ──
+    // Not for a league country: a frozen opponent is exactly the policy it was
+    // checkpointed as, and it has no stance head of its own.
+    if (!m_leagueThisCountry) {
+        auto stIt = m_stance.find(cid);
+        const bool due = stIt == m_stance.end() ||
+                         (m_turn - stIt->second.second) >= STANCE_WINDOW;
+        if (due) {
+            std::vector<bool> anyStance((size_t)STANCE_COUNT, true);
+            float sScore = 0.0f;
+            float sLogProb = 0.0f;
+            const int sc = pickAction(m_stanceHead, emb, anyStance, sScore,
+                                      /*graveAction=*/-1, nullptr, &sLogProb);
+            m_stance[cid] = {sc, m_turn};
+            exp.action[MOD_COUNT + 1] = sc;
+            exp.acted[MOD_COUNT + 1]  = true;
+            exp.logProb[MOD_COUNT + 1] = sLogProb;
+        }
+    }
+
     std::vector<float> qbias;
     auto qBiasFor = [&](int m) -> const std::vector<float>* {
         if (Q_BLEND <= 0.0f) return nullptr;
@@ -894,7 +1145,7 @@ void AISystem::takeTurn(int cid) {
         // prevent.
         if (m_leagueThisCountry) return nullptr;
         if (m_q[m].updateCount() < Q_WARMUP_UPDATES) return nullptr;
-        const std::vector<float>& q = m_q[m].forward(exp.features);
+        const std::vector<float>& q = m_q[m].forward(emb);
         if (q.empty()) return nullptr;
         float mean = 0.0f;
         for (float v : q) mean += v;
@@ -911,16 +1162,32 @@ void AISystem::takeTurn(int cid) {
         return m_leagueThisCountry ? m_leaguePolicy[m] : m_policy[m];
     };
 
+    // Solvency, counted once per country-turn HERE rather than in endTurn --
+    // that function returns early when learning is off, so every evaluation
+    // reported 0.0% bankrupt however broke the world actually was.
+    if (g.isBankrupt(cid)) statsFor(cid).bankruptTurns++;
+    // The denominator for every offensive rate below: a country not at war
+    // cannot attack, so comparing raw battle counts across cohorts that fight
+    // at different frequencies compares nothing.
+    if (foreignWarCount(cid) > 0) statsFor(cid).turnsAtWar++;
+
     validEconomy(cid, valid);
-    int a = pickAction(brainFor(MOD_ECONOMY), exp.features, valid, score,
+    int a = pickAction(brainFor(MOD_ECONOMY), emb, valid, score,
                        /*graveAction=*/-1, qBiasFor(MOD_ECONOMY),
                    &exp.logProb[MOD_ECONOMY]);
     m_policy[MOD_ECONOMY].snapshotActs(exp.acts[MOD_ECONOMY]);
     exp.action[MOD_ECONOMY] = a; exp.acted[MOD_ECONOMY] = true;
+    {
+        TrainStats& ts = statsFor(cid);
+        for (int i = 0; i < ECON_ACTIONS; ++i)
+            if (i < (int)valid.size() && valid[i]) ts.econOffered[i]++;
+        if (a >= 0 && a < ECON_ACTIONS) ts.econChosen[a]++;
+        if (a >= 9 && a <= 11) ts.researchPicked++;
+    }
     logDecision(cid, MOD_ECONOMY, a, score, execEconomy(cid, a));
 
     validPolitics(cid, valid);
-    a = pickAction(brainFor(MOD_POLITICS), exp.features, valid, score,
+    a = pickAction(brainFor(MOD_POLITICS), emb, valid, score,
                    /*graveAction=*/-1, qBiasFor(MOD_POLITICS),
                    &exp.logProb[MOD_POLITICS]);
     m_policy[MOD_POLITICS].snapshotActs(exp.acts[MOD_POLITICS]);
@@ -943,10 +1210,19 @@ void AISystem::takeTurn(int cid) {
 
     validWar(cid, valid);
     // 4 = declare war; see the graveAction note in pickAction.
-    a = pickAction(brainFor(MOD_WAR), exp.features, valid, score, /*graveAction=*/4,
+    a = pickAction(brainFor(MOD_WAR), emb, valid, score, /*graveAction=*/4,
                    qBiasFor(MOD_WAR), &exp.logProb[MOD_WAR]);
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
+    // Offered against chosen, recorded HERE because `a` is reused by the navy
+    // action a few lines down. See the counters' note: this is what separates a
+    // mask that never offers attack from a policy that refuses it.
+    {
+        TrainStats& ts = statsFor(cid);
+        for (int i = 0; i < WAR_ACTIONS; ++i)
+            if (i < (int)valid.size() && valid[i]) ts.warOffered[i]++;
+        if (a >= 0 && a < WAR_ACTIONS) ts.warChosen[a]++;
+    }
     m_declaredUnprovoked = false;
     {
         const std::string label = execWar(cid, a);
@@ -964,7 +1240,7 @@ void AISystem::takeTurn(int cid) {
     exp.aggressor = m_declaredUnprovoked;
 
     validNavy(cid, valid);
-    a = pickAction(brainFor(MOD_NAVY), exp.features, valid, score,
+    a = pickAction(brainFor(MOD_NAVY), emb, valid, score,
                    /*graveAction=*/-1, qBiasFor(MOD_NAVY),
                    &exp.logProb[MOD_NAVY]);
     m_policy[MOD_NAVY].snapshotActs(exp.acts[MOD_NAVY]);
@@ -983,7 +1259,7 @@ void AISystem::takeTurn(int cid) {
 
     auto& dq = m_pending[cid];
     dq.push_back(std::move(exp));
-    while (dq.size() > (size_t)N_STEP + 4) dq.pop_front(); // safety cap
+    while (dq.size() > (size_t)nStep() + 4) dq.pop_front(); // safety cap
 }
 
 // ─── Validity masks ──────────────────────────────────────
@@ -1010,7 +1286,23 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     v[8] = alloc > 0.01f;   // fund down
     auto actIt = g.m_countryResearchActive.find(cid);
     bool idle = actIt == g.m_countryResearchActive.end() || actIt->second < 0;
-    v[9] = v[10] = v[11] = idle && !g.m_researchNodes.empty(); // pick a node
+    // AN ARMED NODE WITH NO FUNDING IS A TRAP, and it was closing on the model
+    // constantly: 2,434 country-turns frozen in a single 300-turn map.
+    //
+    // progressCountryResearch does nothing while allocation is zero, so the
+    // node never advances and never clears -- and offering "pick a node" only
+    // while IDLE meant the country could neither pay for the node it holds nor
+    // put it down. The only way out was to raise funding before something
+    // zeroed it again, and the policy defunds research far more often than it
+    // funds it (fund down taken at 63-81%, fund up at 6-8%), so in practice
+    // there was no way out at all.
+    //
+    // Re-arming is the exit, and it costs nothing to allow: exec re-floors
+    // allocation to 5% whenever a node is chosen, so picking again both
+    // re-targets and re-funds. No action should be able to permanently disable
+    // a subsystem.
+    bool stalledUnfunded = !idle && alloc <= 0.001f;
+    v[9] = v[10] = v[11] = (idle || stalledUnfunded) && !g.m_researchNodes.empty();
 }
 
 void AISystem::validPolitics(int cid, std::vector<bool>& v) {
@@ -1675,7 +1967,11 @@ std::string AISystem::execEconomy(int cid, int action) {
                 }
             }
             int pick = bestIdx >= 0 ? bestIdx : fallbackIdx;
-            if (pick < 0) return TextFormat("research: nothing left (%s)", want);
+            if (pick < 0) {
+                statsFor(cid).researchNothingLeft++;
+                return TextFormat("research: nothing left (%s)", want);
+            }
+            statsFor(cid).researchArmed++;
             g.m_countryResearchActive[cid] = pick;
             g.m_countryResearchInvested[cid] = 0;
             // Funding must be flowing or the node never completes
@@ -2124,9 +2420,16 @@ std::string AISystem::execWar(int cid, int action) {
                     }
                 }
             }
-            if (bestFrom < 0) return "attack: no winnable target";
+            if (bestFrom < 0) {
+                statsFor(cid).attackNoTarget++;
+                return "attack: no winnable target";
+            }
             for (auto& mo : g.m_pendingMoveOrders)
-                if (mo.fromProvince == bestFrom && mo.countryId == cid) return "attack: order pending";
+                if (mo.fromProvince == bestFrom && mo.countryId == cid) {
+                    statsFor(cid).attackPending++;
+                    return "attack: order pending";
+                }
+            statsFor(cid).attackIssued++;
             if (fromAlly) {
                 g.m_pendingMoveOrders.push_back({bestFrom, bestTo, 75, cid});
                 return TextFormat("attack prov %d from allied prov %d (margin %.1fx)",
@@ -3259,6 +3562,7 @@ void AISystem::endTurn() {
             w.action = exp.action[m];
             w.norm = norm;
             w.features = exp.features;
+            w.relCand = exp.relCand;
             w.acts = std::move(exp.acts[m]);
             w.cid = cid;
             w.oldLogProb = exp.logProb[m];
@@ -3292,8 +3596,33 @@ void AISystem::endTurn() {
             w.action = exp.action[MOD_COUNT];
             w.norm = std::clamp(norm, -3.0f, 3.0f);
             w.features = exp.features;
+            w.relCand = exp.relCand;
             w.cid = cid;
             w.oldLogProb = exp.logProb[MOD_COUNT];
+            if (nextFeats) {
+                w.nextFeatures = *nextFeats;
+                w.bootDiscount = BOOTSTRAP_DISCOUNT;
+            }
+            m_work.push_back(std::move(w));
+        }
+        // THE STANCE. Trained on the mean of the four module rewards -- it is
+        // the one decision that owns the whole country's outcome rather than
+        // any single module's, so scoring it on one module's slice would ask it
+        // to optimise a quarter of what it controls.
+        if (exp.acted[MOD_COUNT + 1] && exp.action[MOD_COUNT + 1] >= 0) {
+            float shared = 0.0f;
+            for (int m = 0; m < MOD_COUNT; ++m) shared += rewards[m];
+            shared /= (float)MOD_COUNT;
+            const float dev = shared - m_rMean[MOD_POLITICS];
+            const float norm = dev / std::sqrt(m_rVar[MOD_POLITICS] + 1e-4f);
+            WorkItem w;
+            w.module = MOD_COUNT + 1;   // stance
+            w.action = exp.action[MOD_COUNT + 1];
+            w.norm = std::clamp(norm, -3.0f, 3.0f);
+            w.features = exp.features;
+            w.relCand = exp.relCand;
+            w.cid = cid;
+            w.oldLogProb = exp.logProb[MOD_COUNT + 1];
             if (nextFeats) {
                 w.nextFeatures = *nextFeats;
                 w.bootDiscount = BOOTSTRAP_DISCOUNT;
@@ -3319,8 +3648,17 @@ void AISystem::endTurn() {
         int landNow = 0;
         auto lnIt = m_landingsThisTurn.find(cid);
         if (lnIt != m_landingsThisTurn.end()) landNow = lnIt->second;
+        // How much this country knows, for the dResearch reward term below.
+        // The completions COUNTER used to be derived here too; it now lives at
+        // the completion site, because this whole function is skipped when
+        // learning is off. See noteResearchDone.
+        auto resIt = g.m_countryResearched.find(cid);
+        const int researchedNow =
+            resIt != g.m_countryResearched.end() ? (int)resIt->second.size() : 0;
+        // Counted in decide() now, so it survives evaluation and covers the
+        // control cohort -- see noteBankruptTurn. Still needed here as a
+        // per-window reward term.
         const int brokeNow = g.isBankrupt(cid) ? 1 : 0;
-        if (brokeNow) statsFor(cid).bankruptTurns++;
         // refreshStats ran at the top of endTurn, so this is the state AFTER
         // the turn resolved — which is the only place a war declared during it
         // is visible.
@@ -3334,27 +3672,13 @@ void AISystem::endTurn() {
             exp.warInWindow = exp.warInWindow || atWarNow;
         }
 
-        // Research completions counter (per turn, not per window). First sight
-        // of a country just records its baseline — otherwise every node the
-        // map GRANTED at start would count as "completed in training".
-        auto resIt = g.m_countryResearched.find(cid);
-        int researchedNow = resIt != g.m_countryResearched.end() ? (int)resIt->second.size() : 0;
-        auto lrIt = m_lastResearchCount.find(cid);
-        if (lrIt == m_lastResearchCount.end()) {
-            m_lastResearchCount[cid] = researchedNow;
-        } else {
-            if (researchedNow > lrIt->second)
-                statsFor(cid).researchCompleted += researchedNow - lrIt->second;
-            lrIt->second = researchedNow;
-        }
-
         float dNetNow = dead ? 0.0f : g.computeCountryIncome(cid).net;
 
         // Filled lazily below, and only for countries that actually mature a
         // window this turn: buildFeatures is not free and most do not.
         std::vector<float> bootFeatures;
 
-        while (!dq.empty() && (dead || dq.front().age >= N_STEP)) {
+        while (!dq.empty() && (dead || dq.front().age >= nStep())) {
             Experience& exp = dq.front();
             float rewards[MOD_COUNT];
             float diploReward = 0.0f;
@@ -3407,7 +3731,23 @@ void AISystem::endTurn() {
                 // caused by four modules between them — research and hulls from
                 // economy, doctrines and minority settlements from politics,
                 // the army from war — and felt by all of them.
-                const float broke = std::tanh((float)exp.bankruptTurns / 4.0f);
+                // SOLVENCY, WITHOUT THE CLIFF.
+                //
+                // This was tanh(bankruptTurns / 4). Over a twelve-turn window
+                // that saturates almost immediately: four turns broke scored
+                // 0.76 and twelve scored 0.995, so past a third of the window
+                // there was essentially no gradient left. A country already in
+                // trouble was charged the same whether it climbed out or sank,
+                // which is precisely the state where the pull should be
+                // strongest -- and it sank: 29.6 bankrupt country-turns per
+                // thousand against the random control's 15.2, twice as broke as
+                // a policy that does not manage money at all.
+                //
+                // Linear in the fraction of the window spent insolvent. Same
+                // range, constant gradient, so every turn recovered is worth
+                // the same as the last.
+                const float broke =
+                    std::min(1.0f, (float)exp.bankruptTurns / (float)nStep());
                 // THE IDLE TAX, PER MODULE.
                 //
                 // Nothing charged a country for standing still. With no war on,
@@ -3563,8 +3903,19 @@ void AISystem::endTurn() {
                 // control's 4.72. One window of grace from the start of the war
                 // covers mobilising and reaching the border; after that,
                 // gaining nothing really is stalling.
+                // ENDING IT. See WAR_END_REWARD: conquest was scored and
+                // conclusion was not, so a war that neither won nor finished
+                // was free to keep. The N_STEP floor is what stops the module
+                // collecting this by declaring a war and immediately suing for
+                // peace.
+                const bool warEnded =
+                    exp.atWar && !atWarNow && exp.warTurns >= nStep();
+                const float peaceTerm =
+                    warEnded ? WAR_END_REWARD * (1.0f + std::tanh(dProv / 3.0f))
+                             : 0.0f;
+
                 const float phoneyWar =
-                    (exp.atWar && exp.warTurns >= N_STEP &&
+                    (exp.atWar && exp.warTurns >= nStep() &&
                      exp.threatened == 0 && dProv <= 0.0f) ? WAR_PHONEY_CHARGE : 0.0f;
 
                 // The cost of starting it — CHARGED ON THE OUTCOME, not on
@@ -3601,6 +3952,10 @@ void AISystem::endTurn() {
                                       // that sits out a war is, so peace is
                                       // never the cheap way to avoid the tax.
                                       + (warIdle ? -0.5f : 0.0f)
+                                      // Concluding a war is an outcome the war
+                                      // module owns -- it is the one holding
+                                      // the ceasefire action. See peaceTerm.
+                                      + peaceTerm
                                       + aggression;
                 // The navy is scored on what it delivers ashore and on what it
                 // costs. Ship COUNT used to be rewarded outright, which paid
@@ -3673,7 +4028,6 @@ void AISystem::endTurn() {
         }
 
         if (dead) {
-            m_lastResearchCount.erase(cid);
             // beginTurn only walks live countries, so an eliminated one would
             // keep its war-start turn forever.
             m_warSince.erase(cid);
@@ -3691,6 +4045,12 @@ void AISystem::endTurn() {
         m_value[m].flushBatch(LR_VALUE);
         m_q[m].flushBatch(LR_Q);
     }
+    // The trunk takes the policy learning rate: it is trained by the same
+    // gradients, from four policy heads, four Q heads and diplomacy at once.
+    m_trunk.flushBatch(LR_POLICY);
+    m_stanceHead.flushBatch(LR_POLICY);
+    m_relEncoder.flushBatch(LR_POLICY);
+    m_relScore.flushBatch(LR_POLICY);
     m_target.flushBatch(LR_TARGET);
     m_diploValue.flushBatch(LR_VALUE);
     m_diplo.flushBatch(LR_DIPLO);
@@ -3759,6 +4119,49 @@ int AISystem::learningThreads() const {
     return std::clamp(n, 1, 16);
 }
 
+
+void AISystem::backpropRelational(WorkerScratch& ws, const WorkItem& w) {
+    // The relational slice of the trunk's input gradient is the encoder's whole
+    // training signal. Without it the pooled numbers sit in the observation as
+    // constants the model can read but never shape.
+    if (w.relCand.empty()) return;
+    const std::vector<float>& gIn = NeuralNet::inputGrad(ws.trunk);
+    if ((int)gIn.size() < 116 + REL_EMBED) return;
+    const std::vector<float> gPooled(gIn.begin() + 116, gIn.begin() + 116 + REL_EMBED);
+
+    const size_t n = w.relCand.size();
+    if (ws.relEnc.size() < n) {
+        const size_t was = ws.relEnc.size();
+        ws.relEnc.resize(n); ws.relSco.resize(n);
+        for (size_t i = was; i < n; ++i) {
+            m_relEncoder.initScratch(ws.relEnc[i]);
+            m_relScore.initScratch(ws.relSco[i]);
+        }
+    }
+    std::vector<std::vector<float>> emb(n);
+    std::vector<float> scores(n, 0.0f);
+    for (size_t i = 0; i < n; ++i) {
+        emb[i] = m_relEncoder.forwardInto(ws.relEnc[i], w.relCand[i]);
+        const std::vector<float>& sc = m_relScore.forwardInto(ws.relSco[i], emb[i]);
+        if (sc.empty()) return;
+        scores[i] = sc[0];
+    }
+    std::vector<float> pooled, attn;
+    NeuralNet::attentionPool(emb, scores, pooled, attn);
+    std::vector<std::vector<float>> gEmb;
+    std::vector<float> gScores;
+    NeuralNet::attentionPoolBackward(emb, attn, gPooled, gEmb, gScores);
+    for (size_t i = 0; i < n; ++i) {
+        // An embedding moves the pool directly AND through the weight it earns
+        // itself, so both terms reach the encoder.
+        m_relScore.accumulateOutputGradInto(ws.relSco[i], gScores[i]);
+        std::vector<float> gE = gEmb[i];
+        const std::vector<float>& viaScore = NeuralNet::inputGrad(ws.relSco[i]);
+        for (size_t k = 0; k < gE.size() && k < viaScore.size(); ++k) gE[k] += viaScore[k];
+        m_relEncoder.accumulateVectorGradInto(ws.relEnc[i], gE);
+    }
+}
+
 void AISystem::runLearningWork() {
     if (m_work.empty()) return;
 
@@ -3772,6 +4175,18 @@ void AISystem::runLearningWork() {
     auto runRange = [&](size_t lo, size_t hi, WorkerScratch& ws) {
         for (size_t i = lo; i < hi; ++i) {
             WorkItem& w = m_work[i];
+            if (w.module == MOD_COUNT + 1) {
+                // The stance: the same PPO update as any policy head, on the
+                // shared reward, chaining into the trunk like everything else.
+                m_trunk.forwardInto(ws.trunk, w.features);
+                m_stanceHead.forwardInto(ws.stance, ws.trunk.acts.back());
+                m_stanceHead.accumulatePPOInto(ws.stance, w.action, w.norm,
+                                               w.oldLogProb, PPO_CLIP, ppoEntropy());
+                m_trunk.accumulateVectorGradInto(ws.trunk,
+                                                 NeuralNet::inputGrad(ws.stance));
+                backpropRelational(ws, w);
+                continue;
+            }
             if (w.module == MOD_COUNT) {
                 // The same learner the four modules get, for the same reasons.
                 // This head used to be trained on the raw normalised reward:
@@ -3789,9 +4204,13 @@ void AISystem::runLearningWork() {
                 const float dAdv = std::clamp(dTarget - dBase, -3.0f, 3.0f);
                 m_diploValue.accumulateValueInto(ws.diploValue, dTarget);
 
-                m_diplo.forwardInto(ws.diplo, w.features);
+                m_trunk.forwardInto(ws.trunk, w.features);
+                m_diplo.forwardInto(ws.diplo, ws.trunk.acts.back());
                 m_diplo.accumulatePPOInto(ws.diplo, w.action, dAdv,
-                                          w.oldLogProb, PPO_CLIP, PPO_ENTROPY);
+                                          w.oldLogProb, PPO_CLIP, ppoEntropy());
+                m_trunk.accumulateVectorGradInto(ws.trunk,
+                                                 NeuralNet::inputGrad(ws.diplo));
+                backpropRelational(ws, w);
                 continue;
             }
             const int m = w.module;
@@ -3825,8 +4244,16 @@ void AISystem::runLearningWork() {
             // window says what THIS action was worth and nothing about the
             // others, so the others must get no gradient -- see
             // accumulateActionValueInto.
-            m_q[m].forwardInto(ws.q[m], w.features);
+            m_trunk.forwardInto(ws.trunk, w.features);
+            m_q[m].forwardInto(ws.q[m], ws.trunk.acts.back());
             m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
+            // THE TRUNK'S GRADIENT. Without this line the encoder receives
+            // nothing and stays at its initialisation forever, while every head
+            // trains happily on top of it -- the exact shape of the bug that
+            // once left the Q heads at zero updates looking like a feature
+            // waiting to warm up.
+            m_trunk.accumulateVectorGradInto(ws.trunk, NeuralNet::inputGrad(ws.q[m]));
+            backpropRelational(ws, w);
 
             // WHOM it attacked, judged by how the war went.
             //
@@ -3864,9 +4291,12 @@ void AISystem::runLearningWork() {
             // 1.0 -- the correction silently disappears and this becomes
             // REINFORCE with extra steps.
             w.acts.clear();
-            m_policy[m].forwardInto(ws.policy[m], w.features);
+            m_trunk.forwardInto(ws.trunk, w.features);
+            m_policy[m].forwardInto(ws.policy[m], ws.trunk.acts.back());
             m_policy[m].accumulatePPOInto(ws.policy[m], w.action, advantage,
-                                          w.oldLogProb, PPO_CLIP, PPO_ENTROPY);
+                                          w.oldLogProb, PPO_CLIP, ppoEntropy());
+            m_trunk.accumulateVectorGradInto(ws.trunk, NeuralNet::inputGrad(ws.policy[m]));
+            backpropRelational(ws, w);
         }
     };
 
@@ -3886,6 +4316,8 @@ void AISystem::runLearningWork() {
                 m_q[m].initScratch(ws.q[m]);
             }
             m_target.initScratch(ws.target);
+            m_trunk.initScratch(ws.trunk);
+            m_stanceHead.initScratch(ws.stance);
             m_diploValue.initScratch(ws.diploValue);
             m_diploValue.initScratch(ws.diploValueNext);
             m_diplo.initScratch(ws.diplo);
@@ -3921,6 +4353,10 @@ void AISystem::runLearningWork() {
             // that was working and simply had not warmed up yet.
             m_q[m].mergeScratch(m_scratch[t].q[m]);
         }
+        m_trunk.mergeScratch(m_scratch[t].trunk);
+        m_stanceHead.mergeScratch(m_scratch[t].stance);
+        for (auto& e : m_scratch[t].relEnc) m_relEncoder.mergeScratch(e);
+        for (auto& e : m_scratch[t].relSco) m_relScore.mergeScratch(e);
         m_target.mergeScratch(m_scratch[t].target);
         m_diploValue.mergeScratch(m_scratch[t].diploValue);
         m_diplo.mergeScratch(m_scratch[t].diplo);
@@ -3946,7 +4382,7 @@ void AISystem::noteVictory(int cid) {
     // Force every window closed: endTurn only settles experiences that have
     // aged N_STEP turns, and there is no next turn to age them in.
     for (auto& [c, dq] : m_pending)
-        for (auto& exp : dq) exp.age = N_STEP;
+        for (auto& exp : dq) exp.age = nStep();
     endTurn();
     m_victorCid = -1;
 }
@@ -3980,7 +4416,7 @@ void AISystem::noteMapEnd() {
     // Force every window closed: endTurn only settles experiences that have
     // aged N_STEP turns, and there is no next turn to age them in.
     for (auto& [c, dq] : m_pending)
-        for (auto& exp : dq) exp.age = N_STEP;
+        for (auto& exp : dq) exp.age = nStep();
     endTurn();
     m_finalStanding.clear();
 }
@@ -4044,8 +4480,17 @@ void AISystem::saveModel() {
     // otherwise read Q weights as if they were something else.
     // 4 = the war-target head rides along as well.
     // 5 = the diplomacy value head rides along too.
-    out.push_back(5);
-    out.push_back(MOD_COUNT * 3 + 3); // policy, value, Q, target, diplo, diploValue
+    // 6 = the shared trunk rides at the front, and the policy/Q/diplo blobs
+    // after it are HEADS ({TRUNK_OUT, actions}), not whole nets. A v5 reader
+    // would load a 320-input head as if it took the full feature vector, so
+    // the version bump is not cosmetic -- and a v5 FILE cannot be read by this
+    // build for the same reason. See loadModel.
+    out.push_back(6);
+    out.push_back(MOD_COUNT * 3 + 7); // trunk, stance, relational encoder+scorer, policy, value, Q, target, diplo, diploValue
+    { std::vector<uint8_t> b; m_trunk.serialize(b); appendBlob(out, b); }
+    { std::vector<uint8_t> b; m_stanceHead.serialize(b); appendBlob(out, b); }
+    { std::vector<uint8_t> b; m_relEncoder.serialize(b); appendBlob(out, b); }
+    { std::vector<uint8_t> b; m_relScore.serialize(b); appendBlob(out, b); }
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
     }
@@ -4110,6 +4555,7 @@ int AISystem::syncWithPeers(const std::vector<std::string>& peerPaths, float alp
             ok &= m_policy[m].blendToward(scratch.m_policy[m], share);
             ok &= m_value[m].blendToward(scratch.m_value[m], share);
         }
+        ok &= m_trunk.blendToward(scratch.m_trunk, share);
         ok &= m_diplo.blendToward(scratch.m_diplo, share);
         if (!ok) {
             printf("[AI] peer %s has a different architecture — skipped\n", path.c_str());
@@ -4163,6 +4609,7 @@ bool AISystem::mergeModelFiles(const std::string& outPath,
             ok &= acc.m_policy[m].blendToward(peer.m_policy[m], share);
             ok &= acc.m_value[m].blendToward(peer.m_value[m], share);
         }
+        ok &= acc.m_trunk.blendToward(peer.m_trunk, share);
         ok &= acc.m_diplo.blendToward(peer.m_diplo, share);
         if (!ok) {
             fprintf(stderr, "[AI] merge: %s has a different architecture — skipped\n",
@@ -4267,6 +4714,33 @@ static std::string leagueSlotPath(const std::string& modelPath, int slot) {
 }
 
 uint64_t AISystem::s_lastCheckpointUpdates = 0;
+int AISystem::s_leagueGames[LEAGUE_CHECKPOINTS] = {0};
+int AISystem::s_leagueLosses[LEAGUE_CHECKPOINTS] = {0};
+
+void AISystem::recordLeagueOutcome() {
+    // Who held more ground when the map ended: the frozen past self, or the
+    // policy being trained. Land per country rather than total, because the
+    // league is only ever given a third of the map (LEAGUE_SHARE) and comparing
+    // totals would score it as losing every time by construction.
+    if (m_leagueSlot < 0 || m_leagueSlot >= LEAGUE_CHECKPOINTS) return;
+    if (m_leagueCids.empty() || !m_g) return;
+    long long leagueLand = 0, ourLand = 0;
+    int leagueN = 0, ourN = 0;
+    for (const auto& [cid, st] : m_stats) {
+        if (cid >= Game::REBEL_CID_MIN) continue;
+        if (m_leagueCids.count(cid)) { leagueLand += st.provinces; leagueN++; }
+        else                         { ourLand    += st.provinces; ourN++; }
+    }
+    if (leagueN == 0 || ourN == 0) return;
+    const double theirs = (double)leagueLand / leagueN;
+    const double ours   = (double)ourLand / ourN;
+    s_leagueGames[m_leagueSlot]++;
+    if (theirs > ours) s_leagueLosses[m_leagueSlot]++;
+    printf("[AI] league slot %d: %.1f vs our %.1f provinces/country (%d/%d lost)\n",
+           m_leagueSlot, theirs, ours, s_leagueLosses[m_leagueSlot],
+           s_leagueGames[m_leagueSlot]);
+    m_leagueSlot = -1;
+}
 
 void AISystem::writeLeagueCheckpoint() {
     if (m_modelPath.empty() || s_readOnlyModel) return;
@@ -4280,14 +4754,18 @@ void AISystem::writeLeagueCheckpoint() {
     const int slot = (int)((updates / LEAGUE_CHECKPOINT_EVERY) % LEAGUE_CHECKPOINTS);
     const std::string path = leagueSlotPath(m_modelPath, slot);
 
-    // The policy heads alone. A frozen opponent only ever acts -- it has no
-    // value head to fit, no Q to consult and no reward statistics of its own --
-    // so writing the rest would be four times the disk for nothing.
+    // The TRUNK plus the policy heads. A frozen opponent only ever acts -- no
+    // value head to fit, no Q to consult, no reward statistics of its own -- so
+    // the rest is still not written. But the heads are {TRUNK_OUT, actions}
+    // now: without the encoder that produced that embedding they are not a
+    // policy at all, and a v1 checkpoint holds whole nets rather than heads,
+    // so the format version moves with the architecture.
     std::vector<uint8_t> out;
     const char magic[4] = {'O', 'D', 'L', 'G'};
     out.insert(out.end(), magic, magic + 4);
-    out.push_back(1);
-    out.push_back(MOD_COUNT);
+    out.push_back(2);
+    out.push_back(MOD_COUNT + 1);
+    { std::vector<uint8_t> b; m_trunk.serialize(b); appendBlob(out, b); }
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
     }
@@ -4315,8 +4793,17 @@ bool AISystem::loadLeagueOpponent() {
     }
     if (present.empty()) return false;
 
-    std::uniform_int_distribution<size_t> pick(0, present.size() - 1);
-    const std::string path = leagueSlotPath(m_modelPath, present[pick(m_rng)]);
+    // PFSP: weight by how badly the slot beats us. See s_leagueGames.
+    std::vector<double> weight;
+    weight.reserve(present.size());
+    for (int slot : present) {
+        const int g = s_leagueGames[slot];
+        const double lossRate = g > 0 ? (double)s_leagueLosses[slot] / (double)g : 0.5;
+        weight.push_back(lossRate * lossRate + 0.05);
+    }
+    std::discrete_distribution<size_t> pick(weight.begin(), weight.end());
+    m_leagueSlot = present[pick(m_rng)];
+    const std::string path = leagueSlotPath(m_modelPath, m_leagueSlot);
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return false;
     fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
@@ -4326,9 +4813,21 @@ bool AISystem::loadLeagueOpponent() {
     fclose(f);
     if (rd != buf.size()) return false;
     if (memcmp(buf.data(), "ODLG", 4) != 0) return false;
-    if (buf[4] != 1 || buf[5] != MOD_COUNT) return false;
+    // v1 checkpoints are pre-trunk whole nets; refuse rather than misread them
+    // as heads. They age out of the rotation within a few checkpoints.
+    if (buf[4] != 2 || buf[5] != MOD_COUNT + 1) return false;
 
     size_t p = 6;
+    {
+        if (p + 4 > buf.size()) return false;
+        const uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) |
+                             ((uint32_t)buf[p+3] << 24);
+        p += 4;
+        if (p + len > buf.size()) return false;
+        if (!m_leagueTrunk.deserialize(buf.data() + p, len)) return false;
+        m_leagueTrunk.setTanhOutput(true);
+        p += len;
+    }
     for (int m = 0; m < MOD_COUNT; ++m) {
         if (p + 4 > buf.size()) return false;
         const uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) |
@@ -4377,13 +4876,27 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion < 1 || fileVersion > 5) return false;
+    if (fileVersion < 1 || fileVersion > 6) return false;
+    // A PRE-TRUNK FILE CANNOT BE READ, AND MUST NOT BE GUESSED AT.
+    //
+    // Versions 1-5 store policy/Q/diplo as whole nets taking the full feature
+    // vector; this build wants heads taking a TRUNK_OUT embedding. The shapes
+    // differ in their FIRST dimension, which deserialize's input-widening path
+    // would happily "migrate" into nonsense. Refusing is the honest failure:
+    // the caller prints "Fresh model" and training starts over, which is the
+    // price of the architecture change and was decided deliberately.
+    if (fileVersion < 6) {
+        printf("[AI] %s is a pre-trunk model (v%d); this build needs v6. "
+               "Starting fresh.\n", m_modelPath.c_str(), fileVersion);
+        return false;
+    }
     const int count = buf[5];
     // v1/v2 carry no Q heads. Those files are every hour of training done
     // before this existed, so they load and simply leave Q at its initial
     // weights -- which Q_WARMUP_UPDATES then keeps out of the way until it has
     // learned something.
-    const bool hasDiploValue = (count == MOD_COUNT * 3 + 3);
+    if (count != MOD_COUNT * 3 + 7) return false;
+    const bool hasDiploValue = true;
     const bool hasTarget = hasDiploValue || (count == MOD_COUNT * 3 + 2);
     const bool hasQ = hasTarget || (count == MOD_COUNT * 3 + 1);
     if (!hasQ && count != MOD_COUNT * 2 + 1) return false;
@@ -4397,6 +4910,12 @@ bool AISystem::loadModel() {
         p += len;
         return ok;
     };
+    if (!readBlob(m_trunk)) return false;
+    m_trunk.setTanhOutput(true);
+    if (!readBlob(m_stanceHead)) return false;
+    if (!readBlob(m_relEncoder)) return false;
+    m_relEncoder.setTanhOutput(true);
+    if (!readBlob(m_relScore)) return false;
     for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_policy[m])) return false;
     for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_value[m])) return false;
     if (hasQ)

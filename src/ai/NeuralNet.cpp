@@ -7,7 +7,7 @@
 // Optional vectorised BLAS for the forward pass. Enabled by CMake on macOS
 // only (OD_USE_ACCELERATE); everywhere else the portable scalar loop below is
 // compiled instead, so the build has no hard dependency on any BLAS.
-#ifdef OD_USE_ACCELERATE
+#if defined(OD_USE_ACCELERATE) && !defined(OD_FORCE_SCALAR)
 #include <Accelerate/Accelerate.h>
 #endif
 
@@ -49,14 +49,29 @@ const std::vector<float>& NeuralNet::forward(const std::vector<float>& in) {
         const Layer& L = m_layers[l];
         const std::vector<float>& x = m_acts[l];
         std::vector<float>& y = m_acts[l + 1];
-        bool hidden = (l + 1 < m_layers.size());
-#ifdef OD_USE_ACCELERATE
+        bool hidden = (l + 1 < m_layers.size()) || m_tanhOutput;
+#if defined(OD_USE_ACCELERATE) && !defined(OD_FORCE_SCALAR)
         // y = W*x + b. W is (out x in) row-major, so this is a plain sgemv with
         // the bias preloaded into y and beta = 1. Mathematically identical to
         // the scalar loop below; BLAS may sum the dot products in a different
         // order, so results can differ in the last bit or two of float
         // precision — harmless for the policy, but it does mean a run is not
         // bit-reproducible across the two code paths.
+        //
+        // AND NOT ALWAYS REPRODUCIBLE AGAINST ITSELF. Measured 2026-08-03:
+        // at 96 inputs three identical --eval-ai runs returned 1.08x every
+        // time; at 104 and 112 the SAME binary and model returned 0.83x, 1.34x,
+        // 0.87x. Accelerate evidently selects a different (and internally
+        // non-deterministic) kernel at some widths. A last-bit difference is
+        // harmless to one decision and fatal to a benchmark: it flips an
+        // occasional sampled action and the two games diverge from there --
+        // traced to turn 4, identical province ownership and treasury, army
+        // counts already differing.
+        //
+        // -DOD_FORCE_SCALAR=1 compiles the portable loop instead, which is
+        // bit-reproducible at every width. That is the build to measure with
+        // when the feature count is anything other than a width Accelerate
+        // happens to be stable on.
         std::copy(L.b.begin(), L.b.end(), y.begin());
         cblas_sgemv(CblasRowMajor, CblasNoTrans, L.out, L.in,
                     1.0f, L.w.data(), L.in, x.data(), 1, 1.0f, y.data(), 1);
@@ -222,8 +237,8 @@ const std::vector<float>& NeuralNet::forwardInto(Scratch& s, const std::vector<f
         const Layer& L = m_layers[l];
         const std::vector<float>& x = s.acts[l];
         std::vector<float>& y = s.acts[l + 1];
-        const bool hidden = (l + 1 < m_layers.size());
-#ifdef OD_USE_ACCELERATE
+        const bool hidden = (l + 1 < m_layers.size()) || m_tanhOutput;
+#if defined(OD_USE_ACCELERATE) && !defined(OD_FORCE_SCALAR)
         std::copy(L.b.begin(), L.b.end(), y.begin());
         cblas_sgemv(CblasRowMajor, CblasNoTrans, L.out, L.in,
                     1.0f, L.w.data(), L.in, x.data(), 1, 1.0f, y.data(), 1);
@@ -246,8 +261,17 @@ const std::vector<float>& NeuralNet::forwardInto(Scratch& s, const std::vector<f
 static void backpropInto(const std::vector<int>& sizes, NeuralNet::Scratch& s,
                          const std::vector<float>& outputGrad,
                          const std::vector<const float*>& weights,
-                         const std::vector<std::pair<int,int>>& dims) {
+                         const std::vector<std::pair<int,int>>& dims,
+                         bool tanhOutput = false) {
     s.grads.back() = outputGrad;
+    // An activated output layer is squashed on the way forward, so the
+    // gradient arriving on it must be squashed on the way back. Without this
+    // the trunk would be trained as if its last layer were linear.
+    if (tanhOutput) {
+        const std::vector<float>& a = s.acts.back();
+        for (size_t i = 0; i < s.grads.back().size() && i < a.size(); ++i)
+            s.grads.back()[i] *= (1.0f - a[i] * a[i]);
+    }
     for (int l = (int)dims.size() - 1; l >= 0; --l) {
         const int in = dims[l].first, out = dims[l].second;
         const float* w = weights[l];
@@ -289,7 +313,7 @@ void NeuralNet::accumulatePolicyInto(Scratch& s, int action, float advantage) co
         g[i] = advantage * (probs[i] - (i == (size_t)action ? 1.0f : 0.0f));
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;
     for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d);
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
 }
 
 float NeuralNet::logProbOf(const std::vector<float>& logits, int action) {
@@ -343,7 +367,7 @@ void NeuralNet::accumulatePPOInto(Scratch& s, int action, float advantage,
 
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;
     for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d);
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
 }
 
 void NeuralNet::accumulateValueInto(Scratch& s, float target) const {
@@ -352,7 +376,74 @@ void NeuralNet::accumulateValueInto(Scratch& s, float target) const {
     g[0] = (s.acts.back()[0] - target);
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;
     for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d);
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
+}
+
+
+void NeuralNet::attentionPool(const std::vector<std::vector<float>>& emb,
+                              const std::vector<float>& scores,
+                              std::vector<float>& pooled,
+                              std::vector<float>& attnOut) {
+    pooled.clear(); attnOut.clear();
+    if (emb.empty() || emb.size() != scores.size()) return;
+    const size_t d = emb[0].size();
+    // Softmax, shifted by the max for numerical safety: a country with a
+    // dominant neighbour produces large scores, and exp() of those overflows.
+    float mx = scores[0];
+    for (float v : scores) mx = std::max(mx, v);
+    attnOut.assign(scores.size(), 0.0f);
+    float sum = 0.0f;
+    for (size_t i = 0; i < scores.size(); ++i) {
+        attnOut[i] = std::exp(scores[i] - mx);
+        sum += attnOut[i];
+    }
+    if (sum <= 0.0f || !std::isfinite(sum)) {
+        attnOut.assign(scores.size(), 1.0f / (float)scores.size());
+    } else {
+        for (float& a : attnOut) a /= sum;
+    }
+    pooled.assign(d, 0.0f);
+    for (size_t i = 0; i < emb.size(); ++i)
+        for (size_t k = 0; k < d && k < emb[i].size(); ++k)
+            pooled[k] += attnOut[i] * emb[i][k];
+}
+
+void NeuralNet::attentionPoolBackward(const std::vector<std::vector<float>>& emb,
+                                      const std::vector<float>& attn,
+                                      const std::vector<float>& gPooled,
+                                      std::vector<std::vector<float>>& gEmb,
+                                      std::vector<float>& gScores) {
+    gEmb.clear(); gScores.clear();
+    if (emb.empty() || emb.size() != attn.size()) return;
+    const size_t d = gPooled.size();
+    gEmb.assign(emb.size(), std::vector<float>(d, 0.0f));
+    gScores.assign(emb.size(), 0.0f);
+    // Direct path: d pooled / d e_i = a_i.
+    for (size_t i = 0; i < emb.size(); ++i)
+        for (size_t k = 0; k < d; ++k)
+            gEmb[i][k] = attn[i] * gPooled[k];
+    // Through the weights: dL/da_i = <gPooled, e_i>, then softmax's Jacobian
+    // a_i (dL/da_i - sum_j a_j dL/da_j).
+    std::vector<float> gA(emb.size(), 0.0f);
+    for (size_t i = 0; i < emb.size(); ++i) {
+        float dot = 0.0f;
+        for (size_t k = 0; k < d && k < emb[i].size(); ++k) dot += gPooled[k] * emb[i][k];
+        gA[i] = dot;
+    }
+    float weighted = 0.0f;
+    for (size_t i = 0; i < emb.size(); ++i) weighted += attn[i] * gA[i];
+    for (size_t i = 0; i < emb.size(); ++i)
+        gScores[i] = attn[i] * (gA[i] - weighted);
+}
+
+void NeuralNet::accumulateVectorGradInto(Scratch& s,
+                                         const std::vector<float>& gradOnOutputs) const {
+    if (!valid() || s.gw.size() != m_layers.size()) return;
+    if ((int)gradOnOutputs.size() != outputSize()) return;
+    for (float g : gradOnOutputs) if (!std::isfinite(g)) return;
+    std::vector<const float*> w; std::vector<std::pair<int,int>> d;
+    for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
+    backpropInto(m_sizes, s, gradOnOutputs, w, d, m_tanhOutput);
 }
 
 void NeuralNet::accumulateOutputGradInto(Scratch& s, float gradOnOutput) const {
@@ -362,7 +453,7 @@ void NeuralNet::accumulateOutputGradInto(Scratch& s, float gradOnOutput) const {
     g[0] = gradOnOutput;
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;
     for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d);
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
 }
 
 void NeuralNet::accumulateActionValueInto(Scratch& s, int action, float target) const {
@@ -372,7 +463,7 @@ void NeuralNet::accumulateActionValueInto(Scratch& s, int action, float target) 
     g[action] = (s.acts.back()[action] - target);
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;
     for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d);
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
 }
 
 void NeuralNet::mergeScratch(Scratch& s) {
@@ -561,13 +652,27 @@ bool NeuralNet::deserialize(const uint8_t* data, size_t size) {
     // all. The old outputs keep their learned weights and the new ones start
     // from their Xavier initialisation, which is exactly the right prior: an
     // action nothing has ever been learned about should start neutral.
-    bool grewOutputs = false;
+    //
+    // A SECOND exception, by the same argument from the other end: a net that
+    // has gained INPUTS. Adding a feature -- a fact the AI can now see --
+    // widens only the first layer, and refusing the file over it would discard
+    // every net in the model over a change none of them had a chance to be
+    // wrong about. The difference from the output case is what the new weights
+    // start at: a new ACTION should start neutral, so Xavier is right, but a
+    // new FEATURE must start IGNORED, or the model's behaviour changes the
+    // instant it loads. The new columns are zeroed below, which makes the
+    // widened net compute exactly what the narrow one did and leaves it to
+    // learn what the feature is worth.
+    bool grewOutputs = false, grewInputs = false;
     if (!m_sizes.empty() && sizes != m_sizes) {
+        const bool sameShape = sizes.size() == m_sizes.size();
         const bool sameExceptLast =
-            sizes.size() == m_sizes.size() &&
-            std::equal(sizes.begin(), sizes.end() - 1, m_sizes.begin());
-        if (!sameExceptLast || sizes.back() >= m_sizes.back()) return false;
-        grewOutputs = true;
+            sameShape && std::equal(sizes.begin(), sizes.end() - 1, m_sizes.begin());
+        const bool sameExceptFirst =
+            sameShape && std::equal(sizes.begin() + 1, sizes.end(), m_sizes.begin() + 1);
+        if (sameExceptLast && sizes.back() < m_sizes.back())        grewOutputs = true;
+        else if (sameExceptFirst && sizes.front() < m_sizes.front()) grewInputs = true;
+        else return false;
     }
     uint32_t updates, adamT;
     if (!get32(updates)) return false;
@@ -575,8 +680,10 @@ bool NeuralNet::deserialize(const uint8_t* data, size_t size) {
 
     // Build at the TARGET shape when migrating, so the extra output rows keep
     // their fresh initialisation, and read the file's (narrower) rows into it.
-    const std::vector<int> target = grewOutputs ? m_sizes : sizes;
+    const std::vector<int> target = (grewOutputs || grewInputs) ? m_sizes : sizes;
+    const bool keepTanhOut = m_tanhOutput;
     *this = NeuralNet(target, 1234);
+    m_tanhOutput = keepTanhOut;
     m_updates = updates;
     m_adamT = (int)adamT;
     for (size_t l = 0; l < m_layers.size(); ++l) {
@@ -604,6 +711,22 @@ bool NeuralNet::deserialize(const uint8_t* data, size_t size) {
     if (grewOutputs)
         printf("[AI] Policy head widened %d -> %d actions; existing weights kept\n",
                sizes.back(), m_sizes.back());
+    if (grewInputs) {
+        // ZERO, not Xavier. Every weight reading a feature the file never saw
+        // must contribute nothing, so the widened net reproduces the narrow
+        // one's output bit for bit on its first forward pass. The Adam moments
+        // go with them: a stale moment on a brand-new weight would take a large
+        // first step in a direction nothing has evidence for.
+        Layer& L0 = m_layers[0];
+        const int oldIn = sizes.front();
+        for (int o = 0; o < L0.out; ++o)
+            for (int i = oldIn; i < L0.in; ++i) {
+                const size_t k = (size_t)o * L0.in + i;
+                L0.w[k] = 0.0f; L0.mw[k] = 0.0f; L0.vw[k] = 0.0f;
+            }
+        printf("[AI] Input widened %d -> %d features; new inputs start ignored\n",
+               oldIn, L0.in);
+    }
     // Self-heal models poisoned by earlier NaN/inf reward bugs: a single NaN
     // weight makes every forward pass NaN (0*NaN==NaN), and a NaN Adam moment
     // re-poisons the weight on its next update. Zero non-finite values, clamp

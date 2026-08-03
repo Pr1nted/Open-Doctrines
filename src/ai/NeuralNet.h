@@ -23,6 +23,22 @@ public:
     // reproducible when debugging.
     NeuralNet(const std::vector<int>& layerSizes, uint32_t seed);
 
+    /**
+     * Make the OUTPUT layer activated (tanh) like the hidden ones.
+     *
+     * A shared trunk needs this. Splitting {F,512,320,N} into a trunk
+     * {F,512,320} and a head {320,N} reproduces the original topology exactly
+     * -- except for one detail: 512->320 is a HIDDEN layer in the monolith, so
+     * it is squashed, and the LAST layer of the trunk, so it would not be.
+     * Without this the trunk emits raw pre-activations and the split is not the
+     * same function it replaced.
+     *
+     * Set at construction and preserved across deserialize(), which rebuilds
+     * the net at the target shape and would otherwise silently drop it.
+     */
+    void setTanhOutput(bool on) { m_tanhOutput = on; }
+    bool tanhOutput() const { return m_tanhOutput; }
+
     // Forward pass. `in` must have layerSizes.front() elements. Returns the
     // raw output (logits / value). No allocations after the first call.
     const std::vector<float>& forward(const std::vector<float>& in);
@@ -49,6 +65,7 @@ public:
     /** Applies the mean of everything accumulated. No-op on an empty batch. */
     void flushBatch(float lr);
     int batchSize() const { return m_batchN; }
+
 
     // ── Thread-private accumulation ──
     //
@@ -119,6 +136,53 @@ public:
      * softmax is taken across those scores outside the net, and each pass then
      * needs the one derivative belonging to it. That is this.
      */
+    /**
+     * Backprop an arbitrary gradient on ALL outputs, and expose the gradient
+     * this net produces on its INPUT.
+     *
+     * Together these are what lets one net feed another: a head backprops its
+     * loss, hands inputGrad() to the trunk, and the trunk backprops that. The
+     * arithmetic was already there -- backpropInto fills grads[0] on its way
+     * past, and applies the tanh derivative only for layers above zero, so
+     * grads[0] is the raw input gradient -- it simply had no way out.
+     *
+     * Kept separate from accumulateOutputGradInto (which takes a single
+     * scalar, for the one-output heads) so neither has to guess which it is.
+     */
+    void accumulateVectorGradInto(Scratch& s, const std::vector<float>& gradOnOutputs) const;
+    // ── Attention pooling over a variable-size set ──
+    //
+    // A country's neighbours are a SET, not a fixed-width vector: there may be
+    // one or nine, in no meaningful order. Averaging them throws away which one
+    // matters; concatenating them needs an ordering the game does not have.
+    // Attention solves exactly this -- score each member, softmax the scores,
+    // and return the weighted sum -- and it is differentiable, so the encoder
+    // learns what to look at.
+    //
+    // Free functions rather than a net, because there are no weights here: the
+    // learning lives in whatever produced `emb` and `scores`. Kept separate and
+    // testable for the same reason the trunk chaining was.
+    static void attentionPool(const std::vector<std::vector<float>>& emb,
+                              const std::vector<float>& scores,
+                              std::vector<float>& pooled,
+                              std::vector<float>& attnOut);
+    /**
+     * Backward for attentionPool.
+     *
+     * pooled = sum_i a_i * e_i with a = softmax(s), so a member's embedding is
+     * pulled two ways: directly (weight a_i) and through its own influence on
+     * the weights. Both terms are needed -- keeping only the first trains the
+     * encoder while leaving the scorer blind, which looks like it works.
+     */
+    static void attentionPoolBackward(const std::vector<std::vector<float>>& emb,
+                                      const std::vector<float>& attn,
+                                      const std::vector<float>& gPooled,
+                                      std::vector<std::vector<float>>& gEmb,
+                                      std::vector<float>& gScores);
+
+    /** Gradient on this net's input from the last backprop into `s`. */
+    static const std::vector<float>& inputGrad(const Scratch& s) { return s.grads.front(); }
+
     void accumulateOutputGradInto(Scratch& s, float gradOnOutput) const;
     /** Folds a worker's gradients into the shared batch and empties it. */
     void mergeScratch(Scratch& s);
@@ -178,6 +242,7 @@ public:
                             std::mt19937& rng);
 
 private:
+    bool m_tanhOutput = false;
     struct Layer {
         int in = 0, out = 0;
         std::vector<float> w;      // out x in, row-major

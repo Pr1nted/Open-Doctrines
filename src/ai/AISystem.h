@@ -1,5 +1,7 @@
 #pragma once
 #include "NeuralNet.h"
+#include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <deque>
 #include <random>
@@ -46,7 +48,49 @@ class Game;
 class AISystem {
 public:
     enum Module { MOD_ECONOMY = 0, MOD_POLITICS, MOD_WAR, MOD_NAVY, MOD_COUNT };
-    static constexpr int FEATURE_COUNT = 96;
+    /**
+     * 96 -> 104: the last eight are TRENDS.
+     *
+     * Everything before them describes the country RIGHT NOW. A grand-strategy
+     * position is not a snapshot: "my army is 40,000" means something very
+     * different when it was 20,000 eight turns ago than when it was 80,000, and
+     * the policy could not tell those apart. Nor could it see a neighbour
+     * massing on its border until the stack arrived.
+     *
+     * EVERY SOURCE HERE IS ALREADY-COMPUTED STATE -- CountryStat, which
+     * refreshStats() fills at the top of the turn, plus direct Country fields
+     * and pure map lookups. The first attempt at this sampled
+     * computeCountryIncome() from beginTurn, which reads an income cache that
+     * processTurn has not refreshed yet, and the resulting garbage made the
+     * whole evaluation NON-DETERMINISTIC: three identical runs returned 1.00,
+     * 0.83 and 1.14. Nothing that has a validity window belongs in here.
+     *
+     * Safe on a trained model: NeuralNet::deserialize widens the input layer
+     * and ZEROES the new columns, so a 96-feature file loads into this and
+     * computes exactly what it did before until it learns otherwise.
+     */
+    static constexpr int FEATURE_COUNT = 140;  // +24 reserved for the relational slice
+    /** How far back a trend looks: long enough to show a build-up, short
+     *  enough to still be about the current situation. */
+    static constexpr int TREND_WINDOW = 8;
+    /**
+     * 104 -> 112: WORLD STATE. The cheap half of a centralised critic.
+     *
+     * Every country runs the same shared brain on its own local view, so from
+     * any one country's seat the other few hundred are non-stationary noise --
+     * and the value head, whose entire job is "how good is this position", was
+     * estimating that without knowing whether the map around it was a stable
+     * patchwork or already carved up by three empires. That is variance the
+     * baseline cannot explain away, and it lands in every advantage the policy
+     * trains on.
+     *
+     * Textbook CTDE hands the critic something the policy cannot see. This game
+     * has no hidden information -- province ownership is on the map for
+     * everyone -- so the gain here is purely conditioning on global context,
+     * and these go in the shared observation rather than a separate critic
+     * input. Cheaper, honest about what it is, and it costs no reset.
+     */
+    static constexpr int WORLD_FEATURES = 8;
     // Economy: 0 save, 1 industry, 2 fort, 3 port, 4 specialize, 5 destroyer,
     //          6 carrier, 7 research fund up, 8 research fund down,
     //          9 research focus buildings, 10 focus army, 11 focus navy
@@ -63,6 +107,49 @@ public:
     //       5 scrap a ship the country is paying for and not using
     static constexpr int NAVY_ACTIONS = 6;
     static constexpr int DIPLO_ACTIONS = 2; // 0=reject 1=accept
+
+    /**
+     * Width of the shared trunk's output -- the embedding every head reads.
+     *
+     * The policy and Q nets were {FEATURE_COUNT, 512, 320, N} apiece: eight
+     * separate encoders learning the same job from the same features, each
+     * from its own module's gradient alone. They are now ONE encoder
+     * {FEATURE_COUNT, 512, 320} feeding eight {320, N} heads, which is the same
+     * function decomposed -- 512->320 was already a hidden layer, and the trunk
+     * squashes its output (setTanhOutput) so it still is.
+     *
+     * What changes is who pays for it: the encoder now learns from every
+     * module's gradient at once, which is the whole point. What does NOT share
+     * it: the value heads (their own narrow FEATURE_COUNT->160->1 pathway --
+     * a critic wants to be free to disagree with the actor's representation),
+     * and the war-target head, which reads a different input space entirely
+     * (own state PLUS one candidate) and could not consume this embedding
+     * without redesigning how candidates are scored.
+     */
+    static constexpr int TRUNK_OUT = 320;
+
+    /**
+     * THE STANCE HEAD: temporal abstraction over the four modules.
+     *
+     * Every module decides afresh every turn, with nothing holding them to a
+     * plan. That produced two measured pathologies: wars declared and then not
+     * prosecuted, and modules working against each other -- the economy
+     * defunding research while the war module recruited armies the treasury
+     * could not carry. Neither is a bad decision in isolation; both are the
+     * absence of a decision ABOVE them.
+     *
+     * A slow head picks a posture and holds it for STANCE_WINDOW turns. It is
+     * fed back into the observation as a one-hot, so every module conditions on
+     * it and the four of them are at least arguing about the same question.
+     * The stance itself is trained on the shared reward, because it is the one
+     * decision that genuinely owns the whole country's outcome.
+     */
+    static constexpr int REL_FEATURES = 8;
+    static constexpr int REL_EMBED    = 24;
+    static constexpr int REL_MAX      = 6;
+
+    static constexpr int STANCE_COUNT  = 4;   // expand / consolidate / defend / develop
+    static constexpr int STANCE_WINDOW = 10;
 
     /**
      * What the target head is told about one candidate, beyond our own state.
@@ -215,6 +302,27 @@ public:
     /** One province changing hands, attributed to both sides by cause. */
     void noteConquest(int winnerCid, int loserCid, bool contested);
     void noteRevolt(int loserCid) { statsFor(loserCid).provLostToRebel++; }
+    // A funded-at-zero turn with a node still active. See researchStalls.
+    void noteResearchStall(int cid) { statsFor(cid).researchStalls++; }
+    void noteResearchFunded(int cid){ statsFor(cid).researchFundedTurns++; }
+    /**
+     * A node finished. Counted HERE, at the completion site, and not by
+     * diffing the size of m_countryResearched from the experience loop.
+     *
+     * That loop lives in endTurn(), which returns early when aiLearning is
+     * off -- so every evaluation reported "research 0.00 per 1k" no matter how
+     * much research happened, and it happens constantly (385 nodes in one
+     * 300-turn map). The control cohort was worse off still: random countries
+     * return before m_pending is populated, so their figure was structurally
+     * zero even during training.
+     *
+     * Counting at the source also drops the baseline bookkeeping the old
+     * version needed: nodes GRANTED by the map at start never pass through
+     * here, so they cannot be miscounted as completions.
+     */
+    void noteResearchDone(int cid)  { statsFor(cid).researchCompleted++; }
+    /** Same reasoning: counted per country-turn in decide(), not in endTurn(). */
+    void noteBankruptTurn(int cid)  { statsFor(cid).bankruptTurns++; }
     void noteTreatyTransfer(int toCid, int fromCid) {
         statsFor(toCid).provByTreaty++;
         statsFor(fromCid).provCededByTreaty++;
@@ -366,6 +474,55 @@ public:
         // The first should fall as the second rises; both staying high means
         // the cuts are not keeping up with the spending.
         long long bankruptTurns = 0, austerityCuts = 0;
+        // WHAT THE WAR MODULE ACTUALLY DOES, offered against chosen.
+        //
+        // The closed province ledger says the model shrinks because it wins far
+        // fewer battles, not because it declares fewer wars -- so the question
+        // is where the attacks go. Two very different answers look identical in
+        // any outcome number: the MASK never offers attack (a bug, and fixable),
+        // or the mask offers it and the POLICY declines (a learned preference,
+        // and a reward problem). Counting both sides of that separates them.
+        //
+        // Chosen alone would not: an action picked 5% of the time is damning if
+        // it was available every turn and unremarkable if it was available on
+        // one turn in twenty.
+        long long warOffered[WAR_ACTIONS] = {0};
+        long long warChosen[WAR_ACTIONS]  = {0};
+        // Same question for the economy module, which owns research. Countries
+        // complete 0.00 research per 1k country-turns, and "never asks" and
+        // "asks and is refused" need opposite fixes.
+        long long econOffered[ECON_ACTIONS] = {0};
+        long long econChosen[ECON_ACTIONS]  = {0};
+        // A node was picked and is sitting at the front of the queue, and the
+        // turn resolver still made no progress on it because funding is zero.
+        // Bankruptcy zeroes research allocation every turn it bites, and the
+        // mask only offers "pick a node" while IDLE -- so a country that goes
+        // bankrupt mid-node is locked out of research permanently: it cannot
+        // fund the node and cannot abandon it.
+        long long researchStalls  = 0;
+        long long researchPicked  = 0;
+        // Splitting the pick: an action that found a node and armed it, against
+        // one that ran the whole tree and came back empty.
+        long long researchArmed       = 0;
+        long long researchNothingLeft = 0;
+        // Funded turns that actually moved the needle on the active node.
+        long long researchFundedTurns = 0;
+        // WHY THE BATTLE COUNT DIFFERS.
+        //
+        // The model wins provinces in battle at a quarter of the control's
+        // rate, and both cohorts run the SAME targeting code -- execWar's
+        // attack case is not policy, it is a fixed rule, so the gap cannot be
+        // combat skill. It is upstream, and there are only three places it can
+        // hide: being at war less often, choosing attack less often, or
+        // choosing it and finding nothing to hit.
+        //
+        // turnsAtWar is the denominator that matters. Battles won per
+        // country-turn-at-war is the number that says whether the model
+        // actually fights worse, or simply fights less.
+        long long turnsAtWar        = 0;
+        long long attackIssued      = 0;  // a move order went out
+        long long attackNoTarget    = 0;  // nothing winnable adjacent
+        long long attackPending     = 0;  // that province already had an order
     };
     const TrainStats& trainStats() const { return m_trainStats; }
     /**
@@ -649,13 +806,116 @@ private:
     /**
      * Weight on the entropy bonus, which pays the policy for staying undecided.
      *
-     * Small on purpose: enough to stop a distribution collapsing onto one
-     * action, not enough to stop it having opinions. This project has twice
-     * produced a war module that declared literally zero wars per thousand
-     * country-turns -- a collapsed policy cannot discover it was wrong, because
-     * it never samples the alternative again.
+     * RAISED TO 0.03 ON A HUNCH AND PUT BACK BY AN EXPERIMENT. Both arms were
+     * trained from one checkpoint, on one binary, with a pinned seed, for forty
+     * minutes each, differing ONLY in this number (see ppoEntropy below, which
+     * exists so that was possible), and landing within 1.6% of each other on
+     * samples. Measured over six seeds on a deterministic build:
+     *
+     *              300 turns   400 turns
+     *     0.01       1.08        1.10
+     *     0.03       0.78        0.77
+     *     paired    -0.31       -0.34     both 95% CI excluding zero
+     *
+     * WHY it lost is the useful part. At 0.03 the war module issued MORE
+     * attacks (98.7 against 74.0 per map) and won FEWER provinces with them
+     * (102.7 against 184.7) -- 1.04 provinces per attack against 2.50. The
+     * extra exploration bought attacks the policy had been right to decline.
+     *
+     * So the low attack rate this constant was raised to "fix" was not the
+     * pathology it looked like. Selectivity is where the model beats the random
+     * control: it attacks about a ninth as often and takes twice as much ground
+     * per attempt. An entropy bonus large enough to flatten that preference
+     * flattens the edge with it. The module was not refusing to fight; it was
+     * undertrained, and 1.77M further samples at 0.01 moved it from 0.37 to
+     * 1.10 -- the first time this project has measured play above the control.
+     *
+     * Small on purpose, then, and now for a measured reason rather than a
+     * stated one: enough that a distribution cannot collapse to a point, not
+     * enough to argue with what the policy has learned.
      */
     static constexpr float PPO_ENTROPY = 0.01f;
+
+    /**
+     * What ending a war is worth, on top of whatever ground it won.
+     *
+     * Nothing scored CONCLUDING a war. Conquest paid +2.0 x tanh(dProv/3) and
+     * WAR_PHONEY_CHARGE is zero, so a war that was neither won nor ended cost
+     * the policy nothing at all -- and it behaved accordingly: ceasefires
+     * offered 2.4 per thousand country-turns against a random control's 45.5,
+     * a take rate under one percent, wars that simply never finish. A player
+     * on the other side of that sees a neighbour who will not make peace at
+     * any price, which reads as broken rather than as stubborn.
+     *
+     * Scaled by ground so that ending a war one is WINNING pays more than
+     * bailing out of one it is losing -- but both pay something, because
+     * cutting losses is a real decision and the reward should let the module
+     * make it.
+     *
+     * Only for wars at least N_STEP turns old. Without that guard the cheapest
+     * way to collect this is to declare a war and immediately peace out, which
+     * is a worse behaviour than the one being fixed.
+     */
+    static constexpr float WAR_END_REWARD = 0.5f;
+
+    /**
+     * Turns a decision waits for its reward, overridable with OD_N_STEP.
+     *
+     * This is the bias/variance dial, and it has been a single hardcoded point
+     * for its whole life. GAE(lambda) is the usual way to make it adjustable,
+     * and it does not drop into this design: rewards here are computed ONCE per
+     * window from aggregate deltas, deliberately, so a build queued on turn one
+     * is scored against what it produced by turn twelve. GAE needs a per-turn
+     * reward and a per-turn value to form TD errors, so adopting it means
+     * rewriting the reward as per-step -- which would discard the shaping that
+     * currently measures 1.10 against the control.
+     *
+     * Exposing the horizon gives the same knob honestly: sweep 6 / 12 / 24 with
+     * tools/ai_bench.py, which can now resolve differences this size, and let
+     * the measurement pick. If a shorter or longer window wins clearly, that is
+     * also the evidence needed to justify the larger rewrite.
+     */
+    static int nStep() {
+        static const int v = [] {
+            if (const char* e = std::getenv("OD_N_STEP")) {
+                const int n = std::atoi(e);
+                if (n >= 2 && n <= 64) {
+                    printf("[AI] N_STEP overridden: %d (was %d)\n", n, N_STEP);
+                    return n;
+                }
+                printf("[AI] OD_N_STEP=%s ignored (want 2..64)\n", e);
+            }
+            return (int)N_STEP;
+        }();
+        return v;
+    }
+
+    /**
+     * PPO_ENTROPY, overridable at runtime with OD_PPO_ENTROPY.
+     *
+     * Exists so a controlled experiment can run two arms from ONE binary. The
+     * alternative -- building twice -- makes every other difference between
+     * those two builds a candidate explanation for whatever the arms disagree
+     * about, which is exactly the confound that made the first attempt at this
+     * comparison unreadable (it measured a binary an hour out of date).
+     *
+     * Read once and cached: this is on the per-sample update path, and a getenv
+     * per gradient would be absurd.
+     */
+    static float ppoEntropy() {
+        static const float v = [] {
+            if (const char* e = std::getenv("OD_PPO_ENTROPY")) {
+                const float f = (float)std::atof(e);
+                if (f >= 0.0f && f < 1.0f) {
+                    printf("[AI] PPO_ENTROPY overridden: %.4f (was %.4f)\n", f, PPO_ENTROPY);
+                    return f;
+                }
+                printf("[AI] OD_PPO_ENTROPY=%s ignored (want 0 <= x < 1)\n", e);
+            }
+            return PPO_ENTROPY;
+        }();
+        return v;
+    }
 
     /** How many past selves the league keeps. Oldest is overwritten. */
     static constexpr int   LEAGUE_CHECKPOINTS = 6;
@@ -673,14 +933,16 @@ private:
 
     struct Experience {
         std::vector<float> features;
-        int action[MOD_COUNT + 1] = {-1, -1, -1, -1, -1}; // +1 = diplo slot
-        bool acted[MOD_COUNT + 1] = {false, false, false, false, false};
+        // +1 = diplo slot, +2 = stance slot
+        int action[MOD_COUNT + 2] = {-1, -1, -1, -1, -1, -1};
+        bool acted[MOD_COUNT + 2] = {false, false, false, false, false, false};
         // log pi(a|s) as the policy stood when the action was chosen. PPO's
         // ratio is measured against this; see accumulatePPOInto.
-        float logProb[MOD_COUNT + 1] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        float logProb[MOD_COUNT + 2] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         // Which neighbour the target head picked this turn, and what it was
         // shown to pick from. Empty unless a war was actually declared.
         std::vector<std::vector<float>> targetCand;
+        std::vector<std::vector<float>> relCand;
         int targetChosen = -1;
         int age = 0;        // turns since the decision
         int rebellions = 0; // rebellions suffered within the window
@@ -750,6 +1012,13 @@ private:
 
     Game* m_g = nullptr;
     std::string m_modelPath;
+    /** Shared encoder: FEATURE_COUNT -> 512 -> TRUNK_OUT, tanh on the output
+     *  because that layer is a HIDDEN layer of the nets it replaced. */
+    NeuralNet m_trunk;
+    /** Heads now, not whole nets: TRUNK_OUT -> actions. */
+    NeuralNet m_relEncoder;
+    NeuralNet m_relScore;
+    NeuralNet m_stanceHead;   // TRUNK_OUT -> STANCE_COUNT; see STANCE_COUNT
     NeuralNet m_policy[MOD_COUNT];
     NeuralNet m_value[MOD_COUNT];
     /**
@@ -840,7 +1109,6 @@ private:
     std::unordered_map<int, int> m_warSince;
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
-    std::unordered_map<int, int> m_lastResearchCount;  // for the completions counter
     // Overture cooldown, keyed on the UNORDERED pair. An ordered key let A and
     // B alternate proposals to each other every single turn, so the pair never
     // actually cooled down.
@@ -910,10 +1178,14 @@ private:
         float bootDiscount = 0.0f;
         float oldLogProb = 0.0f;   // the behaviour policy's, for PPO's ratio
         std::vector<std::vector<float>> targetCand;   // war-target choice, if any
+        std::vector<std::vector<float>> relCand;      // neighbour rows, for the encoder
         int targetChosen = -1;
     };
     std::vector<WorkItem> m_work;
     struct WorkerScratch {
+        // The shared trunk's activations for the sample being learned from.
+        // Every head's gradient chains back through this one.
+        NeuralNet::Scratch trunk;
         NeuralNet::Scratch policy[MOD_COUNT];
         NeuralNet::Scratch value[MOD_COUNT];
         // A SECOND value scratch, for V(end of window). It cannot share the one
@@ -926,6 +1198,8 @@ private:
         NeuralNet::Scratch diplo;
         NeuralNet::Scratch diploValue;
         NeuralNet::Scratch diploValueNext;
+        NeuralNet::Scratch stance;
+        std::vector<NeuralNet::Scratch> relEnc, relSco;
         bool ready = false;
     };
     std::vector<WorkerScratch> m_scratch;
@@ -989,6 +1263,46 @@ private:
     // constant for the whole of takeTurn would be worse than a flag that is set
     // once at the top of it.
     std::unordered_set<int> m_randomCids;
+    /** World aggregates, computed once a turn -- see WORLD_FEATURES. Per-turn
+     *  rather than per-country: recomputing inside buildFeatures would be
+     *  O(countries^2) on a map that already carries hundreds. */
+    struct WorldSnapshot {
+        int turn = -1;
+        float herfindahl = 0.0f;      // sum of squared land shares; 1 = one owner
+        float largestShare = 0.0f;
+        float atWarFrac = 0.0f;
+        float aliveNorm = 0.0f;
+        float meanUnrest = 0.0f;
+        long long totalProvinces = 0;
+        std::unordered_map<int, float> rank;   // cid -> land percentile 0..1
+    };
+    WorldSnapshot m_world;
+    std::vector<std::vector<float>> m_lastRelCand;
+    /** cid -> (stance, turn it was chosen). Held for STANCE_WINDOW turns. */
+    std::unordered_map<int, std::pair<int,int>> m_stance;
+    int stanceOf(int cid) const {
+        auto it = m_stance.find(cid);
+        return it == m_stance.end() ? -1 : it->second.first;
+    }
+    void updateWorld();
+    void backpropRelational(WorkerScratch& ws, const WorkItem& w);
+    void buildRelational(int cid, std::vector<std::vector<float>>& cand,
+                         std::vector<float>& pooled);
+
+    /** Baseline for the trend features, refreshed every TREND_WINDOW turns. */
+    struct TrendPoint {
+        int turn = -1;
+        float provinces = 0, army = 0, industry = 0, population = 0;
+        float treasury = 0, threat = 0, align = 0, weariness = 0;
+    };
+    std::unordered_map<int, TrendPoint> m_trend;
+    /** Read the eight tracked quantities as they stand now. Pure: reads only
+     *  refreshStats() output, Country fields and province armies. */
+    TrendPoint sampleTrend(int cid) const;
+    /** Roll expired baselines forward. Called once from beginTurn, never from
+     *  buildFeatures -- features are built several times a turn and the
+     *  baseline must not move underneath them. */
+    void updateTrends();
 
     // ── The league ──────────────────────────────────────────────────────
     //
@@ -1008,6 +1322,7 @@ private:
     // at random. Beating last hour's policy is worth something; beating one
     // from ten hours ago and one from two hours ago in the same session is what
     // stops the cycle.
+    NeuralNet m_leagueTrunk;
     NeuralNet m_leaguePolicy[MOD_COUNT];
     bool m_leagueLoaded = false;
     std::unordered_set<int> m_leagueCids;
@@ -1024,6 +1339,26 @@ private:
      * whole life, so process lifetime is the right scope.
      */
     static uint64_t s_lastCheckpointUpdates;
+    /**
+     * PRIORITISED FICTITIOUS SELF-PLAY.
+     *
+     * The league picked its opponent uniformly, which spends most of its games
+     * against checkpoints the current policy already beats comfortably -- and a
+     * win you were always going to get teaches nothing. PFSP weights the draw
+     * towards the opponents that actually trouble us: w = (1 - winrate)^2 + eps,
+     * so a slot we lose to is sampled far more often than one we crush, and the
+     * epsilon keeps every slot reachable so a beaten opponent can be re-checked
+     * as the policy drifts.
+     *
+     * Static because the AISystem is destroyed and rebuilt on every map
+     * rotation; per-instance counters would reset before they meant anything.
+     */
+    static int s_leagueGames[LEAGUE_CHECKPOINTS];
+    static int s_leagueLosses[LEAGUE_CHECKPOINTS];   // maps where the frozen side held more land
+    /** Which slot the current map is playing against, or -1. */
+    int m_leagueSlot = -1;
+    /** Score the finished map against the opponent that played it. */
+    void recordLeagueOutcome();
 
     /** Save the current policy into the checkpoint pool, oldest slot first. */
     void writeLeagueCheckpoint();
