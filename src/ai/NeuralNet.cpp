@@ -292,6 +292,60 @@ void NeuralNet::accumulatePolicyInto(Scratch& s, int action, float advantage) co
     backpropInto(m_sizes, s, g, w, d);
 }
 
+float NeuralNet::logProbOf(const std::vector<float>& logits, int action) {
+    if (logits.empty() || action < 0 || action >= (int)logits.size()) return 0.0f;
+    std::vector<float> probs;
+    softmax(logits, 1.0f, probs);
+    return std::log(std::max(1e-8f, probs[(size_t)action]));
+}
+
+void NeuralNet::accumulatePPOInto(Scratch& s, int action, float advantage,
+                                  float oldLogProb, float clipEps,
+                                  float entropyCoef) const {
+    if (!valid() || action < 0 || action >= outputSize() || s.gw.size() != m_layers.size()) return;
+    const std::vector<float>& logits = s.acts.back();
+    std::vector<float> probs;
+    softmax(logits, 1.0f, probs);
+
+    const float p = std::max(1e-8f, probs[(size_t)action]);
+    // Clamped before exp: a stale sample can put this ratio far enough out that
+    // exp() overflows to inf, and one inf in a gradient poisons every weight it
+    // touches -- permanently, because the model is then saved to disk.
+    const float ratio = std::exp(std::clamp(std::log(p) - oldLogProb, -20.0f, 20.0f));
+
+    // Beyond the clip, in the direction the advantage is pushing, the objective
+    // is FLAT: no gradient at all. That flatness is the mechanism, not a
+    // rounding of it -- it is what makes a too-large step worth nothing and so
+    // stops the update taking it.
+    const bool clipped = (advantage > 0.0f && ratio > 1.0f + clipEps) ||
+                         (advantage < 0.0f && ratio < 1.0f - clipEps);
+
+    std::vector<float> g(probs.size(), 0.0f);
+    if (!clipped) {
+        // d(-A*ratio)/dz = A*ratio*(p - onehot), the plain policy gradient with
+        // the importance weight folded in.
+        for (size_t i = 0; i < probs.size(); ++i)
+            g[i] = advantage * ratio * (probs[i] - (i == (size_t)action ? 1.0f : 0.0f));
+    }
+
+    if (entropyCoef > 0.0f) {
+        // Loss carries -entropyCoef * H, so the gradient carries
+        // +entropyCoef * p_i * (log p_i + H). Added even when the surrogate is
+        // clipped: exploration should not switch off just because this
+        // particular sample's step was too big.
+        float H = 0.0f;
+        for (float q : probs) if (q > 1e-8f) H -= q * std::log(q);
+        for (size_t i = 0; i < probs.size(); ++i) {
+            const float q = std::max(1e-8f, probs[i]);
+            g[i] += entropyCoef * q * (std::log(q) + H);
+        }
+    }
+
+    std::vector<const float*> w; std::vector<std::pair<int,int>> d;
+    for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
+    backpropInto(m_sizes, s, g, w, d);
+}
+
 void NeuralNet::accumulateValueInto(Scratch& s, float target) const {
     if (!valid() || outputSize() < 1 || s.gw.size() != m_layers.size()) return;
     std::vector<float> g(outputSize(), 0.0f);

@@ -72,7 +72,16 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
         printf("[AI] Fresh model (no file at %s)\n", m_modelPath.c_str());
 }
 
-AISystem::~AISystem() { saveModel(); }
+AISystem::~AISystem() {
+    saveModel();
+    // AND HERE, not only on the periodic save. This object is destroyed and
+    // rebuilt on every map rotation, and a map can easily be shorter than
+    // SAVE_INTERVAL_SECONDS -- three forty-turn maps ran in 1.6 minutes, so the
+    // sixty-second timer never fired once inside a single instance's life and
+    // no checkpoint was ever written. Map rotation is in fact the better moment
+    // for one: it is exactly when a policy has finished learning something.
+    writeLeagueCheckpoint();
+}
 
 // Rebels are their own bucket -- see the note on m_rebelStats. Everything else
 // splits by cohort, and with no --vs-random split m_randomCids is empty, so
@@ -85,6 +94,7 @@ AISystem::TrainStats& AISystem::statsFor(int cid) {
 // ─── World cache ─────────────────────────────────────────
 
 void AISystem::beginTurn() {
+    const bool firstTurnOfMap = (m_turn == 0);
     m_turn++;
     m_decisionsThisTurn = 0;
     // Landings are counted per turn and accumulated into every open reward
@@ -92,6 +102,16 @@ void AISystem::beginTurn() {
     // not when it is read.
     m_landingsThisTurn.clear();
     refreshStats();
+
+    // This map's frozen opponent, drawn once the world exists.
+    //
+    // AFTER refreshStats, not before: the choice is over countries and it reads
+    // them from m_stats, which refreshStats is what fills. Asking first found an
+    // empty map, took the "too small to split" branch, and assigned nobody --
+    // silently, because that branch has nothing to report.
+    if (firstTurnOfMap && selfPlayLearning()) {
+        if (loadLeagueOpponent()) assignLeagueCountries();
+    }
     // Baseline for NEXT turn's "did I lose ground?" delta. Recorded here, after
     // refreshStats has consumed the previous baseline, and NOT in the endTurn
     // refresh — otherwise the mid-turn refresh would reset the comparison and
@@ -685,7 +705,8 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
 
 int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
                          const std::vector<bool>& valid, float& scoreOut,
-                         int graveAction, const std::vector<float>* logitBias) {
+                         int graveAction, const std::vector<float>* logitBias,
+                         float* logProbOut) {
     const std::vector<float>& logits = net.forward(feats);
     scoreOut = 0;
     if (logits.empty()) return 0;
@@ -753,6 +774,11 @@ int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
     }
     if (a < 0 || a >= (int)logits.size()) a = 0;
     scoreOut = std::isfinite(logits[a]) ? logits[a] : 0.0f;
+    // Recorded from the MASKED logits, because that is the distribution the
+    // policy actually offered: an action at -1e9 has probability zero, and a
+    // ratio measured against the unmasked logits would be measuring a policy
+    // that was never on the table.
+    if (logProbOut) *logProbOut = NeuralNet::logProbOf(masked, a);
     return a;
 }
 
@@ -781,6 +807,8 @@ void AISystem::takeTurn(int cid) {
     if (st.provinces == 0) return;
 
     m_randomThisCountry = isRandomCountry(cid);
+    // A league country acts with a frozen past policy and teaches nothing.
+    m_leagueThisCountry = m_leagueCids.count(cid) > 0;
 
     Experience exp;
     buildFeatures(cid, exp.features);
@@ -831,6 +859,11 @@ void AISystem::takeTurn(int cid) {
     std::vector<float> qbias;
     auto qBiasFor = [&](int m) -> const std::vector<float>* {
         if (Q_BLEND <= 0.0f) return nullptr;
+        // A frozen opponent is exactly the policy it was checkpointed as.
+        // Letting the CURRENT critic re-rank its actions would make it a
+        // moving target again, which is the one thing the league exists to
+        // prevent.
+        if (m_leagueThisCountry) return nullptr;
         if (m_q[m].updateCount() < Q_WARMUP_UPDATES) return nullptr;
         const std::vector<float>& q = m_q[m].forward(exp.features);
         if (q.empty()) return nullptr;
@@ -842,16 +875,25 @@ void AISystem::takeTurn(int cid) {
         return &qbias;
     };
 
+    // Which brain is playing this country. A league country is driven by a
+    // frozen past self: it is never trained, so it consults no Q and its
+    // experience is discarded below.
+    auto brainFor = [&](int m) -> NeuralNet& {
+        return m_leagueThisCountry ? m_leaguePolicy[m] : m_policy[m];
+    };
+
     validEconomy(cid, valid);
-    int a = pickAction(m_policy[MOD_ECONOMY], exp.features, valid, score,
-                       /*graveAction=*/-1, qBiasFor(MOD_ECONOMY));
+    int a = pickAction(brainFor(MOD_ECONOMY), exp.features, valid, score,
+                       /*graveAction=*/-1, qBiasFor(MOD_ECONOMY),
+                   &exp.logProb[MOD_ECONOMY]);
     m_policy[MOD_ECONOMY].snapshotActs(exp.acts[MOD_ECONOMY]);
     exp.action[MOD_ECONOMY] = a; exp.acted[MOD_ECONOMY] = true;
     logDecision(cid, MOD_ECONOMY, a, score, execEconomy(cid, a));
 
     validPolitics(cid, valid);
-    a = pickAction(m_policy[MOD_POLITICS], exp.features, valid, score,
-                   /*graveAction=*/-1, qBiasFor(MOD_POLITICS));
+    a = pickAction(brainFor(MOD_POLITICS), exp.features, valid, score,
+                   /*graveAction=*/-1, qBiasFor(MOD_POLITICS),
+                   &exp.logProb[MOD_POLITICS]);
     m_policy[MOD_POLITICS].snapshotActs(exp.acts[MOD_POLITICS]);
     exp.action[MOD_POLITICS] = a; exp.acted[MOD_POLITICS] = true;
     logDecision(cid, MOD_POLITICS, a, score, execPolitics(cid, a));
@@ -872,8 +914,8 @@ void AISystem::takeTurn(int cid) {
 
     validWar(cid, valid);
     // 4 = declare war; see the graveAction note in pickAction.
-    a = pickAction(m_policy[MOD_WAR], exp.features, valid, score, /*graveAction=*/4,
-                   qBiasFor(MOD_WAR));
+    a = pickAction(brainFor(MOD_WAR), exp.features, valid, score, /*graveAction=*/4,
+                   qBiasFor(MOD_WAR), &exp.logProb[MOD_WAR]);
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
     m_declaredUnprovoked = false;
@@ -881,8 +923,9 @@ void AISystem::takeTurn(int cid) {
     exp.aggressor = m_declaredUnprovoked;
 
     validNavy(cid, valid);
-    a = pickAction(m_policy[MOD_NAVY], exp.features, valid, score,
-                   /*graveAction=*/-1, qBiasFor(MOD_NAVY));
+    a = pickAction(brainFor(MOD_NAVY), exp.features, valid, score,
+                   /*graveAction=*/-1, qBiasFor(MOD_NAVY),
+                   &exp.logProb[MOD_NAVY]);
     m_policy[MOD_NAVY].snapshotActs(exp.acts[MOD_NAVY]);
     exp.action[MOD_NAVY] = a; exp.acted[MOD_NAVY] = true;
     logDecision(cid, MOD_NAVY, a, score, execNavy(cid, a));
@@ -892,6 +935,10 @@ void AISystem::takeTurn(int cid) {
     // teach. (Learning is off during evaluation anyway — this makes the
     // mechanism safe to use anywhere, including a mixed training run.)
     if (m_randomThisCountry) { m_randomThisCountry = false; return; }
+    // Same rule, different reason: a league country's choices come from a
+    // policy that is not being trained, so its experience would teach the
+    // learner to imitate its own past rather than to beat it.
+    if (m_leagueThisCountry) { m_leagueThisCountry = false; return; }
 
     auto& dq = m_pending[cid];
     dq.push_back(std::move(exp));
@@ -3026,6 +3073,7 @@ void AISystem::endTurn() {
             w.features = exp.features;
             w.acts = std::move(exp.acts[m]);
             w.cid = cid;
+            w.oldLogProb = exp.logProb[m];
             if (nextFeats) {
                 w.nextFeatures = *nextFeats;
                 w.bootDiscount = BOOTSTRAP_DISCOUNT;
@@ -3468,6 +3516,11 @@ void AISystem::endTurn() {
     if (std::chrono::duration<double>(now - m_lastSave).count() >= SAVE_INTERVAL_SECONDS) {
         m_lastSave = now;
         saveModel();
+        // Rides along with the periodic save rather than on a clock of its own:
+        // both want the same moment, between turns and after a merge, and one
+        // of them writing while the other renames is how a checkpoint ends up
+        // half of one policy and half of another.
+        writeLeagueCheckpoint();
     }
 }
 
@@ -3559,9 +3612,19 @@ void AISystem::runLearningWork() {
             m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
             // Activations were snapshotted at decision time — reusing them
             // replaces a full policy re-forward with a couple of vector moves.
-            if (!w.acts.empty()) NeuralNet::loadActs(ws.policy[m], std::move(w.acts));
-            else m_policy[m].forwardInto(ws.policy[m], w.features);
-            m_policy[m].accumulatePolicyInto(ws.policy[m], w.action, advantage);
+            // THE POLICY MUST BE RE-FORWARDED, not restored from the snapshot.
+            //
+            // The cached activations are the ones the decision was made with,
+            // N_STEP turns and several hundred updates ago. Reusing them was
+            // right for a plain policy gradient, which pretends the weights
+            // have not moved. PPO's whole purpose is to notice that they have,
+            // and a ratio computed from stale activations is always exactly
+            // 1.0 -- the correction silently disappears and this becomes
+            // REINFORCE with extra steps.
+            w.acts.clear();
+            m_policy[m].forwardInto(ws.policy[m], w.features);
+            m_policy[m].accumulatePPOInto(ws.policy[m], w.action, advantage,
+                                          w.oldLogProb, PPO_CLIP, PPO_ENTROPY);
         }
     };
 
@@ -3929,6 +3992,117 @@ unsigned long long AISystem::totalUpdates() const {
     for (int m = 0; m < MOD_COUNT; ++m)
         n += m_policy[m].updateCount() + m_value[m].updateCount();
     return n + m_diplo.updateCount();
+}
+
+// ─── The league ──────────────────────────────────────────────────────────
+//
+// Checkpoints live beside the model, named by slot rather than by time, so the
+// pool is a fixed size and the oldest is simply overwritten. A run that never
+// stops therefore never fills the disk, and a run that is interrupted leaves a
+// usable pool behind.
+
+static std::string leagueSlotPath(const std::string& modelPath, int slot) {
+    const size_t slash = modelPath.find_last_of('/');
+    const std::string dir = (slash == std::string::npos) ? std::string(".")
+                                                         : modelPath.substr(0, slash);
+    return dir + "/league-" + std::to_string(slot) + ".bin";
+}
+
+uint64_t AISystem::s_lastCheckpointUpdates = 0;
+
+void AISystem::writeLeagueCheckpoint() {
+    if (m_modelPath.empty() || s_readOnlyModel) return;
+    const uint64_t updates = m_policy[MOD_WAR].updateCount();
+    if (updates < s_lastCheckpointUpdates + LEAGUE_CHECKPOINT_EVERY) return;
+    s_lastCheckpointUpdates = updates;
+
+    // Slot chosen by rotation, so the pool holds the last N checkpoints and the
+    // oldest goes first. Deriving it from the update count means a restarted
+    // run continues the rotation rather than always clobbering slot 0.
+    const int slot = (int)((updates / LEAGUE_CHECKPOINT_EVERY) % LEAGUE_CHECKPOINTS);
+    const std::string path = leagueSlotPath(m_modelPath, slot);
+
+    // The policy heads alone. A frozen opponent only ever acts -- it has no
+    // value head to fit, no Q to consult and no reward statistics of its own --
+    // so writing the rest would be four times the disk for nothing.
+    std::vector<uint8_t> out;
+    const char magic[4] = {'O', 'D', 'L', 'G'};
+    out.insert(out.end(), magic, magic + 4);
+    out.push_back(1);
+    out.push_back(MOD_COUNT);
+    for (int m = 0; m < MOD_COUNT; ++m) {
+        std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
+    }
+    // Temp-and-rename, because a worker may be reading this slot right now and
+    // a half-written checkpoint is an opponent made of noise.
+    const std::string tmp = path + ".tmp";
+    if (FILE* f = fopen(tmp.c_str(), "wb")) {
+        fwrite(out.data(), 1, out.size(), f);
+        fclose(f);
+        rename(tmp.c_str(), path.c_str());
+        printf("[AI] league checkpoint -> slot %d (%llu updates)\n", slot,
+               (unsigned long long)updates);
+    }
+}
+
+bool AISystem::loadLeagueOpponent() {
+    if (m_modelPath.empty()) return false;
+    // Which slots exist. A young run has none, and one slot behind the current
+    // policy is still a different policy, so even a single checkpoint is worth
+    // playing against.
+    std::vector<int> present;
+    for (int i = 0; i < LEAGUE_CHECKPOINTS; ++i) {
+        FILE* f = fopen(leagueSlotPath(m_modelPath, i).c_str(), "rb");
+        if (f) { fclose(f); present.push_back(i); }
+    }
+    if (present.empty()) return false;
+
+    std::uniform_int_distribution<size_t> pick(0, present.size() - 1);
+    const std::string path = leagueSlotPath(m_modelPath, present[pick(m_rng)]);
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    if (n < 6) { fclose(f); return false; }
+    std::vector<uint8_t> buf((size_t)n);
+    const size_t rd = fread(buf.data(), 1, buf.size(), f);
+    fclose(f);
+    if (rd != buf.size()) return false;
+    if (memcmp(buf.data(), "ODLG", 4) != 0) return false;
+    if (buf[4] != 1 || buf[5] != MOD_COUNT) return false;
+
+    size_t p = 6;
+    for (int m = 0; m < MOD_COUNT; ++m) {
+        if (p + 4 > buf.size()) return false;
+        const uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) |
+                             ((uint32_t)buf[p+3] << 24);
+        p += 4;
+        if (p + len > buf.size()) return false;
+        if (!m_leaguePolicy[m].deserialize(buf.data() + p, len)) return false;
+        p += len;
+    }
+    m_leagueLoaded = true;
+    return true;
+}
+
+void AISystem::assignLeagueCountries() {
+    m_leagueCids.clear();
+    if (!m_leagueLoaded || LEAGUE_SHARE <= 0.0f) return;
+    // Only real countries: rebels are not a side anyone is training against,
+    // and the random control group must stay random.
+    std::vector<int> pool;
+    for (const auto& [cid, st] : m_stats) {
+        (void)st;
+        if (cid >= Game::REBEL_CID_MIN) continue;
+        if (isRandomCountry(cid)) continue;
+        pool.push_back(cid);
+    }
+    if (pool.size() < 3) return;   // too small a map to give a third away
+    std::shuffle(pool.begin(), pool.end(), m_rng);
+    const size_t take = (size_t)(pool.size() * LEAGUE_SHARE);
+    for (size_t i = 0; i < take && i < pool.size(); ++i)
+        m_leagueCids.insert(pool[i]);
+    printf("[AI] league: %zu of %zu countries play a frozen past self\n",
+           m_leagueCids.size(), pool.size());
 }
 
 bool AISystem::loadModel() {

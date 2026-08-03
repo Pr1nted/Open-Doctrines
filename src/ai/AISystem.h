@@ -574,10 +574,51 @@ private:
      */
     static constexpr float UNREST_WEIGHT = 0.4f;  // was 0.8
 
+    /**
+     * How far the policy may move on one decision before the update stops
+     * paying for more. The standard 0.2, and standard for a reason: it is loose
+     * enough that ordinary learning is untouched and tight enough that a stale
+     * sample cannot take a large step.
+     *
+     * It matters more here than in a typical setup. A decision waits N_STEP
+     * turns for its reward and the policy is updated every turn, so by the time
+     * a sample is used the weights that produced it are hundreds of updates
+     * old. Every sample is off-policy, and until now nothing accounted for it.
+     */
+    static constexpr float PPO_CLIP = 0.2f;
+
+    /**
+     * Weight on the entropy bonus, which pays the policy for staying undecided.
+     *
+     * Small on purpose: enough to stop a distribution collapsing onto one
+     * action, not enough to stop it having opinions. This project has twice
+     * produced a war module that declared literally zero wars per thousand
+     * country-turns -- a collapsed policy cannot discover it was wrong, because
+     * it never samples the alternative again.
+     */
+    static constexpr float PPO_ENTROPY = 0.01f;
+
+    /** How many past selves the league keeps. Oldest is overwritten. */
+    static constexpr int   LEAGUE_CHECKPOINTS = 6;
+    /** Updates between checkpoints. Roughly an hour of a four-worker run. */
+    static constexpr uint64_t LEAGUE_CHECKPOINT_EVERY = 3000000;
+    /**
+     * Share of countries on a map handed a frozen past self.
+     *
+     * A third: enough that the learner meets a stationary opponent often, few
+     * enough that most of the world is still the policy playing itself, which
+     * is where the volume of experience comes from. At 1.0 there would be no
+     * learning signal at all -- league countries do not teach.
+     */
+    static constexpr float LEAGUE_SHARE = 0.33f;
+
     struct Experience {
         std::vector<float> features;
         int action[MOD_COUNT + 1] = {-1, -1, -1, -1, -1}; // +1 = diplo slot
         bool acted[MOD_COUNT + 1] = {false, false, false, false, false};
+        // log pi(a|s) as the policy stood when the action was chosen. PPO's
+        // ratio is measured against this; see accumulatePPOInto.
+        float logProb[MOD_COUNT + 1] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         int age = 0;        // turns since the decision
         int rebellions = 0; // rebellions suffered within the window
         // Troops put on a hostile shore within the window. The province a
@@ -757,6 +798,7 @@ private:
          */
         std::vector<float> nextFeatures;
         float bootDiscount = 0.0f;
+        float oldLogProb = 0.0f;   // the behaviour policy's, for PPO's ratio
     };
     std::vector<WorkItem> m_work;
     struct WorkerScratch {
@@ -832,6 +874,48 @@ private:
     // constant for the whole of takeTurn would be worse than a flag that is set
     // once at the top of it.
     std::unordered_set<int> m_randomCids;
+
+    // ── The league ──────────────────────────────────────────────────────
+    //
+    // Every country evaluates one shared brain, so self-play here means the
+    // policy plays ITSELF, always at exactly its own current strength. That is
+    // the setup that cycles: the policy learns to beat what it is this hour,
+    // the counter to that, then the counter to the counter, and can arrive back
+    // where it started having forgotten how to handle any of it. Nothing in the
+    // training loop notices, because every game still ends with a winner.
+    //
+    // So a fraction of countries on each map are handed a FROZEN past self
+    // instead. They play, they do not learn -- the same arrangement the random
+    // control group already uses -- and the learner faces opponents that do not
+    // move while it is trying to beat them.
+    //
+    // Checkpoints are the model as it was, saved on a rotation and drawn from
+    // at random. Beating last hour's policy is worth something; beating one
+    // from ten hours ago and one from two hours ago in the same session is what
+    // stops the cycle.
+    NeuralNet m_leaguePolicy[MOD_COUNT];
+    bool m_leagueLoaded = false;
+    std::unordered_set<int> m_leagueCids;
+    bool m_leagueThisCountry = false;
+    /**
+     * STATIC, because this object does not live long enough to hold it.
+     *
+     * AISystem is destroyed and rebuilt on every map rotation, so a member
+     * resets to zero several times an hour -- the interval gate then always
+     * passes, every map writes a checkpoint, and because the slot is derived
+     * from an update count that has barely moved they all land in the SAME
+     * slot. The pool stays one file deep and the league has one opponent,
+     * which is the situation it exists to fix. A worker is one process for its
+     * whole life, so process lifetime is the right scope.
+     */
+    static uint64_t s_lastCheckpointUpdates;
+
+    /** Save the current policy into the checkpoint pool, oldest slot first. */
+    void writeLeagueCheckpoint();
+    /** Load a random checkpoint as this map's opponent. False if none exist. */
+    bool loadLeagueOpponent();
+    /** Choose which countries the frozen opponent plays, for a fresh map. */
+    void assignLeagueCountries();
     bool m_randomThisCountry = false;
 
     // Research is player-only, so AI countries would report level-0 build caps
@@ -856,10 +940,20 @@ private:
     // sampling — a standing preference the caller wants applied to this
     // decision without teaching the net anything (the learning step uses the
     // net's own unbiased activations). See AI_CALL_RELUCTANCE.
+    /**
+     * `logProbOut`, when given, receives log pi(a|s) under the MASKED logits at
+     * temperature 1 -- the probability the policy being trained assigned to the
+     * action, not the probability the exploration actually used.
+     *
+     * That is the quantity PPO's ratio needs: it measures how far the policy
+     * has moved since the decision, and an epsilon-random pick is simply a very
+     * off-policy sample, which is precisely what the clip exists to bound.
+     */
     int  pickAction(NeuralNet& net, const std::vector<float>& feats,
                     const std::vector<bool>& valid, float& scoreOut,
                     int graveAction = -1,
-                    const std::vector<float>* logitBias = nullptr);
+                    const std::vector<float>* logitBias = nullptr,
+                    float* logProbOut = nullptr);
     void logDecision(int cid, int module, int action, float score, const std::string& label);
 
     // Defence is issued as a batch, not one province a turn: a country invaded

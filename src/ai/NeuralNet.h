@@ -85,6 +85,31 @@ public:
      * the one shape that makes it useless for choosing between actions.
      */
     void accumulateActionValueInto(Scratch& s, int action, float target) const;
+    /**
+     * The PPO clipped surrogate, in place of the plain policy gradient.
+     *
+     * accumulatePolicyInto assumes the weights that chose the action are the
+     * weights being updated. Here they are not: a decision waits N_STEP turns
+     * for its reward, and the policy has been updated hundreds of times by the
+     * time it arrives. Every sample is therefore off-policy by an amount nobody
+     * was measuring, and the plain gradient treats it as if it were fresh.
+     *
+     * `oldLogProb` is log pi(a|s) as it stood when the action was taken, so the
+     * ratio pi_new/pi_old says exactly how far the policy has moved on this
+     * decision. Weighting by it corrects the estimate; clipping it flattens the
+     * objective once the move is large enough, which is what stops one stale
+     * batch from dragging the policy somewhere it cannot come back from.
+     *
+     * `entropyCoef` adds a bonus for keeping the distribution spread out. A
+     * policy that collapses onto one action stops exploring and cannot discover
+     * that another was better -- which is the failure mode this project has
+     * already met twice, as 0.00 declarations per thousand country-turns.
+     */
+    void accumulatePPOInto(Scratch& s, int action, float advantage,
+                           float oldLogProb, float clipEps,
+                           float entropyCoef) const;
+    /** log pi(a|s) at temperature 1 for the logits currently in `s`. */
+    static float logProbOf(const std::vector<float>& logits, int action);
     /** Folds a worker's gradients into the shared batch and empties it. */
     void mergeScratch(Scratch& s);
 
