@@ -1144,6 +1144,20 @@ private:
     /** The candidate's own slice of the target head's input. */
     void buildTargetFeatures(int cid, const WarCandidate& cand,
                              std::vector<float>& out) const;
+    /**
+     * How likely `partnerCid` is to accept `requestKind`, from 0 to 1.
+     *
+     * OPPONENT MODELLING, and unusually cheap here. Every country evaluates the
+     * same weights, so the policy that will answer this request IS the policy
+     * asking the question -- running the diplomacy net on the partner's own
+     * features, with the same request bias answerDiplomacy applies, is not an
+     * approximation of their behaviour. It is their behaviour, evaluated early.
+     *
+     * The politics module proposed to the STRONGEST neighbour and nothing else,
+     * so it spent its turns asking the countries least likely to say yes, and
+     * every refusal is a turn and a cooldown for nothing.
+     */
+    float predictAcceptance(int partnerCid, const char* requestKind) const;
 
     bool loadModel();
 };

@@ -1043,6 +1043,26 @@ void AISystem::ensureTrendBounds() const {
 // See the declaration in AISystem.h for why the mask and the executor share
 // this. The logic below is execWar case 4's, moved verbatim rather than
 // reimplemented -- two copies of a rule this fiddly would drift within a week.
+float AISystem::predictAcceptance(int partnerCid, const char* requestKind) const {
+    if (!requestKind) return 0.5f;
+    // Their features, not ours: this is their decision, and buildFeatures is
+    // what their own answer would be computed from.
+    std::vector<float> feats;
+    const_cast<AISystem*>(this)->buildFeatures(partnerCid, feats);
+    if ((int)feats.size() != FEATURE_COUNT) return 0.5f;
+
+    // The same thumb on the scale answerDiplomacy puts there. Predicting
+    // without it would model a different policy from the one that answers.
+    std::vector<float> logits = const_cast<NeuralNet&>(m_diplo).forward(feats);
+    if ((int)logits.size() != DIPLO_ACTIONS) return 0.5f;
+    if (strcmp(requestKind, "request_nap") == 0)
+        logits[1] += AI_NAP_WILLINGNESS;
+
+    std::vector<float> probs;
+    NeuralNet::softmax(logits, 1.0f, probs);
+    return probs.size() > 1 && std::isfinite(probs[1]) ? probs[1] : 0.5f;
+}
+
 void AISystem::buildTargetFeatures(int cid, const WarCandidate& cand,
                                    std::vector<float>& out) const {
     out.assign(TARGET_FEATURES, 0.0f);
@@ -1724,6 +1744,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             // Target: the STRONGEST neighbour we're not at war with and don't
             // already have this relation with — befriend the biggest threat.
             int target = -1; long long targetArmy = -1;
+            double bestWorth = -1.0;
             std::unordered_set<int> seen;
             for (auto& fr : m_stats[cid].frontiers) {
                 if (!seen.insert(fr.enemyCid).second) continue;
@@ -1750,7 +1771,26 @@ std::string AISystem::execPolitics(int cid, int action) {
                     if (da.sourceIso == c->isoA3 && da.targetIso == ec->isoA3) { pendingReq = true; break; }
                 if (pendingReq) continue;
                 long long ea = m_stats[fr.enemyCid].army;
-                if (ea > targetArmy) { targetArmy = ea; target = fr.enemyCid; }
+                // WORTH HAVING, AND LIKELY TO AGREE.
+                //
+                // This was "whoever has the biggest army", which picks the most
+                // valuable partner and also the one least likely to want us --
+                // so the module spent its turns being refused, and each refusal
+                // costs a turn and a cooldown. Strength still counts, because a
+                // strong ally is the point; it is now multiplied by how the
+                // partner will actually answer rather than assumed.
+                //
+                // predictAcceptance runs the diplomacy net on THEIR features
+                // with the same bias their own answer would use. Every country
+                // shares these weights, so that is not a guess about them, it is
+                // the reply computed a turn early.
+                const float pAccept = predictAcceptance(fr.enemyCid, req);
+                // Floored, so a partner the model currently dislikes is
+                // unlikely rather than impossible: a hard zero would let an
+                // early, badly-calibrated diplomacy net permanently rule out
+                // whole classes of ally and never learn otherwise.
+                const double worth = std::log1p((double)ea) * (0.15 + 0.85 * pAccept);
+                if (worth > bestWorth) { bestWorth = worth; targetArmy = ea; target = fr.enemyCid; }
             }
             if (target < 0) return TextFormat("%s: no suitable target", req);
             const Country* ec = g.m_countries.getCountry(target);
