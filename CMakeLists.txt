@@ -325,20 +325,35 @@ if(OD_ENABLE_MODS)
         # which Windows does not have and mingw's ld does not fake:
         #     cannot find -ldl: Invalid argument
         # and because it is PUBLIC it reaches this project's link line, not just
-        # WAMR's own. MSVC never sees it -- its generator does not pass through
-        # -l flags -- so the shipped Windows build has always linked fine and
-        # this is invisible outside a mingw cross-build.
+        # WAMR's own.
         #
-        # -lm is left alone: mingw does provide a libm, if only a stub.
-        if(WIN32 AND NOT MSVC AND TARGET vmlib)
+        # MSVC IS NOT EXEMPT, though this block used to say it was. CMake hands
+        # the flags to link.exe with the slash it expects, and the Windows CI
+        # log has been carrying the result on every build:
+        #     LINK : warning LNK4044: unrecognized option '/lm'; ignored
+        #     LINK : warning LNK4044: unrecognized option '/ldl'; ignored
+        # Ignored is not the same as absent: they are two warnings per link,
+        # every link, in a log people are meant to read for real failures. MSVC
+        # needs neither -- the maths functions are in the CRT and there is no
+        # libdl to load -- so both come off there.
+        #
+        # mingw keeps -lm: it does provide a libm, if only a stub.
+        if(WIN32 AND TARGET vmlib)
             foreach(prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
                 get_target_property(od_vmlib_libs vmlib ${prop})
                 if(od_vmlib_libs)
                     list(REMOVE_ITEM od_vmlib_libs "-ldl")
+                    if(MSVC)
+                        list(REMOVE_ITEM od_vmlib_libs "-lm")
+                    endif()
                     set_target_properties(vmlib PROPERTIES ${prop} "${od_vmlib_libs}")
                 endif()
             endforeach()
-            message(STATUS "WAMR: dropped -ldl from vmlib (no libdl on Windows)")
+            if(MSVC)
+                message(STATUS "WAMR: dropped -ldl and -lm from vmlib (MSVC has neither)")
+            else()
+                message(STATUS "WAMR: dropped -ldl from vmlib (no libdl on Windows)")
+            endif()
         endif()
 
         # WAMR's wasm_export.h declares its whole API __declspec(dllimport) on

@@ -55,10 +55,28 @@ if [ -x "$build/Release/ModArchiveTest" ] || [ -f "$build/Release/ModArchiveTest
     bin="$build/Release"
 fi
 
+# WHAT FAILED, not merely THAT something did.
+#
+# Every check here used to set one `fail` flag, and qualify.sh runs this whole
+# script as a single step called "the whole test suite" -- so a red build ended
+# with a summary that named a hundred checks collectively and none of them
+# individually. Finding the real one meant scrolling a 4000-line CI log. The
+# names are collected as they fail and printed at the end.
+failed_steps=()
+
+note_fail() { failed_steps+=("$1"); fail=1; }
+
 run() {
     local name="$1"; shift
     step "$name"
-    if "$@"; then :; else echo "$name FAILED"; fail=1; fi
+    if "$@"; then :; else echo "$name FAILED"; note_fail "$name"; fi
+}
+
+# For the drift checks, which are a bare command rather than a named run().
+check() {
+    local name="$1"; shift
+    step "$name"
+    if "$@"; then :; else note_fail "$name"; fi
 }
 
 run "archive reader"   "$bin/ModArchiveTest"
@@ -96,39 +114,33 @@ run "gif decodes back" $PY "$root/tests/gif_encoder_check.py" "$build/giftest"
 
 run "example mods, all languages" "$bin/ModExamplesTest" "$root/sdk"
 
-step "tool index"
 # Fails if a tool was added without a description or a group, so the
 # index cannot quietly fall behind the directory.
-$PY "$root/tools/help.py" --check || fail=1
+check "tool index" $PY "$root/tools/help.py" --check
 
-step "generated bindings vs abi.json"
 # Fails if a generated file was hand-edited or left stale after an ABI
 # change. Regenerate with: python3 tools/gen_bindings.py
-$PY "$root/tools/gen_bindings.py" --check || fail=1
+check "generated bindings vs abi.json" $PY "$root/tools/gen_bindings.py" --check
 
-step "sdk bindings vs abi.json"
-$PY "$root/tools/check_bindings.py" || fail=1
+check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 
-step "wiki vs abi.json"
 # The wiki is generated from the same file the bindings are, and it is
 # PUBLISHED -- .github/workflows/publish-wiki.yml pushes wiki/ to the Wiki tab
 # on every merge that touches it. So a stale page here is not a stale file in a
 # tree, it is a wrong API reference on the public wiki, promising functions the
 # host does not have. Regenerate with: python3 tools/gen_wiki.py
-$PY "$root/tools/gen_wiki.py" --check || fail=1
+check "wiki vs abi.json" $PY "$root/tools/gen_wiki.py" --check
 
-step "third-party notices vs provenance.json"
 # Fails if a dataset, library or font was added to the build without being
 # recorded, or if NOTICE.md / data/credits.txt were edited by hand instead of
 # regenerated. Attribution that drifts is a licence breach, not a typo.
 # Regenerate with: python3 tools/gen_notices.py
-$PY "$root/tools/gen_notices.py" --check || fail=1
+check "third-party notices vs provenance.json" $PY "$root/tools/gen_notices.py" --check
 
-step "flag licences"
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py
-$PY "$root/tools/audit_flag_licenses.py" --check || fail=1
+check "flag licences" $PY "$root/tools/audit_flag_licenses.py" --check
 
 step "the Windows manifest is valid XML"
 # One second here against ten minutes there. The manifest is embedded by the
@@ -192,5 +204,10 @@ done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
 [ $found -eq 1 ] || echo "skip  no example mods built yet"
 
 printf '\n'
-[ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOMETHING FAILED"
+if [ $fail -eq 0 ]; then
+    echo "ALL PASSED"
+else
+    echo "SOMETHING FAILED:"
+    for s in "${failed_steps[@]}"; do echo "  - $s"; done
+fi
 exit $fail
