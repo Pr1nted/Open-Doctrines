@@ -630,6 +630,14 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
         cand.push_back(std::move(r));
     }
 
+    if (std::getenv("OD_REL_DUMP") && m_turn <= 3) {
+        printf("[REL] t=%d cid=%d n=%zu", m_turn, cid, cand.size());
+        for (size_t i = 0; i < cand.size(); ++i) {
+            printf(" |%d:", nb[i].second);
+            for (float v : cand[i]) printf(" %.9g", v);
+        }
+        printf("\n");
+    }
     // Encode, score, pool. forward() is used rather than forwardInto because
     // this runs on the decision path, single-threaded, once per country-turn.
     std::vector<std::vector<float>> emb;
@@ -641,6 +649,12 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
     }
     std::vector<float> attn;
     NeuralNet::attentionPool(emb, scores, pooled, attn);
+    if (std::getenv("OD_REL_DUMP") && m_turn <= 3) {
+        printf("[EMB] t=%d cid=%d", m_turn, cid);
+        for (size_t i = 0; i < emb.size(); ++i)
+            printf(" s%zu:%.9g e%zu:%.9g", i, scores[i], i, emb[i].empty() ? 0.0f : emb[i][0]);
+        printf(" | pooled0:%.9g\n", pooled.empty() ? 0.0f : pooled[0]);
+    }
     if ((int)pooled.size() != REL_EMBED) pooled.assign(REL_EMBED, 0.0f);
 }
 
@@ -1222,6 +1236,34 @@ void AISystem::takeTurn(int cid) {
         for (int i = 0; i < WAR_ACTIONS; ++i)
             if (i < (int)valid.size() && valid[i]) ts.warOffered[i]++;
         if (a >= 0 && a < WAR_ACTIONS) ts.warChosen[a]++;
+    }
+    // DECISION TRACE. OD_DEC_TRACE=1 prints one line per country-turn: the
+    // features that produced the decision, and what each module chose. Two runs
+    // can then be diffed to find the FIRST country whose decision differs, and
+    // whether its inputs differed too -- which separates "the observation was
+    // already different" from "the same observation produced a different pick".
+    static const bool decTrace = std::getenv("OD_DEC_TRACE") != nullptr;
+    if (decTrace) {
+        uint64_t fh = 1469598103934665603ULL;
+        for (float v : exp.features) {
+            uint32_t bits; memcpy(&bits, &v, 4);
+            fh ^= bits; fh *= 1099511628211ULL;
+        }
+        uint64_t eh = 1469598103934665603ULL;
+        for (float v : emb) {
+            uint32_t bits; memcpy(&bits, &v, 4);
+            eh ^= bits; eh *= 1099511628211ULL;
+        }
+        if (std::getenv("OD_FEAT_DUMP") && m_turn <= 3) {
+            printf("[FEAT] t=%d cid=%d", m_turn, cid);
+            for (size_t k = 0; k < exp.features.size(); ++k)
+                printf(" %zu:%.9g", k, exp.features[k]);
+            printf("\n");
+        }
+        printf("[DEC] t=%d cid=%d feat=%llu emb=%llu e=%d p=%d w=%d n=%d\n",
+               m_turn, cid, (unsigned long long)fh, (unsigned long long)eh,
+               exp.action[MOD_ECONOMY], exp.action[MOD_POLITICS],
+               exp.action[MOD_WAR], exp.action[MOD_NAVY]);
     }
     m_declaredUnprovoked = false;
     {

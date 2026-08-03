@@ -18,6 +18,26 @@
 #include <set>
 #include <unordered_set>
 
+// ─── The simulation's own randomness ─────────────────────
+//
+// This file used bare rand(), which is a PROCESS-GLOBAL, non-thread-safe
+// generator -- and Audio::randUnit() draws from the same one, from a detached
+// background pump thread. Two threads pulling on one stream desynchronise it by
+// however the scheduler interleaves them, so identical inputs produced
+// different games: about one run in four, always from the same turn, with three
+// or more distinct outcomes, and it DISAPPEARED under tracing because the extra
+// printf changed the timing. A Heisenbug, and the reason three-run determinism
+// checks kept passing.
+//
+// Seeding rand() per map came first and could not fix this: a second thread on
+// the same stream ruins it however it was seeded. The fix is to stop sharing.
+//
+// File-static rather than a Game member on purpose -- it is turn-resolution
+// state, not public API, and Game.h is not the place to put it.
+static std::mt19937 g_simRng{1337};
+static int simRand() { return (int)(g_simRng() >> 1); }   // non-negative, like rand()
+void seedSimRng(unsigned int seed) { g_simRng.seed(seed); }
+
 // === isProvinceCoastal ===
 bool Game::isProvinceCoastal(int pid) const {
     auto cached = m_coastalCache.find(pid);
@@ -177,7 +197,7 @@ void Game::processArtilleryOrders(int countryId) {
             auto indIt = m_provinceIndustry.find(ao.targetProvince);
             if (indIt != m_provinceIndustry.end()) {
                 float dmg = eff.fortDmg;
-                if (eff.fortChance > 0 && (rand() % 100) < eff.fortChance) dmg += 1;
+                if (eff.fortChance > 0 && (simRand() % 100) < eff.fortChance) dmg += 1;
                 indIt->second.fortification = std::max(0, indIt->second.fortification - (int)dmg);
             }
         }
@@ -891,7 +911,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // Try suffixes in shuffled order until a non-conflicting name emerges
         std::vector<int> suffixOrder = {0,1,2,3,4,5};
         for (size_t si = 0; si < suffixOrder.size(); ++si) {
-            size_t j = si + rand() % (suffixOrder.size() - si);
+            size_t j = si + simRand() % (suffixOrder.size() - si);
             std::swap(suffixOrder[si], suffixOrder[j]);
         }
 
@@ -985,7 +1005,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 break;
             }
         }
-        int di = rand() % 5;
+        int di = simRand() % 5;
         return std::string(dirs[di]) + place;
     };
 
@@ -1001,7 +1021,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         }
 
         // Step 3: wrap with ideology prefix/suffix (50% plain, 25% prefix, 25% suffix)
-        int nr = rand() % 100;
+        int nr = simRand() % 100;
         if (nr < 50) {
             countryName = territory;
         } else if (nr < 75) {
@@ -1011,7 +1031,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             else countryName = "Republic of " + territory;
         } else {
             static const char* genSuffixes[] = {" Liberation Front", " National Council", " Independence Movement", " State"};
-            int si = rand() % 4;
+            int si = simRand() % 4;
             countryName = territory + genSuffixes[si];
         }
 
@@ -1028,10 +1048,10 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // Use region name, but if it's too similar to parent, make directional
         if (nameBase.empty()) nameBase = parentName;
 
-        if (rand() % 100 < 40 && !nameConflicts("South " + nameBase)) {
+        if (simRand() % 100 < 40 && !nameConflicts("South " + nameBase)) {
             // 40% chance of directional name with ideology prefix
             std::string dirStr = makeDirectionalName(nameBase, parentName);
-            if (rand() % 100 < 50) {
+            if (simRand() % 100 < 50) {
                 countryName = dirStr;
             } else {
                 if (avgEcon < -20) countryName = "People's Republic of " + dirStr;
@@ -1113,11 +1133,11 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 multiWordSet = libPre; multiWordCount = 3;
                 oneWordSet = libOneWord; oneWordCount = 3; // libOneWord has 3 entries
             }
-            if (rand() % 100 < 60) {
-                int ti = rand() % oneWordCount;
+            if (simRand() % 100 < 60) {
+                int ti = simRand() % oneWordCount;
                 countryName = oneWordSet[ti];
             } else {
-                int ti = rand() % multiWordCount;
+                int ti = simRand() % multiWordCount;
                 countryName = std::string(multiWordSet[ti]) + nameBase;
             }
         }
@@ -1132,7 +1152,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     if (nameConflicts(countryName)) {
         std::string parentName = m_countries.getAll()[parentCid].name;
         static const char* fallbackDirs[] = {"South ", "North ", "East ", "West ", "Central "};
-        countryName = std::string(fallbackDirs[rand() % 5]) + parentName + " Breakaway";
+        countryName = std::string(fallbackDirs[simRand() % 5]) + parentName + " Breakaway";
     }
 
     int rebelNum = rebelCid - 60000;
@@ -1143,38 +1163,38 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     {
         // Pick a primary hue based on ideology
         int hue;
-        int sat = 70 + rand() % 25;     // 70-95%
-        int lig = 40 + rand() % 20;     // 40-60%
+        int sat = 70 + simRand() % 25;     // 70-95%
+        int lig = 40 + simRand() % 20;     // 40-60%
 
         if (avgEcon < -30) {
             // Far-left: reds (0±20)
-            hue = (rand() % 40 - 20 + 360) % 360;
+            hue = (simRand() % 40 - 20 + 360) % 360;
         } else if (avgEcon > 30) {
             // Far-right: deep blues (220±20)
-            hue = 220 + rand() % 40 - 20;
+            hue = 220 + simRand() % 40 - 20;
         } else if (avgSoc < -30) {
             // Authoritarian: dark greens (120±25)
-            hue = 120 + rand() % 50 - 25;
-            sat = 60 + rand() % 25;     // more muted greens
-            lig = 30 + rand() % 20;     // darker
+            hue = 120 + simRand() % 50 - 25;
+            sat = 60 + simRand() % 25;     // more muted greens
+            lig = 30 + simRand() % 20;     // darker
         } else if (avgSoc > 30) {
             // Libertarian: golds/yellows (45±20)
-            hue = 45 + rand() % 40 - 20;
-            lig = 45 + rand() % 15;     // 45-60%
+            hue = 45 + simRand() % 40 - 20;
+            lig = 45 + simRand() % 15;     // 45-60%
         } else if (avgEcon < -20) {
             // Center-left: warm reds/oranges (10±15)
-            hue = 10 + rand() % 30 - 15;
+            hue = 10 + simRand() % 30 - 15;
         } else if (avgEcon > 20) {
             // Center-right: moderate blues (210±15)
-            hue = 210 + rand() % 30 - 15;
+            hue = 210 + simRand() % 30 - 15;
         } else {
             // Centrist: purples or teals (random, muted)
-            int ci = rand() % 3;
-            if (ci == 0) { hue = 270 + rand() % 40 - 20; }     // purple
-            else if (ci == 1) { hue = 180 + rand() % 40 - 20; } // teal
-            else { hue = rand() % 360; }                         // any
-            sat = 40 + rand() % 30;     // more muted
-            lig = 35 + rand() % 25;     // wider range
+            int ci = simRand() % 3;
+            if (ci == 0) { hue = 270 + simRand() % 40 - 20; }     // purple
+            else if (ci == 1) { hue = 180 + simRand() % 40 - 20; } // teal
+            else { hue = simRand() % 360; }                         // any
+            sat = 40 + simRand() % 30;     // more muted
+            lig = 35 + simRand() % 25;     // wider range
         }
 
         // Convert HSL to RGB
@@ -1202,26 +1222,26 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 
         // Secondary color: choose a harmonious counterpart
         // Options: complementary (hue+180), split-complementary, analogous, or neutral
-        int c2choice = rand() % 100;
+        int c2choice = simRand() % 100;
         if (c2choice < 30) {
             // Complementary: hue + 150..210
-            int cHue = (hue + 150 + rand() % 60) % 360;
+            int cHue = (hue + 150 + simRand() % 60) % 360;
             c2 = hslToRgb(cHue, std::min(100, sat + 10), std::min(100, lig + 15));
         } else if (c2choice < 55) {
             // Analogous: hue ±20..40
-            int offset = (rand() % 2 == 0) ? 20 + rand() % 20 : -(20 + rand() % 20);
+            int offset = (simRand() % 2 == 0) ? 20 + simRand() % 20 : -(20 + simRand() % 20);
             int cHue = (hue + offset + 360) % 360;
             c2 = hslToRgb(cHue, std::max(30, sat - 20), std::min(100, lig + 10));
         } else if (c2choice < 75) {
             // Triadic: hue + 110..130
-            int cHue = (hue + 110 + rand() % 20) % 360;
+            int cHue = (hue + 110 + simRand() % 20) % 360;
             c2 = hslToRgb(cHue, sat, lig);
         } else if (c2choice < 90) {
             // White/off-white
-            c2 = (rand() % 2 == 0) ? WHITE : Color{255, 255, 230, 255};
+            c2 = (simRand() % 2 == 0) ? WHITE : Color{255, 255, 230, 255};
         } else {
             // Dark neutral (black, dark gray)
-            int gv = 20 + rand() % 40;
+            int gv = 20 + simRand() % 40;
             c2 = Color{(uint8_t)gv, (uint8_t)gv, (uint8_t)gv, 255};
         }
     }
@@ -1230,9 +1250,9 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     {
         auto& parentCountry = m_countries.getAll()[parentCid];
         auto& parentFlagColors = parentCountry.flagActual.colors;
-        if (parentFlagColors.size() >= 1 && rand() % 100 < 60) {
+        if (parentFlagColors.size() >= 1 && simRand() % 100 < 60) {
             Color pc = parentFlagColors[0];
-            float blend = 0.2f + (float)(rand() % 30) / 100.0f;
+            float blend = 0.2f + (float)(simRand() % 30) / 100.0f;
             c1 = {
                 (uint8_t)(c1.r * (1.0f - blend) + pc.r * blend),
                 (uint8_t)(c1.g * (1.0f - blend) + pc.g * blend),
@@ -1240,9 +1260,9 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 255
             };
         }
-        if (parentFlagColors.size() >= 2 && rand() % 100 < 40) {
+        if (parentFlagColors.size() >= 2 && simRand() % 100 < 40) {
             Color pc = parentFlagColors[1];
-            float blend = 0.2f + (float)(rand() % 20) / 100.0f;
+            float blend = 0.2f + (float)(simRand() % 20) / 100.0f;
             c2 = {
                 (uint8_t)(c2.r * (1.0f - blend) + pc.r * blend),
                 (uint8_t)(c2.g * (1.0f - blend) + pc.g * blend),
@@ -1267,12 +1287,12 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         ar /= an; ag /= an; ab /= an;
         float bright = (ar * 0.299f + ag * 0.587f + ab * 0.114f) / 255.0f;
         if (bright > 0.55f) {
-            int ci = rand() % 3;
+            int ci = simRand() % 3;
             if (ci == 0) return Color{20, 20, 20, 255};
             else if (ci == 1) return Color{180, 30, 30, 255};
             else return Color{20, 40, 120, 255};
         } else {
-            int ci = rand() % 3;
+            int ci = simRand() % 3;
             if (ci == 0) return WHITE;
             else if (ci == 1) return Color{255, 230, 100, 255};
             else return Color{220, 220, 220, 255};
@@ -1283,7 +1303,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     auto pickPattern = [&](const std::vector<FlagPatternChoice>& choices) -> FlagType {
         float total = 0;
         for (auto& c : choices) total += c.weight;
-        float roll = (float)rand() / (float)RAND_MAX * total;
+        float roll = (float)simRand() / (float)RAND_MAX * total;
         float accum = 0;
         for (auto& c : choices) {
             accum += c.weight;
@@ -1348,7 +1368,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         else flagColors = {c1};
 
         placeSymbol(ft);
-        int symRoll = rand() % 100;
+        int symRoll = simRand() % 100;
         if (extremeRadical && symRoll < 3) {  // <--- MUCH rarer: 3% instead of 50%
             pickSVG("hammer_sickle.svg");
             symbol.size = 0.35f;
@@ -1393,10 +1413,10 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         else flagColors = {c1};
 
         placeSymbol(ft);
-        int symRoll = rand() % 100;
+        int symRoll = simRand() % 100;
         if (extremeRadical && symRoll < 3) {  // <--- MUCH rarer: 3% instead of 30%
             // Both are censored symbols, and both are reached only here.
-            pickSVG(rand() % 2 == 0 ? "swastika.svg" : "eagle_nazi.svg");
+            pickSVG(simRand() % 2 == 0 ? "swastika.svg" : "eagle_nazi.svg");
             symbol.size = 0.35f;
         } else if (symRoll < 30) {
             pickSVG("cross_latin.svg");
@@ -1407,7 +1427,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             // are 100 KB of linework that nanosvg renders as noise -- so it was
             // removed rather than shipped looking wrong. eagle_nazi.svg stays,
             // because a silhouette with a wreath survives being small.
-            pickSVG(rand() % 2 == 0 ? "sun.svg" : "star5.svg");
+            pickSVG(simRand() % 2 == 0 ? "sun.svg" : "star5.svg");
             symbol.size = 0.35f;
         } else if (symRoll < 75) {
             pickSVG("fasces.svg");
@@ -1440,9 +1460,9 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         else flagColors = {c1};
 
         placeSymbol(flag.type);
-        int symRoll = rand() % 100;
+        int symRoll = simRand() % 100;
         if (symRoll < 30) {
-            pickSVG(rand() % 2 == 0 ? "sun.svg" : "sun_wavy.svg");
+            pickSVG(simRand() % 2 == 0 ? "sun.svg" : "sun_wavy.svg");
             symbol.size = 0.38f;
         } else if (symRoll < 55) {
             pickSVG("torch.svg");
@@ -1451,7 +1471,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             pickSVG("crescent.svg");
             symbol.size = 0.32f;
         } else if (symRoll < 82) {
-            pickSVG(rand() % 2 == 0 ? "star5.svg" : "diamond.svg");
+            pickSVG(simRand() % 2 == 0 ? "star5.svg" : "diamond.svg");
             symbol.size = 0.32f;
         } else if (symRoll < 92) {
                         pickSVG("anchor.svg");
@@ -1483,7 +1503,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         else flagColors = {c1};
 
         placeSymbol(ft);
-        int symRoll = rand() % 100;
+        int symRoll = simRand() % 100;
         if (symRoll < 25) {
             pickSVG("star5.svg");
             symbol.size = 0.32f;
@@ -1494,7 +1514,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             pickSVG("crescent.svg");
             symbol.size = 0.32f;
         } else if (symRoll < 75) {
-            pickSVG(rand() % 2 == 0 ? "diamond.svg" : "circle_stars.svg");
+            pickSVG(simRand() % 2 == 0 ? "diamond.svg" : "circle_stars.svg");
             symbol.size = 0.28f;
         } else if (symRoll < 88) {
             pickSVG("tree.svg");
@@ -1675,7 +1695,7 @@ void Game::processRebellions(int countryId) {
         if (pIt == allProvs.end() || pIt->second.countryId != countryId) continue;
         totalProvCount++;
         float chance = getProvinceRebellionChance(pid, countryId);
-        float roll = (float)rand() / (float)RAND_MAX * 100.0f;
+        float roll = (float)simRand() / (float)RAND_MAX * 100.0f;
         if (roll < chance) rebellingProvs.push_back(pid);
     }
     // Single-province countries can't have rebellions
@@ -1765,7 +1785,7 @@ void Game::processRebellions(int countryId) {
             auto& units = ait->second;
             for (auto it = units.begin(); it != units.end(); ) {
                 if (it->countryId == countryId) {
-                    float killPct = 0.3f + (float)rand() / (float)RAND_MAX * 0.4f;
+                    float killPct = 0.3f + (float)simRand() / (float)RAND_MAX * 0.4f;
                     int killed = (int)(it->count * killPct);
                     it->count -= killed;
                     if (m_config.aiDebug)
@@ -2179,7 +2199,7 @@ void Game::processShipBombardOrders(int countryId) {
             auto indIt = m_provinceIndustry.find(bo.targetProvince);
             if (indIt != m_provinceIndustry.end()) {
                 float dmg = eff.fortDmg;
-                if (eff.fortChance > 0 && (rand() % 100) < eff.fortChance) dmg += 1;
+                if (eff.fortChance > 0 && (simRand() % 100) < eff.fortChance) dmg += 1;
                 int prev = indIt->second.fortification;
                 indIt->second.fortification = std::max(0, indIt->second.fortification - (int)dmg);
                 printf("    fort dmg: prev=%d dmg=%.0f new=%d\n", prev, dmg, indIt->second.fortification);
@@ -4003,7 +4023,7 @@ void Game::processPopulation() {
                 // Unrest pull: minorities move toward contested zones to claim territory
                 float unrestPull = dstUnrest * 0.05f;
                 float score = (dstAttr - mg.attr) * 2.0f + chainBonus - dstUnrest * 0.01f + unrestPull;
-                score += (rand() % 100) * 0.01f;
+                score += (simRand() % 100) * 0.01f;
                 if (score > bestScore) { bestScore = score; bestDst = dstPid; }
             }
             if (bestDst < 0 || bestScore <= 0) continue;
@@ -4174,7 +4194,7 @@ void Game::processPopulation() {
                     float score = (dstAttr - provinceAttractiveness[srcPid]) * 3.0f
                                   + chainBonus + stepBonus + immigBoost + unrestPull
                                   - dstUnrest * 0.02f
-                                  + (rand() % 100) * 0.01f;
+                                  + (simRand() % 100) * 0.01f;
 
                     if (score > bestScore) { bestScore = score; bestDst = dstPid; bestDstCid = cid2; }
                 }

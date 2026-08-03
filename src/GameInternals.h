@@ -90,6 +90,8 @@ void applyFpsTarget(int target);
 constexpr float RESOURCE_BUDGET_MIN = 0.10f;
 /** Clamped to [RESOURCE_BUDGET_MIN, 1]. Call applyFpsTarget after changing it. */
 void setResourceBudget(float budget);
+/** Reseed the turn resolver's PRNG; called per map so a seed replays a world. */
+void seedSimRng(unsigned int seed);
 float resourceBudget();
 /** Frame ceiling the budget implies, or 0 when the budget is unlimited. */
 int budgetedFpsCeiling();

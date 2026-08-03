@@ -205,6 +205,7 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         // than measurement does, but a training run that cannot be replayed
         // cannot be debugged either.
         srand((unsigned int)p.seed);
+        seedSimRng((unsigned int)p.seed);
         p.landCoverage = randRange(rng, sc.landMin, sc.landMax);
         p.numContinents = randRange(rng, sc.contMin, sc.contMax);
         p.jaggedness = randRange(rng, sc.jagMin, sc.jagMax);
@@ -620,6 +621,7 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // fourth, or --maps would change the result of every map after the
         // first.
         srand((unsigned int)p.seed);
+        seedSimRng((unsigned int)p.seed);
 
         p.landCoverage = randRange(rng, sc.landMin, sc.landMax);
         p.numContinents = randRange(rng, sc.contMin, sc.contMax);
