@@ -213,7 +213,7 @@ public:
     void noteCallAnswered(int cid) { statsFor(cid).callsAnswered++; }
     void noteCallRefused(int cid)  { statsFor(cid).callsRefused++; }
     /** One province changing hands, attributed to both sides by cause. */
-    void noteConquest(int winnerCid, int loserCid);
+    void noteConquest(int winnerCid, int loserCid, bool contested);
     void noteRevolt(int loserCid) { statsFor(loserCid).provLostToRebel++; }
     void noteTreatyTransfer(int toCid, int fromCid) {
         statsFor(toCid).provByTreaty++;
@@ -345,6 +345,12 @@ public:
         // provinces shed by other people's rebellions look identical in it, and
         // those are completely different strategies to have to beat.
         long long provTakenFromCountry = 0;  // conquered from a real country
+        // Of those, how many were actually FOUGHT for. A province with no
+        // defender is taken by walking into it, and a cohort that expands by
+        // strolling into undefended land is playing a different game from one
+        // that wins battles -- indistinguishable in any total.
+        long long provTakenInBattle    = 0;
+        long long provWalkedInto       = 0;
         long long provTakenFromRebel   = 0;  // taken off a rebel state
         long long provLostToCountry    = 0;  // conquered from us by a country
         long long provLostToRebel      = 0;  // seized by a rebel, or revolted

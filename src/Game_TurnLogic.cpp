@@ -2252,7 +2252,7 @@ void Game::processShipDisembarks(int countryId) {
                 eIt->count = 0;
                 // Take over province
                 int prevOwner = dst->countryId;
-                if (m_ai) m_ai->noteConquest(countryId, prevOwner);
+                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
@@ -2298,6 +2298,7 @@ void Game::processShipDisembarks(int countryId) {
             int prevOwner = dst->countryId;
             if (prevOwner > 0 && prevOwner != BLC_CID && prevOwner != countryId) {
                 // Take over the province (includes unclaimed — colonize it)
+                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
@@ -2585,6 +2586,7 @@ void Game::processArmyMovement(int countryId) {
                         if (const Country* prevC = m_countries.getCountry(prevOwner))
                             grantClaim(prevC->isoA3, dst->id);
                     }
+                    if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
                     dst->countryId = countryId;
                 // Update pixel lookup arrays + countryPixels
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
@@ -2623,6 +2625,8 @@ void Game::processArmyMovement(int countryId) {
                     if (const Country* prevC = m_countries.getCountry(prevOwner))
                         grantClaim(prevC->isoA3, dst->id);
                 }
+                // Undefended: this province is taken by walking into it.
+                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;

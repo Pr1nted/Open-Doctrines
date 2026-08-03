@@ -576,6 +576,9 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // survivors at the end.
         int trainedCount = 0, randomCount = 0;
         int trainedProvinces = 0, randomProvinces = 0;
+        // Provinces each cohort STARTED with, so the six flow counters can be
+        // reconciled against the outcome instead of merely described.
+        int trainedStartProv = 0, randomStartProv = 0;
         int trainedAlive = 0, randomAlive = 0;
         // Country-turns per cohort. Every behavioural counter has to be
         // normalised by the cohort that produced it, not by the map total:
@@ -660,6 +663,10 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             for (size_t k = 1; k < ranked.size(); k += 2) randomCids.insert(ranked[k].second);
             r.trainedCount = (int)(ranked.size() - randomCids.size());
             r.randomCount = (int)randomCids.size();
+            for (auto& [cid2, n] : startSize) {
+                if (randomCids.count(cid2)) r.randomStartProv += n;
+                else                        r.trainedStartProv += n;
+            }
         }
         // processTurn builds the AISystem lazily on its first call, which is one
         // turn too late to tell it who is in the control group. Build it here
@@ -821,6 +828,10 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             printf("[EVAL]   -- province flow (absolute counts) --\n");
             printf("[EVAL]     taken from a country   %7lld   %7lld\n",
                    M.provTakenFromCountry, R.provTakenFromCountry);
+            printf("[EVAL]       ...won in battle      %7lld   %7lld\n",
+                   M.provTakenInBattle,    R.provTakenInBattle);
+            printf("[EVAL]       ...walked into        %7lld   %7lld\n",
+                   M.provWalkedInto,       R.provWalkedInto);
             printf("[EVAL]     taken from a rebel     %7lld   %7lld\n",
                    M.provTakenFromRebel,   R.provTakenFromRebel);
             printf("[EVAL]     lost to a country      %7lld   %7lld\n",
@@ -831,6 +842,24 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                    M.provByTreaty,         R.provByTreaty);
             printf("[EVAL]     ceded by treaty        %7lld   %7lld\n",
                    M.provCededByTreaty,    R.provCededByTreaty);
+            // THE RECONCILIATION. start + everything gained - everything lost
+            // should be what the cohort ends with. Whatever is left over moved
+            // by a route none of the counters above watch, and naming that
+            // number is the difference between a measurement and a story.
+            auto ledger = [](const char* who, int startP, int endP,
+                             const AISystem::TrainStats& S) {
+                const long long gained = S.provTakenFromCountry + S.provTakenFromRebel
+                                       + S.provByTreaty;
+                const long long lost   = S.provLostToCountry + S.provLostToRebel
+                                       + S.provCededByTreaty;
+                const long long predicted = (long long)startP + gained - lost;
+                printf("[EVAL]     %-6s start %4d  +%lld -%lld  => %lld predicted, "
+                       "%d actual, UNEXPLAINED %+lld\n",
+                       who, startP, gained, lost, predicted, endP,
+                       (long long)endP - predicted);
+            };
+            ledger("MODEL",  r.trainedStartProv, r.trainedProvinces, M);
+            ledger("RANDOM", r.randomStartProv,  r.randomProvinces,  R);
 
             const int total = r.trainedProvinces + r.randomProvinces;
             printf("[EVAL]   MODEL %d provinces (%.0f%%), %d/%d alive | "
