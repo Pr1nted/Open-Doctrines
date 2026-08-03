@@ -260,7 +260,14 @@ def main():
         print("\n[POOL] stopping workers...")
         for p in procs:
             if p.poll() is None:
-                p.send_signal(signal.SIGINT)
+                # SIGTERM, not SIGINT. The workers are raylib apps and install
+                # no SIGINT handler that survives it -- signalled with SIGINT
+                # they simply keep training, so Ctrl-C here waited out the full
+                # 60s deadline and then killed them anyway, which is the one
+                # outcome this path exists to avoid. The PBT branch above has
+                # always used SIGTERM for the same reason. Measured: a worker
+                # ignores SIGINT and exits on SIGTERM in about four seconds.
+                p.send_signal(signal.SIGTERM)
         deadline = time.time() + 60
         for p in procs:
             while p.poll() is None and time.time() < deadline:
