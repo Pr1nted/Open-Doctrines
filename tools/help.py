@@ -24,7 +24,7 @@ TOOLS = os.path.join(ROOT, "tools")
 GROUPS = [
     ("Releasing", [
         "release.py", "odver.py", "package.py", "build.py", "screenshots.sh",
-        "itch-cover.py",
+        "itch-cover.py", "banner.py",
     ]),
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",

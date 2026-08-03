@@ -1082,7 +1082,13 @@ void AISystem::takeTurn(int cid) {
     exp.treasury = c->treasury;
     exp.army = st.army;
     exp.ships = st.boats + st.destroyers + st.carriers;
-    exp.netIncome = g.computeCountryIncome(cid).net;
+    // INCOME, NOT ABSTINENCE. See the note on dNet in the reward: research
+    // spending is added back, so declining to invest does not read as earning
+    // more.
+    {
+        const CountryIncomeSnapshot ci = g.computeCountryIncome(cid);
+        exp.netIncome = ci.net + ci.researchCost;
+    }
     exp.industrySum = st.industrySum;
     exp.threatened = st.threatenedProvinces;
     exp.weariness = g.warWearinessOf(cid);
@@ -3714,7 +3720,11 @@ void AISystem::endTurn() {
             exp.warInWindow = exp.warInWindow || atWarNow;
         }
 
-        float dNetNow = dead ? 0.0f : g.computeCountryIncome(cid).net;
+        float dNetNow = 0.0f;
+        if (!dead) {
+            const CountryIncomeSnapshot ci = g.computeCountryIncome(cid);
+            dNetNow = ci.net + ci.researchCost;
+        }
 
         // Filled lazily below, and only for countries that actually mature a
         // window this turn: buildFeatures is not free and most do not.
@@ -3751,6 +3761,29 @@ void AISystem::endTurn() {
                 int shipsNow = now.boats + now.destroyers + now.carriers;
                 float dShips = (float)(shipsNow - exp.ships);
                 float dInd = now.industrySum - exp.industrySum;
+                // CHANGE IN EARNING POWER, WITH RESEARCH SPENDING ADDED BACK.
+                //
+                // net = total - expenses, and expenses INCLUDES researchCost.
+                // So cutting research raised net, and the economy module was
+                // paid +1.2 x tanh(dNet/15) for doing it -- immediately,
+                // reliably, every turn. Finishing a node pays +0.8 x
+                // tanh(dResearch/2), slowly and only if it completes. That is
+                // the same trap the war module was in when army growth was
+                // rewarded unconditionally: a certain small gain against an
+                // uncertain larger one, and a policy gradient takes the certain
+                // one every time. Measured: research fell to a fifth (446 nodes
+                // to 107) while everything else improved.
+                //
+                // Adding researchCost back makes funding research NEUTRAL for
+                // this term rather than negative. It is not made free -- the
+                // money still leaves the treasury, so dTre and the bankruptcy
+                // charge still price it. What changes is that the module is no
+                // longer paid a bonus for refusing to invest.
+                //
+                // Pacification spending has the same shape and is deliberately
+                // left alone: it is ongoing upkeep rather than an investment
+                // with a delayed payoff, and one change at a time is the only
+                // way the next A/B stays readable.
                 float dNet = dNetNow - exp.netIncome;
                 float dResearch = (float)(researchedNow - exp.researched);
                 float rebels = (float)exp.rebellions;
