@@ -815,6 +815,22 @@ void Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             printf("[EVAL]     research completed     %7.2f   %7.2f\n", M.researchCompleted/mk, R.researchCompleted/rk);
             printf("[EVAL]     calls answered/issued  %4lld/%-4lld  %4lld/%-4lld\n",
                    M.callsAnswered, M.callsIssued, R.callsAnswered, R.callsIssued);
+            // WHERE THE LAND CAME FROM. "land held" cannot tell a cohort that
+            // conquers its neighbours from one that absorbs whatever other
+            // people's rebellions shed, and those need different answers.
+            printf("[EVAL]   -- province flow (absolute counts) --\n");
+            printf("[EVAL]     taken from a country   %7lld   %7lld\n",
+                   M.provTakenFromCountry, R.provTakenFromCountry);
+            printf("[EVAL]     taken from a rebel     %7lld   %7lld\n",
+                   M.provTakenFromRebel,   R.provTakenFromRebel);
+            printf("[EVAL]     lost to a country      %7lld   %7lld\n",
+                   M.provLostToCountry,    R.provLostToCountry);
+            printf("[EVAL]     lost to a revolt       %7lld   %7lld\n",
+                   M.provLostToRebel,      R.provLostToRebel);
+            printf("[EVAL]     gained by treaty       %7lld   %7lld\n",
+                   M.provByTreaty,         R.provByTreaty);
+            printf("[EVAL]     ceded by treaty        %7lld   %7lld\n",
+                   M.provCededByTreaty,    R.provCededByTreaty);
 
             const int total = r.trainedProvinces + r.randomProvinces;
             printf("[EVAL]   MODEL %d provinces (%.0f%%), %d/%d alive | "

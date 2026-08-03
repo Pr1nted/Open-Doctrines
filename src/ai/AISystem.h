@@ -212,6 +212,13 @@ public:
     void noteCallIssued(int cid)   { statsFor(cid).callsIssued++; }
     void noteCallAnswered(int cid) { statsFor(cid).callsAnswered++; }
     void noteCallRefused(int cid)  { statsFor(cid).callsRefused++; }
+    /** One province changing hands, attributed to both sides by cause. */
+    void noteConquest(int winnerCid, int loserCid);
+    void noteRevolt(int loserCid) { statsFor(loserCid).provLostToRebel++; }
+    void noteTreatyTransfer(int toCid, int fromCid) {
+        statsFor(toCid).provByTreaty++;
+        statsFor(fromCid).provCededByTreaty++;
+    }
 
     /**
      * The map is decided: `cid` won it.
@@ -331,6 +338,18 @@ public:
         // anyone is using an ally's ground to reach a front.
         long long callsIssued = 0, callsAnswered = 0, callsRefused = 0;
         long long stagingMoves = 0;
+        // WHERE THE LAND CAME FROM.
+        //
+        // "land held" says who ended up with the world and nothing about how.
+        // A cohort that conquers its neighbours and one that quietly absorbs
+        // provinces shed by other people's rebellions look identical in it, and
+        // those are completely different strategies to have to beat.
+        long long provTakenFromCountry = 0;  // conquered from a real country
+        long long provTakenFromRebel   = 0;  // taken off a rebel state
+        long long provLostToCountry    = 0;  // conquered from us by a country
+        long long provLostToRebel      = 0;  // seized by a rebel, or revolted
+        long long provByTreaty         = 0;  // handed over at a ceasefire
+        long long provCededByTreaty    = 0;
         // Domestic government. calmingPolicies counts policies enacted to hold
         // the country together rather than to express its politics; the two
         // minority counters are the clearest read there is on what kind of

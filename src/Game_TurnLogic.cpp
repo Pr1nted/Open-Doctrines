@@ -1569,6 +1569,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     for (int pid : provinceIds) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (pp) {
+            if (m_ai) m_ai->noteRevolt(parentCid);
             pp->countryId = rebelCid;
             if ((size_t)pid < m_provinceCountryLookup.size())
                 m_provinceCountryLookup[pid] = rebelCid;
@@ -2251,6 +2252,7 @@ void Game::processShipDisembarks(int countryId) {
                 eIt->count = 0;
                 // Take over province
                 int prevOwner = dst->countryId;
+                if (m_ai) m_ai->noteConquest(countryId, prevOwner);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
@@ -3555,6 +3557,7 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (!pp) return;
         if (pp->countryId != fromCid) return;
+        if (m_ai) m_ai->noteTreatyTransfer(toCid, fromCid);
         pp->countryId = toCid;
         if ((size_t)pid < m_provinceCountryLookup.size())
             m_provinceCountryLookup[pid] = toCid;

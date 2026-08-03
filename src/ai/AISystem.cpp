@@ -101,6 +101,18 @@ int AISystem::foreignWarCount(int cid) const {
     return n;
 }
 
+void AISystem::noteConquest(int winnerCid, int loserCid) {
+    // Split by WHO lost it. Taking a province off a rebel is opportunism on
+    // somebody else's collapse; taking one off a country is the war the game is
+    // supposed to be about, and a cohort can be doing a great deal of one while
+    // doing none of the other.
+    if (loserCid >= Game::REBEL_CID_MIN) statsFor(winnerCid).provTakenFromRebel++;
+    else {
+        statsFor(winnerCid).provTakenFromCountry++;
+        statsFor(loserCid).provLostToCountry++;
+    }
+}
+
 AISystem::TrainStats& AISystem::statsFor(int cid) {
     if (cid >= Game::REBEL_CID_MIN) return m_rebelStats;
     return isRandomCountry(cid) ? m_randomStats : m_trainStats;
