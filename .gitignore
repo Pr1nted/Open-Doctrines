@@ -138,3 +138,17 @@ data/custom_maps/__ai_eval_*.odmap
 # are named above; this catches the ad-hoc ones (build-verify, build-aieval...)
 # that get made to test something without disturbing a running build.
 build-*/
+
+# Generated page art. tools/banner.py rebuilds any of it in seconds, and the
+# animated variants run to 13 MB apiece -- a repository is the wrong place for
+# them. The two files the live page actually fetches are committed by name
+# below; everything else is regenerated on demand.
+docs/itch/banner-*.gif
+docs/itch/banner-*eras*.png
+docs/itch/banner-wide*.png
+docs/itch/banner-cover*.png
+docs/itch/banner-x-header*.png
+docs/itch/banner-github-social*.png
+docs/itch/banner-itch-wide.png
+docs/itch/banner-itch-wide-plain.png
+docs/itch/banner-*-plain.webp

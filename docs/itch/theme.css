@@ -1,0 +1,649 @@
+/* ===========================================================================
+   OpenDoctrines — itch.io page CSS
+   ===========================================================================
+
+   PASTE INTO: Edit theme → the CSS box at the bottom of the sidebar.
+
+   That box only exists once itch has enabled custom CSS on the account
+   (itch.io/docs/creators/design: "get in touch with us and ask for custom CSS
+   to be enabled for your account"). There is no self-serve toggle. Until then
+   this file is inert.
+
+   WHAT IT DOES
+
+     1. Parallax. The map sits behind the page and drifts as you scroll, the
+        way it drifts behind the main menu.
+     2. Artillery. The same blast the menu draws over the map -- two expanding
+        amber rings with a bright core -- goes off at intervals across the page.
+
+   The numbers are not invented. They are read out of Game_Menus.cpp's
+   drawMenuBackground()/updateMenuBackground():
+
+       outer ring   rgb(255,200,100) at alpha 160/255
+       inner ring   rgb(255,160,60)  at 0.6 of the radius, 0.6 of the alpha
+       core flash   rgb(255,220,150) at 0.3 of the radius, first 30% of life
+       growth       from 2px at 25px/s, up to a maximum of 8..32px
+       life         1.5..3.3s, fading in to the midpoint and out again
+
+   WHAT ITCH ALLOWS, so the next person does not have to find out the hard way:
+
+     - Style anything inside .wrapper. Do not hide the footer links.
+     - No new HTML except inside .formatted_description, and itch strips custom
+       classes from nested elements there. So every effect below hangs off
+       ::before/::after of elements the page already has.
+     - No JavaScript. Everything here is keyframes and gradients.
+
+   SELECTORS are from the live page markup, not guessed:
+       body.game_layout_widget > #wrapper > .main.wrapper.game_page_wrapper
+       > #inner_column > .view_game_page > #header, .formatted_description,
+         .screenshot_list, .info_panel_wrapper
+   =========================================================================== */
+
+:root {
+    --od-bg:         #050813;   /* theme BG, as set in the theme editor */
+    --od-sea:        #080e20;   /* rgb(8,14,32) -- initMenuBackground()'s sea */
+    --od-bg2:        #0b1122;   /* the content column */
+    --od-gold:       #ffd700;   /* the accent, from config.json's accentColor */
+    /* Dimmer than the menu's, on purpose. The menu draws these over a map
+       and nothing else; here they pass behind paragraphs and screenshots,
+       and a bright ring crossing a line of text is a line of text nobody
+       finishes. Roughly two thirds of the game's alpha. */
+    --od-blast-out:  rgba(255, 200, 100, 0.42);
+    --od-blast-in:   rgba(255, 160,  60, 0.24);
+    --od-blast-core: rgba(255, 220, 150, 0.50);
+}
+
+/* --------------------------------------------------------------- parallax --
+
+   Two layers at different rates, which is what makes it read as depth rather
+   than as a moving picture:
+
+     far   the map, fixed to the viewport, panning slowly and forever. The menu
+           pans its map too; 150s is slow enough that it never pulls the eye
+           off the text.
+     near  a vignette that tracks the scroll itself, so the page darkens as you
+           go down and the screenshots sit against something calmer than a map.
+
+   scroll() is a scroll-driven timeline (Chromium and Safari; Firefox behind a
+   flag as of 2026). Where it is unsupported the layer simply sits still, which
+   is this page minus one effect -- so it needs no @supports guard.
+*/
+
+/* THE SEA. page-bg-menu.png carries land and nothing else -- its sea is
+   transparent -- so whatever colour sits here IS the sea, at full strength,
+   with no compositing to guess at. This is the menu's own sea, rgb(8,14,32)
+   from initMenuBackground(), rather than the theme's #050813; set BG to
+   #080E20 in the theme editor too, so the parts of the page CSS does not
+   reach (the itch header, the app) agree with it. */
+body.game_layout_widget {
+    background-color: var(--od-sea);
+}
+
+#wrapper {
+    position: relative;
+    isolation: isolate;          /* keeps these layers out of itch's stacking */
+}
+
+/* The map. Point this at the animated banner once it is hosted somewhere --
+   itch will not accept a .webp upload, but CSS may reference any URL.
+   USE THE PLATE BUILT WITHOUT --merge:
+       python3 tools/banner.py --size itch-wide --animate ...
+   The merged plate feathers its own top and bottom into the page colour, which
+   is right for the banner slot and wrong here: background-size:cover stretches
+   those fades across the whole viewport and the page reads as a dark band with
+   a strip of map in the middle. The vignette below is this file's own fade. */
+#wrapper::before {
+    content: "";
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 50vw;                /* the raster is 2:1; this box IS the map */
+    z-index: -4;
+    pointer-events: none;
+    background: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/itch/page-bg-menu.png") 0 0 / 100% 100% no-repeat;
+    opacity: 0.85;   /* land only; the sea is the page itself */
+    /* THE RISE, AND NOTHING ELSE.
+       There used to be a slow horizontal drift here as well, the way the menu
+       pans its map. It had to go: it animated `transform: translate3d(...)
+       scale(1.06)`, and a scale is taken about the element's OWN centre. The
+       shells are separate elements with their own centres, so no transform
+       written on them reproduces "the same 6% zoom about the map's middle" --
+       the map crept sideways and swelled while the shells stayed put, which is
+       precisely the shells not following the map. A pure translation has no
+       origin to disagree about, so the map and every shell now move as one.
+       scroll(root) rather than bare scroll(): `nearest` resolves against the
+       element's scroll container, and for a fixed-position layer that is worth
+       stating outright rather than inferring. */
+    animation: od-rise linear both;
+    animation-timeline: scroll(root);
+    will-change: translate;
+}
+
+/* The scroll-tracking darkener. */
+#wrapper::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(180deg,
+                rgba(5, 8, 19, 0.04) 0%,
+                rgba(5, 8, 19, 0.22) 60%,
+                rgba(5, 8, 19, 0.32) 100%);
+    animation: od-deepen linear both;
+    animation-timeline: scroll(root);
+}
+
+/* Deepens, and STOPS. Taken to opacity 1 over a gradient that ends near-opaque
+   this swallowed the map entirely by the bottom of the page -- so the one
+   effect that is supposed to reward scrolling removed the thing you were
+   scrolling past. The map stays legible the whole way down now. */
+@keyframes od-deepen {
+    from { opacity: 0.15; }
+    to   { opacity: 0.70; }
+}
+
+/* The map rises as you read.
+   At the top of the page it is pushed most of the way off the bottom, so all
+   that shows is its northern edge -- a sliver under the banner. By the end of
+   the scroll it has risen into the middle of the viewport and the whole world
+   is visible. Pure translation, no zoom: the shells ride the same movement,
+   and a scaling map would need them to scale too, which is the one property
+   their own animation is already using. */
+@keyframes od-rise {
+    /* Starts with the map's northern edge just showing at the foot of the
+       screen. ENDS WITH ITS SOUTHERN EDGE ON THE FOOT OF THE SCREEN -- the
+       last row of pixels in the image arrives exactly when the page does.
+       It used to end centred, which meant the map had already sailed past its
+       bottom edge and was sitting in the middle of the viewport with dead
+       space under it: further to travel, faster to get there, and the bottom
+       of the world was reached well before the bottom of the page. */
+    from { translate: 0 88vh; }
+    to   { translate: 0 calc(100vh - 50vw); }
+}
+
+/* The content column has to stay readable, and the map has to stay visible
+   THROUGH it -- not merely beside it.
+   itch's column is 960px and centred, so it only leaves gutters on a viewport
+   wider than about 1100px. At 92% alpha the map was visible either side of the
+   column on a desktop monitor and completely gone on a laptop, a split window
+   or a phone, which is most people. 82% plus a heavier blur keeps 4.5:1 text
+   contrast against BG2 while the map still reads underneath. */
+/* THE COLUMN IS A STACKING CONTEXT, and that is what keeps the shells behind
+   the words.
+   A negative z-index only means "behind my own host's content" -- it does not
+   mean "behind the page". The shells hang off .formatted_description,
+   .screenshot_list, .info_panel_wrapper and friends, and each of those subtrees
+   paints in DOM order, so a shell belonging to a late container was painting
+   after -- on top of -- the text and screenshots of every container above it.
+   Giving the column its own stacking context collects every one of them into a
+   single negative-z pass that runs immediately after the column's background
+   and before any of its text, images or headings. */
+#inner_column {
+    position: relative;
+    z-index: 0;
+    /* NO backdrop-filter. It reads the pixels behind the column and blurs them
+       every frame, and behind this column is a map that moves on every scroll
+       tick -- so the blur was recomputed the whole way down the page, on the
+       main thread, which is what made scrolling feel like it was catching.
+       A slightly more opaque column costs one shade of map and scrolls at
+       full speed. */
+    background-color: color-mix(in srgb, var(--od-bg2) 91%, transparent);
+}
+
+/* ------------------------------------------------------------- artillery --
+
+   Six blasts, because the menu keeps about four alive at once (3% spawn chance
+   per frame, 1.5-3.3s life) and six over a page this tall reads the same.
+
+   Each is one fixed-position pseudo-element: three radial-gradient rings that
+   scale up from nothing and fade in and out. One element per blast rather than
+   several gradients in one, because a CSS animation drives every background
+   layer of an element together -- stacked in one element they would pulse in
+   lockstep, which no artillery does.
+
+   They hang off ::before/::after of containers itch does not decorate itself.
+   If a future itch redesign starts using one, that blast disappears and
+   nothing else breaks.
+*/
+
+@keyframes od-blast {
+    /* `scale`, not `transform: scale()`. The shells also carry od-rise, which
+       animates `translate`; two animations can only compose if they are on
+       separate properties, and CSS gives translate/scale/rotate their own. */
+    0%,  62% { scale: 0.06; opacity: 0; }
+    66%      { scale: 0.30; opacity: 0.72; }                /* flash */
+    82%      { scale: 0.78; opacity: 0.55; }
+    100%     { scale: 1;    opacity: 0; }                   /* spent */
+}
+
+body.game_layout_widget #wrapper > .main::before,
+body.game_layout_widget #wrapper > .main::after,
+body.game_layout_widget .view_game_page::before,
+body.game_layout_widget .view_game_page::after,
+body.game_layout_widget .formatted_description::before,
+body.game_layout_widget .formatted_description::after,
+body.game_layout_widget .screenshot_list::before,
+body.game_layout_widget .screenshot_list::after,
+body.game_layout_widget .info_panel_wrapper::before,
+body.game_layout_widget .info_panel_wrapper::after,
+body.game_layout_widget #view_game_footer::before,
+body.game_layout_widget #view_game_footer::after,
+body.game_layout_widget .header_buy_row::before,
+body.game_layout_widget .header_buy_row::after {
+    content: "";
+    position: fixed;
+    z-index: -3;
+    pointer-events: none;
+    /* SMALL. The menu's shells top out at 8..32px across a 1600px map -- two
+       per cent of the width. At 240px these were craters the size of a
+       paragraph; 96px is about six per cent of a 1600px viewport, which is
+       still generous for legibility and reads as distant artillery rather than
+       as page furniture. */
+    width: 96px;
+    height: 96px;
+    margin: -48px 0 0 -48px;        /* grow from the point, not from a corner */
+    border-radius: 50%;
+    background-image:
+        radial-gradient(circle, transparent 0 57%, var(--od-blast-out) 57% 62%, transparent 63%),
+        radial-gradient(circle, transparent 0 32%, var(--od-blast-in)  32% 37%, transparent 38%),
+        radial-gradient(circle, var(--od-blast-core) 0 14%, transparent 16%);
+    opacity: 0;
+    /* od-rise is the same animation the map runs, on the same timeline, so a
+       shell stays over the country it was placed on however far the page is
+       scrolled. */
+    animation: od-blast linear infinite,
+               od-rise linear both;
+    animation-timeline: auto, scroll(root);
+    will-change: translate, scale;
+}
+
+/* Generated by tools/banner.py --page-bg. Every position is a land
+   pixel of page-bg-menu.png, sampled the way updateMenuBackground()
+   samples m_menuBgLandCoords -- so no shell bursts at sea.
+
+   IN MAP UNITS, NOT VIEWPORT UNITS. The map layer is 100vw wide and,
+   being 2:1, 50vw tall, pinned to the top of the viewport and moved
+   by the scroll. A shell placed in vh would sit still while the map
+   slid out from under it and end up in the sea; both coordinates here
+   are fractions of that same box, and the shells carry the same
+   scroll animation as the map, so they land on the same country at
+   every scroll position and every window size. */
+body.game_layout_widget #wrapper > .main::before { left: 79.5vw; top: 13.20vw; animation-duration: 5.5s, auto; animation-delay: 0.0s, 0s; }
+body.game_layout_widget #wrapper > .main::after { left: 66.0vw; top: 16.91vw; animation-duration: 6.4s, auto; animation-delay: 0.61s, 0s; }
+body.game_layout_widget .view_game_page::before { left: 48.9vw; top: 23.16vw; animation-duration: 7.3s, auto; animation-delay: 1.22s, 0s; }
+body.game_layout_widget .view_game_page::after { left: 20.8vw; top: 19.57vw; animation-duration: 8.2s, auto; animation-delay: 1.83s, 0s; }
+body.game_layout_widget .formatted_description::before { left: 60.0vw; top: 24.22vw; animation-duration: 9.1s, auto; animation-delay: 2.44s, 0s; }
+body.game_layout_widget .formatted_description::after { left: 78.7vw; top: 18.44vw; animation-duration: 5.5s, auto; animation-delay: 3.05s, 0s; }
+body.game_layout_widget .screenshot_list::before { left: 16.8vw; top: 14.77vw; animation-duration: 6.4s, auto; animation-delay: 3.66s, 0s; }
+body.game_layout_widget .screenshot_list::after { left: 28.8vw; top: 13.28vw; animation-duration: 7.3s, auto; animation-delay: 4.27s, 0s; }
+body.game_layout_widget .info_panel_wrapper::before { left: 32.7vw; top: 27.77vw; animation-duration: 8.2s, auto; animation-delay: 4.88s, 0s; }
+body.game_layout_widget .info_panel_wrapper::after { left: 59.6vw; top: 30.86vw; animation-duration: 9.1s, auto; animation-delay: 5.49s, 0s; }
+body.game_layout_widget #view_game_footer::before { left: 63.7vw; top: 10.74vw; animation-duration: 5.5s, auto; animation-delay: 0.6s, 0s; }
+body.game_layout_widget #view_game_footer::after { left: 83.1vw; top: 32.54vw; animation-duration: 6.4s, auto; animation-delay: 0.31s, 0s; }
+body.game_layout_widget .header_buy_row::before { left: 52.3vw; top: 11.09vw; animation-duration: 7.3s, auto; animation-delay: 0.02s, 0s; }
+body.game_layout_widget .header_buy_row::after { left: 30.0vw; top: 36.25vw; animation-duration: 8.2s, auto; animation-delay: 7.93s, 0s; }
+
+/* Different calibres, which reads as distance without a third layer. */
+body.game_layout_widget .view_game_page::after      { width: 132px; height: 132px; margin: -66px 0 0 -66px; }
+body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68px; margin: -34px 0 0 -34px; }
+
+
+/* ---------------------------------------------------------------- clouds --
+
+   Weather, above the world and moving on its own.
+
+   THREE THINGS THE FIRST VERSION GOT WRONG, all of them the same mistake in
+   different clothes -- treating the clouds as part of the map:
+
+     they had no form   Four huge soft ellipses under a 22px blur is fog. A
+                        cumulus is a CLUSTER: several rounded lobes crowded
+                        along a flat base, biggest in the middle. Each cloud
+                        below is five gradients built that way, and the blur is
+                        down to 9px so the shape survives it.
+     they sat on it     They shared the map's box, so they hung across the
+                        middle of the world like a stain. Their band now ends
+                        ABOVE the map's top edge -- sky over the world, not
+                        weather inside it.
+     they moved with it Riding od-rise made them a painted-on layer. Parallax
+                        is only depth if the layers disagree: these travel
+                        about 1.5x what the map does, so they slide across it
+                        as you scroll, which is what tells the eye they are
+                        nearer.
+*/
+#inner_column::before,
+#inner_column::after {
+    content: "";
+    position: fixed;
+    left: -10vw;
+    top: 0;
+    width: 120vw;
+    height: 34vw;
+    z-index: -2;
+    pointer-events: none;
+    filter: blur(9px);
+    background-repeat: no-repeat;
+    /* Thinner towards the bottom of the band, for two reasons: cloud has no
+       hard underside, and without it the band ends on a straight horizontal
+       edge that crosses the whole page the moment the layer is opaque enough
+       to see. The fade is in the layer, so it travels with it. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 46%, rgba(0,0,0,0.35) 76%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0%, #000 46%, rgba(0,0,0,0.35) 76%, transparent 100%);
+    /* Its OWN rise, on the same scroll timeline but a different distance --
+       and its own fade, so the weather thins out as the page is read. */
+    animation: od-cloud-drift 300s linear infinite alternate,
+               od-cloud-rise linear both;
+    animation-timeline: auto, scroll(root);
+    will-change: transform, translate;
+}
+
+/* Each cloud: a flat base with lobes crowded above it, the middle one tallest.
+   The percentages are the lobe centres; the last gradient in each group is the
+   base, wide and low, which is what stops a cluster of circles reading as a
+   bunch of grapes. */
+#inner_column::before {
+    opacity: 0.46;
+    background-image:
+        radial-gradient(9.9% 14.3% at 12.1% 35.9%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(13.2% 19.8% at 17.8% 33.3%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(8.8% 13.2% at 23.7% 35.7%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(7.2% 10.5% at 28.4% 37.2%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(16.0% 7.2% at 18.5% 40.3%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(8.1% 11.7% at 22.9% 45.2%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(10.8% 16.2% at 27.6% 43.0%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(7.2% 10.8% at 32.4% 45.0%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(5.9% 8.6% at 36.2% 46.3%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(13.1% 5.9% at 28.1% 48.8%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(9.3% 13.4% at 36.9% 50.8%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(12.4% 18.6% at 42.3% 48.3%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(8.3% 12.4% at 47.9% 50.6%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(6.7% 9.8% at 52.2% 52.0%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(15.0% 6.7% at 42.9% 54.9%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(8.0% 11.6% at 50.1% 43.0%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(10.7% 16.0% at 54.7% 40.9%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(7.1% 10.7% at 59.5% 42.8%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(5.8% 8.5% at 63.3% 44.1%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(12.9% 5.8% at 55.3% 46.6%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(8.9% 12.9% at 65.0% 53.9%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(11.9% 17.8% at 70.2% 51.5%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(7.9% 11.9% at 75.5% 53.7%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(6.4% 9.4% at 79.7% 55.1%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(14.3% 6.4% at 70.8% 57.8%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(7.8% 11.3% at 81.7% 63.1%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(10.5% 15.7% at 86.3% 61.1%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(7.0% 10.5% at 91.0% 63.0%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(5.7% 8.3% at 94.6% 64.2%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(12.6% 5.7% at 86.8% 66.6%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(9.2% 13.3% at 4.7% 45.6%, #dfe6f2 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(12.2% 18.4% at 10.0% 43.2%, #e8eef8 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(8.2% 12.2% at 15.5% 45.4%, #dfe6f2 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(6.6% 9.7% at 19.8% 46.9%, #d9e1ef 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(14.8% 6.6% at 10.6% 49.7%, #d6deec 0%, rgba(214,222,236,0.72) 55%, transparent 73%);
+}
+
+/* The far layer: smaller, paler, slower, higher up -- three cues for distance
+   rather than one. */
+#inner_column::after {
+    opacity: 0.28;
+    height: 26vw;
+    filter: blur(13px);
+    animation-name: od-cloud-drift-far, od-cloud-rise-far;
+    animation-duration: 520s, auto;
+    background-image:
+        radial-gradient(5.0% 7.2% at 18.8% 49.7%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(6.6% 10.0% at 21.6% 48.3%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(4.4% 6.6% at 24.6% 49.5%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(3.6% 5.3% at 27.0% 50.3%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(8.0% 3.6% at 22.0% 51.9%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(6.1% 8.8% at 32.9% 39.7%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(8.1% 12.1% at 36.4% 38.1%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(5.4% 8.1% at 40.0% 39.5%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(4.4% 6.4% at 42.9% 40.5%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(9.8% 4.4% at 36.8% 42.4%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(6.9% 10.0% at 49.9% 24.1%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(9.2% 13.8% at 53.9% 22.2%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(6.2% 9.2% at 58.0% 23.9%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(5.0% 7.3% at 61.3% 25.0%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(11.1% 5.0% at 54.4% 27.2%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(5.1% 7.3% at 64.7% 43.2%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(6.7% 10.1% at 67.7% 41.9%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(4.5% 6.7% at 70.7% 43.1%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(3.7% 5.3% at 73.0% 43.9%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(8.1% 3.7% at 68.0% 45.5%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(6.7% 9.7% at 82.2% 26.4%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(8.9% 13.4% at 86.0% 24.6%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(5.9% 8.9% at 90.0% 26.3%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(4.8% 7.1% at 93.2% 27.3%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(10.8% 4.8% at 86.5% 29.4%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%),
+        radial-gradient(4.5% 6.6% at 6.8% 38.6%, #cdd7e8 0%, rgba(214,222,236,0.84) 55%, transparent 73%),
+        radial-gradient(6.1% 9.1% at 9.4% 37.4%, #d8e1f0 0%, rgba(214,222,236,0.88) 55%, transparent 73%),
+        radial-gradient(4.0% 6.1% at 12.1% 38.5%, #cdd7e8 0%, rgba(214,222,236,0.82) 55%, transparent 73%),
+        radial-gradient(3.3% 4.8% at 14.3% 39.2%, #c9d3e6 0%, rgba(214,222,236,0.7) 55%, transparent 73%),
+        radial-gradient(7.3% 3.3% at 9.7% 40.7%, #c7d2e6 0%, rgba(214,222,236,0.72) 55%, transparent 73%);
+}
+
+/* Above the map's top edge at the end of the scroll -- 12vw of clear sky --
+   and travelling further than the map to get there. */
+@keyframes od-cloud-rise {
+    /* Anchored to the MAP'S TOP EDGE, not to the viewport.
+       The map starts at 88vh and ends at (100vh - 50vw); a cloud band 34vw
+       tall therefore has to start at (88vh - 34vw) to sit just above the
+       sliver, or it spends the top of the page below the fold -- which is
+       exactly what the first attempt did. The gap above the map then opens
+       from 2vh to 20vh across the scroll, and that widening IS the parallax:
+       these travel about 1.45x what the map does.
+
+       THEY OVERLAP THE MAP, and that is deliberate. Holding them strictly
+       above its top edge sounds tidier and cannot work: by the bottom of the
+       page the map is 50vw tall in a viewport barely taller than that, so
+       there is no sky left to put weather in, and the clouds simply left the
+       frame. Clouds belong over land anyway -- they are in front of the map
+       (z-index -2 against -4), so they pass across it. */
+    /* ABSOLUTE VALUES, not a multiplier. An animated opacity REPLACES the
+       declared one -- it does not scale it -- so `opacity: 1` here overrode the
+       layer's 0.22 and put the clouds on at nearly full strength, hazing the
+       text they are supposed to sit behind. These are the intended values
+       outright: a light haze at the top, effectively gone by the bottom. */
+    /* LOWEST AT THE TOP OF THE PAGE, GONE OFF THE TOP BY THE BOTTOM.
+       Starts with the band resting on the foot of the screen (its bottom edge
+       at 100vh) and ends at -50vw -- a full band-height above the viewport, so
+       the weather has genuinely left the frame rather than parking near the
+       header. That is 100vh + 20vw of travel against the map's 12vh + 50vw:
+       roughly two and a half times, which is what makes the sky read as much
+       nearer than the world. */
+    /* HIGH AT THE TOP OF THE PAGE, and creeping off the top as you scroll.
+       "Lowest" meant lowest in their climb, not lowest on the screen: at page
+       top the band sits just under the header, so the clouds read across the
+       upper third beside the banner -- which is where they were asked for and
+       is where sky belongs. From there it is a little over one band-height to
+       clear the frame, so the exit is a drift rather than a slide. */
+    from { translate: 0 -4vh; opacity: 0.46; }
+    55%  { opacity: 0.20; }
+    to   { translate: 0 calc(-36vw); opacity: 0.02; }
+}
+
+/* The far layer moves less than the near one: the same rule that puts the map
+   slowest of all. */
+@keyframes od-cloud-rise-far {
+    /* Same anchor, less travel, smaller final gap: further away. */
+    /* Starts a little higher, travels less, leaves later: further away. */
+    /* Higher again, and slower out: further away. */
+    from { translate: 0 -9vh; opacity: 0.28; }
+    55%  { opacity: 0.13; }
+    to   { translate: 0 calc(-27vw); opacity: 0.012; }
+}
+
+@keyframes od-cloud-drift {
+    from { transform: translateX(-9vw); }
+    to   { transform: translateX(9vw); }
+}
+
+@keyframes od-cloud-drift-far {
+    from { transform: translateX(6vw); }
+    to   { transform: translateX(-6vw); }
+}
+
+
+/* ---------------------------------------------------------------- banner --
+
+   The theme's banner slot, made animated without itch having to accept the
+   file. itch's uploader takes PNG, GIF and JPG only, and its GIFs have
+   rendered as stills since October 2025 -- but CSS may point at any URL, so
+   the six-era WebP is fetched from the repository over jsDelivr instead. That
+   is the same trick the page background uses.
+
+   !important because itch writes the uploaded banner as an inline style on
+   this element, and an inline style beats a stylesheet.
+
+   The mask is the "clean transition": rather than ending on a horizon line,
+   the bottom third of the banner fades to nothing, so the artwork dissolves
+   into the page colour exactly where the text begins.
+*/
+#header.has_image {
+    background-image: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/itch/banner-itch-wide-eras.webp") !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 98%);
+            mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 98%);
+}
+
+/* ------------------------------------------------------------ the embed ---
+
+   The playable build, when one is uploaded. itch renders it as .game_frame --
+   an iframe once started, a placeholder with a launch button before that.
+   Styled to belong to the page rather than sit on it: the same dissolve at its
+   edges as the banner, and the gold the rest of the page uses for "press this".
+
+   NOTE: this needs the web build uploaded as playable HTML on the project.
+   CSS cannot conjure the frame; it can only dress it once it exists.
+*/
+.game_frame,
+.iframe_placeholder {
+    border-radius: 4px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+}
+
+.load_iframe_btn {
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.load_iframe_btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 22px rgba(255, 215, 0, 0.4);
+}
+
+/* ------------------------------------------------------------- the rest --- */
+
+/* The download button is the one thing on the page you want pressed. */
+.buy_row .buy_btn,
+.download_btn {
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.buy_row .buy_btn:hover,
+.download_btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 18px rgba(255, 215, 0, 0.35);
+}
+
+/* Screenshots as objects on a table rather than images in a list. */
+.screenshot_list .screenshot img {
+    border-radius: 3px;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.screenshot_list .screenshot img:hover {
+    transform: scale(1.01);
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* --------------------------------------------------- motion, on request ---
+
+   All of the above is decoration. Somebody who has asked their system for less
+   motion is not asking for a slower version of it.
+*/
+@media (prefers-reduced-motion: reduce) {
+    #wrapper::before { animation: none; }
+    #inner_column::before,
+    #inner_column::after { animation: none; }
+    #wrapper::after  { animation: none; opacity: 0.6; }
+
+    body.game_layout_widget #wrapper > .main::before,
+    body.game_layout_widget #wrapper > .main::after,
+    body.game_layout_widget .view_game_page::before,
+    body.game_layout_widget .view_game_page::after,
+    body.game_layout_widget .formatted_description::before,
+    body.game_layout_widget .formatted_description::after,
+    body.game_layout_widget .screenshot_list::before,
+    body.game_layout_widget .screenshot_list::after,
+    body.game_layout_widget .info_panel_wrapper::before,
+    body.game_layout_widget .info_panel_wrapper::after,
+    body.game_layout_widget #view_game_footer::before,
+    body.game_layout_widget #view_game_footer::after,
+    body.game_layout_widget .header_buy_row::before,
+    body.game_layout_widget .header_buy_row::after {
+        display: none;
+    }
+}
+
+/* ------------------------------------------------------------- phones -----
+
+   A phone is not a narrow desktop. Three things break if this file is left to
+   scale down on its own:
+
+     the map     It is stretched with `background-size: 100% 100%` so that the
+                 shells land on real countries. On a 390x844 screen that maps a
+                 2:1 world onto a 1:2.2 box -- Africa four times its height.
+                 With no shells to align to (they are hidden here anyway),
+                 `cover` is simply correct.
+     the clouds  34vw of band is 133px on a phone, and the lobes inside it are
+                 twenty. Blurred by 9px that is a grey smear, not weather.
+     the column  itch's column is the whole screen at this width, so every
+                 layer behind it is showing through 91% paint at best. Taking
+                 it to 97% costs a effect nobody can see and buys contrast on
+                 the one thing they came for, which is the text.
+*/
+@media (max-width: 700px) {
+    #wrapper::before {
+        background-size: cover;
+        opacity: 0.5;
+    }
+
+    #inner_column {
+        background-color: color-mix(in srgb, var(--od-bg2) 97%, transparent);
+    }
+
+    #inner_column::before,
+    #inner_column::after {
+        display: none;
+    }
+
+    /* The banner's fade is a third of its height; on a short screen that eats
+       most of the picture. */
+    #header.has_image {
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
+                mask-image: linear-gradient(to bottom, #000 0%, #000 82%, transparent 100%);
+    }
+}
+
+/* The blasts are sized in viewport units, and at 390px wide they stop being
+   distant and start being in the way. */
+@media (max-width: 700px) {
+    body.game_layout_widget #wrapper > .main::before,
+    body.game_layout_widget #wrapper > .main::after,
+    body.game_layout_widget .view_game_page::before,
+    body.game_layout_widget .view_game_page::after,
+    body.game_layout_widget .formatted_description::before,
+    body.game_layout_widget .formatted_description::after,
+    body.game_layout_widget .screenshot_list::before,
+    body.game_layout_widget .screenshot_list::after,
+    body.game_layout_widget .info_panel_wrapper::before,
+    body.game_layout_widget .info_panel_wrapper::after,
+    body.game_layout_widget #view_game_footer::before,
+    body.game_layout_widget #view_game_footer::after,
+    body.game_layout_widget .header_buy_row::before,
+    body.game_layout_widget .header_buy_row::after {
+        display: none;
+    }
+}

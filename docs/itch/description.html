@@ -12,6 +12,8 @@ tutorial yet, and the section at the bottom says plainly what else is missing.</
 the game — the animated map in the screenshots above is the 1939 scenario, with
 every country played by the AI.</p>
 
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/timelapse-political.gif" alt="A whole game replayed as a timelapse" style="max-width:100%;height:auto;" /></p>
+
 <h2>Run a country</h2>
 
 <p>Provinces have population, industry, fortification, resources and an ethnic
@@ -20,6 +22,8 @@ claims on their neighbours and opinions about each other.</p>
 
 <p>Rebellions spawn from unrest and hold real territory. Wars pull in guarantee
 chains. Ceasefires are negotiated over provinces, money and dropped claims.</p>
+
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/province.png" alt="A province: population, industry, garrison and orders" style="max-width:100%;height:auto;" /></p>
 
 <h2>Six scenarios</h2>
 
@@ -32,11 +36,15 @@ chains. Ceasefires are negotiated over provinces, money and dropped claims.</p>
   <li><strong>The Missile Crisis</strong> (1962) — two blocs, one ocean between them, and missiles in Cuba.</li>
 </ul>
 
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/world-map.png" alt="The 1641-province world map" style="max-width:100%;height:auto;" /></p>
+
 <h2>Build your own world</h2>
 
 <p>Draw land and sea, cut provinces, place countries, populations, resources and
 claims, then export a map anyone else can load. There is a procedural generator too,
 for when you want <em>a</em> world rather than a specific one.</p>
+
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/map-editor.png" alt="The map editor" style="max-width:100%;height:auto;" /></p>
 
 <h2>Multiplayer</h2>
 
@@ -50,6 +58,9 @@ client never computes a turn. <strong>A player who disconnects keeps their seat 
 their country</strong>: the turn resolves without them, and they get that same country
 back when they return.</p>
 
+
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/multiplayer.png" alt="Hosting and joining a game" style="max-width:100%;height:auto;" /></p>
+
 <h2>Mods, in thirteen languages</h2>
 
 <p>Mods are WebAssembly, so a mod is the same file on every platform, and it runs in a
@@ -57,6 +68,8 @@ sandbox with a capability grant you can see and revoke. The SDK has bindings for
 <strong>C, C++, Rust, Zig, Go, Java, Kotlin, JavaScript, TypeScript, AssemblyScript,
 Lua, Python and hand-written WAT</strong> — every one of them builds the same example,
 and the test suite checks they all render byte-identical output.</p>
+
+<p><img src="https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/img/mods.png" alt="The mod menu, with capability grants per mod" style="max-width:100%;height:auto;" /></p>
 
 <h2>Before you download</h2>
 
@@ -90,8 +103,8 @@ only.</p>
   <li><strong>No dedicated server.</strong> Hosting means a running copy of the game;
       closing it ends the session.</li>
   <li><strong>The browser build cannot host or join.</strong> A browser tab cannot
-      listen for players, and signing in is not implemented there yet. Everything
-      else — the map, the map editor, mods — works in a browser.</li>
+      listen for players. Signing in does work there now, and everything else —
+      the map, the map editor, mods — works in a browser.</li>
   <li>Long-form (play-by-post) turns are designed and not built.</li>
 </ul>
 
