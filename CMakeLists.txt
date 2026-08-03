@@ -1147,6 +1147,15 @@ add_executable(GifEncoderTest EXCLUDE_FROM_ALL
     src/GifEncoder.cpp)
 target_include_directories(GifEncoderTest PRIVATE src)
 
+# Finite-difference gradient checks for the AI's hand-written backward passes.
+# Deliberately links only NeuralNet.cpp: these must stay runnable without a
+# window, a map or a model.
+add_executable(NeuralNetTest EXCLUDE_FROM_ALL
+    tests/neural_net_test.cpp
+    src/ai/NeuralNet.cpp)
+target_include_directories(NeuralNetTest PRIVATE src)
+
+
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp
