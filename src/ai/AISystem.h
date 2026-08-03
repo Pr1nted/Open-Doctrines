@@ -64,6 +64,26 @@ public:
     static constexpr int NAVY_ACTIONS = 6;
     static constexpr int DIPLO_ACTIONS = 2; // 0=reject 1=accept
 
+    /**
+     * What the target head is told about one candidate, beyond our own state.
+     *
+     * Relative rather than absolute wherever possible: "twice my army" is the
+     * same decision at any scale, while "40,000 troops" is not, and the same
+     * net has to work on a twelve-country map and a two-hundred-country one.
+     */
+    static constexpr int TARGET_FEATURES = 12;
+    /** Most candidates ever scored. Beyond this the weakest are dropped. */
+    static constexpr int TARGET_MAX_CANDIDATES = 12;
+    /**
+     * Updates the target head needs before it chooses anything.
+     *
+     * Until then the old rule picks, and the head is trained on what the rule
+     * did -- so it starts from imitation of a sane policy rather than from
+     * noise, and a fresh model does not open its first game by declaring war on
+     * whoever a random net happened to score highest.
+     */
+    static constexpr uint64_t TARGET_WARMUP_UPDATES = 300000;
+
     // ── How willing the AI is to start a war ────────────────────────────
     //
     // Tuning knobs for "peaceful, but still expansionist". Every one of them is
@@ -361,6 +381,20 @@ public:
     // head's fifty — so its "batch" is usually a single sample and its gradient
     // carries none of the noise reduction that justifies a larger step.
     static constexpr float LR_DIPLO  = 0.002f;
+    /**
+     * Q is a regression onto the same target the value head fits, so it takes
+     * the value rate. The target head is a policy over candidates, so it takes
+     * the policy rate.
+     *
+     * Both exist because both nets need a flushBatch call of their own.
+     * mergeScratch only sums gradients into a batch; flushBatch is what applies
+     * one. Adding a net without adding both lines gives you a head that
+     * accumulates gradients for hours and never moves -- which is exactly what
+     * Q did until this was noticed, sitting at its initial weights while
+     * looking, from every log and every test, like a feature waiting to warm up.
+     */
+    static constexpr float LR_Q      = 0.010f;
+    static constexpr float LR_TARGET = 0.005f;
     // Self-play exploration schedule. Training used to sit at a fixed 10%
     // random forever, which caps final play strength no matter how long the
     // run: see difficultyParams.
@@ -619,6 +653,10 @@ private:
         // log pi(a|s) as the policy stood when the action was chosen. PPO's
         // ratio is measured against this; see accumulatePPOInto.
         float logProb[MOD_COUNT + 1] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        // Which neighbour the target head picked this turn, and what it was
+        // shown to pick from. Empty unless a war was actually declared.
+        std::vector<std::vector<float>> targetCand;
+        int targetChosen = -1;
         int age = 0;        // turns since the decision
         int rebellions = 0; // rebellions suffered within the window
         // Troops put on a hostile shore within the window. The province a
@@ -710,6 +748,33 @@ private:
      * it, which is the model-free half of what a one-ply search would buy.
      */
     NeuralNet m_q[MOD_COUNT];
+    /**
+     * WHOM to attack, as a learned choice rather than a rule.
+     *
+     * The war module decides only whether to declare; findWarTarget decided on
+     * whom, by a fixed rule -- prefer a neighbour holding land we claim, then
+     * whoever has the smallest army. That rule is most of the strategy. It
+     * cannot weigh a weak neighbour who is someone's ally against a stronger
+     * one who is already fighting two wars, because it looks at one number.
+     *
+     * That also bounds what the benchmark can ever show. ADVANTAGE measures
+     * only what the LEARNED decisions add, and both cohorts share this rule, so
+     * however good the policy gets, the choice that decides the war is made
+     * identically for the trained AI and for the control.
+     *
+     * So the rule now produces CANDIDATES -- it keeps every gate, every army
+     * bar, every restraint -- and this net scores them. One forward pass per
+     * candidate, softmax across the scores, sampled. The policy chooses its
+     * war; the heuristics still say which wars are allowed to be chosen.
+     */
+    NeuralNet m_target;
+    /**
+     * The scoring inputs and the pick, from the moment execWar chose, waiting
+     * for takeTurn to attach them to this turn's Experience. Set and consumed
+     * within a single country's turn, so one slot is enough.
+     */
+    std::vector<std::vector<float>> m_pendingTargetCand;
+    int m_pendingTargetChosen = -1;
     NeuralNet m_diplo;
     std::mt19937 m_rng{1337}; // fixed seed: identical state -> identical picks
     int m_turn = 0;
@@ -799,6 +864,8 @@ private:
         std::vector<float> nextFeatures;
         float bootDiscount = 0.0f;
         float oldLogProb = 0.0f;   // the behaviour policy's, for PPO's ratio
+        std::vector<std::vector<float>> targetCand;   // war-target choice, if any
+        int targetChosen = -1;
     };
     std::vector<WorkItem> m_work;
     struct WorkerScratch {
@@ -810,6 +877,7 @@ private:
         // with the wrong state's.
         NeuralNet::Scratch valueNext[MOD_COUNT];
         NeuralNet::Scratch q[MOD_COUNT];
+        NeuralNet::Scratch target;
         NeuralNet::Scratch diplo;
         bool ready = false;
     };
@@ -1052,7 +1120,30 @@ private:
         bool naval = false;     // overseas, reached by sea rather than a border
         bool napBlocked = false;// a pact stands and must be broken first
     };
-    bool findWarTarget(int cid, WarTarget& out);
+    /** One neighbour that has cleared every gate and bar. */
+    struct WarCandidate {
+        int cid = -1;
+        bool claimed = false;
+        bool naval = false;
+        bool napBlocked = false;
+        long long army = 0;
+    };
+    /**
+     * `learnedChoice` picks among the candidates with the target head and
+     * SAMPLES; false applies the old deterministic rule.
+     *
+     * The mask must pass false and the executor true. Both call this so they
+     * cannot disagree about whether a war is possible -- a bug this code has
+     * had before -- but if the mask sampled too, the two calls would draw
+     * different targets and the mask would be describing a war that is not the
+     * one about to be declared.
+     */
+    bool findWarTarget(int cid, WarTarget& out, bool learnedChoice = false);
+    /** Score the candidates and sample one. -1 to fall back to the rule. */
+    int  chooseWarTarget(int cid, const std::vector<WarCandidate>& cands);
+    /** The candidate's own slice of the target head's input. */
+    void buildTargetFeatures(int cid, const WarCandidate& cand,
+                             std::vector<float>& out) const;
 
     bool loadModel();
 };

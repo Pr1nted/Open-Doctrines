@@ -355,6 +355,16 @@ void NeuralNet::accumulateValueInto(Scratch& s, float target) const {
     backpropInto(m_sizes, s, g, w, d);
 }
 
+void NeuralNet::accumulateOutputGradInto(Scratch& s, float gradOnOutput) const {
+    if (!valid() || outputSize() < 1 || s.gw.size() != m_layers.size()) return;
+    if (!std::isfinite(gradOnOutput)) return;
+    std::vector<float> g(outputSize(), 0.0f);
+    g[0] = gradOnOutput;
+    std::vector<const float*> w; std::vector<std::pair<int,int>> d;
+    for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
+    backpropInto(m_sizes, s, g, w, d);
+}
+
 void NeuralNet::accumulateActionValueInto(Scratch& s, int action, float target) const {
     if (!valid() || s.gw.size() != m_layers.size()) return;
     if (action < 0 || action >= outputSize()) return;

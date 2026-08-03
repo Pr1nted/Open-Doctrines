@@ -55,6 +55,11 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     for (int m = 0; m < MOD_COUNT; ++m)
         m_q[m] = NeuralNet({FEATURE_COUNT, 512, 320, ACTS_[m]}, 400 + m);
     m_diplo = NeuralNet({FEATURE_COUNT, 256, 160, DIPLO_ACTIONS}, 300);
+    // Own state and one candidate in, one score out. Scored once per candidate
+    // and softmaxed across them, so the output is deliberately a single number
+    // rather than a fixed-width action layer -- the candidate list changes size
+    // every turn.
+    m_target = NeuralNet({FEATURE_COUNT + TARGET_FEATURES, 256, 128, 1}, 500);
     // An empty path is a scratch model used for merging peer files, not a
     // model anybody is training. It loads nothing, saves nothing, and should
     // say nothing.
@@ -919,7 +924,19 @@ void AISystem::takeTurn(int cid) {
     m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
     exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
     m_declaredUnprovoked = false;
-    logDecision(cid, MOD_WAR, a, score, execWar(cid, a));
+    {
+        const std::string label = execWar(cid, a);
+        // Captured AFTER execWar, because that is what runs the chooser. A
+        // declaration that fell through to the old rule leaves this empty and
+        // simply trains nothing.
+        if (m_pendingTargetChosen >= 0) {
+            exp.targetCand = std::move(m_pendingTargetCand);
+            exp.targetChosen = m_pendingTargetChosen;
+            m_pendingTargetCand.clear();
+            m_pendingTargetChosen = -1;
+        }
+        logDecision(cid, MOD_WAR, a, score, label);
+    }
     exp.aggressor = m_declaredUnprovoked;
 
     validNavy(cid, valid);
@@ -1026,7 +1043,87 @@ void AISystem::ensureTrendBounds() const {
 // See the declaration in AISystem.h for why the mask and the executor share
 // this. The logic below is execWar case 4's, moved verbatim rather than
 // reimplemented -- two copies of a rule this fiddly would drift within a week.
-bool AISystem::findWarTarget(int cid, WarTarget& out) {
+void AISystem::buildTargetFeatures(int cid, const WarCandidate& cand,
+                                   std::vector<float>& out) const {
+    out.assign(TARGET_FEATURES, 0.0f);
+    Game& g = *m_g;
+    auto meIt = m_stats.find(cid);
+    auto themIt = m_stats.find(cand.cid);
+    if (meIt == m_stats.end() || themIt == m_stats.end()) return;
+    const CountryStat& me = meIt->second;
+    const CountryStat& th = themIt->second;
+    const double myArmy = std::max(1.0, (double)me.army);
+
+    // Ratios, not totals: "twice my army" means the same thing on a twelve
+    // country map and a two hundred country one, and the same weights have to
+    // serve both.
+    out[0] = (float)std::tanh(std::log1p((double)th.army / myArmy));
+    out[1] = cand.claimed ? 1.0f : 0.0f;
+    out[2] = cand.naval ? 1.0f : 0.0f;
+    out[3] = cand.napBlocked ? 1.0f : 0.0f;
+    out[4] = (float)std::tanh(std::log1p((double)th.provinces /
+                                         std::max(1.0, (double)me.provinces)));
+    const Country* tc = g.m_countries.getCountry(cand.cid);
+    if (tc) {
+        int theirWars = 0, theirAllies = 0;
+        auto rel = g.m_relations.find(tc->isoA3);
+        if (rel != g.m_relations.end())
+            for (auto& [oiso, r] : rel->second) {
+                if (r.war) theirWars++;
+                if (r.alliance || r.guarantee) theirAllies++;
+            }
+        // Someone already fighting two wars is a different proposition from
+        // someone at peace, and the old rule could not see the difference.
+        out[5] = std::tanh(theirWars / 2.0f);
+        out[6] = std::tanh(theirAllies / 2.0f);
+        out[7] = (float)std::tanh(tc->treasury / 300.0);
+        out[8] = g.warWearinessOf(cand.cid) / 20.0f;
+    }
+    out[9]  = std::tanh(th.frontiers.size() / 10.0f);
+    out[10] = th.provinces > 0 ? std::tanh(th.industrySum / th.provinces / 10.0f) : 0.0f;
+    out[11] = th.maxPort / 3.0f;
+}
+
+int AISystem::chooseWarTarget(int cid, const std::vector<WarCandidate>& cands) {
+    m_pendingTargetCand.clear();
+    m_pendingTargetChosen = -1;
+    // Nothing to choose between, and nothing to learn from a choice of one.
+    if (cands.size() < 2) return -1;
+
+    // The candidate inputs are built EVEN WHEN the head is not allowed to
+    // steer, because that is how it warms up. Returning early here was a
+    // chicken and egg: below the threshold nothing was recorded, so the head
+    // never trained, so it never reached the threshold, so it never chose.
+    // Below it the old rule picks and findWarTarget records which candidate
+    // that was -- the head learns by watching a policy that already works.
+    const bool maySteer = m_target.updateCount() >= TARGET_WARMUP_UPDATES;
+
+    std::vector<float> own;
+    buildFeatures(cid, own);
+
+    const size_t n = std::min(cands.size(), (size_t)TARGET_MAX_CANDIDATES);
+    std::vector<float> scores(n, 0.0f);
+    std::vector<float> candFeat;
+    for (size_t i = 0; i < n; ++i) {
+        buildTargetFeatures(cid, cands[i], candFeat);
+        std::vector<float> in = own;
+        in.insert(in.end(), candFeat.begin(), candFeat.end());
+        const std::vector<float>& o = m_target.forward(in);
+        scores[i] = o.empty() || !std::isfinite(o[0]) ? 0.0f : o[0];
+        m_pendingTargetCand.push_back(std::move(in));
+    }
+
+    if (!maySteer) return -1;   // recorded, but the rule still decides
+
+    float temperature, epsilon;
+    difficultyParams(temperature, epsilon);
+    const int pick = NeuralNet::samplePolicy(scores, temperature, m_rng);
+    if (pick < 0 || pick >= (int)n) return -1;
+    m_pendingTargetChosen = pick;
+    return pick;
+}
+
+bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
     if (!c) return false;
@@ -1071,6 +1168,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out) {
 
     int target = -1; long long targetArmy = -1;
     bool targetClaimed = false;
+    std::vector<WarCandidate> cands;
     std::unordered_set<int> seen;
     std::unordered_set<int> napBlocked;   // wanted, but under a pact
     for (auto& fr : st.frontiers) {
@@ -1105,7 +1203,13 @@ bool AISystem::findWarTarget(int cid, WarTarget& out) {
         // at a time unless the second is genuinely easy.
         if (myWars >= 1) bar += AI_WAR_BAR_SECOND_FRONT;
         if (st.army < (long long)(ea * bar) + 200) continue;
-        // A claimed neighbour beats any unclaimed one; within the same class,
+        // EVERY neighbour that clears the bars is a candidate, not just the
+        // best one by the old rule. The rule still decides who is ALLOWED to be
+        // attacked; which of them actually is, is chosen below.
+        cands.push_back({fr.enemyCid, claimed, false,
+                         napBlocked.count(fr.enemyCid) > 0, ea});
+        // The old rule, kept as the fallback and as the mask's answer: a
+        // claimed neighbour beats any unclaimed one, and within a class the
         // weakest wins.
         if (target < 0 || (claimed && !targetClaimed) ||
             (claimed == targetClaimed && ea < targetArmy)) {
@@ -1113,6 +1217,20 @@ bool AISystem::findWarTarget(int cid, WarTarget& out) {
         }
     }
     if (target >= 0) {
+        const int pick = learnedChoice ? chooseWarTarget(cid, cands) : -1;
+        if (pick >= 0 && pick < (int)cands.size()) {
+            out.cid = cands[pick].cid;
+            out.claimed = cands[pick].claimed;
+            out.naval = false;
+            out.napBlocked = cands[pick].napBlocked;
+            return true;
+        }
+        // The rule decided. Tell the head what it picked, so a head that is
+        // not yet trusted still has something to learn from.
+        if (!m_pendingTargetCand.empty()) {
+            for (size_t i = 0; i < cands.size() && i < m_pendingTargetCand.size(); ++i)
+                if (cands[i].cid == target) { m_pendingTargetChosen = (int)i; break; }
+        }
         out.cid = target;
         out.claimed = targetClaimed;
         out.naval = false;
@@ -1962,7 +2080,8 @@ std::string AISystem::execWar(int cid, int action) {
             // reached with a pact in the way, which is a real answer rather
             // than a wasted turn: the pact is broken this turn, war follows.
             WarTarget wt;
-            if (!findWarTarget(cid, wt)) return "war: no suitable target";
+            if (!findWarTarget(cid, wt, /*learnedChoice=*/true))
+                return "war: no suitable target";
             const Country* ec = g.m_countries.getCountry(wt.cid);
             if (!ec) return "war: target vanished";
 
@@ -3074,6 +3193,10 @@ void AISystem::endTurn() {
             w.acts = std::move(exp.acts[m]);
             w.cid = cid;
             w.oldLogProb = exp.logProb[m];
+            if (m == MOD_WAR && exp.targetChosen >= 0) {
+                w.targetCand = exp.targetCand;
+                w.targetChosen = exp.targetChosen;
+            }
             if (nextFeats) {
                 w.nextFeatures = *nextFeats;
                 w.bootDiscount = BOOTSTRAP_DISCOUNT;
@@ -3492,7 +3615,9 @@ void AISystem::endTurn() {
     for (int m = 0; m < MOD_COUNT; ++m) {
         m_policy[m].flushBatch(LR_POLICY);
         m_value[m].flushBatch(LR_VALUE);
+        m_q[m].flushBatch(LR_Q);
     }
+    m_target.flushBatch(LR_TARGET);
     m_diplo.flushBatch(LR_DIPLO);
 
     // Reward trend feed for the trainer dashboard
@@ -3610,6 +3735,31 @@ void AISystem::runLearningWork() {
             // accumulateActionValueInto.
             m_q[m].forwardInto(ws.q[m], w.features);
             m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
+
+            // WHOM it attacked, judged by how the war went.
+            //
+            // The target head is a policy over a set whose size changes every
+            // turn, so there is no output layer to softmax: each candidate was
+            // scored by its own forward pass, and each needs the one derivative
+            // belonging to it. Same advantage as the decision to declare --
+            // choosing the war and choosing whether to have one are the same
+            // decision judged by the same outcome.
+            if (w.targetChosen >= 0 && w.targetCand.size() > 1) {
+                std::vector<float> scores(w.targetCand.size(), 0.0f);
+                for (size_t i = 0; i < w.targetCand.size(); ++i) {
+                    m_target.forwardInto(ws.target, w.targetCand[i]);
+                    const auto& o = ws.target.acts.back();
+                    scores[i] = o.empty() || !std::isfinite(o[0]) ? 0.0f : o[0];
+                }
+                std::vector<float> probs;
+                NeuralNet::softmax(scores, 1.0f, probs);
+                for (size_t i = 0; i < w.targetCand.size(); ++i) {
+                    const float gi = advantage *
+                        (probs[i] - (i == (size_t)w.targetChosen ? 1.0f : 0.0f));
+                    m_target.forwardInto(ws.target, w.targetCand[i]);
+                    m_target.accumulateOutputGradInto(ws.target, gi);
+                }
+            }
             // Activations were snapshotted at decision time — reusing them
             // replaces a full policy re-forward with a couple of vector moves.
             // THE POLICY MUST BE RE-FORWARDED, not restored from the snapshot.
@@ -3643,6 +3793,7 @@ void AISystem::runLearningWork() {
                 m_value[m].initScratch(ws.valueNext[m]);
                 m_q[m].initScratch(ws.q[m]);
             }
+            m_target.initScratch(ws.target);
             m_diplo.initScratch(ws.diplo);
             ws.ready = true;
         }
@@ -3668,7 +3819,15 @@ void AISystem::runLearningWork() {
         for (int m = 0; m < MOD_COUNT; ++m) {
             m_policy[m].mergeScratch(m_scratch[t].policy[m]);
             m_value[m].mergeScratch(m_scratch[t].value[m]);
+            // EVERY net that accumulated has to be reduced here. Q was added
+            // without this line and spent its whole existence writing gradients
+            // into a scratch nobody read: it trained for zero updates, stayed
+            // at its initial weights, and Q_WARMUP_UPDATES then correctly kept
+            // it from ever being consulted. It looked exactly like a feature
+            // that was working and simply had not warmed up yet.
+            m_q[m].mergeScratch(m_scratch[t].q[m]);
         }
+        m_target.mergeScratch(m_scratch[t].target);
         m_diplo.mergeScratch(m_scratch[t].diplo);
     }
 
@@ -3788,8 +3947,9 @@ void AISystem::saveModel() {
     // 3 = the action-value heads ride along too. A v2 reader would refuse this
     // file on the net count alone, which is the correct failure: it would
     // otherwise read Q weights as if they were something else.
-    out.push_back(3);
-    out.push_back(MOD_COUNT * 3 + 1); // net count: policy, value, Q, diplo
+    // 4 = the war-target head rides along as well.
+    out.push_back(4);
+    out.push_back(MOD_COUNT * 3 + 2); // policy, value, Q, target, diplo
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
     }
@@ -3799,6 +3959,7 @@ void AISystem::saveModel() {
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_q[m].serialize(b); appendBlob(out, b);
     }
+    { std::vector<uint8_t> b; m_target.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_diplo.serialize(b); appendBlob(out, b); }
     // Reward normalisation statistics.
     //
@@ -4119,13 +4280,14 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion < 1 || fileVersion > 3) return false;
+    if (fileVersion < 1 || fileVersion > 4) return false;
     const int count = buf[5];
     // v1/v2 carry no Q heads. Those files are every hour of training done
     // before this existed, so they load and simply leave Q at its initial
     // weights -- which Q_WARMUP_UPDATES then keeps out of the way until it has
     // learned something.
-    const bool hasQ = (count == MOD_COUNT * 3 + 1);
+    const bool hasTarget = (count == MOD_COUNT * 3 + 2);
+    const bool hasQ = hasTarget || (count == MOD_COUNT * 3 + 1);
     if (!hasQ && count != MOD_COUNT * 2 + 1) return false;
     size_t p = 6;
     auto readBlob = [&](NeuralNet& net) -> bool {
@@ -4141,6 +4303,10 @@ bool AISystem::loadModel() {
     for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_value[m])) return false;
     if (hasQ)
         for (int m = 0; m < MOD_COUNT; ++m) if (!readBlob(m_q[m])) return false;
+    // Older files have no target head; it stays at its initial weights, and
+    // TARGET_WARMUP_UPDATES keeps the old rule choosing until it has learned
+    // something from watching that rule work.
+    if (hasTarget && !readBlob(m_target)) return false;
     if (!readBlob(m_diplo)) return false;
     if (fileVersion >= 2 && p + 4 <= buf.size()) {
         uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) | ((uint32_t)buf[p+3] << 24);

@@ -110,6 +110,16 @@ public:
                            float entropyCoef) const;
     /** log pi(a|s) at temperature 1 for the logits currently in `s`. */
     static float logProbOf(const std::vector<float>& logits, int action);
+    /**
+     * Backpropagate a gradient the caller computed, on a single-output net.
+     *
+     * For a policy over a set whose SIZE VARIES -- which neighbour to attack,
+     * where the candidates differ every turn -- there is no fixed output layer
+     * to softmax over. Each candidate is scored by its own forward pass, the
+     * softmax is taken across those scores outside the net, and each pass then
+     * needs the one derivative belonging to it. That is this.
+     */
+    void accumulateOutputGradInto(Scratch& s, float gradOnOutput) const;
     /** Folds a worker's gradients into the shared batch and empties it. */
     void mergeScratch(Scratch& s);
 
