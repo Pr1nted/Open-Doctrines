@@ -92,6 +92,15 @@ AISystem::~AISystem() {
 // Rebels are their own bucket -- see the note on m_rebelStats. Everything else
 // splits by cohort, and with no --vs-random split m_randomCids is empty, so
 // every real country lands in m_trainStats exactly as before.
+int AISystem::foreignWarCount(int cid) const {
+    auto it = m_warWith.find(cid);
+    if (it == m_warWith.end()) return 0;
+    int n = 0;
+    for (int other : it->second)
+        if (other < Game::REBEL_CID_MIN) n++;
+    return n;
+}
+
 AISystem::TrainStats& AISystem::statsFor(int cid) {
     if (cid >= Game::REBEL_CID_MIN) return m_rebelStats;
     return isRandomCountry(cid) ? m_randomStats : m_trainStats;
@@ -1166,10 +1175,10 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     // trained and shipped, so "be less aggressive" cannot wait for a retrain,
     // and a gate the policy cannot talk its way past is the only kind that
     // holds.
-    int myWars = 0;
-    if (relIt != g.m_relations.end())
-        for (auto& [oiso, r] : relIt->second)
-            if (r.war) myWars++;
+    // Foreign wars only -- see foreignWarCount. Also cheaper: m_warWith is the
+    // relation graph already resolved to cids, so this is a set walk rather
+    // than a string-keyed scan of every relation this country has.
+    const int myWars = foreignWarCount(cid);
 
     // Already fighting two? Nothing is worth a third front.
     if (myWars >= AI_MAX_CONCURRENT_WARS) return false;
@@ -3109,8 +3118,7 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         // this is not a decision that was taken, it is one that was not
         // available. See AI_CALL_* in the header.
         const char* refuse = nullptr;
-        auto ownWars = m_warWith.find(targetCid);
-        const int myWars = ownWars == m_warWith.end() ? 0 : (int)ownWars->second.size();
+        const int myWars = foreignWarCount(targetCid);
         if (myWars >= AI_CALL_MAX_OWN_WARS)
             refuse = "already fighting two wars of its own";
         else if (m_g->warWearinessOf(targetCid) >= AI_CALL_WEARINESS_BLOCK)

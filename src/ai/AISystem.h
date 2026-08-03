@@ -1160,6 +1160,21 @@ private:
      * different targets and the mask would be describing a war that is not the
      * one about to be declared.
      */
+    /**
+     * Wars against OTHER COUNTRIES. Rebellions do not count.
+     *
+     * Both war gates counted every relation with war set, and putting down your
+     * own rebels is one of those: m_relations[parent][rebel].war is how a
+     * revolt is expressed. So a country with a single active rebellion read as
+     * "already fighting a war" and, with AI_MAX_CONCURRENT_WARS at 1, could
+     * never declare a foreign one at all. Rebellions run at 15 to 43 per
+     * thousand country-turns, so most countries were gated most of the time.
+     *
+     * That is not what either constant is for. AI_MAX_CONCURRENT_WARS says one
+     * war of one's own CHOOSING at a time, and its own comment says so; a
+     * revolt is not chosen, it is suffered.
+     */
+    int  foreignWarCount(int cid) const;
     bool findWarTarget(int cid, WarTarget& out, bool learnedChoice = false);
     /** Score the candidates and sample one. -1 to fall back to the rule. */
     int  chooseWarTarget(int cid, const std::vector<WarCandidate>& cands);
