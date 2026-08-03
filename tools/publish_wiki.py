@@ -117,8 +117,8 @@ def main(argv):
                 os.remove(os.path.join(tmp, existing))
 
         for name in pages:
-            body = unlink_md(open(os.path.join(OUT, name)).read())
-            with open(os.path.join(tmp, name), "w") as f:
+            body = unlink_md(open(os.path.join(OUT, name), encoding="utf-8").read())
+            with open(os.path.join(tmp, name), "w", encoding="utf-8", newline="\n") as f:
                 f.write(body)
 
         run(["git", "add", "-A"], cwd=tmp)

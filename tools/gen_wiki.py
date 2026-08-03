@@ -29,6 +29,14 @@ import os
 import re
 import sys
 
+# EVERY open() IN THIS FILE NAMES ITS ENCODING, and that is not decoration.
+# Python takes the platform's preferred encoding when none is given, which is
+# UTF-8 on macOS and Linux and cp1252 on Windows. These pages carry em dashes
+# and arrows, so on Windows the file read back decoded into different text from
+# the one just generated, --check called every generated page stale, and the
+# Windows CI job failed on every commit while the other four platforms passed.
+# The passthrough pages hid it: they are read with the same wrong codec they are
+# compared against, so they mangled identically and matched.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "wiki")
 
@@ -108,7 +116,7 @@ def wat_sig(e):
 
 
 def main(check=False):
-    abi = json.load(open(os.path.join(ROOT, "sdk", "abi.json")))
+    abi = json.load(open(os.path.join(ROOT, "sdk", "abi.json"), encoding="utf-8"))
     os.makedirs(OUT, exist_ok=True)
     pages = {}
 
@@ -357,7 +365,7 @@ mod that traps because of it is a bug in the mod.
         path = os.path.join(ROOT, src)
         if not os.path.exists(path):
             continue
-        body = open(path).read()
+        body = open(path, encoding="utf-8").read()
         # Wiki pages have no docs/ or sdk/ directory next to them.
         body = body.replace("](modding.md)", "](https://github.com/Pr1nted/Open-Doctrines/blob/main/docs/modding.md)")
         body = body.replace("](gearbox-troubleshooting.md", "](Troubleshooting.md")
@@ -412,7 +420,7 @@ mod that traps because of it is a bug in the mod.
         for name, body in pages.items():
             want = body if body.endswith("\n") else body + "\n"
             path = os.path.join(OUT, name)
-            have = open(path).read() if os.path.exists(path) else None
+            have = open(path, encoding="utf-8").read() if os.path.exists(path) else None
             if have != want:
                 stale.append(name + (" (missing)" if have is None else ""))
         if stale:
@@ -434,7 +442,7 @@ mod that traps because of it is a bug in the mod.
             if not name.endswith(".md"):
                 continue
             for target in re.findall(r"\]\((?!https?://|/|#)([^)\s#]+)",
-                                     open(os.path.join(OUT, name)).read()):
+                                     open(os.path.join(OUT, name), encoding="utf-8").read()):
                 if not os.path.exists(os.path.join(OUT, target)):
                     broken.append(f"{name} -> {target}")
         if broken:
@@ -447,7 +455,7 @@ mod that traps because of it is a bug in the mod.
         return 0
 
     for name, body in pages.items():
-        with open(os.path.join(OUT, name), "w") as f:
+        with open(os.path.join(OUT, name), "w", encoding="utf-8", newline="\n") as f:
             f.write(body if body.endswith("\n") else body + "\n")
         print(f"  {name}  ({len(body.splitlines())} lines)")
 
