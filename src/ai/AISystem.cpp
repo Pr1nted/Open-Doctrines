@@ -60,6 +60,7 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // rather than a fixed-width action layer -- the candidate list changes size
     // every turn.
     m_target = NeuralNet({FEATURE_COUNT + TARGET_FEATURES, 256, 128, 1}, 500);
+    m_diploValue = NeuralNet({FEATURE_COUNT, 160, 1}, 600);
     // An empty path is a scratch model used for merging peer files, not a
     // model anybody is training. It loads nothing, saves nothing, and should
     // say nothing.
@@ -3172,13 +3173,19 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
 
     std::vector<bool> valid(DIPLO_ACTIONS, true);
     float score;
+    float diploLogProb = 0.0f;
     int a = pickAction(m_diplo, feats, valid, score, /*graveAction=*/-1,
-                       bias.empty() ? nullptr : &bias);
+                       bias.empty() ? nullptr : &bias, &diploLogProb);
+    m_lastDiploLogProb = diploLogProb;
     // Record in the country's experience so the diplo net learns too
     auto it = m_pending.find(targetCid);
     if (it != m_pending.end() && !it->second.empty()) {
         it->second.back().action[MOD_COUNT] = a;
         it->second.back().acted[MOD_COUNT] = true;
+        // The probability the policy gave this answer, for PPO's ratio. Without
+        // it the ratio is measured against zero and every diplomatic sample
+        // looks infinitely off-policy.
+        it->second.back().logProb[MOD_COUNT] = m_lastDiploLogProb;
     }
     logDecision(targetCid, MOD_POLITICS, a, score,
                 std::string(a ? "ACCEPT " : "REJECT ") + action + " from " + sourceIso);
@@ -3264,6 +3271,11 @@ void AISystem::endTurn() {
             w.norm = std::clamp(norm, -3.0f, 3.0f);
             w.features = exp.features;
             w.cid = cid;
+            w.oldLogProb = exp.logProb[MOD_COUNT];
+            if (nextFeats) {
+                w.nextFeatures = *nextFeats;
+                w.bootDiscount = BOOTSTRAP_DISCOUNT;
+            }
             m_work.push_back(std::move(w));
         }
     };
@@ -3658,6 +3670,7 @@ void AISystem::endTurn() {
         m_q[m].flushBatch(LR_Q);
     }
     m_target.flushBatch(LR_TARGET);
+    m_diploValue.flushBatch(LR_VALUE);
     m_diplo.flushBatch(LR_DIPLO);
 
     // Reward trend feed for the trainer dashboard
@@ -3738,8 +3751,25 @@ void AISystem::runLearningWork() {
         for (size_t i = lo; i < hi; ++i) {
             WorkItem& w = m_work[i];
             if (w.module == MOD_COUNT) {
+                // The same learner the four modules get, for the same reasons.
+                // This head used to be trained on the raw normalised reward:
+                // no baseline, so maximum variance, and no bootstrap, so the
+                // war an answered call eventually wins was invisible to it.
+                float dTarget = w.norm;
+                if (w.bootDiscount > 0.0f && !w.nextFeatures.empty()) {
+                    m_diploValue.forwardInto(ws.diploValueNext, w.nextFeatures);
+                    dTarget += w.bootDiscount * ws.diploValueNext.acts.back()[0];
+                }
+                dTarget = std::clamp(dTarget, -6.0f, 6.0f);
+
+                m_diploValue.forwardInto(ws.diploValue, w.features);
+                const float dBase = ws.diploValue.acts.back()[0];
+                const float dAdv = std::clamp(dTarget - dBase, -3.0f, 3.0f);
+                m_diploValue.accumulateValueInto(ws.diploValue, dTarget);
+
                 m_diplo.forwardInto(ws.diplo, w.features);
-                m_diplo.accumulatePolicyInto(ws.diplo, w.action, w.norm);
+                m_diplo.accumulatePPOInto(ws.diplo, w.action, dAdv,
+                                          w.oldLogProb, PPO_CLIP, PPO_ENTROPY);
                 continue;
             }
             const int m = w.module;
@@ -3834,6 +3864,8 @@ void AISystem::runLearningWork() {
                 m_q[m].initScratch(ws.q[m]);
             }
             m_target.initScratch(ws.target);
+            m_diploValue.initScratch(ws.diploValue);
+            m_diploValue.initScratch(ws.diploValueNext);
             m_diplo.initScratch(ws.diplo);
             ws.ready = true;
         }
@@ -3868,6 +3900,7 @@ void AISystem::runLearningWork() {
             m_q[m].mergeScratch(m_scratch[t].q[m]);
         }
         m_target.mergeScratch(m_scratch[t].target);
+        m_diploValue.mergeScratch(m_scratch[t].diploValue);
         m_diplo.mergeScratch(m_scratch[t].diplo);
     }
 
@@ -3988,8 +4021,9 @@ void AISystem::saveModel() {
     // file on the net count alone, which is the correct failure: it would
     // otherwise read Q weights as if they were something else.
     // 4 = the war-target head rides along as well.
-    out.push_back(4);
-    out.push_back(MOD_COUNT * 3 + 2); // policy, value, Q, target, diplo
+    // 5 = the diplomacy value head rides along too.
+    out.push_back(5);
+    out.push_back(MOD_COUNT * 3 + 3); // policy, value, Q, target, diplo, diploValue
     for (int m = 0; m < MOD_COUNT; ++m) {
         std::vector<uint8_t> b; m_policy[m].serialize(b); appendBlob(out, b);
     }
@@ -4001,6 +4035,7 @@ void AISystem::saveModel() {
     }
     { std::vector<uint8_t> b; m_target.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_diplo.serialize(b); appendBlob(out, b); }
+    { std::vector<uint8_t> b; m_diploValue.serialize(b); appendBlob(out, b); }
     // Reward normalisation statistics.
     //
     // The whole AISystem is destroyed and rebuilt on every map rotation
@@ -4320,13 +4355,14 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion < 1 || fileVersion > 4) return false;
+    if (fileVersion < 1 || fileVersion > 5) return false;
     const int count = buf[5];
     // v1/v2 carry no Q heads. Those files are every hour of training done
     // before this existed, so they load and simply leave Q at its initial
     // weights -- which Q_WARMUP_UPDATES then keeps out of the way until it has
     // learned something.
-    const bool hasTarget = (count == MOD_COUNT * 3 + 2);
+    const bool hasDiploValue = (count == MOD_COUNT * 3 + 3);
+    const bool hasTarget = hasDiploValue || (count == MOD_COUNT * 3 + 2);
     const bool hasQ = hasTarget || (count == MOD_COUNT * 3 + 1);
     if (!hasQ && count != MOD_COUNT * 2 + 1) return false;
     size_t p = 6;
@@ -4348,6 +4384,7 @@ bool AISystem::loadModel() {
     // something from watching that rule work.
     if (hasTarget && !readBlob(m_target)) return false;
     if (!readBlob(m_diplo)) return false;
+    if (hasDiploValue && !readBlob(m_diploValue)) return false;
     if (fileVersion >= 2 && p + 4 <= buf.size()) {
         uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) | ((uint32_t)buf[p+3] << 24);
         p += 4;

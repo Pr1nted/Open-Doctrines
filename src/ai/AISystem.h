@@ -773,9 +773,29 @@ private:
      * for takeTurn to attach them to this turn's Experience. Set and consumed
      * within a single country's turn, so one slot is enough.
      */
+    /** log pi of the last diplomatic answer, handed to the Experience below. */
+    float m_lastDiploLogProb = 0.0f;
     std::vector<std::vector<float>> m_pendingTargetCand;
     int m_pendingTargetChosen = -1;
     NeuralNet m_diplo;
+    /**
+     * The baseline the diplomacy head never had.
+     *
+     * Every other module subtracts V(s) from its target; the diplomacy head was
+     * trained on the raw normalised reward, which is pure REINFORCE with no
+     * variance reduction at all -- and it decides the one thing in the game
+     * with the longest gap between cost and payoff. Answering a call to arms
+     * charges seven points of unrest on the spot; the war it wins pays out
+     * thirty turns later, outside a twelve-turn window it also could not see
+     * past, because it was the only head with no bootstrap either.
+     *
+     * Given that, refusing every call was the correct answer to the only
+     * reward it could perceive: a refusal costs one alliance, an acceptance
+     * costs unrest now and risks provinces, and the upside was invisible. It
+     * converged there over 183M updates, and the measured result was calls
+     * answered 0, refused 181.
+     */
+    NeuralNet m_diploValue;
     std::mt19937 m_rng{1337}; // fixed seed: identical state -> identical picks
     int m_turn = 0;
     int m_decisionsThisTurn = 0;
@@ -879,6 +899,8 @@ private:
         NeuralNet::Scratch q[MOD_COUNT];
         NeuralNet::Scratch target;
         NeuralNet::Scratch diplo;
+        NeuralNet::Scratch diploValue;
+        NeuralNet::Scratch diploValueNext;
         bool ready = false;
     };
     std::vector<WorkerScratch> m_scratch;
