@@ -1631,6 +1631,31 @@ private:
     static constexpr int REBELLION_COOLDOWN_TURNS = 40;
 
     /**
+     * Ceilings on rebellion, so a world cannot dissolve faster than anyone
+     * notices.
+     *
+     * There was no limit at all. A training run reached 24,030 living countries
+     * by turn 14 and slowed to fifty seconds a turn, and nothing anywhere said
+     * a word about it -- the cause was upstream (a compass sign), but the game
+     * had no opinion on twenty-four thousand countries and simply tried to
+     * simulate them. The rebel id band is 5,533 wide, so it had been wrapping
+     * and reusing ids long before that.
+     *
+     * These are not balance numbers. They are the point past which something
+     * has gone wrong somewhere else, chosen to sit far above any real game: a
+     * 1641-province map has never come near 400 simultaneous rebel states, and
+     * twelve new ones in a single turn is already a catastrophe.
+     */
+    static constexpr int MAX_LIVE_REBELS = 400;
+    static constexpr int MAX_NEW_REBELS_PER_TURN = 12;
+    /** Live rebel states, recounted once per turn; see processRebellions. */
+    int m_rebelCensus = 0;
+    int m_rebelCensusTurn = -1;
+    int m_rebelsSpawnedThisTurn = 0;
+    /** Says it once per session, not once per suppressed revolt. */
+    bool m_rebelCeilingWarned = false;
+
+    /**
      * Unrest added per turn a country spends bankrupt, before severity scaling.
      *
      * Sustained bankruptcy should reach WAR_WEARINESS_MAX in a handful of

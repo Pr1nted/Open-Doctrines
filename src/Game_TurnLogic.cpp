@@ -1613,6 +1613,18 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 
 // === processRebellions ===
 void Game::processRebellions(int countryId) {
+    // One census per turn, shared by every country processed in it. Counting
+    // per faction would walk the country table thousands of times on the very
+    // maps this exists to protect.
+    if (m_rebelCensusTurn != m_turnNumber) {
+        m_rebelCensusTurn = m_turnNumber;
+        m_rebelsSpawnedThisTurn = 0;
+        m_rebelCensus = 0;
+        for (auto& [cid, c] : m_countries.getAll()) {
+            (void)c;
+            if (cid >= REBEL_CID_MIN && cid < SPC_CID) m_rebelCensus++;
+        }
+    }
     if (countryId <= 0 || countryId == SPC_CID || countryId == UNC_CID || countryId == BLC_CID) return;
 
     // Breakaway states must not immediately re-fracture. They own low-alignment
@@ -1736,8 +1748,31 @@ void Game::processRebellions(int countryId) {
             }
         }
 
+        // THE CEILING. Past it the revolt is suppressed rather than simulated:
+        // the province still gets its cooldown below, so this does not become a
+        // province that tries to rise every single turn and is refused every
+        // single turn.
+        //
+        // Reaching either limit means something upstream is wrong -- unrest
+        // does not legitimately produce twelve new states in a turn -- so it
+        // says so once rather than failing silently, which is exactly how the
+        // 24,030-country run went unnoticed for fourteen turns.
+        if (m_rebelCensus + m_rebelsSpawnedThisTurn >= MAX_LIVE_REBELS ||
+            m_rebelsSpawnedThisTurn >= MAX_NEW_REBELS_PER_TURN) {
+            if (!m_rebelCeilingWarned) {
+                m_rebelCeilingWarned = true;
+                printf("[REBELLION] ceiling reached: %d live, %d new this turn. "
+                       "Further revolts are being suppressed -- something is "
+                       "driving unrest far beyond normal.\n",
+                       m_rebelCensus, m_rebelsSpawnedThisTurn);
+            }
+            for (int pid : faction) m_provinceRebellionCooldown[pid] = REBELLION_COOLDOWN_TURNS;
+            continue;
+        }
+
         int rebelCid = allocateRebelCid();
         createRebelCountry(rebelCid, countryId, faction);
+        m_rebelsSpawnedThisTurn++;
         m_rebellionsThisTurnByCid[countryId]++;
         // This province has now had its revolt. Whatever happens to it next --
         // the rebel holds it, the parent retakes it, a third party takes it --
@@ -3043,7 +3078,19 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         da.subjectIso = attackerIso;
         da.turnsRemaining = 1;
         m_pendingDiplomaticActions.push_back(da);
-        if (m_ai) m_ai->noteCallIssued(cidForIso(defenderIso));
+        // Counted against the ALLY BEING ASKED, once per ally, not against the
+        // defender doing the asking.
+        //
+        // It used to be the other way, and the readout was nonsense in two
+        // directions at once. One call goes to every ally, so a single
+        // "issued" could be followed by five answers -- and the stats are split
+        // by cohort, so a model country's call refused by a random ally landed
+        // in a different bucket entirely. Between them the eval panel printed
+        // "calls 1 answered 0 refused 5 (500% refused)".
+        //
+        // One row per question asked, in the same bucket as its answer, so
+        // answered + refused == issued and the percentage means what it says.
+        if (m_ai) m_ai->noteCallIssued(cidForIso(iso));
         printf("[WAR] %s calls its ally %s to arms against %s\n",
                defenderIso.c_str(), iso.c_str(), attackerIso.c_str());
     }
