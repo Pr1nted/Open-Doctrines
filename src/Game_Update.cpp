@@ -19,6 +19,79 @@
 #endif
 #include <ctime>
 
+// ────────────────────────────────────────────────────────────────────────────
+// Army move orders
+//
+// One rule, asked in three places: while aiming (to colour the arrow), when a
+// drag is released, and when the panel's Move button's pick is clicked. It was
+// written out twice already and the two copies had drifted apart in shape if
+// not yet in meaning; a third copy is how they start disagreeing about who a
+// player may march into.
+// ────────────────────────────────────────────────────────────────────────────
+
+bool Game::provincesAdjacent(int a, int b) const {
+    auto nIt = m_provinceNeighbors.find(a);
+    if (nIt == m_provinceNeighbors.end()) return false;
+    return std::find(nIt->second.begin(), nIt->second.end(), b) != nIt->second.end();
+}
+
+bool Game::canArmyMoveTo(int fromPid, int toPid) const {
+    if (fromPid <= 0 || toPid <= 0 || fromPid == toPid) return false;
+
+    // Adjacency first: everything else is a question about the destination's
+    // owner, and a province two steps away is not reachable however friendly.
+    if (!provincesAdjacent(fromPid, toPid)) return false;
+
+    // getAllProvinces() rather than getProvinceById(), which is non-const and
+    // would make this whole question non-const with it.
+    const auto& all = m_provinces.getAllProvinces();
+    auto dIt = all.find(toPid);
+    if (dIt == all.end()) return false;
+    const Province& dest = dIt->second;
+    if (dest.countryId == UNC_CID) return true;          // nobody's land
+    if (dest.countryId == m_playerCountryId) return true; // our own
+
+    // Somebody else's: only into a war we are in, or an ally who let us.
+    const Country* pc = m_countries.getCountry(m_playerCountryId);
+    const Country* dc = m_countries.getCountry(dest.countryId);
+    if (!pc || !dc) return false;
+    auto pr = m_relations.find(pc->isoA3);
+    if (pr == m_relations.end()) return false;
+    auto dr = pr->second.find(dc->isoA3);
+    if (dr == pr->second.end()) return false;
+    return dr->second.war || dr->second.alliance;
+}
+
+void Game::queueArmyMove(int fromPid, int toPid) {
+    // Giving the same order twice takes it back. That is what makes a
+    // mis-click recoverable without hunting for the order in a list.
+    for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ++it) {
+        if (it->fromProvince == fromPid && it->toProvince == toPid) {
+            m_pendingMoveOrders.erase(it);
+            return;
+        }
+    }
+
+    // Half of what has not already been promised elsewhere. Percentages from
+    // one province are shares of the same army, so a second order asking for
+    // 50% of the whole would move troops that the first one already took.
+    int sumOthers = 0;
+    for (const auto& om : m_pendingMoveOrders)
+        if (om.fromProvince == fromPid) sumOthers += om.pct;
+    int maxPct = 100 - sumOthers;
+    if (maxPct < 1) maxPct = 1;
+    int newPct = std::min(50, maxPct);
+
+    m_pendingMoveOrders.push_back({fromPid, toPid, newPct, m_playerCountryId});
+}
+
+void Game::cancelArmyMovesFrom(int fromPid) {
+    for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ) {
+        if (it->fromProvince == fromPid) it = m_pendingMoveOrders.erase(it);
+        else ++it;
+    }
+}
+
 void Game::handlePauseMenu() {
     if (isMouseOverConsole()) return;
     int count = MENU_COUNT;
@@ -36,8 +109,8 @@ void Game::handlePauseMenu() {
             { hovered = i; break; }
     }
 
-    if (IsKeyPressed(KEY_UP)) m_menuIndex = (m_menuIndex + count - 1) % count;
-    if (IsKeyPressed(KEY_DOWN)) m_menuIndex = (m_menuIndex + 1) % count;
+    if (IsKeyPressed(KEY_UP) || odPad::navUp()) m_menuIndex = (m_menuIndex + count - 1) % count;
+    if (IsKeyPressed(KEY_DOWN) || odPad::navDown()) m_menuIndex = (m_menuIndex + 1) % count;
 
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
@@ -144,6 +217,22 @@ void Game::update(float dt) {
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (m_editingValue) {
             m_editingValue = false;
+        } else if (!m_paused && (m_armyMovePickFrom > 0 || m_armyMoveDragActive)) {
+            // Escape backs out of the innermost thing first, and a half-given
+            // move order is the innermost thing there is.
+            //
+            // IT HAS TO BE DECIDED HERE. The army block that owns this state
+            // lives inside `if (!m_paused)` further down, so by the time it
+            // could look at Escape this handler has already toggled the pause
+            // menu and skipped it -- the key that says "never mind" would open
+            // a menu instead, and the Move button's own label promises
+            // otherwise.
+            m_armyMovePickFrom = -1;
+            m_armyMoveDragSource = -1;
+            m_armyMoveDragActive = false;
+            m_armyMoveDragBtnDown = false;
+            m_armyMoveDragHoverPid = -1;
+            m_armyMoveDragValidDest = false;
         } else if (m_paused && m_inSettings) {
             m_inSettings = false;
             m_settingsScroll = 0;
@@ -648,6 +737,12 @@ void Game::update(float dt) {
                 m_renderer->setBlockLeftPan(true);
             } else if (m_armyMovePctSliderFrom) {
                 m_renderer->setBlockLeftPan(true);
+            } else if (m_armyMovePickFrom > 0) {
+                // The armed Move button owns the next left click: it is the
+                // destination, not a new selection. Without this the click
+                // lands twice -- the order is given, and the panel that gave it
+                // is now describing the province the army was sent TO.
+                m_renderer->setBlockLeftPan(true);
             } else if (m_activeViewTab == 6 && IsKeyDown(m_config.keybinds[ACTION_BOX_SELECT])) {
                 m_renderer->setBlockLeftPan(true);
             } else {
@@ -711,41 +806,27 @@ void Game::update(float dt) {
                 m_renderer->screenToPixel(mp.x, mp.y, px, py);
                 const Province* hp = m_provinces.getProvince(px, py);
                 int hoverPid = hp ? hp->id : -1;
-                // Update hover province during drag (both while held AND on release frame)
-                if (m_armyMoveDragActive) {
-                    if (hoverPid == m_armyMoveDragSource || hoverPid <= 0) {
+
+                // Whichever way the order is being given, it comes from one
+                // province and the rest of this block does not care which way
+                // that was. The panel's Move button arms m_armyMovePickFrom;
+                // the keybind drag sets m_armyMoveDragSource.
+                const int moveSrc = m_armyMoveDragActive ? m_armyMoveDragSource
+                                                         : m_armyMovePickFrom;
+
+                // Update hover province while a move is being aimed -- during
+                // the drag (both while held AND on the release frame), and for
+                // as long as the button's pick stays armed.
+                if (moveSrc > 0) {
+                    if (hoverPid == moveSrc || hoverPid <= 0) {
                         m_armyMoveDragHoverPid = -1;
                         m_armyMoveDragValidDest = false;
                     } else {
-                        auto nIt = m_provinceNeighbors.find(m_armyMoveDragSource);
-                        bool isNb = (nIt != m_provinceNeighbors.end()) &&
-                            std::find(nIt->second.begin(), nIt->second.end(), hoverPid) != nIt->second.end();
-                        m_armyMoveDragHoverPid = isNb ? hoverPid : -1;
-                        // Validate destination
-                        if (isNb) {
-                            Province* dp = m_provinces.getProvinceById(hoverPid);
-                            m_armyMoveDragValidDest = false;
-                            if (dp) {
-                                if (dp->countryId == UNC_CID) {
-                                    m_armyMoveDragValidDest = true;
-                                } else if (dp->countryId == m_playerCountryId) {
-                                    m_armyMoveDragValidDest = true;
-                                } else {
-                                    const Country* pc = m_countries.getCountry(m_playerCountryId);
-                                    const Country* dc = m_countries.getCountry(dp->countryId);
-                                    if (pc && dc) {
-                                        auto pr = m_relations.find(pc->isoA3);
-                                        if (pr != m_relations.end()) {
-                                            auto dr = pr->second.find(dc->isoA3);
-                                            if (dr != pr->second.end())
-                                                m_armyMoveDragValidDest = dr->second.war || dr->second.alliance;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            m_armyMoveDragValidDest = false;
-                        }
+                        // Adjacency decides whether the province is even worth
+                        // pointing at; legality decides the colour once it is.
+                        m_armyMoveDragHoverPid =
+                            provincesAdjacent(moveSrc, hoverPid) ? hoverPid : -1;
+                        m_armyMoveDragValidDest = canArmyMoveTo(moveSrc, hoverPid);
                     }
                 }
                 // Press: start drag on province with player's own troops (allied troops move alongside)
@@ -768,70 +849,76 @@ void Game::update(float dt) {
                 // Release: create order, cancel, or abort
                 if (btnReleasedThis && m_armyMoveDragActive) {
                     if (m_armyMoveDragHoverPid > 0 && m_armyMoveDragHoverPid != m_armyMoveDragSource) {
-                        // Validate destination: same country, at war, or allied
-                        bool validDest = false;
-                        Province* destProv = m_provinces.getProvinceById(m_armyMoveDragHoverPid);
-                        if (destProv) {
-                            if (destProv->countryId == UNC_CID) {
-                                validDest = true;
-                            } else if (destProv->countryId == m_playerCountryId) {
-                                validDest = true;
-                            } else {
-                                const Country* pc = m_countries.getCountry(m_playerCountryId);
-                                const Country* dstC = m_countries.getCountry(destProv->countryId);
-                                if (pc && dstC) {
-                                    auto pr = m_relations.find(pc->isoA3);
-                                    if (pr != m_relations.end()) {
-                                        auto dr = pr->second.find(dstC->isoA3);
-                                        if (dr != pr->second.end())
-                                            if (dr->second.war || dr->second.alliance)
-                                                validDest = true;
-                                    }
-                                }
-                            }
-                        }
-                        if (validDest) {
-                            // Drag ended on a valid neighbor
-                            bool found = false;
-                            for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ++it) {
-                                if (it->fromProvince == m_armyMoveDragSource && it->toProvince == m_armyMoveDragHoverPid) {
-                                    m_pendingMoveOrders.erase(it);
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if (!found) {
-                                int sumOthers = 0;
-                                for (auto& om : m_pendingMoveOrders)
-                                    if (om.fromProvince == m_armyMoveDragSource)
-                                        sumOthers += om.pct;
-                                int newPct = 50;
-                                int maxPct = 100 - sumOthers;
-                                if (maxPct < 1) maxPct = 1;
-                                if (newPct > maxPct) newPct = maxPct;
-                                m_pendingMoveOrders.push_back({m_armyMoveDragSource, m_armyMoveDragHoverPid, newPct, m_playerCountryId});
-                            }
-                        }
+                        if (canArmyMoveTo(m_armyMoveDragSource, m_armyMoveDragHoverPid))
+                            queueArmyMove(m_armyMoveDragSource, m_armyMoveDragHoverPid);
                     } else if (hoverPid == m_armyMoveDragSource && hoverPid > 0) {
                         // Released on same province → cancel ALL orders from this province
-                        for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ) {
-                            if (it->fromProvince == m_armyMoveDragSource)
-                                it = m_pendingMoveOrders.erase(it);
-                            else ++it;
-                        }
+                        cancelArmyMovesFrom(m_armyMoveDragSource);
                     }
                     // Reset drag state
                     m_armyMoveDragSource = -1;
                     m_armyMoveDragActive = false;
                     m_armyMoveDragHoverPid = -1;
+                    // A drag supersedes an armed pick: the player answered the
+                    // button's question with the keybind instead.
+                    m_armyMovePickFrom = -1;
                 }
-                // ESC cancels drag
-                if (IsKeyPressed(KEY_ESCAPE) && m_armyMoveDragActive) {
-                    m_armyMoveDragSource = -1;
-                    m_armyMoveDragActive = false;
-                    m_armyMoveDragHoverPid = -1;
-                    m_armyMoveDragBtnDown = false;
+
+                // ─── The same order, given by clicking (the panel's Move button) ───
+                //
+                // Only a LEFT click completes this, and only while armed. The
+                // map's own click-to-select is suppressed for that one click
+                // (setBlockLeftPan below), because a click that both re-selected
+                // the province and issued an order would leave the panel
+                // describing somewhere the army was not sent from.
+                if (m_armyMovePickFrom > 0 && !m_armyMoveDragActive) {
+                    // The Move button is the only way out of this that does not
+                    // cost a click, and it is drawn in the army tab alone --
+                    // so leaving that tab ends the pick with it.
+                    const bool lostItsButton = (m_activeViewTab != 5) ||
+                                               !m_provinces.getProvinceById(m_armyMovePickFrom);
+                    if (lostItsButton) {
+                        m_armyMovePickFrom = -1;
+                    } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) &&
+                               !m_renderer->getWasDragged() &&
+                               !m_renderer->pointOverPanels(mp)) {
+                        // Not over the panels: a click on the army panel itself
+                        // -- including the Move button that armed this, and the
+                        // Disband beside it -- would otherwise be read as
+                        // choosing whatever province lies behind the panel.
+                        if (hoverPid > 0 && hoverPid != m_armyMovePickFrom) {
+                            if (canArmyMoveTo(m_armyMovePickFrom, hoverPid)) {
+                                queueArmyMove(m_armyMovePickFrom, hoverPid);
+                                Audio::get().playSfx("click_light");
+                            }
+                        }
+                        // Clicking the source province only backs out -- it does
+                        // NOT wipe that province's orders, which is what the same
+                        // gesture means when a drag ends there. The drag has no
+                        // other way to say "cancel them all"; this does, two
+                        // buttons away in the panel that armed it, and quietly
+                        // discarding orders because somebody clicked where they
+                        // started is not a thing to infer from a click meaning
+                        // "never mind".
+                        //
+                        // Disarmed either way. One click, one answer -- staying
+                        // armed after a click nobody could see the effect of is
+                        // how a mode traps somebody.
+                        m_armyMovePickFrom = -1;
+                        m_armyMoveDragHoverPid = -1;
+                        m_armyMoveDragValidDest = false;
+                    }
                 }
+
+                // Escape is handled at the top of update(), before the pause
+                // menu gets the key -- see the note there. Handling it here as
+                // well would be dead code: this block only runs while unpaused,
+                // which is exactly when that one has already consumed it.
+            } else {
+                // No orders are being taken this frame (a popup is up, or the
+                // turn is resolving). An armed pick must not survive that and
+                // fire into whatever is on screen when it comes back.
+                m_armyMovePickFrom = -1;
             }
 
             // ─── Artillery Wheel Menu (hold key over province) ───

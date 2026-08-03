@@ -518,6 +518,7 @@ set(GAME_SOURCES
     src/ScriptEngine.cpp
     src/Audio.cpp
     src/Config.cpp
+    src/Gamepad.cpp
     src/SaveManager.cpp
     src/GifEncoder.cpp
     src/Game_History.cpp
@@ -697,6 +698,15 @@ set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
 
 if(EMSCRIPTEN)
     set_target_properties(OpenDoctrines PROPERTIES SUFFIX ".html")
+
+    # shell.html IS an input to the link, and CMake cannot see that: --shell-file
+    # is just a string inside LINK_OPTIONS. Editing the shell -- which is where
+    # the touch handling, the gamepad-visible canvas and the failure message all
+    # live -- therefore relinked NOTHING, and the built page silently stayed on
+    # the previous version. Found by shipping a long-press handler and watching
+    # it not exist in build-web/index.html.
+    set_property(TARGET OpenDoctrines APPEND PROPERTY LINK_DEPENDS
+                 "${CMAKE_SOURCE_DIR}/shell.html")
 
     # Stage exactly what ships, and preload THAT.
     #

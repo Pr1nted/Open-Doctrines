@@ -2960,6 +2960,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_armyMoveDragActive = false;
     m_armyMoveDragBtnDown = false;
     m_armyMoveDragHoverPid = -1;
+    m_armyMovePickFrom = -1;
     m_armyMovePctSliderFrom = 0;
     m_armyMovePctSliderTo = 0;
     m_artillerySourceProvince = -1;

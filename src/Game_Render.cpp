@@ -1494,6 +1494,46 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 m_pendingDisbandOrders.push_back({selPid, 0});
             }
         }
+        // ─── Move Army ───
+        //
+        // The action this whole tab is named after, and until now the only one
+        // with no button: it could be given by holding the army-move key and
+        // dragging, which is discoverable only by reading the keybinds. Players
+        // concluded armies could not be moved.
+        //
+        // Clicking it arms the province; the next click on the map is the
+        // destination. The label carries the keybind too, so the faster way is
+        // learned from the slower one rather than instead of it.
+        {
+            const bool armed = (m_armyMovePickFrom == selPid);
+            const bool canMove = isOwnProv && totalSoldiers > 0 &&
+                                 m_turnState == TURN_NORMAL;
+            const int moveBtnY = btnStartY + 2 * (btnH + btnGap);
+
+            // keyName() covers mouse buttons as well as keys, so a player who
+            // rebound this reads their own binding here rather than the
+            // default somebody wrote into a string once.
+            const char* bind = keyName(m_config.keybinds[ACTION_ARMY_MOVE]);
+            const char* label =
+                armed ? "Click a neighbouring province  (Esc to cancel)"
+                      : TextFormat("Move Army  (or drag with %s)", bind);
+
+            Color mBg = armed    ? Color{20, 50, 80, 235}
+                      : canMove  ? Color{20, 45, 70, 220}
+                                 : Color{20, 20, 25, 200};
+            Color mBd = armed    ? Color{120, 200, 255, 230}
+                      : canMove  ? Color{70, 140, 200, 200}
+                                 : Color{40, 40, 50, 150};
+
+            if (drawActBtn(panelX + pad, moveBtnY, btnW * 2 + btnGap, btnH,
+                           label, !canMove, mBg, mBd) && canMove) {
+                // A second press disarms: the button that started this is the
+                // obvious place to look for the way out of it.
+                m_armyMovePickFrom = armed ? -1 : selPid;
+                if (!armed) m_armyMoveDragHoverPid = -1;
+            }
+        }
+
         // Cancel All Orders button (visible when this province has outgoing orders)
         {
             int moveCount = 0, artyCount = 0;
@@ -1505,10 +1545,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 if (drawActBtn(panelX + pad + btnW + btnGap, coY, btnW, btnH,
                     TextFormat("Cancel Orders (%d)", orderCount), false,
                     Color{60, 30, 20, 220}, Color{180, 80, 40, 200})) {
-                    for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ) {
-                        if (it->fromProvince == selPid) it = m_pendingMoveOrders.erase(it);
-                        else ++it;
-                    }
+                    cancelArmyMovesFrom(selPid);
                     static const struct { const char* id; float cost; } ARTY_CANCEL_COST[] = {
                         {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
                         {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
@@ -3280,9 +3317,14 @@ void Game::drawInner() {
                 m_armyMovePctSliderFrom = 0;
                 m_armyMovePctSliderTo = 0;
             }
-            // Draw drag line + hint during active right-click drag
-            if (m_armyMoveDragActive && m_armyMoveDragSource > 0) {
-                auto srcIt = m_provinceCenters.find(m_armyMoveDragSource);
+            // Draw the aiming line + hint, for a drag in progress OR for a
+            // province the panel's Move button armed. Both are the player
+            // deciding where an army goes and both want the same picture; only
+            // the sentence differs, because only one of them ends on a release.
+            const int aimSrc = m_armyMoveDragActive ? m_armyMoveDragSource
+                                                    : m_armyMovePickFrom;
+            if (aimSrc > 0) {
+                auto srcIt = m_provinceCenters.find(aimSrc);
                 if (srcIt != m_provinceCenters.end()) {
                     Vector2 src = worldToScreen(srcIt->second);
                     Vector2 mse = getMouse();
@@ -3297,7 +3339,9 @@ void Game::drawInner() {
                         }
                     } else {
                         DrawLineEx(src, mse, arrowSz * 0.5f, Color{100, 200, 255, 120});
-                        const char* hint = "Drag to neighbor province";
+                        const char* hint = m_armyMoveDragActive
+                            ? "Drag to neighbor province"
+                            : "Click a neighbouring province";
                         int hf = 12;
                         int htw = MeasureText(hint, hf);
                         DrawText(hint, (int)(mse.x - htw * 0.5f), (int)(mse.y - 20), hf, ColorAlpha(WHITE, 0.6f));

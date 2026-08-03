@@ -1,23 +1,207 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" type="image/png" href="icon.png">
 <style>
-  body{margin:0;background:#000;overflow:hidden}
-  canvas{display:block;width:100vw;height:100vh}
+  body{margin:0;background:#050813;overflow:hidden}
+  /* touch-action:none stops the browser claiming drags for scroll and pinch
+     for page zoom. Without it a finger on the map pans the PAGE, and the game
+     never sees the gesture at all. */
+  canvas{display:block;width:100vw;height:100vh;touch-action:none}
+  #od_fail{position:fixed;inset:0;display:none;place-items:center;padding:8vw;
+           font:16px/1.5 system-ui,sans-serif;color:#c8ccd8;background:#050813}
+  #od_fail div{max-width:34em}
+  #od_fail h1{color:#ffd700;font-size:1.25em;margin:0 0 .6em}
+  #od_fail code{color:#9aa4bb;font-size:.85em;word-break:break-word}
 </style>
 </head><body>
+
+<!-- WHY THIS EXISTS: a failure here used to be a black page.
+     If the runtime aborts -- and on a phone it sometimes does, most often
+     because the browser will not hand out the heap the build asks for -- the
+     canvas simply never draws and the visitor is looking at nothing, with no
+     way to tell a broken build from a slow download. This says what happened
+     and shows the message, which is also the only way anyone will find out
+     what the real cause is on a device we do not have. -->
+<div id="od_fail"><div>
+  <h1>OpenDoctrines could not start in this browser.</h1>
+  <p id="od_fail_why">Something went wrong while loading.</p>
+  <p>The desktop builds are on the game's page, and they do not have this
+     limitation. If you are on a phone, note the browser build wants a mouse
+     and a fair amount of memory.</p>
+  <p><code id="od_fail_detail"></code></p>
+</div></div>
+
 <script>
 document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+function odFail(why, detail) {
+  var box = document.getElementById('od_fail');
+  if (!box || box.style.display === 'grid') return;   // first failure wins
+  document.getElementById('od_fail_why').textContent = why;
+  document.getElementById('od_fail_detail').textContent = detail || '';
+  box.style.display = 'grid';
+}
+
 var Module = {
   locateFile: function(s) { return s; },
   preRun: [],
   postRun: [],
+  onAbort: function(what) {
+    odFail('The game stopped while starting up.', String(what));
+  },
+  printErr: function(text) {
+    // Emscripten reports a refused heap through stderr before it aborts, so
+    // this is where the memory case actually announces itself.
+    if (/memory|allocat|OOM|Aborted/i.test(text)) {
+      odFail('This browser would not give the game enough memory.', text);
+    }
+    console.error(text);
+  },
   canvas: (function() {
     var c = document.getElementById('canvas');
     if (!c) { c = document.createElement('canvas'); c.id = 'canvas'; document.body.appendChild(c); }
+
+    // A lost GL context is the other way this ends up black: the page is alive,
+    // the module is running, and nothing is ever drawn again.
+    c.addEventListener('webglcontextlost', function(e) {
+      e.preventDefault();
+      odFail('The browser dropped the graphics context.',
+             'This usually means the tab was backgrounded for a long time, or the device ran short of memory. Reloading the page normally fixes it.');
+    }, false);
     return c;
   })()
 };
+
+window.addEventListener('error', function(e) {
+  if (e && e.message && /WebAssembly|wasm|memory/i.test(e.message)) {
+    odFail('This browser could not load the game.', e.message);
+  }
+});
+
+// ---------------------------------------------------------------- touch ----
+//
+// The game is built entirely on raylib's MOUSE input: 230 call sites across the
+// UI ask IsMouseButtonPressed/Released/Down. raylib's web backend does receive
+// touch events -- EmscriptenTouchCallback in rcore_web.c -- but all it does
+// with them is fill CORE.Input.Touch and copy a single finger's position into
+// the mouse POSITION. It never touches currentButtonState, so on a phone the
+// cursor follows your finger and nothing can ever be pressed. Tested: a tap on
+// a menu item does nothing at all.
+//
+// Rather than rewrite 230 call sites, the fingers are translated into mouse
+// events here, before raylib sees them. The game then behaves exactly as it
+// does under a mouse, because as far as it knows there is one.
+(function () {
+  var cv = Module.canvas;
+  var primary = null;          // the finger currently acting as the cursor
+  var pinchStart = 0;          // distance between two fingers when a pinch began
+  var holdTimer = null;        // long-press watchdog
+  var button = 0;              // which mouse button this finger is standing in for
+  var startPt = null;          // where it went down, to tell a hold from a drag
+
+  // LONG PRESS IS THE RIGHT BUTTON, because the game's most important gesture
+  // needs one. An army moves by HOLDING the army-move button (right mouse by
+  // default) on a province and dragging to a neighbour; artillery and ship
+  // orders work the same way. A finger that could only ever be the left button
+  // could press menus and move sliders and never give an order.
+  //
+  // 380ms and 12px: long enough not to fire on a tap, short enough that nobody
+  // wonders whether it is working, and cancelled by movement so a map drag stays
+  // a map drag.
+  var HOLD_MS = 380, HOLD_SLOP = 12;
+
+  function send(type, x, y, buttons, btn) {
+    cv.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y,
+      button: btn || 0, buttons: buttons
+    }));
+  }
+
+  function dist(a, b) {
+    var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  cv.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      primary = e.touches[0].identifier;
+      button = 0;
+      startPt = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+      // Position first, press second, and a frame apart. The game reads input
+      // once per frame; a move and a press delivered in the same instant can be
+      // seen as a press at wherever the cursor happened to be last.
+      send('mousemove', startPt.x, startPt.y, 0);
+      requestAnimationFrame(function () {
+        if (primary !== null) send('mousedown', startPt.x, startPt.y, 1, 0);
+      });
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(function () {
+        if (primary === null || button !== 0) return;
+        // Let go of the left button and take hold of the right one, in place.
+        send('mouseup', startPt.x, startPt.y, 0, 0);
+        button = 2;
+        send('mousedown', startPt.x, startPt.y, 2, 2);
+      }, HOLD_MS);
+    } else if (e.touches.length === 2) {
+      // A second finger means pinch-zoom, not a drag: let go of the press so
+      // the map does not think it is being dragged while it scales.
+      if (primary !== null) { send('mouseup', e.touches[0].clientX, e.touches[0].clientY, 0); primary = null; }
+      pinchStart = dist(e.touches[0], e.touches[1]);
+    }
+  }, { passive: false });
+
+  cv.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (e.touches.length === 1 && primary !== null) {
+      var p = e.touches[0];
+      if (startPt && button === 0 &&
+          Math.abs(p.clientX - startPt.x) + Math.abs(p.clientY - startPt.y) > HOLD_SLOP) {
+        clearTimeout(holdTimer);       // moved: this is a drag, not a hold
+      }
+      send('mousemove', p.clientX, p.clientY, button === 2 ? 2 : 1);
+    } else if (e.touches.length === 2) {
+      var d = dist(e.touches[0], e.touches[1]);
+      if (pinchStart > 0) {
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        // The map zooms on the wheel, so a pinch becomes wheel notches at the
+        // midpoint between the fingers -- which is where a person expects the
+        // zoom to be centred.
+        var step = (d - pinchStart) / 40;
+        if (Math.abs(step) >= 1) {
+          cv.dispatchEvent(new WheelEvent('wheel', {
+            bubbles: true, cancelable: true, clientX: mx, clientY: my,
+            deltaY: -step * 100, deltaMode: 0
+          }));
+          pinchStart = d;
+        }
+      }
+    }
+  }, { passive: false });
+
+  function release(e) {
+    e.preventDefault();
+    clearTimeout(holdTimer);
+    if (primary !== null) {
+      var t = (e.changedTouches && e.changedTouches[0]) || { clientX: 0, clientY: 0 };
+      // One frame after the last move, for the same reason as the press: the
+      // game must see the button down for at least one frame or the click
+      // never happened.
+      var b = button;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { send('mouseup', t.clientX, t.clientY, 0, b); });
+      });
+      primary = null;
+      button = 0;
+    }
+    if (e.touches.length < 2) pinchStart = 0;
+  }
+
+  cv.addEventListener('touchend', release, { passive: false });
+  cv.addEventListener('touchcancel', release, { passive: false });
+})();
 </script>
 {{{ SCRIPT }}}
 </body></html>

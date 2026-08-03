@@ -1,5 +1,6 @@
 #pragma once
 #include "GameStructs.h"
+#include "Gamepad.h"
 #include "map/LandSeaMap.h"
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
@@ -59,6 +60,7 @@ public:
      * and writing it into config.json would cap the next ordinary game too.
      */
     void setSessionResourceLimit(float budget);
+
 
     // Headless AI self-play training (`--train-ai`): generate a procedural
     // map, play N turns with every country AI-driven, then rotate to a fresh
@@ -849,7 +851,18 @@ public:
     void drawWorldBrowser();
     void updateWorldBrowser();
 
-    Vector2 getMouse() const { return { GetMousePosition().x * m_dpiScale, GetMousePosition().y * m_dpiScale }; }
+    /**
+     * Where the pointer is, whoever is holding it.
+     *
+     * The single place the game asks -- which is why the controller's virtual
+     * cursor is injected here rather than in nineteen screens. odPad::active()
+     * is false the moment a real mouse moves, so a desktop player never notices
+     * this exists.
+     */
+    Vector2 getMouse() const {
+        if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
+        return { GetMousePosition().x * m_dpiScale, GetMousePosition().y * m_dpiScale };
+    }
 
     LandSeaMap m_landSea;
     ProvinceMap m_provinces;
@@ -1793,6 +1806,40 @@ private:
     bool m_armyMoveDragBtnDown = false; // button currently held (tracks press/release for keyboard keys)
     int m_armyMoveDragHoverPid = -1;   // province under cursor during drag
     bool m_armyMoveDragValidDest = false; // whether hover destination is valid for movement
+
+    /**
+     * Province armed by the army panel's Move button (-1 = not armed).
+     *
+     * The same order, reached by clicking instead of dragging. Dragging with a
+     * key nobody was told about was the ONLY way to move an army: the panel
+     * offered Recruit, Disband and Cancel Orders, so the one action the tab
+     * exists for was the one with no button. A player who never found the
+     * keybind concluded armies could not be moved at all.
+     *
+     * Armed, not modal: it survives exactly one click. That click is either the
+     * destination or, anywhere else, thinking better of it. Escape, a second
+     * press of the button and leaving the tab all back out too. Clicking the
+     * source province only backs out -- unlike ending a DRAG there, it does not
+     * wipe that province's orders; the panel has a button that says so.
+     */
+    int m_armyMovePickFrom = -1;
+
+    /** Whether two provinces share a border, per the adjacency graph. */
+    bool provincesAdjacent(int a, int b) const;
+
+    /** Whether `to` is somewhere `from`'s army may legally be sent. */
+    bool canArmyMoveTo(int fromPid, int toPid) const;
+
+    /**
+     * Add the move order, or remove it if that exact one already exists.
+     *
+     * Splits what is left rather than what there is: several orders may leave
+     * one province, and their percentages are of the same army.
+     */
+    void queueArmyMove(int fromPid, int toPid);
+
+    /** Take back every move order leaving this province. */
+    void cancelArmyMovesFrom(int fromPid);
     int m_armyMovePctSliderFrom = 0;  // from province of order whose slider is being dragged
     int m_armyMovePctSliderTo = 0;      // to province of order whose slider is being dragged
 

@@ -85,6 +85,20 @@ public:
     void setSkipClickRect(Rectangle r) { m_skipClickRect = r; }
     void setProvincePanelRect(Rectangle r) { m_provincePanelRect = r; }
     const Rectangle& getProvincePanelRect() const { return m_provincePanelRect; }
+
+    /**
+     * Whether a point is over UI that eats map clicks rather than the map.
+     *
+     * The rule this class already applies to its own click-to-select, asked
+     * out loud so callers who interpret a click themselves apply the SAME one.
+     * A caller that forgets it reads a click on the army panel as a click on
+     * whatever province happens to lie behind the panel.
+     */
+    bool pointOverPanels(Vector2 p) const {
+        return (m_bottomPanelRect.height   > 0 && CheckCollisionPointRec(p, m_bottomPanelRect)) ||
+               (m_skipClickRect.height     > 0 && CheckCollisionPointRec(p, m_skipClickRect)) ||
+               (m_provincePanelRect.height > 0 && CheckCollisionPointRec(p, m_provincePanelRect));
+    }
     void setShowCountryNames(bool on) { m_showCountryNames = on; }
     void setCountryLabels(const std::vector<struct CountryLabel>* labels) { m_countryLabels = labels; }
     void setFallbackFont(Font font) { m_fallbackFont = font; }

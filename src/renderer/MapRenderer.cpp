@@ -707,9 +707,7 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     }
 
     // Click to select province (skip if clicking bottom panel or province info panel)
-    bool onPanel = (m_bottomPanelRect.height > 0 && CheckCollisionPointRec(getMouse(), m_bottomPanelRect)) ||
-                   (m_skipClickRect.height > 0 && CheckCollisionPointRec(getMouse(), m_skipClickRect)) ||
-                   (m_provincePanelRect.height > 0 && CheckCollisionPointRec(getMouse(), m_provincePanelRect));
+    bool onPanel = pointOverPanels(getMouse());
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_wasDragged && !m_blockLeftPan && !onPanel) {
         if (prov) {
             int pid = prov->id;

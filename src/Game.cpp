@@ -769,6 +769,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // are safe to remove now, because nothing is running from them.
     GameUpdates::cleanUpAfterUpdate();
     m_config.load(m_configPath);
+    // The pad presses actions, so it needs to know what they are bound to.
+    odPad::setBindings(m_config.keybinds, ACTION_COUNT);
 
     // Mods are scanned here but never started: instantiation only ever happens
     // from the mod menu (docs/modding.md, "Lifecycle rules").
@@ -1349,6 +1351,12 @@ void Game::drawDebugOverlay() {
 void Game::run() {
     while (m_running && !WindowShouldClose()) {
         float dt = GetFrameTime();
+
+        // Before anything reads input. The pad's virtual cursor and its
+        // synthetic buttons are what getMouse() and the shims in
+        // GameInternals.h hand to every screen, so they have to be current for
+        // this frame before the first screen asks.
+        odPad::update(dt, m_screenW, m_screenH);
 
         // Above the popup early-out below: the music stream has to be fed on
         // every frame, and a popup is exactly when it must not stutter.

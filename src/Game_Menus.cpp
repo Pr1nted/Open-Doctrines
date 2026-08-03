@@ -1071,8 +1071,12 @@ void Game::updateMainMenu() {
 
     // ── Background scrolling (moved to updateMenuBackground, called from run()) ──
 
-    if (IsKeyPressed(KEY_UP)) { m_menuIndex = (m_menuIndex + count - 1) % count; Audio::get().playSfx("hover"); }
-    if (IsKeyPressed(KEY_DOWN)) { m_menuIndex = (m_menuIndex + 1) % count; Audio::get().playSfx("hover"); }
+    // The d-pad walks the list the arrow keys already walk -- the menu half of
+    // the hybrid scheme. The stick is left out on purpose: it drives the
+    // cursor, and a stick that moved a selection AND a pointer would fight
+    // itself on a screen that has both.
+    if (IsKeyPressed(KEY_UP) || odPad::navUp()) { m_menuIndex = (m_menuIndex + count - 1) % count; Audio::get().playSfx("hover"); }
+    if (IsKeyPressed(KEY_DOWN) || odPad::navDown()) { m_menuIndex = (m_menuIndex + 1) % count; Audio::get().playSfx("hover"); }
     if constexpr (kCanQuitToDesktop) {
         if (IsKeyPressed(KEY_ESCAPE)) { m_running = false; return; }
     }
@@ -1097,7 +1101,7 @@ void Game::updateMainMenu() {
         m_lastMenuHover = hovered;
     }
 
-    bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
+    bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || odPad::navActivate();
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
         m_menuIndex = hovered;
         activate = true;
