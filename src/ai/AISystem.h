@@ -859,6 +859,30 @@ private:
     static constexpr float WAR_END_REWARD = 0.5f;
 
     /**
+     * What running out of money costs the module that spent it.
+     *
+     * Insolvency was already charged -- 0.5 shared and 1.2 to the economy head
+     * -- and the model was still bankrupt on 29.7 country-turns per thousand
+     * against a random control's 22.4. Worse than a coin flip at keeping its
+     * books, while beating it at almost everything else.
+     *
+     * The charge was aimed at the wrong module. Expenses are army (recruited by
+     * WAR), navy (built by NAVY), doctrines and minority settlements (enacted by
+     * POLITICS), research and pacification (ECONOMY). Economy was paying 1.2 of
+     * the 1.7 total for spending decided almost entirely elsewhere, and it
+     * responded by cutting the only things it controls -- which is exactly what
+     * the bankruptcy log shows, minority cuts and scrapped ships, while the
+     * payroll that caused the shortfall carried on.
+     *
+     * Now split by who spent it: each module is charged in proportion to its
+     * own share of the bill. Same total pressure, aimed at the head that can
+     * actually act on it. This is the same misattribution the research fix
+     * corrected, one level up -- a module cannot learn from a cost it did not
+     * cause.
+     */
+    static constexpr float SOLVENCY_WEIGHT = 1.5f;
+
+    /**
      * Turns a decision waits for its reward, overridable with OD_N_STEP.
      *
      * This is the bias/variance dial, and it has been a single hardcoded point

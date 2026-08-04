@@ -3721,9 +3721,16 @@ void AISystem::endTurn() {
         }
 
         float dNetNow = 0.0f;
+        // Who the bill belongs to, for the solvency charge below. Shares rather
+        // than absolutes, so the split works at any scale of economy.
+        float shareArmy = 0.0f, shareNavy = 0.0f, sharePolitics = 0.0f;
         if (!dead) {
             const CountryIncomeSnapshot ci = g.computeCountryIncome(cid);
             dNetNow = ci.net + ci.researchCost;
+            const float billed = std::max(1.0f, ci.expenses);
+            shareArmy     = ci.armyExpenses / billed;
+            shareNavy     = ci.navyExpenses / billed;
+            sharePolitics = (ci.policyCosts + ci.minorityCosts) / billed;
         }
 
         // Filled lazily below, and only for countries that actually mature a
@@ -3891,7 +3898,17 @@ void AISystem::endTurn() {
                                       // particular. Growing income is what it is
                                       // paid for; an empty treasury is what
                                       // happens when it never stops spending.
-                                      - 1.2f * broke
+                                      // Reduced from 1.2: the army, navy and
+                                      // political shares of the bill are now
+                                      // charged to the heads that signed for
+                                      // them. What is left here is research and
+                                      // pacification -- this module's own
+                                      // discretionary spending -- plus its
+                                      // standing responsibility for the budget.
+                                      - SOLVENCY_WEIGHT * broke *
+                                            std::max(0.35f, 1.0f - shareArmy
+                                                                 - shareNavy
+                                                                 - sharePolitics)
                                       + 1.2f * std::tanh(dNet / 15.0f)
                                       + 1.0f * std::tanh(dInd / 3.0f)
                                       + 0.8f * std::tanh(dResearch / 2.0f)
@@ -3926,6 +3943,10 @@ void AISystem::endTurn() {
 
                 rewards[MOD_POLITICS] = global
                                       - 2.5f * std::tanh(rebels / 2.0f)
+                                      // Doctrines and minority settlements are
+                                      // this module's spending; see
+                                      // SOLVENCY_WEIGHT.
+                                      - SOLVENCY_WEIGHT * broke * sharePolitics
                                       + 0.5f * std::tanh((float)now.coBelligerents / 2.0f)
                                       // PACTS, RAISED FROM 0.4. Measured: the
                                       // model proposed 7.50 per thousand
@@ -4064,6 +4085,14 @@ void AISystem::endTurn() {
                                       // module owns -- it is the one holding
                                       // the ceasefire action. See peaceTerm.
                                       + peaceTerm
+                                      // THE PAYROLL IT SIGNED FOR. See
+                                      // SOLVENCY_WEIGHT: an army is this
+                                      // module's decision and its upkeep is
+                                      // this module's bill, so a country that
+                                      // recruited itself broke is charged here
+                                      // rather than at the economy head, which
+                                      // cannot disband anything.
+                                      - SOLVENCY_WEIGHT * broke * shareArmy
                                       + aggression;
                 // The navy is scored on what it delivers ashore and on what it
                 // costs. Ship COUNT used to be rewarded outright, which paid
@@ -4084,7 +4113,14 @@ void AISystem::endTurn() {
                                       // the invasion only when it happens to
                                       // conclude quickly — and charged for the
                                       // army and the hulls every other time.
-                                      + 1.0f * std::tanh((float)exp.landings / 1.5f);
+                                      + 1.0f * std::tanh((float)exp.landings / 1.5f)
+                                      // Hulls are the most expensive standing
+                                      // commitment in the game (a carrier is 25
+                                      // a turn against an army's 0.01 per ten
+                                      // thousand men), and this module is the
+                                      // only one that can scrap one. See
+                                      // SOLVENCY_WEIGHT.
+                                      - SOLVENCY_WEIGHT * broke * shareNavy;
 
                 // Diplomacy answers requests, so it is judged on what its answer
                 // did to this country — and, crucially, on BOTH answers.
