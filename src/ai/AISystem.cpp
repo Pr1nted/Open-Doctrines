@@ -3861,7 +3861,23 @@ void AISystem::endTurn() {
                 // Not `exp.atWar`: that is read before the war module acts, so
                 // the window a country declares war in looks peaceful and the
                 // most decisive action available would be charged for idleness.
+                // RAISING TROOPS IS NOT DOING SOMETHING WITH THEM.
+                //
+                // This used to exempt any country whose army moved by 500 men,
+                // which is a loophole the size of the whole module: recruit,
+                // never fight, never pay the idleness charge. The model found
+                // it and settled there -- zero wars declared per thousand
+                // country-turns against a random control's 2.73, while
+                // out-recruiting everyone and winning only the wars it was
+                // dragged into.
+                //
+                // Mobilising still exempts you when there is something to
+                // mobilise AGAINST: exp.threatened is the same test armyTerm
+                // uses to decide whether troops are an asset or a standing
+                // bill. At peace, unthreatened, gaining no ground, an army that
+                // merely grows is a country doing nothing expensively.
                 const bool warIdle = !exp.warInWindow && dProv == 0.0f
+                                  && exp.threatened == 0
                                   && std::fabs(dArmy) < 500.0f;
 
                 float global = 0.6f * std::tanh(dProv / 3.0f)
@@ -3911,7 +3927,17 @@ void AISystem::endTurn() {
                 rewards[MOD_POLITICS] = global
                                       - 2.5f * std::tanh(rebels / 2.0f)
                                       + 0.5f * std::tanh((float)now.coBelligerents / 2.0f)
-                                      + 0.4f * std::tanh((float)now.pacts / 3.0f)
+                                      // PACTS, RAISED FROM 0.4. Measured: the
+                                      // model proposed 7.50 per thousand
+                                      // country-turns against a random
+                                      // control's 49.82 -- it had decided
+                                      // friends were not worth the overture
+                                      // budget, and it was reading the reward
+                                      // correctly. An ally is what makes a call
+                                      // to arms possible at all, and with
+                                      // almost none the diplomacy head was
+                                      // never asked a question in a whole game.
+                                      + 1.0f * std::tanh((float)now.pacts / 3.0f)
                                       + 0.5f * std::tanh(dAlign / 10.0f)
                                       // ...and the LEVEL, not only the change.
                                       // Alignment is clamped at zero, so a
@@ -3985,8 +4011,15 @@ void AISystem::endTurn() {
                 // peace.
                 const bool warEnded =
                     exp.atWar && !atWarNow && exp.warTurns >= nStep();
+                // Scaled by ground, but FLOORED. The old shape paid
+                // 0.5 x (1 + tanh(dProv/3)), so ending a war one is losing --
+                // exactly when peace is the right move and the most human thing
+                // an AI can do -- paid least of all. A country bleeding
+                // provinces should be pulled towards the exit, not away from
+                // it. Winning still pays more; losing now pays something.
                 const float peaceTerm =
-                    warEnded ? WAR_END_REWARD * (1.0f + std::tanh(dProv / 3.0f))
+                    warEnded ? WAR_END_REWARD *
+                                   std::max(0.6f, 1.0f + std::tanh(dProv / 3.0f))
                              : 0.0f;
 
                 const float phoneyWar =
@@ -4072,7 +4105,7 @@ void AISystem::endTurn() {
                 const float pactsLost = (float)std::max(0, exp.pacts - now.pacts);
                 diploReward = global
                             + 0.6f * std::tanh((float)now.coBelligerents / 2.0f)
-                            + 0.3f * std::tanh((float)now.pacts / 3.0f)
+                            + 0.6f * std::tanh((float)now.pacts / 3.0f)
                             - 0.8f * std::tanh(pactsLost)
                             - 0.6f * std::tanh(std::max(0.0f, dWeary) / 5.0f)
                             - 1.2f * std::tanh(std::max(0.0f, dLost) / 2.0f);
