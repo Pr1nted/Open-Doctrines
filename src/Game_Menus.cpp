@@ -1707,7 +1707,7 @@ void Game::updateCountrySelect() {
     // Update renderer for fly-to animation
     m_renderer->update(GetFrameTime());
 
-    Vector2 mouse = GetMousePosition();
+    Vector2 mouse = getMouse();
     int mx = (int)mouse.x;
     int my = (int)mouse.y;
 

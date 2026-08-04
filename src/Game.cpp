@@ -225,6 +225,24 @@ const Setting KEYBINDS_ITEMS[] = {
     {ACTION_NAMES[16], false, 16},
     {ACTION_NAMES[17], false, 17},
     {ACTION_NAMES[18], false, 18},
+    // The controller, which is READ-ONLY and says so by having no key to bind.
+    // Its buttons are not rebindable because they are not bindings: the pad
+    // presses the ACTION above, and whichever key that action carries moves with
+    // it (see Gamepad.h). What this section answers is the question a player
+    // with a pad in their hands actually has -- which button does what -- and
+    // whether the game can see the pad at all, which until now nothing said.
+    {"-- Controller --", false, -1},
+    {"Controller", false, -1},
+    {"Pointer", false, -1},
+    {"Click, select", false, -1},
+    {"Cancel, back", false, -1},
+    {"Menus", false, -1},
+    {"Zoom, scroll", false, -1},
+    {"Army move (hold)", false, -1},
+    {"Artillery wheel (hold)", false, -1},
+    {"Ship move (hold)", false, -1},
+    {"Ship artillery wheel (hold)", false, -1},
+    {"Box select (hold)", false, -1},
     {"Back", false, -1},
 };
 const int KEYBINDS_COUNT = sizeof(KEYBINDS_ITEMS) / sizeof(KEYBINDS_ITEMS[0]);
@@ -418,6 +436,40 @@ int nearestIndex(float val, float* vals, int count) {
     return best;
 }
 
+// What the Controller section shows on the right of each of its rows.
+//
+// The four action buttons are asked for rather than written down here, so that
+// moving one in PAD_ACTIONS moves the screen with it. The rest are fixed parts
+// of the scheme (Gamepad.h) rather than mappings, and are stated plainly.
+// nullptr means "this row has no value" -- the section header and Back.
+static const char* padRowValue(const char* label) {
+    if (strcmp(label, "Controller") == 0) {
+        const char* n = odPad::name();
+        if (!n || !n[0]) return odPad::present() ? "connected" : "none detected";
+        // Pads report names like "Wireless Controller (Vendor: 054c Product:
+        // 0ce6)". The rows are centred, so a long one grows out of BOTH ends of
+        // the panel; the vendor ids are not what anyone came here to read.
+        static char buf[36];
+        snprintf(buf, sizeof(buf), "%s", n);
+        if (strlen(n) >= sizeof(buf)) { buf[sizeof(buf) - 4] = '\0'; strcat(buf, "..."); }
+        return buf;
+    }
+    if (strcmp(label, "Pointer") == 0)      return "Left stick";
+    if (strcmp(label, "Click, select") == 0) return "A";
+    if (strcmp(label, "Cancel, back") == 0) return "B";
+    if (strcmp(label, "Menus") == 0)        return "D-pad";
+    if (strcmp(label, "Zoom, scroll") == 0) return "Right stick / LB / RB";
+    // X is not in PAD_ACTIONS: it is the pad's RIGHT MOUSE BUTTON, and the army
+    // drag accepts right mouse whatever ACTION_ARMY_MOVE is bound to. So it is
+    // stated here rather than looked up, and it does not change with a rebind.
+    if (strcmp(label, "Army move (hold)") == 0)             return "X";
+    if (strcmp(label, "Artillery wheel (hold)") == 0)       return odPad::buttonName(ACTION_ARTILLERY_WHEEL);
+    if (strcmp(label, "Ship move (hold)") == 0)             return odPad::buttonName(ACTION_SHIP_MOVE);
+    if (strcmp(label, "Ship artillery wheel (hold)") == 0)  return odPad::buttonName(ACTION_SHIP_WHEEL);
+    if (strcmp(label, "Box select (hold)") == 0)            return odPad::buttonName(ACTION_BOX_SELECT);
+    return nullptr;
+}
+
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
     std::string label = s.label;
@@ -463,6 +515,9 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.aiLearning ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
+    } else if (tab == 3) {
+        const char* v = padRowValue(s.label);
+        if (v) label += std::string(": ") + v;
     }
     return label;
 }
@@ -1970,7 +2025,26 @@ void Game::endFrame() {
     // fifteen separate draw blocks, one per screen state, and threading a new
     // overlay through each of them is how one of them ends up missing it.
     drawNowPlayingToast();
+    drawPadCursor();
     EndDrawing();
+}
+
+// The controller's cursor, which the operating system is not drawing because as
+// far as it is concerned nothing is pointing at anything. A stick that moves an
+// invisible pointer is not a control scheme, and this is the whole difference
+// between the pad being usable and being a mystery -- so it is drawn last, over
+// every screen, and only while the pad is the thing holding the pointer.
+void Game::drawPadCursor() {
+    if (!odPad::active()) return;
+    const Vector2 c = odPad::cursor();
+    const Color accent = hexToColor(m_config.accentColor);
+    // An arrow, not a dot: a dot on this map reads as a unit marker. Outlined in
+    // black so it stays visible over the accent-coloured UI as well as the sea.
+    const Vector2 tip   = { c.x, c.y };
+    const Vector2 tail  = { c.x + 11.0f, c.y + 15.0f };
+    const Vector2 wing  = { c.x + 1.5f,  c.y + 18.0f };
+    DrawTriangle(tip, wing, tail, BLACK);
+    DrawTriangle({tip.x + 1, tip.y + 2}, {wing.x, wing.y - 3}, {tail.x - 3, tail.y - 1}, accent);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -935,6 +935,9 @@ public:
     /** EndDrawing, plus everything that must sit above all other drawing. */
     void endFrame();
 
+    /** The controller's virtual cursor, drawn over everything endFrame() covers. */
+    void drawPadCursor();
+
     TrackInfo m_toast;              // what the toast is announcing
     float m_toastTimer = 0.0f;      // seconds left; <= 0 means not shown
     Mood  m_mood;                   // cached, refreshed on m_moodStamp

@@ -818,7 +818,7 @@ void Game::updateMultiplayerMenu() {
 void Game::drawMultiplayerMenu() {
     drawMenuBackground(true);
 
-    const Vector2 mouse = GetMousePosition();
+    const Vector2 mouse = getMouse();
     const bool click = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 
     const char* title = m_mpPage == MpPage::Hub       ? "Multiplayer"

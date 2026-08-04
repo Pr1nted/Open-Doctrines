@@ -1,4 +1,8 @@
 #include "MapRenderer.h"
+// Not just the pad's cursor but its buttons: this renderer answers the clicks
+// that select a province, drag an army and pan the map, and it asks raylib for
+// them itself. Without the shims the stick moved a pointer nothing could click.
+#include "../PadInput.h"
 #include "raymath.h"
 #include <cmath>
 #include <algorithm>
@@ -20,6 +24,12 @@ MapRenderer::MapRenderer(int screenW, int screenH, int mapW, int mapH)
 }
 
 Vector2 MapRenderer::getMouse() const {
+    // The pad's virtual cursor has to arrive here too, not only in Game. The map
+    // is where a controller player does the aiming -- selecting a province,
+    // dragging an army, pointing artillery -- and this renderer asks for the
+    // pointer itself rather than being handed one. Without this the stick moved
+    // a cursor that every panel could see and the map could not.
+    if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
     Vector2 m = GetMousePosition();
     return { m.x * m_dpiScale, m.y * m_dpiScale };
 }

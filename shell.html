@@ -147,7 +147,20 @@ window.addEventListener('error', function(e) {
     } else if (e.touches.length === 2) {
       // A second finger means pinch-zoom, not a drag: let go of the press so
       // the map does not think it is being dragged while it scales.
-      if (primary !== null) { send('mouseup', e.touches[0].clientX, e.touches[0].clientY, 0); primary = null; }
+      //
+      // Let go of WHICHEVER button this finger is holding. It is not always the
+      // left one: a finger that has already been down for 380ms is holding the
+      // right button, and releasing the left instead left the army-move button
+      // stuck down for the rest of the session -- after which the next tap
+      // anywhere ordered an army there. Also kill the pending swap, so a finger
+      // that becomes a pinch before 380ms does not press the right button with
+      // nothing left to release it.
+      clearTimeout(holdTimer);
+      if (primary !== null) {
+        send('mouseup', e.touches[0].clientX, e.touches[0].clientY, 0, button);
+        primary = null;
+        button = 0;
+      }
       pinchStart = dist(e.touches[0], e.touches[1]);
     }
   }, { passive: false });

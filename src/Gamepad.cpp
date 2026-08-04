@@ -197,4 +197,28 @@ bool keyPressed(int key) {
 bool present() { return IsGamepadAvailable(PAD); }
 const char* name() { return IsGamepadAvailable(PAD) ? GetGamepadName(PAD) : nullptr; }
 
+const char* buttonName(int action) {
+    for (const auto& pa : PAD_ACTIONS) {
+        if (pa.action != action) continue;
+        // Xbox lettering, because that is what the browser's standard mapping
+        // and most pads on a desk agree on. A PlayStation pad reports the same
+        // indices, so the shapes are in the right places even if the letters
+        // are not what is printed on it.
+        switch (pa.button) {
+            case GAMEPAD_BUTTON_RIGHT_FACE_UP:    return "Y";
+            case GAMEPAD_BUTTON_RIGHT_FACE_DOWN:  return "A";
+            case GAMEPAD_BUTTON_RIGHT_FACE_LEFT:  return "X";
+            case GAMEPAD_BUTTON_RIGHT_FACE_RIGHT: return "B";
+            case GAMEPAD_BUTTON_LEFT_TRIGGER_1:   return "LB";
+            case GAMEPAD_BUTTON_LEFT_TRIGGER_2:   return "LT";
+            case GAMEPAD_BUTTON_RIGHT_TRIGGER_1:  return "RB";
+            case GAMEPAD_BUTTON_RIGHT_TRIGGER_2:  return "RT";
+            case GAMEPAD_BUTTON_LEFT_THUMB:       return "L3";
+            case GAMEPAD_BUTTON_RIGHT_THUMB:      return "R3";
+            default: return nullptr;
+        }
+    }
+    return nullptr;
+}
+
 }  // namespace odPad

@@ -89,4 +89,14 @@ bool present();
 /** The pad's name, or nullptr. */
 const char* name();
 
+/**
+ * The pad button standing in for an ACTION -- "Y", "LT" -- or nullptr.
+ *
+ * The keybinds screen asks rather than listing the mapping itself, so moving a
+ * button in PAD_ACTIONS moves what the screen says with it. A settings page
+ * that has to be edited alongside the thing it describes eventually describes
+ * something else.
+ */
+const char* buttonName(int action);
+
 }  // namespace odPad
