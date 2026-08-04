@@ -42,7 +42,11 @@ import time
 # model file (see saveModel's reward-statistics blob). It is the only per-worker
 # quality signal available without stopping to run an evaluation, and it is
 # comparable across workers because every worker optimises the same reward.
-PBT_INTERVAL = 1800          # seconds between exploit/explore rounds
+# Seconds between exploit/explore rounds. Overridable because a 30-minute
+# interval is untestable: a first run assigned per-worker hyperparameters
+# correctly and then fired ZERO rounds in seven and a half hours, and there was
+# no way to check the loop short of another seven-hour run.
+PBT_INTERVAL = int(os.environ.get("OD_PBT_INTERVAL", "1800"))
 PBT_HYPERS = {
     # name -> (default, low, high). Sampled log-uniformly around the default.
     "OD_PPO_ENTROPY": (0.01, 0.003, 0.05),
@@ -207,12 +211,21 @@ def main():
 
     print(f"[POOL] {n} worker(s) running. Ctrl-C to stop and merge.")
     try:
-        next_pbt = time.time() + PBT_INTERVAL
+        t_start = time.time()
+        next_pbt = t_start + PBT_INTERVAL
+        if args.pbt:
+            print(f"[PBT]  exploit/explore every {PBT_INTERVAL}s", flush=True)
         while any(p.poll() is None for p in procs):
             time.sleep(2)
             if not args.pbt or time.time() < next_pbt:
                 continue
             next_pbt = time.time() + PBT_INTERVAL
+            # SAY SO EVERY TIME, even when nothing is done. A round that
+            # silently declines to act is indistinguishable from a loop that
+            # never ran, which is exactly the hole the first PBT run fell into:
+            # no output at all, and no way to tell whether the interval never
+            # elapsed, the models were unreadable, or the ranking tied.
+            print(f"[PBT]  round at {int(time.time() - t_start)}s", flush=True)
             # EXPLOIT then EXPLORE. Rank the workers by the fitness stored in
             # their own model file; the worst copies the best's WEIGHTS as well
             # as its hyperparameters, then jitters them. Copying the weights is
@@ -224,6 +237,8 @@ def main():
                 fit = _fitness(os.path.join(DATA, f"model.w{w}.bin"))
                 if fit is not None:
                     scored.append((fit, w))
+            print(f"[PBT]  ranked {len(scored)}/{n} workers: " +
+                  ", ".join(f"w{w}={f:+.4f}" for f, w in scored), flush=True)
             if len(scored) < 2:
                 print("[PBT]  not enough readable models to rank; skipping round")
                 continue

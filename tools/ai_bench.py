@@ -164,6 +164,10 @@ def parse(text):
     if ci or ri:
         out["calls answered %"] = (100.0 * ca / ci if ci else 0.0,
                                    100.0 * ra / ri if ri else 0.0)
+        # The DENOMINATOR, kept because the ratio above is meaningless without
+        # it: a run that issues one call and sees it refused reports "0%
+        # answered", which reads as a policy and is one coin landing tails.
+        out["calls issued"] = (float(ci), float(ri))
     return out
 
 
@@ -340,8 +344,14 @@ class SwapModel:
 #   min_abs         model >= threshold
 #   frac_of_random  model >= threshold * random
 #   max_x_random    model <= threshold * random
+# A gate may name a metric that must reach a minimum before it is allowed to
+# judge. Without that, "allies get answered 0.0%" fails loudly on a single
+# refused call -- which happened, and looked like a regression from a working
+# 63% until the denominator was checked. A gate that cannot tell "bad" from
+# "no data" is worse than no gate: it spends attention on nothing.
 BLUNDER_GATES = [
-    ("allies get answered",     "calls answered %",   "min_abs",        20.0),
+    ("allies get answered",     "calls answered %",   "min_abs",        20.0,
+     "calls issued", 5.0),
     ("wars can end",            "ceasefires offered", "frac_of_random", 0.33),
     ("stays solvent",           "turns bankrupt",     "max_x_random",   1.0),
     ("keeps up in research",    "research completed", "frac_of_random", 0.50),
@@ -353,11 +363,21 @@ def check_blunders(model_vals, random_vals):
     """-> list of (name, ok, detail). Missing metrics are reported, not skipped:
     a gate that silently vanishes is a gate that stops protecting anything."""
     rows = []
-    for name, metric, rule, thr in BLUNDER_GATES:
+    for gate in BLUNDER_GATES:
+        name, metric, rule, thr = gate[:4]
+        need_metric, need_n = (gate[4], gate[5]) if len(gate) > 5 else (None, 0.0)
         mv, rv = model_vals.get(metric), random_vals.get(metric)
         if not mv:
             rows.append((name, None, f"{metric}: not reported by this build"))
             continue
+        if need_metric:
+            seen = model_vals.get(need_metric)
+            n = statistics.fmean(seen) if seen else 0.0
+            if n < need_n:
+                rows.append((name, None,
+                             f"only {n:.1f} {need_metric} per run (need {need_n:.0f}"
+                             f" to judge) -- no data, not a failure"))
+                continue
         m = statistics.fmean(mv)
         r = statistics.fmean(rv) if rv else 0.0
         if rule == "min_abs":
