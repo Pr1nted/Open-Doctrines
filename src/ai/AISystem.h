@@ -858,29 +858,31 @@ private:
      */
     static constexpr float WAR_END_REWARD = 0.5f;
 
+
     /**
-     * What running out of money costs the module that spent it.
+     * How much army counts as ENOUGH, as a multiple of what is on our borders.
      *
-     * Insolvency was already charged -- 0.5 shared and 1.2 to the economy head
-     * -- and the model was still bankrupt on 29.7 country-turns per thousand
-     * against a random control's 22.4. Worse than a coin flip at keeping its
-     * books, while beating it at almost everything else.
+     * The war module collapsed onto one action: measured at recruit 2392 times
+     * out of 2429 offered (98.5%), with attack at 0.6%, declare war at 0.0% --
+     * zero out of 1827 opportunities -- and every other action under 1%. It is
+     * not undertrained. It has learned "recruit, always", and there is nothing
+     * left of the distribution for training to move.
      *
-     * The charge was aimed at the wrong module. Expenses are army (recruited by
-     * WAR), navy (built by NAVY), doctrines and minority settlements (enacted by
-     * POLITICS), research and pacification (ECONOMY). Economy was paying 1.2 of
-     * the 1.7 total for spending decided almost entirely elsewhere, and it
-     * responded by cutting the only things it controls -- which is exactly what
-     * the bankruptcy log shows, minority cuts and scrapped ships, while the
-     * payroll that caused the shortfall carried on.
+     * The reward taught it that. armyTerm paid 0.3 x tanh(dArmy/40000) whenever
+     * `exp.atWar || exp.threatened > 0`, and this model is at war almost
+     * permanently as a DEFENDER -- so the gate that was supposed to make troops
+     * conditional was true nearly every turn, and recruiting became free money
+     * again. The comment above armyTerm already describes this exact failure
+     * from a previous round ("recruit 14,849 times and attack 214"); the fix
+     * applied then moved the threshold rather than removing the incentive.
      *
-     * Now split by who spent it: each module is charged in proportion to its
-     * own share of the bill. Same total pressure, aimed at the head that can
-     * actually act on it. This is the same misattribution the research fix
-     * corrected, one level up -- a module cannot learn from a cost it did not
-     * cause.
+     * Sufficiency is the missing idea. Men are worth their upkeep while the
+     * army cannot yet handle what is on its borders. At twice the hostile
+     * strength adjacent to us, another division is not defence, it is a bill --
+     * and the module holding it has no reason to keep buying instead of using
+     * what it has.
      */
-    static constexpr float SOLVENCY_WEIGHT = 1.5f;
+    static constexpr float ARMY_SUFFICIENCY = 2.0f;
 
     /**
      * Turns a decision waits for its reward, overridable with OD_N_STEP.
