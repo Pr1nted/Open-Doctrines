@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The whole Android app, with no Java in it.
+
+  android:hasCode="false" is what makes that legal: there is no dex, no Activity
+  subclass, nothing to compile. The platform's own android.app.NativeActivity is
+  the entry point. It dlopen()s the library named in android.app.lib_name and
+  calls ANativeActivity_onCreate in it, which is why the CMake branch compiles
+  the NDK's native_app_glue in and forces the linker to keep that symbol.
+  "opendoctrines" here matches OUTPUT_NAME on the target.
+
+  configChanges lists what the app handles itself rather than being destroyed
+  and recreated for. Without it, a rotation or a keyboard appearing restarts the
+  process, which for this game means losing the world.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="io.itch.pr1nted.opendoctrines"
+          android:versionCode="1"
+          android:versionName="1.0.6a">
+
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+
+    <!-- The renderer is GLES 2.0; raylib's PLATFORM_ANDROID backend targets it. -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <!-- A controller is genuinely the better way to play this, but not required. -->
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application android:label="Open Doctrines"
+                 android:icon="@mipmap/ic_launcher"
+                 android:roundIcon="@mipmap/ic_launcher"
+                 android:hasCode="false"
+                 android:allowBackup="false"
+                 android:isGame="true">
+
+        <activity android:name="android.app.NativeActivity"
+                  android:label="Open Doctrines"
+                  android:exported="true"
+                  android:screenOrientation="sensorLandscape"
+                  android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density|uiMode"
+                  android:resizeableActivity="false">
+
+            <meta-data android:name="android.app.lib_name"
+                       android:value="opendoctrines" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

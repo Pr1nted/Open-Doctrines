@@ -27,12 +27,30 @@
 
 #include "raylib.h"
 #include "Gamepad.h"
+#include "Touch.h"
+#include "UiScale.h"
 
-inline bool odMouseDown(int b)     { return IsMouseButtonDown(b)     || odPad::mouseDown(b); }
-inline bool odMousePressed(int b)  { return IsMouseButtonPressed(b)  || odPad::mousePressed(b); }
-inline bool odMouseReleased(int b) { return IsMouseButtonReleased(b) || odPad::mouseReleased(b); }
+// Touch REPLACES the real mouse rather than ORing with it. raylib's Android
+// backend already synthesises mouse events from touch point zero, so leaving
+// the real query in would have the finger pressing one thing while the virtual
+// cursor sits on another. See odTouch::suppressesMouse.
+inline bool odMouseDown(int b) {
+    if (odTouch::suppressesMouse()) return odTouch::mouseDown(b);
+    return IsMouseButtonDown(b) || odPad::mouseDown(b);
+}
+inline bool odMousePressed(int b) {
+    if (odTouch::suppressesMouse()) return odTouch::mousePressed(b);
+    return IsMouseButtonPressed(b) || odPad::mousePressed(b);
+}
+inline bool odMouseReleased(int b) {
+    if (odTouch::suppressesMouse()) return odTouch::mouseReleased(b);
+    return IsMouseButtonReleased(b) || odPad::mouseReleased(b);
+}
 inline bool odMouseUp(int b)       { return !odMouseDown(b); }
-inline float odMouseWheel()        { return GetMouseWheelMove() + odPad::wheel(); }
+inline float odMouseWheel() {
+    if (odTouch::suppressesMouse()) return odTouch::wheel();
+    return GetMouseWheelMove() + odPad::wheel();
+}
 
 // The same treatment for the keyboard, and for the same reason: the artillery
 // wheel, ship orders and box-select are keys HELD while the pointer aims, and a

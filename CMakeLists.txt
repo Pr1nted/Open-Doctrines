@@ -534,6 +534,9 @@ set(GAME_SOURCES
     src/Audio.cpp
     src/Config.cpp
     src/Gamepad.cpp
+    src/Touch.cpp
+    src/OdFile.cpp
+    src/UiScale.cpp
     src/SaveManager.cpp
     src/GifEncoder.cpp
     src/Game_History.cpp
@@ -567,6 +570,7 @@ set(GAME_SOURCES
     src/net/HostBook.cpp
     src/net/TurnSeal.cpp
     src/net/TurnStore.cpp
+    src/net/TurnStoreRunner.cpp
     src/util/Ed25519.cpp
     src/net/WorldSync.cpp
     src/net/WsCommon.cpp
@@ -598,7 +602,37 @@ else()
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
 endif()
 
+# ── Android: a shared library, not an executable ──
+#
+# An APK has no process to exec. NativeActivity dlopen()s a .so named in the
+# manifest and calls into it, and raylib's PLATFORM_ANDROID backend supplies the
+# android_main glue that then calls this game's own main(). So the only thing
+# that changes here is the artifact kind; every source file is the same.
+#
+# raylib itself must be built as PLATFORM_ANDROID (pass -DPLATFORM=Android at
+# configure time); with that set it pulls in native_app_glue and the EGL/GLESv2
+# path instead of GLFW, which is verified by the linked binary carrying zero
+# glfw symbols.
+if(ANDROID)
+    add_library(OpenDoctrines SHARED ${GAME_SOURCES})
+    # The name the manifest's android.app.lib_name refers to.
+    set_target_properties(OpenDoctrines PROPERTIES OUTPUT_NAME "opendoctrines")
+    # Plain signature: the rest of this file links this target that way.
+    target_link_libraries(OpenDoctrines log android EGL GLESv2 OpenSLES)
+    # NativeActivity dlsym()s ANativeActivity_onCreate to start the app, and
+    # that symbol lives in the NDK's native_app_glue -- which ships as SOURCE,
+    # not as a prebuilt library, so it has to be compiled in. Without it the .so
+    # links and exports android_main and the app still will not start.
+    target_sources(OpenDoctrines PRIVATE
+        ${CMAKE_ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
+    target_include_directories(OpenDoctrines PRIVATE
+        ${CMAKE_ANDROID_NDK}/sources/android/native_app_glue)
+    # The glue's entry point is reached only by dlsym, so the linker must be
+    # told to keep it rather than strip it as unreferenced.
+    target_link_options(OpenDoctrines PRIVATE -u ANativeActivity_onCreate)
+else()
 add_executable(OpenDoctrines ${GAME_SOURCES})
+endif()
 if(APPLE)
     # The bundle's Info.plist and icon are SOURCES, and they live in the source
     # tree. They used to be read out of dist/, which is a build OUTPUT directory
@@ -710,6 +744,54 @@ endif()
 # from it too. The install rules that also read it are much further down.
 set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
                     ai/model.bin tips.json credits.txt policies.json)
+
+# ── Android: stage the APK's assets, and list them ──
+#
+# An APK's assets cannot be ENUMERATED. AAssetManager opens a known name; it
+# does not answer "what is in here", and raylib's LoadDirectoryFiles does not
+# work on assets either. The save browser, the map browser and the mod list all
+# walk directories, so the game copies everything it ships out to internal
+# storage on first run and then works against an ordinary filesystem -- which
+# also solves writes, since internal storage is the only place an Android app
+# may write at all.
+#
+# That copy needs a list of what to copy, so one is generated here from
+# OD_SHIPPED_DATA -- the same allowlist the web preload and the installers use,
+# so Android cannot drift into shipping a different set of files than the other
+# platforms.
+if(ANDROID)
+    set(OD_ANDROID_ASSETS "${CMAKE_BINARY_DIR}/assets")
+    file(REMOVE_RECURSE "${OD_ANDROID_ASSETS}")
+    file(MAKE_DIRECTORY "${OD_ANDROID_ASSETS}")
+    set(OD_ASSET_MANIFEST "")
+    foreach(item IN LISTS OD_SHIPPED_DATA)
+        if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/data/${item}")
+            file(COPY "${CMAKE_SOURCE_DIR}/data/${item}"
+                 DESTINATION "${OD_ANDROID_ASSETS}")
+        else()
+            get_filename_component(od_sub "${item}" DIRECTORY)
+            file(COPY "${CMAKE_SOURCE_DIR}/data/${item}"
+                 DESTINATION "${OD_ANDROID_ASSETS}/${od_sub}")
+        endif()
+    endforeach()
+    # Every staged file, relative to the assets root, one per line.
+    file(GLOB_RECURSE od_staged RELATIVE "${OD_ANDROID_ASSETS}" "${OD_ANDROID_ASSETS}/*")
+    foreach(f IN LISTS od_staged)
+        # macOS leaves .DS_Store in every directory it has been looked at with
+        # Finder. Shipping them is harmless but they are noise in the manifest
+        # and weight in the APK, and one of them appearing in a map folder has
+        # confused a directory scan before.
+        get_filename_component(od_leaf "${f}" NAME)
+        if(NOT od_leaf STREQUAL ".DS_Store")
+            string(APPEND OD_ASSET_MANIFEST "${f}\n")
+        else()
+            file(REMOVE "${OD_ANDROID_ASSETS}/${f}")
+        endif()
+    endforeach()
+    file(WRITE "${OD_ANDROID_ASSETS}/assets_manifest.txt" "${OD_ASSET_MANIFEST}")
+    list(LENGTH od_staged od_staged_n)
+    message(STATUS "Android assets staged: ${od_staged_n} file(s) -> ${OD_ANDROID_ASSETS}")
+endif()
 
 if(EMSCRIPTEN)
     set_target_properties(OpenDoctrines PROPERTIES SUFFIX ".html")
@@ -1076,6 +1158,7 @@ add_executable(NetAccountTest EXCLUDE_FROM_ALL
     src/net/NetUrl.cpp
     src/net/ServerBook.cpp
     src/net/TurnStore.cpp
+    src/net/TurnStoreRunner.cpp
 )
 target_include_directories(NetAccountTest PRIVATE src tests)
 find_package(Threads REQUIRED)

@@ -1927,6 +1927,49 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
     }
 }
 
+void Game::drawTouchMenuButton() {
+    // A WAY OUT, FOR A DEVICE WITH NO ESCAPE KEY.
+    //
+    // Everything that closes a screen or opens the pause menu in this game is
+    // bound to Escape. A phone has no Escape and no keyboard, so without this
+    // there is literally no way to reach settings, save, or quit -- the player
+    // is stuck in the world until they kill the app.
+    //
+    // Sits under the top-right country plate, which is the one corner nothing
+    // else occupies. Drawn on touch devices only: a desktop or pad player has
+    // Escape and does not need a permanent button eating map.
+    if (!odTouch::present()) return;
+
+    const int size = 44;
+    const int x = m_screenW - size - 12;
+    const int y = 76;              // clear of the hovered-country plate above
+    const Rectangle r = {(float)x, (float)y, (float)size, (float)size};
+    const Vector2 mouse = getMouse();
+    const bool hot = CheckCollisionPointRec(mouse, r);
+
+    DrawRectangleRounded(r, 0.25f, 6, hot ? Color{40, 45, 60, 230} : Color{18, 20, 28, 210});
+    DrawRectangleRoundedLines(r, 0.25f, 6, hot ? Color{150, 170, 210, 220} : Color{90, 100, 125, 180});
+
+    // A gear, drawn rather than loaded: this must work before any atlas does,
+    // and it is four rectangles and a ring.
+    const float cx = r.x + size / 2.0f, cy = r.y + size / 2.0f;
+    const Color ink = hot ? Color{230, 235, 245, 255} : Color{190, 198, 215, 255};
+    DrawCircleLines((int)cx, (int)cy, 9.0f, ink);
+    DrawCircleLines((int)cx, (int)cy, 4.0f, ink);
+    for (int i = 0; i < 4; ++i) {
+        const float a = (float)i * 3.14159265f / 2.0f;
+        const float dx = std::cos(a), dy = std::sin(a);
+        DrawRectangle((int)(cx + dx * 11.0f - 2.0f), (int)(cy + dy * 11.0f - 2.0f), 4, 4, ink);
+    }
+
+    if (hot && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        // The same thing Escape does from the map: open the pause menu, which
+        // is where settings, save and quit all live.
+        m_paused = true;
+        Audio::get().playSfx("ui_click");
+    }
+}
+
 void Game::drawSidebarButtons() {
     bool isSpectator = (m_playerCountryId == SPC_CID);
     int btnSize = 100;
@@ -3827,6 +3870,7 @@ void Game::drawInner() {
     drawBulkPaintStrip();
     drawBulkConfirmPanel();
     drawSidebarButtons();
+    drawTouchMenuButton();
     if (m_renderer->getSelectedProvinceId() > 0 || !m_selectedShipIndices.empty()) drawCountryPanel();
     // ─── Bottom-left stub buttons (only when not processing turn) ───
     if ((!m_mapDate.empty() || m_playerCountryId == SPC_CID) && m_turnState == TURN_NORMAL) {

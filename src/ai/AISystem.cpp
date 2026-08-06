@@ -1,4 +1,5 @@
 #include "AISystem.h"
+#include "../OdFile.h"
 #include "../Game.h"
 #include "../GameInternals.h"
 #include <algorithm>
@@ -6599,14 +6600,12 @@ void AISystem::assignLeagueCountries() {
 }
 
 bool AISystem::loadModel() {
-    FILE* f = fopen(m_modelPath.c_str(), "rb");
-    if (!f) return false;
-    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
-    if (n < 10) { fclose(f); return false; }
-    std::vector<uint8_t> buf((size_t)n);
-    size_t rd = fread(buf.data(), 1, buf.size(), f);
-    fclose(f);
-    if (rd != buf.size()) return false;
+    // odFile, not fopen: the shipped model is an APK asset on Android and only
+    // AAssetManager can reach it. Writes still use fopen -- they go to internal
+    // storage, which the training path wants anyway. See OdFile.h.
+    const std::string bytes = odFile::readAll(m_modelPath);
+    if (bytes.size() < 10) return false;
+    std::vector<uint8_t> buf(bytes.begin(), bytes.end());
     if (memcmp(buf.data(), "ODAI", 4) != 0) return false;
     // v1 models load fine — they just carry no reward statistics, so those keep
     // their cold-start values. Refusing them would throw away every hour of

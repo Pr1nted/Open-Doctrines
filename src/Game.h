@@ -1,6 +1,8 @@
 #pragma once
 #include "GameStructs.h"
 #include "Gamepad.h"
+#include "Touch.h"
+#include "UiScale.h"
 #include "map/LandSeaMap.h"
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
@@ -355,6 +357,8 @@ private:
     void drawMenuList(const std::vector<std::string>& items, int selectedIndex);
     void drawCountryPanel();
     void drawSidebarButtons();
+    // Touch-only: the pause menu has no other entrance without an Escape key.
+    void drawTouchMenuButton();
     void drawEconomy();
     void updateEconomy();
     void drawEconomyGlobal(int centerX, int startY);
@@ -1087,8 +1091,16 @@ public:
      * this exists.
      */
     Vector2 getMouse() const {
-        if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
-        return { GetMousePosition().x * m_dpiScale, GetMousePosition().y * m_dpiScale };
+        // Touch first: on Android raylib's own mouse follows the finger, so
+        // asking it would return the contact point rather than the cursor the
+        // player is actually aiming with. See Touch.h.
+        // Divided by the UI scale: the pointer arrives in PHYSICAL pixels and
+        // every screen now hit-tests in the LOGICAL space odUi magnifies from.
+        // Without this the cursor lands 1.5x away from whatever it is over.
+        const float u = odUi::scale();
+        if (odTouch::active()) { Vector2 c = odTouch::cursor(); return { c.x * m_dpiScale / u, c.y * m_dpiScale / u }; }
+        if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale / u, c.y * m_dpiScale / u }; }
+        return { GetMousePosition().x * m_dpiScale / u, GetMousePosition().y * m_dpiScale / u };
     }
 
     LandSeaMap m_landSea;

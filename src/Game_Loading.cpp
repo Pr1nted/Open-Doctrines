@@ -5,6 +5,7 @@
 #include "Keybinds.h"
 #include "ai/AISystem.h"
 #include "renderer/FlagRenderer.h"
+#include "OdFile.h"
 #include "miniz.h"
 #include "miniz_zip.h"
 #include "raymath.h"
@@ -326,15 +327,8 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
                     suffix++;
                 }
 
-                std::ifstream odmFile(m_loadingOdmPath, std::ios::binary | std::ios::ate);
-                std::vector<uint8_t> odmData;
-                if (odmFile) {
-                    std::streamsize sz = odmFile.tellg();
-                    odmFile.seekg(0, std::ios::beg);
-                    odmData.resize(sz);
-                    odmFile.read(reinterpret_cast<char*>(odmData.data()), sz);
-                    odmFile.close();
-                }
+                const std::string odmBytes = odFile::readAll(m_loadingOdmPath);
+                std::vector<uint8_t> odmData(odmBytes.begin(), odmBytes.end());
 
                 time_t now = time(nullptr);
                 struct tm* tmLocal = localtime(&now);
@@ -1586,13 +1580,11 @@ bool Game::loadFromFiles() {
 }
 
 bool Game::loadFromODM(const std::string& odmPath) {
-    std::ifstream file(odmPath, std::ios::binary | std::ios::ate);
-    if (!file) return false;
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<uint8_t> zipData(size);
-    if (!file.read(reinterpret_cast<char*>(zipData.data()), size)) return false;
-    file.close();
+    // Through odFile, not ifstream: on Android the .odmap lives inside the APK
+    // and only AAssetManager can reach it. See OdFile.h.
+    const std::string zipBytes = odFile::readAll(odmPath);
+    if (zipBytes.empty()) return false;
+    std::vector<uint8_t> zipData(zipBytes.begin(), zipBytes.end());
 
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
@@ -2875,16 +2867,9 @@ void Game::startNewGame(const std::string& mapName) {
 
         m_currentSavePath = saveDir + worldName + ".odsv";
 
-        // Read .odmap bytes for embedding
-        std::ifstream odmFile(odmPath, std::ios::binary | std::ios::ate);
-        std::vector<uint8_t> odmData;
-        if (odmFile) {
-            std::streamsize sz = odmFile.tellg();
-            odmFile.seekg(0, std::ios::beg);
-            odmData.resize(sz);
-            odmFile.read(reinterpret_cast<char*>(odmData.data()), sz);
-            odmFile.close();
-        }
+        // Read .odmap bytes for embedding -- asset-aware, see OdFile.h
+        const std::string odmBytes = odFile::readAll(odmPath);
+        std::vector<uint8_t> odmData(odmBytes.begin(), odmBytes.end());
 
         SaveMetadata meta;
         meta.saveName = worldName;

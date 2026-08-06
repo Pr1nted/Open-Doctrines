@@ -1,5 +1,7 @@
 #include "GameUpdates.h"
 #include "Game.h"
+#include "OdFile.h"
+#include <unistd.h>
 #include "WinFatalDialog.h"
 #include "Audio.h"
 #include "net/AccountClient.h"
@@ -735,7 +737,9 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 #endif
 
 bool Game::init(int screenW, int screenH, const char* title) {
-#ifdef __EMSCRIPTEN__
+#if defined(PLATFORM_ANDROID)
+    // Set below, AFTER InitWindow -- see the note there.
+#elif defined(__EMSCRIPTEN__)
     // On Emscripten, GetApplicationDirectory() returns a URL, not a filesystem path.
     // Data is preloaded into the virtual FS at /data/ via --preload-file.
     m_dataDir = "/data/";
@@ -845,6 +849,81 @@ bool Game::init(int screenW, int screenH, const char* title) {
     SetTraceLogCallback(odWindowsGlTraceLog);
 #endif
     InitWindow(m_screenW, m_screenH, title);
+
+#if defined(PLATFORM_ANDROID)
+    // AFTER InitWindow, AND IT MUST BE. raylib does not have an asset manager
+    // until InitWindow calls InitAssetManager, and android_fopen locks a mutex
+    // inside it without checking -- so extracting any earlier is not a silent
+    // failure, it is a SIGSEGV in pthread_mutex_lock on the first asset read.
+    // Verified on the emulator: crash in android_fopen <- LoadFileData <-
+    // odFile::readAll <- extractAssetsOnce <- Game::init, before a window ever
+    // appeared.
+    //
+    // AN APK'S ASSETS CANNOT BE LISTED, and an APK cannot be written to. The
+    // save browser, the map browser and the mod list all walk directories, and
+    // settings and saves have to go somewhere, so everything the game ships is
+    // copied out to internal storage the first time this build runs and the
+    // whole game then works against an ordinary filesystem. See OdFile.h.
+    //
+    // The stamp is the version string, so installing an update re-extracts
+    // rather than leaving the player on the previous release's maps and model.
+    odFile::extractAssetsOnce(OD_VERSION_STRING);
+    // RELATIVE, DELIBERATELY. android_fopen resolves a name itself: it tries
+    // AAssetManager first and otherwise prepends the app's internal storage
+    // path. Handing it an ABSOLUTE path therefore produces
+    // /data/.../files//data/.../files/STDmaps/map.odmap and every open fails --
+    // verified on the emulator, where the extraction reported 798 files written
+    // and the game then could not read one of them.
+    //
+    // Empty means "STDmaps/map.odmap" reaches the APK asset directly, and
+    // anything the game has WRITTEN shadows it out of internal storage, which
+    // is what saves and settings need.
+    m_dataDir = "";
+    // AND MAKE INTERNAL STORAGE THE WORKING DIRECTORY.
+    //
+    // Relative paths fix file OPENS, because android_fopen resolves them
+    // itself. They do not fix anything that asks the FILESYSTEM a question:
+    // DirectoryExists("fonts") is how this game locates its data folder, and an
+    // APK's assets are not a directory, so that probe failed and the game
+    // carried on believing it had no fonts, maps or audio. Enumeration -- the
+    // save browser, the map browser -- has the same problem.
+    //
+    // chdir into the extracted copy and both work: relative opens still reach
+    // the APK through android_fopen, and everything that walks the filesystem
+    // now walks a real one containing everything the game ships.
+    if (::chdir(odFile::writableRoot("").c_str()) != 0)
+        TraceLog(LOG_WARNING, "could not chdir to internal storage");
+    TraceLog(LOG_INFO, "working directory: %s", GetWorkingDirectory());
+
+    // ── How much bigger the interface can be made without losing any of it ──
+    //
+    // Magnifying the UI shrinks the LOGICAL canvas it lays out in, so scale is
+    // bought with content. Measured on the emulator: a 1.25x scale on a
+    // 900-row screen left 720 logical rows, and the main menu -- nine items --
+    // ran off the bottom with "Load .odstate" gone entirely.
+    //
+    // So the bound is what the layout needs, not what the pixels allow.
+    // UI_MIN_ROWS is the shortest logical canvas every screen still fits in;
+    // the scale is whatever is left over above that. A 900-row display gets
+    // 1.0 and looks exactly as it did before, a 1080-row phone gets 1.2, a
+    // 1440-row tablet 1.6 -- and none of them lose a menu item.
+    //
+    // This is a bound, not a solution. On a six-inch phone 1.2x is still small
+    // type, and going further needs the layouts themselves to adapt (scrolling
+    // lists, reflowed panels) rather than a single magnifying glass over all of
+    // them. See the Android task.
+    {
+        constexpr float UI_MIN_ROWS = 900.0f;
+        const float rows = (float)::GetScreenHeight();
+        float want = (rows > 0.0f) ? rows / UI_MIN_ROWS : 1.0f;
+        if (want < 1.0f) want = 1.0f;      // never shrink; small screens keep 1:1
+        if (want > 2.5f) want = 2.5f;
+        odUi::setScale(want);
+        TraceLog(LOG_INFO, "ui scale: %.2f (%.0f physical rows, %.0f logical)",
+                 odUi::scale(), rows, rows / odUi::scale());
+    }
+
+#endif
 
     // InitWindow cannot fail loudly -- it returns void, logs a warning, and
     // leaves the process running with no window and no GL context. Everything
@@ -1412,6 +1491,8 @@ void Game::run() {
         // GameInternals.h hand to every screen, so they have to be current for
         // this frame before the first screen asks.
         odPad::update(dt, m_screenW, m_screenH);
+        // After the pad, so a device with both lets the last thing touched win.
+        odTouch::update(dt, m_screenW, m_screenH);
 
         // Above the popup early-out below: the music stream has to be fed on
         // every frame, and a popup is exactly when it must not stutter.
@@ -2025,6 +2106,12 @@ void Game::endFrame() {
     // fifteen separate draw blocks, one per screen state, and threading a new
     // overlay through each of them is how one of them ends up missing it.
     drawNowPlayingToast();
+    // Manual long-form: a block of text to carry between players by hand. It
+    // belongs here rather than on one screen because the moment it appears --
+    // a turn resolving, orders being submitted -- can land while the player is
+    // on the map or in the lobby, and a turn nobody was shown is a turn nobody
+    // sent.
+    mpDrawManualExchange(m_screenW, m_screenH);
     drawPadCursor();
     EndDrawing();
 }
