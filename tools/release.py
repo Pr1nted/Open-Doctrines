@@ -384,9 +384,15 @@ def cmd_sdk(args):
         # Regenerate so the bindings and docs carry the new version.
         run(["python3", os.path.join(ROOT, "tools", "gen_bindings.py")], capture=True)
         run(["python3", os.path.join(ROOT, "tools", "gen_abi_docs.py")], capture=True)
-        say("regenerated bindings and ABI docs")
+        # AND THE WIKI. It is generated from abi.json like the other two, it
+        # carries the version on two pages, and publish-wiki.yml gates on it
+        # being current -- so leaving it out did not go unnoticed, it turned
+        # the very next push to main red. Gearbox 1.1 shipped and the wiki
+        # publish failed on Home.md and API-Reference.md still saying 1.0.
+        run(["python3", os.path.join(ROOT, "tools", "gen_wiki.py")], capture=True)
+        say("regenerated bindings, ABI docs and wiki")
         write_changelog("sdk", f"{nmajor}.{nminor}", notes)
-        changed += ["CHANGELOG.md", "docs/gearbox-abi.md", "sdk/"]
+        changed += ["CHANGELOG.md", "docs/gearbox-abi.md", "sdk/", "wiki/"]
 
     step("commit")
     commit_and_tag(list(dict.fromkeys(changed)),
