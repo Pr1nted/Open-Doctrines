@@ -31,20 +31,41 @@ Source: [`src/ai/AISystem.h`](https://github.com/Pr1nted/Open-Doctrines/blob/mai
 
 ## 2. The networks
 
-Nine plain feed-forward networks. No convolutions, no recurrence, no attention.
-Input layer, one or two hidden layers with `tanh`, a linear output layer.
+Twenty plain feed-forward networks. No convolutions, no recurrence; the one
+attention is a pooling step over neighbours, not a transformer. Input layer, one
+or two hidden layers with `tanh`, a linear output layer.
+
+Most of them are **heads on one shared trunk**. The trunk is the encoder: it
+reads the 143 features once per country per turn and every head below reads its
+320-wide output, so the representation is learned from all four modules'
+gradients at once instead of each module learning the same job alone.
 
 | Network | Shape | Output means |
 |---|---|---|
-| Economy policy | 96 - 512 - 320 - 12 | one score per economic action |
-| Politics policy | 96 - 512 - 320 - 11 | one score per political action |
-| War policy | 96 - 512 - 320 - 8 | one score per military action |
-| Navy policy | 96 - 512 - 320 - 6 | one score per naval action |
-| Value heads (four) | 96 - 160 - 1 | how well this country is expected to do |
-| Diplomacy | 96 - 256 - 160 - 2 | reject, accept |
+| Trunk | 143 - 512 - 320 | the shared embedding, `tanh` |
+| Economy policy | 320 - 12 | one score per economic action |
+| Politics policy | 320 - 11 | one score per political action |
+| War policy | 320 - 8 | one score per military action |
+| Navy policy | 320 - 6 | one score per naval action |
+| Stance | 320 - 4 | expand / consolidate / defend / develop |
+| Diplomacy | 320 - 2 | reject, accept |
+| Q heads (four) | 320 - actions | expected return per action, blended into the policy |
+| Value heads (four) | 143 - 160 - 1 | how well this country is expected to do |
+| Diplomacy value | 143 - 160 - 1 | the diplomacy head's own baseline |
+| War target | 152 - 256 - 128 - 1 | one score per country we could declare on |
+| Attack target | 152 - 256 - 128 - 1 | one score per province we could assault |
+| Neighbour encoder | 8 - 24 | one neighbour, embedded |
+| Neighbour scorer | 24 - 1 | how much that neighbour matters, for attention pooling |
 
-The four value heads are not used to play. They exist only during training, as a
-yardstick: see [section 8](#8-how-it-learns).
+The value heads keep their own narrow pathway from the raw features rather than
+reading the trunk: a critic should be free to disagree with the actor's
+representation. The two target heads read raw features **plus** the candidate
+being scored, which is a different input space again — there is one forward pass
+per candidate rather than a fixed output layer, because the number of candidates
+changes every turn.
+
+Neither the value heads nor the Q heads are used to play in the ordinary sense.
+They exist for training: see [section 8](#8-how-it-learns).
 
 The network code is vendored and self-contained
 ([`NeuralNet.cpp`](https://github.com/Pr1nted/Open-Doctrines/blob/main/src/ai/NeuralNet.cpp)),
@@ -67,7 +88,7 @@ selection is stochastic.
 
 ## 3. What the model sees
 
-Each decision starts from a vector of 96 floating-point numbers, built by
+Each decision starts from a vector of 143 floating-point numbers, built by
 `buildFeatures`. Everything in it is something a player could read off the user
 interface. Nothing in it is hidden state, and nothing in it is a map coordinate:
 values are ratios, shares and normalised logarithms, so a model trained on one
@@ -88,6 +109,10 @@ world transfers to another.
 | 77-79, 85-86 | minorities: mean and worst alignment, whether current policy is winning them over or driving them out, what it costs, how many groups |
 | 80-84, 87-94 | spare, plus request context written only when answering diplomacy (see [section 7](#7-answering-diplomacy)) |
 | 95 | constant 1, the bias input |
+| 96-103 | trends: how provinces, army, industry, population, treasury, threat, minority alignment and weariness have moved against a baseline up to `TREND_WINDOW` turns old |
+| 104-111 | the world rather than us: concentration, the largest power's share, our share and rank, how much of the map is at war, how crowded it is |
+| 112-115 | the posture currently in force, one-hot (see [section 5](#5-choosing-an-action)) |
+| 116-139 | the neighbours, attention-pooled: each is embedded and scored, and the weighted sum lands here |
 
 Two properties of this vector matter more than its contents.
 
@@ -121,14 +146,73 @@ The last three are the domestic half of government, and are described in
 **War (8).** Hold; recruit; reinforce threatened borders; attack; declare war;
 fire artillery; offer a ceasefire; stage troops on allied ground.
 
-**Navy (6).** Hold; move the fleet; bombard; embark troops; land them (or bring
+**Navy (7).** Hold; move the fleet; bombard; embark troops; land them (or bring
 them home if there is no hostile shore); scrap a warship the country is paying
-for and not using.
+for and not using; engage an enemy hull.
+
+Engage was added last, and its absence had been invisible: naval combat existed
+and was resolved every turn, but only the player and the network could ever
+queue an order, so an AI fleet sailed past an enemy fleet without attacking and
+could only ever *be* attacked. It targets the way a person does -- a loaded
+transport first, because sinking one kills the invasion it carries, then the
+most damaged hull, ties to the nearest since damage falls off with distance.
+
+Moving is routed rather than aimed. The fleet used to steer straight at the
+nearest enemy port by straight-line distance with no test that a sea route
+existed, which put 93% of all ship moves against a coastline and left them
+there. It now follows waypoints over a coarse water-connectivity grid, and only
+targets ports it can actually reach.
 
 Every action is issued through the same pending-order queues the player's buttons
 fill, and pays the same cost at the same moment. There is no separate AI code
 path through the turn resolver, and no way for the AI to build something for
 free.
+
+### Choosing a verb is not choosing a move
+
+The policy picks a *kind* of action. What that action then does was, for most of
+these, a fixed rule — and since the rule decides where the army actually goes, it
+rather than the policy was the ceiling on how well this AI could play. A player
+who felt "the AI attacked my weakest province again" was experiencing forty lines
+of C++, not a trained policy.
+
+Two of those choices are now learned, both on the same pattern:
+
+| Decision | Head | Warms up over |
+|---|---|---|
+| Whom to declare war on | `m_target` | 300k updates |
+| Which province to assault | `m_attack` | 300k updates |
+
+Each scores candidates one forward pass at a time and samples across the scores.
+The arrangement that makes them trainable is the warmup: **below the threshold
+the old rule still chooses, and the head merely watches and is told which
+candidate the rule took**. Without that, nothing is recorded until the head is
+good, and it is never good because nothing was recorded. It also means an
+upgraded model plays exactly as it did until the head can do better.
+
+**One decision covers every front.** For its whole life an "attack" produced
+exactly one move order, so a country with fifteen active fronts pushed on one of
+them while a player pushed on all fifteen — a cap on competence no amount of
+training reaches. Worse, training *adapts* to it: pressing an attack you cannot
+follow up really is worth less when you only get one, so hours of self-play
+would have tuned a policy for a game that was about to change.
+
+The fix is in the executor, not the decision. The policy still decides once that
+this is a turn for attacking; the orders then go out on up to
+`ATTACK_ORDERS_PER_TURN` fronts, ranked by the same head, one per launching
+province. That is how a player plays — you resolve to go on the offensive and
+then issue all your orders, you do not re-litigate it province by province. A
+front whose launch province already has an order queued is now skipped rather
+than abandoning the whole action, which used to turn one busy province into a
+turn where the country did nothing at all.
+
+What stays a rule, deliberately, is which candidates exist: a province is only
+offered as a target if the assault is winnable on the same arithmetic as before.
+That is a mask in the same sense the validity masks are, and it keeps the head
+choosing between sane options rather than free to throw armies at fortresses.
+The eval reports how many attacks the head actually aimed, because a head that
+is steering badly and one that has not been let out yet look identical in every
+other number.
 
 ### Validity masks
 
@@ -182,7 +266,38 @@ their own share of it.
 
 ## 5. Choosing an action
 
-Scores from the network are turned into a choice with two knobs.
+Scores from the network are turned into a choice with two knobs, after two
+things have leaned on them.
+
+**The posture.** The stance chosen for this country (see section 2) adds a small
+bias to the module's action scores — an expanding country is pushed toward
+attacking and declaring, a developing one toward industry and research and away
+from starting wars. A *bias*, not a mask, and in both directions: it moves the
+odds by roughly two and a half at the hard-difficulty temperature, enough to make
+a country behave like one that has decided something, nowhere near enough to stop
+it defending itself because it declared a building phase ten turns ago.
+
+This is what makes the stance a decision at all. For most of its life `stanceOf`
+was read in exactly one place — to set the one-hot in features 112–115 — and
+gated nothing, biased nothing and changed no executor. In principle the trunk
+could learn stance-conditional behaviour from that one input; in practice one
+channel among a hundred and forty, with nothing forcing the association, is a
+note the country leaves itself rather than a plan.
+
+**The critic.** Where a Q head has trained past its warmup, its centred scores
+are blended in the same way.
+
+That warmup is currently set past any reachable update count, which is to say
+the critic is off. Bisected by forcing each warmup gate shut in turn and
+measuring land share against the scripted rung over 400 turns: with every head
+learned the model held 62.7%, and with the critic alone held back it held 76.7%
+-- fourteen points given away by a critic that had crossed a threshold of two
+million updates without having learned enough to be worth listening to. The
+paragraph the constant carried had predicted exactly that failure; only the
+threshold was wrong. Q is still trained below the gate, so re-enabling it is a
+one-line change the moment there is evidence it helps.
+
+Then the two knobs.
 
 **Temperature** flattens or sharpens the distribution. High temperature makes
 strong and weak actions closer to equally likely; temperature near zero collapses
@@ -191,12 +306,33 @@ to always taking the highest-scoring one.
 **Epsilon** is the chance of ignoring the model entirely and picking uniformly at
 random from the valid actions.
 
-| Difficulty | Temperature | Random |
-|---|---|---|
-| Easy | 2.5 | 35% |
-| Normal | 1.0 | 10% |
-| Hard | 0.35 | 2% |
-| Insane | 0.05 (effectively always the best move) | 0% |
+A difficulty setting changes both knobs **and which faculties the AI is allowed
+to use**.
+
+| Difficulty | Temperature | Random | Critic | Learned aim | Posture |
+|---|---|---|---|---|---|
+| Easy | 1.6 | 8% | — | — | — |
+| Normal | 0.9 | 5% | yes | — | yes |
+| Hard | 0.35 | 2% | yes | yes | yes |
+| Insane | 0.05 (effectively always the best move) | 0% | yes | yes | yes |
+
+*Critic* is the Q head's opinion blended into the choice. *Learned aim* is the
+target and attack heads — whom to declare on and which province to take; without
+them the old margin rule aims, which is exactly how this AI played before those
+heads existed and makes a perfectly reasonable weaker opponent. *Posture* is
+whether the country has a plan at all.
+
+This used to be the two knobs alone, and Easy was the best policy the project
+has, told to ignore itself **35% of the time**. That is not a gentler opponent,
+it is an erratic one: the country that fortified its border last turn declares
+war on a great power this turn because a coin came up heads, and a player reads
+that as the game being broken rather than as themselves winning. A ladder should
+take faculties away, not add noise. Epsilon survives, much smaller, so a human
+cannot read the AI off a table.
+
+Self-play always trains at the top tier regardless of the setting: an opponent
+that aims with the old rule teaches the aiming heads nothing, and a policy
+trained against a handicapped copy of itself learns to beat the handicap.
 
 Difficulty is applied here and nowhere else. The model is never weakened; only
 the way its output is sampled changes. This matters because a confident network
@@ -245,10 +381,33 @@ not have to recompute them.
 ## 7. Answering diplomacy
 
 When another country proposes something to an AI country, the diplomacy network
-decides. The same 96 features are used, with request-specific context written
-into otherwise unused slots: which kind of request it is, how strong the proposer
-is relative to us, and, for a ceasefire, what the terms are actually worth to the
-recipient in provinces, claims and money.
+decides. The country's own feature vector is used, with request-specific context
+written into slots that are otherwise zero: which kind of request it is, how
+strong the proposer is relative to us, and, for a ceasefire, what the terms are
+actually worth to the recipient in provinces, claims and money. That vector then
+goes **through the shared trunk**, and the diplomacy head reads the embedding —
+the same path every policy head takes.
+
+> **It did not, for a long time.** The head was handed the raw feature vector
+> instead of the embedding. `NeuralNet::forward` returns an empty vector on a
+> width mismatch and `pickAction` answers action 0, which is *reject* — so every
+> ceasefire, alliance, non-aggression pact, guarantee and call to arms was
+> declined unconditionally, by every country, in shipped games as well as in
+> training, and the network was never consulted at all. Nothing downstream could
+> report it: with no alliance ever formed nobody could issue a call to arms, so
+> the coalition counter read "0 of 0 answered" — an empty denominator, not a
+> policy. Training made it worse rather than better, because every sample it
+> stored carried action 0 and a behaviour log-probability of 0, so the head was
+> fitted to always-reject through a meaningless PPO ratio. Repairing the
+> plumbing is not enough on its own; the head has to be reset:
+>
+> ```
+> OpenDoctrines --reset-ai-head data/ai/model.bin diplo
+> ```
+>
+> The counter that would have caught it is now reported and gated: **"said
+> yes/was asked"** per cohort, and `agreements are possible` in the blunder
+> checklist.
 
 A call to arms is judged separately, because it is the most expensive thing an AI
 can agree to: an immediate war it did not choose, plus a large jump in war
@@ -264,6 +423,138 @@ Four conditions refuse it outright, before the network is consulted:
 
 If none of those hold, the network decides, with a standing bias against
 accepting.
+
+### Saying why
+
+A refusal used to be a bare `false`. The reason existed — the gates above
+compute a perfectly good one — and was thrown away, so a player was told only
+that their offer had been declined. An opponent whose every refusal is
+unexplained reads as arbitrary, and arbitrary reads as stupid even when the
+decision was sound.
+
+Refusals now carry a **stated reason**, and three rules shape it.
+
+**It gates nothing.** No request is blocked for want of a reason and no reason
+has to be given. Delete the mechanism and every action in the game is exactly
+where it was. That is deliberate: a casus belli you are *required* to have is a
+different game, and you can still declare war on anyone you like for no stated
+reason at all.
+
+**Silence is a move.** Because a reason is optional, "declined and said nothing"
+exists and means something. A country that always has an answer ready is as
+readable as one that always tells the truth, so the AI stays quiet
+`REFUSAL_SILENCE_CHANCE` of the time.
+
+**Either side may lie, and neither side has an ability the other lacks.** What
+is *stated* is chosen separately from what is *true* — by
+`AISystem::chooseStatedRefusal` for the AI, and by the player from the same
+unfiltered list on the request popup. A country with something to hide reaches
+for the excuse that gives nothing away.
+
+Believability is not enforced by hiding options. It is a consequence, and the
+game already decides what is knowable: wars and borders are on the map, war
+weariness and intent are not. `Game::refusalIsContradicted` asks whether the
+*listener* could check a claim against what it can already see —
+
+| Stated reason | Checkable? |
+|---|---|
+| already fighting wars of their own | yes — wars are public |
+| losing ground on their own borders | yes — the map shows the stacks |
+| the other side is too strong | roughly — garrisons are drawn |
+| their people will not stand another war | no — private |
+| it is not in their interest | no — a preference |
+| they do not trust you | no — a preference |
+
+— so no table of plausible excuses has to be maintained; the filter is a
+question asked of state the observer has anyway. The player may still state
+something the map disproves. So may the AI, in principle. It chooses not to,
+and `refusals: caught out` in the eval is an **invariant** that must read zero:
+an opponent keeping something back is devious, and one whose excuse falls apart
+the moment you look at the map has simply not noticed what you can see.
+
+### Saying why you declared
+
+Wars carry the same arrangement, with one difference that matters: there are
+**two** goals, and only one of them is public.
+
+| | Who sees it | What it does |
+|---|---|---|
+| **Stated** | everyone — it is on the relation | announced with the declaration; may be false |
+| **True** | nobody | derived from what `findWarTarget` knew; steers what actually gets taken |
+
+The true goal is not shown, not serialised into the relation and not exposed to
+the UI. It is also not inert, and this is where it bites: **the peace terms are
+built around it.** A country demands the land it claims before anything else,
+and one losing a war of recovery will pay, cede ground elsewhere and still
+refuse to renounce the claim it went to war for.
+
+That is what makes the goal observable — not a label on a panel, but a
+settlement that keeps bending around the same provinces. Before the terms
+consulted it, "demand provinces" meant walking the defender's territory in map
+order and taking the first that touched us, so a war fought for Danzig was
+settled for somewhere else entirely and the goal never reached the negotiation
+at all. The eval reports the share of demanded provinces that were claimed land;
+it now reads 100%.
+
+Declaring is unchanged and unrestricted. Anyone may declare on anyone, at any
+time, for nothing — the goal is announced, never required, and the cycler on the
+diplomacy panel defaults to "State no reason" so a player who ignores the system
+declares in silence exactly as before.
+
+The pretext logic has a pleasing shape. `warGoalIsContradicted` checks a claim
+against public state — claims, borders, relative size, who is allied to whom —
+and **`WAR_GOAL_CONQUEST` is the one nobody can disprove.** So the honest goal is
+always safe to state, and a country that wants a pretext has to find one that
+happens to be true: a claim it really holds, a border it really shares, a rival
+that really is larger. `AISystem::chooseStatedWarGoal` looks for the most
+respectable true thing available and otherwise admits to conquest or says
+nothing. `wars: caught out` is the invariant, and reads zero.
+
+### What your word is worth
+
+Statements would be free without this, and a free lie is not a decision.
+
+**Credibility is per pair** — what one country thinks another's word is worth,
+from 0 to 1 — and the asymmetry is the reason. The *evidence* that breaks a
+claim is public, but the *claim* is not: only the country a thing was said to
+knows it was said, so only that country can put the two halves together. It also
+gives lying a shape worth having, since you can mislead an enemy and stay
+straight with an ally, and the cost lands where you told the story.
+
+Two things spend it:
+
+**Caught at the time.** The statement was already disprovable when it was made.
+The AI never does this to itself — `chooseStatedRefusal` and
+`chooseStatedWarGoal` filter for it — but a player may, and pays on the spot.
+
+**Caught by conduct.** The more interesting half, because it reaches the lies
+nothing could check. "Our people will not stand another war" is unfalsifiable
+when you say it — and then you declare a war of your own. "We fight only to
+recover what is ours" is true by construction when announced, a claim exists —
+and then the war takes provinces you never claimed. Nobody could have known at
+the time; everybody can see it afterwards. Those claims are written down when
+made (`SpokenClaim`), watched for `CRED_CLAIM_WINDOW` turns, and dropped.
+
+The effect is a **logit bias on accept**, scaled by the shortfall, through the
+same channel `AI_NAP_WILLINGNESS` and `AI_CALL_RELUCTANCE` already use. A
+country that has never been caught pays nothing, which keeps this a cost of
+lying rather than a tax on asking. Nothing is ever blocked, hidden or greyed
+out: a country nobody believes can still ask, and can still be told yes, because
+sometimes the deal is worth it anyway. `predictAcceptance` applies the same bias,
+so a serial liar stops spending its overture budget on partners who have stopped
+believing it.
+
+Forgiveness runs every turn and is deliberately far slower than a lie costs, or
+the cheapest strategy would be to lie constantly and wait it out.
+
+That slow recovery is also why the eval reports **events** rather than the
+current state: a run that caught two liars on turn forty reports a serene 1.000
+three hundred turns later, and would look exactly like a run where the checks
+never fired. The line reads `2 caught out, lowest word ever 0.750`.
+
+Both directions show on the diplomacy panel — *Their word / Yours* — and only
+once one of them has slipped, because a row reading "trusted / trusted" on every
+panel from turn one teaches nothing.
 
 Overtures are rate limited in two independent ways: a long cooldown on the
 unordered pair, so two countries cannot alternate proposals every turn, and a
@@ -297,6 +588,21 @@ suffered. It is deliberately small. It used to dominate, which meant conquering 
 province rewarded the economy, politics and navy heads as well, even when all
 three had chosen to do nothing. With four modules acting at once, each one's
 learning signal was three parts noise.
+
+The shared term also carries the only two things in the dense reward that
+mention anybody else:
+
+- **Standing** — did the country move up or down the land table over the window.
+- **Lead** — did the gap between it and the strongest *other* country narrow or
+  widen. This one moves when the leader moves, which is the point: standing
+  still while somebody runs away with the game is now a loss.
+
+Everything else here is a quantity of the country's own — land, income, unrest,
+research — and a policy optimising only those is optimising a dashboard. There
+*was* a competitive signal, but only at the terminal: one number per map, after
+hundreds of windows of shaping, reached through a value function fitted mostly on
+the dashboard. That is why the AI would not coalition against a runaway, which is
+the first thing anyone who has played a grand strategy game expects.
 
 On top of the shared term, each module is judged on what it actually controls.
 
@@ -606,6 +912,15 @@ anybody, and a worker that dies costs only its own progress. On exit the launche
 merges the survivors into `data/ai/model.bin`, which is the file the game loads.
 `--merge-ai <out> <in...>` does that merge on its own if you need it.
 
+Both the periodic peer pull and the final merge go through one list of nets
+(`blendAllToward`). There used to be two, written out by hand, and they had
+drifted: both covered the trunk, the policy heads, the value heads and the
+diplomacy net, and both silently skipped the stance head, the war-target head,
+all four Q heads, the relational encoder and scorer, and the diplomacy value
+head — eight of fifteen. Every worker's learning on those eight was discarded at
+the merge and replaced by whatever the first input file happened to hold. Adding
+a net and updating one of two lists is how that happened, so there is now one.
+
 The honest caveat: averaging periodically-diverged copies approximates a summed
 gradient rather than computing one. A third of the way rather than all of it,
 every two minutes rather than every ten, is what keeps the copies close enough
@@ -672,7 +987,9 @@ than about the model.
 | survival, largest power, concentration | does the world consolidate or stalemate |
 | war | how much of the map's activity is fighting |
 | diplomacy | how much of it is agreement |
+| agreements | what share of all requests — treaties and calls alike — anyone said yes to. Read this before the coalition line: it is upstream of it, and a zero here explains a zero there |
 | coalition | do alliances mean anything, and are calls to arms answered |
+| thinking | milliseconds per country-turn — the playability number, not a quality one. 185 countries on the present-day map is where it stops being free |
 | amphibious | what share of embarked troops reach a hostile shore |
 | fleet | are unusable hulls being paid off |
 | unrest | rebellions and research per country-turn |
@@ -709,6 +1026,163 @@ The report ends with an advantage figure: the ratio of land held by the model
 cohort to land held by the random cohort. Below 1.0 the trained policy is losing
 to random selection, which no reward curve will tell you and which has exactly
 one honest interpretation.
+
+### Against a named opponent
+
+```
+OpenDoctrines --eval-ai --vs-model data/ai/rung1.bin
+tools/ai_bench.py --vs-model data/ai/rung1.bin        # with seeds and intervals
+```
+
+Random is a **floor, not a level**. It never improves, so once a model clears it
+the ratio keeps climbing without saying anything about how well the AI actually
+plays — 2.5x against a coin flip could be a competent player or a snowballer
+that eats a passive map, and the number reads the same either way.
+
+`--vs-model` hands the control cohort a model file instead. Everything else is
+the split above verbatim: the same matched cohorts, the same counters, the same
+report, with `RANDOM` replaced by `OPPONENT` throughout so a saved log can never
+be mistaken for the other kind of run. The opponent is frozen — its trunk, its
+four policy heads and its diplomacy net are loaded read-only from the file, it
+consults no critic and contributes no training samples, exactly like a league
+checkpoint. A file that will not load aborts the run rather than falling back to
+dice, because a report labelled `OPPONENT` over numbers measured against random
+would be indistinguishable from a real one.
+
+This is what makes a target like *"as good as an intermediate player"* testable
+rather than a matter of opinion: pin the file that represents the level, and
+1.00x becomes parity with it. When a model beats that rung, pin a harder one.
+Note that the blunder gates in `tools/ai_bench.py` are mostly phrased relative
+to the control, so against a model opponent they become comparisons with that
+player rather than floors — the tool prints a reminder saying so.
+
+### Against a written-down player
+
+```
+OpenDoctrines --eval-ai 2 400 --vs-script
+tools/ai_bench.py --vs-script
+```
+
+Random is a floor that never rises. A named model is a rung — but only once you
+have a model worth pinning, and until this project has one, *"as good as an
+intermediate player"* has nothing to be measured against at all.
+
+So rung one is a player written down. It attacks what it can beat, keeps its
+books, researches continuously, sues for peace when it is losing, answers its
+allies and calms its own unrest. Nothing in it is clever and nothing in it is
+learned; the rules are the ones a tutorial would give you, applied in the order
+a person would apply them. It shares every reflex, mask and restraint constant
+with the model cohort, exactly as the random control does — the only difference
+is where the choice comes from.
+
+The point of it is the gap it exposes. Measured over three seeds at 250 turns,
+the current model reads roughly **1.2–1.5x against dice and 0.52x against this**
+— it holds a third of the map and loses every game. That difference is the whole
+distance between "beats a coin flip" and the thing actually being aimed at, and
+before this control existed there was no number for it.
+
+### Which worlds
+
+```
+OpenDoctrines --eval-ai 6 400 --scenarios
+tools/ai_bench.py --scenarios --maps 6
+```
+
+For most of this project's life, training and measurement both saw **only**
+procedurally generated maps — while every player opens one of the six in
+`data/STDmaps`. A generated archetype has no historical alliance network, no
+real claims, no minority map anyone has heard of, and an even spread of country
+sizes where a real scenario has five great powers among forty small states; the
+present-day world has 185 countries and nothing generated comes close. Every one
+of those differences is something `buildFeatures` reads, so the policy met all
+of it for the first time in the one run that cannot be re-rolled.
+
+Training now plays a shipped map every `SHIPPED_TRAIN_EVERY` rounds, cycling the
+list — interleaved rather than in a block, and not more often than that, because
+six fixed worlds are something a policy can learn *instead of* learning to play.
+Measurement takes `--scenarios` as an explicit opt-in and never mixes the two
+kinds in one run: a mean over "three generated and two historical" describes
+neither, and every previously stored result was taken on generated worlds.
+
+Whenever a run covers more than one world, the report ends with a per-world
+ADVANTAGE table, and `tools/ai_bench.py` gives each entry its own interval
+across seeds. A model that is fine on pangaea and hopeless on 1939 cannot hide
+in the mean, which is exactly what it had been doing.
+
+### One gate per reward term
+
+`tools/ai_bench.py` prints a second checklist under the blunder one. The reward
+is about twenty hand-set constants, and the comments beside them record a cycle:
+a term is added, the policy collapses onto whatever it overpays for, the term is
+reshaped, and the reshaping breaks an earlier one. Army growth rewarded
+unconditionally gave recruit 14,849 choices against attack's 214. A gate on it
+was true every turn for a defender, so recruit went to 98.5% of offers. A flat
+charge for declaring war gave zero declarations out of 1,827 opportunities.
+
+Every one of those was an action preference pinned to an extreme, every one was
+found by hand weeks later, and none was visible in ADVANTAGE at the time. So
+each constant now owns a counter and each counter has a band. Bands rather than
+minimums, because a policy that *always* picks an action has stopped choosing
+just as surely as one that never does. They are deliberately wide: this asks
+whether a module is still making a decision, not whether it is making a good
+one, and a number out of band means a collapsed distribution that no amount of
+further training walks back without a `--reset-ai-head`.
+
+**What is gated is the policy shape, not the take rate.** A take rate — chosen
+over offered — is what came out of the dice *after* temperature and epsilon, and
+measurement runs at difficulty 2, where temperature is 0.35. That crushes the
+bottom of the range. Measured on one model:
+
+| action | policy's own P | take rate |
+|---|---|---|
+| reinforce | 74.3% | 79.4% |
+| recruit | 15.9% | 10.8% |
+| ceasefire | 0.3% | 0.4% |
+| **declare war** | **2.7%** | **0.1%** |
+
+The middle tracks closely; the low end does not. An action the net gave 2.7% was
+taken one time in a thousand, so every "collapsed low" verdict read off a take
+rate was overstated by more than an order of magnitude — including one that led
+to a war head being reset. `pickAction` therefore also reports its distribution
+over the masked logits at a neutral temperature of 1.0, accumulated only over
+the turns each action was *offered* so the denominator matches the take rate's
+and the two sit side by side. Both are printed; only the shape is gated.
+
+The measurement is purely observational: it draws no randomness and nothing
+reads it back, so it cannot change what was chosen. It is recorded only for
+countries a policy net is actually driving — not the random cohort, whose
+choices are dice, and not the scripted rung, which never consults a net.
+
+The checklist is worth reading against the difficulty ladder. Measured over four
+seeds before the fix below: at Hard the war module chose recruit on 98.6% of
+offers, and at Insane — argmax, no exploration at all — on **100.000%**, with a
+zero-width interval. It never did anything else, which is why the hardest
+setting played worse than the one below it.
+
+**What that turned out to be.** Two defects in ten lines, pulling the same way.
+`armyTerm` paid `0.3 × tanh(dArmy)` every window its gate was open — an
+*annuity*: riskless, repeating, and open almost permanently for a country that
+is at war a lot, which this one was because it never made peace. And the
+idleness charge still carried the `dArmy` escape clause that the comment
+directly above it says was removed, so raising five hundred men also bought
+exemption from the penalty for doing nothing. Recruiting both paid and dodged.
+
+`armyTerm` now pays for **progress toward sufficiency**, clamped at 1: closing
+the gap is worth `ARMY_PROGRESS_WEIGHT` once, and an army already big enough for
+its borders earns nothing more. The total available over a game is bounded, so
+there is no trough to settle in. The bar is frozen at the window's start, so a
+neighbour's mobilisation cannot charge this country for a decision it did not
+make.
+
+A reward correction is only half of it. A converged softmax puts almost no mass
+on the actions it has learned to avoid, so the corrected reward is never sampled
+often enough to pay — the head has to be told, not persuaded. Reset the war head
+and the same model at argmax drops from 100.0% recruit to 11.5%.
+
+Note what a gate cannot see on its own: a *freshly reset* head also has
+arbitrary logits and also concentrates, so it reads as collapsed too. The eval
+therefore reports each head's update count, and the gates report "no data"
+rather than a failure below the point where a take rate means anything.
 
 ### Reading it
 

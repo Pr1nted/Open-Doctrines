@@ -229,6 +229,132 @@ jobs:
   # was never noticed. It cannot run tests_all.sh -- there is no shell in a
   # browser -- so what is checked is that it builds and that the package is
   # assembled.
+  android:
+    name: android (arm64-v8a)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40      # same reason as qualify: a link that hangs is not free
+    steps:
+      - uses: actions/checkout@v5
+
+      # The runner ships an SDK and an NDK already; name the NDK explicitly so a
+      # runner image bump cannot silently change the compiler under us.
+      - name: Locate the NDK
+        run: |
+          set -e
+          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "using $NDK"
+
+      - name: Build the shared library
+        run: |
+          set -e
+          cmake -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
+          cmake --build build-android -j 2
+
+      # A .so that linked is not the same as one Android can start. Both symbols
+      # are reached only by dlsym, so the linker will happily drop them and the
+      # library still "builds" -- the app then fails to launch with nothing in
+      # the log that names the cause.
+      - name: The library is a real NativeActivity
+        run: |
+          set -e
+          SO=build-android/libopendoctrines.so
+          test -s "$SO" || { echo "missing: $SO"; exit 1; }
+          READELF="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
+          "$READELF" --dyn-syms "$SO" | grep -q ANativeActivity_onCreate || {
+            echo "ANativeActivity_onCreate is not exported -- the app cannot start"; exit 1; }
+          "$READELF" --dyn-syms "$SO" | grep -q android_main || {
+            echo "android_main is not exported"; exit 1; }
+          # raylib must have built its ANDROID backend. If PLATFORM=Android is
+          # lost, it compiles the desktop GLFW path instead: everything links,
+          # and nothing renders on a phone.
+          if "$READELF" --dyn-syms "$SO" | grep -qi glfw; then
+            echo "GLFW symbols present -- raylib built the DESKTOP backend"; exit 1
+          fi
+          for lib in libEGL.so libGLESv2.so libandroid.so liblog.so; do
+            "$READELF" -d "$SO" | grep -q "$lib" || { echo "not linked against $lib"; exit 1; }
+          done
+
+      - name: Package the APK
+        run: ./tools/package_android.sh
+
+      - name: The APK is installable
+        run: |
+          set -e
+          APK=build-android/OpenDoctrines.apk
+          test -s "$APK" || { echo "missing: $APK"; exit 1; }
+          python3 - "$APK" <<'PYEOF'
+          import sys, zipfile
+          z = zipfile.ZipFile(sys.argv[1])
+          names = set(z.namelist())
+          fail = []
+
+          # The three things without which it is not an app at all.
+          for need in ("AndroidManifest.xml", "lib/arm64-v8a/libopendoctrines.so"):
+              if need not in names: fail.append("missing " + need)
+          if not any(n.startswith("res/mipmap-") for n in names):
+              fail.append("no launcher icon -- the app shows the generic robot")
+
+          # TARGETING SDK 30+ REQUIRES resources.arsc STORED AND ALIGNED.
+          # Learned the hard way: a packaging step that re-zipped the APK
+          # compressed it, and the install was refused outright with a parse
+          # error that names neither the file nor the step that broke it.
+          if "resources.arsc" in names:
+              i = z.getinfo("resources.arsc")
+              if i.compress_type != zipfile.ZIP_STORED:
+                  fail.append("resources.arsc is DEFLATED; install will be rejected")
+
+          # extractNativeLibs defaults false at targetSdk 34, so the loader maps
+          # the .so straight out of the APK and it must be uncompressed.
+          so = "lib/arm64-v8a/libopendoctrines.so"
+          if so in names and z.getinfo(so).compress_type != zipfile.ZIP_STORED:
+              fail.append("the .so is DEFLATED; it must be STORED to be mapped")
+
+          # The game copies its content out on first run and needs a list to do
+          # it with, because an APK's assets cannot be enumerated.
+          if "assets/assets_manifest.txt" not in names:
+              fail.append("assets_manifest.txt missing -- nothing can be extracted")
+          else:
+              listed = [l.strip() for l in z.read("assets/assets_manifest.txt")
+                        .decode().splitlines() if l.strip()]
+              missing = [p for p in listed if ("assets/" + p) not in names]
+              if missing:
+                  fail.append(f"{len(missing)} manifest entries are not in the APK, "
+                              f"e.g. {missing[:3]}")
+              if not listed: fail.append("the manifest is empty")
+
+          # The scenarios and the model are what the game is; shipping without
+          # them produces an app that starts and has no game in it.
+          if not any(n.startswith("assets/STDmaps/") and n.endswith(".odmap") for n in names):
+              fail.append("no .odmap scenarios in the APK")
+          if "assets/ai/model.bin" not in names:
+              fail.append("no AI model in the APK")
+
+          # NOTHING PRIVATE IN THE ASSETS -- the same rule the web preload has,
+          # and the same reason: this blob goes to every player.
+          for leak in ("assets/account.json", "assets/config.json", "assets/mods.json"):
+              if leak in names: fail.append("PRIVATE DATA: " + leak)
+          for n in names:
+              if n.startswith(("assets/saves/", "assets/custom_maps/")) or "model.w" in n:
+                  fail.append("PRIVATE DATA: " + n); break
+
+          if fail:
+              print("\n".join("  " + f for f in fail)); sys.exit(1)
+          print(f"  ok: {len(names)} entries, "
+                f"{sum(i.file_size for i in z.infolist())/1e6:.0f} MB uncompressed")
+          PYEOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build-android/OpenDoctrines.apk
+          if-no-files-found: error
+
   web:
     name: web (emscripten)
     runs-on: ubuntu-22.04

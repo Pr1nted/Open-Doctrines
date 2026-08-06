@@ -172,6 +172,40 @@ Requires **Windows 10 or later**, 64-bit. The build is unsigned, so SmartScreen
 will show *"Windows protected your PC"* on first run — **More info → Run
 anyway**.
 
+### Android — experimental
+
+Requires **Android 7.0 (API 24) or later**, **arm64** only. Sideload the APK;
+it is signed with a debug key, so Android will ask you to allow installs from
+whatever app you downloaded it with.
+
+Call it experimental and mean it. It has been verified on an emulator — the
+game boots, loads a world, renders the map and responds to touch — and has
+**never run on a physical phone**. What that leaves untested is most of what
+makes a phone a phone: how the gestures feel, performance on a real GPU,
+thermals, and every screen size that is not the one it was tried at.
+
+Specifically:
+
+- **A controller is the better way to play.** The interface was drawn for a
+  mouse, and a pad drives the same pointer, so it fits the game far better than
+  fingers do.
+- **Touch works but is new.** Tap to click, drag to move the pointer, pinch to
+  zoom, long-press for right-click. The pointer stays where you left it, which
+  is what keeps hover-driven parts of the interface — ship orders, tooltips —
+  working at all.
+- **Text is small.** The interface scales up on taller screens, but only as far
+  as it can without pushing menu items off the bottom, and on a phone that
+  ceiling is low. Laying the screens out for a phone properly is still to do.
+- **The map editor is desktop-only in practice.** It has its own input path that
+  has not been taught about touch.
+- **Mods and multiplayer are not built in** this configuration.
+- **It is a large install** — roughly 110 MB downloaded, and the game unpacks
+  its content on first run, so budget about twice that on disk. First launch
+  therefore takes noticeably longer than later ones.
+
+Build it with `tools/package_android.sh` after configuring with the NDK
+toolchain; the CI builds and checks the same APK on every push.
+
 ## Building
 
 Needs CMake 3.20+ and a C++20 compiler. Everything else is fetched or vendored.
@@ -220,11 +254,21 @@ generated maps and improves `data/ai/model.bin`. `--eval-ai [maps]
 maps *without* learning from them and reports what it did, so two model versions
 can be compared on the same worlds. Add `--vs-random` to it and half the
 countries play uniformly at random instead — the one measurement with an
-absolute answer:
+absolute answer. `--vs-model <path>` gives that half a named model file rather
+than dice, which is what to use once the coin flip is beaten: random never
+improves, so it can only ever answer "better than nothing", while a pinned
+opponent is a rung you can replace with a harder one.
+
+Both modes play generated maps by default. `--scenarios` measures on the six
+worlds in `data/STDmaps` instead — the ones the new-game menu offers — and
+training now plays one every third round, so the AI is no longer meeting 1939
+for the first time in your game.
 
 ```bash
 tools/train_parallel.py --workers 3 --limit 90    # several worlds at once
 OpenDoctrines --eval-ai --vs-random               # does it beat a coin flip?
+OpenDoctrines --eval-ai --vs-model rung1.bin      # does it beat that model?
+OpenDoctrines --eval-ai 6 400 --scenarios         # on the maps people play
 ```
 
 Add `--resource-limit 90` to cap any run at a share of the machine for that run
@@ -279,7 +323,14 @@ Alpha, and the honest version of that word:
   running copy of the game, and closing it ends the session.
 - There is **no tutorial**. Province actions live behind the view tabs on the
   bottom bar, and the game does not currently tell you that.
-- Long-form (play-by-paste) turns are designed and not built.
+- **Long-form (play-by-paste) turns are built but not yet played.** The whole
+  path exists — the host publishes each resolved turn to a store, players submit
+  orders sealed with a session key, and both sides work with the host offline —
+  across all four stores, including manual copy and paste. It is covered by unit
+  tests and the server half by `net/test/longform.test.ts`, and the game's URLs
+  have been checked against a locally running Worker. What has *not* happened is
+  a real campaign: two machines, several days, a host that closes its laptop.
+  Until somebody does that, treat it as untested rather than finished.
 
 Known gaps are tracked in the issue tracker, kept as a record of what is
 actually true rather than what would be nice.

@@ -781,11 +781,18 @@ if(ANDROID)
         # Finder. Shipping them is harmless but they are noise in the manifest
         # and weight in the APK, and one of them appearing in a map folder has
         # confused a directory scan before.
+        # AAPT2 SKIPS ANYTHING DOT-PREFIXED, file or directory, and says nothing
+        # about it. A manifest listing what aapt2 declined to package produces a
+        # first run that reports 60 assets it cannot read -- measured, with
+        # flags/.orig/*.svg, which are editing leftovers the game never loads.
+        # Matching aapt2's own rule here keeps the two in step, and the CI
+        # asserts every manifest entry exists in the APK.
         get_filename_component(od_leaf "${f}" NAME)
-        if(NOT od_leaf STREQUAL ".DS_Store")
-            string(APPEND OD_ASSET_MANIFEST "${f}\n")
-        else()
+        string(FIND "${f}" "/." od_hidden_dir)
+        if(od_leaf MATCHES "^\\." OR NOT od_hidden_dir EQUAL -1)
             file(REMOVE "${OD_ANDROID_ASSETS}/${f}")
+        else()
+            string(APPEND OD_ASSET_MANIFEST "${f}\n")
         endif()
     endforeach()
     file(WRITE "${OD_ANDROID_ASSETS}/assets_manifest.txt" "${OD_ASSET_MANIFEST}")

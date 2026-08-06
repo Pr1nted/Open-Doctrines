@@ -11,9 +11,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"
-BT="$ANDROID_HOME/build-tools/34.0.0"
-PLATFORM="$ANDROID_HOME/platforms/android-34/android.jar"
+# Portable across a developer's Homebrew install and a CI runner's preinstalled
+# SDK: take whatever ANDROID_HOME/ANDROID_SDK_ROOT says, and pick the newest
+# build-tools and platform present rather than pinning a version that may not be
+# installed on the other machine.
+ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}}"
+BT="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+PLATFORM="$(ls "$ANDROID_HOME"/platforms/android-3*/android.jar 2>/dev/null | sort -V | tail -1)"
+[ -n "$BT" ]       || { echo "no build-tools under $ANDROID_HOME"; exit 1; }
+[ -n "$PLATFORM" ] || { echo "no platform jar under $ANDROID_HOME"; exit 1; }
 BUILD=build-android
 OUT="$BUILD/OpenDoctrines.apk"
 ABI=arm64-v8a
@@ -28,8 +34,11 @@ cp "$BUILD/libopendoctrines.so" "$BUILD/apk/lib/$ABI/"
 # Strip: the unstripped library is ~66 MB, almost all of it debug info that a
 # phone will never read. This is the difference between a 25 MB download and a
 # 90 MB one.
-"$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip" \
-    --strip-unneeded "$BUILD/apk/lib/$ABI/libopendoctrines.so" 2>/dev/null || true
+# The prebuilt directory is named for the HOST, so it differs between a Mac and
+# a Linux runner. Glob it rather than naming one.
+STRIP="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-strip 2>/dev/null | head -1)"
+[ -n "$STRIP" ] && "$STRIP" --strip-unneeded "$BUILD/apk/lib/$ABI/libopendoctrines.so" || \
+    echo "  (llvm-strip not found; shipping unstripped)"
 
 echo "==> compiling resources"
 # The launcher icon is the only resource, but it still has to go through the
