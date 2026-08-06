@@ -99,12 +99,30 @@ fi
 # ---- wabt ------------------------------------------------------------------
 step "wabt (wat2wasm)"
 if [ -x "$TC/wabt/bin/wat2wasm" ]; then echo "  already installed"; ok=$((ok+1)); else
-    WPAT="$OS-$ARCH"; [ "$OS" = linux ] && WPAT="ubuntu"
+    # wabt's own naming, which is not this script's and not uname's. It used to
+    # ship a single "ubuntu" tarball; it now publishes linux-x64, linux-arm64,
+    # macos-arm64 and windows-x64. So "ubuntu" matched nothing and every CI run
+    # that installed toolchains failed here -- invisible on a developer machine,
+    # where .toolchains/wabt already exists and this branch never runs.
+    # macos-aarch64 was wrong for the same reason: wabt says arm64.
+    case "$ARCH" in
+        aarch64) WARCH=arm64 ;;
+        x86_64)  WARCH=x64 ;;
+        *)       WARCH="$ARCH" ;;
+    esac
+    WPAT="$OS-$WARCH"
     WURL=$(curl -sSL https://api.github.com/repos/WebAssembly/wabt/releases/latest \
         | python3 -c "
 import json,sys
-for a in json.load(sys.stdin)['assets']:
-    if '$WPAT' in a['name'] and a['name'].endswith('.tar.gz'): print(a['browser_download_url']); break")
+d = json.load(sys.stdin)
+names = [a['name'] for a in d['assets']]
+for a in d['assets']:
+    if '$WPAT' in a['name'] and a['name'].endswith('.tar.gz'):
+        print(a['browser_download_url']); break
+else:
+    # Name what WAS there. A bare 'no build for X' says nothing about whether
+    # the pattern is wrong or the release is, which is the whole question.
+    sys.stderr.write('  wabt $WPAT not among: ' + ', '.join(names) + '\\n')")
     if [ -z "$WURL" ]; then fail "no wabt build for $WPAT"; else
         curl -sSL "$WURL" -o wabt.tgz && tar xf wabt.tgz && rm wabt.tgz \
           && mv wabt-* wabt && good || fail "download/extract"
