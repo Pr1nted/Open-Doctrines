@@ -22,7 +22,7 @@
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one."
   ],
-  "gearbox": "1.0",
+  "gearbox": "1.1",
   "schema": 1,
   "modules": [
     {
@@ -4651,7 +4651,7 @@
   "constants": {
     "GEARBOX_INVALID": "0xFFFFFFFF",
     "GEARBOX_MAJOR": 1,
-    "GEARBOX_MINOR": 0
+    "GEARBOX_MINOR": 1
   },
   "env_struct": {
     "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",

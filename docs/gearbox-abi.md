@@ -2,7 +2,7 @@
      Source: sdk/abi.json   Generator: tools/gen_abi_docs.py
      Regenerate with: python3 tools/gen_abi_docs.py -->
 
-# Gearbox ABI Reference — v1.0
+# Gearbox ABI Reference — v1.1
 
 The complete wire contract between a mod and the host. Every SDK under
 `sdk/` is a transcription of this; if an SDK disagrees with this page, the
@@ -3087,7 +3087,7 @@ struct is safe against a newer host that has appended fields.
 
 - `GEARBOX_INVALID` = `0xFFFFFFFF`
 - `GEARBOX_MAJOR` = `1`
-- `GEARBOX_MINOR` = `0`
+- `GEARBOX_MINOR` = `1`
 
 ## Writing a binding for a language we do not ship
 

@@ -1,5 +1,98 @@
 # Changelog
 
+## sdk 1.1
+
+Gearbox 1.1. Nine new capability modules and 94 new imports, taking the ABI to
+22 modules and 147 functions. Nothing in 1.0 changed.
+
+## What is new
+
+1.0 was enough to write an overlay and nowhere near enough to write a total
+conversion. There were no ships, no armies, no research, no politics, no
+economy, no way to author a scenario, and a UI that could draw rectangles and
+14pt text.
+
+| Module | What it grants |
+|---|---|
+| `Military.Read` | Ships -- type, position, health, crew, range -- army stacks per province, fortification and port levels |
+| `Military.Write` | Army moves and ship move / engage / bombard orders |
+| `Research.Read` | The technology tree, per-country completion, funding |
+| `Research.Write` | Set research funding |
+| `Politics.Read` | Political compass, policies, province unrest, minorities |
+| `Politics.Write` | Enact and cancel policies |
+| `Economy.Read` | Gross and net income, army and navy upkeep, bankruptcy, industry level and specialisation, province resources |
+| `Economy.Write` | Set province industry level |
+| `MapEditor` | Read and write the open map editor project |
+
+Expanded: **UI** gains lines, circles, sized text, `measure_text`, panel
+geometry, **your own images**, and the accent colour. **Map** gains coastline,
+sea routes and a land test. **Neural** gains the AI's decision space by name.
+**Net** gains peer enumeration.
+
+## The two rules
+
+**Every read is bounds-checked** and returns a neutral value -- 0, or an empty
+string -- for an id that does not exist, rather than trapping. A mod iterating a
+count that changed under it cannot crash the game.
+
+**Every write goes through the same resolver the player's own click goes
+through.** Nothing reaches into a container directly. An army order is still
+checked for adjacency, a ship order is still clamped to range and routed around
+land, a policy is still paid for and still subject to its prerequisites and the
+per-turn cap. Granting `Military.Write` lets a mod issue orders, not fabricate
+outcomes.
+
+## Reskinning
+
+Three levers, cheapest first:
+
+- `ui/set_theme_accent` restyles the whole interface in one call -- the accent
+  is read at over a hundred sites. It is not persisted and is dropped as soon as
+  no mod is running, so it cannot outlive uninstalling your mod.
+- `ui/draw_image` draws artwork from your own `.odmod` and nothing else. With
+  lines, circles and sized text you can build an interface that looks nothing
+  like this one.
+- `MapEditor` reaches the same per-province data the editor's own tools write,
+  so a generator can author a scenario in a loop instead of four thousand brush
+  clicks.
+
+Still out of reach: replacing textures the game itself draws outside a mod
+panel. There is no central texture registry to hook, and adding one is a
+renderer change rather than an ABI change.
+
+## Compatibility
+
+**A mod built against 1.0 runs unchanged, and that is tested.**
+`sdk/compat/abi-1.0.json` freezes the 1.0 surface and `tools/check_abi_compat.py`
+fails the build if any symbol in it is removed, re-signed, or moved to a
+different capability. Within a major version the ABI may only be added to.
+
+The existing conformance test could not have caught that on its own: it checks
+that `abi.json` describes the host, and both files move together, so deleting a
+function from both passed. All 13 shipped example mods declare
+`"gearbox": "1.0"` and still load.
+
+## Fixed
+
+**`gearbox_is_multiplayer` and `gearbox_is_server` always lied.** Both read a
+field nothing ever assigned, so they answered "single player, and you are the
+authority" in every session. If you wrote a mod that checked before mutating --
+the correct thing to do -- you got the wrong answer every time. The same dead
+field gated the manifest's `"side"`, so a `"side": "server"` mod was never
+masked off on a client.
+
+There is deliberately no `net/is_multiplayer` import: those two already answer
+it, and a second way to ask one question is worse than none.
+
+**A mod's accent colour could outlive it.** It was written into the saved
+config, so it survived uninstalling the mod with no way back but the reset
+button. It now goes to a field the config file does not store.
+
+**The docs and the manifest warning were wrong** about what happens when a mod
+imports something the host does not have. It does not "trap on first call" --
+an unresolved import cannot be linked, so there is no instance and no first
+call. The failure is at load and it names the symbol.
+
 ## game 1.0.6a
 
 The game runs on Android, mods can reach most of the game, and a long list of
