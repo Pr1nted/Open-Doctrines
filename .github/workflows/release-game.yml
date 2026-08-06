@@ -244,7 +244,8 @@ jobs:
         run: |
           echo "Download each artifact above, run it, and play far enough to be"
           echo "sure it works. Approving this job publishes to players."
-          find artifacts -name '*.zip' -exec ls -lh {} \;
+          find artifacts \( -name '*.zip' -o -name '*.exe' -o -name '*.dmg' \
+                            -o -name '*.apk' \) -exec ls -lh {} \;
 
   publish:
     name: Publish
@@ -260,7 +261,13 @@ jobs:
         run: |
           # The top section of CHANGELOG.md is this release, by construction:
           # release.py prepends it.
-          awk '/^## /{n++} n==1' CHANGELOG.md > notes.md
+          # THE DELIMITER IS A RELEASE HEADER, not any h2. release.py writes
+          # "## game 1.0.6a" and the notes below it use ## for their own
+          # sections -- which is the house style, and what CHANGELOG.md has
+          # always looked like. Splitting on /^## / therefore stopped at the
+          # first section INSIDE the notes: the v1.0.5a release shipped its
+          # opening paragraph and silently dropped every word after it.
+          awk '/^## (game|gearbox) [0-9]/{n++} n==1' CHANGELOG.md > notes.md
           echo "Release notes:"; cat notes.md
 
       - name: Create GitHub release
@@ -270,10 +277,17 @@ jobs:
           # the .exe and .dmg, uploaded them as CI artifacts that expire in a
           # fortnight, and attached neither to the release -- a failure that
           # looks like success right up until someone goes looking for them.
+          #
+          # The .apk is here because that is precisely what then happened to it.
+          # The android job builds and verifies an APK and uploads it, publish
+          # downloads it with everything else, and it was in no glob -- so the
+          # release that ANNOUNCES Android would have shipped every platform
+          # except Android, and passed every check while doing it.
           files: |
             artifacts/**/*.zip
             artifacts/**/*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.apk
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}
@@ -325,3 +339,18 @@ jobs:
             ./butler push "$z" "$ITCH_TARGET:$channel" \
                      --userversion "${GITHUB_REF_NAME#v}"
           done
+
+          # The APK, which that loop structurally cannot carry: it is one file
+          # rather than a folder of them, so there is no <folder>/ to put the
+          # MANAGED marker in -- and nothing to mark either, since an APK is
+          # installed and updated by the platform and the in-game updater does
+          # not touch it. itch detects an .apk as an Android build on its own.
+          apk=$(find artifacts -name '*.apk' | head -1)
+          if [ -n "$apk" ]; then
+            echo "pushing $apk -> $ITCH_TARGET:android"
+            ./butler push "$apk" "$ITCH_TARGET:android" \
+                     --userversion "${GITHUB_REF_NAME#v}"
+          else
+            echo "::warning title=No APK::No .apk among the artifacts, so \
+            nothing was pushed to the itch android channel."
+          fi
