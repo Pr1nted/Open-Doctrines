@@ -1,7 +1,9 @@
 #include "GameUpdates.h"
 #include "Game.h"
 #include "OdFile.h"
-#include <unistd.h>
+#if defined(PLATFORM_ANDROID)
+#include <unistd.h>          // ::chdir, in the Android branch of init() only
+#endif
 #include "WinFatalDialog.h"
 #include "Audio.h"
 #include "net/AccountClient.h"

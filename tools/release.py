@@ -310,16 +310,36 @@ def set_sdk_version(major, minor, dry_run):
             f.write("\n")
     changed.append("sdk/abi.json")
 
-    mp = os.path.join(ROOT, "src", "mods", "ModPackage.cpp")
-    with open(mp) as f:
-        src = f.read()
-    src2 = re.sub(r"(kHostGearboxMajor\s*=\s*)\d+", rf"\g<1>{major}", src)
-    src2 = re.sub(r"(kHostGearboxMinor\s*=\s*)\d+", rf"\g<1>{minor}", src2)
-    if src2 != src:
-        if not dry_run:
-            with open(mp, "w") as f:
-                f.write(src2)
-        changed.append("src/mods/ModPackage.cpp")
+    # BOTH candidates, and a hard failure if neither matched. This used to name
+    # ModPackage.cpp alone; the constants moved to the header for Gearbox 1.1
+    # and the substitution silently stopped matching anything. It happened to be
+    # harmless that once because the value was already right, but a bump that
+    # quietly updates abi.json and not the host is precisely the drift this
+    # function exists to prevent -- and it would have looked like a clean
+    # release.
+    hit = False
+    for rel in ("src/mods/ModPackage.h", "src/mods/ModPackage.cpp"):
+        mp = os.path.join(ROOT, rel)
+        if not os.path.exists(mp):
+            continue
+        with open(mp) as f:
+            src = f.read()
+        if not re.search(r"kHostGearboxMinor\s*=\s*\d+", src):
+            continue
+        hit = True
+        src2 = re.sub(r"(kHostGearboxMajor\s*=\s*)\d+", rf"\g<1>{major}", src)
+        src2 = re.sub(r"(kHostGearboxMinor\s*=\s*)\d+", rf"\g<1>{minor}", src2)
+        if src2 != src:
+            if not dry_run:
+                with open(mp, "w") as f:
+                    f.write(src2)
+            changed.append(rel)
+
+    if not hit:
+        fail("could not find kHostGearboxMinor in src/mods/ModPackage.{h,cpp}. "
+             "The host's compatibility constants moved; point set_sdk_version "
+             "at their new home before releasing, or the SDK ships a version "
+             "the game does not implement.")
 
     return changed
 

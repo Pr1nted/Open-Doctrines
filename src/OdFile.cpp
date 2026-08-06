@@ -1,8 +1,7 @@
 #include "OdFile.h"
 #include "raylib.h"
 #include <cstdio>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <sys/stat.h>     // mkdir; unistd.h was never needed here and MSVC has none
 #include <vector>
 
 #if defined(PLATFORM_ANDROID)

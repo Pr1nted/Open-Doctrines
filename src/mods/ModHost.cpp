@@ -85,7 +85,7 @@ void core_env(ExecEnv e, uint32_t outPtr) {
     GearboxEnv env{};
     env.size = declared;
     env.gearbox_major = 1;
-    env.gearbox_minor = 1;
+    env.gearbox_minor = 0;
     env.host_version = (1u << 16) | (0u << 8) | 6u;   // project version 1.0.6
 #if defined(__EMSCRIPTEN__)
     env.platform = kPlatformWeb;

@@ -157,7 +157,7 @@ struct ModLimits {
 // runs unchanged. A mod declaring a NEWER minor than the host still loads, with
 // a warning; whatever it wanted from that minor simply is not there.
 inline constexpr int kHostGearboxMajor = 1;
-inline constexpr int kHostGearboxMinor = 1;
+inline constexpr int kHostGearboxMinor = 0;
 
 struct ModManifest {
     int schema = 0;

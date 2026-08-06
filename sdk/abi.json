@@ -22,7 +22,7 @@
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one."
   ],
-  "gearbox": "1.1",
+  "gearbox": "1.0",
   "schema": 1,
   "modules": [
     {

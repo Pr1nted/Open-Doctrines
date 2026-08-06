@@ -78,6 +78,27 @@ int main(int argc, char** argv) {
                   ", host says " + hostVer);
     }
 
+    // ---- abi.json must agree with ITSELF --------------------------------------
+    //
+    // The version appears twice in this file: as the "gearbox" string and as the
+    // GEARBOX_MAJOR/MINOR constants the C header is generated from. Nothing
+    // compared them, and they drifted -- "gearbox" was hand-edited to 1.1 while
+    // the constants stayed at 1.0, so sdk/gearbox_generated.h shipped
+    // GEARBOX_MINOR 0 to every modder while the host announced 1.
+    {
+        auto consts = j.find("constants");
+        int cmaj = -1, cmin = -1;
+        if (consts != j.end()) {
+            cmaj = consts->value("GEARBOX_MAJOR", -1);
+            cmin = consts->value("GEARBOX_MINOR", -1);
+        }
+        const std::string fromConsts = std::to_string(cmaj) + "." + std::to_string(cmin);
+        check("abi.json constants match its own gearbox string",
+              fromConsts == j.value("gearbox", std::string()),
+              "constants say " + fromConsts + ", \"gearbox\" says " +
+                  j.value("gearbox", std::string("(missing)")));
+    }
+
     // ---- env struct layout ---------------------------------------------------
     // ModHost.cpp static_asserts its own struct at 28 bytes; this pins the
     // number the SDKs are written against to the same value.

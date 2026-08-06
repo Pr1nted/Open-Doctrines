@@ -2,7 +2,7 @@
      Source: sdk/abi.json   Generator: tools/gen_abi_docs.py
      Regenerate with: python3 tools/gen_abi_docs.py -->
 
-# Gearbox ABI Reference — v1.1
+# Gearbox ABI Reference — v1.0
 
 The complete wire contract between a mod and the host. Every SDK under
 `sdk/` is a transcription of this; if an SDK disagrees with this page, the
