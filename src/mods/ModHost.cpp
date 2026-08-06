@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "ModHost.h"
+#include "ModPackage.h"   // kHostGearboxMajor/Minor: the one version
 #include "ModRuntime.h"
 
 #include <cstdio>
@@ -84,8 +85,15 @@ void core_env(ExecEnv e, uint32_t outPtr) {
 
     GearboxEnv env{};
     env.size = declared;
-    env.gearbox_major = 1;
-    env.gearbox_minor = 0;
+    // FROM THE HOST CONSTANTS, not literals of their own. This is the field a
+    // mod reads to ask what the host provides, and it was a third hand-written
+    // copy of a number that already lived in two places -- so the Gearbox 1.1
+    // release bumped abi.json and ModPackage.h and left this at 0, and every
+    // mod calling gearbox_core_env() on a 1.1 host was told 1.0. A mod that
+    // correctly checks before using a 1.1 feature would have disabled it on a
+    // game that supports it.
+    env.gearbox_major = (uint32_t)kHostGearboxMajor;
+    env.gearbox_minor = (uint32_t)kHostGearboxMinor;
     env.host_version = (1u << 16) | (0u << 8) | 6u;   // project version 1.0.6
 #if defined(__EMSCRIPTEN__)
     env.platform = kPlatformWeb;
