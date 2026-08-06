@@ -781,12 +781,12 @@ void Game::drawPoliciesTab() {
     for (int t = 0; t < nTabs; ++t) {
         int tx = tabStartX + t * tabSpacing;
         bool active = (t == m_policyTab);
-        Color tc = active ? hexToColor(m_config.accentColor) : LIGHTGRAY;
+        Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
         int tw = MeasureText(tabs[t], 20);
         Rectangle tr = {(float)(tx - tw/2 - 10), (float)(tabY - 5), (float)(tw + 20), 30};
         DrawText(tabs[t], tx - tw/2, tabY, 20, tc);
         if (active) {
-            DrawRectangle(tx - tw/2, tabY + 24, tw, 3, hexToColor(m_config.accentColor));
+            DrawRectangle(tx - tw/2, tabY + 24, tw, 3, hexToColor(m_config.accent()));
         }
         if (CheckCollisionPointRec(mouse, tr) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (m_policyTab != t) Audio::get().playSfx("tab_switch");
@@ -903,7 +903,7 @@ int xw = MeasureText("X", 20);
             bool isOpen = m_openFolders.count(fname);
             Rectangle fhRect = {20, (float)y, (float)(m_screenW - 270), (float)folderHeaderH};
             DrawRectangleRec(fhRect, {50, 50, 60, 180});
-            DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶", fname.c_str()), 30, y + 4, 18, hexToColor(m_config.accentColor));
+            DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶", fname.c_str()), 30, y + 4, 18, hexToColor(m_config.accent()));
             if (CheckCollisionPointRec(mouse, fhRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 if (isOpen) { m_openFolders.erase(fname);  Audio::get().playSfx("panel_close"); }
                 else       { m_openFolders.insert(fname); Audio::get().playSfx("panel_open");  }
@@ -1624,7 +1624,7 @@ void Game::drawEthnicTab() {
                 int rx = xOff + 200;
                 for (size_t oi = 0; oi < cat.options.size(); oi++) {
                     bool selected = ((int)oi == optIdx);
-                    Color oc = selected ? hexToColor(m_config.accentColor) : Color{150, 150, 150, 200};
+                    Color oc = selected ? hexToColor(m_config.accent()) : Color{150, 150, 150, 200};
                     DrawText(cat.options[oi].name.c_str(), rx, dy, 12, oc);
                     int nameW = MeasureText(cat.options[oi].name.c_str(), 12);
                     int qx = rx + nameW + 2;

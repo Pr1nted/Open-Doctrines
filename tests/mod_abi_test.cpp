@@ -65,9 +65,18 @@ int main(int argc, char** argv) {
     }
 
     // ---- the declared ABI version must match what the host advertises -------
-    check("abi.json declares gearbox 1.0",
-          j.value("gearbox", std::string()) == "1.0",
-          j.value("gearbox", std::string("(missing)")));
+    //
+    // Against the host's OWN constants, not a literal. Comparing to "1.0" meant
+    // bumping kHostGearboxMinor and forgetting abi.json still passed, which is
+    // precisely the drift this file exists to catch.
+    {
+        const std::string hostVer = std::to_string(kHostGearboxMajor) + "." +
+                                    std::to_string(kHostGearboxMinor);
+        check("abi.json declares the host's gearbox version",
+              j.value("gearbox", std::string()) == hostVer,
+              "abi.json says " + j.value("gearbox", std::string("(missing)")) +
+                  ", host says " + hostVer);
+    }
 
     // ---- env struct layout ---------------------------------------------------
     // ModHost.cpp static_asserts its own struct at 28 bytes; this pins the

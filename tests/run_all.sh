@@ -124,6 +124,22 @@ check "generated bindings vs abi.json" $PY "$root/tools/gen_bindings.py" --check
 
 check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 
+# THE COMPATIBILITY GATE, and a different question from the two checks above.
+#
+# ModAbiTest asks "does abi.json describe the host this build has?" -- both
+# files move together, and deleting a function from both passes. That is no use
+# for a modder whose .odmod was built last year: they need "does this host still
+# satisfy the contract I compiled against?", and answering it needs a copy of
+# that contract from back then. sdk/compat/abi-*.json holds one per shipped
+# minor, frozen, and this asserts every symbol in every one of them is still
+# present with the same wire signature and the same capability.
+#
+# Within a major version the ABI is append-only. Adding is free; renaming,
+# re-signing or re-gating breaks a binary that already exists, and only a major
+# bump is allowed to do that -- parseModManifest refuses a mismatched major
+# outright, which is the mod being told rather than crashing.
+check "abi compatibility vs frozen baselines" $PY "$root/tools/check_abi_compat.py"
+
 # The wiki is generated from the same file the bindings are, and it is
 # PUBLISHED -- .github/workflows/publish-wiki.yml pushes wiki/ to the Wiki tab
 # on every merge that touches it. So a stale page here is not a stale file in a

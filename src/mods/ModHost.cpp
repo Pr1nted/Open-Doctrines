@@ -7,6 +7,7 @@
 #include <vector>
 
 ModHostContext g_modHost;
+ModUiBridge g_uiBridge;
 ModGameAccess* g_modGame = nullptr;
 
 namespace {
@@ -84,8 +85,8 @@ void core_env(ExecEnv e, uint32_t outPtr) {
     GearboxEnv env{};
     env.size = declared;
     env.gearbox_major = 1;
-    env.gearbox_minor = 0;
-    env.host_version = (1u << 16) | (0u << 8) | 2u;   // project version 1.0.2
+    env.gearbox_minor = 1;
+    env.host_version = (1u << 16) | (0u << 8) | 6u;   // project version 1.0.6
 #if defined(__EMSCRIPTEN__)
     env.platform = kPlatformWeb;
     env.is_web = 1;
@@ -949,6 +950,515 @@ uint32_t storage_remove(ExecEnv e, uint32_t keyPtr, uint32_t keyLen) {
     return ModStorage::get().remove(mi->id(), key) ? 1 : 0;
 }
 
+// ---- ui, 1.1 additions: the reskin surface ----
+//
+// Rect + 14pt text is a debug overlay. To let a mod put its own interface on
+// screen it needs lines, circles, its own art and a choice of type size, and it
+// needs to know how big its panel actually is so it can lay out against it.
+//
+// The safety story does not change: these still only APPEND to the panel's
+// command list, the host still owns the transform and the scissor, and a
+// coordinate outside the panel is clipped rather than honoured.
+
+void ui_draw_line(ExecEnv e, uint32_t panel, int32_t x1, int32_t y1,
+                  int32_t x2, int32_t y2, double thick, uint32_t rgba) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    if (!p || p->cmds.size() >= ModUI::kMaxCmdsPerPanel) return;
+    ModDrawCmd c;
+    c.kind = ModDrawCmd::Line;
+    c.x = x1; c.y = y1; c.x2 = x2; c.y2 = y2;
+    c.thickness = (float)std::clamp(thick, 0.25, 64.0);
+    c.rgba = rgba;
+    p->cmds.push_back(std::move(c));
+}
+
+void ui_draw_circle(ExecEnv e, uint32_t panel, int32_t cx, int32_t cy,
+                    double r, uint32_t rgba) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    if (!p || p->cmds.size() >= ModUI::kMaxCmdsPerPanel) return;
+    ModDrawCmd c;
+    c.kind = ModDrawCmd::Circle;
+    c.x = cx; c.y = cy;
+    c.radius = (float)std::clamp(r, 0.0, 4096.0);
+    c.rgba = rgba;
+    p->cmds.push_back(std::move(c));
+}
+
+// The image comes from the MOD'S OWN package and nowhere else -- the name is a
+// path inside its .odmod, resolved by the same readAsset the assets module
+// uses. A mod cannot name a file on disk, a game asset, or another mod's art.
+void ui_draw_image(ExecEnv e, uint32_t panel, int32_t x, int32_t y,
+                   int32_t w, int32_t h, uint32_t namePtr, uint32_t nameLen,
+                   uint32_t tint) {
+    ModInstance* mi = self(e);
+    ModPanel* p = ownedPanel(mi, panel);
+    if (!p || p->cmds.size() >= ModUI::kMaxCmdsPerPanel) return;
+    std::string name;
+    if (!mi->readString(namePtr, nameLen, name)) return;
+    if (name.size() > 256) return;
+    ModDrawCmd c;
+    c.kind = ModDrawCmd::Image;
+    c.x = x; c.y = y; c.w = w; c.h = h;
+    c.rgba = tint ? tint : 0xFFFFFFFFu;
+    c.text = std::move(name);
+    p->cmds.push_back(std::move(c));
+}
+
+void ui_draw_text_sized(ExecEnv e, uint32_t panel, int32_t x, int32_t y,
+                        int32_t size, uint32_t rgba, uint32_t textPtr,
+                        uint32_t textLen) {
+    ModInstance* mi = self(e);
+    ModPanel* p = ownedPanel(mi, panel);
+    if (!p || p->cmds.size() >= ModUI::kMaxCmdsPerPanel) return;
+    std::string t;
+    if (!mi->readString(textPtr, textLen, t)) return;
+    if (t.size() > 512) t.resize(512);
+    ModDrawCmd c;
+    c.kind = ModDrawCmd::Text;
+    c.x = x; c.y = y; c.rgba = rgba;
+    c.fontSize = std::clamp(size, 6, 96);
+    c.text = std::move(t);
+    p->cmds.push_back(std::move(c));
+}
+
+// Laying text out needs its width BEFORE it is drawn -- centring, wrapping and
+// right-alignment are all impossible without it. Measured by the host with the
+// same font it will draw with, via the bridge, so the answer is truthful.
+uint32_t ui_measure_text(ExecEnv e, uint32_t textPtr, uint32_t textLen, int32_t size) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_UI)) return 0;
+    std::string t;
+    if (!mi->readString(textPtr, textLen, t)) return 0;
+    if (t.size() > 512) t.resize(512);
+    if (!g_uiBridge.measureText) return (uint32_t)(t.size() * (size_t)std::max(1, size) / 2);
+    return g_uiBridge.measureText(t, std::clamp(size, 6, 96));
+}
+
+uint32_t ui_panel_width(ExecEnv e, uint32_t panel) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    return p ? (uint32_t)p->w : 0;
+}
+uint32_t ui_panel_height(ExecEnv e, uint32_t panel) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    return p ? (uint32_t)p->h : 0;
+}
+void ui_panel_set_visible(ExecEnv e, uint32_t panel, uint32_t visible) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    if (p) p->visible = visible != 0;
+}
+
+// Panel-relative, and zero when the pointer is elsewhere -- a mod still cannot
+// watch the cursor outside its own box.
+double ui_mouse_x(ExecEnv e, uint32_t panel) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    return (p && p->mouseInside) ? p->mouseX : 0.0;
+}
+double ui_mouse_y(ExecEnv e, uint32_t panel) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    return (p && p->mouseInside) ? p->mouseY : 0.0;
+}
+uint32_t ui_mouse_inside(ExecEnv e, uint32_t panel) {
+    ModPanel* p = ownedPanel(self(e), panel);
+    return (p && p->mouseInside) ? 1u : 0u;
+}
+
+// THE CHEAPEST REAL RESKIN LEVER IN THE GAME. The accent colour is read at 113
+// sites -- every heading, highlight, selection and button in the interface --
+// so one call here restyles the whole game rather than one panel. It is
+// cosmetic and fully reversible, which is why it sits under UI rather than
+// behind a write capability.
+uint32_t ui_theme_accent(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_UI) || !g_uiBridge.themeAccent) return 0;
+    return g_uiBridge.themeAccent();
+}
+uint32_t ui_set_theme_accent(ExecEnv e, uint32_t rgb) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_UI) || !g_uiBridge.setThemeAccent) return 0;
+    g_uiBridge.setThemeAccent(rgb & 0x00FFFFFFu);
+    return 1;
+}
+
+// ------------------------------------------------------- Gearbox 1.1 ------
+//
+// Everything below was added in ABI 1.1 for the reskin surface: the military,
+// research, political and economic state a total conversion needs to read, the
+// four order calls it needs to write, and the map queries a scenario generator
+// needs. The v1.0 entries above are untouched -- see modAbiMinorFor().
+//
+// TWO RULES HOLD THROUGHOUT.
+//
+// Every read is bounds-checked in the Game accessor and returns a neutral value
+// (0, or an empty string) for an id that does not exist, rather than trapping.
+// A mod iterating a count that changed under it must not be able to crash the
+// game.
+//
+// Every write goes through the same resolver the player's own click goes
+// through. Nothing here reaches into a container directly. That is what makes
+// the capability bit meaningful: granting Military.Write lets a mod issue
+// orders, not fabricate outcomes.
+
+// Two-call sizing, as map_province_name does it: call with cap 0 to learn the
+// length, allocate, call again. Returns the FULL length either way.
+uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t cap) {
+    uint32_t len = (uint32_t)v.size();
+    if (cap > 0 && buf != 0) {
+        uint32_t take = len < cap ? len : cap;
+        if (take && !mi->memWrite(buf, take, v.data())) return 0;
+    }
+    return len;
+}
+
+#define MOD_GUARD(bit, fail) \
+    ModInstance* mi = self(e); \
+    if (!mi || !mi->has(bit) || !g_modGame) return fail; \
+    (void)mi;
+
+// ---- military.read ----
+
+uint32_t mil_ship_count(ExecEnv e) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->shipCount();
+}
+uint32_t mil_ship_at(ExecEnv e, uint32_t i) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0xFFFFFFFFu) return g_modGame->shipAt(i);
+}
+uint32_t mil_ship_exists(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->shipExists(s) ? 1u : 0u;
+}
+uint32_t mil_ship_owner(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0xFFFFFFFFu) return g_modGame->shipOwner(s);
+}
+uint32_t mil_ship_type(ExecEnv e, uint32_t s, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return retStr(mi, g_modGame->shipType(s), buf, cap);
+}
+double mil_ship_lon(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0.0) return g_modGame->shipLon(s);
+}
+double mil_ship_lat(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0.0) return g_modGame->shipLat(s);
+}
+int32_t mil_ship_health(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->shipHealth(s);
+}
+int32_t mil_ship_crew(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->shipCrew(s);
+}
+double mil_ship_range(ExecEnv e, uint32_t s) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0.0) return g_modGame->shipRange(s);
+}
+uint32_t mil_army_stack_count(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->armyStackCount(p);
+}
+uint32_t mil_army_stack_owner(ExecEnv e, uint32_t p, uint32_t i) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0xFFFFFFFFu) return g_modGame->armyStackOwner(p, i);
+}
+int64_t mil_army_stack_size(ExecEnv e, uint32_t p, uint32_t i) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->armyStackSize(p, i);
+}
+int64_t mil_country_army(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->countryArmy(c);
+}
+int32_t mil_province_fortification(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->provinceFortification(p);
+}
+int32_t mil_province_port_level(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->provincePortLevel(p);
+}
+
+// ---- military.write ----
+//
+// All four queue an order for the turn resolver rather than moving anything.
+// A mod cannot teleport an army across the map or sink a ship out of range,
+// because these land in the same queue the UI writes to and the same
+// validation runs over them at end of turn.
+
+uint32_t milw_order_army_move(ExecEnv e, uint32_t f, uint32_t t, uint32_t pct) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0) return g_modGame->orderArmyMove(f, t, pct) ? 1u : 0u;
+}
+uint32_t milw_order_ship_move(ExecEnv e, uint32_t s, double lon, double lat) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0) return g_modGame->orderShipMove(s, lon, lat) ? 1u : 0u;
+}
+uint32_t milw_order_ship_engage(ExecEnv e, uint32_t s, uint32_t t) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0) return g_modGame->orderShipEngage(s, t) ? 1u : 0u;
+}
+uint32_t milw_order_ship_bombard(ExecEnv e, uint32_t s, uint32_t p, uint32_t ammoPtr, uint32_t ammoLen) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0)
+    std::string ammo;
+    if (ammoLen > 0 && !mi->readString(ammoPtr, ammoLen, ammo)) return 0;
+    return g_modGame->orderShipBombard(s, p, ammo) ? 1u : 0u;
+}
+
+// ---- research ----
+
+uint32_t res_node_count(ExecEnv e) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return g_modGame->researchNodeCount();
+}
+uint32_t res_node_id(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return retStr(mi, g_modGame->researchNodeId(i), buf, cap);
+}
+uint32_t res_node_name(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return retStr(mi, g_modGame->researchNodeName(i), buf, cap);
+}
+uint32_t res_node_category(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return retStr(mi, g_modGame->researchNodeCategory(i), buf, cap);
+}
+int32_t res_node_cost(ExecEnv e, uint32_t i) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return g_modGame->researchNodeCost(i);
+}
+uint32_t res_country_has_researched(ExecEnv e, uint32_t c, uint32_t nPtr, uint32_t nLen) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0)
+    std::string n;
+    if (!mi->readString(nPtr, nLen, n)) return 0;
+    return g_modGame->countryHasResearched(c, n) ? 1u : 0u;
+}
+// A SHARE OF INCOME IN 0..1, not an absolute sum -- that is how the game stores
+// research funding and how its own screen presents it.
+double res_country_funding(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0.0) return g_modGame->countryResearchFunding(c);
+}
+uint32_t resw_set_country_funding(ExecEnv e, uint32_t c, double v) {
+    MOD_GUARD(MODULE_RESEARCH_WRITE, 0) return g_modGame->setCountryResearchFunding(c, v) ? 1u : 0u;
+}
+
+// ---- politics ----
+
+double pol_country_compass_econ(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->countryCompassEcon(c);
+}
+double pol_country_compass_social(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->countryCompassSocial(c);
+}
+double pol_province_unrest(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->provinceUnrest(p);
+}
+uint32_t pol_policy_count(ExecEnv e) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->policyCount();
+}
+uint32_t pol_policy_id(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->policyId(i), buf, cap);
+}
+uint32_t pol_policy_name(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->policyName(i), buf, cap);
+}
+uint32_t pol_country_has_policy(ExecEnv e, uint32_t c, uint32_t pPtr, uint32_t pLen) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0)
+    std::string id;
+    if (!mi->readString(pPtr, pLen, id)) return 0;
+    return g_modGame->countryHasPolicy(c, id) ? 1u : 0u;
+}
+uint32_t pol_province_minority_count(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->provinceMinorityCount(p);
+}
+uint32_t pol_province_minority_name(ExecEnv e, uint32_t p, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->provinceMinorityName(p, i), buf, cap);
+}
+double pol_province_minority_share(ExecEnv e, uint32_t p, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->provinceMinorityShare(p, i);
+}
+uint32_t polw_set_country_policy(ExecEnv e, uint32_t c, uint32_t pPtr, uint32_t pLen, uint32_t on) {
+    MOD_GUARD(MODULE_POLITICS_WRITE, 0)
+    std::string id;
+    if (!mi->readString(pPtr, pLen, id)) return 0;
+    return g_modGame->setCountryPolicy(c, id, on != 0) ? 1u : 0u;
+}
+
+// ---- economy ----
+
+double eco_country_income_gross(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryIncomeGross(c);
+}
+double eco_country_income_net(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryIncomeNet(c);
+}
+double eco_country_army_upkeep(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryArmyUpkeep(c);
+}
+double eco_country_navy_upkeep(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryNavyUpkeep(c);
+}
+uint32_t eco_country_is_bankrupt(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryIsBankrupt(c) ? 1u : 0u;
+}
+int32_t eco_province_industry_level(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->provinceIndustryLevel(p);
+}
+uint32_t eco_province_industry_specialization(ExecEnv e, uint32_t p, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0)
+    return retStr(mi, g_modGame->provinceIndustrySpecialization(p), buf, cap);
+}
+double eco_province_resource(ExecEnv e, uint32_t p, uint32_t wPtr, uint32_t wLen) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0)
+    std::string w;
+    if (!mi->readString(wPtr, wLen, w)) return 0.0;
+    return g_modGame->provinceResource(p, w);
+}
+uint32_t ecow_set_province_industry_level(ExecEnv e, uint32_t p, int32_t l) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->setProvinceIndustryLevel(p, l) ? 1u : 0u;
+}
+
+// ---- map, 1.1 additions ----
+
+uint32_t map_province_is_coastal(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MAP, 0) return g_modGame->provinceIsCoastal(p) ? 1u : 0u;
+}
+uint32_t map_sea_route_exists(ExecEnv e, double aLon, double aLat, double bLon, double bLat) {
+    MOD_GUARD(MODULE_MAP, 0) return g_modGame->seaRouteExists(aLon, aLat, bLon, bLat) ? 1u : 0u;
+}
+uint32_t map_point_is_land(ExecEnv e, double lon, double lat) {
+    MOD_GUARD(MODULE_MAP, 0) return g_modGame->pointIsLand(lon, lat) ? 1u : 0u;
+}
+
+#undef MOD_GUARD
+
+// ---- mapeditor ----
+//
+// Two gates, not one. The capability says the player agreed to let this mod
+// touch map projects; editorActive() says there IS a project to touch. Holding
+// MapEditor while a game is running gets nothing, which is the point: the data
+// behind these calls is an editor project, and a running game does not have one.
+
+#define ED_GUARD(fail) \
+    ModInstance* mi = self(e); \
+    if (!mi || !mi->has(MODULE_MAPEDITOR) || !g_modGame) return fail; \
+    if (!g_modGame->editorActive()) return fail; \
+    (void)mi;
+
+uint32_t ed_active(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_MAPEDITOR) || !g_modGame) return 0;
+    return g_modGame->editorActive() ? 1u : 0u;
+}
+uint32_t ed_province_count(ExecEnv e) {
+    ED_GUARD(0) return g_modGame->editorProvinceCount();
+}
+uint32_t ed_province_at(ExecEnv e, uint32_t i) {
+    ED_GUARD(0xFFFFFFFFu) return g_modGame->editorProvinceAt(i);
+}
+int64_t ed_province_population(ExecEnv e, uint32_t p) {
+    ED_GUARD(0) return g_modGame->editorProvincePopulation(p);
+}
+int32_t ed_province_industry_level(ExecEnv e, uint32_t p) {
+    ED_GUARD(0) return g_modGame->editorProvinceIndustryLevel(p);
+}
+int32_t ed_province_fortification(ExecEnv e, uint32_t p) {
+    ED_GUARD(0) return g_modGame->editorProvinceFortification(p);
+}
+int32_t ed_province_port_level(ExecEnv e, uint32_t p) {
+    ED_GUARD(0) return g_modGame->editorProvincePortLevel(p);
+}
+double ed_province_resource(ExecEnv e, uint32_t p, uint32_t wPtr, uint32_t wLen) {
+    ED_GUARD(0.0)
+    std::string w;
+    if (!mi->readString(wPtr, wLen, w)) return 0.0;
+    return g_modGame->editorProvinceResource(p, w);
+}
+double ed_province_compass_econ(ExecEnv e, uint32_t p) {
+    ED_GUARD(0.0) return g_modGame->editorProvinceCompassEcon(p);
+}
+double ed_province_compass_social(ExecEnv e, uint32_t p) {
+    ED_GUARD(0.0) return g_modGame->editorProvinceCompassSocial(p);
+}
+uint32_t ed_set_province_population(ExecEnv e, uint32_t p, int64_t v) {
+    ED_GUARD(0) return g_modGame->editorSetProvincePopulation(p, v) ? 1u : 0u;
+}
+uint32_t ed_set_province_industry_level(ExecEnv e, uint32_t p, int32_t v) {
+    ED_GUARD(0) return g_modGame->editorSetProvinceIndustryLevel(p, v) ? 1u : 0u;
+}
+uint32_t ed_set_province_fortification(ExecEnv e, uint32_t p, int32_t v) {
+    ED_GUARD(0) return g_modGame->editorSetProvinceFortification(p, v) ? 1u : 0u;
+}
+uint32_t ed_set_province_port_level(ExecEnv e, uint32_t p, int32_t v) {
+    ED_GUARD(0) return g_modGame->editorSetProvincePortLevel(p, v) ? 1u : 0u;
+}
+uint32_t ed_set_province_resource(ExecEnv e, uint32_t p, uint32_t wPtr, uint32_t wLen, double v) {
+    ED_GUARD(0)
+    std::string w;
+    if (!mi->readString(wPtr, wLen, w)) return 0;
+    return g_modGame->editorSetProvinceResource(p, w, v) ? 1u : 0u;
+}
+uint32_t ed_set_province_compass(ExecEnv e, uint32_t p, double econ, double social) {
+    ED_GUARD(0) return g_modGame->editorSetProvinceCompass(p, econ, social) ? 1u : 0u;
+}
+uint32_t ed_map_name(ExecEnv e, uint32_t buf, uint32_t cap) {
+    ED_GUARD(0) return retStr(mi, g_modGame->editorMapName(), buf, cap);
+}
+uint32_t ed_set_map_name(ExecEnv e, uint32_t ptr, uint32_t len) {
+    ED_GUARD(0)
+    std::string n;
+    if (!mi->readString(ptr, len, n)) return 0;
+    return g_modGame->editorSetMapName(n) ? 1u : 0u;
+}
+uint32_t ed_set_author(ExecEnv e, uint32_t ptr, uint32_t len) {
+    ED_GUARD(0)
+    std::string a;
+    if (!mi->readString(ptr, len, a)) return 0;
+    return g_modGame->editorSetAuthor(a) ? 1u : 0u;
+}
+uint32_t ed_set_license(ExecEnv e, uint32_t ptr, uint32_t len) {
+    ED_GUARD(0)
+    std::string l;
+    if (!mi->readString(ptr, len, l)) return 0;
+    return g_modGame->editorSetLicense(l) ? 1u : 0u;
+}
+
+#undef ED_GUARD
+
+// ---- net, 1.1 additions ----
+
+uint32_t net_peer_at(ExecEnv e, uint32_t i) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_modGame) return 0xFFFFFFFFu;
+    return g_modGame->netPeerAt(i);
+}
+uint32_t net_peer_name(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_modGame) return 0;
+    return retStr(mi, g_modGame->netPeerName(i), buf, cap);
+}
+uint32_t net_max_message_bytes(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NET) || !g_modGame) return 0;
+    return g_modGame->netMaxMessageBytes();
+}
+
+// ---- neural, 1.1 additions ----
+
+uint32_t neural_module_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return g_modGame->neuralModuleCount();
+}
+uint32_t neural_module_name(ExecEnv e, uint32_t m, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return retStr(mi, g_modGame->neuralModuleName(m), buf, cap);
+}
+uint32_t neural_action_count(ExecEnv e, uint32_t m) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return g_modGame->neuralActionCount(m);
+}
+uint32_t neural_action_name(ExecEnv e, uint32_t m, uint32_t a, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return retStr(mi, g_modGame->neuralActionName(m, a), buf, cap);
+}
+uint32_t neural_country_is_ai(ExecEnv e, uint32_t c) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return g_modGame->neuralCountryIsAI(c) ? 1u : 0u;
+}
+int64_t neural_update_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return g_modGame->neuralUpdateCount();
+}
+uint32_t neural_model_loaded(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
+    return g_modGame->neuralModelLoaded() ? 1u : 0u;
+}
+
 // --------------------------------------------------------------- table ----
 
 // A capability of 0 means "always available". Core uses it rather than
@@ -1019,6 +1529,118 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:assets", "size", "(ii)i",   (void*)assets_size, MODULE_ASSETS},
     {"gearbox:assets", "read", "(iiii)i", (void*)assets_read, MODULE_ASSETS},
 
+    // ── Gearbox 1.1 ──────────────────────────────────────────────────────────
+    // Appended, never interleaved with the v1.0 rows above. modAbiMinorFor()
+    // reads the module name to decide which minor a symbol arrived in, and a
+    // v1.0 mod resolves only the rows that existed then.
+
+    {"gearbox:ui", "draw_line",        "(iiiiiFi)",  (void*)ui_draw_line,        MODULE_UI},
+    {"gearbox:ui", "draw_circle",      "(iiiFi)",    (void*)ui_draw_circle,      MODULE_UI},
+    {"gearbox:ui", "draw_image",       "(iiiiiiii)", (void*)ui_draw_image,       MODULE_UI},
+    {"gearbox:ui", "draw_text_sized",  "(iiiiiii)",  (void*)ui_draw_text_sized,  MODULE_UI},
+    {"gearbox:ui", "measure_text",     "(iii)i",     (void*)ui_measure_text,     MODULE_UI},
+    {"gearbox:ui", "panel_width",      "(i)i",       (void*)ui_panel_width,      MODULE_UI},
+    {"gearbox:ui", "panel_height",     "(i)i",       (void*)ui_panel_height,     MODULE_UI},
+    {"gearbox:ui", "panel_set_visible","(ii)",       (void*)ui_panel_set_visible,MODULE_UI},
+    {"gearbox:ui", "mouse_x",          "(i)F",       (void*)ui_mouse_x,          MODULE_UI},
+    {"gearbox:ui", "mouse_y",          "(i)F",       (void*)ui_mouse_y,          MODULE_UI},
+    {"gearbox:ui", "mouse_inside",     "(i)i",       (void*)ui_mouse_inside,     MODULE_UI},
+    {"gearbox:ui", "theme_accent",     "()i",        (void*)ui_theme_accent,     MODULE_UI},
+    {"gearbox:ui", "set_theme_accent", "(i)i",       (void*)ui_set_theme_accent, MODULE_UI},
+
+    {"gearbox:military.read", "ship_count",             "()i",     (void*)mil_ship_count,             MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_at",                "(i)i",    (void*)mil_ship_at,                MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_exists",            "(i)i",    (void*)mil_ship_exists,            MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_owner",             "(i)i",    (void*)mil_ship_owner,             MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_type",              "(iii)i",  (void*)mil_ship_type,              MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_lon",               "(i)F",    (void*)mil_ship_lon,               MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_lat",               "(i)F",    (void*)mil_ship_lat,               MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_health",            "(i)i",    (void*)mil_ship_health,            MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_crew",              "(i)i",    (void*)mil_ship_crew,              MODULE_MILITARY_READ},
+    {"gearbox:military.read", "ship_range",             "(i)F",    (void*)mil_ship_range,             MODULE_MILITARY_READ},
+    {"gearbox:military.read", "army_stack_count",       "(i)i",    (void*)mil_army_stack_count,       MODULE_MILITARY_READ},
+    {"gearbox:military.read", "army_stack_owner",       "(ii)i",   (void*)mil_army_stack_owner,       MODULE_MILITARY_READ},
+    {"gearbox:military.read", "army_stack_size",        "(ii)I",   (void*)mil_army_stack_size,        MODULE_MILITARY_READ},
+    {"gearbox:military.read", "country_army",           "(i)I",    (void*)mil_country_army,           MODULE_MILITARY_READ},
+    {"gearbox:military.read", "province_fortification",  "(i)i",   (void*)mil_province_fortification, MODULE_MILITARY_READ},
+    {"gearbox:military.read", "province_port_level",     "(i)i",   (void*)mil_province_port_level,    MODULE_MILITARY_READ},
+
+    {"gearbox:military.write", "order_army_move",    "(iii)i",  (void*)milw_order_army_move,    MODULE_MILITARY_WRITE},
+    {"gearbox:military.write", "order_ship_move",    "(iFF)i",  (void*)milw_order_ship_move,    MODULE_MILITARY_WRITE},
+    {"gearbox:military.write", "order_ship_engage",  "(ii)i",   (void*)milw_order_ship_engage,  MODULE_MILITARY_WRITE},
+    {"gearbox:military.write", "order_ship_bombard", "(iiii)i", (void*)milw_order_ship_bombard, MODULE_MILITARY_WRITE},
+
+    {"gearbox:research.read", "node_count",           "()i",     (void*)res_node_count,           MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "node_id",              "(iii)i",  (void*)res_node_id,              MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "node_name",            "(iii)i",  (void*)res_node_name,            MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "node_category",        "(iii)i",  (void*)res_node_category,        MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "node_cost",            "(i)i",    (void*)res_node_cost,            MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "country_has_researched","(iii)i", (void*)res_country_has_researched,MODULE_RESEARCH_READ},
+    {"gearbox:research.read", "country_funding",      "(i)F",    (void*)res_country_funding,      MODULE_RESEARCH_READ},
+
+    {"gearbox:research.write", "set_country_funding", "(iF)i",   (void*)resw_set_country_funding, MODULE_RESEARCH_WRITE},
+
+    {"gearbox:politics.read", "country_compass_econ",   "(i)F",    (void*)pol_country_compass_econ,   MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_compass_social", "(i)F",    (void*)pol_country_compass_social, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "province_unrest",        "(i)F",    (void*)pol_province_unrest,        MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "policy_count",           "()i",     (void*)pol_policy_count,           MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "policy_id",              "(iii)i",  (void*)pol_policy_id,              MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "policy_name",            "(iii)i",  (void*)pol_policy_name,            MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_has_policy",     "(iii)i",  (void*)pol_country_has_policy,     MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "province_minority_count","(i)i",    (void*)pol_province_minority_count, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "province_minority_name", "(iiii)i", (void*)pol_province_minority_name, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "province_minority_share","(ii)F",   (void*)pol_province_minority_share,MODULE_POLITICS_READ},
+
+    {"gearbox:politics.write", "set_country_policy", "(iiii)i", (void*)polw_set_country_policy, MODULE_POLITICS_WRITE},
+
+    {"gearbox:economy.read", "country_income_gross",  "(i)F",   (void*)eco_country_income_gross,  MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_income_net",    "(i)F",   (void*)eco_country_income_net,    MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_army_upkeep",   "(i)F",   (void*)eco_country_army_upkeep,   MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_navy_upkeep",   "(i)F",   (void*)eco_country_navy_upkeep,   MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_is_bankrupt",   "(i)i",   (void*)eco_country_is_bankrupt,   MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "province_industry_level","(i)i",  (void*)eco_province_industry_level,MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "province_industry_specialization","(iii)i",(void*)eco_province_industry_specialization,MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "province_resource",     "(iii)F", (void*)eco_province_resource,     MODULE_ECONOMY_READ},
+
+    {"gearbox:economy.write", "set_province_industry_level", "(ii)i", (void*)ecow_set_province_industry_level, MODULE_ECONOMY_WRITE},
+
+    {"gearbox:map", "province_is_coastal", "(i)i",     (void*)map_province_is_coastal, MODULE_MAP},
+    {"gearbox:map", "sea_route_exists",    "(FFFF)i",  (void*)map_sea_route_exists,    MODULE_MAP},
+    {"gearbox:map", "point_is_land",       "(FF)i",    (void*)map_point_is_land,       MODULE_MAP},
+
+    {"gearbox:mapeditor", "editor_active",                   "()i",      (void*)ed_active,                   MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_count",           "()i",      (void*)ed_province_count,           MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_at",              "(i)i",     (void*)ed_province_at,              MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_population",      "(i)I",     (void*)ed_province_population,      MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_industry_level",  "(i)i",     (void*)ed_province_industry_level,  MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_fortification",   "(i)i",     (void*)ed_province_fortification,   MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_port_level",      "(i)i",     (void*)ed_province_port_level,      MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_resource",        "(iii)F",   (void*)ed_province_resource,        MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_compass_econ",    "(i)F",     (void*)ed_province_compass_econ,    MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_province_compass_social",  "(i)F",     (void*)ed_province_compass_social,  MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_population",  "(iI)i",    (void*)ed_set_province_population,  MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_industry_level","(ii)i",  (void*)ed_set_province_industry_level, MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_fortification","(ii)i",   (void*)ed_set_province_fortification,MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_port_level",  "(ii)i",    (void*)ed_set_province_port_level,  MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_resource",    "(iiiF)i",  (void*)ed_set_province_resource,    MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_province_compass",     "(iFF)i",   (void*)ed_set_province_compass,     MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_map_name",                 "(ii)i",    (void*)ed_map_name,                 MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_map_name",             "(ii)i",    (void*)ed_set_map_name,             MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_author",               "(ii)i",    (void*)ed_set_author,               MODULE_MAPEDITOR},
+    {"gearbox:mapeditor", "editor_set_license",              "(ii)i",    (void*)ed_set_license,              MODULE_MAPEDITOR},
+
+    {"gearbox:net", "peer_at",           "(i)i",   (void*)net_peer_at,           MODULE_NET},
+    {"gearbox:net", "peer_name",         "(iii)i", (void*)net_peer_name,         MODULE_NET},
+    {"gearbox:net", "max_message_bytes", "()i",    (void*)net_max_message_bytes, MODULE_NET},
+
+    {"gearbox:neural", "module_count",  "()i",      (void*)neural_module_count,  MODULE_NEURAL},
+    {"gearbox:neural", "module_name",   "(iii)i",   (void*)neural_module_name,   MODULE_NEURAL},
+    {"gearbox:neural", "action_count",  "(i)i",     (void*)neural_action_count,  MODULE_NEURAL},
+    {"gearbox:neural", "action_name",   "(iiii)i",  (void*)neural_action_name,   MODULE_NEURAL},
+    {"gearbox:neural", "country_is_ai", "(i)i",     (void*)neural_country_is_ai, MODULE_NEURAL},
+    {"gearbox:neural", "update_count",  "()I",      (void*)neural_update_count,  MODULE_NEURAL},
+    {"gearbox:neural", "model_loaded",  "()i",      (void*)neural_model_loaded,  MODULE_NEURAL},
+
     // Not a gearbox: namespace -- these must carry the names the interpreters
     // actually import. Gated on WasiStub like any other capability.
     {"wasi_snapshot_preview1", "fd_write",            "(iiii)i",     (void*)wasi_fd_write,       MODULE_WASISTUB},
@@ -1080,6 +1702,7 @@ const ModHostFn kHostFunctions[] = {
 }  // namespace
 
 void modSetNetBridge(const ModNetBridge& bridge) { g_netBridge = bridge; }
+void modSetUiBridge(const ModUiBridge& bridge) { g_uiBridge = bridge; }
 void modSetAudioBridge(const ModAudioBridge& bridge) { g_audioBridge = bridge; }
 
 void modReleaseAudio(const std::string& modId) {

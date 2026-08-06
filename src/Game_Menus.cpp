@@ -358,7 +358,7 @@ void Game::drawCredits() {
             if (e.type == CreditEntry::ROLE) {
                 int fs = 52;
                 int tw = MeasureText(e.text.c_str(), fs);
-                DrawText(e.text.c_str(), centerX - tw / 2, (int)(y + 4), fs, hexToColor(m_config.accentColor));
+                DrawText(e.text.c_str(), centerX - tw / 2, (int)(y + 4), fs, hexToColor(m_config.accent()));
             } else if (e.type == CreditEntry::NAME) {
                 int fs = 24;
                 int tw = MeasureText(e.text.c_str(), fs);
@@ -462,7 +462,7 @@ void Game::drawCommunityMenu() {
     // Title
     const char* title = "Community";
     int titleW = MeasureText(title, 48);
-    DrawText(title, centerX - titleW / 2, startY - 90, 48, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2, startY - 90, 48, hexToColor(m_config.accent()));
 
     // Discord button
     {
@@ -554,7 +554,7 @@ void Game::drawMainMenu() {
     const char* title = "OpenDoctrines";
     int titleSize = 60;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2 + titleDX, 80, titleSize, fade(hexToColor(m_config.accentColor)));
+    DrawText(title, centerX - titleW / 2 + titleDX, 80, titleSize, fade(hexToColor(m_config.accent())));
 
     const char* subtitle = "A Grand Strategy Game";
     int subSize = 20;
@@ -563,7 +563,7 @@ void Game::drawMainMenu() {
 
     // Decorative line
     int lineW = 300;
-    DrawRectangle(centerX - lineW / 2 + titleDX, 180, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accentColor), 100.0f/255.0f)));
+    DrawRectangle(centerX - lineW / 2 + titleDX, 180, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accent()), 100.0f/255.0f)));
     DrawRectangle(centerX - lineW / 2 + 1 + titleDX, 181, lineW - 2, 1, fade(Color{100, 90, 50, 60}));
 
     // Buttons
@@ -585,7 +585,7 @@ void Game::drawMainMenu() {
         int y = startY + i * itemH;
         bool isSelected = (i == m_menuIndex);
         bool isHovered = (i == hovered);
-        Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
+        Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
         Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
@@ -595,7 +595,7 @@ void Game::drawMainMenu() {
 
         if (isSelected) {
             int underlineW = tw + 20;
-            DrawRectangle(centerX - underlineW / 2 + btnDX, y + fontSize + 4, underlineW, 2, fade(hexToColor(m_config.accentColor)));
+            DrawRectangle(centerX - underlineW / 2 + btnDX, y + fontSize + 4, underlineW, 2, fade(hexToColor(m_config.accent())));
         }
     }
 
@@ -697,7 +697,7 @@ void Game::drawMainMenu() {
     if (GameUpdates::get().updateAvailable()) {
         Rectangle r = updateBadgeRect();
         bool hov = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, r);
-        Color accent = hexToColor(m_config.accentColor);
+        Color accent = hexToColor(m_config.accent());
         DrawRectangleRounded(r, 0.4f, 8, fade(ColorAlpha(accent, hov ? 0.35f : 0.20f)));
         DrawRectangleRoundedLines(r, 0.4f, 8, fade(ColorAlpha(accent, 0.8f)));
         // A gentle pulse, so it reads as new without demanding attention.
@@ -740,7 +740,7 @@ void Game::drawMainMenu() {
     // Feedback message
     if (m_menuFeedbackTimer > 0 && !m_menuFeedback.empty()) {
         int fbW = MeasureText(m_menuFeedback.c_str(), 16);
-        DrawText(m_menuFeedback.c_str(), centerX - fbW / 2, m_screenH - 80, 16, ColorAlpha(hexToColor(m_config.accentColor), std::min(1.0f, m_menuFeedbackTimer)));
+        DrawText(m_menuFeedback.c_str(), centerX - fbW / 2, m_screenH - 80, 16, ColorAlpha(hexToColor(m_config.accent()), std::min(1.0f, m_menuFeedbackTimer)));
     }
 
     if (m_updatePanel) drawUpdatePanel();
@@ -863,7 +863,7 @@ void Game::drawUpdatePanel() {
     using Stage = GameUpdates::Stage;
     GameUpdates::Status st = GameUpdates::get().status();
     UpdatePanelLayout L = updatePanelLayout(m_screenW, m_screenH);
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
 
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 170});
     DrawRectangleRounded(L.panel, 0.04f, 8, Color{24, 24, 30, 250});
@@ -1365,7 +1365,7 @@ void Game::drawOdStatePrompt() {
         boxH = 130 + std::min((int)m_odStateFiles.size(), 8) * 26;
     int boxX = m_screenW / 2 - boxW / 2;
     int boxY = m_screenH / 2 - boxH / 2;
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
     DrawRectangleRounded({(float)boxX, (float)boxY, (float)boxW, (float)boxH}, 0.05f, 8, {18, 18, 22, 245});
     DrawRectangleRoundedLines({(float)boxX, (float)boxY, (float)boxW, (float)boxH}, 0.05f, 8, accent);
 
@@ -1446,7 +1446,7 @@ void Game::drawSingleplayerMenu() {
     const char* title = "Play Singleplayer";
     int titleSize = 50;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2, 120, titleSize, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2, 120, titleSize, hexToColor(m_config.accent()));
 
     // Buttons
     int count = SINGLEPLAYER_COUNT;
@@ -1465,7 +1465,7 @@ void Game::drawSingleplayerMenu() {
         int y = startY + i * itemH;
         bool isSelected = (i == m_menuIndex);
         bool isHovered = (i == hovered);
-        Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
+        Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
         Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int tw = MeasureText(SINGLEPLAYER_ITEMS[i], fontSize);
@@ -1475,7 +1475,7 @@ void Game::drawSingleplayerMenu() {
 
         if (isSelected) {
             int underlineW = tw + 20;
-            DrawRectangle(centerX - underlineW / 2, y + fontSize + 4, underlineW, 2, hexToColor(m_config.accentColor));
+            DrawRectangle(centerX - underlineW / 2, y + fontSize + 4, underlineW, 2, hexToColor(m_config.accent()));
         }
     }
 
@@ -1595,7 +1595,7 @@ void Game::drawCountrySelect() {
     int centerX = m_screenW / 2;
 
     // Title
-    DrawText("SELECT YOUR COUNTRY", centerX - MeasureText("SELECT YOUR COUNTRY", 40) / 2, 15, 40, hexToColor(m_config.accentColor));
+    DrawText("SELECT YOUR COUNTRY", centerX - MeasureText("SELECT YOUR COUNTRY", 40) / 2, 15, 40, hexToColor(m_config.accent()));
     DrawText("Click on a country on the map to play, or use the button below",
              centerX - MeasureText("Click on a country on the map to play, or use the button below", 18) / 2, 60, 18, LIGHTGRAY);
 
@@ -1936,7 +1936,7 @@ void Game::drawMenuList(const std::vector<std::string>& items, int selectedIndex
         int y = startY + i * itemH;
         bool isSelected = (i == selectedIndex);
         bool isHovered = (i == hovered);
-        Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
+        Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
         Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
         int textW = MeasureText(items[i].c_str(), fontSize);
@@ -1946,7 +1946,7 @@ void Game::drawMenuList(const std::vector<std::string>& items, int selectedIndex
 
         if (isSelected) {
             int lineW = textW + 20;
-            DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accentColor));
+            DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accent()));
         }
     }
 }
@@ -2435,7 +2435,7 @@ void Game::updateSettingsFromMenu() {
         } else if (strcmp(s.label, "Accent Color") == 0) {
             int curIdx = 0;
             for (int p = 0; p < ACCENT_PRESETS_COUNT; ++p)
-                if (ACCENT_PRESETS[p] == m_config.accentColor) { curIdx = p; break; }
+                if (ACCENT_PRESETS[p] == m_config.accent()) { curIdx = p; break; }
             curIdx = (curIdx + 1) % ACCENT_PRESETS_COUNT;
             m_config.accentColor = ACCENT_PRESETS[curIdx];
         } else if (strcmp(s.label, "Resolution") == 0) {

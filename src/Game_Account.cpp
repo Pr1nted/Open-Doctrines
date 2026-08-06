@@ -390,7 +390,7 @@ void Game::drawAccountMenu() {
 
     AccountClient& client = AccountClient::get();
     const Vector2 mouse = getMouse();
-    const Color accent = hexToColor(m_config.accentColor);
+    const Color accent = hexToColor(m_config.accent());
 
     const int centerX = m_screenW / 2;
     const int btnW = 300, btnH = 52, gap = 14, fontSize = 22;
@@ -725,7 +725,7 @@ void Game::drawAccountProviders(int centerX, int y, const AccountInfo& info) {
 // ────────────────────────────────────────────────────────────────────────────
 void Game::drawAccountField(int x, int y, int w, int h) {
     const Rectangle r = {(float)x, (float)y, (float)w, (float)h};
-    const Color border = m_accountFieldFocused ? hexToColor(m_config.accentColor)
+    const Color border = m_accountFieldFocused ? hexToColor(m_config.accent())
                                                : Color{100, 100, 120, 200};
     DrawRectangleRounded(r, 0.15f, 8, {25, 25, 32, 235});
     DrawRectangleRoundedLines(r, 0.15f, 8, border);

@@ -375,4 +375,619 @@ public final class GearboxRaw {
     @Import(module = "gearbox:gamestate.write", name = "set_province_population")
     public static native int setProvincePopulation(int province, long value);
 
+    // Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
+    // is clamped to 0.25..64. Clipped to your panel like every other command.
+    // `(iiiiiFi)`
+    @Import(module = "gearbox:ui", name = "draw_line")
+    public static native void drawLine(int panel, int x1, int y1, int x2, int y2, double thickness, int rgba);
+
+    // Queue a filled circle centred at (cx,cy), panel-relative. Radius is
+    // clamped to 0..4096.
+    // `(iiiFi)`
+    @Import(module = "gearbox:ui", name = "draw_circle")
+    public static native void drawCircle(int panel, int cx, int cy, double radius, int rgba);
+
+    // Queue an image from YOUR OWN package -- `name` is a path inside your
+    // .odmod, resolved exactly as gearbox:assets/read resolves it, so you
+    // cannot name a file on disk, a game asset, or another mod's art. Pass w
+    // or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it
+    // unmodified. Decoded once and cached; a name that fails to decode draws
+    // nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
+    // extension. This is the call that makes a real reskin possible.
+    // `(iiiiiiii)`
+    @Import(module = "gearbox:ui", name = "draw_image")
+    public static native void drawImage(int panel, int x, int y, int w, int h, int name, int nameLen, int tint);
+
+    // Like draw_text but with a type size, clamped to 6..96. draw_text remains
+    // 14pt, unchanged, so v1.0 mods look exactly as they did.
+    // `(iiiiiii)`
+    @Import(module = "gearbox:ui", name = "draw_text_sized")
+    public static native void drawTextSized(int panel, int x, int y, int size, int rgba, int text, int textLen);
+
+    // Width in pixels of `text` at `size`, measured with the font the game
+    // will actually draw. Centring, right-alignment and wrapping all need this
+    // before the text is queued.
+    // `(iii)i`
+    @Import(module = "gearbox:ui", name = "measure_text")
+    public static native int measureText(int text, int textLen, int size);
+
+    // The width the host assigned your panel this frame, in pixels. Lay out
+    // against this rather than against min_w -- the host may have given you
+    // more.
+    // `(i)i`
+    @Import(module = "gearbox:ui", name = "panel_width")
+    public static native int panelWidth(int panel);
+
+    // The height the host assigned your panel this frame, in pixels.
+    // `(i)i`
+    @Import(module = "gearbox:ui", name = "panel_height")
+    public static native int panelHeight(int panel);
+
+    // Show or hide one of your panels. A hidden panel is not drawn and
+    // receives no input, but keeps its handle and its registration.
+    // `(ii)`
+    @Import(module = "gearbox:ui", name = "panel_set_visible")
+    public static native void panelSetVisible(int panel, int visible);
+
+    // Cursor X, panel-relative, or 0 when the cursor is not over your panel.
+    // You cannot observe the pointer outside your own box.
+    // `(i)F`
+    @Import(module = "gearbox:ui", name = "mouse_x")
+    public static native double mouseX(int panel);
+
+    // Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+    // `(i)F`
+    @Import(module = "gearbox:ui", name = "mouse_y")
+    public static native double mouseY(int panel);
+
+    // Whether the cursor is over your panel this frame.
+    // `(i)i`
+    @Import(module = "gearbox:ui", name = "mouse_inside")
+    public static native int mouseInside(int panel);
+
+    // The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
+    // Build your palette around this and you harmonise with what they chose.
+    // `()i`
+    @Import(module = "gearbox:ui", name = "theme_accent")
+    public static native int themeAccent();
+
+    // Restyle the whole interface. The accent is read at over a hundred sites
+    // -- every heading, highlight, selection and button -- so this is the
+    // cheapest full reskin there is. It is NOT persisted: the game's settings
+    // file keeps the player's own colour, and the override is dropped the
+    // moment no mod is running, so it cannot outlive uninstalling you.
+    // `(i)i`
+    @Import(module = "gearbox:ui", name = "set_theme_accent")
+    public static native int setThemeAccent(int rgb);
+
+    // How many ships exist in the world, across all owners.
+    // `()i`
+    @Import(module = "gearbox:military.read", name = "ship_count")
+    public static native int shipCount();
+
+    // The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
+    // Ids are stable within a turn and not across turns -- do not store one.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "ship_at")
+    public static native int shipAt(int index);
+
+    // Whether a ship id is still live. Check this before acting on an id you
+    // read earlier in the same turn; ships sink.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "ship_exists")
+    public static native int shipExists(int ship);
+
+    // The country that owns a ship, or 0xFFFFFFFF for an id that does not
+    // exist.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "ship_owner")
+    public static native int shipOwner(int ship);
+
+    // The hull type as a lowercase string: "transport", "destroyer",
+    // "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
+    // to learn the length, allocate, call again. Returns the full length
+    // either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:military.read", name = "ship_type")
+    public static native int shipType(int ship, int buf, int cap);
+
+    // Longitude in degrees, -180..180. Ships live in world coordinates, not
+    // provinces.
+    // `(i)F`
+    @Import(module = "gearbox:military.read", name = "ship_lon")
+    public static native double shipLon(int ship);
+
+    // Latitude in degrees, -90..90.
+    // `(i)F`
+    @Import(module = "gearbox:military.read", name = "ship_lat")
+    public static native double shipLat(int ship);
+
+    // Hull integrity, 0..100. A ship at 0 has already sunk and will not
+    // appear.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "ship_health")
+    public static native int shipHealth(int ship);
+
+    // Crew aboard. For a transport this includes the embarked army, which is
+    // why a sunk transport costs so much more than its hull.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "ship_crew")
+    public static native int shipCrew(int ship);
+
+    // How far this hull may move in one turn, in degrees. The resolver clamps
+    // any order beyond it, so read this before ordering a move rather than
+    // discovering the clamp afterwards.
+    // `(i)F`
+    @Import(module = "gearbox:military.read", name = "ship_range")
+    public static native double shipRange(int ship);
+
+    // How many distinct owners have troops in a province. Usually 1; more than
+    // one means a contested or garrisoned province.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "army_stack_count")
+    public static native int armyStackCount(int province);
+
+    // The country owning stack `index` in a province, or 0xFFFFFFFF past the
+    // end.
+    // `(ii)i`
+    @Import(module = "gearbox:military.read", name = "army_stack_owner")
+    public static native int armyStackOwner(int province, int index);
+
+    // How many troops are in that stack.
+    // `(ii)I`
+    @Import(module = "gearbox:military.read", name = "army_stack_size")
+    public static native long armyStackSize(int province, int index);
+
+    // A country's total troops everywhere, which is the number its own army
+    // screen shows.
+    // `(i)I`
+    @Import(module = "gearbox:military.read", name = "country_army")
+    public static native long countryArmy(int country);
+
+    // Fortification level, 0..5. Multiplies the defender's strength.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "province_fortification")
+    public static native int provinceFortification(int province);
+
+    // Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "province_port_level")
+    public static native int provincePortLevel(int province);
+
+    // Move `percent` (0..100) of the troops in `from` into the adjacent
+    // province `to`. Into an enemy province this is an attack; into your own
+    // or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN
+    // ORDER; it does not move anything. It lands in the same queue the
+    // player's own click writes to and is validated by the same resolver at
+    // end of turn, so a mod cannot teleport, cheat range, or attack across an
+    // ocean. Returns 0 if the order is rejected outright.
+    // `(iii)i`
+    @Import(module = "gearbox:military.write", name = "order_army_move")
+    public static native int orderArmyMove(int from, int to, int percent);
+
+    // Sail a ship toward (lon,lat). The resolver routes around land and clamps
+    // to ship_range, so a destination on land or beyond range moves the ship
+    // as far as it legally can rather than failing. QUEUES AN ORDER; it does
+    // not move anything. It lands in the same queue the player's own click
+    // writes to and is validated by the same resolver at end of turn, so a mod
+    // cannot teleport, cheat range, or attack across an ocean. Returns 0 if
+    // the order is rejected outright.
+    // `(iFF)i`
+    @Import(module = "gearbox:military.write", name = "order_ship_move")
+    public static native int orderShipMove(int ship, double lon, double lat);
+
+    // Attack another ship. Requires that you are at war with its owner and
+    // that it is within range; both are checked by the resolver. QUEUES AN
+    // ORDER; it does not move anything. It lands in the same queue the
+    // player's own click writes to and is validated by the same resolver at
+    // end of turn, so a mod cannot teleport, cheat range, or attack across an
+    // ocean. Returns 0 if the order is rejected outright.
+    // `(ii)i`
+    @Import(module = "gearbox:military.write", name = "order_ship_engage")
+    public static native int orderShipEngage(int ship, int target);
+
+    // Bombard a coastal province. `ammo` names the shell type; pass an empty
+    // string for the default. QUEUES AN ORDER; it does not move anything. It
+    // lands in the same queue the player's own click writes to and is
+    // validated by the same resolver at end of turn, so a mod cannot teleport,
+    // cheat range, or attack across an ocean. Returns 0 if the order is
+    // rejected outright.
+    // `(iiii)i`
+    @Import(module = "gearbox:military.write", name = "order_ship_bombard")
+    public static native int orderShipBombard(int ship, int province, int ammo, int ammoLen);
+
+    // How many technologies exist in the tree.
+    // `()i`
+    @Import(module = "gearbox:research.read", name = "node_count")
+    public static native int nodeCount();
+
+    // The stable string id of technology `index`, which is what
+    // country_has_researched takes. Two-call sizing: call with cap 0 to learn
+    // the length, allocate, call again. Returns the full length either way;
+    // the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:research.read", name = "node_id")
+    public static native int nodeId(int index, int buf, int cap);
+
+    // The technology's display name, which is localised and NOT stable --
+    // never match on it. Two-call sizing: call with cap 0 to learn the length,
+    // allocate, call again. Returns the full length either way; the copy is
+    // truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:research.read", name = "node_name")
+    public static native int nodeName(int index, int buf, int cap);
+
+    // Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
+    // learn the length, allocate, call again. Returns the full length either
+    // way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:research.read", name = "node_category")
+    public static native int nodeCategory(int index, int buf, int cap);
+
+    // Research points required.
+    // `(i)i`
+    @Import(module = "gearbox:research.read", name = "node_cost")
+    public static native int nodeCost(int index);
+
+    // Whether a country has completed a technology. Takes the id from node_id,
+    // not the display name.
+    // `(iii)i`
+    @Import(module = "gearbox:research.read", name = "country_has_researched")
+    public static native int countryHasResearched(int country, int nodeId, int nodeIdLen);
+
+    // Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
+    // is how the game stores it and how its own economy screen presents it.
+    // `(i)F`
+    @Import(module = "gearbox:research.read", name = "country_funding")
+    public static native double countryFunding(int country);
+
+    // Set research funding as a share of income. Clamped to 0..1; a value in
+    // 'points per turn' is not a quantity this game has.
+    // `(iF)i`
+    @Import(module = "gearbox:research.write", name = "set_country_funding")
+    public static native int setCountryFunding(int country, double share);
+
+    // Economic axis of the political compass, -100 (planned) to 100 (market).
+    // `(i)F`
+    @Import(module = "gearbox:politics.read", name = "country_compass_econ")
+    public static native double countryCompassEcon(int country);
+
+    // Social axis, -100 (authoritarian) to 100 (libertarian).
+    // `(i)F`
+    @Import(module = "gearbox:politics.read", name = "country_compass_social")
+    public static native double countryCompassSocial(int country);
+
+    // This province's chance of rebelling, as the game itself computes it.
+    // `(i)F`
+    @Import(module = "gearbox:politics.read", name = "province_unrest")
+    public static native double provinceUnrest(int province);
+
+    // How many policies exist.
+    // `()i`
+    @Import(module = "gearbox:politics.read", name = "policy_count")
+    public static native int policyCount();
+
+    // The stable string id of policy `index`. Two-call sizing: call with cap 0
+    // to learn the length, allocate, call again. Returns the full length
+    // either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "policy_id")
+    public static native int policyId(int index, int buf, int cap);
+
+    // The policy's display name; localised, not stable, do not match on it.
+    // Two-call sizing: call with cap 0 to learn the length, allocate, call
+    // again. Returns the full length either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "policy_name")
+    public static native int policyName(int index, int buf, int cap);
+
+    // Whether a country currently has a policy active or implementing.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "country_has_policy")
+    public static native int countryHasPolicy(int country, int policyId, int policyIdLen);
+
+    // How many named minority groups live in a province.
+    // `(i)i`
+    @Import(module = "gearbox:politics.read", name = "province_minority_count")
+    public static native int provinceMinorityCount(int province);
+
+    // The minority's name. Two-call sizing: call with cap 0 to learn the
+    // length, allocate, call again. Returns the full length either way; the
+    // copy is truncated to cap.
+    // `(iiii)i`
+    @Import(module = "gearbox:politics.read", name = "province_minority_name")
+    public static native int provinceMinorityName(int province, int index, int buf, int cap);
+
+    // That minority's share of the province's population, 0..1.
+    // `(ii)F`
+    @Import(module = "gearbox:politics.read", name = "province_minority_share")
+    public static native double provinceMinorityShare(int province, int index);
+
+    // Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so
+    // the cost, the prerequisites and the per-turn enactment cap all still
+    // apply -- a country cannot end up running policies it could never have
+    // afforded. Returns 1 if the policy is already in the requested state.
+    // `(iiii)i`
+    @Import(module = "gearbox:politics.write", name = "set_country_policy")
+    public static native int setCountryPolicy(int country, int policyId, int policyIdLen, int enabled);
+
+    // Income per turn before upkeep.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_income_gross")
+    public static native double countryIncomeGross(int country);
+
+    // Income per turn after army and navy upkeep. Negative means the treasury
+    // is draining.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_income_net")
+    public static native double countryIncomeNet(int country);
+
+    // What the standing army costs per turn.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_army_upkeep")
+    public static native double countryArmyUpkeep(int country);
+
+    // What the fleet costs per turn. Ships a country is not using still cost
+    // this, which is what makes scrapping a real decision.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_navy_upkeep")
+    public static native double countryNavyUpkeep(int country);
+
+    // Whether a country is currently bankrupt.
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_is_bankrupt")
+    public static native int countryIsBankrupt(int country);
+
+    // Industry level, 0..10.
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "province_industry_level")
+    public static native int provinceIndustryLevel(int province);
+
+    // What this province's industry specialises in, or an empty string for
+    // none. Two-call sizing: call with cap 0 to learn the length, allocate,
+    // call again. Returns the full length either way; the copy is truncated to
+    // cap.
+    // `(iii)i`
+    @Import(module = "gearbox:economy.read", name = "province_industry_specialization")
+    public static native int provinceIndustrySpecialization(int province, int buf, int cap);
+
+    // How much of a resource a province holds, 0..100. `which` is one of
+    // "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+    // `(iii)F`
+    @Import(module = "gearbox:economy.read", name = "province_resource")
+    public static native double provinceResource(int province, int which, int whichLen);
+
+    // Set a province's industry level, clamped to 0..10. This writes the built
+    // level directly and does not charge for it -- it is a scenario-authoring
+    // tool, not a build order.
+    // `(ii)i`
+    @Import(module = "gearbox:economy.write", name = "set_province_industry_level")
+    public static native int setProvinceIndustryLevel(int province, int level);
+
+    // Whether a province touches water. Ports, embarking and naval bombardment
+    // all require it.
+    // `(i)i`
+    @Import(module = "gearbox:map", name = "province_is_coastal")
+    public static native int provinceIsCoastal(int province);
+
+    // Whether a fleet could get from one point to another by sea, using the
+    // game's own navigation grid. You cannot compute this from province
+    // neighbours: those describe LAND adjacency.
+    // `(FFFF)i`
+    @Import(module = "gearbox:map", name = "sea_route_exists")
+    public static native int seaRouteExists(double fromLon, double fromLat, double toLon, double toLat);
+
+    // Whether a world coordinate is land. Ordering a ship onto land is not an
+    // error -- the resolver clamps it -- but knowing first is cheaper.
+    // `(FF)i`
+    @Import(module = "gearbox:map", name = "point_is_land")
+    public static native int pointIsLand(double lon, double lat);
+
+    // Whether the map editor is open with a project loaded. EVERY OTHER CALL
+    // IN THIS MODULE returns 0 or an empty string when this is 0, including
+    // from inside a running game: the data behind them is an editor project,
+    // and a game does not have one. Check this first.
+    // `()i`
+    @Import(module = "gearbox:mapeditor", name = "editor_active")
+    public static native int editorActive();
+
+    // How many provinces the open project has. Returns a neutral value unless
+    // the map editor is open with a project loaded -- see mapeditor/active.
+    // `()i`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_count")
+    public static native int editorProvinceCount();
+
+    // The province id at `index`, in ascending id order, or 0xFFFFFFFF past
+    // the end. Returns a neutral value unless the map editor is open with a
+    // project loaded -- see mapeditor/active.
+    // `(i)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_at")
+    public static native int editorProvinceAt(int index);
+
+    // Population. Returns a neutral value unless the map editor is open with a
+    // project loaded -- see mapeditor/active.
+    // `(i)I`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_population")
+    public static native long editorProvincePopulation(int province);
+
+    // Industry level, 0..10. Returns a neutral value unless the map editor is
+    // open with a project loaded -- see mapeditor/active.
+    // `(i)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_industry_level")
+    public static native int editorProvinceIndustryLevel(int province);
+
+    // Fortification, 0..5. Returns a neutral value unless the map editor is
+    // open with a project loaded -- see mapeditor/active.
+    // `(i)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_fortification")
+    public static native int editorProvinceFortification(int province);
+
+    // Port level, 0..3. Returns a neutral value unless the map editor is open
+    // with a project loaded -- see mapeditor/active.
+    // `(i)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_port_level")
+    public static native int editorProvincePortLevel(int province);
+
+    // Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
+    // or "metal". Returns a neutral value unless the map editor is open with a
+    // project loaded -- see mapeditor/active.
+    // `(iii)F`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_resource")
+    public static native double editorProvinceResource(int province, int which, int whichLen);
+
+    // Province economic compass, -100..100. Returns a neutral value unless the
+    // map editor is open with a project loaded -- see mapeditor/active.
+    // `(i)F`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_compass_econ")
+    public static native double editorProvinceCompassEcon(int province);
+
+    // Province social compass, -100..100. Returns a neutral value unless the
+    // map editor is open with a project loaded -- see mapeditor/active.
+    // `(i)F`
+    @Import(module = "gearbox:mapeditor", name = "editor_province_compass_social")
+    public static native double editorProvinceCompassSocial(int province);
+
+    // Set population, clamped to 0..2e9. Writes the SAME per-province data the
+    // editor's own tools write, so it saves, exports and shows up in the
+    // unsaved-changes prompt like any other edit. A province the project does
+    // not have is refused rather than created: data without a shape on the
+    // province bitmap exports a map the game cannot load.
+    // `(iI)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_population")
+    public static native int editorSetProvincePopulation(int province, long value);
+
+    // Set industry level, clamped to 0..10. Writes the SAME per-province data
+    // the editor's own tools write, so it saves, exports and shows up in the
+    // unsaved-changes prompt like any other edit. A province the project does
+    // not have is refused rather than created: data without a shape on the
+    // province bitmap exports a map the game cannot load.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_industry_level")
+    public static native int editorSetProvinceIndustryLevel(int province, int level);
+
+    // Set fortification, clamped to 0..5. Writes the SAME per-province data
+    // the editor's own tools write, so it saves, exports and shows up in the
+    // unsaved-changes prompt like any other edit. A province the project does
+    // not have is refused rather than created: data without a shape on the
+    // province bitmap exports a map the game cannot load.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_fortification")
+    public static native int editorSetProvinceFortification(int province, int level);
+
+    // Set port level, clamped to 0..3. Writes the SAME per-province data the
+    // editor's own tools write, so it saves, exports and shows up in the
+    // unsaved-changes prompt like any other edit. A province the project does
+    // not have is refused rather than created: data without a shape on the
+    // province bitmap exports a map the game cannot load.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_port_level")
+    public static native int editorSetProvincePortLevel(int province, int level);
+
+    // Set a resource amount, clamped to 0..100. An unrecognised name is
+    // refused rather than silently mapped onto oil. Writes the SAME
+    // per-province data the editor's own tools write, so it saves, exports and
+    // shows up in the unsaved-changes prompt like any other edit. A province
+    // the project does not have is refused rather than created: data without a
+    // shape on the province bitmap exports a map the game cannot load.
+    // `(iiiF)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_resource")
+    public static native int editorSetProvinceResource(int province, int which, int whichLen, double amount);
+
+    // Set both compass axes, each clamped to -100..100. Writes the SAME
+    // per-province data the editor's own tools write, so it saves, exports and
+    // shows up in the unsaved-changes prompt like any other edit. A province
+    // the project does not have is refused rather than created: data without a
+    // shape on the province bitmap exports a map the game cannot load.
+    // `(iFF)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_province_compass")
+    public static native int editorSetProvinceCompass(int province, double econ, double social);
+
+    // The project's map name. Two-call sizing: call with cap 0 to learn the
+    // length, allocate, call again. Returns the full length either way; the
+    // copy is truncated to cap.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_map_name")
+    public static native int editorMapName(int buf, int cap);
+
+    // Rename the map. Refused if empty or over 96 bytes.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_map_name")
+    public static native int editorSetMapName(int name, int nameLen);
+
+    // Set the author recorded in the exported .odmap. Up to 96 bytes.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_author")
+    public static native int editorSetAuthor(int author, int authorLen);
+
+    // Set the licence recorded in the exported .odmap. Up to 96 bytes.
+    // `(ii)i`
+    @Import(module = "gearbox:mapeditor", name = "editor_set_license")
+    public static native int editorSetLicense(int license, int licenseLen);
+
+    // The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
+    // This is the id net/send takes.
+    // `(i)i`
+    @Import(module = "gearbox:net", name = "peer_at")
+    public static native int peerAt(int index);
+
+    // That peer's display name -- deliberately NOT their account id or issuer.
+    // A mod has no business correlating players across sessions. Two-call
+    // sizing: call with cap 0 to learn the length, allocate, call again.
+    // Returns the full length either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:net", name = "peer_name")
+    public static native int peerName(int index, int buf, int cap);
+
+    // The largest payload net/send will accept. Chunk against this rather than
+    // discovering the limit by having a message dropped.
+    // `()i`
+    @Import(module = "gearbox:net", name = "max_message_bytes")
+    public static native int maxMessageBytes();
+
+    // How many decision modules the AI has. Each acts independently every
+    // turn.
+    // `()i`
+    @Import(module = "gearbox:neural", name = "module_count")
+    public static native int moduleCount();
+
+    // The module's name: "economy", "politics", "war", "navy". Two-call
+    // sizing: call with cap 0 to learn the length, allocate, call again.
+    // Returns the full length either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:neural", name = "module_name")
+    public static native int moduleName(int module, int buf, int cap);
+
+    // How many actions that module can choose between.
+    // `(i)i`
+    @Import(module = "gearbox:neural", name = "action_count")
+    public static native int actionCount(int module);
+
+    // The action's name, e.g. "reinforce", "embark", "propose_alliance". THE
+    // FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an
+    // implementation detail that has changed before and will again, and a mod
+    // written against those names would break silently. What the AI CAN DO is
+    // stable enough to build an advisor or a decision log against. Two-call
+    // sizing: call with cap 0 to learn the length, allocate, call again.
+    // Returns the full length either way; the copy is truncated to cap.
+    // `(iiii)i`
+    @Import(module = "gearbox:neural", name = "action_name")
+    public static native int actionName(int module, int action, int buf, int cap);
+
+    // Whether a country is played by the AI rather than by the local player.
+    // `(i)i`
+    @Import(module = "gearbox:neural", name = "country_is_ai")
+    public static native int countryIsAi(int country);
+
+    // Gradient updates the loaded model has been through -- roughly, how much
+    // training it has seen.
+    // `()I`
+    @Import(module = "gearbox:neural", name = "update_count")
+    public static native long updateCount();
+
+    // Whether an AI model is loaded at all. False in a game with no AI
+    // players.
+    // `()i`
+    @Import(module = "gearbox:neural", name = "model_loaded")
+    public static native int modelLoaded();
+
 }

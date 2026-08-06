@@ -488,7 +488,7 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     } else if (tab == 0 && index == 5) {
         label += std::string(": ") + fpsLabel(cfg.fpsTarget);
     } else if (tab == 0 && index == 6) {
-        char b[16]; snprintf(b, sizeof(b), ": #%06X", cfg.accentColor); label += b;
+        char b[16]; snprintf(b, sizeof(b), ": #%06X", cfg.accent()); label += b;
     } else if (tab == 0 && index == 7) {
         int d = cfg.aiDifficulty < 0 ? 0 : (cfg.aiDifficulty >= AI_DIFFICULTY_COUNT ? AI_DIFFICULTY_COUNT - 1 : cfg.aiDifficulty);
         label += std::string(": ") + AI_DIFFICULTY_NAMES[d];
@@ -641,7 +641,7 @@ void Game::odAccountWaitFrame(double elapsedMs) {
     // being asked to use. Only a request that is genuinely dragging gets shown.
     if (elapsedMs < 600.0) return;
 
-    const Color accent = hexToColor(g_waitHookGame->m_config.accentColor);
+    const Color accent = hexToColor(g_waitHookGame->m_config.accent());
     const int w = GetScreenWidth(), h = GetScreenHeight();
     BeginDrawing();
     ClearBackground(Color{10, 12, 18, 255});
@@ -2082,7 +2082,7 @@ void Game::drawNowPlayingToast() {
     const int x = 24;
     const int y = m_screenH - boxH - 46;
 
-    const Color accent = hexToColor(m_config.accentColor);
+    const Color accent = hexToColor(m_config.accent());
     DrawRectangleRounded({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
                          Color{ 12, 12, 18, A(225) });
     DrawRectangleRoundedLines({ (float)x, (float)y, (float)boxW, (float)boxH }, 0.12f, 8,
@@ -2124,7 +2124,7 @@ void Game::endFrame() {
 void Game::drawPadCursor() {
     if (!odPad::active()) return;
     const Vector2 c = odPad::cursor();
-    const Color accent = hexToColor(m_config.accentColor);
+    const Color accent = hexToColor(m_config.accent());
     // An arrow, not a dot: a dot on this map reads as a unit marker. Outlined in
     // black so it stays visible over the accent-coloured UI as well as the sea.
     const Vector2 tip   = { c.x, c.y };
@@ -2151,7 +2151,7 @@ Rectangle Game::sliderBarRect(int y, int centerX) const {
 }
 
 void Game::drawSliderWidget(Rectangle bar, float t, bool active, int steps) const {
-    const Color accent = hexToColor(m_config.accentColor);
+    const Color accent = hexToColor(m_config.accent());
     t = std::clamp(t, 0.0f, 1.0f);
 
     DrawRectangleRounded(bar, 1.0f, 6, Color{255, 255, 255, 36});
@@ -2407,7 +2407,7 @@ Rectangle Game::resourcePanelRect() const {
 void Game::drawResourcePanel() {
     if (!m_showResourcePanel) return;
     const Rectangle p = resourcePanelRect();
-    const Color accent = hexToColor(m_config.accentColor);
+    const Color accent = hexToColor(m_config.accent());
 
     DrawRectangleRounded(p, 0.06f, 8, Color{14, 16, 22, 232});
     DrawRectangleRoundedLines(p, 0.06f, 8, Color{255, 255, 255, 40});
@@ -2582,7 +2582,7 @@ void Game::drawPauseMenu() {
             if (t == 4 && !m_config.debugMode) continue;
             int tx = tabStartX + tabIdx * tabSpacing;
             bool active = (t == m_settingsTab);
-            Color tc = active ? hexToColor(m_config.accentColor) : LIGHTGRAY;
+            Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
             DrawText(TAB_NAMES[t], tx - MeasureText(TAB_NAMES[t], fontSize) / 2, tabY, fontSize, tc);
             if (active) {
                 int tw = MeasureText(TAB_NAMES[t], fontSize);
@@ -2599,7 +2599,7 @@ void Game::drawPauseMenu() {
             int sbX = centerX - sbW / 2;
             Color sbBg = m_keybindFilterActive ? Color{255, 255, 255, 30} : Color{255, 255, 255, 16};
             DrawRectangle(sbX, sbY, sbW, sbH, sbBg);
-            Color sbBorder = m_keybindFilterActive ? ColorAlpha(hexToColor(m_config.accentColor), 180.0f/255.0f) : Color{255, 255, 255, 50};
+            Color sbBorder = m_keybindFilterActive ? ColorAlpha(hexToColor(m_config.accent()), 180.0f/255.0f) : Color{255, 255, 255, 50};
             DrawRectangleLines(sbX, sbY, sbW, sbH, sbBorder);
             std::string searchText = m_keybindFilter.empty() ? "Search keybinds..." : m_keybindFilter;
             Color sc = m_keybindFilter.empty() ? Color{120, 120, 140, 180} : WHITE;
@@ -2717,7 +2717,7 @@ void Game::drawPauseMenu() {
             bool isHovered = (i == hovered);
             bool isEditing = m_editingValue && i == m_settingsIndex;
 
-            Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
+            Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
             Color bgColor = isEditing ? Color{255, 255, 255, 20} : (isHovered ? Color{255, 255, 255, 16} : BLANK);
 
             std::string label;
@@ -2751,7 +2751,7 @@ void Game::drawPauseMenu() {
                 drawVolumeSlider(i, y, centerX, isSelected);
             } else if (isSelected && !isEditing) {
                 int lineW = (m_settingsTab == 0 && i == 5) ? 320 : tw + 20;
-                DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accentColor));
+                DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accent()));
             }
 
             // Draw accent color swatch
@@ -2759,7 +2759,7 @@ void Game::drawPauseMenu() {
                 int swatchSize = 28;
                 int swatchX = centerX + tw / 2 + 14;
                 int swatchY = y + (itemH - swatchSize) / 2;
-                Color ac = hexToColor(m_config.accentColor);
+                Color ac = hexToColor(m_config.accent());
                 DrawRectangle(swatchX, swatchY, swatchSize, swatchSize, ac);
                 DrawRectangleLines(swatchX, swatchY, swatchSize, swatchSize, LIGHTGRAY);
             }
@@ -2787,7 +2787,7 @@ void Game::drawPauseMenu() {
                 int rw = MeasureText(rl, smFont);
                 float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (centerX + tw / 2 + 14);
                 float ry = (float)(y + 5);
-                Color rc = (resetHovered == i) ? hexToColor(m_config.accentColor) : Color{180, 180, 180, 255};
+                Color rc = (resetHovered == i) ? hexToColor(m_config.accent()) : Color{180, 180, 180, 255};
                 Rectangle rr = { rx, ry, (float)(rw + 16), (float)(smFont + 8) };
                 DrawRectangleRounded(rr, 0.2f, 6, Color{255, 255, 255, 12});
                 DrawText(rl, (int)(rx + 5), (int)(ry + 2), smFont, rc);
@@ -2830,7 +2830,7 @@ void Game::drawPauseMenu() {
             int y = startY + i * itemH;
             bool isSelected = (i == m_menuIndex);
             bool isHovered = (i == hovered);
-            Color textColor = isSelected ? hexToColor(m_config.accentColor) : (isHovered ? WHITE : LIGHTGRAY);
+            Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
             Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
             int tw = MeasureText(MENU_ITEMS[i], fontSize);
@@ -2840,7 +2840,7 @@ void Game::drawPauseMenu() {
 
             if (isSelected) {
                 int lineW = tw + 20;
-                DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accentColor));
+                DrawRectangle(centerX - lineW / 2, y + fontSize + 4, lineW, 2, hexToColor(m_config.accent()));
             }
         }
     }
@@ -2855,7 +2855,7 @@ void Game::drawPauseMenu() {
 
         const char* msg = "You have unsaved changes!";
         int msgW = MeasureText(msg, 26);
-        DrawText(msg, centerX - msgW / 2, dlgY + 20, 26, hexToColor(m_config.accentColor));
+        DrawText(msg, centerX - msgW / 2, dlgY + 20, 26, hexToColor(m_config.accent()));
 
         const char* sub = "Quitting to the main menu will lose your progress.";
         int subW = MeasureText(sub, 16);
@@ -2886,7 +2886,7 @@ void Game::drawPauseMenu() {
             DrawText(choices[c], bx + (btnW - MeasureText(choices[c], 16)) / 2, btnY + 12, 16, WHITE);
 
             if (active && m_unsavedChoice == c) {
-                DrawRectangleRoundedLines(btn, 0.15f, 6, ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f));
+                DrawRectangleRoundedLines(btn, 0.15f, 6, ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f));
             }
         }
     }

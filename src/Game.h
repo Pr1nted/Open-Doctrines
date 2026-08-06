@@ -873,6 +873,109 @@ private:
     // implements ModGameAccess lives outside the class.
 public:
     int         modTurnNumber() const;
+
+    // ── Gearbox 1.1 backing ──────────────────────────────────────────────────
+    //
+    // Same rule as the block below: plain accessors, so the mod layer never
+    // sees a game header and a mod never holds a pointer into game state.
+    // Ship and army handles are indices into the live containers, checked on
+    // every call, because a mod that cached a NavyShip* would be reading freed
+    // memory the turn something sank.
+    int         modShipCount() const;
+    bool        modShipExists(int sid) const;
+    int         modShipOwner(int sid) const;
+    std::string modShipType(int sid) const;
+    double      modShipLon(int sid) const;
+    double      modShipLat(int sid) const;
+    int         modShipHealth(int sid) const;
+    int         modShipCrew(int sid) const;
+    double      modShipRange(int sid) const;
+    int         modArmyStackCount(int pid) const;
+    int         modArmyStackOwner(int pid, int index) const;
+    long long   modArmyStackSize(int pid, int index) const;
+    long long   modCountryArmy(int cid) const;
+    int         modProvinceFortification(int pid) const;
+    int         modProvincePortLevel(int pid) const;
+    bool        modOrderArmyMove(int fromPid, int toPid, int pct);
+    bool        modOrderShipMove(int sid, double lon, double lat);
+    bool        modOrderShipEngage(int sid, int targetSid);
+    bool        modOrderShipBombard(int sid, int pid, const std::string& ammo);
+    int         modResearchNodeCount() const;
+    std::string modResearchNodeId(int index) const;
+    std::string modResearchNodeName(int index) const;
+    std::string modResearchNodeCategory(int index) const;
+    int         modResearchNodeCost(int index) const;
+    bool        modCountryHasResearched(int cid, const std::string& nodeId) const;
+    double      modCountryResearchFunding(int cid) const;
+    bool        modSetCountryResearchFunding(int cid, double value);
+    double      modCountryCompassEcon(int cid) const;
+    double      modCountryCompassSocial(int cid) const;
+    double      modProvinceUnrest(int pid) const;
+    int         modPolicyCount() const;
+    std::string modPolicyId(int index) const;
+    std::string modPolicyName(int index) const;
+    bool        modCountryHasPolicy(int cid, const std::string& policyId) const;
+    bool        modSetCountryPolicy(int cid, const std::string& policyId, bool on);
+
+    // ── mapeditor (ABI 1.1) ──────────────────────────────────────────────────
+    // Null anywhere but the editor screen. The gate every modEditor* call uses.
+    class MapEditor* modEditorOrNull() const;
+    const struct MapEditor::EditorProvinceData* modEditorProv(int pid) const;
+    struct MapEditor::EditorProvinceData* modEditorProvMut(int pid);
+    bool        modEditorActive() const;
+    int         modEditorProvinceCount() const;
+    int         modEditorProvinceAt(int index) const;
+    long long   modEditorProvincePopulation(int pid) const;
+    int         modEditorProvinceIndustryLevel(int pid) const;
+    int         modEditorProvinceFortification(int pid) const;
+    int         modEditorProvincePortLevel(int pid) const;
+    double      modEditorProvinceResource(int pid, const std::string& which) const;
+    double      modEditorProvinceCompassEcon(int pid) const;
+    double      modEditorProvinceCompassSocial(int pid) const;
+    bool        modEditorSetProvincePopulation(int pid, long long v);
+    bool        modEditorSetProvinceIndustryLevel(int pid, int v);
+    bool        modEditorSetProvinceFortification(int pid, int v);
+    bool        modEditorSetProvincePortLevel(int pid, int v);
+    bool        modEditorSetProvinceResource(int pid, const std::string& which, double v);
+    bool        modEditorSetProvinceCompass(int pid, double econ, double social);
+    std::string modEditorMapName() const;
+    bool        modEditorSetMapName(const std::string& n);
+    bool        modEditorSetAuthor(const std::string& a);
+    bool        modEditorSetLicense(const std::string& l);
+
+    // ── net (ABI 1.1) ────────────────────────────────────────────────────────
+    /** Push the current network role into ModHostContext and ModManager. */
+    void        syncModNetContext();
+    bool        modNetIsMultiplayer() const;
+    bool        modNetIsAuthoritative() const;
+    int         modNetPeerAt(int index) const;
+    std::string modNetPeerName(int index) const;
+    int         modNetMaxMessageBytes() const;
+
+    // ── neural (ABI 1.1) ─────────────────────────────────────────────────────
+    int         modNeuralModuleCount() const;
+    std::string modNeuralModuleName(int m) const;
+    int         modNeuralActionCount(int m) const;
+    std::string modNeuralActionName(int m, int a) const;
+    bool        modNeuralCountryIsAI(int cid) const;
+    long long   modNeuralUpdateCount() const;
+    bool        modNeuralModelLoaded() const;
+    int         modProvinceMinorityCount(int pid) const;
+    std::string modProvinceMinorityName(int pid, int index) const;
+    double      modProvinceMinorityShare(int pid, int index) const;
+    double      modCountryIncomeGross(int cid) const;
+    double      modCountryIncomeNet(int cid) const;
+    double      modCountryArmyUpkeep(int cid) const;
+    double      modCountryNavyUpkeep(int cid) const;
+    bool        modCountryIsBankrupt(int cid) const;
+    int         modProvinceIndustryLevel(int pid) const;
+    std::string modProvinceIndustrySpecialization(int pid) const;
+    double      modProvinceResource(int pid, const std::string& which) const;
+    bool        modSetProvinceIndustryLevel(int pid, int level);
+    bool        modProvinceIsCoastal(int pid) const;
+    bool        modSeaRouteExists(double lon1, double lat1, double lon2, double lat2) const;
+    bool        modPointIsLand(double lon, double lat) const;
+
     const std::vector<int>& modCountryIds() const;
     bool        modCountryExists(int cid) const;
     std::string modCountryName(int cid) const;

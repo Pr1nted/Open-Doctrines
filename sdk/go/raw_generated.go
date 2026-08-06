@@ -371,3 +371,618 @@ func rawRewardMean(index uint32) float64
 // `(iI)i`
 //go:wasmimport gearbox:gamestate.write set_province_population
 func rawSetProvincePopulation(province uint32, value int64) uint32
+
+// Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
+// is clamped to 0.25..64. Clipped to your panel like every other command.
+// `(iiiiiFi)`
+//go:wasmimport gearbox:ui draw_line
+func rawDrawLine(panel uint32, x1 uint32, y1 uint32, x2 uint32, y2 uint32, thickness float64, rgba uint32)
+
+// Queue a filled circle centred at (cx,cy), panel-relative. Radius is
+// clamped to 0..4096.
+// `(iiiFi)`
+//go:wasmimport gearbox:ui draw_circle
+func rawDrawCircle(panel uint32, cx uint32, cy uint32, radius float64, rgba uint32)
+
+// Queue an image from YOUR OWN package -- `name` is a path inside your
+// .odmod, resolved exactly as gearbox:assets/read resolves it, so you
+// cannot name a file on disk, a game asset, or another mod's art. Pass w
+// or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it
+// unmodified. Decoded once and cached; a name that fails to decode draws
+// nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
+// extension. This is the call that makes a real reskin possible.
+// `(iiiiiiii)`
+//go:wasmimport gearbox:ui draw_image
+func rawDrawImage(panel uint32, x uint32, y uint32, w uint32, h uint32, name unsafe.Pointer, name_len uint32, tint uint32)
+
+// Like draw_text but with a type size, clamped to 6..96. draw_text remains
+// 14pt, unchanged, so v1.0 mods look exactly as they did.
+// `(iiiiiii)`
+//go:wasmimport gearbox:ui draw_text_sized
+func rawDrawTextSized(panel uint32, x uint32, y uint32, size uint32, rgba uint32, text unsafe.Pointer, text_len uint32)
+
+// Width in pixels of `text` at `size`, measured with the font the game
+// will actually draw. Centring, right-alignment and wrapping all need this
+// before the text is queued.
+// `(iii)i`
+//go:wasmimport gearbox:ui measure_text
+func rawMeasureText(text unsafe.Pointer, text_len uint32, size uint32) uint32
+
+// The width the host assigned your panel this frame, in pixels. Lay out
+// against this rather than against min_w -- the host may have given you
+// more.
+// `(i)i`
+//go:wasmimport gearbox:ui panel_width
+func rawPanelWidth(panel uint32) uint32
+
+// The height the host assigned your panel this frame, in pixels.
+// `(i)i`
+//go:wasmimport gearbox:ui panel_height
+func rawPanelHeight(panel uint32) uint32
+
+// Show or hide one of your panels. A hidden panel is not drawn and
+// receives no input, but keeps its handle and its registration.
+// `(ii)`
+//go:wasmimport gearbox:ui panel_set_visible
+func rawPanelSetVisible(panel uint32, visible uint32)
+
+// Cursor X, panel-relative, or 0 when the cursor is not over your panel.
+// You cannot observe the pointer outside your own box.
+// `(i)F`
+//go:wasmimport gearbox:ui mouse_x
+func rawMouseX(panel uint32) float64
+
+// Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+// `(i)F`
+//go:wasmimport gearbox:ui mouse_y
+func rawMouseY(panel uint32) float64
+
+// Whether the cursor is over your panel this frame.
+// `(i)i`
+//go:wasmimport gearbox:ui mouse_inside
+func rawMouseInside(panel uint32) uint32
+
+// The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
+// Build your palette around this and you harmonise with what they chose.
+// `()i`
+//go:wasmimport gearbox:ui theme_accent
+func rawThemeAccent() uint32
+
+// Restyle the whole interface. The accent is read at over a hundred sites
+// -- every heading, highlight, selection and button -- so this is the
+// cheapest full reskin there is. It is NOT persisted: the game's settings
+// file keeps the player's own colour, and the override is dropped the
+// moment no mod is running, so it cannot outlive uninstalling you.
+// `(i)i`
+//go:wasmimport gearbox:ui set_theme_accent
+func rawSetThemeAccent(rgb uint32) uint32
+
+// How many ships exist in the world, across all owners.
+// `()i`
+//go:wasmimport gearbox:military.read ship_count
+func rawShipCount() uint32
+
+// The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
+// Ids are stable within a turn and not across turns -- do not store one.
+// `(i)i`
+//go:wasmimport gearbox:military.read ship_at
+func rawShipAt(index uint32) uint32
+
+// Whether a ship id is still live. Check this before acting on an id you
+// read earlier in the same turn; ships sink.
+// `(i)i`
+//go:wasmimport gearbox:military.read ship_exists
+func rawShipExists(ship uint32) uint32
+
+// The country that owns a ship, or 0xFFFFFFFF for an id that does not
+// exist.
+// `(i)i`
+//go:wasmimport gearbox:military.read ship_owner
+func rawShipOwner(ship uint32) uint32
+
+// The hull type as a lowercase string: "transport", "destroyer",
+// "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:military.read ship_type
+func rawShipType(ship uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Longitude in degrees, -180..180. Ships live in world coordinates, not
+// provinces.
+// `(i)F`
+//go:wasmimport gearbox:military.read ship_lon
+func rawShipLon(ship uint32) float64
+
+// Latitude in degrees, -90..90.
+// `(i)F`
+//go:wasmimport gearbox:military.read ship_lat
+func rawShipLat(ship uint32) float64
+
+// Hull integrity, 0..100. A ship at 0 has already sunk and will not
+// appear.
+// `(i)i`
+//go:wasmimport gearbox:military.read ship_health
+func rawShipHealth(ship uint32) uint32
+
+// Crew aboard. For a transport this includes the embarked army, which is
+// why a sunk transport costs so much more than its hull.
+// `(i)i`
+//go:wasmimport gearbox:military.read ship_crew
+func rawShipCrew(ship uint32) uint32
+
+// How far this hull may move in one turn, in degrees. The resolver clamps
+// any order beyond it, so read this before ordering a move rather than
+// discovering the clamp afterwards.
+// `(i)F`
+//go:wasmimport gearbox:military.read ship_range
+func rawShipRange(ship uint32) float64
+
+// How many distinct owners have troops in a province. Usually 1; more than
+// one means a contested or garrisoned province.
+// `(i)i`
+//go:wasmimport gearbox:military.read army_stack_count
+func rawArmyStackCount(province uint32) uint32
+
+// The country owning stack `index` in a province, or 0xFFFFFFFF past the
+// end.
+// `(ii)i`
+//go:wasmimport gearbox:military.read army_stack_owner
+func rawArmyStackOwner(province uint32, index uint32) uint32
+
+// How many troops are in that stack.
+// `(ii)I`
+//go:wasmimport gearbox:military.read army_stack_size
+func rawArmyStackSize(province uint32, index uint32) int64
+
+// A country's total troops everywhere, which is the number its own army
+// screen shows.
+// `(i)I`
+//go:wasmimport gearbox:military.read country_army
+func rawCountryArmy(country uint32) int64
+
+// Fortification level, 0..5. Multiplies the defender's strength.
+// `(i)i`
+//go:wasmimport gearbox:military.read province_fortification
+func rawProvinceFortification(province uint32) uint32
+
+// Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+// `(i)i`
+//go:wasmimport gearbox:military.read province_port_level
+func rawProvincePortLevel(province uint32) uint32
+
+// Move `percent` (0..100) of the troops in `from` into the adjacent
+// province `to`. Into an enemy province this is an attack; into your own
+// or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN
+// ORDER; it does not move anything. It lands in the same queue the
+// player's own click writes to and is validated by the same resolver at
+// end of turn, so a mod cannot teleport, cheat range, or attack across an
+// ocean. Returns 0 if the order is rejected outright.
+// `(iii)i`
+//go:wasmimport gearbox:military.write order_army_move
+func rawOrderArmyMove(from uint32, to uint32, percent uint32) uint32
+
+// Sail a ship toward (lon,lat). The resolver routes around land and clamps
+// to ship_range, so a destination on land or beyond range moves the ship
+// as far as it legally can rather than failing. QUEUES AN ORDER; it does
+// not move anything. It lands in the same queue the player's own click
+// writes to and is validated by the same resolver at end of turn, so a mod
+// cannot teleport, cheat range, or attack across an ocean. Returns 0 if
+// the order is rejected outright.
+// `(iFF)i`
+//go:wasmimport gearbox:military.write order_ship_move
+func rawOrderShipMove(ship uint32, lon float64, lat float64) uint32
+
+// Attack another ship. Requires that you are at war with its owner and
+// that it is within range; both are checked by the resolver. QUEUES AN
+// ORDER; it does not move anything. It lands in the same queue the
+// player's own click writes to and is validated by the same resolver at
+// end of turn, so a mod cannot teleport, cheat range, or attack across an
+// ocean. Returns 0 if the order is rejected outright.
+// `(ii)i`
+//go:wasmimport gearbox:military.write order_ship_engage
+func rawOrderShipEngage(ship uint32, target uint32) uint32
+
+// Bombard a coastal province. `ammo` names the shell type; pass an empty
+// string for the default. QUEUES AN ORDER; it does not move anything. It
+// lands in the same queue the player's own click writes to and is
+// validated by the same resolver at end of turn, so a mod cannot teleport,
+// cheat range, or attack across an ocean. Returns 0 if the order is
+// rejected outright.
+// `(iiii)i`
+//go:wasmimport gearbox:military.write order_ship_bombard
+func rawOrderShipBombard(ship uint32, province uint32, ammo unsafe.Pointer, ammo_len uint32) uint32
+
+// How many technologies exist in the tree.
+// `()i`
+//go:wasmimport gearbox:research.read node_count
+func rawNodeCount() uint32
+
+// The stable string id of technology `index`, which is what
+// country_has_researched takes. Two-call sizing: call with cap 0 to learn
+// the length, allocate, call again. Returns the full length either way;
+// the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:research.read node_id
+func rawNodeId(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// The technology's display name, which is localised and NOT stable --
+// never match on it. Two-call sizing: call with cap 0 to learn the length,
+// allocate, call again. Returns the full length either way; the copy is
+// truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:research.read node_name
+func rawNodeName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
+// learn the length, allocate, call again. Returns the full length either
+// way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:research.read node_category
+func rawNodeCategory(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Research points required.
+// `(i)i`
+//go:wasmimport gearbox:research.read node_cost
+func rawNodeCost(index uint32) uint32
+
+// Whether a country has completed a technology. Takes the id from node_id,
+// not the display name.
+// `(iii)i`
+//go:wasmimport gearbox:research.read country_has_researched
+func rawCountryHasResearched(country uint32, node_id unsafe.Pointer, node_id_len uint32) uint32
+
+// Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
+// is how the game stores it and how its own economy screen presents it.
+// `(i)F`
+//go:wasmimport gearbox:research.read country_funding
+func rawCountryFunding(country uint32) float64
+
+// Set research funding as a share of income. Clamped to 0..1; a value in
+// 'points per turn' is not a quantity this game has.
+// `(iF)i`
+//go:wasmimport gearbox:research.write set_country_funding
+func rawSetCountryFunding(country uint32, share float64) uint32
+
+// Economic axis of the political compass, -100 (planned) to 100 (market).
+// `(i)F`
+//go:wasmimport gearbox:politics.read country_compass_econ
+func rawCountryCompassEcon(country uint32) float64
+
+// Social axis, -100 (authoritarian) to 100 (libertarian).
+// `(i)F`
+//go:wasmimport gearbox:politics.read country_compass_social
+func rawCountryCompassSocial(country uint32) float64
+
+// This province's chance of rebelling, as the game itself computes it.
+// `(i)F`
+//go:wasmimport gearbox:politics.read province_unrest
+func rawProvinceUnrest(province uint32) float64
+
+// How many policies exist.
+// `()i`
+//go:wasmimport gearbox:politics.read policy_count
+func rawPolicyCount() uint32
+
+// The stable string id of policy `index`. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read policy_id
+func rawPolicyId(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// The policy's display name; localised, not stable, do not match on it.
+// Two-call sizing: call with cap 0 to learn the length, allocate, call
+// again. Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read policy_name
+func rawPolicyName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Whether a country currently has a policy active or implementing.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read country_has_policy
+func rawCountryHasPolicy(country uint32, policy_id unsafe.Pointer, policy_id_len uint32) uint32
+
+// How many named minority groups live in a province.
+// `(i)i`
+//go:wasmimport gearbox:politics.read province_minority_count
+func rawProvinceMinorityCount(province uint32) uint32
+
+// The minority's name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(iiii)i`
+//go:wasmimport gearbox:politics.read province_minority_name
+func rawProvinceMinorityName(province uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// That minority's share of the province's population, 0..1.
+// `(ii)F`
+//go:wasmimport gearbox:politics.read province_minority_share
+func rawProvinceMinorityShare(province uint32, index uint32) float64
+
+// Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so
+// the cost, the prerequisites and the per-turn enactment cap all still
+// apply -- a country cannot end up running policies it could never have
+// afforded. Returns 1 if the policy is already in the requested state.
+// `(iiii)i`
+//go:wasmimport gearbox:politics.write set_country_policy
+func rawSetCountryPolicy(country uint32, policy_id unsafe.Pointer, policy_id_len uint32, enabled uint32) uint32
+
+// Income per turn before upkeep.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_income_gross
+func rawCountryIncomeGross(country uint32) float64
+
+// Income per turn after army and navy upkeep. Negative means the treasury
+// is draining.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_income_net
+func rawCountryIncomeNet(country uint32) float64
+
+// What the standing army costs per turn.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_army_upkeep
+func rawCountryArmyUpkeep(country uint32) float64
+
+// What the fleet costs per turn. Ships a country is not using still cost
+// this, which is what makes scrapping a real decision.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_navy_upkeep
+func rawCountryNavyUpkeep(country uint32) float64
+
+// Whether a country is currently bankrupt.
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_is_bankrupt
+func rawCountryIsBankrupt(country uint32) uint32
+
+// Industry level, 0..10.
+// `(i)i`
+//go:wasmimport gearbox:economy.read province_industry_level
+func rawProvinceIndustryLevel(province uint32) uint32
+
+// What this province's industry specialises in, or an empty string for
+// none. Two-call sizing: call with cap 0 to learn the length, allocate,
+// call again. Returns the full length either way; the copy is truncated to
+// cap.
+// `(iii)i`
+//go:wasmimport gearbox:economy.read province_industry_specialization
+func rawProvinceIndustrySpecialization(province uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How much of a resource a province holds, 0..100. `which` is one of
+// "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+// `(iii)F`
+//go:wasmimport gearbox:economy.read province_resource
+func rawProvinceResource(province uint32, which unsafe.Pointer, which_len uint32) float64
+
+// Set a province's industry level, clamped to 0..10. This writes the built
+// level directly and does not charge for it -- it is a scenario-authoring
+// tool, not a build order.
+// `(ii)i`
+//go:wasmimport gearbox:economy.write set_province_industry_level
+func rawSetProvinceIndustryLevel(province uint32, level uint32) uint32
+
+// Whether a province touches water. Ports, embarking and naval bombardment
+// all require it.
+// `(i)i`
+//go:wasmimport gearbox:map province_is_coastal
+func rawProvinceIsCoastal(province uint32) uint32
+
+// Whether a fleet could get from one point to another by sea, using the
+// game's own navigation grid. You cannot compute this from province
+// neighbours: those describe LAND adjacency.
+// `(FFFF)i`
+//go:wasmimport gearbox:map sea_route_exists
+func rawSeaRouteExists(from_lon float64, from_lat float64, to_lon float64, to_lat float64) uint32
+
+// Whether a world coordinate is land. Ordering a ship onto land is not an
+// error -- the resolver clamps it -- but knowing first is cheaper.
+// `(FF)i`
+//go:wasmimport gearbox:map point_is_land
+func rawPointIsLand(lon float64, lat float64) uint32
+
+// Whether the map editor is open with a project loaded. EVERY OTHER CALL
+// IN THIS MODULE returns 0 or an empty string when this is 0, including
+// from inside a running game: the data behind them is an editor project,
+// and a game does not have one. Check this first.
+// `()i`
+//go:wasmimport gearbox:mapeditor editor_active
+func rawEditorActive() uint32
+
+// How many provinces the open project has. Returns a neutral value unless
+// the map editor is open with a project loaded -- see mapeditor/active.
+// `()i`
+//go:wasmimport gearbox:mapeditor editor_province_count
+func rawEditorProvinceCount() uint32
+
+// The province id at `index`, in ascending id order, or 0xFFFFFFFF past
+// the end. Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(i)i`
+//go:wasmimport gearbox:mapeditor editor_province_at
+func rawEditorProvinceAt(index uint32) uint32
+
+// Population. Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(i)I`
+//go:wasmimport gearbox:mapeditor editor_province_population
+func rawEditorProvincePopulation(province uint32) int64
+
+// Industry level, 0..10. Returns a neutral value unless the map editor is
+// open with a project loaded -- see mapeditor/active.
+// `(i)i`
+//go:wasmimport gearbox:mapeditor editor_province_industry_level
+func rawEditorProvinceIndustryLevel(province uint32) uint32
+
+// Fortification, 0..5. Returns a neutral value unless the map editor is
+// open with a project loaded -- see mapeditor/active.
+// `(i)i`
+//go:wasmimport gearbox:mapeditor editor_province_fortification
+func rawEditorProvinceFortification(province uint32) uint32
+
+// Port level, 0..3. Returns a neutral value unless the map editor is open
+// with a project loaded -- see mapeditor/active.
+// `(i)i`
+//go:wasmimport gearbox:mapeditor editor_province_port_level
+func rawEditorProvincePortLevel(province uint32) uint32
+
+// Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
+// or "metal". Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(iii)F`
+//go:wasmimport gearbox:mapeditor editor_province_resource
+func rawEditorProvinceResource(province uint32, which unsafe.Pointer, which_len uint32) float64
+
+// Province economic compass, -100..100. Returns a neutral value unless the
+// map editor is open with a project loaded -- see mapeditor/active.
+// `(i)F`
+//go:wasmimport gearbox:mapeditor editor_province_compass_econ
+func rawEditorProvinceCompassEcon(province uint32) float64
+
+// Province social compass, -100..100. Returns a neutral value unless the
+// map editor is open with a project loaded -- see mapeditor/active.
+// `(i)F`
+//go:wasmimport gearbox:mapeditor editor_province_compass_social
+func rawEditorProvinceCompassSocial(province uint32) float64
+
+// Set population, clamped to 0..2e9. Writes the SAME per-province data the
+// editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(iI)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_population
+func rawEditorSetProvincePopulation(province uint32, value int64) uint32
+
+// Set industry level, clamped to 0..10. Writes the SAME per-province data
+// the editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_industry_level
+func rawEditorSetProvinceIndustryLevel(province uint32, level uint32) uint32
+
+// Set fortification, clamped to 0..5. Writes the SAME per-province data
+// the editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_fortification
+func rawEditorSetProvinceFortification(province uint32, level uint32) uint32
+
+// Set port level, clamped to 0..3. Writes the SAME per-province data the
+// editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_port_level
+func rawEditorSetProvincePortLevel(province uint32, level uint32) uint32
+
+// Set a resource amount, clamped to 0..100. An unrecognised name is
+// refused rather than silently mapped onto oil. Writes the SAME
+// per-province data the editor's own tools write, so it saves, exports and
+// shows up in the unsaved-changes prompt like any other edit. A province
+// the project does not have is refused rather than created: data without a
+// shape on the province bitmap exports a map the game cannot load.
+// `(iiiF)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_resource
+func rawEditorSetProvinceResource(province uint32, which unsafe.Pointer, which_len uint32, amount float64) uint32
+
+// Set both compass axes, each clamped to -100..100. Writes the SAME
+// per-province data the editor's own tools write, so it saves, exports and
+// shows up in the unsaved-changes prompt like any other edit. A province
+// the project does not have is refused rather than created: data without a
+// shape on the province bitmap exports a map the game cannot load.
+// `(iFF)i`
+//go:wasmimport gearbox:mapeditor editor_set_province_compass
+func rawEditorSetProvinceCompass(province uint32, econ float64, social float64) uint32
+
+// The project's map name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_map_name
+func rawEditorMapName(buf unsafe.Pointer, cap uint32) uint32
+
+// Rename the map. Refused if empty or over 96 bytes.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_map_name
+func rawEditorSetMapName(name unsafe.Pointer, name_len uint32) uint32
+
+// Set the author recorded in the exported .odmap. Up to 96 bytes.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_author
+func rawEditorSetAuthor(author unsafe.Pointer, author_len uint32) uint32
+
+// Set the licence recorded in the exported .odmap. Up to 96 bytes.
+// `(ii)i`
+//go:wasmimport gearbox:mapeditor editor_set_license
+func rawEditorSetLicense(license unsafe.Pointer, license_len uint32) uint32
+
+// The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
+// This is the id net/send takes.
+// `(i)i`
+//go:wasmimport gearbox:net peer_at
+func rawPeerAt(index uint32) uint32
+
+// That peer's display name -- deliberately NOT their account id or issuer.
+// A mod has no business correlating players across sessions. Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:net peer_name
+func rawPeerName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// The largest payload net/send will accept. Chunk against this rather than
+// discovering the limit by having a message dropped.
+// `()i`
+//go:wasmimport gearbox:net max_message_bytes
+func rawMaxMessageBytes() uint32
+
+// How many decision modules the AI has. Each acts independently every
+// turn.
+// `()i`
+//go:wasmimport gearbox:neural module_count
+func rawModuleCount() uint32
+
+// The module's name: "economy", "politics", "war", "navy". Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:neural module_name
+func rawModuleName(module uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How many actions that module can choose between.
+// `(i)i`
+//go:wasmimport gearbox:neural action_count
+func rawActionCount(module uint32) uint32
+
+// The action's name, e.g. "reinforce", "embark", "propose_alliance". THE
+// FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an
+// implementation detail that has changed before and will again, and a mod
+// written against those names would break silently. What the AI CAN DO is
+// stable enough to build an advisor or a decision log against. Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iiii)i`
+//go:wasmimport gearbox:neural action_name
+func rawActionName(module uint32, action uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Whether a country is played by the AI rather than by the local player.
+// `(i)i`
+//go:wasmimport gearbox:neural country_is_ai
+func rawCountryIsAi(country uint32) uint32
+
+// Gradient updates the loaded model has been through -- roughly, how much
+// training it has seen.
+// `()I`
+//go:wasmimport gearbox:neural update_count
+func rawUpdateCount() int64
+
+// Whether an AI model is loaded at all. False in a game with no AI
+// players.
+// `()i`
+//go:wasmimport gearbox:neural model_loaded
+func rawModelLoaded() uint32

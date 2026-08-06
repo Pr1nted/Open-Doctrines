@@ -82,7 +82,9 @@ All of these are prefixed `MANIFEST.json:`.
 | `"id" must be lowercase reverse-DNS using [a-z0-9._-] and contain a dot` | **Lowercase only.** The id is your `Storage` namespace and trust-pinning key; on a case-insensitive filesystem `com.you.Mod` and `com.you.mod` would collide as two identities sharing one store. |
 | `"version" must be semver MAJOR.MINOR.PATCH` | `1.0` is not enough; write `1.0.0`. |
 | `"name" is longer than 96 bytes` | Shorten it. |
-| `"gearbox" must be MAJOR.MINOR` | Write `"1.0"`, not `"1"` or `"1.0.0"`. |
+| `"gearbox" must be MAJOR.MINOR` | Write `"1.1"`, not `"1"` or `"1.1.0"`. |
+| `targets Gearbox vX.Y, this build provides v1.1 — different major versions are not compatible` | A **major** mismatch is refused outright; there is no partial compatibility across majors. Retarget the mod. |
+| *(warning, not an error)* `targets Gearbox v1.2 but this build provides v1.1; newer APIs will be missing` | You declared a newer minor than the host has. The mod still loads. If it actually imports something from that minor, instantiation fails and names the symbol — see §7. Declaring the oldest minor you actually need is the safer habit. |
 | `missing array field "modules"` | Even a mod using only `Core` should list `["Core"]`. |
 | `"modules" must contain only strings` | No nested objects. |
 | `dependency is missing "id"` / `dependency id "X" is not a valid mod id` | Dependencies are parsed and validated but **not yet resolved**. |

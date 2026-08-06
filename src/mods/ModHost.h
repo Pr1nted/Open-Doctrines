@@ -29,6 +29,21 @@
  * chat. A mod message is its own thing, stamped with the sending mod's id by
  * the host, and it can never be mistaken for a turn.
  */
+/**
+ * What the UI module needs from the game that the mod host cannot do itself.
+ *
+ * The host deliberately does not link raylib -- the mod tests build without a
+ * window, and that is worth keeping -- so measuring a string and reading or
+ * setting the theme colour have to be lent in, exactly as the net and audio
+ * bridges are.
+ */
+struct ModUiBridge {
+    /** Width in pixels of `text` at `size`, in the font the game will draw. */
+    std::function<uint32_t(const std::string&, int)> measureText;
+    std::function<uint32_t()>     themeAccent;      // 0x00RRGGBB
+    std::function<void(uint32_t)> setThemeAccent;
+};
+
 struct ModNetBridge {
     /** (modId, peer or -1 for everyone, payload) -> was it sent */
     std::function<bool(const std::string&, int32_t, const std::vector<uint8_t>&)> send;
@@ -69,6 +84,7 @@ void modSetAudioBridge(const ModAudioBridge& bridge);
 
 /** Hand the mod host a session, or take it away with a default-constructed one. */
 void modSetNetBridge(const ModNetBridge& bridge);
+void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;
 
@@ -148,6 +164,133 @@ struct ModGameAccess {
     virtual bool setProvinceOwner(uint32_t pid, uint32_t cid) = 0;
     virtual bool setProvincePopulation(uint32_t pid, long long value) = 0;
 
+    // ── Military.Read ────────────────────────────────────────────────────────
+    //
+    // Handles are INDICES INTO A SNAPSHOT taken at the start of the call, not
+    // pointers. A ship sunk between two calls makes shipExists() false rather
+    // than reading freed memory, which is the whole reason a mod cannot be
+    // handed a NavyShip*.
+    virtual uint32_t shipCount() = 0;
+    virtual uint32_t shipAt(uint32_t index) = 0;              // GEARBOX_INVALID if none
+    virtual bool     shipExists(uint32_t sid) = 0;
+    virtual uint32_t shipOwner(uint32_t sid) = 0;
+    virtual std::string shipType(uint32_t sid) = 0;           // "boat", "destroyer", ...
+    virtual double   shipLon(uint32_t sid) = 0;
+    virtual double   shipLat(uint32_t sid) = 0;
+    virtual int32_t  shipHealth(uint32_t sid) = 0;            // 0-100
+    virtual int32_t  shipCrew(uint32_t sid) = 0;              // troops aboard; 0 for warships
+    virtual double   shipRange(uint32_t sid) = 0;             // this turn, in map pixels
+    // Armies are per province and per owner: a besieged province holds stacks
+    // belonging to more than one country.
+    virtual uint32_t armyStackCount(uint32_t pid) = 0;
+    virtual uint32_t armyStackOwner(uint32_t pid, uint32_t index) = 0;
+    virtual long long armyStackSize(uint32_t pid, uint32_t index) = 0;
+    virtual long long countryArmy(uint32_t cid) = 0;
+    virtual int32_t  provinceFortification(uint32_t pid) = 0;
+    virtual int32_t  provincePortLevel(uint32_t pid) = 0;
+
+    // ── Military.Write ───────────────────────────────────────────────────────
+    //
+    // EVERY ONE OF THESE GOES THROUGH THE SAME RESOLVER THE PLAYER AND THE AI
+    // USE. The adjacency test, the range clamp, the at-war check and the
+    // percentage bounds live in Game_TurnLogic precisely because that is where
+    // all three order sources converge; a mod path that wrote orders directly
+    // would reintroduce the trust hole the multiplayer host had. These queue an
+    // order and return false if it would be refused, so a mod cannot do
+    // anything a player sitting at the same keyboard could not.
+    virtual bool orderArmyMove(uint32_t fromPid, uint32_t toPid, uint32_t pct) = 0;
+    virtual bool orderShipMove(uint32_t sid, double lon, double lat) = 0;
+    virtual bool orderShipEngage(uint32_t sid, uint32_t targetSid) = 0;
+    virtual bool orderShipBombard(uint32_t sid, uint32_t pid, const std::string& ammo) = 0;
+
+    // ── Research.Read / Write ────────────────────────────────────────────────
+    virtual uint32_t researchNodeCount() = 0;
+    virtual std::string researchNodeId(uint32_t index) = 0;
+    virtual std::string researchNodeName(uint32_t index) = 0;
+    virtual std::string researchNodeCategory(uint32_t index) = 0;
+    virtual int32_t  researchNodeCost(uint32_t index) = 0;
+    virtual bool     countryHasResearched(uint32_t cid, const std::string& nodeId) = 0;
+    virtual double   countryResearchFunding(uint32_t cid) = 0;
+    virtual bool     setCountryResearchFunding(uint32_t cid, double value) = 0;
+
+    // ── Politics.Read / Write ────────────────────────────────────────────────
+    virtual double   countryCompassEcon(uint32_t cid) = 0;    // left(-) .. right(+)
+    virtual double   countryCompassSocial(uint32_t cid) = 0;  // lib(-) .. auth(+)
+    virtual double   provinceUnrest(uint32_t pid) = 0;
+    virtual uint32_t policyCount() = 0;
+    virtual std::string policyId(uint32_t index) = 0;
+    virtual std::string policyName(uint32_t index) = 0;
+    virtual bool     countryHasPolicy(uint32_t cid, const std::string& policyId) = 0;
+    virtual bool     setCountryPolicy(uint32_t cid, const std::string& policyId, bool on) = 0;
+    virtual uint32_t provinceMinorityCount(uint32_t pid) = 0;
+    virtual std::string provinceMinorityName(uint32_t pid, uint32_t index) = 0;
+    virtual double   provinceMinorityShare(uint32_t pid, uint32_t index) = 0;
+
+    // ── Economy.Read / Write ─────────────────────────────────────────────────
+    virtual double   countryIncomeGross(uint32_t cid) = 0;
+    virtual double   countryIncomeNet(uint32_t cid) = 0;
+    virtual double   countryArmyUpkeep(uint32_t cid) = 0;
+    virtual double   countryNavyUpkeep(uint32_t cid) = 0;
+    virtual bool     countryIsBankrupt(uint32_t cid) = 0;
+    virtual int32_t  provinceIndustryLevel(uint32_t pid) = 0;
+    virtual std::string provinceIndustrySpecialization(uint32_t pid) = 0;
+    virtual double   provinceResource(uint32_t pid, const std::string& which) = 0;
+    virtual bool     setProvinceIndustryLevel(uint32_t pid, int32_t level) = 0;
+
+    // ── Map, beyond the geometry the 1.0 module already exposes ──────────────
+    virtual bool     provinceIsCoastal(uint32_t pid) = 0;
+    // The sea-route query the navy itself uses. Answers "could a fleet get from
+    // here to there at all", which is the question a naval mod actually has and
+    // cannot compute from neighbours because those are LAND adjacency.
+    virtual bool     seaRouteExists(double lon1, double lat1, double lon2, double lat2) = 0;
+    virtual bool     pointIsLand(double lon, double lat) = 0;
+
+    // ── mapeditor (ABI 1.1) ──────────────────────────────────────────────────
+    // editorActive() is the gate: every other call here returns a neutral value
+    // when the map editor is not the screen the player is on, so a mod cannot
+    // reach into an editor project from inside a running game, or into a game
+    // from inside the editor.
+    virtual bool     editorActive() = 0;
+    virtual uint32_t editorProvinceCount() = 0;
+    virtual uint32_t editorProvinceAt(uint32_t index) = 0;
+    virtual long long editorProvincePopulation(uint32_t pid) = 0;
+    virtual int32_t  editorProvinceIndustryLevel(uint32_t pid) = 0;
+    virtual int32_t  editorProvinceFortification(uint32_t pid) = 0;
+    virtual int32_t  editorProvincePortLevel(uint32_t pid) = 0;
+    virtual double   editorProvinceResource(uint32_t pid, const std::string& which) = 0;
+    virtual double   editorProvinceCompassEcon(uint32_t pid) = 0;
+    virtual double   editorProvinceCompassSocial(uint32_t pid) = 0;
+    virtual bool     editorSetProvincePopulation(uint32_t pid, long long v) = 0;
+    virtual bool     editorSetProvinceIndustryLevel(uint32_t pid, int32_t v) = 0;
+    virtual bool     editorSetProvinceFortification(uint32_t pid, int32_t v) = 0;
+    virtual bool     editorSetProvincePortLevel(uint32_t pid, int32_t v) = 0;
+    virtual bool     editorSetProvinceResource(uint32_t pid, const std::string& which, double v) = 0;
+    virtual bool     editorSetProvinceCompass(uint32_t pid, double econ, double social) = 0;
+    virtual std::string editorMapName() = 0;
+    virtual bool     editorSetMapName(const std::string& n) = 0;
+    virtual bool     editorSetAuthor(const std::string& a) = 0;
+    virtual bool     editorSetLicense(const std::string& l) = 0;
+
+    // ── net (ABI 1.1) ────────────────────────────────────────────────────────
+    // Alongside the send/recv the 1.0 module already has. Deliberately NOT
+    // "am I in multiplayer" or "am I the authority": gearbox_is_multiplayer and
+    // gearbox_is_server already answer both from the Core env, and a second way
+    // to ask the same question is worse than none. Those two were broken --
+    // ModHostContext::netRole was never assigned, so they always said
+    // standalone -- and the fix was to set the field, not to route around it.
+    virtual uint32_t netPeerAt(uint32_t index) = 0;
+    virtual std::string netPeerName(uint32_t index) = 0;
+    virtual uint32_t netMaxMessageBytes() = 0;
+
+    // ── neural (ABI 1.1): the decision space, so a mod can name what it sees ──
+    virtual uint32_t neuralModuleCount() = 0;
+    virtual std::string neuralModuleName(uint32_t m) = 0;
+    virtual uint32_t neuralActionCount(uint32_t m) = 0;
+    virtual std::string neuralActionName(uint32_t m, uint32_t a) = 0;
+    virtual bool     neuralCountryIsAI(uint32_t cid) = 0;
+    virtual long long neuralUpdateCount() = 0;
+    virtual bool     neuralModelLoaded() = 0;
+
     // Neural. Observe only -- there is no write path here by design.
     virtual uint32_t neuralFeatureCount() = 0;
     virtual uint32_t neuralFeatures(uint32_t cid, float* out, uint32_t cap) = 0;
@@ -178,11 +321,19 @@ void modHostLogClear();
 // than by trusting coordinates.
 
 struct ModDrawCmd {
-    enum Kind : uint8_t { Rect, Text, Button } kind = Rect;
+    // Line, Circle and Image were added in ABI 1.1. A total conversion that can
+    // only draw rectangles and 14pt text is not a reskin, it is a debug overlay;
+    // Image in particular is what lets a mod put its OWN art on screen, which is
+    // the whole point of the reskin surface.
+    enum Kind : uint8_t { Rect, Text, Button, Line, Circle, Image } kind = Rect;
     int32_t  x = 0, y = 0, w = 0, h = 0;   // panel-relative
-    uint32_t rgba = 0xFFFFFFFFu;
+    int32_t  x2 = 0, y2 = 0;               // Line only: the far end
+    float    thickness = 1.0f;             // Line only
+    float    radius = 0.0f;                // Circle only
+    int32_t  fontSize = 14;                // Text only
+    uint32_t rgba = 0xFFFFFFFFu;           // Image: a tint, 0xFFFFFFFF for none
     bool     hovered = false;              // Button only
-    std::string text;                      // Text/Button only
+    std::string text;                      // Text/Button; Image: the asset name
 };
 
 struct ModPanel {

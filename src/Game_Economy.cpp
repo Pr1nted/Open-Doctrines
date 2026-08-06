@@ -295,11 +295,11 @@ void Game::drawEconomy() {
     for (int t = 0; t < 2; ++t) {
         int tx = tabStartX + t * tabSpacing;
         bool active = (t == m_economyTab);
-        Color tc = active ? hexToColor(m_config.accentColor) : LIGHTGRAY;
+        Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
         DrawText(tabs[t], tx - MeasureText(tabs[t], 24) / 2, tabY, 24, tc);
         if (active) {
             int tw = MeasureText(tabs[t], 24);
-            DrawRectangle(tx - tw / 2, tabY + 28, tw, 3, hexToColor(m_config.accentColor));
+            DrawRectangle(tx - tw / 2, tabY + 28, tw, 3, hexToColor(m_config.accent()));
         }
     }
 
@@ -368,8 +368,8 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
     Rectangle toggleBtn = {(float)(toggleX - tw/2 - 10), (float)(startY - 30), (float)(tw + 20), 26};
     Vector2 mouse = getMouse();
     bool toggleHover = CheckCollisionPointRec(mouse, toggleBtn);
-    Color toggleCol = toggleHover ? ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f) : ColorAlpha(hexToColor(m_config.accentColor), 150.0f/255.0f);
-    DrawRectangleRounded(toggleBtn, 0.2f, 6, ColorAlpha(hexToColor(m_config.accentColor), 40.0f/255.0f));
+    Color toggleCol = toggleHover ? ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f) : ColorAlpha(hexToColor(m_config.accent()), 150.0f/255.0f);
+    DrawRectangleRounded(toggleBtn, 0.2f, 6, ColorAlpha(hexToColor(m_config.accent()), 40.0f/255.0f));
     DrawRectangleRoundedLines(toggleBtn, 0.2f, 6, toggleCol);
     DrawText(toggleLabel, (int)(toggleX - tw/2), startY - 26, 16, toggleCol);
 
@@ -467,7 +467,7 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
         int yOff = clipY - scrollVar;
         for (size_t i = 0; i < sortedList.size(); ++i) {
             auto& e = sortedList[i];
-            Color textCol = (e.cid == m_playerCountryId) ? hexToColor(m_config.accentColor) : LIGHTGRAY;
+            Color textCol = (e.cid == m_playerCountryId) ? hexToColor(m_config.accent()) : LIGHTGRAY;
             DrawText(formatLine(e), x + 6, yOff + i * entryH, 12, textCol);
         }
 
@@ -579,7 +579,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     DrawRectangle(lx, startY, 320, 1, {100, 100, 120, 150});
     startY += 6;
     { float netv = (fabsf(cs.net) < 0.05f) ? 0 : cs.net;
-    startY = drawBreakdownRow(lx, startY, valX, "Net Income", TextFormat("%.1f", netv), netv >= 0 ? hexToColor(m_config.accentColor) : RED, false); }
+    startY = drawBreakdownRow(lx, startY, valX, "Net Income", TextFormat("%.1f", netv), netv >= 0 ? hexToColor(m_config.accent()) : RED, false); }
     startY += 10;
 
     auto histIt = m_incomeHistory.find(cid);
@@ -618,7 +618,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
             netV.push_back(s.net);
             totalV.push_back(s.total);
         }
-        drawLine(totalV, hexToColor(m_config.accentColor));
+        drawLine(totalV, hexToColor(m_config.accent()));
         drawLine(grossV, SKYBLUE);
         drawLine(resV, GREEN);
         drawLine(popV, ORANGE);
@@ -631,7 +631,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
             DrawText(label, legX + 14, legY, 12, LIGHTGRAY);
             legY += 16;
         };
-        drawLegend("Total", hexToColor(m_config.accentColor));
+        drawLegend("Total", hexToColor(m_config.accent()));
         drawLegend("Industry", SKYBLUE);
         drawLegend("Resource", GREEN);
         drawLegend("Population", ORANGE);

@@ -695,7 +695,7 @@ void Game::updateHistoryScreen() {
 
 void Game::drawHistoryScreen() {
     int cx = m_screenW / 2;
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
     Vector2 mouse = getMouse();
     DrawRectangle(0, 0, m_screenW, m_screenH, {8, 8, 12, 248});
 

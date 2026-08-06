@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
+#include <algorithm>
 
 class MapEditor {
 public:
@@ -73,6 +74,42 @@ public:
 
     std::string getMapName() const { return m_mapName; }
     void setMapName(const std::string& n) { m_mapName = n; m_dirty = true; }
+
+    // ── The Gearbox mapeditor module ─────────────────────────────────────────
+    //
+    // A scenario generator that has to click a brush 4,000 times is not a
+    // scenario generator, so a mod gets at the same per-province data the tools
+    // write. It is the SAME m_provinceData every tool edits and the same one
+    // exportODMap serialises, so a mod's edits save, export and undo like any
+    // other -- there is no second path into the file format.
+    //
+    // Reads return the province's data or a default-constructed one for a pid
+    // that has none, which is what an unedited province holds anyway. Writes
+    // mark the project dirty, so the editor's own unsaved-changes prompt still
+    // tells the truth after a mod has been at it.
+    std::vector<int> modProvinceIds() const {
+        std::vector<int> ids;
+        ids.reserve(m_provinceData.size());
+        for (const auto& kv : m_provinceData) ids.push_back(kv.first);
+        std::sort(ids.begin(), ids.end());   // a stable order to iterate
+        return ids;
+    }
+    bool modHasProvince(int pid) const { return m_provinceData.count(pid) != 0; }
+    const EditorProvinceData* modProvince(int pid) const {
+        auto it = m_provinceData.find(pid);
+        return it == m_provinceData.end() ? nullptr : &it->second;
+    }
+    /** Null for a province that does not exist -- writes do not create one. */
+    EditorProvinceData* modProvinceMut(int pid) {
+        auto it = m_provinceData.find(pid);
+        if (it == m_provinceData.end()) return nullptr;
+        m_dirty = true;
+        return &it->second;
+    }
+    void modSetAuthor(const std::string& a)  { m_author = a;  m_dirty = true; }
+    void modSetLicense(const std::string& l) { m_license = l; m_dirty = true; }
+    std::string modAuthor() const  { return m_author; }
+    std::string modLicense() const { return m_license; }
 
     // Headless generate-and-export for AI self-play training: runs the full
     // generation chain (landmass -> provinces/countries -> game data) and

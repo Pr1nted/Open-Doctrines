@@ -317,4 +317,525 @@ declare namespace GearboxRaw {
   // `(iI)i`
   function setProvincePopulation(province: number, value: number): number;
 
+  // Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
+  // is clamped to 0.25..64. Clipped to your panel like every other command.
+  // `(iiiiiFi)`
+  function drawLine(panel: number, x1: number, y1: number, x2: number, y2: number, thickness: number, rgba: number): void;
+
+  // Queue a filled circle centred at (cx,cy), panel-relative. Radius is
+  // clamped to 0..4096.
+  // `(iiiFi)`
+  function drawCircle(panel: number, cx: number, cy: number, radius: number, rgba: number): void;
+
+  // Queue an image from YOUR OWN package -- `name` is a path inside your
+  // .odmod, resolved exactly as gearbox:assets/read resolves it, so you
+  // cannot name a file on disk, a game asset, or another mod's art. Pass w
+  // or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it
+  // unmodified. Decoded once and cached; a name that fails to decode draws
+  // nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
+  // extension. This is the call that makes a real reskin possible.
+  // `(iiiiiiii)`
+  function drawImage(panel: number, x: number, y: number, w: number, h: number, name: number, nameLen: number, tint: number): void;
+
+  // Like draw_text but with a type size, clamped to 6..96. draw_text remains
+  // 14pt, unchanged, so v1.0 mods look exactly as they did.
+  // `(iiiiiii)`
+  function drawTextSized(panel: number, x: number, y: number, size: number, rgba: number, text: number, textLen: number): void;
+
+  // Width in pixels of `text` at `size`, measured with the font the game
+  // will actually draw. Centring, right-alignment and wrapping all need this
+  // before the text is queued.
+  // `(iii)i`
+  function measureText(text: number, textLen: number, size: number): number;
+
+  // The width the host assigned your panel this frame, in pixels. Lay out
+  // against this rather than against min_w -- the host may have given you
+  // more.
+  // `(i)i`
+  function panelWidth(panel: number): number;
+
+  // The height the host assigned your panel this frame, in pixels.
+  // `(i)i`
+  function panelHeight(panel: number): number;
+
+  // Show or hide one of your panels. A hidden panel is not drawn and
+  // receives no input, but keeps its handle and its registration.
+  // `(ii)`
+  function panelSetVisible(panel: number, visible: number): void;
+
+  // Cursor X, panel-relative, or 0 when the cursor is not over your panel.
+  // You cannot observe the pointer outside your own box.
+  // `(i)F`
+  function mouseX(panel: number): number;
+
+  // Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+  // `(i)F`
+  function mouseY(panel: number): number;
+
+  // Whether the cursor is over your panel this frame.
+  // `(i)i`
+  function mouseInside(panel: number): number;
+
+  // The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
+  // Build your palette around this and you harmonise with what they chose.
+  // `()i`
+  function themeAccent(): number;
+
+  // Restyle the whole interface. The accent is read at over a hundred sites
+  // -- every heading, highlight, selection and button -- so this is the
+  // cheapest full reskin there is. It is NOT persisted: the game's settings
+  // file keeps the player's own colour, and the override is dropped the
+  // moment no mod is running, so it cannot outlive uninstalling you.
+  // `(i)i`
+  function setThemeAccent(rgb: number): number;
+
+  // How many ships exist in the world, across all owners.
+  // `()i`
+  function shipCount(): number;
+
+  // The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
+  // Ids are stable within a turn and not across turns -- do not store one.
+  // `(i)i`
+  function shipAt(index: number): number;
+
+  // Whether a ship id is still live. Check this before acting on an id you
+  // read earlier in the same turn; ships sink.
+  // `(i)i`
+  function shipExists(ship: number): number;
+
+  // The country that owns a ship, or 0xFFFFFFFF for an id that does not
+  // exist.
+  // `(i)i`
+  function shipOwner(ship: number): number;
+
+  // The hull type as a lowercase string: "transport", "destroyer",
+  // "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
+  // to learn the length, allocate, call again. Returns the full length
+  // either way; the copy is truncated to cap.
+  // `(iii)i`
+  function shipType(ship: number, buf: number, cap: number): number;
+
+  // Longitude in degrees, -180..180. Ships live in world coordinates, not
+  // provinces.
+  // `(i)F`
+  function shipLon(ship: number): number;
+
+  // Latitude in degrees, -90..90.
+  // `(i)F`
+  function shipLat(ship: number): number;
+
+  // Hull integrity, 0..100. A ship at 0 has already sunk and will not
+  // appear.
+  // `(i)i`
+  function shipHealth(ship: number): number;
+
+  // Crew aboard. For a transport this includes the embarked army, which is
+  // why a sunk transport costs so much more than its hull.
+  // `(i)i`
+  function shipCrew(ship: number): number;
+
+  // How far this hull may move in one turn, in degrees. The resolver clamps
+  // any order beyond it, so read this before ordering a move rather than
+  // discovering the clamp afterwards.
+  // `(i)F`
+  function shipRange(ship: number): number;
+
+  // How many distinct owners have troops in a province. Usually 1; more than
+  // one means a contested or garrisoned province.
+  // `(i)i`
+  function armyStackCount(province: number): number;
+
+  // The country owning stack `index` in a province, or 0xFFFFFFFF past the
+  // end.
+  // `(ii)i`
+  function armyStackOwner(province: number, index: number): number;
+
+  // How many troops are in that stack.
+  // `(ii)I`
+  function armyStackSize(province: number, index: number): number;
+
+  // A country's total troops everywhere, which is the number its own army
+  // screen shows.
+  // `(i)I`
+  function countryArmy(country: number): number;
+
+  // Fortification level, 0..5. Multiplies the defender's strength.
+  // `(i)i`
+  function provinceFortification(province: number): number;
+
+  // Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+  // `(i)i`
+  function provincePortLevel(province: number): number;
+
+  // Move `percent` (0..100) of the troops in `from` into the adjacent
+  // province `to`. Into an enemy province this is an attack; into your own
+  // or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN
+  // ORDER; it does not move anything. It lands in the same queue the
+  // player's own click writes to and is validated by the same resolver at
+  // end of turn, so a mod cannot teleport, cheat range, or attack across an
+  // ocean. Returns 0 if the order is rejected outright.
+  // `(iii)i`
+  function orderArmyMove(from: number, to: number, percent: number): number;
+
+  // Sail a ship toward (lon,lat). The resolver routes around land and clamps
+  // to ship_range, so a destination on land or beyond range moves the ship
+  // as far as it legally can rather than failing. QUEUES AN ORDER; it does
+  // not move anything. It lands in the same queue the player's own click
+  // writes to and is validated by the same resolver at end of turn, so a mod
+  // cannot teleport, cheat range, or attack across an ocean. Returns 0 if
+  // the order is rejected outright.
+  // `(iFF)i`
+  function orderShipMove(ship: number, lon: number, lat: number): number;
+
+  // Attack another ship. Requires that you are at war with its owner and
+  // that it is within range; both are checked by the resolver. QUEUES AN
+  // ORDER; it does not move anything. It lands in the same queue the
+  // player's own click writes to and is validated by the same resolver at
+  // end of turn, so a mod cannot teleport, cheat range, or attack across an
+  // ocean. Returns 0 if the order is rejected outright.
+  // `(ii)i`
+  function orderShipEngage(ship: number, target: number): number;
+
+  // Bombard a coastal province. `ammo` names the shell type; pass an empty
+  // string for the default. QUEUES AN ORDER; it does not move anything. It
+  // lands in the same queue the player's own click writes to and is
+  // validated by the same resolver at end of turn, so a mod cannot teleport,
+  // cheat range, or attack across an ocean. Returns 0 if the order is
+  // rejected outright.
+  // `(iiii)i`
+  function orderShipBombard(ship: number, province: number, ammo: number, ammoLen: number): number;
+
+  // How many technologies exist in the tree.
+  // `()i`
+  function nodeCount(): number;
+
+  // The stable string id of technology `index`, which is what
+  // country_has_researched takes. Two-call sizing: call with cap 0 to learn
+  // the length, allocate, call again. Returns the full length either way;
+  // the copy is truncated to cap.
+  // `(iii)i`
+  function nodeId(index: number, buf: number, cap: number): number;
+
+  // The technology's display name, which is localised and NOT stable --
+  // never match on it. Two-call sizing: call with cap 0 to learn the length,
+  // allocate, call again. Returns the full length either way; the copy is
+  // truncated to cap.
+  // `(iii)i`
+  function nodeName(index: number, buf: number, cap: number): number;
+
+  // Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
+  // learn the length, allocate, call again. Returns the full length either
+  // way; the copy is truncated to cap.
+  // `(iii)i`
+  function nodeCategory(index: number, buf: number, cap: number): number;
+
+  // Research points required.
+  // `(i)i`
+  function nodeCost(index: number): number;
+
+  // Whether a country has completed a technology. Takes the id from node_id,
+  // not the display name.
+  // `(iii)i`
+  function countryHasResearched(country: number, nodeId: number, nodeIdLen: number): number;
+
+  // Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
+  // is how the game stores it and how its own economy screen presents it.
+  // `(i)F`
+  function countryFunding(country: number): number;
+
+  // Set research funding as a share of income. Clamped to 0..1; a value in
+  // 'points per turn' is not a quantity this game has.
+  // `(iF)i`
+  function setCountryFunding(country: number, share: number): number;
+
+  // Economic axis of the political compass, -100 (planned) to 100 (market).
+  // `(i)F`
+  function countryCompassEcon(country: number): number;
+
+  // Social axis, -100 (authoritarian) to 100 (libertarian).
+  // `(i)F`
+  function countryCompassSocial(country: number): number;
+
+  // This province's chance of rebelling, as the game itself computes it.
+  // `(i)F`
+  function provinceUnrest(province: number): number;
+
+  // How many policies exist.
+  // `()i`
+  function policyCount(): number;
+
+  // The stable string id of policy `index`. Two-call sizing: call with cap 0
+  // to learn the length, allocate, call again. Returns the full length
+  // either way; the copy is truncated to cap.
+  // `(iii)i`
+  function policyId(index: number, buf: number, cap: number): number;
+
+  // The policy's display name; localised, not stable, do not match on it.
+  // Two-call sizing: call with cap 0 to learn the length, allocate, call
+  // again. Returns the full length either way; the copy is truncated to cap.
+  // `(iii)i`
+  function policyName(index: number, buf: number, cap: number): number;
+
+  // Whether a country currently has a policy active or implementing.
+  // `(iii)i`
+  function countryHasPolicy(country: number, policyId: number, policyIdLen: number): number;
+
+  // How many named minority groups live in a province.
+  // `(i)i`
+  function provinceMinorityCount(province: number): number;
+
+  // The minority's name. Two-call sizing: call with cap 0 to learn the
+  // length, allocate, call again. Returns the full length either way; the
+  // copy is truncated to cap.
+  // `(iiii)i`
+  function provinceMinorityName(province: number, index: number, buf: number, cap: number): number;
+
+  // That minority's share of the province's population, 0..1.
+  // `(ii)F`
+  function provinceMinorityShare(province: number, index: number): number;
+
+  // Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so
+  // the cost, the prerequisites and the per-turn enactment cap all still
+  // apply -- a country cannot end up running policies it could never have
+  // afforded. Returns 1 if the policy is already in the requested state.
+  // `(iiii)i`
+  function setCountryPolicy(country: number, policyId: number, policyIdLen: number, enabled: number): number;
+
+  // Income per turn before upkeep.
+  // `(i)F`
+  function countryIncomeGross(country: number): number;
+
+  // Income per turn after army and navy upkeep. Negative means the treasury
+  // is draining.
+  // `(i)F`
+  function countryIncomeNet(country: number): number;
+
+  // What the standing army costs per turn.
+  // `(i)F`
+  function countryArmyUpkeep(country: number): number;
+
+  // What the fleet costs per turn. Ships a country is not using still cost
+  // this, which is what makes scrapping a real decision.
+  // `(i)F`
+  function countryNavyUpkeep(country: number): number;
+
+  // Whether a country is currently bankrupt.
+  // `(i)i`
+  function countryIsBankrupt(country: number): number;
+
+  // Industry level, 0..10.
+  // `(i)i`
+  function provinceIndustryLevel(province: number): number;
+
+  // What this province's industry specialises in, or an empty string for
+  // none. Two-call sizing: call with cap 0 to learn the length, allocate,
+  // call again. Returns the full length either way; the copy is truncated to
+  // cap.
+  // `(iii)i`
+  function provinceIndustrySpecialization(province: number, buf: number, cap: number): number;
+
+  // How much of a resource a province holds, 0..100. `which` is one of
+  // "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+  // `(iii)F`
+  function provinceResource(province: number, which: number, whichLen: number): number;
+
+  // Set a province's industry level, clamped to 0..10. This writes the built
+  // level directly and does not charge for it -- it is a scenario-authoring
+  // tool, not a build order.
+  // `(ii)i`
+  function setProvinceIndustryLevel(province: number, level: number): number;
+
+  // Whether a province touches water. Ports, embarking and naval bombardment
+  // all require it.
+  // `(i)i`
+  function provinceIsCoastal(province: number): number;
+
+  // Whether a fleet could get from one point to another by sea, using the
+  // game's own navigation grid. You cannot compute this from province
+  // neighbours: those describe LAND adjacency.
+  // `(FFFF)i`
+  function seaRouteExists(fromLon: number, fromLat: number, toLon: number, toLat: number): number;
+
+  // Whether a world coordinate is land. Ordering a ship onto land is not an
+  // error -- the resolver clamps it -- but knowing first is cheaper.
+  // `(FF)i`
+  function pointIsLand(lon: number, lat: number): number;
+
+  // Whether the map editor is open with a project loaded. EVERY OTHER CALL
+  // IN THIS MODULE returns 0 or an empty string when this is 0, including
+  // from inside a running game: the data behind them is an editor project,
+  // and a game does not have one. Check this first.
+  // `()i`
+  function editorActive(): number;
+
+  // How many provinces the open project has. Returns a neutral value unless
+  // the map editor is open with a project loaded -- see mapeditor/active.
+  // `()i`
+  function editorProvinceCount(): number;
+
+  // The province id at `index`, in ascending id order, or 0xFFFFFFFF past
+  // the end. Returns a neutral value unless the map editor is open with a
+  // project loaded -- see mapeditor/active.
+  // `(i)i`
+  function editorProvinceAt(index: number): number;
+
+  // Population. Returns a neutral value unless the map editor is open with a
+  // project loaded -- see mapeditor/active.
+  // `(i)I`
+  function editorProvincePopulation(province: number): number;
+
+  // Industry level, 0..10. Returns a neutral value unless the map editor is
+  // open with a project loaded -- see mapeditor/active.
+  // `(i)i`
+  function editorProvinceIndustryLevel(province: number): number;
+
+  // Fortification, 0..5. Returns a neutral value unless the map editor is
+  // open with a project loaded -- see mapeditor/active.
+  // `(i)i`
+  function editorProvinceFortification(province: number): number;
+
+  // Port level, 0..3. Returns a neutral value unless the map editor is open
+  // with a project loaded -- see mapeditor/active.
+  // `(i)i`
+  function editorProvincePortLevel(province: number): number;
+
+  // Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
+  // or "metal". Returns a neutral value unless the map editor is open with a
+  // project loaded -- see mapeditor/active.
+  // `(iii)F`
+  function editorProvinceResource(province: number, which: number, whichLen: number): number;
+
+  // Province economic compass, -100..100. Returns a neutral value unless the
+  // map editor is open with a project loaded -- see mapeditor/active.
+  // `(i)F`
+  function editorProvinceCompassEcon(province: number): number;
+
+  // Province social compass, -100..100. Returns a neutral value unless the
+  // map editor is open with a project loaded -- see mapeditor/active.
+  // `(i)F`
+  function editorProvinceCompassSocial(province: number): number;
+
+  // Set population, clamped to 0..2e9. Writes the SAME per-province data the
+  // editor's own tools write, so it saves, exports and shows up in the
+  // unsaved-changes prompt like any other edit. A province the project does
+  // not have is refused rather than created: data without a shape on the
+  // province bitmap exports a map the game cannot load.
+  // `(iI)i`
+  function editorSetProvincePopulation(province: number, value: number): number;
+
+  // Set industry level, clamped to 0..10. Writes the SAME per-province data
+  // the editor's own tools write, so it saves, exports and shows up in the
+  // unsaved-changes prompt like any other edit. A province the project does
+  // not have is refused rather than created: data without a shape on the
+  // province bitmap exports a map the game cannot load.
+  // `(ii)i`
+  function editorSetProvinceIndustryLevel(province: number, level: number): number;
+
+  // Set fortification, clamped to 0..5. Writes the SAME per-province data
+  // the editor's own tools write, so it saves, exports and shows up in the
+  // unsaved-changes prompt like any other edit. A province the project does
+  // not have is refused rather than created: data without a shape on the
+  // province bitmap exports a map the game cannot load.
+  // `(ii)i`
+  function editorSetProvinceFortification(province: number, level: number): number;
+
+  // Set port level, clamped to 0..3. Writes the SAME per-province data the
+  // editor's own tools write, so it saves, exports and shows up in the
+  // unsaved-changes prompt like any other edit. A province the project does
+  // not have is refused rather than created: data without a shape on the
+  // province bitmap exports a map the game cannot load.
+  // `(ii)i`
+  function editorSetProvincePortLevel(province: number, level: number): number;
+
+  // Set a resource amount, clamped to 0..100. An unrecognised name is
+  // refused rather than silently mapped onto oil. Writes the SAME
+  // per-province data the editor's own tools write, so it saves, exports and
+  // shows up in the unsaved-changes prompt like any other edit. A province
+  // the project does not have is refused rather than created: data without a
+  // shape on the province bitmap exports a map the game cannot load.
+  // `(iiiF)i`
+  function editorSetProvinceResource(province: number, which: number, whichLen: number, amount: number): number;
+
+  // Set both compass axes, each clamped to -100..100. Writes the SAME
+  // per-province data the editor's own tools write, so it saves, exports and
+  // shows up in the unsaved-changes prompt like any other edit. A province
+  // the project does not have is refused rather than created: data without a
+  // shape on the province bitmap exports a map the game cannot load.
+  // `(iFF)i`
+  function editorSetProvinceCompass(province: number, econ: number, social: number): number;
+
+  // The project's map name. Two-call sizing: call with cap 0 to learn the
+  // length, allocate, call again. Returns the full length either way; the
+  // copy is truncated to cap.
+  // `(ii)i`
+  function editorMapName(buf: number, cap: number): number;
+
+  // Rename the map. Refused if empty or over 96 bytes.
+  // `(ii)i`
+  function editorSetMapName(name: number, nameLen: number): number;
+
+  // Set the author recorded in the exported .odmap. Up to 96 bytes.
+  // `(ii)i`
+  function editorSetAuthor(author: number, authorLen: number): number;
+
+  // Set the licence recorded in the exported .odmap. Up to 96 bytes.
+  // `(ii)i`
+  function editorSetLicense(license: number, licenseLen: number): number;
+
+  // The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
+  // This is the id net/send takes.
+  // `(i)i`
+  function peerAt(index: number): number;
+
+  // That peer's display name -- deliberately NOT their account id or issuer.
+  // A mod has no business correlating players across sessions. Two-call
+  // sizing: call with cap 0 to learn the length, allocate, call again.
+  // Returns the full length either way; the copy is truncated to cap.
+  // `(iii)i`
+  function peerName(index: number, buf: number, cap: number): number;
+
+  // The largest payload net/send will accept. Chunk against this rather than
+  // discovering the limit by having a message dropped.
+  // `()i`
+  function maxMessageBytes(): number;
+
+  // How many decision modules the AI has. Each acts independently every
+  // turn.
+  // `()i`
+  function moduleCount(): number;
+
+  // The module's name: "economy", "politics", "war", "navy". Two-call
+  // sizing: call with cap 0 to learn the length, allocate, call again.
+  // Returns the full length either way; the copy is truncated to cap.
+  // `(iii)i`
+  function moduleName(module: number, buf: number, cap: number): number;
+
+  // How many actions that module can choose between.
+  // `(i)i`
+  function actionCount(module: number): number;
+
+  // The action's name, e.g. "reinforce", "embark", "propose_alliance". THE
+  // FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an
+  // implementation detail that has changed before and will again, and a mod
+  // written against those names would break silently. What the AI CAN DO is
+  // stable enough to build an advisor or a decision log against. Two-call
+  // sizing: call with cap 0 to learn the length, allocate, call again.
+  // Returns the full length either way; the copy is truncated to cap.
+  // `(iiii)i`
+  function actionName(module: number, action: number, buf: number, cap: number): number;
+
+  // Whether a country is played by the AI rather than by the local player.
+  // `(i)i`
+  function countryIsAi(country: number): number;
+
+  // Gradient updates the loaded model has been through -- roughly, how much
+  // training it has seen.
+  // `()I`
+  function updateCount(): number;
+
+  // Whether an AI model is loaded at all. False in a game with no AI
+  // players.
+  // `()i`
+  function modelLoaded(): number;
+
 }

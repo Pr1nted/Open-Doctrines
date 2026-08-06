@@ -2,7 +2,7 @@
      Source: sdk/abi.json   Generator: tools/gen_abi_docs.py
      Regenerate with: python3 tools/gen_abi_docs.py -->
 
-# Gearbox ABI Reference — v1.0
+# Gearbox ABI Reference — v1.1
 
 The complete wire contract between a mod and the host. Every SDK under
 `sdk/` is a transcription of this; if an SDK disagrees with this page, the
@@ -40,6 +40,15 @@ memory after a call returns, and you must not keep one of the host's.
 | `Audio` | `gearbox:audio` | Play and stop sounds from your own mod's assets | yes | implemented |
 | `Net` | `gearbox:net` | Send and receive messages between copies of YOUR OWN mod | yes | implemented |
 | `WasiStub` | `wasi_snapshot_preview1` | Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock. | yes | implemented |
+| `Military.Read` | `gearbox:military.read` | Read ships, armies, fortifications and ports | yes | implemented |
+| `Military.Write` | `gearbox:military.write` | Queue army and ship orders through the turn resolver | yes | implemented |
+| `Research.Read` | `gearbox:research.read` | Read the technology tree and what each country has researched | yes | implemented |
+| `Research.Write` | `gearbox:research.write` | Set research funding | yes | implemented |
+| `Politics.Read` | `gearbox:politics.read` | Read the political compass, policies, unrest and minorities | yes | implemented |
+| `Politics.Write` | `gearbox:politics.write` | Enact and cancel policies through the game's own path | yes | implemented |
+| `Economy.Read` | `gearbox:economy.read` | Read income, upkeep, industry and resources | yes | implemented |
+| `Economy.Write` | `gearbox:economy.write` | Set province industry level | yes | implemented |
+| `MapEditor` | `gearbox:mapeditor` | Read and write the open map editor project; inert outside the editor | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -301,6 +310,210 @@ UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per call.
 
 Immediate-mode button: draws it and returns 1 on the frame it is clicked. One click activates one button -- the host consumes it, so overlapping rects do not all fire. Label truncated to 64 bytes.
 
+#### `draw_line`
+
+```wat
+(import "gearbox:ui" "draw_line" (func $x (param i32 i32 i32 i32 i32 f64 i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+| `x1` | `i32` | — |
+| `y1` | `i32` | — |
+| `x2` | `i32` | — |
+| `y2` | `i32` | — |
+| `thickness` | `f64` | — |
+| `rgba` | `i32` | — |
+
+**Returns** nothing.
+
+Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness is clamped to 0.25..64. Clipped to your panel like every other command.
+
+#### `draw_circle`
+
+```wat
+(import "gearbox:ui" "draw_circle" (func $x (param i32 i32 i32 f64 i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+| `cx` | `i32` | — |
+| `cy` | `i32` | — |
+| `radius` | `f64` | — |
+| `rgba` | `i32` | — |
+
+**Returns** nothing.
+
+Queue a filled circle centred at (cx,cy), panel-relative. Radius is clamped to 0..4096.
+
+#### `draw_image`
+
+```wat
+(import "gearbox:ui" "draw_image" (func $x (param i32 i32 i32 i32 i32 i32 i32 i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+| `x` | `i32` | — |
+| `y` | `i32` | — |
+| `w` | `i32` | — |
+| `h` | `i32` | — |
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `tint` | `i32` | — |
+
+**Returns** nothing.
+
+Queue an image from YOUR OWN package -- `name` is a path inside your .odmod, resolved exactly as gearbox:assets/read resolves it, so you cannot name a file on disk, a game asset, or another mod's art. Pass w or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it unmodified. Decoded once and cached; a name that fails to decode draws nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by extension. This is the call that makes a real reskin possible.
+
+#### `draw_text_sized`
+
+```wat
+(import "gearbox:ui" "draw_text_sized" (func $x (param i32 i32 i32 i32 i32 i32 i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+| `x` | `i32` | — |
+| `y` | `i32` | — |
+| `size` | `i32` | — |
+| `rgba` | `i32` | — |
+| `text` | `i32` | pointer into your linear memory |
+| `text_len` | `i32` | byte length |
+
+**Returns** nothing.
+
+Like draw_text but with a type size, clamped to 6..96. draw_text remains 14pt, unchanged, so v1.0 mods look exactly as they did.
+
+#### `measure_text`
+
+```wat
+(import "gearbox:ui" "measure_text" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `text` | `i32` | pointer into your linear memory |
+| `text_len` | `i32` | byte length |
+| `size` | `i32` | — |
+
+**Returns** `i32`.
+
+Width in pixels of `text` at `size`, measured with the font the game will actually draw. Centring, right-alignment and wrapping all need this before the text is queued.
+
+#### `panel_width`
+
+```wat
+(import "gearbox:ui" "panel_width" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+
+**Returns** `i32`.
+
+The width the host assigned your panel this frame, in pixels. Lay out against this rather than against min_w -- the host may have given you more.
+
+#### `panel_height`
+
+```wat
+(import "gearbox:ui" "panel_height" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+
+**Returns** `i32`.
+
+The height the host assigned your panel this frame, in pixels.
+
+#### `panel_set_visible`
+
+```wat
+(import "gearbox:ui" "panel_set_visible" (func $x (param i32 i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+| `visible` | `i32` | 0 or 1 |
+
+**Returns** nothing.
+
+Show or hide one of your panels. A hidden panel is not drawn and receives no input, but keeps its handle and its registration.
+
+#### `mouse_x`
+
+```wat
+(import "gearbox:ui" "mouse_x" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+
+**Returns** `f64`.
+
+Cursor X, panel-relative, or 0 when the cursor is not over your panel. You cannot observe the pointer outside your own box.
+
+#### `mouse_y`
+
+```wat
+(import "gearbox:ui" "mouse_y" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+
+**Returns** `f64`.
+
+Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+
+#### `mouse_inside`
+
+```wat
+(import "gearbox:ui" "mouse_inside" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `panel` | `i32` | opaque panel handle |
+
+**Returns** `i32` — 0 or 1.
+
+Whether the cursor is over your panel this frame.
+
+#### `theme_accent`
+
+```wat
+(import "gearbox:ui" "theme_accent" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override. Build your palette around this and you harmonise with what they chose.
+
+#### `set_theme_accent`
+
+```wat
+(import "gearbox:ui" "set_theme_accent" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `rgb` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Restyle the whole interface. The accent is read at over a hundred sites -- every heading, highlight, selection and button -- so this is the cheapest full reskin there is. It is NOT persisted: the game's settings file keeps the player's own colour, and the override is dropped the moment no mod is running, so it cannot outlive uninstalling you.
+
 ### `gearbox:assets`
 
 Requires the **Assets** capability.
@@ -465,6 +678,46 @@ This machine's own peer id. 0 means this is not a network game, or this is a ded
 **Returns** `i32` — 0 or 1.
 
 Whether this copy is the authoritative one. A mod that computes anything the game depends on must do it here and send the result, not compute it separately on each machine.
+
+#### `peer_at`
+
+```wat
+(import "gearbox:net" "peer_at" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end. This is the id net/send takes.
+
+#### `peer_name`
+
+```wat
+(import "gearbox:net" "peer_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+That peer's display name -- deliberately NOT their account id or issuer. A mod has no business correlating players across sessions. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `max_message_bytes`
+
+```wat
+(import "gearbox:net" "max_message_bytes" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+The largest payload net/send will accept. Chunk against this rather than discovering the limit by having a message dropped.
 
 ### `wasi_snapshot_preview1`
 
@@ -1375,6 +1628,52 @@ How many provinces border this one. 0 for an unknown province.
 
 The bordering province at an index in [0, province_neighbor_count). GEARBOX_INVALID if out of range. Adjacency is computed once when the map loads, so walking it is cheap.
 
+#### `province_is_coastal`
+
+```wat
+(import "gearbox:map" "province_is_coastal" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a province touches water. Ports, embarking and naval bombardment all require it.
+
+#### `sea_route_exists`
+
+```wat
+(import "gearbox:map" "sea_route_exists" (func $x (param f64 f64 f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `from_lon` | `f64` | — |
+| `from_lat` | `f64` | — |
+| `to_lon` | `f64` | — |
+| `to_lat` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a fleet could get from one point to another by sea, using the game's own navigation grid. You cannot compute this from province neighbours: those describe LAND adjacency.
+
+#### `point_is_land`
+
+```wat
+(import "gearbox:map" "point_is_land" (func $x (param f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `lon` | `f64` | — |
+| `lat` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper.
+
 ### `gearbox:diplomacy`
 
 Requires the **Diplomacy** capability.
@@ -1571,6 +1870,1119 @@ How many reward channels the AI tracks (economy, politics, war, navy).
 **Returns** `f64`.
 
 The running mean reward for one channel, indexed in [0, reward_count). 0 if out of range. OBSERVE ONLY: this capability has no import that writes to the model, the optimiser state or the reward history, which is deliberate -- a trained model is hours of work and a mod that could quietly retrain it is not something a user can meaningfully consent to.
+
+#### `module_count`
+
+```wat
+(import "gearbox:neural" "module_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many decision modules the AI has. Each acts independently every turn.
+
+#### `module_name`
+
+```wat
+(import "gearbox:neural" "module_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `module` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The module's name: "economy", "politics", "war", "navy". Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `action_count`
+
+```wat
+(import "gearbox:neural" "action_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `module` | `i32` | — |
+
+**Returns** `i32`.
+
+How many actions that module can choose between.
+
+#### `action_name`
+
+```wat
+(import "gearbox:neural" "action_name" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `module` | `i32` | — |
+| `action` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The action's name, e.g. "reinforce", "embark", "propose_alliance". THE FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an implementation detail that has changed before and will again, and a mod written against those names would break silently. What the AI CAN DO is stable enough to build an advisor or a decision log against. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_is_ai`
+
+```wat
+(import "gearbox:neural" "country_is_ai" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a country is played by the AI rather than by the local player.
+
+#### `update_count`
+
+```wat
+(import "gearbox:neural" "update_count" (func $x (result i64)))
+```
+
+**Returns** `i64`.
+
+Gradient updates the loaded model has been through -- roughly, how much training it has seen.
+
+#### `model_loaded`
+
+```wat
+(import "gearbox:neural" "model_loaded" (func $x (result i32)))
+```
+
+**Returns** `i32` — 0 or 1.
+
+Whether an AI model is loaded at all. False in a game with no AI players.
+
+### `gearbox:military.read`
+
+Requires the **Military.Read** capability.
+
+#### `ship_count`
+
+```wat
+(import "gearbox:military.read" "ship_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many ships exist in the world, across all owners.
+
+#### `ship_at`
+
+```wat
+(import "gearbox:military.read" "ship_at" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end. Ids are stable within a turn and not across turns -- do not store one.
+
+#### `ship_exists`
+
+```wat
+(import "gearbox:military.read" "ship_exists" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a ship id is still live. Check this before acting on an id you read earlier in the same turn; ships sink.
+
+#### `ship_owner`
+
+```wat
+(import "gearbox:military.read" "ship_owner" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `i32`.
+
+The country that owns a ship, or 0xFFFFFFFF for an id that does not exist.
+
+#### `ship_type`
+
+```wat
+(import "gearbox:military.read" "ship_type" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The hull type as a lowercase string: "transport", "destroyer", "battleship", "carrier", "submarine". Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `ship_lon`
+
+```wat
+(import "gearbox:military.read" "ship_lon" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `f64`.
+
+Longitude in degrees, -180..180. Ships live in world coordinates, not provinces.
+
+#### `ship_lat`
+
+```wat
+(import "gearbox:military.read" "ship_lat" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `f64`.
+
+Latitude in degrees, -90..90.
+
+#### `ship_health`
+
+```wat
+(import "gearbox:military.read" "ship_health" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `i32`.
+
+Hull integrity, 0..100. A ship at 0 has already sunk and will not appear.
+
+#### `ship_crew`
+
+```wat
+(import "gearbox:military.read" "ship_crew" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `i32`.
+
+Crew aboard. For a transport this includes the embarked army, which is why a sunk transport costs so much more than its hull.
+
+#### `ship_range`
+
+```wat
+(import "gearbox:military.read" "ship_range" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+
+**Returns** `f64`.
+
+How far this hull may move in one turn, in degrees. The resolver clamps any order beyond it, so read this before ordering a move rather than discovering the clamp afterwards.
+
+#### `army_stack_count`
+
+```wat
+(import "gearbox:military.read" "army_stack_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+How many distinct owners have troops in a province. Usually 1; more than one means a contested or garrisoned province.
+
+#### `army_stack_owner`
+
+```wat
+(import "gearbox:military.read" "army_stack_owner" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+The country owning stack `index` in a province, or 0xFFFFFFFF past the end.
+
+#### `army_stack_size`
+
+```wat
+(import "gearbox:military.read" "army_stack_size" (func $x (param i32 i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i64`.
+
+How many troops are in that stack.
+
+#### `country_army`
+
+```wat
+(import "gearbox:military.read" "country_army" (func $x (param i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i64`.
+
+A country's total troops everywhere, which is the number its own army screen shows.
+
+#### `province_fortification`
+
+```wat
+(import "gearbox:military.read" "province_fortification" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Fortification level, 0..5. Multiplies the defender's strength.
+
+#### `province_port_level`
+
+```wat
+(import "gearbox:military.read" "province_port_level" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+
+### `gearbox:military.write`
+
+Requires the **Military.Write** capability.
+
+#### `order_army_move`
+
+```wat
+(import "gearbox:military.write" "order_army_move" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `from` | `i32` | — |
+| `to` | `i32` | — |
+| `percent` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Move `percent` (0..100) of the troops in `from` into the adjacent province `to`. Into an enemy province this is an attack; into your own or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+#### `order_ship_move`
+
+```wat
+(import "gearbox:military.write" "order_ship_move" (func $x (param i32 f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+| `lon` | `f64` | — |
+| `lat` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Sail a ship toward (lon,lat). The resolver routes around land and clamps to ship_range, so a destination on land or beyond range moves the ship as far as it legally can rather than failing. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+#### `order_ship_engage`
+
+```wat
+(import "gearbox:military.write" "order_ship_engage" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+| `target` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Attack another ship. Requires that you are at war with its owner and that it is within range; both are checked by the resolver. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+#### `order_ship_bombard`
+
+```wat
+(import "gearbox:military.write" "order_ship_bombard" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `ship` | `i32` | — |
+| `province` | `i32` | — |
+| `ammo` | `i32` | pointer into your linear memory |
+| `ammo_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Bombard a coastal province. `ammo` names the shell type; pass an empty string for the default. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+### `gearbox:research.read`
+
+Requires the **Research.Read** capability.
+
+#### `node_count`
+
+```wat
+(import "gearbox:research.read" "node_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many technologies exist in the tree.
+
+#### `node_id`
+
+```wat
+(import "gearbox:research.read" "node_id" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stable string id of technology `index`, which is what country_has_researched takes. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `node_name`
+
+```wat
+(import "gearbox:research.read" "node_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The technology's display name, which is localised and NOT stable -- never match on it. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `node_category`
+
+```wat
+(import "gearbox:research.read" "node_category" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+Which branch of the tree it sits in. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `node_cost`
+
+```wat
+(import "gearbox:research.read" "node_cost" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+Research points required.
+
+#### `country_has_researched`
+
+```wat
+(import "gearbox:research.read" "country_has_researched" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `node_id` | `i32` | pointer into your linear memory |
+| `node_id_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a country has completed a technology. Takes the id from node_id, not the display name.
+
+#### `country_funding`
+
+```wat
+(import "gearbox:research.read" "country_funding" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That is how the game stores it and how its own economy screen presents it.
+
+### `gearbox:research.write`
+
+Requires the **Research.Write** capability.
+
+#### `set_country_funding`
+
+```wat
+(import "gearbox:research.write" "set_country_funding" (func $x (param i32 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `share` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set research funding as a share of income. Clamped to 0..1; a value in 'points per turn' is not a quantity this game has.
+
+### `gearbox:politics.read`
+
+Requires the **Politics.Read** capability.
+
+#### `country_compass_econ`
+
+```wat
+(import "gearbox:politics.read" "country_compass_econ" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Economic axis of the political compass, -100 (planned) to 100 (market).
+
+#### `country_compass_social`
+
+```wat
+(import "gearbox:politics.read" "country_compass_social" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Social axis, -100 (authoritarian) to 100 (libertarian).
+
+#### `province_unrest`
+
+```wat
+(import "gearbox:politics.read" "province_unrest" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `f64`.
+
+This province's chance of rebelling, as the game itself computes it.
+
+#### `policy_count`
+
+```wat
+(import "gearbox:politics.read" "policy_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many policies exist.
+
+#### `policy_id`
+
+```wat
+(import "gearbox:politics.read" "policy_id" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stable string id of policy `index`. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `policy_name`
+
+```wat
+(import "gearbox:politics.read" "policy_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The policy's display name; localised, not stable, do not match on it. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_has_policy`
+
+```wat
+(import "gearbox:politics.read" "country_has_policy" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `policy_id` | `i32` | pointer into your linear memory |
+| `policy_id_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a country currently has a policy active or implementing.
+
+#### `province_minority_count`
+
+```wat
+(import "gearbox:politics.read" "province_minority_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+How many named minority groups live in a province.
+
+#### `province_minority_name`
+
+```wat
+(import "gearbox:politics.read" "province_minority_name" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The minority's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `province_minority_share`
+
+```wat
+(import "gearbox:politics.read" "province_minority_share" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `f64`.
+
+That minority's share of the province's population, 0..1.
+
+### `gearbox:politics.write`
+
+Requires the **Politics.Write** capability.
+
+#### `set_country_policy`
+
+```wat
+(import "gearbox:politics.write" "set_country_policy" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `policy_id` | `i32` | pointer into your linear memory |
+| `policy_id_len` | `i32` | byte length |
+| `enabled` | `i32` | 0 or 1 |
+
+**Returns** `i32` — 0 or 1.
+
+Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so the cost, the prerequisites and the per-turn enactment cap all still apply -- a country cannot end up running policies it could never have afforded. Returns 1 if the policy is already in the requested state.
+
+### `gearbox:economy.read`
+
+Requires the **Economy.Read** capability.
+
+#### `country_income_gross`
+
+```wat
+(import "gearbox:economy.read" "country_income_gross" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Income per turn before upkeep.
+
+#### `country_income_net`
+
+```wat
+(import "gearbox:economy.read" "country_income_net" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Income per turn after army and navy upkeep. Negative means the treasury is draining.
+
+#### `country_army_upkeep`
+
+```wat
+(import "gearbox:economy.read" "country_army_upkeep" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What the standing army costs per turn.
+
+#### `country_navy_upkeep`
+
+```wat
+(import "gearbox:economy.read" "country_navy_upkeep" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What the fleet costs per turn. Ships a country is not using still cost this, which is what makes scrapping a real decision.
+
+#### `country_is_bankrupt`
+
+```wat
+(import "gearbox:economy.read" "country_is_bankrupt" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a country is currently bankrupt.
+
+#### `province_industry_level`
+
+```wat
+(import "gearbox:economy.read" "province_industry_level" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Industry level, 0..10.
+
+#### `province_industry_specialization`
+
+```wat
+(import "gearbox:economy.read" "province_industry_specialization" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+What this province's industry specialises in, or an empty string for none. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `province_resource`
+
+```wat
+(import "gearbox:economy.read" "province_resource" (func $x (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `which` | `i32` | pointer into your linear memory |
+| `which_len` | `i32` | byte length |
+
+**Returns** `f64`.
+
+How much of a resource a province holds, 0..100. `which` is one of "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+
+### `gearbox:economy.write`
+
+Requires the **Economy.Write** capability.
+
+#### `set_province_industry_level`
+
+```wat
+(import "gearbox:economy.write" "set_province_industry_level" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `level` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order.
+
+### `gearbox:mapeditor`
+
+Requires the **MapEditor** capability.
+
+#### `editor_active`
+
+```wat
+(import "gearbox:mapeditor" "editor_active" (func $x (result i32)))
+```
+
+**Returns** `i32` — 0 or 1.
+
+Whether the map editor is open with a project loaded. EVERY OTHER CALL IN THIS MODULE returns 0 or an empty string when this is 0, including from inside a running game: the data behind them is an editor project, and a game does not have one. Check this first.
+
+#### `editor_province_count`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many provinces the open project has. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_at`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_at" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+The province id at `index`, in ascending id order, or 0xFFFFFFFF past the end. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_population`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_population" (func $x (param i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i64`.
+
+Population. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_industry_level`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_industry_level" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Industry level, 0..10. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_fortification`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_fortification" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Fortification, 0..5. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_port_level`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_port_level" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+Port level, 0..3. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_resource`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_resource" (func $x (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `which` | `i32` | pointer into your linear memory |
+| `which_len` | `i32` | byte length |
+
+**Returns** `f64`.
+
+Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones" or "metal". Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_compass_econ`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_compass_econ" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `f64`.
+
+Province economic compass, -100..100. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_province_compass_social`
+
+```wat
+(import "gearbox:mapeditor" "editor_province_compass_social" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `f64`.
+
+Province social compass, -100..100. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active.
+
+#### `editor_set_province_population`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_population" (func $x (param i32 i64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `value` | `i64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set population, clamped to 0..2e9. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_set_province_industry_level`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_industry_level" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `level` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set industry level, clamped to 0..10. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_set_province_fortification`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_fortification" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `level` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set fortification, clamped to 0..5. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_set_province_port_level`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_port_level" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `level` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set port level, clamped to 0..3. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_set_province_resource`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_resource" (func $x (param i32 i32 i32 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `which` | `i32` | pointer into your linear memory |
+| `which_len` | `i32` | byte length |
+| `amount` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set a resource amount, clamped to 0..100. An unrecognised name is refused rather than silently mapped onto oil. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_set_province_compass`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_province_compass" (func $x (param i32 f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `econ` | `f64` | — |
+| `social` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set both compass axes, each clamped to -100..100. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load.
+
+#### `editor_map_name`
+
+```wat
+(import "gearbox:mapeditor" "editor_map_name" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The project's map name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `editor_set_map_name`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_map_name" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Rename the map. Refused if empty or over 96 bytes.
+
+#### `editor_set_author`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_author" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `author` | `i32` | pointer into your linear memory |
+| `author_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Set the author recorded in the exported .odmap. Up to 96 bytes.
+
+#### `editor_set_license`
+
+```wat
+(import "gearbox:mapeditor" "editor_set_license" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `license` | `i32` | pointer into your linear memory |
+| `license_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Set the licence recorded in the exported .odmap. Up to 96 bytes.
 
 ## Exports
 

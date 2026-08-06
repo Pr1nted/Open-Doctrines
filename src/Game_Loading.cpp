@@ -581,7 +581,7 @@ void Game::drawLoadingScreen() {
         float py = startY + s_offsets[i][1] * (sqSize + gap);
 
         DrawRectangle((int)(px - sqSize/2), (int)(py - sqSize/2), (int)sqSize, (int)sqSize,
-                      ColorAlpha(hexToColor(m_config.accentColor), alpha/255.0f));
+                      ColorAlpha(hexToColor(m_config.accent()), alpha/255.0f));
     }
 
     // Status text
@@ -594,7 +594,7 @@ void Game::drawLoadingScreen() {
     char percentStr[16];
     snprintf(percentStr, sizeof(percentStr), "%d%%", percent);
     int percentW = MeasureText(percentStr, 32);
-    DrawText(percentStr, m_screenW - percentW - 30, m_screenH - 50, 32, hexToColor(m_config.accentColor));
+    DrawText(percentStr, m_screenW - percentW - 30, m_screenH - 50, 32, hexToColor(m_config.accent()));
 
     // Progress bar (bottom center)
     int barW = 400;
@@ -602,7 +602,7 @@ void Game::drawLoadingScreen() {
     int barX = centerX - barW / 2;
     int barY = m_screenH - 100;
     DrawRectangleRounded({(float)barX, (float)barY, (float)barW, (float)barH}, 0.1f, 4, {40, 40, 50, 255});
-    DrawRectangleRounded({(float)barX, (float)barY, (float)(barW * progress), (float)barH}, 0.1f, 4, hexToColor(m_config.accentColor));
+    DrawRectangleRounded({(float)barX, (float)barY, (float)(barW * progress), (float)barH}, 0.1f, 4, hexToColor(m_config.accent()));
 
     // Tips (bottom left)
     if (!m_loadingTips.empty()) {
@@ -614,7 +614,7 @@ void Game::drawLoadingScreen() {
         }
 
         const std::string& tip = m_loadingTips[m_currentTipIndex];
-        DrawText("Tip:", 30, m_screenH - 50, 18, hexToColor(m_config.accentColor));
+        DrawText("Tip:", 30, m_screenH - 50, 18, hexToColor(m_config.accent()));
         DrawText(tip.c_str(), 30, m_screenH - 25, 16, LIGHTGRAY);
     }
 

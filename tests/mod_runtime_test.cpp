@@ -9,6 +9,7 @@
 
 #include "mods/ModPackage.h"
 #include "mods/ModRuntime.h"
+#include "mod_world_stub.h"
 #include "mods/ModHost.h"
 #include "test_zip.h"
 
@@ -148,7 +149,7 @@ int main(int argc, char** argv) {
     modHostLogClear();
 
     // WasiStub's clock reports the turn number, so the test needs a world.
-    struct TurnOnly : ModGameAccess {
+    struct TurnOnly : StubWorld {
         uint32_t turnNumber() override { return 42; }
         uint32_t countryCount() override { return 0; }
         uint32_t countryAt(uint32_t) override { return 0xFFFFFFFFu; }

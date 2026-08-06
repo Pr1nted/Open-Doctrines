@@ -1,0 +1,624 @@
+{
+  "$comment": [
+    "The Gearbox 1.0 ABI surface, frozen. NOT a copy of abi.json -- only the",
+    "three things a COMPILED mod depends on: the import name, its wire",
+    "signature, and the capability that gates it. Docs and parameter names may",
+    "be reworded freely; those cannot break a .wasm that already exists.",
+    "",
+    "tools/check_abi_compat.py asserts every entry here is still present and",
+    "unchanged in sdk/abi.json. That is what makes \"a 1.0 mod keeps working\" a",
+    "tested guarantee rather than an intention: within major version 1, a",
+    "symbol may be added but never renamed, re-signed, or re-gated.",
+    "",
+    "A genuinely incompatible change means Gearbox 2.0, a new baseline file,",
+    "and mods that declare it -- parseModManifest already refuses a mismatched",
+    "major outright."
+  ],
+  "gearbox": "1.0",
+  "modules": [
+    "Assets",
+    "Audio",
+    "Core",
+    "Diplomacy",
+    "GameProcess",
+    "GameState.Read",
+    "GameState.Write",
+    "Map",
+    "Net",
+    "Neural",
+    "Storage",
+    "UI",
+    "WasiStub"
+  ],
+  "imports": [
+    {
+      "module": "gearbox:assets",
+      "name": "read",
+      "signature": "(iiii)i",
+      "capability": "Assets"
+    },
+    {
+      "module": "gearbox:assets",
+      "name": "size",
+      "signature": "(ii)i",
+      "capability": "Assets"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "is_playing",
+      "signature": "(i)i",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "play",
+      "signature": "(iif)i",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "set_volume",
+      "signature": "(if)",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "stop",
+      "signature": "(i)",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:core",
+      "name": "abort",
+      "signature": "(ii)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "env",
+      "signature": "(i)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "fuel_budget",
+      "signature": "()I",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "log",
+      "signature": "(iii)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "allied",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "at_war",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "guaranteed",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "non_aggression",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "propose_war",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_at",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_count",
+      "signature": "()i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_name",
+      "signature": "(iii)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_province_count",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_treasury",
+      "signature": "(i)F",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_owner",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_population",
+      "signature": "(i)I",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "turn_number",
+      "signature": "()i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "add_country_treasury",
+      "signature": "(iF)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_country_treasury",
+      "signature": "(iF)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_owner",
+      "signature": "(ii)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_population",
+      "signature": "(iI)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "height",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_at",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_x",
+      "signature": "(i)F",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_y",
+      "signature": "(i)F",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_count",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_is_land",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_name",
+      "signature": "(iii)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_at",
+      "signature": "(ii)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_count",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "width",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "is_host",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_count",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "recv",
+      "signature": "(iii)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "self_peer",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "send",
+      "signature": "(iii)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "feature_count",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "features",
+      "signature": "(iii)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_count",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_mean",
+      "signature": "(i)F",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "get",
+      "signature": "(iiii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "remove",
+      "signature": "(ii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "set",
+      "signature": "(iiii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "button",
+      "signature": "(iiiiiii)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_rect",
+      "signature": "(iiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_text",
+      "signature": "(iiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_register",
+      "signature": "(iiii)i",
+      "capability": "UI"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_sizes_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_res_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_time_get",
+      "signature": "(iIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_sizes_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_advise",
+      "signature": "(iIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_allocate",
+      "signature": "(iII)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_close",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_datasync",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_set_flags",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_size",
+      "signature": "(iI)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_times",
+      "signature": "(iIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pread",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_dir_name",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pwrite",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_read",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_readdir",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_renumber",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "signature": "(iIii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_sync",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_tell",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_create_directory",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_get",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_set_times",
+      "signature": "(iiiiIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_link",
+      "signature": "(iiiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_open",
+      "signature": "(iiiiiIIii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_readlink",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_remove_directory",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_rename",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_symlink",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_unlink_file",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "poll_oneoff",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "proc_exit",
+      "signature": "(i)",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "random_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sched_yield",
+      "signature": "()i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_accept",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_recv",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_send",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_shutdown",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    }
+  ],
+  "exports": [
+    "mod_draw_panel",
+    "mod_load",
+    "mod_post_turn",
+    "mod_pre_turn",
+    "mod_unload"
+  ]
+}

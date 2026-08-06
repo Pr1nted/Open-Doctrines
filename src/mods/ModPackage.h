@@ -35,9 +35,41 @@ enum ModModuleBit : uint32_t {
     // the narrowest possible surface, off by default, and never a real WASI --
     // see the WasiStub notes in ModHost.cpp and docs/modding.md.
     MODULE_WASISTUB        = 1u << 10,
+
+    // ── Gearbox 1.1 ──────────────────────────────────────────────────────────
+    //
+    // ADDITIVE ONLY, AND SPLIT READ FROM WRITE. A published ABI is a promise
+    // that cannot be withdrawn once mods build against it, so 1.1 adds names
+    // and changes none: every 1.0 module and signature above is untouched, and
+    // a 1.0 mod resolves against a 1.1 host unchanged.
+    //
+    // Read and write are separate bits for every domain. A reskin, a HUD, an
+    // analysis tool or a map painter wants to SEE the fleet; almost none of
+    // them need to move it. Granting sight should not grant command, and the
+    // mod menu shows the two separately so a player can tell them apart.
+    MODULE_MILITARY_READ   = 1u << 13,
+    MODULE_MILITARY_WRITE  = 1u << 14,
+    MODULE_RESEARCH_READ   = 1u << 15,
+    MODULE_RESEARCH_WRITE  = 1u << 16,
+    MODULE_POLITICS_READ   = 1u << 17,
+    MODULE_POLITICS_WRITE  = 1u << 18,
+    MODULE_ECONOMY_READ    = 1u << 19,
+    MODULE_ECONOMY_WRITE   = 1u << 20,
+    // The editor can rewrite the world, so it is deliberately its own thing and
+    // is refused outside the map editor screen -- see ModHost's inEditor gate.
+    MODULE_MAPEDITOR       = 1u << 21,
 };
 
 uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
+
+/**
+ * Every capability bit, in the order the permissions screen should list them.
+ *
+ * The permissions UI walks THIS rather than an array of its own, so adding a
+ * module is enough to make it visible and revocable. See the note by the
+ * definition for what went wrong when it did not.
+ */
+const std::vector<uint32_t>& modAllModuleBits();
 std::string modModuleMaskToString(uint32_t mask);
 
 // Which side of a multiplayer game a mod belongs on. "both" is the default
@@ -112,6 +144,20 @@ struct ModLimits {
     // ModHostCaps::kDefaultLoadFuel. A mod only sets this if it wants LESS.
     uint64_t loadFuel = 0;
 };
+
+// The Gearbox ABI this build provides.
+//
+// IN THE HEADER, NOT THE .cpp, so tests/mod_abi_test.cpp can assert that
+// sdk/abi.json declares the same pair. It used to compare against the literal
+// "1.0", which meant bumping the host and forgetting abi.json still passed --
+// exactly the drift that test exists to catch.
+//
+// MINOR IS APPEND-ONLY. 1.1 added modules and functions and renamed nothing, so
+// a mod declaring "gearbox": "1.0" resolves every import it knows about and
+// runs unchanged. A mod declaring a NEWER minor than the host still loads, with
+// a warning; whatever it wanted from that minor simply is not there.
+inline constexpr int kHostGearboxMajor = 1;
+inline constexpr int kHostGearboxMinor = 1;
 
 struct ModManifest {
     int schema = 0;

@@ -24,11 +24,12 @@ TOOLS = os.path.join(ROOT, "tools")
 GROUPS = [
     ("Releasing", [
         "release.py", "odver.py", "package.py", "build.py", "screenshots.sh",
-        "itch-cover.py", "banner.py",
+        "itch-cover.py", "banner.py", "package_android.sh",
     ]),
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
-        "check_bindings.py", "wasm_imports.py", "pack_odmod.sh",
+        "check_bindings.py", "check_abi_compat.py", "wasm_imports.py",
+        "pack_odmod.sh",
         "sdk_toolchains.sh", "test_all_sdks.sh", "find_python.sh",
     ]),
     ("Testing multiplayer", [

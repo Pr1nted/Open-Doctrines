@@ -68,8 +68,8 @@ void Game::drawBottomPanel() {
         Color iconColor = LIGHTGRAY;
         Color textColor = LIGHTGRAY;
         if (m_activeViewTab == i + 1) {
-            iconColor = hexToColor(m_config.accentColor);
-            textColor = hexToColor(m_config.accentColor);
+            iconColor = hexToColor(m_config.accent());
+            textColor = hexToColor(m_config.accent());
         } else if (hovered) {
             iconColor = WHITE;
             textColor = WHITE;
@@ -82,7 +82,7 @@ void Game::drawBottomPanel() {
 
         if (m_activeViewTab == i + 1) {
             int lineW = tw + 12;
-            DrawRectangle(cx - lineW / 2, labelY + fontSize + 3, lineW, 2, hexToColor(m_config.accentColor));
+            DrawRectangle(cx - lineW / 2, labelY + fontSize + 3, lineW, 2, hexToColor(m_config.accent()));
         }
     }
 }
@@ -626,7 +626,7 @@ void Game::drawCountryPanel() {
         }
         DrawText("Country Statistics", panelX + pad, statsY, 18, WHITE);
         DrawText(TextFormat("Annual Income: %.1f", m_cachedCountryIncome),
-                 panelX + pad, statsY + 24, 16, hexToColor(m_config.accentColor));
+                 panelX + pad, statsY + 24, 16, hexToColor(m_config.accent()));
         DrawText(TextFormat("Industrial Provinces: %d", m_cachedIndustryCount),
                  panelX + pad, statsY + 44, 14, LIGHTGRAY);
         if (m_activeViewTab == 0 && cid == m_playerCountryId) {
@@ -1997,7 +1997,7 @@ void Game::drawSidebarButtons() {
         // a policy went live). Accent the button until the panel is opened.
         bool alert = !btns[i].disabled && !active &&
                      ((btns[i].id == 4 && m_researchAlert) || (btns[i].id == 1 && m_politicsAlert));
-        Color accent = hexToColor(m_config.accentColor);
+        Color accent = hexToColor(m_config.accent());
         // Gentle pulse so it reads as "new" rather than just another state
         float pulse = alert ? 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)GetTime() * 3.0f)) : 0.0f;
 
@@ -2128,7 +2128,7 @@ void Game::drawInner() {
             if (sp.x < -50 || sp.x > m_screenW + 50 || sp.y < -50 || sp.y > m_screenH + 50) continue;
             Color specCol;
             if (ind.specialization == "Oil")       specCol = Color{160, 50, 200, 255};
-            else if (ind.specialization == "Gold") specCol = hexToColor(m_config.accentColor);
+            else if (ind.specialization == "Gold") specCol = hexToColor(m_config.accent());
             else if (ind.specialization == "Rubber") specCol = Color{50, 200, 50, 255};
             else if (ind.specialization == "Gemstones") specCol = Color{100, 200, 255, 255};
             else if (ind.specialization == "Metal") specCol = Color{200, 200, 200, 255};
@@ -2811,7 +2811,7 @@ void Game::drawInner() {
             if (isSelected) {
                 float ringR = shipSize * 1.0f;
                 DrawCircleLines((int)sp.x, (int)sp.y, ringR + 3, Color{255, 255, 255, 200});
-                DrawCircleLines((int)sp.x, (int)sp.y, ringR + 5, ColorAlpha(hexToColor(m_config.accentColor), 120.0f/255.0f));
+                DrawCircleLines((int)sp.x, (int)sp.y, ringR + 5, ColorAlpha(hexToColor(m_config.accent()), 120.0f/255.0f));
             }
 
             if (ship.type == "boat") {
@@ -2900,8 +2900,8 @@ void Game::drawInner() {
                 std::abs(mouse.x - m_dragSelectStart.x),
                 std::abs(mouse.y - m_dragSelectStart.y)
             };
-            DrawRectangleRec(selBox, ColorAlpha(hexToColor(m_config.accentColor), 30.0f/255.0f));
-            DrawRectangleLinesEx(selBox, 1.5f, ColorAlpha(hexToColor(m_config.accentColor), 180.0f/255.0f));
+            DrawRectangleRec(selBox, ColorAlpha(hexToColor(m_config.accent()), 30.0f/255.0f));
+            DrawRectangleLinesEx(selBox, 1.5f, ColorAlpha(hexToColor(m_config.accent()), 180.0f/255.0f));
         }
 
         // ── Step 6: Ship action preview lines & pending order indicators ──

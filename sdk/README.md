@@ -9,8 +9,10 @@ Everything needed to write a mod for OpenDoctrines.
 
 ## The ABI is the SDK
 
-A mod is a WebAssembly module that imports 18 host functions and exports up to
-5 of its own. That is the entire contract. Each "SDK" here is a transcription of
+A mod is a WebAssembly module that imports host functions from 22 capability
+modules and exports up to 5 of its own. That is the entire contract. Gearbox 1.1
+brings the surface to 149 imports; a mod uses whichever handful it needs, and
+imports nothing it was not granted. Each "SDK" here is a transcription of
 it into one language's syntax — a few hundred lines, no runtime, no framework.
 
 The transcriptions are kept honest by a single machine-readable definition:
@@ -26,11 +28,19 @@ build if the host and `abi.json` disagree in either direction — a host functio
 missing from `abi.json` would be absent from every SDK, and an `abi.json` entry
 the host lacks would fail to link for every modder. Neither can slip through.
 
+That is not the same as compatibility. Both files move together, so deleting a
+function from both would pass. [`compat/`](compat/) holds a frozen copy of each
+shipped minor's surface, and `tools/check_abi_compat.py` asserts every symbol in
+every one of them is still present with the same signature and capability. So a
+mod built against 1.0 keeps working on a 1.1 host, and that is tested rather
+than intended: within a major version the ABI may only be added to.
+
 ## Layout
 
 ```
 sdk/
 ├── abi.json                  the ABI, machine-readable — source of truth
+├── compat/                   frozen per-minor surfaces, for the compat gate
 ├── gearbox.h                 C and C++ binding (extern "C")
 ├── examples/hello-panel/     the reference example, in C
 ├── cpp/                      C++ binding notes + example

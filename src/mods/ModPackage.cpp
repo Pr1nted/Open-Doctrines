@@ -21,6 +21,15 @@ struct ModuleEntry { const char* name; uint32_t bit; };
 const ModuleEntry kModules[] = {
     {"Core",            MODULE_CORE},
     {"GameState.Read",  MODULE_GAMESTATE_READ},
+    {"Military.Read",   MODULE_MILITARY_READ},
+    {"Military.Write",  MODULE_MILITARY_WRITE},
+    {"Research.Read",   MODULE_RESEARCH_READ},
+    {"Research.Write",  MODULE_RESEARCH_WRITE},
+    {"Politics.Read",   MODULE_POLITICS_READ},
+    {"Politics.Write",  MODULE_POLITICS_WRITE},
+    {"Economy.Read",    MODULE_ECONOMY_READ},
+    {"Economy.Write",   MODULE_ECONOMY_WRITE},
+    {"MapEditor",       MODULE_MAPEDITOR},
     {"GameState.Write", MODULE_GAMESTATE_WRITE},
     {"GameProcess",     MODULE_GAMEPROCESS},
     {"Neural",          MODULE_NEURAL},
@@ -35,6 +44,23 @@ const ModuleEntry kModules[] = {
 };
 
 }  // namespace
+
+// Every capability, in the order the permissions screen lists them.
+//
+// FROM kModules, NOT A SECOND ARRAY. The permissions screen used to carry its
+// own hardcoded list, and it had already fallen behind: Audio and Net were
+// grantable in a manifest but invisible in the UI, so a player could neither
+// see them nor revoke them. Gearbox 1.1 would have added nine more of the same.
+// A capability the player cannot see is not a capability, it is a permission
+// granted by default, and the whole model rests on that not being true.
+const std::vector<uint32_t>& modAllModuleBits() {
+    static const std::vector<uint32_t> bits = [] {
+        std::vector<uint32_t> v;
+        for (const auto& m : kModules) v.push_back(m.bit);
+        return v;
+    }();
+    return bits;
+}
 
 uint32_t modModuleFromName(const std::string& name) {
     for (const auto& m : kModules)
@@ -248,10 +274,6 @@ std::string jsonString(const json& j, const char* key) {
 
 }  // namespace
 
-// Kept in sync with sdk/gearbox.h by hand; there is only one pair of numbers,
-// so a mismatch is a one-line fix rather than a build-system problem.
-static constexpr int kHostGearboxMajor = 1;
-static constexpr int kHostGearboxMinor = 0;
 
 ModLoadResult parseModManifest(const std::string& text,
                                ModManifest& out,
@@ -315,8 +337,15 @@ ModLoadResult parseModManifest(const std::string& text,
         return ModLoadResult::IncompatibleApiVersion;
     }
     if (out.gearboxMinor > kHostGearboxMinor) {
-        // Loads, per docs/modding.md; anything it uses from the newer minor is
-        // simply absent and traps on first call.
+        // A WARNING, NOT A REFUSAL. The mod may well only use the older minor
+        // and have declared the newer one out of habit, and refusing that would
+        // strand working mods on every host that had not updated yet.
+        //
+        // If it does import something newer, ModRuntime::instantiate refuses it
+        // there -- an unresolved import means the module cannot be linked at
+        // all, so the failure is loud, at load, and names the missing symbol.
+        // (This used to say "traps on first call", which was wrong: there is no
+        // first call, because there is no instance.)
         warnings.push_back("targets Gearbox v" + gb + " but this build provides v" +
                            std::to_string(kHostGearboxMajor) + "." +
                            std::to_string(kHostGearboxMinor) +
@@ -344,6 +373,15 @@ ModLoadResult parseModManifest(const std::string& text,
     out.modules |= MODULE_CORE;                    // always granted
     if (out.modules & MODULE_GAMESTATE_WRITE)
         out.modules |= MODULE_GAMESTATE_READ;      // Write implies Read
+    // Same rule for every 1.1 domain: you cannot sensibly command what you
+    // cannot see, and a mod asking only for Write would otherwise be unable to
+    // check its own effect.
+    if (out.modules & MODULE_MILITARY_WRITE)  out.modules |= MODULE_MILITARY_READ;
+    if (out.modules & MODULE_RESEARCH_WRITE)  out.modules |= MODULE_RESEARCH_READ;
+    if (out.modules & MODULE_POLITICS_WRITE)  out.modules |= MODULE_POLITICS_READ;
+    if (out.modules & MODULE_ECONOMY_WRITE)   out.modules |= MODULE_ECONOMY_READ;
+    if (out.modules & MODULE_MAPEDITOR)
+        out.modules |= MODULE_GAMESTATE_READ | MODULE_MAPEDITOR;
 
     // side: optional, defaulting to "both". Not a schema bump -- an existing
     // mod that says nothing keeps working, and "both" is what it already was.

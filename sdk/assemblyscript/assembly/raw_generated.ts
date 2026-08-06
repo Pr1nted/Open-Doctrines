@@ -365,3 +365,618 @@ export declare function _rewardMean(index: u32): f64;
 // `(iI)i`
 @external("gearbox:gamestate.write", "set_province_population")
 export declare function _setProvincePopulation(province: u32, value: i64): u32;
+
+// Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
+// is clamped to 0.25..64. Clipped to your panel like every other command.
+// `(iiiiiFi)`
+@external("gearbox:ui", "draw_line")
+export declare function _drawLine(panel: u32, x1: u32, y1: u32, x2: u32, y2: u32, thickness: f64, rgba: u32): void;
+
+// Queue a filled circle centred at (cx,cy), panel-relative. Radius is
+// clamped to 0..4096.
+// `(iiiFi)`
+@external("gearbox:ui", "draw_circle")
+export declare function _drawCircle(panel: u32, cx: u32, cy: u32, radius: f64, rgba: u32): void;
+
+// Queue an image from YOUR OWN package -- `name` is a path inside your
+// .odmod, resolved exactly as gearbox:assets/read resolves it, so you
+// cannot name a file on disk, a game asset, or another mod's art. Pass w
+// or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it
+// unmodified. Decoded once and cached; a name that fails to decode draws
+// nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
+// extension. This is the call that makes a real reskin possible.
+// `(iiiiiiii)`
+@external("gearbox:ui", "draw_image")
+export declare function _drawImage(panel: u32, x: u32, y: u32, w: u32, h: u32, name: usize, name_len: u32, tint: u32): void;
+
+// Like draw_text but with a type size, clamped to 6..96. draw_text remains
+// 14pt, unchanged, so v1.0 mods look exactly as they did.
+// `(iiiiiii)`
+@external("gearbox:ui", "draw_text_sized")
+export declare function _drawTextSized(panel: u32, x: u32, y: u32, size: u32, rgba: u32, text: usize, text_len: u32): void;
+
+// Width in pixels of `text` at `size`, measured with the font the game
+// will actually draw. Centring, right-alignment and wrapping all need this
+// before the text is queued.
+// `(iii)i`
+@external("gearbox:ui", "measure_text")
+export declare function _measureText(text: usize, text_len: u32, size: u32): u32;
+
+// The width the host assigned your panel this frame, in pixels. Lay out
+// against this rather than against min_w -- the host may have given you
+// more.
+// `(i)i`
+@external("gearbox:ui", "panel_width")
+export declare function _panelWidth(panel: u32): u32;
+
+// The height the host assigned your panel this frame, in pixels.
+// `(i)i`
+@external("gearbox:ui", "panel_height")
+export declare function _panelHeight(panel: u32): u32;
+
+// Show or hide one of your panels. A hidden panel is not drawn and
+// receives no input, but keeps its handle and its registration.
+// `(ii)`
+@external("gearbox:ui", "panel_set_visible")
+export declare function _panelSetVisible(panel: u32, visible: u32): void;
+
+// Cursor X, panel-relative, or 0 when the cursor is not over your panel.
+// You cannot observe the pointer outside your own box.
+// `(i)F`
+@external("gearbox:ui", "mouse_x")
+export declare function _mouseX(panel: u32): f64;
+
+// Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+// `(i)F`
+@external("gearbox:ui", "mouse_y")
+export declare function _mouseY(panel: u32): f64;
+
+// Whether the cursor is over your panel this frame.
+// `(i)i`
+@external("gearbox:ui", "mouse_inside")
+export declare function _mouseInside(panel: u32): u32;
+
+// The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
+// Build your palette around this and you harmonise with what they chose.
+// `()i`
+@external("gearbox:ui", "theme_accent")
+export declare function _themeAccent(): u32;
+
+// Restyle the whole interface. The accent is read at over a hundred sites
+// -- every heading, highlight, selection and button -- so this is the
+// cheapest full reskin there is. It is NOT persisted: the game's settings
+// file keeps the player's own colour, and the override is dropped the
+// moment no mod is running, so it cannot outlive uninstalling you.
+// `(i)i`
+@external("gearbox:ui", "set_theme_accent")
+export declare function _setThemeAccent(rgb: u32): u32;
+
+// How many ships exist in the world, across all owners.
+// `()i`
+@external("gearbox:military.read", "ship_count")
+export declare function _shipCount(): u32;
+
+// The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
+// Ids are stable within a turn and not across turns -- do not store one.
+// `(i)i`
+@external("gearbox:military.read", "ship_at")
+export declare function _shipAt(index: u32): u32;
+
+// Whether a ship id is still live. Check this before acting on an id you
+// read earlier in the same turn; ships sink.
+// `(i)i`
+@external("gearbox:military.read", "ship_exists")
+export declare function _shipExists(ship: u32): u32;
+
+// The country that owns a ship, or 0xFFFFFFFF for an id that does not
+// exist.
+// `(i)i`
+@external("gearbox:military.read", "ship_owner")
+export declare function _shipOwner(ship: u32): u32;
+
+// The hull type as a lowercase string: "transport", "destroyer",
+// "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:military.read", "ship_type")
+export declare function _shipType(ship: u32, buf: usize, cap: u32): u32;
+
+// Longitude in degrees, -180..180. Ships live in world coordinates, not
+// provinces.
+// `(i)F`
+@external("gearbox:military.read", "ship_lon")
+export declare function _shipLon(ship: u32): f64;
+
+// Latitude in degrees, -90..90.
+// `(i)F`
+@external("gearbox:military.read", "ship_lat")
+export declare function _shipLat(ship: u32): f64;
+
+// Hull integrity, 0..100. A ship at 0 has already sunk and will not
+// appear.
+// `(i)i`
+@external("gearbox:military.read", "ship_health")
+export declare function _shipHealth(ship: u32): u32;
+
+// Crew aboard. For a transport this includes the embarked army, which is
+// why a sunk transport costs so much more than its hull.
+// `(i)i`
+@external("gearbox:military.read", "ship_crew")
+export declare function _shipCrew(ship: u32): u32;
+
+// How far this hull may move in one turn, in degrees. The resolver clamps
+// any order beyond it, so read this before ordering a move rather than
+// discovering the clamp afterwards.
+// `(i)F`
+@external("gearbox:military.read", "ship_range")
+export declare function _shipRange(ship: u32): f64;
+
+// How many distinct owners have troops in a province. Usually 1; more than
+// one means a contested or garrisoned province.
+// `(i)i`
+@external("gearbox:military.read", "army_stack_count")
+export declare function _armyStackCount(province: u32): u32;
+
+// The country owning stack `index` in a province, or 0xFFFFFFFF past the
+// end.
+// `(ii)i`
+@external("gearbox:military.read", "army_stack_owner")
+export declare function _armyStackOwner(province: u32, index: u32): u32;
+
+// How many troops are in that stack.
+// `(ii)I`
+@external("gearbox:military.read", "army_stack_size")
+export declare function _armyStackSize(province: u32, index: u32): i64;
+
+// A country's total troops everywhere, which is the number its own army
+// screen shows.
+// `(i)I`
+@external("gearbox:military.read", "country_army")
+export declare function _countryArmy(country: u32): i64;
+
+// Fortification level, 0..5. Multiplies the defender's strength.
+// `(i)i`
+@external("gearbox:military.read", "province_fortification")
+export declare function _provinceFortification(province: u32): u32;
+
+// Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+// `(i)i`
+@external("gearbox:military.read", "province_port_level")
+export declare function _provincePortLevel(province: u32): u32;
+
+// Move `percent` (0..100) of the troops in `from` into the adjacent
+// province `to`. Into an enemy province this is an attack; into your own
+// or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN
+// ORDER; it does not move anything. It lands in the same queue the
+// player's own click writes to and is validated by the same resolver at
+// end of turn, so a mod cannot teleport, cheat range, or attack across an
+// ocean. Returns 0 if the order is rejected outright.
+// `(iii)i`
+@external("gearbox:military.write", "order_army_move")
+export declare function _orderArmyMove(from: u32, to: u32, percent: u32): u32;
+
+// Sail a ship toward (lon,lat). The resolver routes around land and clamps
+// to ship_range, so a destination on land or beyond range moves the ship
+// as far as it legally can rather than failing. QUEUES AN ORDER; it does
+// not move anything. It lands in the same queue the player's own click
+// writes to and is validated by the same resolver at end of turn, so a mod
+// cannot teleport, cheat range, or attack across an ocean. Returns 0 if
+// the order is rejected outright.
+// `(iFF)i`
+@external("gearbox:military.write", "order_ship_move")
+export declare function _orderShipMove(ship: u32, lon: f64, lat: f64): u32;
+
+// Attack another ship. Requires that you are at war with its owner and
+// that it is within range; both are checked by the resolver. QUEUES AN
+// ORDER; it does not move anything. It lands in the same queue the
+// player's own click writes to and is validated by the same resolver at
+// end of turn, so a mod cannot teleport, cheat range, or attack across an
+// ocean. Returns 0 if the order is rejected outright.
+// `(ii)i`
+@external("gearbox:military.write", "order_ship_engage")
+export declare function _orderShipEngage(ship: u32, target: u32): u32;
+
+// Bombard a coastal province. `ammo` names the shell type; pass an empty
+// string for the default. QUEUES AN ORDER; it does not move anything. It
+// lands in the same queue the player's own click writes to and is
+// validated by the same resolver at end of turn, so a mod cannot teleport,
+// cheat range, or attack across an ocean. Returns 0 if the order is
+// rejected outright.
+// `(iiii)i`
+@external("gearbox:military.write", "order_ship_bombard")
+export declare function _orderShipBombard(ship: u32, province: u32, ammo: usize, ammo_len: u32): u32;
+
+// How many technologies exist in the tree.
+// `()i`
+@external("gearbox:research.read", "node_count")
+export declare function _nodeCount(): u32;
+
+// The stable string id of technology `index`, which is what
+// country_has_researched takes. Two-call sizing: call with cap 0 to learn
+// the length, allocate, call again. Returns the full length either way;
+// the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:research.read", "node_id")
+export declare function _nodeId(index: u32, buf: usize, cap: u32): u32;
+
+// The technology's display name, which is localised and NOT stable --
+// never match on it. Two-call sizing: call with cap 0 to learn the length,
+// allocate, call again. Returns the full length either way; the copy is
+// truncated to cap.
+// `(iii)i`
+@external("gearbox:research.read", "node_name")
+export declare function _nodeName(index: u32, buf: usize, cap: u32): u32;
+
+// Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
+// learn the length, allocate, call again. Returns the full length either
+// way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:research.read", "node_category")
+export declare function _nodeCategory(index: u32, buf: usize, cap: u32): u32;
+
+// Research points required.
+// `(i)i`
+@external("gearbox:research.read", "node_cost")
+export declare function _nodeCost(index: u32): u32;
+
+// Whether a country has completed a technology. Takes the id from node_id,
+// not the display name.
+// `(iii)i`
+@external("gearbox:research.read", "country_has_researched")
+export declare function _countryHasResearched(country: u32, node_id: usize, node_id_len: u32): u32;
+
+// Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
+// is how the game stores it and how its own economy screen presents it.
+// `(i)F`
+@external("gearbox:research.read", "country_funding")
+export declare function _countryFunding(country: u32): f64;
+
+// Set research funding as a share of income. Clamped to 0..1; a value in
+// 'points per turn' is not a quantity this game has.
+// `(iF)i`
+@external("gearbox:research.write", "set_country_funding")
+export declare function _setCountryFunding(country: u32, share: f64): u32;
+
+// Economic axis of the political compass, -100 (planned) to 100 (market).
+// `(i)F`
+@external("gearbox:politics.read", "country_compass_econ")
+export declare function _countryCompassEcon(country: u32): f64;
+
+// Social axis, -100 (authoritarian) to 100 (libertarian).
+// `(i)F`
+@external("gearbox:politics.read", "country_compass_social")
+export declare function _countryCompassSocial(country: u32): f64;
+
+// This province's chance of rebelling, as the game itself computes it.
+// `(i)F`
+@external("gearbox:politics.read", "province_unrest")
+export declare function _provinceUnrest(province: u32): f64;
+
+// How many policies exist.
+// `()i`
+@external("gearbox:politics.read", "policy_count")
+export declare function _policyCount(): u32;
+
+// The stable string id of policy `index`. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:politics.read", "policy_id")
+export declare function _policyId(index: u32, buf: usize, cap: u32): u32;
+
+// The policy's display name; localised, not stable, do not match on it.
+// Two-call sizing: call with cap 0 to learn the length, allocate, call
+// again. Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:politics.read", "policy_name")
+export declare function _policyName(index: u32, buf: usize, cap: u32): u32;
+
+// Whether a country currently has a policy active or implementing.
+// `(iii)i`
+@external("gearbox:politics.read", "country_has_policy")
+export declare function _countryHasPolicy(country: u32, policy_id: usize, policy_id_len: u32): u32;
+
+// How many named minority groups live in a province.
+// `(i)i`
+@external("gearbox:politics.read", "province_minority_count")
+export declare function _provinceMinorityCount(province: u32): u32;
+
+// The minority's name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(iiii)i`
+@external("gearbox:politics.read", "province_minority_name")
+export declare function _provinceMinorityName(province: u32, index: u32, buf: usize, cap: u32): u32;
+
+// That minority's share of the province's population, 0..1.
+// `(ii)F`
+@external("gearbox:politics.read", "province_minority_share")
+export declare function _provinceMinorityShare(province: u32, index: u32): f64;
+
+// Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so
+// the cost, the prerequisites and the per-turn enactment cap all still
+// apply -- a country cannot end up running policies it could never have
+// afforded. Returns 1 if the policy is already in the requested state.
+// `(iiii)i`
+@external("gearbox:politics.write", "set_country_policy")
+export declare function _setCountryPolicy(country: u32, policy_id: usize, policy_id_len: u32, enabled: u32): u32;
+
+// Income per turn before upkeep.
+// `(i)F`
+@external("gearbox:economy.read", "country_income_gross")
+export declare function _countryIncomeGross(country: u32): f64;
+
+// Income per turn after army and navy upkeep. Negative means the treasury
+// is draining.
+// `(i)F`
+@external("gearbox:economy.read", "country_income_net")
+export declare function _countryIncomeNet(country: u32): f64;
+
+// What the standing army costs per turn.
+// `(i)F`
+@external("gearbox:economy.read", "country_army_upkeep")
+export declare function _countryArmyUpkeep(country: u32): f64;
+
+// What the fleet costs per turn. Ships a country is not using still cost
+// this, which is what makes scrapping a real decision.
+// `(i)F`
+@external("gearbox:economy.read", "country_navy_upkeep")
+export declare function _countryNavyUpkeep(country: u32): f64;
+
+// Whether a country is currently bankrupt.
+// `(i)i`
+@external("gearbox:economy.read", "country_is_bankrupt")
+export declare function _countryIsBankrupt(country: u32): u32;
+
+// Industry level, 0..10.
+// `(i)i`
+@external("gearbox:economy.read", "province_industry_level")
+export declare function _provinceIndustryLevel(province: u32): u32;
+
+// What this province's industry specialises in, or an empty string for
+// none. Two-call sizing: call with cap 0 to learn the length, allocate,
+// call again. Returns the full length either way; the copy is truncated to
+// cap.
+// `(iii)i`
+@external("gearbox:economy.read", "province_industry_specialization")
+export declare function _provinceIndustrySpecialization(province: u32, buf: usize, cap: u32): u32;
+
+// How much of a resource a province holds, 0..100. `which` is one of
+// "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+// `(iii)F`
+@external("gearbox:economy.read", "province_resource")
+export declare function _provinceResource(province: u32, which: usize, which_len: u32): f64;
+
+// Set a province's industry level, clamped to 0..10. This writes the built
+// level directly and does not charge for it -- it is a scenario-authoring
+// tool, not a build order.
+// `(ii)i`
+@external("gearbox:economy.write", "set_province_industry_level")
+export declare function _setProvinceIndustryLevel(province: u32, level: u32): u32;
+
+// Whether a province touches water. Ports, embarking and naval bombardment
+// all require it.
+// `(i)i`
+@external("gearbox:map", "province_is_coastal")
+export declare function _provinceIsCoastal(province: u32): u32;
+
+// Whether a fleet could get from one point to another by sea, using the
+// game's own navigation grid. You cannot compute this from province
+// neighbours: those describe LAND adjacency.
+// `(FFFF)i`
+@external("gearbox:map", "sea_route_exists")
+export declare function _seaRouteExists(from_lon: f64, from_lat: f64, to_lon: f64, to_lat: f64): u32;
+
+// Whether a world coordinate is land. Ordering a ship onto land is not an
+// error -- the resolver clamps it -- but knowing first is cheaper.
+// `(FF)i`
+@external("gearbox:map", "point_is_land")
+export declare function _pointIsLand(lon: f64, lat: f64): u32;
+
+// Whether the map editor is open with a project loaded. EVERY OTHER CALL
+// IN THIS MODULE returns 0 or an empty string when this is 0, including
+// from inside a running game: the data behind them is an editor project,
+// and a game does not have one. Check this first.
+// `()i`
+@external("gearbox:mapeditor", "editor_active")
+export declare function _editorActive(): u32;
+
+// How many provinces the open project has. Returns a neutral value unless
+// the map editor is open with a project loaded -- see mapeditor/active.
+// `()i`
+@external("gearbox:mapeditor", "editor_province_count")
+export declare function _editorProvinceCount(): u32;
+
+// The province id at `index`, in ascending id order, or 0xFFFFFFFF past
+// the end. Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(i)i`
+@external("gearbox:mapeditor", "editor_province_at")
+export declare function _editorProvinceAt(index: u32): u32;
+
+// Population. Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(i)I`
+@external("gearbox:mapeditor", "editor_province_population")
+export declare function _editorProvincePopulation(province: u32): i64;
+
+// Industry level, 0..10. Returns a neutral value unless the map editor is
+// open with a project loaded -- see mapeditor/active.
+// `(i)i`
+@external("gearbox:mapeditor", "editor_province_industry_level")
+export declare function _editorProvinceIndustryLevel(province: u32): u32;
+
+// Fortification, 0..5. Returns a neutral value unless the map editor is
+// open with a project loaded -- see mapeditor/active.
+// `(i)i`
+@external("gearbox:mapeditor", "editor_province_fortification")
+export declare function _editorProvinceFortification(province: u32): u32;
+
+// Port level, 0..3. Returns a neutral value unless the map editor is open
+// with a project loaded -- see mapeditor/active.
+// `(i)i`
+@external("gearbox:mapeditor", "editor_province_port_level")
+export declare function _editorProvincePortLevel(province: u32): u32;
+
+// Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
+// or "metal". Returns a neutral value unless the map editor is open with a
+// project loaded -- see mapeditor/active.
+// `(iii)F`
+@external("gearbox:mapeditor", "editor_province_resource")
+export declare function _editorProvinceResource(province: u32, which: usize, which_len: u32): f64;
+
+// Province economic compass, -100..100. Returns a neutral value unless the
+// map editor is open with a project loaded -- see mapeditor/active.
+// `(i)F`
+@external("gearbox:mapeditor", "editor_province_compass_econ")
+export declare function _editorProvinceCompassEcon(province: u32): f64;
+
+// Province social compass, -100..100. Returns a neutral value unless the
+// map editor is open with a project loaded -- see mapeditor/active.
+// `(i)F`
+@external("gearbox:mapeditor", "editor_province_compass_social")
+export declare function _editorProvinceCompassSocial(province: u32): f64;
+
+// Set population, clamped to 0..2e9. Writes the SAME per-province data the
+// editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(iI)i`
+@external("gearbox:mapeditor", "editor_set_province_population")
+export declare function _editorSetProvincePopulation(province: u32, value: i64): u32;
+
+// Set industry level, clamped to 0..10. Writes the SAME per-province data
+// the editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_province_industry_level")
+export declare function _editorSetProvinceIndustryLevel(province: u32, level: u32): u32;
+
+// Set fortification, clamped to 0..5. Writes the SAME per-province data
+// the editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_province_fortification")
+export declare function _editorSetProvinceFortification(province: u32, level: u32): u32;
+
+// Set port level, clamped to 0..3. Writes the SAME per-province data the
+// editor's own tools write, so it saves, exports and shows up in the
+// unsaved-changes prompt like any other edit. A province the project does
+// not have is refused rather than created: data without a shape on the
+// province bitmap exports a map the game cannot load.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_province_port_level")
+export declare function _editorSetProvincePortLevel(province: u32, level: u32): u32;
+
+// Set a resource amount, clamped to 0..100. An unrecognised name is
+// refused rather than silently mapped onto oil. Writes the SAME
+// per-province data the editor's own tools write, so it saves, exports and
+// shows up in the unsaved-changes prompt like any other edit. A province
+// the project does not have is refused rather than created: data without a
+// shape on the province bitmap exports a map the game cannot load.
+// `(iiiF)i`
+@external("gearbox:mapeditor", "editor_set_province_resource")
+export declare function _editorSetProvinceResource(province: u32, which: usize, which_len: u32, amount: f64): u32;
+
+// Set both compass axes, each clamped to -100..100. Writes the SAME
+// per-province data the editor's own tools write, so it saves, exports and
+// shows up in the unsaved-changes prompt like any other edit. A province
+// the project does not have is refused rather than created: data without a
+// shape on the province bitmap exports a map the game cannot load.
+// `(iFF)i`
+@external("gearbox:mapeditor", "editor_set_province_compass")
+export declare function _editorSetProvinceCompass(province: u32, econ: f64, social: f64): u32;
+
+// The project's map name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_map_name")
+export declare function _editorMapName(buf: usize, cap: u32): u32;
+
+// Rename the map. Refused if empty or over 96 bytes.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_map_name")
+export declare function _editorSetMapName(name: usize, name_len: u32): u32;
+
+// Set the author recorded in the exported .odmap. Up to 96 bytes.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_author")
+export declare function _editorSetAuthor(author: usize, author_len: u32): u32;
+
+// Set the licence recorded in the exported .odmap. Up to 96 bytes.
+// `(ii)i`
+@external("gearbox:mapeditor", "editor_set_license")
+export declare function _editorSetLicense(license: usize, license_len: u32): u32;
+
+// The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
+// This is the id net/send takes.
+// `(i)i`
+@external("gearbox:net", "peer_at")
+export declare function _peerAt(index: u32): u32;
+
+// That peer's display name -- deliberately NOT their account id or issuer.
+// A mod has no business correlating players across sessions. Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:net", "peer_name")
+export declare function _peerName(index: u32, buf: usize, cap: u32): u32;
+
+// The largest payload net/send will accept. Chunk against this rather than
+// discovering the limit by having a message dropped.
+// `()i`
+@external("gearbox:net", "max_message_bytes")
+export declare function _maxMessageBytes(): u32;
+
+// How many decision modules the AI has. Each acts independently every
+// turn.
+// `()i`
+@external("gearbox:neural", "module_count")
+export declare function _moduleCount(): u32;
+
+// The module's name: "economy", "politics", "war", "navy". Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:neural", "module_name")
+export declare function _moduleName(module: u32, buf: usize, cap: u32): u32;
+
+// How many actions that module can choose between.
+// `(i)i`
+@external("gearbox:neural", "action_count")
+export declare function _actionCount(module: u32): u32;
+
+// The action's name, e.g. "reinforce", "embark", "propose_alliance". THE
+// FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an
+// implementation detail that has changed before and will again, and a mod
+// written against those names would break silently. What the AI CAN DO is
+// stable enough to build an advisor or a decision log against. Two-call
+// sizing: call with cap 0 to learn the length, allocate, call again.
+// Returns the full length either way; the copy is truncated to cap.
+// `(iiii)i`
+@external("gearbox:neural", "action_name")
+export declare function _actionName(module: u32, action: u32, buf: usize, cap: u32): u32;
+
+// Whether a country is played by the AI rather than by the local player.
+// `(i)i`
+@external("gearbox:neural", "country_is_ai")
+export declare function _countryIsAi(country: u32): u32;
+
+// Gradient updates the loaded model has been through -- roughly, how much
+// training it has seen.
+// `()I`
+@external("gearbox:neural", "update_count")
+export declare function _updateCount(): i64;
+
+// Whether an AI model is loaded at all. False in a game with no AI
+// players.
+// `()i`
+@external("gearbox:neural", "model_loaded")
+export declare function _modelLoaded(): u32;

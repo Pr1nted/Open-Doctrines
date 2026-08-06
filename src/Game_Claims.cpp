@@ -135,7 +135,7 @@ void Game::drawClaimsTab() {
     DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     // Title
-    DrawText(TextFormat("Territorial Claims - %s", pc->name.c_str()), 20, 16, 22, hexToColor(m_config.accentColor));
+    DrawText(TextFormat("Territorial Claims - %s", pc->name.c_str()), 20, 16, 22, hexToColor(m_config.accent()));
 
     // ─── Tabs ───
     int tabY = 100;
@@ -148,10 +148,10 @@ void Game::drawClaimsTab() {
     for (int t = 0; t < nTabs; ++t) {
         int tx = tabStartX + t * tabSpacing;
         bool active = (t == m_claimsTab);
-        Color tc = active ? hexToColor(m_config.accentColor) : LIGHTGRAY;
+        Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
         int tw = MeasureText(tabs[t], 20);
         DrawText(tabs[t], tx - tw / 2, tabY, 20, tc);
-        if (active) DrawRectangle(tx - tw / 2, tabY + 24, tw, 3, hexToColor(m_config.accentColor));
+        if (active) DrawRectangle(tx - tw / 2, tabY + 24, tw, 3, hexToColor(m_config.accent()));
         Rectangle tr = {(float)(tx - tw / 2 - 10), (float)(tabY - 5), (float)(tw + 20), 30};
         if (CheckCollisionPointRec(mouse, tr) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (m_claimsTab != t) Audio::get().playSfx("tab_switch");
@@ -618,7 +618,7 @@ void Game::drawClaimsTab() {
             bool canNext = m_claimsPovIndex < (int)m_claimsPovList.size() - 1;
             DrawText("<", listX + 12, drawY + 3, 16, canPrev ? WHITE : DARKGRAY);
             DrawText(">", listX + listW - 24, drawY + 3, 16, canNext ? WHITE : DARKGRAY);
-            DrawText(selCountry ? selCountry->name.c_str() : selIso.c_str(), listX + 30, drawY + 4, 13, hexToColor(m_config.accentColor));
+            DrawText(selCountry ? selCountry->name.c_str() : selIso.c_str(), listX + 30, drawY + 4, 13, hexToColor(m_config.accent()));
             if (CheckCollisionPointRec(mouse, selRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 float relX = mouse.x - selRect.x;
                 if (relX < 24 && canPrev) { m_claimsPovIndex--; m_claimsOverlayDirty = true; Audio::get().playSfx("click_light"); }
@@ -674,7 +674,7 @@ void Game::drawClaimsTab() {
                             if (c2.isoA3 == others[oi]) { claimer = &c2; break; }
                         }
                         std::string cname = claimer ? claimer->name : others[oi];
-                        DrawText(cname.c_str(), claimLabelX, drawY + 16, 10, hexToColor(m_config.accentColor));
+                        DrawText(cname.c_str(), claimLabelX, drawY + 16, 10, hexToColor(m_config.accent()));
                         claimLabelX += MeasureText(cname.c_str(), 10) + 6;
                     }
                 }

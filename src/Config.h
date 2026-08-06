@@ -119,6 +119,24 @@ struct Config {
 
     int accentColor = 0xFFD700; // default gold, hex 0xRRGGBB
 
+    /**
+     * A mod's accent colour, or -1 for none. NEVER WRITTEN TO DISK.
+     *
+     * The accent is read at over a hundred sites -- every heading, highlight and
+     * selection in the game -- which makes it the cheapest full reskin lever
+     * there is, and exactly why a mod must not be able to keep it. Writing
+     * accentColor directly would have been enough: save() is called whenever the
+     * player touches any setting, so the mod's colour would land in the config
+     * file and outlive uninstalling the mod, with no way back but the reset
+     * button. A separate field that save() ignores gives a mod the whole
+     * interface while it runs and gives it back the moment it stops.
+     *
+     * Read through accent(). accentColor itself remains the player's own choice
+     * and is what the settings screen writes.
+     */
+    int accentOverride = -1;
+    int accent() const { return accentOverride >= 0 ? accentOverride : accentColor; }
+
     Config() {
         for (int i = 0; i < ACTION_COUNT; ++i)
             keybinds[i] = DEFAULT_KEYBINDS[i];

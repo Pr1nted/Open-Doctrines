@@ -7,11 +7,12 @@ capability modules, the mod menu, and the AI-learning interlock.
 
 | Piece | Where | Tests |
 |---|---|---|
-| `.odmod` reader, archive limits, manifest | `src/mods/ModPackage.{h,cpp}` | `ModArchiveTest` (48) |
+| `.odmod` reader, archive limits, manifest | `src/mods/ModPackage.{h,cpp}` | `ModArchiveTest` (60) |
 | Runtime, capability enforcement, limits | `src/mods/ModRuntime.{h,cpp}` | `ModRuntimeTest` (41) |
 | Host capabilities | `src/mods/ModHost.{h,cpp}` | `ModRuntimeTest` |
 | States, grants, persistence | `src/mods/ModManager.{h,cpp}` | `ModManagerTest` (34) |
-| ABI matches `sdk/abi.json` | `sdk/abi.json` | `ModAbiTest` (70) |
+| ABI matches `sdk/abi.json` | `sdk/abi.json` | `ModAbiTest` (444) |
+| 1.0 mods still link against a 1.1 host | `sdk/compat/abi-1.0.json` | `tools/check_abi_compat.py` |
 | Mod menu and panel rendering | `src/Game_Mods.cpp` | — |
 | Documented example still compiles | `docs/gearbox-sdk.md` | `check_doc_examples.sh` |
 
@@ -19,7 +20,7 @@ capability modules, the mod menu, and the AI-learning interlock.
 tests/run_all.sh
 ```
 
-That builds the fixture modules, runs all four suites, compiles the hello-world
+That builds the fixture modules, runs all five suites, compiles the hello-world
 straight out of the documentation, and validates every shipped example mod.
 Without a wasm-capable clang the wasm cases skip themselves and say so, rather
 than passing quietly.
@@ -101,7 +102,7 @@ unacceptable is rejected before any bulk inflation happens.
   "version": "1.2.0",                 // semver
   "description": "Retunes AI war scoring.",
   "authors": ["Jane Doe <jane@example.com>"],
-  "gearbox": "1.0",                   // targeted API version, "Gearbox v1.0"
+  "gearbox": "1.1",                   // targeted API version; "1.0" still works
   "side": "client",                   // "client" | "server" | "both"; default "both"
   "modules": [                        // requested capabilities, least privilege
     "Core",
@@ -185,9 +186,27 @@ A client that lies about its mods desyncs its own display and gains nothing.
 ### API versioning
 
 `gearbox` is `MAJOR.MINOR`. Same major = compatible; the host provides every
-minor at or below its own. A mod targeting a newer minor than the host loads
-with a warning and any missing imports trap on first call. A mod targeting a
-different major is refused.
+minor at or below its own.
+
+**Within a major version the ABI is append-only.** A function may be added. It
+may never be renamed, re-signed, or moved to a different capability, because a
+`.wasm` that already exists imports it by name and signature and would fail to
+link if either moved — and a capability change would silently hand a mod either
+less access than it needs or more than the user agreed to.
+
+That is enforced, not just intended. `sdk/compat/abi-1.0.json` freezes the 1.0
+surface, and `tools/check_abi_compat.py` (run by `tests/run_all.sh`) fails the
+build if any frozen symbol has been removed, re-signed or re-gated. One frozen
+baseline is kept per shipped minor.
+
+- **A mod targeting an older minor** runs unchanged. Everything it imports is
+  still there, with the same signature and the same capability.
+- **A mod targeting a newer minor than the host** loads, with a warning. If it
+  actually imports something the host does not have, `ModRuntime::instantiate`
+  refuses it *there* and names the missing symbol: an unresolved import means
+  the module cannot be linked at all, so the failure is at load, not later.
+- **A mod targeting a different major** is refused outright by
+  `parseModManifest`, with a diagnostic rather than a crash.
 
 ## Capability modules
 
@@ -197,21 +216,104 @@ object, so calling it is a link-time failure, not a runtime check that can be
 bypassed. Users can revoke individual modules per mod in the mod menu's
 **Advanced** panel.
 
+Every capability the build knows about appears in that panel — the list is
+derived from the host's own module table rather than hand-maintained in the UI,
+so a module cannot be grantable in a manifest and invisible to the user.
+
+### Gearbox 1.0
+
 | Module | Grants | Notes |
 |---|---|---|
 | `Core` | Logging, API/host version query, environment introspection, abort | Always granted. Cannot be revoked. |
 | `GameState.Read` | Read countries, provinces, armies, treasuries, relations, turn number | Read-only. Safe default for analysis/UI mods. |
 | `GameState.Write` | Mutate the above | Dangerous. Implies `GameState.Read`. |
 | `GameProcess` | Turn lifecycle hooks: pre-turn, post-turn, per-country | The hook surface, not the data — pair with a `GameState.*` module. |
-| `Neural` | Read AI model metadata, observe decisions, supply feature/reward overrides | Can corrupt a trained model. Warn prominently on grant. |
-| `UI` | Register panels, menu entries, draw within an allotted region | Cannot draw outside its region or capture global input. |
-| `Map` | Province geometry, adjacency, pixel lookups | Read-only. Large data; access is by handle, not bulk copy. |
+| `Neural` | Read AI model metadata, the feature vector, reward means, and the decision space by name | Observe only. There is no write path. |
+| `UI` | Register panels; draw rects, lines, circles, text and your own images within an allotted region; restyle the accent colour | Cannot draw outside its region or capture global input. |
+| `Map` | Province geometry, adjacency, coastline, sea routes, pixel lookups | Read-only. Large data; access is by handle, not bulk copy. |
 | `Diplomacy` | Read/propose diplomatic actions and ceasefire terms | Separated from `GameState.Write` because it is the most abusable surface. |
 | `Assets` | Read files under the mod's own `data/` | Read-only, scoped to the mod. No path escape, no other mod's data. |
 | `Storage` | Persistent key-value store, namespaced to the mod id | Quota enforced. On web this is IndexedDB. |
+| `Audio` | Play, stop and mix sounds from the mod's own package | Handles are owned by the mod; it cannot stop another's. |
+| `Net` | Send and receive mod-defined messages between players; enumerate peers by id and display name | The host stamps the sender; a mod cannot speak as another. Peer *names* only — never account ids, so a mod cannot correlate players across sessions. |
+| `WasiStub` | The `wasi_snapshot_preview1` imports an interpreter needs to instantiate | Almost all of them **refuse unconditionally**. See Security. |
 
-Deliberately absent: any filesystem, network, process, or clock-with-identity
-capability. There is no module that grants them, so they cannot be requested.
+### Gearbox 1.1
+
+Added for total conversions: the state a reskin needs to read, the orders it
+needs to issue, and the scenario data it needs to author. Nothing in 1.0
+changed.
+
+| Module | Grants | Notes |
+|---|---|---|
+| `Military.Read` | Ships (type, position, health, crew, range), army stacks per province, fortification and port levels | Read-only. |
+| `Military.Write` | Queue army moves and ship move/engage/bombard orders | **Queues orders**; does not move anything. Implies `Military.Read`. |
+| `Research.Read` | The technology tree, per-country completion, research funding | Funding is a share of income, 0..1. |
+| `Research.Write` | Set research funding | Implies `Research.Read`. |
+| `Politics.Read` | Political compass, policies, province unrest, minorities | Read-only. |
+| `Politics.Write` | Enact and cancel policies | Goes through the game's own `enactPolicy`, so cost, prerequisites and the per-turn cap still apply. Implies `Politics.Read`. |
+| `Economy.Read` | Gross/net income, army and navy upkeep, bankruptcy, industry level and specialisation, province resources | Read-only. |
+| `Economy.Write` | Set province industry level | A scenario-authoring tool: writes the built level and does not charge for it. Implies `Economy.Read`. |
+| `MapEditor` | Read and write the open map editor project — population, industry, forts, ports, resources, compass, and the map's name/author/licence | **Inert outside the editor.** Every call returns a neutral value unless the editor is open with a project loaded, so it cannot reach into a running game. |
+
+### The two rules that hold across every module
+
+**Every read is bounds-checked and returns a neutral value** — 0, or an empty
+string — for an id that does not exist, rather than trapping. A mod iterating a
+count that changed under it must not be able to crash the game.
+
+**Every write goes through the same resolver the player's own click goes
+through.** Nothing reaches into a container directly. That is what makes the
+capability bit meaningful: granting `Military.Write` lets a mod *issue orders*,
+not fabricate outcomes. An army order is still checked for adjacency; a ship
+order is still clamped to range and routed around land; a policy is still paid
+for. Whatever a mod asks for that the game would not allow a player, it does not
+get.
+
+Deliberately absent: any filesystem, process, or clock-with-identity capability.
+There is no module that grants them, so they cannot be requested. `Net` carries
+messages between players of the same game through the host's own transport; it
+is not a socket, and there is no capability that opens one.
+
+## Doing a full reskin
+
+The question 1.1 was built to answer: how much of the game can a mod replace
+without a fork? Concretely, the levers, cheapest first.
+
+**The accent colour, one call.** `ui/set_theme_accent` is read at over a hundred
+sites — every heading, highlight, selection and button — so a single call
+restyles the whole interface. It is not persisted: the settings file keeps the
+player's own colour, and the override is dropped as soon as no mod is running,
+so it cannot outlive uninstalling you.
+
+**Your own art, in your own panels.** `ui/draw_image` takes a path inside your
+`.odmod` and nothing else — not a file on disk, not a game asset, not another
+mod's package. With `draw_line`, `draw_circle`, `draw_text_sized` and
+`measure_text` you can lay out an interface that looks nothing like this one,
+inside a region the host still owns and clips. Images are decoded once and
+cached per (mod, name); a name that fails to decode draws nothing and does not
+retry, so a broken path costs one decode rather than sixty a second.
+
+**The world itself.** With `Military.*`, `Economy.*`, `Politics.*` and
+`Research.*` you can read the whole simulation and steer it through the same
+orders the player issues. A conversion that changes what the countries *are* —
+their economies, their politics, what they research, what their fleets do — does
+not need engine changes.
+
+**A different map, authored rather than painted.** `MapEditor` reaches the same
+per-province data the editor's own tools write, so a generator can produce a
+scenario in a loop instead of four thousand brush clicks. Its imports are named
+`editor_*` — `editor_province_count`, `editor_set_province_resource` — because
+the bindings are flat per language and `province_count` was already taken by
+`Map`. Edits save, export and
+show up in the unsaved-changes prompt like any other, because there is no second
+path into the file format.
+
+**What a mod still cannot do.** Replace the game's own textures outside a mod
+panel; there is no central texture registry to hook, and inventing one is a
+change to the renderer rather than to this ABI. Reach another mod's files.
+Fabricate an outcome the resolver would refuse. Open a socket. Keep a change to
+the player's settings after it is uninstalled.
 
 ## Security
 
@@ -311,6 +413,21 @@ renderer, and a `UI` mod must no-op there rather than trap.
 The layout is unchanged — still 28 bytes, still ten fields — so a mod built
 against the older struct is byte-compatible and reads `0`, which is
 `STANDALONE`: the right answer for the only game it could have been running.
+
+**`gearbox_is_server` is the multiplayer question that matters.** A mod that
+mutates the world wherever it happens to be running desynchronises the game the
+moment two clients disagree; the correct shape is decide on the authority,
+broadcast the result through `Net`. Note that a single-player game is
+`STANDALONE`, which is *both* client and server — there is one process and it is
+the authority for everything.
+
+Until 1.1 these three answered from a field nothing ever assigned, so they
+always reported `STANDALONE` no matter what session was running. The same dead
+plumbing meant a manifest's `"side"` did nothing: a `"side": "server"` mod was
+never masked off on a client. `Game::syncModNetContext()` now sets it every
+frame and before every reload, so both work. There is deliberately no
+`net/is_multiplayer` import — these already answer it, and a second way to ask
+the same question is worse than none.
 
 ## SDK tiers
 

@@ -13,9 +13,16 @@
     "into your module's linear memory, which the host bounds-checks on every use.",
     "",
     "Strings are (ptr, len) pairs of UTF-8 bytes. They are NOT null-terminated.",
-    "The host does not retain a pointer into your memory after a call returns."
+    "The host does not retain a pointer into your memory after a call returns.",
+    "",
+    "VERSIONING. Every entry carries \"since\". 1.1 only APPENDS: no 1.0 name was",
+    "renamed, no signature changed, no function moved to a different capability,",
+    "so a mod written against 1.0 resolves every import it declares and behaves",
+    "exactly as it did. tests/mod_abi_test.cpp enforces that in both directions,",
+    "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
+    "1.0 baseline so a future edit cannot quietly drop one."
   ],
-  "gearbox": "1.0",
+  "gearbox": "1.1",
   "schema": 1,
   "modules": [
     {
@@ -112,6 +119,78 @@
       "revocable": true,
       "implemented": true,
       "grants": "Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock."
+    },
+    {
+      "name": "Military.Read",
+      "import": "gearbox:military.read",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Read ships, armies, fortifications and ports"
+    },
+    {
+      "name": "Military.Write",
+      "import": "gearbox:military.write",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Queue army and ship orders through the turn resolver"
+    },
+    {
+      "name": "Research.Read",
+      "import": "gearbox:research.read",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Read the technology tree and what each country has researched"
+    },
+    {
+      "name": "Research.Write",
+      "import": "gearbox:research.write",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Set research funding"
+    },
+    {
+      "name": "Politics.Read",
+      "import": "gearbox:politics.read",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Read the political compass, policies, unrest and minorities"
+    },
+    {
+      "name": "Politics.Write",
+      "import": "gearbox:politics.write",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Enact and cancel policies through the game's own path"
+    },
+    {
+      "name": "Economy.Read",
+      "import": "gearbox:economy.read",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Read income, upkeep, industry and resources"
+    },
+    {
+      "name": "Economy.Write",
+      "import": "gearbox:economy.write",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Set province industry level"
+    },
+    {
+      "name": "MapEditor",
+      "import": "gearbox:mapeditor",
+      "revocable": true,
+      "implemented": true,
+      "since": "1.1",
+      "grants": "Read and write the open map editor project; inert outside the editor"
     }
   ],
   "imports": [
@@ -2378,6 +2457,2102 @@
         "role": "bool"
       },
       "doc": "Sets a province's population. Returns 0 if the province is unknown, the value is negative, or it exceeds 100 billion. The game stores population in two places -- a map and a dense array used by the population texture -- and this updates both, which is why it exists as an import rather than being something a mod could do by other means."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_line",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(iiiiiFi)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x1",
+          "type": "i32"
+        },
+        {
+          "name": "y1",
+          "type": "i32"
+        },
+        {
+          "name": "x2",
+          "type": "i32"
+        },
+        {
+          "name": "y2",
+          "type": "i32"
+        },
+        {
+          "name": "thickness",
+          "type": "f64"
+        },
+        {
+          "name": "rgba",
+          "type": "i32",
+          "role": "color:rgba"
+        }
+      ],
+      "result": null,
+      "doc": "Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness is clamped to 0.25..64. Clipped to your panel like every other command."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_circle",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(iiiFi)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "cx",
+          "type": "i32"
+        },
+        {
+          "name": "cy",
+          "type": "i32"
+        },
+        {
+          "name": "radius",
+          "type": "f64"
+        },
+        {
+          "name": "rgba",
+          "type": "i32",
+          "role": "color:rgba"
+        }
+      ],
+      "result": null,
+      "doc": "Queue a filled circle centred at (cx,cy), panel-relative. Radius is clamped to 0..4096."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_image",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(iiiiiiii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x",
+          "type": "i32"
+        },
+        {
+          "name": "y",
+          "type": "i32"
+        },
+        {
+          "name": "w",
+          "type": "i32"
+        },
+        {
+          "name": "h",
+          "type": "i32"
+        },
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "tint",
+          "type": "i32",
+          "role": "color:rgba"
+        }
+      ],
+      "result": null,
+      "doc": "Queue an image from YOUR OWN package -- `name` is a path inside your .odmod, resolved exactly as gearbox:assets/read resolves it, so you cannot name a file on disk, a game asset, or another mod's art. Pass w or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it unmodified. Decoded once and cached; a name that fails to decode draws nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by extension. This is the call that makes a real reskin possible."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_text_sized",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(iiiiiii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "x",
+          "type": "i32"
+        },
+        {
+          "name": "y",
+          "type": "i32"
+        },
+        {
+          "name": "size",
+          "type": "i32"
+        },
+        {
+          "name": "rgba",
+          "type": "i32",
+          "role": "color:rgba"
+        },
+        {
+          "name": "text",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "text_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": null,
+      "doc": "Like draw_text but with a type size, clamped to 6..96. draw_text remains 14pt, unchanged, so v1.0 mods look exactly as they did."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "measure_text",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "text",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "text_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "size",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Width in pixels of `text` at `size`, measured with the font the game will actually draw. Centring, right-alignment and wrapping all need this before the text is queued."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_width",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The width the host assigned your panel this frame, in pixels. Lay out against this rather than against min_w -- the host may have given you more."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_height",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The height the host assigned your panel this frame, in pixels."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_set_visible",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(ii)",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        },
+        {
+          "name": "visible",
+          "type": "i32",
+          "role": "bool"
+        }
+      ],
+      "result": null,
+      "doc": "Show or hide one of your panels. A hidden panel is not drawn and receives no input, but keeps its handle and its registration."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_x",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Cursor X, panel-relative, or 0 when the cursor is not over your panel. You cannot observe the pointer outside your own box."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_y",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Cursor Y, panel-relative, or 0 when the cursor is not over your panel."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_inside",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "panel",
+          "type": "i32",
+          "role": "handle:panel"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether the cursor is over your panel this frame."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "theme_accent",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "color:rgb"
+      },
+      "doc": "The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override. Build your palette around this and you harmonise with what they chose."
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "set_theme_accent",
+      "capability": "UI",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "rgb",
+          "type": "i32",
+          "role": "color:rgb"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Restyle the whole interface. The accent is read at over a hundred sites -- every heading, highlight, selection and button -- so this is the cheapest full reskin there is. It is NOT persisted: the game's settings file keeps the player's own colour, and the override is dropped the moment no mod is running, so it cannot outlive uninstalling you."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_count",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many ships exist in the world, across all owners."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_at",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:ship"
+      },
+      "doc": "The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end. Ids are stable within a turn and not across turns -- do not store one."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_exists",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a ship id is still live. Check this before acting on an id you read earlier in the same turn; ships sink."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_owner",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:country"
+      },
+      "doc": "The country that owns a ship, or 0xFFFFFFFF for an id that does not exist."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_type",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The hull type as a lowercase string: \"transport\", \"destroyer\", \"battleship\", \"carrier\", \"submarine\". Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_lon",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Longitude in degrees, -180..180. Ships live in world coordinates, not provinces."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_lat",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Latitude in degrees, -90..90."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_health",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Hull integrity, 0..100. A ship at 0 has already sunk and will not appear."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_crew",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Crew aboard. For a transport this includes the embarked army, which is why a sunk transport costs so much more than its hull."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_range",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "How far this hull may move in one turn, in degrees. The resolver clamps any order beyond it, so read this before ordering a move rather than discovering the clamp afterwards."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_count",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many distinct owners have troops in a province. Usually 1; more than one means a contested or garrisoned province."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_owner",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:country"
+      },
+      "doc": "The country owning stack `index` in a province, or 0xFFFFFFFF past the end."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_size",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(ii)I",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "How many troops are in that stack."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "country_army",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)I",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "A country's total troops everywhere, which is the number its own army screen shows."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "province_fortification",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Fortification level, 0..5. Multiplies the defender's strength."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "province_port_level",
+      "capability": "Military.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Port level, 0..3. 0 means no port, so no embarking and no ship repair."
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_army_move",
+      "capability": "Military.Write",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "from",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "to",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "percent",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Move `percent` (0..100) of the troops in `from` into the adjacent province `to`. Into an enemy province this is an attack; into your own or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright."
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_move",
+      "capability": "Military.Write",
+      "since": "1.1",
+      "signature": "(iFF)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        },
+        {
+          "name": "lon",
+          "type": "f64"
+        },
+        {
+          "name": "lat",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Sail a ship toward (lon,lat). The resolver routes around land and clamps to ship_range, so a destination on land or beyond range moves the ship as far as it legally can rather than failing. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright."
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_engage",
+      "capability": "Military.Write",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        },
+        {
+          "name": "target",
+          "type": "i32",
+          "role": "id:ship"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Attack another ship. Requires that you are at war with its owner and that it is within range; both are checked by the resolver. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright."
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_bombard",
+      "capability": "Military.Write",
+      "since": "1.1",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "ship",
+          "type": "i32",
+          "role": "id:ship"
+        },
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "ammo",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "ammo_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Bombard a coastal province. `ammo` names the shell type; pass an empty string for the default. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_count",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many technologies exist in the tree."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_id",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stable string id of technology `index`, which is what country_has_researched takes. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_name",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The technology's display name, which is localised and NOT stable -- never match on it. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_category",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Which branch of the tree it sits in. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_cost",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Research points required."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "country_has_researched",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "node_id",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "node_id_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a country has completed a technology. Takes the id from node_id, not the display name."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "country_funding",
+      "capability": "Research.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That is how the game stores it and how its own economy screen presents it."
+    },
+    {
+      "module": "gearbox:research.write",
+      "name": "set_country_funding",
+      "capability": "Research.Write",
+      "since": "1.1",
+      "signature": "(iF)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "share",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set research funding as a share of income. Clamped to 0..1; a value in 'points per turn' is not a quantity this game has."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_compass_econ",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Economic axis of the political compass, -100 (planned) to 100 (market)."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_compass_social",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Social axis, -100 (authoritarian) to 100 (libertarian)."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_unrest",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "This province's chance of rebelling, as the game itself computes it."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_count",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many policies exist."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_id",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stable string id of policy `index`. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_name",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The policy's display name; localised, not stable, do not match on it. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_has_policy",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "policy_id",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "policy_id_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a country currently has a policy active or implementing."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_count",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many named minority groups live in a province."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_name",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The minority's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_share",
+      "capability": "Politics.Read",
+      "since": "1.1",
+      "signature": "(ii)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "That minority's share of the province's population, 0..1."
+    },
+    {
+      "module": "gearbox:politics.write",
+      "name": "set_country_policy",
+      "capability": "Politics.Write",
+      "since": "1.1",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "policy_id",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "policy_id_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "enabled",
+          "type": "i32",
+          "role": "bool"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so the cost, the prerequisites and the per-turn enactment cap all still apply -- a country cannot end up running policies it could never have afforded. Returns 1 if the policy is already in the requested state."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_income_gross",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Income per turn before upkeep."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_income_net",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Income per turn after army and navy upkeep. Negative means the treasury is draining."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_army_upkeep",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "What the standing army costs per turn."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_navy_upkeep",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "What the fleet costs per turn. Ships a country is not using still cost this, which is what makes scrapping a real decision."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_is_bankrupt",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a country is currently bankrupt."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_industry_level",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Industry level, 0..10."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_industry_specialization",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "What this province's industry specialises in, or an empty string for none. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_resource",
+      "capability": "Economy.Read",
+      "since": "1.1",
+      "signature": "(iii)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "which",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "which_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "How much of a resource a province holds, 0..100. `which` is one of \"oil\", \"gold\", \"rubber\", \"gemstones\", \"metal\"; anything else reads 0."
+    },
+    {
+      "module": "gearbox:economy.write",
+      "name": "set_province_industry_level",
+      "capability": "Economy.Write",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "level",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_is_coastal",
+      "capability": "Map",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a province touches water. Ports, embarking and naval bombardment all require it."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "sea_route_exists",
+      "capability": "Map",
+      "since": "1.1",
+      "signature": "(FFFF)i",
+      "params": [
+        {
+          "name": "from_lon",
+          "type": "f64"
+        },
+        {
+          "name": "from_lat",
+          "type": "f64"
+        },
+        {
+          "name": "to_lon",
+          "type": "f64"
+        },
+        {
+          "name": "to_lat",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a fleet could get from one point to another by sea, using the game's own navigation grid. You cannot compute this from province neighbours: those describe LAND adjacency."
+    },
+    {
+      "module": "gearbox:map",
+      "name": "point_is_land",
+      "capability": "Map",
+      "since": "1.1",
+      "signature": "(FF)i",
+      "params": [
+        {
+          "name": "lon",
+          "type": "f64"
+        },
+        {
+          "name": "lat",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_active",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether the map editor is open with a project loaded. EVERY OTHER CALL IN THIS MODULE returns 0 or an empty string when this is 0, including from inside a running game: the data behind them is an editor project, and a game does not have one. Check this first."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_count",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many provinces the open project has. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_at",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:province"
+      },
+      "doc": "The province id at `index`, in ascending id order, or 0xFFFFFFFF past the end. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_population",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)I",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "Population. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_industry_level",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Industry level, 0..10. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_fortification",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Fortification, 0..5. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_port_level",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Port level, 0..3. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_resource",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(iii)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "which",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "which_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Resource amount, 0..100. `which` is \"oil\", \"gold\", \"rubber\", \"gemstones\" or \"metal\". Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_compass_econ",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Province economic compass, -100..100. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_compass_social",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Province social compass, -100..100. Returns a neutral value unless the map editor is open with a project loaded -- see mapeditor/active."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_population",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(iI)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "value",
+          "type": "i64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set population, clamped to 0..2e9. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_industry_level",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "level",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set industry level, clamped to 0..10. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_fortification",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "level",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set fortification, clamped to 0..5. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_port_level",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "level",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set port level, clamped to 0..3. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_resource",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(iiiF)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "which",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "which_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "amount",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set a resource amount, clamped to 0..100. An unrecognised name is refused rather than silently mapped onto oil. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_compass",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(iFF)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "econ",
+          "type": "f64"
+        },
+        {
+          "name": "social",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set both compass axes, each clamped to -100..100. Writes the SAME per-province data the editor's own tools write, so it saves, exports and shows up in the unsaved-changes prompt like any other edit. A province the project does not have is refused rather than created: data without a shape on the province bitmap exports a map the game cannot load."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_map_name",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The project's map name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_map_name",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Rename the map. Refused if empty or over 96 bytes."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_author",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "author",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "author_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set the author recorded in the exported .odmap. Up to 96 bytes."
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_license",
+      "capability": "MapEditor",
+      "since": "1.1",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "license",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "license_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set the licence recorded in the exported .odmap. Up to 96 bytes."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_at",
+      "capability": "Net",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:peer"
+      },
+      "doc": "The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end. This is the id net/send takes."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_name",
+      "capability": "Net",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "That peer's display name -- deliberately NOT their account id or issuer. A mod has no business correlating players across sessions. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:net",
+      "name": "max_message_bytes",
+      "capability": "Net",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The largest payload net/send will accept. Chunk against this rather than discovering the limit by having a message dropped."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "module_count",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many decision modules the AI has. Each acts independently every turn."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "module_name",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "module",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The module's name: \"economy\", \"politics\", \"war\", \"navy\". Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "action_count",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "module",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many actions that module can choose between."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "action_name",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "module",
+          "type": "i32"
+        },
+        {
+          "name": "action",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The action's name, e.g. \"reinforce\", \"embark\", \"propose_alliance\". THE FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an implementation detail that has changed before and will again, and a mod written against those names would break silently. What the AI CAN DO is stable enough to build an advisor or a decision log against. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "country_is_ai",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a country is played by the AI rather than by the local player."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "update_count",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "()I",
+      "params": [],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "Gradient updates the loaded model has been through -- roughly, how much training it has seen."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "model_loaded",
+      "capability": "Neural",
+      "since": "1.1",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether an AI model is loaded at all. False in a game with no AI players."
     }
   ],
   "exports": [

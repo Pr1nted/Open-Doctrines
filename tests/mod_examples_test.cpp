@@ -16,6 +16,7 @@
 // Build target: ModExamplesTest. Takes the sdk directory as argv[1].
 
 #include "mods/ModManager.h"
+#include "mod_world_stub.h"
 #include "mods/ModHost.h"
 #include "mods/ModPackage.h"
 #include "mods/ModRuntime.h"
@@ -43,7 +44,7 @@ void check(const std::string& what, bool cond, const std::string& detail = "") {
 // A fixed, deliberately awkward world. The name is long enough to exercise
 // two-call sizing, and the treasury has a fractional part so a binding that
 // mishandles the f64 return shows up.
-class FakeWorld : public ModGameAccess {
+class FakeWorld : public StubWorld {
 public:
     uint32_t turnNumber() override { return 42; }
     uint32_t countryCount() override { return 3; }

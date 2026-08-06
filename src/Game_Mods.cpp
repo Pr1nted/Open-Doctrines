@@ -112,6 +112,119 @@ private:
     bool setProvincePopulation(uint32_t pid, long long v) override {
         return m_game->modSetProvincePopulation((int)pid, v);
     }
+    // ── Gearbox 1.1 ──────────────────────────────────────────────────────────
+    // Forwards, nothing more. Every bound, clamp and validity test lives either
+    // in the Game accessor or, for the four order calls, in the turn resolver.
+    uint32_t shipCount() override { return (uint32_t)m_game->modShipCount(); }
+    uint32_t shipAt(uint32_t i) override {
+        return i < (uint32_t)m_game->modShipCount() ? i : 0xFFFFFFFFu;
+    }
+    bool shipExists(uint32_t s) override { return m_game->modShipExists((int)s); }
+    uint32_t shipOwner(uint32_t s) override { return (uint32_t)m_game->modShipOwner((int)s); }
+    std::string shipType(uint32_t s) override { return m_game->modShipType((int)s); }
+    double shipLon(uint32_t s) override { return m_game->modShipLon((int)s); }
+    double shipLat(uint32_t s) override { return m_game->modShipLat((int)s); }
+    int32_t shipHealth(uint32_t s) override { return m_game->modShipHealth((int)s); }
+    int32_t shipCrew(uint32_t s) override { return m_game->modShipCrew((int)s); }
+    double shipRange(uint32_t s) override { return m_game->modShipRange((int)s); }
+    uint32_t armyStackCount(uint32_t p) override { return (uint32_t)m_game->modArmyStackCount((int)p); }
+    uint32_t armyStackOwner(uint32_t p, uint32_t i) override { return (uint32_t)m_game->modArmyStackOwner((int)p, (int)i); }
+    long long armyStackSize(uint32_t p, uint32_t i) override { return m_game->modArmyStackSize((int)p, (int)i); }
+    long long countryArmy(uint32_t c) override { return m_game->modCountryArmy((int)c); }
+    int32_t provinceFortification(uint32_t p) override { return m_game->modProvinceFortification((int)p); }
+    int32_t provincePortLevel(uint32_t p) override { return m_game->modProvincePortLevel((int)p); }
+
+    bool orderArmyMove(uint32_t f, uint32_t t, uint32_t pct) override {
+        return m_game->modOrderArmyMove((int)f, (int)t, (int)pct);
+    }
+    bool orderShipMove(uint32_t s, double lon, double lat) override {
+        return m_game->modOrderShipMove((int)s, lon, lat);
+    }
+    bool orderShipEngage(uint32_t s, uint32_t t) override {
+        return m_game->modOrderShipEngage((int)s, (int)t);
+    }
+    bool orderShipBombard(uint32_t s, uint32_t p, const std::string& ammo) override {
+        return m_game->modOrderShipBombard((int)s, (int)p, ammo);
+    }
+
+    uint32_t researchNodeCount() override { return (uint32_t)m_game->modResearchNodeCount(); }
+    std::string researchNodeId(uint32_t i) override { return m_game->modResearchNodeId((int)i); }
+    std::string researchNodeName(uint32_t i) override { return m_game->modResearchNodeName((int)i); }
+    std::string researchNodeCategory(uint32_t i) override { return m_game->modResearchNodeCategory((int)i); }
+    int32_t researchNodeCost(uint32_t i) override { return m_game->modResearchNodeCost((int)i); }
+    bool countryHasResearched(uint32_t c, const std::string& n) override { return m_game->modCountryHasResearched((int)c, n); }
+    double countryResearchFunding(uint32_t c) override { return m_game->modCountryResearchFunding((int)c); }
+    bool setCountryResearchFunding(uint32_t c, double v) override { return m_game->modSetCountryResearchFunding((int)c, v); }
+
+    double countryCompassEcon(uint32_t c) override { return m_game->modCountryCompassEcon((int)c); }
+    double countryCompassSocial(uint32_t c) override { return m_game->modCountryCompassSocial((int)c); }
+    double provinceUnrest(uint32_t p) override { return m_game->modProvinceUnrest((int)p); }
+    uint32_t policyCount() override { return (uint32_t)m_game->modPolicyCount(); }
+    std::string policyId(uint32_t i) override { return m_game->modPolicyId((int)i); }
+    std::string policyName(uint32_t i) override { return m_game->modPolicyName((int)i); }
+    bool countryHasPolicy(uint32_t c, const std::string& p) override { return m_game->modCountryHasPolicy((int)c, p); }
+    bool setCountryPolicy(uint32_t c, const std::string& p, bool on) override { return m_game->modSetCountryPolicy((int)c, p, on); }
+    uint32_t provinceMinorityCount(uint32_t p) override { return (uint32_t)m_game->modProvinceMinorityCount((int)p); }
+    std::string provinceMinorityName(uint32_t p, uint32_t i) override { return m_game->modProvinceMinorityName((int)p, (int)i); }
+    double provinceMinorityShare(uint32_t p, uint32_t i) override { return m_game->modProvinceMinorityShare((int)p, (int)i); }
+
+    double countryIncomeGross(uint32_t c) override { return m_game->modCountryIncomeGross((int)c); }
+    double countryIncomeNet(uint32_t c) override { return m_game->modCountryIncomeNet((int)c); }
+    double countryArmyUpkeep(uint32_t c) override { return m_game->modCountryArmyUpkeep((int)c); }
+    double countryNavyUpkeep(uint32_t c) override { return m_game->modCountryNavyUpkeep((int)c); }
+    bool countryIsBankrupt(uint32_t c) override { return m_game->modCountryIsBankrupt((int)c); }
+    int32_t provinceIndustryLevel(uint32_t p) override { return m_game->modProvinceIndustryLevel((int)p); }
+    std::string provinceIndustrySpecialization(uint32_t p) override { return m_game->modProvinceIndustrySpecialization((int)p); }
+    double provinceResource(uint32_t p, const std::string& w) override { return m_game->modProvinceResource((int)p, w); }
+    bool setProvinceIndustryLevel(uint32_t p, int32_t l) override { return m_game->modSetProvinceIndustryLevel((int)p, l); }
+
+    bool provinceIsCoastal(uint32_t p) override { return m_game->modProvinceIsCoastal((int)p); }
+    bool seaRouteExists(double a, double b, double c, double d) override { return m_game->modSeaRouteExists(a, b, c, d); }
+    bool pointIsLand(double lon, double lat) override { return m_game->modPointIsLand(lon, lat); }
+
+
+    // ── mapeditor (ABI 1.1) ──
+    bool editorActive() override { return m_game->modEditorActive(); }
+    uint32_t editorProvinceCount() override { return (uint32_t)m_game->modEditorProvinceCount(); }
+    uint32_t editorProvinceAt(uint32_t i) override {
+        int p = m_game->modEditorProvinceAt((int)i);
+        return p < 0 ? 0xFFFFFFFFu : (uint32_t)p;
+    }
+    long long editorProvincePopulation(uint32_t p) override { return m_game->modEditorProvincePopulation((int)p); }
+    int32_t editorProvinceIndustryLevel(uint32_t p) override { return m_game->modEditorProvinceIndustryLevel((int)p); }
+    int32_t editorProvinceFortification(uint32_t p) override { return m_game->modEditorProvinceFortification((int)p); }
+    int32_t editorProvincePortLevel(uint32_t p) override { return m_game->modEditorProvincePortLevel((int)p); }
+    double editorProvinceResource(uint32_t p, const std::string& w) override { return m_game->modEditorProvinceResource((int)p, w); }
+    double editorProvinceCompassEcon(uint32_t p) override { return m_game->modEditorProvinceCompassEcon((int)p); }
+    double editorProvinceCompassSocial(uint32_t p) override { return m_game->modEditorProvinceCompassSocial((int)p); }
+    bool editorSetProvincePopulation(uint32_t p, long long v) override { return m_game->modEditorSetProvincePopulation((int)p, v); }
+    bool editorSetProvinceIndustryLevel(uint32_t p, int32_t v) override { return m_game->modEditorSetProvinceIndustryLevel((int)p, v); }
+    bool editorSetProvinceFortification(uint32_t p, int32_t v) override { return m_game->modEditorSetProvinceFortification((int)p, v); }
+    bool editorSetProvincePortLevel(uint32_t p, int32_t v) override { return m_game->modEditorSetProvincePortLevel((int)p, v); }
+    bool editorSetProvinceResource(uint32_t p, const std::string& w, double v) override { return m_game->modEditorSetProvinceResource((int)p, w, v); }
+    bool editorSetProvinceCompass(uint32_t p, double e2, double so) override { return m_game->modEditorSetProvinceCompass((int)p, e2, so); }
+    std::string editorMapName() override { return m_game->modEditorMapName(); }
+    bool editorSetMapName(const std::string& n) override { return m_game->modEditorSetMapName(n); }
+    bool editorSetAuthor(const std::string& a) override { return m_game->modEditorSetAuthor(a); }
+    bool editorSetLicense(const std::string& l) override { return m_game->modEditorSetLicense(l); }
+
+    // ── net (ABI 1.1) ──
+    uint32_t netPeerAt(uint32_t i) override {
+        int p = m_game->modNetPeerAt((int)i);
+        return p < 0 ? 0xFFFFFFFFu : (uint32_t)p;
+    }
+    std::string netPeerName(uint32_t i) override { return m_game->modNetPeerName((int)i); }
+    uint32_t netMaxMessageBytes() override { return (uint32_t)m_game->modNetMaxMessageBytes(); }
+
+    // ── neural (ABI 1.1) ──
+    uint32_t neuralModuleCount() override { return (uint32_t)m_game->modNeuralModuleCount(); }
+    std::string neuralModuleName(uint32_t m) override { return m_game->modNeuralModuleName((int)m); }
+    uint32_t neuralActionCount(uint32_t m) override { return (uint32_t)m_game->modNeuralActionCount((int)m); }
+    std::string neuralActionName(uint32_t m, uint32_t a) override { return m_game->modNeuralActionName((int)m, (int)a); }
+    bool neuralCountryIsAI(uint32_t c) override { return m_game->modNeuralCountryIsAI((int)c); }
+    long long neuralUpdateCount() override { return m_game->modNeuralUpdateCount(); }
+    bool neuralModelLoaded() override { return m_game->modNeuralModelLoaded(); }
+
     uint32_t neuralFeatureCount() override {
         return (uint32_t)m_game->modNeuralFeatureCount();
     }
@@ -147,6 +260,48 @@ std::string pickOdmodFile() {
 #else
     return "";
 #endif
+}
+
+// A mod's own art, decoded once and kept.
+//
+// KEYED BY (mod id, asset name), NOT BY NAME. Two mods that both ship
+// "bg.png" are two different pictures, and a shared cache would hand one mod
+// the other's -- a way to read another mod's package that the assets module
+// carefully does not give.
+//
+// Decoding happens HERE rather than in ModHost because the host does not link
+// raylib. Bytes come out of the mod's package by the same readAsset the assets
+// capability uses, so a mod still cannot name a file outside its own .odmod.
+//
+// A name that fails to decode is remembered as a null entry, so a mod drawing a
+// broken image every frame costs one failed decode, not sixty a second.
+std::map<std::pair<std::string, std::string>, Texture2D> g_modImages;
+
+const Texture2D* modImage(const std::string& modId, const std::string& name) {
+    auto key = std::make_pair(modId, name);
+    auto it = g_modImages.find(key);
+    if (it != g_modImages.end())
+        return it->second.id > 0 ? &it->second : nullptr;
+
+    Texture2D tex{};
+    const ModPackage* pkg = nullptr;
+    for (const auto& m : ModManager::get().mods())
+        if (m.id == modId) { pkg = m.package.get(); break; }
+    std::vector<uint8_t> bytes;
+    if (pkg && pkg->readAsset(name, bytes) && !bytes.empty() && bytes.size() < 32u * 1024 * 1024) {
+        // The extension decides the decoder; raylib needs it and the name a mod
+        // passed is the only hint available.
+        std::string ext = ".png";
+        size_t dot = name.rfind('.');
+        if (dot != std::string::npos && name.size() - dot <= 5) ext = name.substr(dot);
+        Image img = LoadImageFromMemory(ext.c_str(), bytes.data(), (int)bytes.size());
+        if (img.data) {
+            tex = LoadTextureFromImage(img);
+            UnloadImage(img);
+        }
+    }
+    g_modImages[key] = tex;                 // null too, so failures cost once
+    return tex.id > 0 ? &g_modImages[key] : nullptr;
 }
 
 Color colorFromRGBA(uint32_t rgba) {
@@ -434,6 +589,314 @@ double Game::modNeuralRewardMean(int index) const {
     return (double)m_ai->rewardMeans()[index];
 }
 
+
+// ─────────────────────────────────── mapeditor (ABI 1.1) ──────────────────
+//
+// GATED ON THE SCREEN, NOT ON THE CAPABILITY ALONE. A mod holding MapEditor
+// still gets nothing unless the player is actually in the editor: the data it
+// reaches is an editor PROJECT, and there is no such thing while a game is
+// running. Every call below therefore starts at editor(), which is null
+// anywhere but SCREEN_MAP_EDITOR.
+//
+// The write calls do not create provinces. A pid the project does not have
+// fails rather than inventing one, because a province with data and no shape on
+// the province bitmap exports an .odmap the game cannot load.
+
+MapEditor* Game::modEditorOrNull() const {
+    if (m_currentScreen != SCREEN_MAP_EDITOR || !m_mapEditor) return nullptr;
+    // A project dialog is open: the project underneath is not in a state a mod
+    // should be editing, and may be about to be replaced.
+    if (m_mapEditor->isInProjectDialog()) return nullptr;
+    return m_mapEditor;
+}
+
+bool Game::modEditorActive() const { return modEditorOrNull() != nullptr; }
+
+int Game::modEditorProvinceCount() const {
+    MapEditor* ed = modEditorOrNull();
+    return ed ? (int)ed->modProvinceIds().size() : 0;
+}
+int Game::modEditorProvinceAt(int index) const {
+    MapEditor* ed = modEditorOrNull();
+    if (!ed) return -1;
+    auto ids = ed->modProvinceIds();
+    return (index >= 0 && (size_t)index < ids.size()) ? ids[(size_t)index] : -1;
+}
+
+// One accessor per field would be one guard per field. This is the guard.
+const MapEditor::EditorProvinceData* Game::modEditorProv(int pid) const {
+    MapEditor* ed = modEditorOrNull();
+    return ed ? ed->modProvince(pid) : nullptr;
+}
+MapEditor::EditorProvinceData* Game::modEditorProvMut(int pid) {
+    MapEditor* ed = modEditorOrNull();
+    return ed ? ed->modProvinceMut(pid) : nullptr;
+}
+
+long long Game::modEditorProvincePopulation(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? d->population : 0;
+}
+int Game::modEditorProvinceIndustryLevel(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? d->industryLevel : 0;
+}
+int Game::modEditorProvinceFortification(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? d->fortification : 0;
+}
+int Game::modEditorProvincePortLevel(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? d->portLevel : 0;
+}
+double Game::modEditorProvinceCompassEcon(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? (double)d->compassEconomic : 0.0;
+}
+double Game::modEditorProvinceCompassSocial(int pid) const {
+    const auto* d = modEditorProv(pid); return d ? (double)d->compassSocial : 0.0;
+}
+
+// The five the editor itself knows about. An unknown name reads 0 and writes
+// nothing rather than being silently mapped onto oil.
+namespace {
+float* editorResourceField(MapEditor::EditorProvinceData& d, const std::string& w) {
+    if (w == "oil")       return &d.oil;
+    if (w == "gold")      return &d.gold;
+    if (w == "rubber")    return &d.rubber;
+    if (w == "gemstones") return &d.gemstones;
+    if (w == "metal")     return &d.metal;
+    return nullptr;
+}
+}  // namespace
+
+double Game::modEditorProvinceResource(int pid, const std::string& which) const {
+    const auto* d = modEditorProv(pid);
+    if (!d) return 0.0;
+    auto copy = *d;                       // the lookup wants a mutable ref
+    const float* f = editorResourceField(copy, which);
+    return f ? (double)*f : 0.0;
+}
+bool Game::modEditorSetProvinceResource(int pid, const std::string& which, double v) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    float* f = editorResourceField(*d, which);
+    if (!f) return false;
+    *f = (float)std::clamp(v, 0.0, 100.0);
+    return true;
+}
+
+bool Game::modEditorSetProvincePopulation(int pid, long long v) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    d->population = std::clamp<long long>(v, 0, 2000000000LL);
+    return true;
+}
+bool Game::modEditorSetProvinceIndustryLevel(int pid, int v) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    d->industryLevel = std::clamp(v, 0, 10);       // the editor's own range
+    return true;
+}
+bool Game::modEditorSetProvinceFortification(int pid, int v) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    d->fortification = std::clamp(v, 0, 5);
+    return true;
+}
+bool Game::modEditorSetProvincePortLevel(int pid, int v) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    d->portLevel = std::clamp(v, 0, 3);
+    return true;
+}
+bool Game::modEditorSetProvinceCompass(int pid, double econ, double social) {
+    auto* d = modEditorProvMut(pid);
+    if (!d) return false;
+    d->compassEconomic = (float)std::clamp(econ, -100.0, 100.0);
+    d->compassSocial   = (float)std::clamp(social, -100.0, 100.0);
+    return true;
+}
+
+std::string Game::modEditorMapName() const {
+    MapEditor* ed = modEditorOrNull();
+    return ed ? ed->getMapName() : std::string();
+}
+bool Game::modEditorSetMapName(const std::string& n) {
+    MapEditor* ed = modEditorOrNull();
+    if (!ed || n.empty() || n.size() > 96) return false;
+    ed->setMapName(n);
+    return true;
+}
+bool Game::modEditorSetAuthor(const std::string& a) {
+    MapEditor* ed = modEditorOrNull();
+    if (!ed || a.size() > 96) return false;
+    ed->modSetAuthor(a);
+    return true;
+}
+bool Game::modEditorSetLicense(const std::string& l) {
+    MapEditor* ed = modEditorOrNull();
+    if (!ed || l.size() > 96) return false;
+    ed->modSetLicense(l);
+    return true;
+}
+
+// ─────────────────────────────────────── net (ABI 1.1) ────────────────────
+
+// WHAT THE MOD SYSTEM IS TOLD ABOUT THE NETWORK.
+//
+// ModHostContext::netRole was never assigned by anything. It sat at Standalone
+// for the life of the process, which meant gearbox_is_multiplayer() and
+// gearbox_is_server() -- both shipped in Gearbox 1.0, both documented, both the
+// obvious way for a mod to ask -- always answered "single player, and you are
+// the authority". A mod that did the correct thing and checked before mutating
+// got the wrong answer every time.
+//
+// ModManager::setNetContext was equally dead, and that one is worse than a
+// wrong answer: it feeds modSideGrantMask, so a mod declaring "side": "server"
+// was never masked off on a client, and a client-side mod was never masked off
+// on a dedicated host. The side field did nothing at all.
+//
+// Called every frame the mod system is live and again before any reload, since
+// the role changes when a session opens or closes rather than on a schedule.
+void Game::syncModNetContext() {
+    const bool mp   = modNetIsMultiplayer();
+    const bool auth = modNetIsAuthoritative();
+
+    ModNetRole role = ModNetRole::Standalone;
+    if (mp) {
+        // HostPlayer rather than Server: this build has no dedicated server
+        // mode, so an authoritative copy always has somebody playing on it.
+        role = auth ? ModNetRole::HostPlayer : ModNetRole::Client;
+    }
+    g_modHost.netRole = role;
+    ModManager::get().setNetContext(mp, auth);
+}
+
+bool Game::modNetIsMultiplayer() const { return m_netHost || m_netSession; }
+
+// THE ONE A MULTIPLAYER MOD MOST NEEDS. A mod that mutates the world wherever
+// it runs desynchronises the game the moment two clients disagree; the correct
+// shape is "decide on the authority, broadcast the result". Until now a mod had
+// no way to tell which side it was on -- is_host answers a different question,
+// because a listen-server client is not the host but IS authoritative for
+// nothing, and a single-player game has no host at all yet is authoritative for
+// everything.
+bool Game::modNetIsAuthoritative() const {
+    if (!modNetIsMultiplayer()) return true;   // single player: always
+    return m_netHost != nullptr;
+}
+
+int Game::modNetPeerAt(int index) const {
+    if (index < 0) return -1;
+    if (m_netHost) {
+        const auto& r = m_netHost->lobby().members();
+        return (size_t)index < r.size() ? (int)r[(size_t)index].peerId : -1;
+    }
+    if (m_netSession) {
+        const auto& r = m_netSession->roster();
+        return (size_t)index < r.size() ? (int)r[(size_t)index].peerId : -1;
+    }
+    return -1;
+}
+
+// The display name, which is the only peer identity a mod gets. Notably NOT the
+// psid or the account issuer: a mod has no business correlating players across
+// sessions, and handing it a stable identifier would let it.
+std::string Game::modNetPeerName(int index) const {
+    if (index < 0) return {};
+    if (m_netHost) {
+        const auto& r = m_netHost->lobby().members();
+        return (size_t)index < r.size() ? r[(size_t)index].name : std::string();
+    }
+    if (m_netSession) {
+        const auto& r = m_netSession->roster();
+        return (size_t)index < r.size() ? r[(size_t)index].name : std::string();
+    }
+    return {};
+}
+
+// Matches the cap net_send enforces. Published so a mod can chunk its own
+// payloads rather than discovering the limit by having a message dropped.
+int Game::modNetMaxMessageBytes() const { return 8192; }
+
+// ──────────────────────────────────── neural (ABI 1.1) ────────────────────
+//
+// The decision space, by name. A mod reading neural_features gets 143 floats
+// with no idea what any of them mean; what it can usefully reason about is
+// WHAT THE AI CAN DO, and that is what this exposes. Enough to build an
+// advisor, a decision log or an alternative AI that speaks the same vocabulary.
+//
+// The feature vector itself is deliberately left unnamed. The 143 slots are an
+// implementation detail of buildFeatures that has changed several times and
+// will change again; naming them here would publish a layout the game does not
+// promise to keep, and a mod written against those names would break silently
+// rather than loudly.
+
+namespace {
+const char* const kAiModuleNames[] = {"economy", "politics", "war", "navy"};
+
+// These mirror the comments above ECON_ACTIONS and friends in AISystem.h. If an
+// action is added there, add it here -- the count assertion below fails the
+// build if the two lists drift apart.
+const char* const kEconActionNames[] = {
+    "save", "industry", "fortification", "port", "specialize",
+    "build_destroyer", "build_carrier", "research_fund_up", "research_fund_down",
+    "research_focus_buildings", "research_focus_army", "research_focus_navy"};
+const char* const kPolActionNames[] = {
+    "hold", "enact_policy", "pacify_up", "pacify_down", "cancel_policy",
+    "propose_alliance", "propose_nap", "propose_guarantee",
+    "enact_calming_policy", "conciliate_minority", "repress_minority"};
+const char* const kWarActionNames[] = {
+    "hold", "recruit", "reinforce", "attack", "declare_war", "artillery",
+    "offer_ceasefire", "stage_troops"};
+const char* const kNavyActionNames[] = {
+    "hold", "move_fleet", "bombard", "embark", "disembark", "scrap", "engage"};
+
+static_assert(sizeof(kEconActionNames) / sizeof(char*) == AISystem::ECON_ACTIONS,
+              "econ action names drifted from ECON_ACTIONS");
+static_assert(sizeof(kPolActionNames) / sizeof(char*) == AISystem::POL_ACTIONS,
+              "politics action names drifted from POL_ACTIONS");
+static_assert(sizeof(kWarActionNames) / sizeof(char*) == AISystem::WAR_ACTIONS,
+              "war action names drifted from WAR_ACTIONS");
+static_assert(sizeof(kNavyActionNames) / sizeof(char*) == AISystem::NAVY_ACTIONS,
+              "navy action names drifted from NAVY_ACTIONS");
+}  // namespace
+
+int Game::modNeuralModuleCount() const { return m_ai ? (int)AISystem::MOD_COUNT : 0; }
+
+std::string Game::modNeuralModuleName(int m) const {
+    if (!m_ai || m < 0 || m >= (int)AISystem::MOD_COUNT) return {};
+    return kAiModuleNames[m];
+}
+
+int Game::modNeuralActionCount(int m) const {
+    if (!m_ai) return 0;
+    switch (m) {
+        case AISystem::MOD_ECONOMY:  return AISystem::ECON_ACTIONS;
+        case AISystem::MOD_POLITICS: return AISystem::POL_ACTIONS;
+        case AISystem::MOD_WAR:      return AISystem::WAR_ACTIONS;
+        case AISystem::MOD_NAVY:     return AISystem::NAVY_ACTIONS;
+        default: return 0;
+    }
+}
+
+std::string Game::modNeuralActionName(int m, int a) const {
+    if (a < 0 || a >= modNeuralActionCount(m)) return {};
+    switch (m) {
+        case AISystem::MOD_ECONOMY:  return kEconActionNames[a];
+        case AISystem::MOD_POLITICS: return kPolActionNames[a];
+        case AISystem::MOD_WAR:      return kWarActionNames[a];
+        case AISystem::MOD_NAVY:     return kNavyActionNames[a];
+        default: return {};
+    }
+}
+
+bool Game::modNeuralCountryIsAI(int cid) const {
+    return modCountryExists(cid) && cid != m_playerCountryId;
+}
+
+long long Game::modNeuralUpdateCount() const {
+    return m_ai ? (long long)m_ai->totalUpdates() : 0;
+}
+
+bool Game::modNeuralModelLoaded() const { return m_ai != nullptr; }
+
 // ------------------------------------------------------- mod speakers ------
 
 namespace {
@@ -570,6 +1033,31 @@ void Game::installModBridges() {
     net.isHost = [this]() { return m_netHost != nullptr; };
 
     modSetNetBridge(net);
+
+    // ── UI ── the three things the mod host cannot do without raylib ──────────
+    ModUiBridge ui;
+
+    // Measured with drawHybridText's own font, so a mod centring a string gets
+    // the width the game will actually draw and not an estimate.
+    ui.measureText = [](const std::string& t, int size) -> uint32_t {
+        return (uint32_t)MeasureText(t.c_str(), size);
+    };
+
+    // 0x00RRGGBB. Reports the PLAYER's colour, not another mod's override, so a
+    // mod building a palette around it harmonises with what the player chose
+    // rather than with whatever mod happened to load first.
+    ui.themeAccent = [this]() -> uint32_t {
+        return (uint32_t)(m_config.accentColor & 0x00FFFFFF);
+    };
+
+    // Into accentOverride, which Config::save() does not write. See the note
+    // there: the accent is read at over a hundred sites, so this restyles the
+    // whole interface, and it must not be able to outlive the mod that set it.
+    ui.setThemeAccent = [this](uint32_t rgb) {
+        m_config.accentOverride = (int)(rgb & 0x00FFFFFF);
+    };
+
+    modSetUiBridge(ui);
 }
 
 // ------------------------------------------------------------- setup ------
@@ -581,6 +1069,8 @@ void Game::initModSystem() {
     g_modHost.headless = m_aiTraining;
     g_modHost.screenW = (uint32_t)m_screenW;
     g_modHost.screenH = (uint32_t)m_screenH;
+
+    syncModNetContext();
 
     // Headless training never opens the mod menu, which is the only load path,
     // so it never scans for mods either.
@@ -630,10 +1120,19 @@ void Game::drawModPanels() {
         y += h + 10.0f;
     }
 
+    syncModNetContext();
+
+    // A mod's accent override lasts exactly as long as a mod is running. Nothing
+    // else takes it back: the mod that set it may have been disabled, replaced
+    // or failed to load since, and none of those paths knows about Config.
+    // Checked here because this runs every frame the mod system is live.
+    if (m_config.accentOverride >= 0 && !ModManager::get().anyActive())
+        m_config.accentOverride = -1;
+
     // Mods emit their draw commands here.
     ModManager::get().drawPanels();
 
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
     for (auto& p : ui.panels()) {
         if (!p.visible) continue;
         Rectangle r{p.x, p.y, p.w, p.h};
@@ -652,7 +1151,22 @@ void Game::drawModPanels() {
             if (c.kind == ModDrawCmd::Rect) {
                 DrawRectangle((int)cx, (int)cyy, c.w, c.h, colorFromRGBA(c.rgba));
             } else if (c.kind == ModDrawCmd::Text) {
-                drawHybridText((int)cx, (int)cyy, 14, c.text.c_str(), colorFromRGBA(c.rgba));
+                drawHybridText((int)cx, (int)cyy, c.fontSize, c.text.c_str(),
+                               colorFromRGBA(c.rgba));
+            } else if (c.kind == ModDrawCmd::Line) {
+                DrawLineEx({cx, cyy}, {p.x + (float)c.x2, (float)cy + (float)c.y2},
+                           c.thickness, colorFromRGBA(c.rgba));
+            } else if (c.kind == ModDrawCmd::Circle) {
+                DrawCircle((int)cx, (int)cyy, c.radius, colorFromRGBA(c.rgba));
+            } else if (c.kind == ModDrawCmd::Image) {
+                const Texture2D* t = modImage(p.ownerId, c.text);
+                if (t) {
+                    Rectangle src{0, 0, (float)t->width, (float)t->height};
+                    Rectangle dst{cx, cyy,
+                                  c.w > 0 ? (float)c.w : (float)t->width,
+                                  c.h > 0 ? (float)c.h : (float)t->height};
+                    DrawTexturePro(*t, src, dst, {0, 0}, 0.0f, colorFromRGBA(c.rgba));
+                }
             } else {
                 Rectangle b{cx, cyy, (float)c.w, (float)c.h};
                 DrawRectangleRounded(b, 0.2f, 6,
@@ -672,7 +1186,7 @@ void Game::drawModPanels() {
 
 void Game::drawModsMenu() {
     drawMenuBackground(true);
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
     ModManager& mm = ModManager::get();
     auto& mods = mm.mods();
     Vector2 mouse = getMouse();
@@ -865,11 +1379,35 @@ void Game::drawModsMenu() {
     if (m_modReloading)        drawModReloadingOverlay();
 }
 
+// Permissions rows, laid out once for both the draw and the hit test.
+//
+// TWO COLUMNS BECAUSE THERE ARE TWENTY-TWO OF THEM. One column at 34px was fine
+// for the ten this panel used to hardcode; Gearbox 1.1 took the list to
+// twenty-two, which is 748px of rows in a 600px box -- the last capabilities
+// would have drawn straight through the conflicts section and off the bottom.
+//
+// Returns the toggle's rectangle for row `i`. The label sits to its left, and
+// the two columns split the panel down the middle.
+struct PermLayout {
+    int x, y, w;
+    static constexpr int kRowH = 30;
+    static constexpr int kTop = 80;
+    int rows() const { return ((int)modAllModuleBits().size() + 1) / 2; }
+    int colW() const { return (w - 40) / 2; }
+    Rectangle toggle(int i) const {
+        const int col = i / rows(), row = i % rows();
+        const int cx = x + 20 + col * colW();
+        return {(float)(cx + colW() - 78), (float)(y + kTop + row * kRowH), 60.0f, 24.0f};
+    }
+    int labelX(int i) const { return x + 24 + (i / rows()) * colW(); }
+    int height() const { return kTop + rows() * kRowH; }
+};
+
 void Game::drawModAdvanced() {
     auto& mods = ModManager::get().mods();
     if (m_modAdvancedFor >= (int)mods.size()) { m_modAdvancedFor = -1; return; }
     ModEntry& e = mods[m_modAdvancedFor];
-    Color accent = hexToColor(m_config.accentColor);
+    Color accent = hexToColor(m_config.accent());
     Vector2 mouse = getMouse();
 
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 170});
@@ -886,20 +1424,20 @@ void Game::drawModAdvanced() {
     DrawText("Only what the mod requested can be granted.", x + 24, y + 50, 13,
              Color{150, 150, 160, 255});
 
-    static const uint32_t kBits[] = {
-        MODULE_CORE, MODULE_GAMESTATE_READ, MODULE_GAMESTATE_WRITE, MODULE_GAMEPROCESS,
-        MODULE_NEURAL, MODULE_UI, MODULE_MAP, MODULE_DIPLOMACY, MODULE_ASSETS, MODULE_STORAGE};
-
-    int ry = y + 80;
-    for (uint32_t bit : kBits) {
+    // Every capability the build knows about, so one added to kModules cannot
+    // end up granted-but-unrevocable because an array here was not updated.
+    const PermLayout pl{x, y, w};
+    const auto& bits = modAllModuleBits();
+    for (int i = 0; i < (int)bits.size(); i++) {
+        const uint32_t bit = bits[(size_t)i];
         bool requested = (e.manifest.modules & bit) != 0;
         bool granted = (e.grants & bit) != 0 || bit == MODULE_CORE;
         std::string label = modModuleMaskToString(bit);
 
+        Rectangle b = pl.toggle(i);
         Color labelCol = requested ? WHITE : Color{95, 95, 105, 255};
-        drawHybridText(x + 28, ry + 6, 16, label.c_str(), labelCol);
+        drawHybridText(pl.labelX(i), (int)b.y + 5, 14, label.c_str(), labelCol);
 
-        Rectangle b{(float)(x + w - 110), (float)ry, 72.0f, 26.0f};
         bool locked = !requested || bit == MODULE_CORE;
         bool bh = !locked && CheckCollisionPointRec(mouse, b);
         const char* st = locked ? (requested ? "ALWAYS" : "—") : (granted ? "ON" : "OFF");
@@ -907,11 +1445,11 @@ void Game::drawModAdvanced() {
                           : (granted ? ColorAlpha(accent, bh ? 0.9f : 0.7f)
                                      : (bh ? Color{70, 75, 100, 255} : Color{35, 38, 55, 220}));
         DrawRectangleRounded(b, 0.35f, 8, bc);
-        int tw = MeasureText(st, 13);
-        DrawText(st, (int)b.x + (int)(b.width - tw) / 2, (int)b.y + 7, 13,
+        int tw = MeasureText(st, 12);
+        DrawText(st, (int)b.x + (int)(b.width - tw) / 2, (int)b.y + 6, 12,
                  (granted && !locked) ? Color{20, 20, 25, 255} : Color{180, 180, 190, 255});
-        ry += 34;
     }
+    int ry = y + pl.height();
 
     // --- conflicts ------------------------------------------------------------
     // Listed per PAIR, because that is what a conflict is and what an override
@@ -1052,7 +1590,7 @@ void Game::drawModReloadingOverlay() {
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 200});
     const char* t = "Reloading mods...";
     DrawText(t, m_screenW / 2 - MeasureText(t, 28) / 2, m_screenH / 2 - 14, 28,
-             hexToColor(m_config.accentColor));
+             hexToColor(m_config.accent()));
 }
 
 // ------------------------------------------------------- mod menu input ---
@@ -1088,6 +1626,7 @@ void Game::updateModsMenu() {
     // user sees the loading screen rather than a frozen frame.
     if (m_modReloading) {
         if (m_modReloadFrames++ > 0) {
+            syncModNetContext();   // setNetContext must precede reloadAll
             mm.reloadAll();
             clearModThumbnails();
             m_modReloading = false;
@@ -1163,19 +1702,17 @@ void Game::updateModsMenu() {
         int w = 520, h = 600;              // must match drawModAdvanced
         int x = m_screenW / 2 - w / 2, y = m_screenH / 2 - h / 2;
 
-        static const uint32_t kBits[] = {
-            MODULE_CORE, MODULE_GAMESTATE_READ, MODULE_GAMESTATE_WRITE, MODULE_GAMEPROCESS,
-            MODULE_NEURAL, MODULE_UI, MODULE_MAP, MODULE_DIPLOMACY, MODULE_ASSETS,
-            MODULE_STORAGE};
-        int ry = y + 80;
-        for (uint32_t bit : kBits) {
-            Rectangle b{(float)(x + w - 110), (float)ry, 72.0f, 26.0f};
+        // The same layout the draw uses, so the hit boxes cannot drift from it.
+        const PermLayout pl{x, y, w};
+        const auto& bits = modAllModuleBits();
+        for (int i = 0; i < (int)bits.size(); i++) {
+            const uint32_t bit = bits[(size_t)i];
             bool locked = !(e.manifest.modules & bit) || bit == MODULE_CORE;
-            if (!locked && click && CheckCollisionPointRec(mouse, b) &&
+            if (!locked && click && CheckCollisionPointRec(mouse, pl.toggle(i)) &&
                 (Audio::get().playSfx("click_light"), true))
                 mm.setGrant((size_t)m_modAdvancedFor, bit, !(e.grants & bit));
-            ry += 34;
         }
+        int ry = y + pl.height();
 
         // Conflict overrides. The same walk as the draw, so the hit boxes line
         // up; a bridged pair has no toggle because nothing needs deciding.
@@ -1346,4 +1883,258 @@ void Game::updateModsMenu() {
         }
         if (CheckCollisionPointRec(mouse, row)) { Audio::get().playSfx("click_light"); m_modIndex = i; return; }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gearbox 1.1 backing
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Every getter tolerates a missing world and an out-of-range handle by
+// returning a neutral value rather than trapping: a mod polling during a map
+// change must not take the game down with it.
+//
+// The four order functions are the only writes, and each is a THIN WRAPPER over
+// the same pending-order queue the player's clicks and the AI's decisions use.
+// They deliberately do not validate anything themselves -- adjacency, range,
+// at-war and the percentage bounds are enforced in Game_TurnLogic's resolvers,
+// which is the one place every order source converges. Validating here as well
+// would be a second copy of the rules to drift out of step with the first.
+
+int Game::modShipCount() const { return (int)m_ships.size(); }
+bool Game::modShipExists(int sid) const {
+    return sid >= 0 && (size_t)sid < m_ships.size() && m_ships[sid].countryId > 0;
+}
+int Game::modShipOwner(int sid) const {
+    return modShipExists(sid) ? m_ships[sid].countryId : 0;
+}
+std::string Game::modShipType(int sid) const {
+    return modShipExists(sid) ? m_ships[sid].type : std::string();
+}
+double Game::modShipLon(int sid) const { return modShipExists(sid) ? m_ships[sid].lon : 0.0; }
+double Game::modShipLat(int sid) const { return modShipExists(sid) ? m_ships[sid].lat : 0.0; }
+int Game::modShipHealth(int sid) const { return modShipExists(sid) ? m_ships[sid].health : 0; }
+int Game::modShipCrew(int sid) const { return modShipExists(sid) ? m_ships[sid].crew : 0; }
+double Game::modShipRange(int sid) const {
+    return modShipExists(sid) ? (double)shipMaxRangePx(m_ships[sid]) : 0.0;
+}
+
+int Game::modArmyStackCount(int pid) const {
+    auto it = m_provinceArmies.find(pid);
+    return it == m_provinceArmies.end() ? 0 : (int)it->second.size();
+}
+int Game::modArmyStackOwner(int pid, int index) const {
+    auto it = m_provinceArmies.find(pid);
+    if (it == m_provinceArmies.end() || index < 0 || (size_t)index >= it->second.size()) return 0;
+    return it->second[index].countryId;
+}
+long long Game::modArmyStackSize(int pid, int index) const {
+    auto it = m_provinceArmies.find(pid);
+    if (it == m_provinceArmies.end() || index < 0 || (size_t)index >= it->second.size()) return 0;
+    return it->second[index].count;
+}
+long long Game::modCountryArmy(int cid) const {
+    long long n = 0;
+    for (const auto& [pid, units] : m_provinceArmies) {
+        (void)pid;
+        for (const auto& u : units) if (u.countryId == cid) n += u.count;
+    }
+    return n;
+}
+int Game::modProvinceFortification(int pid) const {
+    auto it = m_provinceIndustry.find(pid);
+    return it == m_provinceIndustry.end() ? 0 : it->second.fortification;
+}
+int Game::modProvincePortLevel(int pid) const {
+    auto it = m_provincePorts.find(pid);
+    return it == m_provincePorts.end() ? 0 : it->second.level;
+}
+
+bool Game::modOrderArmyMove(int fromPid, int toPid, int pct) {
+    const Province* f = m_provinces.getProvinceById(fromPid);
+    const Province* t = m_provinces.getProvinceById(toPid);
+    if (!f || !t || f->countryId <= 0) return false;
+    // Queued for the owner of the source province, so a mod cannot move a
+    // country's army on behalf of somebody else.
+    m_pendingMoveOrders.push_back({fromPid, toPid, std::clamp(pct, 0, 100), f->countryId});
+    return true;
+}
+bool Game::modOrderShipMove(int sid, double lon, double lat) {
+    if (!modShipExists(sid)) return false;
+    m_pendingShipMoveOrders.push_back({sid, lon, lat});
+    return true;
+}
+bool Game::modOrderShipEngage(int sid, int targetSid) {
+    if (!modShipExists(sid) || !modShipExists(targetSid) || sid == targetSid) return false;
+    m_pendingShipEngageOrders.push_back({sid, targetSid});
+    return true;
+}
+bool Game::modOrderShipBombard(int sid, int pid, const std::string& ammo) {
+    if (!modShipExists(sid) || !m_provinces.getProvinceById(pid) || ammo.empty()) return false;
+    m_pendingShipBombardOrders.push_back({sid, pid, ammo});
+    return true;
+}
+
+int Game::modResearchNodeCount() const { return (int)m_researchNodes.size(); }
+static const ResearchNode* modNodeAt(const std::vector<ResearchNode>& v, int i) {
+    return (i >= 0 && (size_t)i < v.size()) ? &v[i] : nullptr;
+}
+std::string Game::modResearchNodeId(int i) const {
+    const ResearchNode* n = modNodeAt(m_researchNodes, i); return n ? n->id : std::string();
+}
+std::string Game::modResearchNodeName(int i) const {
+    const ResearchNode* n = modNodeAt(m_researchNodes, i); return n ? n->name : std::string();
+}
+std::string Game::modResearchNodeCategory(int i) const {
+    const ResearchNode* n = modNodeAt(m_researchNodes, i); return n ? n->category : std::string();
+}
+int Game::modResearchNodeCost(int i) const {
+    const ResearchNode* n = modNodeAt(m_researchNodes, i); return n ? n->cost : 0;
+}
+bool Game::modCountryHasResearched(int cid, const std::string& nodeId) const {
+    auto it = m_countryResearched.find(cid);
+    return it != m_countryResearched.end() && it->second.count(nodeId) > 0;
+}
+// A SHARE OF INCOME, 0..1 -- not an absolute sum. That is how the game stores
+// it and how the economy screen presents it, and a mod handed "points per turn"
+// would be describing a quantity that does not exist.
+double Game::modCountryResearchFunding(int cid) const {
+    auto it = m_countryResearchAllocation.find(cid);
+    return it == m_countryResearchAllocation.end() ? 0.0 : (double)it->second;
+}
+bool Game::modSetCountryResearchFunding(int cid, double value) {
+    if (!m_countries.getCountry(cid)) return false;
+    m_countryResearchAllocation[cid] = (float)std::clamp(value, 0.0, 1.0);
+    return true;
+}
+
+double Game::modCountryCompassEcon(int cid) const {
+    auto it = m_countryCompass.find(cid);
+    return it == m_countryCompass.end() ? 0.0 : (double)it->second.economic;
+}
+double Game::modCountryCompassSocial(int cid) const {
+    auto it = m_countryCompass.find(cid);
+    return it == m_countryCompass.end() ? 0.0 : (double)it->second.social;
+}
+double Game::modProvinceUnrest(int pid) const {
+    return (double)const_cast<Game*>(this)->getProvinceRebellionChance(pid);
+}
+int Game::modPolicyCount() const { return (int)m_allPolicies.size(); }
+std::string Game::modPolicyId(int i) const {
+    return (i >= 0 && (size_t)i < m_allPolicies.size()) ? m_allPolicies[i].id : std::string();
+}
+std::string Game::modPolicyName(int i) const {
+    return (i >= 0 && (size_t)i < m_allPolicies.size()) ? m_allPolicies[i].name : std::string();
+}
+bool Game::modCountryHasPolicy(int cid, const std::string& policyId) const {
+    auto it = m_countryActivePolicyIndices.find(cid);
+    if (it == m_countryActivePolicyIndices.end()) return false;
+    for (int idx : it->second)
+        if (idx >= 0 && (size_t)idx < m_activePolicies.size() &&
+            m_activePolicies[idx].policyId == policyId) return true;
+    return false;
+}
+// ROUTED THROUGH enactPolicy/cancelPolicy, NOT written into m_activePolicies.
+// A mod that appended the struct itself would skip canCountryEnactPolicy -- the
+// cost, the prerequisites, the per-turn enactment cap -- and produce a country
+// running policies it could never have afforded. The same rule as every other
+// write in this ABI: use the path the player's own click uses.
+bool Game::modSetCountryPolicy(int cid, const std::string& policyId, bool on) {
+    if (!m_countries.getCountry(cid)) return false;
+    const Policy* def = nullptr;
+    for (const auto& p : m_allPolicies)
+        if (p.id == policyId) { def = &p; break; }
+    if (!def) return false;
+
+    const bool has = modCountryHasPolicy(cid, policyId);
+    if (on == has) return true;  // already in the asked-for state
+
+    if (on) {
+        if (!canCountryEnactPolicy(cid, *def)) return false;
+        enactPolicy(cid, policyId);
+        return modCountryHasPolicy(cid, policyId);
+    }
+
+    auto it = m_countryActivePolicyIndices.find(cid);
+    if (it == m_countryActivePolicyIndices.end()) return false;
+    for (int idx : it->second) {
+        if (idx >= 0 && (size_t)idx < m_activePolicies.size() &&
+            m_activePolicies[idx].policyId == policyId) {
+            cancelPolicy(idx);
+            return true;
+        }
+    }
+    return false;
+}
+
+int Game::modProvinceMinorityCount(int pid) const {
+    auto it = m_provinceMinorities.find(pid);
+    return it == m_provinceMinorities.end() ? 0 : (int)it->second.size();
+}
+std::string Game::modProvinceMinorityName(int pid, int index) const {
+    auto it = m_provinceMinorities.find(pid);
+    if (it == m_provinceMinorities.end() || index < 0 || (size_t)index >= it->second.size())
+        return {};
+    return it->second[index].name;
+}
+double Game::modProvinceMinorityShare(int pid, int index) const {
+    auto it = m_provinceMinorities.find(pid);
+    if (it == m_provinceMinorities.end() || index < 0 || (size_t)index >= it->second.size())
+        return 0.0;
+    return (double)it->second[index].pct;
+}
+
+double Game::modCountryIncomeGross(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)const_cast<Game*>(this)->computeCountryIncome(cid).total;
+}
+double Game::modCountryIncomeNet(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)const_cast<Game*>(this)->computeCountryIncome(cid).net;
+}
+double Game::modCountryArmyUpkeep(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)const_cast<Game*>(this)->computeCountryIncome(cid).armyExpenses;
+}
+double Game::modCountryNavyUpkeep(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)const_cast<Game*>(this)->computeCountryIncome(cid).navyExpenses;
+}
+bool Game::modCountryIsBankrupt(int cid) const {
+    return const_cast<Game*>(this)->isBankrupt(cid);
+}
+int Game::modProvinceIndustryLevel(int pid) const {
+    auto it = m_provinceIndustry.find(pid);
+    return it == m_provinceIndustry.end() ? 0 : it->second.level;
+}
+std::string Game::modProvinceIndustrySpecialization(int pid) const {
+    auto it = m_provinceIndustry.find(pid);
+    return it == m_provinceIndustry.end() ? std::string() : it->second.specialization;
+}
+double Game::modProvinceResource(int pid, const std::string& which) const {
+    auto it = m_provinceResources.find(pid);
+    if (it == m_provinceResources.end()) return 0.0;
+    const auto& r = it->second;
+    if (which == "oil") return r.oil.amount;
+    if (which == "gold") return r.gold.amount;
+    if (which == "metal") return r.metal.amount;
+    if (which == "rubber") return r.rubber.amount;
+    if (which == "gemstones") return r.gemstones.amount;
+    return 0.0;
+}
+bool Game::modSetProvinceIndustryLevel(int pid, int level) {
+    if (!m_provinces.getProvinceById(pid)) return false;
+    auto& ind = m_provinceIndustry[pid];      // indexed, not found: see processUpgrades
+    ind.level = std::clamp(level, 0, 10);
+    ind.income = ind.level * 2.0f;
+    return true;
+}
+
+bool Game::modProvinceIsCoastal(int pid) const {
+    return const_cast<Game*>(this)->isProvinceCoastal(pid);
+}
+bool Game::modSeaRouteExists(double lon1, double lat1, double lon2, double lat2) const {
+    return navReachable(lon1, lat1, lon2, lat2);
+}
+bool Game::modPointIsLand(double lon, double lat) const {
+    return m_landSea.isLand((float)lon, (float)lat);
 }

@@ -310,7 +310,7 @@ void Game::drawWorldBrowser() {
     const char* title = "Select World";
     int titleSize = 40;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2, 40, titleSize, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2, 40, titleSize, hexToColor(m_config.accent()));
 
     if (m_showDeleteConfirm) {
         // ── Delete confirmation dialog ──
@@ -328,7 +328,7 @@ void Game::drawWorldBrowser() {
         std::string sub = m_worldInfos[m_deleteWorldIndex].worldName;
         int subSize = 18;
         int subW = MeasureText(sub.c_str(), subSize);
-        DrawText(sub.c_str(), centerX - subW / 2, dlgY + 65, subSize, hexToColor(m_config.accentColor));
+        DrawText(sub.c_str(), centerX - subW / 2, dlgY + 65, subSize, hexToColor(m_config.accent()));
 
         // Buttons
         int btnW = 120, btnH = 40;
@@ -361,7 +361,7 @@ void Game::drawWorldBrowser() {
         DrawRectangle(dlgX, dlgY, dlgW, dlgH, {20, 20, 30, 240});
 
         auto& wi = m_worldInfos[m_worldSettingsIndex];
-        DrawText("World Settings", centerX - MeasureText("World Settings", 28) / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText("World Settings", centerX - MeasureText("World Settings", 28) / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         int yOff = dlgY + 70;
         int fs = 18;
@@ -376,9 +376,9 @@ void Game::drawWorldBrowser() {
         int histW = 260, histH = 38;
         Rectangle histBtn = {(float)(centerX - histW / 2), (float)(dlgY + dlgH - 108), (float)histW, (float)histH};
         bool histHov = CheckCollisionPointRec(mouse, histBtn);
-        DrawRectangleRounded(histBtn, 0.2f, 8, histHov ? ColorAlpha(hexToColor(m_config.accentColor), 0.30f)
-                                                       : ColorAlpha(hexToColor(m_config.accentColor), 0.15f));
-        DrawRectangleRoundedLines(histBtn, 0.2f, 8, hexToColor(m_config.accentColor));
+        DrawRectangleRounded(histBtn, 0.2f, 8, histHov ? ColorAlpha(hexToColor(m_config.accent()), 0.30f)
+                                                       : ColorAlpha(hexToColor(m_config.accent()), 0.15f));
+        DrawRectangleRoundedLines(histBtn, 0.2f, 8, hexToColor(m_config.accent()));
         const char* histLabel = "Turn History / Timelapse";
         DrawText(histLabel, (int)(histBtn.x + (histW - MeasureText(histLabel, 18)) / 2),
                  (int)(histBtn.y + 10), 18, WHITE);
@@ -415,7 +415,7 @@ void Game::drawWorldBrowser() {
 
         const char* title2 = "Rename World";
         int titleW2 = MeasureText(title2, 28);
-        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         DrawText("Enter new name:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
@@ -452,7 +452,7 @@ void Game::drawWorldBrowser() {
         struct stat chkStat;
         if (stat(checkPath.c_str(), &chkStat) == 0 && m_renameWorldNewName != m_renameWorldOldName) {
             std::string warn = "A save with this name exists - will add (1), (2), etc.";
-            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accentColor));
+            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
 
         return;
@@ -505,7 +505,7 @@ void Game::drawWorldBrowser() {
         // Turn count
         std::string turns = std::to_string(wi.turnCount) + " turn" + (wi.turnCount == 1 ? "" : "s");
         int turnW = MeasureText(turns.c_str(), 13);
-        DrawText(turns.c_str(), 40 + MeasureText(dates.c_str(), 13) + 20, y + 34, 13, ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f));
+        DrawText(turns.c_str(), 40 + MeasureText(dates.c_str(), 13) + 20, y + 34, 13, ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f));
 
         // Gear button
         int btnSize = 32;
@@ -535,7 +535,7 @@ void Game::drawWorldBrowser() {
         // Selection highlight underline
         if (isSelected) {
             int nameW = MeasureText(wi.worldName.c_str(), 22);
-            DrawRectangle(36, y + 30, nameW, 2, ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f));
+            DrawRectangle(36, y + 30, nameW, 2, ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f));
         }
     }
 
@@ -998,7 +998,7 @@ void Game::drawMapBrowser() {
     const char* title = "New World";
     int titleSize = 40;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2, 30, titleSize, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2, 30, titleSize, hexToColor(m_config.accent()));
 
     // Tab bar
     const char* tabs[] = {"Standard Worlds", "Custom Worlds"};
@@ -1017,7 +1017,7 @@ void Game::drawMapBrowser() {
         Color bg = active ? Color{60, 70, 100, 255} : (hover ? Color{40, 45, 60, 255} : Color{20, 22, 35, 255});
         DrawRectangleRounded(tabRect, 0.1f, 6, bg);
         int tw = MeasureText(tabs[t], 18);
-        DrawText(tabs[t], (int)(tabRect.x + (tabW - tw) / 2), tabY + 8, 18, active ? hexToColor(m_config.accentColor) : LIGHTGRAY);
+        DrawText(tabs[t], (int)(tabRect.x + (tabW - tw) / 2), tabY + 8, 18, active ? hexToColor(m_config.accent()) : LIGHTGRAY);
     }
 
     // Name input dialog for new world
@@ -1030,7 +1030,7 @@ void Game::drawMapBrowser() {
 
         const char* title2 = "Name Your World";
         int titleW2 = MeasureText(title2, 28);
-        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         DrawText("Enter a name for your world:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
@@ -1067,7 +1067,7 @@ void Game::drawMapBrowser() {
         struct stat chkStat;
         if (stat(checkPath.c_str(), &chkStat) == 0) {
             std::string warn = "A save with this name exists - will add (1), (2), etc.";
-            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accentColor));
+            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
 
         return;
@@ -1083,7 +1083,7 @@ void Game::drawMapBrowser() {
 
         const char* title2 = "Name Your World";
         int titleW2 = MeasureText(title2, 28);
-        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         DrawText("Enter a name for this map:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
@@ -1122,7 +1122,7 @@ void Game::drawMapBrowser() {
         struct stat chkStat;
         if (stat(checkPath.c_str(), &chkStat) == 0) {
             std::string warn = "Warning: \"" + m_importName + "\" already exists -- will create a unique folder";
-            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accentColor));
+            DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
 
         return;
@@ -1143,7 +1143,7 @@ void Game::drawMapBrowser() {
         if (m_mapDeleteIndex >= 0 && m_mapDeleteIndex < (int)m_mapEntries.size()) {
             std::string sub = m_mapEntries[m_mapDeleteIndex].name;
             int subW = MeasureText(sub.c_str(), 18);
-            DrawText(sub.c_str(), centerX - subW / 2, dlgY + 65, 18, hexToColor(m_config.accentColor));
+            DrawText(sub.c_str(), centerX - subW / 2, dlgY + 65, 18, hexToColor(m_config.accent()));
         }
 
         int btnW = 120, btnH = 40;
@@ -1171,7 +1171,7 @@ void Game::drawMapBrowser() {
 
         // Title
         int titleW = MeasureText(entry.name.c_str(), 28);
-        DrawText(entry.name.c_str(), dlgX + (dlgW - titleW) / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText(entry.name.c_str(), dlgX + (dlgW - titleW) / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         // Thumbnail
         int thumbX = dlgX + 20;
@@ -1272,7 +1272,7 @@ void Game::drawMapBrowser() {
         // Title
         std::string licenseTitle = entry.license.empty() ? "License" : entry.license + " License";
         int titleW = MeasureText(licenseTitle.c_str(), 28);
-        DrawText(licenseTitle.c_str(), dlgX + (dlgW - titleW) / 2, dlgY + 20, 28, hexToColor(m_config.accentColor));
+        DrawText(licenseTitle.c_str(), dlgX + (dlgW - titleW) / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         // Load license text from m_odmJsonData first, then from .odmap archive
         std::string licenseText;
@@ -1496,7 +1496,7 @@ void Game::drawMapBrowser() {
 
         // Border for selected
         if (isSelected) {
-            DrawRectangleRoundedLines({(float)cardX, (float)y, (float)cardW, (float)cardH}, 0.08f, 8, ColorAlpha(hexToColor(m_config.accentColor), 200.0f/255.0f));
+            DrawRectangleRoundedLines({(float)cardX, (float)y, (float)cardW, (float)cardH}, 0.08f, 8, ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f));
         }
 
         if (isImportBtn) {
@@ -1978,7 +1978,7 @@ void Game::drawFileBrowser() {
     const char* title = "Load World";
     int titleSize = 40;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2, 60, titleSize, hexToColor(m_config.accentColor));
+    DrawText(title, centerX - titleW / 2, 60, titleSize, hexToColor(m_config.accent()));
 
     const char* help = "Select a save file or press ESC to go back";
     int helpW = MeasureText(help, 16);
@@ -2008,7 +2008,7 @@ void Game::drawFileBrowser() {
         if (y + itemH < 0 || y > m_screenH) continue;
 
         Color c = WHITE;
-        if (i == m_fileIndex) c = hexToColor(m_config.accentColor);
+        if (i == m_fileIndex) c = hexToColor(m_config.accent());
         int tw = MeasureText(m_fileItems[i].c_str(), 30);
         bool hovered = CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) });
         if (hovered) {

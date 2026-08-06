@@ -454,6 +454,715 @@ double gearbox_reward_mean(uint32_t index);
 GEARBOX_IMPORT("gamestate.write", "set_province_population")
 uint32_t gearbox_set_province_population(gearbox_province province, int64_t value);
 
+/* Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
+ * is clamped to 0.25..64. Clipped to your panel like every other command.
+ * `(iiiiiFi)`
+ */
+GEARBOX_IMPORT("ui", "draw_line")
+void gearbox_draw_line(gearbox_panel panel, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, double thickness, uint32_t rgba);
+
+/* Queue a filled circle centred at (cx,cy), panel-relative. Radius is
+ * clamped to 0..4096.
+ * `(iiiFi)`
+ */
+GEARBOX_IMPORT("ui", "draw_circle")
+void gearbox_draw_circle(gearbox_panel panel, uint32_t cx, uint32_t cy, double radius, uint32_t rgba);
+
+/* Queue an image from YOUR OWN package -- `name` is a path inside your
+ * .odmod, resolved exactly as gearbox:assets/read resolves it, so you
+ * cannot name a file on disk, a game asset, or another mod's art. Pass w
+ * or h as 0 to use the image's own size. tint 0xFFFFFFFF draws it
+ * unmodified. Decoded once and cached; a name that fails to decode draws
+ * nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
+ * extension. This is the call that makes a real reskin possible.
+ * `(iiiiiiii)`
+ */
+GEARBOX_IMPORT("ui", "draw_image")
+void gearbox_draw_image(gearbox_panel panel, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const char* name, uint32_t name_len, uint32_t tint);
+
+/* Like draw_text but with a type size, clamped to 6..96. draw_text remains
+ * 14pt, unchanged, so v1.0 mods look exactly as they did.
+ * `(iiiiiii)`
+ */
+GEARBOX_IMPORT("ui", "draw_text_sized")
+void gearbox_draw_text_sized(gearbox_panel panel, uint32_t x, uint32_t y, uint32_t size, uint32_t rgba, const char* text, uint32_t text_len);
+
+/* Width in pixels of `text` at `size`, measured with the font the game
+ * will actually draw. Centring, right-alignment and wrapping all need this
+ * before the text is queued.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("ui", "measure_text")
+uint32_t gearbox_measure_text(const char* text, uint32_t text_len, uint32_t size);
+
+/* The width the host assigned your panel this frame, in pixels. Lay out
+ * against this rather than against min_w -- the host may have given you
+ * more.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("ui", "panel_width")
+uint32_t gearbox_panel_width(gearbox_panel panel);
+
+/* The height the host assigned your panel this frame, in pixels.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("ui", "panel_height")
+uint32_t gearbox_panel_height(gearbox_panel panel);
+
+/* Show or hide one of your panels. A hidden panel is not drawn and
+ * receives no input, but keeps its handle and its registration.
+ * `(ii)`
+ */
+GEARBOX_IMPORT("ui", "panel_set_visible")
+void gearbox_panel_set_visible(gearbox_panel panel, uint32_t visible);
+
+/* Cursor X, panel-relative, or 0 when the cursor is not over your panel.
+ * You cannot observe the pointer outside your own box.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("ui", "mouse_x")
+double gearbox_mouse_x(gearbox_panel panel);
+
+/* Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("ui", "mouse_y")
+double gearbox_mouse_y(gearbox_panel panel);
+
+/* Whether the cursor is over your panel this frame.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("ui", "mouse_inside")
+uint32_t gearbox_mouse_inside(gearbox_panel panel);
+
+/* The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
+ * Build your palette around this and you harmonise with what they chose.
+ * `()i`
+ */
+GEARBOX_IMPORT("ui", "theme_accent")
+uint32_t gearbox_theme_accent(void);
+
+/* Restyle the whole interface. The accent is read at over a hundred sites
+ * -- every heading, highlight, selection and button -- so this is the
+ * cheapest full reskin there is. It is NOT persisted: the game's settings
+ * file keeps the player's own colour, and the override is dropped the
+ * moment no mod is running, so it cannot outlive uninstalling you.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("ui", "set_theme_accent")
+uint32_t gearbox_set_theme_accent(uint32_t rgb);
+
+/* How many ships exist in the world, across all owners.
+ * `()i`
+ */
+GEARBOX_IMPORT("military.read", "ship_count")
+uint32_t gearbox_ship_count(void);
+
+/* The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
+ * Ids are stable within a turn and not across turns -- do not store one.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_at")
+uint32_t gearbox_ship_at(uint32_t index);
+
+/* Whether a ship id is still live. Check this before acting on an id you
+ * read earlier in the same turn; ships sink.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_exists")
+uint32_t gearbox_ship_exists(uint32_t ship);
+
+/* The country that owns a ship, or 0xFFFFFFFF for an id that does not
+ * exist.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_owner")
+uint32_t gearbox_ship_owner(uint32_t ship);
+
+/* The hull type as a lowercase string: "transport", "destroyer",
+ * "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
+ * to learn the length, allocate, call again. Returns the full length
+ * either way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_type")
+uint32_t gearbox_ship_type(uint32_t ship, char* buf, uint32_t cap);
+
+/* Longitude in degrees, -180..180. Ships live in world coordinates, not
+ * provinces.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("military.read", "ship_lon")
+double gearbox_ship_lon(uint32_t ship);
+
+/* Latitude in degrees, -90..90.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("military.read", "ship_lat")
+double gearbox_ship_lat(uint32_t ship);
+
+/* Hull integrity, 0..100. A ship at 0 has already sunk and will not
+ * appear.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_health")
+uint32_t gearbox_ship_health(uint32_t ship);
+
+/* Crew aboard. For a transport this includes the embarked army, which is
+ * why a sunk transport costs so much more than its hull.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "ship_crew")
+uint32_t gearbox_ship_crew(uint32_t ship);
+
+/* How far this hull may move in one turn, in degrees. The resolver clamps
+ * any order beyond it, so read this before ordering a move rather than
+ * discovering the clamp afterwards.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("military.read", "ship_range")
+double gearbox_ship_range(uint32_t ship);
+
+/* How many distinct owners have troops in a province. Usually 1; more than
+ * one means a contested or garrisoned province.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "army_stack_count")
+uint32_t gearbox_army_stack_count(uint32_t province);
+
+/* The country owning stack `index` in a province, or 0xFFFFFFFF past the
+ * end.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("military.read", "army_stack_owner")
+uint32_t gearbox_army_stack_owner(uint32_t province, uint32_t index);
+
+/* How many troops are in that stack.
+ * `(ii)I`
+ */
+GEARBOX_IMPORT("military.read", "army_stack_size")
+int64_t gearbox_army_stack_size(uint32_t province, uint32_t index);
+
+/* A country's total troops everywhere, which is the number its own army
+ * screen shows.
+ * `(i)I`
+ */
+GEARBOX_IMPORT("military.read", "country_army")
+int64_t gearbox_country_army(uint32_t country);
+
+/* Fortification level, 0..5. Multiplies the defender's strength.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "province_fortification")
+uint32_t gearbox_province_fortification(uint32_t province);
+
+/* Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "province_port_level")
+uint32_t gearbox_province_port_level(uint32_t province);
+
+/* Move `percent` (0..100) of the troops in `from` into the adjacent
+ * province `to`. Into an enemy province this is an attack; into your own
+ * or an ally's it is a transfer. Non-adjacent moves are refused. QUEUES AN
+ * ORDER; it does not move anything. It lands in the same queue the
+ * player's own click writes to and is validated by the same resolver at
+ * end of turn, so a mod cannot teleport, cheat range, or attack across an
+ * ocean. Returns 0 if the order is rejected outright.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("military.write", "order_army_move")
+uint32_t gearbox_order_army_move(uint32_t from, uint32_t to, uint32_t percent);
+
+/* Sail a ship toward (lon,lat). The resolver routes around land and clamps
+ * to ship_range, so a destination on land or beyond range moves the ship
+ * as far as it legally can rather than failing. QUEUES AN ORDER; it does
+ * not move anything. It lands in the same queue the player's own click
+ * writes to and is validated by the same resolver at end of turn, so a mod
+ * cannot teleport, cheat range, or attack across an ocean. Returns 0 if
+ * the order is rejected outright.
+ * `(iFF)i`
+ */
+GEARBOX_IMPORT("military.write", "order_ship_move")
+uint32_t gearbox_order_ship_move(uint32_t ship, double lon, double lat);
+
+/* Attack another ship. Requires that you are at war with its owner and
+ * that it is within range; both are checked by the resolver. QUEUES AN
+ * ORDER; it does not move anything. It lands in the same queue the
+ * player's own click writes to and is validated by the same resolver at
+ * end of turn, so a mod cannot teleport, cheat range, or attack across an
+ * ocean. Returns 0 if the order is rejected outright.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("military.write", "order_ship_engage")
+uint32_t gearbox_order_ship_engage(uint32_t ship, uint32_t target);
+
+/* Bombard a coastal province. `ammo` names the shell type; pass an empty
+ * string for the default. QUEUES AN ORDER; it does not move anything. It
+ * lands in the same queue the player's own click writes to and is
+ * validated by the same resolver at end of turn, so a mod cannot teleport,
+ * cheat range, or attack across an ocean. Returns 0 if the order is
+ * rejected outright.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("military.write", "order_ship_bombard")
+uint32_t gearbox_order_ship_bombard(uint32_t ship, uint32_t province, const char* ammo, uint32_t ammo_len);
+
+/* How many technologies exist in the tree.
+ * `()i`
+ */
+GEARBOX_IMPORT("research.read", "node_count")
+uint32_t gearbox_node_count(void);
+
+/* The stable string id of technology `index`, which is what
+ * country_has_researched takes. Two-call sizing: call with cap 0 to learn
+ * the length, allocate, call again. Returns the full length either way;
+ * the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("research.read", "node_id")
+uint32_t gearbox_node_id(uint32_t index, char* buf, uint32_t cap);
+
+/* The technology's display name, which is localised and NOT stable --
+ * never match on it. Two-call sizing: call with cap 0 to learn the length,
+ * allocate, call again. Returns the full length either way; the copy is
+ * truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("research.read", "node_name")
+uint32_t gearbox_node_name(uint32_t index, char* buf, uint32_t cap);
+
+/* Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
+ * learn the length, allocate, call again. Returns the full length either
+ * way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("research.read", "node_category")
+uint32_t gearbox_node_category(uint32_t index, char* buf, uint32_t cap);
+
+/* Research points required.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("research.read", "node_cost")
+uint32_t gearbox_node_cost(uint32_t index);
+
+/* Whether a country has completed a technology. Takes the id from node_id,
+ * not the display name.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("research.read", "country_has_researched")
+uint32_t gearbox_country_has_researched(uint32_t country, const char* node_id, uint32_t node_id_len);
+
+/* Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
+ * is how the game stores it and how its own economy screen presents it.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("research.read", "country_funding")
+double gearbox_country_funding(uint32_t country);
+
+/* Set research funding as a share of income. Clamped to 0..1; a value in
+ * 'points per turn' is not a quantity this game has.
+ * `(iF)i`
+ */
+GEARBOX_IMPORT("research.write", "set_country_funding")
+uint32_t gearbox_set_country_funding(uint32_t country, double share);
+
+/* Economic axis of the political compass, -100 (planned) to 100 (market).
+ * `(i)F`
+ */
+GEARBOX_IMPORT("politics.read", "country_compass_econ")
+double gearbox_country_compass_econ(uint32_t country);
+
+/* Social axis, -100 (authoritarian) to 100 (libertarian).
+ * `(i)F`
+ */
+GEARBOX_IMPORT("politics.read", "country_compass_social")
+double gearbox_country_compass_social(uint32_t country);
+
+/* This province's chance of rebelling, as the game itself computes it.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("politics.read", "province_unrest")
+double gearbox_province_unrest(uint32_t province);
+
+/* How many policies exist.
+ * `()i`
+ */
+GEARBOX_IMPORT("politics.read", "policy_count")
+uint32_t gearbox_policy_count(void);
+
+/* The stable string id of policy `index`. Two-call sizing: call with cap 0
+ * to learn the length, allocate, call again. Returns the full length
+ * either way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("politics.read", "policy_id")
+uint32_t gearbox_policy_id(uint32_t index, char* buf, uint32_t cap);
+
+/* The policy's display name; localised, not stable, do not match on it.
+ * Two-call sizing: call with cap 0 to learn the length, allocate, call
+ * again. Returns the full length either way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("politics.read", "policy_name")
+uint32_t gearbox_policy_name(uint32_t index, char* buf, uint32_t cap);
+
+/* Whether a country currently has a policy active or implementing.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_has_policy")
+uint32_t gearbox_country_has_policy(uint32_t country, const char* policy_id, uint32_t policy_id_len);
+
+/* How many named minority groups live in a province.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("politics.read", "province_minority_count")
+uint32_t gearbox_province_minority_count(uint32_t province);
+
+/* The minority's name. Two-call sizing: call with cap 0 to learn the
+ * length, allocate, call again. Returns the full length either way; the
+ * copy is truncated to cap.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("politics.read", "province_minority_name")
+uint32_t gearbox_province_minority_name(uint32_t province, uint32_t index, char* buf, uint32_t cap);
+
+/* That minority's share of the province's population, 0..1.
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("politics.read", "province_minority_share")
+double gearbox_province_minority_share(uint32_t province, uint32_t index);
+
+/* Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so
+ * the cost, the prerequisites and the per-turn enactment cap all still
+ * apply -- a country cannot end up running policies it could never have
+ * afforded. Returns 1 if the policy is already in the requested state.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("politics.write", "set_country_policy")
+uint32_t gearbox_set_country_policy(uint32_t country, const char* policy_id, uint32_t policy_id_len, uint32_t enabled);
+
+/* Income per turn before upkeep.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_income_gross")
+double gearbox_country_income_gross(uint32_t country);
+
+/* Income per turn after army and navy upkeep. Negative means the treasury
+ * is draining.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_income_net")
+double gearbox_country_income_net(uint32_t country);
+
+/* What the standing army costs per turn.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_army_upkeep")
+double gearbox_country_army_upkeep(uint32_t country);
+
+/* What the fleet costs per turn. Ships a country is not using still cost
+ * this, which is what makes scrapping a real decision.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_navy_upkeep")
+double gearbox_country_navy_upkeep(uint32_t country);
+
+/* Whether a country is currently bankrupt.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_is_bankrupt")
+uint32_t gearbox_country_is_bankrupt(uint32_t country);
+
+/* Industry level, 0..10.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "province_industry_level")
+uint32_t gearbox_province_industry_level(uint32_t province);
+
+/* What this province's industry specialises in, or an empty string for
+ * none. Two-call sizing: call with cap 0 to learn the length, allocate,
+ * call again. Returns the full length either way; the copy is truncated to
+ * cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.read", "province_industry_specialization")
+uint32_t gearbox_province_industry_specialization(uint32_t province, char* buf, uint32_t cap);
+
+/* How much of a resource a province holds, 0..100. `which` is one of
+ * "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+ * `(iii)F`
+ */
+GEARBOX_IMPORT("economy.read", "province_resource")
+double gearbox_province_resource(uint32_t province, const char* which, uint32_t which_len);
+
+/* Set a province's industry level, clamped to 0..10. This writes the built
+ * level directly and does not charge for it -- it is a scenario-authoring
+ * tool, not a build order.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("economy.write", "set_province_industry_level")
+uint32_t gearbox_set_province_industry_level(uint32_t province, uint32_t level);
+
+/* Whether a province touches water. Ports, embarking and naval bombardment
+ * all require it.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("map", "province_is_coastal")
+uint32_t gearbox_province_is_coastal(uint32_t province);
+
+/* Whether a fleet could get from one point to another by sea, using the
+ * game's own navigation grid. You cannot compute this from province
+ * neighbours: those describe LAND adjacency.
+ * `(FFFF)i`
+ */
+GEARBOX_IMPORT("map", "sea_route_exists")
+uint32_t gearbox_sea_route_exists(double from_lon, double from_lat, double to_lon, double to_lat);
+
+/* Whether a world coordinate is land. Ordering a ship onto land is not an
+ * error -- the resolver clamps it -- but knowing first is cheaper.
+ * `(FF)i`
+ */
+GEARBOX_IMPORT("map", "point_is_land")
+uint32_t gearbox_point_is_land(double lon, double lat);
+
+/* Whether the map editor is open with a project loaded. EVERY OTHER CALL
+ * IN THIS MODULE returns 0 or an empty string when this is 0, including
+ * from inside a running game: the data behind them is an editor project,
+ * and a game does not have one. Check this first.
+ * `()i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_active")
+uint32_t gearbox_editor_active(void);
+
+/* How many provinces the open project has. Returns a neutral value unless
+ * the map editor is open with a project loaded -- see mapeditor/active.
+ * `()i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_count")
+uint32_t gearbox_editor_province_count(void);
+
+/* The province id at `index`, in ascending id order, or 0xFFFFFFFF past
+ * the end. Returns a neutral value unless the map editor is open with a
+ * project loaded -- see mapeditor/active.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_at")
+uint32_t gearbox_editor_province_at(uint32_t index);
+
+/* Population. Returns a neutral value unless the map editor is open with a
+ * project loaded -- see mapeditor/active.
+ * `(i)I`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_population")
+int64_t gearbox_editor_province_population(uint32_t province);
+
+/* Industry level, 0..10. Returns a neutral value unless the map editor is
+ * open with a project loaded -- see mapeditor/active.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_industry_level")
+uint32_t gearbox_editor_province_industry_level(uint32_t province);
+
+/* Fortification, 0..5. Returns a neutral value unless the map editor is
+ * open with a project loaded -- see mapeditor/active.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_fortification")
+uint32_t gearbox_editor_province_fortification(uint32_t province);
+
+/* Port level, 0..3. Returns a neutral value unless the map editor is open
+ * with a project loaded -- see mapeditor/active.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_port_level")
+uint32_t gearbox_editor_province_port_level(uint32_t province);
+
+/* Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
+ * or "metal". Returns a neutral value unless the map editor is open with a
+ * project loaded -- see mapeditor/active.
+ * `(iii)F`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_resource")
+double gearbox_editor_province_resource(uint32_t province, const char* which, uint32_t which_len);
+
+/* Province economic compass, -100..100. Returns a neutral value unless the
+ * map editor is open with a project loaded -- see mapeditor/active.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_compass_econ")
+double gearbox_editor_province_compass_econ(uint32_t province);
+
+/* Province social compass, -100..100. Returns a neutral value unless the
+ * map editor is open with a project loaded -- see mapeditor/active.
+ * `(i)F`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_province_compass_social")
+double gearbox_editor_province_compass_social(uint32_t province);
+
+/* Set population, clamped to 0..2e9. Writes the SAME per-province data the
+ * editor's own tools write, so it saves, exports and shows up in the
+ * unsaved-changes prompt like any other edit. A province the project does
+ * not have is refused rather than created: data without a shape on the
+ * province bitmap exports a map the game cannot load.
+ * `(iI)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_population")
+uint32_t gearbox_editor_set_province_population(uint32_t province, int64_t value);
+
+/* Set industry level, clamped to 0..10. Writes the SAME per-province data
+ * the editor's own tools write, so it saves, exports and shows up in the
+ * unsaved-changes prompt like any other edit. A province the project does
+ * not have is refused rather than created: data without a shape on the
+ * province bitmap exports a map the game cannot load.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_industry_level")
+uint32_t gearbox_editor_set_province_industry_level(uint32_t province, uint32_t level);
+
+/* Set fortification, clamped to 0..5. Writes the SAME per-province data
+ * the editor's own tools write, so it saves, exports and shows up in the
+ * unsaved-changes prompt like any other edit. A province the project does
+ * not have is refused rather than created: data without a shape on the
+ * province bitmap exports a map the game cannot load.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_fortification")
+uint32_t gearbox_editor_set_province_fortification(uint32_t province, uint32_t level);
+
+/* Set port level, clamped to 0..3. Writes the SAME per-province data the
+ * editor's own tools write, so it saves, exports and shows up in the
+ * unsaved-changes prompt like any other edit. A province the project does
+ * not have is refused rather than created: data without a shape on the
+ * province bitmap exports a map the game cannot load.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_port_level")
+uint32_t gearbox_editor_set_province_port_level(uint32_t province, uint32_t level);
+
+/* Set a resource amount, clamped to 0..100. An unrecognised name is
+ * refused rather than silently mapped onto oil. Writes the SAME
+ * per-province data the editor's own tools write, so it saves, exports and
+ * shows up in the unsaved-changes prompt like any other edit. A province
+ * the project does not have is refused rather than created: data without a
+ * shape on the province bitmap exports a map the game cannot load.
+ * `(iiiF)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_resource")
+uint32_t gearbox_editor_set_province_resource(uint32_t province, const char* which, uint32_t which_len, double amount);
+
+/* Set both compass axes, each clamped to -100..100. Writes the SAME
+ * per-province data the editor's own tools write, so it saves, exports and
+ * shows up in the unsaved-changes prompt like any other edit. A province
+ * the project does not have is refused rather than created: data without a
+ * shape on the province bitmap exports a map the game cannot load.
+ * `(iFF)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_province_compass")
+uint32_t gearbox_editor_set_province_compass(uint32_t province, double econ, double social);
+
+/* The project's map name. Two-call sizing: call with cap 0 to learn the
+ * length, allocate, call again. Returns the full length either way; the
+ * copy is truncated to cap.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_map_name")
+uint32_t gearbox_editor_map_name(char* buf, uint32_t cap);
+
+/* Rename the map. Refused if empty or over 96 bytes.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_map_name")
+uint32_t gearbox_editor_set_map_name(const char* name, uint32_t name_len);
+
+/* Set the author recorded in the exported .odmap. Up to 96 bytes.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_author")
+uint32_t gearbox_editor_set_author(const char* author, uint32_t author_len);
+
+/* Set the licence recorded in the exported .odmap. Up to 96 bytes.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("mapeditor", "editor_set_license")
+uint32_t gearbox_editor_set_license(const char* license, uint32_t license_len);
+
+/* The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
+ * This is the id net/send takes.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("net", "peer_at")
+uint32_t gearbox_peer_at(uint32_t index);
+
+/* That peer's display name -- deliberately NOT their account id or issuer.
+ * A mod has no business correlating players across sessions. Two-call
+ * sizing: call with cap 0 to learn the length, allocate, call again.
+ * Returns the full length either way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("net", "peer_name")
+uint32_t gearbox_peer_name(uint32_t index, char* buf, uint32_t cap);
+
+/* The largest payload net/send will accept. Chunk against this rather than
+ * discovering the limit by having a message dropped.
+ * `()i`
+ */
+GEARBOX_IMPORT("net", "max_message_bytes")
+uint32_t gearbox_max_message_bytes(void);
+
+/* How many decision modules the AI has. Each acts independently every
+ * turn.
+ * `()i`
+ */
+GEARBOX_IMPORT("neural", "module_count")
+uint32_t gearbox_module_count(void);
+
+/* The module's name: "economy", "politics", "war", "navy". Two-call
+ * sizing: call with cap 0 to learn the length, allocate, call again.
+ * Returns the full length either way; the copy is truncated to cap.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("neural", "module_name")
+uint32_t gearbox_module_name(uint32_t module, char* buf, uint32_t cap);
+
+/* How many actions that module can choose between.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("neural", "action_count")
+uint32_t gearbox_action_count(uint32_t module);
+
+/* The action's name, e.g. "reinforce", "embark", "propose_alliance". THE
+ * FEATURE VECTOR IS DELIBERATELY NOT NAMED: its 143 slots are an
+ * implementation detail that has changed before and will again, and a mod
+ * written against those names would break silently. What the AI CAN DO is
+ * stable enough to build an advisor or a decision log against. Two-call
+ * sizing: call with cap 0 to learn the length, allocate, call again.
+ * Returns the full length either way; the copy is truncated to cap.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("neural", "action_name")
+uint32_t gearbox_action_name(uint32_t module, uint32_t action, char* buf, uint32_t cap);
+
+/* Whether a country is played by the AI rather than by the local player.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("neural", "country_is_ai")
+uint32_t gearbox_country_is_ai(uint32_t country);
+
+/* Gradient updates the loaded model has been through -- roughly, how much
+ * training it has seen.
+ * `()I`
+ */
+GEARBOX_IMPORT("neural", "update_count")
+int64_t gearbox_update_count(void);
+
+/* Whether an AI model is loaded at all. False in a game with no AI
+ * players.
+ * `()i`
+ */
+GEARBOX_IMPORT("neural", "model_loaded")
+uint32_t gearbox_model_loaded(void);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

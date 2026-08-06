@@ -637,9 +637,9 @@ void Game::drawResearchTab() {
         bool hovered = CheckCollisionPointRec(mouse, cr);
         Color bg = active ? Color{60, 60, 80, 200} : (hovered ? Color{40, 40, 60, 180} : Color{30, 30, 50, 150});
         DrawRectangleRounded(cr, 0.1f, 6, bg);
-        if (active) DrawRectangleRoundedLines(cr, 0.1f, 6, hexToColor(m_config.accentColor));
+        if (active) DrawRectangleRoundedLines(cr, 0.1f, 6, hexToColor(m_config.accent()));
         int tw = MeasureText(catNames[c], 16);
-        DrawText(catNames[c], tx + (catSpacing - 8 - tw) / 2, catTabY + 6, 16, active ? hexToColor(m_config.accentColor) : LIGHTGRAY);
+        DrawText(catNames[c], tx + (catSpacing - 8 - tw) / 2, catTabY + 6, 16, active ? hexToColor(m_config.accent()) : LIGHTGRAY);
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered && m_researchTab != c) {
             m_researchTab = c;
             Audio::get().playSfx("tab_switch");
@@ -772,7 +772,7 @@ void Game::drawResearchTab() {
                 Audio::get().playSfx("hover");
             }
             m_researchHoveredNode = idx;
-            border = hexToColor(m_config.accentColor);
+            border = hexToColor(m_config.accent());
         }
 
         DrawRectangleRounded(r, 0.15f, 8, bg);
@@ -833,7 +833,7 @@ void Game::drawResearchTab() {
     // ─── Bottom bar: research points + allocation + currently researching ───
     int barY2 = m_screenH - 50;
     DrawRectangle(0, barY2, m_screenW, 50, {10, 10, 15, 220});
-    DrawText(TextFormat("Research Points: %d", m_researchPoints), 16, barY2 + 8, 16, hexToColor(m_config.accentColor));
+    DrawText(TextFormat("Research Points: %d", m_researchPoints), 16, barY2 + 8, 16, hexToColor(m_config.accent()));
 
     // Currently researching indicator
     if (m_researchActiveNode >= 0 && m_researchActiveNode < (int)m_researchNodes.size()) {
