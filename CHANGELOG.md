@@ -1,5 +1,125 @@
 # Changelog
 
+## game 1.0.6a
+
+The game runs on Android, mods can reach most of the game, and a long list of
+things that never worked now do.
+
+## Android
+
+Open Doctrines runs on a phone. It is a real port -- a native library packaged
+as an APK, not the web build in a wrapper -- and the interface has been resized
+for a screen held at arm's length. Touch drives the game, a long press gives the
+orders that need a right click, and a settings button sits on the map because a
+phone has no ESC key.
+
+Experimental, and labelled that way. It has been verified on an emulator rather
+than on a shelf of real devices.
+
+## Things that never worked
+
+**Founding a port, or building your first factory.** The upgrade was looked up
+in a province's existing industry or port entry -- which is exactly the entry a
+FIRST factory or a NEW port does not have yet. The money was charged, the turns
+were waited out, and the build was discarded. Founding a port was a total no-op.
+This is also why the AI never industrialised: building was a pure loss, so it
+learned to decline it.
+
+**Ports on 127 coastlines.** A province was judged land-locked from the first
+patch of water the scan happened to reach. Touch a lagoon and the open sea along
+your other edge counted for nothing. On the 1939 map that is 22 British
+provinces, 21 American, 17 Soviet, 9 French, and on down -- every one a coast you
+can see and the game refused a port on.
+
+**Left-wing doctrines, if you were left wing.** The political compass loaded
+with both axes inverted, so the game had you on the opposite side of the board
+from where your country actually stood. The Soviet Union loaded as hard right
+with none of the four left doctrines available; Germany loaded as hard left with
+all of them.
+
+**Doctrine drift surviving a save.** Moving your country's politics is the whole
+point of enacting a doctrine, and none of that movement was written to the save.
+Governments snapped back to their 1939 positions on load while keeping the
+doctrines they had passed to get away from them -- so a player who had worked
+their way left found the left doctrines locked again.
+
+**Being told why a doctrine is unavailable.** Every greyed-out doctrine blamed
+conflicts you had never enacted. The real reason -- your treasury, or your
+compass -- was never shown. Blocked doctrines now say which it is.
+
+**A third of the ships in the game dealt no damage.** Cruisers and battleships
+had no entry in the combat damage table and no fallback. The same omission left
+them with no sprite. Battleships work now; cruisers are retired, since nothing
+could build either.
+
+**Ships sailing through land.** Any crossing whose straight line clipped a
+coastline beached the hull. Scenario files also ship about a third of their
+boats already aground -- 104 of 340 across the maps -- and those are refloated on
+load.
+
+**Ship range.** It bound your mouse and nothing else. An AI boat covered twice
+the distance yours could, and no AI hull was slowed by its own speed rating.
+
+**Putting down a rebellion froze your diplomacy.** A revolt is stored as a war,
+and both war limits counted it, so a country suppressing a single uprising could
+not declare a war or answer a call to arms.
+
+**The terms of use link.** It returned a 404 on every platform for a week. The
+terms were written and deployed -- to a service last updated the day before they
+existed.
+
+**Signing in from the web, or from a fresh install.** The account service was
+only filled in when a config file was read, and neither of those has one, so the
+Account screen said no service was configured and told you to edit a file you do
+not have.
+
+**Quitting in a browser.** The X and Escape froze the canvas with no way back
+but a reload. Neither is offered there now.
+
+## Mods
+
+The Gearbox SDK roughly doubled: mods can now read and command ships and
+armies, read and write research, politics and economy, author map projects
+directly, draw their own artwork and restyle the interface. Every write goes
+through the same rules your own clicks do, so a mod can issue an order but not
+invent an outcome.
+
+Existing mods keep working. That is now tested rather than intended -- the 1.0
+interface is frozen in the repository and the build fails if any part of it is
+removed or changed.
+
+Two permissions -- Audio and Net -- were grantable by a mod and invisible in the
+permissions screen, so you could neither see nor revoke them. All of them are
+listed now.
+
+## Multiplayer
+
+**Long-form games.** A mode for playing a campaign with nobody online at the
+same time: each turn is published, players submit orders back whenever they next
+open the game, and a session survives everyone being away for days. Built and
+tested, but not yet played through a real multi-day campaign, so treat it as new.
+
+## The AI
+
+Substantially rebuilt -- one shared encoder instead of eight, a longer planning
+horizon, a critic that has an opinion about the moves it did not make, and
+opponents drawn from its own past selves. Several parts of the network turned
+out never to have been training at all.
+
+It also now uses its navy like a player: it routes around land instead of
+sailing into it, and it can attack enemy ships, which it previously could not do
+at all.
+
+Honestly reported: the model shipping here beats the previous one head to head,
+but much of that is the engine fixes above rather than the learning. There is
+more to do.
+
+## Elsewhere
+
+Controller support reaches the map, and tells you what each button does. Touch
+works in the browser as well as on Android. The update badge is drawn instead of
+typed. Windows continuous integration stopped failing on every commit.
+
 ## game 1.0.5a
 
 Mostly repairs, and several of them are things that never worked at all.
