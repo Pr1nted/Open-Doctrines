@@ -357,6 +357,10 @@ void Game::processTurn() {
         processNavyCombat(navyCid);
     }
     processDiplomaticRequests();
+    // After the requests, so a claim made this turn gets its full window, and
+    // beside decayWarWeariness below because it is the same kind of thing: the
+    // world slowly letting go of what happened.
+    ageCredibility();
     auto t4 = std::chrono::steady_clock::now();
     drawFrame(0.55f, "Processing population...");
     processPopulation();
@@ -368,6 +372,9 @@ void Game::processTurn() {
     auto t6 = std::chrono::steady_clock::now();
     drawFrame(0.60f, "Eliminating defeated countries...");
     eliminateDefeatedCountries();
+    // Last, so both halves of the question are settled for the turn: who owns
+    // each province, and who is still at war with whom.
+    expelPeacetimeTrespassers();
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
     // Self-play training never looks at the map: skip the full-raster texture
@@ -722,6 +729,287 @@ void Game::rebuildIsoIndex() {
     m_isoToCid.clear();
     for (auto& [cid, c] : m_countries.getAll())
         if (!c.isoA3.empty()) m_isoToCid[c.isoA3] = cid;
+}
+
+// ─── Credibility ─────────────────────────────────────────────────────────
+//
+// Tuned to be slow. One caught lie should be a thing a player notices and
+// remembers, not a thing that ends a relationship; and forgiveness has to be
+// slower than lying, or the cheapest strategy is to lie constantly and wait.
+static constexpr float CRED_HIT_CAUGHT   = 0.35f;  // said something already disprovable
+static constexpr float CRED_HIT_CONDUCT  = 0.25f;  // conduct disproved it later
+static constexpr float CRED_RECOVER      = 0.004f; // per turn, back toward trust
+static constexpr int   CRED_CLAIM_WINDOW = 25;     // turns a claim can be broken in
+
+void Game::noteRefusalStatement(const std::string& speakerIso,
+                                const std::string& hearerIso, int statedReason) {
+    if (statedReason == REFUSE_NONE) return;   // nothing claimed, nothing to lose
+    const int sp = cidForIso(speakerIso), he = cidForIso(hearerIso);
+    if (sp < 0 || he < 0) return;
+    // Already disprovable when it was said. The AI never does this to itself;
+    // a player may, and pays for it on the spot.
+    if (refusalIsContradicted(he, sp, statedReason)) {
+        loseCredibility(speakerIso, hearerIso, CRED_HIT_CAUGHT);
+        return;
+    }
+    // Unfalsifiable today, and conduct may still disprove it. See SpokenClaim.
+    if (statedReason == REFUSE_WEARINESS)
+        recordSpokenClaim(speakerIso, hearerIso, SpokenClaim::CLAIM_WEARY);
+}
+
+void Game::noteWarGoalStatement(const std::string& attackerIso,
+                                const std::string& defenderIso, int statedGoal) {
+    if (statedGoal == WAR_GOAL_NONE) return;
+    const int att = cidForIso(attackerIso), def = cidForIso(defenderIso);
+    if (att < 0 || def < 0) return;
+    if (warGoalIsContradicted(def, att, def, statedGoal)) {
+        loseCredibility(attackerIso, defenderIso, CRED_HIT_CAUGHT);
+        return;
+    }
+    // "To recover what is ours" is true today by construction -- a claim exists
+    // -- and becomes a lie the moment the war goes past it.
+    if (statedGoal == WAR_GOAL_RECONQUEST)
+        recordSpokenClaim(attackerIso, defenderIso,
+                          SpokenClaim::CLAIM_RECONQUEST, defenderIso);
+}
+
+float Game::credibility(const std::string& speakerIso,
+                        const std::string& hearerIso) const {
+    auto s = m_credibility.find(speakerIso);
+    if (s == m_credibility.end()) return 1.0f;
+    auto h = s->second.find(hearerIso);
+    return h == s->second.end() ? 1.0f : h->second;
+}
+
+void Game::loseCredibility(const std::string& speakerIso,
+                           const std::string& hearerIso, float amount) {
+    if (speakerIso.empty() || hearerIso.empty() || speakerIso == hearerIso) return;
+    float& c = m_credibility[speakerIso].emplace(hearerIso, 1.0f).first->second;
+    c = std::max(0.0f, c - amount);
+    m_credibilityHits++;
+    m_credibilityLow = std::min(m_credibilityLow, c);
+    // Only ever announced to the player, and only when it is the player being
+    // lied to. Learning that somebody's story did not hold up is the entire
+    // payoff of the mechanic; burying it in a log would waste it.
+    const Country* pc = m_countries.getCountry(m_playerCountryId);
+    if (pc && pc->isoA3 == hearerIso)
+        addNotification(diploDisplayName(speakerIso) +
+                        " has been caught out — their word counts for less",
+                        Color{225, 175, 90, 255}, 8.0f);
+}
+
+void Game::recordSpokenClaim(const std::string& speakerIso,
+                             const std::string& hearerIso, int kind,
+                             const std::string& aboutIso) {
+    if (speakerIso.empty() || hearerIso.empty() || speakerIso == hearerIso) return;
+    m_openClaims.push_back({speakerIso, hearerIso, kind, m_turnNumber, aboutIso});
+}
+
+void Game::claimsBrokenByDeclaration(const std::string& speakerIso) {
+    for (auto it = m_openClaims.begin(); it != m_openClaims.end(); ) {
+        if (it->kind == SpokenClaim::CLAIM_WEARY && it->speakerIso == speakerIso) {
+            // Told them the country could not face a war, and then started one.
+            loseCredibility(it->speakerIso, it->hearerIso, CRED_HIT_CONDUCT);
+            it = m_openClaims.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void Game::claimsBrokenByConquest(int winnerCid, int loserCid, int provinceId) {
+    const Country* w = m_countries.getCountry(winnerCid);
+    const Country* l = m_countries.getCountry(loserCid);
+    if (!w || !l) return;
+    // Was this province ever ours to recover? The claim is checked BEFORE the
+    // conquest grants one back to the previous owner, which is why this is
+    // called from the same place the transfer happens.
+    bool claimedByUs = false;
+    auto cl = m_claimsByProvince.find(provinceId);
+    if (cl != m_claimsByProvince.end())
+        for (const auto& iso : cl->second)
+            if (iso == w->isoA3) { claimedByUs = true; break; }
+    if (claimedByUs) return;   // exactly what they said they were doing
+
+    for (auto it = m_openClaims.begin(); it != m_openClaims.end(); ) {
+        if (it->kind == SpokenClaim::CLAIM_RECONQUEST &&
+            it->speakerIso == w->isoA3 && it->aboutIso == l->isoA3) {
+            // A war of recovery that has just taken land it never claimed.
+            loseCredibility(it->speakerIso, it->hearerIso, CRED_HIT_CONDUCT);
+            it = m_openClaims.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void Game::ageCredibility() {
+    // Claims nobody can reasonably be held to any longer.
+    m_openClaims.erase(
+        std::remove_if(m_openClaims.begin(), m_openClaims.end(),
+                       [&](const SpokenClaim& c) {
+                           return m_turnNumber - c.madeOnTurn > CRED_CLAIM_WINDOW;
+                       }),
+        m_openClaims.end());
+    // ...and slow forgiveness. Deliberately far slower than a single lie costs,
+    // so a country cannot simply out-wait its own reputation.
+    for (auto& [speaker, byHearer] : m_credibility)
+        for (auto& [hearer, c] : byHearer)
+            if (c < 1.0f) c = std::min(1.0f, c + CRED_RECOVER);
+}
+
+int Game::statedWarGoal(const std::string& attackerIso,
+                        const std::string& defenderIso) const {
+    auto a = m_relations.find(attackerIso);
+    if (a == m_relations.end()) return WAR_GOAL_NONE;
+    auto d = a->second.find(defenderIso);
+    return d == a->second.end() ? WAR_GOAL_NONE : d->second.warGoalStated;
+}
+
+bool Game::warGoalIsContradicted(int observerCid, int attackerCid,
+                                 int defenderCid, int goal) const {
+    const Country* att = m_countries.getCountry(attackerCid);
+    const Country* def = m_countries.getCountry(defenderCid);
+    if (!att || !def) return false;
+    (void)observerCid;   // all of this is public; nobody sees a different map
+
+    switch (goal) {
+        case WAR_GOAL_RECONQUEST: {
+            // Claims are public. Announcing a war of recovery against a country
+            // holding nothing you claim is a story the map refuses.
+            for (int pid : provincesOf(defenderCid)) {
+                auto it = m_claimsByProvince.find(pid);
+                if (it == m_claimsByProvince.end()) continue;
+                for (const auto& iso : it->second)
+                    if (iso == att->isoA3) return false;
+            }
+            return true;
+        }
+        case WAR_GOAL_SECURITY: {
+            // Only believable from someone they can actually reach: a shared
+            // border, or a coast each with the sea between.
+            for (int pid : provincesOf(attackerCid)) {
+                auto nIt = m_provinceNeighbors.find(pid);
+                if (nIt == m_provinceNeighbors.end()) continue;
+                for (int nid : nIt->second) {
+                    const int owner = (nid >= 0 && nid < (int)m_provinceCountryLookup.size())
+                                          ? m_provinceCountryLookup[nid] : 0;
+                    if (owner == defenderCid) return false;
+                }
+            }
+            return true;   // not even neighbours
+        }
+        case WAR_GOAL_HUMBLE: {
+            // "They have grown too large" from someone larger than they are is
+            // not a reason, it is an admission. Judged on land, which is drawn.
+            const size_t mine = provincesOf(attackerCid).size();
+            const size_t theirs = provincesOf(defenderCid).size();
+            return theirs <= mine;
+        }
+        case WAR_GOAL_ALLY: {
+            // Checkable: is anyone we are allied to actually at war with them.
+            auto rel = m_relations.find(att->isoA3);
+            if (rel == m_relations.end()) return true;
+            for (const auto& [iso, r] : rel->second) {
+                if (!r.alliance && !r.guarantee) continue;
+                auto their = m_relations.find(iso);
+                if (their == m_relations.end()) continue;
+                auto w = their->second.find(def->isoA3);
+                if (w != their->second.end() && w->second.war) return false;
+            }
+            return true;
+        }
+        // "We want your land" cannot be disproved by anybody. The honest goal
+        // is the safe one to state, which is a pleasing thing for the game to
+        // be true about.
+        case WAR_GOAL_CONQUEST:
+        case WAR_GOAL_NONE:
+        default:
+            return false;
+    }
+}
+
+void Game::tellRefusal(const std::string& toIso, int statedReason) {
+    const int toCid = cidForIso(toIso);
+    if (toCid < 0 || m_playerCountryId <= 0) return;
+    const Country* pc = m_countries.getCountry(m_playerCountryId);
+    if (pc) noteRefusalStatement(pc->isoA3, toIso, statedReason);
+    if (m_ai) m_ai->noteRefusalHeard(toCid, m_playerCountryId, statedReason);
+    if (m_config.aiDebug)
+        printf("[DIPLO] Player -> %s: %s\n", toIso.c_str(),
+               refusalText(statedReason) ? refusalText(statedReason) : "(no reason given)");
+}
+
+bool Game::refusalIsContradicted(int observerCid, int subjectCid, int reason) const {
+    const Country* subj = m_countries.getCountry(subjectCid);
+    if (!subj) return false;
+
+    // Everything the observer would have to look at is on the map or in the
+    // relations table, both of which it can already read. Nothing here consults
+    // anything private -- that is the point, and it is why the three reasons
+    // that describe an internal state or a preference can never be caught.
+    switch (reason) {
+        case REFUSE_OWN_WARS: {
+            // Wars are public. Claiming to be busy while at peace is checkable.
+            auto rel = m_relations.find(subj->isoA3);
+            if (rel == m_relations.end()) return true;
+            int wars = 0;
+            for (const auto& [iso, r] : rel->second) {
+                if (!r.war) continue;
+                const int ocid = cidForIso(iso);
+                if (ocid >= 0 && ocid < REBEL_CID_MIN) wars++;
+            }
+            return wars == 0;
+        }
+        case REFUSE_LOSING_GROUND: {
+            // Also public: is there an enemy stack next to anything they own.
+            for (int pid : provincesOf(subjectCid)) {
+                auto nIt = m_provinceNeighbors.find(pid);
+                if (nIt == m_provinceNeighbors.end()) continue;
+                for (int nid : nIt->second) {
+                    const int owner = (nid >= 0 && nid < (int)m_provinceCountryLookup.size())
+                                          ? m_provinceCountryLookup[nid] : 0;
+                    if (owner <= 0 || owner == subjectCid) continue;
+                    auto rel = m_relations.find(subj->isoA3);
+                    if (rel == m_relations.end()) continue;
+                    const Country* oc = m_countries.getCountry(owner);
+                    if (!oc) continue;
+                    auto rr = rel->second.find(oc->isoA3);
+                    if (rr != rel->second.end() && rr->second.war) return false;
+                }
+            }
+            return true;   // nobody is anywhere near them
+        }
+        case REFUSE_OUTGUNNED: {
+            // Roughly checkable: garrisons are drawn on the map. A country
+            // pleading weakness while visibly twice the observer's size is not
+            // believed. Deliberately generous -- the observer is estimating.
+            long long mine = 0, theirs = 0;
+            auto armyOf = [&](int cid) {
+                long long n = 0;
+                for (int pid : provincesOf(cid)) {
+                    auto it = m_provinceArmies.find(pid);
+                    if (it == m_provinceArmies.end()) continue;
+                    for (const auto& u : it->second)
+                        if (u.countryId == cid) n += u.count;
+                }
+                return n;
+            };
+            theirs = armyOf(subjectCid);
+            mine = armyOf(observerCid);
+            return theirs > mine * 2;
+        }
+        // Private state and preferences. A country's war weariness, its
+        // interests and whom it trusts are not on anybody else's map, so these
+        // cannot be caught out -- which is exactly what makes them the useful
+        // things to say when the truth is something you would rather not admit.
+        case REFUSE_WEARINESS:
+        case REFUSE_NO_INTEREST:
+        case REFUSE_DISTRUST:
+        case REFUSE_NONE:
+        default:
+            return false;
+    }
 }
 
 int Game::cidForIso(const std::string& iso) const {
@@ -2172,6 +2460,32 @@ void Game::processShipBombardOrders(int countryId) {
         // Carriers can use any researched ammo type
         Province* tgt = m_provinces.getProvinceById(bo.targetProvince);
         if (!tgt) { printf("  [SHIPBOMBARD] skip: no target province %d\n", bo.targetProvince); ++i; continue; }
+        // SHELL YOUR OWN GROUND OR AN ENEMY'S, IN RANGE, AND NOTHING ELSE.
+        //
+        // The ammo-researched test above was the only gate here, so any fleet
+        // that had unlocked a shell could flatten ANY province on the map --
+        // a neutral's, an ally's, from the far side of the world. As with
+        // engage, the rule existed only in the aiming overlay, which binds the
+        // player's mouse and neither the AI nor a modified client.
+        if (tgt->countryId != countryId && !atWarCids(countryId, tgt->countryId)) {
+            printf("  [SHIPBOMBARD] skip: prov %d belongs to %d, no war\n",
+                   bo.targetProvince, tgt->countryId);
+            m_pendingShipBombardOrders.erase(m_pendingShipBombardOrders.begin() + i);
+            continue;
+        }
+        {
+            auto cit = m_provinceCenters.find(bo.targetProvince);
+            if (cit != m_provinceCenters.end()) {
+                int sx, sy;
+                m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
+                const float ddx = cit->second.x - (float)sx, ddy = cit->second.y - (float)sy;
+                if (std::sqrt(ddx * ddx + ddy * ddy) > shipMaxRangePx(ship)) {
+                    printf("  [SHIPBOMBARD] skip: prov %d out of range\n", bo.targetProvince);
+                    m_pendingShipBombardOrders.erase(m_pendingShipBombardOrders.begin() + i);
+                    continue;
+                }
+            }
+        }
         ArtyEffect eff = getEffect(bo.ammoType);
         printf("  [SHIPBOMBARD] cid=%d ship=%d type=%s ammo=%s tgt=%d eff=(t=%.0f,p=%.0f,f=%.0f,i=%d,fc=%.0f)\n",
             countryId, bo.shipIndex, ship.type.c_str(), bo.ammoType.c_str(), bo.targetProvince,
@@ -2301,6 +2615,10 @@ void Game::processShipDisembarks(int countryId) {
                 // Take over province
                 int prevOwner = dst->countryId;
                 if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
+                noteRealConquest(countryId, prevOwner);
+                    // BEFORE the auto-claim below hands the previous owner a
+                    // claim: this asks whether the ATTACKER ever claimed it.
+                    claimsBrokenByConquest(countryId, prevOwner, dst->id);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
@@ -2337,6 +2655,9 @@ void Game::processShipDisembarks(int countryId) {
                     [&](auto& u) { return u.countryId == countryId; });
                 if (myIt != dstArmies.end()) myIt->count += atkSurvivors;
                 else { ArmyUnit nu; nu.countryId = countryId; nu.count = atkSurvivors; dstArmies.push_back(nu); }
+                // A landing that failed is a repulsed assault like any other,
+                // and an expensive one. See TrainStats::attacksRepulsed.
+                if (m_ai) m_ai->noteAssaultRepulsed(countryId, crew - atkSurvivors);
             }
             dstArmies.erase(std::remove_if(dstArmies.begin(), dstArmies.end(),
                 [](auto& u) { return u.count <= 0; }), dstArmies.end());
@@ -2347,6 +2668,8 @@ void Game::processShipDisembarks(int countryId) {
             if (prevOwner > 0 && prevOwner != BLC_CID && prevOwner != countryId) {
                 // Take over the province (includes unclaimed — colonize it)
                 if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
+                noteRealConquest(countryId, prevOwner);
+                claimsBrokenByConquest(countryId, prevOwner, dst->id);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
@@ -2595,8 +2918,32 @@ void Game::processArmyMovement(int countryId) {
         auto uIt = std::find_if(srcArmies.begin(), srcArmies.end(),
             [&](auto& u) { return u.countryId == countryId; });
         if (uIt == srcArmies.end()) { ++i; continue; }
+        // ARMIES WALK. They do not teleport, and they do not multiply.
+        //
+        // Nothing here asked whether the destination touches the source, so
+        // any owned province could send troops to ANY province on the map in
+        // one turn. Nothing bounded pct either, so a pct of 1000 moved ten
+        // times the garrison and left the source on a negative count --
+        // soldiers conjured out of nothing.
+        //
+        // Neither was reachable through the game's own UI, which offers
+        // neighbours and a 0-100 slider, and the AI only ever names adjacent
+        // provinces. But the multiplayer host takes these orders off the wire
+        // and validates only that the sender OWNS the source province, so both
+        // were reachable by a modified client. Checked here because this is
+        // where every order arrives, whoever wrote it.
+        {
+            bool adjacent = false;
+            auto nIt = m_provinceNeighbors.find(mo.fromProvince);
+            if (nIt != m_provinceNeighbors.end())
+                for (int n : nIt->second) if (n == mo.toProvince) { adjacent = true; break; }
+            if (!adjacent) {
+                m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+                continue;
+            }
+        }
         // Calculate soldiers to move
-        float pct = mo.pct / 100.0f;
+        float pct = std::clamp(mo.pct, 0, 100) / 100.0f;
         int toMove = (int)(uIt->count * pct);
         if (toMove <= 0) { ++i; continue; }
         uIt->count -= toMove;
@@ -2629,12 +2976,11 @@ void Game::processArmyMovement(int countryId) {
                 if (atkPower > defPower) {
                     int remaining = atkPower - defPower;
                     eIt->count = 0;
-                    // Auto-claim: previous owner claims this province (skip UNC/BLC)
-                    if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                        if (const Country* prevC = m_countries.getCountry(prevOwner))
-                            grantClaim(prevC->isoA3, dst->id);
-                    }
                     if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
+                noteRealConquest(countryId, prevOwner);
+                    // BEFORE the auto-claim below hands the previous owner a
+                    // claim: this asks whether the ATTACKER ever claimed it.
+                    claimsBrokenByConquest(countryId, prevOwner, dst->id);
                     dst->countryId = countryId;
                 // Update pixel lookup arrays + countryPixels
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
@@ -2647,6 +2993,13 @@ void Game::processArmyMovement(int countryId) {
                     if (minIt != m_provinceMinorities.end())
                         for (auto& mg : minIt->second)
                             m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
+                }
+                // Auto-claim: previous owner claims this province (skip UNC/BLC).
+                // After the transfer above, not before -- grantClaim refuses a
+                // claim on ground the claimant still holds.
+                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
+                    if (const Country* prevC = m_countries.getCountry(prevOwner))
+                        grantClaim(prevC->isoA3, dst->id);
                 }
                 // Remove claim if conqueror claimed this province
                 if (const Country* conqueror = m_countries.getCountry(countryId))
@@ -2661,6 +3014,9 @@ void Game::processArmyMovement(int countryId) {
                 // Attacker loses — all attacking troops are killed
                 eIt->count -= (int)(toMove * atkMod * (1.0f - fortDef / 200.0f));
                 if (eIt->count < 0) eIt->count = 0;
+                // The one outcome the offensive funnel could not see. See
+                // TrainStats::attacksRepulsed.
+                if (m_ai) m_ai->noteAssaultRepulsed(countryId, toMove);
             }
             dstArmies.erase(std::remove_if(dstArmies.begin(), dstArmies.end(),
                 [](auto& u) { return u.count <= 0; }), dstArmies.end());
@@ -2669,17 +3025,21 @@ void Game::processArmyMovement(int countryId) {
             // No enemy troops — check if destination is empty enemy territory
             if (dst->countryId != countryId && dst->countryId > 0 && !areAllied(countryId, dst->countryId)) {
                 int prevOwner = dst->countryId;
-                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    if (const Country* prevC = m_countries.getCountry(prevOwner))
-                        grantClaim(prevC->isoA3, dst->id);
-                }
                 // Undefended: this province is taken by walking into it.
                 if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
+                noteRealConquest(countryId, prevOwner);
+                claimsBrokenByConquest(countryId, prevOwner, dst->id);
                 dst->countryId = countryId;
                 if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
                     m_provinceCountryLookup[dst->id] = countryId;
                 reindexProvinceOwner(dst->id, prevOwner, countryId);
                 transferCountryPixels(dst->id, countryId, prevOwner);
+                // Auto-claim after the transfer, not before: grantClaim refuses
+                // a claim on ground the claimant still holds.
+                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
+                    if (const Country* prevC = m_countries.getCountry(prevOwner))
+                        grantClaim(prevC->isoA3, dst->id);
+                }
                 auto minIt = m_provinceMinorities.find(mo.toProvince);
                 if (minIt != m_provinceMinorities.end())
                     for (auto& mg : minIt->second)
@@ -2705,9 +3065,89 @@ void Game::processNavyMovement(int countryId) {
         if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) { ++i; continue; }
         auto& ship = m_ships[mo.shipIndex];
         if (ship.countryId != countryId) { ++i; continue; }
-        // Simple movement: teleport to destination for now (real: interpolate)
-        ship.lon = mo.destLon;
-        ship.lat = mo.destLat;
+
+        // SHIPS DO NOT SAIL OVERLAND.
+        //
+        // This assigned the destination outright and nothing anywhere asked
+        // whether that point was at sea. The AI queues a straight-line step of
+        // up to eighteen degrees toward a target port (execNavy's "move
+        // fleet"), so any crossing whose direct line clips a landmass -- the
+        // Adriatic toward anywhere north, say -- parked the hull in the middle
+        // of Austria. LandSeaMap::isLand has existed the whole time; the navy
+        // simply never asked it.
+        //
+        // Fixed HERE rather than in the AI because this is the one place every
+        // order arrives: the player's clicks, the AI's steps and the
+        // multiplayer path all end up on this line.
+        //
+        // CLAMPED, not refused. The ship sails as far along its line as there
+        // is water and stops at the coast, which is what a fleet ordered
+        // somewhere unreachable should do -- and it keeps a blocked navy from
+        // silently doing nothing every turn while the order is thrown away.
+        {
+            auto navigable = [&](double lon, double lat) {
+                return !m_landSea.isLand((float)lon, (float)lat);
+            };
+            double dLon = mo.destLon - ship.lon;
+            double dLat = mo.destLat - ship.lat;
+            // RANGE IS ENFORCED HERE, not in the UI that draws the circle.
+            // The overlay refused an out-of-range click, so the rule bound the
+            // player and nobody else: the AI wrote whatever destination it
+            // liked straight into this queue, and multiplayer orders arrive
+            // here without ever having passed a hover check. Clamping the
+            // vector rather than dropping the order means a long haul takes
+            // the number of turns it should instead of silently not happening.
+            {
+                const double maxDeg = shipMaxRangeDeg(ship);
+                const double dist = std::sqrt(dLon * dLon + dLat * dLat);
+                if (dist > maxDeg && dist > 0.0) {
+                    const double k = maxDeg / dist;
+                    dLon *= k; dLat *= k;
+                }
+            }
+            const int STEPS = 32;
+            // A hull that is ALREADY beached -- from a save written before this
+            // existed -- has to be able to get off. It takes the first water it
+            // finds along the line instead of the last, so old worlds heal
+            // rather than staying stuck forever.
+            const bool beached = !navigable(ship.lon, ship.lat);
+            double bestLon = ship.lon, bestLat = ship.lat;
+            for (int s = 1; s <= STEPS; ++s) {
+                const double t = (double)s / (double)STEPS;
+                const double lon = ship.lon + dLon * t;
+                const double lat = ship.lat + dLat * t;
+                if (navigable(lon, lat)) {
+                    bestLon = lon; bestLat = lat;
+                    if (beached) break;          // first water: refloat
+                } else if (!beached) {
+                    break;                        // last water: stop at the coast
+                }
+            }
+            // ROUTING DIAGNOSTIC. A move that covers almost none of its
+            // requested distance was stopped by a coastline. The AI aims at the
+            // nearest enemy port by STRAIGHT-LINE distance (AISystem's
+            // findEnemyPort) with no water-path test, so a port behind a
+            // headland is targeted forever and the hull re-clamps against the
+            // same shore every turn.
+            {
+                const double want = std::sqrt(dLon * dLon + dLat * dLat);
+                const double got  = std::sqrt((bestLon - ship.lon) * (bestLon - ship.lon) +
+                                              (bestLat - ship.lat) * (bestLat - ship.lat));
+                // ONLY JOURNEYS COUNT. A hull holding station off a hostile
+                // shore is re-ordered to close the last fraction of a degree
+                // every turn and clamped by the beach every turn -- correct
+                // behaviour that the first version of this counted as a stall,
+                // which is why it read 93% while invasions were landing.
+                // 1 degree is about 23 raster pixels: past station-keeping,
+                // short of a crossing.
+                if (want > 1.0) {
+                    m_navMoves++;
+                    if (got < want * 0.05) m_navBlocked++;
+                }
+            }
+            ship.lon = bestLon;
+            ship.lat = bestLat;
+        }
         m_pendingShipMoveOrders.erase(m_pendingShipMoveOrders.begin() + i);
     }
 }
@@ -2722,6 +3162,27 @@ void Game::processNavyCombat(int countryId) {
         auto& src = m_ships[eo.shipIndex];
         auto& tgt = m_ships[eo.targetIndex];
         if (src.countryId != countryId || tgt.countryId <= 0 || tgt.countryId == UNC_CID) { ++i; continue; }
+        // YOU MAY ONLY FIRE ON SOMEBODY YOU ARE AT WAR WITH, AND ONLY IN RANGE.
+        //
+        // Neither was checked here. The overlay refused to aim at a neutral and
+        // drew a range circle, and that was the whole of the rule -- so it
+        // bound the player's mouse and nothing else. The AI could engage any
+        // hull on the map, and a modified client could too, because the host
+        // ingest (Game_Multiplayer) validates only that you OWN the firing
+        // ship before pushing the order straight into this queue. Distance was
+        // a damage falloff with a 0.1 floor, so a shot from the far side of the
+        // world still landed for a tenth.
+        if (!atWarCids(countryId, tgt.countryId)) {
+            m_pendingShipEngageOrders.erase(m_pendingShipEngageOrders.begin() + i);
+            continue;
+        }
+        {
+            const double ddx = src.lon - tgt.lon, ddy = src.lat - tgt.lat;
+            if (std::sqrt(ddx * ddx + ddy * ddy) > shipMaxRangeDeg(src)) {
+                m_pendingShipEngageOrders.erase(m_pendingShipEngageOrders.begin() + i);
+                continue;
+            }
+        }
 
         // navyDefPct was in the same state armyDefPct was: defined on the nodes,
         // summed by getTotalEffect, and read by nobody.
@@ -2733,24 +3194,45 @@ void Game::processNavyCombat(int countryId) {
         float distFactor = std::max(0.1f, 1.0f - dist / 15.0f);
 
         // Carrier does most damage, boat least
+        // EVERY HULL TYPE THE MAPS ACTUALLY CONTAIN, and a fallback.
+        //
+        // This chain had no branch for battleship (nor, until they were
+        // retired, cruisers) and no else, so those hulls dealt ZERO damage --
+        // they could be shot at and could never shoot back. That was a third of
+        // every ship in the game, and none of it buildable: battleships exist
+        // only in map files, so a sunk one is gone for good. Exactly the same
+        // omission as the draw chain that left them with no sprite.
+        //
+        // The else is the real fix. A type nobody thought of must still fight.
         float baseDmg = 0;
-        if (src.type == "carrier") baseDmg = 35;
+        if (src.type == "battleship") baseDmg = 40;      // heaviest guns afloat
+        else if (src.type == "carrier") baseDmg = 35;
         else if (src.type == "destroyer") baseDmg = 25;
         else if (src.type == "frigate") baseDmg = 20;
         else if (src.type == "boat") baseDmg = 5;
+        else baseDmg = 15;                               // a mod's own hull still fights
 
         int damage = (int)(baseDmg * atkMod * distFactor / std::max(0.1f, defMod));
         if (damage < 1) damage = 1;
         tgt.health -= damage;
+        m_navEngagements++;
 
         printf("[NAVY] Ship %d (%s) dealt %d dmg to ship %d (%s): health %d->%d\n",
                eo.shipIndex, src.type.c_str(), damage, eo.targetIndex, tgt.type.c_str(),
                tgt.health + damage, tgt.health);
 
         if (tgt.health <= 0) {
+            m_navSinkings++;
+            // BEFORE the owner is cleared and the crew forgotten: the men
+            // aboard are the whole point of sinking a transport, and the AI is
+            // scored on them. See AISystem::noteShipSunk.
+            if (tgt.crew > 0) { m_navTransportsSunk++; m_navCrewDrowned += tgt.crew; }
+            if (m_ai) m_ai->noteShipSunk(countryId, tgt.countryId, tgt.crew);
+            printf("[NAVY] Ship %d (%s) SUNK ship %d (%s)%s!\n",
+                   eo.shipIndex, src.type.c_str(), eo.targetIndex, tgt.type.c_str(),
+                   tgt.crew > 0 ? " -- loaded, crew lost" : "");
             tgt.countryId = UNC_CID;
-            printf("[NAVY] Ship %d (%s) SUNK ship %d (%s)!\n",
-                   eo.shipIndex, src.type.c_str(), eo.targetIndex, tgt.type.c_str());
+            tgt.crew = 0;
         }
         m_pendingShipEngageOrders.erase(m_pendingShipEngageOrders.begin() + i);
     }
@@ -2805,6 +3287,46 @@ void Game::eliminateDefeatedCountries() {
                 [cid](auto& u) { return u.countryId == cid; }), units.end());
         c.treasury = 0;
         m_countryBalances[cid] = 0;
+
+        // A STATE WITH NO TERRITORY IS NOT FIGHTING ANYBODY.
+        //
+        // Rebels get their relation rows deleted outright below. Map countries
+        // deliberately keep theirs -- an amphibious landing can revive them and
+        // the UI still has to name them -- and the consequence nobody handled
+        // is that their WARS stood forever. Conquer a neighbour and you were at
+        // war with the corpse for the rest of the game.
+        //
+        // It is not only cosmetic. AISystem::refreshStats builds m_warWith
+        // straight from these rows, and cidForIso still resolves a conquered
+        // country, so every AI that had ever finished anyone off counted a
+        // permanent war: atWar true forever, and with it warInWindow, which is
+        // what the idleness charge tests. That charge could never fire for a
+        // conqueror -- which is most of them by the late game.
+        //
+        // The rows survive; only the treaties are struck out. A revived country
+        // comes back to a clean slate, which is the right answer anyway: taking
+        // the last province is the end of that war, and whoever lands troops to
+        // bring it back can declare a new one.
+        {
+            auto rowIt = m_relations.find(c.isoA3);
+            if (rowIt != m_relations.end())
+                for (auto& [otherIso, r] : rowIt->second)
+                    r = CountryRelation{};
+            for (auto& [otherIso, rels] : m_relations) {
+                auto colIt = rels.find(c.isoA3);
+                if (colIt != rels.end()) colIt->second = CountryRelation{};
+            }
+            // ...and nothing still queued in their name.
+            m_pendingDiplomaticActions.erase(
+                std::remove_if(m_pendingDiplomaticActions.begin(),
+                               m_pendingDiplomaticActions.end(),
+                               [&](const PendingDiplomaticAction& da) {
+                                   return da.sourceIso == c.isoA3 ||
+                                          da.targetIso == c.isoA3;
+                               }),
+                m_pendingDiplomaticActions.end());
+        }
+
         if (cid >= REBEL_CID_MIN) deadRebels.push_back(cid);
         if (m_config.aiDebug)
             printf("[ELIMINATE] %s (%s) fully conquered — navy dissolved, armies disbanded\n",
@@ -2902,13 +3424,21 @@ bool Game::hasRelation(const std::string& isoA, const std::string& isoB,
 }
 
 void Game::declareWar(const std::string& attackerIso, const std::string& defenderIso,
-                      bool chainGuarantees) {
+                      bool chainGuarantees, int statedGoal) {
     if (attackerIso.empty() || defenderIso.empty() || attackerIso == defenderIso) return;
     CountryRelation& fwd = m_relations[attackerIso][defenderIso];
     if (fwd.war) return; // already at war — nothing to do, no double penalties
     fwd.war = true;
     fwd.alliance = false;
     fwd.nonAggression = false;
+    // On the attacker->defender direction only: this is what THEY said, and the
+    // defender's own row is what the defender would say about the same war.
+    fwd.warGoalStated = statedGoal;
+    // Anyone recently told this country was too spent to fight has just watched
+    // it declare a war. Before the statement below, so a country cannot escape
+    // its own earlier claim by making a new one in the same breath.
+    claimsBrokenByDeclaration(attackerIso);
+    noteWarGoalStatement(attackerIso, defenderIso, statedGoal);
     CountryRelation& rev = m_relations[defenderIso][attackerIso];
     rev.war = true;
     rev.alliance = false;
@@ -2925,8 +3455,14 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
         int otherCid = cidForIso(attackerIso);
         const Country* oc = m_countries.getCountry(otherCid);
         std::string otherName = oc ? oc->name : attackerIso;
-        pushPopup(PopupType::WAR_DECLARED, "War Declared!",
-                  otherName + " has declared war on you!", otherCid);
+        // ...and what they said it was for, if anything. A CLAIM, not a fact:
+        // see WarGoal. A declaration with no stated goal says something too.
+        std::string decl = otherName + " has declared war on you!";
+        if (const char* why = warGoalText(statedGoal))
+            decl += std::string("\n\nThey declare it ") + why + ".";
+        else
+            decl += "\n\nThey give no reason.";
+        pushPopup(PopupType::WAR_DECLARED, "War Declared!", decl, otherCid);
     }
 
     // Only wars the player is in. On a 185-country map the AI declares a dozen
@@ -3217,6 +3753,10 @@ void Game::processDiplomaticRequests() {
             if (da.action == "declare_war") {
                 title = "War Declared!";
                 msg2 = srcName + " has declared war on " + (playerIso.empty() ? da.targetIso : "you") + "!";
+                if (const char* why = warGoalText(da.statedGoal))
+                    msg2 += std::string("\n\nThey declare it ") + why + ".";
+                else
+                    msg2 += "\n\nThey give no reason.";
             } else if (da.action == "request_alliance") {
                 title = "Alliance Request";
                 msg2 = srcName + " proposes an alliance.";
@@ -3241,7 +3781,7 @@ void Game::processDiplomaticRequests() {
             // War is not a request — it happens whether or not the player has
             // dismissed the popup yet. This used to be dropped entirely here.
             if (da.action == "declare_war")
-                declareWar(da.sourceIso, da.targetIso, true);
+                declareWar(da.sourceIso, da.targetIso, true, da.statedGoal);
             m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
             printf("[DIPLO] Incoming request from %s → player: %s (pushed to popup queue)\n",
                    da.sourceIso.c_str(), da.action.c_str());
@@ -3257,9 +3797,10 @@ void Game::processDiplomaticRequests() {
                 // refuse = keep the peace and lose the alliance.
                 int allyCid = cidForIso(da.targetIso);
                 bool accept = false;
+                int callStated = REFUSE_NONE;
                 if (allyCid >= 0 && allyCid != m_playerCountryId && m_ai)
                     accept = m_ai->decideDiplomacy(allyCid, da.action, da.sourceIso,
-                                                   da.subjectIso);
+                                                   da.subjectIso, &callStated);
                 if (accept) {
                     // No further chaining: the ally's own guarantors and allies
                     // are not dragged in as well, or one border incident
@@ -3281,14 +3822,20 @@ void Game::processDiplomaticRequests() {
                 } else {
                     m_relations[da.sourceIso][da.targetIso].alliance = false;
                     m_relations[da.targetIso][da.sourceIso].alliance = false;
+                    noteRefusalStatement(da.targetIso, da.sourceIso, callStated);
                     if (m_ai) { m_ai->noteCallRefused(allyCid);
                                 m_ai->noteDiploRejected(cidForIso(da.sourceIso), allyCid); }
                     printf("[WAR] %s refuses %s's call to arms; the alliance is over\n",
                            da.targetIso.c_str(), da.sourceIso.c_str());
                     if (!playerIso.empty() && da.sourceIso == playerIso) {
-                        addNotification(diploDisplayName(da.targetIso) +
-                                        " refused your call to arms — the alliance is over",
-                                        Color{235, 130, 90, 255}, 8.0f);
+                        // The refusal that costs the most, so the one most
+                        // worth explaining -- truthfully or otherwise.
+                        std::string msg = diploDisplayName(da.targetIso) +
+                                          " refused your call to arms";
+                        if (const char* why = refusalText(callStated))
+                            msg += std::string(" — ") + why;
+                        msg += " — the alliance is over";
+                        addNotification(msg, Color{235, 130, 90, 255}, 8.0f);
                         Audio::get().playSfx("deal_rejected");
                     }
                 }
@@ -3298,8 +3845,12 @@ void Game::processDiplomaticRequests() {
             if (m_ai && (da.action == "request_alliance" || da.action == "request_guarantee" ||
                          da.action == "request_nap")) {
                 int aiTgtCid = cidForIso(da.targetIso);
+                int stated = REFUSE_NONE;
                 if (aiTgtCid >= 0 && aiTgtCid != m_playerCountryId &&
-                    !m_ai->decideDiplomacy(aiTgtCid, da.action, da.sourceIso)) {
+                    !m_ai->decideDiplomacy(aiTgtCid, da.action, da.sourceIso,
+                                           std::string(), &stated)) {
+                    // The AI's word is judged by the rule the player's is.
+                    noteRefusalStatement(da.targetIso, da.sourceIso, stated);
                     // Remember the refusal so the proposer backs off properly.
                     m_ai->noteDiploRejected(cidForIso(da.sourceIso), aiTgtCid);
                     if (m_config.aiDebug)
@@ -3310,9 +3861,15 @@ void Game::processDiplomaticRequests() {
                         // countries for three different things in one turn was
                         // told only that somebody "rejected your request".
                         const char* what = diploRequestPhrase(da.action);
-                        addNotification(diploDisplayName(da.targetIso) + " declined your offer of " +
-                                        (what ? what : "an agreement"),
-                                        Color{235, 130, 90, 255}, 7.0f);
+                        std::string msg = diploDisplayName(da.targetIso) +
+                                          " declined your offer of " +
+                                          (what ? what : "an agreement");
+                        // ...AND WHAT THEY SAID ABOUT IT, when they said
+                        // anything. Not necessarily the truth: see
+                        // AISystem::chooseStatedRefusal.
+                        if (const char* why = refusalText(stated))
+                            msg += std::string(" — ") + why;
+                        addNotification(msg, Color{235, 130, 90, 255}, 7.0f);
                         Audio::get().playSfx("deal_rejected");
                     }
                     m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
@@ -3385,8 +3942,10 @@ void Game::processDiplomaticRequests() {
                 // The target country's diplomacy net decides on the ceasefire
                 int cfTgtCid = cidForIso(da.targetIso);
                 bool aiAccepts = true;
+                int cfStated = REFUSE_NONE;
                 if (m_ai && cfTgtCid >= 0 && cfTgtCid != m_playerCountryId)
-                    aiAccepts = m_ai->decideDiplomacy(cfTgtCid, "request_ceasefire", da.sourceIso);
+                    aiAccepts = m_ai->decideDiplomacy(cfTgtCid, "request_ceasefire",
+                                                      da.sourceIso, std::string(), &cfStated);
 
                 // Check for mutual ceasefire: if target also sent a ceasefire
                 // request to source, pick one randomly and cancel the other.
@@ -3411,6 +3970,16 @@ void Game::processDiplomaticRequests() {
                     if (tit != m_pendingCeasefireTerms.end()) {
                         applyCeasefireTerms(da.sourceIso, da.targetIso, tit->second, da.sourceIso == playerIso);
                         m_pendingCeasefireTerms.erase(tit);
+                    } else {
+                        // WHITE PEACE STILL SENDS THE TROOPS HOME. The
+                        // withdrawal used to live only inside
+                        // applyCeasefireTerms, which runs only when there are
+                        // terms to apply -- so a ceasefire that traded nothing
+                        // ended the war and left both armies standing exactly
+                        // where they were, in a country they were now at peace
+                        // with and which could never make them leave.
+                        withdrawArmiesAfterPeace(cidForIso(da.sourceIso),
+                                                 cidForIso(da.targetIso));
                     }
                     // If mutual ceasefire, cancel the reverse request and pick
                     // this one (the first to be processed wins).
@@ -3459,7 +4028,10 @@ void Game::processDiplomaticRequests() {
                         const Country* otherC = m_countries.getCountryByCode(da.targetIso);
                         std::string otherName = otherC ? otherC->name : da.targetIso;
                         pushPopup(PopupType::WAR_DECLARED, "Ceasefire Rejected",
-                            otherName + " has rejected your ceasefire offer. The war continues.",
+                            otherName + " has rejected your ceasefire offer" +
+                            (refusalText(cfStated) ? std::string(" — ") + refusalText(cfStated)
+                                                   : std::string()) +
+                            ". The war continues.",
                             0, "ceasefire_rejected", da.sourceIso, da.targetIso);
                     }
                 }
@@ -3492,12 +4064,16 @@ void Game::processDiplomaticRequests() {
                 if (tit != m_acceptedCeasefireTerms.end()) {
                     applyCeasefireTerms(da.sourceIso, da.targetIso, tit->second, false);
                     m_acceptedCeasefireTerms.erase(tit);
+                } else {
+                    // Same white-peace hole as the branch above.
+                    withdrawArmiesAfterPeace(cidForIso(da.sourceIso),
+                                             cidForIso(da.targetIso));
                 }
                 printf("[CEASEFIRE] Accepted offer applied: %s vs %s\n", da.sourceIso.c_str(), da.targetIso.c_str());
             } else if (da.action == "declare_war") {
                 // Guarantee chains + kin penalties + notifications all live in
                 // the helper so every declaration behaves identically.
-                declareWar(da.sourceIso, da.targetIso, true);
+                declareWar(da.sourceIso, da.targetIso, true, da.statedGoal);
             }
             if (m_config.aiDebug)
                 printf("[DIPLO] %s → %s: %s applied\n", da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
@@ -3744,24 +4320,332 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     withdrawArmiesAfterPeace(srcCid, tgtCid);
 }
 
+// === expelPeacetimeTrespassers ===
+//
+// Sweeps the map once a turn for stacks standing in a country they are neither
+// at war with nor allied to, and walks them home.
+//
+// This is a backstop, not the primary fix: the routes that STRAND troops are
+// fixed where they occur (a revolt retreats the parent's garrison, a ceasefire
+// withdraws both sides). But the number of ways a province can change hands --
+// revolt, cession, conquest, a third party taking ground out from under an
+// ally, a state dying with its army abroad -- means enumerating them all is a
+// losing game, and every one that gets missed leaves an army parked in a
+// neutral country forever, because nothing here attrits or expels one.
+//
+// There is no military-access treaty in this game, so peacetime presence has
+// no legitimate form and the rule needs no exceptions beyond unowned land.
+void Game::expelPeacetimeTrespassers() {
+    struct Intrusion { int pid; int cid; };
+    std::vector<Intrusion> work;
+    for (const auto& [pid, units] : m_provinceArmies) {
+        const int owner = (pid >= 0 && (size_t)pid < m_provinceCountryLookup.size())
+                            ? m_provinceCountryLookup[pid] : 0;
+        // Unowned, blocked and special tiles are nobody's sovereignty to violate.
+        if (owner <= 0 || owner == SPC_CID || owner == UNC_CID || owner == BLC_CID) continue;
+        const Country* oc = m_countries.getCountry(owner);
+        if (!oc) continue;
+        for (const auto& u : units) {
+            if (u.count <= 0 || u.countryId <= 0 || u.countryId == owner) continue;
+            const Country* uc = m_countries.getCountry(u.countryId);
+            if (!uc) continue;
+            const CountryRelation& r = m_relations[uc->isoA3][oc->isoA3];
+            if (r.war || r.alliance) continue;
+            work.push_back({pid, u.countryId});
+        }
+    }
+    // withdrawArmiesAfterPeace already knows how to walk a stack home and how
+    // to intern one that cannot get there, so this reuses it rather than
+    // growing a second, subtly different copy of that logic.
+    for (const auto& w : work) {
+        const int owner = m_provinceCountryLookup[w.pid];
+        withdrawArmiesAfterPeace(owner, w.cid);
+    }
+}
+
+// === noteRealConquest ===
+void Game::noteRealConquest(int newOwner, int prevOwner) {
+    if (newOwner <= 0 || prevOwner <= 0 || newOwner == prevOwner) return;
+    if (newOwner >= REBEL_CID_MIN || prevOwner >= REBEL_CID_MIN) return;
+    if (newOwner == UNC_CID || newOwner == BLC_CID || newOwner == SPC_CID) return;
+    if (prevOwner == UNC_CID || prevOwner == BLC_CID || prevOwner == SPC_CID) return;
+    m_realConquests++;
+}
+
+// === atWarCids ===
+bool Game::atWarCids(int a, int b) const {
+    if (a <= 0 || b <= 0 || a == b) return false;
+    const Country* ca = m_countries.getCountry(a);
+    const Country* cb = m_countries.getCountry(b);
+    if (!ca || !cb) return false;
+    auto it = m_relations.find(ca->isoA3);
+    if (it == m_relations.end()) return false;
+    auto jt = it->second.find(cb->isoA3);
+    return jt != it->second.end() && jt->second.war;
+}
+
+// === shipMaxRangePx / shipMaxRangeDeg ===
+//
+// ONE RULE FOR EVERY FLEET. These numbers used to exist only inside the ship
+// action overlay in Game_Render -- so they were the PLAYER's rule and nothing
+// else obeyed them. The AI steamed a flat 18 degrees a turn whatever it was
+// sailing and bombarded at a flat 10, while the resolver checked no range at
+// all, which made an AI boat cover 410 px against a player boat's 200 and let
+// every AI hull ignore the navySpeedPct research the player benefits from.
+//
+// Owner-scoped, not player-scoped: getTotalEffect defaults to the human's
+// research, so even the overlay was crediting the player's doctrine to
+// whatever hull happened to be selected.
+float Game::shipMaxRangePx(const NavyShip& s) const {
+    const float base = (s.type == "boat")      ? 200.0f :
+                       (s.type == "destroyer") ? 350.0f :
+                       (s.type == "carrier")   ? 450.0f : 300.0f;
+    return base * (1.0f + getTotalEffect("navySpeedPct", s.countryId) / 100.0f);
+}
+
+double Game::shipMaxRangeDeg(const NavyShip& s) const {
+    // Equirectangular: 8192 px spans 360 degrees of longitude and 4096 spans
+    // 180 of latitude, so both axes carry the same pixels-per-degree and one
+    // conversion serves a Euclidean distance in either space.
+    const int w = m_landSea.getWidth();
+    if (w <= 0) return 18.0;   // pre-load fallback: the old constant
+    return (double)shipMaxRangePx(s) / ((double)w / 360.0);
+}
+
+// === buildNavGrid ===
+//
+// See Game::NavGrid. One pass over the land raster, then a flood fill to label
+// which stretches of water actually join up.
+void Game::buildNavGrid() {
+    m_nav = NavGrid{};
+    const int W = m_landSea.getWidth(), H = m_landSea.getHeight();
+    if (W <= 0 || H <= 0) return;
+
+    // 32 raster pixels a side. On the shipped 8192x4096 maps that is a 256x128
+    // grid: small enough to flood fill in a blink, fine enough that no strait a
+    // fleet could actually use is missed.
+    const int CELL = 32;
+    m_nav.cell = CELL;
+    m_nav.w = (W + CELL - 1) / CELL;
+    m_nav.h = (H + CELL - 1) / CELL;
+    const size_t n = (size_t)m_nav.w * m_nav.h;
+    m_nav.navigable.assign(n, 0);
+    m_nav.px.assign(n, -1);
+    m_nav.py.assign(n, -1);
+    m_nav.component.assign(n, -1);
+
+    // A cell counts as navigable if it holds ANY water, and remembers the water
+    // pixel closest to its middle. Storing a real pixel rather than the cell
+    // centre is what keeps every waypoint at sea: a coastal cell's geometric
+    // centre is very often on the beach.
+    for (int cy = 0; cy < m_nav.h; ++cy) {
+        for (int cx = 0; cx < m_nav.w; ++cx) {
+            const int x0 = cx * CELL, y0 = cy * CELL;
+            const int x1 = std::min(x0 + CELL, W), y1 = std::min(y0 + CELL, H);
+            const double mx = (x0 + x1) * 0.5, my = (y0 + y1) * 0.5;
+            double bestD = 1e18; int bx = -1, by = -1;
+            for (int y = y0; y < y1; ++y)
+                for (int x = x0; x < x1; ++x) {
+                    if (m_landSea.isLand(x, y)) continue;
+                    const double d = (x - mx) * (x - mx) + (y - my) * (y - my);
+                    if (d < bestD) { bestD = d; bx = x; by = y; }
+                }
+            if (bx >= 0) {
+                const size_t i = (size_t)cy * m_nav.w + cx;
+                m_nav.navigable[i] = 1;
+                m_nav.px[i] = bx; m_nav.py[i] = by;
+            }
+        }
+    }
+
+    // Connected components, 8-way, wrapping in x because the world does.
+    int label = 0;
+    std::vector<int> stack;
+    for (size_t seed = 0; seed < n; ++seed) {
+        if (!m_nav.navigable[seed] || m_nav.component[seed] >= 0) continue;
+        m_nav.component[seed] = label;
+        stack.clear();
+        stack.push_back((int)seed);
+        while (!stack.empty()) {
+            const int cur = stack.back(); stack.pop_back();
+            const int cx = cur % m_nav.w, cy = cur / m_nav.w;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (!dx && !dy) continue;
+                    int nx = cx + dx, ny = cy + dy;
+                    if (ny < 0 || ny >= m_nav.h) continue;
+                    if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
+                    const size_t ni = (size_t)ny * m_nav.w + nx;
+                    if (!m_nav.navigable[ni] || m_nav.component[ni] >= 0) continue;
+                    m_nav.component[ni] = label;
+                    stack.push_back((int)ni);
+                }
+        }
+        label++;
+    }
+    printf("  Sea routing: %dx%d cells, %d water body(ies)\n", m_nav.w, m_nav.h, label);
+}
+
+// Nearest navigable cell to a lon/lat, searching outward. A ship sitting in a
+// cell the grid calls land (it holds no water at this resolution) still has to
+// be able to plan.
+int Game::navCellNear(const NavGrid& g, int px, int py) {
+    if (!g.ready()) return -1;
+    const int cx = std::clamp(px / g.cell, 0, g.w - 1);
+    const int cy = std::clamp(py / g.cell, 0, g.h - 1);
+    for (int r = 0; r < 8; ++r) {
+        for (int dy = -r; dy <= r; ++dy)
+            for (int dx = -r; dx <= r; ++dx) {
+                if (r > 0 && std::abs(dx) != r && std::abs(dy) != r) continue;
+                int nx = cx + dx, ny = cy + dy;
+                if (ny < 0 || ny >= g.h) continue;
+                if (nx < 0) nx += g.w; else if (nx >= g.w) nx -= g.w;
+                const size_t i = (size_t)ny * g.w + nx;
+                if (g.navigable[i]) return (int)i;
+            }
+    }
+    return -1;
+}
+
+bool Game::navReachable(double lon1, double lat1, double lon2, double lat2) const {
+    if (!m_nav.ready()) return true;   // no grid: do not block anything
+    int x1, y1, x2, y2;
+    m_landSea.lonLatToPixel((float)lon1, (float)lat1, x1, y1);
+    m_landSea.lonLatToPixel((float)lon2, (float)lat2, x2, y2);
+    const int a = navCellNear(m_nav, x1, y1), b = navCellNear(m_nav, x2, y2);
+    if (a < 0 || b < 0) return false;
+    return m_nav.component[a] == m_nav.component[b];
+}
+
+bool Game::navLineClear(double lon1, double lat1, double lon2, double lat2) const {
+    const double dLon = lon2 - lon1, dLat = lat2 - lat1;
+    const double dist = std::sqrt(dLon * dLon + dLat * dLat);
+    // DELIBERATELY TOLERANT: about one sample per third of a routing cell.
+    //
+    // Sampling per raster pixel was tried and is WORSE. This test only decides
+    // how far ahead along the route to aim; processNavyMovement then walks the
+    // segment and stops at the last water it finds. So an optimistic long hop
+    // that gets partially blocked still delivers more progress than a cautious
+    // short one, and being strict here just makes fleets crawl between adjacent
+    // cells. Measured over two 300-turn scenario runs, share of embarkations
+    // reaching a hostile shore: no check 39%, tolerant check 59%, per-pixel
+    // check 43%.
+    const double degPerCell = 360.0 * (double)m_nav.cell /
+                              std::max(1.0, (double)m_landSea.getWidth());
+    const int steps = std::clamp((int)std::ceil(dist / std::max(1e-6, degPerCell / 3.0)), 2, 512);
+    for (int i = 0; i <= steps; ++i) {
+        const double t = (double)i / (double)steps;
+        if (m_landSea.isLand((float)(lon1 + dLon * t), (float)(lat1 + dLat * t)))
+            return false;
+    }
+    return true;
+}
+
+bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
+                    std::vector<std::pair<double, double>>& out) const {
+    out.clear();
+    if (!m_nav.ready()) return false;
+    int x1, y1, x2, y2;
+    m_landSea.lonLatToPixel((float)fromLon, (float)fromLat, x1, y1);
+    m_landSea.lonLatToPixel((float)toLon, (float)toLat, x2, y2);
+    const int start = navCellNear(m_nav, x1, y1), goal = navCellNear(m_nav, x2, y2);
+    if (start < 0 || goal < 0) return false;
+    if (m_nav.component[start] != m_nav.component[goal]) return false;
+    if (start == goal) return true;   // already there; no waypoints needed
+
+    // Plain BFS. The grid is small and every hop costs the same, so the extra
+    // machinery of A* would buy nothing measurable here.
+    const size_t n = m_nav.navigable.size();
+    std::vector<int32_t> prev(n, -2);
+    std::deque<int> q;
+    prev[start] = -1;
+    q.push_back(start);
+    bool found = false;
+    while (!q.empty() && !found) {
+        const int cur = q.front(); q.pop_front();
+        const int cx = cur % m_nav.w, cy = cur / m_nav.w;
+        for (int dy = -1; dy <= 1 && !found; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                if (!dx && !dy) continue;
+                int nx = cx + dx, ny = cy + dy;
+                if (ny < 0 || ny >= m_nav.h) continue;
+                if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
+                const size_t ni = (size_t)ny * m_nav.w + nx;
+                if (!m_nav.navigable[ni] || prev[ni] != -2) continue;
+                prev[ni] = cur;
+                if ((int)ni == goal) { found = true; break; }
+                q.push_back((int)ni);
+            }
+    }
+    if (!found) return false;
+
+    std::vector<int> rev;
+    for (int c = goal; c >= 0; c = prev[c]) rev.push_back(c);
+    out.reserve(rev.size());
+    for (auto it = rev.rbegin(); it != rev.rend(); ++it) {
+        if (*it == start) continue;
+        float lon, lat;
+        m_landSea.pixelToLonLat(m_nav.px[*it], m_nav.py[*it], lon, lat);
+        out.emplace_back((double)lon, (double)lat);
+    }
+    return !out.empty();
+}
+
+// === nudgeShipToWater ===
+//
+// Move a hull sitting on land to the nearest navigable pixel, searching
+// outward in rings. Returns false and leaves the ship alone if no water turns
+// up inside the cap -- an inland sea barely wider than the ship, or a map whose
+// raster disagrees with its own ship placement, is better left visibly wrong
+// than teleported across a continent.
+bool Game::nudgeShipToWater(NavyShip& s) {
+    const int w = m_landSea.getWidth(), h = m_landSea.getHeight();
+    if (w <= 0 || h <= 0) return false;
+    int px, py;
+    m_landSea.lonLatToPixel((float)s.lon, (float)s.lat, px, py);
+    // 64 pixels is about as far as a coastal misplacement ever is; beyond that
+    // the ship was not "just inland", and guessing gets worse, not better.
+    const int MAX_R = 64;
+    for (int r = 1; r <= MAX_R; ++r) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dx = -r; dx <= r; ++dx) {
+                // ring only -- the interior was covered by a smaller r
+                if (std::abs(dx) != r && std::abs(dy) != r) continue;
+                int nx = px + dx, ny = py + dy;
+                if (nx < 0) nx += w; else if (nx >= w) nx -= w;  // world wraps in x
+                if (ny < 0 || ny >= h) continue;
+                if (m_landSea.isLand(nx, ny)) continue;
+                float lon, lat;
+                m_landSea.pixelToLonLat(nx, ny, lon, lat);
+                s.lon = lon; s.lat = lat;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // === processUpgrades ===
 void Game::processUpgrades() {
     // Process pending building upgrades
     for (auto it = m_pendingUpgrades.begin(); it != m_pendingUpgrades.end(); ) {
         it->turnsRemaining--;
         if (it->turnsRemaining <= 0) {
-            auto indIt = m_provinceIndustry.find(it->provinceId);
-            if (indIt != m_provinceIndustry.end()) {
-                if (it->type == "industry") {
-                    indIt->second.level = it->targetLevel;
-                    indIt->second.income = it->targetLevel * 2.0f; // Simplified income
-                } else if (it->type == "fortification") {
-                    indIt->second.fortification = it->targetLevel;
-                }
-            }
-            auto ptIt = m_provincePorts.find(it->provinceId);
-            if (it->type == "port" && ptIt != m_provincePorts.end()) {
-                ptIt->second.level = it->targetLevel;
+            // INDEX, DO NOT FIND. These three maps only carry entries for what
+            // the map file shipped, so a province with no industry and no port
+            // is absent from them entirely -- which is exactly the province a
+            // FIRST factory or a NEW port gets built in. Looking the entry up
+            // and skipping when it was missing quietly threw away every such
+            // build after the money had already been taken and the turns had
+            // already been waited out, for the AI and the player alike.
+            if (it->type == "industry") {
+                auto& ind = m_provinceIndustry[it->provinceId];
+                ind.level = it->targetLevel;
+                ind.income = it->targetLevel * 2.0f; // Simplified income
+            } else if (it->type == "fortification") {
+                m_provinceIndustry[it->provinceId].fortification = it->targetLevel;
+            } else if (it->type == "port") {
+                m_provincePorts[it->provinceId].level = it->targetLevel;
             }
             it = m_pendingUpgrades.erase(it);
         } else ++it;

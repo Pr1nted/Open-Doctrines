@@ -19,6 +19,21 @@
 #include <ctime>
 
 
+// What an upgrade costs and how long it takes.
+//
+// At file scope because two things now read them: the province panel's own
+// buttons and the bulk paint below. They used to be function-local statics
+// inside drawCountryPanel, which was fine while it was the only caller and is
+// exactly how a second caller ends up with its own slightly different copy.
+static const int IND_COST[]   = {0, 1, 10, 15, 25, 50, 75, 100, 150, 200, 300};
+static const int IND_TURNS[]  = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+static const int FORT_COST[]  = {0, 20, 30, 50, 100, 200};
+static const int FORT_TURNS[] = {0, 1, 1, 1, 1, 1};
+
+static constexpr int IND_MAX_LEVEL  = (int)(sizeof(IND_COST) / sizeof(IND_COST[0])) - 1;
+static constexpr int FORT_MAX_LEVEL = (int)(sizeof(FORT_COST) / sizeof(FORT_COST[0])) - 1;
+static constexpr int PORT_MAX_LEVEL = 3;
+
 void Game::drawBottomPanel() {
     const int barW = std::min(880, m_screenW - 32);
     const int barH = 80;
@@ -1057,6 +1072,60 @@ void Game::drawCountryPanel() {
             int areaH = totalRows * (btnH + btnGap);
             int btnStartY = panelY + panelH - 56 - areaH - 6;
 
+            // ── What each side's word is worth to the other ──
+            //
+            // Both directions, always, because it is symmetric and the player
+            // ought to be able to see the bill for their own lying as easily as
+            // somebody else's. Hidden entirely while both are intact: a row
+            // reading "trusted / trusted" on every panel from turn one teaches
+            // nothing and takes up the space the buttons need.
+            {
+                const float theirs = credibility(targetC->isoA3, playerC->isoA3);
+                const float ours   = credibility(playerC->isoA3, targetC->isoA3);
+                if (theirs < 0.999f || ours < 0.999f) {
+                    auto word = [](float c) {
+                        return c > 0.85f ? "trusted"
+                             : c > 0.6f  ? "doubted"
+                             : c > 0.3f  ? "unreliable" : "worthless";
+                    };
+                    auto tint = [](float c) {
+                        return c > 0.85f ? Color{150, 200, 155, 255}
+                             : c > 0.6f  ? Color{215, 200, 130, 255}
+                             : c > 0.3f  ? Color{225, 160, 95, 255}
+                                         : Color{225, 110, 110, 255};
+                    };
+                    const int wy = btnStartY - 52;
+                    DrawText("Their word:", panelX + pad, wy, 13, Color{170, 170, 180, 255});
+                    DrawText(word(theirs), panelX + pad + 84, wy, 13, tint(theirs));
+                    DrawText("Yours:", panelX + pad + 168, wy, 13, Color{170, 170, 180, 255});
+                    DrawText(word(ours), panelX + pad + 216, wy, 13, tint(ours));
+                }
+            }
+
+            // ── What you would say, if you declared ──
+            //
+            // A cycler sitting above the buttons, not a step in front of them.
+            // Declaring war is the same single click it has always been; this
+            // only decides what goes in the announcement, and "State no reason"
+            // is the default, so a player who does not care never meets it.
+            bool offersWar = false;
+            for (auto& ab : acts) if (ab.action == "declare_war") offersWar = true;
+            if (offersWar) {
+                Rectangle cbBtn = {(float)(panelX + pad), (float)(btnStartY - 30),
+                                   (float)fullBtnW, 24.0f};
+                const bool cbHover = CheckCollisionPointRec(getMouse(), cbBtn);
+                DrawRectangleRounded(cbBtn, 0.15f, 6,
+                                     cbHover ? Color{70, 44, 44, 255} : Color{46, 30, 30, 220});
+                DrawRectangleRoundedLines(cbBtn, 0.15f, 6, Color{110, 70, 70, 200});
+                const std::string cbLbl =
+                    std::string("If you declare: ") + warGoalTextOwn(m_declareWarGoal);
+                DrawText(cbLbl.c_str(), (int)cbBtn.x + 8, (int)cbBtn.y + 5, 13,
+                         m_declareWarGoal == WAR_GOAL_NONE ? Color{150, 145, 145, 255}
+                                                           : Color{230, 195, 160, 255});
+                if (cbHover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+                    m_declareWarGoal = (m_declareWarGoal + 1) % WAR_GOAL_COUNT;
+            }
+
             int col = 0, row = 0;
             for (auto& ab : acts) {
                 int btnW = (singleRow || (row == totalRows - 1 && col == 0 && rows % 2 == 1)) ? fullBtnW : halfBtnW;
@@ -1119,7 +1188,14 @@ void Game::drawCountryPanel() {
                         if (!requestAllyJoinWar(targetC->isoA3, why))
                             addNotification(why, Color{220, 170, 90, 255}, 5.0f);
                     } else {
-                        m_pendingDiplomaticActions.push_back({playerC->isoA3, targetC->isoA3, ab.action, 1});
+                        PendingDiplomaticAction pda{playerC->isoA3, targetC->isoA3,
+                                                    ab.action, 1};
+                        // Whatever the player has the goal cycler set to, and
+                        // WAR_GOAL_NONE if they have never touched it. The
+                        // declaration itself is unchanged: same click, same
+                        // turn, nothing to satisfy first.
+                        if (ab.action == "declare_war") pda.statedGoal = m_declareWarGoal;
+                        m_pendingDiplomaticActions.push_back(std::move(pda));
                     }
                 }
                 col++;
@@ -1146,15 +1222,13 @@ void Game::drawCountryPanel() {
         for (auto& ps : m_pendingSpecializations)
             if (ps.provinceId == selPid) specPending = true;
 
-        static const int IND_COST[] = {0, 1, 10, 15, 25, 50, 75, 100, 150, 200, 300};
-        static const int IND_TURNS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
         auto cs = computeCountryIncome(m_playerCountryId);
         double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
         // Clamp both ends: `level` comes unvalidated from resources.json and
         // from save deltas, and a negative or >10 value used to index these
         // fixed-size tables out of bounds, printing genuine garbage.
-        static const int IND_MAX_LV = (int)(sizeof(IND_COST) / sizeof(IND_COST[0])) - 1;
+        static const int IND_MAX_LV = IND_MAX_LEVEL;
         int nextLv = std::clamp(indLevel + 1, 0, IND_MAX_LV);
         bool nextLvValid = (indLevel + 1) >= 0 && (indLevel + 1) <= IND_MAX_LV;
         // "Industry cost -50%" is registered as a POSITIVE 50, so this has to
@@ -1275,8 +1349,6 @@ void Game::drawCountryPanel() {
         for (auto& pu : m_pendingUpgrades)
             if (pu.provinceId == selPid && pu.type == "fortification") fortPending = true;
 
-        static const int FORT_COST[] = {0, 20, 30, 50, 100, 200};
-        static const int FORT_TURNS[] = {0, 1, 1, 1, 1, 1};
 
         auto cs = computeCountryIncome(m_playerCountryId);
         double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
@@ -1982,8 +2054,28 @@ void Game::drawInner() {
         return GetWorldToScreen2D(wp, cam);
     };
     // Draw industry circles (if in industry view) using world-to-screen coords
+    //
+    // TWO PASSES, and that is the whole reason this loop is shaped as it is.
+    // The rings come from rlgl's default white texture and the numeral comes
+    // from the font atlas, so ring-numeral-ring-numeral made `rlSetTexture`
+    // flush the batch and block on the GPU twice per province. On a world map
+    // with a couple of hundred industrial provinces that was several hundred
+    // round trips a frame: `DrawCircleSector` alone measured 32% of the main
+    // thread, nearly all of it waiting on a semaphore inside glBufferSubData,
+    // and it held the game to 27fps with no frame cap at all.
+    //
+    // Every ring first, then every numeral, so the texture changes twice for
+    // the whole map instead of twice per province. Identical pixels except
+    // where two circles OVERLAP, where a numeral now sits above the
+    // neighbour's ring rather than under it -- and overlapping circles are
+    // already unreadable, so that is the better of the two.
     if (m_activeViewTab == 2) {
         const Camera2D& cam = m_renderer->getCamera();
+
+        struct IndustryDot { Vector2 sp; float r; Color spec; int level; };
+        static std::vector<IndustryDot> dots;   // reused: this runs every frame
+        dots.clear();
+
         for (auto& [pid, ind] : m_provinceIndustry) {
             if (ind.level <= 0) continue;
             auto cit = m_provinceCenters.find(pid);
@@ -1998,22 +2090,31 @@ void Game::drawInner() {
             else if (ind.specialization == "Gemstones") specCol = Color{100, 200, 255, 255};
             else if (ind.specialization == "Metal") specCol = Color{200, 200, 200, 255};
             else specCol = Color{120, 120, 120, 255};
-            float sRadius = std::max((12 + ind.level) * cam.zoom, 6.0f);
+            dots.push_back(IndustryDot{sp, std::max((12 + ind.level) * cam.zoom, 6.0f),
+                                       specCol, ind.level});
+        }
+
+        // ── pass 1: every ring, one texture ──
+        for (const IndustryDot& d : dots) {
             // Shadow behind circle
-            DrawCircleV({sp.x + 2, sp.y + 2}, sRadius + 2, Color{0, 0, 0, 100});
+            DrawCircleV({d.sp.x + 2, d.sp.y + 2}, d.r + 2, Color{0, 0, 0, 100});
             // White border (2 concentric lines instead of 3)
-            DrawCircleLines(sp.x, sp.y, sRadius, WHITE);
-            DrawCircleLines(sp.x, sp.y, sRadius - 1, WHITE);
+            DrawCircleLines(d.sp.x, d.sp.y, d.r, WHITE);
+            DrawCircleLines(d.sp.x, d.sp.y, d.r - 1, WHITE);
             // Specialization color ring (skip at low zoom)
             if (cam.zoom > 0.3f)
-                DrawCircleLines(sp.x, sp.y, sRadius - 2, specCol);
+                DrawCircleLines(d.sp.x, d.sp.y, d.r - 2, d.spec);
+        }
+
+        // ── pass 2: every numeral, one texture ──
+        // Skip numeral text at low zoom (too small to read)
+        if (cam.zoom > 0.4f) {
             const char* roman[] = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
-            const char* numeral = (ind.level >= 0 && ind.level <= 10) ? roman[ind.level] : "";
-            // Skip numeral text at low zoom (too small to read)
-            if (cam.zoom > 0.4f) {
-                int fs = (int)((16 + (ind.level > 5 ? 4 : 0)) * cam.zoom);
+            for (const IndustryDot& d : dots) {
+                const char* numeral = (d.level >= 0 && d.level <= 10) ? roman[d.level] : "";
+                int fs = (int)((16 + (d.level > 5 ? 4 : 0)) * cam.zoom);
                 int tw = MeasureText(numeral, fs);
-                DrawText(numeral, (int)(sp.x - tw / 2), (int)(sp.y - fs / 2), fs, WHITE);
+                DrawText(numeral, (int)(d.sp.x - tw / 2), (int)(d.sp.y - fs / 2), fs, WHITE);
             }
         }
     }
@@ -2060,8 +2161,33 @@ void Game::drawInner() {
         }
     }
     // ─── Army tab: soldier icons + troop counts ─────
+    //
+    // DRAWN IN TWO PASSES, AND THAT IS THE WHOLE POINT OF THE SHAPE OF THIS
+    // LOOP. Shapes come from rlgl's default white texture and text comes from
+    // the font atlas, so drawing a marker's triangles, then its number, then
+    // the next marker's triangles makes `rlSetTexture` flush the batch and
+    // block on the GPU twice per marker. With several hundred markers on a
+    // world map that was ~800 round trips a frame -- `DrawCircleSector` alone
+    // was 32% of the main thread, nearly all of it waiting on a semaphore
+    // inside glBufferSubData, and it held the game to 27fps uncapped.
+    //
+    // Every shape first, then every label, so the texture changes twice for the
+    // whole set instead of twice per marker. The pixels are the same, with one
+    // honest exception: where two markers OVERLAP, a label now draws above the
+    // neighbour's body instead of under it. Markers that overlap are already
+    // unreadable, and this is the more legible of the two.
     if (m_activeViewTab == 5) {
         const Camera2D& cam = m_renderer->getCamera();
+
+        struct ArmyMarker {
+            int   pid;
+            float sx, topY, botY, bodyW, headR;
+            Color accent;
+            long long total;
+        };
+        static std::vector<ArmyMarker> markers;   // reused; this runs every frame
+        markers.clear();
+
         for (auto& [pid, units] : m_provinceArmies) {
             if (units.empty()) continue;
             auto cit = m_provinceCenters.find(pid);
@@ -2091,52 +2217,60 @@ void Game::drawInner() {
             if (soldierSize > maxSize) soldierSize = maxSize;
             float bodyW = soldierSize * 1.3f;
             float h = soldierSize * 1.3f;
-            float topY = sy - h * 0.5f;
-            float botY = sy + h * 0.5f;
-            // THE TORSO WAS NEVER DRAWN. DrawTriangle wants its vertices
-            // counter-clockwise -- raylib says so in the header, and rlgl culls
-            // back faces -- and these two were the only triangles in the file
-            // wound the other way: shoulders-left, shoulders-right, feet. Every
-            // triangle that does appear (the ships just below, the map icons
-            // above) goes top, bottom-left, bottom-right. So the soldier was a
-            // floating head with a number over it. Order is now
-            // shoulder-left, feet, shoulder-right, which is the same winding as
-            // the ships and leaves the shape itself unchanged.
-            //
-            // The body carries the OWNER's colour rather than being white,
-            // because the question being asked of this icon is "whose army is
-            // standing here" -- on foreign soil the province underneath is the
-            // other country's colour, so a white body answered nothing. White
-            // is kept for the outline and the head, which is what keeps the
-            // silhouette readable over a province of a similar colour.
-            DrawTriangle({sx - bodyW / 2 + 2, topY + 2},
-                         {sx + 2, botY + 2},
-                         {sx + bodyW / 2 + 2, topY + 2}, Color{0, 0, 0, 80});
-            DrawTriangle({sx - bodyW / 2, topY},
-                         {sx, botY},
-                         {sx + bodyW / 2, topY}, accent);
-            DrawTriangleLines({sx - bodyW / 2, topY},
-                              {sx, botY},
-                              {sx + bodyW / 2, topY}, WHITE);
-            float headR = bodyW * 0.28f;
-            DrawCircleV({sx, topY - headR * 0.3f}, headR, WHITE);
-            DrawCircleLinesV({sx, topY - headR * 0.3f}, headR, Color{0, 0, 0, 120});
-            const char* countTxt = TextFormat("%s", formatTroops(totalCount).c_str());
+            markers.push_back(ArmyMarker{pid, sx, sy - h * 0.5f, sy + h * 0.5f,
+                                         bodyW, bodyW * 0.28f, accent, totalCount});
+        }
+
+        // ── pass 1: every shape, one texture ──
+        //
+        // THE TORSO WAS NEVER DRAWN. DrawTriangle wants its vertices
+        // counter-clockwise -- raylib says so in the header, and rlgl culls
+        // back faces -- and these two were the only triangles in the file
+        // wound the other way: shoulders-left, shoulders-right, feet. Every
+        // triangle that does appear (the ships just below, the map icons
+        // above) goes top, bottom-left, bottom-right. So the soldier was a
+        // floating head with a number over it. Order is now
+        // shoulder-left, feet, shoulder-right, which is the same winding as
+        // the ships and leaves the shape itself unchanged.
+        //
+        // The body carries the OWNER's colour rather than being white,
+        // because the question being asked of this icon is "whose army is
+        // standing here" -- on foreign soil the province underneath is the
+        // other country's colour, so a white body answered nothing. White
+        // is kept for the outline and the head, which is what keeps the
+        // silhouette readable over a province of a similar colour.
+        for (const ArmyMarker& m : markers) {
+            DrawTriangle({m.sx - m.bodyW / 2 + 2, m.topY + 2},
+                         {m.sx + 2, m.botY + 2},
+                         {m.sx + m.bodyW / 2 + 2, m.topY + 2}, Color{0, 0, 0, 80});
+            DrawTriangle({m.sx - m.bodyW / 2, m.topY},
+                         {m.sx, m.botY},
+                         {m.sx + m.bodyW / 2, m.topY}, m.accent);
+            DrawTriangleLines({m.sx - m.bodyW / 2, m.topY},
+                              {m.sx, m.botY},
+                              {m.sx + m.bodyW / 2, m.topY}, WHITE);
+            DrawCircleV({m.sx, m.topY - m.headR * 0.3f}, m.headR, WHITE);
+            DrawCircleLinesV({m.sx, m.topY - m.headR * 0.3f}, m.headR, Color{0, 0, 0, 120});
+        }
+
+        // ── pass 2: every label, one texture ──
+        for (const ArmyMarker& m : markers) {
+            const std::string counted = formatTroops(m.total);
             int fs = (int)(11 * cam.zoom);
             if (fs < 8) fs = 8;
-            int tw = MeasureText(countTxt, fs);
-            DrawText(countTxt, (int)(sx - tw / 2), (int)(topY - fs - 2), fs, WHITE);
+            int tw = MeasureText(counted.c_str(), fs);
+            DrawText(counted.c_str(), (int)(m.sx - tw / 2), (int)(m.topY - fs - 2), fs, WHITE);
             // "Disbanding..." text for pending disband orders
             for (auto& pd : m_pendingDisbandOrders) {
-                if (pd.provinceId != pid) continue;
+                if (pd.provinceId != m.pid) continue;
                 const char* dtext = "Disbanding...";
                 int dfs = (int)(10 * cam.zoom);
                 if (dfs < 8) dfs = 8;
                 int dtw = MeasureText(dtext, dfs);
                 // Shadow
-                DrawText(dtext, (int)(sx - dtw / 2 + 1), (int)(botY + 3), dfs, Color{0, 0, 0, 160});
+                DrawText(dtext, (int)(m.sx - dtw / 2 + 1), (int)(m.botY + 3), dfs, Color{0, 0, 0, 160});
                 // White text
-                DrawText(dtext, (int)(sx - dtw / 2), (int)(botY + 2), dfs, WHITE);
+                DrawText(dtext, (int)(m.sx - dtw / 2), (int)(m.botY + 2), dfs, WHITE);
                 break;
             }
         }
@@ -2661,6 +2795,36 @@ void Game::drawInner() {
                 DrawCircle((int)(sp.x + 1), (int)(sp.y + 1), shipSize * 0.6f, Color{0, 0, 0, 80});
                 DrawCircle((int)sp.x, (int)sp.y, shipSize * 0.6f, shipCol);
                 DrawCircleLines((int)sp.x, (int)sp.y, shipSize * 0.6f, WHITE);
+            } else if (ship.type == "battleship") {
+                // Biggest hull on the map, outlined so it reads as a capital.
+                const float w = shipSize * 1.6f, h = shipSize * 0.9f;
+                DrawRectangle((int)(sp.x - w * 0.5f + 1), (int)(sp.y - h * 0.5f + 1),
+                              (int)w, (int)h, Color{0, 0, 0, 80});
+                DrawRectangle((int)(sp.x - w * 0.5f), (int)(sp.y - h * 0.5f),
+                              (int)w, (int)h, shipCol);
+                DrawRectangleLines((int)(sp.x - w * 0.5f), (int)(sp.y - h * 0.5f),
+                                   (int)w, (int)h, WHITE);
+            } else {
+                // ANYTHING ELSE STILL GETS A HULL.
+                //
+                // This chain had no final branch, and the ring and health bar
+                // below it are drawn unconditionally -- so a ship of an
+                // unlisted type rendered as a floating health bar with nothing
+                // under it. The shipped scenarios carry 111 battleships, and
+                // carried 206 cruisers before those were retired; none of them
+                // had a case here, so every one was invisible.
+                //
+                // A diamond is deliberately generic: whatever a future type is
+                // called, it appears on the map from the first frame, and the
+                // worst outcome of forgetting to add a shape is a ship that
+                // looks plain rather than one that is not there.
+                const float r = shipSize * 0.6f;
+                const Vector2 d[4] = {{sp.x, sp.y - r}, {sp.x + r, sp.y},
+                                      {sp.x, sp.y + r}, {sp.x - r, sp.y}};
+                DrawTriangle(d[0], d[3], d[1], shipCol);
+                DrawTriangle(d[1], d[3], d[2], shipCol);
+                DrawTriangleLines(d[0], d[3], d[1], WHITE);
+                DrawTriangleLines(d[1], d[3], d[2], WHITE);
             }
 
             float healthPct = ship.health / 100.0f;
@@ -2708,12 +2872,10 @@ void Game::drawInner() {
             Color lineCol = Color{100,100,150,120};
             bool validDest = false;
 
-            // Base range per type
-            float baseRange = (srcShip.type=="boat") ? 200.0f :
-                              (srcShip.type=="destroyer") ? 350.0f :
-                              (srcShip.type=="carrier") ? 450.0f : 300.0f;
-            float speedBonus = getTotalEffect("navySpeedPct");
-            float maxRange = baseRange * (1.0f + speedBonus/100.0f);
+            // Range per type, from the shared rule the resolvers enforce --
+            // see Game::shipMaxRangePx. Inlined here it was the player's rule
+            // alone, and it credited the human's navySpeedPct to any hull.
+            float maxRange = shipMaxRangePx(srcShip);
 
             // Draw range circle (more visible)
             float screenRange = maxRange * cam.zoom;
@@ -3660,6 +3822,10 @@ void Game::drawInner() {
     }
 
     drawBottomPanel();
+    // In the same toolbar row as the resource picker and the navy filters,
+    // drawn after the bar so it sits above it rather than under.
+    drawBulkPaintStrip();
+    drawBulkConfirmPanel();
     drawSidebarButtons();
     if (m_renderer->getSelectedProvinceId() > 0 || !m_selectedShipIndices.empty()) drawCountryPanel();
     // ─── Bottom-left stub buttons (only when not processing turn) ───
@@ -3720,4 +3886,317 @@ void Game::drawInner() {
 
     // Mod panels last, so a mod can never paint over a game dialog.
     drawModPanels();
+}
+
+// ═══════════════════════════════════════════════ bulk upgrading, by painting ══
+//
+// Queueing a hundred industry upgrades one province at a time is the complaint
+// this answers. Hold the mouse down and sweep it over your territory; every
+// province it crosses that CAN take the upgrade and that you can pay for gets
+// one queued, and everything else is left alone in silence.
+//
+// The rules are not restated here. `queueUpgrade` is the one place that decides
+// whether a province may be upgraded and what it costs, and the province
+// panel's own buttons now go through it too -- so the sweep and the button can
+// never disagree about the price of the same thing.
+
+const char* Game::bulkPaintType() const {
+    // Taken from the view you are already in rather than from a mode picker of
+    // its own. Painting forts while looking at the industry map is not
+    // something anyone means to do.
+    switch (m_activeViewTab) {
+        case 2: return "industry";
+        case 3: return "fortification";
+        case 6: return "port";
+        default: return nullptr;
+    }
+}
+
+const char* Game::bulkPaintLabel() const {
+    const char* t = bulkPaintType();
+    if (!t) return "";
+    if (strcmp(t, "industry") == 0) return "industry";
+    if (strcmp(t, "fortification") == 0) return "forts";
+    return "ports";
+}
+
+bool Game::upgradeQuote(int provinceId, const char* type,
+                        float& cost, int& nextLevel, int& turns) const {
+    cost = 0.0f; nextLevel = 0; turns = 0;
+    if (provinceId <= 0 || !type) return false;
+    if (m_playerCountryId == SPC_CID) return false;      // spectators build nothing
+
+    const Province* p = m_provinces.getProvinceById(provinceId);
+    if (!p || p->countryId != m_playerCountryId) return false;
+
+    // Something already building here is not a second thing to buy.
+    for (const PendingUpgrade& pu : m_pendingUpgrades)
+        if (pu.provinceId == provinceId && pu.type == type) return false;
+
+    // "Industry cost -50%" is registered as a POSITIVE 50, so this subtracts.
+    const float costMod = std::max(0.0f, 1.0f - getTotalEffect("industryCostPct") / 100.0f);
+
+    if (strcmp(type, "industry") == 0) {
+        auto it = m_provinceIndustry.find(provinceId);
+        const int level = (it != m_provinceIndustry.end()) ? it->second.level : 0;
+        const int next = level + 1;
+        if (next < 0 || next > IND_MAX_LEVEL) return false;            // hard cap
+        if (level >= getResearchedIndustryLevel()) return false;       // research cap
+        cost = (float)IND_COST[next] * costMod;
+        nextLevel = next;
+        turns = IND_TURNS[next];
+        return true;
+    }
+
+    if (strcmp(type, "fortification") == 0) {
+        auto it = m_provinceIndustry.find(provinceId);
+        const int level = (it != m_provinceIndustry.end()) ? it->second.fortification : 0;
+        const int next = level + 1;
+        if (next < 0 || next > FORT_MAX_LEVEL) return false;
+        cost = (float)FORT_COST[next] * costMod;
+        nextLevel = next;
+        turns = FORT_TURNS[next];
+        return true;
+    }
+
+    if (strcmp(type, "port") == 0) {
+        // A port needs somewhere to float.
+        if (!isProvinceCoastal(provinceId)) return false;
+        auto it = m_provincePorts.find(provinceId);
+        const int level = (it != m_provincePorts.end()) ? it->second.level : 0;
+        const int next = level + 1;
+        if (next > PORT_MAX_LEVEL) return false;
+        if (level >= getResearchedPortLevel()) return false;
+        cost = 60.0f * (float)next;
+        nextLevel = next;
+        turns = 3;
+        return true;
+    }
+
+    return false;
+}
+
+bool Game::queueUpgrade(int provinceId, const char* type) {
+    float cost = 0.0f; int next = 0; int turns = 0;
+    if (!upgradeQuote(provinceId, type, cost, next, turns)) return false;
+
+    double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+    if (treasury < cost) return false;
+    treasury -= cost;
+    m_pendingUpgrades.push_back({provinceId, type, next, turns});
+    return true;
+}
+
+void Game::bulkSelectionTotals(float& cost, int& count) const {
+    cost = 0.0f;
+    count = 0;
+    const char* type = bulkPaintType();
+    if (!type) return;
+    for (int pid : m_bulkSelection) {
+        float c = 0.0f; int lv = 0, t = 0;
+        if (upgradeQuote(pid, type, c, lv, t)) { cost += c; count++; }
+    }
+}
+
+void Game::refreshBulkOverlay() {
+    if (!m_renderer) return;
+    if (m_bulkSelection.empty()) { m_renderer->clearBulkSelection(); return; }
+    const std::vector<int> ids(m_bulkSelection.begin(), m_bulkSelection.end());
+    // Amber rather than the selection's white: this is money about to be spent,
+    // not a thing being looked at.
+    m_renderer->setBulkSelection(ids, Color{255, 190, 70, 255});
+}
+
+void Game::clearBulkSelection() {
+    m_bulkSelection.clear();
+    m_bulkPaintStroke.clear();
+    refreshBulkOverlay();
+}
+
+void Game::commitBulkSelection() {
+    const char* type = bulkPaintType();
+    if (!type) return;
+
+    float cost = 0.0f; int count = 0;
+    bulkSelectionTotals(cost, count);
+    if (count == 0) { clearBulkSelection(); return; }
+
+    // ALL OR NOTHING. Buying as many as the treasury reaches would leave the
+    // player with a half-executed plan and no way to tell which half -- and the
+    // set is unordered, so "which half" would not even be stable.
+    const double treasury = m_countries.getAll()[m_playerCountryId].treasury;
+    if (treasury < cost) {
+        addNotification(TextFormat("Not enough money: %d %s cost $%.0f, you have $%.0f.",
+                                   count, bulkPaintLabel(), (double)cost, treasury),
+                        Color{230, 130, 130, 255});
+        return;
+    }
+
+    int queued = 0;
+    for (int pid : m_bulkSelection) if (queueUpgrade(pid, type)) queued++;
+
+    if (queued > 0) {
+        Audio::get().playSfx(strcmp(type, "port") == 0 ? "build_port"
+                                                       : "build_industry", 0.04f);
+        addNotification(TextFormat("Queued %d %s upgrade%s for $%.0f.",
+                                   queued, bulkPaintLabel(),
+                                   queued == 1 ? "" : "s", (double)cost));
+    }
+    clearBulkSelection();
+}
+
+void Game::updateBulkPaint() {
+    const char* type = bulkPaintType();
+    if (!m_bulkPaint || !type) {
+        // Leaving the view that owns the brush puts it down, and drops whatever
+        // was painted with it -- a selection of industry provinces means
+        // nothing once the mode has become forts.
+        if (m_bulkPaint && !type) {
+            m_bulkPaint = false;
+            clearBulkSelection();
+            if (m_renderer) m_renderer->setBlockLeftPan(false);
+        }
+        return;
+    }
+    if (m_paused || m_turnState != TURN_NORMAL) return;
+
+    // Pan mode hands the left button back to the map, exactly as the editor's
+    // Pan/Draw toggle does. Nothing is painted while it is on.
+    if (m_renderer) m_renderer->setBlockLeftPan(!m_bulkPanMode);
+    if (m_bulkPanMode) { m_bulkPaintStroke.clear(); return; }
+
+    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        m_bulkPaintStroke.clear();
+        return;
+    }
+
+    // Not while the pointer is over the game's own furniture: a sweep that
+    // crosses a panel is not a sweep over the province behind it.
+    if (!m_renderer || m_renderer->pointOverPanels(getMouse())) return;
+
+    const int pid = m_renderer->hoveredProvinceId();
+    if (pid <= 0 || m_bulkPaintStroke.count(pid)) return;
+    m_bulkPaintStroke.insert(pid);
+
+    // Painting a province that is already painted takes it OUT, so a stroke
+    // over a mistake is the way to fix it rather than starting again. Nothing
+    // is charged either way -- that is what Confirm is for.
+    if (m_bulkSelection.count(pid)) {
+        m_bulkSelection.erase(pid);
+        refreshBulkOverlay();
+        return;
+    }
+
+    float c = 0.0f; int lv = 0, t = 0;
+    if (!upgradeQuote(pid, type, c, lv, t)) return;   // nothing to buy here
+    m_bulkSelection.insert(pid);
+    refreshBulkOverlay();
+}
+
+void Game::drawBulkPaintStrip() {
+    const char* type = bulkPaintType();
+    if (!type) return;
+    if (m_mapDate.empty() && m_playerCountryId != SPC_CID) return;
+    if (m_playerCountryId == SPC_CID) return;      // nothing for a spectator to build
+
+    // The same toolbar row the resource picker and the navy filters use, and
+    // the same metrics, so they read as one strip rather than three.
+    //
+    // LEFT-aligned, because the right of this row belongs to the date panel --
+    // which is right-aligned to the same edge and showed through this button
+    // when it sat there. In the navy view the filters already hold the left, so
+    // this starts after them.
+    const int mainBarW = std::min(880, m_screenW - 32);
+    const int mainBarX = m_screenW - mainBarW - 16;
+    const int mainBarY = m_screenH - 80 - 16;
+    const int btnH = 20 + 6 * 2;
+    const int btnY = mainBarY - btnH - 4;
+    const int navyStripW = (m_activeViewTab == 6) ? (5 * 80 + 4 * 4 + 8) : 0;
+    const int bx = mainBarX + 8 + navyStripW;
+    const int btnW = 150;
+
+    const Vector2 mouse = getMouse();
+    auto rowButton = [&](int x, int w, const char* label, bool on) {
+        const Rectangle r = {(float)x, (float)btnY, (float)w, (float)btnH};
+        const bool hovered = !m_paused && CheckCollisionPointRec(mouse, r);
+        // Opaque backing first. These row buttons sit at alpha 200, which is
+        // fine over the map and not over anything with text in it.
+        DrawRectangle(x, btnY, w, btnH, Color{0, 0, 0, 255});
+        DrawRectangle(x, btnY, w, btnH,
+                      on      ? Color{60, 120, 60, 210}
+                    : hovered ? Color{60, 60, 70, 200}
+                              : Color{40, 40, 50, 200});
+        DrawRectangleLines(x, btnY, w, btnH, {100, 100, 120, 150});
+        const int tw = MeasureText(label, 16);
+        DrawText(label, x + (w - tw) / 2, btnY + (btnH - 16) / 2, 16,
+                 (on || hovered) ? WHITE : LIGHTGRAY);
+    };
+
+    rowButton(bx, btnW, m_bulkPaint ? "Bulk upgrade: on" : "Bulk upgrade", m_bulkPaint);
+
+    // The map editor's compromise, borrowed whole: while a mode owns the left
+    // button the map cannot be dragged, and a player who cannot move the map
+    // cannot reach the provinces they meant to paint. So it is one toggle,
+    // right beside the thing that took panning away.
+    if (m_bulkPaint) {
+        rowButton(bx + btnW + 4, 90, m_bulkPanMode ? "Pan" : "Paint", !m_bulkPanMode);
+    }
+}
+
+void Game::drawBulkConfirmPanel() {
+    if (!m_bulkPaint || m_bulkSelection.empty()) return;
+    const char* type = bulkPaintType();
+    if (!type) return;
+
+    float cost = 0.0f;
+    int count = 0;
+    bulkSelectionTotals(cost, count);
+
+    const double treasury = m_countries.getAll()[m_playerCountryId].treasury;
+    const bool affordable = treasury >= cost;
+
+    // Above the toolbar row, left-aligned with it, so the thing being decided
+    // sits directly over the controls that decide it.
+    const int mainBarW = std::min(880, m_screenW - 32);
+    const int mainBarX = m_screenW - mainBarW - 16;
+    const int mainBarY = m_screenH - 80 - 16;
+    const int rowH = 20 + 6 * 2;
+    const int panelW = 330, panelH = 78;
+    const int px = mainBarX + 8;
+    const int py = mainBarY - rowH - 4 - panelH - 6;
+
+    DrawRectangle(px, py, panelW, panelH, Color{12, 14, 20, 245});
+    DrawRectangleLines(px, py, panelW, panelH, Color{110, 120, 145, 200});
+
+    DrawText(TextFormat("%d province%s selected", count, count == 1 ? "" : "s"),
+             px + 12, py + 10, 16, WHITE);
+    // The number that decides the button, in the colour of the answer.
+    DrawText(TextFormat("$%.0f  of  $%.0f", (double)cost, treasury),
+             px + 12, py + 30, 14,
+             affordable ? Color{170, 220, 170, 255} : Color{235, 140, 140, 255});
+
+    const Vector2 mouse = getMouse();
+    const int bw = 140, bh = 26, byy = py + panelH - bh - 10;
+
+    const Rectangle okRect = {(float)(px + 12), (float)byy, (float)bw, (float)bh};
+    const bool okHover = !m_paused && CheckCollisionPointRec(mouse, okRect);
+    DrawRectangle(px + 12, byy, bw, bh,
+                  !affordable ? Color{35, 25, 25, 220}
+                  : okHover   ? Color{40, 110, 55, 235}
+                              : Color{25, 80, 40, 225});
+    DrawRectangleLines(px + 12, byy, bw, bh,
+                       affordable ? Color{70, 180, 90, 200} : Color{90, 60, 60, 170});
+    const char* okLabel = affordable ? "Confirm" : "Not enough money";
+    const int okTw = MeasureText(okLabel, 14);
+    DrawText(okLabel, px + 12 + (bw - okTw) / 2, byy + (bh - 14) / 2, 14,
+             affordable ? WHITE : Color{160, 120, 120, 255});
+
+    const int cx = px + 12 + bw + 8;
+    const Rectangle noRect = {(float)cx, (float)byy, (float)bw, (float)bh};
+    const bool noHover = !m_paused && CheckCollisionPointRec(mouse, noRect);
+    DrawRectangle(cx, byy, bw, bh, noHover ? Color{70, 45, 45, 235} : Color{45, 32, 32, 225});
+    DrawRectangleLines(cx, byy, bw, bh, Color{140, 100, 100, 190});
+    const int noTw = MeasureText("Clear", 14);
+    DrawText("Clear", cx + (bw - noTw) / 2, byy + (bh - 14) / 2, 14,
+             noHover ? WHITE : LIGHTGRAY);
 }

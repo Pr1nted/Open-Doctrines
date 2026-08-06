@@ -2024,6 +2024,12 @@ void Game::unloadGameData() {
     m_claimsByProvince.clear();
     m_ships.clear();
     m_relations.clear();
+    // Reputation is world state like any other: a new or loaded world must not
+    // inherit who lied to whom in the last one.
+    m_credibility.clear();
+    m_openClaims.clear();
+    m_credibilityHits = 0;
+    m_credibilityLow = 1.0f;
     m_pendingMoveOrders.clear();
     m_pendingUpgrades.clear();
     m_pendingSpecializations.clear();
@@ -2283,6 +2289,7 @@ bool Game::loadGameDataStep2() {
         if (!json.empty()) {
             try {
                 auto j = nlohmann::json::parse(json);
+                int beached = 0;
                 for (auto& entry : j) {
                     NavyShip ns;
                     ns.countryId = entry["country_id"].get<int>();
@@ -2293,9 +2300,26 @@ bool Game::loadGameDataStep2() {
                     ns.crew = entry.value("crew", 0);
                     if (ns.type != "boat") ns.crew = 0;
                     else ns.crew *= 4;
+                    // MAP FILES SHIP HULLS ON LAND. Measured on the shipped
+                    // scenarios: 104 of 340 boats, roughly a third, load at a
+                    // coordinate the land raster calls land. The movement
+                    // resolver now refuses to sail onto land, but it only ever
+                    // touches a ship that was given somewhere to go -- an idle
+                    // hull would sit in a field for the whole game. Snapping
+                    // here fixes old saves and third-party maps too.
+                    if (m_landSea.isLand((float)ns.lon, (float)ns.lat)) {
+                        if (nudgeShipToWater(ns)) beached++;
+                    }
                     m_ships.push_back(ns);
                 }
+                if (beached)
+                    std::cout << "  Refloated " << beached
+                              << " ship(s) that loaded on land" << std::endl;
                 std::cout << "  Loaded " << m_ships.size() << " ships" << std::endl;
+                // Ocean topology, built once now that the raster is in memory.
+                // See Game::NavGrid -- the navy plans on this instead of
+                // steering at a straight line and stopping at the first coast.
+                buildNavGrid();
             } catch (...) {
                 std::cerr << "  Failed to parse ships.json" << std::endl;
             }
@@ -2804,6 +2828,12 @@ void Game::startNewGame(const std::string& mapName) {
     m_claims.clear();
     m_claimsByProvince.clear();
     m_relations.clear();
+    // Reputation is world state like any other: a new or loaded world must not
+    // inherit who lied to whom in the last one.
+    m_credibility.clear();
+    m_openClaims.clear();
+    m_credibilityHits = 0;
+    m_credibilityLow = 1.0f;
     m_selectedShipIndices.clear();
     m_countryShipIndices.clear();
     m_countryProvinceIds.clear();
@@ -2896,6 +2926,12 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_claims.clear();
     m_claimsByProvince.clear();
     m_relations.clear();
+    // Reputation is world state like any other: a new or loaded world must not
+    // inherit who lied to whom in the last one.
+    m_credibility.clear();
+    m_openClaims.clear();
+    m_credibilityHits = 0;
+    m_credibilityLow = 1.0f;
     m_selectedShipIndices.clear();
     m_countryShipIndices.clear();
     m_countryProvinceIds.clear();
@@ -3013,6 +3049,12 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_claims.clear();
     m_claimsByProvince.clear();
     m_relations.clear();
+    // Reputation is world state like any other: a new or loaded world must not
+    // inherit who lied to whom in the last one.
+    m_credibility.clear();
+    m_openClaims.clear();
+    m_credibilityHits = 0;
+    m_credibilityLow = 1.0f;
     m_selectedShipIndices.clear();
     m_countryShipIndices.clear();
     m_countryProvinceIds.clear();

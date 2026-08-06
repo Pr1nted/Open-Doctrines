@@ -78,35 +78,47 @@ def _perturb(rng, hypers):
     return out
 
 
-def _fitness(path):
-    """Mean of the per-module running reward means, or None if unreadable.
+def _fitness(path, binary=None, seed=4242):
+    """How well this worker actually PLAYS, as land share against the scripted rung.
 
-    The reward-statistics blob is the LAST blob in the file: MOD_COUNT pairs of
-    (mean, variance) floats. Parsed defensively -- a worker mid-save, or a model
-    from a different build, must not take the whole pool down.
+    The previous measure was the mean of the model's own running reward means,
+    and it could not work. In self-play the reward is near zero-sum, so the world
+    mean sits at zero for any policy; it reflects the maps a worker happened to
+    draw; and because the reward is largely penalties -- bankruptcy, provinces
+    lost, war weariness -- a policy that does NOTHING avoids all of them and
+    scores well. Measured on 2026-08-06 it ranked the worst model on disk first
+    (ADVANTAGE 0.545, fitness 0.221) and the best nearly last (ADVANTAGE 2.347,
+    fitness 0.061), and per-worker values flipped sign 12, 6 and 7 times across
+    16 rounds. PBT was copying weights from an essentially random worker.
+
+    LAND SHARE, NOT ADVANTAGE. The eval also prints an ADVANTAGE ratio, and that
+    is unusable here: it is unbounded, so a dominant model's reading explodes --
+    identical weights measured 2.347, 5.943 and 7.680 on separate runs. Share is
+    bounded in [0, 1] and behaves.
+
+    Returns None if the model cannot be read or the eval produced nothing, which
+    the caller already treats as "skip this worker".
     """
-    try:
-        with open(path, "rb") as f:
-            d = f.read()
-        if len(d) < 6 or d[:4] != b"ODAI":
-            return None
-        p = 6
-        blobs = []
-        while p + 4 <= len(d):
-            ln = int.from_bytes(d[p:p + 4], "little"); p += 4
-            if p + ln > len(d):
-                return None
-            blobs.append(d[p:p + ln]); p += ln
-        if not blobs:
-            return None
-        stats = blobs[-1]
-        if len(stats) < 8 or len(stats) % 8 != 0:
-            return None
-        vals = struct.unpack("<" + "f" * (len(stats) // 4), stats)
-        means = vals[0::2]
-        return sum(means) / len(means) if means else None
-    except OSError:
+    if binary is None or not os.path.exists(path):
         return None
+    # Point the eval at THIS worker's file. --eval-ai reads it read-only, so a
+    # ranking round cannot disturb the workers that are still training.
+    env = dict(os.environ)
+    env["OD_EVAL_MODEL"] = path
+    try:
+        out = subprocess.run(
+            [binary, "--resource-limit", "25", "--eval-ai", "1", "150", str(seed), "2",
+             "--scenarios", "--vs-script"],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=600).stdout
+    except (subprocess.SubprocessError, OSError):
+        return None
+    for line in out.splitlines():
+        if line.startswith("[EVAL] land held"):
+            try:
+                return float(line.split("%")[0].split()[-1]) / 100.0
+            except (ValueError, IndexError):
+                return None
+    return None
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -234,7 +246,8 @@ def main():
             # made.
             scored = []
             for w in range(n):
-                fit = _fitness(os.path.join(DATA, f"model.w{w}.bin"))
+                fit = _fitness(os.path.join(DATA, f"model.w{w}.bin"), binary,
+                               seed=4242 + int(time.time() // PBT_INTERVAL))
                 if fit is not None:
                     scored.append((fit, w))
             print(f"[PBT]  ranked {len(scored)}/{n} workers: " +

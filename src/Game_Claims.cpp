@@ -19,6 +19,27 @@ void Game::clearClaimsView() {
 
 void Game::grantClaim(const std::string& claimantIso, int pid) {
     if (claimantIso.empty() || pid <= 0) return;
+    // NOBODY CLAIMS GROUND THEY ALREADY HOLD. A claim is a demand for land you
+    // do not have, so this is not merely untidy -- a self-claim paints your own
+    // province contested, lists you under its own "Claimed by", and feeds the
+    // AI's reconquer-our-land war bar with a grievance that can never be
+    // satisfied because it already is.
+    //
+    // The reachable way in was claiming a province and taking it on the SAME
+    // turn: the claim is queued as a policy and applied in updatePolicies,
+    // which runs late in processTurn, while the conquest resolves in the
+    // country loop well before it. By the time the claim landed the province
+    // was already ours. dropSelfOwnedClaims exists but only runs at load, so
+    // the bad claim survived for the whole session.
+    //
+    // Guarded here rather than at the call sites so no future caller has to
+    // remember. Note the two conquest sites that hand the LOSER a claim were
+    // reordered to transfer ownership first -- they used to grant while the
+    // loser was still the owner, which this guard would otherwise have eaten.
+    if (const Province* p = m_provinces.getProvinceById(pid)) {
+        const int cid = cidForIso(claimantIso);
+        if (cid > 0 && p->countryId == cid) return;
+    }
     auto& cl = m_claims[claimantIso];
     if (std::find(cl.begin(), cl.end(), pid) == cl.end()) cl.push_back(pid);
     // Checked separately rather than under the same early-out: a world saved

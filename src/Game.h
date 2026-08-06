@@ -7,6 +7,7 @@
 #include "renderer/MapRenderer.h"
 #include "Config.h"
 #include "Audio.h"
+#include "net/TurnSeal.h"
 #include "net/TurnStore.h"
 #include "net/NetProtocol.h"
 #include "ScriptEngine.h"
@@ -96,8 +97,118 @@ public:
     // validity masks with the same reflexes and the same restraint constants.
     // The report then answers the only question with an absolute answer — does
     // the trained policy beat a coin flip, and by how much.
-    void runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
-                         int difficulty, bool vsRandom);
+    // `opponentModel` names a model file to give that control cohort instead of
+    // dice. Random is a FLOOR: it never improves, so once a model clears it the
+    // ratio keeps climbing without saying anything about how well the AI plays.
+    // A named opponent is a rung — beat this file, then pin a better one — and
+    // it is how a target like "as good as an intermediate player" becomes
+    // something a run can pass or fail rather than a matter of opinion.
+    // False when the run produced no measurement at all — today that means an
+    // `opponentModel` that would not load. The caller must exit non-zero on it:
+    // the summary is skipped, so a silent success would be a missing report
+    // that looks exactly like a quiet one.
+    /**
+     * Would `observerCid` be able to see that this stated reason is false?
+     *
+     * The believability rule, and the whole of it. A lie is safe exactly when
+     * the other side cannot check it against what it already knows, and this
+     * game already decides what is knowable: wars and borders are on the map,
+     * war weariness and intent are not. So the filter is not a table of
+     * plausible excuses somebody has to maintain -- it is a question asked of
+     * the same state the observer can see anyway.
+     *
+     * Nothing is forbidden by this. Both the AI and the player may state a
+     * reason this returns true for; it simply costs them, because the other
+     * side can see it is not so. What it exists for is to let the AI CHOOSE
+     * well -- an opponent whose lies fall apart the moment you look at the map
+     * is not a liar, it is a bug.
+     */
+    bool refusalIsContradicted(int observerCid, int subjectCid, int reason) const;
+    /**
+     * The player, having refused `toIso`, tells them why — or does not.
+     *
+     * The other half of the same channel the AI uses, and the reason this is a
+     * mechanic rather than the AI narrating at the player: every statement in
+     * the game travels this way, in both directions, and neither side can say
+     * anything the other could not. What the recipient does with it is up to
+     * them; today it is recorded, and it is where credibility will attach.
+     */
+    void tellRefusal(const std::string& toIso, int statedReason);
+    /**
+     * Would `observerCid` be able to see that this stated war goal is false?
+     *
+     * The same question refusalIsContradicted asks, over the same public state:
+     * claims, borders and the size of the map are all things anyone can look
+     * at. A country announcing it is recovering land it holds no claim to has
+     * said something the whole world can check.
+     *
+     * WAR_GOAL_CONQUEST is never contradicted, and that is the interesting
+     * asymmetry: the honest goal is the one nobody can argue with. A country
+     * that wants a pretext has to find one that happens to be true.
+     */
+    bool warGoalIsContradicted(int observerCid, int attackerCid,
+                               int defenderCid, int goal) const;
+    /** What `attackerIso` announced when it declared on `defenderIso`. */
+    int statedWarGoal(const std::string& attackerIso,
+                      const std::string& defenderIso) const;
+
+    // ─── Credibility ────────────────────────────────────────────────────
+    //
+    // What `hearerIso` thinks `speakerIso`'s word is worth, from 0 to 1.
+    //
+    // PER PAIR, not one public reputation, and the asymmetry is the reason: the
+    // evidence that breaks a claim is public, but the CLAIM is not. Only the
+    // country a thing was said to knows it was said, so only that country can
+    // put the two halves together. It also makes lying a decision with a shape
+    // -- you can mislead an enemy and stay straight with an ally, and the cost
+    // lands where you told the story.
+    //
+    // SOFT, never a gate. It leans on a diplomacy answer through the same logit
+    // bias the NAP willingness and the call reluctance already use; no request
+    // is ever refused because of it, and nothing is hidden or disabled. A
+    // country nobody believes can still ask, and can still be told yes.
+    float credibility(const std::string& speakerIso,
+                      const std::string& hearerIso) const;
+    /** Knock `speakerIso`'s word down with `hearerIso`. Clamped at zero. */
+    void  loseCredibility(const std::string& speakerIso,
+                          const std::string& hearerIso, float amount);
+    /** Remember a claim conduct may yet disprove. See SpokenClaim. */
+    void  recordSpokenClaim(const std::string& speakerIso,
+                            const std::string& hearerIso, int kind,
+                            const std::string& aboutIso = std::string());
+    /**
+     * Called when `speakerIso` declares war: anyone it recently told it was too
+     * exhausted to fight has just watched it start one.
+     */
+    void  claimsBrokenByDeclaration(const std::string& speakerIso);
+    /**
+     * Called when a province changes hands: a war announced as recovering what
+     * is ours, taking ground we never claimed, is the pretext coming apart.
+     */
+    void  claimsBrokenByConquest(int winnerCid, int loserCid, int provinceId);
+    /** Age out claims nobody can reasonably be held to any longer, and forgive. */
+    void  ageCredibility();
+    /**
+     * One statement, judged once, wherever it came from.
+     *
+     * Both sides route through here so neither gets a rule of its own: a claim
+     * the hearer can already disprove costs immediately, and one only conduct
+     * can disprove is written down and watched. The player's word is worth
+     * exactly what an AI's is, and is spent the same way.
+     */
+    void  noteRefusalStatement(const std::string& speakerIso,
+                               const std::string& hearerIso, int statedReason);
+    void  noteWarGoalStatement(const std::string& attackerIso,
+                               const std::string& defenderIso, int statedGoal);
+
+    // `scenarios` measures on the maps data/STDmaps ships — the worlds a player
+    // opens — instead of generated archetypes. Opt-in and never mixed with
+    // generated maps in one run: a mean over both describes neither, and every
+    // previously stored result was taken on generated worlds.
+    bool runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
+                         int difficulty, bool vsRandom,
+                         const std::string& opponentModel = std::string(),
+                         bool scenarios = false);
 
     // Unattended self-play on a REAL scenario (`--simulate`). Loads a shipped
     // .odmap through the ordinary menu pipeline, creates the .odsv the menu
@@ -444,6 +555,96 @@ private:
     class TurnRunner* m_mpTurns = nullptr;
     /** Set once this client's orders are in; cleared when a delta lands. */
     bool m_mpWaitingForTurn = false;
+
+    // ------------------------------------------------------- long form ----
+    //
+    // A long-form game moves its turns through a store rather than over the
+    // connection, because the host is expected to be OFFLINE between turns --
+    // for days. Players connect straight to the host, so when it is away there
+    // is no lobby to reach and the store is the only thing both sides share.
+
+    /** Pump the store: publish what is due, collect what has arrived. */
+    void mpStoreUpdate();
+    /** Take one finished store request. */
+    void mpHandleStoreResult(const struct TurnStoreResult& result);
+    /** Point the runner at this session. Host and client both call it. */
+    void mpConfigureStore();
+    /** True when this game moves turns through a store at all. */
+    bool mpLongForm() const;
+
+    /** Publish a resolved turn. Host only; a no-op outside long-form. */
+    void mpPublishTurn(uint32_t turnNumber, const std::vector<uint8_t>& packed);
+    /** Seal and publish this client's orders. */
+    bool mpPublishOrders(uint32_t turnNumber, const std::vector<uint8_t>& orders);
+    /** Ask the store for anything this machine is waiting on. */
+    void mpPollStore();
+
+    /**
+     * Remember a long-form game this machine JOINED, beside its save.
+     *
+     * Players connect straight to the host, so once the host closes there is no
+     * lobby left to ask -- and the store details and key arrived only over that
+     * connection. Without this, a player who joined on Monday and reopened the
+     * game on Thursday would have a world, a country, and no way to submit
+     * anything or to discover the turns that were played meanwhile.
+     *
+     * `<save>.odjoin`, and it holds the session key, so it is written with the
+     * same care as the host's `.odkey`: never in a file anybody is encouraged
+     * to pass around.
+     */
+    void mpSaveJoinedSession() const;
+    /** Read it back. False when there is none, which is the normal case. */
+    bool mpLoadJoinedSession(const std::string& savePath);
+    static std::string mpJoinedSessionPath(const std::string& savePath);
+
+    // ----------------------------------------------------------- manual ----
+    //
+    // No infrastructure at all: the game shows a block of text and takes one
+    // back, and the players carry it between themselves however they like.
+    // Everything else about a long-form turn is unchanged -- orders are still
+    // sealed, a turn bundle is still the same bytes -- so this is a transport
+    // swap and not a second set of rules.
+
+    /** Put a resolved turn on screen for the host to copy out. */
+    void mpManualOfferTurn(uint32_t turnNumber, const std::vector<uint8_t>& packed);
+    /** Put this player's sealed orders on screen to copy out. */
+    void mpManualOfferOrders(uint32_t turnNumber, const std::vector<uint8_t>& sealed);
+    /** Read whatever is in the paste box and route it. Says what happened. */
+    void mpManualApplyPasted();
+    void mpDrawManualExchange(int screenW, int screenH);
+
+    /** The block to copy out. Empty when there is nothing waiting. */
+    std::string m_mpManualOut;
+    /** What was pasted in, waiting to be applied. */
+    std::string m_mpManualIn;
+    /** Whether the exchange panel is showing. */
+    bool m_mpManualOpen = false;
+
+    /** Named apart from `m_mpStore`, which is the setup screen's picker index. */
+    class TurnStoreRunner* m_mpStoreRunner = nullptr;
+
+    /**
+     * The key that seals orders. Host: minted or loaded beside the save.
+     * Client: handed over by the host on the authenticated connection.
+     */
+    TurnSealKey   m_mpSealKey;
+    TurnStoreKind m_mpStoreKind = TurnStoreKind::DurableObject;
+    std::string   m_mpSessionCode;
+
+    /**
+     * This machine's own pseudonym on this server.
+     *
+     * Needed to address its orders and to seal them -- the psid is bound in as
+     * associated data, so orders sealed under the wrong one open as nothing.
+     */
+    std::string m_mpMyPsid;
+
+    /** Turn whose orders the host is currently collecting from the store. */
+    uint32_t m_mpStorePollTurn = 0;
+    /** Psids already asked for this turn, so a poll does not queue twice. */
+    std::unordered_set<std::string> m_mpStoreAsked;
+    /** Seconds on the clock at the last poll; the store is not free. */
+    double m_mpStoreNextPoll = 0.0;
     void mpBeginJoin(const std::string& address, const std::string& code);
     void mpLeave();
     /** Tear multiplayer down at exit. Defined where the types are complete. */
@@ -787,6 +988,32 @@ public:
     // Ceasefire popup: whether the itemised terms panel is expanded. Reset
     // whenever a popup is dismissed so the next one starts collapsed.
     bool m_popupShowTerms = false;
+    /**
+     * The reason the player will give if they reject the popup in front of them.
+     *
+     * Cycled with the button on the popup, reset when a popup is dismissed.
+     * REFUSE_NONE — say nothing — is the default and the first option, because
+     * declining to explain yourself is a move rather than an omission, and it
+     * is the one a player who does not care about this system will use without
+     * noticing it exists.
+     *
+     * The player picks from the WHOLE list, exactly as the AI does. Nothing is
+     * hidden and nothing is greyed out: you may claim to be at war while at
+     * peace, and the country you say it to can look at the map. See
+     * Game::refusalIsContradicted, which is what the AI uses to avoid doing
+     * that to itself.
+     */
+    int m_popupRefusalReason = REFUSE_NONE;
+    /**
+     * What the player will announce if they declare war on whoever's panel is
+     * open. Cycled on the diplomacy panel; WAR_GOAL_NONE by default.
+     *
+     * Sticky rather than reset per target on purpose -- a player running a
+     * campaign of "border security" wars should set it once, and one who never
+     * touches it declares in silence forever, which is exactly what the game
+     * did before this existed.
+     */
+    int m_declareWarGoal = WAR_GOAL_NONE;
     void pushPopup(PopupType type, const std::string& title, const std::string& message,
                     int countryId = 0, const std::string& action = "",
                     const std::string& sourceIso = "", const std::string& targetIso = "");
@@ -1234,6 +1461,25 @@ public:
     int m_lastPopCountryId = -1;
 
     std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>> m_relations;
+    /** speaker -> hearer -> what the hearer thinks the speaker's word is worth. */
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> m_credibility;
+    /** Claims still inside the window conduct can disprove them in. */
+    std::vector<SpokenClaim> m_openClaims;
+    /**
+     * How many times somebody's word has been caught short, and how low it ever
+     * got. Kept because the CURRENT credibility cannot answer the question the
+     * eval needs answering: forgiveness runs every turn, so a run that caught
+     * two liars early reports a serene 1.000 three hundred turns later and
+     * looks exactly like a run where the checks never fired once.
+     */
+    long long m_credibilityHits = 0;
+    float m_credibilityLow = 1.0f;
+    long long m_realConquests = 0;   // see noteRealConquest
+    // Naval routing diagnostics: how many ship moves were stopped by land
+    // before covering any meaningful distance. See processNavyMovement.
+    long long m_navMoves = 0, m_navBlocked = 0;
+    long long m_navEngagements = 0, m_navSinkings = 0;
+    long long m_navTransportsSunk = 0, m_navCrewDrowned = 0;
     void generateRelationsTexture(int countryId, int prevCountryId);
     int m_lastRelationsCountryId = -1;
     std::vector<Color> m_countryRelationColors;
@@ -1601,8 +1847,12 @@ private:
     // chained, so a world war needs explicit guarantees, not transitivity).
     // Shared by the ceasefire path and the GameState.Write capability.
     void transferProvinceOwnership(int pid, int fromCid, int toCid);
+    // `statedGoal` is what the attacker announces, and WAR_GOAL_NONE -- say
+    // nothing -- is both the default and a perfectly ordinary choice. It is
+    // recorded and shown; it changes nothing else. No declaration is refused,
+    // delayed or made more expensive for want of one.
     void declareWar(const std::string& attackerIso, const std::string& defenderIso,
-                    bool chainGuarantees = true);
+                    bool chainGuarantees = true, int statedGoal = WAR_GOAL_NONE);
     void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
     // A treaty binds both signatories, but scenario relations.json writes one
     // row per country and authors routinely fill in only one of them. Reads
@@ -1716,6 +1966,9 @@ private:
     // Model file this process trains, relative to the data directory. A pool
     // worker points somewhere of its own; everything else uses the shared one.
     std::string m_aiModelPath = "ai/model.bin";
+    // Set from OD_EVAL_MODEL: evaluate this exact file rather than the shared
+    // one, so a PBT ranking round can score a worker without disturbing it.
+    std::string m_evalModelOverride;
     int m_aiWorkerId = -1, m_aiWorkerCount = 0;
     // Self-play training mode: skips political-texture/label/delta work in
     // processTurn so turns run as fast as the simulation allows.
@@ -1761,6 +2014,73 @@ private:
     // ── Pending Actions (queued for processing on next turn) ──
     std::vector<PendingDiplomaticAction> m_pendingDiplomaticActions;
     std::vector<PendingUpgrade> m_pendingUpgrades;
+
+    // ─── Bulk upgrading, by painting over the map ───────────────────────
+    //
+    // Queueing a hundred industry upgrades one province at a time is the
+    // complaint this answers. The mode is a toggle in the toolbar strip above
+    // the bottom bar -- the same strip the resource picker and the navy
+    // filters live in -- and WHAT it paints comes from the view you are
+    // already in: industry in the industry view, forts in defence, ports in
+    // navy. One mechanism, three targets, and no new place to look.
+
+    /** Which upgrade the current view paints. Null when the view has none. */
+    const char* bulkPaintType() const;
+    /** Human name for that, for the button and the running total. */
+    const char* bulkPaintLabel() const;
+
+    /**
+     * What one province's next upgrade would cost, and whether it may have one.
+     *
+     * NO SIDE EFFECTS, and that is the point: the confirm panel has to total a
+     * hundred of these before a penny is spent. Affordability is deliberately
+     * NOT checked here -- one province is affordable in isolation while the
+     * selection as a whole is not, and it is the whole that is being decided.
+     */
+    bool upgradeQuote(int provinceId, const char* type,
+                      float& cost, int& nextLevel, int& turns) const;
+
+    /**
+     * Queue one province's upgrade and pay for it.
+     *
+     * The SAME rules the province panel's own buttons use -- caps, research
+     * limits, cost, whether something is already building -- because a bulk
+     * path with its own copy of them is a bulk path that eventually disagrees
+     * with the button next to it about what a thing costs.
+     */
+    bool queueUpgrade(int provinceId, const char* type);
+
+    void updateBulkPaint();
+    void drawBulkPaintStrip();
+    /** The confirm/cancel panel, shown while anything is painted. */
+    void drawBulkConfirmPanel();
+    /** Total cost of the current selection, and how many of it is buildable. */
+    void bulkSelectionTotals(float& cost, int& count) const;
+    /** Push the selection into the build queue. Everything or nothing. */
+    void commitBulkSelection();
+    void clearBulkSelection();
+    /** Tell the renderer what to light up. Called on every change. */
+    void refreshBulkOverlay();
+
+    bool m_bulkPaint = false;
+    /**
+     * Pan instead of paint while the mode is on.
+     *
+     * The map editor's compromise, and for the same reason: a mode that owns
+     * the left button owns panning too, and a player who cannot move the map
+     * cannot reach the provinces they meant to paint. One toggle, same row.
+     */
+    bool m_bulkPanMode = false;
+
+    /** Painted, costed, and not yet bought. */
+    std::unordered_set<int> m_bulkSelection;
+    /**
+     * Provinces already touched during THIS press.
+     *
+     * A drag crosses the same province on many frames; without this a sweep
+     * would toggle it on and off again as fast as the game draws.
+     */
+    std::unordered_set<int> m_bulkPaintStroke;
     std::vector<PendingSpecialization> m_pendingSpecializations;
     std::vector<PendingRecruitment> m_pendingRecruitments;
 
@@ -1921,6 +2241,9 @@ private:
     // Pulls each side's armies out of the other's territory when a war ends.
     // Returns the number of provinces cleared. See Game_TurnLogic.cpp.
     int  withdrawArmiesAfterPeace(int cidA, int cidB);
+    // Backstop sweep: send home any stack standing in a country it is neither
+    // at war with nor allied to, whatever transition left it there.
+    void expelPeacetimeTrespassers();
     void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false);
 
     void drawCeasefireScreen();
@@ -1984,6 +2307,58 @@ private:
     void eliminateDefeatedCountries();
     void processDiplomaticRequests();
     void processUpgrades();
+    // Refloat a hull that is sitting on land. False if none was found nearby.
+    bool nudgeShipToWater(NavyShip& s);
+
+    // ── Sea routing ──
+    //
+    // A COARSE MAP OF WHERE WATER CONNECTS TO WHAT. The land raster is
+    // 8192x4096, far too fine to search per ship per turn, but ocean topology
+    // is a large-scale fact: whether the Mediterranean reaches the Atlantic
+    // does not depend on 16-pixel detail. This downsamples hard, keeps one real
+    // water pixel per navigable cell so every waypoint is guaranteed to be at
+    // sea, and labels connected components so "can this fleet even get there"
+    // is an O(1) question.
+    //
+    // Built once per map load; ocean shape does not change during a game.
+    struct NavGrid {
+        int w = 0, h = 0;                 // cells
+        int cell = 0;                     // raster pixels per cell
+        std::vector<uint8_t> navigable;   // 1 = has water
+        std::vector<int32_t> px, py;      // a real water pixel inside the cell
+        std::vector<int32_t> component;   // -1 = land
+        bool ready() const { return w > 0 && h > 0; }
+    };
+    void buildNavGrid();
+    // Nearest navigable cell index to a raster pixel, or -1.
+    static int navCellNear(const NavGrid& g, int px, int py);
+    // Is there a sea route between these two points at all?
+    bool navReachable(double lon1, double lat1, double lon2, double lat2) const;
+    // Is the straight segment between these two points all water? Used to skip
+    // ahead along a route only where the shortcut is genuinely sailable.
+    bool navLineClear(double lon1, double lat1, double lon2, double lat2) const;
+    // Waypoints from->to, in lon/lat, each guaranteed to be water. Empty if
+    // unreachable. The first element is the next place to steer for.
+    bool navRoute(double fromLon, double fromLat, double toLon, double toLat,
+                  std::vector<std::pair<double, double>>& out) const;
+    NavGrid m_nav;
+    // How far this hull may move or shoot in one turn, in map pixels, and the
+    // same figure in degrees for the lon/lat resolvers. THE one definition:
+    // the player's range circle, the AI's step and every resolver read it, so
+    // no side can quietly get a different rule from another.
+    float shipMaxRangePx(const NavyShip& s) const;
+    double shipMaxRangeDeg(const NavyShip& s) const;
+    // Are these two countries at war? Resolvers need this to refuse a shot at
+    // somebody nobody declared on; the UI already refused to aim it.
+    bool atWarCids(int a, int b) const;
+    // Province transfers between REAL countries (rebels excluded), counted for
+    // the trainer's stagnation detector. Rebel churn is deliberately not
+    // counted: a province flipping between a rebel and its parent every turn
+    // is not strategic progress, and treating it as such is what kept dead
+    // maps running for thousands of turns.
+    void noteRealConquest(int newOwner, int prevOwner);
+    long long realConquests() const { return m_realConquests; }
+    void resetRealConquests() { m_realConquests = 0; }
     void processEconomy(int countryId);
 
     /**

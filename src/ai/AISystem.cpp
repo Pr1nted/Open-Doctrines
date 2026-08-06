@@ -2,6 +2,7 @@
 #include "../Game.h"
 #include "../GameInternals.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -38,10 +39,11 @@ int AISystem::portCap(int cid) const {
 AISystem::AISystem(Game* game, const std::string& modelPath)
     : m_g(game), m_modelPath(modelPath) {
     // Policy nets: features -> action logits. Value nets: features -> scalar.
-    // ~1M parameters across all nine nets (~12MB on disk with Adam state):
-    // each policy net is 96->512->320->N (~215k params). Still fast — a
-    // forward pass is ~0.2M multiply-adds, so hundreds of countries per turn
-    // stay in the low milliseconds.
+    // ~1M parameters across the twenty nets (~6MB on disk with Adam state).
+    // Most are HEADS on the shared trunk -- {TRUNK_OUT, N} apiece -- so the
+    // encoder is paid for once rather than per module. Still fast: a forward
+    // pass is ~0.2M multiply-adds, so hundreds of countries per turn stay in
+    // the low milliseconds.
     // One encoder, eight heads. See TRUNK_OUT.
     m_trunk = NeuralNet({FEATURE_COUNT, 512, TRUNK_OUT}, 100);
     m_trunk.setTanhOutput(true);
@@ -67,6 +69,7 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // rather than a fixed-width action layer -- the candidate list changes size
     // every turn.
     m_target = NeuralNet({FEATURE_COUNT + TARGET_FEATURES, 256, 128, 1}, 500);
+    m_attack = NeuralNet({FEATURE_COUNT + ATTACK_FEATURES, 256, 128, 1}, 700);
     m_diploValue = NeuralNet({FEATURE_COUNT, 160, 1}, 600);
     // An empty path is a scratch model used for merging peer files, not a
     // model anybody is training. It loads nothing, saves nothing, and should
@@ -83,6 +86,12 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     }
     else
         printf("[AI] Fresh model (no file at %s)\n", m_modelPath.c_str());
+
+    // The control cohort's brain, when --vs-model named one. Loaded here rather
+    // than by the caller because --eval-ai rebuilds this object on every map,
+    // and an opponent that survived only the first map would leave the rest of
+    // the run measuring dice under an "OPPONENT" heading.
+    if (!s_opponentModelPath.empty()) loadOpponentModel(s_opponentModelPath);
 }
 
 AISystem::~AISystem() {
@@ -109,6 +118,43 @@ int AISystem::foreignWarCount(int cid) const {
     return n;
 }
 
+int AISystem::warsWithTheDead() const {
+    int n = 0;
+    for (const auto& [cid, enemies] : m_warWith) {
+        auto me = m_stats.find(cid);
+        if (me == m_stats.end() || me->second.provinces <= 0) continue;
+        for (int other : enemies) {
+            auto them = m_stats.find(other);
+            if (them == m_stats.end() || them->second.provinces <= 0) n++;
+        }
+    }
+    return n;
+}
+
+void AISystem::compassGap(float& meanOut, float& worstOut) const {
+    double m = 0.0; float w = 0.0f; int n = 0;
+    for (const auto& [cid, st] : m_stats) {
+        if (cid >= Game::REBEL_CID_MIN || st.provinces <= 0) continue;
+        m += st.compassGapMean; w = std::max(w, st.compassGapWorst); n++;
+    }
+    meanOut = n ? (float)(m / n) : 0.0f;
+    worstOut = w;
+}
+
+void AISystem::noteAssaultRepulsed(int attackerCid, int troopsLost) {
+    if (attackerCid <= 0) return;
+    TrainStats& s = statsFor(attackerCid);
+    s.attacksRepulsed++;
+    s.troopsLostAttacking += std::max(0, troopsLost);
+}
+
+void AISystem::noteShipSunk(int attackerCid, int victimCid, int crew) {
+    if (crew > 0) {
+        if (attackerCid > 0) m_crewDrownedThisTurn[attackerCid] += crew;
+        if (victimCid   > 0) m_crewLostThisTurn[victimCid]     += crew;
+    }
+}
+
 void AISystem::noteConquest(int winnerCid, int loserCid, bool contested) {
     // Split by WHO lost it. Taking a province off a rebel is opportunism on
     // somebody else's collapse; taking one off a country is the war the game is
@@ -128,6 +174,18 @@ AISystem::TrainStats& AISystem::statsFor(int cid) {
     return isRandomCountry(cid) ? m_randomStats : m_trainStats;
 }
 
+void AISystem::setRandomCountries(std::unordered_set<int> cids) {
+    m_randomCids = std::move(cids);
+    // THE CONTROL COHORT IS ONE SET OF COUNTRIES WITH TWO POSSIBLE BRAINS.
+    //
+    // Membership, the counters (statsFor above) and every line of the report
+    // are the same either way; only where the choice comes from differs. So an
+    // opponent model reuses the split verbatim and simply names those same
+    // countries as league countries, which is the switch takeTurn already reads
+    // to run a frozen brain. Nothing downstream has to know which mode it is.
+    if (m_opponentLoaded) m_leagueCids = m_randomCids;
+}
+
 // ─── World cache ─────────────────────────────────────────
 
 void AISystem::beginTurn() {
@@ -138,6 +196,10 @@ void AISystem::beginTurn() {
     // window, exactly like rebellions — so the tally has to be cleared here,
     // not when it is read.
     m_landingsThisTurn.clear();
+    m_crewDrownedThisTurn.clear();
+    m_crewLostThisTurn.clear();
+    m_shipsBoughtThisTurn.clear();
+    m_shipsScrappedThisTurn.clear();
     refreshStats();
     updateWorld();
     updateTrends();
@@ -171,6 +233,7 @@ void AISystem::beginTurn() {
 void AISystem::refreshStats() {
     m_stats.clear();
     m_worldArmy = 0;
+    m_worldProvinces = 0;
     m_worldPixels = 0;
 
     Game& g = *m_g;
@@ -181,6 +244,7 @@ void AISystem::refreshStats() {
         if (cid <= 0 || cid >= Game::SPC_CID) continue;
         CountryStat& st = m_stats[cid];
         st.provinces++;
+        if (cid < Game::REBEL_CID_MIN) m_worldProvinces++;
         auto popIt = g.m_provincePopulations.find(pid);
         if (popIt != g.m_provincePopulations.end()) st.population += popIt->second;
         auto indIt = g.m_provinceIndustry.find(pid);
@@ -408,6 +472,63 @@ void AISystem::refreshStats() {
         }
     }
 
+    // ── Political distance between a government and its own provinces ──
+    //
+    // One pass over owned provinces, alongside everything else refreshStats
+    // already walks. See CountryStat::compassGapMean.
+    {
+        for (auto& [cid, st] : m_stats) {
+            if (cid >= Game::SPC_CID) continue;
+            const Country* c = g.m_countries.getCountry(cid);
+            if (!c) continue;
+            double sum = 0.0; float worst = 0.0f; int n = 0, far = 0;
+            for (int pid : g.provincesOf(cid)) {
+                auto pcIt = g.m_provinceCompass.find(pid);
+                if (pcIt == g.m_provinceCompass.end()) continue;
+                const float dx = pcIt->second.x - c->compassEconomic;
+                const float dy = pcIt->second.y - c->compassSocial;
+                // Normalised by the width of the space, so 1.0 is a province at
+                // the opposite corner of the compass from its own government.
+                const float d = std::min(1.0f, std::sqrt(dx * dx + dy * dy) / 200.0f);
+                sum += d; n++;
+                if (d > worst) worst = d;
+                if (d > COMPASS_FAR) far++;
+            }
+            if (n > 0) {
+                st.compassGapMean  = (float)(sum / n);
+                st.compassGapWorst = worst;
+                st.compassGapShare = (float)far / (float)n;
+            }
+        }
+    }
+
+    // THE TYPICAL COUNTRY'S GARRISON DENSITY, as a median and not a mean.
+    //
+    // This is the bar the army term measures sufficiency against, so what
+    // matters is that a normal country can actually reach it. The aggregate
+    // mean cannot serve: a handful of large empires drag it up, and measured on
+    // the shipped scenarios it sat at 342,687 troops per province against a
+    // typical country's 231,409 -- so 19 of 21 countries were below the bar
+    // even at the parity that is arithmetically satisfiable. A target most of
+    // the world can never reach makes recruit pay forever, which is precisely
+    // the failure the third shape of this term died of. The median puts roughly
+    // half the world on each side of the line by construction.
+    {
+        std::vector<double> dens;
+        dens.reserve(m_stats.size());
+        for (const auto& [cid, st] : m_stats) {
+            if (cid >= Game::REBEL_CID_MIN || st.provinces <= 0) continue;
+            dens.push_back((double)st.army / (double)st.provinces);
+        }
+        if (dens.empty()) {
+            m_medianArmyPerProvince = 0.0;
+        } else {
+            const size_t mid = dens.size() / 2;
+            std::nth_element(dens.begin(), dens.begin() + mid, dens.end());
+            m_medianArmyPerProvince = dens[mid];
+        }
+    }
+
     // Provinces lost since last turn. "Am I losing?" is not derivable from a
     // single snapshot, and it is the signal a defensive policy needs most.
     for (auto& [cid, st] : m_stats) {
@@ -567,6 +688,11 @@ void AISystem::updateWorld() {
         for (size_t i = 0; i < byLand.size(); ++i)
             w.rank[byLand[i].second] =
                 byLand.size() > 1 ? (float)i / (float)(byLand.size() - 1) : 1.0f;
+        // Ascending, so the last is the biggest. See rivalShareFor.
+        w.largestCid  = byLand.back().second;
+        w.secondShare = byLand.size() > 1
+                            ? (float)byLand[byLand.size() - 2].first / (float)total
+                            : 0.0f;
     }
     m_world = std::move(w);
 }
@@ -875,6 +1001,16 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // they stay zero on an ordinary turn.
     f[95] = 1.0f; // bias
 
+    // 140-142: THE POLITICAL GEOGRAPHY OF OUR OWN COUNTRY. How far the
+    // provinces sit from the government on the compass, on average, at the
+    // worst, and how much of the country is a long way off. See
+    // CountryStat::compassGapMean -- this drives rebel faction formation and
+    // was the one thing the politics module could not see while being judged
+    // almost entirely on rebellions.
+    f[140] = st.compassGapMean;
+    f[141] = st.compassGapWorst;
+    f[142] = st.compassGapShare;
+
     // 96-103: TRENDS -- direction and pace, against a baseline up to
     // TREND_WINDOW turns old. Squashed, so a runaway late-game value cannot
     // swamp the input the way a raw delta would.
@@ -960,19 +1096,26 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
         epsilon = EPSILON_START + (EPSILON_FINAL - EPSILON_START) * t;
         return;
     }
-    switch (m_g->m_config.aiDifficulty) {
-        case 0: temperature = 2.5f;  epsilon = 0.35f; break; // easy
-        default:
-        case 1: temperature = 1.0f;  epsilon = 0.10f; break; // normal
-        case 2: temperature = 0.35f; epsilon = 0.02f; break; // hard
-        case 3: temperature = 0.05f; epsilon = 0.0f;  break; // insane: argmax
-    }
+    const DifficultyProfile& d = difficulty();
+    temperature = d.temperature;
+    epsilon = d.epsilon;
+}
+
+const AISystem::DifficultyProfile& AISystem::difficulty() const {
+    // Self-play always runs at the top of the ladder: a training opponent that
+    // aims with the old rule teaches the aiming heads nothing, and a policy
+    // trained against a handicapped version of itself learns to beat the
+    // handicap. The exploration schedule above is what supplies noise there.
+    const int t = selfPlayLearning()
+                      ? 3
+                      : std::clamp(m_g ? m_g->m_config.aiDifficulty : 2, 0, 3);
+    return DIFFICULTY[t];
 }
 
 int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
                          const std::vector<bool>& valid, float& scoreOut,
                          int graveAction, const std::vector<float>* logitBias,
-                         float* logProbOut) {
+                         float* logProbOut, std::vector<float>* neutralProbsOut) {
     const std::vector<float>& logits = net.forward(feats);
     scoreOut = 0;
     if (logits.empty()) return 0;
@@ -988,6 +1131,26 @@ int AISystem::pickAction(NeuralNet& net, const std::vector<float>& feats,
         else validCount++;
     }
     if (validCount == 0) return 0;
+
+    // ONLY WHERE THERE WAS A CHOICE TO MAKE.
+    //
+    // A turn on which one action is legal is not evidence about a preference,
+    // and this is the second measurement today to be wrong for that shape of
+    // reason. "hold" is valid on every turn and is usually the ONLY valid war
+    // action, because most country-turns are peaceful -- so averaging P(hold)
+    // over every turn it was offered averages in tens of thousands of turns
+    // where P(hold) was 1 by arithmetic rather than by opinion. It read as a
+    // policy collapsed onto doing nothing. The per-action advantage measured at
+    // the same time said the opposite: attack was earning +0.34 against hold's
+    // -0.01, on 415 samples against 44,065.
+    const bool hadAChoice = validCount >= 2;
+
+    // WHAT THE POLICY THINKS, before temperature has an opinion. Computed here
+    // from the same masked logits the choice is about to be made from, and
+    // touching nothing: no RNG is drawn and no decision reads it. See
+    // TrainStats::warProbMass for why a take rate alone cannot answer this.
+    if (neutralProbsOut && hadAChoice)
+        NeuralNet::softmax(masked, 1.0f, *neutralProbsOut);
 
     float temperature, epsilon;
     difficultyParams(temperature, epsilon);
@@ -1072,7 +1235,33 @@ void AISystem::takeTurn(int cid) {
     const CountryStat& st = m_stats[cid];
     if (st.provinces == 0) return;
 
-    m_randomThisCountry = isRandomCountry(cid);
+    // What this country's turn costs to think. Charged to whichever cohort it
+    // belongs to; see TrainStats::thinkMicros.
+    const auto thinkStart = std::chrono::steady_clock::now();
+    struct ThinkTimer {
+        TrainStats& s;
+        std::chrono::steady_clock::time_point t0;
+        ~ThinkTimer() {
+            s.thinkMicros += std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - t0).count();
+            s.thinkCalls++;
+        }
+    } thinkTimer{statsFor(cid), thinkStart};
+
+    // Dice ONLY when there is no opponent model. With one loaded the control
+    // cohort plays that model instead, and leaving this set would have it
+    // sampling at random from a frozen brain's logits -- a third policy that is
+    // neither of the two files anyone asked to compare.
+    // Which brain the control cohort uses. Dice, a frozen model, or the
+    // scripted rung -- exactly one of the three, and none of them for the
+    // countries being measured.
+    // In a duel BOTH sides are scripted: the control cohort attacks, the other
+    // turtles, and no net is consulted anywhere.
+    m_scriptedThisCountry = s_scriptDuel || (isRandomCountry(cid) && s_scriptedControl);
+    const int scriptVariant = (s_scriptDuel && !isRandomCountry(cid))
+                                  ? SCRIPT_TURTLE : SCRIPT_AGGRESSOR;
+    m_randomThisCountry = isRandomCountry(cid) && !m_opponentLoaded &&
+                          !m_scriptedThisCountry;
     // A league country acts with a frozen past policy and teaches nothing.
     m_leagueThisCountry = m_leagueCids.count(cid) > 0;
 
@@ -1091,6 +1280,7 @@ void AISystem::takeTurn(int cid) {
     }
     exp.industrySum = st.industrySum;
     exp.threatened = st.threatenedProvinces;
+    exp.enemyAdjArmy = st.enemyAdjArmy;   // the bar armyTerm measures against
     exp.weariness = g.warWearinessOf(cid);
     exp.minorityAlignment = st.meanAlignment;
     exp.pacts = st.pacts;
@@ -1106,6 +1296,11 @@ void AISystem::takeTurn(int cid) {
     auto resIt2 = g.m_countryResearched.find(cid);
     exp.researched = resIt2 != g.m_countryResearched.end() ? (int)resIt2->second.size() : 0;
     exp.relCand = m_lastRelCand;
+    // Standing at decision time, against which the window's standing is scored.
+    // m_world is rebuilt in beginTurn, so this is current.
+    exp.worldRank  = m_world.rankOf(cid);
+    exp.ownShare   = m_world.shareOf(st.provinces);
+    exp.rivalShare = m_world.rivalShareFor(cid);
 
     std::vector<bool> valid;
     float score;
@@ -1137,9 +1332,19 @@ void AISystem::takeTurn(int cid) {
                             : m_trunk.forward(exp.features);
 
     // ── The stance, re-chosen every STANCE_WINDOW turns ──
-    // Not for a league country: a frozen opponent is exactly the policy it was
-    // checkpointed as, and it has no stance head of its own.
-    if (!m_leagueThisCountry) {
+    // A league country picks one too, WHEN IT BROUGHT A HEAD TO PICK WITH.
+    //
+    // A checkpoint from the rotation carries a trunk and the policy heads and
+    // nothing else, so a frozen training opponent still holds no posture. An
+    // opponent loaded from a full model file under --vs-model does have one,
+    // and has to use it: the stance now steers action selection, so a side
+    // without one is a side playing a different game, and a head-to-head where
+    // only the challenger gets a posture is not measuring the challenger.
+    //
+    // Its experience is discarded at the end of this function either way, so
+    // writing the choice into `exp` costs nothing and keeps one code path.
+    const bool pickStance = !m_leagueThisCountry || m_leagueStanceLoaded;
+    if (pickStance) {
         auto stIt = m_stance.find(cid);
         const bool due = stIt == m_stance.end() ||
                          (m_turn - stIt->second.second) >= STANCE_WINDOW;
@@ -1147,7 +1352,9 @@ void AISystem::takeTurn(int cid) {
             std::vector<bool> anyStance((size_t)STANCE_COUNT, true);
             float sScore = 0.0f;
             float sLogProb = 0.0f;
-            const int sc = pickAction(m_stanceHead, emb, anyStance, sScore,
+            const int sc = pickAction(m_leagueThisCountry ? m_leagueStance
+                                                          : m_stanceHead,
+                                      emb, anyStance, sScore,
                                       /*graveAction=*/-1, nullptr, &sLogProb);
             m_stance[cid] = {sc, m_turn};
             exp.action[MOD_COUNT + 1] = sc;
@@ -1156,23 +1363,54 @@ void AISystem::takeTurn(int cid) {
         }
     }
 
+    // The posture in force, applied to every module below. See STANCE_BIAS:
+    // this is the only thing that makes the stance a decision rather than a
+    // note to self. -1 when no stance has been chosen yet (the first window of
+    // a country's life, and every league country, which has no stance head).
+    const int stance = stanceOf(cid);
+    if (stance >= 0 && stance < STANCE_COUNT) statsFor(cid).stanceHeld[stance]++;
+
     std::vector<float> qbias;
     auto qBiasFor = [&](int m) -> const std::vector<float>* {
-        if (Q_BLEND <= 0.0f) return nullptr;
+        const int nActs = (m == MOD_ECONOMY) ? ECON_ACTIONS
+                        : (m == MOD_POLITICS) ? POL_ACTIONS
+                        : (m == MOD_WAR) ? WAR_ACTIONS : NAVY_ACTIONS;
+        qbias.assign((size_t)nActs, 0.0f);
+        bool any = false;
+
+        // ── The posture's lean ──
+        // Off below Hard: a country without a plan is one of the faculties the
+        // ladder takes away. See DifficultyProfile.
+        if (difficulty().usePosture && stance >= 0 && stance < STANCE_COUNT) {
+            const float* row = (m == MOD_ECONOMY) ? STANCE_ECON[stance]
+                             : (m == MOD_POLITICS) ? STANCE_POL[stance]
+                             : (m == MOD_WAR) ? STANCE_WAR[stance]
+                                              : STANCE_NAVY[stance];
+            for (int i = 0; i < nActs; ++i)
+                if (row[i] != 0.0f) { qbias[i] += STANCE_BIAS * row[i]; any = true; }
+        }
+
+        // ── The critic's opinion ──
         // A frozen opponent is exactly the policy it was checkpointed as.
         // Letting the CURRENT critic re-rank its actions would make it a
         // moving target again, which is the one thing the league exists to
-        // prevent.
-        if (m_leagueThisCountry) return nullptr;
-        if (m_q[m].updateCount() < Q_WARMUP_UPDATES) return nullptr;
-        const std::vector<float>& q = m_q[m].forward(emb);
-        if (q.empty()) return nullptr;
-        float mean = 0.0f;
-        for (float v : q) mean += v;
-        mean /= (float)q.size();
-        qbias.assign(q.size(), 0.0f);
-        for (size_t i = 0; i < q.size(); ++i) qbias[i] = Q_BLEND * (q[i] - mean);
-        return &qbias;
+        // prevent. The stance lean above is NOT skipped for it: that is a rule
+        // of the game rather than a judgement of ours, and a frozen policy
+        // played under it too.
+        if (Q_BLEND > 0.0f && difficulty().useCritic && !m_leagueThisCountry &&
+            m_q[m].updateCount() >= qWarmup()) {
+            const std::vector<float>& q = m_q[m].forward(emb);
+            if (!q.empty()) {
+                float mean = 0.0f;
+                for (float v : q) mean += v;
+                mean /= (float)q.size();
+                for (size_t i = 0; i < q.size() && i < qbias.size(); ++i) {
+                    qbias[i] += Q_BLEND * (q[i] - mean);
+                    any = true;
+                }
+            }
+        }
+        return any ? &qbias : nullptr;
     };
 
     // Which brain is playing this country. A league country is driven by a
@@ -1191,28 +1429,123 @@ void AISystem::takeTurn(int cid) {
     // at different frequencies compares nothing.
     if (foreignWarCount(cid) > 0) statsFor(cid).turnsAtWar++;
 
-    validEconomy(cid, valid);
-    int a = pickAction(brainFor(MOD_ECONOMY), emb, valid, score,
-                       /*graveAction=*/-1, qBiasFor(MOD_ECONOMY),
-                   &exp.logProb[MOD_ECONOMY]);
-    m_policy[MOD_ECONOMY].snapshotActs(exp.acts[MOD_ECONOMY]);
-    exp.action[MOD_ECONOMY] = a; exp.acted[MOD_ECONOMY] = true;
-    {
-        TrainStats& ts = statsFor(cid);
-        for (int i = 0; i < ECON_ACTIONS; ++i)
-            if (i < (int)valid.size() && valid[i]) ts.econOffered[i]++;
-        if (a >= 0 && a < ECON_ACTIONS) ts.econChosen[a]++;
-        if (a >= 9 && a <= 11) ts.researchPicked++;
-    }
-    logDecision(cid, MOD_ECONOMY, a, score, execEconomy(cid, a));
+    // Only where a net is driving: the random cohort's choices are dice and the
+    // scripted rung never consults a net, so a distribution recorded for either
+    // would describe a policy that had no say in what they did.
+    const bool netDriven = !m_randomThisCountry && !m_scriptedThisCountry;
+    std::vector<float> nprob;
+    int a = 0;
 
-    validPolitics(cid, valid);
-    a = pickAction(brainFor(MOD_POLITICS), emb, valid, score,
-                   /*graveAction=*/-1, qBiasFor(MOD_POLITICS),
-                   &exp.logProb[MOD_POLITICS]);
-    m_policy[MOD_POLITICS].snapshotActs(exp.acts[MOD_POLITICS]);
-    exp.action[MOD_POLITICS] = a; exp.acted[MOD_POLITICS] = true;
-    logDecision(cid, MOD_POLITICS, a, score, execPolitics(cid, a));
+    // ── One module's turn: keep acting until it passes ──
+    //
+    // See Experience::extras and ACTIONS_PER_MODULE_PER_TURN. The mask is
+    // recomputed before every pick, so a choice sees the money the previous one
+    // spent; action 0 is the always-valid pass and ends the module's turn.
+    // Everything a module does shares the window's reward, exactly as the
+    // single action used to.
+    auto runModule = [&](int mod, int graveAction) {
+        // Each pick after the first re-reads the world and re-runs the trunk:
+        // the previous pick spent money, moved troops and queued orders, and a
+        // decision made blind to that is both chosen wrong and trained wrong.
+        // See Experience::ExtraAction::features.
+        std::vector<float> curFeat;
+        std::vector<float> curEmb;
+        for (int k = 0; k < ACTIONS_PER_MODULE_PER_TURN; ++k) {
+            if (k > 0) {
+                buildFeatures(cid, curFeat);
+                curEmb = m_leagueThisCountry ? m_leagueTrunk.forward(curFeat)
+                                             : m_trunk.forward(curFeat);
+            }
+            const std::vector<float>& useEmb = (k == 0) ? emb : curEmb;
+            switch (mod) {
+                case MOD_ECONOMY:  validEconomy(cid, valid);  break;
+                case MOD_POLITICS: validPolitics(cid, valid); break;
+                case MOD_WAR:      validWar(cid, valid);      break;
+                default:           validNavy(cid, valid);     break;
+            }
+            float lp = 0.0f;
+            nprob.clear();
+            const int act = m_scriptedThisCountry
+                    ? scriptedChoice(mod, cid, valid, scriptVariant)
+                    : pickAction(brainFor(mod), useEmb, valid, score, graveAction,
+                                 qBiasFor(mod), &lp, netDriven ? &nprob : nullptr);
+            // ACCUMULATED ONLY WHERE THE ACTION WAS OFFERED, so the denominator
+            // is the take rate's denominator and the two are directly
+            // comparable. Averaged over every decision instead, an action that
+            // is rarely valid reads as near-zero probability purely because it
+            // was masked out most turns -- which is a fact about the mask, not
+            // about the policy.
+            if (netDriven && !nprob.empty() && (mod == MOD_ECONOMY || mod == MOD_WAR)) {
+                TrainStats& ps = statsFor(cid);
+                const int nAct = (mod == MOD_ECONOMY) ? ECON_ACTIONS : WAR_ACTIONS;
+                if (mod == MOD_ECONOMY) ps.econDecisions++; else ps.warDecisions++;
+                for (int i = 0; i < nAct && i < (int)nprob.size(); ++i)
+                    if (i < (int)valid.size() && valid[i]) {
+                        if (mod == MOD_ECONOMY) { ps.econProbMass[i] += nprob[i]; ps.econProbN[i]++; }
+                        else                    { ps.warProbMass[i]  += nprob[i]; ps.warProbN[i]++;  }
+                    }
+            }
+            {
+                TrainStats& ts = statsFor(cid);
+                if (mod == MOD_ECONOMY) {
+                    for (int i = 0; i < ECON_ACTIONS; ++i)
+                        if (i < (int)valid.size() && valid[i]) ts.econOffered[i]++;
+                    if (act >= 0 && act < ECON_ACTIONS) ts.econChosen[act]++;
+                    if (act >= 9 && act <= 11) ts.researchPicked++;
+                } else if (mod == MOD_WAR) {
+                    for (int i = 0; i < WAR_ACTIONS; ++i)
+                        if (i < (int)valid.size() && valid[i]) ts.warOffered[i]++;
+                    if (act >= 0 && act < WAR_ACTIONS) ts.warChosen[act]++;
+                }
+            }
+            // The first pick keeps the scalar slots so nothing downstream has to
+            // learn about extras; the rest become their own training samples.
+            if (k == 0) {
+                m_policy[mod].snapshotActs(exp.acts[mod]);
+                exp.action[mod] = act; exp.acted[mod] = true; exp.logProb[mod] = lp;
+            } else {
+                Experience::ExtraAction ea;
+                ea.module = mod; ea.action = act; ea.logProb = lp;
+                ea.features = curFeat;          // the state THIS action saw
+                m_policy[mod].snapshotActs(ea.acts);
+                exp.extras.push_back(std::move(ea));
+            }
+            a = act;
+
+            std::string label;
+            switch (mod) {
+                case MOD_ECONOMY:  label = execEconomy(cid, act);  break;
+                case MOD_POLITICS: label = execPolitics(cid, act); break;
+                case MOD_WAR:      label = execWar(cid, act);      break;
+                default:           label = execNavy(cid, act);     break;
+            }
+            if (mod == MOD_WAR) {
+                // Captured AFTER execWar, because that is what runs the chooser.
+                // A declaration that fell through to the old rule leaves this
+                // empty and simply trains nothing. Only the FIRST declaration or
+                // assault of the turn is recorded: Experience carries one
+                // candidate set, and a turn that both declares and assaults is
+                // rare enough that a second set is not worth the width.
+                if (m_pendingTargetChosen >= 0 && exp.targetChosen < 0) {
+                    exp.targetCand = std::move(m_pendingTargetCand);
+                    exp.targetChosen = m_pendingTargetChosen;
+                }
+                m_pendingTargetCand.clear();
+                m_pendingTargetChosen = -1;
+                if (m_pendingAttackChosen >= 0 && exp.attackChosen < 0) {
+                    exp.attackCand = std::move(m_pendingAttackCand);
+                    exp.attackChosen = m_pendingAttackChosen;
+                }
+                m_pendingAttackCand.clear();
+                m_pendingAttackChosen = -1;
+            }
+            logDecision(cid, mod, act, score, label);
+            if (act == 0) break;   // passed: this module is done for the turn
+        }
+    };
+
+    runModule(MOD_ECONOMY, /*graveAction=*/-1);
+    runModule(MOD_POLITICS, /*graveAction=*/-1);
 
     // Defence runs before the sampled war action, unconditionally. See the
     // note on garrisonReflex: holding a threatened border is not a choice the
@@ -1228,21 +1561,11 @@ void AISystem::takeTurn(int cid) {
     // sampled so that action sees the move orders it has already issued.
     amphibiousReflex(cid);
 
-    validWar(cid, valid);
+    m_declaredUnprovoked = false;
     // 4 = declare war; see the graveAction note in pickAction.
-    a = pickAction(brainFor(MOD_WAR), emb, valid, score, /*graveAction=*/4,
-                   qBiasFor(MOD_WAR), &exp.logProb[MOD_WAR]);
-    m_policy[MOD_WAR].snapshotActs(exp.acts[MOD_WAR]);
-    exp.action[MOD_WAR] = a; exp.acted[MOD_WAR] = true;
-    // Offered against chosen, recorded HERE because `a` is reused by the navy
-    // action a few lines down. See the counters' note: this is what separates a
-    // mask that never offers attack from a policy that refuses it.
-    {
-        TrainStats& ts = statsFor(cid);
-        for (int i = 0; i < WAR_ACTIONS; ++i)
-            if (i < (int)valid.size() && valid[i]) ts.warOffered[i]++;
-        if (a >= 0 && a < WAR_ACTIONS) ts.warChosen[a]++;
-    }
+    runModule(MOD_WAR, /*graveAction=*/4);
+    exp.aggressor = m_declaredUnprovoked;
+
     // DECISION TRACE. OD_DEC_TRACE=1 prints one line per country-turn: the
     // features that produced the decision, and what each module chose. Two runs
     // can then be diffed to find the FIRST country whose decision differs, and
@@ -1271,29 +1594,7 @@ void AISystem::takeTurn(int cid) {
                exp.action[MOD_ECONOMY], exp.action[MOD_POLITICS],
                exp.action[MOD_WAR], exp.action[MOD_NAVY]);
     }
-    m_declaredUnprovoked = false;
-    {
-        const std::string label = execWar(cid, a);
-        // Captured AFTER execWar, because that is what runs the chooser. A
-        // declaration that fell through to the old rule leaves this empty and
-        // simply trains nothing.
-        if (m_pendingTargetChosen >= 0) {
-            exp.targetCand = std::move(m_pendingTargetCand);
-            exp.targetChosen = m_pendingTargetChosen;
-            m_pendingTargetCand.clear();
-            m_pendingTargetChosen = -1;
-        }
-        logDecision(cid, MOD_WAR, a, score, label);
-    }
-    exp.aggressor = m_declaredUnprovoked;
-
-    validNavy(cid, valid);
-    a = pickAction(brainFor(MOD_NAVY), emb, valid, score,
-                   /*graveAction=*/-1, qBiasFor(MOD_NAVY),
-                   &exp.logProb[MOD_NAVY]);
-    m_policy[MOD_NAVY].snapshotActs(exp.acts[MOD_NAVY]);
-    exp.action[MOD_NAVY] = a; exp.acted[MOD_NAVY] = true;
-    logDecision(cid, MOD_NAVY, a, score, execNavy(cid, a));
+    runModule(MOD_NAVY, /*graveAction=*/-1);
 
     // A control-group country's choices are coin flips, so training on them
     // would be teaching the model to imitate noise. They play; they do not
@@ -1407,7 +1708,8 @@ void AISystem::ensureTrendBounds() const {
 // See the declaration in AISystem.h for why the mask and the executor share
 // this. The logic below is execWar case 4's, moved verbatim rather than
 // reimplemented -- two copies of a rule this fiddly would drift within a week.
-float AISystem::predictAcceptance(int partnerCid, const char* requestKind) const {
+float AISystem::predictAcceptance(int partnerCid, const char* requestKind,
+                                  int askerCid) const {
     if (!requestKind) return 0.5f;
     // Their features, not ours: this is their decision, and buildFeatures is
     // what their own answer would be computed from.
@@ -1415,12 +1717,44 @@ float AISystem::predictAcceptance(int partnerCid, const char* requestKind) const
     const_cast<AISystem*>(this)->buildFeatures(partnerCid, feats);
     if ((int)feats.size() != FEATURE_COUNT) return 0.5f;
 
+    // WHAT IS BEING ASKED, in the slots decideDiplomacy writes it to.
+    //
+    // This predicted an answer without telling the net what the question was,
+    // so it returned the same number for "will you accept a ceasefire" and
+    // "will you join my war" -- and the whole point of the call is to tell
+    // those apart before spending an overture on one. The odds and terms slots
+    // stay zero: a caller asking "would they say yes" has not put a deal on the
+    // table yet, and zero is what "no terms offered" means to the answerer too.
+    if (strcmp(requestKind, "request_ceasefire") == 0)      feats[89] = 1.0f;
+    else if (strcmp(requestKind, "request_alliance") == 0)  feats[90] = 1.0f;
+    else if (strcmp(requestKind, "request_nap") == 0)       feats[91] = 1.0f;
+    else if (strcmp(requestKind, "request_guarantee") == 0) feats[92] = 1.0f;
+    else if (strcmp(requestKind, "call_to_arms") == 0)      feats[80] = 1.0f;
+
+    // Through the trunk, for the reason spelled out in decideDiplomacy: this is
+    // a head over the shared embedding, and handing it raw features returned an
+    // empty vector, which fell through to the 0.5 below. Every caller has been
+    // planning against a coin flip.
+    const std::vector<float> emb =
+        const_cast<NeuralNet&>(m_trunk).forward(feats);
+    std::vector<float> logits = const_cast<NeuralNet&>(m_diplo).forward(emb);
+    if ((int)logits.size() != DIPLO_ACTIONS) return 0.5f;
     // The same thumb on the scale answerDiplomacy puts there. Predicting
     // without it would model a different policy from the one that answers.
-    std::vector<float> logits = const_cast<NeuralNet&>(m_diplo).forward(feats);
-    if ((int)logits.size() != DIPLO_ACTIONS) return 0.5f;
     if (strcmp(requestKind, "request_nap") == 0)
         logits[1] += AI_NAP_WILLINGNESS;
+    else if (strcmp(requestKind, "call_to_arms") == 0)
+        logits[1] -= AI_CALL_RELUCTANCE;
+    // ...and what our own word is worth to them, which is the other half of
+    // the same reply. See CREDIBILITY_WEIGHT.
+    {
+        const Country* me = m_g->m_countries.getCountry(askerCid);
+        const Country* them = m_g->m_countries.getCountry(partnerCid);
+        if (me && them) {
+            const float cred = m_g->credibility(me->isoA3, them->isoA3);
+            if (cred < 1.0f) logits[1] -= CREDIBILITY_WEIGHT * (1.0f - cred);
+        }
+    }
 
     std::vector<float> probs;
     NeuralNet::softmax(logits, 1.0f, probs);
@@ -1468,6 +1802,111 @@ void AISystem::buildTargetFeatures(int cid, const WarCandidate& cand,
     out[11] = th.maxPort / 3.0f;
 }
 
+void AISystem::buildAttackFeatures(int cid, const AttackCandidate& cand,
+                                   std::vector<float>& out) const {
+    out.assign(ATTACK_FEATURES, 0.0f);
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+
+    // 0: the OLD RULE'S OWN SCORE, handed over as an input rather than thrown
+    // away. The head starts life having to beat a heuristic that is not stupid,
+    // and the cheapest way for it to be no worse is to learn to follow this
+    // one; everything else here is what it needs to learn when not to.
+    out[0] = std::tanh(cand.margin - 1.0f);
+    out[1] = std::tanh((float)cand.myGarrison / 5000.0f);
+    out[2] = std::tanh((float)cand.theirGarrison / 5000.0f);
+    out[3] = std::min(1.0f, (float)cand.fortLevel / 5.0f);
+    out[4] = std::min(1.0f, (float)cand.indLevel / 10.0f);
+    // 5: ours by right. A claimed province ends a war goal as well as taking
+    // ground, which the rule expressed as a flat bonus and could not weigh.
+    auto clIt = g.m_claimsByProvince.find(cand.toPid);
+    if (clIt != g.m_claimsByProvince.end())
+        for (auto& iso : clIt->second)
+            if (iso == c->isoA3) { out[5] = 1.0f; break; }
+    out[6] = cand.enemyCid >= Game::REBEL_CID_MIN ? 1.0f : 0.0f;
+    out[7] = cand.fromAlly ? 1.0f : 0.0f;
+
+    // 8: how surrounded the target already is. A province we half-encircle
+    // falls cheaply and is hard to lose again; the old rule could not see the
+    // shape of the front at all, only one province at a time.
+    auto nIt = g.m_provinceNeighbors.find(cand.toPid);
+    if (nIt != g.m_provinceNeighbors.end() && !nIt->second.empty()) {
+        int mine = 0;
+        for (int nb : nIt->second)
+            if (nb >= 0 && nb < (int)g.m_provinceCountryLookup.size() &&
+                g.m_provinceCountryLookup[nb] == cid) mine++;
+        out[8] = (float)mine / (float)nIt->second.size();
+    }
+
+    // 9-11: the country on the other side, not just the province. Taking a
+    // province off a great power at war with three others is a different
+    // proposition from taking one off a neighbour with nothing else to do.
+    auto meIt = m_stats.find(cid);
+    auto themIt = m_stats.find(cand.enemyCid);
+    if (meIt != m_stats.end() && themIt != m_stats.end()) {
+        const double mine = (double)std::max(1LL, meIt->second.army);
+        out[9] = (float)std::tanh(std::log((double)std::max(1LL, themIt->second.army) / mine));
+        out[11] = std::tanh(themIt->second.provinces / 30.0f);
+    }
+    out[10] = std::tanh(foreignWarCount(cand.enemyCid) / 2.0f);
+}
+
+int AISystem::chooseAttack(int cid, const std::vector<AttackCandidate>& cands,
+                           std::vector<int>* rankingOut) {
+    m_pendingAttackCand.clear();
+    m_pendingAttackChosen = -1;
+    if (rankingOut) rankingOut->clear();
+    // Nothing to choose between, and nothing to learn from a choice of one.
+    if (cands.size() < 2) return -1;
+
+    // Built even below the threshold, so the head warms up by watching the rule
+    // it will replace. See chooseWarTarget for the chicken-and-egg this avoids.
+    const bool maySteer = difficulty().useLearnedAim &&
+                          m_attack.updateCount() >= attackWarmup();
+
+    std::vector<float> own;
+    buildFeatures(cid, own);
+
+    const size_t n = std::min(cands.size(), (size_t)ATTACK_MAX_CANDIDATES);
+    std::vector<float> scores(n, 0.0f);
+    std::vector<float> candFeat;
+    for (size_t i = 0; i < n; ++i) {
+        buildAttackFeatures(cid, cands[i], candFeat);
+        std::vector<float> in = own;
+        in.insert(in.end(), candFeat.begin(), candFeat.end());
+        const std::vector<float>& o = m_attack.forward(in);
+        scores[i] = o.empty() || !std::isfinite(o[0]) ? 0.0f : o[0];
+        m_pendingAttackCand.push_back(std::move(in));
+    }
+
+    if (!maySteer) return -1;   // recorded, but the rule still decides
+
+    float temperature, epsilon;
+    difficultyParams(temperature, epsilon);
+    const int pick = NeuralNet::samplePolicy(scores, temperature, m_rng);
+    if (pick < 0 || pick >= (int)n) return -1;
+    m_pendingAttackChosen = pick;
+
+    // THE WHOLE ORDER, not only the winner. See ATTACK_ORDERS_PER_TURN: one
+    // decision to attack covers several fronts, and they should be pressed in
+    // the order this head rates them rather than in whatever order the frontier
+    // walk happened to produce. The sampled pick leads, because that is the one
+    // recorded for training and the orders should match the sample; the rest
+    // follow by score.
+    if (rankingOut) {
+        rankingOut->reserve(n);
+        rankingOut->push_back(pick);
+        std::vector<int> rest;
+        for (size_t i = 0; i < n; ++i)
+            if ((int)i != pick) rest.push_back((int)i);
+        std::sort(rest.begin(), rest.end(),
+                  [&](int a, int b) { return scores[a] > scores[b]; });
+        rankingOut->insert(rankingOut->end(), rest.begin(), rest.end());
+    }
+    return pick;
+}
+
 int AISystem::chooseWarTarget(int cid, const std::vector<WarCandidate>& cands) {
     m_pendingTargetCand.clear();
     m_pendingTargetChosen = -1;
@@ -1480,7 +1919,8 @@ int AISystem::chooseWarTarget(int cid, const std::vector<WarCandidate>& cands) {
     // never trained, so it never reached the threshold, so it never chose.
     // Below it the old rule picks and findWarTarget records which candidate
     // that was -- the head learns by watching a policy that already works.
-    const bool maySteer = m_target.updateCount() >= TARGET_WARMUP_UPDATES;
+    const bool maySteer = difficulty().useLearnedAim &&
+                          m_target.updateCount() >= targetWarmup();
 
     std::vector<float> own;
     buildFeatures(cid, own);
@@ -1828,6 +2268,26 @@ void AISystem::validNavy(int cid, std::vector<bool>& v) {
     const bool idleFleet = !atWar && st.navalTargets == 0 &&
                            st.navalWarTargets == 0 && ships > 1;
     v[5] = haveScrappable && (costly || broke || idleFleet);
+
+    // ── Engage: an enemy hull we can actually reach ──
+    //
+    // Gated on the same two things processNavyCombat enforces -- an actual war,
+    // and a target inside this hull's range -- so the action is never offered
+    // when the executor would only have its order thrown away. Boats are
+    // excluded as attackers: they are transports, and sending one to trade
+    // damage with a destroyer loses the cargo for nothing.
+    v[6] = false;
+    for (const auto& mine : g.m_ships) {
+        if (mine.countryId != cid || mine.type == "boat") continue;
+        const double reach = g.shipMaxRangeDeg(mine);
+        for (const auto& them : g.m_ships) {
+            if (them.countryId <= 0 || them.countryId == cid) continue;
+            if (!g.atWarCids(cid, them.countryId)) continue;
+            const double dl = them.lon - mine.lon, dt = them.lat - mine.lat;
+            if (std::sqrt(dl * dl + dt * dt) <= reach) { v[6] = true; break; }
+        }
+        if (v[6]) break;
+    }
 }
 
 // ─── Action execution ────────────────────────────────────
@@ -1970,6 +2430,9 @@ std::string AISystem::execEconomy(int cid, int action) {
                 if (!p || p->countryId != cid || port.level < needPort) continue;
                 c.treasury -= cost;
                 g.m_pendingShipBuilds.push_back({pid, type, 3});
+                if (action == 5) statsFor(cid).destroyersBuilt++;
+                else             statsFor(cid).carriersBuilt++;
+                m_shipsBoughtThisTurn[cid]++;
                 return TextFormat("build %s at prov %d", type, pid);
             }
             return "ship: no port";
@@ -2152,7 +2615,7 @@ std::string AISystem::execPolitics(int cid, int action) {
                 // with the same bias their own answer would use. Every country
                 // shares these weights, so that is not a guess about them, it is
                 // the reply computed a turn early.
-                const float pAccept = predictAcceptance(fr.enemyCid, req);
+                const float pAccept = predictAcceptance(fr.enemyCid, req, cid);
                 // Floored, so a partner the model currently dislikes is
                 // unlikely rather than impossible: a hard zero would let an
                 // early, badly-calibrated diplomacy net permanently rule out
@@ -2397,6 +2860,16 @@ std::string AISystem::execWar(int cid, int action) {
             // doctrine research did not exist, so it declined attacks it would
             // in fact have won. getTotalEffect now takes a country.
             const float atkMod = 1.0f + g.getTotalEffect("armyAtkPct", cid) / 100.0f;
+            // EVERY winnable assault, not only the best one.
+            //
+            // The scoring below is unchanged and still decides which attacks
+            // are ALLOWED -- the 1.05 bar, the garrison floors, the claim and
+            // rebel bonuses. What changes is that the survivors are now
+            // candidates rather than contestants for a single slot, so a head
+            // can be asked which of them to make. See ATTACK_FEATURES; below
+            // its warmup the highest margin still wins, which is exactly what
+            // this code did before.
+            std::vector<AttackCandidate> cands;
             int bestFrom = -1, bestTo = -1; float bestMargin = 1.05f;
             for (auto& fr : st.frontiers) {
                 if (!atWarWith(fr.enemyCid)) continue;
@@ -2433,6 +2906,11 @@ std::string AISystem::execWar(int cid, int action) {
                     // neighbouring provinces then carry a war-claim penalty that
                     // spawns the next revolt.
                     if (nOwner >= Game::REBEL_CID_MIN) margin += 1.0f;
+                    if (margin <= 1.05f) continue;   // the winnability bar
+                    cands.push_back({fr.pid, nid, nOwner, margin, false, myG, defG,
+                                     (int)fort,
+                                     ind != g.m_provinceIndustry.end()
+                                         ? ind->second.level : 0});
                     if (margin > bestMargin) { bestMargin = margin; bestFrom = fr.pid; bestTo = nid; }
                 }
             }
@@ -2463,6 +2941,11 @@ std::string AISystem::execWar(int cid, int action) {
                     if (clIt != g.m_claimsByProvince.end())
                         for (auto& iso : clIt->second)
                             if (iso == c.isoA3) { margin += 0.4f; break; }
+                    if (margin <= 1.05f) continue;   // the winnability bar
+                    cands.push_back({apid, nid, nOwner, margin, true, myG, defG,
+                                     (int)fort,
+                                     ind != g.m_provinceIndustry.end()
+                                         ? ind->second.level : 0});
                     if (margin > bestMargin) {
                         bestMargin = margin; bestFrom = apid; bestTo = nid; fromAlly = true;
                     }
@@ -2472,19 +2955,132 @@ std::string AISystem::execWar(int cid, int action) {
                 statsFor(cid).attackNoTarget++;
                 return "attack: no winnable target";
             }
-            for (auto& mo : g.m_pendingMoveOrders)
-                if (mo.fromProvince == bestFrom && mo.countryId == cid) {
-                    statsFor(cid).attackPending++;
-                    return "attack: order pending";
+            // WHICH of them, and IN WHAT ORDER. The ranking is empty while the
+            // head is warming up, in which case the margin rule's ordering
+            // stands -- exactly what this code did before, just applied to more
+            // than the winner.
+            std::vector<int> order;
+            {
+                const int pick = chooseAttack(cid, cands, &order);
+                if (pick >= 0) {
+                    statsFor(cid).attackSteered++;
+                } else {
+                    if (!m_pendingAttackCand.empty()) {
+                        // Below warmup: record WHICH candidate the rule took, so
+                        // the head learns from a policy that already works.
+                        // Without this the samples carry inputs and no label.
+                        for (size_t i = 0; i < cands.size() &&
+                                           i < m_pendingAttackCand.size(); ++i)
+                            if (cands[i].fromPid == bestFrom && cands[i].toPid == bestTo) {
+                                m_pendingAttackChosen = (int)i;
+                                break;
+                            }
+                    }
+                    // The rule's own preference order: best margin first.
+                    order.resize(cands.size());
+                    for (size_t i = 0; i < cands.size(); ++i) order[i] = (int)i;
+                    std::sort(order.begin(), order.end(),
+                              [&](int a, int b) { return cands[a].margin > cands[b].margin; });
                 }
-            statsFor(cid).attackIssued++;
-            if (fromAlly) {
-                g.m_pendingMoveOrders.push_back({bestFrom, bestTo, 75, cid});
-                return TextFormat("attack prov %d from allied prov %d (margin %.1fx)",
-                                  bestTo, bestFrom, bestMargin);
             }
-            g.m_pendingMoveOrders.push_back({bestFrom, bestTo, 75, cid});
-            return TextFormat("attack prov %d from %d (margin %.1fx)", bestTo, bestFrom, bestMargin);
+
+            // ONE ORDER PER FRONT, up to the cap. See ATTACK_ORDERS_PER_TURN.
+            // A province that already has a move order queued is skipped rather
+            // than abandoning the whole action, which is what made "attack:
+            // order pending" a wasted turn: with one order to give, a single
+            // busy province meant the country did nothing at all.
+            // ── Several prongs from one province, each sized to its target ──
+            //
+            // This used to send a flat 75% of the garrison at exactly one
+            // target per province: `usedFrom` rejected any second candidate
+            // launching from the same ground, and the 75 was a literal. Both
+            // were capabilities the PLAYER has and the AI did not -- a person
+            // can split a garrison across two borders and pick each
+            // percentage by hand -- and parity is the rule here.
+            //
+            // The size of each prong is derived from the same combat
+            // arithmetic that decided the candidate was winnable: send the
+            // force that clears ATTACK_SAFETY, not a fixed fraction. margin
+            // was computed at 0.75 of the garrison, and attack power is linear
+            // in the troops committed, so the fraction that lands exactly on
+            // the safety bar is 0.75 * SAFETY / margin. An overwhelming
+            // target-- margin 4x -- therefore commits under a fifth of the
+            // garrison and leaves the rest to open a second front, which is
+            // the entire point of doing this.
+            //
+            // Percentages are of the CURRENT garrison because the resolver
+            // applies them sequentially (Game_TurnLogic: toMove = count * pct,
+            // order after order), so two 50s send half and then a quarter.
+            // Tracking commitment as a fraction of the ORIGINAL and dividing
+            // by what is left converts between the two.
+            // 1.25 SURVIVED A SWEEP, AND THE SWEEP FOUND NOTHING TO BEAT IT.
+            //
+            // Swept 1.05 / 1.15 / 1.25 / 1.40 / 1.60 / 2.00 over all six
+            // shipped scenarios at 300 turns, with the scripted rung pinned at
+            // 1.25 so the opponent stayed still while the model's value moved.
+            // The first pass looked bimodal -- 1.52x at 1.05 and 1.47x with a
+            // 1.01x trough at 1.25 -- and every bit of that was noise. Three
+            // fresh seeds per value:
+            //     1.05  1.52 0.95 1.15 1.20   mean 1.21  SD 0.24
+            //     1.25  1.01 1.31 1.15 1.38   mean 1.21  SD 0.17
+            //     1.60  1.47 1.16 1.04 1.27   mean 1.24  SD 0.18
+            // The standard error on each mean is about three times the largest
+            // gap between them, and successful assaults (issued minus
+            // repulsed) are equally flat across the whole range.
+            //
+            // What DOES move monotonically is the mechanism: assaults issued
+            // fall 15428 -> 12773 and the repulse rate falls 57% -> 45% as this
+            // rises. So the constant does exactly what it is meant to; the
+            // outcome simply does not care where in this range it sits.
+            //
+            // Do not re-sweep this against ADVANTAGE hoping for a sharper
+            // answer -- resolving a 0.03 difference against a 0.2 SD needs
+            // hundreds of runs. If it ever needs settling, it needs a
+            // lower-variance metric, not more seeds.
+            constexpr float ATTACK_SAFETY = 1.25f;
+            constexpr float ATTACK_MAX_COMMIT = 0.85f; // never strip a province bare
+            constexpr int   PRONGS_PER_PROVINCE = 3;
+            int issued = 0, blocked = 0;
+            std::unordered_map<int, float> committed;   // fromPid -> fraction of original
+            std::unordered_map<int, int>   prongs;      // fromPid -> orders issued
+            // Provinces already carrying an order from an earlier decision are
+            // off limits, but an order pushed by THIS loop must not lock the
+            // province against its own second prong -- so the set is taken once,
+            // before anything is queued.
+            std::unordered_set<int> preOrdered;
+            for (auto& mo : g.m_pendingMoveOrders)
+                if (mo.countryId == cid) preOrdered.insert(mo.fromProvince);
+            const AttackCandidate* first = nullptr;
+            for (int idx : order) {
+                if (issued >= ATTACK_ORDERS_PER_TURN) break;
+                if (idx < 0 || idx >= (int)cands.size()) continue;
+                const AttackCandidate& ch = cands[idx];
+                if (preOrdered.count(ch.fromPid)) { blocked++; continue; }
+                if (prongs[ch.fromPid] >= PRONGS_PER_PROVINCE) continue;
+                if (ch.margin <= 0.0f) continue;
+                const float already = committed[ch.fromPid];
+                float need = 0.75f * ATTACK_SAFETY / ch.margin;   // of the ORIGINAL garrison
+                need = std::clamp(need, 0.10f, ATTACK_MAX_COMMIT);
+                if (need > ATTACK_MAX_COMMIT - already) continue;  // not enough left to win
+                const int pct = (int)std::lround(100.0f * need / std::max(0.01f, 1.0f - already));
+                if (pct <= 0 || pct > 100) continue;
+                g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
+                committed[ch.fromPid] = already + need;
+                prongs[ch.fromPid]++;
+                statsFor(cid).attackIssued++;
+                if (!first) first = &ch;
+                issued++;
+            }
+            if (issued == 0) {
+                statsFor(cid).attackPending += blocked;
+                return "attack: every launch province already has orders";
+            }
+            if (issued == 1)
+                return TextFormat("attack prov %d from %s%d (margin %.1fx)",
+                                  first->toPid, first->fromAlly ? "allied prov " : "",
+                                  first->fromPid, first->margin);
+            return TextFormat("attack on %d fronts (best: prov %d from %d, margin %.1fx)",
+                              issued, first->toPid, first->fromPid, first->margin);
         }
         case 4: { // declare war: prefer neighbours holding OUR claimed land,
                   // then the weakest beatable one. Claims are the war goal.
@@ -2521,7 +3117,16 @@ std::string AISystem::execWar(int cid, int action) {
                        (wt.naval ? " (naval war next turn)" : " (war next turn)");
             }
 
-            g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "declare_war", 1});
+            // What this war is really for, kept to ourselves, and what we tell
+            // the world it is for, which may be a different thing. Decided here
+            // rather than when the declaration resolves next turn: this is the
+            // state the country decided from.
+            {
+                PendingDiplomaticAction pda{c.isoA3, ec->isoA3, "declare_war", 1};
+                const int truth = trueWarGoal(cid, wt.cid);
+                pda.statedGoal = chooseStatedWarGoal(cid, wt.cid, truth);
+                g.m_pendingDiplomaticActions.push_back(std::move(pda));
+            }
             statsFor(cid).warsDeclared++;
             m_declaredUnprovoked = !wt.claimed;
             if (wt.naval)
@@ -2590,10 +3195,13 @@ std::string AISystem::execWar(int cid, int action) {
             double edge = (double)myArmy / (double)theirArmy;
             Country& tc = g.m_countries.getAll()[target];
 
-            auto provsOf = [&](int owner, int adjacentTo, int maxN) {
-                std::vector<int> out;
+            auto provsOf = [&](int owner, int adjacentTo, int maxN,
+                               std::vector<int>* into = nullptr) {
+                std::vector<int> local;
+                std::vector<int>& out = into ? *into : local;
                 for (int pid : g.provincesOf(owner)) {
                     if ((int)out.size() >= maxN) break;
+                    if (std::find(out.begin(), out.end(), pid) != out.end()) continue;
                     auto nIt = g.m_provinceNeighbors.find(pid);
                     if (nIt == g.m_provinceNeighbors.end()) continue;
                     for (int nid : nIt->second) {
@@ -2605,13 +3213,53 @@ std::string AISystem::execWar(int cid, int action) {
                 return out;
             };
 
+            // WHAT THE WAR WAS FOR, at the table where it ends.
+            //
+            // These terms used to be composed with no reference to the war goal
+            // at all: "demand provinces" meant provsOf(), which walks the
+            // defender's territory in map order and takes the first N that
+            // happen to touch us. So a war declared to recover a specific claim
+            // was settled for whichever province the iterator reached first,
+            // and the goal -- the thing the AI privately holds, the thing a
+            // player is supposed to deduce -- never reached the negotiation.
+            //
+            // Claimed land is asked for FIRST, and a country fighting to
+            // recover it will not trade the claim away. That is what makes the
+            // goal observable: not a label on a panel, but a settlement that
+            // consistently bends around the same provinces.
+            const int warGoal = trueWarGoal(cid, target);
+            auto claimedProvsOf = [&](int owner, const std::string& claimant, int maxN,
+                                      std::vector<int>& out) {
+                for (int pid : g.provincesOf(owner)) {
+                    if ((int)out.size() >= maxN) break;
+                    auto clIt = g.m_claimsByProvince.find(pid);
+                    if (clIt == g.m_claimsByProvince.end()) continue;
+                    for (const auto& iso : clIt->second)
+                        if (iso == claimant) { out.push_back(pid); break; }
+                }
+            };
+
             const char* posture;
             if (edge > 1.5) {
                 // Winning: take something for stopping. Demand border provinces
                 // (capped so a victory doesn't annex a whole country in one
                 // deal) and a slice of their treasury.
                 posture = "demanding";
-                terms.theirProvs = provsOf(target, cid, edge > 3.0 ? 3 : 1);
+                const int wantN = edge > 3.0 ? 3 : 1;
+                // The claim first, then whatever border land is left over.
+                claimedProvsOf(target, c.isoA3, wantN, terms.theirProvs);
+                provsOf(target, cid, wantN, &terms.theirProvs);
+                // Measured, not assumed: see TrainStats::ceasefireProvsAsked.
+                {
+                    TrainStats& st2 = statsFor(cid);
+                    st2.ceasefireProvsAsked += (long long)terms.theirProvs.size();
+                    for (int pid : terms.theirProvs) {
+                        auto clIt2 = g.m_claimsByProvince.find(pid);
+                        if (clIt2 == g.m_claimsByProvince.end()) continue;
+                        for (const auto& iso : clIt2->second)
+                            if (iso == c.isoA3) { st2.ceasefireClaimedAsked++; break; }
+                    }
+                }
                 terms.theirMoney = (int)std::max(0.0, std::min(tc.treasury * 0.25, 2000.0));
                 // Make them renounce claims on us as part of the settlement.
                 auto clIt = g.m_claims.find(tc.isoA3);
@@ -2627,15 +3275,24 @@ std::string AISystem::execWar(int cid, int action) {
                 // them, and cede a border province if we are being overrun.
                 posture = "conceding";
                 terms.ourMoney = (int)std::max(0.0, std::min(c.treasury * 0.30, 1500.0));
-                auto clIt = g.m_claims.find(c.isoA3);
-                if (clIt != g.m_claims.end())
-                    for (int pid : clIt->second) {
-                        if (terms.ourDropClaims.size() >= 3) break;
-                        int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
-                                        ? g.m_provinceCountryLookup[pid] : 0;
-                        if (owner == target) terms.ourDropClaims.push_back(pid);
-                    }
-                if (edge < 0.4) terms.ourProvs = provsOf(cid, target, 1);
+                // A country losing a war of RECOVERY does not buy peace by
+                // renouncing the thing it went to war for. It pays, it cedes
+                // ground elsewhere, and it keeps the claim -- which is the
+                // whole of what "this war was about Danzig" looks like from the
+                // other side of the table, and is exactly how a player is meant
+                // to work out what the war was about.
+                if (warGoal == WAR_GOAL_RECONQUEST) statsFor(cid).ceasefireHeldClaim++;
+                if (warGoal != WAR_GOAL_RECONQUEST) {
+                    auto clIt = g.m_claims.find(c.isoA3);
+                    if (clIt != g.m_claims.end())
+                        for (int pid : clIt->second) {
+                            if (terms.ourDropClaims.size() >= 3) break;
+                            int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
+                                            ? g.m_provinceCountryLookup[pid] : 0;
+                            if (owner == target) terms.ourDropClaims.push_back(pid);
+                        }
+                }
+                if (edge < 0.4) provsOf(cid, target, 1, &terms.ourProvs);
             } else {
                 posture = "white peace"; // evenly matched — no demands
             }
@@ -2972,6 +3629,7 @@ void AISystem::austerityReflex(int cid) {
         if (bestIdx >= 0) {
             g.m_pendingScrapShips.push_back({bestIdx});
             statsFor(cid).shipsScrapped++;
+            m_shipsScrappedThisTurn[cid]++;
             what = "scrapped a warship";
         }
     }
@@ -3126,7 +3784,9 @@ void AISystem::amphibiousReflex(int cid) {
                 g.m_pendingShipDisembarks.push_back({(int)i, homePid});
                 statsFor(cid).unloadsHome++;
             } else if (homePid >= 0) {
-                double dLon = homeLon - s.lon, dLat = homeLat - s.lat;
+                double aLon, aLat;
+                aimAlongRoute(s, homeLon, homeLat, aLon, aLat);
+                double dLon = aLon - s.lon, dLat = aLat - s.lat;
                 const double dist = std::max(1e-6, std::hypot(dLon, dLat));
                 const double step = std::min(FULL_STEP, dist);
                 g.m_pendingShipMoveOrders.push_back(
@@ -3142,16 +3802,40 @@ void AISystem::amphibiousReflex(int cid) {
         for (auto& mo : g.m_pendingShipMoveOrders)
             if (mo.shipIndex == (int)i) { moving = true; break; }
         if (moving) continue;
-        double dLon = enemyLon - s.lon, dLat = enemyLat - s.lat;
+        double aLon, aLat;
+        aimAlongRoute(s, enemyLon, enemyLat, aLon, aLat);
+        const bool finalLeg = (aLon == enemyLon && aLat == enemyLat);
+        double dLon = aLon - s.lon, dLat = aLat - s.lat;
         const double dist = std::max(1e-6, std::hypot(dLon, dLat));
         // Stop just inside landing range rather than on top of the port, so the
-        // next turn lands instead of overshooting.
-        const double want = std::max(0.0, dist - LAND_RANGE * 0.5);
+        // next turn lands instead of overshooting -- but only on the LAST leg;
+        // an intermediate waypoint is open sea and is sailed to in full.
+        const double want = finalLeg ? std::max(0.0, dist - LAND_RANGE * 0.5) : dist;
         const double step = std::min(FULL_STEP, want);
         if (step <= 0.0) continue;
         g.m_pendingShipMoveOrders.push_back(
             {(int)i, s.lon + dLon / dist * step, s.lat + dLat / dist * step});
     }
+}
+
+void AISystem::aimAlongRoute(const NavyShip& s, double tLon, double tLat,
+                             double& aimLon, double& aimLat) const {
+    Game& g = *m_g;
+    aimLon = tLon; aimLat = tLat;
+    std::vector<std::pair<double, double>> route;
+    if (!g.navRoute(s.lon, s.lat, tLon, tLat, route) || route.empty()) return;
+    // Furthest waypoint that is in range AND straight-line sailable. Skipping
+    // on range alone cuts the corner the route exists to go around.
+    const double reach = g.shipMaxRangeDeg(s);
+    size_t pick = 0;
+    for (size_t i = 0; i < route.size(); ++i) {
+        const double dl = route[i].first - s.lon, dt = route[i].second - s.lat;
+        if (std::sqrt(dl * dl + dt * dt) > reach) continue;
+        if (!g.navLineClear(s.lon, s.lat, route[i].first, route[i].second)) continue;
+        pick = i;
+    }
+    aimLon = route[pick].first;
+    aimLat = route[pick].second;
 }
 
 std::string AISystem::execNavy(int cid, int action) {
@@ -3190,6 +3874,7 @@ std::string AISystem::execNavy(int cid, int action) {
             if (cIt == g.m_provinceCenters.end()) continue;
             double lon = cIt->second.x / mapW * 360.0 - 180.0;
             double lat = 90.0 - cIt->second.y / mapH * 180.0;
+            if (!g.navReachable(fromLon, fromLat, lon, lat)) continue;  // as above
             double dLon = lon - fromLon, dLat = lat - fromLat;
             double d = dLon * dLon + dLat * dLat;
             if (d < 0.25) return false;   // already on station here
@@ -3212,6 +3897,11 @@ std::string AISystem::execNavy(int cid, int action) {
             if (cIt == g.m_provinceCenters.end()) continue;
             double lon = cIt->second.x / mapW * 360.0 - 180.0;
             double lat = 90.0 - cIt->second.y / mapH * 180.0;
+            // NEAREST IS NOT THE SAME AS REACHABLE. Chosen on straight-line
+            // distance alone, this picked ports on the far side of a continent
+            // and the fleet then spent the rest of the game pressed against the
+            // nearest beach -- 93% of all ship moves went nowhere.
+            if (!g.navReachable(fromLon, fromLat, lon, lat)) continue;
             double dLon = lon - fromLon, dLat = lat - fromLat;
             double d = dLon * dLon + dLat * dLat;
             if (d < bestD) { bestD = d; outPid = pid; outLon = lon; outLat = lat; found = true; }
@@ -3262,9 +3952,28 @@ std::string AISystem::execNavy(int cid, int action) {
                 // it covers the coast it is supposed to be covering.
                 if (!findEnemyPort(s.lon, s.lat, tp, tLon, tLat) &&
                     !findHomePort(s.lon, s.lat, tp, tLon, tLat)) break;
-                double dLon = tLon - s.lon, dLat = tLat - s.lat;
+                // STEER FOR THE NEXT WAYPOINT, NOT THE DESTINATION.
+                //
+                // Aiming at the target itself is what produced the 93% stall:
+                // the resolver clamps a move at the last navigable point, so a
+                // port behind a headland parked the hull on that headland and
+                // every following turn re-aimed down the same blocked line. The
+                // route bends around the coast, so each leg is water the ship
+                // can actually cross. Falls back to the direct line when no
+                // route is available, which is what the open-sea case wants
+                // anyway.
+                double aimLon, aimLat;
+                aimAlongRoute(s, tLon, tLat, aimLon, aimLat);
+                double dLon = aimLon - s.lon, dLat = aimLat - s.lat;
                 double dist = std::sqrt(dLon * dLon + dLat * dLat);
-                const double STEP = 18.0; // degrees per turn — no cross-map teleports
+                // The SAME range the player's hull gets, per type and with the
+                // owner's navySpeedPct, instead of the flat 18 degrees this
+                // used to steam. 18 degrees is 410 px on the shipped maps,
+                // against a player boat's 200 -- so an AI boat covered twice
+                // what a human's could, and no AI hull ever benefited from the
+                // navy speed research. The resolver clamps to this too, so a
+                // longer order simply takes more turns.
+                const double STEP = g.shipMaxRangeDeg(s);
                 if (dist > STEP) { dLon *= STEP / dist; dLat *= STEP / dist; }
                 g.m_pendingShipMoveOrders.push_back({(int)i, s.lon + dLon, s.lat + dLat});
                 if (++moved >= 3) break; // a few ships per turn is plenty
@@ -3301,7 +4010,11 @@ std::string AISystem::execNavy(int cid, int action) {
                     double lon = cIt->second.x / mapW * 360.0 - 180.0;
                     double lat = 90.0 - cIt->second.y / mapH * 180.0;
                     double d = std::hypot(lon - s.lon, lat - s.lat);
-                    if (d > 10.0) continue; // rough range gate
+                    // The hull's real range, same as the player's bombard
+                    // circle, rather than the flat 10 degrees this used to
+                    // call a "rough range gate". The resolver enforces it now
+                    // regardless, so an out-of-range order is simply dropped.
+                    if (d > g.shipMaxRangeDeg(s)) continue;
                     c.treasury -= use->cost;
                     g.m_pendingShipBombardOrders.push_back({(int)i, pid, use->type});
                     return TextFormat("bombard prov %d (%s)", pid, use->type);
@@ -3418,8 +4131,52 @@ std::string AISystem::execNavy(int cid, int action) {
             if (bestIdx < 0) return "scrap: nothing worth scrapping";
             g.m_pendingScrapShips.push_back({bestIdx});
             statsFor(cid).shipsScrapped++;
+            m_shipsScrappedThisTurn[cid]++;
             return TextFormat("scrap %s #%d (saves %.0f/turn)",
                               g.m_ships[bestIdx].type.c_str(), bestIdx, bestCost);
+        }
+        case 6: { // engage: bring an enemy hull to action
+            // WHAT A PERSON SHOOTS AT, in order.
+            //
+            // A loaded transport is the highest-value target on the map: sink
+            // it and the invasion it carries dies with it, which is worth far
+            // more than the hull. After that, finish what is already hurt --
+            // damage does not heal, so a half-dead destroyer is the cheapest
+            // kill available. Ties go to the closest, because processNavyCombat
+            // scales damage by distance.
+            //
+            // Transports do not attack. They are the cargo, not the escort.
+            int bestMine = -1, bestThem = -1;
+            double bestScore = -1e18;
+            for (size_t i = 0; i < g.m_ships.size(); ++i) {
+                const auto& mine = g.m_ships[i];
+                if (mine.countryId != cid || mine.type == "boat") continue;
+                bool busy = false;
+                for (auto& eo : g.m_pendingShipEngageOrders)
+                    if (eo.shipIndex == (int)i) { busy = true; break; }
+                if (busy) continue;
+                const double reach = g.shipMaxRangeDeg(mine);
+                for (size_t j = 0; j < g.m_ships.size(); ++j) {
+                    const auto& them = g.m_ships[j];
+                    if (them.countryId <= 0 || them.countryId == cid) continue;
+                    if (!g.atWarCids(cid, them.countryId)) continue;
+                    const double dl = them.lon - mine.lon, dt = them.lat - mine.lat;
+                    const double d = std::sqrt(dl * dl + dt * dt);
+                    if (d > reach) continue;
+                    double score = 0.0;
+                    if (them.crew > 0)          score += 1000.0;  // troops aboard
+                    score += (100.0 - (double)them.health);       // finish the wounded
+                    score -= d;                                   // closer hits harder
+                    if (score > bestScore) {
+                        bestScore = score; bestMine = (int)i; bestThem = (int)j;
+                    }
+                }
+            }
+            if (bestMine < 0) return "engage: nothing in range";
+            g.m_pendingShipEngageOrders.push_back({bestMine, bestThem});
+            const auto& t = g.m_ships[bestThem];
+            return TextFormat("engage %s #%d (hp %d%s)", t.type.c_str(), bestThem,
+                              t.health, t.crew > 0 ? ", loaded" : "");
         }
         default: return "navy hold";
     }
@@ -3435,18 +4192,326 @@ void AISystem::noteDiploRejected(int sourceCid, int targetCid) {
     m_diploCooldownUntil[diploKey(sourceCid, targetCid)] = m_turn + 60;
 }
 
+// ─── Rung one: a player written down ─────────────────────────────────────
+//
+// See s_scriptedControl. Every rule here is one somebody would give you in a
+// tutorial, in the order a person would apply them, and the whole thing is
+// deliberately simple: this is the standard to beat, not an attempt at a good
+// player. If the trained model cannot reach parity with it, the model is not an
+// intermediate opponent whatever its ADVANTAGE against dice says.
+int AISystem::scriptedChoice(int module, int cid, const std::vector<bool>& valid,
+                             int variant) const {
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    auto stIt = m_stats.find(cid);
+    if (!c || stIt == m_stats.end()) return 0;
+    const CountryStat& st = stIt->second;
+
+    // First entry the mask allows. Everything below is a preference order, so
+    // no rule has to re-derive a precondition the mask already knows.
+    auto pick = [&](std::initializer_list<int> prefs) {
+        for (int a : prefs)
+            if (a >= 0 && a < (int)valid.size() && valid[a]) return a;
+        for (size_t i = 0; i < valid.size(); ++i)
+            if (valid[i]) return (int)i;
+        return 0;
+    };
+
+    const bool broke     = g.isBankrupt(cid);
+    const bool atWar     = const_cast<AISystem*>(this)->foreignWarCount(cid) > 0;
+    const bool threatened = st.threatenedProvinces > 0;
+    const bool outmatched = st.enemyAdjArmy > st.army;
+
+    switch (module) {
+        case MOD_ECONOMY:
+            // Pay the bills, keep research running, then build. "Keep research
+            // running" above "build" is the one piece of real advice in here:
+            // a player who stops researching loses slowly and never notices.
+            if (broke) return pick({0, 8});                 // save, cut research
+            if (atWar || threatened) return pick({10, 7, 1, 0});  // army focus, fund, industry
+            return pick({9, 7, 1, 4, 2, 0});               // build focus, fund, industry, specialise, fort
+        case MOD_POLITICS:
+            // Hold the country together first; make friends when it is quiet.
+            if (st.worstAlignment < 40.0f) return pick({9, 8, 0});   // conciliate, calm
+            if (st.provincesLost > 0)       return pick({8, 9, 0});
+            if (st.pacts < 2)               return pick({6, 5, 7, 0}); // NAP, alliance, guarantee
+            return pick({0});
+        case MOD_WAR: {
+            // ── The turtle ──
+            // Identical in every other respect; it simply never goes on the
+            // offensive. It still builds to sufficiency, still holds its
+            // borders, still fires artillery at whoever is on them, and still
+            // makes peace. What it will not do is attack or declare -- which is
+            // the single variable this whole comparison is about.
+            if (variant == SCRIPT_TURTLE) {
+                if (atWar && outmatched && st.provincesLost > 0) return pick({6, 2, 1, 0});
+                const bool adequateT =
+                    st.army >= (long long)(std::max(1LL, st.enemyAdjArmy) * 1.5);
+                if (!adequateT)  return pick({1, 2, 0});      // recruit, reinforce
+                // ARTILLERY STAYS BEHIND REINFORCE, ON EVIDENCE. pick() takes
+                // the first valid entry and reinforce is valid on nearly every
+                // threatened turn, so naming 5 here has never once fired a
+                // shell -- 0 out of 2,049 offers over two 300-turn scenarios.
+                //
+                // That was tried both ways rather than assumed. Promoting
+                // artillery, and separately using it to soften a front the
+                // script could not storm, both worked mechanically and both
+                // made the script WORSE, monotonically in how much it fired:
+                //     0% of war turns  ->  script holds 51.5% of the land
+                //    14-15%            ->  42.5%
+                //    17-18%            ->  40.2%
+                // (same model, same seeds, --eval-ai 2 300 4242 2 --scenarios).
+                // A turn and 5-80 treasury buys less than recruiting,
+                // reinforcing or attacking with the same turn does, so the
+                // trained model's ~0.3% artillery rate is not a policy failure
+                // to be corrected -- it is the correct read of the payoff. If
+                // artillery is meant to matter, the shell has to get cheaper or
+                // hit harder first; until then, leave the ordering alone.
+                if (threatened)  return pick({2, 5, 1, 0});   // hold the line
+                if (atWar)       return pick({6, 5, 2, 1, 0});// end it if we can
+                return pick({1, 0});                          // keep the reserve up
+            }
+            // AN ARMY FIRST, AND THEN A WAR. In that order, and the order is
+            // the whole rule.
+            //
+            // The first version of this put "attack" above everything whenever
+            // the mask allowed it -- and the mask only asks whether we are at
+            // war with a frontier and own any troops at all, not whether there
+            // is anything we can beat. So it attacked on 97.7% of the turns it
+            // was offered, found no target on a third of them, and recruited on
+            // 0.1%: a berserker with no army, which is not an intermediate
+            // player, it is the mirror image of the recruit-forever collapse
+            // this project spent so long digging out of. A turtle beat it 4.35x
+            // and the yardstick was useless.
+            //
+            // Sufficiency is what a person actually uses: build until the army
+            // can handle what is on the border, then use it.
+            const bool adequate =
+                st.army >= (long long)(std::max(1LL, st.enemyAdjArmy) * 1.2);
+            if (atWar && outmatched && st.provincesLost > 0)
+                return pick({6, 2, 1, 0});                 // losing: get out
+            if (!adequate)
+                return pick({1, 2, 0});                    // recruit, reinforce
+            if (valid.size() > 3 && valid[3]) return pick({3});   // now attack
+            if (threatened)                   return pick({2, 5, 1, 0});
+            if (atWar)                        return pick({5, 2, 6, 1, 0});
+            if (st.army > (long long)(std::max(1LL, st.enemyAdjArmy) * 2))
+                return pick({4, 1, 0});                    // declare from strength
+            return pick({1, 0});
+        }
+        case MOD_NAVY:
+            // Get the men ashore, and stop paying for hulls with nothing to do.
+            if (valid.size() > 4 && valid[4]) return pick({4});      // land them
+            // An enemy hull within reach is worth answering before anything
+            // else: it is the one naval opportunity that expires. The rung
+            // needs this as much as the model does -- an opponent that never
+            // fights at sea cannot teach anything about fighting at sea.
+            if (valid.size() > 6 && valid[6]) return pick({6});      // engage
+            if (atWar && st.navalWarTargets > 0) return pick({3, 1, 2, 0});
+            if (st.navalTargets > 0)             return pick({1, 3, 0});
+            return pick({5, 0});                                     // scrap the idle fleet
+        default:
+            return pick({0});
+    }
+}
+
+bool AISystem::scriptedDiplomacy(int targetCid, const std::string& action,
+                                 const std::string& sourceIso) const {
+    Game& g = *m_g;
+    auto stIt = m_stats.find(targetCid);
+    if (stIt == m_stats.end()) return false;
+    const CountryStat& st = stIt->second;
+    const int srcCid = g.cidForIso(sourceIso);
+    const bool atWar = const_cast<AISystem*>(this)->foreignWarCount(targetCid) > 0;
+
+    if (action == "request_ceasefire") {
+        // Take the peace unless clearly winning. A player who cannot stop a war
+        // they are losing is the single most common thing this AI does wrong.
+        const long long theirs = srcCid >= 0 && m_stats.count(srcCid)
+                                     ? m_stats.at(srcCid).army : 0;
+        return st.army < theirs * 1.5;
+    }
+    if (action == "call_to_arms") return !atWar;      // honour it if we are free
+    if (action == "request_nap")  return true;        // peace is cheap
+    if (action == "request_alliance" || action == "request_guarantee")
+        return st.pacts < 4;                          // friends, but not everybody's
+    return false;
+}
+
+int AISystem::trueWarGoal(int selfCid, int defenderCid) const {
+    Game& g = *m_g;
+    const Country* me = g.m_countries.getCountry(selfCid);
+    if (!me) return WAR_GOAL_CONQUEST;
+
+    // Dragged in rather than chosen: an ally asked, and that is the whole of
+    // the reason. Checked first because it overrides any ambition of our own.
+    auto rel = g.m_relations.find(me->isoA3);
+    if (rel != g.m_relations.end()) {
+        const Country* def = g.m_countries.getCountry(defenderCid);
+        if (def) {
+            for (const auto& [iso, r] : rel->second) {
+                if (!r.alliance && !r.guarantee) continue;
+                auto their = g.m_relations.find(iso);
+                if (their == g.m_relations.end()) continue;
+                auto w = their->second.find(def->isoA3);
+                if (w != their->second.end() && w->second.war) return WAR_GOAL_ALLY;
+            }
+        }
+    }
+    // Land we claim, which is what findWarTarget preferred when it chose this
+    // war and what the attack head is already steering toward.
+    if (!g.warGoalIsContradicted(selfCid, selfCid, defenderCid, WAR_GOAL_RECONQUEST))
+        return WAR_GOAL_RECONQUEST;
+    // A neighbour with troops on our border that we did not pick a fight with.
+    auto meIt = m_stats.find(selfCid);
+    if (meIt != m_stats.end() && meIt->second.threatenedProvinces > 0)
+        return WAR_GOAL_SECURITY;
+    // The country running away with the map.
+    if (defenderCid == m_world.largestCid && m_world.largestCid != selfCid)
+        return WAR_GOAL_HUMBLE;
+    return WAR_GOAL_CONQUEST;
+}
+
+int AISystem::chooseStatedWarGoal(int selfCid, int defenderCid, int trueGoal) {
+    Game& g = *m_g;
+    TrainStats& s = statsFor(selfCid);
+    auto safe = [&](int goal) {
+        return !g.warGoalIsContradicted(defenderCid, selfCid, defenderCid, goal);
+    };
+
+    int stated = trueGoal;
+    // A naked land grab is the one goal nobody can argue with and the one that
+    // reads worst -- so a country that wants land goes looking for a pretext
+    // that happens to be true, in descending order of how respectable it
+    // sounds. Every candidate here is checked against the same public map the
+    // victim can read, so the pretext is never one that falls apart.
+    if (trueGoal == WAR_GOAL_CONQUEST || trueGoal == WAR_GOAL_HUMBLE) {
+        if (safe(WAR_GOAL_RECONQUEST))    stated = WAR_GOAL_RECONQUEST;
+        else if (safe(WAR_GOAL_ALLY))     stated = WAR_GOAL_ALLY;
+        else if (safe(WAR_GOAL_SECURITY)) stated = WAR_GOAL_SECURITY;
+    }
+    if (!safe(stated)) stated = WAR_GOAL_CONQUEST;   // never the checkable lie
+
+    // ...or nothing at all. Declaring war and offering no explanation is a
+    // statement of its own, and a country that always has a justification ready
+    // is one a player can stop reading.
+    {
+        std::uniform_real_distribution<float> d(0.0f, 1.0f);
+        if (d(m_rng) < WAR_GOAL_SILENCE_CHANCE) stated = WAR_GOAL_NONE;
+    }
+
+    if (stated == WAR_GOAL_NONE)        s.warGoalSilent++;
+    else if (stated == trueGoal)        s.warGoalTrue++;
+    else {
+        s.warGoalPretext++;
+        if (g.warGoalIsContradicted(defenderCid, selfCid, defenderCid, stated))
+            s.warGoalCaught++;
+    }
+    return stated;
+}
+
+void AISystem::noteRefusalHeard(int speakerCid, int hearerCid, int statedReason) {
+    if (statedReason == REFUSE_NONE) return;   // nothing was claimed
+    if (speakerCid <= 0 || hearerCid <= 0 || !m_g) return;
+    // Judged by the same rule the AI holds itself to, from the HEARER's side.
+    // A statement the hearer can check against the map and find false is the
+    // one that will cost credibility when credibility exists.
+    if (m_g->refusalIsContradicted(hearerCid, speakerCid, statedReason))
+        statsFor(hearerCid).refusalsHeardFalse++;
+    else
+        statsFor(hearerCid).refusalsHeard++;
+}
+
+int AISystem::chooseStatedRefusal(int selfCid, int askerCid, int trueReason) {
+    Game& g = *m_g;
+    TrainStats& s = statsFor(selfCid);
+
+    // ── Would this admit something we would rather not? ──
+    //
+    // "We are losing ground on our borders" and "they are too strong" are both
+    // true things that invite the person you are talking to to have a go at
+    // you. A country with anything to hide reaches for the excuse that gives
+    // nothing away, which is what makes the lie worth telling rather than
+    // gratuitous.
+    const bool revealing = (trueReason == REFUSE_LOSING_GROUND ||
+                            trueReason == REFUSE_OUTGUNNED ||
+                            trueReason == REFUSE_WEARINESS);
+
+    auto safe = [&](int r) {
+        return r != REFUSE_NONE && !g.refusalIsContradicted(askerCid, selfCid, r);
+    };
+
+    int stated = trueReason;
+    if (revealing) {
+        // Reach for a reason that is both unfalsifiable and says nothing about
+        // our condition. Preference over pretext: claiming other wars is a
+        // better story but the map may disprove it, so it is only used when it
+        // happens to be true.
+        if (safe(REFUSE_NO_INTEREST))    stated = REFUSE_NO_INTEREST;
+        else if (safe(REFUSE_OWN_WARS))  stated = REFUSE_OWN_WARS;
+    }
+    // Never say the checkable false thing, whatever the reasoning above wanted.
+    if (!safe(stated)) stated = safe(REFUSE_NO_INTEREST) ? REFUSE_NO_INTEREST
+                                                        : REFUSE_NONE;
+
+    // SILENCE, sometimes, and not as a fallback. A country that always has an
+    // answer is as legible as one that always tells the truth; saying nothing
+    // is a real move and the AI should have it. Rare enough that a refusal is
+    // usually informative.
+    if (stated != REFUSE_NONE) {
+        std::uniform_real_distribution<float> d(0.0f, 1.0f);
+        if (d(m_rng) < REFUSAL_SILENCE_CHANCE) stated = REFUSE_NONE;
+    }
+
+    if (stated == REFUSE_NONE)            s.refusalsSilent++;
+    else if (stated == trueReason)        s.refusalsTrue++;
+    else {
+        s.refusalsLied++;
+        // The invariant. See TrainStats::refusalsCaught.
+        if (g.refusalIsContradicted(askerCid, selfCid, stated)) s.refusalsCaught++;
+    }
+    return stated;
+}
+
 bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                                const std::string& sourceIso,
-                               const std::string& subjectIso) {
+                               const std::string& subjectIso,
+                               int* statedReasonOut) {
+    // What we will say if the answer turns out to be no. Assigned at every
+    // refusing return below; a request we accept explains nothing.
+    int trueReason = REFUSE_NO_INTEREST;
+    // ALWAYS chosen, whether or not the caller asked for it. The choice draws
+    // from m_rng for the silence roll and increments the counters, so making it
+    // conditional on the out-parameter would give a ceasefire refusal a
+    // different random stream from an alliance refusal and would leave whole
+    // categories of refusal uncounted -- a difference in behaviour created by
+    // which call site happened to want the answer.
+    auto refuse = [&](int why) {
+        const int stated = chooseStatedRefusal(targetCid, m_g->cidForIso(sourceIso), why);
+        if (statedReasonOut) *statedReasonOut = stated;
+        return false;
+    };
     // The control group answers diplomacy the way it does everything else. The
     // heuristic gates below still apply to it, because those are machinery
     // rather than policy and the baseline is meant to differ in exactly one
     // thing.
-    m_randomThisCountry = isRandomCountry(targetCid);
+    m_randomThisCountry = isRandomCountry(targetCid) && !m_opponentLoaded;
+    // Counted here, before the gates: this country was asked, whatever it goes
+    // on to answer. See TrainStats::diploRequests.
+    statsFor(targetCid).diploRequests++;
     struct ClearFlag {
         bool& f;
         ~ClearFlag() { f = false; }
     } clearFlag{m_randomThisCountry};
+
+    // WHOSE DIPLOMACY NET ANSWERS THIS.
+    //
+    // Only ever the opponent's under --vs-model, where it was loaded from a
+    // full model file. A league checkpoint carries no diplomacy net, so in
+    // training this stays false and the frozen side keeps answering with the
+    // current model's, exactly as before. See m_leagueDiplo.
+    const bool opponentAnswers =
+        m_leagueDiploLoaded && m_leagueCids.count(targetCid) > 0;
 
     std::vector<float> feats;
     buildFeatures(targetCid, feats);
@@ -3482,18 +4547,21 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         // are checked before the net is consulted, so no sample is recorded:
         // this is not a decision that was taken, it is one that was not
         // available. See AI_CALL_* in the header.
-        const char* refuse = nullptr;
+        // The gate that fired, as a reason rather than only as a log string.
+        // These four ARE the true reasons -- the country genuinely cannot join
+        // -- and what it goes on to tell the asker is decided separately.
+        int gate = REFUSE_NONE;
         const int myWars = foreignWarCount(targetCid);
         if (myWars >= AI_CALL_MAX_OWN_WARS)
-            refuse = "already fighting two wars of its own";
+            gate = REFUSE_OWN_WARS;
         else if (m_g->warWearinessOf(targetCid) >= AI_CALL_WEARINESS_BLOCK)
-            refuse = "home front already too unhappy";
+            gate = REFUSE_WEARINESS;
         // Being invaded is a reason to stay home; having a neighbour's stack
         // parked on a quiet border is not, and neither is losing a province to
         // a rebellion somewhere. The old test fired on either, which on a busy
         // map is most of the time.
         else if (ts.threatenedProvinces > 0 && ts.enemyAdjArmy > ts.defenderArmy)
-            refuse = "losing ground on its own borders";
+            gate = REFUSE_LOSING_GROUND;
         else if (!subjectIso.empty()) {
             // Who we would actually be fighting, and with whom. The aggressor
             // is the third party in the request, not the ally making it — the
@@ -3503,13 +4571,14 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
             const long long ourSide = std::max(1LL, ts.army + srcArmy);
             const long long theirArmy = aggCid >= 0 ? m_stats[aggCid].army : 0;
             if (theirArmy > (long long)(ourSide * AI_CALL_MAX_ENEMY_ODDS))
-                refuse = "the aggressor outguns both of us";
+                gate = REFUSE_OUTGUNNED;
         }
-        if (refuse) {
+        if (gate != REFUSE_NONE) {
+            trueReason = gate;
             logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
                         std::string("REFUSE call_to_arms from ") + sourceIso +
-                        " (" + refuse + ")");
-            return false;
+                        " (" + refusalText(gate) + ")");
+            return refuse(gate);
         }
 
         // No gate fired: the net decides, but against a thumb on the scale.
@@ -3520,6 +4589,21 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
     } else if (action == "request_nap") {
         bias.assign(DIPLO_ACTIONS, 0.0f);
         bias[1] = AI_NAP_WILLINGNESS;
+    }
+
+    // WHAT THEIR WORD IS WORTH HERE. Applies to every kind of request, so it
+    // sits after the per-action thumbs above rather than inside one of them.
+    // Scaled by the shortfall: somebody who has never been caught pays nothing,
+    // which is what keeps this a cost of lying rather than a tax on asking.
+    {
+        const Country* tc = m_g->m_countries.getCountry(targetCid);
+        if (tc) {
+            const float cred = m_g->credibility(sourceIso, tc->isoA3);
+            if (cred < 1.0f) {
+                if (bias.empty()) bias.assign(DIPLO_ACTIONS, 0.0f);
+                bias[1] -= CREDIBILITY_WEIGHT * (1.0f - cred);
+            }
+        }
     }
 
     // The deal on the table. Without these the diplomacy net judged a ceasefire
@@ -3547,7 +4631,41 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
     std::vector<bool> valid(DIPLO_ACTIONS, true);
     float score;
     float diploLogProb = 0.0f;
-    int a = pickAction(m_diplo, feats, valid, score, /*graveAction=*/-1,
+    // THROUGH THE TRUNK. m_diplo is a {TRUNK_OUT, DIPLO_ACTIONS} head -- it
+    // reads the shared embedding, exactly like every policy head, and that is
+    // what runLearningWork trains it on.
+    //
+    // This used to hand it `feats` directly: FEATURE_COUNT floats into a net
+    // whose first layer is TRUNK_OUT wide. NeuralNet::forward returns an EMPTY
+    // vector on a size mismatch, pickAction answers `if (logits.empty()) return
+    // 0`, and action 0 is REJECT. So every ceasefire, alliance, non-aggression
+    // pact, guarantee and call to arms was declined unconditionally, by every
+    // country, in shipped games as well as in training -- and the head was
+    // never consulted at all. It is also why "calls answered" measured 0% on
+    // every seed, and why no reward change to the coalition terms ever moved
+    // it: nothing downstream of this line was running.
+    //
+    // Deliberately the SAME call shape for both nets: the two sides of a
+    // head-to-head have to be fed identically or the match is not one.
+    // The scripted rung answers by rule, before any net is consulted. Its
+    // refusal still goes through chooseStatedRefusal below, because what a
+    // country SAYS is part of the game rather than part of its brain.
+    if (isRandomCountry(targetCid) && s_scriptedControl) {
+        const bool yes = scriptedDiplomacy(targetCid, action, sourceIso);
+        if (yes) {
+            statsFor(targetCid).diploAccepted++;
+            return true;
+        }
+        return refuse(trueReason);
+    }
+
+    // Copied, not referenced: forward() hands back the net's own activation
+    // buffer, and takeTurn learned the hard way that holding a reference to one
+    // across another forward pass is a bug waiting for the next edit.
+    const std::vector<float> demb =
+        opponentAnswers ? m_leagueTrunk.forward(feats) : m_trunk.forward(feats);
+    int a = pickAction(opponentAnswers ? m_leagueDiplo : m_diplo, demb, valid,
+                       score, /*graveAction=*/-1,
                        bias.empty() ? nullptr : &bias, &diploLogProb);
     m_lastDiploLogProb = diploLogProb;
     // Record in the country's experience so the diplo net learns too
@@ -3559,10 +4677,26 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         // it the ratio is measured against zero and every diplomatic sample
         // looks infinitely off-policy.
         it->second.back().logProb[MOD_COUNT] = m_lastDiploLogProb;
+        // ...AND THE STATE THAT ANSWER WAS GIVEN IN. See Experience::
+        // diploFeatures: the request lives in slots the country's own turn
+        // features leave at zero, so without this the update re-derives the
+        // embedding from a state with no request in it and teaches the head to
+        // answer a question it was never asked.
+        it->second.back().diploFeatures = feats;
+        it->second.back().diploRelCand  = m_lastRelCand;
     }
+    if (a == 1) {
+        statsFor(targetCid).diploAccepted++;
+        logDecision(targetCid, MOD_POLITICS, a, score,
+                    std::string("ACCEPT ") + action + " from " + sourceIso);
+        return true;
+    }
+    // No gate fired and the policy still said no, so the true reason is simply
+    // that it did not want to. That is not a lesser reason than the gates --
+    // it is the one the net was consulted about.
     logDecision(targetCid, MOD_POLITICS, a, score,
-                std::string(a ? "ACCEPT " : "REJECT ") + action + " from " + sourceIso);
-    return a == 1;
+                std::string("REJECT ") + action + " from " + sourceIso);
+    return refuse(trueReason);
 }
 
 // ─── Learning ────────────────────────────────────────────
@@ -3578,6 +4712,13 @@ void AISystem::endTurn() {
     // decision counter), which is exactly the sort of thing that breaks the
     // moment beginTurn grows one more side effect — as it now has.
     refreshStats();
+    // ...AND THE WORLD, for the same reason. m_world is otherwise built once in
+    // beginTurn, so the standing terms below would compare where a country
+    // stood at the start of the window against where it stood at the start of
+    // THIS turn -- one turn stale, and stale in the direction that hides
+    // exactly the thing they exist to catch: ground changing hands this turn.
+    // One sort over the living countries, once a turn.
+    updateWorld();
 
     float rewardSum[MOD_COUNT] = {0, 0, 0, 0};
     int rewardN = 0;
@@ -3586,7 +4727,7 @@ void AISystem::endTurn() {
     //
     // The running reward statistics are order-dependent, so this half has to
     // stay serial. It is also cheap — a handful of tanh calls per experience.
-    // All the expensive work (nine nets' worth of forward and backward passes)
+    // All the expensive work (every net's forward and backward passes)
     // is deferred into `m_work` and run in parallel below.
     m_work.clear();
     // `nextFeats` is the state the window ended in, or nullptr when the window
@@ -3605,6 +4746,33 @@ void AISystem::endTurn() {
             m_rVar[m] = 0.99f * m_rVar[m] + 0.01f * dev * dev;
             float norm = dev / std::sqrt(m_rVar[m] + 1e-4f);
 
+            // EVERY ACTION THE MODULE TOOK, not just its first. Each shares
+            // this window's reward and baseline -- they were taken in the same
+            // state toward the same outcome -- and differs only in which action
+            // the ratio is measured against. See Experience::extras.
+            for (auto& ea : exp.extras) {
+                if (ea.module != m || ea.action < 0) continue;
+                WorkItem xw;
+                xw.module = m;
+                xw.action = ea.action;
+                xw.norm = norm;
+                // ITS OWN STATE, so the value baseline -- and therefore the
+                // advantage R - V(s) -- is this action's rather than the whole
+                // turn's. Sharing exp.features gave every action in a turn an
+                // identical baseline, which is what buried the rare expensive
+                // decisions among the frequent cheap ones.
+                xw.features = ea.features.empty() ? exp.features : ea.features;
+                xw.relCand = exp.relCand;
+                xw.acts = std::move(ea.acts);
+                xw.cid = cid;
+                xw.oldLogProb = ea.logProb;
+                if (nextFeats) {
+                    xw.nextFeatures = *nextFeats;
+                    xw.bootDiscount = BOOTSTRAP_DISCOUNT;
+                }
+                m_work.push_back(std::move(xw));
+            }
+
             WorkItem w;
             w.module = m;
             w.action = exp.action[m];
@@ -3617,6 +4785,10 @@ void AISystem::endTurn() {
             if (m == MOD_WAR && exp.targetChosen >= 0) {
                 w.targetCand = exp.targetCand;
                 w.targetChosen = exp.targetChosen;
+            }
+            if (m == MOD_WAR && exp.attackChosen >= 0) {
+                w.attackCand = exp.attackCand;
+                w.attackChosen = exp.attackChosen;
             }
             if (nextFeats) {
                 w.nextFeatures = *nextFeats;
@@ -3643,8 +4815,18 @@ void AISystem::endTurn() {
             w.module = MOD_COUNT; // diplo
             w.action = exp.action[MOD_COUNT];
             w.norm = std::clamp(norm, -3.0f, 3.0f);
-            w.features = exp.features;
-            w.relCand = exp.relCand;
+            // THE STATE THE ANSWER WAS GIVEN IN, request included. See
+            // Experience::diploFeatures. `exp.features` is the country's own
+            // turn state, which leaves every request slot at zero -- training
+            // on it showed the head a world where nobody had asked anything.
+            //
+            // Falls back to exp.features only for windows recorded before this
+            // existed, which cannot happen within a process but keeps the
+            // handling total rather than relying on that.
+            const bool haveDiploFeats =
+                (int)exp.diploFeatures.size() == FEATURE_COUNT;
+            w.features = haveDiploFeats ? exp.diploFeatures : exp.features;
+            w.relCand = haveDiploFeats ? exp.diploRelCand : exp.relCand;
             w.cid = cid;
             w.oldLogProb = exp.logProb[MOD_COUNT];
             if (nextFeats) {
@@ -3696,6 +4878,20 @@ void AISystem::endTurn() {
         int landNow = 0;
         auto lnIt = m_landingsThisTurn.find(cid);
         if (lnIt != m_landingsThisTurn.end()) landNow = lnIt->second;
+        long long drownNow = 0, lostNow = 0;
+        {
+            auto dIt = m_crewDrownedThisTurn.find(cid);
+            if (dIt != m_crewDrownedThisTurn.end()) drownNow = dIt->second;
+            auto cIt2 = m_crewLostThisTurn.find(cid);
+            if (cIt2 != m_crewLostThisTurn.end()) lostNow = cIt2->second;
+        }
+        int boughtNow = 0, soldNow = 0;
+        {
+            auto bIt = m_shipsBoughtThisTurn.find(cid);
+            if (bIt != m_shipsBoughtThisTurn.end()) boughtNow = bIt->second;
+            auto sIt = m_shipsScrappedThisTurn.find(cid);
+            if (sIt != m_shipsScrappedThisTurn.end()) soldNow = sIt->second;
+        }
         // How much this country knows, for the dResearch reward term below.
         // The completions COUNTER used to be derived here too; it now lives at
         // the completion site, because this whole function is skipped when
@@ -3716,6 +4912,10 @@ void AISystem::endTurn() {
             exp.age++;
             exp.rebellions += rebNow;
             exp.landings += landNow;
+            exp.crewDrowned += drownNow;
+            exp.crewLost += lostNow;
+            exp.shipsBought += boughtNow;
+            exp.shipsSold += soldNow;
             exp.bankruptTurns += brokeNow;
             exp.warInWindow = exp.warInWindow || atWarNow;
         }
@@ -3876,15 +5076,44 @@ void AISystem::endTurn() {
                 // uses to decide whether troops are an asset or a standing
                 // bill. At peace, unthreatened, gaining no ground, an army that
                 // merely grows is a country doing nothing expensively.
-                const bool warIdle = !exp.warInWindow && dProv == 0.0f
-                                  && exp.threatened == 0
-                                  && std::fabs(dArmy) < 500.0f;
+                // ...AND THE ESCAPE WAS STILL HERE. The paragraph above says
+                // this loophole was closed and describes exactly how; the
+                // `dArmy` clause that IS the loophole was left in the condition
+                // underneath it. `exp.threatened == 0` was meant to replace it,
+                // not to join it. So a country at peace, unthreatened, taking
+                // no ground still walked away from the idleness charge for the
+                // price of five hundred recruits -- which, with armyTerm paying
+                // for the same recruits on the way in, made "raise men and do
+                // nothing" the best-paid thing the war module could do. Both
+                // halves of the collapse were in these ten lines.
+                // ONE test for a wasted window, whether or not there is a war
+                // on. See IDLE_CHARGE for what the two separate tests this
+                // replaces cost the project. A declaration buys one window of
+                // grace and nothing after it.
+                const bool graceOfWar = exp.warInWindow && exp.warTurns < nStep();
+                const bool idle = dProv <= 0.0f && exp.threatened == 0 && !graceOfWar;
+
+                // ── Standing, not stock ── see STANDING_WEIGHT.
+                // Read from m_world, which endTurn refreshes before settling
+                // any window, so both ends of the comparison are real.
+                const float nowRank  = m_world.rankOf(cid);
+                const float nowOwn   = m_world.shareOf(now.provinces);
+                const float nowRival = m_world.rivalShareFor(cid);
+                const float dRank = nowRank - exp.worldRank;
+                // The GAP to the strongest other country. Rises when we gain on
+                // them and when they lose to anyone at all; falls when they
+                // grow and we do not. That second half is the signal this whole
+                // reward was missing.
+                const float dLead = (nowOwn - nowRival)
+                                  - (exp.ownShare - exp.rivalShare);
 
                 float global = 0.6f * std::tanh(dProv / 3.0f)
                              + 0.2f * std::tanh(dTre / 100.0f)
                              + 0.3f * std::tanh(dNet / 15.0f)
                              - UNREST_WEIGHT * std::tanh(rebels / 2.0f)
-                             - 0.5f * broke;
+                             - 0.5f * broke
+                             + STANDING_WEIGHT * std::tanh(dRank / STANDING_SCALE)
+                             + LEAD_WEIGHT * std::tanh(dLead / LEAD_SCALE);
                 // Each module is now judged mostly on what it actually controls.
                 rewards[MOD_ECONOMY]  = global
                                       // ...and the economy module's failure in
@@ -3980,14 +5209,95 @@ void AISystem::endTurn() {
                 // test every single turn, so "conditional" was unconditional in
                 // practice and the module recruited on 98.5% of the turns it
                 // could.
-                const double adjThreat = (double)std::max(1LL, now.enemyAdjArmy);
-                const bool armyEnough =
-                    (double)now.army >= ARMY_SUFFICIENCY * adjThreat;
-                const bool armyNeeded =
-                    (exp.atWar || exp.threatened > 0) && !armyEnough;
-                const float armyTerm =
-                    armyNeeded ?  0.3f * std::tanh(dArmy / 40000.0f)
-                               : -0.3f * std::tanh(std::max(0.0f, dArmy) / 40000.0f);
+                // PAID FOR ARRIVING, NOT FOR MARCHING.
+                //
+                // The old shape paid 0.3 x tanh(dArmy) every window the gate was
+                // open. That is an ANNUITY: recruiting is riskless, pays again
+                // next turn, and the gate ("at war or threatened, and not yet at
+                // twice the adjacent threat") is open almost permanently for a
+                // country that is at war a lot -- which this one is, because it
+                // never makes peace. Sufficiency was supposed to close the gate,
+                // and it does, but only after the army is already enormous;
+                // everything up to that point still paid per turn.
+                //
+                // Measured at argmax over four seeds before this change, the war
+                // module chose recruit on 100.000% of the turns it was offered,
+                // interval of zero width. Not a preference -- a constant
+                // function. With the idleness escape above it, "raise men and do
+                // nothing" both paid and dodged the charge for doing nothing.
+                //
+                // Progress toward sufficiency, clamped at 1, pays for CLOSING
+                // the gap and pays exactly nothing once it is closed. The total
+                // available over a whole game is bounded, so there is no trough
+                // to settle in, and the module has to find its next reward
+                // somewhere else -- which is the point.
+                // THE SHORTFALL ITSELF, not the marching and not the arriving.
+                // See ARMY_SHAPING_WEIGHT for the three shapes this replaces and
+                // what each of them taught the policy to do instead.
+                //
+                // The bar is frozen at the window's start so a neighbour's
+                // mobilisation cannot charge this country for a decision it did
+                // not make; the army is measured at the end, so recruiting
+                // during the window is credited within it.
+                // PHI: how far this country's army goes toward handling what is
+                // on its borders, as a pure function of the state. Both ends
+                // use their OWN threat figure -- that is what makes it a
+                // function of the state rather than of the window, and the
+                // telescoping property depends on it. A neighbour's
+                // mobilisation does lower PHI, and the next window's PHI(s)
+                // starts equally low, so it cancels rather than accumulating.
+                // THE BAR HAS A PEACETIME FLOOR, OR IT IS NOT A BAR AT ALL.
+                //
+                // max(1, adjacentThreat) meant that a country with no hostile
+                // troops on its borders -- every country, most turns -- had a
+                // denominator of ONE. PHI therefore saturated at an army of
+                // two men, so holding a real standing army earned nothing while
+                // costing upkeep and treasury every window. Recruit's only
+                // surviving signal was its price.
+                //
+                // That is exactly what the overnight run of 2026-08-06 learned:
+                // war:recruit collapsed to 0.0%, the model stopped building
+                // armies at all, and it lost to the scripted rung outright
+                // (ADVANTAGE 0.55-0.62) while being the most SOLVENT thing on
+                // disk -- 0.63 bankrupt turns against the shipping model's 8.2.
+                // It was rich because it did nothing.
+                //
+                // The bar scales with what there is to defend, so readiness is
+                // worth buying before the enemy is already on the border --
+                // which is when an army is actually needed and far too late to
+                // start. It does NOT reopen the "recruit is free money" failure
+                // that shape three died of, because PHI is still clamped at 1:
+                // troops past sufficiency still pay exactly nothing.
+                //
+                // WORLD-RELATIVE, BECAUSE A CONSTANT CANNOT KNOW THE SCALE.
+                //
+                // The first attempt at this floor used a hand-set 200 troops
+                // per province. Countries actually hold ~231,000 per province
+                // in self-play -- 578x more -- so the floor never once bound,
+                // PHI stayed pinned at 1, and the term remained exactly as dead
+                // as before. The run that followed drove war:recruit to 0.0%
+                // again and scored ADVANTAGE 0.655.
+                //
+                // The absolute size of an army is a property of the economy,
+                // which changes whenever the economy does -- as it did today
+                // when industry started working. Expressing the bar as a
+                // fraction of the world's mean garrison density means it tracks
+                // that automatically and cannot fall out of range again.
+                const double worldPerProv = worldArmyPerProvince();
+                auto sufficiency = [&](long long army, long long adjacentThreat,
+                                       int provinces) {
+                    const double bar = std::max((double)adjacentThreat,
+                        PEACETIME_PARITY * worldPerProv * (double)std::max(1, provinces));
+                    return (float)std::min(1.0, (double)army /
+                        (ARMY_SUFFICIENCY * std::max(1.0, bar)));
+                };
+                const float phiBefore = sufficiency(exp.army, exp.enemyAdjArmy,
+                                                    exp.provinces);
+                const float phiAfter  = sufficiency(now.army, now.enemyAdjArmy,
+                                                    now.provinces);
+                // Potential-based shaping. See ARMY_SHAPING_WEIGHT for why this
+                // shape and not the three that preceded it.
+                const float armyTerm = ARMY_SHAPING_WEIGHT * (phiAfter - phiBefore);
 
                 // The phoney-war tax. A country at war that gains no ground and
                 // is under no pressure is burning upkeep for nothing, and
@@ -4031,10 +5341,6 @@ void AISystem::endTurn() {
                                    std::max(0.6f, 1.0f + std::tanh(dProv / 3.0f))
                              : 0.0f;
 
-                const float phoneyWar =
-                    (exp.atWar && exp.warTurns >= nStep() &&
-                     exp.threatened == 0 && dProv <= 0.0f) ? WAR_PHONEY_CHARGE : 0.0f;
-
                 // The cost of starting it — CHARGED ON THE OUTCOME, not on
                 // the decision.
                 //
@@ -4062,13 +5368,10 @@ void AISystem::endTurn() {
                                       + 2.0f * std::tanh(dProv / 3.0f)
                                       - 2.0f * std::tanh(std::max(0.0f, dLost) / 2.0f)
                                       + armyTerm
-                                      + phoneyWar
-                                      // Equal to phoneyWar, deliberately: a
-                                      // module that sits out the whole window
-                                      // at peace is charged exactly what one
-                                      // that sits out a war is, so peace is
-                                      // never the cheap way to avoid the tax.
-                                      + (warIdle ? -0.5f : 0.0f)
+                                      // A wasted window costs the same whether
+                                      // it was wasted at peace or wasted in a
+                                      // war nobody is fighting. See IDLE_CHARGE.
+                                      + (idle ? IDLE_CHARGE : 0.0f)
                                       // Concluding a war is an outcome the war
                                       // module owns -- it is the one holding
                                       // the ceasefire action. See peaceTerm.
@@ -4082,9 +5385,27 @@ void AISystem::endTurn() {
                 // make; otherwise they are 10 to 25 a turn each.
                 const bool fleetUseful = exp.atWar || now.navalTargets > 0 ||
                                          now.navalWarTargets > 0;
+                // THE FLEET, CHARGED TO WHOEVER MADE THE DECISION.
+                //
+                // This used to be one term on dShips -- the fleet's NET change
+                // -- sitting entirely in the navy's reward. But the ECONOMY
+                // module buys ships (execEconomy cases 5 and 6, out of its own
+                // treasury) and the NAVY module scraps them, so a single net
+                // figure credited each for what the other did: a navy that paid
+                // off an idle hull was charged for the fall, and an economy that
+                // bought a fleet it could not use was never told. It is the same
+                // misattribution the solvency terms already had to be split for.
+                //
+                // Now each module answers for its own decision. Buying is good
+                // when the fleet has work and wasteful when it has none; paying
+                // off a hull with nothing to do is the right call and is paid
+                // for as one.
+                rewards[MOD_ECONOMY] += fleetUseful
+                                      ?  0.4f * std::tanh((float)exp.shipsBought / 2.0f)
+                                      : -0.5f * std::tanh((float)exp.shipsBought / 2.0f);
                 rewards[MOD_NAVY]     = global
-                                      + (fleetUseful ? 0.5f * std::tanh(dShips / 2.0f)
-                                                     : -0.4f * std::tanh(std::max(0.0f, dShips) / 2.0f))
+                                      + (fleetUseful ? 0.0f
+                                                     : 0.4f * std::tanh((float)exp.shipsSold / 2.0f))
                                       + 0.8f * std::tanh(dProv / 3.0f)
                                       // Troops actually put ashore on a hostile
                                       // coast. The ground a landing wins often
@@ -4093,7 +5414,26 @@ void AISystem::endTurn() {
                                       // the invasion only when it happens to
                                       // conclude quickly — and charged for the
                                       // army and the hulls every other time.
-                                      + 1.0f * std::tanh((float)exp.landings / 1.5f);
+                                      + 1.0f * std::tanh((float)exp.landings / 1.5f)
+                                      // ── What happens at sea ──
+                                      //
+                                      // Sinking a loaded transport kills the
+                                      // invasion it carries; losing one deletes
+                                      // those men from our own land army. Both
+                                      // were worth nothing here, so the engage
+                                      // action had a capability and no reason
+                                      // to use it.
+                                      //
+                                      // Crew, not hulls, and deliberately only
+                                      // these two terms. Warships sunk and lost
+                                      // are left out on purpose: they matter
+                                      // only instrumentally, this reward is one
+                                      // of the few not yet spoiled by
+                                      // over-shaping, and armyTerm took five
+                                      // shapes and failed all five. Add more
+                                      // only if the data asks.
+                                      + 1.2f * std::tanh((float)exp.crewDrowned / 400.0f)
+                                      - 1.2f * std::tanh((float)exp.crewLost / 400.0f);
 
                 // Diplomacy answers requests, so it is judged on what its answer
                 // did to this country — and, crucially, on BOTH answers.
@@ -4158,18 +5498,19 @@ void AISystem::endTurn() {
 
     // One optimiser step per module per turn, over everything that settled.
     for (int m = 0; m < MOD_COUNT; ++m) {
-        m_policy[m].flushBatch(LR_POLICY);
-        m_value[m].flushBatch(LR_VALUE);
-        m_q[m].flushBatch(LR_Q);
+        m_policy[m].flushBatch(LR_POLICY * lrScale());
+        m_value[m].flushBatch(LR_VALUE * lrScale());
+        m_q[m].flushBatch(LR_Q * lrScale());
     }
     // The trunk takes the policy learning rate: it is trained by the same
     // gradients, from four policy heads, four Q heads and diplomacy at once.
-    m_trunk.flushBatch(LR_POLICY);
-    m_stanceHead.flushBatch(LR_POLICY);
-    m_relEncoder.flushBatch(LR_POLICY);
-    m_relScore.flushBatch(LR_POLICY);
+    m_trunk.flushBatch(LR_POLICY * lrScale());
+    m_stanceHead.flushBatch(LR_POLICY * lrScale());
+    m_relEncoder.flushBatch(LR_POLICY * lrScale());
+    m_relScore.flushBatch(LR_POLICY * lrScale());
     m_target.flushBatch(LR_TARGET);
-    m_diploValue.flushBatch(LR_VALUE);
+    m_attack.flushBatch(LR_TARGET);
+    m_diploValue.flushBatch(LR_VALUE * lrScale());
     m_diplo.flushBatch(LR_DIPLO);
 
     // Reward trend feed for the trainer dashboard
@@ -4355,6 +5696,30 @@ void AISystem::runLearningWork() {
             const float baseline = ws.value[m].acts.back()[0];
             const float advantage = std::clamp(target - baseline, -3.0f, 3.0f);
             w.advantage = advantage;
+            // See UpdTrace. Single-threaded path only (OD_UPDATE_TRACE forces
+            // it) so these are exact rather than lock-free approximations.
+            if (s_updTrace && m >= 0 && m < MOD_COUNT) {
+                UpdTrace& t = m_upd[m];
+                t.normSum += w.norm;      t.normSq += (double)w.norm * w.norm;
+                t.baseSum += baseline;    t.baseSq += (double)baseline * baseline;
+                t.advSum  += advantage;   t.advSq  += (double)advantage * advantage;
+                t.n++;
+                if (std::fabs(target - baseline) >= 3.0f) t.advClipped++;
+                if (std::fabs(target) >= 6.0f) t.tgtClipped++;
+            }
+            // See TrainStats::warAdvSum. Accumulated under a lock-free
+            // convention that is safe here only because runRange partitions
+            // work by index and each item has one module and one action -- two
+            // threads can hit the same slot, so this is a diagnostic accurate
+            // to within a few lost increments, not a ledger.
+            if (m == MOD_WAR && w.action >= 0 && w.action < WAR_ACTIONS) {
+                m_trainStats.warAdvSum[w.action] += advantage;
+                m_trainStats.warAdvN[w.action]++;
+                // ...and the two halves it is made of. See warImmSum.
+                m_trainStats.warImmSum[w.action]  += w.norm;
+                m_trainStats.warBootSum[w.action] += (target - w.norm);
+                m_trainStats.warBaseSum[w.action] += baseline;
+            }
             m_value[m].accumulateValueInto(ws.value[m], target);
 
             // Q(s,a) toward the same target, on the taken action only. The
@@ -4396,6 +5761,27 @@ void AISystem::runLearningWork() {
                     m_target.accumulateOutputGradInto(ws.target, gi);
                 }
             }
+            // WHERE the war module pushed, scored by the same advantage as
+            // whether to push at all. Identical arithmetic to the block above,
+            // and identical reasoning: one forward pass per candidate, softmax
+            // across the scores, each candidate given the one derivative that
+            // belongs to it.
+            if (w.attackChosen >= 0 && w.attackCand.size() > 1) {
+                std::vector<float> scores(w.attackCand.size(), 0.0f);
+                for (size_t i = 0; i < w.attackCand.size(); ++i) {
+                    m_attack.forwardInto(ws.attack, w.attackCand[i]);
+                    const auto& o = ws.attack.acts.back();
+                    scores[i] = o.empty() || !std::isfinite(o[0]) ? 0.0f : o[0];
+                }
+                std::vector<float> probs;
+                NeuralNet::softmax(scores, 1.0f, probs);
+                for (size_t i = 0; i < w.attackCand.size(); ++i) {
+                    const float gi = advantage *
+                        (probs[i] - (i == (size_t)w.attackChosen ? 1.0f : 0.0f));
+                    m_attack.forwardInto(ws.attack, w.attackCand[i]);
+                    m_attack.accumulateOutputGradInto(ws.attack, gi);
+                }
+            }
             // Activations were snapshotted at decision time — reusing them
             // replaces a full policy re-forward with a couple of vector moves.
             // THE POLICY MUST BE RE-FORWARDED, not restored from the snapshot.
@@ -4433,6 +5819,7 @@ void AISystem::runLearningWork() {
                 m_q[m].initScratch(ws.q[m]);
             }
             m_target.initScratch(ws.target);
+            m_attack.initScratch(ws.attack);
             m_trunk.initScratch(ws.trunk);
             m_stanceHead.initScratch(ws.stance);
             m_diploValue.initScratch(ws.diploValue);
@@ -4442,8 +5829,31 @@ void AISystem::runLearningWork() {
         }
     }
 
-    if (threads <= 1) {
+    // Tracing accumulates into shared counters, so it forces the
+    // single-threaded path -- exact numbers matter more than speed here.
+    if (threads <= 1 || s_updTrace) {
         runRange(0, m_work.size(), m_scratch[0]);
+    if (s_updTrace && ++m_updTraceBatches % 20 == 0) {
+        static const char* MN[MOD_COUNT] = {"econ", "politics", "war", "navy"};
+        printf("[UPD] batch %lld\n", m_updTraceBatches);
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            UpdTrace& t = m_upd[m];
+            if (!t.n) continue;
+            auto mean = [&](double s2) { return s2 / (double)t.n; };
+            auto sd = [&](double s1, double s2) {
+                const double mu = s1 / (double)t.n;
+                return std::sqrt(std::max(0.0, s2 / (double)t.n - mu * mu));
+            };
+            printf("[UPD]   %-8s n=%-7lld norm %+.3f+-%.3f  V(s) %+.3f+-%.3f  "
+                   "ADV %+.4f+-%.3f  advClip %.1f%%  tgtClip %.1f%%\n",
+                   MN[m], t.n, mean(t.normSum), sd(t.normSum, t.normSq),
+                   mean(t.baseSum), sd(t.baseSum, t.baseSq),
+                   mean(t.advSum), sd(t.advSum, t.advSq),
+                   100.0 * (double)t.advClipped / (double)t.n,
+                   100.0 * (double)t.tgtClipped / (double)t.n);
+            t = UpdTrace{};
+        }
+    }
     } else {
         std::vector<std::thread> pool;
         pool.reserve(threads - 1);
@@ -4475,6 +5885,7 @@ void AISystem::runLearningWork() {
         for (auto& e : m_scratch[t].relEnc) m_relEncoder.mergeScratch(e);
         for (auto& e : m_scratch[t].relSco) m_relScore.mergeScratch(e);
         m_target.mergeScratch(m_scratch[t].target);
+        m_attack.mergeScratch(m_scratch[t].attack);
         m_diploValue.mergeScratch(m_scratch[t].diploValue);
         m_diplo.mergeScratch(m_scratch[t].diplo);
     }
@@ -4565,8 +5976,63 @@ static void appendBlob(std::vector<uint8_t>& out, const std::vector<uint8_t>& bl
     out.insert(out.end(), blob.begin(), blob.end());
 }
 
+// ─── The difficulty ladder ───────────────────────────────────────────────
+//
+// See DifficultyProfile. Easy still samples softly and still makes the odd
+// unforced move -- 8% rather than 35%, which is enough to be unpredictable and
+// not enough to be incoherent -- but it aims with the old margin rule, consults
+// no critic and holds no posture. Insane is everything, at argmax.
+const AISystem::DifficultyProfile AISystem::DIFFICULTY[4] = {
+    // temperature, epsilon, critic, learned aim, posture
+    {1.60f, 0.08f, false, false, false},   // easy
+    {0.90f, 0.05f, true,  false, true },   // normal
+    {0.35f, 0.02f, true,  true,  true },   // hard
+    {0.05f, 0.00f, true,  true,  true },   // insane: argmax
+};
+
+// ─── What each posture leans towards ─────────────────────────────────────
+//
+// Rows: 0 expand, 1 consolidate, 2 defend, 3 develop. See STANCE_BIAS for why
+// these are biases rather than masks, and for the honest note about them being
+// hand-authored taste.
+//
+// econ: save industry fort port specialize destroyer carrier fundUp fundDown
+//       focusBldg focusArmy focusNavy
+const float AISystem::STANCE_ECON[STANCE_COUNT][ECON_ACTIONS] = {
+    {-1,  0,  0,  0,  0,  0,  0,  0,  0,  0, +1,  0},  // expand: pay for the army
+    { 0,  0, +1,  0,  0,  0,  0,  0,  0,  0,  0,  0},  // consolidate: hold what we took
+    {+1,  0, +1,  0,  0,  0,  0,  0,  0,  0, +1,  0},  // defend: forts and men
+    { 0, +1,  0,  0, +1,  0,  0, +1, -1, +1,  0,  0},  // develop: build and research
+};
+// pol: hold enact pacUp pacDown cancel alliance nap guarantee calming
+//      conciliate repress
+const float AISystem::STANCE_POL[STANCE_COUNT][POL_ACTIONS] = {
+    { 0,  0,  0,  0,  0, +1,  0,  0,  0,  0,  0},      // expand: allies for the war
+    { 0,  0,  0,  0,  0,  0, +1,  0, +1, +1, -1},      // consolidate: digest, don't provoke
+    { 0,  0,  0,  0,  0, +1,  0, +1, +1,  0,  0},      // defend: guarantees and calm
+    { 0,  0,  0,  0,  0,  0, +1,  0,  0, +1,  0},      // develop: be left alone
+};
+// war: hold recruit reinforce attack declare artillery ceasefire stage
+const float AISystem::STANCE_WAR[STANCE_COUNT][WAR_ACTIONS] = {
+    { 0,  0,  0, +1, +1,  0, -1, +1},                  // expand: press it
+    { 0,  0, +1,  0, -2, +1, +1,  0},                  // consolidate: end it well
+    { 0, +1, +1,  0, -2, +1,  0,  0},                  // defend: hold the line
+    { 0, -1,  0, -1, -2,  0, +1,  0},                  // develop: not now
+};
+// navy: hold move bombard embark disembark scrap
+const float AISystem::STANCE_NAVY[STANCE_COUNT][NAVY_ACTIONS] = {
+    { 0, +1, +1, +1,  0,  0, +1},                      // expand: put men ashore, escort them
+    { 0,  0,  0,  0, +1,  0,  0},                      // consolidate: bring them home
+    { 0, +1,  0,  0, +1,  0, +1},                      // defend: keep the fleet near, contest it
+    { 0,  0,  0,  0,  0, +1,  0},                      // develop: stop paying for hulls
+};
+
 bool AISystem::s_readOnlyModel = false;
+bool AISystem::s_updTrace = std::getenv("OD_UPDATE_TRACE") != nullptr;
+bool AISystem::s_scriptedControl = false;
+bool AISystem::s_scriptDuel = false;
 bool AISystem::s_evaluating = false;
+std::string AISystem::s_opponentModelPath;
 
 void AISystem::saveModel() {
     // Observation mode: act on the trained model but never write it back, so a
@@ -4602,8 +6068,15 @@ void AISystem::saveModel() {
     // would load a 320-input head as if it took the full feature vector, so
     // the version bump is not cosmetic -- and a v5 FILE cannot be read by this
     // build for the same reason. See loadModel.
-    out.push_back(6);
-    out.push_back(MOD_COUNT * 3 + 7); // trunk, stance, relational encoder+scorer, policy, value, Q, target, diplo, diploValue
+    // 7 = the attack head rides along, after the war-target head it mirrors.
+    // APPENDED at the end of the net list rather than beside m_target, so a v6
+    // file is a strict prefix of a v7 one: every blob a v6 reader wants is
+    // still where it was, and loadModel can take a v6 file by reading what is
+    // there and leaving the new head fresh. ATTACK_WARMUP_UPDATES then keeps
+    // the old margin rule choosing until that head has learned something, so an
+    // upgraded model plays exactly as it did until it can do better.
+    out.push_back(7);
+    out.push_back(MOD_COUNT * 3 + 8); // ...+ attack
     { std::vector<uint8_t> b; m_trunk.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_stanceHead.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_relEncoder.serialize(b); appendBlob(out, b); }
@@ -4620,6 +6093,7 @@ void AISystem::saveModel() {
     { std::vector<uint8_t> b; m_target.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_diplo.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_diploValue.serialize(b); appendBlob(out, b); }
+    { std::vector<uint8_t> b; m_attack.serialize(b); appendBlob(out, b); }
     // Reward normalisation statistics.
     //
     // The whole AISystem is destroyed and rebuilt on every map rotation
@@ -4656,7 +6130,7 @@ void AISystem::saveModel() {
 int AISystem::syncWithPeers(const std::vector<std::string>& peerPaths, float alpha) {
     if (peerPaths.empty() || alpha <= 0.0f) return 0;
     // Peers are read one at a time into a scratch model and blended in, rather
-    // than all held at once and averaged: nine nets is ~12 MB, and a run with
+    // than all held at once and averaged: one model is ~6 MB, and a run with
     // several workers would otherwise have every worker holding every peer.
     AISystem scratch(m_g, std::string());   // empty path: never loads, never saves
     int merged = 0;
@@ -4667,13 +6141,7 @@ int AISystem::syncWithPeers(const std::vector<std::string>& peerPaths, float alp
         // toward the MEAN of the peers rather than toward whichever was read
         // last. Recomputed per peer because a missing file changes the divisor.
         const float share = alpha / (float)peerPaths.size();
-        bool ok = true;
-        for (int m = 0; m < MOD_COUNT; ++m) {
-            ok &= m_policy[m].blendToward(scratch.m_policy[m], share);
-            ok &= m_value[m].blendToward(scratch.m_value[m], share);
-        }
-        ok &= m_trunk.blendToward(scratch.m_trunk, share);
-        ok &= m_diplo.blendToward(scratch.m_diplo, share);
+        const bool ok = blendAllToward(scratch, share);
         if (!ok) {
             printf("[AI] peer %s has a different architecture — skipped\n", path.c_str());
             continue;
@@ -4721,13 +6189,7 @@ bool AISystem::mergeModelFiles(const std::string& outPath,
             fprintf(stderr, "[AI] merge: cannot read %s — skipped\n", inPaths[i].c_str());
             continue;
         }
-        bool ok = true;
-        for (int m = 0; m < MOD_COUNT; ++m) {
-            ok &= acc.m_policy[m].blendToward(peer.m_policy[m], share);
-            ok &= acc.m_value[m].blendToward(peer.m_value[m], share);
-        }
-        ok &= acc.m_trunk.blendToward(peer.m_trunk, share);
-        ok &= acc.m_diplo.blendToward(peer.m_diplo, share);
+        const bool ok = acc.blendAllToward(peer, share);
         if (!ok) {
             fprintf(stderr, "[AI] merge: %s has a different architecture — skipped\n",
                     inPaths[i].c_str());
@@ -4752,7 +6214,21 @@ bool AISystem::mergeModelFiles(const std::string& outPath,
 }
 
 bool AISystem::resetModuleHead(const std::string& modelPath, int module) {
-    if (module < 0 || module >= MOD_COUNT) {
+    // MOD_COUNT means the diplomacy head, which needed this more than any of
+    // the four: it was trained for its whole life on samples whose action was
+    // always 0 and whose behaviour log-probability was always 0, because
+    // inference never reached it (see decideDiplomacy). Those are not weak
+    // weights, they are weights fitted to a degenerate dataset through a
+    // meaningless PPO ratio, and no amount of further training walks that back.
+    // MOD_COUNT+1 means the stance head, which needs it for a third reason: it
+    // has CONVERGED, not broken. Measured on the merged model, the trained
+    // cohort spent 97% of its country-turns in "develop" while a uniform
+    // control spread evenly over the four -- a controller that has stopped
+    // controlling. That did not matter while the stance only set a feature bit;
+    // now that it steers action selection (see STANCE_BIAS), inheriting a head
+    // stuck on the one posture that discourages war would cement the very
+    // passivity this change exists to break.
+    if (module < 0 || module > MOD_COUNT + 1) {
         fprintf(stderr, "[AI] reset: no such module %d\n", module);
         return false;
     }
@@ -4768,52 +6244,123 @@ bool AISystem::resetModuleHead(const std::string& modelPath, int module) {
         s_readOnlyModel = wasReadOnly;
         return false;
     }
-    const long long before = (long long)a.m_policy[module].updateCount();
+    const bool diplo  = (module == MOD_COUNT);
+    const bool stance = (module == MOD_COUNT + 1);
+    const long long before =
+        (long long)(stance ? a.m_stanceHead.updateCount()
+                  : diplo  ? a.m_diplo.updateCount()
+                           : a.m_policy[module].updateCount());
     // The same architectures and seeds the constructor uses, so a reset head is
     // indistinguishable from a fresh one.
+    //
+    // {TRUNK_OUT, N}, NOT {FEATURE_COUNT, 512, 320, N}. This line still built
+    // the pre-trunk shape, so resetting any module produced a policy head whose
+    // first layer was FEATURE_COUNT wide while the trunk hands it TRUNK_OUT --
+    // forward() returns empty on that mismatch and pickAction falls through to
+    // action 0. The tool for un-learning a bad reward silently made the module
+    // it was pointed at pick "hold" forever, which is the same failure the
+    // diplomacy head had, from the same cause.
     static const int ACTIONS[MOD_COUNT] =
         {ECON_ACTIONS, POL_ACTIONS, WAR_ACTIONS, NAVY_ACTIONS};
-    a.m_policy[module] = NeuralNet({FEATURE_COUNT, 512, 320, ACTIONS[module]},
-                                   (uint32_t)(101 + module));
-    a.m_value[module]  = NeuralNet({FEATURE_COUNT, 160, 1}, (uint32_t)(200 + module));
-    a.m_rMean[module] = 0.0f;
-    a.m_rVar[module]  = 1.0f;
+    if (stance) {
+        // The stance shares the four modules' reward statistics (it trains on
+        // their mean), so there is nothing of its own to clear but the head.
+        a.m_stanceHead = NeuralNet({TRUNK_OUT, STANCE_COUNT}, 105);
+    } else if (diplo) {
+        a.m_diplo      = NeuralNet({TRUNK_OUT, DIPLO_ACTIONS}, 300);
+        a.m_diploValue = NeuralNet({FEATURE_COUNT, 160, 1}, 600);
+        // The reward statistics are POLITICS' -- diplomacy deliberately shares
+        // them (see the note where diploReward is normalised) -- so they are
+        // left alone. Clearing them here would reset a module nobody asked to
+        // reset.
+    } else {
+        a.m_policy[module] = NeuralNet({TRUNK_OUT, ACTIONS[module]},
+                                       (uint32_t)(101 + module));
+        a.m_value[module]  = NeuralNet({FEATURE_COUNT, 160, 1}, (uint32_t)(200 + module));
+        a.m_rMean[module] = 0.0f;
+        a.m_rVar[module]  = 1.0f;
+    }
     a.m_modelPath = modelPath;
     s_readOnlyModel = false;
     a.saveModel();
     s_readOnlyModel = true;   // a's own destructor must not write again
     printf("[AI] reset the %s head in %s (discarded %lld updates); "
            "every other module kept\n",
-           MODULE_NAMES[module], modelPath.c_str(), before);
+           stance ? "stance" : diplo ? "diplomacy" : MODULE_NAMES[module],
+           modelPath.c_str(), before);
     result = true;
     }
     s_readOnlyModel = wasReadOnly;
     return result;
 }
 
+// ALL of them, in each of the three. These counted the policy heads, the value
+// heads and the diplomacy net, and stopped there -- so the trunk, which is the
+// largest net in the model by a wide margin, the four Q heads, the stance, the
+// relational pair and the war-target head were all missing from every one.
+// "Model loaded (1.2 MB)" was the size of a third of a 6 MB file, and the
+// trainer's parameter and update counters understated the model roughly
+// fivefold. Same failure as blendAllToward's: a list that has to be extended
+// every time a net is added, and was not.
 size_t AISystem::serializedSize() const {
     size_t n = 6; // magic + version + net count
     std::vector<uint8_t> b;
-    for (int m = 0; m < MOD_COUNT; ++m) {
-        b.clear(); m_policy[m].serialize(b); n += 4 + b.size();
-        b.clear(); m_value[m].serialize(b);  n += 4 + b.size();
-    }
-    b.clear(); m_diplo.serialize(b); n += 4 + b.size();
+    auto add = [&](const NeuralNet& net) {
+        b.clear(); const_cast<NeuralNet&>(net).serialize(b); n += 4 + b.size();
+    };
+    add(m_trunk); add(m_stanceHead); add(m_relEncoder); add(m_relScore);
+    for (int m = 0; m < MOD_COUNT; ++m) add(m_policy[m]);
+    for (int m = 0; m < MOD_COUNT; ++m) add(m_value[m]);
+    for (int m = 0; m < MOD_COUNT; ++m) add(m_q[m]);
+    add(m_target); add(m_diplo); add(m_diploValue); add(m_attack);
     return n + 4 + MOD_COUNT * 2 * 4; // + the reward-statistics blob
 }
 
 long long AISystem::paramCount() const {
-    long long n = 0;
+    long long n = (long long)m_trunk.paramCount()
+                + (long long)m_stanceHead.paramCount()
+                + (long long)m_relEncoder.paramCount()
+                + (long long)m_relScore.paramCount()
+                + (long long)m_target.paramCount()
+                + (long long)m_diplo.paramCount()
+                + (long long)m_diploValue.paramCount()
+                + (long long)m_attack.paramCount();
     for (int m = 0; m < MOD_COUNT; ++m)
-        n += (long long)m_policy[m].paramCount() + (long long)m_value[m].paramCount();
-    return n + (long long)m_diplo.paramCount();
+        n += (long long)m_policy[m].paramCount()
+           + (long long)m_value[m].paramCount()
+           + (long long)m_q[m].paramCount();
+    return n;
 }
 
 unsigned long long AISystem::totalUpdates() const {
-    unsigned long long n = 0;
+    unsigned long long n = m_trunk.updateCount() + m_stanceHead.updateCount()
+                         + m_relEncoder.updateCount() + m_relScore.updateCount()
+                         + m_target.updateCount() + m_diplo.updateCount()
+                         + m_diploValue.updateCount() + m_attack.updateCount();
     for (int m = 0; m < MOD_COUNT; ++m)
-        n += m_policy[m].updateCount() + m_value[m].updateCount();
-    return n + m_diplo.updateCount();
+        n += m_policy[m].updateCount() + m_value[m].updateCount()
+           + m_q[m].updateCount();
+    return n;
+}
+
+bool AISystem::blendAllToward(const AISystem& peer, float share) {
+    // EVERY net that carries learning. See the declaration for what the two
+    // hand-maintained lists this replaces had quietly been leaving out.
+    bool ok = true;
+    for (int m = 0; m < MOD_COUNT; ++m) {
+        ok &= m_policy[m].blendToward(peer.m_policy[m], share);
+        ok &= m_value[m].blendToward(peer.m_value[m], share);
+        ok &= m_q[m].blendToward(peer.m_q[m], share);
+    }
+    ok &= m_trunk.blendToward(peer.m_trunk, share);
+    ok &= m_stanceHead.blendToward(peer.m_stanceHead, share);
+    ok &= m_relEncoder.blendToward(peer.m_relEncoder, share);
+    ok &= m_relScore.blendToward(peer.m_relScore, share);
+    ok &= m_target.blendToward(peer.m_target, share);
+    ok &= m_attack.blendToward(peer.m_attack, share);
+    ok &= m_diplo.blendToward(peer.m_diplo, share);
+    ok &= m_diploValue.blendToward(peer.m_diploValue, share);
+    return ok;
 }
 
 // ─── The league ──────────────────────────────────────────────────────────
@@ -4958,6 +6505,78 @@ bool AISystem::loadLeagueOpponent() {
     return true;
 }
 
+bool AISystem::loadOpponentModel(const std::string& path) {
+    m_opponentLoaded = false;
+    m_leagueDiploLoaded = false;
+
+    auto fail = [&](const char* why) {
+        fprintf(stderr, "[AI] --vs-model: %s (%s)\n", why, path.c_str());
+        return false;
+    };
+
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return fail("cannot open");
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    if (n < 10) { fclose(f); return fail("too small to be a model"); }
+    std::vector<uint8_t> buf((size_t)n);
+    const size_t rd = fread(buf.data(), 1, buf.size(), f);
+    fclose(f);
+    if (rd != buf.size()) return fail("short read");
+    if (memcmp(buf.data(), "ODAI", 4) != 0)
+        return fail("not a model file (expected ODAI; league-N.bin checkpoints "
+                    "are ODLG and are not full models)");
+    // The SAME acceptance rule loadModel uses, and for the same reason: a
+    // pre-trunk file stores whole nets where this build wants heads, and the
+    // shapes differ in their first dimension. deserialize would "migrate" that
+    // into nonsense rather than refuse it, and the run would report a confident
+    // number produced by an opponent made of noise.
+    // v6 or v7. The opponent only ever needs the acting nets, which sit at the
+    // front of both layouts, so a v6 file works here unchanged -- its countries
+    // simply attack by the margin rule, which is what a v6 model did anyway.
+    if (buf[4] != 6 && buf[4] != 7)
+        return fail("pre-trunk model (v<6); this build needs v6 or v7");
+    if (buf[5] != MOD_COUNT * 3 + (buf[4] >= 7 ? 8 : 7))
+        return fail("unexpected net count");
+
+    size_t p = 6;
+    auto readBlob = [&](NeuralNet* net) -> bool {
+        if (p + 4 > buf.size()) return false;
+        const uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) |
+                             ((uint32_t)buf[p+3] << 24);
+        p += 4;
+        if (p + len > buf.size()) return false;
+        const bool ok = !net || net->deserialize(buf.data() + p, len);
+        p += len;
+        return ok;
+    };
+
+    // Blob order is loadModel's, and only the acting parts are taken. The value
+    // heads, Q and the reward statistics all describe how to KEEP LEARNING; a
+    // frozen opponent does none of that, and reading them would give this
+    // object a second set of optimiser state to no purpose.
+    if (!readBlob(&m_leagueTrunk)) return fail("truncated trunk");
+    m_leagueTrunk.setTanhOutput(true);
+    if (!readBlob(&m_leagueStance)) return fail("truncated stance head");
+    for (int i = 0; i < 2; ++i)                       // relEncoder, relScore
+        if (!readBlob(nullptr)) return fail("truncated header nets");
+    for (int m = 0; m < MOD_COUNT; ++m)
+        if (!readBlob(&m_leaguePolicy[m])) return fail("truncated policy heads");
+    for (int i = 0; i < MOD_COUNT * 2 + 1; ++i)       // value, Q, target
+        if (!readBlob(nullptr)) return fail("truncated value/Q heads");
+    if (!readBlob(&m_leagueDiplo)) return fail("truncated diplomacy net");
+
+    m_leagueDiploLoaded  = true;
+    m_leagueStanceLoaded = true;
+    m_leagueLoaded = true;
+    m_opponentLoaded = true;
+    // m_leagueSlot stays -1: this is not a checkpoint drawn from the rotation,
+    // so recordLeagueOutcome must not score it into the PFSP tables that pick
+    // training opponents.
+    printf("[AI] Opponent model: %s (control cohort plays this, not dice)\n",
+           path.c_str());
+    return true;
+}
+
 void AISystem::assignLeagueCountries() {
     m_leagueCids.clear();
     if (!m_leagueLoaded || LEAGUE_SHARE <= 0.0f) return;
@@ -4993,7 +6612,7 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion < 1 || fileVersion > 6) return false;
+    if (fileVersion < 1 || fileVersion > 7) return false;
     // A PRE-TRUNK FILE CANNOT BE READ, AND MUST NOT BE GUESSED AT.
     //
     // Versions 1-5 store policy/Q/diplo as whole nets taking the full feature
@@ -5012,7 +6631,12 @@ bool AISystem::loadModel() {
     // before this existed, so they load and simply leave Q at its initial
     // weights -- which Q_WARMUP_UPDATES then keeps out of the way until it has
     // learned something.
-    if (count != MOD_COUNT * 3 + 7) return false;
+    // v7 appends the attack head; v6 is a strict prefix of it. A v6 file loads
+    // in full and simply leaves that head at its initial weights, which
+    // ATTACK_WARMUP_UPDATES then keeps out of the way until it has learned
+    // something -- the same arrangement Q heads got when they were added.
+    const bool hasAttack = (fileVersion >= 7);
+    if (count != MOD_COUNT * 3 + (hasAttack ? 8 : 7)) return false;
     const bool hasDiploValue = true;
     const bool hasTarget = hasDiploValue || (count == MOD_COUNT * 3 + 2);
     const bool hasQ = hasTarget || (count == MOD_COUNT * 3 + 1);
@@ -5043,6 +6667,7 @@ bool AISystem::loadModel() {
     if (hasTarget && !readBlob(m_target)) return false;
     if (!readBlob(m_diplo)) return false;
     if (hasDiploValue && !readBlob(m_diploValue)) return false;
+    if (hasAttack && !readBlob(m_attack)) return false;
     if (fileVersion >= 2 && p + 4 <= buf.size()) {
         uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) | ((uint32_t)buf[p+3] << 24);
         p += 4;

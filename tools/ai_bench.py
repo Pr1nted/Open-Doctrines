@@ -33,12 +33,32 @@ WHAT IT DOES DIFFERENTLY.
                regression in solvency or research shows up next to the headline
                rather than being discovered a week later.
 
+WHAT THE CONTROL IS. By default the other half of every map picks uniformly at
+random, which answers one question -- "better than a coin flip" -- and stops
+being informative the moment the answer is yes, because random never improves.
+--vs-model hands that half a named model file instead. The split, the counters
+and the report are identical; only the opponent changes. That turns a target
+like "as good as an intermediate player" into something a run can pass or fail:
+pin the file, measure against it, and pin a better one when it is beaten.
+
 USAGE
     tools/ai_bench.py                          # measure data/ai/model.bin
     tools/ai_bench.py --seeds 8                # more seeds, tighter interval
     tools/ai_bench.py --compare old.bin        # paired A/B against a checkpoint
+    tools/ai_bench.py --vs-model rung1.bin     # play a named opponent, not dice
+    tools/ai_bench.py --scenarios --maps 6     # the worlds a player opens
     tools/ai_bench.py --turns 300 400 600      # custom horizons
     tools/ai_bench.py --json out.json          # machine-readable
+
+WHICH WORLDS. By default, procedurally generated archetypes -- and for most of
+this project's life that was the ONLY thing trained or measured on, while every
+player opens one of the six maps in data/STDmaps. Those have historical alliance
+networks, real claims, five great powers among forty small states and, in one
+case, 185 countries; none of it resembles a generated map, and all of it is
+something buildFeatures reads. --scenarios measures there instead. Runs with and
+without it are not comparable and are not meant to be: they are two questions.
+A per-world ADVANTAGE table is reported whenever a run covers more than one, so
+a model that is fine on pangaea and hopeless on 1939 cannot hide in the mean.
 
 Exit status is 1 if a comparison shows a SIGNIFICANT REGRESSION in ADVANTAGE
 (paired 95% CI entirely below zero), so this can gate a training run.
@@ -132,17 +152,98 @@ ROW_RE = re.compile(r"^\[EVAL\]\s{4,}(.+?)\s{2,}(-?[\d.]+)\s+(-?[\d.]+)\s*$")
 # that keeps histogram rows out also excludes it), and it is the single most
 # player-visible number there is: an ally who never comes when called.
 CALLS_RE = re.compile(r"calls answered/issued\s+(\d+)/(\d+)\s+(\d+)/(\d+)")
+# "said yes/was asked  0/28  30/32" -- how often anything was AGREED to.
+#
+# This is the counter that would have caught a live bug for months. Every AI
+# answer to every request was an unconditional reject, so no alliance ever
+# formed; with no alliances nobody could issue a call to arms; and with no calls
+# issued the coalition gate saw "0 of 0" and correctly declined to judge an
+# empty denominator. A gate cannot protect a behaviour nothing counts.
+AGREE_RE = re.compile(r"said yes/was asked\s+(\d+)/(\d+)\s+(\d+)/(\d+)")
+# "training      econ 21024323  politics ...  war 0  navy ..."
+TRAIN_RE = re.compile(r"training\s+econ (\d+)\s+politics (\d+)\s+war (\d+)\s+navy (\d+)")
+# The per-world table, e.g. "[EVAL] 1939           1      650      462     1.41x".
+# ONE space after [EVAL], which is what keeps ROW_RE (four or more) from taking
+# these as global metrics. The header row ends in the word ADVANTAGE rather than
+# a number and so does not match.
+WORLD_RE = re.compile(r"^\[EVAL\] (\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)x\s*$")
+# "  save   1650/13   ( 0.8%)   1650/786   (47.6%)" -- offered/chosen per action.
+#
+# THE COUNTERS THE REWARD CONSTANTS ARE ACTUALLY ABOUT. Every documented
+# collapse in this project was a take rate going to an extreme: recruit at 98.5%
+# of the turns it was offered, declare-war at 0.0% of 1827 opportunities, attack
+# at 0.6%. Each was found by hand, weeks later, after the outcome numbers had
+# already been blamed on something else -- because nothing parsed these rows,
+# so nothing could gate them.
+# "P war:recruit       15.9" -- the policy's own probability for an action, at a
+# neutral temperature, over the turns the action was OFFERED. Same denominator
+# as the take rate beside it, so the two are directly comparable.
+#
+# THIS IS WHAT THE REWARD-TERM GATES JUDGE. A take rate is what came out of the
+# dice after temperature and epsilon, and measurement runs at temperature 0.35
+# where the bottom of the range is crushed: measured on one model, an action the
+# policy gave 2.7% was taken 0.1% of the time. Every "collapsed low" verdict
+# read off a take rate was therefore overstated by more than an order of
+# magnitude, and the high end was flattered too. The shape is the policy; the
+# take rate is the policy seen through the sampler.
+SHAPE_RE = re.compile(r"^\[EVAL\]\s+P (war|econ):(.+?)\s+([\d.]+)\s+\(n=(\d+)\)\s*$")
+TAKE_SECTION_RE = re.compile(r"--\s+(econ|war) action:")
+TAKE_RE = re.compile(
+    r"^\[EVAL\]\s{4,}(.+?)\s+(\d+)/(\d+)\s+\(\s*([\d.]+)%\)"
+    r"\s+(\d+)/(\d+)\s+\(\s*([\d.]+)%\)\s*$")
 
 
 def parse(text):
     """One run -> {metric: (model, random)} plus scalars."""
     out, adv, land = {}, [], []
     ca = ci = ra = ri = 0
+    ya = yi = za = zi = 0
+    # Which "offered / chosen" block we are inside. The two share a row shape
+    # and their action names do not overlap, but naming the section keeps a
+    # future "hold" in both from silently merging into one metric.
+    section = None
+    # Take rates are per MAP in the output and have to be recombined over the
+    # run by their own counts, not averaged: a map with four country-turns and
+    # one with four hundred are not equal evidence about a preference.
+    takes = {}
+    shapes = {}
     for ln in text.splitlines():
+        m = SHAPE_RE.match(ln.rstrip())
+        if m:
+            shapes[f"shape {m.group(1)}:{m.group(2).strip()}"] = float(m.group(3))
+            continue
+        m = TAKE_SECTION_RE.search(ln)
+        if m:
+            section = m.group(1)
+            continue
+        m = TAKE_RE.match(ln.rstrip())
+        if m and section:
+            key = f"take {section}:{m.group(1).strip()}"
+            # Printed "offered/chosen", so groups 2 and 5 are the denominators.
+            off, cho = int(m.group(2)), int(m.group(3))
+            roff, rcho = int(m.group(5)), int(m.group(6))
+            a = takes.setdefault(key, [0, 0, 0, 0])
+            a[0] += off; a[1] += cho; a[2] += roff; a[3] += rcho
+            continue
         m = CALLS_RE.search(ln)
         if m:
             ca += int(m.group(1)); ci += int(m.group(2))
             ra += int(m.group(3)); ri += int(m.group(4))
+        m = AGREE_RE.search(ln)
+        if m:
+            ya += int(m.group(1)); yi += int(m.group(2))
+            za += int(m.group(3)); zi += int(m.group(4))
+        m = TRAIN_RE.search(ln)
+        if m:
+            for i, mod in enumerate(("econ", "politics", "war", "navy")):
+                out[f"updates {mod}"] = (float(m.group(i + 1)), 0.0)
+            continue
+        m = WORLD_RE.match(ln.rstrip())
+        if m:
+            # Filed as an ordinary metric so it inherits the seed aggregation
+            # and the bootstrap interval for free: "world 1939 ADVANTAGE" then
+            # gets error bars across seeds exactly as the headline does.
+            out[f"world {m.group(1)} ADVANTAGE"] = (float(m.group(5)), 1.0)
         m = ADV_RE.search(ln)
         if m:
             adv.append(float(m.group(1)))
@@ -168,6 +269,21 @@ def parse(text):
         # it: a run that issues one call and sees it refused reports "0%
         # answered", which reads as a policy and is one coin landing tails.
         out["calls issued"] = (float(ci), float(ri))
+    if yi or zi:
+        out["agreements accepted %"] = (100.0 * ya / yi if yi else 0.0,
+                                        100.0 * za / zi if zi else 0.0)
+        out["agreements asked"] = (float(yi), float(zi))
+    for key, v in shapes.items():
+        # One column only: a control cohort is dice or a script and holds no
+        # belief to report, so the second slot mirrors the first rather than
+        # inventing a comparison.
+        out[key + " %"] = (v, v)
+    for key, (off, cho, roff, rcho) in takes.items():
+        out[key + " %"] = (100.0 * cho / off if off else 0.0,
+                           100.0 * rcho / roff if roff else 0.0)
+        # The denominator, for the same reason the calls one is kept: a take
+        # rate over three opportunities is not a preference.
+        out[key + " offered"] = (float(off), float(roff))
     return out
 
 
@@ -215,9 +331,9 @@ class RunFailed(RuntimeError):
     pass
 
 
-def run_one(binary, maps, turns, seed, difficulty, extra=()):
+def run_one(binary, maps, turns, seed, difficulty, flags=("--vs-random",), extra=()):
     cmd = [binary, "--resource-limit", RESOURCE_LIMIT, "--eval-ai",
-           str(maps), str(turns), str(seed), str(difficulty), "--vs-random", *extra]
+           str(maps), str(turns), str(seed), str(difficulty), *flags, *extra]
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, errors="ignore")
     out = p.stdout + p.stderr
     got = parse(out)
@@ -236,7 +352,7 @@ def run_one(binary, maps, turns, seed, difficulty, extra=()):
     return got
 
 
-def noise_floor(binary, maps, turns, seed, difficulty, runs):
+def noise_floor(binary, maps, turns, seed, difficulty, runs, flags=("--vs-random",)):
     """Run ONE configuration several times and report how much it moves.
 
     The eval IS reproducible now -- rand() is seeded per map rather than from
@@ -253,7 +369,7 @@ def noise_floor(binary, maps, turns, seed, difficulty, runs):
     vals = []
     for i in range(runs):
         print(f"  [noise] repeat {i + 1}/{runs} (same seed {seed}, same everything)", flush=True)
-        got = run_one(binary, maps, turns, seed, difficulty)
+        got = run_one(binary, maps, turns, seed, difficulty, flags)
         if "ADVANTAGE" in got:
             vals.append(got["ADVANTAGE"][0])
     if len(vals) < 2:
@@ -344,26 +460,102 @@ class SwapModel:
 #   min_abs         model >= threshold
 #   frac_of_random  model >= threshold * random
 #   max_x_random    model <= threshold * random
+#   band            lo <= model <= hi      (threshold is a (lo, hi) pair)
 # A gate may name a metric that must reach a minimum before it is allowed to
 # judge. Without that, "allies get answered 0.0%" fails loudly on a single
 # refused call -- which happened, and looked like a regression from a working
 # 63% until the denominator was checked. A gate that cannot tell "bad" from
 # "no data" is worse than no gate: it spends attention on nothing.
 BLUNDER_GATES = [
+    # FIRST, because it is upstream of the coalition gate below and of half the
+    # politics reward. A country that agrees to nothing has no allies, is never
+    # asked to a war, and can never end one except by conquest -- and to a
+    # player that is not a hard opponent, it is a broken one. The bar is
+    # deliberately low: this asks whether agreement is POSSIBLE, not whether the
+    # AI negotiates well.
+    ("agreements are possible", "agreements accepted %", "min_abs",     15.0,
+     "agreements asked", 10.0),
     ("allies get answered",     "calls answered %",   "min_abs",        20.0,
      "calls issued", 5.0),
     ("wars can end",            "ceasefires offered", "frac_of_random", 0.33),
     ("stays solvent",           "turns bankrupt",     "max_x_random",   1.0),
     ("keeps up in research",    "research completed", "frac_of_random", 0.50),
     ("holds itself together",   "lost to a revolt",   "max_x_random",   1.0),
+    # NOT attacking into a fight it loses is the single most defining trait of a
+    # player who has stopped being a beginner, and until the repulse counter
+    # existed it could not be measured at all: attacks issued minus provinces
+    # won lumps "still in progress" together with "army thrown away". Absolute,
+    # because this one is a claim about competence rather than about beating a
+    # control -- random loses roughly a third of its assaults, and matching
+    # random here is not a defence.
+    ("picks its fights",        "% of assaults that lost", "max_abs",   35.0,
+     "attacks repulsed", 10.0),
+    # AN INVARIANT, not a quality bar. The AI may lie about why it refused --
+    # that is the mechanic -- but it must never state something the country it
+    # is talking to can disprove by looking at the map. One of those is an
+    # opponent keeping something back; the other is an opponent that has not
+    # noticed what you can see, which reads as broken rather than as devious.
+    # Must be exactly zero; anything else means the believability rule is off.
+    ("lies hold up",            "refusals: caught out",    "max_abs",    0.0,
+     "refusals: lied", 3.0),
+    # The same invariant for declarations. A pretext the victim can disprove by
+    # looking at the claims map is not cunning, it is the AI not having looked.
+    ("pretexts hold up",        "wars: caught out",        "max_abs",    0.0,
+     "wars: pretext", 3.0),
+]
+
+# ── One gate per reward term that has already broken once ──────────────────
+#
+# WHY THESE EXIST. The reward is about twenty hand-set constants, and the
+# comments beside them record a cycle: a term is added, the policy collapses
+# onto whatever it overpays for, the term is reshaped, and the reshaping breaks
+# an earlier one. Army growth rewarded unconditionally -> recruit 14,849 times
+# and attack 214. A gate added -> the gate was true every turn for a defender ->
+# recruit on 98.5% of offers. A flat charge for declaring war -> zero
+# declarations out of 1,827 opportunities. An entropy bump to "fix" a low attack
+# rate -> more attacks winning less ground.
+#
+# Every one of those was a TAKE RATE at an extreme, every one was found by hand
+# weeks later, and none of them was visible in ADVANTAGE at the time. So each
+# constant now owns a counter, and each counter has a band.
+#
+# BANDS, not minimums, because these fail in both directions and the failure is
+# the same failure: a policy that always picks an action has stopped choosing
+# just as surely as one that never picks it. The bands are deliberately wide --
+# this asks whether a module is still making a decision, not whether it is
+# making a good one. A number in-band is not praise; a number out of band is a
+# collapsed distribution and no amount of further training walks it back
+# without a --reset-ai-head.
+#
+# The denominator guard matters as much here as anywhere: an action offered
+# twice in a run has no take rate worth reading.
+REWARD_TERM_GATES = [
+    # JUDGED ON THE POLICY SHAPE, not the take rate. See SHAPE_RE: the take rate
+    # is read at temperature 0.35, which crushes the bottom of the range -- an
+    # action the policy gave 2.7% was taken 0.1% of the time on a measured model
+    # -- so every low-end verdict taken off one was overstated by more than an
+    # order of magnitude. The shape is what the net believes; the take rate is
+    # that belief after the sampler has had its say. Both are reported; only
+    # this one is gated.
+    #
+    # Bands are WIDE and deliberately so. This asks whether a module is still
+    # making a decision, not whether it is making a good one.
+    #
+    # name                    metric                     rule    band          denominator                     min n   owning constant
+    ("army is a means",        "shape war:recruit %",     "band", (2.0, 80.0),  "take war:recruit offered",     200.0, "ARMY_SUFFICIENCY / ARMY_PROGRESS_WEIGHT"),
+    ("still presses attacks",  "shape war:attack %",      "band", (2.0, 90.0),  "take war:attack offered",      200.0, "dProv weight, PPO_ENTROPY"),
+    ("wars still get started", "shape war:declare war %", "band", (0.5, 70.0),  "take war:declare war offered", 200.0, "IDLE_CHARGE, WAR_AGGRESSION_CHARGE"),
+    ("wars still get ended",   "shape war:ceasefire %",   "band", (1.0, 85.0),  "take war:ceasefire offered",   100.0, "WAR_END_REWARD, IDLE_CHARGE"),
+    ("economy does something", "shape econ:save %",       "band", (0.0, 85.0),  "take econ:save offered",       200.0, "the econIdle charge"),
+    ("research keeps funding", "shape econ:fund down %",  "band", (0.0, 70.0),  "take econ:fund down offered",  200.0, "dNet with research added back"),
 ]
 
 
-def check_blunders(model_vals, random_vals):
+def check_blunders(model_vals, random_vals, gates=None):
     """-> list of (name, ok, detail). Missing metrics are reported, not skipped:
     a gate that silently vanishes is a gate that stops protecting anything."""
     rows = []
-    for gate in BLUNDER_GATES:
+    for gate in (BLUNDER_GATES if gates is None else gates):
         name, metric, rule, thr = gate[:4]
         need_metric, need_n = (gate[4], gate[5]) if len(gate) > 5 else (None, 0.0)
         mv, rv = model_vals.get(metric), random_vals.get(metric)
@@ -380,9 +572,19 @@ def check_blunders(model_vals, random_vals):
                 continue
         m = statistics.fmean(mv)
         r = statistics.fmean(rv) if rv else 0.0
-        if rule == "min_abs":
+        if rule == "band":
+            lo, hi = thr
+            ok = lo <= m <= hi
+            where = "collapsed low" if m < lo else ("collapsed high" if m > hi else "")
+            detail = f"{metric} {m:.1f} (want {lo:.0f}-{hi:.0f})"
+            if where:
+                detail += f" -- {where}"
+        elif rule == "min_abs":
             ok = m >= thr
             detail = f"{metric} {m:.1f} (need >= {thr:.0f})"
+        elif rule == "max_abs":
+            ok = m <= thr
+            detail = f"{metric} {m:.1f} (need <= {thr:.0f})"
         elif rule == "frac_of_random":
             ok = m >= thr * r
             detail = f"{metric} {m:.1f} vs random {r:.1f} (need >= {thr:.0%} of it)"
@@ -393,7 +595,8 @@ def check_blunders(model_vals, random_vals):
     return rows
 
 
-def measure(binary, model, seeds, turns_list, maps, difficulty, label, repeat=1):
+def measure(binary, model, seeds, turns_list, maps, difficulty, label, repeat=1,
+            flags=("--vs-random",)):
     """-> {turns: {metric: [per-seed values]}}
 
     With repeat > 1 each seed is run several times and AVERAGED before it
@@ -411,7 +614,7 @@ def measure(binary, model, seeds, turns_list, maps, difficulty, label, repeat=1)
                 for r in range(repeat):
                     tag = f" rep {r + 1}/{repeat}" if repeat > 1 else ""
                     print(f"  [{label}] {t}t seed {s} ({i}/{len(seeds)}){tag}", flush=True)
-                    runs.append(run_one(binary, maps, t, s, difficulty))
+                    runs.append(run_one(binary, maps, t, s, difficulty, flags))
                 keys = set().union(*(r.keys() for r in runs))
                 for k in keys:
                     vals = [r[k][0] for r in runs if k in r]
@@ -442,7 +645,30 @@ def main():
                     help="explicit binary path (default: the newest build tree)")
     ap.add_argument("--noise-runs", type=int, default=6,
                     help="repeats of one config to measure the noise floor (0 to skip)")
+    ap.add_argument("--vs-model", default=None, metavar="PATH",
+                    help="control cohort plays this model instead of picking at "
+                         "random (a rung, where random is only a floor)")
+    ap.add_argument("--vs-script", action="store_true",
+                    help="control cohort plays the scripted rung -- a competent "
+                         "hand-written player. The first control that stands for "
+                         "a LEVEL rather than a floor; parity with it is the target")
+    ap.add_argument("--scenarios", action="store_true",
+                    help="measure on the maps data/STDmaps ships (1914 .. modern) "
+                         "instead of generated archetypes")
     args = ap.parse_args()
+
+    # Everything that decides WHAT is being measured, threaded as one tuple and
+    # printed in the header, because two runs that differ in either the control
+    # or the worlds are not comparable however similar their headers look.
+    if args.vs_model and not os.path.exists(args.vs_model):
+        sys.exit(f"no such opponent model: {args.vs_model}")
+    if args.vs_model and args.vs_script:
+        sys.exit("--vs-model and --vs-script name different control groups; choose one")
+    flags = (("--vs-model", args.vs_model) if args.vs_model
+             else ("--vs-script",) if args.vs_script
+             else ("--vs-random",))
+    if args.scenarios:
+        flags += ("--scenarios",)
 
     if args.seeds > len(SEED_POOL):
         sys.exit(f"--seeds max is {len(SEED_POOL)}")
@@ -456,6 +682,18 @@ def main():
     print(f"seeds  : {seeds}")
     print(f"turns  : {args.turns}   maps/seed: {args.maps}   difficulty: {args.difficulty}")
     print(f"limit  : --resource-limit {RESOURCE_LIMIT} (pinned)")
+    print("control: " + (os.path.relpath(args.vs_model, ROOT) if args.vs_model
+                         else "the scripted rung" if args.vs_script
+                         else "random moves"))
+    # The shipped list is six worlds and a run walks it with `--maps`, so
+    # anything under six measures a PREFIX of it -- 1914 and 1918 only, at the
+    # default of two. Saying so beats letting "--scenarios" read as "all of
+    # them" in a log somebody reads next month.
+    if args.scenarios:
+        print(f"worlds : shipped scenarios, first {args.maps} of 6 per seed "
+              f"(--maps 6 covers the list)")
+    else:
+        print(f"worlds : generated archetypes")
     if len(seeds) < MIN_SEEDS_FOR_CI:
         print(f"\n  !! {len(seeds)} seeds. Every interval below is decorative: a bootstrap over")
         print(f"  !! fewer than {MIN_SEEDS_FOR_CI} points reports the spread of those points and calls it")
@@ -471,7 +709,7 @@ def main():
       try:
         with KeepAwake(), SwapModel(args.model):
             noise = noise_floor(binary, args.maps, max(args.turns), seeds[0],
-                                args.difficulty, args.noise_runs)
+                                args.difficulty, args.noise_runs, flags)
       except RunFailed as e:
         print(f"\nABORTED during the noise probe: {e}", file=sys.stderr)
         return 3
@@ -492,11 +730,15 @@ def main():
     try:
         with KeepAwake():
             curr, curr_rnd = measure(binary, args.model, seeds, args.turns, args.maps,
-                                     args.difficulty, "curr", args.repeat)
+                                     args.difficulty, "curr", args.repeat, flags)
             base = None
             if args.compare:
+                # The SAME opponent for both arms. Pairing already cancels map
+                # difficulty; holding the control fixed is what makes the two
+                # arms' ADVANTAGE figures differences in play rather than in who
+                # they played.
                 base, _ = measure(binary, args.compare, seeds, args.turns, args.maps,
-                                  args.difficulty, "base", args.repeat)
+                                  args.difficulty, "base", args.repeat, flags)
     except RunFailed as e:
         print(f"\nABORTED: {e}", file=sys.stderr)
         return 3
@@ -504,6 +746,8 @@ def main():
     regressed = False
     payload = {"seeds": seeds, "turns": args.turns, "repeat": args.repeat,
                "resource_limit": RESOURCE_LIMIT, "noise": noise,
+               "control": args.vs_model or ("script" if args.vs_script else "random"),
+               "worlds": "shipped" if args.scenarios else "generated",
                "current": {}, "baseline": {}, "paired": {}}
 
     for t in args.turns:
@@ -555,6 +799,16 @@ def main():
     rows = check_blunders(curr[longest], curr_rnd[longest])
     print(f"\n{'=' * 78}\nBLUNDER CHECKLIST ({longest} turns)   "
           f"-- what a player notices, regardless of ADVANTAGE\n{'=' * 78}")
+    if args.vs_model:
+        # Four of the five gates are RELATIVE to the control column, and the
+        # control is no longer a coin flip. "at least a third of random's
+        # ceasefires" is a floor because random manages nothing; "at least a
+        # third of that model's" is a comparison with a player, and a run can
+        # pass it by facing a bad opponent. Only "allies get answered" is
+        # absolute and means the same thing in both modes.
+        print(f"  NOTE: the control is {os.path.relpath(args.vs_model, ROOT)}, not random.")
+        print(f"  Every gate below phrased 'vs random' is really 'vs that model',")
+        print(f"  which is a comparison rather than a floor. Re-read them accordingly.")
     for name, ok, detail in rows:
         mark = "PASS" if ok else ("FAIL" if ok is False else "  ? ")
         print(f"  [{mark}]  {name:<24} {detail}")
@@ -566,6 +820,62 @@ def main():
         print("  what makes an AI read as broken rather than merely weak.")
     else:
         print("\n  All clear.")
+
+    # ── One gate per reward term ──
+    # The checklist above is what a PLAYER notices. This is what a reward
+    # constant does when it goes wrong, caught at the level it goes wrong at: a
+    # take rate pinned to an extreme, which is what every documented collapse in
+    # this project turned out to be, and which none of them was visible as until
+    # somebody went looking weeks later.
+    # A FRESHLY RESET HEAD IS NOT A COLLAPSED ONE.
+    #
+    # An untrained head has arbitrary logits, and at the hard-difficulty
+    # temperature of 0.35 it will still concentrate on whichever action
+    # initialisation happened to favour -- so it reads exactly like a converged
+    # one in the take rate, and the two need opposite responses. Below this many
+    # updates the module's gates are reported as "no data" rather than as
+    # failures. Roughly the point at which the epsilon schedule has annealed
+    # meaningfully; before it, the take rate is mostly initialisation.
+    MIN_UPDATES_TO_JUDGE = 2_000_000
+
+    def head_updates(metric):
+        """Which policy head owns this metric, and how trained it is."""
+        for mod in ("war", "econ"):
+            if metric.startswith(f"take {mod}:") or metric.startswith(f"shape {mod}:"):
+                vals = curr[longest].get(f"updates {mod}")
+                return mod, (statistics.fmean(vals) if vals else 0.0)
+        return None, None
+
+    trows = []
+    for gate, (name, ok, detail) in zip(
+            REWARD_TERM_GATES,
+            check_blunders(curr[longest], curr_rnd[longest], REWARD_TERM_GATES)):
+        mod, upd = head_updates(gate[1])
+        if mod is not None and upd < MIN_UPDATES_TO_JUDGE:
+            trows.append((name, None,
+                          f"{mod} head has {upd / 1e6:.1f}M updates (need "
+                          f"{MIN_UPDATES_TO_JUDGE / 1e6:.0f}M to tell a collapse "
+                          f"from a fresh reset) -- no data, not a failure"))
+        else:
+            trows.append((name, ok, detail))
+    owners = {g[0]: g[6] for g in REWARD_TERM_GATES}
+    print(f"\n{'=' * 78}\nREWARD TERMS ({longest} turns)   "
+          f"-- is each module still making a choice\n{'=' * 78}")
+    for name, ok, detail in trows:
+        mark = "PASS" if ok else ("FAIL" if ok is False else "  ? ")
+        print(f"  [{mark}]  {name:<24} {detail}")
+        if ok is False:
+            print(f"           owned by: {owners.get(name, '?')}")
+    tfailed = [n for n, ok, _ in trows if ok is False]
+    payload["reward_terms"] = [{"name": n, "ok": ok, "detail": d, "owner": owners.get(n)}
+                               for n, ok, d in trows]
+    if tfailed:
+        print(f"\n  {len(tfailed)} of {len(trows)} collapsed: {', '.join(tfailed)}")
+        print("  A collapsed distribution does not recover with more training --")
+        print("  the constant needs correcting and the head needs --reset-ai-head.")
+    else:
+        print("\n  Every module is still choosing.")
+    failed = failed + tfailed
 
     if args.json:
         with open(args.json, "w") as f:

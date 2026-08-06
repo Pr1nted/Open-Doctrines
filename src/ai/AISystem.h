@@ -1,5 +1,7 @@
 #pragma once
 #include "NeuralNet.h"
+
+struct NavyShip;   // GameStructs.h; only referenced by pointer/reference here
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
@@ -69,7 +71,21 @@ public:
      * and ZEROES the new columns, so a 96-feature file loads into this and
      * computes exactly what it did before until it learns otherwise.
      */
-    static constexpr int FEATURE_COUNT = 140;  // +24 reserved for the relational slice
+    /**
+     * 143, WAS 140. The three new slots are the political-distance features at
+     * the end; see CountryStat::compassGapMean.
+     *
+     * Widening is safe for an existing model: NeuralNet::deserialize grows a
+     * net's FIRST layer and zeroes the new weights, so a v7 file loads and
+     * computes exactly what it computed before until training moves them. The
+     * new inputs are appended rather than dropped into the spare slots at 80-84
+     * and 88-94 -- those belong to decideDiplomacy, which overwrites them on
+     * every request, so anything else living there would be visible on ordinary
+     * turns and invisible on the turns diplomacy is decided.
+     */
+    static constexpr int FEATURE_COUNT = 143;  // +24 for the relational slice, +3 compass
+    /** Political distance past which a province counts as a long way off. */
+    static constexpr float COMPASS_FAR = 0.35f;
     /** How far back a trend looks: long enough to show a build-up, short
      *  enough to still be about the current situation. */
     static constexpr int TREND_WINDOW = 8;
@@ -105,7 +121,17 @@ public:
     static constexpr int WAR_ACTIONS  = 8;
     // Navy: 0 hold, 1 move fleet, 2 bombard, 3 embark, 4 disembark/unload,
     //       5 scrap a ship the country is paying for and not using
-    static constexpr int NAVY_ACTIONS = 6;
+    // 0 hold, 1 move, 2 bombard, 3 embark, 4 land, 5 scrap, 6 engage.
+    //
+    // ENGAGE WAS MISSING ENTIRELY until 2026-08-06. Naval combat existed and
+    // was resolved by processNavyCombat, but only the player and the network
+    // could ever queue an engage order -- the AI had no such action, so an AI
+    // fleet sailed past an enemy fleet without ever attacking it, could only be
+    // attacked and never attack, and would not contest a sea lane or escort its
+    // own transports. Widening the head is safe: NeuralNet::deserialize widens
+    // a policy head and keeps existing weights, with the new action starting
+    // contributing nothing.
+    static constexpr int NAVY_ACTIONS = 7;
     static constexpr int DIPLO_ACTIONS = 2; // 0=reject 1=accept
 
     /**
@@ -152,6 +178,136 @@ public:
     static constexpr int STANCE_WINDOW = 10;
 
     /**
+     * HOW HARD THE STANCE PUSHES, in logits.
+     *
+     * The paragraph above describes what the stance was meant to be. What it
+     * actually was, for its whole life, is a memory bit: `stanceOf` was read in
+     * exactly ONE place -- to set the one-hot in features 112-115 -- and gated
+     * nothing, biased nothing and changed no executor. In principle the trunk
+     * could learn any stance-conditional behaviour from that one-hot; in
+     * practice one input among a hundred and forty, with nothing forcing the
+     * association, is not a plan. It is a note the country leaves itself.
+     *
+     * So the posture now leans on the choice, through the logit-bias channel
+     * pickAction already has for the critic. A BIAS and not a mask, deliberately
+     * and in both directions: at the hard-difficulty temperature of 0.35 this
+     * moves the odds of an action by about a factor of two and a half, which is
+     * enough to make a country at war behave like one that has decided
+     * something, and nowhere near enough to stop it defending itself because it
+     * declared a building phase ten turns ago. Masking would do the latter.
+     *
+     * This is a hand-authored prior, which is the same kind of thing the
+     * learned attack head exists to get rid of elsewhere -- worth saying
+     * plainly. The difference that makes it acceptable here is that the policy
+     * can overrule it: a logit bias shifts a preference, it does not remove an
+     * option, and a module that has learned better keeps its own answer.
+     */
+    /**
+     * WHAT A DIFFICULTY SETTING ACTUALLY CHANGES.
+     *
+     * It used to be two floats: temperature and epsilon. Easy was the best
+     * policy the project has, told to ignore itself 35% of the time. That is
+     * not a gentler opponent, it is an ERRATIC one -- the same country that
+     * fortified its border last turn declares war on a great power this turn
+     * because a coin came up heads, and a player reads that as the game being
+     * broken rather than as themselves winning. The pickAction comment about
+     * random declarations reading as "deranged rather than merely weak" is that
+     * failure, already half-diagnosed.
+     *
+     * A skill ladder should take faculties away, not add noise. Each tier below
+     * plays the SAME policy with fewer of the things that make it strong:
+     *
+     *   critic   the Q head's opinion blended into the choice
+     *   aim      the learned target and attack heads -- whom to declare on and
+     *            which province to take. Without them the old margin rule aims,
+     *            which is exactly how this AI played before those heads existed
+     *            and is a perfectly reasonable weaker opponent.
+     *   posture  the stance bias, i.e. whether the country has a plan at all
+     *
+     * Epsilon stays, much smaller, and only as a little unpredictability so a
+     * human cannot read the AI like a table. Easy is now a player who takes the
+     * obvious move without a plan; Insane is the full apparatus at argmax.
+     */
+    struct DifficultyProfile {
+        float temperature;
+        float epsilon;
+        bool  useCritic;
+        bool  useLearnedAim;
+        bool  usePosture;
+    };
+    static const DifficultyProfile DIFFICULTY[4];
+
+    /**
+     * How often a refusal comes with no explanation at all.
+     *
+     * Not a fallback -- a move. A country that always has an answer ready is as
+     * readable as one that always tells the truth, and "declined, said nothing"
+     * is a real thing for a player to be told. Low enough that a refusal is
+     * usually informative, high enough that silence is not remarkable when it
+     * happens.
+     */
+    static constexpr float REFUSAL_SILENCE_CHANCE = 0.15f;
+    /**
+     * How often a war is declared with no justification offered at all.
+     *
+     * Higher than the refusal figure on purpose. Refusing an offer in silence
+     * is mildly rude; invading a neighbour without a word is a statement, and
+     * one a player should meet often enough to recognise the countries that
+     * bother with a pretext and the ones that do not.
+     */
+    static constexpr float WAR_GOAL_SILENCE_CHANCE = 0.25f;
+
+    /**
+     * How much being caught lying costs you at the next table.
+     *
+     * Applied as a logit bias on ACCEPT, scaled by how far the asker's word has
+     * fallen: full credibility subtracts nothing, none subtracts all of this.
+     * At the hard-difficulty temperature that is a swing of roughly four in the
+     * odds -- enough that a reputation is worth keeping, not so much that a
+     * country everybody distrusts can never sign anything again.
+     *
+     * A BIAS, like AI_NAP_WILLINGNESS and AI_CALL_RELUCTANCE beside it. Nothing
+     * is blocked, nothing is greyed out, and the net can still say yes to
+     * somebody it has every reason to doubt -- which is right, because
+     * sometimes the deal is worth it anyway.
+     */
+    static constexpr float CREDIBILITY_WEIGHT = 0.5f;
+
+    /**
+     * ZERO, AND THE REASON IS A MEASUREMENT RATHER THAN A CHANGE OF MIND.
+     *
+     * Everything above is still what this is for. What it assumes is that the
+     * stance head holds a DISTRIBUTION -- that a country's posture is sometimes
+     * one thing and sometimes another, so the lean is situational. Measured
+     * after the head was reset and retrained: consolidate 99.5% of
+     * country-turns, the other three sharing the remaining half a percent.
+     *
+     * A posture that never changes is not a posture. Its row of the table
+     * becomes a fixed offset added to every decision the country ever makes --
+     * +0.35 on reinforce and -0.70 on declare war, forever, in every situation
+     * -- which is not authority, it is a thumb permanently on the scale. The
+     * war module duly collapsed onto reinforce at 100.0% while declarations sat
+     * near zero, and two reward terms were rewritten chasing that before the
+     * stance table was suspected.
+     *
+     * So the mechanism stays, wired and tested, and the weight is zero until
+     * the stance head can be shown to hold more than one opinion. Raising it
+     * again is one number; the thing to check first is the stance share in the
+     * eval, which is reported for exactly this reason.
+     */
+    static constexpr float STANCE_BIAS = 0.0f;
+    /**
+     * Per-stance leanings, in units of STANCE_BIAS. Rows are stances in the
+     * order above; the arrays are indexed by that module's action numbering
+     * (see ECON_ACTIONS and friends). Zero means "no opinion", which is most of
+     * it: a posture that has a view on every action is not a posture.
+     */
+    static const float STANCE_ECON[STANCE_COUNT][ECON_ACTIONS];
+    static const float STANCE_POL [STANCE_COUNT][POL_ACTIONS];
+    static const float STANCE_WAR [STANCE_COUNT][WAR_ACTIONS];
+    static const float STANCE_NAVY[STANCE_COUNT][NAVY_ACTIONS];
+
+    /**
      * What the target head is told about one candidate, beyond our own state.
      *
      * Relative rather than absolute wherever possible: "twice my army" is the
@@ -169,7 +325,109 @@ public:
      * noise, and a fresh model does not open its first game by declaring war on
      * whoever a random net happened to score highest.
      */
-    static constexpr uint64_t TARGET_WARMUP_UPDATES = 300000;
+    /**
+     * LOWER THAN THE ATTACK HEAD'S, because it is fed far more slowly.
+     *
+     * Both heads warm up by watching the old rule choose, and both used to wait
+     * for 300,000 updates. But an assault candidate set is built on most turns
+     * a country is at war, while a DECLARATION candidate set is built only when
+     * a war is actually declared -- and declarations are rare. Measured on one
+     * worker: the attack head takes about 92,000 updates an hour and the target
+     * head about 8,700. The same threshold therefore meant three hours for one
+     * and thirty-four for the other, so in any run anybody actually performs,
+     * the head that picks WHO to fight would never once have been consulted.
+     *
+     * ...AND 50,000 WAS STILL WRONG, because that rate was measured on short
+     * maps. A rotation of 250-turn worlds is mostly opening turns, when there
+     * are many countries and many declarations; the training pool runs
+     * 10,000-turn maps, which are mostly late game, where the survivors are few
+     * and already at war with each other. Measured in the pool itself: about
+     * 750 target-head updates an hour, not 8,700. 50,000 would have been
+     * sixty-six hours.
+     *
+     * 10,000 is around thirteen hours there. The lesson worth keeping is that a
+     * threshold extrapolated from a benchmark's map mix says nothing about a
+     * trainer's.
+     */
+    static constexpr uint64_t TARGET_WARMUP_UPDATES = 10000;
+
+    /**
+     * WHERE TO ATTACK, learned, on the same terms as whom to declare on.
+     *
+     * The war policy chooses a KIND of action -- hold, recruit, attack, sue for
+     * peace. Everything about what that action then does was a fixed rule:
+     * execWar case 3 walked the frontier, scored each adjacent enemy province
+     * by attacker-to-defender ratio with a bonus for claims and a bigger one
+     * for rebels, and took the best. So the model picked the verb and a
+     * hand-written heuristic picked the noun -- and since the noun is what
+     * decides whether the war is won, the ceiling on how well this AI plays was
+     * the quality of that heuristic rather than anything training could reach.
+     * A player experiencing "the AI attacked my weakest province again" was
+     * experiencing forty lines of C++, not a policy.
+     *
+     * The head scores candidates exactly as m_target does for declarations,
+     * with the same warmup arrangement and for the same reason: below the
+     * threshold the OLD RULE still chooses and the head merely watches, so it
+     * learns from a policy that already works instead of from noise. Without
+     * that, nothing is recorded until it is good and it is never good because
+     * nothing was recorded.
+     *
+     * WHAT IS STILL A RULE, deliberately: which candidates exist at all. A
+     * province is only offered if the attack is winnable on the same arithmetic
+     * as before. That is a mask, in the same sense validWar is a mask, and it
+     * keeps the head choosing among sane options rather than free to throw
+     * armies at fortresses -- the failure that would read to a player as the
+     * change having made the AI worse.
+     */
+    static constexpr int ATTACK_FEATURES = 12;
+    static constexpr int ATTACK_MAX_CANDIDATES = 16;
+    static constexpr uint64_t ATTACK_WARMUP_UPDATES = 300000;
+
+    /**
+     * HOW MANY FRONTS ONE DECISION TO ATTACK COVERS.
+     *
+     * The war module is asked once per country per turn, and for its whole life
+     * one "attack" produced exactly one move order. A country with fifteen
+     * active fronts therefore pushed on one of them; a player pushes on all
+     * fifteen. That is a cap on how competent this AI can ever look which no
+     * amount of training reaches -- worse, training ADAPTS to it, because
+     * pressing an attack you cannot follow up is genuinely worth less when you
+     * only get one. Left in place, hours of self-play would tune a policy for a
+     * game that is about to change.
+     *
+     * The fix is in the executor, not the decision: the policy still decides
+     * ONCE that this is a turn for attacking, and the order goes out everywhere
+     * it can. That is also how a player plays -- you resolve to go on the
+     * offensive and then issue all your orders, you do not re-litigate it per
+     * province.
+     *
+     * Capped rather than unlimited, and one order per launching province, so a
+     * country cannot empty every garrison in a turn. Four is enough to make a
+     * broad front behave like one and small enough that the order queue on a
+     * 185-country map stays the size it was.
+     */
+    static constexpr int ATTACK_ORDERS_PER_TURN = 4;
+
+    /**
+     * One winnable assault: move from `fromPid` into `toPid`.
+     *
+     * Carries the garrisons and the province's fortification rather than
+     * letting the feature builder look them up again. execWar has just computed
+     * all three to decide the candidate was winnable at all, and `garrisonOf`
+     * is a local lambda duplicated in two functions already -- a third copy to
+     * recompute a number we are holding would be the wrong way round.
+     */
+    struct AttackCandidate {
+        int fromPid = -1;
+        int toPid = -1;
+        int enemyCid = 0;
+        float margin = 0.0f;   // attacker over defender, the old rule's score
+        bool fromAlly = false; // launched from an ally's ground
+        int myGarrison = 0;
+        int theirGarrison = 0;
+        int fortLevel = 0;
+        int indLevel = 0;
+    };
 
     // ── How willing the AI is to start a war ────────────────────────────
     //
@@ -286,12 +544,71 @@ public:
     // Incoming diplomacy aimed at an AI country: accept or reject.
     // `subjectIso` is the third party a request is ABOUT — the aggressor named
     // in a call to arms. Empty for requests that are only between the two.
+    // `statedReasonOut`, when given, receives what the country SAYS about a
+    // refusal -- which is chosen separately from why it actually refused, and
+    // need not match. REFUSE_NONE means it declined to explain itself.
     bool decideDiplomacy(int targetCid, const std::string& action,
                          const std::string& sourceIso,
-                         const std::string& subjectIso = std::string());
+                         const std::string& subjectIso = std::string(),
+                         int* statedReasonOut = nullptr);
+    /**
+     * What to SAY, given why we actually refused.
+     *
+     * Three moves: say nothing, say the true thing, or say something else. The
+     * rule below is a v1 heuristic and deliberately a simple one -- the choice
+     * of when to lie is exactly the sort of thing that should eventually be
+     * learned, and the counters in TrainStats are there so it can be judged
+     * before it is.
+     *
+     * What it will not do is state anything `askerCid` can check against the
+     * map. That is not a restriction on what the AI is ALLOWED to say -- the
+     * player has the same open list, and so does the AI in principle -- it is
+     * the AI playing well. An opponent caught in an excuse the map disproves
+     * has told you it is not paying attention.
+     */
+    int chooseStatedRefusal(int selfCid, int askerCid, int trueReason);
+    /**
+     * The goal this country is really fighting `defenderCid` for. PRIVATE.
+     *
+     * Never shown, never serialised into the relation, and deliberately not
+     * exposed to the UI. It is derived from what findWarTarget knew when it
+     * picked the war, and it stays inside the AI because a war aim you can read
+     * off a panel is not an aim, it is a label.
+     *
+     * It is not hidden in the sense of being inert, either -- the same claim
+     * that makes a war one of reconquest is already what steers the attack head
+     * toward those provinces and what the ceasefire composer trades around. So
+     * the player CAN learn it, by watching which ground the AI goes for and
+     * which ground it will not sell. That is the intended way to find out.
+     */
+    int trueWarGoal(int selfCid, int defenderCid) const;
+    /**
+     * ...and what it announces instead, which need not be the same thing.
+     *
+     * A country that simply wants land is in the awkward position that the only
+     * unfalsifiable thing it can say is the truth. So it looks for a pretext
+     * that happens to be true -- a claim it holds, a border it shares, a rival
+     * grown too large -- and states the most legitimate one available. Failing
+     * that it either admits to conquest or says nothing, which are both
+     * perfectly good moves and read very differently to whoever it just
+     * attacked.
+     */
+    int chooseStatedWarGoal(int selfCid, int defenderCid, int trueGoal);
     // "They said no" — back the pair off hard rather than re-asking as soon as
     // the ordinary cooldown lapses.
     void noteDiploRejected(int sourceCid, int targetCid);
+    /**
+     * `speakerCid` told `hearerCid` why it refused. Either may be the player.
+     *
+     * The receiving end of the statement channel, and deliberately separate
+     * from noteDiploRejected: that one is about the refusal, this one is about
+     * what was SAID about it, and a refusal with no explanation is a real thing
+     * that still has to arrive. Today it counts what was heard and whether the
+     * map contradicts it; that check is the hook credibility will hang on, and
+     * it is written here rather than at the call sites so the player's
+     * statements and the AI's are judged by the same rule.
+     */
+    void noteRefusalHeard(int speakerCid, int hearerCid, int statedReason);
     /** Coalition counters for the trainer dashboard. */
     // `cid` is the country the event belongs to: the caller for an issued
     // call, the ally deciding for an answer or a refusal. It selects which
@@ -300,7 +617,14 @@ public:
     void noteCallAnswered(int cid) { statsFor(cid).callsAnswered++; }
     void noteCallRefused(int cid)  { statsFor(cid).callsRefused++; }
     /** One province changing hands, attributed to both sides by cause. */
+    /**
+     * A hull went down. attacker may be <= 0 when nobody owns the kill.
+     * crew is what was aboard: 0 for a warship, the cargo for a transport.
+     */
+    void noteShipSunk(int attackerCid, int victimCid, int crew);
     void noteConquest(int winnerCid, int loserCid, bool contested);
+    /** An assault that lost: the attacking stack died taking nothing. */
+    void noteAssaultRepulsed(int attackerCid, int troopsLost);
     void noteRevolt(int loserCid) { statsFor(loserCid).provLostToRebel++; }
     // A funded-at-zero turn with a node still active. See researchStalls.
     void noteResearchStall(int cid) { statsFor(cid).researchStalls++; }
@@ -377,12 +701,31 @@ public:
     // smaller than the noise the extra experience removes.
     /** Blend this model `alpha` of the way toward the mean of `peerPaths`. */
     int syncWithPeers(const std::vector<std::string>& peerPaths, float alpha);
+    /**
+     * Move every net `share` of the way toward `peer`'s. False if any pair has
+     * incompatible shapes, in which case some may already have moved -- callers
+     * discard the result rather than trying to unwind it.
+     *
+     * ONE list, used by both the peer sync and the final merge, because there
+     * were two and they had drifted from the model. Both blended the trunk, the
+     * four policy heads, the four value heads and the diplomacy net -- and
+     * silently skipped the stance head, the war-target head, all four Q heads,
+     * the relational encoder and scorer, and the diplomacy value head. Eight
+     * nets out of fifteen. In a parallel pool that meant every worker's
+     * learning on those eight was thrown away at the merge and replaced with
+     * whatever the FIRST input file happened to hold, which is not a merge of
+     * anything. Adding a net and forgetting one of two lists is how that
+     * happened; there is now one list to forget.
+     */
+    bool blendAllToward(const AISystem& peer, float share);
     /** Average several model files into one. Backs `--merge-ai`. */
     static bool mergeModelFiles(const std::string& outPath,
                                 const std::vector<std::string>& inPaths);
     /**
      * Throw away one module's learning and leave the rest alone.
-     * Backs `--reset-ai-head`. `module` is a MOD_* index.
+     * Backs `--reset-ai-head`. `module` is a MOD_* index, or MOD_COUNT for the
+     * diplomacy head (whose value baseline is m_diploValue and whose reward
+     * statistics are POLITICS' and are therefore left alone).
      *
      * For when a reward function is corrected after the policy has already
      * converged on the old one. A converged softmax puts almost no mass on the
@@ -408,6 +751,69 @@ public:
     // dice. With this set, sampling comes from the configured difficulty, the
     // same way a real game samples it.
     static bool s_evaluating;
+    /**
+     * The control cohort's brain, for `--eval-ai --vs-model <path>`.
+     *
+     * Empty means the control group picks uniformly at random, which is the
+     * only reference --eval-ai has ever had. Random is a FLOOR, not a level: it
+     * can say "better than a coin flip" and nothing else, so a model that has
+     * cleared it has no yardstick left. Naming a model file here makes the
+     * control group play THAT instead — same cohort split, same counters, same
+     * report — so the question becomes "better than this specific opponent",
+     * which is a question that keeps meaning something after parity.
+     *
+     * STATIC and a path rather than an argument, for the same reason
+     * s_readOnlyModel is: --eval-ai destroys and rebuilds the AISystem on every
+     * map, so the opponent has to be re-loaded per map from something that
+     * outlives the object.
+     */
+    static std::string s_opponentModelPath;
+    /**
+     * RUNG ONE. The control cohort plays a hand-written competent policy.
+     *
+     * Random is a floor that never rises, so it answers "better than nothing"
+     * and then stops meaning anything. A model opponent is a rung, but only
+     * once you have a model worth pinning -- and until this project has one,
+     * "as good as an intermediate player" has nothing to be measured against
+     * at all.
+     *
+     * So: a player written down. It attacks what it can beat, keeps its books,
+     * researches continuously, sues for peace when it is losing, answers its
+     * allies and calms its own unrest. Nothing in it is clever and nothing in
+     * it is learned; it is the standard of "somebody who has read the manual
+     * and is paying attention", which is exactly the bar in question.
+     *
+     * It shares every reflex, mask and restraint constant with the model
+     * cohort, like the random one does -- the only difference is where the
+     * choice comes from.
+     */
+    static bool s_updTrace;
+    static bool s_scriptedControl;
+    /**
+     * SCRIPT AGAINST SCRIPT: does aggression pay in this game at all?
+     *
+     * With this set, BOTH cohorts are hand-written and no network is consulted
+     * anywhere. One side builds an army and attacks with it; the other builds
+     * an army and never attacks, defending what it has and making peace when it
+     * can. Same reflexes, same masks, same restraint constants, same matched
+     * split -- the only difference between them is whether they ever go on the
+     * offensive.
+     *
+     * It exists because a day of reward work kept arriving at the same place. A
+     * policy trained to attack lost; a policy that recruited on 100% of turns
+     * and barely fought won 1.645x against a competent aggressor; and every
+     * reward edit that made attacking more attractive made the model worse. The
+     * measured advantage on the mature model has ATTACK at -0.085, below doing
+     * nothing.
+     *
+     * All of that is consistent with the AI having correctly learned that
+     * aggression does not pay here -- which would be a fact about the game's
+     * balance, not about the AI, and no amount of reward tuning would fix it.
+     * This removes the networks from the question entirely so the game can
+     * answer it on its own.
+     */
+    static bool s_scriptDuel;
+    enum ScriptVariant { SCRIPT_AGGRESSOR = 0, SCRIPT_TURTLE = 1 };
     // Reward-scale calibration from a replayed save's turn history: seeds the
     // running reward statistics so advantages are sensibly scaled from turn
     // one instead of after dozens of live turns. (Actions are not recorded in
@@ -441,11 +847,90 @@ public:
         // healthy case, and one that climbs on landlocked-ish maps means the
         // economy module has stopped buying ships it cannot use.
         long long shipsScrapped = 0;
+        /**
+         * HULLS LAID DOWN. The other end of the fleet, and it was not counted.
+         *
+         * The economy module builds them -- execEconomy cases 5 and 6 -- and
+         * only scrapping was ever tallied, so a policy that built a navy it
+         * could not crew or use looked identical in every number to one that
+         * built none at all. The navy reward pays 0.5 x tanh(dShips) when there
+         * is a crossing to make and charges 0.4 when there is not, and neither
+         * side of that could be checked against what was actually laid down.
+         *
+         * Split by type because they are different decisions: a destroyer is 15
+         * and needs a level-2 port, a carrier is 40 and needs a level-3, and a
+         * module that has learned to build only the cheap one is doing
+         * something specific rather than something vague.
+         */
+        long long destroyersBuilt = 0, carriersBuilt = 0;
         // Coalition behaviour. callsAnswered/callsRefused is the readout that
         // says whether alliances mean anything yet; stagingMoves says whether
         // anyone is using an ally's ground to reach a front.
         long long callsIssued = 0, callsAnswered = 0, callsRefused = 0;
         long long stagingMoves = 0;
+        /**
+         * EVERY diplomatic request this cohort was asked, and how many it said
+         * yes to -- ceasefires, alliances, non-aggression pacts, guarantees and
+         * calls to arms together.
+         *
+         * The calls counters above could not see the failure that made this
+         * necessary. Every answer was an unconditional reject (see
+         * decideDiplomacy), so no alliance ever formed; with no alliances
+         * nobody could issue a call to arms; and with no calls issued the
+         * coalition line read "0 of 0 answered" -- which is not a policy, it is
+         * an empty denominator, and the blunder gate correctly declined to
+         * judge it. The one number that would have shown it plainly was how
+         * often anybody agreed to anything, and nothing counted that.
+         *
+         * Requests are counted where they ARRIVE, including the ones the
+         * heuristic gates decline before the net is consulted: from the asking
+         * country's side those are refusals like any other.
+         */
+        long long diploRequests = 0, diploAccepted = 0;
+        /**
+         * What it said when it said no. See RefusalReason.
+         *
+         * `refusalsLied` is the interesting one and `refusalsCaught` is an
+         * INVARIANT: a lie the asker can check against the map should never be
+         * chosen, so this must stay at zero. A non-zero reading means the
+         * believability filter has stopped working, which would show up to a
+         * player as an opponent whose excuses fall apart on inspection -- worse
+         * than an opponent that says nothing at all.
+         */
+        long long refusalsSilent = 0, refusalsTrue = 0;
+        long long refusalsLied   = 0, refusalsCaught = 0;
+        /** ...and from the other side: what was said TO this cohort. */
+        long long refusalsHeard = 0, refusalsHeardFalse = 0;
+        /**
+         * Declarations, by what was announced. `warGoalPretext` counts the ones
+         * where the stated goal was not the real one, and `warGoalCaught` is
+         * the same invariant the refusals have: a pretext the world can check
+         * and disprove should never be chosen, so it must stay at zero.
+         */
+        long long warGoalSilent = 0, warGoalTrue = 0;
+        long long warGoalPretext = 0, warGoalCaught = 0;
+        /**
+         * Provinces demanded at a ceasefire, and how many of them were land
+         * this country actually claims.
+         *
+         * The share is the whole test of whether a war goal reaches the table.
+         * Before the terms consulted it the demand was "the first border
+         * province the iterator reached", so the claimed share was whatever
+         * chance produced -- and a war fought for Danzig ended with a demand
+         * for somewhere else, which is indistinguishable to a player from an AI
+         * that has no war aims at all.
+         */
+        long long ceasefireProvsAsked = 0, ceasefireClaimedAsked = 0;
+        /** Ceasefires offered while REFUSING to trade away the claim fought for. */
+        long long ceasefireHeldClaim = 0;
+        /**
+         * Country-turns spent under each posture. Reported because the stance
+         * now steers behaviour (see STANCE_BIAS) and a controller nothing
+         * counts is a controller nobody can tell is stuck: a model that picks
+         * "develop" on turn one and never revisits it would look, in every
+         * other number here, exactly like one that thought about it.
+         */
+        long long stanceHeld[STANCE_COUNT] = {0};
         // WHERE THE LAND CAME FROM.
         //
         // "land held" says who ended up with the world and nothing about how.
@@ -488,11 +973,87 @@ public:
         // one turn in twenty.
         long long warOffered[WAR_ACTIONS] = {0};
         long long warChosen[WAR_ACTIONS]  = {0};
+        /** The same, for the war module. See econProbMass. */
+        double warProbMass[WAR_ACTIONS] = {0.0};
+        long long warProbN[WAR_ACTIONS] = {0};
+        long long warDecisions = 0;
+        /**
+         * DOES THE ADVANTAGE ACTUALLY DISCRIMINATE BETWEEN ACTIONS?
+         *
+         * The war module has now collapsed onto five different single actions
+         * under four different reward configurations, the last of them onto
+         * "hold". Each was diagnosed and fixed as a reward defect and each fix
+         * moved the collapse somewhere else, which is the signature of a cause
+         * upstream of any individual term.
+         *
+         * A policy gradient can only learn a preference if the advantage
+         * differs by action. If it does not -- if the twelve-turn window's
+         * outcome is dominated by the state and by the other eleven actions
+         * taken inside it -- then the update is noise with respect to the
+         * choice, and whichever action is sampled slightly more in good windows
+         * gets reinforced until it takes everything. That failure looks exactly
+         * like a reward bug and cannot be fixed by editing rewards.
+         *
+         * So: the mean advantage actually credited to each action, and how many
+         * samples it came from. If the collapsed action's mean is clearly the
+         * highest, the policy is right and the reward is what needs work. If
+         * every action's mean sits on top of the others, the signal is not
+         * there to learn from and no reward term will supply it.
+         */
+        double warAdvSum[WAR_ACTIONS] = {0.0};
+        long long warAdvN[WAR_ACTIONS] = {0};
+        /**
+         * THE ADVANTAGE, SPLIT INTO ITS TWO HALVES.
+         *
+         * advantage = (immediate normalised reward) + BOOTSTRAP_DISCOUNT * V(end
+         * of window) - V(start). The first half is what the window itself paid;
+         * the second is what the window left the country WORTH, and it is the
+         * only channel through which "I built an army I have not used yet" can
+         * ever be credited.
+         *
+         * Recruiting earns +0.047 against attacking's +0.338 at every horizon
+         * tested -- 6, 12 and 24 -- so the gap is not about how long the window
+         * is. Splitting it says which half is missing: if the bootstrap barely
+         * differs between the two, then the value head does not think an army
+         * is worth anything, and no reward term on recruiting can fix that
+         * because the term would only be paying for the army twice.
+         */
+        double warImmSum[WAR_ACTIONS]  = {0.0};   // immediate normalised reward
+        double warBootSum[WAR_ACTIONS] = {0.0};   // discounted V(end of window)
+        double warBaseSum[WAR_ACTIONS] = {0.0};   // V(start), the baseline
         // Same question for the economy module, which owns research. Countries
         // complete 0.00 research per 1k country-turns, and "never asks" and
         // "asks and is refused" need opposite fixes.
         long long econOffered[ECON_ACTIONS] = {0};
         long long econChosen[ECON_ACTIONS]  = {0};
+        /**
+         * THE SHAPE OF THE POLICY, as opposed to the shape of the sampling.
+         *
+         * A take rate -- chosen over offered -- is what came out of the dice
+         * AFTER temperature and epsilon. Measurement runs at difficulty 2,
+         * where temperature is 0.35, and at that setting a logit lead of about
+         * one unit already becomes a take rate near 95%. So a module with a
+         * MILD preference and one that has genuinely stopped choosing report
+         * almost the same number, and the reward-term gates cannot tell them
+         * apart -- which matters, because those two need opposite responses:
+         * one needs nothing done, the other needs a reward corrected and a head
+         * reset.
+         *
+         * These accumulate the policy's own probability for each action at a
+         * NEUTRAL temperature of 1.0, over the masked logits, at every decision
+         * the module made. Divided by the decision count they give the mean
+         * P(action), which sums to 100% across a module and describes the
+         * distribution the net actually holds rather than the one sampling
+         * collapsed it into.
+         *
+         * Only accumulated for countries a policy net is actually driving --
+         * not the random cohort, whose choices are dice, and not the scripted
+         * rung, which never consults a net at all.
+         */
+        double econProbMass[ECON_ACTIONS] = {0.0};
+        /** Matching denominator: offers on turns there was a CHOICE. */
+        long long econProbN[ECON_ACTIONS] = {0};
+        long long econDecisions = 0;
         // A node was picked and is sitting at the front of the queue, and the
         // turn resolver still made no progress on it because funding is zero.
         // Bankruptcy zeroes research allocation every turn it bites, and the
@@ -521,10 +1082,65 @@ public:
         // actually fights worse, or simply fights less.
         long long turnsAtWar        = 0;
         long long attackIssued      = 0;  // a move order went out
+        // Of those, how many the LEARNED head chose rather than the margin
+        // rule. Zero until ATTACK_WARMUP_UPDATES, and the only way to tell a
+        // head that is steering badly from one that has not been let out yet --
+        // two situations with opposite fixes and identical outcome numbers.
+        long long attackSteered     = 0;
         long long attackNoTarget    = 0;  // nothing winnable adjacent
         long long attackPending     = 0;  // that province already had an order
+        /**
+         * ASSAULTS THAT LOST, and the men they cost.
+         *
+         * The funnel could count attacks issued and provinces won and had no
+         * way to tell the difference between an attack still in progress and
+         * one that was thrown away: `attackIssued - provTakenInBattle` lumps
+         * them together. So "attacks into a fight it could not win" -- the
+         * single most defining trait of a player who is NOT an intermediate --
+         * was not merely un-gated, it was unmeasurable.
+         *
+         * Counted where the turn resolver kills the attacking stack, on both
+         * routes into a province: over a land border and off a ship.
+         */
+        long long attacksRepulsed   = 0;
+        long long troopsLostAttacking = 0;
+        /**
+         * MICROSECONDS SPENT THINKING, and country-turns spent thinking them.
+         *
+         * A playability number, and the only one here that is not about how
+         * well the AI plays. The present-day scenario has 185 countries and
+         * every one of them runs a trunk pass and four heads every turn; if
+         * that adds a second to end-turn, the AI is bad in a way no ADVANTAGE
+         * figure will ever report and every player will notice immediately.
+         * Kept per cohort like everything else, so a change that makes the
+         * model think harder shows its bill next to its benefit.
+         */
+        long long thinkMicros = 0;
+        long long thinkCalls  = 0;
     };
     const TrainStats& trainStats() const { return m_trainStats; }
+    /**
+     * Mean and worst political distance across every live real country.
+     *
+     * Reported by the eval because a feature is only worth having if it is ever
+     * non-zero: a generated map that carries no compass data would leave these
+     * dead, and dead looks exactly like a world in perfect agreement with
+     * itself. See CountryStat::compassGapMean.
+     */
+    void compassGap(float& meanOut, float& worstOut) const;
+    /**
+     * How many live wars are being fought against countries that hold no land.
+     *
+     * AN INVARIANT, and it must read zero. A conquered map country keeps its
+     * entry so an amphibious landing can revive it, and for a long time it kept
+     * its WAR relations too -- so refreshStats, which builds m_warWith straight
+     * from those rows, counted a permanent war for anybody who had ever
+     * finished someone off. atWar stayed true forever, warInWindow with it, and
+     * the idleness charge that tests warInWindow could never fire for a
+     * conqueror. It was invisible in every outcome number; this is what would
+     * have shown it.
+     */
+    int warsWithTheDead() const;
     /**
      * The control group's counters, when --vs-random has split the map.
      *
@@ -556,6 +1172,26 @@ public:
     // too-high rate survivable but not free, and the model on disk has ~92M
     // samples of history behind it that is not worth risking for speed.
     static constexpr float LR_POLICY = 0.005f;  // was 0.002 (per-sample era)
+    /**
+     * Multiplies every learning rate, from OD_LR_SCALE. 1.0 is the shipped
+     * behaviour. Exists because these rates are high for Adam -- 0.005 policy
+     * and 0.010 value against a usual 3e-4..1e-3 -- and were RAISED when batched
+     * updates arrived, which is the wrong direction: averaging a batch reduces
+     * gradient noise, it does not license longer steps.
+     */
+    static float lrScale() {
+        static const float s = [] {
+            if (const char* e = std::getenv("OD_LR_SCALE")) {
+                const float f = (float)atof(e);
+                if (f > 0.0f && f <= 10.0f) {
+                    printf("[AI] LR scaled by %.4f\n", f);
+                    return f;
+                }
+            }
+            return 1.0f;
+        }();
+        return s;
+    }
     static constexpr float LR_VALUE  = 0.010f;  // was 0.005 (per-sample era)
     // The diplomacy head never left the per-sample era and must not be dragged
     // into the rise above. It learns only when somebody actually proposes
@@ -622,8 +1258,20 @@ public:
     // against a moving reward function, while "did it beat a coin flip" is an
     // absolute question with an absolute answer. A model that cannot beat
     // random selection is not learning, however healthy its sparklines look.
-    void setRandomCountries(std::unordered_set<int> cids) { m_randomCids = std::move(cids); }
+    // Out of line because the cohort is not always dice: with an opponent model
+    // loaded these same countries play it instead. See s_opponentModelPath.
+    void setRandomCountries(std::unordered_set<int> cids);
     bool isRandomCountry(int cid) const { return m_randomCids.count(cid) > 0; }
+    /**
+     * True when s_opponentModelPath named a file and it loaded.
+     *
+     * The caller MUST check this before running: a mistyped path that silently
+     * fell back to random selection would produce a full report labelled
+     * "OPPONENT" over numbers measured against dice, and nothing downstream
+     * could tell. A measurement that did not happen must never look like one
+     * that came back uninteresting.
+     */
+    bool opponentLoaded() const { return m_opponentLoaded; }
 
     // Observe-only view for the Neural capability. buildFeatures is private
     // because nothing outside should be constructing training input; this
@@ -703,6 +1351,28 @@ private:
         // over categories and averaged over groups. Negative is a government
         // actively pushing its minorities away.
         float minorityTrend = 0.0f;
+        /**
+         * HOW FAR THIS COUNTRY IS FROM ITS OWN PROVINCES, POLITICALLY.
+         *
+         * m_provinceCompass has always existed and always mattered: rebel
+         * factions are formed by grouping provinces of SIMILAR compass, their
+         * composition and name come from the average of it, and doctrines shift
+         * it toward or away from the government. And buildFeatures never read
+         * it once. So the politics module chose doctrines that move the
+         * country's own compass with no way to see whom that alienated -- while
+         * rebellion is the single largest penalty in its reward, at
+         * -2.5 x tanh(rebels/2). It was being punished hardest for an outcome
+         * whose main driver it could not observe.
+         *
+         * The same three questions the minority features above answer, asked of
+         * political rather than ethnic composition: how far on average, how far
+         * at the worst, and how much of the country is a long way off.
+         * Euclidean over the two axes, each clamped to [-100, 100] by the game,
+         * so a distance of 200 is as far apart as two provinces can be.
+         */
+        float compassGapMean  = 0.0f;   // 0..1
+        float compassGapWorst = 0.0f;   // 0..1
+        float compassGapShare = 0.0f;   // fraction of provinces beyond FAR
         float minorityCost = 0.0f;     // what that option set costs per turn
     };
     // Reward horizon: each decision is judged by the state change over the
@@ -745,8 +1415,63 @@ private:
      * millions of updates behind it does not degrade gracefully -- it looks
      * exactly like the actor having forgotten how to play. Below this count
      * Q is trained and ignored.
+     *
+     * THE OLD 2,000,000 WAS FAR TOO LOW, and the paragraph above turned out to
+     * describe the shipping model exactly. Bisected 2026-08-06 by forcing each
+     * warmup gate shut in turn and measuring land share against the scripted
+     * rung over 400 turns, three seeds, on the shipping model:
+     *     everything learned          62.7%
+     *     target head on its rule     62.7%   (bit-identical: never graduated)
+     *     attack head on its rule     62.7%   (bit-identical: never graduated)
+     *     CRITIC ON ITS RULE          76.7%
+     *     all three on their rules    76.7%   (i.e. the critic was the only
+     *                                          gate actually open)
+     * Fourteen points of play, given away by a critic that had passed the
+     * threshold without having learned enough to be worth listening to.
+     *
+     * Raised rather than deleted, and Q is still TRAINED below the gate, so
+     * re-enabling is a one-line change once there is evidence the critic helps.
+     * That evidence does not exist today: no configuration measured has been
+     * better with the critic on. OD_Q_WARMUP overrides this for experiments.
+     *
+     * For scale, the shipping model carries ~25M policy updates, so this is
+     * "not until somebody demonstrates it earns its place".
      */
-    static constexpr uint64_t Q_WARMUP_UPDATES = 2000000;
+    static constexpr uint64_t Q_WARMUP_UPDATES = 100000000000ULL;
+
+    /**
+     * BISECTION HOOKS for the three warmup gates.
+     *
+     * Each head defers to a hand-written rule until its update counter passes
+     * the threshold above, then takes over. Measured 2026-08-06: a model with
+     * zero updates -- rules everywhere -- holds 92.4% of the land against the
+     * scripted rung at 400 turns, while the shipping model at ~25M updates
+     * holds 62.7%. Every head that has graduated has made the AI worse, so
+     * these exist to find out WHICH one by forcing a gate to stay shut.
+     *
+     * OD_TARGET_WARMUP / OD_ATTACK_WARMUP / OD_Q_WARMUP, in updates. Set one
+     * absurdly high to keep that head on its rule while the others run learned.
+     */
+    static uint64_t warmupOverride(const char* var, uint64_t dflt) {
+        if (const char* e = std::getenv(var)) {
+            char* end = nullptr;
+            const unsigned long long v = std::strtoull(e, &end, 10);
+            if (end && end != e) return (uint64_t)v;
+        }
+        return dflt;
+    }
+    static uint64_t targetWarmup() {
+        static const uint64_t v = warmupOverride("OD_TARGET_WARMUP", TARGET_WARMUP_UPDATES);
+        return v;
+    }
+    static uint64_t attackWarmup() {
+        static const uint64_t v = warmupOverride("OD_ATTACK_WARMUP", ATTACK_WARMUP_UPDATES);
+        return v;
+    }
+    static uint64_t qWarmup() {
+        static const uint64_t v = warmupOverride("OD_Q_WARMUP", Q_WARMUP_UPDATES);
+        return v;
+    }
 
     /**
      * What a war costs the war module beyond what the fighting itself costs.
@@ -773,8 +1498,32 @@ private:
      *
      * Restore either by setting it back: -0.5 and -0.35 are what they were.
      */
-    static constexpr float WAR_PHONEY_CHARGE     = 0.0f;  // was -0.5
     static constexpr float WAR_AGGRESSION_CHARGE = 0.0f;  // was -0.35
+
+    /**
+     * WHAT A WASTED WINDOW COSTS -- war or no war, ONE price.
+     *
+     * This replaces two separate terms that were always meant to be the same
+     * one. The peace case charged a hardcoded -0.5 and carried the comment
+     * "Equal to phoneyWar, deliberately ... so peace is never the cheap way to
+     * avoid the tax"; the war case went through WAR_PHONEY_CHARGE, which was
+     * later set to zero on its own. From that moment the two were not equal,
+     * and the asymmetry pointed the other way: sitting out a war cost nothing
+     * while sitting still at peace cost 0.5, so DECLARING WAR WAS A DISCOUNT.
+     *
+     * Measured thirty minutes into the first training run on the corrected
+     * armyTerm: the war module chose "declare war" on 93% of the turns it was
+     * offered and "recruit" on 0.6% -- an exact inversion of the months it had
+     * previously spent recruiting on 98.6% and never fighting. Closing the
+     * recruiting escape had not fixed the incentive, it had moved the policy to
+     * the next-cheapest door out of the same room.
+     *
+     * So: one condition, one constant, no way for the two halves to drift apart
+     * again. A war buys exactly one window of grace -- mobilising and reaching
+     * a border genuinely takes time -- and after that it has to be producing
+     * something, which is what is asked of every other turn in the game.
+     */
+    static constexpr float IDLE_CHARGE = -0.5f;
 
     /**
      * How much unrest counts against every module's shared reward.
@@ -789,6 +1538,51 @@ private:
      * anything yet, and a country tearing itself apart should still notice.
      */
     static constexpr float UNREST_WEIGHT = 0.4f;  // was 0.8
+
+    /**
+     * WHAT PLAYING AGAINST SOMEBODY IS WORTH.
+     *
+     * Every other dense term in this reward is a quantity of our OWN: land
+     * gained, income raised, unrest suffered, nodes finished. Add them up and
+     * the policy is optimising a dashboard. A country can hold every one of
+     * those numbers flat while the strongest power on the map doubles, and
+     * nothing in the dense reward has anything to say about it -- so nothing
+     * ever taught the AI that a neighbour running away with the game is its
+     * problem. That is why it will not coalition against a runaway player,
+     * which is the behaviour anyone who has played a grand strategy game
+     * expects first.
+     *
+     * The competitive signal did exist, but only at the TERMINAL: +4 for
+     * winning, -4 for elimination, and a final-standing term in [-2,+2] for a
+     * map that never resolved. One outcome, after hundreds of windows of dense
+     * shaping, reached through a value function fitted mostly on the dashboard.
+     *
+     * These two terms put the same question in the dense reward:
+     *
+     *   STANDING  -- did we move up or down the table. The percentile is what
+     *                the world snapshot already ranks for the features; this
+     *                pays for changing it. Overtaking somebody is worth
+     *                something even on a turn we took no ground, because
+     *                somebody else lost some.
+     *   LEAD      -- did the gap between us and the strongest OTHER country
+     *                narrow or widen. Deliberately not "our share": that is
+     *                dProv again in different units. This term moves when the
+     *                leader moves, which is the entire point -- standing still
+     *                while the leader grows is now a loss, and it is a loss for
+     *                every module, because staying in the game is not the war
+     *                module's private problem.
+     *
+     * Scales: a rank step on a forty-country map is about 0.026, so STANDING
+     * saturates at roughly two places. Three provinces on a six-hundred
+     * province map is about 0.005 of the world, so LEAD reads a good-sized
+     * conquest as about a quarter of its range. Both are set comparable to the
+     * 0.6 on dProv rather than larger: they are meant to be the reason a close
+     * call goes one way, not a new thing to farm.
+     */
+    static constexpr float STANDING_WEIGHT = 0.4f;
+    static constexpr float STANDING_SCALE  = 0.05f;
+    static constexpr float LEAD_WEIGHT     = 0.4f;
+    static constexpr float LEAD_SCALE      = 0.02f;
 
     /**
      * How far the policy may move on one decision before the update stops
@@ -840,8 +1634,8 @@ private:
      * What ending a war is worth, on top of whatever ground it won.
      *
      * Nothing scored CONCLUDING a war. Conquest paid +2.0 x tanh(dProv/3) and
-     * WAR_PHONEY_CHARGE is zero, so a war that was neither won nor ended cost
-     * the policy nothing at all -- and it behaved accordingly: ceasefires
+     * the phoney-war charge was zero, so a war that was neither won nor ended
+     * cost nothing at all -- and it behaved accordingly: ceasefires
      * offered 2.4 per thousand country-turns against a random control's 45.5,
      * a take rate under one percent, wars that simply never finish. A player
      * on the other side of that sees a neighbour who will not make peace at
@@ -883,6 +1677,110 @@ private:
      * what it has.
      */
     static constexpr float ARMY_SUFFICIENCY = 2.0f;
+
+    /**
+     * THE PEACETIME BAR, as a fraction of the world's mean garrison density.
+     *
+     * Sufficiency is measured against hostile troops ADJACENT to us, which is
+     * zero at peace -- so the bar fell to max(1, 0) = 1 and PHI saturated at an
+     * army of two men. A standing army earned nothing while costing upkeep, so
+     * recruit's only surviving signal was its price, and the policy did the
+     * arithmetic: the 2026-08-06 run drove war:recruit to 0.0% and lost to the
+     * scripted rung while being the most solvent model on disk. It was rich
+     * because it did nothing.
+     *
+     * The first fix used a constant -- 200 troops per province. It never bound
+     * once: countries hold ~231,000 per province, so PHI stayed at 1 and the
+     * term stayed dead. A constant cannot know the scale of an army, which
+     * belongs to the economy and moves whenever the economy does. Expressed
+     * against the world mean instead, "ready" means holding roughly what
+     * everyone else holds, and the bar tracks the economy for free.
+     *
+     * 0.5 IS NOT ARBITRARY -- IT IS THE LARGEST VALUE THAT CAN BE SATISFIED.
+     * The bar is ARMY_SUFFICIENCY * PARITY * worldMean, so reaching it takes
+     * (2 * PARITY) times the world's mean garrison density. At 0.75 that is
+     * 1.5x the mean, which every country cannot hold at once by definition:
+     * the target would recede as fast as anyone chased it, PHI would sit under
+     * 1 forever, and recruit would become free money again -- the exact failure
+     * that killed the third shape. At 0.5 the bar IS the mean, so a country of
+     * average density is exactly sufficient, a weak one has real gradient to
+     * catch up, and a strong one earns nothing more. Measured at 0.75: 19 of 21
+     * countries below the bar. Do not raise this above 0.5.
+     *
+     * Does NOT revive the "recruit is free money" failure that killed the third
+     * shape: PHI is still clamped at 1, so every man past sufficiency is worth
+     * exactly nothing.
+     */
+    static constexpr double PEACETIME_PARITY = 0.5;
+
+    /**
+     * HOW MANY THINGS A MODULE MAY DO IN ONE TURN.
+     *
+     * See Experience::extras for why this is not 1. The module keeps picking
+     * until it picks its pass action (0, always valid in every mask) or hits
+     * this cap, and the validity mask is recomputed between picks -- so money
+     * already spent, garrisons already moved and orders already queued are all
+     * visible to the next choice. The mask is therefore the real budget; this
+     * is only a ceiling on how much a single country can do in a turn.
+     *
+     * 3 rather than something larger because every action is also a training
+     * sample: the cap multiplies experience volume per turn, and the point is
+     * to let the policy express a small portfolio, not to let one country run
+     * away with the map.
+     */
+    static constexpr int ACTIONS_PER_MODULE_PER_TURN = 3;
+
+    /**
+     * WHAT BEING TOO WEAK FOR YOUR OWN BORDERS COSTS, per window.
+     *
+     * Fourth shape this term has had. The first three each produced a policy
+     * that had stopped choosing, and each failure said what the next one needed:
+     *
+     *   ANNUITY. 0.3 x tanh(dArmy) every window the gate was open -- riskless,
+     *     repeating, and the gate is open almost permanently for a country at
+     *     war a lot. Recruit on 100.000% of offers, never fight. Measured
+     *     1.645x against the scripted rung, which is the awkward part: it wins.
+     *   PROGRESS. 0.6 once for closing the gap, clamped. Not farmable, and
+     *     worth a fraction of what one conquest pays per window, so the policy
+     *     skipped the prerequisite and went to war with no army: recruit 0.0%,
+     *     two assaults lost in three, 0.585x.
+     *   DEFICIT. Charge the shortfall every window. A STATE penalty is paid
+     *     identically whichever action you chose, so it creates no gradient
+     *     BETWEEN recruiting and attacking, and left recruiting with no upside
+     *     at all: recruit 0.0%, attack 100.0%.
+     *
+     * POTENTIAL-BASED SHAPING, which is what all three were groping at.
+     *
+     *     F(s, s') = PHI(s') - PHI(s),  PHI(s) = min(1, army / (2 x adjacent threat))
+     *
+     * PHI is a pure function of the state, so the term TELESCOPES: whatever
+     * route a country takes, the total shaping it can collect over an episode
+     * is PHI(end) - PHI(start), bounded by one. No annuity to farm, no gap to
+     * reopen for profit. Its defining property is that it is provably
+     * POLICY-INVARIANT -- it cannot change which policy is optimal, only how
+     * quickly the learner finds it. After a day of reward edits that each moved
+     * the optimum somewhere new, that guarantee is the reason to choose it.
+     *
+     * It is aimed at a measured problem rather than a suspected one. Recruiting
+     * earns +0.047 of advantage against attacking's +0.338 at every horizon
+     * tested; the payoff for recruiting is that it makes later attacks work;
+     * and that payoff can only arrive through the bootstrap, which was measured
+     * to carry no action-discriminating signal at all (baseline ~ bootstrap for
+     * every action). A head-to-head of two hand-written players then confirmed
+     * the target is real: one that builds an army and attacks beats one that
+     * builds an army and never attacks, on every seed tried.
+     *
+     * WEIGHT. Closing the whole gap in one window is worth about what taking
+     * two or three provinces is worth (2.0 x tanh(dProv/3) saturates near 1.5),
+     * so a recruit closing a tenth of it earns roughly what one province does.
+     * Below this the term is real but never competitive -- which is exactly
+     * what 0.6 was.
+     *
+     * Nothing gates it. A country at peace has no adjacent threat, so PHI is
+     * already 1 and the term is zero without being told; upkeep is priced where
+     * it belongs, in income.
+     */
+    static constexpr float ARMY_SHAPING_WEIGHT = 2.0f;
 
     /**
      * Turns a decision waits for its reward, overridable with OD_N_STEP.
@@ -968,8 +1866,58 @@ private:
         // Which neighbour the target head picked this turn, and what it was
         // shown to pick from. Empty unless a war was actually declared.
         std::vector<std::vector<float>> targetCand;
+        // The assault chosen this turn and what it was chosen from. Empty
+        // unless the war module actually attacked. Judged by the war module's
+        // reward, like the declaration: choosing where to push and choosing
+        // whether to push are the same decision with the same consequence.
+        std::vector<std::vector<float>> attackCand;
+        int attackChosen = -1;
         std::vector<std::vector<float>> relCand;
+        /**
+         * WHAT THE DIPLOMACY HEAD ACTUALLY SAW, and the neighbour rows that
+         * went with it. Empty unless this window carries a diplomatic answer.
+         *
+         * `features` above is the country's own turn state, in which slots
+         * 80-84 and 88-94 are ZERO -- they are reserved for request context and
+         * only decideDiplomacy writes them: who is asking, for what, at what
+         * odds, on what terms. Training the head on `features` therefore showed
+         * it a world with no request in it. It could not distinguish a
+         * ceasefire from a call to arms, because by the time it was updated the
+         * difference had been erased, and it was fitted on an input it never
+         * receives at decision time.
+         *
+         * Kept SEPARATE rather than written into `features`, because the same
+         * Experience trains the four module heads and the stance, and their
+         * states genuinely do not contain a request.
+         */
+        std::vector<float> diploFeatures;
+        std::vector<std::vector<float>> diploRelCand;
         int targetChosen = -1;
+        /**
+         * WHERE THIS COUNTRY STOOD when the decision was taken.
+         *
+         * Every other snapshot here is a STOCK -- provinces, treasury, army --
+         * and the reward built from them measures a dashboard. A country can
+         * hold its numbers perfectly still while the leader doubles, and
+         * nothing in the dense reward notices, because nothing in it mentions
+         * anybody else. The only competitive signal was the terminal, which
+         * arrives once per map after hundreds of windows of shaping.
+         *
+         * These are the same quantities the value head already sees in features
+         * 104-109; what was missing was being PAID for changing them.
+         */
+        /**
+         * Hostile troops on our borders when the window opened.
+         *
+         * The bar armyTerm measures progress against, frozen at the start so it
+         * measures OURS. Taken from the live figure instead, a neighbour's
+         * mobilisation would read as this country losing ground it never held,
+         * and the war module would be charged for a decision somebody else made.
+         */
+        long long enemyAdjArmy = 0;
+        float worldRank  = 0.0f;   // land percentile among the living, 0..1
+        float ownShare   = 0.0f;   // our share of all owned land
+        float rivalShare = 0.0f;   // the strongest OTHER country's share
         int age = 0;        // turns since the decision
         int rebellions = 0; // rebellions suffered within the window
         // Troops put on a hostile shore within the window. The province a
@@ -977,6 +1925,11 @@ private:
         // decision that mounted the invasion is scored on the crossing alone —
         // an army removed from the map and a bill for the hulls.
         int landings = 0;
+        long long crewDrowned = 0;   // enemy troops sent to the bottom
+        long long crewLost = 0;      // our own, lost with a loaded transport
+        /** Hulls bought and paid off inside the window. See m_shipsBoughtThisTurn. */
+        int shipsBought = 0;
+        int shipsSold = 0;
         // Turns spent with an empty treasury inside the window. Bankruptcy is
         // now expensive in the game (BANKRUPTCY_UNREST_PCT) and has to be
         // expensive in the reward too, or the modules keep spending and let the
@@ -985,6 +1938,57 @@ private:
         // Activations cached at decision time so the learning step can skip
         // the policy re-forward (~1/3 of the per-country net cost).
         std::vector<std::vector<float>> acts[MOD_COUNT];
+        /**
+         * THE SECOND AND THIRD THING A MODULE DID THIS TURN.
+         *
+         * Each module used to take exactly one action per turn, which forced
+         * the policy to RANK actions that are complements rather than
+         * substitutes: a player does not choose between recruiting and
+         * attacking, they recruit and reinforce and attack in the same turn
+         * until the money runs out. With one slot, the only way to express
+         * "recruiting matters" is to take nearly all of the mass, so there was
+         * no stable interior optimum and the war head slid between corners --
+         * recruit 100% then recruit 0%, attack 100% then 20%. Five successive
+         * shapes of armyTerm failed to fix that, because no shaping of a
+         * one-of-N choice can encode "do both".
+         *
+         * The tell was that the BEST model on disk (candidate-t2h, ADVANTAGE
+         * 2.35/2.74) fails the recruit shape gate at ~90%, while the model that
+         * sat inside the band scored 0.55. The metric was describing a world
+         * where these actions compete; they do not.
+         *
+         * The first action of each module stays in the scalar fields above so
+         * every existing path -- diplo and stance slots, the decision trace,
+         * the target and attack heads -- is untouched. Anything after the first
+         * lands here and becomes its own WorkItem sharing the window's reward.
+         */
+        struct ExtraAction {
+            int module = -1;
+            int action = -1;
+            float logProb = 0.0f;
+            std::vector<std::vector<float>> acts;
+            /**
+             * THE STATE AS IT WAS WHEN *THIS* ACTION WAS CHOSEN.
+             *
+             * The turn's features are a snapshot taken before the module acted,
+             * so reusing them for a second or third pick would both choose and
+             * train on a world where the first pick's money had not been spent
+             * and its troops had not moved. It also makes the value baseline
+             * identical for every action in the turn -- which is precisely the
+             * credit-assignment failure that showed up as declare war and
+             * ceasefire collapsing to zero while the frequent cheap actions
+             * spread out: a rare, expensive decision was being scored against
+             * the same baseline as the 35 routine ones around it, so its
+             * advantage was indistinguishable from theirs.
+             *
+             * With its own features each action gets its own V(s), so the
+             * advantage R - V(s_k) differs per action even though they share
+             * the window's return -- which is correct, because they genuinely
+             * do share the future.
+             */
+            std::vector<float> features;
+        };
+        std::vector<ExtraAction> extras;
         // pre-turn snapshot for reward deltas
         int provinces = 0;
         double treasury = 0;
@@ -1097,6 +2101,10 @@ private:
     float m_lastDiploLogProb = 0.0f;
     std::vector<std::vector<float>> m_pendingTargetCand;
     int m_pendingTargetChosen = -1;
+    /** Where to attack, scored the same way. See ATTACK_FEATURES. */
+    NeuralNet m_attack;
+    std::vector<std::vector<float>> m_pendingAttackCand;
+    int m_pendingAttackChosen = -1;
     NeuralNet m_diplo;
     /**
      * The baseline the diplomacy head never had.
@@ -1161,12 +2169,45 @@ private:
         m_diploNextTurn[sourceCid] = m_turn + 5;
     }
     long long m_worldArmy = 0;
+    long long m_worldProvinces = 0;
+    double m_medianArmyPerProvince = 0.0;  // typical country, not the aggregate
     size_t m_worldPixels = 0;
+public:
+    /**
+     * Mean army per province across every real country, refreshed each turn.
+     *
+     * The sufficiency bar is expressed against THIS rather than a constant,
+     * because the absolute scale of an army is a property of the economy and
+     * not of the design. Measured 2026-08-06: countries hold ~231,000 troops
+     * per province, while a hand-set floor of 400 was in the reward -- 578x too
+     * small, so it never bound and the term stayed dead. A world-relative bar
+     * cannot drift out of range that way.
+     */
+    double worldArmyPerProvince() const { return m_medianArmyPerProvince; }
+private:
 
     // Running reward normalisation (mean/var per module), so advantage scale
     // is stable across maps of very different sizes.
     float m_rMean[MOD_COUNT] = {0, 0, 0, 0};
     float m_rVar[MOD_COUNT] = {1, 1, 1, 1};
+    /**
+     * UPDATE TRACE, enabled with OD_UPDATE_TRACE=1.
+     *
+     * A healthy PPO advantage is centred near zero: it says "this action was
+     * better or worse than the state was worth", and across many samples the
+     * two halves cancel. A large systematic MEAN means every update is pushing
+     * the policy the same direction regardless of what it did, which is how a
+     * good model is walked off a good optimum in minutes. Kept per module
+     * because the four are scored differently and only one may be broken.
+     */
+    struct UpdTrace {
+        double normSum = 0, normSq = 0;      // the reward, normalised
+        double baseSum = 0, baseSq = 0;      // V(s), the baseline
+        double advSum = 0, advSq = 0;        // what actually drives the update
+        long long n = 0, advClipped = 0, tgtClipped = 0;
+    };
+    UpdTrace m_upd[MOD_COUNT];
+    long long m_updTraceBatches = 0;
 
     // ─── Parallel learning step ──────────────────
     //
@@ -1204,8 +2245,10 @@ private:
         float bootDiscount = 0.0f;
         float oldLogProb = 0.0f;   // the behaviour policy's, for PPO's ratio
         std::vector<std::vector<float>> targetCand;   // war-target choice, if any
+        std::vector<std::vector<float>> attackCand;   // assault choice, if any
         std::vector<std::vector<float>> relCand;      // neighbour rows, for the encoder
         int targetChosen = -1;
+        int attackChosen = -1;
     };
     std::vector<WorkItem> m_work;
     struct WorkerScratch {
@@ -1221,6 +2264,7 @@ private:
         NeuralNet::Scratch valueNext[MOD_COUNT];
         NeuralNet::Scratch q[MOD_COUNT];
         NeuralNet::Scratch target;
+        NeuralNet::Scratch attack;
         NeuralNet::Scratch diplo;
         NeuralNet::Scratch diploValue;
         NeuralNet::Scratch diploValueNext;
@@ -1301,6 +2345,25 @@ private:
         float meanUnrest = 0.0f;
         long long totalProvinces = 0;
         std::unordered_map<int, float> rank;   // cid -> land percentile 0..1
+        // WHO the largest power is, and how big the next one is. Needed to
+        // answer "how am I doing against the strongest country that is not me",
+        // which largestShare alone cannot: for the leader it reads as its own
+        // size, so the leader's own dominance looked like a rival's.
+        int   largestCid  = -1;
+        float secondShare = 0.0f;
+        /** The strongest country OTHER than `cid`, as a share of owned land. */
+        float rivalShareFor(int cid) const {
+            return cid == largestCid ? secondShare : largestShare;
+        }
+        /** `cid`'s own share of owned land. */
+        float shareOf(int provinces) const {
+            return totalProvinces > 0 ? (float)provinces / (float)totalProvinces
+                                      : 0.0f;
+        }
+        float rankOf(int cid) const {
+            auto it = rank.find(cid);
+            return it != rank.end() ? it->second : 0.0f;
+        }
     };
     WorldSnapshot m_world;
     std::vector<std::vector<float>> m_lastRelCand;
@@ -1354,6 +2417,48 @@ private:
     std::unordered_set<int> m_leagueCids;
     bool m_leagueThisCountry = false;
     /**
+     * The diplomacy net of the frozen side, and whether we have one.
+     *
+     * A league CHECKPOINT does not carry it — the pool stores a trunk and the
+     * policy heads and nothing else — so in training a frozen opponent answers
+     * treaties with the CURRENT model's diplomacy net. That is a tolerable
+     * approximation there, where the league exists to stop policy cycling.
+     *
+     * It is not tolerable under --vs-model, where the whole point is that two
+     * named files play each other: leaving diplomacy shared would report the
+     * opponent's "calls answered" and "ceasefires offered" as the challenger's
+     * own behaviour, and those two counters are exactly what a head-to-head is
+     * usually run to compare. A full model file HAS a diplomacy net, so when
+     * one is loaded from a model rather than a checkpoint, the opponent gets
+     * its own.
+     */
+    NeuralNet m_leagueDiplo;
+    bool m_leagueDiploLoaded = false;
+    /**
+     * The frozen side's stance head, and whether we have one.
+     *
+     * Same split as m_leagueDiplo: a league CHECKPOINT carries no stance head,
+     * so in training a frozen opponent simply holds no posture -- which cost
+     * nothing while the stance only set a feature bit. Now that it steers
+     * action selection (STANCE_BIAS), a side with no stance is a side playing
+     * under different rules, and under --vs-model that turns a head-to-head
+     * into a handicap match. A full model file has the head, so when the
+     * opponent comes from one it picks its own posture.
+     */
+    NeuralNet m_leagueStance;
+    bool m_leagueStanceLoaded = false;
+    /** Set by loadOpponentModel: the control cohort is a model, not dice. */
+    bool m_opponentLoaded = false;
+    /**
+     * Load a full model file (ODAI) as the frozen opponent: its trunk, its four
+     * policy heads and its diplomacy net, into the same slots the league fills
+     * from a checkpoint. Everything else in the file — value heads, Q, reward
+     * statistics — describes how to KEEP LEARNING, and a frozen opponent does
+     * not. False, with a reason on stderr, if the file is missing or is not a
+     * model this build can read.
+     */
+    bool loadOpponentModel(const std::string& path);
+    /**
      * STATIC, because this object does not live long enough to hold it.
      *
      * AISystem is destroyed and rebuilt on every map rotation, so a member
@@ -1393,6 +2498,8 @@ private:
     /** Choose which countries the frozen opponent plays, for a fresh map. */
     void assignLeagueCountries();
     bool m_randomThisCountry = false;
+    /** This country is playing the scripted rung. See s_scriptedControl. */
+    bool m_scriptedThisCountry = false;
 
     // Research is player-only, so AI countries would report level-0 build caps
     // forever; these give them a baseline capability (research still raises it).
@@ -1409,6 +2516,24 @@ private:
      */
     bool selfPlayLearning() const;
     void difficultyParams(float& temperature, float& epsilon) const;
+    /** The tier in force, or the top one while self-play is learning. */
+    const DifficultyProfile& difficulty() const;
+public:
+    /**
+     * Gradient updates behind one module's policy head.
+     *
+     * Reported by the eval because the reward-term gates cannot be read without
+     * it. A take rate pinned to one action means a COLLAPSED distribution when
+     * the head has millions of updates behind it, and means nothing at all when
+     * it has just been reset -- a fresh head has arbitrary logits and at a
+     * temperature of 0.35 will concentrate on whichever one initialisation
+     * happened to favour. Those two look identical in the take rate and need
+     * opposite responses, so the gate has to be told which it is looking at.
+     */
+    unsigned long long moduleUpdates(int m) const {
+        return (m >= 0 && m < MOD_COUNT) ? m_policy[m].updateCount() : 0;
+    }
+private:
 
     // `graveAction`, when >= 0, names an action that epsilon-random exploration
     // must not fire during normal play. See the note in pickAction.
@@ -1429,7 +2554,12 @@ private:
                     const std::vector<bool>& valid, float& scoreOut,
                     int graveAction = -1,
                     const std::vector<float>* logitBias = nullptr,
-                    float* logProbOut = nullptr);
+                    float* logProbOut = nullptr,
+                    // The policy's own distribution over the MASKED logits at a
+                    // neutral temperature of 1.0, for TrainStats::warProbMass.
+                    // Purely observational: filled after the choice is made and
+                    // never read back, so it cannot affect what was chosen.
+                    std::vector<float>* neutralProbsOut = nullptr);
     void logDecision(int cid, int module, int action, float score, const std::string& label);
 
     // Defence is issued as a batch, not one province a turn: a country invaded
@@ -1494,12 +2624,50 @@ private:
     void amphibiousReflex(int cid);
     /** Landings this country made this turn, for the reward window. */
     std::unordered_map<int, int> m_landingsThisTurn;
+    /**
+     * NAVAL COMBAT, IN THE ONLY UNITS THAT MATTER: men.
+     *
+     * Keyed by country, cleared each turn, folded into the open windows in
+     * endTurn exactly as landings are. Crew rather than hulls because the hull
+     * is not the prize -- sinking a loaded transport kills the invasion it
+     * carries, and losing one deletes those troops from your own land army
+     * outright. Both were worth precisely zero to the module responsible.
+     */
+    std::unordered_map<int, long long> m_crewDrownedThisTurn;   // we sank theirs
+    std::unordered_map<int, long long> m_crewLostThisTurn;      // they sank ours
+    /**
+     * Hulls bought and hulls paid off this turn, per country.
+     *
+     * dShips -- the fleet's net change -- cannot attribute either decision,
+     * because the ECONOMY module buys ships and the NAVY module scraps them,
+     * and one number covering both credits each for what the other did. It also
+     * sat entirely in the navy's reward, so the module that spent the treasury
+     * on a fleet was never told whether the fleet was worth having, and the
+     * module that was told could not build one.
+     */
+    std::unordered_map<int, int> m_shipsBoughtThisTurn;
+    std::unordered_map<int, int> m_shipsScrappedThisTurn;
 
     // Action execution (mirrors player enqueue rules incl. treasury deduction)
     std::string execEconomy(int cid, int action);
     std::string execPolitics(int cid, int action);
     std::string execWar(int cid, int action);
     std::string execNavy(int cid, int action);
+    /**
+     * Where a hull should actually steer to reach (tLon, tLat).
+     *
+     * Follows the sea route and returns the furthest waypoint that is both in
+     * range and reachable in a straight line, so open water is crossed in one
+     * leg and coastlines are rounded rather than run into. Falls back to the
+     * target itself when no route exists, which is what the open-sea case
+     * wants anyway.
+     *
+     * Used by BOTH the navy action and amphibiousReflex. Routing only the navy
+     * action moved the stall rate from 93% to 91%, because the reflex runs
+     * every turn for every country and issues most of the move orders.
+     */
+    void aimAlongRoute(const NavyShip& s, double tLon, double tLat,
+                       double& aimLon, double& aimLat) const;
     void validEconomy(int cid, std::vector<bool>& out);
     void validPolitics(int cid, std::vector<bool>& out);
     void validWar(int cid, std::vector<bool>& out);
@@ -1568,6 +2736,29 @@ private:
     void buildTargetFeatures(int cid, const WarCandidate& cand,
                              std::vector<float>& out) const;
     /**
+     * Score the winnable assaults and pick one, or -1 to let the old rule
+     * decide. Records the candidate inputs either way -- see
+     * ATTACK_WARMUP_UPDATES for why that is not optional.
+     */
+    int  chooseAttack(int cid, const std::vector<AttackCandidate>& cands,
+                      std::vector<int>* rankingOut = nullptr);
+    /**
+     * The scripted opponent's move for one module. See s_scriptedControl.
+     *
+     * Returns an index into that module's action list, always one the mask
+     * allows -- the preference list is consulted in order and the first
+     * permitted entry wins, so the rules never have to re-check the conditions
+     * the masks already enforce.
+     */
+    int  scriptedChoice(int module, int cid, const std::vector<bool>& valid,
+                        int variant = SCRIPT_AGGRESSOR) const;
+    /** Whether the scripted opponent accepts a request. */
+    bool scriptedDiplomacy(int targetCid, const std::string& action,
+                           const std::string& sourceIso) const;
+    /** The candidate's own slice of the attack head's input. */
+    void buildAttackFeatures(int cid, const AttackCandidate& cand,
+                             std::vector<float>& out) const;
+    /**
      * How likely `partnerCid` is to accept `requestKind`, from 0 to 1.
      *
      * OPPONENT MODELLING, and unusually cheap here. Every country evaluates the
@@ -1580,7 +2771,12 @@ private:
      * so it spent its turns asking the countries least likely to say yes, and
      * every refusal is a turn and a cooldown for nothing.
      */
-    float predictAcceptance(int partnerCid, const char* requestKind) const;
+    // `askerCid` is who would be doing the asking -- needed because the answer
+    // depends on what THEIR word is worth to `partnerCid`. Without it the
+    // planner models a country everyone trusts, and a serial liar keeps
+    // spending its overture budget on partners who have stopped believing it.
+    float predictAcceptance(int partnerCid, const char* requestKind,
+                            int askerCid) const;
 
     bool loadModel();
 };
