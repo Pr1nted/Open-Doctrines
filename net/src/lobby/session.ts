@@ -19,7 +19,7 @@
 
 import type { Env } from "../env.js";
 import { sign, verify } from "../auth/token.js";
-import { humanCode, randomId } from "../util/crypto.js";
+import { HUMAN_ALPHABET, humanCode, randomId } from "../util/crypto.js";
 
 export const AUD_SERVER_CRED = "od-server-cred";
 export const AUD_SESSION = "od-session";
@@ -71,8 +71,37 @@ export function verifyServerCredential(
     return verify<ServerCredentialClaims>(env, token, AUD_SERVER_CRED);
 }
 
+const SESSION_CODE_CHARS = 8;
+
 export function newSessionCode(): string {
-    return humanCode(8);
+    return humanCode(SESSION_CODE_CHARS);
+}
+
+// Built from the generator's own alphabet and length, so the two cannot drift.
+const SESSION_CODE_SHAPE = new RegExp(
+    `^[${HUMAN_ALPHABET}]{${SESSION_CODE_CHARS / 2}}-[${HUMAN_ALPHABET}]{${SESSION_CODE_CHARS / 2}}$`,
+);
+
+/**
+ * Whether a string is shaped like a code we could have issued.
+ *
+ * This is NOT a security check -- knowing the shape of a code is not knowing a
+ * code, and a well-formed guess still finds no session. It is a cost check, and
+ * it has to happen before the router touches `LOBBY`.
+ *
+ * Reaching a Durable Object is what makes an unknown code expensive:
+ * `idFromName` plus a fetch instantiates the object, and LobbyDO's constructor
+ * runs its CREATE TABLEs before /info can answer 404. So a request naming a
+ * code that never existed left behind a real Durable Object with real SQLite
+ * storage and no session, no alarm and therefore nothing that would ever
+ * reclaim it. Since the route pattern accepted any `[A-Z0-9-]{4,20}`, an
+ * unauthenticated loop over that space cost us a DO apiece.
+ *
+ * Rejecting the shape first makes every such request free: a string match and a
+ * 404, with no binding touched.
+ */
+export function isSessionCode(value: string): boolean {
+    return SESSION_CODE_SHAPE.test(value);
 }
 
 export function issueSessionDescriptor(

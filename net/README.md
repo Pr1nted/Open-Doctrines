@@ -239,6 +239,101 @@ effectively unlimited. If that ever binds, the fix is to move the login handoff
 to the DO request budget instead. It is one function, and it is deliberately
 isolated for that reason.
 
+## Long-form turn storage
+
+The server half of `TurnStoreKind::DurableObject`, which is the game's default
+long-form store because it needs nothing enabled that a working account does not
+already have — R2 does the same job, but Cloudflare wants a card on file before
+it will switch R2 on.
+
+Turn data lives in the session's own Durable Object, alongside the lobby state,
+and dies with it: 90 days idle for a long-form session, immediately for a rapid
+one. Four routes, and the URL shapes are the game's rather than ours — they are
+built in `src/net/TurnStore.cpp`:
+
+| Route | Who | What it does |
+|---|---|---|
+| `PUT /session/<code>/turn/<n>` | the host, only | Publish turn `n`. **Refused if it already exists.** |
+| `GET /session/<code>/turn/<n>` | anyone | Read it back. Cacheable forever. |
+| `PUT /session/<code>/orders/<n>/<psid>` | that player, only | Submit sealed orders. May be revised. |
+| `GET /session/<code>/orders/<n>/<psid>` | anyone | Read them back. |
+
+The body is `{"od":1,"turn":N,"data":"<base64url>"}`, and it is validated rather
+than stored as it arrives: `data` must be base64url and the turn in the body
+must match the turn in the URL. Storing what came in would make this a general
+JSON host rather than a turn store.
+
+**Writes are authenticated with a session token**, not a join ticket — a ticket's
+audience is `od-relay:<sid>`, so it fails the check. A turn is refused to anyone
+but the host, and orders are refused to anyone but the player they belong to.
+
+**Reads are not authenticated, and that is the design.** A published turn is
+public so that people can spectate a tournament without joining it. Orders are
+sealed on the player's machine before they are sent (`src/net/TurnSeal.h`), so a
+reader without the key holds ciphertext — confidentiality never comes from the
+store, which is what lets the same client talk to a world-readable bucket like
+jsonblob without contradiction.
+
+One honest difference from that jsonblob backend: there a blob sits at an
+unguessable URL, whereas these are derivable from the join code. Nobody gains
+readable orders by it, but an observer holding the code can tell *whether* a
+player has submitted for a given turn. In a game whose host announces who is
+still to move, that is not a secret.
+
+Blobs are capped at 512 KB. That is orders of magnitude above the KB-scale turn
+deltas this carries, and it is chosen against the game's own ceiling rather than
+Cloudflare's: `HttpRequest::maxResponseBytes` defaults to 1 MB, so a larger blob
+could be written and then never read back.
+
+**The game calls this now.** The host publishes each resolved turn beside its
+existing `broadcastDelta`, and players submit orders sealed with the session key
+(`src/net/TurnSeal.h`) handed out over the lobby connection. Both sides also work
+with nothing connected, which is the point of the mode. The client half lives in
+the long-form section of `src/Game_Multiplayer.cpp`, and it has not yet been
+played through a real multi-day campaign — see the root README's Status section.
+
+## Abuse and rate limits
+
+Every endpoint is reachable without a credential or is cheap to attempt without
+one, and the budgets above are day-long and shared. Two things bound that, and
+it is worth knowing which does what.
+
+**A shape check on the join code.** `GET /session/<code>` is the only route that
+can instantiate a Durable Object, and `idFromName` plus a fetch creates one
+whether or not the session exists — LobbyDO's constructor runs its `CREATE
+TABLE`s before `/info` can answer 404. So a code that never existed used to
+leave a real object with real storage behind it, no alarm, and nothing that
+would ever reclaim it. `isSessionCode` in `src/lobby/session.ts` refuses
+anything the generator could not have produced, before the binding is touched.
+It is built from `HUMAN_ALPHABET` rather than written out, so the two cannot
+drift.
+
+That handles a malformed guess. A **well-formed** one still reaches the object,
+so `LobbyDO.noSession()` wipes its own storage before answering 404 — probing
+cannot accumulate empty objects either way. Note that `deleteAll()` drops the
+tables and the instance keeps serving afterwards, which is why every wipe is
+followed by `ensureSchema()`.
+
+**Per-IP rate limiting**, via the two `[[ratelimits]]` bindings in
+`wrangler.toml`. These are free and cost neither a KV operation nor a DO
+request — a limiter built on KV would spend the budget it exists to protect.
+The key is `HMAC(IDENT_KEY, "rl:" + ip)`, never the address: PRIVACY.md says we
+do not collect IP addresses and that stays true, because what the limiter holds
+is a keyed hash — not reversible without `IDENT_KEY`, never written to KV, never
+logged — behind an in-memory counter that lives ten seconds in one colo.
+
+**Know what this does not do.** The bindings are best-effort and per-colo, not a
+global ledger. They stop one source hammering one endpoint. They do not stop a
+distributed flood, and a limit generous enough not to break eight players
+reconnecting behind one NAT is also generous enough that a determined attacker
+with a valid join code could still outspend the daily budget. If that ever
+happens the answer is a **WAF rate-limiting rule** in the dashboard, which
+cannot be expressed in `wrangler.toml` and has to be added by hand.
+
+Note that `wrangler dev` runs the limiter too: miniflare synthesises
+`CF-Connecting-IP` as `127.0.0.1`, so every client on your machine shares one
+bucket. A local 429 during a multi-client playtest is that, not a bug.
+
 ## Running a game server
 
 `POST /server/register` once, signed in, and keep the `serverCredential` it

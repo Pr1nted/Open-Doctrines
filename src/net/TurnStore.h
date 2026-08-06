@@ -52,6 +52,16 @@ enum class TurnStoreKind : uint8_t {
 const char* turnStoreName(TurnStoreKind k);
 
 /**
+ * A store kind that arrived over the network.
+ *
+ * False when this build has never heard of it. That is a host newer than this
+ * copy of the game rather than an attack, and the caller says exactly that --
+ * quietly substituting the default would play somebody's campaign on a store
+ * they did not choose, and the turns would go somewhere nobody is looking.
+ */
+bool turnStoreKindFromWire(uint8_t value, TurnStoreKind& out);
+
+/**
  * What the HOST must read before choosing a store, and what PLAYERS must be
  * shown in the lobby before they commit an evening to it.
  *
@@ -118,6 +128,22 @@ public:
 
     /** True when this backend moves bytes itself rather than via the player. */
     bool automatic() const { return m_config.kind != TurnStoreKind::Manual; }
+
+    /**
+     * Where a blob lives, for the stores whose URLs are DERIVABLE.
+     *
+     * DurableObject and R2 both address by (session, turn) and (session, turn,
+     * player), so anyone who knows the session can find a turn without being
+     * told its id -- which is what lets a player fetch a turn the host
+     * published while they were away, and lets the host collect orders it never
+     * saw submitted.
+     *
+     * JsonBlob cannot do this: its ids are minted by the service when something
+     * is posted, so they have to be passed around out of band. Both return an
+     * empty ref there, and for Manual, which has no URLs at all.
+     */
+    TurnStoreRef turnRef(uint32_t turnNumber) const;
+    TurnStoreRef ordersRef(uint32_t turnNumber, const std::string& psid) const;
 
     /**
      * Publish a turn bundle. Public and immutable by intent.

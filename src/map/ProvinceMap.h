@@ -17,6 +17,9 @@ public:
     const Province* getProvince(int pixelX, int pixelY) const;
     const Province* getProvince(float lon, float lat) const;
     Province* getProvinceById(int id);
+    /** The same lookup for callers that only read. Costs a const-qualified
+     *  overload rather than making every reader drop its own constness. */
+    const Province* getProvinceById(int id) const;
 
     // Overwrite the CPU-side province image with new RGBA pixels (same size).
     // Used by the map editor's shape-painting brush; skips the PNG round-trip.

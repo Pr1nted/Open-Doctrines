@@ -32,8 +32,9 @@
 
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env.js";
-import { verify } from "../auth/token.js";
+import { verify, verifySessionToken } from "../auth/token.js";
 import { audRelay, type TicketClaims } from "../auth/token.js";
+import { psidFor } from "../auth/ticket.js";
 import type { SessionDescriptorClaims } from "./session.js";
 import { randomId } from "../util/crypto.js";
 
@@ -96,6 +97,42 @@ const NONCE_TTL_MS = 5 * 60_000;
 /** Comfortably more than a full lobby retrying at once, and a hard ceiling. */
 const MAX_LIVE_NONCES = 256;
 
+// ------------------------------------------------------- long-form storage ----
+//
+// Turn bundles and sealed orders, kept with the session they belong to. This is
+// TurnStoreKind::DurableObject on the game side (src/net/TurnStore.h), and it
+// is the default there because it needs nothing enabled that a working account
+// does not already have -- R2 would do the same job but Cloudflare wants a card
+// on file before it will switch R2 on.
+//
+// The asymmetry is the whole design, and it is enforced here:
+//
+//   turn bundles   PUBLIC and IMMUTABLE. Written by the host, once. Readable by
+//                  anyone, which is what lets people spectate a tournament
+//                  without joining it.
+//   orders         Written by ONE player, for themselves. Sealed before they
+//                  leave that player's machine, so this object stores
+//                  ciphertext and could not read them if it wanted to.
+
+/**
+ * Cap on one stored blob.
+ *
+ * Turn deltas are KB-scale, so this is orders of magnitude of headroom. The
+ * real ceiling is the game's own: HttpRequest::maxResponseBytes defaults to 1
+ * MB, so a blob larger than that could be written and then never read back.
+ * Staying well under it means that failure cannot happen.
+ */
+const MAX_BLOB_BYTES = 512 * 1024;
+
+/**
+ * Backstop on how many blobs one session may hold.
+ *
+ * Not the real bound -- writes are authenticated and scoped to this session, so
+ * the only people who can fill it are the host and its players. It is here so
+ * that a looping host cannot quietly eat the free plan's storage.
+ */
+const MAX_BLOBS = 2000;
+
 export type PeerRole = "host" | "player" | "spectator";
 
 /** Exactly what the host is told about a peer. Nothing here is a credential. */
@@ -141,17 +178,82 @@ export interface SessionSettings {
     requiredMods: string[];
 }
 
+function blobFail(status: number, code: string): Response {
+    // No prose. Every message a player sees for these comes from the game, in
+    // TurnStore.cpp -- a second wording here would be the one nobody reads.
+    return new Response(JSON.stringify({ error: code }), {
+        status,
+        headers: { "content-type": "application/json; charset=utf-8" },
+    });
+}
+
+function turnNumber(url: URL): number | null {
+    const raw = url.searchParams.get("n");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Validate and normalise one blob.
+ *
+ * The wire format is the game's: `{"od":1,"turn":N,"data":"<base64url>"}`, from
+ * `wrapBlob` in TurnStore.cpp. Three things are checked and they are not
+ * ceremony:
+ *
+ *   - the size, before the body is read, so an oversized write costs nothing;
+ *   - that the turn in the BODY matches the turn in the URL, because a client
+ *     that disagrees with itself has a bug and storing it would hide it;
+ *   - that `data` is base64url, so this cannot be used to park arbitrary JSON.
+ *
+ * Returns the re-serialised blob rather than what arrived. Echoing the caller's
+ * own bytes back out is what would make this a general-purpose host for
+ * whatever anyone felt like putting in it.
+ */
+async function readBlobBody(request: Request, turn: number): Promise<string | null> {
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (declared > MAX_BLOB_BYTES) return null;
+
+    const text = await request.text();
+    if (text.length > MAX_BLOB_BYTES) return null;
+
+    let parsed: { od?: unknown; turn?: unknown; data?: unknown };
+    try { parsed = JSON.parse(text) as typeof parsed; } catch { return null; }
+
+    if (parsed.od !== 1) return null;
+    if (parsed.turn !== turn) return null;
+    if (typeof parsed.data !== "string") return null;
+    if (!/^[A-Za-z0-9_-]*$/.test(parsed.data)) return null;
+
+    return JSON.stringify({ od: 1, turn, data: parsed.data });
+}
+
 export class LobbyDO extends DurableObject<Env> {
     private sql: SqlStorage;
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
         this.sql = ctx.storage.sql;
+        this.ensureSchema();
+    }
+
+    /**
+     * Create the tables if they are not there.
+     *
+     * Called from the constructor AND after every `deleteAll`, which is not
+     * belt and braces: `deleteAll` drops the tables, and the instance stays
+     * alive and serving afterwards. Without this, the next request to reach
+     * that same instance dies on `no such table: meta` -- a 500 where a 404
+     * belonged, for a session that had simply ended.
+     */
+    private ensureSchema(): void {
         this.sql.exec(`
             CREATE TABLE IF NOT EXISTS meta  (k TEXT PRIMARY KEY, v TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS nonce (n TEXT PRIMARY KEY, at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS jti   (j TEXT PRIMARY KEY, exp INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS ban   (psid TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS blob  (k TEXT PRIMARY KEY, body TEXT NOT NULL,
+                                              at INTEGER NOT NULL);
         `);
     }
 
@@ -179,8 +281,32 @@ export class LobbyDO extends DurableObject<Env> {
             case "/init": return this.handleInit(request);
             case "/info": return this.handleInfo();
             case "/ws": return this.handleUpgrade(request);
+            case "/turn": return this.handleTurn(request, url);
+            case "/orders": return this.handleOrders(request, url);
             default: return new Response("not found", { status: 404 });
         }
+    }
+
+    /**
+     * Answer for a session that does not exist, and leave nothing behind.
+     *
+     * Reaching this object at all CREATED it -- the constructor's CREATE TABLEs
+     * are durable -- so a probe for a code nobody ever issued would otherwise
+     * leave a real Durable Object with real storage, no session, and no alarm
+     * that would ever reclaim it. `isSessionCode` in the router makes a
+     * MALFORMED guess free; a well-formed one still lands here, and this is
+     * where the rest of that is closed.
+     *
+     * Unconditionally safe: a session's storage is written by /init, which the
+     * Worker calls before the join code is known to anybody at all.
+     */
+    private async noSession(): Promise<Response> {
+        await this.ctx.storage.deleteAll();
+        this.ensureSchema();
+        return new Response(JSON.stringify({ error: "no_session" }), {
+            status: 404,
+            headers: { "content-type": "application/json; charset=utf-8" },
+        });
     }
 
     /** Called by the Worker when the host creates the session. Once only. */
@@ -213,12 +339,10 @@ export class LobbyDO extends DurableObject<Env> {
      * The nonce is why a ticket cannot be minted ahead of time and stockpiled:
      * it has to echo a challenge this lobby produced moments ago.
      */
-    private handleInfo(): Response {
+    private async handleInfo(): Promise<Response> {
         const descriptor = this.get("descriptor");
         const settings = this.settings();
-        if (!descriptor || !settings) {
-            return new Response(JSON.stringify({ error: "no_session" }), { status: 404 });
-        }
+        if (!descriptor || !settings) return this.noSession();
         this.sql.exec("DELETE FROM nonce WHERE at < ?", Date.now() - NONCE_TTL_MS);
         // /info needs no credential, so anyone with the join code can call it
         // in a loop. Age alone would not bound the table; this does.
@@ -242,11 +366,11 @@ export class LobbyDO extends DurableObject<Env> {
         }), { headers: { "content-type": "application/json" } });
     }
 
-    private handleUpgrade(request: Request): Response {
+    private async handleUpgrade(request: Request): Promise<Response> {
         if (request.headers.get("upgrade") !== "websocket") {
             return new Response("expected websocket", { status: 426 });
         }
-        if (!this.get("descriptor")) return new Response("no session", { status: 404 });
+        if (!this.get("descriptor")) return this.noSession();
 
         const pair = new WebSocketPair();
         const [client, server] = [pair[0], pair[1]];
@@ -384,18 +508,155 @@ export class LobbyDO extends DurableObject<Env> {
         if (peer.role === "host") await this.ctx.storage.deleteAlarm();
     }
 
-    private sessionId(): string | null {
+    /**
+     * The claims inside our own stored descriptor.
+     *
+     * Read without verifying the signature, deliberately: we minted this token
+     * and put it here at /init. It never came from a caller, so there is no
+     * attacker in the path to check for.
+     */
+    private descriptorClaims(): SessionDescriptorClaims | null {
         const descriptor = this.get("descriptor");
         if (!descriptor) return null;
         try {
             const parts = descriptor.split(".");
-            const payload = JSON.parse(atob(
+            return JSON.parse(atob(
                 parts[1]!.replace(/-/g, "+").replace(/_/g, "/"),
             )) as SessionDescriptorClaims;
-            return payload.sid;
         } catch {
             return null;
         }
+    }
+
+    private sessionId(): string | null {
+        return this.descriptorClaims()?.sid ?? null;
+    }
+
+    /**
+     * Who is calling, as a pseudonym for THIS server.
+     *
+     * The credential is a session token (`od-api`), which names an account --
+     * but everything this object holds is keyed by psid, and it has no business
+     * learning an account id. Converting once, here, is what keeps that true.
+     *
+     * Null for a missing, malformed, expired or wrong-audience token alike. A
+     * JOIN TICKET lands in that bucket too: its audience is `od-relay:<sid>`,
+     * so it cannot be used to write a turn or somebody else's orders.
+     */
+    private async callerPsid(request: Request): Promise<string | null> {
+        const header = request.headers.get("authorization");
+        if (!header) return null;
+        const [scheme, ...rest] = header.split(" ");
+        if (!scheme || scheme.toLowerCase() !== "bearer") return null;
+        const token = rest.join(" ").trim();
+        if (!token) return null;
+
+        const claims = await verifySessionToken(this.env, token);
+        const srv = this.descriptorClaims()?.srv;
+        if (!claims || !srv) return null;
+        return psidFor(this.env, claims.sub, srv);
+    }
+
+    // -------------------------------------------------------- long form ----
+
+    /**
+     * Publish or read a turn bundle.
+     *
+     * IMMUTABLE once written. "They cannot be edited by anyone but you" is what
+     * TurnStore.cpp promises a host, and "making it un-editable is what stops
+     * anyone rewriting history" is what TurnStore.h promises everyone else --
+     * the second is the stronger claim, so a turn is refused even to the host
+     * that wrote it.
+     */
+    private async handleTurn(request: Request, url: URL): Promise<Response> {
+        if (!this.get("descriptor")) return this.noSession();
+        const turn = turnNumber(url);
+        if (turn === null) return blobFail(400, "bad_turn");
+        const key = `turn:${turn}`;
+
+        if (request.method === "GET") return this.blobRead(key, true);
+        if (request.method !== "PUT") return blobFail(405, "bad_method");
+
+        const caller = await this.callerPsid(request);
+        if (!caller) return blobFail(401, "unauthorized");
+        // The host slot belongs to the account that opened the session, which
+        // is the same check the WebSocket handshake makes. Everyone invited
+        // knows the join code, so "whoever asks" would be no protection.
+        if (caller !== this.get("hostPsid")) return blobFail(403, "not_the_host");
+
+        const body = await readBlobBody(request, turn);
+        if (body === null) return blobFail(400, "bad_blob");
+
+        if ([...this.sql.exec("SELECT k FROM blob WHERE k = ?", key)].length > 0) {
+            return blobFail(409, "already_published");
+        }
+        return this.blobWrite(key, body);
+    }
+
+    /**
+     * Submit or read one player's sealed orders.
+     *
+     * A player writes their OWN and nobody else's. This is the one guarantee a
+     * public bucket cannot give: on jsonblob anyone holding a URL can overwrite
+     * it, and the design accepts that because the seal turns tampering into a
+     * lost turn rather than a forged one. Here we can simply refuse, so we do.
+     */
+    private async handleOrders(request: Request, url: URL): Promise<Response> {
+        if (!this.get("descriptor")) return this.noSession();
+        const turn = turnNumber(url);
+        const psid = url.searchParams.get("psid");
+        if (turn === null || !psid) return blobFail(400, "bad_request");
+        const key = `orders:${turn}:${psid}`;
+
+        if (request.method === "GET") return this.blobRead(key, false);
+        if (request.method !== "PUT") return blobFail(405, "bad_method");
+
+        const caller = await this.callerPsid(request);
+        if (!caller) return blobFail(401, "unauthorized");
+        if (caller !== psid) return blobFail(403, "not_your_orders");
+
+        const body = await readBlobBody(request, turn);
+        if (body === null) return blobFail(400, "bad_blob");
+
+        // Overwritable, unlike a turn. Changing your orders before the turn
+        // resolves is ordinary play, and the check above means only the player
+        // whose orders these are can do it.
+        return this.blobWrite(key, body);
+    }
+
+    private blobRead(key: string, immutable: boolean): Response {
+        const rows = [...this.sql.exec<{ body: string }>(
+            "SELECT body FROM blob WHERE k = ?", key,
+        )];
+        const body = rows[0]?.body;
+        if (body === undefined) return blobFail(404, "no_blob");
+
+        return new Response(body, {
+            headers: {
+                "content-type": "application/json; charset=utf-8",
+                // A published turn never changes, so the edge can hold it and
+                // spectators re-reading one cost no DO request at all. Orders
+                // can still be revised, so they are not cacheable.
+                "cache-control": immutable
+                    ? "public, max-age=31536000, immutable"
+                    : "no-store",
+            },
+        });
+    }
+
+    private blobWrite(key: string, body: string): Response {
+        const counted = [...this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM blob")];
+        const held = counted[0]?.n ?? 0;
+        const replacing = [...this.sql.exec("SELECT k FROM blob WHERE k = ?", key)].length > 0;
+        if (!replacing && held >= MAX_BLOBS) return blobFail(507, "session_full");
+
+        this.sql.exec(
+            "INSERT OR REPLACE INTO blob (k, body, at) VALUES (?, ?, ?)",
+            key, body, Date.now(),
+        );
+        return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json; charset=utf-8" },
+        });
     }
 
     private relayFromClient(peer: Attachment, message: ArrayBuffer): void {
@@ -535,6 +796,10 @@ export class LobbyDO extends DurableObject<Env> {
         if (!longForm) {
             // Rapid: the game is over, so the session goes with it.
             await this.ctx.storage.deleteAll();
+            // This instance keeps serving after the wipe, and `deleteAll` took
+            // the tables with it. A straggler arriving now must get a clean
+            // "no session", not a SQL error.
+            this.ensureSchema();
             return;
         }
 

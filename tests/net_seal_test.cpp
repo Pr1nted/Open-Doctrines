@@ -18,9 +18,16 @@
 // failed on the first Linux/libstdc++ build with "'memcmp' was not declared".
 #include <cstring>
 
-#include <cstdio>
+#include <cstdio>      // also ::remove, for the key-file case
 #include <string>
 #include <vector>
+
+// To assert that the key file is not world-readable. Excludes emscripten as
+// well as Windows: the web build has no stat to declare, and checking only
+// _WIN32 is the mistake TunnelInstall.cpp records having made.
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <sys/stat.h>
+#endif
 
 namespace {
 
@@ -178,6 +185,61 @@ int main() {
               !turnSeal(TurnSealKey{}, kTurn, kPsid, orders, o));
         check("an unset key opens nothing",
               !turnOpen(TurnSealKey{}, kTurn, kPsid, sealed, o));
+    }
+
+    // ------------------------------------------------ the host's copy ----
+    //
+    // A long-form host closes the game between turns, so a key that did not
+    // survive the process would mean every submission made while the host was
+    // away failed to open -- which the turn logic would faithfully report as
+    // every player having sent nothing.
+    printf("\n=== the key on disk ===\n");
+    {
+        // Relative, so this works the same on the Windows runner as on a Mac:
+        // there is no portable temp directory here without <filesystem>, and
+        // the test already runs from a build directory it may write to.
+        const std::string save = "od_seal_test_save.odsv";
+        ::remove(turnSealKeyPathFor(save).c_str());
+
+        check("the path sits beside the save, in its own file",
+              turnSealKeyPathFor(save) == save + ".odkey");
+
+        TurnSealKey loaded;
+        check("a key that was never written does not load",
+              !turnSealKeyLoad(save, loaded));
+
+        check("a key can be written", turnSealKeySave(save, key));
+        check("and read back", turnSealKeyLoad(save, loaded));
+        check("byte for byte",
+              memcmp(loaded.bytes, key.bytes, sizeof(key.bytes)) == 0);
+
+        // The point of persisting it at all: orders sealed before the host
+        // closed must still open after it comes back.
+        {
+            std::vector<uint8_t> opened;
+            check("orders sealed earlier still open under the reloaded key",
+                  turnOpen(loaded, kTurn, kPsid, sealed, opened) &&
+                  opened == orders);
+        }
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+        {
+            // The reason this file exists separately from `.odhost` at all: it
+            // is the one secret in the long-form design, and anyone who reads
+            // it can open every player's orders for every turn.
+            struct stat st{};
+            const bool statted = ::stat(turnSealKeyPathFor(save).c_str(), &st) == 0;
+            check("the key file was created", statted);
+            check("and no other user on this machine can read it",
+                  statted && (st.st_mode & (S_IRWXG | S_IRWXO)) == 0);
+        }
+#endif
+
+        check("an unset key is not written", !turnSealKeySave(save, TurnSealKey{}));
+        check("and no path means no write", !turnSealKeySave("", key));
+
+        ::remove(turnSealKeyPathFor(save).c_str());
+        check("once removed it no longer loads", !turnSealKeyLoad(save, loaded));
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);

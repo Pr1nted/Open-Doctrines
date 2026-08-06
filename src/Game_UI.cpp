@@ -177,7 +177,7 @@ void Game::drawPopup() {
                 return g > 0 ? TextFormat("%d gold", g) : "-";
             };
 
-            Color accent = hexToColor(m_config.accentColor);
+            Color accent = hexToColor(m_config.accent());
             int ty = popY + ceasefireLayout(popup).termsY;
             int tx = popX + 30;
             DrawLine(tx, ty - 12, popX + popW - 30, ty - 12, Color{70, 70, 95, 255});
@@ -222,6 +222,23 @@ void Game::drawPopup() {
     }
 
     if (popup.type == PopupType::DIPLOMATIC_REQUEST || popup.type == PopupType::CEASEFIRE_REQUEST) {
+        // WHAT YOU WILL TELL THEM, if you say no. Cycled by clicking; defaults
+        // to saying nothing, so a player who does not care about this never has
+        // to touch it. The same list the AI picks from, unfiltered -- you may
+        // claim to be at war while at peace, and they can look at the map.
+        {
+            Rectangle whyBtn = {(float)(popX + 20), (float)(btnY - 34),
+                                (float)(popW - 40), 26.0f};
+            const bool whyHover = CheckCollisionPointRec(getMouse(), whyBtn);
+            DrawRectangleRounded(whyBtn, 0.15f, 6,
+                                 whyHover ? Color{60, 60, 84, 255} : Color{38, 38, 54, 220});
+            DrawRectangleRoundedLines(whyBtn, 0.15f, 6, Color{80, 80, 105, 200});
+            const std::string lbl =
+                std::string("If you refuse: ") + refusalTextOwn(m_popupRefusalReason);
+            DrawText(lbl.c_str(), (int)whyBtn.x + 10, (int)whyBtn.y + 6, 14,
+                     m_popupRefusalReason == REFUSE_NONE ? Color{150, 150, 165, 255}
+                                                         : Color{225, 205, 150, 255});
+        }
         // Approve / Reject
         Rectangle approveBtn = {(float)(popX + popW / 2 - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle rejectBtn = {(float)(popX + popW / 2 + 10), (float)btnY, (float)btnW, (float)btnH};
@@ -289,6 +306,18 @@ void Game::updatePopup() {
         }
     }
 
+    // The reason cycler, on both request popups. Clicking it changes what you
+    // would say and does nothing else -- it never accepts or refuses anything.
+    if (popup.type == PopupType::DIPLOMATIC_REQUEST ||
+        popup.type == PopupType::CEASEFIRE_REQUEST) {
+        Rectangle whyBtn = {(float)(popX + 20), (float)(btnY - 34),
+                            (float)(popW - 40), 26.0f};
+        if (CheckCollisionPointRec(mouse, whyBtn)) {
+            m_popupRefusalReason = (m_popupRefusalReason + 1) % REFUSE_COUNT;
+            return;
+        }
+    }
+
     if (popup.type == PopupType::DIPLOMATIC_REQUEST) {
         Rectangle approveBtn = {(float)(popX + popW / 2 - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle rejectBtn = {(float)(popX + popW / 2 + 10), (float)btnY, (float)btnW, (float)btnH};
@@ -317,6 +346,7 @@ void Game::updatePopup() {
             printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+            m_popupRefusalReason = REFUSE_NONE;
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
             // Nothing to erase from the pending queue: the request was already
             // removed when the popup was created. The old code erased
@@ -328,10 +358,12 @@ void Game::updatePopup() {
                 addNotification("You refused " + popup.sourceIso +
                                 "'s call to arms — the alliance is over", ORANGE, 8.0f);
             }
+            tellRefusal(popup.sourceIso, m_popupRefusalReason);
             Audio::get().playSfx("deal_rejected");
             printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+            m_popupRefusalReason = REFUSE_NONE;
         }
     } else if (popup.type == PopupType::CEASEFIRE_REQUEST) {
         Rectangle approveBtn = {(float)(popX + popW / 2 - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -358,6 +390,7 @@ void Game::updatePopup() {
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+            m_popupRefusalReason = REFUSE_NONE;
             printf("[CEASEFIRE] Player accepted offer from %s — apply scheduled for next turn\n", popup.sourceIso.c_str());
         } else if (CheckCollisionPointRec(mouse, rejectBtn)) {
             Audio::get().playSfx("deal_rejected");
@@ -368,6 +401,7 @@ void Game::updatePopup() {
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+            m_popupRefusalReason = REFUSE_NONE;
             printf("[CEASEFIRE] Player rejected offer from %s\n", popup.sourceIso.c_str());
         }
     } else {
@@ -376,6 +410,7 @@ void Game::updatePopup() {
         if (CheckCollisionPointRec(mouse, okBtn)) {
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
+            m_popupRefusalReason = REFUSE_NONE;
         }
     }
 }
@@ -712,14 +747,14 @@ void Game::drawCeasefireScreen() {
     if (!playerC || !targetC) {
         std::string title = "Peace Negotiation";
         int titleW = MeasureText(title.c_str(), 28);
-        DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 16, 28, hexToColor(m_config.accentColor));
+        DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 16, 28, hexToColor(m_config.accent()));
         DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
         return;
     }
 
     std::string title = "Peace Negotiation - " + targetC->name;
     int titleW = MeasureText(title.c_str(), 28);
-    DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 12, 28, hexToColor(m_config.accentColor));
+    DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 12, 28, hexToColor(m_config.accent()));
 
     // Close button (top-right of panel)
     Rectangle closeBtn = {(float)(panelX + panelW - 44), (float)(panelY + 4), 36, 36};
@@ -895,7 +930,7 @@ void Game::drawCeasefireScreen() {
     int curY = sbY + 8;
 
     // Section header: "Selection Mode"
-    DrawText("Selection Mode", sbX + 8, curY, 13, hexToColor(m_config.accentColor));
+    DrawText("Selection Mode", sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 20;
 
     int modeBtnH = 26;
@@ -935,7 +970,7 @@ void Game::drawCeasefireScreen() {
     curY += 18;
 
     // ── Money inputs (integer sliders) ──
-    DrawText("Money", sbX + 8, curY, 13, hexToColor(m_config.accentColor));
+    DrawText("Money", sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 18;
 
     auto drawMoneySlider = [&](const char* label, int& value, int max, Color col) {
@@ -965,7 +1000,7 @@ void Game::drawCeasefireScreen() {
     curY += 4;
 
     // ── Summary ──
-    DrawText("Summary", sbX + 8, curY, 13, hexToColor(m_config.accentColor));
+    DrawText("Summary", sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 18;
     DrawText(TextFormat("Cede: %d province(s)", (int)m_ceasefireOurProvs.size()), sbX + 8, curY, 11, Color{120, 180, 255, 255}); curY += 16;
     DrawText(TextFormat("Demand: %d province(s)", (int)m_ceasefireTheirProvs.size()), sbX + 8, curY, 11, Color{255, 180, 80, 255}); curY += 16;

@@ -60,6 +60,15 @@ struct NetSessionEvent {
         Delta,           // one turn's changes
         Notice,          // "AI played X because ..."
         Chat,
+        /**
+         * Long-form: the host said where turns live and handed over the key.
+         *
+         * Arrives only for a seated player, and only in a long-form game. The
+         * details are in `turnStore()` rather than on the event, because the
+         * client needs them long after this moment -- including on a later
+         * launch, with nobody connected.
+         */
+        TurnStoreKnown,
         Rejected,        // server refused; reason() says why
         Disconnected,
     } kind = Kind::LobbyChanged;
@@ -147,6 +156,19 @@ public:
 
     /** True once welcomed and holding a country rather than spectating. */
     bool spectating() const;
+
+    /**
+     * Long-form turn storage, as the host described it.
+     *
+     * `sessionCode` is empty until a `TurnStoreKnown` event has arrived -- and
+     * stays empty for a rapid game, a spectator, and Manual, none of which have
+     * anything to address.
+     *
+     * The caller must check `store` against the kinds this build knows, with
+     * `turnStoreKindFromWire`, before treating it as one. A host newer than
+     * this copy of the game can name a store that does not exist here.
+     */
+    NetTurnStoreInfo turnStore() const;
 
     // ---- outbound. All are no-ops unless the phase allows them. -------------
 

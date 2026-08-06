@@ -5,6 +5,13 @@ export interface Env {
     OD_ACCOUNTS: KVNamespace;
     LOBBY: DurableObjectNamespace;
 
+    // Per-IP request limiters. Two rather than one because the endpoint that
+    // can instantiate a Durable Object is worth an order of magnitude more than
+    // one that reads KV, and a single bucket would have to be sized for the
+    // cheaper of the two. See wrangler.toml for the windows and why.
+    RATE_LIMIT_SESSION: RateLimit;
+    RATE_LIMIT_API: RateLimit;
+
     ISSUER: string;
 
     // Ed25519 keypair, as JWK JSON strings. Two separate secrets rather than

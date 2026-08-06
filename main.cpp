@@ -101,13 +101,17 @@ int main(int argc, char** argv) {
             fprintf(stderr, "--reset-ai-head needs a model path and a module name\n");
             return 2;
         }
-        static const char* NAMES[] = {"econ", "politics", "war", "navy"};
+        // Index 4 = AISystem::MOD_COUNT is the diplomacy head and 5 is the
+        // stance head, which is how resetModuleHead reads them. Both kept after
+        // the four modules so those keep their MOD_* values.
+        static const char* NAMES[] = {"econ", "politics", "war", "navy",
+                                      "diplo", "stance"};
         int mod = -1;
-        for (int m = 0; m < 4; ++m)
+        for (int m = 0; m < 6; ++m)
             if (strcmp(argv[i + 2], NAMES[m]) == 0) { mod = m; break; }
         if (mod < 0) {
             fprintf(stderr, "--reset-ai-head: module must be one of "
-                            "econ, politics, war, navy\n");
+                            "econ, politics, war, navy, diplo, stance\n");
             return 2;
         }
         return AISystem::resetModuleHead(argv[i + 1], mod) ? 0 : 1;
@@ -260,6 +264,22 @@ int main(int argc, char** argv) {
     //   --vs-random  half the countries play uniformly at random instead of
     //                from the model, matched by starting size, so the report
     //                can answer whether the model beats a coin flip
+    //   --vs-model <path>
+    //                the same split, but that half plays the named model file
+    //                instead of dice. Random never improves, so it can only
+    //                ever answer "better than nothing"; a named opponent is a
+    //                rung, and a model that clears one gets pinned as the next.
+    //   --vs-script  that half plays a hand-written competent policy: rung
+    //                one, and the first control that stands for a LEVEL rather
+    //                than for a floor. Parity with it is the real target.
+    //   --script-duel
+    //                both halves hand-written: one builds an army and attacks,
+    //                the other builds an army and defends. No model is
+    //                consulted. Answers whether attacking is worth doing here
+    //                without any reward function in the way.
+    //   --scenarios  measure on the maps data/STDmaps ships (1914 … modern)
+    //                rather than generated archetypes — the worlds a player
+    //                actually opens. Not mixed with generated maps in one run.
     // Never writes the model, never writes a save. Safe to run while a
     // --train-ai session is going.
     if (const auto ev = positionals("--eval-ai"); !ev.empty()) {
@@ -277,11 +297,41 @@ int main(int argc, char** argv) {
         // cohort and report which one ends up holding the world. A separate
         // flag rather than a fifth positional, because it changes what the run
         // MEANS and should be readable at a glance in a shell history.
-        bool vsRandom = false;
-        for (int i = 1; i < argc; ++i)
+        bool vsRandom = false, scenarios = false;
+        std::string vsModel;
+        for (int i = 1; i < argc; ++i) {
             if (strcmp(argv[i], "--vs-random") == 0) vsRandom = true;
-        game.runAIEvaluation(maps, turns, seed, difficulty, vsRandom);
-        return 0;
+            if (strcmp(argv[i], "--scenarios") == 0) scenarios = true;
+            if (strcmp(argv[i], "--vs-script") == 0)
+                AISystem::s_scriptedControl = true;
+            // Script against script: no network anywhere. The MODEL cohort
+            // turtles, the control attacks, and the only question on the table
+            // is whether aggression pays in this game at all.
+            if (strcmp(argv[i], "--script-duel") == 0) {
+                AISystem::s_scriptedControl = true;
+                AISystem::s_scriptDuel = true;
+            }
+            if (strcmp(argv[i], "--vs-model") == 0) {
+                if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+                    fprintf(stderr, "--vs-model needs a path to a model file\n");
+                    return 2;
+                }
+                vsModel = argv[++i];
+            }
+        }
+        // Both would name two different control groups for one cohort. Picking
+        // either silently would make the report's heading a coin toss over what
+        // the reader typed, so say so and stop.
+        // Three ways to name a control group; naming two is naming neither.
+        const int controls = (vsRandom ? 1 : 0) + (vsModel.empty() ? 0 : 1) +
+                             (AISystem::s_scriptedControl ? 1 : 0);
+        if (controls > 1) {
+            fprintf(stderr, "--vs-random, --vs-model and --vs-script name "
+                            "different control groups; choose one\n");
+            return 2;
+        }
+        return game.runAIEvaluation(maps, turns, seed, difficulty, vsRandom,
+                                    vsModel, scenarios) ? 0 : 1;
     }
 
     // If save file provided as argument, load it. Skip flags so
@@ -292,6 +342,7 @@ int main(int argc, char** argv) {
         if (strncmp(argv[i], "--", 2) == 0) {
             if (strcmp(argv[i], "--resource-limit") == 0 ||
                 strcmp(argv[i], "--worker") == 0 ||
+                strcmp(argv[i], "--vs-model") == 0 ||
                 strcmp(argv[i], "--workers") == 0) ++i;
             continue;
         }

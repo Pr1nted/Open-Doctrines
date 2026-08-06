@@ -259,6 +259,10 @@ void Game::update(float dt) {
         m_renderer->setShowResource(m_activeViewTab == 7 ? m_activeResourceIdx : -1);
     }
 
+    // Painting upgrades over the map. Runs before the renderer's own click
+    // handling so a stroke does not also re-select whatever it passed over.
+    updateBulkPaint();
+
     // Reset overlay pixel buffer when entering a view that uses it
     {
         static int lastOverlayTab = 0;
@@ -588,6 +592,50 @@ void Game::update(float dt) {
                 Audio::get().playSfx("tab_switch");
                 // Clear claims view when switching tabs
                 if (m_showClaims) clearClaimsView();
+            }
+        }
+        // Bulk upgrade toggle, in the same toolbar row. Kept beside the
+        // resource picker below because the two share the row's metrics, and a
+        // change to one that missed the other would overlap them.
+        if (bulkPaintType() != nullptr && m_playerCountryId != SPC_CID) {
+            Vector2 mp = getMouse();
+            int barWb = std::min(880, m_screenW - 32);
+            int barXb = m_screenW - barWb - 16;
+            int barYb = m_screenH - 80 - 16;
+            int rowHb = 20 + 6 * 2;
+            int btnYb = barYb - rowHb - 4;
+            int btnWb = 150;
+            // Must track drawBulkPaintStrip exactly: left-aligned, after the
+            // navy filters when they are on the row.
+            int navyW = (m_activeViewTab == 6) ? (5 * 80 + 4 * 4 + 8) : 0;
+            int bxb = barXb + 8 + navyW;
+            const bool onRow = mp.y >= btnYb && mp.y < btnYb + rowHb;
+
+            if (onRow && mp.x >= bxb && mp.x < bxb + btnWb) {
+                m_bulkPaint = !m_bulkPaint;
+                clearBulkSelection();
+                // Turning it off must hand panning back immediately, or the
+                // map stays stuck until something else clears the block.
+                if (!m_bulkPaint) m_renderer->setBlockLeftPan(false);
+            } else if (m_bulkPaint && onRow &&
+                       mp.x >= bxb + btnWb + 4 && mp.x < bxb + btnWb + 4 + 90) {
+                m_bulkPanMode = !m_bulkPanMode;
+                m_bulkPaintStroke.clear();
+                if (m_bulkPanMode) m_renderer->setBlockLeftPan(false);
+            }
+
+            // Confirm / Clear. Geometry mirrors drawBulkConfirmPanel.
+            if (m_bulkPaint && !m_bulkSelection.empty()) {
+                const int panelW = 330, panelH = 78;
+                const int px = barXb + 8;
+                const int py = barYb - rowHb - 4 - panelH - 6;
+                const int bw = 140, bh = 26, byy = py + panelH - bh - 10;
+                if (mp.y >= byy && mp.y < byy + bh) {
+                    if (mp.x >= px + 12 && mp.x < px + 12 + bw) commitBulkSelection();
+                    else if (mp.x >= px + 12 + bw + 8 && mp.x < px + 12 + bw + 8 + bw)
+                        clearBulkSelection();
+                }
+                (void)panelW;
             }
         }
         // Resource selection buttons click (already inside IsMouseButtonReleased check)
@@ -1528,7 +1576,7 @@ void Game::update(float dt) {
         if (m_settingsTab == 0 && m_settingsIndex == 6 && (left || right)) {
             int curIdx = 0;
             for (int p = 0; p < ACCENT_PRESETS_COUNT; ++p)
-                if (ACCENT_PRESETS[p] == m_config.accentColor) { curIdx = p; break; }
+                if (ACCENT_PRESETS[p] == m_config.accent()) { curIdx = p; break; }
             curIdx = (curIdx + (right ? 1 : -1) + ACCENT_PRESETS_COUNT) % ACCENT_PRESETS_COUNT;
             m_config.accentColor = ACCENT_PRESETS[curIdx];
         }
@@ -1642,7 +1690,7 @@ void Game::update(float dt) {
             } else if (strcmp(s.label, "Accent Color") == 0) {
                 int curIdx = 0;
                 for (int p = 0; p < ACCENT_PRESETS_COUNT; ++p)
-                    if (ACCENT_PRESETS[p] == m_config.accentColor) { curIdx = p; break; }
+                    if (ACCENT_PRESETS[p] == m_config.accent()) { curIdx = p; break; }
                 curIdx = (curIdx + 1) % ACCENT_PRESETS_COUNT;
                 m_config.accentColor = ACCENT_PRESETS[curIdx];
             } else if (strcmp(s.label, "Resolution") == 0) {

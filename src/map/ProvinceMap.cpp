@@ -116,6 +116,12 @@ Province* ProvinceMap::getProvinceById(int id) {
     return nullptr;
 }
 
+const Province* ProvinceMap::getProvinceById(int id) const {
+    auto it = m_provinces.find(id);
+    if (it != m_provinces.end()) return &it->second;
+    return nullptr;
+}
+
 void ProvinceMap::updatePixels(const Color* pixels) {
     if (!m_loaded || m_image.data == nullptr) return;
     // m_image is forced to R8G8B8A8 on load, so a straight copy is safe

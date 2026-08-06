@@ -99,6 +99,30 @@ public:
                (m_skipClickRect.height     > 0 && CheckCollisionPointRec(p, m_skipClickRect)) ||
                (m_provincePanelRect.height > 0 && CheckCollisionPointRec(p, m_provincePanelRect));
     }
+    /**
+     * Light up a set of provinces, for an action being composed but not yet
+     * taken -- the bulk upgrade paint.
+     *
+     * Rebuilt whole on every change rather than diffed. A stroke adds a few
+     * provinces a second at most, and this is one image the GPU uploads once;
+     * tracking incremental edits would be more code to be wrong about.
+     *
+     * Only the RGB of `tint` is used. The alpha comes from each province's own
+     * edge falloff, the same as the single selection's glow -- multiplying the
+     * two instead made a large selection nearly invisible.
+     */
+    void setBulkSelection(const std::vector<int>& provinceIds, Color tint);
+    void clearBulkSelection();
+
+    /**
+     * The province under the cursor as of the last frame drawn, or 0.
+     *
+     * Zero also means "over open sea" and "over a panel is irrelevant" -- this
+     * is what is under the pointer, not what may be acted on. Callers that care
+     * about panels ask `pointOverPanels` as well.
+     */
+    int hoveredProvinceId() const { return m_hoveredProvinceId; }
+
     void setShowCountryNames(bool on) { m_showCountryNames = on; }
     void setCountryLabels(const std::vector<struct CountryLabel>* labels) { m_countryLabels = labels; }
     void setFallbackFont(Font font) { m_fallbackFont = font; }
@@ -129,7 +153,9 @@ private:
     bool m_paused = false;
     bool m_debugMode = false;
     int m_selectedProvinceId = 0;
+    int m_hoveredProvinceId = 0;
     Texture2D m_selectionTex{};
+    Texture2D m_bulkTex{};
     std::vector<uint8_t> m_borderPixels;
 
     // Precomputed glow pixels per province (built once at init)

@@ -95,6 +95,16 @@ public:
         uint32_t turnSeconds = 0;       // 0 = long-form, no countdown
         TurnStoreKind store = TurnStoreKind::DurableObject;
 
+        /**
+         * The session's order key, base64url, for long-form games.
+         *
+         * Handed to each SEATED player over this connection and to nobody else.
+         * It travels here rather than through the store because a store that
+         * carried the key could read everything in it -- see TurnSeal.h. Empty
+         * for a rapid game, which has no store and nothing to seal.
+         */
+        std::string sealKey;
+
         // ---------------------------------------------------------- listening --
 
         /** Port to listen on. 0 lets the machine pick a free one. */
@@ -183,6 +193,18 @@ public:
     /** Send the whole world to one peer, for a joiner or a spectator. */
     void sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                       const std::vector<uint8_t>& payload);
+
+    /**
+     * Tell one player where this game's turns live, and give them the key.
+     *
+     * Sent automatically when a player is admitted holding a country. Call it
+     * again when somebody who was spectating takes a seat: until they hold one
+     * they have no orders to submit, and the key is not theirs to have.
+     *
+     * A no-op for a spectator, for a rapid game, and for Manual -- where the
+     * player is the transport and there is nothing to address.
+     */
+    void sendTurnStoreInfo(uint16_t peerId);
 
     /** Announce that something was done on a player's behalf, and why. */
     void announceSubstitution(uint16_t countryId, NetSubstitution reason,

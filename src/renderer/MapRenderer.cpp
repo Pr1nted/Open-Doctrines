@@ -38,6 +38,7 @@ MapRenderer::~MapRenderer() {
     if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
     if (m_politicalTex.id > 0) UnloadTexture(m_politicalTex);
     if (m_selectionTex.id > 0) UnloadTexture(m_selectionTex);
+    if (m_bulkTex.id > 0) UnloadTexture(m_bulkTex);
     if (m_populationTex.id > 0) UnloadTexture(m_populationTex);
     if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
     if (m_claimsTex.id > 0) UnloadTexture(m_claimsTex);
@@ -471,6 +472,40 @@ void MapRenderer::buildSelectionGlow() {
     UnloadImage(glowImg);
 }
 
+void MapRenderer::setBulkSelection(const std::vector<int>& provinceIds, Color tint) {
+    clearBulkSelection();
+    if (provinceIds.empty()) return;
+
+    Image img = GenImageColor(m_mapW, m_mapH, {0, 0, 0, 0});
+    auto* data = static_cast<unsigned char*>(img.data);
+
+    bool any = false;
+    for (int pid : provinceIds) {
+        auto it = m_provinceGlow.find(pid);
+        if (it == m_provinceGlow.end()) continue;
+        for (auto& [idx, alpha] : it->second) {
+            const int bi = idx * 4;
+            data[bi]     = tint.r;
+            data[bi + 1] = tint.g;
+            data[bi + 2] = tint.b;
+            // The province's own edge falloff, used AS IS -- exactly what
+            // buildSelectionGlow does for the single selection. Scaling it down
+            // by a tint alpha as well made forty painted provinces almost
+            // invisible, which is the one thing this overlay may not be.
+            data[bi + 3] = alpha;
+            any = true;
+        }
+    }
+
+    if (any) m_bulkTex = LoadTextureFromImage(img);
+    UnloadImage(img);
+}
+
+void MapRenderer::clearBulkSelection() {
+    if (m_bulkTex.id > 0) UnloadTexture(m_bulkTex);
+    m_bulkTex = {};
+}
+
 void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
     BeginMode2D(m_camera);
 
@@ -520,6 +555,15 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     if (m_selectionTex.id > 0) {
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_selectionTex, tx * m_mapW, 0, WHITE);
+        }
+    }
+
+    // Provinces painted for a bulk action but not yet committed. Drawn after
+    // the single selection so a province that is both still reads as painted --
+    // which is what the player is deciding about.
+    if (m_bulkTex.id > 0) {
+        for (int tx = tileStart; tx < tileEnd; ++tx) {
+            DrawTexture(m_bulkTex, tx * m_mapW, 0, WHITE);
         }
     }
 
@@ -669,6 +713,11 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     };
 
     const Province* prov = (py >= 0 && py < m_mapH) ? findProvince(pxWrapped, py, 10) : nullptr;
+    // Recorded rather than recomputed by anyone who wants it. Finding the
+    // province under the cursor is a search this already does every frame, and
+    // a second caller doing it again would double that cost for an answer that
+    // is sitting right here.
+    m_hoveredProvinceId = prov ? prov->id : 0;
 
     if (prov) {
         const Country* c = countries.getCountry(prov->countryId);

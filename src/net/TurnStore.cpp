@@ -10,6 +10,16 @@ const char* turnStoreName(TurnStoreKind k) {
     return "unknown";
 }
 
+bool turnStoreKindFromWire(uint8_t value, TurnStoreKind& out) {
+    switch (value) {
+        case 0: out = TurnStoreKind::DurableObject; return true;
+        case 1: out = TurnStoreKind::JsonBlob;      return true;
+        case 2: out = TurnStoreKind::Manual;        return true;
+        case 3: out = TurnStoreKind::R2;            return true;
+        default: return false;
+    }
+}
+
 TurnStoreWarning turnStoreWarning(TurnStoreKind kind) {
     TurnStoreWarning w;
 
@@ -226,6 +236,31 @@ bool turnStoreDecodeText(const std::string& text, std::string& whatOut,
     return b64urlDecodeBytes(text.substr(bodyStart, tail - bodyStart), payloadOut);
 }
 
+TurnStoreRef TurnStoreClient::turnRef(uint32_t turnNumber) const {
+    if (m_config.kind != TurnStoreKind::DurableObject &&
+        m_config.kind != TurnStoreKind::R2) {
+        return {};
+    }
+    TurnStoreRef ref;
+    ref.id  = std::to_string(turnNumber);
+    ref.url = m_config.issuer + "/session/" + m_config.sessionCode +
+              "/turn/" + std::to_string(turnNumber);
+    return ref;
+}
+
+TurnStoreRef TurnStoreClient::ordersRef(uint32_t turnNumber,
+                                        const std::string& psid) const {
+    if (m_config.kind != TurnStoreKind::DurableObject &&
+        m_config.kind != TurnStoreKind::R2) {
+        return {};
+    }
+    TurnStoreRef ref;
+    ref.id  = psid;
+    ref.url = m_config.issuer + "/session/" + m_config.sessionCode +
+              "/orders/" + std::to_string(turnNumber) + "/" + psid;
+    return ref;
+}
+
 bool TurnStoreClient::publishTurn(uint32_t turnNumber,
                                   const std::vector<uint8_t>& bundle,
                                   TurnStoreRef& ref, std::string& error) {
@@ -258,20 +293,24 @@ bool TurnStoreClient::publishTurn(uint32_t turnNumber,
 
         case TurnStoreKind::DurableObject:
         case TurnStoreKind::R2: {
+            const TurnStoreRef target = turnRef(turnNumber);
             HttpRequest req;
             req.method = "PUT";
-            req.url = m_config.issuer + "/session/" + m_config.sessionCode +
-                      "/turn/" + std::to_string(turnNumber);
+            req.url = target.url;
             req.bearer = m_config.token;
             req.body = wrapBlob(turnNumber, bundle);
             req.allowInsecure = m_config.issuer.rfind("http://localhost", 0) == 0;
             const HttpResponse res = httpRequest(req);
             if (!res.ok()) {
+                // 409 is the store refusing to overwrite a published turn, and
+                // it is the one failure here that is not a problem: it means
+                // this turn is already up, which is what we wanted. A host that
+                // republished after a crash must not be told it failed.
+                if (res.status == 409) { ref = target; error.clear(); return true; }
                 error = res.error.empty() ? "Could not publish the turn." : res.error;
                 return false;
             }
-            ref.id = std::to_string(turnNumber);
-            ref.url = req.url;
+            ref = target;
             error.clear();
             return true;
         }
@@ -335,10 +374,10 @@ bool TurnStoreClient::publishOrders(uint32_t turnNumber, const std::string& psid
 
         case TurnStoreKind::DurableObject:
         case TurnStoreKind::R2: {
+            const TurnStoreRef target = ordersRef(turnNumber, psid);
             HttpRequest req;
             req.method = "PUT";
-            req.url = m_config.issuer + "/session/" + m_config.sessionCode +
-                      "/orders/" + std::to_string(turnNumber) + "/" + psid;
+            req.url = target.url;
             req.bearer = m_config.token;
             req.body = wrapBlob(turnNumber, sealed);
             req.allowInsecure = m_config.issuer.rfind("http://localhost", 0) == 0;
@@ -347,8 +386,7 @@ bool TurnStoreClient::publishOrders(uint32_t turnNumber, const std::string& psid
                 error = res.error.empty() ? "Could not submit your orders." : res.error;
                 return false;
             }
-            ref.id = psid;
-            ref.url = req.url;
+            ref = target;
             error.clear();
             return true;
         }

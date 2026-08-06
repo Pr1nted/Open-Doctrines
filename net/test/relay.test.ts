@@ -1,13 +1,13 @@
 // The relay's own guarantees: who it lets in, what it tells the host about
 // them, and what it refuses to carry.
 
-import { env as testEnv } from "cloudflare:test";
+import { env as testEnv, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Env } from "../src/env.js";
 import { clearKv, setupEnv } from "./helpers.js";
 import { createAccount, identSubHash, type Account } from "../src/accounts/store.js";
 import { issueJoinTicket, psidFor } from "../src/auth/ticket.js";
-import { issueSessionDescriptor } from "../src/lobby/session.js";
+import { isSessionCode, issueSessionDescriptor, newSessionCode } from "../src/lobby/session.js";
 import { FromHost, ToHost, type PeerIdentity, type SessionSettings } from "../src/lobby/LobbyDO.js";
 
 let env: Env;
@@ -364,5 +364,48 @@ describe("routing", () => {
 
         const second = await join("FFFF-0004", await anAccount("Bob", "b-sub"), "player");
         expect(await second.next()).toMatchObject({ type: "close", code: 4409 });
+    });
+});
+
+// A code that could never have been issued must not reach LOBBY at all.
+//
+// This is about cost, not access. `idFromName` plus a fetch INSTANTIATES the
+// Durable Object, and LobbyDO's constructor runs its CREATE TABLEs before
+// /info can say "no session" -- so every request naming a nonexistent code
+// used to leave behind a real object with real storage, no alarm, and nothing
+// that would ever reclaim it. The route pattern accepted any
+// `[A-Z0-9-]{4,20}`, so an unauthenticated loop over that space cost a
+// Durable Object apiece.
+describe("session codes the service could not have issued", () => {
+    it("accepts every code the generator actually produces", () => {
+        for (let i = 0; i < 500; i++) expect(isSessionCode(newSessionCode())).toBe(true);
+    });
+
+    it("rejects the shapes the old route pattern let through", () => {
+        for (const bad of [
+            "ABCD",             // no separator
+            "ABCD-EFGH-JKMN",   // too long, but was within {4,20}
+            "ABC0-DEFG",        // 0 is not in the alphabet -- nor are 1, I, L, O
+            "ABCI-DEFG",
+            "--------",
+            "abcd-efgh",        // lowercase is not what humanCode emits
+            "ABCDE-FGH",        // separator in the wrong place
+        ]) {
+            expect(isSessionCode(bad)).toBe(false);
+        }
+    });
+
+    it("answers a malformed code without ever reaching the lobby", async () => {
+        // The two 404s are distinguishable on purpose, and that is what this
+        // asserts: `no_session` comes from inside the Durable Object, so
+        // seeing it means the object was created. `not_found` is the router
+        // falling through, having touched no binding.
+        const reached = await SELF.fetch("https://od.test.invalid/session/ABCD-EFGH");
+        expect(reached.status).toBe(404);
+        expect(await reached.json()).toMatchObject({ error: "no_session" });
+
+        const refused = await SELF.fetch("https://od.test.invalid/session/ABCD-EFG0");
+        expect(refused.status).toBe(404);
+        expect(await refused.json()).toMatchObject({ error: "not_found" });
     });
 });

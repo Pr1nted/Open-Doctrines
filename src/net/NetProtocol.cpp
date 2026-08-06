@@ -31,6 +31,10 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::Notice:       return "Notice";
         case NetMsg::Countries:    return "Countries";
         case NetMsg::Signal:       return "Signal";
+        case NetMsg::Withdraw:     return "Withdraw";
+        case NetMsg::ModMsg:       return "ModMsg";
+        case NetMsg::ModMsgFrom:   return "ModMsgFrom";
+        case NetMsg::TurnStoreInfo: return "TurnStoreInfo";
     }
     return "Unknown";
 }
@@ -455,6 +459,27 @@ bool NetTurnBegin::decode(const uint8_t* data, size_t size, NetTurnBegin& out) {
     NetReader r(data, size);
     out.turnNumber = r.u32();
     out.deadlineMs = r.u32();
+    return r.done();
+}
+
+std::vector<uint8_t> NetTurnStoreInfo::encode() const {
+    NetWriter w;
+    w.u8(store);
+    w.str(sessionCode);
+    w.str(sealKey);
+    return w.take();
+}
+
+bool NetTurnStoreInfo::decode(const uint8_t* data, size_t size, NetTurnStoreInfo& out) {
+    NetReader r(data, size);
+    // Taken RAW and deliberately not clamped. Clamping an unknown store to the
+    // default would silently play a newer host's game on the wrong store, which
+    // is worse than refusing: the callers below check it against the kinds this
+    // build has and tell the player their game is too old, which is true and
+    // actionable. It stays a uint8_t until one of them has done that.
+    out.store       = r.u8();
+    out.sessionCode = r.str(NetLimits::kSessionCode);
+    out.sealKey     = r.str(NetLimits::kSealKey);
     return r.done();
 }
 

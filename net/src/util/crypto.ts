@@ -47,7 +47,10 @@ export function randomId(chars = 43): string {
 // is transcribed by hand and a device code that is one glyph from another
 // device code is a support problem, not a security one -- the security comes
 // from the 256-bit device_code that never leaves the client.
-const HUMAN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+// Exported so a matcher can be BUILT from it rather than written out by hand.
+// A regex spelled out separately is a second copy of this decision, and the two
+// drift the first time a character is added or removed.
+export const HUMAN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 export function humanCode(len = 8): string {
     const b = new Uint8Array(len);

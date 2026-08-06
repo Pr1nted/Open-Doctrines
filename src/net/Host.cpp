@@ -613,6 +613,19 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
     // having to load the map first.
     if (!countries.countries.empty())
         server.send(conn, netEncodeFrame(NetMsg::Countries, countries.encode()));
+
+    // Long-form: where the turns live, and the key to seal orders with. Sent
+    // here so a returning player has it before they do anything else -- and
+    // gated inside, because a spectator must not receive the key at all.
+    if (config.turnSeconds == 0 && config.store != TurnStoreKind::Manual &&
+        !m->spectator && m->countryId != 0) {
+        NetTurnStoreInfo info;
+        info.store       = static_cast<uint8_t>(config.store);
+        info.sessionCode = code;
+        info.sealKey     = config.sealKey;
+        server.send(conn, netEncodeFrame(NetMsg::TurnStoreInfo, info.encode()));
+    }
+
     push({NetHostEvent::Kind::PeerJoined, settled, ticket.name, {}});
     broadcastLobbyInternal();
 }
@@ -902,6 +915,27 @@ void NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
     w.turnNumber = turnNumber;
     w.payload = payload;
     m_impl->toPeer(peerId, NetMsg::Snapshot, w.encode());
+}
+
+void NetHost::sendTurnStoreInfo(uint16_t peerId) {
+    // Long-form only: a rapid game has no store, and turnSeconds is what says
+    // which this is.
+    if (m_impl->config.turnSeconds != 0) return;
+    // Manual has no address to give out and no key to distribute -- the player
+    // carries the bytes themselves.
+    if (m_impl->config.store == TurnStoreKind::Manual) return;
+
+    // A SPECTATOR NEVER GETS THE KEY. It opens every player's orders and a
+    // spectator has none of their own to submit, so there is no reading of
+    // "watching the game" that requires it.
+    const LobbyMember* m = m_impl->lobby.find(peerId);
+    if (!m || m->spectator || m->countryId == 0) return;
+
+    NetTurnStoreInfo info;
+    info.store       = static_cast<uint8_t>(m_impl->config.store);
+    info.sessionCode = m_impl->code;
+    info.sealKey     = m_impl->config.sealKey;
+    m_impl->toPeer(peerId, NetMsg::TurnStoreInfo, info.encode());
 }
 
 void NetHost::announceSubstitution(uint16_t countryId, NetSubstitution reason,

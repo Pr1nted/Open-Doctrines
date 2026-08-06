@@ -280,6 +280,55 @@ void testMessages() {
     }
 }
 
+void testTurnStoreInfo() {
+    printf("\n=== long-form store info ===\n");
+
+    {
+        NetTurnStoreInfo in;
+        in.store       = 0;                       // the session's own storage
+        in.sessionCode = "ABCD-EFGH";
+        in.sealKey     = "F0Ur3Y0urEy3s0nly0000000000000000000000000AB";
+        auto bytes = in.encode();
+
+        NetTurnStoreInfo out;
+        check("TurnStoreInfo round-trips",
+              NetTurnStoreInfo::decode(bytes.data(), bytes.size(), out) &&
+              out.store == 0 && out.sessionCode == in.sessionCode &&
+              out.sealKey == in.sealKey);
+    }
+    {
+        // Manual has no store to address and no key to distribute: the player
+        // is the transport. Both empty must survive the trip rather than
+        // becoming a decode failure.
+        NetTurnStoreInfo in;
+        in.store = 2;
+        auto bytes = in.encode();
+
+        NetTurnStoreInfo out;
+        check("an empty code and key are legitimate",
+              NetTurnStoreInfo::decode(bytes.data(), bytes.size(), out) &&
+              out.store == 2 && out.sessionCode.empty() && out.sealKey.empty());
+    }
+    {
+        // A host newer than this build. The byte survives UNCLAMPED so the
+        // caller can tell the player their game is too old -- clamping it to
+        // the default here would silently play on a store nobody chose.
+        NetTurnStoreInfo in;
+        in.store = 200;
+        auto bytes = in.encode();
+
+        NetTurnStoreInfo out;
+        check("an unknown store arrives intact rather than clamped",
+              NetTurnStoreInfo::decode(bytes.data(), bytes.size(), out) &&
+              out.store == 200);
+    }
+    {
+        NetTurnStoreInfo out;
+        check("a truncated frame is refused",
+              !NetTurnStoreInfo::decode(nullptr, 0, out));
+    }
+}
+
 void testMessagesRefuseGarbage() {
     printf("\n=== messages refuse garbage ===\n");
 
@@ -725,6 +774,7 @@ int main() {
     testReaderFailsClosed();
     testFraming();
     testMessages();
+    testTurnStoreInfo();
     testMessagesRefuseGarbage();
     testLobbyMessages();
     testHostIdentity();

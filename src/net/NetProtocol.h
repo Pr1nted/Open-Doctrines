@@ -81,6 +81,16 @@ enum class NetMsg : uint16_t {
     Countries    = 76,  // the catalogue a lobby picks from
     Signal       = 77,  // WebRTC offer/answer/candidate, both directions
     ModMsgFrom   = 78,  // a mod message, attributed by the server
+
+    /**
+     * Long-form: where this game's turns live, and the key to seal orders with.
+     *
+     * Sent to SEATED PLAYERS ONLY, never to a spectator -- the key opens every
+     * player's orders, and a spectator has none to submit. It travels here, on
+     * the authenticated connection, and never through the store itself: a store
+     * that carried the key would be a store that could read everything in it.
+     */
+    TurnStoreInfo = 79,
 };
 
 const char* netMsgName(NetMsg m);
@@ -230,6 +240,11 @@ struct NetLimits {
      */
     static constexpr uint32_t kModMsg     = 8 * 1024;
     static constexpr uint32_t kModId      = 128;
+
+    /** A join code is `ABCD-EFGH`; this matches the client's own input field. */
+    static constexpr uint32_t kSessionCode = 24;
+    /** Base64url of 32 bytes is 43 characters. See TurnSealKey::toText. */
+    static constexpr uint32_t kSealKey     = 64;
 };
 
 /** What the session is doing. Joining is only open in Lobby. */
@@ -380,6 +395,34 @@ struct NetTurnBegin {
 
     std::vector<uint8_t> encode() const;
     static bool decode(const uint8_t* data, size_t size, NetTurnBegin& out);
+};
+
+/**
+ * Long-form turn storage, told to a seated player.
+ *
+ * `store` mirrors `TurnStoreKind` but is carried as a plain byte rather than
+ * the enum: this is the wire layer, and it has no business depending on the
+ * store client. The values are explicit in that enum precisely so they can be
+ * treated as a wire format, and an unknown one is clamped on read.
+ *
+ * The key is base64url so a human can read it out of a log without it being
+ * mistaken for binary -- which matters because the one thing that must never
+ * happen is somebody pasting it somewhere public.
+ */
+struct NetTurnStoreInfo {
+    /**
+     * `TurnStoreKind` as a byte, straight off the wire and NOT validated.
+     *
+     * A host newer than this build may name a store that does not exist here.
+     * Check it before casting -- `turnStoreKindFromWire` does that and says so
+     * when it fails.
+     */
+    uint8_t     store = 0;
+    std::string sessionCode;
+    std::string sealKey;            // base64url; empty in Manual mode
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetTurnStoreInfo& out);
 };
 
 struct NetRosterMsg {

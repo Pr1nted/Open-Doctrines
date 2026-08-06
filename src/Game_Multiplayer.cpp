@@ -21,11 +21,15 @@
 #include "TextInput.h"
 
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
   #include <arpa/inet.h>
   #include <ifaddrs.h>
   #include <net/if.h>
   #include <netinet/in.h>
+  // For the two secret sidecars: the host's `.odkey` and a joiner's `.odjoin`.
+  #include <sys/stat.h>
 #endif
 #include "Audio.h"
 #include "GameInternals.h"
@@ -39,7 +43,9 @@
 #include "net/HostBook.h"
 #include "net/Tunnel.h"
 #include "net/WebSocket.h"
+#include "net/TurnSeal.h"
 #include "net/TurnStore.h"
+#include "net/TurnStoreRunner.h"
 #include "net/WorldSync.h"
 #include "SaveManager.h"
 
@@ -452,6 +458,43 @@ void Game::mpOpenHost() {
     cfg.anonymous = m_mpAnonymous;
     cfg.dedicated = m_mpDedicated;
     cfg.store = mpStoreKind();
+
+    // Long-form needs a key to seal orders with, and the SAME key every time
+    // this campaign resumes: orders submitted while the host was away were
+    // sealed with whatever it was, and a fresh one would open none of them --
+    // which the turn logic would faithfully report as everybody having sent
+    // nothing. So it is loaded if this save already has one, and only minted
+    // when it does not.
+    //
+    // Kept out of the `.odhost` sidecar deliberately. See TurnSeal.h: that file
+    // sits beside a save people share, and this is the one secret here.
+    if (cfg.turnSeconds == 0 && cfg.store != TurnStoreKind::Manual) {
+        TurnSealKey key;
+        if (!turnSealKeyLoad(m_currentSavePath, key)) {
+            if (!turnSealKeyGenerate(key)) {
+                mpNote("Could not create the key that keeps orders private. "
+                       "This game cannot be hosted long-form.", true);
+                return;
+            }
+            if (!m_currentSavePath.empty() && !turnSealKeySave(m_currentSavePath, key)) {
+                // Refused rather than played. Hosting with a key that will not
+                // survive the process means every submission made after the
+                // host next closes opens as nothing, days later, with no
+                // visible cause -- far worse than not starting.
+                mpNote("Could not save the order key beside this game. Long-form "
+                       "needs it to survive the host closing, so hosting stopped.",
+                       true);
+                return;
+            }
+        }
+        cfg.sealKey = key.toText();
+        // The host opens its own players' submissions, so it keeps the key
+        // too -- and the store kind, which until now only the setup screen
+        // knew about.
+        m_mpSealKey   = key;
+        m_mpStoreKind = cfg.store;
+    }
+
     cfg.lobby.assignment = m_mpAssignment == 0 ? NetAssignment::HostAssigns
                                                : NetAssignment::PlayersPick;
     cfg.lobby.lateJoin = m_mpLateJoin == 0 ? NetLateJoin::Refuse : NetLateJoin::Spectate;
@@ -607,6 +650,10 @@ void Game::mpShutdown() {
     if (m_mpRegisterThread.joinable()) m_mpRegisterThread.join();
     if (m_serverBook) { delete m_serverBook; m_serverBook = nullptr; }
     if (m_mpTurns)    { delete m_mpTurns;    m_mpTurns = nullptr; }
+    // Its destructor joins the worker, so this blocks until any request in
+    // flight finishes. That is the point: a half-sent set of orders is worse
+    // than a slow exit.
+    if (m_mpStoreRunner)    { delete m_mpStoreRunner;    m_mpStoreRunner = nullptr; }
     if (m_mpTunnel)   { delete m_mpTunnel;   m_mpTunnel = nullptr; }
     if (m_mpTunnelInstaller) {
         m_mpTunnelInstaller->shutdown();
@@ -651,6 +698,13 @@ void Game::mpDrainEvents() {
             switch (e.kind) {
                 case NetHostEvent::Kind::Opened:
                     mpNote("Game open. Share the code: " + e.text);
+                    // The session code only exists once the service has issued
+                    // it, so this is the first moment the host can address its
+                    // own store.
+                    if (mpTurnSeconds() == 0) {
+                        m_mpSessionCode = m_netHost->code();
+                        mpConfigureStore();
+                    }
                     break;
                 case NetHostEvent::Kind::PeerJoined:
                     mpNote(e.text + " joined");
@@ -719,6 +773,42 @@ void Game::mpDrainEvents() {
                         : 0;
                     mpNote("Turn " + std::to_string(e.turnNumber) + " has begun.");
                     break;
+                case NetSessionEvent::Kind::TurnStoreKnown: {
+                    // Long-form: the host said where turns live and handed over
+                    // the key. Everything needed to play on while it is offline
+                    // arrives in this one message.
+                    const NetTurnStoreInfo info = m_netSession->turnStore();
+                    TurnStoreKind kind = TurnStoreKind::DurableObject;
+                    if (!turnStoreKindFromWire(info.store, kind)) {
+                        // A host newer than this build. Said plainly, because
+                        // the alternative is a game that silently never
+                        // receives another turn.
+                        mpNote("This game stores its turns somewhere this version "
+                               "does not know about. Update the game to play it.",
+                               true);
+                        break;
+                    }
+                    m_mpStoreKind   = kind;
+                    m_mpSessionCode = info.sessionCode;
+                    if (!info.sealKey.empty() &&
+                        !TurnSealKey::fromText(info.sealKey, m_mpSealKey)) {
+                        mpNote("The host sent a key this game could not read. "
+                               "Orders cannot be submitted while away.", true);
+                        break;
+                    }
+                    // This machine's own pseudonym, which addresses its orders
+                    // AND is sealed into them -- orders bound to the wrong psid
+                    // open as nothing.
+                    for (const NetPeer& p : m_netSession->roster()) {
+                        if (p.peerId == m_netSession->welcome().peerId) {
+                            m_mpMyPsid = p.psid;
+                            break;
+                        }
+                    }
+                    mpConfigureStore();
+                    mpSaveJoinedSession();
+                    break;
+                }
                 case NetSessionEvent::Kind::Notice:
                     // "The AI played X because ..." -- said out loud, always.
                     if (!e.notice.text.empty()) mpNote(e.notice.text);
@@ -732,6 +822,12 @@ void Game::mpDrainEvents() {
             }
         }
     }
+
+    // The turn store, which answers on its own thread and on its own schedule.
+    // Pumped here so a turn or a set of orders that arrived through it is
+    // handled by the same frame, and the same code, as one that came down the
+    // connection.
+    mpStoreUpdate();
 
     // Last, so a message that arrived in the updates above is readable by a mod
     // this frame rather than the next one.
@@ -2170,6 +2266,18 @@ void Game::mpOnWorldLoaded() {
     const MpLoad purpose = m_mpLoad;
     m_mpLoad = MpLoad::None;
 
+    // A long-form game this machine JOINED, reopened. The store details and the
+    // order key came over a connection that is not there any more, so they are
+    // read back from beside the save -- which is what makes submitting a turn
+    // and collecting the ones played meanwhile possible with the host away.
+    if (purpose != MpLoad::HostOpen && !m_currentSavePath.empty()) {
+        if (mpLoadJoinedSession(m_currentSavePath)) {
+            m_mpWaitingForTurn = true;   // so the first poll asks for the next turn
+            mpNote("This is a long-form game. Checking the turn store for "
+                   "anything played while you were away...");
+        }
+    }
+
     if (purpose == MpLoad::HostOpen) {
         // The world is open so the lobby can offer real countries. Back to the
         // lobby rather than into the game: nobody has joined yet.
@@ -2550,9 +2658,37 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
 void Game::mpSubmitTurn() {
     // A client never resolves a turn. It says what it wants and waits for the
     // world the host actually produced.
-    if (!m_netSession) return;
-    m_netSession->submitOrders((uint32_t)m_turnNumber + 1,
-                               mpSerializeOrders(m_playerCountryId));
+    const uint32_t turn = (uint32_t)m_turnNumber + 1;
+    const std::vector<uint8_t> orders = mpSerializeOrders(m_playerCountryId);
+
+    // Sent down the connection when there is one. In long-form there often is
+    // not: the host is away, which is the mode working as intended rather than
+    // anything being wrong.
+    if (m_netSession) m_netSession->submitOrders(turn, orders);
+
+    // In long-form, ALSO through the store -- sealed. The socket copy is what
+    // makes the turn resolve now if the host happens to be here; the store
+    // copy is what makes it resolve at all if it is not, and it is the only
+    // one that survives this player closing the game. Publishing both is not
+    // waste: the host counts the first to arrive and the lobby's submission
+    // state makes the second a no-op.
+    if (mpLongForm() && mpPublishOrders(turn, orders)) {
+        m_mpWaitingForTurn = true;
+        mpNote("Orders sent. You can close the game -- the turn resolves when "
+               "the host next runs.");
+        return;
+    }
+
+    // Not long-form, or the store would not take them. With no connection
+    // either, nothing has been sent anywhere and saying so is the only honest
+    // answer -- a player who believes they have moved and has not is the worst
+    // outcome this code can produce.
+    if (!m_netSession) {
+        mpNote("Your orders could not be sent: this game is not connected and "
+               "has no turn store to leave them in.", true);
+        return;
+    }
+
     m_mpWaitingForTurn = true;
     mpNote("Orders sent. Waiting for the other players...");
 }
@@ -2717,7 +2853,13 @@ void Game::mpResolveTurn() {
     if (!m_currentSavePath.empty()) {
         const TurnDelta delta = SaveManager::readTurn(m_currentSavePath, (int)turn);
         std::vector<uint8_t> packed = SaveManager::packTurn(delta);
-        if (!packed.empty()) m_netHost->broadcastDelta(turn, packed);
+        if (!packed.empty()) {
+            m_netHost->broadcastDelta(turn, packed);
+            // And to the store, for everyone who was not connected to hear it.
+            // Long-form only, and the same bytes -- a player who catches up
+            // next week applies exactly what the players who were here did.
+            mpPublishTurn(turn, packed);
+        }
     }
     m_netHost->lobby().clearSubmissions();
     m_mpDeadlineMs.clear();
@@ -3298,4 +3440,433 @@ void Game::drawMpHostConsole(int x, int top) {
                                      : Color{190, 200, 215, 255});
         if (rh && pressed) m_mpReturnAfterTurn = !m_mpReturnAfterTurn;
     }
+}
+
+// ============================================================== long form ====
+//
+// A long-form game moves its turns through a store instead of over the
+// connection, because the host is expected to be AWAY between them -- for days,
+// over a weekend. Players connect straight to the host, so while it is gone
+// there is no lobby to reach; the store is the only thing both sides can see.
+//
+// The asymmetry is the whole design, and it is why there are two paths here
+// rather than one:
+//
+//   the host publishes a turn   PUBLIC and written once. Anyone may read it,
+//                               which is what lets people spectate.
+//   a player publishes orders   SEALED first, with the session key, so the
+//                               store holds ciphertext it cannot read and the
+//                               host cannot read early either.
+//
+// Nothing here decides anything about the game. It moves bytes and hands what
+// arrives to the same `Lobby::submitOrders` and `mpApplyDelta` the connected
+// path uses -- so a turn that came through the store resolves by exactly the
+// code that resolves one that came down a socket.
+
+bool Game::mpLongForm() const {
+    if (mpIsHost()) return mpTurnSeconds() == 0;
+
+    // For a player, HOLDING the store details is the answer, because the host
+    // only ever sends them for a long-form game. Asking the connection instead
+    // would be asking the one thing that is not there when it matters most --
+    // the host being away is the whole mode.
+    return !m_mpSessionCode.empty() && !m_mpMyPsid.empty();
+}
+
+void Game::mpConfigureStore() {
+    if (!m_mpStoreRunner) m_mpStoreRunner = new TurnStoreRunner();
+
+    TurnStoreClient::Config c;
+    c.kind        = m_mpStoreKind;
+    c.issuer      = AccountClient::get().issuer();
+    c.token       = AccountClient::get().sessionToken();
+    c.sessionCode = m_mpSessionCode;
+    m_mpStoreRunner->configure(c);
+}
+
+void Game::mpPublishTurn(uint32_t turnNumber, const std::vector<uint8_t>& packed) {
+    if (!mpIsHost() || !mpLongForm() || packed.empty()) return;
+    if (m_mpStoreKind == TurnStoreKind::Manual) {
+        mpManualOfferTurn(turnNumber, packed);
+        return;
+    }
+    if (!m_mpStoreRunner) mpConfigureStore();
+    m_mpStoreRunner->publishTurn(turnNumber, packed);
+}
+
+bool Game::mpPublishOrders(uint32_t turnNumber, const std::vector<uint8_t>& orders) {
+    if (!mpLongForm()) return false;
+    if (m_mpMyPsid.empty() || !m_mpSealKey.valid()) return false;
+
+    // Sealed HERE, before it goes anywhere. The store is a bucket that anyone
+    // holding a URL can read, and on some backends overwrite -- so what leaves
+    // this machine is ciphertext bound to this turn and this player, and a
+    // blob that fails to open is treated as no submission rather than
+    // half-applied. See TurnSeal.h.
+    std::vector<uint8_t> sealed;
+    if (!turnSeal(m_mpSealKey, turnNumber, m_mpMyPsid, orders, sealed)) return false;
+
+    // Manual: the same sealed bytes, carried by the player instead of by us.
+    // Sealing happens either way -- whatever they paste it into can see it.
+    if (m_mpStoreKind == TurnStoreKind::Manual) {
+        mpManualOfferOrders(turnNumber, sealed);
+        return true;
+    }
+
+    if (!m_mpStoreRunner) mpConfigureStore();
+    m_mpStoreRunner->publishOrders(turnNumber, m_mpMyPsid, sealed);
+    return true;
+}
+
+void Game::mpPollStore() {
+    if (!m_mpStoreRunner || !mpLongForm()) return;
+    if (m_mpStoreKind == TurnStoreKind::Manual) return;
+
+    // Polled on a timer rather than every frame. A store is somebody's server
+    // and a turn takes hours; asking sixty times a second would be rude at
+    // best, and on the free tier it would spend a day's budget in an afternoon.
+    constexpr double kPollSeconds = 5.0;
+    const double now = GetTime();
+    if (now < m_mpStoreNextPoll) return;
+    m_mpStoreNextPoll = now + kPollSeconds;
+
+    // Nothing is asked for twice while the first ask is still out.
+    if (m_mpStoreRunner->pending() > 0) return;
+
+    TurnStoreClient probe;
+    probe.configure(m_mpStoreRunner->config());
+
+    if (mpIsHost()) {
+        // Collect what arrived while nobody was connected. Only seats with no
+        // submission yet are asked about -- a player who sent orders over the
+        // socket has already been counted, and asking again would spend a
+        // request to learn what the lobby already knows.
+        if (!m_mpTurns || !m_mpTurns->running()) return;
+        const uint32_t turn = m_mpTurns->turnNumber();
+        if (turn != m_mpStorePollTurn) {
+            m_mpStorePollTurn = turn;
+            m_mpStoreAsked.clear();
+        }
+        // `missingSubmissions` is the lobby's own answer to "who still owes
+        // orders for this turn", which is the same question the deadline and
+        // the waiting-for list are computed from. Asking it here rather than
+        // re-deriving it means the store path and the socket path can never
+        // disagree about who has moved.
+        for (uint16_t peerId : m_netHost->lobby().missingSubmissions(turn)) {
+            const LobbyMember* m = m_netHost->lobby().find(peerId);
+            if (!m || m->psid.empty()) continue;
+            if (m_mpStoreAsked.count(m->psid)) continue;
+            const TurnStoreRef ref = probe.ordersRef(turn, m->psid);
+            if (ref.empty()) continue;          // JsonBlob: ids cannot be derived
+            m_mpStoreAsked.insert(m->psid);
+            m_mpStoreRunner->fetchOrders(turn, m->psid, ref);
+        }
+        return;
+    }
+
+    // A client waiting on a turn the host may have published while this machine
+    // was closed. Asking for the NEXT one is what lets a player catch up
+    // without the host being online at all.
+    if (m_mpWaitingForTurn) {
+        const uint32_t want = (uint32_t)m_turnNumber + 1;
+        const TurnStoreRef ref = probe.turnRef(want);
+        if (!ref.empty()) m_mpStoreRunner->fetchTurn(want, ref);
+    }
+}
+
+void Game::mpHandleStoreResult(const TurnStoreResult& result) {
+    switch (result.kind) {
+        case TurnStoreResult::Kind::TurnPublished:
+            if (!result.ok) {
+                // Worth saying out loud: the turn resolved and everyone
+                // connected has it, but anybody who was away will not find it.
+                mpNote("This turn was played, but could not be published to the "
+                       "turn store. Players who were away will not see it: " +
+                       result.error, true);
+            }
+            return;
+
+        case TurnStoreResult::Kind::OrdersPublished:
+            if (result.ok) {
+                m_mpWaitingForTurn = true;
+                mpNote("Orders submitted. You can close the game; the turn will "
+                       "resolve when the host next runs.");
+            } else {
+                // The player thinks they have moved. They have not.
+                mpNote("Your orders could not be submitted: " + result.error, true);
+            }
+            return;
+
+        case TurnStoreResult::Kind::TurnFetched: {
+            // "Not there yet" is the ordinary answer in long-form and is not
+            // worth a word to anyone; the host simply has not played it.
+            if (!result.ok) return;
+            // Already unwrapped: TurnStoreClient::fetchTurn strips the blob
+            // envelope and hands back the bytes the host packed.
+            if ((uint32_t)m_turnNumber + 1 != result.turnNumber) return;
+            mpApplyDelta(result.turnNumber, result.payload);
+            mpNote("Turn " + std::to_string(result.turnNumber) + " has been played.");
+            return;
+        }
+
+        case TurnStoreResult::Kind::OrdersFetched: {
+            if (!result.ok || !mpIsHost()) return;
+
+            // Opened here and nowhere else. A submission that will not open is
+            // NO SUBMISSION -- not partly applied, not guessed at -- and the
+            // reason is never reported to anyone: which check failed is an
+            // oracle, and half a player's intent is worse than none of it.
+            std::vector<uint8_t> orders;
+            if (!turnOpen(m_mpSealKey, result.turnNumber, result.psid,
+                          result.payload, orders)) {
+                return;
+            }
+            const LobbyMember* m = m_netHost->lobby().findByPsid(result.psid);
+            if (!m) return;
+            // The same door the socket path uses, so a turn collected from the
+            // store resolves by exactly the code that resolves a connected one.
+            m_netHost->lobby().submitOrders(m->peerId, result.turnNumber, orders);
+            m_netHost->broadcastLobby();
+            return;
+        }
+    }
+}
+
+void Game::mpStoreUpdate() {
+    if (!m_mpStoreRunner) return;
+    TurnStoreResult result;
+    while (m_mpStoreRunner->nextResult(result)) mpHandleStoreResult(result);
+    mpPollStore();
+}
+
+// ------------------------------------------------- a joined game, remembered --
+//
+// The host is the authority and it is expected to be away. Players connect
+// straight to it, so while it is gone there is no lobby to ask anything -- and
+// the store details and the order key arrived only over that connection. A
+// player who joined on Monday and reopened the game on Thursday would otherwise
+// hold a world and a country and have no way to submit, and no way to find the
+// turns played in between.
+//
+// So it is written down. It holds the session key, which makes this the second
+// secret file in the design and it gets the same treatment as the host's: see
+// TurnSeal.h for why that is not in the sidecar next to it.
+
+std::string Game::mpJoinedSessionPath(const std::string& savePath) {
+    return savePath + ".odjoin";
+}
+
+void Game::mpSaveJoinedSession() const {
+    if (m_currentSavePath.empty() || m_mpSessionCode.empty()) return;
+    if (m_mpMyPsid.empty()) return;
+
+    const std::string path = mpJoinedSessionPath(m_currentSavePath);
+
+    // Created empty and restricted BEFORE anything is written, so the key is
+    // never briefly world-readable. Same pattern as turnSealKeySave.
+    { std::ofstream create(path, std::ios::binary | std::ios::trunc); }
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+    ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << "{\"store\":" << (int)m_mpStoreKind
+        << ",\"code\":\"" << httpJsonEscape(m_mpSessionCode) << "\""
+        << ",\"psid\":\"" << httpJsonEscape(m_mpMyPsid) << "\""
+        << ",\"key\":\"" << httpJsonEscape(m_mpSealKey.toText()) << "\""
+        << ",\"turn\":" << m_turnNumber << "}\n";
+}
+
+bool Game::mpLoadJoinedSession(const std::string& savePath) {
+    if (savePath.empty()) return false;
+    std::ifstream f(mpJoinedSessionPath(savePath), std::ios::binary);
+    if (!f) return false;
+
+    const std::string json((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+    if (json.empty()) return false;
+
+    const std::string code = httpJsonString(json, "code", NetLimits::kSessionCode);
+    const std::string psid = httpJsonString(json, "psid", NetLimits::kPsid);
+    const std::string key  = httpJsonString(json, "key",  NetLimits::kSealKey);
+    if (code.empty() || psid.empty()) return false;
+
+    // The store kind is checked rather than cast: this file may have been
+    // written by a newer build that knew a store this one does not.
+    TurnStoreKind kind = TurnStoreKind::DurableObject;
+    if (!turnStoreKindFromWire((uint8_t)httpJsonNumber(json, "store", 0), kind)) {
+        return false;
+    }
+
+    m_mpStoreKind   = kind;
+    m_mpSessionCode = code;
+    m_mpMyPsid      = psid;
+    if (!key.empty()) TurnSealKey::fromText(key, m_mpSealKey);
+
+    mpConfigureStore();
+    return true;
+}
+
+// ----------------------------------------------------------------- manual ----
+//
+// No infrastructure at all: a block of text out, a block of text back. The
+// players carry it between themselves however they like -- a chat, an email, a
+// forum thread -- and whatever they use sees the bytes.
+//
+// That is safe for the same reason every other store is: ORDERS ARE ALREADY
+// SEALED when they get here, and a turn bundle is public by design. So this is
+// a swap of transport and not a second set of rules, and the two blocks below
+// are the same bytes the automatic stores would have moved.
+//
+// WHOSE ORDERS THESE ARE travels in the text's own label. `turnStoreEncodeText`
+// writes `--- OpenDoctrines <what> turn <n> ---`, and the decoder hands `what`
+// back whole -- so "orders <psid>" round-trips without touching the format. The
+// host needs it: it cannot open a submission without knowing who sealed it, and
+// unlike every other store there is no URL here to carry that.
+
+void Game::mpManualOfferTurn(uint32_t turnNumber, const std::vector<uint8_t>& packed) {
+    m_mpManualOut  = turnStoreEncodeText("turn", turnNumber, packed);
+    m_mpManualOpen = true;
+    mpNote("Turn " + std::to_string(turnNumber) + " is ready to send. Copy the "
+           "block and give it to your players.");
+}
+
+void Game::mpManualOfferOrders(uint32_t turnNumber, const std::vector<uint8_t>& sealed) {
+    const std::string what = "orders " + m_mpMyPsid;
+    m_mpManualOut  = turnStoreEncodeText(what.c_str(), turnNumber, sealed);
+    m_mpManualOpen = true;
+    mpNote("Your orders are ready to send. Copy the block and give it to the host.");
+}
+
+void Game::mpManualApplyPasted() {
+    std::string what;
+    uint32_t turn = 0;
+    std::vector<uint8_t> payload;
+    if (!turnStoreDecodeText(m_mpManualIn, what, turn, payload)) {
+        mpNote("That is not an OpenDoctrines turn block. Copy the whole thing, "
+               "including the --- lines.", true);
+        return;
+    }
+
+    if (what == "turn") {
+        if (mpIsHost()) {
+            mpNote("That is a turn block. The host produces those; paste a "
+                   "player's orders here instead.", true);
+            return;
+        }
+        if (turn != (uint32_t)m_turnNumber + 1) {
+            // The single most likely mistake, and invisible without this: last
+            // week's block pasted again, which would otherwise silently do
+            // nothing or replay a turn already played.
+            mpNote("That is turn " + std::to_string(turn) + ", and this game is "
+                   "waiting for turn " + std::to_string(m_turnNumber + 1) + ".", true);
+            return;
+        }
+        mpApplyDelta(turn, payload);
+        m_mpManualIn.clear();
+        mpNote("Turn " + std::to_string(turn) + " applied.");
+        return;
+    }
+
+    if (what.rfind("orders ", 0) == 0) {
+        if (!mpIsHost()) {
+            mpNote("Those are somebody's orders. Only the host applies those.", true);
+            return;
+        }
+        const std::string psid = what.substr(7);
+        const LobbyMember* m = m_netHost->lobby().findByPsid(psid);
+        if (!m) {
+            mpNote("Those orders are from somebody who is not in this game.", true);
+            return;
+        }
+
+        // Opened here, and a failure is NO SUBMISSION -- never half-applied,
+        // and the reason is not reported: which check failed is an oracle, and
+        // a player told "wrong turn" versus "wrong key" learns something they
+        // should not.
+        std::vector<uint8_t> orders;
+        if (!turnOpen(m_mpSealKey, turn, psid, payload, orders)) {
+            mpNote("Those orders could not be read, so they do not count. The "
+                   "player should send them again.", true);
+            return;
+        }
+        m_netHost->lobby().submitOrders(m->peerId, turn, orders);
+        m_netHost->broadcastLobby();
+        m_mpManualIn.clear();
+        mpNote(std::string("Orders from ") + m->name + " accepted for turn " +
+               std::to_string(turn) + ".");
+        return;
+    }
+
+    mpNote("That block is not something this game knows how to apply.", true);
+}
+
+void Game::mpDrawManualExchange(int screenW, int screenH) {
+    if (!m_mpManualOpen) return;
+
+    const Vector2 mouse = GetMousePosition();
+    const bool click = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+
+    const int panelW = std::min(620, screenW - 80);
+    const int panelH = 300;
+    const int x = (screenW - panelW) / 2;
+    const int y = (screenH - panelH) / 2;
+
+    DrawRectangle(0, 0, screenW, screenH, Color{0, 0, 0, 170});
+    DrawRectangleRounded({(float)x, (float)y, (float)panelW, (float)panelH},
+                         0.04f, 8, Color{22, 25, 32, 245});
+    DrawRectangleRoundedLines({(float)x, (float)y, (float)panelW, (float)panelH},
+                              0.04f, 8, Color{90, 100, 125, 220});
+
+    int cy = y + 18;
+    DrawText("Manual turn exchange", x + 20, cy, 20, Color{225, 220, 210, 255});
+    cy += 30;
+
+    cy = drawWrapped(
+        m_mpManualOut.empty()
+            ? "Nothing to send right now. When a turn is ready it appears here."
+            : "There is a block ready to send. Copy it and pass it to the "
+              "other side however you have agreed.",
+        x + 20, cy, panelW - 40, 14, Color{150, 158, 172, 255}) + 10;
+
+    const int btnW = (panelW - 60) / 2;
+    const MpButton copy = buttonAt((float)(x + 20), (float)cy, (float)btnW, 36, mouse);
+    drawButton(copy, "Copy what I must send", 15, Color{34, 44, 60, 235},
+               Color{100, 130, 170, 200}, !m_mpManualOut.empty());
+    if (click && copy.hovered && !m_mpManualOut.empty()) {
+        SetClipboardText(m_mpManualOut.c_str());
+        mpNote("Copied. Paste it wherever you and the other players agreed.");
+    }
+
+    const MpButton paste =
+        buttonAt((float)(x + 40 + btnW), (float)cy, (float)btnW, 36, mouse);
+    drawButton(paste, "Paste what I was sent", 15, Color{34, 44, 60, 235},
+               Color{100, 130, 170, 200});
+    if (click && paste.hovered) {
+        const char* clip = GetClipboardText();
+        m_mpManualIn = clip ? clip : "";
+        // Applied straight away rather than parked behind a second button: the
+        // paste IS the intent, and a block sitting in a box nobody pressed
+        // Apply on is a turn somebody thinks they submitted.
+        if (m_mpManualIn.empty()) mpNote("There was nothing on the clipboard.", true);
+        else mpManualApplyPasted();
+    }
+    cy += 48;
+
+    // A preview, so it is obvious something real is there without showing
+    // kilobytes of base64 nobody can read anyway.
+    if (!m_mpManualOut.empty()) {
+        const std::string head = m_mpManualOut.substr(0, m_mpManualOut.find('\n'));
+        DrawText(head.c_str(), x + 20, cy, 12, Color{120, 128, 140, 255});
+        cy += 20;
+        DrawText(TextFormat("%d characters in the block", (int)m_mpManualOut.size()),
+                 x + 20, cy, 12, Color{120, 128, 140, 255});
+        cy += 24;
+    }
+
+    const MpButton close =
+        buttonAt((float)(x + panelW - 140), (float)(y + panelH - 52), 120, 36, mouse);
+    drawButton(close, "Close", 15, Color{40, 34, 34, 235}, Color{140, 110, 110, 200});
+    if (click && close.hovered) m_mpManualOpen = false;
 }

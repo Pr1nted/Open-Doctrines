@@ -52,6 +52,50 @@ class_name = "LobbyDO"
 tag = "v1"
 new_sqlite_classes = ["LobbyDO"]
 
+# ------------------------------------------------------------ rate limit ----
+#
+# Free, and costs neither a KV operation nor a DO request -- the counter lives
+# in memory at the edge. That matters here: a limiter implemented on top of KV
+# would spend the very budget it exists to protect.
+#
+# It is BEST EFFORT AND PER-COLO, not a global ledger. A distributed flood is
+# not what this stops; a single source hammering an unauthenticated endpoint is.
+# The complement is a WAF rate-limiting rule in the dashboard, which cannot be
+# expressed in this file -- see README.md, "Abuse and rate limits".
+#
+# Both windows are ten seconds rather than a minute, because the failure being
+# guarded against is a burst. The limits are set against the chattiest thing a
+# legitimate client does, which is /auth/poll at one request every two seconds.
+
+# Two buckets rather than one so the paths are accounted SEPARATELY: someone
+# flooding the relay must not be able to lock the same address out of logging
+# in. The limits are the same number, and that is not an oversight -- see below.
+
+[[ratelimits]]
+name = "RATE_LIMIT_SESSION"
+namespace_id = "1001"
+# The relay path, and the only one that can instantiate a Durable Object.
+#
+# Not tighter than the API bucket, deliberately. What made an unknown code
+# expensive was reaching the binding at all, and `isSessionCode` in
+# lobby/session.ts now refuses those for free -- so this is defence in depth
+# against flooding a code the attacker actually has, not the thing standing
+# between us and the DO budget.
+#
+# Sized against the worst legitimate burst instead: a household or LAN behind
+# one NAT is ONE address here, and a host dropping sends every player into a
+# reconnect at once, each costing an /info and a socket. Eight players
+# retrying together is ~16 requests in a couple of seconds, and a limit that
+# turns a bad wifi moment into a lockout would be worse than the flood.
+simple = { limit = 40, period = 10 }
+
+[[ratelimits]]
+name = "RATE_LIMIT_API"
+namespace_id = "1002"
+# Everything else. Eight times the poll rate, so a login that is retrying hard
+# never sees a 429.
+simple = { limit = 40, period = 10 }
+
 # ---------------------------------------------------------------- secrets ----
 #
 # None of these live in this file. Set each with `wrangler secret put <NAME>`;

@@ -101,6 +101,7 @@ struct NetSession::Impl {
 
     /** What the host said this world has. Empty until the catalogue arrives. */
     std::vector<NetCountryList::Entry> countries;
+    NetTurnStoreInfo turnStore;
 
     // Everything needed to answer a challenge once one arrives.
     std::vector<std::string> addresses;
@@ -143,6 +144,11 @@ const std::vector<NetPeer>& NetSession::roster() const { return m_impl->roster; 
 std::vector<NetCountryList::Entry> NetSession::countries() const {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     return m_impl->countries;
+}
+
+NetTurnStoreInfo NetSession::turnStore() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->turnStore;
 }
 
 NetSessionState NetSession::state() const {
@@ -564,6 +570,16 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
                 countries = std::move(list.countries);
             }
             push(NetSessionEvent{NetSessionEvent::Kind::CountriesKnown});
+            return;
+        }
+        case NetMsg::TurnStoreInfo: {
+            NetTurnStoreInfo info;
+            if (!NetTurnStoreInfo::decode(body, size, info)) return;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                turnStore = std::move(info);
+            }
+            push(NetSessionEvent{NetSessionEvent::Kind::TurnStoreKnown});
             return;
         }
         case NetMsg::Notice: {

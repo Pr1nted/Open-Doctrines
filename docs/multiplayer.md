@@ -133,10 +133,19 @@ build cannot connect rather than the build failing.
 - **Rapid** — a turn is processed every `turnSeconds`. Graceful stop returns
   everyone to the lobby and closes the session; a host that drops ends it after
   the relay's grace period.
-- **Long-form** — designed, not built. The server publishes each turn's delta
-  as a paste and players submit orders back as their own paste id, so a
-  tournament survives everyone being offline. Deltas are KB-scale, so they fit
-  inside free paste size limits.
+- **Long-form** — no countdown, and the host is expected to be away between
+  turns. Each resolved turn is published to a store (`TurnStore`) and players
+  submit orders back, sealed with a session key the host hands out in the lobby,
+  so a tournament survives everyone being offline. Deltas are KB-scale.
+
+  Both sides work with nothing connected: the host collects orders from the
+  store when it next runs, and a player who reopens the game reads the details
+  back from `<save>.odjoin` and catches up. A submission that will not open is
+  **no submission** — never partly applied — which is `NetSubstitution::Malformed`,
+  the same case a corrupt socket submission produces.
+
+  Built and unit-tested; not yet played through a real multi-day campaign. See
+  the Status section of the root README for what that means.
 
 ## Tests
 
@@ -215,7 +224,9 @@ what remains is one thing and two shapes that landed differently from the plan.
   implemented. Hosting today means a running copy of the game with a window; a
   host that closes it ends the session. The headless path `--train-ai` and
   `--simulate` use is what this would reuse.
-- **Long-form turn mode** — designed, not built. See *Turn modes* above.
+- **A long-form campaign played for real** — the mode is built and tested, but
+  nobody has yet run one across two machines and several days. See *Turn modes*
+  above.
 
 Two things in this document's history are worth recording, because the code
 does not match the plan and the plan is what a reader will look for:

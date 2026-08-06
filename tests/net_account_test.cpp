@@ -12,9 +12,12 @@
 #include "net/BadgeStyle.h"
 #include "net/ServerBook.h"
 #include "net/TurnStore.h"
+#include "net/TurnStoreRunner.h"
 
+#include <chrono>
 #include <cstdio>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -397,6 +400,124 @@ void testManualTurnText() {
     }
 }
 
+void testManualCarriesThePlayer() {
+    printf("\n=== manual blocks say whose they are ===\n");
+
+    // Manual mode has no URL to carry the player, and the host cannot open a
+    // submission without knowing who sealed it -- the psid is bound in as
+    // associated data. So it rides in the block's own label, which means the
+    // label has to survive a round trip with a space in it.
+    const std::string psid = "PSID-with-22-chars0000";
+    const std::vector<uint8_t> sealed{9, 8, 7, 6};
+    const std::string text =
+        turnStoreEncodeText(("orders " + psid).c_str(), 12, sealed);
+
+    std::string what;
+    uint32_t turn = 0;
+    std::vector<uint8_t> payload;
+    check("an orders block decodes",
+          turnStoreDecodeText(text, what, turn, payload));
+    check("the label survives whole, space and all", what == "orders " + psid);
+    check("the turn survives", turn == 12);
+    check("the sealed bytes survive", payload == sealed);
+
+    // And the host's own block must NOT look like a player's, or the two
+    // would be routed to each other's handlers.
+    const std::string turnText = turnStoreEncodeText("turn", 12, sealed);
+    check("a turn block decodes",
+          turnStoreDecodeText(turnText, what, turn, payload));
+    check("and is distinguishable from orders", what == "turn");
+}
+
+void testTurnStoreKindFromWire() {
+    printf("\n=== a store kind off the wire ===\n");
+
+    TurnStoreKind k = TurnStoreKind::JsonBlob;
+    for (auto expected : {TurnStoreKind::DurableObject, TurnStoreKind::JsonBlob,
+                          TurnStoreKind::Manual, TurnStoreKind::R2}) {
+        k = TurnStoreKind::JsonBlob;
+        check((std::string("round trips ") + turnStoreName(expected)).c_str(),
+              turnStoreKindFromWire((uint8_t)expected, k) && k == expected);
+    }
+
+    // A host newer than this build. Refused rather than clamped: quietly
+    // substituting the default would play somebody's campaign on a store they
+    // did not choose, and their turns would go somewhere nobody is looking.
+    k = TurnStoreKind::Manual;
+    check("a store this build has never heard of is refused",
+          !turnStoreKindFromWire(4, k));
+    check("and the caller's own value is left alone", k == TurnStoreKind::Manual);
+    check("as is a wildly out of range one", !turnStoreKindFromWire(255, k));
+}
+
+void testTurnStoreRefs() {
+    printf("\n=== derivable blob locations ===\n");
+
+    TurnStoreClient::Config c;
+    c.issuer      = "https://example.invalid";
+    c.sessionCode = "ABCD-EFGH";
+
+    for (auto kind : {TurnStoreKind::DurableObject, TurnStoreKind::R2}) {
+        c.kind = kind;
+        TurnStoreClient client;
+        client.configure(c);
+
+        // The whole point: a player who was away can find turn 7 knowing only
+        // the session, without anyone having told them an id for it.
+        check((std::string(turnStoreName(kind)) + ": a turn is derivable").c_str(),
+              client.turnRef(7).url ==
+                  "https://example.invalid/session/ABCD-EFGH/turn/7");
+        check((std::string(turnStoreName(kind)) + ": so are orders").c_str(),
+              client.ordersRef(7, "PSID123").url ==
+                  "https://example.invalid/session/ABCD-EFGH/orders/7/PSID123");
+    }
+
+    // JsonBlob mints its ids when something is posted, so nothing can be
+    // derived and an empty ref is the honest answer rather than a URL that
+    // would 404.
+    for (auto kind : {TurnStoreKind::JsonBlob, TurnStoreKind::Manual}) {
+        c.kind = kind;
+        TurnStoreClient client;
+        client.configure(c);
+        check((std::string(turnStoreName(kind)) + ": nothing is derivable").c_str(),
+              client.turnRef(7).empty() && client.ordersRef(7, "PSID123").empty());
+    }
+}
+
+void testTurnStoreRunner() {
+    printf("\n=== the store runner's thread ===\n");
+
+    // Manual, so this exercises the queue, the worker and the result path with
+    // no network anywhere near it -- Manual publishes by doing nothing and
+    // reporting success, which is exactly the shape needed here.
+    TurnStoreClient::Config c;
+    c.kind = TurnStoreKind::Manual;
+
+    TurnStoreRunner runner;
+    runner.configure(c);
+    check("Manual is not an automatic transport", !runner.automatic());
+    check("nothing is outstanding to begin with", runner.pending() == 0);
+
+    runner.publishTurn(3, {1, 2, 3});
+
+    TurnStoreResult result;
+    bool got = false;
+    // Bounded rather than a bare loop: a runner that never answers must fail
+    // this test, not hang the suite.
+    for (int i = 0; i < 2000 && !got; i++) {
+        got = runner.nextResult(result);
+        if (!got) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    check("the worker answers", got);
+    check("with the turn it was given", result.turnNumber == 3);
+    check("and reports which job it was",
+          result.kind == TurnStoreResult::Kind::TurnPublished);
+    check("and it succeeded", result.ok);
+    check("and nothing is left outstanding", runner.pending() == 0);
+    check("and there is no second result", !runner.nextResult(result));
+}
+
 }  // namespace
 
 int main() {
@@ -410,6 +531,10 @@ int main() {
     testServerBook();
     testTurnStoreWarnings();
     testManualTurnText();
+    testManualCarriesThePlayer();
+    testTurnStoreKindFromWire();
+    testTurnStoreRefs();
+    testTurnStoreRunner();
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

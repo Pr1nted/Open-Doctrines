@@ -13,7 +13,9 @@
 //   code rule rather than a habit -- test/privacy.test.ts checks it.
 
 import type { Env } from "./env.js";
-import { authenticate, fail, json, preflight, readJson, text } from "./http.js";
+import {
+    authenticate, fail, json, preflight, rateLimit, readJson, text, withCors,
+} from "./http.js";
 import {
     clientCredentials, isProviderId, PROVIDERS, type ProviderId,
 } from "./auth/providers.js";
@@ -38,7 +40,7 @@ import {
     confirmDeletion, describeDeletion, exportAccount, issueDeleteConfirmation,
 } from "./accounts/rights.js";
 import {
-    issueServerCredential, issueSessionDescriptor, newSessionCode,
+    isSessionCode, issueServerCredential, issueSessionDescriptor, newSessionCode,
     verifyServerCredential, verifySessionDescriptor,
 } from "./lobby/session.js";
 import type { SessionSettings } from "./lobby/LobbyDO.js";
@@ -70,6 +72,19 @@ export default {
 async function route(request: Request, env: Env, url: URL, path: string): Promise<Response> {
     const post = request.method === "POST";
     const get = request.method === "GET";
+
+    // Before anything reads a binding. Every endpoint below is reachable
+    // without a credential or is cheap to attempt without one, and until this
+    // existed there was nothing anywhere -- in this file, in wrangler.toml or
+    // at the edge -- that bounded how often any of them could be called.
+    //
+    // The relay path gets the tighter of the two buckets because it is the one
+    // that can instantiate a Durable Object.
+    const refusal = await rateLimit(
+        path.startsWith("/session/") ? env.RATE_LIMIT_SESSION : env.RATE_LIMIT_API,
+        request, env, 10,
+    );
+    if (refusal) return refusal;
 
     if (get && path === "/") {
         return json({
@@ -139,12 +154,53 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (post && path === "/session") return sessionCreate(request, env);
     if (post && path === "/ticket") return ticketMint(request, env);
 
-    const sessionMatch = /^\/session\/([A-Z0-9-]{4,20})(\/ws)?$/.exec(path);
-    if (sessionMatch) {
+    // `isSessionCode` rather than a shape spelled out here: a code we could not
+    // have issued must be refused BEFORE `idFromName`, because reaching the
+    // binding is what creates the Durable Object. See lobby/session.ts.
+    const sessionMatch = /^\/session\/([^/]+)(\/ws)?$/.exec(path);
+    if (sessionMatch && isSessionCode(sessionMatch[1]!)) {
         const code = sessionMatch[1]!;
         const stub = env.LOBBY.get(env.LOBBY.idFromName(code));
         if (sessionMatch[2]) return stub.fetch(new Request("https://lobby/ws", request));
-        if (get) return stub.fetch(new Request("https://lobby/info"));
+        if (get) return withCors(await stub.fetch(new Request("https://lobby/info")));
+    }
+
+    // ------------------------------------------------------- long form ----
+    //
+    // Turn storage for TurnStoreKind::DurableObject (src/net/TurnStore.cpp).
+    // The URL shapes are the game's, not ours to choose.
+    //
+    // READS ARE UNAUTHENTICATED, and that is the design rather than an
+    // oversight. A published turn is public so that people can spectate a
+    // tournament without joining it. Orders are sealed before they leave the
+    // player's machine (src/net/TurnSeal.h), so a reader without the key holds
+    // ciphertext -- confidentiality never comes from the store. What the store
+    // must enforce is WRITES, and LobbyDO does.
+    //
+    // One honest difference from the jsonblob backend: there a blob sits at an
+    // unguessable URL, whereas these are derivable from the join code. Nobody
+    // gains readable orders by that, but an observer holding the code can tell
+    // WHETHER a given player has submitted for a turn. In a game where the host
+    // announces who is still to move, that is not a secret.
+    const turnMatch = /^\/session\/([^/]+)\/turn\/(\d{1,9})$/.exec(path);
+    if (turnMatch && isSessionCode(turnMatch[1]!)) {
+        const stub = env.LOBBY.get(env.LOBBY.idFromName(turnMatch[1]!));
+        return withCors(await stub.fetch(
+            new Request(`https://lobby/turn?n=${turnMatch[2]}`, request),
+        ));
+    }
+
+    // The psid is 22 base64url characters (see psidFor), so it never contains a
+    // separator -- but it is matched rather than trusted, because it arrives in
+    // a path and is about to become part of a storage key.
+    const ordersMatch =
+        /^\/session\/([^/]+)\/orders\/(\d{1,9})\/([A-Za-z0-9_-]{1,64})$/.exec(path);
+    if (ordersMatch && isSessionCode(ordersMatch[1]!)) {
+        const stub = env.LOBBY.get(env.LOBBY.idFromName(ordersMatch[1]!));
+        return withCors(await stub.fetch(new Request(
+            `https://lobby/orders?n=${ordersMatch[2]}&psid=${encodeURIComponent(ordersMatch[3]!)}`,
+            request,
+        )));
     }
 
     return fail(404, "not_found", "No such endpoint.");

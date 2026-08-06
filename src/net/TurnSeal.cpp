@@ -1,6 +1,14 @@
 #include "TurnSeal.h"
 
 #include <cstring>
+#include <fstream>
+
+// Not under the networking guard: this is chmod, and emscripten does not have
+// one to declare. Excluding only _WIN32 here is what broke the web build the
+// last time somebody wrote this pattern -- see TunnelInstall.cpp.
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <sys/stat.h>
+#endif
 
 #if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
 
@@ -225,3 +233,47 @@ bool turnOpen(const TurnSealKey&, uint32_t, const std::string&,
               const std::vector<uint8_t>&, std::vector<uint8_t>&) { return false; }
 
 #endif
+
+// ------------------------------------------------------ the host's copy ----
+//
+// Outside the networking guard on purpose. This is file I/O over the key's own
+// text form, and a build without mbedTLS still has to compile it -- there,
+// `toText` returns nothing and these fail honestly rather than not existing.
+
+std::string turnSealKeyPathFor(const std::string& savePath) {
+    return savePath + ".odkey";
+}
+
+bool turnSealKeySave(const std::string& savePath, const TurnSealKey& key) {
+    if (savePath.empty() || !key.valid()) return false;
+    const std::string text = key.toText();
+    if (text.empty()) return false;
+
+    const std::string path = turnSealKeyPathFor(savePath);
+
+    // Created empty, restricted, and only then written. Writing first would
+    // leave a window in which every user on the machine can read the key that
+    // opens this game's orders -- short, but a window is a window, and this is
+    // the one file in the design where it matters.
+    { std::ofstream create(path, std::ios::binary | std::ios::trunc); }
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+    ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << text << "\n";
+    out.flush();
+    return out.good();
+}
+
+bool turnSealKeyLoad(const std::string& savePath, TurnSealKey& out) {
+    if (savePath.empty()) return false;
+    std::ifstream f(turnSealKeyPathFor(savePath), std::ios::binary);
+    if (!f) return false;
+
+    std::string text;
+    std::getline(f, text);
+    while (!text.empty() && (text.back() == '\r' || text.back() == '\n')) text.pop_back();
+    return TurnSealKey::fromText(text, out);
+}

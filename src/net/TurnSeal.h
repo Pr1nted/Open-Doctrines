@@ -75,3 +75,27 @@ bool turnOpen(const TurnSealKey& key, uint32_t turnNumber, const std::string& ps
 
 /** True when this build can seal at all (false without networking/mbedTLS). */
 bool turnSealAvailable();
+
+// ------------------------------------------------------ the host's copy ----
+//
+// A long-form host closes the game between turns -- that is the whole point --
+// so the key has to survive the process. It is written beside the save, in its
+// OWN file, and not in the `.odhost` sidecar sitting next to it.
+//
+// That distinction is the important part. HostBook says in as many words that
+// it holds no secrets, because it lives beside a save a player might share, and
+// sharing a save is ordinary. This is the one secret in the whole long-form
+// design: whoever holds it can read every player's orders, for every turn, past
+// and future. It must never be in a file anybody is encouraged to pass around.
+
+/** `<savePath>.odkey`. */
+std::string turnSealKeyPathFor(const std::string& savePath);
+
+/**
+ * Write the key for this save, readable only by this user where the platform
+ * can express that.
+ */
+bool turnSealKeySave(const std::string& savePath, const TurnSealKey& key);
+
+/** Read it back. False when absent or unreadable, which is not an error. */
+bool turnSealKeyLoad(const std::string& savePath, TurnSealKey& out);
