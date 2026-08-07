@@ -233,16 +233,16 @@ public final class Gearbox {
 
     public static int assetSize(String name) {
         byte[] n = toUtf8(name);
-        return GearboxRaw.size(ptr(n), n.length);
+        return GearboxRaw.assetSize(ptr(n), n.length);
     }
 
     /** The asset's bytes, or null if there is no such asset. */
     public static byte[] assetRead(String name) {
         byte[] n = toUtf8(name);
-        int size = GearboxRaw.size(ptr(n), n.length);
+        int size = GearboxRaw.assetSize(ptr(n), n.length);
         if (size <= 0) return null;
         byte[] buf = new byte[size];
-        int got = GearboxRaw.read(ptr(n), n.length, ptr(buf), size);
+        int got = GearboxRaw.assetRead(ptr(n), n.length, ptr(buf), size);
         if (got >= size) return buf;
         byte[] out = new byte[got];
         for (int i = 0; i < got; i++) out[i] = buf[i];

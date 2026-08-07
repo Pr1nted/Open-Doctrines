@@ -162,10 +162,70 @@ def main():
     if failures:
         print(f"{failures} binding(s) disagree with sdk/abi.json")
         return 1
+    if check_wrappers():
+        print()
+        print("a hand-written wrapper calls a generated name that does not exist")
+        return 1
+
     print("all bindings reference the ABI consistently")
     print("NOTE: this is a text lint. It does not verify argument order or")
     print("      types, and it does not compile anything.")
     return 0
+
+
+# Two SDKs are written in two layers: a GENERATED raw layer of one function per
+# import, and a HAND-WRITTEN wrapper over it that takes strings and returns
+# byte arrays. abi.json cannot catch a disagreement between those two, because
+# the wrapper is not generated from it and mentions no import names -- it calls
+# the raw layer's LANGUAGE-level names, which the generator derives and may
+# disambiguate (gearbox:assets/size becomes assetSize, because a bare `size`
+# would be hopeless in a flat namespace).
+#
+# Which is how sdk/java's Gearbox.java called GearboxRaw.size and .read from
+# the day it was written, against a GearboxRaw that has always emitted
+# assetSize and assetRead. It never compiled. Nothing noticed for months: the
+# only thing that builds that Maven module is the SDK release workflow, and
+# until Gearbox 1.1 there had never been an SDK release.
+#
+# So: every raw-layer call in a wrapper must resolve to something the raw layer
+# declares. Cheap, needs no toolchain, and would have caught it on day one.
+WRAPPERS = [
+    ("java", "sdk/java/gearbox/src/main/java/org/opendoctrines/gearbox/GearboxRaw.java",
+     r"public static native \w+ (\w+)\(",
+     ["sdk/java/gearbox/src/main/java/org/opendoctrines/gearbox/Gearbox.java"],
+     r"GearboxRaw\.(\w+)\s*\("),
+    ("rust", "sdk/rust/src/ffi_generated.rs",
+     r"pub fn (\w+)\(",
+     ["sdk/rust/src/lib.rs", "sdk/rust/src/fmt.rs"],
+     r"ffi::(\w+)\s*\("),
+]
+
+
+def check_wrappers():
+    print()
+    bad = 0
+    for name, rawp, rawre, wraps, usere in WRAPPERS:
+        rp = os.path.join(ROOT, rawp)
+        if not os.path.exists(rp):
+            print(f"skip  {name} wrapper  —  no {rawp}")
+            continue
+        declared = set(re.findall(rawre, open(rp).read()))
+        used = set()
+        for w in wraps:
+            wp = os.path.join(ROOT, w)
+            if os.path.exists(wp):
+                used |= set(re.findall(usere, open(wp).read()))
+        missing = sorted(used - declared)
+        if missing:
+            bad += 1
+            print(f"FAIL  {name} wrapper calls names the generated layer "
+                  f"does not declare:")
+            for m in missing:
+                near = sorted(d for d in declared if d.lower().endswith(m.lower()))
+                print(f"        {m}" + (f"   (did you mean {', '.join(near)}?)" if near else ""))
+        else:
+            print(f"ok    {name} wrapper  —  {len(used)} raw calls all resolve")
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":
