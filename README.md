@@ -309,15 +309,38 @@ Alpha, and the honest version of that word:
   qualified — the four-platform matrix in `.github/workflows/release-game.yml`
   compiles them, and "it compiled" is not "somebody played it". Qualifying them
   means `tests/run_all.sh` and `tools/playtest.sh --verify` passing on each.
-- **The AI is not yet a real opponent.** It is a neural network trained by
-  self-play, and it is still learning: on this build it holds 36% of the world
-  against countries that pick uniformly at random from the same legal moves, so
-  it is currently *losing* to chance. It defends its borders, mounts amphibious
-  invasions, negotiates and governs — the mechanisms work — but it will not
-  outplay you, and the difficulty setting changes how much noise it adds to its
-  own choices rather than how well it plays. Retraining is ongoing. Measure the
-  current build yourself with `OpenDoctrines --eval-ai --vs-random`; the line to
-  read is `ADVANTAGE`, where 1.0 means "no better than a coin flip".
+- **The AI is not yet a real opponent.** It defends its borders, mounts
+  amphibious invasions, sails around land instead of through it, fights other
+  fleets, negotiates and governs — the mechanisms work — but it will not outplay
+  you, and the difficulty setting changes how much noise it adds to its own
+  choices rather than how well it plays.
+
+  This entry used to quote a single figure: 36% of the world against countries
+  picking uniformly at random, so *losing to chance*. That number is withdrawn,
+  for two reasons.
+
+  It described a different game. 1.0.6a fixed engine bugs the AI was merely the
+  most visible victim of — building a first factory or founding a port was a
+  no-op that charged you and discarded the build, so the economy module had
+  correctly learned never to build; a third of all ships dealt no damage; the
+  navy could not route around land or attack another fleet at all. An opponent
+  measured before those is not this one.
+
+  And one number was never a measurement. The same weights, re-run, gave
+  ADVANTAGE 2.347, 5.943 and 7.680 — seed spread wider than any effect worth
+  chasing. This README told you to reproduce a figure by a method that cannot
+  reproduce it.
+
+  What is properly measured, paired over the same seeds and maps: the model
+  that ships here beats the previously trained one **1.535×, 95% CI
+  [1.322, 1.770]**, at 400 turns. Honestly read, much of that is the engine
+  fixes above rather than the learning — the shipped weights are close to a
+  fresh net, and the hand-written rules do most of the playing.
+
+  Measure it yourself with `python3 tools/ai_bench.py`, which runs paired over
+  several seeds at both horizons and refuses to print a number without an
+  interval around it. `--eval-ai --vs-random` still exists and still prints
+  `ADVANTAGE`; treat a single run of it as an anecdote.
 - Multiplayer works: hosting, joining, seats, turns, disconnects and reconnects
   are built and tested. There is **no dedicated server** yet — hosting means a
   running copy of the game, and closing it ends the session.
