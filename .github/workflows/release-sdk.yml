@@ -83,7 +83,7 @@ jobs:
                -o -name '.quickjs-src' \) -exec rm -rf {} + 2>/dev/null || true
           mkdir -p "dist/$OUT/docs"
           cp docs/gearbox-*.md docs/modding.md "dist/$OUT/docs/"
-          awk '/^## (game|gearbox) [0-9]/{n++} n==1' CHANGELOG.md > "dist/$OUT/RELEASE-NOTES.md"
+          awk -v kind=sdk '/^## (game|sdk) [0-9]/{ if (p) exit; p = ($2 == kind) } p' CHANGELOG.md > "dist/$OUT/RELEASE-NOTES.md"
           (cd dist && zip -qr "$OUT.zip" "$OUT")
           ls -lh dist/*.zip
 
@@ -102,7 +102,7 @@ jobs:
         with: { name: gearbox-sdk, path: dist }
 
       - name: Extract release notes
-        run: awk '/^## (game|gearbox) [0-9]/{n++} n==1' CHANGELOG.md > notes.md
+        run: awk -v kind=sdk '/^## (game|sdk) [0-9]/{ if (p) exit; p = ($2 == kind) } p' CHANGELOG.md > notes.md
 
       - uses: softprops/action-gh-release@v2
         with:
