@@ -40,6 +40,14 @@ which is what keeps a carve from eating a neighbour.
 
 The parent province loses the population of what it gave up, in proportion to
 the pixels taken. Otherwise the world gains people every time a state is added.
+
+AND WHAT IS LEFT OF THE PARENT HAS TO BE A PROVINCE TOO
+
+If the parent was barely bigger than the state cut out of it, what it keeps is
+a shell a pixel or two wide wrapped around the new border -- an id with an
+owner, a population line and a compass, that no player can click and that draws
+as a white smear when selected. See absorb_rinds, which merges those back into
+the country's nearest real province.
 """
 
 import json
@@ -180,6 +188,117 @@ CARVES = {
 }
 
 
+# What is left of a gutted province is debris, not a province. See
+# absorb_rinds. The test is what the CARVE did to it, not what shape it is:
+# a province that gave up three quarters of itself and kept a few hundred
+# pixels was destroyed by the carve, whatever the remainder happens to look
+# like. Shape is the symptom; this is the cause.
+RIND_KEEP_FRACTION = 0.25
+RIND_MAX_PX = 800
+
+
+def absorb_rinds(im, donors, prov, pop, res, mino, comp, extra, check):
+    """Merge away the hairline shells a carve can leave behind.
+
+    CUTTING A STATE OUT OF A PROVINCE ITS OWN SIZE LEAVES A RIND.
+
+    carve_states repaints the pixels inside a traced outline and lets the
+    parent keep the rest. That is right when the parent is Assam and the state
+    is Bhutan-shaped -- but on the 1914 and 1918 maps the parent province was
+    itself barely bigger than Bhutan, so what it kept was a 262 px shell
+    wrapped around the new state, one to two pixels wide along its north and
+    west.
+
+    That shell is a province by every mechanical test: it has an id, an owner,
+    a population line and a compass. It is not one by any useful one. You
+    cannot reliably click it, and selecting it draws a white bar with no
+    interior -- which is how it was found, someone asking what they were
+    looking at.
+
+    The ground stays with the country that held it; it just stops being its own
+    province, merging into that country's largest neighbouring province. Giving
+    it to the carved state instead would be easier and wrong: Bhutan would end
+    up bigger than Bhutan.
+    """
+    import numpy as np
+    from PIL import Image
+
+    arr = np.array(im.convert("RGB"), dtype=np.uint32)
+    ids = arr[:, :, 0] << 16 | arr[:, :, 1] << 8 | arr[:, :, 2]
+    merged = []
+
+    for donor, lost in sorted(donors.items()):
+        m = ids == donor
+        n = int(m.sum())
+        if n == 0 or n > RIND_MAX_PX or n >= RIND_KEEP_FRACTION * (n + lost):
+            continue
+        owner = prov.get(str(donor), {}).get("country_id")
+        if owner is None:
+            continue
+
+        grow = np.zeros_like(m)
+        grow[1:, :] |= m[:-1, :]
+        grow[:-1, :] |= m[1:, :]
+        grow[:, 1:] |= m[:, :-1]
+        grow[:, :-1] |= m[:, 1:]
+        best, best_n = None, 0
+        for cand in np.unique(ids[grow & ~m]).tolist():
+            if cand == 0 or cand == donor:
+                continue
+            if prov.get(str(cand), {}).get("country_id") != owner:
+                continue
+            area = int((ids == cand).sum())
+            if area > best_n:
+                best, best_n = cand, area
+        if best is None:
+            print(f"    rind prov {donor} ({n} px) has no neighbour of its own "
+                  f"country -- left alone")
+            continue
+
+        merged.append((donor, best, n, lost))
+        if check:
+            continue
+
+        ids[m] = best
+        pop[str(best)] = pop.get(str(best), 0) + pop.pop(str(donor), 0)
+        dres = res.pop(str(donor), None)
+        if isinstance(dres, dict):
+            keep = res.setdefault(str(best), {})
+            if isinstance(keep, dict):
+                for k, v in dres.items():
+                    if isinstance(v, dict) and isinstance(keep.get(k), dict):
+                        for part in ("a", "b"):
+                            keep[k][part] = round(float(keep[k].get(part, 0))
+                                                  + float(v.get(part, 0)), 3)
+                    elif isinstance(v, (int, float)) and isinstance(keep.get(k), (int, float)):
+                        keep[k] = round(float(keep[k]) + float(v), 3)
+                    else:
+                        keep.setdefault(k, v)
+        mino.pop(str(donor), None)
+        comp.pop(str(donor), None)
+        prov.pop(str(donor), None)
+        # Anything else keyed by province id moves with the ground rather than
+        # being deleted with the id -- an army standing there is still standing
+        # there, and a port is still a port.
+        for obj in extra.values():
+            if not isinstance(obj, dict) or str(donor) not in obj:
+                continue
+            moved = obj.pop(str(donor))
+            if str(best) in obj and isinstance(obj[str(best)], list) and isinstance(moved, list):
+                obj[str(best)].extend(moved)
+            else:
+                obj.setdefault(str(best), moved)
+
+    for donor, best, n, lost in merged:
+        print(f"    rind prov {donor}: kept {n} px of {n + lost}, merged into prov {best}")
+    if merged and not check:
+        arr[:, :, 0] = (ids >> 16) & 0xFF
+        arr[:, :, 1] = (ids >> 8) & 0xFF
+        arr[:, :, 2] = ids & 0xFF
+        return Image.fromarray(arr.astype("uint8"), "RGB"), len(merged)
+    return im, len(merged)
+
+
 def inside(poly, lon, lat):
     """Ray casting. Small polygons, called per pixel of a small box only."""
     hit = False
@@ -226,9 +345,18 @@ def carve_map(path, states, check):
         W, H = im.size
         px = im.load()
 
+        # Anything else keyed by province id, so a rind merge can carry it
+        # across instead of orphaning it. Loaded only if the map has it.
+        extra = {}
+        for fn in ("armies.json", "ports.json", "claims.json"):
+            fp = os.path.join(work, fn)
+            if os.path.exists(fp):
+                extra[fn] = json.load(open(fp))
+
         next_pid = max(int(k) for k in prov) + 1
         next_cid = max(int(k) for k in ctry if int(k) < 60000) + 1
         changed = 0
+        donors = {}          # province id -> pixels the carves took from it
 
         for st in states:
             if st["iso"] in by_iso:
@@ -318,9 +446,16 @@ def carve_map(path, states, check):
 
             next_pid += 1
             changed += 1
+            for src, cnt in taken.items():
+                donors[src] = donors.get(src, 0) + cnt
             src_desc = ", ".join(f"{n}px from prov {s}" for s, n in sorted(taken.items()))
             print(f"    {st['iso']}  {st['name']:12s} pid {pid:5d} cid {cid:3d}  "
                   f"{total:5d} px  ({src_desc})")
+
+        if donors:
+            im, absorbed = absorb_rinds(im, donors, prov, pop, res, mino, comp,
+                                        extra, check)
+            changed += absorbed
 
         if changed == 0 or check:
             if check:
@@ -336,6 +471,9 @@ def carve_map(path, states, check):
         if os.path.exists(cc_path):
             with open(cc_path, "w", encoding="utf-8") as f:
                 json.dump(cc, f, separators=(",", ":"))
+        for fn, obj in extra.items():
+            with open(os.path.join(work, fn), "w", encoding="utf-8") as f:
+                json.dump(obj, f, separators=(",", ":"))
 
         tmp = path + ".tmp"
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:

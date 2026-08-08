@@ -998,7 +998,13 @@
     "left": -15,
     "auth": 85
    },
-   "army": 70000
+   "army": 70000,
+   "flag": {
+    "type": "solid",
+    "colors": [
+     "#000000"
+    ]
+   }
   },
   {
    "iso": "THA",

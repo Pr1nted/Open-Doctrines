@@ -1,18 +1,129 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1008" height="672">
-	<rect width="1008" height="672" fill="#00672b"/>
-	<circle cx="448" cy="336" r="168" fill="#fff"/>
-	<circle cx="485" cy="336" r="142" fill="#00672b"/>
-	<g id="star" transform="translate(448,264)" fill="#fff">
-		<g id="c">
-			<path id="t" d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
-			<use xlink:href="#t" transform="scale(-1,1)"/>
-		</g>
-		<use xlink:href="#c" transform="rotate(72)"/>
-		<use xlink:href="#c" transform="rotate(144)"/>
-		<use xlink:href="#c" transform="rotate(216)"/>
-		<use xlink:href="#c" transform="rotate(288)"/>
-	</g>
-	<use xlink:href="#star" y="144" transform="rotate(180 448,408)"/>
-	<use xlink:href="#star" transform="rotate(60 448,408) rotate(30 448,264)"/>
+<svg xmlns="http://www.w3.org/2000/svg" height="672" width="1008">
+  <rect fill="#00672b" height="672" width="1008"/>
+  <circle cx="448" cy="336" fill="#fff" r="168"/>
+  <circle cx="485" cy="336" fill="#00672b" r="142"/>
+  <g fill="#fff" id="star" transform="translate(448,264)">
+    <g id="c">
+      <path d="M 0,-42 V 0 H 21" id="t" transform="rotate(18 0,-42)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+      </g>
+    </g>
+    <g transform="rotate(72.000000)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(144.000000)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(216.000000)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(288.000000)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g transform="rotate(180.000000,448.000000,408.000000) translate(0.000000,144.000000)">
+    <g fill="#fff" transform="translate(448,264)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+      <g transform="rotate(72.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(216.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(288.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g transform="rotate(60.000000,448.000000,408.000000) rotate(30.000000,448.000000,264.000000)">
+    <g fill="#fff" transform="translate(448,264)">
+      <g>
+        <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+        </g>
+      </g>
+      <g transform="rotate(72.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(216.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(288.000000)">
+        <g>
+          <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <path d="M 0,-42 V 0 H 21" transform="rotate(18 0,-42)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
 </svg>

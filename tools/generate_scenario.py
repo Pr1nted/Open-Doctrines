@@ -10,15 +10,43 @@ copied through byte for byte -- so saves, mods, the map editor and every tool
 that indexes by province id keep working across all of them.
 
 That is a deliberate choice and not only a cheap one. The alternative is
-per-era boundary geometry, and every world historical boundary dataset that
-exists is unusable here:
+per-era boundary geometry, and the world historical boundary datasets that
+exist are, with one exception, unusable here. Checked August 2026:
 
-  historical-basemaps (aourednik)  GPL-3.0. Copyleft on the data, incompatible
-                                   with this project's licence -- GPL forbids
-                                   adding a non-commercial restriction.
-  CShapes (ETH Zurich)             Same shop, same problem, as GREG and ACOR:
-                                   citation request, no grant. See NOTICE.md.
+  historical-basemaps (aourednik)  GPL-3.0 (its LICENSE file is GPLv3 verbatim).
+                                   Copyleft on the data. Used as a REFERENCE
+                                   ONLY, never shipped -- see
+                                   tools/check_map_history.py.
+  CShapes 2.0 (ETH Zurich)         CC BY-NC-SA 4.0. NonCommercial, so it is
+                                   disqualified outright and no amount of
+                                   attribution fixes it. (An earlier note here
+                                   said "citation request, no grant", lumping
+                                   it in with GREG and ACOR. That was wrong: it
+                                   does carry a licence, and the licence is
+                                   worse than no licence would have been.)
+  GADM                             Free for academic and non-commercial use;
+                                   redistribution or commercial use needs
+                                   permission. Modern boundaries only, and the
+                                   obvious thing to reach for by mistake.
   Euratlas, GeaCron                Commercial, per-seat.
+  OpenHistoricalMap                CC0, and therefore the ONLY historical
+                                   boundary source with no obligation at all.
+                                   Coverage is the problem rather than the
+                                   licence: modern borders are broadly there,
+                                   historical ones are contributor-driven and
+                                   patchy, with no complete world snapshot for
+                                   any of this project's five years.
+  geoBoundaries                    CC BY 4.0, commercial use fine. Modern only,
+                                   so it is the permissive replacement for GADM
+                                   and not for anything here.
+
+The route with no obligations and no coverage gap is not a dataset at all: it
+is public-domain SOURCE MAPS, traced into this project's own vectors. CIA and
+Army Map Service sheets are US federal works and public domain by 17 U.S.C.
+105; anything published before 1930 is public domain by age. Both are
+available in bulk from the Perry-Castaneda collection and the Library of
+Congress. That is what carve_borders.py already does by hand for the
+German-Polish frontier.
 
 So the honest options were "approximate historical borders with modern province
 outlines" or "do not ship historical scenarios". The approximation is visible in
@@ -762,84 +790,92 @@ def build_armies(scen, owner, population, cid_of):
     return armies
 
 
-def build_ships(scen, owner, base, cid_of, centers, ports=None):
-    """Berth each power's fleet at its own ports -- in the water.
+def build_ships(scen, owner, base, cid_of, centers, ports=None, province_ids=None):
+    """Berth each power's fleet at its own ports -- in open water.
 
-    Ships used to be placed at the port province's centroid, which is a point
-    on land: 95% of a scenario's fleet ended up inland, against 2% for the base
-    map. A province centroid is not a harbour. So the centroid is only the
-    starting point, and the ship is walked outward to the nearest water pixel
-    and then a little further off the coast.
+    Ships were first placed at the port province's centroid, which is a point
+    on land, and 95% of a scenario's fleet ended up inland. The fix for that
+    walked the hull out to the nearest water pixel and nudged it four pixels
+    further, which moved the fleet into the sea by the only test anyone was
+    running -- and left 98% of it within four pixels of the shore, under an
+    icon twelve pixels across. Correct coordinates, ships drawn in fields.
+
+    So the berth is chosen by clearance now: the search wants open water on
+    every side of the hull, prefers more of it to less, and keeps hulls apart
+    from one another. The rules and the reasoning are in naval_placement.py,
+    which tools/fix_naval_layer.py also uses so that regenerating a map cannot
+    quietly undo a repair made to a shipped one.
     """
     import numpy as np
+    sys.path.insert(0, TOOLS_DIR)
+    from naval_placement import (clearance_field, coastal_anchor, find_berth,
+                                 hull_type, pixel_to_lonlat)
+    from fill_water_speckle import label_components, min_water_body
+
     sea = sea_mask(base)
     sh, sw = sea.shape
+    land = ~sea
+    if province_ids is None:
+        province_ids = province_id_array(base)
 
-    def nearest_water(lon, lat, max_ring=220):
-        px = int((lon + 180.0) / 360.0 * sw)
-        py = int((90.0 - lat) / 180.0 * sh)
-        if 0 <= px < sw and 0 <= py < sh and sea[py, px]:
-            return lon, lat
-        for r in range(1, max_ring):
-            y0, y1 = max(0, py - r), min(sh, py + r + 1)
-            x0, x1 = max(0, px - r), min(sw, px + r + 1)
-            window = sea[y0:y1, x0:x1]
-            if not window.any():
-                continue
-            ys, xs = np.nonzero(window)
-            # Nearest within the ring, then nudge 4px further out to sea so the
-            # hull is not drawn sitting exactly on the coastline.
-            d = (ys + y0 - py) ** 2 + (xs + x0 - px) ** 2
-            i = int(np.argmin(d))
-            wy, wx = int(ys[i] + y0), int(xs[i] + x0)
-            dy, dx = wy - py, wx - px
-            norm = max(1.0, (dy * dy + dx * dx) ** 0.5)
-            ny = int(min(sh - 1, max(0, wy + round(dy / norm * 4))))
-            nx = int(min(sw - 1, max(0, wx + round(dx / norm * 4))))
-            if sea[ny, nx]:
-                wy, wx = ny, nx
-            # Pixel CENTRE, not corner: converting the corner back to a pixel
-            # index elsewhere rounds down by one on a float hair, and one pixel
-            # inland from a coastline is land. That alone put 20% of the fleet
-            # on the beach.
-            return ((wx + 0.5) / sw * 360.0 - 180.0,
-                    90.0 - (wy + 0.5) / sh * 180.0)
-        return None
+    lbl, sizes = label_components(sea)
+    big_water = (lbl > 0) & (sizes[lbl] >= min_water_body())
+    clear = clearance_field(land)
 
     if ports is None:
         ports = base["ports.json"]
-    by_power = {}
+
+    def to_px(lon, lat):
+        return (int((lon + 180.0) / 360.0 * sw) % sw,
+                min(sh - 1, max(0, int((90.0 - lat) / 180.0 * sh))))
+
+    # A harbour with no water wide enough for a hull is not a harbour. A
+    # dammed river reservoir clears MIN_WATER_BODY on pixel count alone and is
+    # one pixel across, so the coastal test says yes and there is still
+    # nowhere to float anything.
+    by_power, unusable = {}, 0
     for pid_str, info in ports.items():
         pid = int(pid_str)
         iso = owner.get(pid, "UNC")
-        if iso != "UNC":
-            by_power.setdefault(iso, []).append((pid, info.get("level", 1)))
+        if iso == "UNC" or pid not in centers:
+            continue
+        anchor = coastal_anchor(province_ids == pid, big_water,
+                                to_px(*centers[pid]))
+        if find_berth(clear, anchor[0], anchor[1], []) is None:
+            unusable += 1
+            continue
+        by_power.setdefault(iso, []).append((pid, info.get("level", 1), anchor))
 
-    TYPES = ["battleship", "carrier", "cruiser", "destroyer", "boat"]
     ships = []
+    taken = []
     stranded = 0
     for power in scen["powers"]:
         iso, n = power["iso"], int(power.get("navy", 0))
-        harbours = sorted(by_power.get(iso, []), key=lambda t: -t[1])
+        harbours = sorted(by_power.get(iso, []), key=lambda t: (-t[1], t[0]))
         if not n or not harbours:
             continue
         for i in range(n):
-            pid, _level = harbours[i % len(harbours)]
-            water = nearest_water(*centers.get(pid, (0.0, 0.0)))
-            if water is None:
+            _pid, _level, anchor = harbours[i % len(harbours)]
+            berth = find_berth(clear, anchor[0], anchor[1], taken)
+            if berth is None:
                 stranded += 1
                 continue
-            lon, lat = water
+            bx, by, _c = berth
+            taken.append((bx, by))
+            lon, lat = pixel_to_lonlat(bx, by, sw, sh)
             ships.append({
                 "country_id": cid_of[iso],
-                "type": TYPES[i % len(TYPES)] if i < 5 else TYPES[2 + (i % 3)],
+                "type": hull_type(i),
                 "lat": round(lat, 6),
                 "lon": round(lon, 6),
                 "health": 100,
                 "crew": 400 + (i * 37) % 900,
             })
+    if unusable:
+        print(f"  {unusable} port(s) have no water wide enough for a hull and "
+              f"were not used as a berth")
     if stranded:
-        print(f"  {stranded} ship(s) found no water within 220px of their port "
+        print(f"  {stranded} ship(s) found no berth within reach of their port "
               f"and were dropped")
     return ships
 
@@ -1370,7 +1406,8 @@ def generate(scenario_id, base_path):
     province_ids = province_id_array(base, remap)
     compute_treasuries(countries, owner, resources, cid_of)
     armies = build_armies(scen, owner, population, cid_of)
-    ships = build_ships(scen, owner, base, cid_of, centers, files["ports.json"])
+    ships = build_ships(scen, owner, base, cid_of, centers, files["ports.json"],
+                        province_ids)
     country_compass, province_compass = build_compass(scen, owner)
 
     files.update({

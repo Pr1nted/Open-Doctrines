@@ -108,7 +108,17 @@ ALIAS = {
             "tanzania, united republic of", "tanganyika", "palestine",
             "transjordan", "cyprus", "malta", "sierra leone", "gambia",
             "uganda", "rhodesia", "nyasaland", "aden", "egypt"},
-    "GER": {"germany", "german empire", "german reich", "third reich"},
+    # The colonies are listed here for the same reason Britain's are: the
+    # dataset names the possession, not the possessor, so without them
+    # Germany's own empire reads as four errors on the 1914 map. Several of
+    # these names appear under another power too -- Kamerun is also French,
+    # Tanganyika also British -- which is correct, because that is what
+    # happened to them. This table asks "could our answer be right", and the
+    # report is read by a person who knows which year it is.
+    "GER": {"germany", "german empire", "german reich", "third reich",
+            "german south-west africa", "german southwest africa",
+            "kamerun", "togoland", "german east africa",
+            "german e africa tanganyika", "german new guinea"},
     "GEA": {"germany", "allied occupied germany"},
     "SOV": {"soviet union", "ussr", "russia", "russian empire", "russian sfsr"},
     "RUS": {"russia", "russian empire", "soviet union", "ussr", "russian sfsr",
@@ -170,6 +180,7 @@ ALIAS = {
     "DOM": {"dominican rep.", "dominican republic"},
     "SAU": {"saudi arabia", "arabia", "nejd", "hejaz",
             "emirate of bin shal'an"},
+    "OMN": {"oman", "muscat and oman", "sultanate of muscat and oman"},
 }
 
 

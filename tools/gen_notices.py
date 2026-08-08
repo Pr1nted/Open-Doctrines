@@ -63,9 +63,16 @@ def render_notice(doc):
         "(see [LICENSE](LICENSE)). The components below are under their own terms,",
         "and those terms govern those components.",
         "",
-        "## Data",
-        "",
     ]
+    if doc.get("commercial_use"):
+        c = doc["commercial_use"]
+        L += ["## Commercial use of the map data", "", c["statement"], ""]
+        for line in c.get("obligations", []):
+            L.append(f"- {line}")
+        L += ["",
+              f"Checked by `{c['checked_by']}`, which runs in the test suite.",
+              ""]
+    L += ["## Data", ""]
     for d in doc["data"]:
         L += [
             f"### {d['name']}",

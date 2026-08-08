@@ -37,27 +37,91 @@ MAPS_DIR = os.path.join(ROOT, "data", "STDmaps")
 # map -> iso -> flag file stem in data/flags/
 PLAN = {
     "1914.odmap": {"TIB": "TIB", "NPL": "NPL_PRE1962", "BTN": "BTN_1949",
-                   "PAN": "PAN", "LUX": "LUX", "MNG": "MNG_BOGD"},
+                   "PAN": "PAN", "LUX": "LUX", "MNG": "MNG_BOGD",
+                   # Restoration Spain. The map was flying ESP_1938, which is
+                   # Franco's, twenty-four years before there was a Franco.
+                   "ESP": "ESP_RESTORATION"},
     "1918.odmap": {"TIB": "TIB", "NPL": "NPL_PRE1962", "BTN": "BTN_1949",
                    "PAN": "PAN", "LUX": "LUX", "UKR": "UKR",
                    "MNG": "MNG_BOGD", "MNE": "MNE_KINGDOM",
-                   "NJD": "NEJD", "HJZ": "HEJAZ"},
+                   "NJD": "NEJD", "HJZ": "HEJAZ",
+                   "ESP": "ESP_RESTORATION"},
     "1939.odmap": {"TIB": "TIB", "NPL": "NPL_PRE1962", "BTN": "BTN_1949",
                    "PAN": "PAN", "LUX": "LUX", "IRL": "IRL",
                    "EGY": "EGY_KINGDOM", "YEM": "YEM_KINGDOM",
                    "MNG": "MNG_MPR1939", "IRQ": "IRQ_KINGDOM", "MCK": "MCK",
-                   "SVK": "SVK"},
+                   "SVK": "SVK",
+                   # Siam adopted the tricolour in 1917 and was renamed
+                   # Thailand in June 1939. The scenario had the name right and
+                   # the flag twenty-two years stale -- a white elephant on red
+                   # under the word "Thailand", which never happened.
+                   "THA": "THA",
+                   # Black-red-green with the mosque emblem, 1931-1973. Every
+                   # map was falling back to a generated brown tricolour, and
+                   # 1962 to the 2013-2021 flag.
+                   "AFG": "AFG_KINGDOM"},
     "1945.odmap": {"TIB": "TIB", "NPL": "NPL_PRE1962", "BTN": "BTN_1949",
                    "PAN": "PAN", "LUX": "LUX", "EGY": "EGY_KINGDOM",
                    "JPN": "JPN", "LBN": "LBN", "AUT": "AUT",
                    "IRQ": "IRQ_KINGDOM", "SYR": "SYR_1932",
-                   "YEM": "YEM_KINGDOM"},
-    "1962.odmap": {"RVN": "VNM_SOUTH"},
+                   "YEM": "YEM_KINGDOM",
+                   # Not added by fix_map_history -- these two come straight
+                   # from the scenario file and never had a flag named, so
+                   # build_countries fell back to a generated tricolour. Iran's
+                   # was the right three colours with the lion and sun missing;
+                   # Ethiopia's was a brown gradient with nothing to do with
+                   # Ethiopia. Both have a real file already downloaded.
+                   "IRN": "IRN_PERSIA", "ETH": "ETH_EMPIRE",
+                   "AFG": "AFG_KINGDOM"},
+    # October 1962 inherits the modern base map's flags for every country
+    # `independent_default` fills in, so any flag adopted after 1962 arrives
+    # wrong by default -- Canada's maple leaf is three years early here, and
+    # Nepal's current flag was adopted that DECEMBER, two months after this
+    # scenario opens.
+    "1962.odmap": {"RVN": "VNM_SOUTH",
+                   # The lion and sun flew until 1979.
+                   "IRN": "IRN_PERSIA", "AFG": "AFG_KINGDOM",
+                   # Already on disk, just never pointed at.
+                   "NPL": "NPL_PRE1962",     # current flag is December 1962
+                   "MNG": "MNG_1945",        # MPR, 1945-1992
+                   "SRB": "YUG_SFR",         # the map renames this "Yugoslavia"
+                   "SYR": "SYR_1932",        # readopted on leaving the UAR, 1961
+                   "ETH": "ETH_EMPIRE",      # 1897-1974
+                   # Downloaded for this.
+                   "CAN": "CAN_RED_ENSIGN",  # maple leaf is 1965
+                   "ZAF": "ZAF_1928",        # 1928-1994
+                   "EGY": "EGY_UAR",         # the United Arab Republic
+                   "LBY": "LBY_KINGDOM",     # Kingdom of Libya, 1951-1969
+                   "SDN": "SDN_1956",        # blue-yellow-green, 1956-1970
+                   "LAO": "LAO_KINGDOM",     # Kingdom of Laos, 1952-1975
+                   "BGR": "BGR_1948",        # with the state emblem
+                   "ALB": "ALB_1946",        # with the star
+                   "BFA": "BFA_UPPER_VOLTA", # Upper Volta, not Burkina Faso
+                   "BDI": "BDI_1962",        # 1962-1966
+                   "CMR": "CMR_1961",        # 1961-1975
+                   "ESP": "ESP_FRANCO",      # 1945-1977, not the 1938-1945 one
+                   "MMR": "MMR_1948",        # Burma, 1948-1974
+                   "ROU": "ROU_1952",        # the socialist emblem, 1952-1965
+                   "RWA": "RWA_1962"},       # 1962-2001
 }
 
-# Still procedural, because Commons rate-limited the fetch and these have no
-# file yet. Re-run download_scenario_flags.py and add them here.
-PENDING = {}   # all downloaded
+# IDENTIFIED, NOT YET DOWNLOADED.
+#
+# Each of these is a 1962 flag this map currently gets wrong by inheriting the
+# modern one, and each already has its Commons title resolved and sitting in
+# tools/data/scenario_flags.json. Commons rate-limited the fetch (HTTP 429, and
+# their error asks for a less disruptive approach, so it was not retried
+# harder). Re-run tools/download_scenario_flags.py when it will serve them,
+# then move the line up into the 1962 plan above.
+PENDING = {
+    "IRQ": "Iraq 1959-1963 -- the current file is post-1963",
+    "LKA": "Ceylon 1951-1972",
+    "KHM": "Cambodia 1948-1970",
+    "TZA": "Tanganyika 1961-1964",
+    "YEM": "North Yemen, from the September 1962 revolution",
+}
+# Wanted but no such file on Commons under the obvious title; needs a human to
+# find the right one: Congo-Leopoldville 1960-1963, Eritrea 1952-1962.
 
 
 def apply(name, check):

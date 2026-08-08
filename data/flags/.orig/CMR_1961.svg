@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 336 224" xmlns:xlink="http://www.w3.org/1999/xlink">
+<rect width="336" height="224" fill="#fcd116"/>
+<rect width="224" height="224" fill="#ce1126"/>
+<rect width="112" height="224" fill="#007a5e"/>
+<g id="s" transform="translate(56 24) scale(21)">
+<g id="t">
+<polygon id="w" fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+<use xlink:href="#w" transform="scale(-1, 1)"/>
+</g>
+<use xlink:href="#t" transform="rotate(72)"/>
+<use xlink:href="#t" transform="rotate(-72)"/>
+<use xlink:href="#t" transform="rotate(144)"/>
+<use xlink:href="#t" transform="rotate(-144)"/>
+</g>
+<use transform="translate(0 42)" xlink:href="#s"/>
+</svg>

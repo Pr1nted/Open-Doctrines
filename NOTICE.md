@@ -7,6 +7,17 @@ OpenDoctrines itself is under the OpenDoctrines Non-Commercial License
 (see [LICENSE](LICENSE)). The components below are under their own terms,
 and those terms govern those components.
 
+## Commercial use of the map data
+
+The game is free, and its own licence is the project's to change at any time. This section is about the other half of that question: every third-party dataset and every piece of artwork that reaches a shipped `.odmap` is under terms that already permit commercial use, so releasing the maps commercially would need no renegotiation and no dataset replaced. Two datasets were dropped rather than shipped on a citation request with no grant — see "Data deliberately not used" below.
+
+- **World Bank Open Data** is CC BY 4.0: the attribution below must ship with the game, which it does, in `data/credits.txt` and here.
+- **Seven flag images** are CC BY-SA. Commercial use is permitted; the share-alike binds those images, so a *modified* version of one of them must be released under the same licence. The game is not affected, and the per-file list is in `data/licenses/FLAGS.md`.
+- **Everything else** — Natural Earth, USGS, NGA, and the remaining 221 flags — is public domain or CC0, with no obligation at all.
+- **No historical boundary dataset is shipped or vendored.** `tools/check_map_history.py` reads one, GPL-3.0, as a report a person reads before editing this project's own province tables by hand. What ships is which country held which ground in a given year, at this project's raster resolution: a historical fact, not a copy of anyone's expression of it. The check fails if that dataset ever appears inside the repository, because the reasoning only holds while it stays outside.
+
+Checked by `tools/check_data_licences.py`, which runs in the test suite.
+
 ## Data
 
 ### Natural Earth

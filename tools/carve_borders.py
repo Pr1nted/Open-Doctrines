@@ -101,17 +101,73 @@ EAST_PRUSSIA_1939 = EP_POL_SOUTH + [
     (19.90, 54.95), (19.50, 54.60),
 ]
 
-# The Second Polish Republic on 1 September 1939, sharing both edges above.
+# THE EASTERN HALF OF THE SECOND POLISH REPUBLIC.
+#
+# The first trace of this was drawn to the wrong line. Its eastern edge never
+# went past 26.8E and dipped to 23.6E across Volhynia, which is roughly where
+# Poland's border is TODAY -- so the carve it drove recovered the Kresy in name
+# and left most of it Soviet. Measured against the real 1938 border, Poland
+# came out at 73% of its own area, with Rowne, Pinsk, Stanislawow and Wilno all
+# on the wrong side.
+#
+# The line below is the one the Treaty of Riga drew in 1921 and the one that
+# held until 17 September 1939. It runs a good 200-400 km east of the modern
+# border for most of its length: east of Wilno, east of Baranowicze, within
+# 30 km of Minsk, east of Rowne, and down the Zbrucz to the Dniester.
+#
+# Traced in segments because each is a different country's border, and the
+# reason each is where it is differs. Checkpoints, all verified before this was
+# committed: Wilno, Grodno, Nowogrodek, Baranowicze, Pinsk, Kowel, Luck, Rowne,
+# Tarnopol, Lwow and Stanislawow inside; Kaunas, Utena, Zarasai, Minsk,
+# Polock, Mozyrz, Zytomierz, Kijow, Kamieniec Podolski and Czerniowce outside.
+
+# Slovakia and the Carpathian ridge, west to east. Hungary annexed
+# Carpatho-Ukraine in March 1939, so the southeastern stretch is Hungary's.
+POL_SOUTH = [
+    (19.40, 49.50), (19.80, 49.20), (20.40, 49.32), (21.00, 49.35),
+    (21.80, 49.35), (22.55, 49.08), (22.90, 49.02),
+    (23.70, 48.55), (24.50, 47.95),
+]
+# Romania: the Carpathian crest to the Dniester, along the Czeremosz.
+POL_ROMANIA = [(24.90, 47.92), (25.30, 48.10), (25.75, 48.35), (26.25, 48.55)]
+# The Riga line, south to north: up the Zbrucz, across Volhynia and Polesie,
+# past Minsk and up to the Latvian tripoint on the Dzwina.
+POL_SOVIET = [
+    (26.32, 48.85), (26.38, 49.25), (26.45, 49.65), (26.65, 50.05),
+    (26.85, 50.35), (27.00, 50.70), (26.90, 51.05), (27.05, 51.35),
+    (27.50, 51.55), (27.60, 51.85), (27.20, 52.15), (26.85, 52.55),
+    (27.00, 53.05), (27.20, 53.55), (27.15, 53.95), (27.00, 54.25),
+    (27.10, 54.65), (27.25, 55.05), (27.50, 55.40), (27.55, 55.67),
+]
+POL_LATVIA = [(27.00, 55.62), (26.55, 55.55)]
+# Lithuania, northeast to southwest. This is the administration line of 1923,
+# not a border either side recognised: Poland took Wilno in 1920 and Lithuania
+# claimed it until 1939 without ever holding it.
+POL_LITHUANIA = [
+    (26.10, 55.35), (25.60, 55.28), (25.20, 55.18), (24.85, 54.90),
+    (24.55, 54.55), (24.30, 54.30), (23.90, 54.32), (23.40, 54.35),
+    (22.90, 54.40),
+]
+# The Corridor's Baltic coast. Follows the shore rather than cutting the bay,
+# because a straight line from the Vistula to the German border passes SOUTH of
+# Gdynia -- the one port the Second Republic built for itself.
+POL_COAST = [
+    (19.30, 54.45), (18.95, 54.70), (18.55, 54.86), (18.00, 54.82),
+    (17.30, 54.80), (16.90, 54.65),
+]
+
+# The Second Polish Republic on 1 September 1939, sharing both German edges.
+#
+# The Free City of Danzig falls inside this outline and should not: it was
+# neither Polish nor German but a League mandate with its own government. There
+# is no country for it on this map and it is about seven pixels across at this
+# raster, so Poland -- which held the harbour rights, the post office and the
+# Westerplatte garrison -- is the closest available answer.
 POLAND_1939 = (
     GER_POL_WEST
-    + [(19.80, 49.20), (21.00, 49.30), (22.90, 49.10),        # Slovakia
-       (24.50, 49.10), (25.70, 49.60), (24.10, 50.40),        # Romania, USSR
-       (23.60, 51.00), (23.70, 51.60), (25.20, 51.60),
-       (25.50, 52.00), (26.00, 52.50), (26.50, 53.50),
-       (26.20, 54.50), (26.80, 55.30),                        # Latvia
-       (25.60, 54.30), (24.30, 54.30)]                        # Lithuania
+    + POL_SOUTH + POL_ROMANIA + POL_SOVIET + POL_LATVIA + POL_LITHUANIA
     + EP_POL_SOUTH[::-1]
-    + [(19.30, 54.45), (16.90, 54.60)]                        # the Corridor
+    + POL_COAST
 )
 
 # Austrian Galicia and Bukovina, as held in October 1918. Austria-Hungary did

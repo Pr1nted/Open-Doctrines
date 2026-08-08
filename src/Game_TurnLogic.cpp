@@ -127,6 +127,102 @@ bool Game::isProvinceCoastal(int pid) const {
     return answer(false);
 }
 
+// === portAnchor ===
+Vector2 Game::portAnchor(int pid) const {
+    auto cached = m_portAnchorCache.find(pid);
+    if (cached != m_portAnchorCache.end()) return cached->second;
+
+    Vector2 centre{0, 0};
+    auto cit = m_provinceCenters.find(pid);
+    if (cit != m_provinceCenters.end()) centre = cit->second;
+
+    auto it = m_provincePixels.find(pid);
+    if (it == m_provincePixels.end()) {
+        m_portAnchorCache[pid] = centre;
+        return centre;
+    }
+
+    const int w = m_landSea.getWidth();
+    const int h = m_landSea.getHeight();
+
+    // Three things decide the anchor, in this order.
+    //
+    // DRY LAND first. A province's pixels are not all land: an archipelago
+    // province covers the water between its islands too, and those pixels are
+    // both closer to the centroid and more surrounded by sea than any real
+    // coast is. Ranking on openness alone therefore moored Norway, Greece and
+    // Japan in a strait offshore of themselves -- the same floating anchor
+    // this function exists to stop, arrived at by a different route. A harbour
+    // is on land. Only a province with no land at all in the raster, which at
+    // this resolution means an island smaller than five kilometres across, may
+    // have its anchor in the water.
+    //
+    // OPENNESS second, because a harbour on a puddle is not a harbour. Counting
+    // the water in a 7x7 box separates a pixel on the coast of a sea from a
+    // pixel beside a pond, and from a pixel in a notch where the ship icon
+    // would be drawn over rock. It is deliberately a cheap local count and not
+    // another flood fill: isProvinceCoastal already owns the expensive question
+    // of whether this province has a sea at all.
+    //
+    // DISTANCE last, so that among equally good candidates the anchor goes to
+    // the one nearest the middle of the province -- where a player looking at
+    // that province expects to find it, rather than out at whichever cape
+    // happens to face the most water.
+    const int RING = 3;              // 7x7
+    const int OPEN_ENOUGH = 8;       // of 48 neighbours
+    long long bestScore = -1;
+    float bestDist = 0.0f;
+    Vector2 best = centre;
+
+    for (int idx : it->second) {
+        const int px = idx % w;
+        const int py = idx / w;
+
+        bool touchesWater = false;
+        const int dx[4] = {1, -1, 0, 0};
+        const int dy[4] = {0, 0, 1, -1};
+        for (int d = 0; d < 4 && !touchesWater; ++d) {
+            const int nx = px + dx[d];
+            const int ny = py + dy[d];
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h && !m_landSea.isLand(nx, ny))
+                touchesWater = true;
+        }
+        if (!touchesWater) continue;
+
+        int open = 0;
+        for (int oy = -RING; oy <= RING; ++oy) {
+            const int ny = py + oy;
+            if (ny < 0 || ny >= h) continue;
+            for (int ox = -RING; ox <= RING; ++ox) {
+                if (ox == 0 && oy == 0) continue;
+                const int nx = px + ox;
+                if (nx < 0 || nx >= w) continue;
+                if (!m_landSea.isLand(nx, ny)) open++;
+            }
+        }
+
+        const float ddx = (float)px - centre.x;
+        const float ddy = (float)py - centre.y;
+        const float dist = ddx * ddx + ddy * ddy;
+        // Land outranks any amount of openness, so it is a whole digit above
+        // it rather than a tie-break within it.
+        const long long score = (m_landSea.isLand(px, py) ? 100 : 0)
+                              + ((open >= OPEN_ENOUGH) ? OPEN_ENOUGH : open);
+        if (score > bestScore || (score == bestScore && dist < bestDist)) {
+            bestScore = score;
+            bestDist = dist;
+            best = {(float)px, (float)py};
+        }
+    }
+
+    // No pixel of this province touches water at all: land-locked, and the
+    // centre is the only honest answer. The map data should not be putting a
+    // port here, and tools/check_map_naval.py says so, but drawing the anchor
+    // somewhere is better than drawing it at (0,0).
+    m_portAnchorCache[pid] = best;
+    return best;
+}
+
 // === processArtilleryOrders ===
 void Game::processArtilleryOrders(int countryId) {
     // Look up artillery effects from researched nodes

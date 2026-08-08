@@ -27,6 +27,17 @@ endif()
 # exactly what happened while CMakeLists said 1.0.2 and Game.cpp said 1.0.2a.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" OD_VERSION_RAW)
 string(STRIP "${OD_VERSION_RAW}" OD_VERSION_FULL)
+# Editing VERSION must RE-CONFIGURE, not just rebuild.
+#
+# Both places the version lands -- the OD_VERSION_STRING compile definition and
+# the macOS Info.plist -- are written at configure time, and a plain
+# `cmake --build` does not re-run configure. Without this line CMake has no
+# reason to think anything changed, so an existing build tree keeps stamping
+# whatever version it was first configured with: bumping VERSION to 1.0.6a left
+# the app reporting 1.0.5a in its About box, in its bundle, and in every save
+# it wrote, with a correct VERSION file sitting in the tree the whole time.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 if(NOT OD_VERSION_FULL MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
     message(FATAL_ERROR "VERSION file is malformed: '${OD_VERSION_FULL}'")
 endif()

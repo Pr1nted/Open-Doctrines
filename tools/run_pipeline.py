@@ -253,14 +253,127 @@ def main():
     shutil.copy2(final_map, stdmap_dst)
     print(f"  Copied {final_map} -> {stdmap_dst}")
 
-    # ── Step 18b: Historical scenarios ────────────────────────────
-    # Every scenario is the Modern Day province layer under different owners,
-    # so this must run after step 18 has put the finished map in STDmaps/.
-    step("18b", "Generate historical scenario maps")
+    # ── Step 18a: Fill the water that is too small to be sea ──────
+    # Natural Earth at 8192x4096 leaves 7,436 water bodies under the engine's
+    # own MIN_WATER_BODY, and each one is a hole through a country that the
+    # border and selection outlines then trace around. Filled here, on the base
+    # map only, because step 18b copies land_sea.png into every scenario --
+    # so the scenarios inherit a clean raster instead of each needing its own
+    # pass, and the fill happens exactly once.
+    step("18a", "Fill sub-threshold water bodies in the base map")
     run_ignore_fail(
-        [sys.executable, os.path.join(TOOLS_DIR, "generate_scenario.py"), "--all"],
-        "scenario generation",
+        [sys.executable, os.path.join(TOOLS_DIR, "fill_water_speckle.py"),
+         "--map", "map"],
+        "water speckle fill",
     )
+
+    # ── Steps 18b-18f: the historical maps, in the only order that works ──
+    #
+    # These five ran by hand for months and were not in this file at all, so a
+    # pipeline run produced scenarios with none of the historical corrections:
+    # Germany's entire colonial empire handed to Britain and France six years
+    # before it was taken from them, no Panama, no Tibet, no Nepal, no
+    # Mongolia, no Occupied Japan. The maps in the repository were right only
+    # because somebody remembered to run these afterwards.
+    #
+    # THE ORDER IS NOT ARBITRARY.
+    #
+    #   18b generate_scenario  re-cuts the province layer per scenario. Every
+    #                          province id downstream comes from here.
+    #   18c carve_states       cuts NEW provinces for states smaller than one
+    #                          province (Bhutan, Luxembourg). Works from traced
+    #                          polygons and parent ISO codes, so it does not
+    #                          care what the ids are -- but it creates ids, so
+    #                          it must precede anything that reads them.
+    #   18d fix_1939_history   restores the nine states The Gathering Storm was
+    #                          missing -- Ireland, Panama, Egypt, Iraq, Nepal,
+    #                          Tibet, Mongolia, Manchukuo, Yemen. Must precede
+    #                          18f, which has 1939 reassignments that move
+    #                          ground INTO Mongolia and Yemen and can do nothing
+    #                          but warn if those states are not there yet.
+    #   18e carve_borders      splits provinces along a border that ran THROUGH
+    #                          one. Polygon-driven, and each rule also names the
+    #                          country it takes ground FROM.
+    #   18f fix_map_history    adds, merges, renames and reassigns whole
+    #                          provinces on every map, and skips any state 18d
+    #                          already put down.
+    #   18g carve_borders      AGAIN. See below.
+    #   18h fix_naval_layer    re-berths every fleet and moves any land-locked
+    #                          port. Last overall, because everything above
+    #                          changes which country owns which harbour.
+    #
+    # WHY carve_borders RUNS TWICE
+    #
+    # Its two maps need it on opposite sides of fix_map_history, and this was
+    # established by running the whole pipeline both ways and diffing the
+    # result against the maps in the repository:
+    #
+    #   1939 needs it FIRST.  The Kresy rule takes ground from the SOVIET UNION
+    #                         and gives a slice of it to Poland. fix_map_history
+    #                         has a Kresy reassignment of its own that moves a
+    #                         WHOLE province; run first, it hands Poland the lot
+    #                         and the carve then finds nothing Soviet left to
+    #                         cut. Poland ends up 1,338 px too big.
+    #   1918 needs it LAST.   The Galicia rule takes ground from UKRAINE, and
+    #                         the Ukrainian State does not exist until
+    #                         fix_map_history creates it. Run first, the rule
+    #                         matches nothing, prints "0 pixels changed hands",
+    #                         and Lviv stays Ukrainian in October 1918.
+    #
+    # Running it in both positions satisfies both, and costs nothing: a carve
+    # that has already happened finds its polygon full of the country it was
+    # going to give the ground to, and reports zero. Running it twice is only
+    # safe because fix_map_history resolves provinces by position rather than
+    # by id, so the ids the second carve creates cannot invalidate it.
+    #
+    # These are `run`, not `run_ignore_fail`, on purpose. Every other data step
+    # degrades gracefully -- a missing overlay costs you resources on a map that
+    # still works. These do not: skipping one ships a scenario that is silently
+    # wrong about the twentieth century, and looks completely normal.
+    step("18b", "Generate historical scenario maps")
+    run([sys.executable, os.path.join(TOOLS_DIR, "generate_scenario.py"), "--all"],
+        "scenario generation")
+
+    step("18c", "Carve provinces for states too small to have one")
+    run([sys.executable, os.path.join(TOOLS_DIR, "carve_states.py")],
+        "state carving")
+
+    step("18d", "Restore the nine states 1939 was missing")
+    run([sys.executable, os.path.join(TOOLS_DIR, "fix_1939_history.py")],
+        "1939 state restoration")
+
+    step("18e", "Split provinces along borders that ran through them")
+    run([sys.executable, os.path.join(TOOLS_DIR, "carve_borders.py")],
+        "border carving (before the state restoration)")
+
+    step("18f", "Restore the states each scenario's own date had")
+    run([sys.executable, os.path.join(TOOLS_DIR, "fix_map_history.py")],
+        "historical state restoration")
+
+    step("18g", "Border carving again, for the rules that needed a state first")
+    run([sys.executable, os.path.join(TOOLS_DIR, "carve_borders.py")],
+        "border carving (after the state restoration)")
+
+    # ── Step 18h: real flags for the states 18d-18f added ─────────
+    #
+    # fix_map_history, fix_1939_history and carve_states each give the state
+    # they add a PROCEDURAL flag -- stripes and symbols from the engine's own
+    # vocabulary. That is a reasonable default for a tool that has to invent
+    # something, and it is never right: Nepal's double pennant is not a
+    # rectangle, Bhutan's dragon and Tibet's snow lions have no symbol, and
+    # Iraq's hoist trapezoid comes out as two red stars on a white band.
+    #
+    # This swaps in the real image, at that scenario's date, from the same
+    # licence-audited Wikimedia set as the other 214 flags. It has to run after
+    # every tool that can add a country and before anything that reads the
+    # finished archive.
+    step("18h", "Swap the procedural flags for the real ones")
+    run([sys.executable, os.path.join(TOOLS_DIR, "attach_scenario_flags.py")],
+        "scenario flag attachment")
+
+    step("18i", "Re-berth fleets and move land-locked ports")
+    run([sys.executable, os.path.join(TOOLS_DIR, "fix_naval_layer.py")],
+        "naval layer repair")
 
     # ── Step 19: Generate zero-turn save ──────────────────────────
     step(19, "Generate zero-turn save (.odsv)")

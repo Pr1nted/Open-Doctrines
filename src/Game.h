@@ -2222,6 +2222,23 @@ private:
      * Cleared with m_provincePixels when a map loads; see Game_Loading.cpp.
      */
     mutable std::unordered_map<int, bool> m_coastalCache;
+    /**
+     * Where a province's harbour is, as against where its middle is.
+     *
+     * The navy view drew the anchor at m_provinceCenters, and a province
+     * centroid is not a harbour. For a province wrapped around a bay the
+     * centroid is in the bay, so roughly thirty anchors per map floated in open
+     * water with no land under them -- most visibly around the Baltic -- and a
+     * handful landed inside the neighbouring country instead. It is the same
+     * mistake the ship generator used to make, one layer up: a centroid is a
+     * convenient point, not a place anything happens.
+     *
+     * Same lifetime and same reasoning as m_coastalCache: a question about the
+     * land/sea image, which cannot change while a map is loaded, and expensive
+     * enough to be worth not asking every frame.
+     */
+    mutable std::unordered_map<int, Vector2> m_portAnchorCache;
+    Vector2 portAnchor(int pid) const;
     void processArtilleryOrders(int countryId);
     void processShipBombardOrders(int countryId);
     void processShipDisembarks(int countryId);

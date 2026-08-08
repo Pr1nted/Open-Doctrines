@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" version="1.0">
+  <rect width="900" height="600" style="fill:#f9d302;stroke-width:2.44949"/>
+  <rect width="300" height="600" style="fill:#e20212;stroke-width:2"/>
+  <path d="m 552.01312,469.99804 h -44.9232 L 439.7051,322.86524 h -48.66682 v 147.1328 h -43.0514 V 130.00197 h 93.59002 c 29.94866,3.4e-4 54.28203,7.95346 73.00021,23.85937 18.71779,14.58104 28.07678,39.10315 28.07702,73.5664 -2.4e-4,26.51064 -6.23955,47.0562 -18.71801,61.63672 -12.47886,14.5809 -26.82931,23.85953 -43.05142,27.83594 l 71.12842,153.09764 m -52.41041,-242.5703 c -1.8e-4,-18.55701 -5.61557,-33.13773 -16.84621,-43.74218 -9.98307,-10.60386 -26.82927,-15.90594 -50.53859,-15.90625 H 391.03828 V 285.0879 h 52.41042 c 14.97427,1.8e-4 28.07686,-3.97638 39.3078,-11.9297 11.23064,-9.27842 16.84603,-24.52189 16.84621,-45.73046" style="font-style:normal;font-variant:normal;font-weight:400;font-stretch:normal;font-size:246.933px;line-height:125%;font-family:SimHei;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#000;fill-opacity:1;stroke:none;stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+  <rect width="300" height="600" x="600" style="fill:#319000;fill-opacity:1;stroke-width:2"/>
+</svg>

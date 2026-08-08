@@ -1321,20 +1321,38 @@ def main():
     ls_px = ls_img.load()
     pw2, ph2 = prov_img.size
 
-    def has_ocean_neighbor(pid, check_radius=3):
-        """Check if any pixel of this province is within check_radius pixels of ocean (land_sea=0)."""
-        for y in range(0, ph2, 8):
-            for x in range(0, pw2, 8):
-                r, g, b = prov_px[x, y]
-                if r == 0 and g == 0 and b == 0:
-                    continue
-                if (r << 16) | (g << 8) | b != pid:
-                    continue
-                for ny in range(max(0, y - check_radius), min(ph2, y + check_radius + 1)):
-                    for nx in range(max(0, x - check_radius), min(pw2, x + check_radius + 1)):
-                        if ls_px[nx % pw2, ny] == 0:
-                            return True
-        return False
+    # Coastal, decided the way the ENGINE decides it.
+    #
+    # This used to be its own approximation: sample every eighth pixel of the
+    # province and look five pixels out for anything that is not land. It said
+    # yes to inland Belgium, which is how every shipped map came to carry a
+    # level-3 port -- Antwerp, whose Scheldt approach the raster does not
+    # resolve -- on a province Game::isProvinceCoastal calls land-locked. The
+    # player got an anchor in the middle of Belgium that could not be upgraded
+    # and could not berth a ship.
+    #
+    # Two coastal tests will always eventually disagree, and when they do it is
+    # the map data that is wrong, because the engine's answer is the one the
+    # player sees. So there is one test now: some pixel of the province is
+    # adjacent to a water body of at least MIN_WATER_BODY pixels.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from fill_water_speckle import label_components, min_water_body
+
+    _ls_arr = np.array(ls_img, dtype=np.uint8) >= 128
+    _pv_arr = np.array(prov_img.convert("RGB"), dtype=np.uint32)
+    _pid_arr = (_pv_arr[:, :, 0] << 16 | _pv_arr[:, :, 1] << 8 | _pv_arr[:, :, 2])
+    _lbl, _sizes = label_components(~_ls_arr)
+    _big = (_lbl > 0) & (_sizes[_lbl] >= min_water_body())
+    _grow = np.zeros_like(_big)
+    _grow[1:, :] |= _big[:-1, :]
+    _grow[:-1, :] |= _big[1:, :]
+    _grow[:, 1:] |= _big[:, :-1]
+    _grow[:, :-1] |= _big[:, 1:]
+    COASTAL = set(np.unique(_pid_arr[_grow & (_pid_arr != 0)]).tolist()) - {0}
+    print(f"  {len(COASTAL)} coastal provinces by the engine's own rule")
+
+    def has_ocean_neighbor(pid, check_radius=None):
+        return pid in COASTAL
 
     def nearest_ocean_xy(cx, cy, max_radius=200):
         """Find the nearest pixel that is truly ocean (land_sea=0 AND provinces.png is black).

@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="800" viewBox="0 0 336 224" width="1200">
+  <rect fill="#fcd116" height="224" width="336"/>
+  <rect fill="#ce1126" height="224" width="224"/>
+  <rect fill="#007a5e" height="224" width="112"/>
+  <g id="s" transform="translate(56 24) scale(21)">
+    <g id="t">
+      <polygon fill="#fcd116" id="w" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+      <g transform="scale(-1.000000,1.000000)">
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+      </g>
+    </g>
+    <g transform="rotate(72.000000)">
+      <g>
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(-72.000000)">
+      <g>
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(144.000000)">
+      <g>
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        </g>
+      </g>
+    </g>
+    <g transform="rotate(-144.000000)">
+      <g>
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g transform="translate(0.000000,42.000000)">
+    <g transform="translate(56 24) scale(21)">
+      <g>
+        <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        <g transform="scale(-1.000000,1.000000)">
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+        </g>
+      </g>
+      <g transform="rotate(72.000000)">
+        <g>
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(-72.000000)">
+        <g>
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(144.000000)">
+        <g>
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          </g>
+        </g>
+      </g>
+      <g transform="rotate(-144.000000)">
+        <g>
+          <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          <g transform="scale(-1.000000,1.000000)">
+            <polygon fill="#fcd116" points="0,0 0,1 .5,1" transform="translate(0 -1) rotate(18)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

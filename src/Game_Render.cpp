@@ -2745,11 +2745,11 @@ void Game::drawInner() {
 
         // ── Step 3: Draw ports (filtered) ──
         for (auto& [pid, port] : m_provincePorts) {
-            auto cit = m_provinceCenters.find(pid);
-            if (cit == m_provinceCenters.end()) continue;
+            if (m_provinceCenters.find(pid) == m_provinceCenters.end()) continue;
             Province* prov = m_provinces.getProvinceById(pid);
             if (!filterCheck(prov ? prov->countryId : 0)) continue;
-            Vector2 sp = worldToScreen(cit->second);
+            // The province's coast, not its middle. See Game::portAnchor.
+            Vector2 sp = worldToScreen(portAnchor(pid));
             float aSize = std::max(14.0f * cam.zoom, 6.0f);
             float ax = sp.x;
             float ay = sp.y;

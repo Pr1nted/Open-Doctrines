@@ -16,10 +16,16 @@ a scenario about the war Japan was already fighting.
 HOW A PROVINCE IS CHOSEN
 
 Provinces here have no names, so they can only be identified by where they are.
-Every province was reduced to a bounding box in latitude/longitude and moved
-ONLY when that box falls inside the real 1939 borders of the country claiming
-it. That rule is what keeps this honest, and it is why two entries below are
-deliberately partial and two more were dropped entirely:
+Each entry below names a list of (lon, lat) anchors and the tool asks the map
+which province covers each one -- see the longer note in fix_map_history.py,
+whose tables were migrated off hardcoded province ids at the same time and for
+the same reason: ids are output of the generator and drift on every re-cut.
+
+WHICH provinces an entry takes was decided by reducing every province to a
+bounding box in latitude/longitude and moving it ONLY when that box falls
+inside the real 1939 borders of the country claiming it. That rule is what
+keeps this honest, and it is why two entries below are deliberately partial
+and two more were dropped entirely:
 
   * Luxembourg  its one province reaches 51.15N, well into Belgium. Making
                 Luxembourg out of it would hand it a slab of the Ardennes --
@@ -56,16 +62,19 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ODMAP = os.path.join(ROOT, "data", "STDmaps", "1939.odmap")
 
-# iso -> (name, colour, treasury, compass, flag, province ids, note)
+# iso -> (name, colour, treasury, compass, flag, anchors, note)
 #
-# Province ids come from the bounding-box test described above; each list was
-# checked against the country's real 1939 borders before being written down.
+# `at` is a list of (lon, lat) points, one per province the entry takes, each
+# at the deepest interior point of that province. The provinces themselves came
+# from the bounding-box test described above and were checked against the
+# country's real 1939 borders before being written down.
 NEW_STATES = {
     "IRL": dict(
         name="Ireland", color="#4f9d5a", treasury=8.0,
         compass={"left": -10, "auth": 5},
         flag={"type": "vstripes_3", "colors": ["#169b62", "#ffffff", "#ff883e"]},
-        provinces=[553, 554, 555, 556],
+        at=[(-8.1079, 53.2837), (-9.1187, 52.229), (-6.6577, 53.064),
+                   (-8.064, 54.8657)],
         note="Free State since 1922, sovereign under the 1937 constitution, "
              "neutral through the war. Province 552 is Northern Ireland and "
              "stays British.",
@@ -79,7 +88,7 @@ NEW_STATES = {
                            "colors": ["#005293"]},
                           {"type": "star_5", "x": 0.75, "y": 0.72, "size": 0.18,
                            "colors": ["#d21034"]}]},
-        provinces=[177, 178, 179],
+        at=[(-80.9692, 8.2837), (-82.4634, 8.7231), (-77.7173, 8.1958)],
         note="Independent of Colombia since 1903. All three provinces lie "
              "wholly inside Panama.",
     ),
@@ -89,7 +98,9 @@ NEW_STATES = {
         flag={"type": "solid", "colors": ["#0f7d3d"],
               "symbols": [{"type": "crescent_star", "x": 0.5, "y": 0.5,
                            "size": 0.45, "colors": ["#ffffff"]}]},
-        provinces=[350, 351, 353, 354, 355, 356, 357],
+        at=[(32.3657, 27.8833), (30.3003, 26.8286), (26.4771, 23.269),
+                   (26.0376, 25.3784), (26.2134, 30.1245), (30.52, 29.8608),
+                   (33.8599, 29.5532)],
         note="Independent since 1922 though British troops remained. The Sudan "
              "(province 352) was an Anglo-Egyptian condominium and stays "
              "British, as does Palestine (349).",
@@ -102,7 +113,7 @@ NEW_STATES = {
                            "colors": ["#ce1126"]},
                           {"type": "star_7", "x": 0.44, "y": 0.5, "size": 0.22,
                            "colors": ["#ce1126"]}]},
-        provinces=[347],
+        at=[(44.4946, 31.9702)],
         note="Independent and a League member since 1932. The stars stand in "
              "for the hoist trapezoid, which has no pattern here.",
     ),
@@ -114,7 +125,7 @@ NEW_STATES = {
                            "colors": ["#ffffff"]},
                           {"type": "crescent", "x": 0.5, "y": 0.68, "size": 0.30,
                            "colors": ["#ffffff"]}]},
-        provinces=[583],
+        at=[(81.5405, 29.2017)],
         note="PARTIAL. Never colonised; the 1923 treaty confirmed its "
              "independence. Only the western province lies inside Nepal -- the "
              "eastern ones are mostly Indian and stay British. The double "
@@ -127,7 +138,8 @@ NEW_STATES = {
         flag={"type": "sunburst", "colors": ["#ffd700", "#ce1126", "#1e4d9b"],
               "symbols": [{"type": "mountain", "x": 0.5, "y": 0.62, "size": 0.42,
                            "colors": ["#ffffff"]}]},
-        provinces=[132, 133, 148, 149, 150],
+        at=[(81.145, 31.2671), (83.6938, 30.564), (95.0317, 31.3989),
+                   (91.604, 29.6411), (86.5503, 32.5415)],
         note="De facto independent from 1913 until 1950: its own government, "
              "army and currency, and no Chinese administration. The snow lions "
              "have no equivalent symbol, so the rayed field and snow mountain "
@@ -139,7 +151,10 @@ NEW_STATES = {
         flag={"type": "solid", "colors": ["#c8102e"],
               "symbols": [{"type": "star_5", "x": 0.5, "y": 0.5, "size": 0.35,
                            "colors": ["#ffd700"]}]},
-        provinces=[152, 153, 154, 155, 156, 159, 160, 162, 719, 720],
+        at=[(109.314, 44.4946), (100.7007, 47.3071), (103.7329, 48.4937),
+                   (96.7456, 45.9888), (106.2817, 45.9888), (92.3511, 46.3843),
+                   (100.7007, 43.7476), (94.0649, 47.9663), (114.6753, 48.8452),
+                   (113.6206, 46.0767)],
         note="A Soviet satellite in everything but name, and fighting Japan at "
              "Khalkhin Gol as this scenario opens -- but a separate state, not "
              "Chinese territory. Inner Mongolia stays Chinese.",
@@ -149,7 +164,8 @@ NEW_STATES = {
         compass={"left": -15, "auth": 95},
         flag={"type": "canton", "colors": ["#ffde00", "#d7141a"],
               "symbols": []},
-        provinces=[713, 714, 715, 716, 717, 718],
+        at=[(119.8169, 42.8687), (127.9028, 43.3081), (125.9253, 47.2632),
+                   (121.1353, 48.8892), (130.4517, 46.2964), (124.1235, 42.0776)],
         note="A Japanese puppet since 1932, with its own emperor, army and "
              "currency. Korea (721-724) was annexed Japanese territory rather "
              "than part of Manchukuo and stays with Japan.",
@@ -160,7 +176,7 @@ NEW_STATES = {
         flag={"type": "solid", "colors": ["#ce1126"],
               "symbols": [{"type": "sword", "x": 0.5, "y": 0.5, "size": 0.42,
                            "colors": ["#ffffff"]}]},
-        provinces=[597, 599],
+        at=[(45.769, 15.8423), (43.6157, 15.5786)],
         note="The Mutawakkilite Kingdom, independent of the Ottomans since "
              "1918. Aden and the Hadhramaut (596, 598) were British and stay "
              "British.",
@@ -191,6 +207,13 @@ def main():
         compass = json.load(open(os.path.join(work, "country_compass.json")))
         relations = json.load(open(os.path.join(work, "relations.json")))
 
+        # Provinces are named by WHERE THEY ARE, not by id -- see the same
+        # note in fix_map_history.py, which this file's tables were migrated
+        # alongside. Ids are output of the generator and drift on every re-cut.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fix_map_history import province_raster, resolve
+        pid_arr = province_raster(work)
+
         have = {v["iso_a3"] for v in countries.values()}
         next_id = max(int(k) for k in countries if int(k) < 60000) + 1
 
@@ -203,7 +226,7 @@ def main():
             # Only move a province that is where it is supposed to be, and that
             # still belongs to whoever we expected to take it from.
             owners = {}
-            for pid in spec["provinces"]:
+            for pid in resolve(spec["at"], pid_arr, iso):
                 pv = provinces.get(str(pid))
                 if pv is None:
                     print(f"  WARN  {iso}: province {pid} does not exist", file=sys.stderr)
@@ -225,7 +248,7 @@ def main():
             compass[iso] = spec["compass"]
 
             n = 0
-            for pid in spec["provinces"]:
+            for pid in resolve(spec["at"], pid_arr, iso):
                 pv = provinces.get(str(pid))
                 if pv is None:
                     continue

@@ -7,13 +7,16 @@ The PNGs in `flags/` inside `map.odmap` are rasterisations of these SVGs.
 Rasterising is not authorship, so each PNG is under the same terms as the
 file it came from.
 
-228 files: 220 public domain or equivalent, 8 requiring attribution or review.
+250 files: 237 public domain or equivalent, 13 requiring attribution or review.
 
 ## Attribution required
 
 | Country | File | Licence | Author |
 |---|---|---|---|
+| BGR_1948 | Flag of Bulgaria (1948–1967).svg | CC BY-SA 4.0 | Scroch |
 | ESP_1938 | Flag of Spain (1938–1945).svg | CC BY-SA 4.0 | SanchoPanzaXXI |
+| ESP_FRANCO | Flag of Spain (1945–1977).svg | CC BY-SA 4.0 | SanchoPanzaXXI |
+| ESP_RESTORATION | Flag of Spain (1785–1873, 1875–1931).svg | CC BY-SA 3.0 | previous version User:Ignaciogavira ; current version HansenBCN, designs from SanchoPanzaXXI |
 | GEO_DR | Flag of Georgia (1918–1921, 4-5).svg | CC BY-SA 4.0 | Vector version: Giorgi Balakhadze. Original: Iakob Nikoladze |
 | MNG_MPR1939 | Flag of the Mongolian People's Republic (1940–1945).svg | CC BY-SA 4.0 | Ericmetro |
 | NEJD | Flag of the Emirate of Nejd and Hasa.svg | CC BY-SA 3.0 | DavidFirst |
@@ -21,6 +24,8 @@ file it came from.
 | OMN | Flag of Oman.svg | OGL-om 1.0 | See File history below for details. |
 | SRB_KINGDOM | Flag of Serbia (1882–1918).svg | CC BY-SA 3.0 | Guilherme Paula |
 | TIB | Flag of Tibet (1916-1951).svg | CC BY-SA 4.0 | Felipe Fidelis Tobias |
+| TZA_TANGANYIKA | Flag of Tanganyika (1961–1964).svg | CC BY-SA 3.0 | Mysid |
+| YEM | Flag of Yemen.svg | CC BY-SA 4.0 | 愛喝奶茶 |
 
 ## Public domain or equivalent
 
@@ -29,10 +34,12 @@ No attribution obligation. Listed for provenance.
 | Country | File | Licence |
 |---|---|---|
 | AFG | Flag of Afghanistan (2013–2021).svg | Public domain |
+| AFG_KINGDOM | Flag of Afghanistan (1931–1973).svg | Public domain |
 | AGO | Flag of Angola.svg | Public domain |
 | ALA | Flag of Åland.svg | Public domain |
 | ALB | Flag of Albania.svg | Public domain |
 | ALB_1914 | Flag of Albania (1914–1920).svg | Public domain |
+| ALB_1946 | Flag of Albania (1946–1992).svg | Public domain |
 | ARE | Flag of the United Arab Emirates.svg | Public domain |
 | ARG | Flag of Argentina.svg | Public domain |
 | ARM | Flag of Armenia.svg | Public domain |
@@ -42,9 +49,11 @@ No attribution obligation. Listed for provenance.
 | AUT | Flag of Austria.svg | Public domain |
 | AZE | Flag of Azerbaijan.svg | Public domain |
 | BDI | Flag of Burundi.svg | Public domain |
+| BDI_1962 | Flag of Burundi (1962–1966).svg | Public domain |
 | BEL | Flag of Belgium.svg | Public domain |
 | BEN | Flag of Benin.svg | Public domain |
 | BFA | Flag of Burkina Faso.svg | Public domain |
+| BFA_UPPER_VOLTA | Flag of Upper Volta.svg | Public domain |
 | BGD | Flag of Bangladesh.svg | Public domain |
 | BGR | Flag of Bulgaria.svg | Public domain |
 | BGR_KINGDOM | Flag of Bulgaria.svg | Public domain |
@@ -60,6 +69,7 @@ No attribution obligation. Listed for provenance.
 | BWA | Flag of Botswana.svg | Public domain |
 | CAF | Flag of the Central African Republic.svg | Public domain |
 | CAN | Flag of Canada.svg | Public domain |
+| CAN_RED_ENSIGN | Canadian Red Ensign (1957–1965).svg | Public domain |
 | CCP | Flag of the Chinese Communist Party.svg | Public domain |
 | CHE | Flag of Switzerland.svg | Public domain |
 | CHL | Flag of Chile.svg | Public domain |
@@ -69,6 +79,7 @@ No attribution obligation. Listed for provenance.
 | CHN_ROC | Flag of the Republic of China.svg | Public domain |
 | CIV | Flag of Côte d'Ivoire.svg | Public domain |
 | CMR | Flag of Cameroon.svg | Public domain |
+| CMR_1961 | Flag of Cameroon (1961–1975).svg | Public domain |
 | COD | Flag of the Democratic Republic of the Congo.svg | Public domain |
 | COG | Flag of the Republic of the Congo.svg | Public domain |
 | COL | Flag of Colombia.svg | Public domain |
@@ -87,6 +98,7 @@ No attribution obligation. Listed for provenance.
 | ECU | Flag of Ecuador.svg | Public domain |
 | EGY | Flag of Egypt.svg | Public domain |
 | EGY_KINGDOM | Flag of Egypt (1922-1958).svg | Public domain |
+| EGY_UAR | Flag of the United Arab Republic (1958–1971).svg | Public domain |
 | ERI | Flag of Eritrea.svg | Public domain |
 | ESH | Flag of the Sahrawi Arab Democratic Republic.svg | Public domain |
 | ESP | Flag of Spain.svg | Public domain |
@@ -128,6 +140,7 @@ No attribution obligation. Listed for provenance.
 | IRN | Flag of the Islamic Republic of Iran.svg | Public domain |
 | IRN_PERSIA | State flag of Persia (1907–1933).svg | Public domain |
 | IRQ | Flag of Iraq.svg | Public domain |
+| IRQ_1959 | Flag of Iraq (1959–1963).svg | Public domain |
 | IRQ_KINGDOM | Flag of Iraq (1924–1959).svg | Public domain |
 | ISL | Flag of Iceland.svg | Public domain |
 | ISR | Flag of Israel.svg | Public domain |
@@ -141,13 +154,17 @@ No attribution obligation. Listed for provenance.
 | KEN | Flag of Kenya.svg | Public domain |
 | KGZ | Flag of Kyrgyzstan.svg | Public domain |
 | KHM | Flag of Cambodia.svg | Public domain |
+| KHM_1948 | Flag of Cambodia (1948-1970).svg | CC0 |
 | KOR | Flag of South Korea.svg | Public domain |
 | KWT | Flag of Kuwait.svg | Public domain |
 | LAO | Flag of Laos.svg | Public domain |
+| LAO_KINGDOM | Flag of Laos (1952–1975).svg | Public domain |
 | LBN | Flag of Lebanon.svg | Public domain |
 | LBR | Flag of Liberia.svg | Public domain |
 | LBY | Flag of Libya.svg | Public domain |
+| LBY_KINGDOM | Flag of Libya (1951–1969).svg | Public domain |
 | LKA | Flag of Sri Lanka.svg | Public domain |
+| LKA_1951 | Flag of Ceylon (1951–1972).svg | Public domain |
 | LSO | Flag of Lesotho.svg | Public domain |
 | LTU | Flag of Lithuania.svg | Public domain |
 | LUX | Flag of Luxembourg.svg | Public domain |
@@ -160,6 +177,7 @@ No attribution obligation. Listed for provenance.
 | MKD | Flag of North Macedonia.svg | Public domain |
 | MLI | Flag of Mali.svg | Public domain |
 | MMR | Flag of Myanmar.svg | Public domain |
+| MMR_1948 | Flag of Burma (1948–1974).svg | Public domain |
 | MNE_KINGDOM | Flag of Montenegro (1905–1918).svg | Public domain |
 | MNG | Flag of Mongolia.svg | Public domain |
 | MNG_1945 | Flag of the Mongolian People's Republic (1945–1992).svg | Public domain |
@@ -195,13 +213,16 @@ No attribution obligation. Listed for provenance.
 | PYF | Flag of French Polynesia.svg | CC0 |
 | QAT | Flag of Qatar.svg | Public domain |
 | ROU | Flag of Romania.svg | Public domain |
+| ROU_1952 | Flag of Romania(1952-1965).svg | CC0 |
 | ROU_KINGDOM | Flag of Romania.svg | Public domain |
 | RUS | Flag of Russia.svg | Public domain |
 | RUS_EMPIRE | Flag of Russia.svg | Public domain |
 | RUS_SFSR | Flag of the Russian Soviet Federative Socialist Republic (1918–1925).svg | Public domain |
 | RWA | Flag of Rwanda.svg | Public domain |
+| RWA_1962 | Flag of Rwanda (1962–2001).svg | Public domain |
 | SAU | Flag of Saudi Arabia.svg | Public domain |
 | SDN | Flag of Sudan.svg | Public domain |
+| SDN_1956 | Flag of Sudan (1956–1970).svg | Public domain |
 | SEN | Flag of Senegal.svg | Public domain |
 | SGS | Flag of South Georgia and the South Sandwich Islands.svg | CC0 |
 | SLB | Flag of the Solomon Islands.svg | Public domain |
@@ -241,10 +262,11 @@ No attribution obligation. Listed for provenance.
 | WSM | Flag of Samoa.svg | Public domain |
 | XNC | Flag of the Turkish Republic of Northern Cyprus.svg | Public domain |
 | XSO | Flag of Somaliland.svg | Public domain |
-| YEM | Flag of Yemen.svg | Public domain |
 | YEM_KINGDOM | Flag of the Mutawakkilite Kingdom of Yemen.svg | Public domain |
+| YEM_NORTH | Flag of North Yemen (1962).svg | Public domain |
 | YUG_KINGDOM | Flag of Yugoslavia (1918–1941).svg | Public domain |
 | YUG_SFR | Flag of Yugoslavia (1946-1992).svg | Public domain |
 | ZAF | Flag of South Africa.svg | Public domain |
+| ZAF_1928 | Flag of South Africa (1928–1994, dark colors).svg | Public domain |
 | ZMB | Flag of Zambia.svg | Public domain |
 | ZWE | Flag of Zimbabwe.svg | Public domain |

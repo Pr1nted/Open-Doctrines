@@ -10,6 +10,14 @@
    "url": "",
    "obligation": "none"
   },
+  "AFG_KINGDOM": {
+   "file": "Flag of Afghanistan (1931\u20131973).svg",
+   "license": "Public domain",
+   "artist": "Orange Tuesday at en.wikipedia.",
+   "credit": "Own work; transferred from en.wikipedia. Based on: File:Coat of arms of Afghanistan.svg, which is based on File:Flag of Afghanistan.svg",
+   "url": "",
+   "obligation": "none"
+  },
   "AGO": {
    "file": "Flag of Angola.svg",
    "license": "Public domain",
@@ -39,6 +47,14 @@
    "license": "Public domain",
    "artist": "Jaume Oll\u00e9 (original);",
    "credit": "[1] Courtesy of Paulin Zefi",
+   "url": "",
+   "obligation": "none"
+  },
+  "ALB_1946": {
+   "file": "Flag of Albania (1946\u20131992).svg",
+   "license": "Public domain",
+   "artist": "Sadik Kaceli",
+   "credit": "http://www.crwflags.com/fotw/images/a/al-1946.gif",
    "url": "",
    "obligation": "none"
   },
@@ -114,6 +130,14 @@
    "url": "",
    "obligation": "none"
   },
+  "BDI_1962": {
+   "file": "Flag of Burundi (1962\u20131966).svg",
+   "license": "Public domain",
+   "artist": "Orange Tuesday (talk)",
+   "credit": "self-made, based on en:Image:Flag of Burundi.svg",
+   "url": "",
+   "obligation": "none"
+  },
   "BEL": {
    "file": "Flag of Belgium.svg",
    "license": "Public domain",
@@ -138,6 +162,14 @@
    "url": "",
    "obligation": "none"
   },
+  "BFA_UPPER_VOLTA": {
+   "file": "Flag of Upper Volta.svg",
+   "license": "Public domain",
+   "artist": "odder",
+   "credit": "Image originally derived from the public domain",
+   "url": "",
+   "obligation": "none"
+  },
   "BGD": {
    "file": "Flag of Bangladesh.svg",
    "license": "Public domain",
@@ -153,6 +185,14 @@
    "credit": "The flag of Bulgaria. The colors are specified at http://www.government.bg/cgi-bin/e-cms/vis/vis.pl?s=001&p=0034&n=000005&g= as: White: Pantone Safe Green: 17-5936 (Green TC) [textile color] [1] Red: 18-1664 (Fiery Red TC) [2]",
    "url": "",
    "obligation": "none"
+  },
+  "BGR_1948": {
+   "file": "Flag of Bulgaria (1948\u20131967).svg",
+   "license": "CC BY-SA 4.0",
+   "artist": "Scroch",
+   "credit": "Own work",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
   },
   "BGR_KINGDOM": {
    "file": "Flag of Bulgaria.svg",
@@ -258,6 +298,14 @@
    "url": "",
    "obligation": "none"
   },
+  "CAN_RED_ENSIGN": {
+   "file": "Canadian Red Ensign (1957\u20131965).svg",
+   "license": "Public domain",
+   "artist": "Denelson83",
+   "credit": "Own work",
+   "url": "",
+   "obligation": "none"
+  },
   "CCP": {
    "file": "Flag of the Chinese Communist Party.svg",
    "license": "Public domain",
@@ -327,6 +375,14 @@
    "license": "Public domain",
    "artist": "(of code) -xfi-",
    "credit": "Drawn by User:SKopp, based on this source: Flags of the World.",
+   "url": "",
+   "obligation": "none"
+  },
+  "CMR_1961": {
+   "file": "Flag of Cameroon (1961\u20131975).svg",
+   "license": "Public domain",
+   "artist": "Himasaram",
+   "credit": "This file was derived from: Flag of Cameroon.svg Flag of Cameroon (1961 construction).jpg",
    "url": "",
    "obligation": "none"
   },
@@ -474,6 +530,14 @@
    "url": "",
    "obligation": "none"
   },
+  "EGY_UAR": {
+   "file": "Flag of the United Arab Republic (1958\u20131971).svg",
+   "license": "Public domain",
+   "artist": "See File history below for details. For further informations, see also: en:Syrian Arab Republic and the en:United Arab Republic.",
+   "credit": "Syria Permanent Mission to the United Nations; FOTW BASED ON THIS CONSTRUCTION SHEET:",
+   "url": "",
+   "obligation": "none"
+  },
   "ERI": {
    "file": "Flag of Eritrea.svg",
    "license": "Public domain",
@@ -504,6 +568,22 @@
    "artist": "SanchoPanzaXXI",
    "credit": "Template:Esp",
    "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
+  },
+  "ESP_FRANCO": {
+   "file": "Flag of Spain (1945\u20131977).svg",
+   "license": "CC BY-SA 4.0",
+   "artist": "SanchoPanzaXXI",
+   "credit": "Own work",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
+  },
+  "ESP_RESTORATION": {
+   "file": "Flag of Spain (1785\u20131873, 1875\u20131931).svg",
+   "license": "CC BY-SA 3.0",
+   "artist": "previous version User:Ignaciogavira ; current version HansenBCN, designs from SanchoPanzaXXI",
+   "credit": "self-made, based on Image:Bandera naval desde 1785.png ; [1]",
+   "url": "http://creativecommons.org/licenses/by-sa/3.0/",
    "obligation": "attribution + share-alike on the image"
   },
   "EST": {
@@ -818,6 +898,14 @@
    "url": "",
    "obligation": "none"
   },
+  "IRQ_1959": {
+   "file": "Flag of Iraq (1959\u20131963).svg",
+   "license": "Public domain",
+   "artist": "Orzetto~commonswiki (first-uploaded file version), AnonMoos, etc.",
+   "credit": "Own work based on: 1959 flag design",
+   "url": "",
+   "obligation": "none"
+  },
   "IRQ_KINGDOM": {
    "file": "Flag of Iraq (1924\u20131959).svg",
    "license": "Public domain",
@@ -922,6 +1010,14 @@
    "url": "",
    "obligation": "none"
   },
+  "KHM_1948": {
+   "file": "Flag of Cambodia (1948-1970).svg",
+   "license": "CC0",
+   "artist": "Draw new flag by User:\u1791\u17c1\u1796_\u179f\u17bb\u179c\u17b7\u1785\u17b7\u178f\u17d2\u179a",
+   "credit": "File:Flag_of_Cambodia.svg",
+   "url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+   "obligation": "none"
+  },
   "KOR": {
    "file": "Flag of South Korea.svg",
    "license": "Public domain",
@@ -943,6 +1039,14 @@
    "license": "Public domain",
    "artist": "SKopp",
    "credit": "Own work",
+   "url": "",
+   "obligation": "none"
+  },
+  "LAO_KINGDOM": {
+   "file": "Flag of Laos (1952\u20131975).svg",
+   "license": "Public domain",
+   "artist": "Thommy",
+   "credit": "Own work, based on Flags of the World - Laos, 1952-1975 and Coat of arms of Laos (1952-1975).svg",
    "url": "",
    "obligation": "none"
   },
@@ -970,11 +1074,27 @@
    "url": "",
    "obligation": "none"
   },
+  "LBY_KINGDOM": {
+   "file": "Flag of Libya (1951\u20131969).svg",
+   "license": "Public domain",
+   "artist": "Various The SVG code is valid. This vector image was created with a text editor.",
+   "credit": "File:Flag of Libya (1951\u20131969).svg",
+   "url": "",
+   "obligation": "none"
+  },
   "LKA": {
    "file": "Flag of Sri Lanka.svg",
    "license": "Public domain",
    "artist": "Original: Sri Lanka Vectorization: Zscout370, Mike Rohsopht",
    "credit": "SLS 1: 2020 Specification for the National Flag of the Democratic Socialist Republic of Sri Lanka See also:",
+   "url": "",
+   "obligation": "none"
+  },
+  "LKA_1951": {
+   "file": "Flag of Ceylon (1951\u20131972).svg",
+   "license": "Public domain",
+   "artist": "Thommy",
+   "credit": "Own Work, based on Flag of Ceylon.svg and Flag of Sri Lanka.svg",
    "url": "",
    "obligation": "none"
   },
@@ -1071,6 +1191,14 @@
    "license": "Public domain",
    "artist": "Unknown authorUnknown author",
    "credit": "Government of Myanmar.Construction sheet.",
+   "url": "",
+   "obligation": "none"
+  },
+  "MMR_1948": {
+   "file": "Flag of Burma (1948\u20131974).svg",
+   "license": "Public domain",
+   "artist": "See File history below for details.",
+   "credit": "Self-drawn in CorelDraw, based on FOTW and Image:Flag of Myanmar.svg.",
    "url": "",
    "obligation": "none"
   },
@@ -1386,6 +1514,14 @@
    "url": "",
    "obligation": "none"
   },
+  "ROU_1952": {
+   "file": "Flag of Romania(1952-1965).svg",
+   "license": "CC0",
+   "artist": "Aolo990",
+   "credit": "Own work",
+   "url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+   "obligation": "none"
+  },
   "ROU_KINGDOM": {
    "file": "Flag of Romania.svg",
    "license": "Public domain",
@@ -1426,6 +1562,14 @@
    "url": "",
    "obligation": "none"
   },
+  "RWA_1962": {
+   "file": "Flag of Rwanda (1962\u20132001).svg",
+   "license": "Public domain",
+   "artist": "Drawn by Zscout370.",
+   "credit": "Unknown sourceUnknown source",
+   "url": "",
+   "obligation": "none"
+  },
   "SAU": {
    "file": "Flag of Saudi Arabia.svg",
    "license": "Public domain",
@@ -1439,6 +1583,14 @@
    "license": "Public domain",
    "artist": "See File history below for details.",
    "credit": "www.vexilla-mundi.com Flags of the World: Sudan - Flag Construction details",
+   "url": "",
+   "obligation": "none"
+  },
+  "SDN_1956": {
+   "file": "Flag of Sudan (1956\u20131970).svg",
+   "license": "Public domain",
+   "artist": "Mysid",
+   "credit": "Self-drawn in CorelDraw, based loosely on FOTW.",
    "url": "",
    "obligation": "none"
   },
@@ -1674,6 +1826,14 @@
    "url": "",
    "obligation": "none"
   },
+  "TZA_TANGANYIKA": {
+   "file": "Flag of Tanganyika (1961\u20131964).svg",
+   "license": "CC BY-SA 3.0",
+   "artist": "Mysid",
+   "credit": "Self-drawn in CorelDraw, measures based on Flag Bulletin 01 as cited by FOTW. As of 3 August 2023 colors on File:Flag of the African National Congress.svg (formerly from File:Flag of Tanzania.svg).",
+   "url": "http://creativecommons.org/licenses/by-sa/3.0/",
+   "obligation": "attribution + share-alike on the image"
+  },
   "UGA": {
    "file": "Flag of Uganda.svg",
    "license": "Public domain",
@@ -1772,17 +1932,25 @@
   },
   "YEM": {
    "file": "Flag of Yemen.svg",
-   "license": "Public domain",
-   "artist": "Nightstallion et al., see File history below for details.",
-   "credit": "Presidency Council Resolution No. (1) of 1990 Regarding the National Flag CONSTRUCTION SHEET:",
-   "url": "",
-   "obligation": "none"
+   "license": "CC BY-SA 4.0",
+   "artist": "\u611b\u559d\u5976\u8336",
+   "credit": "Own work",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0",
+   "obligation": "attribution + share-alike on the image"
   },
   "YEM_KINGDOM": {
    "file": "Flag of the Mutawakkilite Kingdom of Yemen.svg",
    "license": "Public domain",
    "artist": "Urmas (SVG file)",
    "credit": "No machine-readable source provided. Own work assumed (based on copyright claims).",
+   "url": "",
+   "obligation": "none"
+  },
+  "YEM_NORTH": {
+   "file": "Flag of North Yemen (1962).svg",
+   "license": "Public domain",
+   "artist": "Flag_of_North_Yemen.svg: User:B1mbo derivative work: Uwe Dedering",
+   "credit": "This file was derived from: Flag of North Yemen.svg:",
    "url": "",
    "obligation": "none"
   },
@@ -1807,6 +1975,14 @@
    "license": "Public domain",
    "artist": "Flag design by Frederick Brownell, image by Wikimedia Commons users",
    "credit": "Per specifications in the Constitution of South Africa, Schedule 1 - National flag",
+   "url": "",
+   "obligation": "none"
+  },
+  "ZAF_1928": {
+   "file": "Flag of South Africa (1928\u20131994, dark colors).svg",
+   "license": "Public domain",
+   "artist": "Parliament of South Africa (Vector graphics image by Denelson83)",
+   "credit": "Vectorialized from description found in Southern African Vexillological Association. Flag specification sheets : South Africa national flag 1928-1994",
    "url": "",
    "obligation": "none"
   },

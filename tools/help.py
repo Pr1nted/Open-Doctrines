@@ -55,10 +55,12 @@ GROUPS = [
         "generate_navy.py", "generate_ships_fast.py", "boost_economies.py",
         "fix_1939_history.py", "fix_map_history.py", "fix_map_colors.py",
         "carve_states.py", "carve_borders.py",
-        "check_map_history.py",
+        "check_map_history.py", "reanchor_map_history.py",
+        "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
     ]),
     ("Licensing and provenance", [
-        "gen_notices.py", "audit_flag_licenses.py",
+        "gen_notices.py", "audit_flag_licenses.py", "check_data_licences.py",
+        "check_flag_dates.py",
     ]),
     ("Flags, icons and symbols", [
         "download_flags.py", "download_flags_fast.py",

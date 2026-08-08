@@ -158,6 +158,24 @@ check "third-party notices vs provenance.json" $PY "$root/tools/gen_notices.py" 
 # from Wikimedia with: python3 tools/audit_flag_licenses.py
 check "flag licences" $PY "$root/tools/audit_flag_licenses.py" --check
 
+# Fails if any data source that reaches a shipped map is under terms that would
+# stop the map being used commercially. The game's own licence is a separate
+# question and is ours to change; a third party's is not.
+check "map data is commercially licensable" $PY "$root/tools/check_data_licences.py"
+
+# The two shipped-map invariants that the ENGINE also depends on, checked
+# against the maps as they will ship rather than against the tools that made
+# them. Both are cheap to break by regenerating with an older tool.
+#
+#   - no water body below MIN_WATER_BODY, because the engine refuses to call
+#     one a coast and the map should not draw one as a hole through a country
+#   - every hull in open water and of a type the game can build, every port on
+#     a province isProvinceCoastal agrees is coastal
+check "shipped maps have no sub-sea-threshold water" \
+      $PY "$root/tools/fill_water_speckle.py" --check
+check "shipped maps have a usable naval layer" \
+      $PY "$root/tools/fix_naval_layer.py" --check
+
 step "the Windows manifest is valid XML"
 # One second here against ten minutes there. The manifest is embedded by the
 # linker on Windows only, so a malformed one fails nowhere except a Windows CI
