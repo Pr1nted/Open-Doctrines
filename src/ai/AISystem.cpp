@@ -5092,7 +5092,29 @@ void AISystem::endTurn() {
                 // replaces cost the project. A declaration buys one window of
                 // grace and nothing after it.
                 const bool graceOfWar = exp.warInWindow && exp.warTurns < nStep();
-                const bool idle = dProv <= 0.0f && exp.threatened == 0 && !graceOfWar;
+                // ...AND A WINDOW THAT ENDED A WAR IS NOT A WASTED ONE EITHER.
+                //
+                // This is what drove war:ceasefire to a policy shape of exactly
+                // 0.0% in all three workers of the 2026-08-08 pool while the
+                // model they were seeded from still offered 110 per thousand
+                // country-turns. Making peace is, by definition, something you
+                // do in a window where you took no ground -- so `dProv <= 0`
+                // was true precisely when the ceasefire landed, and the -0.5
+                // arrived on top of the +0.30..1.00 peaceTerm below. Ending a
+                // war one is losing therefore netted -0.20, and offering a
+                // ceasefire that got REFUSED netted a clean -0.5 against
+                // attacking's +1.16 for two provinces. The module was being
+                // charged for the one action the blunder checklist exists to
+                // keep alive, and it read the arithmetic correctly.
+                //
+                // Same idea as the two exemptions above: this tests for a
+                // WASTED window, and concluding a war is an outcome, not a
+                // stall. Declared here rather than at its use below so the
+                // charge can see it.
+                const bool warEnded =
+                    exp.atWar && !atWarNow && exp.warTurns >= nStep();
+                const bool idle = dProv <= 0.0f && exp.threatened == 0 &&
+                                  !graceOfWar && !warEnded;
 
                 // ── Standing, not stock ── see STANDING_WEIGHT.
                 // Read from m_world, which endTurn refreshes before settling
@@ -5285,17 +5307,41 @@ void AISystem::endTurn() {
                 // fraction of the world's mean garrison density means it tracks
                 // that automatically and cannot fall out of range again.
                 const double worldPerProv = worldArmyPerProvince();
-                auto sufficiency = [&](long long army, long long adjacentThreat,
-                                       int provinces) {
-                    const double bar = std::max((double)adjacentThreat,
-                        PEACETIME_PARITY * worldPerProv * (double)std::max(1, provinces));
-                    return (float)std::min(1.0, (double)army /
-                        (ARMY_SUFFICIENCY * std::max(1.0, bar)));
+                // ONE YARDSTICK PER WINDOW, READ AT THE START OF IT.
+                //
+                // The bar is a multiple of our OWN province count, so taking
+                // ground raises it -- and PHI, being army over the bar, falls
+                // the moment a province is conquered even though not one man
+                // was lost. Measuring both ends of the window against their own
+                // bar therefore paid the module to recruit back to a line that
+                // its own conquests kept moving away from it: a renewable
+                // payment, available only to a country that is winning, and
+                // exactly the "recruit is free money" failure the comment on
+                // ARMY_SHAPING_WEIGHT says PHI's clamp had closed for good.
+                //
+                // Measured on the 2026-08-08 pool: w2 -- the ONLY worker that
+                // beat its seed, and the one that conquered most (62% of the
+                // world) -- was also the only one whose policy shape for
+                // recruit collapsed to 100.0%. w0 and w1 took far less ground
+                // and sat at 33-48%. The collapse tracked conquest, not
+                // training time.
+                //
+                // The clamp cannot stop this on its own: it bounds what a
+                // STATIONARY country can collect, and this country is not
+                // stationary. Holding the bar fixed at the window's opening
+                // state is what makes the term measure the only thing it was
+                // ever meant to measure -- whether recruiting closed the gap
+                // that existed when the decision was taken. Between windows the
+                // bar still tracks the country as it grows, which is the part
+                // that was always legitimate.
+                const double bar = std::max((double)exp.enemyAdjArmy,
+                    PEACETIME_PARITY * worldPerProv * (double)std::max(1, exp.provinces));
+                const double need = ARMY_SUFFICIENCY * std::max(1.0, bar);
+                auto sufficiency = [&](long long army) {
+                    return (float)std::min(1.0, (double)army / need);
                 };
-                const float phiBefore = sufficiency(exp.army, exp.enemyAdjArmy,
-                                                    exp.provinces);
-                const float phiAfter  = sufficiency(now.army, now.enemyAdjArmy,
-                                                    now.provinces);
+                const float phiBefore = sufficiency(exp.army);
+                const float phiAfter  = sufficiency(now.army);
                 // Potential-based shaping. See ARMY_SHAPING_WEIGHT for why this
                 // shape and not the three that preceded it.
                 const float armyTerm = ARMY_SHAPING_WEIGHT * (phiAfter - phiBefore);
@@ -5329,8 +5375,9 @@ void AISystem::endTurn() {
                 // was free to keep. The N_STEP floor is what stops the module
                 // collecting this by declaring a war and immediately suing for
                 // peace.
-                const bool warEnded =
-                    exp.atWar && !atWarNow && exp.warTurns >= nStep();
+                // warEnded is computed with the idleness charge above, which
+                // now has to know about it.
+                //
                 // Scaled by ground, but FLOORED. The old shape paid
                 // 0.5 x (1 + tanh(dProv/3)), so ending a war one is losing --
                 // exactly when peace is the right move and the most human thing
