@@ -534,7 +534,7 @@ REASSIGN = {
         ([(40.188, 37.9028), (37.4634, 37.9468)], "TUR", "FRA",
          "Northern Syria under the French mandate. Turkey gained only Hatay, "
          "in June 1939, not the whole Jazira."),
-        ([(24.6753, 49.5923)], "SOV", "POL",
+        ([(24.7192, 49.6362)], "SOV", "POL",
          "More of the Kresy: Polish until the Soviet invasion of 17 September."),
         ([(-77.146, -3.8013)], "PER", "ECU",
          "Ecuadorian Amazon. Peru took it in the 1941 war and the Rio Protocol "

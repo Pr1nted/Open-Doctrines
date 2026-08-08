@@ -183,18 +183,48 @@ GALICIA_1918 = [
 ]
 
 # map -> [(polygon, iso that held the inside, provinces it may cut, why)]
+# SURVEYED OUTLINES, WHERE THERE ARE ANY.
+#
+# tools/data/ohm_borders.json holds national outlines pulled from
+# OpenHistoricalMap by tools/fetch_ohm_borders.py and simplified to under half
+# a raster pixel. Where a country is in there, it is used in preference to the
+# hand trace below, because a hand trace is a few dozen vertices and this is a
+# few hundred taken off a surveyed relation dated to the day.
+#
+# The hand traces stay as the fallback. They are what the map looked like
+# before, they still work, and a country OHM has not mapped at a given date
+# still needs a border from somewhere.
+def _ohm(date, name):
+    path = os.path.join(ROOT, "tools", "data", "ohm_borders.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            entry = json.load(f)["borders"][date][name]
+    except (OSError, KeyError, json.JSONDecodeError):
+        return None
+    return [[(x, y) for x, y in ring] for ring in entry["rings"]]
+
+
+GERMANY_1939_OHM = _ohm("1939-09-01", "German Reich")
+POLAND_1939_OHM = _ohm("1939-09-01", "Poland")
+
 PLAN = {
     "1918.odmap": [
         (GALICIA_1918, "AUH", ["UKR"],
          "Galicia and Bukovina, Austro-Hungarian until November 1918."),
     ],
     "1939.odmap": [
-        (GERMANY_1937, "GER", ["POL"],
-         "Silesia, Pomerania and eastern Brandenburg, German until 1945."),
+        (GERMANY_1939_OHM or GERMANY_1937, "GER", ["POL"],
+         "Silesia, Pomerania and eastern Brandenburg, German until 1945. The "
+         "OHM outline is the Reich as it stood between Memel in March 1939 and "
+         "the reorganisation after Poland, so it already includes Austria, the "
+         "Protectorate and Memelland -- but the carve only takes ground the "
+         "map currently gives POLAND, so none of that moves."),
         (EAST_PRUSSIA_1939, "GER", ["POL", "LTU"],
          "East Prussia and Memelland. Germany held 36% of it after "
-         "reassignment; the rest was inside Polish and Lithuanian provinces."),
-        (POLAND_1939, "POL", ["SOV", "LTU"],
+         "reassignment; the rest was inside Polish and Lithuanian provinces. "
+         "Redundant once the OHM Reich outline is in use, since that contains "
+         "East Prussia; kept because it is what runs if the OHM file is absent."),
+        (POLAND_1939_OHM or POLAND_1939, "POL", ["SOV", "LTU"],
          "The Kresy. Poland's eastern half was Polish until the Soviet "
          "invasion of 17 September; the modern raster draws that border where "
          "Belarus and Ukraine meet Poland today, four hundred kilometres west. "
@@ -213,17 +243,25 @@ MIN_PIXELS = 150
 
 
 def inside(poly, lon, lat):
-    """Ray casting, vectorised over a pixel array."""
-    px = np.array([v[0] for v in poly])
-    py = np.array([v[1] for v in poly])
+    """Ray casting, vectorised over a pixel array.
+
+    Takes either one ring or a list of rings. Rings are XORed together, so a
+    country made of several pieces -- the Reich in 1939 is four, once East
+    Prussia and the offshore bits are counted -- comes out as one mask, and an
+    inner ring would punch a hole rather than paint one.
+    """
+    rings = poly if (poly and isinstance(poly[0][0], (list, tuple))) else [poly]
     res = np.zeros(lon.shape, dtype=bool)
-    n = len(poly)
-    for i in range(n):
-        j = (i - 1) % n
-        cond = (py[i] > lat) != (py[j] > lat)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            xint = (px[j] - px[i]) * (lat - py[i]) / (py[j] - py[i]) + px[i]
-        res ^= cond & (lon < xint)
+    for ring in rings:
+        px = np.array([v[0] for v in ring])
+        py = np.array([v[1] for v in ring])
+        n = len(ring)
+        for i in range(n):
+            j = (i - 1) % n
+            cond = (py[i] > lat) != (py[j] > lat)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                xint = (px[j] - px[i]) * (lat - py[i]) / (py[j] - py[i]) + px[i]
+            res ^= cond & (lon < xint)
     return res
 
 

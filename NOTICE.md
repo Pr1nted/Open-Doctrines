@@ -14,6 +14,7 @@ The game is free, and its own licence is the project's to change at any time. Th
 - **World Bank Open Data** is CC BY 4.0: the attribution below must ship with the game, which it does, in `data/credits.txt` and here.
 - **Seven flag images** are CC BY-SA. Commercial use is permitted; the share-alike binds those images, so a *modified* version of one of them must be released under the same licence. The game is not affected, and the per-file list is in `data/licenses/FLAGS.md`.
 - **Everything else** — Natural Earth, USGS, NGA, and the remaining 221 flags — is public domain or CC0, with no obligation at all.
+- **OpenHistoricalMap** is CC0 — no attribution, no share-alike, nothing. It is the only historical boundary source with no obligation at all, which is why the surveyed outlines in `tools/data/ohm_borders.json` may ship while aourednik/historical-basemaps (GPL-3.0) remains a report a human reads.
 - **No historical boundary dataset is shipped or vendored.** `tools/check_map_history.py` reads one, GPL-3.0, as a report a person reads before editing this project's own province tables by hand. What ships is which country held which ground in a given year, at this project's raster resolution: a historical fact, not a copy of anyone's expression of it. The check fails if that dataset ever appears inside the repository, because the reasoning only holds while it stays outside.
 
 Checked by `tools/check_data_licences.py`, which runs in the test suite.
@@ -58,6 +59,13 @@ Checked by `tools/check_data_licences.py`, which runs in the test suite.
 - **Consumed by:** `tools/download_flags_fast.py, audited by tools/audit_flag_licenses.py`
 - **Required attribution:** Flag artwork from Wikimedia Commons. Per-file licences and required attribution: data/licenses/FLAGS.md.
 - **Full terms:** `data/licenses/FLAGS.md`
+
+### OpenHistoricalMap
+
+- **Used for:** National outlines for the historical scenarios, at each scenario's own date
+- **Licence:** CC0
+- **Source:** <https://www.openhistoricalmap.org/>
+- **Consumed by:** `tools/fetch_ohm_borders.py, consumed by tools/carve_borders.py`
 
 ## Data deliberately not used
 

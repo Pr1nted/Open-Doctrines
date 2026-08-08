@@ -55,7 +55,7 @@ GROUPS = [
         "generate_navy.py", "generate_ships_fast.py", "boost_economies.py",
         "fix_1939_history.py", "fix_map_history.py", "fix_map_colors.py",
         "carve_states.py", "carve_borders.py",
-        "check_map_history.py", "reanchor_map_history.py",
+        "check_map_history.py", "reanchor_map_history.py", "fetch_ohm_borders.py",
         "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
     ]),
     ("Licensing and provenance", [
