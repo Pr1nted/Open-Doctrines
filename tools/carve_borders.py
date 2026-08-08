@@ -206,11 +206,30 @@ def _ohm(date, name):
 
 GERMANY_1939_OHM = _ohm("1939-09-01", "German Reich")
 POLAND_1939_OHM = _ohm("1939-09-01", "Poland")
+AUH_1914_OHM = _ohm("1914-07-01", "Austria-Hungary")
+AUH_1918_OHM = _ohm("1918-10-01", "Austria-Hungary")
+FINLAND_1939_OHM = _ohm("1939-09-01", "Finland")
+TURKEY_1939_OHM = _ohm("1939-09-01", "Turkey")
+HUNGARY_1939_OHM = _ohm("1939-09-01", "Kingdom of Hungary")
 
 PLAN = {
+    "1914.odmap": [
+        (AUH_1914_OHM, "AUH", ["RUS", "ROU", "SRB", "ITA"],
+         "Austria-Hungary in its 1908 borders, which it kept until it "
+         "dissolved. The modern raster cuts the empire into the seven "
+         "countries that came out of it, so the scenario could only hand it "
+         "whole provinces and lost the edges: Galicia to Russia, Transylvania "
+         "and the Banat to Romania, Bosnia to Serbia, Trentino and Trieste to "
+         "Italy. Measured against the real border the map gave Austria-Hungary "
+         "74% of itself."),
+    ],
     "1918.odmap": [
-        (GALICIA_1918, "AUH", ["UKR"],
-         "Galicia and Bukovina, Austro-Hungarian until November 1918."),
+        (AUH_1918_OHM or GALICIA_1918, "AUH", ["UKR", "ROU", "SRB", "ITA", "RUS"],
+         "Austria-Hungary, still undissolved on 1 October 1918 -- the state "
+         "survived until 31 October and this scenario opens four weeks before "
+         "that. Replaces a hand-traced Galicia polygon that fixed one edge of "
+         "the same problem: the map gave the empire 75% of itself, with "
+         "Transylvania Romanian two years before Trianon."),
     ],
     "1939.odmap": [
         (GERMANY_1939_OHM or GERMANY_1937, "GER", ["POL"],
@@ -230,8 +249,28 @@ PLAN = {
          "Belarus and Ukraine meet Poland today, four hundred kilometres west. "
          "Includes the Vilnius region, Polish from 1920 until 1939 however "
          "loudly Lithuania disputed it."),
+        (FINLAND_1939_OHM, "FIN", ["SOV"],
+         "Finland before the Winter War. The OHM relation ends at the Moscow "
+         "Peace Treaty of 12 March 1940, so it is exactly the Finland this "
+         "scenario opens with -- Karelia, Viipuri and the Rybachy peninsula "
+         "still Finnish. The modern raster draws that border where Russia "
+         "meets Finland today, which is the 1940 line."),
+        (HUNGARY_1939_OHM, "HUN", ["SOV", "ROU"],
+         "Carpatho-Ukraine, annexed by Hungary in March 1939, six months "
+         "before this scenario opens. The relation runs from 4 April 1939 to "
+         "the Second Vienna Award, so it is this scenario's Hungary and not "
+         "the larger one that followed."),
+        (TURKEY_1939_OHM, "TUR", ["FRA", "SOV"],
+         "Hatay, which voted to join Turkey and was annexed on 29 June 1939 "
+         "-- the OHM relation starts on that date -- and the Kars and Ardahan "
+         "districts, Turkish since 1921 and drawn here as Soviet."),
     ],
 }
+# A carve whose outline could not be fetched is dropped rather than run against
+# None, so a missing entry in ohm_borders.json costs that one correction and
+# nothing else.
+for _m in PLAN:
+    PLAN[_m] = [j for j in PLAN[_m] if j[0]]
 
 # Below this share of a province, cutting is not worth a new province id.
 MIN_SHARE = 0.06

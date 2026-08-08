@@ -227,8 +227,8 @@ PLAN = {
         "UKR": dict(name="Ukrainian State", color="#3b7dd8", treasury=9.0,
                     compass={"left": 10, "auth": 75},
                     flag={"type": "hstripes_2", "colors": ["#0057b7", "#ffd700"]},
-                    at=[(37.1118, 48.6255), (27.7075, 49.2407), (30.6519, 47.8345),
-                               (26.8286, 50.7788)],
+                    at=[(37.1118, 48.6255), (27.4438, 49.1968), (30.6519, 47.8345),
+                        (26.8286, 50.7788)],
                     note="Skoropadskyi's Hetmanate, which governed Ukraine under "
                          "German protection from April 1918. The map already had "
                          "these provinces as German-occupied; this makes the "

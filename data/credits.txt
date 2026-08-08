@@ -60,6 +60,7 @@ $--- generated from tools/provenance.json — do not edit below ---
 - NGA World Port Index (Pub 150) (Public domain (work of the US Government))
 - World Bank Open Data (CC BY 4.0)
 - Wikimedia Commons (Public domain, CC0 and OGL-om 1.0 — per file)
+- OpenHistoricalMap (CC0)
 @
 @Required Attribution
 ---

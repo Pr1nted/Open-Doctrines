@@ -2951,11 +2951,35 @@ void Game::processEmbarkations(int countryId) {
 
 // === processScrapShips ===
 void Game::processScrapShips(int countryId) {
+    // AN ORDER THIS COUNTRY CANNOT CARRY OUT IS NOT THIS COUNTRY'S TO DISCARD.
+    //
+    // This used to erase every entry it looked at, whether or not it had done
+    // anything with it -- the erase sat outside the ownership test. Turn
+    // resolution calls this once per country, and processTurn walks
+    // m_countries.getAll(), which is an unordered_map, so "first country" is
+    // whatever the hash order happens to be. Whichever country that was
+    // drained the whole queue on its own turn, and every scrap order belonging
+    // to anybody else was thrown away without being carried out.
+    //
+    // For the player that meant clicking Destroy Ship, watching "Scrapping..."
+    // appear over the hull, ending the turn, and finding the ship still there
+    // -- unless their country happened to be first in the hash order, in which
+    // case it worked. Intermittent, and dependent on nothing the player can
+    // see. It was reported as "scrapping ships doesn't work, I don't think".
+    //
+    // Every sibling here -- disband, recruit, embark, bombard, disembark --
+    // already had the right shape: skip what is not yours and leave it for the
+    // turn of the country that owns it. This is that shape.
     for (size_t i = 0; i < m_pendingScrapShips.size(); ) {
         auto& s = m_pendingScrapShips[i];
-        if (s.shipIndex >= 0 && s.shipIndex < (int)m_ships.size() && m_ships[s.shipIndex].countryId == countryId) {
-            m_ships[s.shipIndex].countryId = UNC_CID; // Mark as sunk/scrapped
+        if (s.shipIndex < 0 || s.shipIndex >= (int)m_ships.size()) {
+            // A stale index points at no ship at all, so no country's turn can
+            // ever action it. Drop it rather than leave it circling forever.
+            m_pendingScrapShips.erase(m_pendingScrapShips.begin() + i);
+            continue;
         }
+        if (m_ships[s.shipIndex].countryId != countryId) { ++i; continue; }
+        m_ships[s.shipIndex].countryId = UNC_CID; // Mark as sunk/scrapped
         m_pendingScrapShips.erase(m_pendingScrapShips.begin() + i);
     }
 }
