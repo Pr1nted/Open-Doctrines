@@ -194,12 +194,47 @@ GALICIA_1918 = [
 # The hand traces stay as the fallback. They are what the map looked like
 # before, they still work, and a country OHM has not mapped at a given date
 # still needs a border from somewhere.
+def _as_date(s, dm=(1, 1)):
+    import re as _re
+    if not s:
+        return None
+    m = _re.match(r"^(-?\d{1,4})(?:-(\d{2}))?(?:-(\d{2}))?", str(s))
+    if not m:
+        return None
+    return (int(m.group(1)),
+            int(m.group(2)) if m.group(2) else dm[0],
+            int(m.group(3)) if m.group(3) else dm[1])
+
+
 def _ohm(date, name):
+    """The outline for `name` valid on `date`.
+
+    Falls back to an entry filed under a DIFFERENT date when that entry's own
+    validity covers the one asked for. OHM relations are dated by when the
+    border existed, not by when we happened to fetch them, and many of them
+    span the whole scenario set -- Nepal's runs from 1860 with no end, Bhutan's
+    to 1949, Paraguay's to 1938. Without this, five maps that want the same
+    unchanged border mean five identical fetches and five copies in the file.
+    """
     path = os.path.join(ROOT, "tools", "data", "ohm_borders.json")
     try:
         with open(path, encoding="utf-8") as f:
-            entry = json.load(f)["borders"][date][name]
+            borders = json.load(f)["borders"]
     except (OSError, KeyError, json.JSONDecodeError):
+        return None
+    entry = borders.get(date, {}).get(name)
+    if entry is None:
+        want = _as_date(date)
+        for other, slot in borders.items():
+            cand = slot.get(name)
+            if cand is None:
+                continue
+            s = _as_date(cand.get("start_date"))
+            e = _as_date(cand.get("end_date"), (12, 31))
+            if s and s <= want and (e is None or e >= want):
+                entry = cand
+                break
+    if entry is None:
         return None
     return [[(x, y) for x, y in ring] for ring in entry["rings"]]
 
@@ -211,6 +246,57 @@ AUH_1918_OHM = _ohm("1918-10-01", "Austria-Hungary")
 FINLAND_1939_OHM = _ohm("1939-09-01", "Finland")
 TURKEY_1939_OHM = _ohm("1939-09-01", "Turkey")
 HUNGARY_1939_OHM = _ohm("1939-09-01", "Kingdom of Hungary")
+
+# Asia and South America, from the same ranking. Nepal, Bhutan and Paraguay
+# each have ONE relation spanning the whole scenario set -- Nepal's runs from
+# 1860 with no end -- so they are looked up per date and resolve to the same
+# outline; see _ohm.
+def _asia_south_america(date):
+    """The carve jobs both continents want, for whichever map is being built."""
+    jobs = []
+    ecu = _ohm(date, "Ecuador")
+    if ecu:
+        jobs.append((ecu, "ECU", ["PER", "COL"],
+                     "The Ecuadorian Amazon. Ecuador reached the Maranon and "
+                     "the Napo until the Rio Protocol of 1942 took roughly half "
+                     "its territory; the modern raster draws the border where "
+                     "Peru and Colombia meet Ecuador today, so the map was "
+                     "running the 1942 settlement decades early and gave "
+                     "Ecuador 43% of itself in 1914."))
+    pry = _ohm(date, "Paraguay")
+    if pry:
+        jobs.append((pry, "PRY", ["BOL", "ARG"],
+                     "The Chaco Boreal. Bolivia and Paraguay both claimed it "
+                     "and neither effectively held it before the Chaco War of "
+                     "1932-35; the map resolved it to Bolivia, OHM's dated "
+                     "relation to Paraguay, and Paraguay is who ended up with "
+                     "it. A genuine dispute, decided rather than discovered."))
+    npl = _ohm(date, "Nepal")
+    if npl:
+        jobs.append((npl, "NPL", ["GBR", "IND"],
+                     "Nepal, which was never colonised and is drawn here as "
+                     "two whole modern provinces -- 38% of the real country "
+                     "was left inside British India, because a province that "
+                     "straddles the border can only go one way."))
+    btn = _ohm(date, "Bhutan")
+    if btn:
+        jobs.append((btn, "BTN", ["GBR", "IND", "TIB", "CHN"],
+                     "Bhutan, cut by carve_states.py from a polygon traced by "
+                     "hand at fourteen vertices. This is the same border "
+                     "surveyed, and picks up the fifth of it that trace missed."))
+    tib = _ohm(date, "Tibet")
+    if tib:
+        jobs.append((tib, "TIB", ["CHN"],
+                     "Tibet at the extent Lhasa claimed and OHM draws, which "
+                     "includes Amdo and eastern Kham. The map previously gave "
+                     "Tibet U-Tsang and western Kham only, on the argument that "
+                     "Qinghai and Amdo were run by the Ma clique answering to "
+                     "China rather than governed from Lhasa. Both readings are "
+                     "defensible and this is a decision, not a correction: the "
+                     "claimed extent is what most historical atlases draw and "
+                     "what the scenario now uses."))
+    return jobs
+
 
 PLAN = {
     "1914.odmap": [
@@ -266,6 +352,13 @@ PLAN = {
          "districts, Turkish since 1921 and drawn here as Soviet."),
     ],
 }
+# Asia and South America apply to every scenario, not just the ones that
+# already had a European carve, so 1945 and 1962 get a list of their own here.
+for _map, _date in (("1914.odmap", "1914-07-01"), ("1918.odmap", "1918-10-01"),
+                    ("1939.odmap", "1939-09-01"), ("1945.odmap", "1945-09-01"),
+                    ("1962.odmap", "1962-10-01")):
+    PLAN.setdefault(_map, []).extend(_asia_south_america(_date))
+
 # A carve whose outline could not be fetched is dropped rather than run against
 # None, so a missing entry in ohm_borders.json costs that one correction and
 # nothing else.
@@ -340,12 +433,36 @@ def carve(name, jobs, check):
         print(f"\n=== {name} ===")
         total_moved = 0
 
+        def mask_for(poly):
+            """inside(), but only over the polygon's own bounding box.
+
+            The full raster is 33.5 million pixels and inside() touches all of
+            them once per vertex. That was fine when a polygon was seventeen
+            vertices traced by hand; the surveyed OHM outlines are three to
+            eight hundred, and Tibet alone took longer than the rest of the
+            pipeline put together. Every one of these borders covers a small
+            part of the world, so clip to its box first -- Tibet goes from 33.5
+            million pixel-tests per vertex to about two hundred thousand.
+            """
+            rings = poly if (poly and isinstance(poly[0][0], (list, tuple))) else [poly]
+            xs = [v[0] for r in rings for v in r]
+            ys = [v[1] for r in rings for v in r]
+            x0 = max(0, int((min(xs) + 180.0) / 360.0 * W) - 2)
+            x1 = min(W, int((max(xs) + 180.0) / 360.0 * W) + 3)
+            y0 = max(0, int((90.0 - max(ys)) / 180.0 * H) - 2)
+            y1 = min(H, int((90.0 - min(ys)) / 180.0 * H) + 3)
+            out = np.zeros((H, W), dtype=bool)
+            if x1 <= x0 or y1 <= y0:
+                return out
+            out[y0:y1, x0:x1] = inside(poly, LON[y0:y1, x0:x1], LAT[y0:y1, x0:x1])
+            return out
+
         for poly, iso, from_isos, why in jobs:
             if iso not in by_iso:
                 print(f"   WARN  {iso} not on this map", file=sys.stderr)
                 continue
             dst = by_iso[iso]
-            mask_in = inside(poly, LON, LAT)
+            mask_in = mask_for(poly)
             victims = [int(k) for k, v in provinces.items()
                        if v["iso_a3"] in from_isos]
             print(f"   {iso} <- {'/'.join(from_isos)}: {why}")
