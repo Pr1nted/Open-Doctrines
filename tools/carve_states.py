@@ -60,6 +60,17 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STDMAPS = os.path.join(ROOT, "data", "STDmaps")
 
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from fetch_ohm_borders import outline_for   # noqa: E402
+
+# Each scenario's own date, so a carved state can be cut to the outline that
+# was real THEN rather than to one polygon reused across fifty years.
+MAP_DATE = {
+    "1914.odmap": "1914-07-01", "1918.odmap": "1918-10-01",
+    "1939.odmap": "1939-09-01", "1945.odmap": "1945-09-01",
+    "1962.odmap": "1962-10-01", "map.odmap": "2000-01-01",
+}
+
 # Borders traced as (lon, lat). Coarse, but far closer than a rectangle -- and
 # at 0.044 degrees per pixel these are 40-80 pixels across, so more detail than
 # this would not survive rasterising anyway.
@@ -78,7 +89,7 @@ LUXEMBOURG = [(5.74, 49.55), (5.83, 50.09), (6.03, 50.18), (6.24, 49.90),
 # whoever holds the Ardennes, which is not the same country in every year.
 CARVES = {
     "1914.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["GBR"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["GBR"],
              color="#e08a3c", population=250000, compass={"left": 5, "auth": 70},
              minorities=[{"n": "Bhutia", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=1.5,
@@ -87,7 +98,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="A British-protected state with its own monarch since 1907."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "DEU", "GER"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "DEU", "GER"],
              color="#4aa8c8", population=260000, compass={"left": 10, "auth": 35},
              minorities=[{"n": "Luxembourgish", "p": 75.0}, {"n": "German", "p": 12.0},
                          {"n": "French", "p": 8.0}],
@@ -96,7 +107,7 @@ CARVES = {
              note="A sovereign grand duchy, neutral, occupied in 1914 but not annexed."),
     ],
     "1918.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["GBR"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["GBR"],
              color="#e08a3c", population=255000, compass={"left": 5, "auth": 70},
              minorities=[{"n": "Bhutia", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=1.5,
@@ -105,7 +116,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="As 1914."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "DEU", "GER"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "DEU", "GER"],
              color="#4aa8c8", population=262000, compass={"left": 10, "auth": 35},
              minorities=[{"n": "Luxembourgish", "p": 75.0}, {"n": "German", "p": 12.0},
                          {"n": "French", "p": 8.0}],
@@ -114,7 +125,7 @@ CARVES = {
              note="Still under German occupation in 1918, still a state."),
     ],
     "1939.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["GBR"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["GBR"],
              color="#e08a3c", population=280000, compass={"left": 5, "auth": 70},
              minorities=[{"n": "Bhutia", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=1.5,
@@ -123,7 +134,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="Internally sovereign; Britain guided foreign relations only."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "GER"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "GER"],
              color="#4aa8c8", population=296000, compass={"left": 10, "auth": 30},
              minorities=[{"n": "Luxembourgish", "p": 75.0}, {"n": "German", "p": 12.0},
                          {"n": "French", "p": 8.0}],
@@ -132,7 +143,7 @@ CARVES = {
              note="Neutral and independent on 1 September 1939; invaded May 1940."),
     ],
     "1945.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["GBR", "IND"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["GBR", "IND"],
              color="#e08a3c", population=290000, compass={"left": 5, "auth": 68},
              minorities=[{"n": "Bhutia", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=1.5,
@@ -141,7 +152,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="As 1939."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "GER", "DEU"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "GER", "DEU"],
              color="#4aa8c8", population=291000, compass={"left": 10, "auth": 28},
              minorities=[{"n": "Luxembourgish", "p": 75.0}, {"n": "German", "p": 12.0},
                          {"n": "French", "p": 8.0}],
@@ -150,7 +161,7 @@ CARVES = {
              note="Liberated 1944, a founding member of Benelux."),
     ],
     "1962.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["IND", "GBR"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["IND", "GBR"],
              color="#e08a3c", population=310000, compass={"left": 5, "auth": 65},
              minorities=[{"n": "Bhutia", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=2.0,
@@ -159,7 +170,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="Sovereign kingdom; India guided foreign relations by the 1949 treaty."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "DEU", "GER"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "DEU", "GER"],
              color="#4aa8c8", population=320000, compass={"left": 5, "auth": 25},
              minorities=[{"n": "Luxembourgish", "p": 72.0}, {"n": "German", "p": 12.0},
                          {"n": "French", "p": 9.0}],
@@ -168,7 +179,7 @@ CARVES = {
              note="EEC founding member."),
     ],
     "map.odmap": [
-        dict(iso="BTN", name="Bhutan", poly=BHUTAN, parents=["IND", "CHN"],
+        dict(iso="BTN", name="Bhutan", poly=BHUTAN, ohm="Bhutan", parents=["IND", "CHN"],
              color="#e08a3c", population=790000, compass={"left": 5, "auth": 45},
              minorities=[{"n": "Ngalop", "p": 50.0}, {"n": "Nepali", "p": 35.0}],
              treasury=3.0,
@@ -177,7 +188,7 @@ CARVES = {
              # has no equivalent symbol and is left off.
              flag={"type": "diagonal_r", "colors": ["#ffd520", "#ff4e12"]},
              note="Present day."),
-        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, parents=["BEL", "DEU", "FRA"],
+        dict(iso="LUX", name="Luxembourg", poly=LUXEMBOURG, ohm="Luxembourg", parents=["BEL", "DEU", "FRA"],
              color="#4aa8c8", population=660000, compass={"left": 10, "auth": 20},
              minorities=[{"n": "Luxembourgish", "p": 52.0}, {"n": "Portuguese", "p": 16.0},
                          {"n": "French", "p": 8.0}],
@@ -369,8 +380,25 @@ def carve_map(path, states, check):
             parent_pids = {int(k) for k, v in prov.items()
                            if v["country_id"] in parent_cids}
 
-            lons = [p[0] for p in st["poly"]]
-            lats = [p[1] for p in st["poly"]]
+            # SURVEYED OUTLINE FIRST, HAND TRACE AS THE FALLBACK.
+            #
+            # The traced polygons here are fourteen vertices for Bhutan and
+            # eight for Luxembourg -- enough to put a country roughly in the
+            # right place and not enough to draw it. Measured against OHM,
+            # Bhutan came out at 78% of itself, and the missing fifth was too
+            # small for carve_borders.py to fix afterwards: about 100 pixels,
+            # under the 150 px floor below which a carve is not worth a new
+            # province id. So it has to be right when the province is CUT, not
+            # patched later.
+            poly = outline_for(MAP_DATE.get(os.path.basename(path), ""), st["ohm"]) \
+                if st.get("ohm") else None
+            rings = poly if poly else [st["poly"]]
+            if poly:
+                print(f"      {st['iso']}: using the OHM outline "
+                      f"({sum(len(r) for r in rings)} vertices) rather than the "
+                      f"{len(st['poly'])}-vertex trace")
+            lons = [p[0] for r in rings for p in r]
+            lats = [p[1] for r in rings for p in r]
             x0 = max(0, int((min(lons) + 180) / 360 * W) - 2)
             x1 = min(W - 1, int((max(lons) + 180) / 360 * W) + 2)
             y0 = max(0, int((90 - max(lats)) / 180 * H) - 2)
@@ -382,7 +410,7 @@ def carve_map(path, states, check):
                 lat = 90 - (y + 0.5) / H * 180
                 for x in range(x0, x1 + 1):
                     lon = (x + 0.5) / W * 360 - 180
-                    if not inside(st["poly"], lon, lat):
+                    if not sum(inside(r, lon, lat) for r in rings) % 2:
                         continue
                     r, g, b = px[x, y]
                     cur = (r << 16) | (g << 8) | b

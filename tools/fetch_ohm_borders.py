@@ -67,6 +67,42 @@ def as_date(s, dm=(1, 1)):
             int(m.group(3)) if m.group(3) else dm[1])
 
 
+def outline_for(date, name):
+    """The committed outline for `name` valid on `date`, or None.
+
+    The reader lives with the writer so there is one of it. carve_borders.py
+    and carve_states.py both import this; a second copy would be a second
+    chance for the two to disagree about what the file means.
+
+    Falls back to an entry filed under a DIFFERENT date when that entry's own
+    validity covers the one asked for. OHM dates a relation by when the border
+    existed, not by when it was fetched, and several span the whole scenario
+    set -- Nepal's runs from 1860 with no end, Tibet's 1912 to 1951. Without
+    this, five maps wanting the same unchanged border mean five identical
+    fetches and five copies in the file.
+    """
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            borders = json.load(f)["borders"]
+    except (OSError, KeyError, json.JSONDecodeError):
+        return None
+    entry = borders.get(date, {}).get(name)
+    if entry is None:
+        want = as_date(date)
+        for slot in borders.values():
+            cand = slot.get(name)
+            if cand is None:
+                continue
+            s = as_date(cand.get("start_date"))
+            e = as_date(cand.get("end_date"), (12, 31))
+            if s and s <= want and (e is None or e >= want):
+                entry = cand
+                break
+    if entry is None:
+        return None
+    return [[(x, y) for x, y in ring] for ring in entry["rings"]]
+
+
 def overpass(query):
     req = urllib.request.Request(OVERPASS,
                                  data=urllib.parse.urlencode({"data": query}).encode(),

@@ -194,49 +194,8 @@ GALICIA_1918 = [
 # The hand traces stay as the fallback. They are what the map looked like
 # before, they still work, and a country OHM has not mapped at a given date
 # still needs a border from somewhere.
-def _as_date(s, dm=(1, 1)):
-    import re as _re
-    if not s:
-        return None
-    m = _re.match(r"^(-?\d{1,4})(?:-(\d{2}))?(?:-(\d{2}))?", str(s))
-    if not m:
-        return None
-    return (int(m.group(1)),
-            int(m.group(2)) if m.group(2) else dm[0],
-            int(m.group(3)) if m.group(3) else dm[1])
-
-
-def _ohm(date, name):
-    """The outline for `name` valid on `date`.
-
-    Falls back to an entry filed under a DIFFERENT date when that entry's own
-    validity covers the one asked for. OHM relations are dated by when the
-    border existed, not by when we happened to fetch them, and many of them
-    span the whole scenario set -- Nepal's runs from 1860 with no end, Bhutan's
-    to 1949, Paraguay's to 1938. Without this, five maps that want the same
-    unchanged border mean five identical fetches and five copies in the file.
-    """
-    path = os.path.join(ROOT, "tools", "data", "ohm_borders.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            borders = json.load(f)["borders"]
-    except (OSError, KeyError, json.JSONDecodeError):
-        return None
-    entry = borders.get(date, {}).get(name)
-    if entry is None:
-        want = _as_date(date)
-        for other, slot in borders.items():
-            cand = slot.get(name)
-            if cand is None:
-                continue
-            s = _as_date(cand.get("start_date"))
-            e = _as_date(cand.get("end_date"), (12, 31))
-            if s and s <= want and (e is None or e >= want):
-                entry = cand
-                break
-    if entry is None:
-        return None
-    return [[(x, y) for x, y in ring] for ring in entry["rings"]]
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from fetch_ohm_borders import outline_for as _ohm   # noqa: E402
 
 
 GERMANY_1939_OHM = _ohm("1939-09-01", "German Reich")
@@ -352,6 +311,16 @@ PLAN = {
          "districts, Turkish since 1921 and drawn here as Soviet."),
     ],
 }
+PLAN["1962.odmap"] = [
+    (_ohm("1962-10-01", "East Germany"), "DDR", ["DEU"],
+     "The inner-German border. The scenario draws it as a bounding box over "
+     "ten German provinces, which is what the map has instead of a border -- "
+     "measured against the real one the GDR came out at 75% of itself, with "
+     "the missing quarter left in West Germany. The OHM relation runs from "
+     "1951 to reunification, so it is the border as it stood in October 1962, "
+     "fourteen months after the Wall went up."),
+]
+
 # Asia and South America apply to every scenario, not just the ones that
 # already had a European carve, so 1945 and 1962 get a list of their own here.
 for _map, _date in (("1914.odmap", "1914-07-01"), ("1918.odmap", "1918-10-01"),
