@@ -8,6 +8,47 @@
 #include <string>
 #include <cstdio>
 
+// === specializationBoostPct / provinceResourceIncome ===
+//
+// See the note on the declarations: the boost is applied here, on the way out,
+// rather than written into resourceIncome -- which stays the province's
+// unspecialised base so that re-specialising cannot compound it and so that
+// every save written before specialisation paid anything still reads right.
+const char* const Game::SPEC_RESOURCES[5] = {"Oil", "Gold", "Metal", "Rubber", "Gemstones"};
+
+float Game::specializationBoostPct(int pid) const {
+    auto indIt = m_provinceIndustry.find(pid);
+    if (indIt == m_provinceIndustry.end() || indIt->second.specialization.empty()) return 0.0f;
+    auto resIt = m_provinceResources.find(pid);
+    if (resIt == m_provinceResources.end()) return 0.0f;
+    const std::string& s = indIt->second.specialization;
+    const ProvinceResources& r = resIt->second;
+    if (s == "Oil")       return r.oil.boost;
+    if (s == "Gold")      return r.gold.boost;
+    if (s == "Metal")     return r.metal.boost;
+    if (s == "Rubber")    return r.rubber.boost;
+    if (s == "Gemstones") return r.gemstones.boost;
+    return 0.0f;
+}
+
+float Game::provinceResourceIncome(int pid) const {
+    auto indIt = m_provinceIndustry.find(pid);
+    if (indIt == m_provinceIndustry.end()) return 0.0f;
+    return indIt->second.resourceIncome * (1.0f + specializationBoostPct(pid) / 100.0f);
+}
+
+const char* Game::bestSpecializationFor(int pid) const {
+    auto resIt = m_provinceResources.find(pid);
+    if (resIt == m_provinceResources.end()) return nullptr;
+    const ProvinceResources& r = resIt->second;
+    const float boosts[5] = {r.oil.boost, r.gold.boost, r.metal.boost,
+                             r.rubber.boost, r.gemstones.boost};
+    int best = -1;
+    for (int i = 0; i < 5; ++i)
+        if (boosts[i] > 0.0f && (best < 0 || boosts[i] > boosts[best])) best = i;
+    return best < 0 ? nullptr : SPEC_RESOURCES[best];
+}
+
 CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     auto cacheIt = m_countryIncomeCache.find(countryId);
     if (cacheIt != m_countryIncomeCache.end()) return cacheIt->second;
@@ -20,7 +61,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         auto ind = m_provinceIndustry.find(pid);
         if (ind != m_provinceIndustry.end()) {
             cs.gross += ind->second.income;
-            cs.resource += ind->second.resourceIncome;
+            cs.resource += provinceResourceIncome(pid);
             cs.pop += ind->second.popIncome;
         }
     }
@@ -106,7 +147,7 @@ void Game::refreshIncomeCache() {
         if (ind == m_provinceIndustry.end()) continue;
         auto& a = incAcc[p.countryId];
         a.gross += ind->second.income;
-        a.res += ind->second.resourceIncome;
+        a.res += provinceResourceIncome(pid);
         a.pop += ind->second.popIncome;
     }
     // Upkeep in one pass each, not one pass per country. Both of these used to

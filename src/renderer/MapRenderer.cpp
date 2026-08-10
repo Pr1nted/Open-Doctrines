@@ -3,6 +3,12 @@
 // that select a province, drag an army and pan the map, and it asks raylib for
 // them itself. Without the shims the stick moved a pointer nothing could click.
 #include "../PadInput.h"
+// A renderer reaching for the audio system looks wrong and is not. Two of the
+// functions below are the longest uninterrupted stretches of work in the whole
+// load, and on the web that is measured in whether the music survives them:
+// nothing drains the audio buffer while this thread is inside a 33-million-pixel
+// scan. Audio::pump() is the yield. See its comment for why a browser needs one.
+#include "../Audio.h"
 #include "raymath.h"
 #include <cmath>
 #include <algorithm>
@@ -167,6 +173,12 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     std::vector<QEntry> queue;
 
     for (int py = 0; py < mapH; ++py) {
+        // Once a row. pump() rate-limits itself and costs a clock read when it
+        // is not due, so the scan pays almost nothing and the stream stays fed
+        // throughout instead of between phases. Every 64 rows was the old
+        // interval and was longer than an audio period at this raster size,
+        // which is how the buffer ran dry with the instrumentation in place.
+        Audio::get().pump();
         for (int px = 0; px < mapW; ++px) {
             uint32_t center = pixels[py * mapW + px];
             if (center == 0) continue;
@@ -219,6 +231,19 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     m_borderPixels.assign(reinterpret_cast<const uint8_t*>(borderPixels.data()),
                           reinterpret_cast<const uint8_t*>(borderPixels.data()) + mapW * mapH * 4);
 
+    // The scan above yields every row; this does not and cannot. Allocating a
+    // 8192x4096 image, memcpy'ing 134 MB into it and handing that to the driver
+    // are four opaque calls with no iteration of ours between them.
+    //
+    // NOT a BlockingCall, though it was one. Measured, this region is about
+    // 130 ms -- three audio periods. Suspending the device for that costs a
+    // stop and a restart of the music to save three repeated blocks, which is
+    // a worse trade than the thing it was fixing. The guard is for the
+    // multi-second regions.
+    //
+    // A top-up instead: refilling immediately before the stall is the most
+    // headroom the stream can be given, and it costs nothing.
+    Audio::get().pump();
     if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
     Image img = GenImageColor(mapW, mapH, {0, 0, 0, 0});
     memcpy(img.data, m_borderPixels.data(), mapW * mapH * 4);
@@ -359,6 +384,7 @@ void MapRenderer::buildProvinceData(
     std::unordered_map<int, int> minX, maxX, minY, maxY;
 
     for (int y = 0; y < m_mapH; ++y) {
+        Audio::get().pump();          // as in computeBorderTexture above
         int rowOff = y * stride;
         for (int x = 0; x < m_mapW; ++x) {
             int pi = rowOff + x * 4;
@@ -423,6 +449,7 @@ void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
     int stride = m_mapW * 4;
 
     for (int y = 0; y < m_mapH; ++y) {
+        Audio::get().pump();          // as in computeBorderTexture above
         int rowOff = y * stride;
         for (int x = 0; x < m_mapW; ++x) {
             int pi = rowOff + x * 4;

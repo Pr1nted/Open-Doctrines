@@ -309,11 +309,55 @@ Alpha, and the honest version of that word:
   qualified — the four-platform matrix in `.github/workflows/release-game.yml`
   compiles them, and "it compiled" is not "somebody played it". Qualifying them
   means `tests/run_all.sh` and `tools/playtest.sh --verify` passing on each.
-- **The AI is not yet a real opponent.** It defends its borders, mounts
-  amphibious invasions, sails around land instead of through it, fights other
-  fleets, negotiates and governs — the mechanisms work — but it will not outplay
-  you, and the difficulty setting changes how much noise it adds to its own
-  choices rather than how well it plays.
+- **The AI plays a whole game now, and is still not a match for a good
+  player.** Both halves of that are worth saying plainly.
+
+  What it does: four action menus, chosen by the network each turn — economy
+  (12 actions: industry, forts, ports, specialisation, two hull types, research
+  funding and direction), politics (11: doctrines, alliances, non-aggression
+  pacts, guarantees, pacification, conciliating or repressing a minority), war
+  (8: recruit, reinforce a threatened border, attack, declare, artillery, offer
+  a ceasefire, stage on allied ground) and the navy (7: routed movement,
+  bombardment, embarking and landing troops, scrapping a hull it is paying for
+  and not using, engaging an enemy fleet). It answers diplomacy with reasons,
+  and it keeps its word or does not in ways you can observe.
+
+  It is also trained differently: alongside self-play it now plays a **league**
+  of frozen past checkpoints (`data/ai/league-*.bin`), which are opponents that
+  cannot improve mid-run and so cannot drift out from under the thing being
+  measured. Two of the changes that mattered most were not learning at all —
+  its fleets now follow a water-connectivity route instead of steering at the
+  nearest port in a straight line (which had put 93% of ship moves into a
+  coastline), and they can attack another fleet rather than only be attacked.
+
+  What it still is not: it will not outplay somebody who knows the game, and the
+  difficulty setting changes how much noise it adds to its own choices rather
+  than how well it plays.
+
+  One change this build makes to how it plays, worth naming because it was
+  invisible from both sides: the AI now **receives its own research
+  discounts**. The province panel multiplied every build by the industry and
+  conscription cost modifiers and `AISystem.cpp`, working from a duplicate copy
+  of the cost tables, did not — so a country that had finished those trees
+  built and recruited at half price under a player and full price under the AI.
+  It was not cheating; it was being overcharged by its own research, and its
+  economy module had learned from that world in every training run it had ever
+  done. One table now, in `src/BuildCosts.h`, with the modifier beside it.
+
+  **No strength figure is quoted for this build.** The measured comparison
+  below is real, and it measured an earlier model against the one before that.
+  Its own caveat — that much of the gain was engine fixes rather than learning
+  — is exactly why it cannot be carried forward: a figure moves with the build
+  as much as with the weights, and this build moved the economy.
+
+  A retrain against the corrected economy was tried and **reverted**. It
+  regressed: paired over six seeds, ADVANTAGE fell 2.09 → 1.52 at 300 turns
+  (95% CI [-1.14, -0.03]) and 2.67 → 1.63 at 400 (95% CI [-1.90, -0.29]). The
+  cause was not too little training — the war head collapsed onto "attack",
+  99.3% of war actions with ceasefires at zero, which `tools/ai_bench.py`
+  detects by name and which more turns do not undo. The shipped weights are
+  therefore the pre-retrain ones. Correcting `WAR_END_REWARD` / `IDLE_CHARGE`
+  and retraining with `--reset-ai-head` is the actual next step.
 
   This entry used to quote a single figure: 36% of the world against countries
   picking uniformly at random, so *losing to chance*. That number is withdrawn,
@@ -342,8 +386,13 @@ Alpha, and the honest version of that word:
   interval around it. `--eval-ai --vs-random` still exists and still prints
   `ADVANTAGE`; treat a single run of it as an anecdote.
 - Multiplayer works: hosting, joining, seats, turns, disconnects and reconnects
-  are built and tested. There is **no dedicated server** yet — hosting means a
-  running copy of the game, and closing it ends the session.
+  are built and tested. A **dedicated server** now exists (`OpenDoctrinesServer`)
+  — a console server with no graphics dependency at all, so it runs on a VPS or
+  in a container. It compiles the same simulation as the game against a raylib
+  of its own, so the two cannot disagree about the rules. It is **not yet
+  released**: it builds and is smoke-tested on every CI platform
+  (`tests/server_smoke_test.sh`), has no packaged artefacts, and its optional
+  UI mode and Android build are unfinished.
 - There is **no tutorial**. Province actions live behind the view tabs on the
   bottom bar, and the game does not currently tell you that.
 - **Long-form (play-by-paste) turns are built but not yet played.** The whole

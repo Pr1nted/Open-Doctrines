@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "BuildCosts.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
@@ -21,18 +22,11 @@
 
 // What an upgrade costs and how long it takes.
 //
-// At file scope because two things now read them: the province panel's own
-// buttons and the bulk paint below. They used to be function-local statics
-// inside drawCountryPanel, which was fine while it was the only caller and is
-// exactly how a second caller ends up with its own slightly different copy.
-static const int IND_COST[]   = {0, 1, 10, 15, 25, 50, 75, 100, 150, 200, 300};
-static const int IND_TURNS[]  = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-static const int FORT_COST[]  = {0, 20, 30, 50, 100, 200};
-static const int FORT_TURNS[] = {0, 1, 1, 1, 1, 1};
-
-static constexpr int IND_MAX_LEVEL  = (int)(sizeof(IND_COST) / sizeof(IND_COST[0])) - 1;
-static constexpr int FORT_MAX_LEVEL = (int)(sizeof(FORT_COST) / sizeof(FORT_COST[0])) - 1;
-static constexpr int PORT_MAX_LEVEL = 3;
+// The tables moved to src/BuildCosts.h. The note that used to sit here warned
+// that a second caller ends up with its own slightly different copy -- and one
+// did, in AISystem.cpp, which then charged the AI full price for everything the
+// research tree was supposed to discount. There is one copy now, and the
+// modifier lives beside it.
 
 void Game::drawBottomPanel() {
     const int barW = std::min(880, m_screenW - 32);
@@ -594,7 +588,7 @@ void Game::drawCountryPanel() {
                 m_cachedProvCount++;
                 auto indIt = m_provinceIndustry.find(pid);
                 if (indIt != m_provinceIndustry.end()) {
-                    m_cachedCountryIncome += indIt->second.income + indIt->second.resourceIncome + indIt->second.popIncome;
+                    m_cachedCountryIncome += indIt->second.income + provinceResourceIncome(pid) + indIt->second.popIncome;
                     if (indIt->second.level > 0) m_cachedIndustryCount++;
                 }
                 auto popIt = m_provincePopulations.find(pid);
@@ -855,8 +849,20 @@ void Game::drawCountryPanel() {
                      rX, rY, 16, WHITE);
             DrawText(TextFormat("Income: %.1f/turn", ind.income),
                      rX, rY + 20, 14, YELLOW);
-            DrawText(TextFormat("Resource income: %.1f", ind.resourceIncome),
-                     rX, rY + 40, 14, LIGHTGRAY);
+            // The specialised figure, because that is the one being banked --
+            // see provinceResourceIncome. The base is shown beside it when a
+            // specialization is moving it, so the bonus line below has
+            // something to refer to.
+            {
+                const float eff = provinceResourceIncome(selPid);
+                if (eff > ind.resourceIncome + 0.05f)
+                    DrawText(TextFormat("Resource income: %.1f  (base %.1f)",
+                                        eff, ind.resourceIncome),
+                             rX, rY + 40, 14, Color{170, 220, 170, 255});
+                else
+                    DrawText(TextFormat("Resource income: %.1f", ind.resourceIncome),
+                             rX, rY + 40, 14, LIGHTGRAY);
+            }
             DrawText(TextFormat("Population bonus: +%.0f%% (x%.2f)",
                      (ind.popModifier - 1.0f) * 100.0f, ind.popModifier),
                      rX, rY + 60, 14, LIGHTGRAY);
@@ -873,7 +879,8 @@ void Game::drawCountryPanel() {
                     else if (ind.specialization == "Gemstones") bonus = res.gemstones.boost;
                     else if (ind.specialization == "Metal") bonus = res.metal.boost;
                     if (bonus > 0.0f)
-                        DrawText(TextFormat("Specialization bonus: +%.1f%%", bonus),
+                        DrawText(TextFormat("Specialization bonus: +%.1f%% resource income",
+                                            bonus),
                                  rX, rY + 102, 14, GREEN);
                 }
             }
@@ -982,7 +989,16 @@ void Game::drawCountryPanel() {
     };
 
     // ─── Diplomatic Action Buttons (foreign province, not spectator, not UNC/BLC) ───
-    if (cid != m_playerCountryId && m_playerCountryId > 0 && cid > 0 && cid != UNC_CID && cid != BLC_CID) {
+    //
+    // NOT IN THE POPULATION VIEW. That view's panel is the longest in the game
+    // -- population, the political compass, then the ethnic pie and its legend
+    // -- and the diplomacy block is drawn at a fixed offset below the country
+    // header, so it landed on top of the ethnic groups and hid the very
+    // numbers the view exists to show. The buttons are a relations decision
+    // and the Relations tab is one click away; the demographics have nowhere
+    // else to go.
+    if (cid != m_playerCountryId && m_playerCountryId > 0 && cid > 0 &&
+        cid != UNC_CID && cid != BLC_CID && m_activeViewTab != 1) {
         const Country* playerC = m_countries.getCountry(m_playerCountryId);
         const Country* targetC = m_countries.getCountry(cid);
         if (playerC && targetC) {
@@ -1195,7 +1211,11 @@ void Game::drawCountryPanel() {
                         // declaration itself is unchanged: same click, same
                         // turn, nothing to satisfy first.
                         if (ab.action == "declare_war") pda.statedGoal = m_declareWarGoal;
-                        m_pendingDiplomaticActions.push_back(std::move(pda));
+                        // The buttons above already grey out for a pair with
+                        // something in flight, so this queues; it goes through
+                        // queueDiplomaticAction so the panel is enforcing the
+                        // same rule rather than its own copy of it.
+                        queueDiplomaticAction(std::move(pda));
                     }
                 }
                 col++;
@@ -1234,7 +1254,7 @@ void Game::drawCountryPanel() {
         // "Industry cost -50%" is registered as a POSITIVE 50, so this has to
         // subtract. It used to add, making the discount research raise the
         // price to 1.5x instead of halving it.
-        float costMod = std::max(0.0f, 1.0f - getTotalEffect("industryCostPct") / 100.0f);
+        float costMod = buildCostMod(getTotalEffect("industryCostPct"));
         float upgradeCost = (float)IND_COST[nextLv] * costMod;
         bool canAfford = nextLvValid && (treasury >= upgradeCost);
         int turnsToBuild = IND_TURNS[nextLv];
@@ -1326,10 +1346,9 @@ void Game::drawCountryPanel() {
                         if (realIdx == idx) { foundIdx = i; break; }
                         realIdx++;
                     }
-                    if (foundIdx >= 0) {
-                        treasury -= specCost;
-                        m_pendingSpecializations.push_back({selPid, specOpts[foundIdx], 3});
-                    }
+                    // Through the same door the bulk brush uses, so the two
+                    // cannot come to disagree about the price or the rules.
+                    if (foundIdx >= 0) queueSpecialization(selPid, specOpts[foundIdx]);
                     m_specDropdownProvince = -1;
                 }
             }
@@ -1447,7 +1466,7 @@ void Game::drawCountryPanel() {
         // "armyCostPct" is not a real effect name, so this always returned 0 and
         // recruit prices ignored research entirely. The actual effect is
         // conscriptionCostPct, and it's a cost REDUCTION, so it subtracts.
-        float costMod = std::max(0.0f, 1.0f - getTotalEffect("conscriptionCostPct") / 100.0f);
+        float costMod = conscriptionCostMod(getTotalEffect("conscriptionCostPct"));
         float recruitCost = (recruitCount / 10000.0f) * costMod;
         if (recruitCost < 1.0f && recruitCount > 0) recruitCost = 1.0f;
         auto cs = computeCountryIncome(m_playerCountryId);
@@ -2160,6 +2179,43 @@ void Game::drawInner() {
                 DrawText(numeral, (int)(d.sp.x - tw / 2), (int)(d.sp.y - fs / 2), fs, WHITE);
             }
         }
+
+        // ── What the specialisation brush would buy, province by province ──
+        //
+        // Optimal picks per province, so the confirm panel's "14 provinces"
+        // hides fourteen different answers: this one gets Oil, that one Gold,
+        // and the only way to find out used to be to buy them and look. The
+        // name is written under each painted province, in the same colour the
+        // ring above uses for that resource, so a painted map reads as the
+        // plan it is.
+        // Hidden when zoomed out, on the same rule as the level numerals above:
+        // at 0.3x a dense sweep is a hundred nine-pixel words on top of each
+        // other, which is less legible than no label at all. The amber
+        // selection outline still shows what is painted.
+        if (m_bulkPaint && m_bulkTarget == BULK_SPECIALIZE && !m_bulkSelection.empty() &&
+            cam.zoom > 0.4f) {
+            const int fs = std::max((int)(11 * cam.zoom), 9);
+            for (int pid : m_bulkSelection) {
+                auto cit = m_provinceCenters.find(pid);
+                if (cit == m_provinceCenters.end()) continue;
+                const Vector2 sp = worldToScreen(cit->second);
+                if (sp.x < -60 || sp.x > m_screenW + 60 || sp.y < -40 || sp.y > m_screenH + 40) continue;
+                float cost = 0.0f; std::string res;
+                if (!specializationQuote(pid, m_bulkSpecResource.c_str(), cost, res)) continue;
+                Color col = Color{200, 200, 200, 255};
+                if      (res == "Oil")       col = Color{160, 50, 200, 255};
+                else if (res == "Gold")      col = hexToColor(m_config.accent());
+                else if (res == "Rubber")    col = Color{50, 200, 50, 255};
+                else if (res == "Gemstones") col = Color{100, 200, 255, 255};
+                const auto indIt2 = m_provinceIndustry.find(pid);
+                const float r = std::max((12 + (indIt2 != m_provinceIndustry.end()
+                                                    ? indIt2->second.level : 0)) * cam.zoom, 6.0f);
+                const int tw2 = MeasureText(res.c_str(), fs);
+                const int tx = (int)(sp.x - tw2 / 2), ty = (int)(sp.y + r + 2);
+                DrawRectangle(tx - 3, ty - 2, tw2 + 6, fs + 4, Color{0, 0, 0, 190});
+                DrawText(res.c_str(), tx, ty, fs, col);
+            }
+        }
     }
     // ─── Defence tab: fortification shields ─────
     if (m_activeViewTab == 3) {
@@ -2305,7 +2361,7 @@ void Game::drawInner() {
             DrawText(counted.c_str(), (int)(m.sx - tw / 2), (int)(m.topY - fs - 2), fs, WHITE);
             // "Disbanding..." text for pending disband orders
             for (auto& pd : m_pendingDisbandOrders) {
-                if (pd.provinceId != m.pid) continue;
+                if (pd.provinceId != m.pid || !provinceIsPlayers(pd.provinceId)) continue;
                 const char* dtext = "Disbanding...";
                 int dfs = (int)(10 * cam.zoom);
                 if (dfs < 8) dfs = 8;
@@ -2880,6 +2936,7 @@ void Game::drawInner() {
                           healthPct > 0.5f ? GREEN : (healthPct > 0.25f ? YELLOW : RED));
             // "Scrapping..." text overlay for pending scrap ships
             for (auto& ss : m_pendingScrapShips) {
+                if (!shipIsPlayers(ss.shipIndex)) continue;
                 if (ss.shipIndex != si.idx) continue;
                 const char* stxt = "Scrapping...";
                 int sfs = (int)(9 * cam.zoom);
@@ -3029,6 +3086,7 @@ void Game::drawInner() {
         // Draw pending ship move order indicators
         for (auto& mo : m_pendingShipMoveOrders) {
             if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) continue;
+            if (!shipIsPlayers(mo.shipIndex)) continue;
             auto& ship = m_ships[mo.shipIndex];
             int sx, sy, dx, dy;
             m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
@@ -3041,6 +3099,7 @@ void Game::drawInner() {
         // Draw pending engage order indicators
         for (auto& eo : m_pendingShipEngageOrders) {
             if (eo.shipIndex < 0 || eo.shipIndex >= (int)m_ships.size()) continue;
+            if (!shipIsPlayers(eo.shipIndex)) continue;
             if (eo.targetIndex < 0 || eo.targetIndex >= (int)m_ships.size()) continue;
             auto& s1 = m_ships[eo.shipIndex];
             auto& s2 = m_ships[eo.targetIndex];
@@ -3055,6 +3114,7 @@ void Game::drawInner() {
         // Draw pending bombard order indicators (artillery-style arrows)
         for (auto& bo : m_pendingShipBombardOrders) {
             if (bo.shipIndex < 0 || bo.shipIndex >= (int)m_ships.size()) continue;
+            if (!shipIsPlayers(bo.shipIndex)) continue;
             auto& ship = m_ships[bo.shipIndex];
             int sx2, sy2;
             m_landSea.lonLatToPixel((float)ship.lon,(float)ship.lat,sx2,sy2);
@@ -3110,6 +3170,7 @@ void Game::drawInner() {
         // Draw pending disembark order indicators
         for (auto& do_ : m_pendingShipDisembarks) {
             if (do_.shipIndex < 0 || do_.shipIndex >= (int)m_ships.size()) continue;
+            if (!shipIsPlayers(do_.shipIndex)) continue;
             auto& ship = m_ships[do_.shipIndex];
             int sx3, sy3;
             m_landSea.lonLatToPixel((float)ship.lon,(float)ship.lat,sx3,sy3);
@@ -3163,7 +3224,7 @@ void Game::drawInner() {
             bool show = (pu.type == "industry" && m_activeViewTab == 2) ||
                         (pu.type == "fortification" && m_activeViewTab == 3) ||
                         (pu.type == "port" && m_activeViewTab == 6);
-            if (!show) continue;
+            if (!show || !provinceIsPlayers(pu.provinceId)) continue;
             auto cit = m_provinceCenters.find(pu.provinceId);
             if (cit == m_provinceCenters.end()) continue;
             Vector2 sp = worldToScreen(cit->second);
@@ -3196,6 +3257,7 @@ void Game::drawInner() {
         // Green + for recruitment (army tab only) — positioned above the army icon
         for (auto& pr : m_pendingRecruitments) {
             if (m_activeViewTab != 5) continue;
+            if (!provinceIsPlayers(pr.provinceId)) continue;
             auto cit = m_provinceCenters.find(pr.provinceId);
             if (cit == m_provinceCenters.end()) continue;
             Vector2 sp = worldToScreen(cit->second);
@@ -3212,6 +3274,7 @@ void Game::drawInner() {
         // ─── Ship building indicator (navy view only) ───
         if (m_activeViewTab == 6) {
             for (auto& sb : m_pendingShipBuilds) {
+                if (!provinceIsPlayers(sb.provinceId)) continue;
                 auto cit = m_provinceCenters.find(sb.provinceId);
                 if (cit == m_provinceCenters.end()) continue;
                 Vector2 sp = worldToScreen(cit->second);
@@ -3388,6 +3451,10 @@ void Game::drawInner() {
             if (arrowFont < 7) arrowFont = 7;
             // Draw existing move orders + handle slider dragging
             for (auto& mo : m_pendingMoveOrders) {
+                // Not just hidden: these arrows carry a draggable percentage
+                // slider, so drawing somebody else's order handed the player
+                // the handle on it.
+                if (mo.countryId != m_playerCountryId && m_playerCountryId != SPC_CID) continue;
                 auto srcIt = m_provinceCenters.find(mo.fromProvince);
                 auto dstIt = m_provinceCenters.find(mo.toProvince);
                 if (srcIt == m_provinceCenters.end() || dstIt == m_provinceCenters.end()) continue;
@@ -3569,6 +3636,7 @@ void Game::drawInner() {
                 return {WHITE, 1};
             };
             for (auto& ao : m_pendingArtilleryOrders) {
+                if (!provinceIsPlayers(ao.fromProvince)) continue;
                 auto srcIt = m_provinceCenters.find(ao.fromProvince);
                 auto dstIt = m_provinceCenters.find(ao.targetProvince);
                 if (srcIt == m_provinceCenters.end() || dstIt == m_provinceCenters.end()) continue;
@@ -3956,36 +4024,47 @@ const char* Game::bulkPaintType() const {
     }
 }
 
-const char* Game::bulkPaintLabel() const {
+std::string Game::bulkPaintLabel() const {
+    if (m_bulkTarget == BULK_SPECIALIZE)
+        return m_bulkSpecResource.empty() ? "best-resource specialization"
+                                          : m_bulkSpecResource + " specialization";
     const char* t = bulkPaintType();
     if (!t) return "";
-    if (strcmp(t, "industry") == 0) return "industry";
-    if (strcmp(t, "fortification") == 0) return "forts";
-    return "ports";
+    if (strcmp(t, "industry") == 0) return "industry upgrade";
+    if (strcmp(t, "fortification") == 0) return "fort upgrade";
+    return "port upgrade";
 }
 
 bool Game::upgradeQuote(int provinceId, const char* type,
-                        float& cost, int& nextLevel, int& turns) const {
+                        float& cost, int& nextLevel, int& turns, int countryId) const {
     cost = 0.0f; nextLevel = 0; turns = 0;
     if (provinceId <= 0 || !type) return false;
-    if (m_playerCountryId == SPC_CID) return false;      // spectators build nothing
+
+    // WHOSE upgrade this is. Defaults to the local player, which is what every
+    // UI caller wants, but the multiplayer host passes the SUBMITTING country
+    // -- see mpApplyOrders. Before that parameter existed this function could
+    // only ever answer for whoever was sitting at the machine, so the host had
+    // nothing to check a remote player's build against and took the level and
+    // the build time straight off the wire.
+    const int cid = (countryId < 0) ? m_playerCountryId : countryId;
+    if (cid == SPC_CID || cid == 0) return false;        // spectators build nothing
 
     const Province* p = m_provinces.getProvinceById(provinceId);
-    if (!p || p->countryId != m_playerCountryId) return false;
+    if (!p || p->countryId != cid) return false;
 
     // Something already building here is not a second thing to buy.
     for (const PendingUpgrade& pu : m_pendingUpgrades)
         if (pu.provinceId == provinceId && pu.type == type) return false;
 
     // "Industry cost -50%" is registered as a POSITIVE 50, so this subtracts.
-    const float costMod = std::max(0.0f, 1.0f - getTotalEffect("industryCostPct") / 100.0f);
+    const float costMod = buildCostMod(getTotalEffect("industryCostPct", cid));
 
     if (strcmp(type, "industry") == 0) {
         auto it = m_provinceIndustry.find(provinceId);
         const int level = (it != m_provinceIndustry.end()) ? it->second.level : 0;
         const int next = level + 1;
         if (next < 0 || next > IND_MAX_LEVEL) return false;            // hard cap
-        if (level >= getResearchedIndustryLevel()) return false;       // research cap
+        if (level >= getResearchedIndustryLevel(cid)) return false;    // research cap
         cost = (float)IND_COST[next] * costMod;
         nextLevel = next;
         turns = IND_TURNS[next];
@@ -4010,7 +4089,7 @@ bool Game::upgradeQuote(int provinceId, const char* type,
         const int level = (it != m_provincePorts.end()) ? it->second.level : 0;
         const int next = level + 1;
         if (next > PORT_MAX_LEVEL) return false;
-        if (level >= getResearchedPortLevel()) return false;
+        if (level >= getResearchedPortLevel(cid)) return false;
         cost = 60.0f * (float)next;
         nextLevel = next;
         turns = 3;
@@ -4020,20 +4099,104 @@ bool Game::upgradeQuote(int provinceId, const char* type,
     return false;
 }
 
-bool Game::queueUpgrade(int provinceId, const char* type) {
+bool Game::queueUpgrade(int provinceId, const char* type, int countryId) {
+    const int cid = (countryId < 0) ? m_playerCountryId : countryId;
     float cost = 0.0f; int next = 0; int turns = 0;
-    if (!upgradeQuote(provinceId, type, cost, next, turns)) return false;
+    if (!upgradeQuote(provinceId, type, cost, next, turns, cid)) return false;
 
-    double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+    auto it = m_countries.getAll().find(cid);
+    if (it == m_countries.getAll().end()) return false;
+    double& treasury = it->second.treasury;
     if (treasury < cost) return false;
     treasury -= cost;
+    // next and turns come from the quote above, never from a caller. That is
+    // the whole point: this is the only place a build is created, so it is the
+    // only place that has to be right about what one costs and how long it
+    // takes -- including for a build that arrived over the network.
     m_pendingUpgrades.push_back({provinceId, type, next, turns});
+    return true;
+}
+
+// === specializationQuote / queueSpecialization ===
+//
+// The same shape as upgradeQuote/queueUpgrade above and for the same reason:
+// the province panel's dropdown, the bulk brush and anything added later all
+// have to agree about what specialising costs and when it is allowed. The
+// dropdown used to own those rules privately.
+bool Game::specializationQuote(int pid, const char* resource,
+                               float& cost, std::string& outResource,
+                               int countryId) const {
+    cost = 0.0f;
+    outResource.clear();
+    if (pid <= 0) return false;
+
+    // See upgradeQuote: below zero means the local player, and the multiplayer
+    // host passes the submitting country so a specialisation that arrived over
+    // a socket is priced and gated exactly like one somebody clicked.
+    const int cid = (countryId < 0) ? m_playerCountryId : countryId;
+    if (cid == SPC_CID || cid == 0) return false;
+
+    const Province* p = m_provinces.getProvinceById(pid);
+    if (!p || p->countryId != cid) return false;
+
+    auto indIt = m_provinceIndustry.find(pid);
+    if (indIt == m_provinceIndustry.end() || indIt->second.level < 1) return false;
+
+    for (const PendingSpecialization& ps : m_pendingSpecializations)
+        if (ps.provinceId == pid) return false;          // one at a time
+
+    // Empty means "whatever pays best here" -- the brush's Optimal setting.
+    std::string want = resource ? resource : "";
+    if (want.empty()) {
+        const char* best = bestSpecializationFor(pid);
+        if (!best) return false;                          // nothing under the ground
+        want = best;
+    } else {
+        bool known = false;
+        for (const char* r : SPEC_RESOURCES) if (want == r) { known = true; break; }
+        if (!known) return false;
+    }
+    // Already specialised in exactly that: there is nothing to buy. A DIFFERENT
+    // resource is allowed -- switching is what the dropdown has always offered.
+    if (indIt->second.specialization == want) return false;
+
+    // Priced off the CURRENT industry level, matching the panel: deriving it
+    // from the next level's cost made specialising cost a sentinel value at
+    // max level, i.e. exactly when it is most worth doing.
+    const float costMod = buildCostMod(getTotalEffect("industryCostPct", cid));
+    cost = (float)IND_COST[std::clamp(indIt->second.level, 0, IND_MAX_LEVEL)] * 1.5f * costMod;
+    outResource = want;
+    return true;
+}
+
+bool Game::queueSpecialization(int pid, const char* resource, int countryId) {
+    const int cid = (countryId < 0) ? m_playerCountryId : countryId;
+    float cost = 0.0f;
+    std::string res;
+    if (!specializationQuote(pid, resource, cost, res, cid)) return false;
+
+    auto it = m_countries.getAll().find(cid);
+    if (it == m_countries.getAll().end()) return false;
+    double& treasury = it->second.treasury;
+    if (treasury < cost) return false;
+    treasury -= cost;
+    // The resource comes from the quote, not the caller: "" means "whatever
+    // pays best here", and resolving it anywhere else would let a client pick
+    // a resource the province does not have.
+    m_pendingSpecializations.push_back({pid, res, 3});
     return true;
 }
 
 void Game::bulkSelectionTotals(float& cost, int& count) const {
     cost = 0.0f;
     count = 0;
+    if (m_bulkTarget == BULK_SPECIALIZE) {
+        for (int pid : m_bulkSelection) {
+            float c = 0.0f; std::string res;
+            if (specializationQuote(pid, m_bulkSpecResource.c_str(), c, res)) { cost += c; count++; }
+        }
+        return;
+    }
     const char* type = bulkPaintType();
     if (!type) return;
     for (int pid : m_bulkSelection) {
@@ -4058,8 +4221,9 @@ void Game::clearBulkSelection() {
 }
 
 void Game::commitBulkSelection() {
+    const bool spec = (m_bulkTarget == BULK_SPECIALIZE);
     const char* type = bulkPaintType();
-    if (!type) return;
+    if (!spec && !type) return;
 
     float cost = 0.0f; int count = 0;
     bulkSelectionTotals(cost, count);
@@ -4070,32 +4234,44 @@ void Game::commitBulkSelection() {
     // set is unordered, so "which half" would not even be stable.
     const double treasury = m_countries.getAll()[m_playerCountryId].treasury;
     if (treasury < cost) {
-        addNotification(TextFormat("Not enough money: %d %s cost $%.0f, you have $%.0f.",
-                                   count, bulkPaintLabel(), (double)cost, treasury),
+        addNotification(TextFormat("Not enough money: %d %s%s cost $%.0f, you have $%.0f.",
+                                   count, bulkPaintLabel().c_str(), count == 1 ? "" : "s",
+                                   (double)cost, treasury),
                         Color{230, 130, 130, 255});
         return;
     }
 
     int queued = 0;
-    for (int pid : m_bulkSelection) if (queueUpgrade(pid, type)) queued++;
+    if (spec) {
+        for (int pid : m_bulkSelection)
+            if (queueSpecialization(pid, m_bulkSpecResource.c_str())) queued++;
+    } else {
+        for (int pid : m_bulkSelection) if (queueUpgrade(pid, type)) queued++;
+    }
 
     if (queued > 0) {
-        Audio::get().playSfx(strcmp(type, "port") == 0 ? "build_port"
-                                                       : "build_industry", 0.04f);
-        addNotification(TextFormat("Queued %d %s upgrade%s for $%.0f.",
-                                   queued, bulkPaintLabel(),
+        Audio::get().playSfx(spec ? "build_industry"
+                                  : (strcmp(type, "port") == 0 ? "build_port"
+                                                               : "build_industry"), 0.04f);
+        addNotification(TextFormat("Queued %d %s%s for $%.0f.", queued,
+                                   bulkPaintLabel().c_str(),
                                    queued == 1 ? "" : "s", (double)cost));
     }
     clearBulkSelection();
 }
 
 void Game::updateBulkPaint() {
+    const bool spec = (m_bulkTarget == BULK_SPECIALIZE);
     const char* type = bulkPaintType();
-    if (!m_bulkPaint || !type) {
+    // Specialising is an industry decision, so its brush exists in the industry
+    // view and nowhere else -- the same rule as the upgrade brush, which takes
+    // what it paints from the view it is in.
+    const bool haveBrush = spec ? (m_activeViewTab == 2) : (type != nullptr);
+    if (!m_bulkPaint || !haveBrush) {
         // Leaving the view that owns the brush puts it down, and drops whatever
         // was painted with it -- a selection of industry provinces means
         // nothing once the mode has become forts.
-        if (m_bulkPaint && !type) {
+        if (m_bulkPaint && !haveBrush) {
             m_bulkPaint = false;
             clearBulkSelection();
             if (m_renderer) m_renderer->setBlockLeftPan(false);
@@ -4131,66 +4307,265 @@ void Game::updateBulkPaint() {
         return;
     }
 
-    float c = 0.0f; int lv = 0, t = 0;
-    if (!upgradeQuote(pid, type, c, lv, t)) return;   // nothing to buy here
+    if (spec) {
+        float c = 0.0f; std::string res;
+        if (!specializationQuote(pid, m_bulkSpecResource.c_str(), c, res)) return;
+    } else {
+        float c = 0.0f; int lv = 0, t = 0;
+        if (!upgradeQuote(pid, type, c, lv, t)) return;   // nothing to buy here
+    }
     m_bulkSelection.insert(pid);
     refreshBulkOverlay();
 }
 
-void Game::drawBulkPaintStrip() {
-    const char* type = bulkPaintType();
-    if (!type) return;
-    if (m_mapDate.empty() && m_playerCountryId != SPC_CID) return;
-    if (m_playerCountryId == SPC_CID) return;      // nothing for a spectator to build
+// === buildToolbarRow ===
+//
+// ONE DESCRIPTION OF THE ROW. The bulk-upgrade button used to be drawn in one
+// function and hit-tested in another, under a comment asking whoever changed
+// either to keep the two in step by hand. Adding three more controls to that
+// arrangement would have been three more chances to get it wrong, so both
+// sides now read the row from here.
+void Game::buildToolbarRow(std::vector<ToolbarButton>& out) const {
+    out.clear();
+    if (m_playerCountryId == SPC_CID) return;       // a spectator buys nothing
+    if (m_mapDate.empty()) return;
 
-    // The same toolbar row the resource picker and the navy filters use, and
-    // the same metrics, so they read as one strip rather than three.
-    //
-    // LEFT-aligned, because the right of this row belongs to the date panel --
-    // which is right-aligned to the same edge and showed through this button
-    // when it sat there. In the navy view the filters already hold the left, so
-    // this starts after them.
-    const int mainBarW = std::min(880, m_screenW - 32);
-    const int mainBarX = m_screenW - mainBarW - 16;
-    const int mainBarY = m_screenH - 80 - 16;
-    const int btnH = 20 + 6 * 2;
-    const int btnY = mainBarY - btnH - 4;
-    const int navyStripW = (m_activeViewTab == 6) ? (5 * 80 + 4 * 4 + 8) : 0;
-    const int bx = mainBarX + 8 + navyStripW;
-    const int btnW = 150;
-
-    const Vector2 mouse = getMouse();
-    auto rowButton = [&](int x, int w, const char* label, bool on) {
-        const Rectangle r = {(float)x, (float)btnY, (float)w, (float)btnH};
-        const bool hovered = !m_paused && CheckCollisionPointRec(mouse, r);
-        // Opaque backing first. These row buttons sit at alpha 200, which is
-        // fine over the map and not over anything with text in it.
-        DrawRectangle(x, btnY, w, btnH, Color{0, 0, 0, 255});
-        DrawRectangle(x, btnY, w, btnH,
-                      on      ? Color{60, 120, 60, 210}
-                    : hovered ? Color{60, 60, 70, 200}
-                              : Color{40, 40, 50, 200});
-        DrawRectangleLines(x, btnY, w, btnH, {100, 100, 120, 150});
-        const int tw = MeasureText(label, 16);
-        DrawText(label, x + (w - tw) / 2, btnY + (btnH - 16) / 2, 16,
-                 (on || hovered) ? WHITE : LIGHTGRAY);
+    const int h = toolbarRowH();
+    const int y = toolbarRowY();
+    int x = toolbarRowX();
+    auto add = [&](int id, int w, std::string label, bool on) {
+        out.push_back({{(float)x, (float)y, (float)w, (float)h}, id, std::move(label), on});
+        x += w + 4;
     };
 
-    rowButton(bx, btnW, m_bulkPaint ? "Bulk upgrade: on" : "Bulk upgrade", m_bulkPaint);
+    // ── The navy view's, ABOVE the fleet filters ──
+    //
+    // Not beside them: that row already carries five filters and the bulk
+    // upgrade button, and the right of it belongs to the date panel -- a
+    // sixth button there runs straight under the date. The second row is
+    // where the specialisation picker goes for the same reason.
+    if (m_activeViewTab == 6) {
+        int pending = 0;
+        for (const auto& ss : m_pendingScrapShips)
+            if (ss.shipIndex >= 0 && ss.shipIndex < (int)m_ships.size() &&
+                m_ships[ss.shipIndex].countryId == m_playerCountryId) pending++;
+        const int ry = y - h - 4;
+        auto addUpper = [&](int id, int w, std::string label, bool on) {
+            out.push_back({{(float)toolbarRowX(), (float)ry, (float)w, (float)h},
+                           id, std::move(label), on});
+        };
+        if (pending > 0)
+            addUpper(TB_SCRAP_ALL, 200, TextFormat("Cancel scrap (%d)", pending), true);
+        else if (const int n = scrappableShips())
+            addUpper(TB_SCRAP_ALL, 200,
+                     TextFormat("Scrap all (%d hull%s)", n, n == 1 ? "" : "s"), false);
+    }
 
-    // The map editor's compromise, borrowed whole: while a mode owns the left
+    // ── The army view's one control ──
+    if (m_activeViewTab == 5) {
+        int pendingProvs = 0;
+        for (const auto& d : m_pendingDisbandOrders) {
+            const Province* p = m_provinces.getProvinceById(d.provinceId);
+            if (p && p->countryId == m_playerCountryId) pendingProvs++;
+        }
+        if (pendingProvs > 0) {
+            add(TB_DISBAND_ALL, 210,
+                TextFormat("Cancel disband (%d)", pendingProvs), true);
+        } else {
+            long long troops = 0;
+            const int n = disbandableProvinces(troops);
+            if (n > 0)
+                add(TB_DISBAND_ALL, 210,
+                    TextFormat("Disband all (%s)", formatTroops(troops).c_str()), false);
+        }
+        return;
+    }
+
+    const char* type = bulkPaintType();
+    if (!type) return;   // no brush in this view; anything above has drawn already
+
+    const bool specView = (m_activeViewTab == 2);
+    const bool specOn = m_bulkPaint && m_bulkTarget == BULK_SPECIALIZE;
+    const bool upgOn  = m_bulkPaint && m_bulkTarget == BULK_UPGRADE;
+
+    add(TB_BULK_UPGRADE, 150, upgOn ? "Bulk upgrade: on" : "Bulk upgrade", upgOn);
+    if (specView)
+        add(TB_BULK_SPECIALIZE, 165, specOn ? "Bulk specialize: on" : "Bulk specialize", specOn);
+
+    // The map editor's compromise, borrowed whole: while a brush owns the left
     // button the map cannot be dragged, and a player who cannot move the map
     // cannot reach the provinces they meant to paint. So it is one toggle,
     // right beside the thing that took panning away.
-    if (m_bulkPaint) {
-        rowButton(bx + btnW + 4, 90, m_bulkPanMode ? "Pan" : "Paint", !m_bulkPanMode);
+    if (m_bulkPaint)
+        add(TB_BULK_PANMODE, 90, m_bulkPanMode ? "Pan" : "Paint", !m_bulkPanMode);
+
+    // ── Which resource the specialisation brush paints ──
+    //
+    // Its own row above the first, because six more buttons do not fit beside
+    // three and a picker that runs under the date panel is a picker nobody can
+    // click.
+    if (specOn) {
+        x = toolbarRowX();
+        const int ry = y - h - 4;
+        auto addRes = [&](int id, int w, const char* label, bool on) {
+            out.push_back({{(float)x, (float)ry, (float)w, (float)h}, id, label, on});
+            x += w + 4;
+        };
+        addRes(TB_SPEC_OPTIMAL, 90, "Optimal", m_bulkSpecResource.empty());
+        for (int i = 0; i < 5; ++i)
+            addRes(TB_SPEC_RESOURCE + i, 92, SPEC_RESOURCES[i],
+                   m_bulkSpecResource == SPEC_RESOURCES[i]);
     }
+}
+
+bool Game::handleToolbarRowClick(Vector2 mouse) {
+    if (m_paused) return false;
+    std::vector<ToolbarButton> row;
+    buildToolbarRow(row);
+    for (const auto& b : row) {
+        if (!CheckCollisionPointRec(mouse, b.rect)) continue;
+        switch (b.id) {
+            case TB_DISBAND_ALL: {
+                const int cancelled = cancelAllDisbands();
+                if (cancelled > 0) {
+                    addNotification(TextFormat("Cancelled %d disband order%s.",
+                                               cancelled, cancelled == 1 ? "" : "s"));
+                } else {
+                    const int n = disbandAllArmies();
+                    if (n > 0)
+                        addNotification(TextFormat("Disbanding every garrison in %d "
+                                                   "province%s at the end of the turn.",
+                                                   n, n == 1 ? "" : "s"),
+                                        Color{235, 170, 120, 255}, 7.0f);
+                }
+                break;
+            }
+            case TB_SCRAP_ALL: {
+                const int cancelled = cancelAllScraps();
+                if (cancelled > 0) {
+                    addNotification(TextFormat("Cancelled %d scrap order%s.",
+                                               cancelled, cancelled == 1 ? "" : "s"));
+                } else {
+                    const int n = scrapAllShips();
+                    if (n > 0)
+                        addNotification(TextFormat("Scrapping %d hull%s at the end of "
+                                                   "the turn.", n, n == 1 ? "" : "s"),
+                                        Color{235, 170, 120, 255}, 7.0f);
+                }
+                break;
+            }
+            case TB_BULK_UPGRADE:
+            case TB_BULK_SPECIALIZE: {
+                const int want = (b.id == TB_BULK_SPECIALIZE) ? BULK_SPECIALIZE : BULK_UPGRADE;
+                // One brush at a time: both own the left mouse button. Clicking
+                // the other one swaps rather than turning this one off, which is
+                // what a player reaching for it means.
+                if (m_bulkPaint && m_bulkTarget == want) m_bulkPaint = false;
+                else { m_bulkPaint = true; m_bulkTarget = want; }
+                clearBulkSelection();
+                // Turning it off must hand panning back immediately, or the map
+                // stays stuck until something else clears the block.
+                if (!m_bulkPaint && m_renderer) m_renderer->setBlockLeftPan(false);
+                break;
+            }
+            case TB_BULK_PANMODE:
+                m_bulkPanMode = !m_bulkPanMode;
+                m_bulkPaintStroke.clear();
+                if (m_bulkPanMode && m_renderer) m_renderer->setBlockLeftPan(false);
+                break;
+            case TB_SPEC_OPTIMAL:
+            default: {
+                std::string want;
+                if (b.id != TB_SPEC_OPTIMAL) {
+                    const int i = b.id - TB_SPEC_RESOURCE;
+                    if (i < 0 || i >= 5) return true;
+                    want = SPEC_RESOURCES[i];
+                }
+                if (want == m_bulkSpecResource) break;
+                m_bulkSpecResource = want;
+                // What was painted was costed against the old resource, and a
+                // province that could take Oil may already be specialised in
+                // Gold. Re-quote rather than carry a stale selection: anything
+                // that no longer qualifies drops out.
+                std::unordered_set<int> kept;
+                for (int pid : m_bulkSelection) {
+                    float c = 0.0f; std::string res;
+                    if (specializationQuote(pid, m_bulkSpecResource.c_str(), c, res))
+                        kept.insert(pid);
+                }
+                m_bulkSelection.swap(kept);
+                refreshBulkOverlay();
+                break;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+void Game::drawBulkPaintStrip() {
+    std::vector<ToolbarButton> row;
+    buildToolbarRow(row);
+    if (row.empty()) return;
+
+    const Vector2 mouse = getMouse();
+    for (const auto& b : row) {
+        const bool hovered = !m_paused && CheckCollisionPointRec(mouse, b.rect);
+        const int x = (int)b.rect.x, y = (int)b.rect.y;
+        const int w = (int)b.rect.width, h = (int)b.rect.height;
+        // Opaque backing first. These row buttons sit at alpha 200, which is
+        // fine over the map and not over anything with text in it.
+        DrawRectangle(x, y, w, h, Color{0, 0, 0, 255});
+        // Disbanding is the one thing on this row that destroys something, and
+        // it is worth not looking like the build buttons.
+        const bool danger = (b.id == TB_DISBAND_ALL || b.id == TB_SCRAP_ALL);
+        DrawRectangle(x, y, w, h,
+                      b.on    ? (danger ? Color{120, 90, 40, 215} : Color{60, 120, 60, 210})
+                    : hovered ? (danger ? Color{95, 45, 45, 210} : Color{60, 60, 70, 200})
+                              : (danger ? Color{70, 32, 32, 205} : Color{40, 40, 50, 200}));
+        DrawRectangleLines(x, y, w, h,
+                           danger ? Color{180, 90, 90, 170} : Color{100, 100, 120, 150});
+        const int tw = MeasureText(b.label.c_str(), 16);
+        DrawText(b.label.c_str(), x + (w - tw) / 2, y + (h - 16) / 2, 16,
+                 (b.on || hovered) ? WHITE : LIGHTGRAY);
+    }
+}
+
+// Above the toolbar row, left-aligned with it, so the thing being decided sits
+// directly over the controls that decide it -- and above the resource picker
+// too when the specialisation brush has put a second row up.
+Rectangle Game::bulkConfirmPanelRect() const {
+    const int panelW = 330;
+    // One line taller when the Optimal split is spelled out under the title.
+    const int panelH = 78 + (bulkSplitShown() ? 18 : 0);
+    // Clears whatever the row grew to: the resource picker and the navy's
+    // scrap control both live on a second row above the first.
+    const bool twoRows = (m_bulkPaint && m_bulkTarget == BULK_SPECIALIZE) ||
+                         m_activeViewTab == 6;
+    const int py = toolbarRowY() - (twoRows ? (toolbarRowH() + 4) : 0) - panelH - 6;
+    return {(float)toolbarRowX(), (float)py, (float)panelW, (float)panelH};
+}
+
+bool Game::bulkSplitShown() const {
+    return m_bulkPaint && m_bulkTarget == BULK_SPECIALIZE && m_bulkSpecResource.empty();
+}
+
+bool Game::handleBulkConfirmClick(Vector2 mouse) {
+    if (m_paused || !m_bulkPaint || m_bulkSelection.empty()) return false;
+    const Rectangle r = bulkConfirmPanelRect();
+    const int bw = 140, bh = 26;
+    const int byy = (int)(r.y + r.height) - bh - 10;
+    if (mouse.y < byy || mouse.y >= byy + bh) return false;
+    const int okX = (int)r.x + 12;
+    if (mouse.x >= okX && mouse.x < okX + bw) { commitBulkSelection(); return true; }
+    const int noX = okX + bw + 8;
+    if (mouse.x >= noX && mouse.x < noX + bw) { clearBulkSelection(); return true; }
+    return false;
 }
 
 void Game::drawBulkConfirmPanel() {
     if (!m_bulkPaint || m_bulkSelection.empty()) return;
-    const char* type = bulkPaintType();
-    if (!type) return;
+    if (m_bulkTarget == BULK_UPGRADE && !bulkPaintType()) return;
 
     float cost = 0.0f;
     int count = 0;
@@ -4199,24 +4574,37 @@ void Game::drawBulkConfirmPanel() {
     const double treasury = m_countries.getAll()[m_playerCountryId].treasury;
     const bool affordable = treasury >= cost;
 
-    // Above the toolbar row, left-aligned with it, so the thing being decided
-    // sits directly over the controls that decide it.
-    const int mainBarW = std::min(880, m_screenW - 32);
-    const int mainBarX = m_screenW - mainBarW - 16;
-    const int mainBarY = m_screenH - 80 - 16;
-    const int rowH = 20 + 6 * 2;
-    const int panelW = 330, panelH = 78;
-    const int px = mainBarX + 8;
-    const int py = mainBarY - rowH - 4 - panelH - 6;
+    const Rectangle pr = bulkConfirmPanelRect();
+    const int panelW = (int)pr.width, panelH = (int)pr.height;
+    const int px = (int)pr.x, py = (int)pr.y;
 
     DrawRectangle(px, py, panelW, panelH, Color{12, 14, 20, 245});
     DrawRectangleLines(px, py, panelW, panelH, Color{110, 120, 145, 200});
 
-    DrawText(TextFormat("%d province%s selected", count, count == 1 ? "" : "s"),
+    DrawText(TextFormat("%d province%s: %s", count, count == 1 ? "" : "s",
+                        bulkPaintLabel().c_str()),
              px + 12, py + 10, 16, WHITE);
+    // Under Optimal the count hides five different answers, so the split is
+    // spelled out here as well as on the map -- "Oil 4  Gold 3  Rubber 7".
+    if (m_bulkTarget == BULK_SPECIALIZE && m_bulkSpecResource.empty()) {
+        int per[5] = {0, 0, 0, 0, 0};
+        for (int pid : m_bulkSelection) {
+            float c = 0.0f; std::string res;
+            if (!specializationQuote(pid, "", c, res)) continue;
+            for (int i = 0; i < 5; ++i) if (res == SPEC_RESOURCES[i]) { per[i]++; break; }
+        }
+        std::string split;
+        for (int i = 0; i < 5; ++i) {
+            if (!per[i]) continue;
+            if (!split.empty()) split += "   ";
+            split += TextFormat("%s %d", SPEC_RESOURCES[i], per[i]);
+        }
+        if (!split.empty())
+            DrawText(split.c_str(), px + 12, py + 31, 13, Color{190, 190, 210, 255});
+    }
     // The number that decides the button, in the colour of the answer.
     DrawText(TextFormat("$%.0f  of  $%.0f", (double)cost, treasury),
-             px + 12, py + 30, 14,
+             px + 12, py + (bulkSplitShown() ? 50 : 30), 14,
              affordable ? Color{170, 220, 170, 255} : Color{235, 140, 140, 255});
 
     const Vector2 mouse = getMouse();

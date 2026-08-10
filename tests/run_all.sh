@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest NeuralNetTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -106,13 +106,41 @@ run "game updater"     "$bin/GameUpdatesTest"
 # a stream with a mis-sized code still has a valid header and still opens.
 rm -rf "$build/giftest" && mkdir -p "$build/giftest"
 run "gif encoder"      "$bin/GifEncoderTest" "$build/giftest"
+
+# The indexed-PNG writer every .odmap layer goes through. Same shape as the GIF
+# check above and for the same reason: a map is only losslessly smaller if these
+# bytes decode back to the pixels that went in, and deflate cannot check itself.
+rm -rf "$build/pngtest" && mkdir -p "$build/pngtest"
+run "png writer"       "$bin/PngWriteTest" "$build/pngtest"
+# What the HOST does with orders a stranger chose. Every other multiplayer
+# check is about who is talking; this is the only one about what they are
+# allowed to say, and it is the check a modified client goes at first.
+run "order validation" "$bin/OrderValidationTest" "$root/data/"
+
+# The dedicated server, started for real: config round-trip, data directory,
+# map resolution, a whole world load, and the console. It is a second binary
+# with its own raylib underneath it, so none of the above says anything about
+# whether it runs.
+cmake --build "$build" --config Release --target OpenDoctrinesServer \
+      -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      >> "$build/test-targets-build.log" 2>&1 \
+    && run "dedicated server starts" "$root/tests/server_smoke_test.sh" "$build" \
+    || note_fail "dedicated server build"
 run "neural net gradients" "$bin/NeuralNetTest"
 
 step "the same seed plays the same game"
 "$root/tests/determinism_check.sh" "$build" || fail=1
 run "gif decodes back" $PY "$root/tests/gif_encoder_check.py" "$build/giftest"
+run "png decodes back" $PY "$root/tests/png_write_check.py" "$build/pngtest"
 
 run "example mods, all languages" "$bin/ModExamplesTest" "$root/sdk"
+
+# The dedicated server implements raylib itself (src/server/). The generated
+# half must match the raylib the build actually uses, or the server links
+# against a header it does not satisfy -- which shows up as a link error on
+# whichever platform builds the server first, not here.
+check "server raylib stubs vs raylib.h" \
+      $PY "$root/tools/gen_server_raylib_stubs.py" --check
 
 # Fails if a tool was added without a description or a group, so the
 # index cannot quietly fall behind the directory.
@@ -175,6 +203,22 @@ check "shipped maps have no sub-sea-threshold water" \
       $PY "$root/tools/fill_water_speckle.py" --check
 check "shipped maps have a usable naval layer" \
       $PY "$root/tools/fix_naval_layer.py" --check
+#   - every id points at something that exists: no province painted without a
+#     row, no army or port naming one that was deleted, no country holding
+#     nothing. Silent at build time, a rendering hole much later.
+check "shipped maps are internally consistent" \
+      $PY "$root/tools/check_map_integrity.py" --strict
+#   - the browser preview agrees with who actually owns the ground. Five steps
+#     move borders after generate_scenario draws it, and none redraws it, so
+#     this drifts without anything failing.
+check "shipped maps preview the map they are" \
+      $PY "$root/tools/rebuild_map_preview.py" --check
+#   - the maps are still in their compact form. A dozen tools rewrite an
+#     archive, and any one of them can put a derived layer back or write a
+#     land/sea layer as truecolour again; both are silent, and both cost
+#     megabytes per map. This fails on the way back up, not months later.
+check "shipped maps are compactly encoded" \
+      $PY "$root/tools/shrink_maps.py" --check
 
 step "the Windows manifest is valid XML"
 # One second here against ten minutes there. The manifest is embedded by the

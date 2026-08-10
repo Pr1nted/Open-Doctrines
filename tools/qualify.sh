@@ -201,6 +201,24 @@ run_step "configure" cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release \
 run_step "build the game" cmake --build "$build" --config Release \
          --target OpenDoctrines -j "$jobs"
 
+# THE SERVER IS A SEPARATE BINARY AND HAS TO BE BUILT SEPARATELY.
+#
+# It compiles the same simulation against a raylib of its own
+# (src/server/ServerRaylib.cpp) so it can run on a machine with no GPU. Nothing
+# about the client building proves the server does -- a raylib call added to the
+# game with no server implementation is a LINK error, and this is the step that
+# finds it, on the platform it would break.
+run_step "build the dedicated server" cmake --build "$build" --config Release \
+         --target OpenDoctrinesServer -j "$jobs"
+
+# The windowed server. Built and not run: it needs a display, which CI does not
+# have, and the thing worth checking here is that it still LINKS -- it shares
+# every source with the headless one and differs only in linking real raylib,
+# so a change that breaks one usually breaks the other in the opposite
+# direction.
+run_step "build the windowed server" cmake --build "$build" --config Release \
+         --target OpenDoctrinesServerUI -j "$jobs"
+
 # The binary is in a different place on each platform, and every step below
 # needs it, so resolve it once and say so.
 game=""
@@ -245,6 +263,11 @@ fi
 
 # ------------------------------------------------------------------ tests ---
 run_step "the whole test suite" "$root/tests/run_all.sh" "$build"
+
+# The server, actually started, on this platform. run_all.sh runs it too; this
+# repeats it on its own so a server failure is its own line in the summary
+# rather than one check inside a hundred.
+run_step "the dedicated server starts" "$root/tests/server_smoke_test.sh" "$build"
 
 # Already covered by run_all.sh, but run again on its own so a multiplayer
 # failure is reported as a multiplayer failure rather than as "the suite".

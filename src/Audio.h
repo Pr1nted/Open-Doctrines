@@ -120,9 +120,68 @@ public:
      * brackets one blocking call so the pump cannot outlive it.
      *
      * Nests by count, so bracketing an inner call inside an outer one is safe.
+     *
+     * WEB: a no-op, and it has to be -- the build is single-threaded and
+     * compiled without exceptions, so constructing a std::thread aborts the
+     * tab. Callers whose blocking work can reach pump() from inside are covered
+     * by that instead. Callers whose work CANNOT want beginBlockingCall().
      */
     void beginBackgroundPump();
     void endBackgroundPump();
+
+    /**
+     * Brackets one blocking call that cannot yield from inside at all.
+     *
+     * The difference from beginBackgroundPump() is entirely about the web. A
+     * map generation or a synchronous editor load is a single opaque call
+     * measured in tens of seconds: there is no loop of ours to instrument
+     * short of rewriting the generator, so there is nowhere to put a pump().
+     * On desktop the helper thread covers it, and before this existed the web
+     * had nothing -- the bracket compiled to nothing at all and the browser
+     * looped the last fragment of audio for the whole operation.
+     *
+     * So on the web this SUSPENDS the audio device for the duration. The music
+     * does not continue; it stops and picks up afterwards where it left off.
+     * That is a deliberate trade and the better half of it: a stalled page
+     * cannot produce music, and the only choice is between silence and a
+     * repeating fragment.
+     *
+     * Prefer pump() wherever the work has a loop to hang it on. Reach for this
+     * when it does not.
+     *
+     * Nests by count, like the pump it wraps.
+     */
+    void beginBlockingCall();
+    void endBlockingCall();
+
+    /**
+     * Scoped form of the pair above, and the one to reach for by default.
+     *
+     * A hand-written begin/end pair with a `return` between them leaves the
+     * device suspended for the rest of the session -- not a glitch, silence
+     * until the page is reloaded -- and the functions that need bracketing are
+     * exactly the ones that already have early returns. A scope cannot make
+     * that mistake.
+     *
+     * Nests, because the underlying pair does: an outer guard around a region
+     * makes inner ones free, which is how a run of consecutive texture uploads
+     * costs one suspend instead of one each.
+     *
+     * ONLY WORTH IT FOR REGIONS MEASURED IN SECONDS. Suspending stops the
+     * music and restarts it, and that transition is itself audible -- so
+     * against a stall of a few audio periods it is the worse of the two
+     * artefacts. Two sites here were guarded at 130 ms and 200 ms and have
+     * been reverted to a plain pump() beforehand, which tops the buffer up and
+     * accepts a few repeated blocks. Rule of thumb: under about half a second,
+     * pump; over it, guard.
+     */
+    class BlockingCall {
+    public:
+        BlockingCall();
+        ~BlockingCall();
+        BlockingCall(const BlockingCall&) = delete;
+        BlockingCall& operator=(const BlockingCall&) = delete;
+    };
 
     // ---- sound effects -----------------------------------------------------
 
@@ -314,4 +373,17 @@ private:
     std::atomic<bool> m_bgRunning{false};
     int m_bgDepth = 0;            // main-thread only; begin/end nesting count
     double m_lastPumpMs = 0.0;    // web: last time pump() yielded to the browser
+
+    // web: how often pump() is allowed to yield, in ms. Starts at the base and
+    // backs off on its own when the browser stops handing the thread back
+    // promptly -- see the cost measurement in pump().
+    static constexpr double PUMP_INTERVAL_MS = 30.0;
+    double m_pumpIntervalMs = PUMP_INTERVAL_MS;
+
+#ifdef __EMSCRIPTEN__
+    // web: beginBlockingCall nesting, and the suspend/resume it drives
+    int m_blockDepth = 0;
+    void suspendDevice();
+    void resumeDevice();
+#endif
 };

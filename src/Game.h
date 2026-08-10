@@ -1,5 +1,6 @@
 #pragma once
 #include "GameStructs.h"
+#include "server/ServerRuntime.h"
 #include "Gamepad.h"
 #include "Touch.h"
 #include "UiScale.h"
@@ -29,6 +30,61 @@ class AISystem;
 
 class Game {
 public:
+    /**
+     * Run as a dedicated server until told to stop. See Game_Server.cpp.
+     *
+     * Lives on Game, and not in src/server/, for the same reason
+     * runHeadlessSimulation does: hosting is Game's own code path
+     * (mpOpenHost, mpHostTurnUpdate, mpResolveTurn), and a server that
+     * reimplemented it would be a second set of rules to keep in step with the
+     * first. This drives the existing one with nobody at the keyboard.
+     *
+     * Returns the process exit code: 0 for a clean stop.
+     */
+    int runDedicatedServer(struct ServerConfig& config, class ServerConsole& console,
+                           const std::string& configPath);
+
+    /**
+     * The same server, one step at a time, for a front end that draws.
+     *
+     * runDedicatedServer is begin + tick-until-stopped + end. A UI calls these
+     * itself so it can draw a frame between ticks -- which a function owning
+     * its own blocking loop cannot allow. serverBegin returns a process exit
+     * code; 0 means it is running (or that --check finished, which leaves no
+     * runtime behind, so serverTick would return false immediately).
+     */
+    int  serverBegin(struct ServerConfig& config, class ServerConsole& console,
+                     const std::string& configPath);
+    bool serverTick();
+    void serverEnd();
+    /** True while a session is up, so a front end knows there is something to draw. */
+    bool serverRunning() const { return m_srv != nullptr; }
+
+private:
+    bool     srvInLobby() const;
+    bool     srvInGame() const;
+    uint32_t srvPlayersHoldingCountries() const;
+    uint32_t srvConnectedPlayers() const;
+public:
+
+    /**
+     * Self-play training or measurement with no window. See Game_Server.cpp.
+     *
+     * The same runAITraining/runAIEvaluation the game binary calls -- but
+     * reachable from the SERVER binary, which links no renderer, so a week of
+     * self-play can run on a headless box. Until this existed every AI mode
+     * went through init(), and init() is where InitWindow() lives.
+     */
+    struct HeadlessAIOptions {
+        std::string dataDir;
+        bool train = true;
+        int  maps = 0, turns = 0, countries = 0, difficulty = 2;
+        unsigned seed = 0;
+        int  workerId = -1, workerCount = 0;
+        bool vsRandom = false, scenarios = false;
+        std::string vsModel;
+    };
+    int runHeadlessAI(const HeadlessAIOptions& options);
     static constexpr int SPC_CID = 65533;
     static constexpr int UNC_CID = 65534;
     static constexpr int BLC_CID = 65535;
@@ -43,6 +99,16 @@ public:
 
     friend class ScriptEngine;
     friend class AISystem;
+    /**
+     * The order-validation test, which drives mpApplyOrders directly.
+     *
+     * A friend rather than a public hook: that function is the boundary
+     * between this world and bytes a stranger chose, and the one thing worth
+     * testing about it is what it does with bytes no honest client would ever
+     * send. Reaching it through the lobby would mean standing up a socket and
+     * a session to test a pure function of its input.
+     */
+    friend struct OrderValidationTest;
 
     Game();
     ~Game();
@@ -339,6 +405,7 @@ private:
     void rebuildOwnershipPixels();
     void startNewGame(const std::string& mapName);
     void startNewGameWithName(const std::string& mapName, const std::string& worldName);
+
     void startLoadedGame(const std::string& saveName);
     void scanDirectory(const std::string& dir, const std::string& ext, std::vector<std::string>& out);
 
@@ -493,6 +560,8 @@ private:
     /** The store the host has selected, as a kind rather than an index. */
     TurnStoreKind mpStoreKind() const;
     void mpStartHosting();
+    /** Data directory probe for headless modes. See Game_Server.cpp. */
+    bool srvResolveDataDir(const std::string& override);
     void mpOpenHost();
 
     // --- the lobby -> game bridge ---
@@ -506,6 +575,18 @@ private:
     MpLoad      m_mpLoad = MpLoad::None;
     int         m_mpMapIndex = 0;
     std::string m_mpMapId;                    // portable map identity, not a path
+    /**
+     * Encoded ModAttestation of the `both`-side mods a client must match.
+     *
+     * Set before mpOpenHost(), which hands it to NetHost::Config::requiredMods.
+     * Empty means "no requirement", which is what an ordinary in-game host
+     * still does. See ModAttest.h -- this is an integrity check, not an
+     * anti-tamper one, and the header is emphatic about the difference.
+     */
+    std::string m_mpRequiredMods;
+
+    /** Live dedicated-server state; null when no server is running. */
+    std::unique_ptr<ServerRuntime> m_srv;
     std::vector<uint8_t> m_mpPendingSnapshot; // held while the world loads
     uint16_t    m_mpMyCountry = 0;
 
@@ -1507,6 +1588,44 @@ public:
     float m_economyFeedbackTimer = 0;
     CountryIncomeSnapshot computeCountryIncome(int countryId) const;
     void refreshIncomeCache();
+
+    // ── WHAT SPECIALISING A PROVINCE IS WORTH ───────────────────────
+    //
+    // It was worth nothing. Completing a specialization wrote the resource's
+    // name into ProvinceIndustry and stopped there: `boost` was read in
+    // exactly one place, the info line under the province panel, and
+    // `resourceIncome` was loaded from the map and never recomputed by
+    // anything. So the purchase -- one and a half industry levels, three turns
+    // -- bought a label and a number that described a bonus nobody was paying.
+    //
+    // DERIVED, NOT STORED, and that is the part that matters. Writing the
+    // boost into resourceIncome would compound every time a province was
+    // re-specialised and would have to be unwound when it changed, so
+    // resourceIncome stays the province's unspecialised base -- which is what
+    // every existing save already holds -- and the bonus is applied on the way
+    // out. Every reader goes through provinceResourceIncome for that reason.
+    /** The current specialization's boost, in percent. 0 when there is none. */
+    float specializationBoostPct(int pid) const;
+    /** A province's resource income with its specialization applied. */
+    float provinceResourceIncome(int pid) const;
+    /**
+     * The resource this province is best off specialising in, by the boost it
+     * would actually earn -- nullptr when it has no deposits worth naming.
+     */
+    const char* bestSpecializationFor(int pid) const;
+    /**
+     * What specialising this province would cost, and in what.
+     *
+     * `resource` may be null or empty to mean "whatever is best here", which
+     * is what the bulk brush's Optimal setting passes. No side effects: the
+     * confirm panel totals a hundred of these before a penny is spent.
+     */
+    /** `countryId` below zero means the local player. See upgradeQuote. */
+    bool specializationQuote(int pid, const char* resource,
+                             float& cost, std::string& outResource,
+                             int countryId = -1) const;
+    /** Queue one province's specialization and pay for it. */
+    bool queueSpecialization(int pid, const char* resource, int countryId = -1);
     mutable std::unordered_map<int, CountryIncomeSnapshot> m_countryIncomeCache;
     std::unordered_map<int, std::vector<CountryIncomeSnapshot>> m_incomeHistory;
     std::string m_mapDate;
@@ -1549,6 +1668,14 @@ public:
      * re-check every consumer does.
      */
     void reindexProvinceOwner(int pid, int oldOwner, int newOwner);
+    /**
+     * Move a province's pixels between the two owners' render lists.
+     *
+     * Was a copy-pasted lambda in each of the two movement resolvers, with a
+     * comment in one pointing at the other. Ownership bookkeeping belongs
+     * beside reindexProvinceOwner, which is the other half of the same write.
+     */
+    void transferCountryPixels(int pid, int newOwner, int oldOwner);
     /**
      * Province ids `cid` is believed to own -- a candidate set, not a
      * guarantee. Consumers re-check `prov.countryId` because a conquest
@@ -1706,7 +1833,9 @@ public:
     //
     // countryId -> minority name -> one option index per category.
     std::unordered_map<int, std::unordered_map<std::string, std::vector<int>>> m_ethnicPolicies;
-    // countryId -> minority name -> cumulative alignment drift.
+    // countryId -> minority name -> cumulative alignment drift, always within
+    // +/-MINORITY_DRIFT_LIMIT. See addMinorityDrift for why the bound is on the
+    // stored value rather than on the reader.
     std::unordered_map<int, std::unordered_map<std::string, float>> m_minorityAlignmentDrift;
 
     // Per-country starting minority ethnic policy defaults (isoA3 -> minorityName -> option indices)
@@ -1744,8 +1873,34 @@ public:
     float getProvinceRebellionChance(int provinceId, int countryId) const;
     /** How well `minorityName` is disposed toward `countryId`'s government, 0-100. */
     float getMinorityAlignment(int countryId, const std::string& minorityName) const;
-    /** Alignment change per turn implied by `countryId`'s current option set. */
+    /**
+     * Alignment change per turn implied by `countryId`'s current option set.
+     *
+     * The policy dial alone, so it is bounded by the option table and nothing
+     * else -- which is what AISystem's trend bounds and validity mask rely on
+     * to ask "is there anywhere left to move". Not what the player is shown:
+     * for that see getMinorityAlignmentTrend.
+     */
+    float getMinorityPolicyRate(int countryId, const std::string& minorityName) const;
+    /**
+     * Everything that moves alignment per turn: the policy dial plus the
+     * standing penalty for holding conquered ground in a live war. The one
+     * definition, used both by the turn resolver that applies it and by the UI
+     * that reports it, so the number shown is the number that happens.
+     */
+    float minorityDriftPerTurn(int countryId, const std::string& minorityName) const;
+    /**
+     * What alignment will actually change by next turn, which is
+     * minorityDriftPerTurn clipped by the drift bound -- zero once a minority
+     * is pinned at 0 or 100, because that is what the player will observe.
+     */
     float getMinorityAlignmentTrend(int countryId, const std::string& minorityName) const;
+    /** Add to a minority's stored drift, keeping it inside the bound. */
+    void addMinorityDrift(int countryId, const std::string& minorityName, float delta);
+    // Alignment is 50 + drift, clamped to 0..100, so drift beyond this bound
+    // could not show up on the bar. Storing it anyway is what made repression
+    // irreversible; see addMinorityDrift.
+    static constexpr float MINORITY_DRIFT_LIMIT = 50.0f;
     /**
      * The option `countryId` has chosen for `minorityName` in category `ci`.
      *
@@ -2130,6 +2285,45 @@ private:
     std::vector<PendingDiplomaticAction> m_pendingDiplomaticActions;
     std::vector<PendingUpgrade> m_pendingUpgrades;
 
+    // ── ONE DIPLOMATIC CHANNEL PER PAIR ─────────────────────────────
+    //
+    // A country says one thing to another country per turn. The player has
+    // always been held to that -- the diplomacy panel greys out every other
+    // button for a pair the moment one action is pending -- but the rule lived
+    // in the panel, so it bound nobody else. The AI takes up to
+    // ACTIONS_PER_MODULE_PER_TURN goes at each module, and its politics and war
+    // modules queue independently, so in one turn it could propose an alliance
+    // to a neighbour and declare war on it, and declare that same war three
+    // times over: relations do not change until the queue resolves, so every
+    // pick saw the same untouched world and made the same choice again.
+    //
+    // What came out the other side was a country the game could not describe.
+    // Duplicate declarations mean one WAR_DECLARED popup per copy; an alliance
+    // request answered in the same pass as the declaration that follows it
+    // leaves a pair both allied and at war, which every reader of
+    // m_relations then disagrees about.
+    //
+    // So the rule moves here, where the player, the AI and anything else that
+    // ever queues diplomacy all have to pass through it.
+    /** Is `sourceIso` already waiting on an answer from `targetIso`? */
+    bool hasPendingDiplomacy(const std::string& sourceIso,
+                             const std::string& targetIso) const;
+    /** Has `sourceIso` already declared a war this turn that has yet to land? */
+    bool hasPendingDeclaration(const std::string& sourceIso) const;
+    /**
+     * Queue one diplomatic action, or refuse it.
+     *
+     * Refused when the pair already has something in flight, and -- for a
+     * declaration of war -- when this country has already declared one this
+     * turn: a declaration is a singular act of state, and stacking several
+     * also walked straight past AI_MAX_CONCURRENT_WARS, which counts wars
+     * fought rather than wars announced.
+     *
+     * Returns false without queueing anything, so callers that spend something
+     * on the attempt (a cooldown, a stat, money) can decline to spend it.
+     */
+    bool queueDiplomaticAction(PendingDiplomaticAction da);
+
     // ─── Bulk upgrading, by painting over the map ───────────────────────
     //
     // Queueing a hundred industry upgrades one province at a time is the
@@ -2141,8 +2335,8 @@ private:
 
     /** Which upgrade the current view paints. Null when the view has none. */
     const char* bulkPaintType() const;
-    /** Human name for that, for the button and the running total. */
-    const char* bulkPaintLabel() const;
+    /** Human name for what the brush buys, for the button and the totals. */
+    std::string bulkPaintLabel() const;
 
     /**
      * What one province's next upgrade would cost, and whether it may have one.
@@ -2152,8 +2346,15 @@ private:
      * NOT checked here -- one province is affordable in isolation while the
      * selection as a whole is not, and it is the whole that is being decided.
      */
+    /**
+     * `countryId` below zero means the local player, which is what the UI
+     * wants. The multiplayer host passes the SUBMITTING country instead, so
+     * the same caps, research limits and prices apply to an order that arrived
+     * over a socket as to one somebody clicked. See mpApplyOrders.
+     */
     bool upgradeQuote(int provinceId, const char* type,
-                      float& cost, int& nextLevel, int& turns) const;
+                      float& cost, int& nextLevel, int& turns,
+                      int countryId = -1) const;
 
     /**
      * Queue one province's upgrade and pay for it.
@@ -2163,10 +2364,66 @@ private:
      * path with its own copy of them is a bulk path that eventually disagrees
      * with the button next to it about what a thing costs.
      */
-    bool queueUpgrade(int provinceId, const char* type);
+    bool queueUpgrade(int provinceId, const char* type, int countryId = -1);
 
     void updateBulkPaint();
     void drawBulkPaintStrip();
+
+    // ── The toolbar row above the bottom bar ────────────────────────
+    //
+    // Its geometry was written out twice -- once to draw the bulk-upgrade
+    // button and once to catch the click on it -- under a comment telling the
+    // next person to keep the two in step by hand. Everything on the row now
+    // asks these instead.
+    int toolbarRowH() const { return 20 + 6 * 2; }
+    int toolbarRowY() const { return (m_screenH - 80 - 16) - toolbarRowH() - 4; }
+    /** First free x on the row: after the navy filters when the view has them. */
+    int toolbarRowX() const {
+        const int mainBarW = std::min(880, m_screenW - 32);
+        const int mainBarX = m_screenW - mainBarW - 16;
+        return mainBarX + 8 + ((m_activeViewTab == 6) ? (5 * 80 + 4 * 4 + 8) : 0);
+    }
+    /** What the row is offering right now, in draw order. */
+    enum ToolbarId {
+        TB_BULK_UPGRADE = 1, TB_BULK_SPECIALIZE, TB_BULK_PANMODE,
+        TB_SPEC_OPTIMAL, TB_SPEC_RESOURCE,   // TB_SPEC_RESOURCE + i, i in [0,5)
+        TB_DISBAND_ALL = 20, TB_SCRAP_ALL,
+    };
+    struct ToolbarButton { Rectangle rect; int id = 0; std::string label; bool on = false; };
+    /** The row's buttons, positions and labels. Draw and click both read this. */
+    void buildToolbarRow(std::vector<ToolbarButton>& out) const;
+    /** Act on a click at `mouse`. True when the row consumed it. */
+    bool handleToolbarRowClick(Vector2 mouse);
+    /** Where the confirm panel sits -- it floats above however many rows show. */
+    Rectangle bulkConfirmPanelRect() const;
+    /** Is the panel spelling out which resource each province would get? */
+    bool bulkSplitShown() const;
+    bool handleBulkConfirmClick(Vector2 mouse);
+
+    // ── Disbanding the whole army from the army view ────────────────
+    //
+    // The province panel has had "Disband All" for one province since forever.
+    // A player winding an army down at the end of a war, or cutting an army
+    // they cannot pay for, was clicking it province by province across a
+    // hundred provinces -- and the austerity reflex the AI gets does exactly
+    // this for itself in one step.
+    //
+    // Reversible until the turn resolves, like every other queued order, which
+    // is what makes one click acceptable for something this large: the same
+    // button cancels the lot.
+    /** Provinces this country holds that have troops and no disband queued. */
+    int disbandableProvinces(long long& troopsOut) const;
+    /** Queue a full disband in every one of them. Returns how many. */
+    int disbandAllArmies();
+    /** Take back every queued disband. Returns how many were cancelled. */
+    int cancelAllDisbands();
+    // The navy's half of the same pair, in the navy view. A fleet is wound
+    // down for the same reasons an army is -- an upkeep bill that outlived the
+    // war it was built for -- and one hull at a time is the same chore.
+    /** Own hulls with no scrap queued. */
+    int scrappableShips() const;
+    int scrapAllShips();
+    int cancelAllScraps();
     /** The confirm/cancel panel, shown while anything is painted. */
     void drawBulkConfirmPanel();
     /** Total cost of the current selection, and how many of it is buildable. */
@@ -2176,6 +2433,32 @@ private:
     void clearBulkSelection();
     /** Tell the renderer what to light up. Called on every change. */
     void refreshBulkOverlay();
+
+    // ── WHAT THE BRUSH PAINTS ───────────────────────────────────────
+    //
+    // The view still decides the UPGRADE (industry, forts, ports); this
+    // decides whether the brush is buying upgrades at all. Specialisation is
+    // the industry view's second brush, because it is an industry decision and
+    // because doing a hundred of them one dropdown at a time is the same
+    // complaint bulk upgrading answered.
+    //
+    // Two brushes rather than one with a mode, because they cost different
+    // money and mean different things -- but only one can be down at a time:
+    // both own the left mouse button.
+    enum BulkTarget { BULK_UPGRADE = 0, BULK_SPECIALIZE = 1 };
+    int m_bulkTarget = BULK_UPGRADE;
+    /**
+     * Which resource the specialisation brush paints.
+     *
+     * Empty means OPTIMAL: each province gets whatever pays best there, which
+     * is the setting worth having -- the alternative is reading five numbers
+     * off every province before deciding. A named resource is for when the
+     * player wants a coherent industrial base rather than the best local
+     * return.
+     */
+    std::string m_bulkSpecResource;
+    /** The five a province may specialise in, in the panel's order. */
+    static const char* const SPEC_RESOURCES[5];
 
     bool m_bulkPaint = false;
     /**
@@ -2373,9 +2656,11 @@ private:
     // Pulls each side's armies out of the other's territory when a war ends.
     // Returns the number of provinces cleared. See Game_TurnLogic.cpp.
     int  withdrawArmiesAfterPeace(int cidA, int cidB);
-    // Backstop sweep: send home any stack standing in a country it is neither
-    // at war with nor allied to, whatever transition left it there.
-    void expelPeacetimeTrespassers();
+    // Backstop sweep, run once at the end of every turn: send home any stack
+    // standing in a country that is not its own and not an ally's, whatever
+    // transition left it there. An assault is settled the turn it is made (see
+    // resolveAssault), so ground held without owning it is always a leftover.
+    void expelStrandedArmies();
     void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false);
 
     void drawCeasefireScreen();
@@ -2480,9 +2765,60 @@ private:
     // no side can quietly get a different rule from another.
     float shipMaxRangePx(const NavyShip& s) const;
     double shipMaxRangeDeg(const NavyShip& s) const;
+    // ── WHOSE ORDERS THE MAP SHOWS ──────────────────────────────────
+    //
+    // Every queued order used to be drawn for every country: the sky-blue line
+    // of an AI fleet's next move, the green + over a province some foreign
+    // power was recruiting in, "Disbanding..." over another country's
+    // garrison. A player could read the AI's whole turn off the map before
+    // taking their own -- and the army move arrows are interactive, so they
+    // could drag the percentage on somebody else's attack.
+    //
+    // A spectator is the deliberate exception: nobody is playing, so there is
+    // nothing to keep from them, and watching what the AI intends is the point
+    // of the mode.
+    bool provinceIsPlayers(int pid) const;
+    bool shipIsPlayers(int shipIndex) const;
+
     // Are these two countries at war? Resolvers need this to refuse a shot at
     // somebody nobody declared on; the UI already refused to aim it.
     bool atWarCids(int a, int b) const;
+    // The same question about an alliance. Reads BOTH rows -- a scenario's
+    // relations.json routinely fills in only one, and the two copies of this
+    // that used to live as lambdas in the movement code read one row each.
+    bool alliedCids(int a, int b) const;
+
+    // ── ONE ASSAULT, ONE PLACE ──────────────────────────────────────
+    //
+    // A province was taken in two places that had drifted apart: the land
+    // move in processArmyMovement and the landing in processShipDisembarks.
+    // Both fought the FIRST hostile stack they found and ignored the rest, so
+    // a province held by two enemies changed hands while one of their armies
+    // was still standing on it -- the "enemy troops on my land that never took
+    // it" the player sees -- and the defence was counted short into the
+    // bargain. They also disagreed: a repulsed landing left a tenth of the
+    // invaders squatting inside the defender's province forever, a repulsed
+    // land attack left nobody, and a landing on an ALLY's coast annexed it.
+    //
+    // One function now, so an assault is the same event however the troops
+    // arrived. `survivors` comes back with what is left of the attacking
+    // force, already placed on the ground it ended up holding.
+    bool resolveAssault(int attackerCid, int pid, int attackers, int& survivors);
+    // Ownership plus every book that follows from it: conquest counters, the
+    // pixel and index maps, minority drift, the loser's new claim and the
+    // winner's spent one.
+    void captureProvince(int newOwner, int pid, bool contested);
+    // May `cid` take this province by standing on it? Own and allied ground
+    // never changes hands, unclaimed land is colonised, and everything else
+    // needs a war -- a rule that lived only in the player's move validator, so
+    // a mod or a modified multiplayer client could annex a neutral by walking
+    // into it.
+    bool mayTakeProvince(int cid, int pid) const;
+    // Add troops to a province, merging into that country's stack if it
+    // already has one. Two stacks with the same owner in one province is a
+    // state the movement code cannot read: it moves a percentage of the FIRST
+    // one and leaves the other standing.
+    void addTroopsTo(int pid, int cid, int count);
     // Province transfers between REAL countries (rebels excluded), counted for
     // the trainer's stagnation detector. Rebel churn is deliberately not
     // counted: a province flipping between a rebel and its parent every turn

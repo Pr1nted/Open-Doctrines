@@ -470,7 +470,7 @@ void Game::processTurn() {
     eliminateDefeatedCountries();
     // Last, so both halves of the question are settled for the turn: who owns
     // each province, and who is still at war with whom.
-    expelPeacetimeTrespassers();
+    expelStrandedArmies();
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
     // Self-play training never looks at the map: skip the full-raster texture
@@ -2633,53 +2633,6 @@ void Game::processShipBombardOrders(int countryId) {
 
 // === processShipDisembarks ===
 void Game::processShipDisembarks(int countryId) {
-    auto areAllied = [&](int a, int b) -> bool {
-        if (a <= 0 || b <= 0 || a == b) return false;
-        const Country* ac = m_countries.getCountry(a);
-        const Country* bc = m_countries.getCountry(b);
-        if (!ac || !bc) return false;
-        auto ar = m_relations.find(ac->isoA3);
-        if (ar == m_relations.end()) return false;
-        auto dr = ar->second.find(bc->isoA3);
-        return dr != ar->second.end() && dr->second.alliance;
-    };
-    // Transfer conquered pixels to the new owner's countryPixels
-    auto transferCountryPixels = [&](int pid, int newOwner, int oldOwner) {
-        if (m_countryPixels.empty()) return;
-        auto ppIt = m_provincePixels.find(pid);
-        if (ppIt == m_provincePixels.end()) return;
-        const auto& provincePixels = ppIt->second;
-        for (int idx : provincePixels) {
-            if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                m_pixelCountryArray[idx] = newOwner;
-        }
-        // m_countryPixels only feeds texture generation (political, relations,
-        // population, claims overlays) — never game logic. Maintaining it costs a
-        // full scan of the owning country's pixel list on every province
-        // capture, which profiled at ~39% of self-play runtime. Headless
-        // training draws its minimap from m_provinceCountryLookup, so the list
-        // is pure overhead there.
-        if (m_aiTraining) return;
-        // Move pixels from old owner to new owner in m_countryPixels (O(N+M), not O(N*M))
-        if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
-            newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
-            auto& oldPx = m_countryPixels[oldOwner];
-            auto& newPx = m_countryPixels[newOwner];
-            std::unordered_set<int> pxSet(provincePixels.begin(), provincePixels.end());
-            std::vector<int> transferred;
-            transferred.reserve(provincePixels.size());
-            auto newEnd = std::remove_if(oldPx.begin(), oldPx.end(), [&](int idx) {
-                if (pxSet.count(idx)) {
-                    transferred.push_back(idx);
-                    return true;
-                }
-                return false;
-            });
-            oldPx.erase(newEnd, oldPx.end());
-            newPx.insert(newPx.end(), transferred.begin(), transferred.end());
-        }
-    };
-
     for (size_t i = 0; i < m_pendingShipDisembarks.size(); ) {
         auto& do_ = m_pendingShipDisembarks[i];
         if (do_.shipIndex < 0 || do_.shipIndex >= (int)m_ships.size()) { ++i; continue; }
@@ -2688,110 +2641,43 @@ void Game::processShipDisembarks(int countryId) {
         int pid = do_.targetProvince;
         Province* dst = m_provinces.getProvinceById(pid);
         if (!dst) { ++i; continue; }
+        // TROOPS COME ASHORE FROM WITHIN THE HULL'S RANGE, whoever ordered it.
+        //
+        // The player's Move overlay refuses a landing beyond shipMaxRangePx
+        // and draws the circle to prove it; this resolver checked nothing, so
+        // the rule bound the mouse and not the game. The AI's own landing
+        // window was a flat 12 degrees -- 273 px against a boat's 200 -- and a
+        // modified multiplayer client had no window at all.
+        {
+            int sx = 0, sy = 0;
+            m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
+            const auto cit = m_provinceCenters.find(pid);
+            if (cit == m_provinceCenters.end()) {
+                m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
+                continue;
+            }
+            const float dx = cit->second.x - (float)sx, dy = cit->second.y - (float)sy;
+            if (std::sqrt(dx * dx + dy * dy) > shipMaxRangePx(ship)) {
+                if (m_config.aiDebug)
+                    printf("[LANDING] cid=%d prov %d out of range, order dropped\n",
+                           countryId, pid);
+                m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
+                continue;
+            }
+        }
         int crew = ship.crew * 100; // Scale to army internal units (100x)
         ship.crew = 0;
         if (crew <= 0) { m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i); continue; }
-        // Apply fortification defense at destination
-        auto indIt = m_provinceIndustry.find(pid);
-        float fortDef = 0;
-        if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
-        auto& dstArmies = m_provinceArmies[pid];
-        auto eIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-            [&](auto& u) { return u.countryId != countryId && u.countryId > 0 && !areAllied(countryId, u.countryId); });
-        if (eIt != dstArmies.end()) {
-            // Combat: attackers (crew) vs defenders (enemy troops + fort).
-            // Both modifiers are now the RESPECTIVE country's own research.
-            float atkMod = 1.0f + getTotalEffect("armyAtkPct", countryId) / 100.0f;
-            float defMod = 1.0f + getTotalEffect("armyDefPct", eIt->countryId) / 100.0f;
-            int atkPower = (int)(crew * atkMod);
-            int defPower = (int)(eIt->count * (1.0f + fortDef / 100.0f) * defMod);
-            if (atkPower > defPower) {
-                int remaining = atkPower - defPower;
-                eIt->count = 0;
-                // Take over province
-                int prevOwner = dst->countryId;
-                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
-                noteRealConquest(countryId, prevOwner);
-                    // BEFORE the auto-claim below hands the previous owner a
-                    // claim: this asks whether the ATTACKER ever claimed it.
-                    claimsBrokenByConquest(countryId, prevOwner, dst->id);
-                dst->countryId = countryId;
-                if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
-                    m_provinceCountryLookup[dst->id] = countryId;
-                reindexProvinceOwner(dst->id, prevOwner, countryId);
-                transferCountryPixels(dst->id, countryId, prevOwner);
-                // Conquered province: add negative alignment drift for its minorities
-                {
-                    auto minIt = m_provinceMinorities.find(pid);
-                    if (minIt != m_provinceMinorities.end())
-                        for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
-                }
-                // Auto-claim: previous owner claims this province (skip UNC/BLC)
-                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    if (const Country* prevC = m_countries.getCountry(prevOwner))
-                        grantClaim(prevC->isoA3, dst->id);
-                }
-                // Remove claim if conqueror claimed this province
-                if (const Country* conqueror = m_countries.getCountry(countryId))
-                    revokeClaim(conqueror->isoA3, dst->id);
-                // Place remaining troops (survivors keep same ratio)
-                int survivingTroops = (atkMod > 0) ? (int)(remaining / atkMod) : crew;
-                auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-                    [&](auto& u) { return u.countryId == countryId; });
-                if (myIt != dstArmies.end()) myIt->count += survivingTroops;
-                else { ArmyUnit nu; nu.countryId = countryId; nu.count = survivingTroops; dstArmies.push_back(nu); }
-            } else {
-                // Attacker loses — some attackers survive ordeal
-                int atkSurvivors = (int)(crew * 0.1f * (1.0f - fortDef / 200.0f));
-                if (atkSurvivors < 1) atkSurvivors = 1;
-                eIt->count -= (int)(crew * atkMod * (1.0f - fortDef / 200.0f));
-                if (eIt->count < 0) eIt->count = 0;
-                auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-                    [&](auto& u) { return u.countryId == countryId; });
-                if (myIt != dstArmies.end()) myIt->count += atkSurvivors;
-                else { ArmyUnit nu; nu.countryId = countryId; nu.count = atkSurvivors; dstArmies.push_back(nu); }
-                // A landing that failed is a repulsed assault like any other,
-                // and an expensive one. See TrainStats::attacksRepulsed.
-                if (m_ai) m_ai->noteAssaultRepulsed(countryId, crew - atkSurvivors);
-            }
-            dstArmies.erase(std::remove_if(dstArmies.begin(), dstArmies.end(),
-                [](auto& u) { return u.count <= 0; }), dstArmies.end());
-            if (dstArmies.empty()) m_provinceArmies.erase(pid);
-        } else {
-            // No enemy (only allies or empty): disembark and take over empty/enemy province
-            int prevOwner = dst->countryId;
-            if (prevOwner > 0 && prevOwner != BLC_CID && prevOwner != countryId) {
-                // Take over the province (includes unclaimed — colonize it)
-                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
-                noteRealConquest(countryId, prevOwner);
-                claimsBrokenByConquest(countryId, prevOwner, dst->id);
-                dst->countryId = countryId;
-                if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
-                    m_provinceCountryLookup[dst->id] = countryId;
-                reindexProvinceOwner(dst->id, prevOwner, countryId);
-                transferCountryPixels(dst->id, countryId, prevOwner);
-                // Conquered province: add negative alignment drift for its minorities
-                {
-                    auto minIt = m_provinceMinorities.find(pid);
-                    if (minIt != m_provinceMinorities.end())
-                        for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
-                }
-                // Auto-claim: previous owner claims this province (skip UNC/BLC)
-                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    if (const Country* prevC = m_countries.getCountry(prevOwner))
-                        grantClaim(prevC->isoA3, dst->id);
-                }
-                // Remove claim if conqueror claimed this province
-                if (const Country* conqueror = m_countries.getCountry(countryId))
-                    revokeClaim(conqueror->isoA3, dst->id);
-            }
-            auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-                [&](auto& u) { return u.countryId == countryId; });
-            if (myIt != dstArmies.end()) myIt->count += crew;
-            else { ArmyUnit nu; nu.countryId = countryId; nu.count = crew; dstArmies.push_back(nu); }
-        }
+        // The landing is an assault like any other -- see resolveAssault, which
+        // is now the only place a province is fought over. This used to be its
+        // own copy of that code, and the copies had drifted: this one left a
+        // tenth of a failed landing inside the defender's province forever, and
+        // it took an ALLY's coast off them if they had no troops standing on it.
+        int survivors = 0;
+        const bool took = resolveAssault(countryId, pid, crew, survivors);
+        if (m_config.aiDebug && took)
+            printf("[LANDING] cid=%d took prov %d with %d of %d\n",
+                   countryId, pid, survivors, crew);
         // Remove disembark order; delete the boat immediately
         int shipIdx = do_.shipIndex;
         m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
@@ -2825,6 +2711,67 @@ void Game::processRecruitments(int countryId) {
             m_pendingRecruitments.erase(m_pendingRecruitments.begin() + i);
         } else ++i;
     }
+}
+
+// === disbandableProvinces / disbandAllArmies / cancelAllDisbands ===
+//
+// The province panel's "Disband All" for one province, offered for all of
+// them at once. Same order, same rules, same reversibility -- this queues one
+// PendingDisbandOrder per province and the turn resolves them exactly as it
+// resolves a hand-placed one.
+int Game::disbandableProvinces(long long& troopsOut) const {
+    troopsOut = 0;
+    int n = 0;
+    if (m_playerCountryId <= 0 || m_playerCountryId == SPC_CID) return 0;
+    for (const auto& [pid, units] : m_provinceArmies) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != m_playerCountryId) continue;
+        long long here = 0;
+        for (const auto& u : units)
+            if (u.countryId == m_playerCountryId && u.count > 0) here += u.count;
+        if (here <= 0) continue;
+        bool queued = false;
+        for (const auto& d : m_pendingDisbandOrders)
+            if (d.provinceId == pid) { queued = true; break; }
+        if (queued) continue;
+        troopsOut += here;
+        n++;
+    }
+    return n;
+}
+
+int Game::disbandAllArmies() {
+    if (m_playerCountryId <= 0 || m_playerCountryId == SPC_CID) return 0;
+    std::vector<int> targets;
+    for (const auto& [pid, units] : m_provinceArmies) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != m_playerCountryId) continue;
+        bool any = false;
+        for (const auto& u : units)
+            if (u.countryId == m_playerCountryId && u.count > 0) { any = true; break; }
+        if (!any) continue;
+        bool queued = false;
+        for (const auto& d : m_pendingDisbandOrders)
+            if (d.provinceId == pid) { queued = true; break; }
+        if (!queued) targets.push_back(pid);
+    }
+    // count 0 means "everything here", the same sentinel the panel's button
+    // uses -- so a garrison that grows before the turn resolves still goes.
+    for (int pid : targets) m_pendingDisbandOrders.push_back({pid, 0});
+    return (int)targets.size();
+}
+
+int Game::cancelAllDisbands() {
+    if (m_playerCountryId <= 0) return 0;
+    int cancelled = 0;
+    for (auto it = m_pendingDisbandOrders.begin(); it != m_pendingDisbandOrders.end(); ) {
+        const Province* p = m_provinces.getProvinceById(it->provinceId);
+        if (p && p->countryId == m_playerCountryId) {
+            it = m_pendingDisbandOrders.erase(it);
+            cancelled++;
+        } else ++it;
+    }
+    return cancelled;
 }
 
 // === processDisbandOrders ===
@@ -2984,48 +2931,73 @@ void Game::processScrapShips(int countryId) {
     }
 }
 
+// === scrappableShips / scrapAllShips / cancelAllScraps ===
+//
+// The fleet's answer to disbandAllArmies, queueing the same PendingScrapShip
+// the ship panel's own Destroy button queues -- so the turn resolves them
+// through the loop above and every hull shows "Scrapping..." until it does.
+int Game::scrappableShips() const {
+    if (m_playerCountryId <= 0 || m_playerCountryId == SPC_CID) return 0;
+    int n = 0;
+    for (size_t i = 0; i < m_ships.size(); ++i) {
+        if (m_ships[i].countryId != m_playerCountryId) continue;
+        bool queued = false;
+        for (const auto& ss : m_pendingScrapShips)
+            if (ss.shipIndex == (int)i) { queued = true; break; }
+        if (!queued) n++;
+    }
+    return n;
+}
+
+int Game::scrapAllShips() {
+    if (m_playerCountryId <= 0 || m_playerCountryId == SPC_CID) return 0;
+    int queued = 0;
+    for (size_t i = 0; i < m_ships.size(); ++i) {
+        if (m_ships[i].countryId != m_playerCountryId) continue;
+        bool already = false;
+        for (const auto& ss : m_pendingScrapShips)
+            if (ss.shipIndex == (int)i) { already = true; break; }
+        if (already) continue;
+        m_pendingScrapShips.push_back({(int)i});
+        queued++;
+    }
+    return queued;
+}
+
+int Game::cancelAllScraps() {
+    if (m_playerCountryId <= 0) return 0;
+    int cancelled = 0;
+    for (auto it = m_pendingScrapShips.begin(); it != m_pendingScrapShips.end(); ) {
+        const bool mine = it->shipIndex >= 0 && it->shipIndex < (int)m_ships.size() &&
+                          m_ships[it->shipIndex].countryId == m_playerCountryId;
+        if (mine) { it = m_pendingScrapShips.erase(it); cancelled++; }
+        else ++it;
+    }
+    return cancelled;
+}
+
 // === processArmyMovement ===
 void Game::processArmyMovement(int countryId) {
-    // Helper to check if two countries are allied
-    auto areAllied = [&](int a, int b) -> bool {
-        if (a <= 0 || b <= 0 || a == b) return false;
-        const Country* ac = m_countries.getCountry(a);
-        const Country* bc = m_countries.getCountry(b);
-        if (!ac || !bc) return false;
-        auto ar = m_relations.find(ac->isoA3);
-        if (ar == m_relations.end()) return false;
-        auto dr = ar->second.find(bc->isoA3);
-        return dr != ar->second.end() && dr->second.alliance;
-    };
-    auto transferCountryPixels = [&](int pid, int newOwner, int oldOwner) {
-        if (m_countryPixels.empty()) return;
-        auto ppIt = m_provincePixels.find(pid);
-        if (ppIt == m_provincePixels.end()) return;
-        const auto& provincePixels = ppIt->second;
-        for (int idx : provincePixels) {
-            if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                m_pixelCountryArray[idx] = newOwner;
-        }
-        // Rendering-only bookkeeping — see processArmyMovement's copy.
-        if (m_aiTraining) return;
-        if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
-            newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
-            auto& oldPx = m_countryPixels[oldOwner];
-            auto& newPx = m_countryPixels[newOwner];
-            std::unordered_set<int> pxSet(provincePixels.begin(), provincePixels.end());
-            std::vector<int> transferred;
-            transferred.reserve(provincePixels.size());
-            auto newEnd = std::remove_if(oldPx.begin(), oldPx.end(), [&](int idx) {
-                if (pxSet.count(idx)) {
-                    transferred.push_back(idx);
-                    return true;
-                }
-                return false;
-            });
-            oldPx.erase(newEnd, oldPx.end());
-            newPx.insert(newPx.end(), transferred.begin(), transferred.end());
-        }
-    };
+    // WHAT A PERCENTAGE IS A PERCENTAGE OF.
+    //
+    // Every order says "move pct of the garrison", and the executor used to
+    // take that share of whatever was left when the order came up. Two orders
+    // of 50% therefore moved 50% and then 25%, leaving a quarter of the army
+    // standing in a province the player had emptied on purpose -- the troops
+    // that "get pushed back to where they attacked from". The move panel
+    // disagrees in writing: it caps the orders out of one province at 100% in
+    // total and draws a red limit mark at the remainder, which only makes
+    // sense if a percentage is a share of the garrison as it stood at the
+    // start of the turn.
+    //
+    // So that is what it now is. The garrison is snapshotted the first time an
+    // order out of that province is executed, every share is taken from the
+    // snapshot, and the running total is clamped to what is actually there --
+    // so orders summing past 100% (nothing stops a mod or the reflexes below
+    // from queueing them) share out the army instead of conjuring one.
+    std::unordered_map<int, long long> baseGarrison;   // pid -> troops at turn start
+    std::unordered_map<int, long long> movedOut;       // pid -> troops already sent
+
     // Process move orders: move pct of garrison from source to target
     for (size_t i = 0; i < m_pendingMoveOrders.size(); ) {
         auto& mo = m_pendingMoveOrders[i];
@@ -3062,117 +3034,37 @@ void Game::processArmyMovement(int countryId) {
                 continue;
             }
         }
-        // Calculate soldiers to move
-        float pct = std::clamp(mo.pct, 0, 100) / 100.0f;
-        int toMove = (int)(uIt->count * pct);
+        // How many soldiers this share is, in whole men.
+        //
+        // Integer arithmetic throughout: a garrison is an int and these run to
+        // millions, so `count * pct` in float stops being exact above 2^24 and
+        // a 100% order could ask for more men than the province held.
+        auto baseIt = baseGarrison.find(mo.fromProvince);
+        if (baseIt == baseGarrison.end())
+            baseIt = baseGarrison.emplace(mo.fromProvince, (long long)uIt->count).first;
+        const long long base = baseIt->second;
+        long long& sent = movedOut[mo.fromProvince];
+        const int pct = std::clamp(mo.pct, 0, 100);
+        long long toMove = base * pct / 100;
+        if (toMove > base - sent) toMove = base - sent;      // the army is finite
+        if (toMove > (long long)uIt->count) toMove = uIt->count;
+        // Nothing left to send this turn -- the order stands and tries again
+        // next turn, which is what it did before and what a player who queued
+        // more than a province holds would expect.
         if (toMove <= 0) { ++i; continue; }
-        uIt->count -= toMove;
-        if (uIt->count <= 0) {
-            srcArmies.erase(uIt);
-        }
+        sent += toMove;
+        uIt->count -= (int)toMove;
+        if (uIt->count <= 0) srcArmies.erase(uIt);
         if (srcArmies.empty()) m_provinceArmies.erase(mo.fromProvince);
-        // Apply fortification defense at destination
-        auto indIt = m_provinceIndustry.find(mo.toProvince);
-        float fortDef = 0;
-        if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
-        // Check destination for troops from other (non-allied) countries
-        auto& dstArmies = m_provinceArmies[mo.toProvince];
-        auto eIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-            [&](auto& u) { return u.countryId != countryId && u.countryId > 0 && !areAllied(countryId, u.countryId); });
-        if (eIt != dstArmies.end()) {
-            // Combat: attacker vs defender, each with their OWN research.
-            //
-            // defMod used to be a placeholder: it looked up the defender's
-            // compass, ignored what it found, and assigned 1.0 either way. The
-            // effect it should have been reading, armyDefPct, had no call site
-            // anywhere in the game — so Fortress Doctrine's "+25% defence", and
-            // every other defensive tech, did nothing at all while Total War's
-            // "+20% attack" worked.
-            float atkMod = 1.0f + getTotalEffect("armyAtkPct", countryId) / 100.0f;
-            float defMod = 1.0f + getTotalEffect("armyDefPct", eIt->countryId) / 100.0f;
-            int atkPower = (int)(toMove * atkMod);
-            int defPower = (int)(eIt->count * (1.0f + fortDef / 100.0f) * defMod);
-                int prevOwner = dst->countryId;
-                if (atkPower > defPower) {
-                    int remaining = atkPower - defPower;
-                    eIt->count = 0;
-                    if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/true);
-                noteRealConquest(countryId, prevOwner);
-                    // BEFORE the auto-claim below hands the previous owner a
-                    // claim: this asks whether the ATTACKER ever claimed it.
-                    claimsBrokenByConquest(countryId, prevOwner, dst->id);
-                    dst->countryId = countryId;
-                // Update pixel lookup arrays + countryPixels
-                if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
-                    m_provinceCountryLookup[dst->id] = countryId;
-                reindexProvinceOwner(dst->id, prevOwner, countryId);
-                transferCountryPixels(dst->id, countryId, prevOwner);
-                // Conquered province: add negative alignment drift for its minorities
-                {
-                    auto minIt = m_provinceMinorities.find(mo.toProvince);
-                    if (minIt != m_provinceMinorities.end())
-                        for (auto& mg : minIt->second)
-                            m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
-                }
-                // Auto-claim: previous owner claims this province (skip UNC/BLC).
-                // After the transfer above, not before -- grantClaim refuses a
-                // claim on ground the claimant still holds.
-                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    if (const Country* prevC = m_countries.getCountry(prevOwner))
-                        grantClaim(prevC->isoA3, dst->id);
-                }
-                // Remove claim if conqueror claimed this province
-                if (const Country* conqueror = m_countries.getCountry(countryId))
-                    revokeClaim(conqueror->isoA3, dst->id);
-                // Place remaining troops (survivors keep same ratio)
-                int survivingTroops = (atkMod > 0) ? (int)(remaining / atkMod) : toMove;
-                auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-                    [&](auto& u) { return u.countryId == countryId; });
-                if (myIt != dstArmies.end()) myIt->count += survivingTroops;
-                else { ArmyUnit nu; nu.countryId = countryId; nu.count = survivingTroops; dstArmies.push_back(nu); }
-            } else {
-                // Attacker loses — all attacking troops are killed
-                eIt->count -= (int)(toMove * atkMod * (1.0f - fortDef / 200.0f));
-                if (eIt->count < 0) eIt->count = 0;
-                // The one outcome the offensive funnel could not see. See
-                // TrainStats::attacksRepulsed.
-                if (m_ai) m_ai->noteAssaultRepulsed(countryId, toMove);
-            }
-            dstArmies.erase(std::remove_if(dstArmies.begin(), dstArmies.end(),
-                [](auto& u) { return u.count <= 0; }), dstArmies.end());
-            if (dstArmies.empty()) m_provinceArmies.erase(mo.toProvince);
-        } else {
-            // No enemy troops — check if destination is empty enemy territory
-            if (dst->countryId != countryId && dst->countryId > 0 && !areAllied(countryId, dst->countryId)) {
-                int prevOwner = dst->countryId;
-                // Undefended: this province is taken by walking into it.
-                if (m_ai) m_ai->noteConquest(countryId, prevOwner, /*contested=*/false);
-                noteRealConquest(countryId, prevOwner);
-                claimsBrokenByConquest(countryId, prevOwner, dst->id);
-                dst->countryId = countryId;
-                if (dst->id > 0 && (size_t)dst->id < m_provinceCountryLookup.size())
-                    m_provinceCountryLookup[dst->id] = countryId;
-                reindexProvinceOwner(dst->id, prevOwner, countryId);
-                transferCountryPixels(dst->id, countryId, prevOwner);
-                // Auto-claim after the transfer, not before: grantClaim refuses
-                // a claim on ground the claimant still holds.
-                if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID && prevOwner != countryId) {
-                    if (const Country* prevC = m_countries.getCountry(prevOwner))
-                        grantClaim(prevC->isoA3, dst->id);
-                }
-                auto minIt = m_provinceMinorities.find(mo.toProvince);
-                if (minIt != m_provinceMinorities.end())
-                    for (auto& mg : minIt->second)
-                        m_minorityAlignmentDrift[countryId][mg.name] -= 25.0f;
-                if (const Country* conqueror = m_countries.getCountry(countryId))
-                    revokeClaim(conqueror->isoA3, dst->id);
-            }
-            // Move troops in
-            auto myIt = std::find_if(dstArmies.begin(), dstArmies.end(),
-                [&](auto& u) { return u.countryId == countryId; });
-            if (myIt != dstArmies.end()) myIt->count += toMove;
-            else { ArmyUnit nu; nu.countryId = countryId; nu.count = toMove; dstArmies.push_back(nu); }
-        }
+
+        // One assault, resolved the same way whether the troops walked or
+        // landed. See resolveAssault: it fights the WHOLE garrison rather than
+        // the first stack it finds, and places the survivors itself.
+        int survivors = 0;
+        const bool took = resolveAssault(countryId, mo.toProvince, (int)toMove, survivors);
+        if (m_config.aiDebug && took)
+            printf("[BATTLE] cid=%d took prov %d from prov %d with %lld of %lld\n",
+                   countryId, mo.toProvince, mo.fromProvince, (long long)survivors, toMove);
         m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
     }
 }
@@ -3514,15 +3406,26 @@ void Game::applyWarKinPenalty(const std::string& attackerIso, const std::string&
         for (auto& mg : mit->second)
             defenderMinPop[mg.name] += (long long)(pop * mg.pct / 100.0f);
     }
-    // Apply penalty to attacker's minorities that have kin in defender
+    // Apply penalty to attacker's minorities that have kin in defender.
+    //
+    // ONCE PER GROUP, not once per province holding it. This loop walks every
+    // province the attacker owns, and it used to subtract the full 30 inside
+    // the inner loop -- so declaring one war cost a group -30 for each province
+    // it lived in. A minority spread over fifty provinces took -1500 from a
+    // single declaration, which no policy could ever work off. The penalty is
+    // "your own people object to this war", and that is one objection.
+    std::unordered_set<std::string> penalised;
     for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
         if (pv.countryId != attackerCid) continue;
         auto mit = m_provinceMinorities.find(pid);
         if (mit == m_provinceMinorities.end()) continue;
         for (auto& mg : mit->second) {
+            if (penalised.count(mg.name)) continue;
             auto dpIt = defenderMinPop.find(mg.name);
-            if (dpIt != defenderMinPop.end() && dpIt->second >= 500000)
-                m_minorityAlignmentDrift[attackerCid][mg.name] -= 30.0f;
+            if (dpIt != defenderMinPop.end() && dpIt->second >= 500000) {
+                penalised.insert(mg.name);
+                addMinorityDrift(attackerCid, mg.name, -30.0f);
+            }
         }
     }
 }
@@ -3551,6 +3454,17 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
     fwd.war = true;
     fwd.alliance = false;
     fwd.nonAggression = false;
+    // ...AND THE GUARANTEE, which was the one treaty left standing.
+    //
+    // A guarantee is a promise to join their wars; holding one against a
+    // country you are now fighting is not a position, it is a contradiction,
+    // and it happens without anybody choosing it -- a guarantee chain drags a
+    // guarantor into a war against a country it also guarantees. What stood
+    // afterwards was a pair the game described two ways at once: the AI's
+    // target search skips a guaranteed neighbour as friendly, while the
+    // diplomacy panel offered "Break Guarantee" where "Request Ceasefire"
+    // belongs, because it tests the guarantee before it tests the war.
+    fwd.guarantee = false;
     // On the attacker->defender direction only: this is what THEY said, and the
     // defender's own row is what the defender would say about the same war.
     fwd.warGoalStated = statedGoal;
@@ -3563,6 +3477,7 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
     rev.war = true;
     rev.alliance = false;
     rev.nonAggression = false;
+    rev.guarantee = false;
 
     applyWarKinPenalty(attackerIso, defenderIso);
     applyWarKinPenalty(defenderIso, attackerIso);
@@ -3728,15 +3643,20 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
         outWhy = "You have already called them recently.";
         return false;
     }
-    m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
-
     PendingDiplomaticAction da;
     da.sourceIso = myIso;
     da.targetIso = allyIso;
     da.action = "call_to_arms";
     da.subjectIso = bestEnemy;
     da.turnsRemaining = 1;
-    m_pendingDiplomaticActions.push_back(da);
+    // The cooldown is spent only if the call is actually made -- see
+    // queueDiplomaticAction. Charging it first would burn thirty turns of
+    // asking on a call the one-channel rule then refused to send.
+    if (!queueDiplomaticAction(std::move(da))) {
+        outWhy = "You are already in talks with them this turn.";
+        return false;
+    }
+    m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
     if (m_ai) m_ai->noteCallIssued(m_playerCountryId);
 
     addNotification("You call " + diploDisplayName(allyIso) + " to arms against " +
@@ -3777,7 +3697,6 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         const long long key = ((long long)cidForIso(defenderIso) << 24) | (long long)cid;
         auto cd = m_callToArmsCooldown.find(key);
         if (cd != m_callToArmsCooldown.end() && m_turnNumber < cd->second) continue;
-        m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
         allies.push_back(iso);
     }
     for (const std::string& iso : allies) {
@@ -3787,7 +3706,13 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         da.action = "call_to_arms";
         da.subjectIso = attackerIso;
         da.turnsRemaining = 1;
-        m_pendingDiplomaticActions.push_back(da);
+        // Charged only where the call is actually sent, same as the player's
+        // deliberate ask: an ally the one-channel rule turns away has not been
+        // asked, so it must not go on cooldown as though it had.
+        if (!queueDiplomaticAction(std::move(da))) continue;
+        m_callToArmsCooldown[((long long)cidForIso(defenderIso) << 24) |
+                             (long long)cidForIso(iso)] =
+            m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
         // Counted against the ALLY BEING ASKED, once per ally, not against the
         // defender doing the asking.
         //
@@ -3804,6 +3729,46 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         printf("[WAR] %s calls its ally %s to arms against %s\n",
                defenderIso.c_str(), iso.c_str(), attackerIso.c_str());
     }
+}
+
+// === queueDiplomaticAction ===
+// The one door into m_pendingDiplomaticActions. See the note on the
+// declarations in Game.h for what was coming through the wall beside it.
+bool Game::hasPendingDiplomacy(const std::string& sourceIso,
+                               const std::string& targetIso) const {
+    for (const auto& da : m_pendingDiplomaticActions)
+        if (da.sourceIso == sourceIso && da.targetIso == targetIso) return true;
+    return false;
+}
+
+bool Game::hasPendingDeclaration(const std::string& sourceIso) const {
+    for (const auto& da : m_pendingDiplomaticActions)
+        if (da.sourceIso == sourceIso && da.action == "declare_war") return true;
+    return false;
+}
+
+bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
+    if (da.sourceIso.empty() || da.targetIso.empty() ||
+        da.sourceIso == da.targetIso) return false;
+
+    // BOOKKEEPING IS NOT AN OVERTURE. apply_ceasefire and cancel are the
+    // deferred second halves of a decision already taken and already answered
+    // -- the request they came from was erased when it resolved -- so the
+    // one-channel rule has nothing to say about them.
+    const bool bookkeeping = (da.action == "apply_ceasefire" || da.action == "cancel");
+    if (!bookkeeping) {
+        if (hasPendingDiplomacy(da.sourceIso, da.targetIso)) return false;
+        if (da.action == "declare_war" && hasPendingDeclaration(da.sourceIso)) return false;
+    }
+
+    // The pair is checked in ONE direction only. Both sides offering each other
+    // a ceasefire in the same turn is a real position the game already knows
+    // how to settle (see the mutual-ceasefire branch in
+    // processDiplomaticRequests), and it is not what this rule is for: the
+    // confusion comes from one country speaking twice, not from two countries
+    // speaking at once.
+    m_pendingDiplomaticActions.push_back(std::move(da));
+    return true;
 }
 
 // === processDiplomaticRequests ===
@@ -3996,6 +3961,28 @@ void Game::processDiplomaticRequests() {
                     continue;
                 }
             }
+            // NO TREATY ACROSS A WAR, whoever agreed to it.
+            //
+            // The counterpart of the same check on the player's popup. A pact
+            // and a war can only reach this point together if the war arrived
+            // while the offer was in flight -- a guarantee chain dragging the
+            // pair in, an ally's call answered -- and applying the pact anyway
+            // leaves a pair recorded as both allied and at war, which every
+            // reader of m_relations then answers differently. The war stands;
+            // the offer is void, and ending it is what request_ceasefire is
+            // for.
+            if ((da.action == "request_alliance" || da.action == "request_guarantee" ||
+                 da.action == "request_nap") &&
+                hasRelation(da.sourceIso, da.targetIso, &CountryRelation::war)) {
+                if (!playerIso.empty() && da.sourceIso == playerIso)
+                    addNotification("Your offer to " + diploDisplayName(da.targetIso) +
+                                    " is void — you are at war",
+                                    Color{235, 130, 90, 255}, 7.0f);
+                printf("[DIPLO] %s → %s: %s dropped, the pair is at war\n",
+                       da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
+                m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
+                continue;
+            }
             // Reaching here means the request was NOT refused, so it is about
             // to be applied. Acceptance was entirely silent before this: the
             // relation appeared on the diplomacy screen and nothing ever said
@@ -4028,13 +4015,27 @@ void Game::processDiplomaticRequests() {
                 // Absorb foreign troops on each side's soil (player's troops never convert)
                 auto absorbForeign = [&](int localCid, int foreignCid) {
                     if (localCid < 0 || foreignCid < 0) return;
+                    if (foreignCid == m_playerCountryId) return;
                     for (auto& [pid, units] : m_provinceArmies) {
                         Province* pp = m_provinces.getProvinceById(pid);
                         if (!pp || pp->countryId != localCid) continue;
-                        for (auto& u : units) {
-                            if (u.countryId == foreignCid && foreignCid != m_playerCountryId)
-                                u.countryId = localCid;
+                        // MERGED, not relabelled. Retagging the stack left the
+                        // host with two stacks of its own in one province, and
+                        // a move order reads the FIRST one and moves a share of
+                        // that -- so half the garrison was invisible to every
+                        // order given afterwards.
+                        long long absorbed = 0;
+                        for (auto it = units.begin(); it != units.end(); ) {
+                            if (it->countryId == foreignCid) {
+                                absorbed += it->count;
+                                it = units.erase(it);
+                            } else ++it;
                         }
+                        if (absorbed <= 0) continue;
+                        bool merged = false;
+                        for (auto& u : units)
+                            if (u.countryId == localCid) { u.count += (int)absorbed; merged = true; break; }
+                        if (!merged) units.push_back({localCid, (int)absorbed});
                     }
                 };
                 absorbForeign(srcCid, tgtCid);
@@ -4440,10 +4441,10 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     withdrawArmiesAfterPeace(srcCid, tgtCid);
 }
 
-// === expelPeacetimeTrespassers ===
+// === expelStrandedArmies ===
 //
-// Sweeps the map once a turn for stacks standing in a country they are neither
-// at war with nor allied to, and walks them home.
+// Sweeps the map once a turn for stacks standing on ground that is neither
+// their own nor an ally's, and walks them home.
 //
 // This is a backstop, not the primary fix: the routes that STRAND troops are
 // fixed where they occur (a revolt retreats the parent's garrison, a ceasefire
@@ -4453,9 +4454,10 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
 // losing game, and every one that gets missed leaves an army parked in a
 // neutral country forever, because nothing here attrits or expels one.
 //
-// There is no military-access treaty in this game, so peacetime presence has
-// no legitimate form and the rule needs no exceptions beyond unowned land.
-void Game::expelPeacetimeTrespassers() {
+// There is no military-access treaty in this game, so foreign presence has no
+// legitimate form outside an alliance, and the rule needs no exceptions beyond
+// unowned land.
+void Game::expelStrandedArmies() {
     struct Intrusion { int pid; int cid; };
     std::vector<Intrusion> work;
     for (const auto& [pid, units] : m_provinceArmies) {
@@ -4470,7 +4472,20 @@ void Game::expelPeacetimeTrespassers() {
             const Country* uc = m_countries.getCountry(u.countryId);
             if (!uc) continue;
             const CountryRelation& r = m_relations[uc->isoA3][oc->isoA3];
-            if (r.war || r.alliance) continue;
+            // An ALLY may stand here; that is what staging is. Nobody else
+            // may, and that now includes an enemy.
+            //
+            // A war used to be a reason to leave a stack alone, on the
+            // reasoning that an army in enemy territory is an invasion. It
+            // cannot be one any more: resolveAssault settles every assault the
+            // turn it happens, so a stack only ends up inside a country it is
+            // fighting when some transition put it there without a battle --
+            // war declared while it was staged on an ally's soil, or the
+            // ground ceded, revolted or conquered out from under it. Those are
+            // the armies the player sees sitting on their provinces having
+            // never taken them. They march home, exactly as they would at the
+            // end of a war.
+            if (r.alliance) continue;
             work.push_back({pid, u.countryId});
         }
     }
@@ -4492,6 +4507,19 @@ void Game::noteRealConquest(int newOwner, int prevOwner) {
     m_realConquests++;
 }
 
+// === provinceIsPlayers / shipIsPlayers ===
+bool Game::provinceIsPlayers(int pid) const {
+    if (m_playerCountryId == SPC_CID) return true;   // a spectator sees the lot
+    const Province* p = m_provinces.getProvinceById(pid);
+    return p && p->countryId == m_playerCountryId;
+}
+
+bool Game::shipIsPlayers(int shipIndex) const {
+    if (m_playerCountryId == SPC_CID) return true;
+    return shipIndex >= 0 && shipIndex < (int)m_ships.size() &&
+           m_ships[shipIndex].countryId == m_playerCountryId;
+}
+
 // === atWarCids ===
 bool Game::atWarCids(int a, int b) const {
     if (a <= 0 || b <= 0 || a == b) return false;
@@ -4502,6 +4530,204 @@ bool Game::atWarCids(int a, int b) const {
     if (it == m_relations.end()) return false;
     auto jt = it->second.find(cb->isoA3);
     return jt != it->second.end() && jt->second.war;
+}
+
+// === alliedCids ===
+bool Game::alliedCids(int a, int b) const {
+    if (a <= 0 || b <= 0 || a == b) return false;
+    const Country* ca = m_countries.getCountry(a);
+    const Country* cb = m_countries.getCountry(b);
+    if (!ca || !cb) return false;
+    return hasRelation(ca->isoA3, cb->isoA3, &CountryRelation::alliance);
+}
+
+// === transferCountryPixels ===
+void Game::transferCountryPixels(int pid, int newOwner, int oldOwner) {
+    if (m_countryPixels.empty()) return;
+    auto ppIt = m_provincePixels.find(pid);
+    if (ppIt == m_provincePixels.end()) return;
+    const auto& provincePixels = ppIt->second;
+    for (int idx : provincePixels)
+        if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
+            m_pixelCountryArray[idx] = newOwner;
+    // m_countryPixels only feeds texture generation (political, relations,
+    // population, claims overlays) -- never game logic. Maintaining it costs a
+    // full scan of the owning country's pixel list on every province capture,
+    // which profiled at ~39% of self-play runtime. Headless training draws its
+    // minimap from m_provinceCountryLookup, so the list is pure overhead there.
+    if (m_aiTraining) return;
+    if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
+        newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
+        auto& oldPx = m_countryPixels[oldOwner];
+        auto& newPx = m_countryPixels[newOwner];
+        std::unordered_set<int> pxSet(provincePixels.begin(), provincePixels.end());
+        std::vector<int> transferred;
+        transferred.reserve(provincePixels.size());
+        auto newEnd = std::remove_if(oldPx.begin(), oldPx.end(), [&](int idx) {
+            if (pxSet.count(idx)) { transferred.push_back(idx); return true; }
+            return false;
+        });
+        oldPx.erase(newEnd, oldPx.end());
+        newPx.insert(newPx.end(), transferred.begin(), transferred.end());
+    }
+}
+
+// === addTroopsTo ===
+void Game::addTroopsTo(int pid, int cid, int count) {
+    if (count <= 0 || cid <= 0) return;
+    auto& units = m_provinceArmies[pid];
+    for (auto& u : units)
+        if (u.countryId == cid) { u.count += count; return; }
+    ArmyUnit nu; nu.countryId = cid; nu.count = count;
+    units.push_back(nu);
+}
+
+// === mayTakeProvince ===
+bool Game::mayTakeProvince(int cid, int pid) const {
+    const Province* p = m_provinces.getProvinceById(pid);
+    if (!p || cid <= 0) return false;
+    const int owner = p->countryId;
+    if (owner <= 0 || owner == cid || owner == BLC_CID) return false;
+    if (alliedCids(cid, owner)) return false;
+    // Unclaimed ground is colonised by standing on it. Everything else is
+    // somebody's country, and taking one of those needs a war -- which was
+    // checked in Game::canMoveTo, i.e. in the player's move validator and
+    // nowhere else. The AI happens to only ever target countries it is
+    // fighting; a mod calling the move API and a modified multiplayer client
+    // had no such manners.
+    if (owner == UNC_CID) return true;
+    return atWarCids(cid, owner);
+}
+
+// === captureProvince ===
+void Game::captureProvince(int newOwner, int pid, bool contested) {
+    Province* p = m_provinces.getProvinceById(pid);
+    if (!p || newOwner <= 0) return;
+    const int prevOwner = p->countryId;
+    if (prevOwner == newOwner) return;
+
+    if (m_ai) m_ai->noteConquest(newOwner, prevOwner, contested);
+    noteRealConquest(newOwner, prevOwner);
+    // BEFORE the auto-claim below hands the previous owner a claim: this asks
+    // whether the ATTACKER ever claimed it.
+    claimsBrokenByConquest(newOwner, prevOwner, pid);
+    p->countryId = newOwner;
+    if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
+        m_provinceCountryLookup[pid] = newOwner;
+    reindexProvinceOwner(pid, prevOwner, newOwner);
+    transferCountryPixels(pid, newOwner, prevOwner);
+    // Conquered ground: its minorities like the new government rather less.
+    auto minIt = m_provinceMinorities.find(pid);
+    if (minIt != m_provinceMinorities.end())
+        for (auto& mg : minIt->second)
+            addMinorityDrift(newOwner, mg.name, -25.0f);
+    // Auto-claim: the previous owner wants it back. After the transfer, not
+    // before -- grantClaim refuses a claim on ground the claimant still holds.
+    if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID &&
+        prevOwner != newOwner)
+        if (const Country* prevC = m_countries.getCountry(prevOwner))
+            grantClaim(prevC->isoA3, pid);
+    if (const Country* conqueror = m_countries.getCountry(newOwner))
+        revokeClaim(conqueror->isoA3, pid);
+}
+
+// === resolveAssault ===
+//
+// THE WHOLE GARRISON DEFENDS, AND EVERY DEFENDER IS SETTLED.
+//
+// What this replaces fought `find_if(first hostile stack)` and nothing else.
+// Two enemies in one province meant one of them was invisible: not counted in
+// the defence, not killed by the assault, and still standing there afterwards
+// on ground that had just changed hands. That is the "enemy troops on my
+// territory that never took the province" report, and it is also why the same
+// attack could win or lose depending on which stack happened to be first in
+// the vector.
+//
+// THE ARITHMETIC, stated once so both sides read the same way:
+//
+//   attack  = troops x (1 + armyAtkPct/100)                 -- attacker's research
+//   defence = SUM over hostile stacks of
+//             troops x (1 + fort x 10/100) x (1 + armyDefPct/100)
+//                                                           -- each stack's own
+//   the attack carries if attack > defence.
+//
+// Losses are the other side's power converted back into bodies at your own
+// multiplier: the winner loses `loser power / winner multiplier`. Carried, the
+// attacker keeps `(attack - defence) / atkMod`; repulsed, the defenders lose
+// `attack x stackTroops / defence`, spread over the stacks in proportion to
+// what each contributed.
+//
+// That last part is the fix to the defender's side of the sum. Losses used to
+// be `attackers x atkMod x (1 - fort/200)` with no armyDefPct anywhere in it,
+// so defensive research decided whether you held the province and then counted
+// for nothing in what holding it cost -- Fortress Doctrine bought a coin flip
+// and no lives. With no research and no fort the two formulas agree exactly,
+// so this is the same game with the missing term restored.
+bool Game::resolveAssault(int attackerCid, int pid, int attackers, int& survivors) {
+    survivors = 0;
+    Province* dst = m_provinces.getProvinceById(pid);
+    if (!dst || attackerCid <= 0 || attackers <= 0) return false;
+
+    float fortDef = 0;
+    auto indIt = m_provinceIndustry.find(pid);
+    if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
+    const double fortMul = 1.0 + fortDef / 100.0;
+    const double atkMod = 1.0 + getTotalEffect("armyAtkPct", attackerCid) / 100.0;
+
+    auto isHostile = [&](const ArmyUnit& u) {
+        return u.count > 0 && u.countryId > 0 && u.countryId != attackerCid &&
+               !alliedCids(attackerCid, u.countryId);
+    };
+
+    auto& dstArmies = m_provinceArmies[pid];
+    double defPower = 0.0;
+    long long defTroops = 0;
+    for (const auto& u : dstArmies) {
+        if (!isHostile(u)) continue;
+        const double defMod = 1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0;
+        defPower += (double)u.count * fortMul * defMod;
+        defTroops += u.count;
+    }
+
+    const double atkPower = (double)attackers * atkMod;
+    const bool mayTake = mayTakeProvince(attackerCid, pid);
+    bool captured = false;
+
+    if (defTroops <= 0) {
+        // Nobody home: the province is taken by walking into it, or simply
+        // occupied if it is ours, an ally's, or somebody we are at peace with.
+        if (mayTake) { captureProvince(attackerCid, pid, /*contested=*/false); captured = true; }
+        survivors = attackers;
+    } else if (atkPower > defPower) {
+        for (auto& u : dstArmies) if (isHostile(u)) u.count = 0;
+        survivors = (int)std::max(0.0, (atkPower - defPower) / atkMod);
+        if (mayTake) { captureProvince(attackerCid, pid, /*contested=*/true); captured = true; }
+    } else {
+        // REPULSED, AND NOBODY IS LEFT BEHIND. A landing used to leave a tenth
+        // of its crew standing inside the province it had failed to take, with
+        // its ship already deleted -- so they could not leave, nothing attrits
+        // a foreign stack, and they sat on that province for the rest of the
+        // game. An assault that fails is an assault that is destroyed, which
+        // is what the land path always did.
+        for (auto& u : dstArmies) {
+            if (!isHostile(u)) continue;
+            const long long killed =
+                (long long)std::llround(atkPower * (double)u.count / defPower);
+            u.count = (int)std::max(0LL, (long long)u.count - killed);
+        }
+        if (m_ai) m_ai->noteAssaultRepulsed(attackerCid, attackers);
+    }
+
+    if (survivors > 0) addTroopsTo(pid, attackerCid, survivors);
+    auto it = m_provinceArmies.find(pid);
+    if (it != m_provinceArmies.end()) {
+        auto& units = it->second;
+        units.erase(std::remove_if(units.begin(), units.end(),
+                                   [](const ArmyUnit& u) { return u.count <= 0; }),
+                    units.end());
+        if (units.empty()) m_provinceArmies.erase(it);
+    }
+    return captured;
 }
 
 // === shipMaxRangePx / shipMaxRangeDeg ===
@@ -4925,7 +5151,7 @@ void Game::processPopulation() {
         auto indIt = m_provinceIndustry.find(pid);
         float income = 0;
         if (indIt != m_provinceIndustry.end())
-            income = indIt->second.income + indIt->second.resourceIncome + indIt->second.popIncome;
+            income = indIt->second.income + provinceResourceIncome(pid) + indIt->second.popIncome;
         if (income < 0.1f) income = 0.1f;
         provinceAttractiveness[pid] = income;
         if (income > maxIncome) maxIncome = income;

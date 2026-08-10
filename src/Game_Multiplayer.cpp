@@ -18,6 +18,7 @@
 // Neither is buried in a policy nobody reads. See net/PRIVACY.md.
 
 #include "Game.h"
+#include "BuildCosts.h"
 #include "TextInput.h"
 
 #include <cstring>
@@ -452,6 +453,11 @@ void Game::mpOpenHost() {
         cfg.hostBadges = badges;
     }
     cfg.gameVersion = OD_VERSION_STRING;
+    // The mods a joiner has to match. Never set before, on either host path,
+    // so NetHost::Config::requiredMods was always empty and the check at
+    // Host.cpp's modAttestDecode had nothing to compare against -- the whole
+    // feature was wired end to end except for this line.
+    cfg.requiredMods = m_mpRequiredMods;
     cfg.listed = m_mpListed;
     cfg.showBadges = true;
     cfg.turnSeconds = (uint32_t)mpTurnSeconds();
@@ -2510,6 +2516,33 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
 void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     if (countryId == 0 || payload.empty()) return;
 
+    // ── the submission is hostile until proven otherwise ──
+    //
+    // This runs on the HOST, over bytes a remote machine chose. The client that
+    // sent them is not the game: it is whatever the person on the other end is
+    // running, which may be a modified build, a script, or something written
+    // specifically to see what this function will accept. Everything below is
+    // written on that assumption.
+    //
+    // nlohmann's parser recurses on nesting, so a payload of ten thousand open
+    // brackets is a stack overflow -- a crash reachable by anybody holding a
+    // seat. The depth cap is checked before parsing rather than caught after,
+    // because by the time it throws the stack is already gone.
+    {
+        int depth = 0, maxDepth = 0;
+        for (uint8_t c : payload) {
+            if (c == '{' || c == '[') { if (++depth > maxDepth) maxDepth = depth; }
+            else if (c == '}' || c == ']') --depth;
+        }
+        // Orders are two levels deep: an object of arrays of flat objects.
+        // Sixteen is room for a format that grows and nowhere near a stack.
+        if (maxDepth > 16) {
+            printf("  Rejected orders from country %d: nesting depth %d\n",
+                   countryId, maxDepth);
+            return;
+        }
+    }
+
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(std::string(payload.begin(), payload.end()));
@@ -2528,8 +2561,64 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     auto ownsShip = [&](int idx) {
         return idx >= 0 && idx < (int)m_ships.size() && m_ships[idx].countryId == countryId;
     };
-    auto num = [](const nlohmann::json& e, const char* k, auto fallback) {
-        return e.contains(k) && e[k].is_number() ? e[k].get<decltype(fallback)>() : fallback;
+
+    /**
+     * Every number a client sends comes through here.
+     *
+     * Out of range is REFUSED, not clamped, and the caller drops that order.
+     * Clamping would turn "recruit two billion men" into "recruit as many as
+     * the game allows", which is a cheat that succeeded rather than one that
+     * failed -- and it would look, in the resulting world, exactly like a
+     * legitimate order.
+     *
+     * Floats are checked for finiteness first. A NaN compares false against
+     * every bound, so an unchecked NaN passes a range test written the obvious
+     * way and then propagates through the economy until every figure it touches
+     * is NaN.
+     */
+    bool rejected = false;
+    auto intIn = [&](const nlohmann::json& e, const char* k, long long lo, long long hi,
+                     long long fallback) -> long long {
+        if (!e.contains(k)) return fallback;
+        const nlohmann::json& v = e[k];
+        if (!v.is_number()) { rejected = true; return fallback; }
+        if (v.is_number_float()) {
+            const double d = v.get<double>();
+            if (!std::isfinite(d) || d < (double)lo || d > (double)hi) {
+                rejected = true;
+                return fallback;
+            }
+            return (long long)d;
+        }
+        const long long n = v.get<long long>();
+        if (n < lo || n > hi) { rejected = true; return fallback; }
+        return n;
+    };
+    /**
+     * A short text field, from a fixed set of words the caller checks.
+     *
+     * PendingShipBuild::type and PendingSpecialization::specialization are
+     * std::string, and both were being read with the NUMBER reader -- which
+     * compiles, because assigning an int to a std::string picks
+     * operator=(char), and quietly stored one control character. So every ship
+     * built or province specialised over the network came out with a type no
+     * branch in the resolver matches. Long-standing, and invisible: the order
+     * was accepted, the money was taken, and nothing was ever built.
+     */
+    auto textIn = [&](const nlohmann::json& e, const char* k) -> std::string {
+        if (!e.contains(k) || !e[k].is_string()) return {};
+        std::string s = e[k].get<std::string>();
+        if (s.size() > 64) { rejected = true; return {}; }   // no field here is a paragraph
+        return s;
+    };
+    auto realIn = [&](const nlohmann::json& e, const char* k, double lo, double hi,
+                      double fallback) -> double {
+        if (!e.contains(k)) return fallback;
+        const nlohmann::json& v = e[k];
+        if (!v.is_number()) { rejected = true; return fallback; }
+        const double d = v.get<double>();
+        if (!std::isfinite(d) || d < lo || d > hi) { rejected = true; return fallback; }
+        return d;
     };
 
     // Replace this country's existing orders rather than piling onto them: a
@@ -2550,107 +2639,230 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     dropOwned(m_pendingShipEngageOrders,[&](const auto& o){ return ownsShip(o.shipIndex); });
     dropOwned(m_pendingShipBombardOrders,[&](const auto& o){ return ownsShip(o.shipIndex); });
 
+    // A country cannot have more orders of one kind than it has provinces or
+    // ships to issue them from, so anything beyond that is padding -- and a
+    // million-entry array inside a legal 1 MB payload is a denial of service
+    // aimed at the host, not a move.
+    const size_t kMaxEntries = m_provinces.getAllProvinces().size() + m_ships.size() + 64;
+    size_t dropped = 0;
     auto each = [&](const char* key, auto fn) {
         if (!j.contains(key) || !j[key].is_array()) return;
-        for (const auto& e : j[key]) if (e.is_object()) fn(e);
+        size_t n = 0;
+        for (const auto& e : j[key]) {
+            if (++n > kMaxEntries) { dropped += j[key].size() - kMaxEntries; break; }
+            if (!e.is_object()) continue;
+            rejected = false;
+            fn(e);
+        }
     };
 
+    // Ranges below are the widest a legal order can be, not guesses: province
+    // ids index a raster of PROVINCE_ID_MAX, turn counters are small, and a
+    // percentage is a percentage.
+    constexpr long long kMaxProvinceId = 0xFFFFFF;   // Province::colorToId is 24-bit
+    constexpr long long kMaxTurns = 1000;
+    constexpr long long kMaxTroops = 100000000LL;
+
+    // ── builds: quoted and PAID FOR by this machine ──
+    //
+    // The client sends only WHERE and WHAT. The level, the build time and the
+    // price all come from upgradeQuote() against this world, and queueUpgrade()
+    // takes the money -- so a client cannot ask for level 999, cannot ask for
+    // it to be finished next turn, and cannot have it for free.
+    //
+    // It used to send all three. `{"type":"industry","targetLevel":999,
+    // "turnsRemaining":1}` was a level-999 factory next turn at no cost,
+    // because processUpgrades() assigns targetLevel directly and the price was
+    // only ever deducted in Game_Render.cpp, on the machine that clicked.
     each("pendingUpgrades", [&](const nlohmann::json& e) {
-        PendingUpgrade o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.type = num(e, "type", 0);
-        o.targetLevel = num(e, "targetLevel", 0);
-        o.turnsRemaining = num(e, "turnsRemaining", 0);
-        m_pendingUpgrades.push_back(o);
+        const long long pid = intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince((int)pid)) return;
+        std::string type = e.contains("type") && e["type"].is_string()
+                               ? e["type"].get<std::string>() : std::string();
+        if (type != "industry" && type != "fortification" && type != "port") return;
+        // Quotes, checks the caps and the research gate, charges the treasury,
+        // and pushes with ITS OWN level and turn count.
+        queueUpgrade((int)pid, type.c_str(), countryId);
     });
+
+    // Specialising costs 1.5x the province's current industry level, and it is
+    // charged here for the same reason a build is: queueSpecialization is the
+    // only place that knows the price, and it was only ever reached from the
+    // panel. It also resolves the resource itself -- an empty string means
+    // "whatever pays best here", which a client does not get to decide.
     each("pendingSpecializations", [&](const nlohmann::json& e) {
-        PendingSpecialization o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.specialization = num(e, "specialization", 0);
-        o.turnsRemaining = num(e, "turnsRemaining", 0);
-        m_pendingSpecializations.push_back(o);
+        const long long pid = intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince((int)pid)) return;
+        const std::string want = textIn(e, "specialization");
+        if (rejected) return;
+        queueSpecialization((int)pid, want.c_str(), countryId);
     });
+
+    // Recruitment is charged here for the same reason builds are: the price,
+    // (count / 10000) with a floor of 1, was only ever deducted in the panel
+    // that drew the button (Game_Render.cpp), so over the network the count was
+    // free and unbounded.
     each("pendingRecruitments", [&](const nlohmann::json& e) {
         PendingRecruitment o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.count = num(e, "count", 0);
-        o.turnsRemaining = num(e, "turnsRemaining", 0);
+        o.provinceId = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.provinceId)) return;
+        o.count = (int)intIn(e, "count", 1, kMaxTroops, 0);
+        o.turnsRemaining = (int)intIn(e, "turnsRemaining", 1, kMaxTurns, 1);
+        if (rejected || o.count <= 0) return;
+
+        auto cit = m_countries.getAll().find(countryId);
+        if (cit == m_countries.getAll().end()) return;
+        // conscriptionCostPct, NOT "armyCostPct" -- that name is not a real
+        // effect, so getTotalEffect returns 0 for it and the modifier silently
+        // becomes 1.0. Game_Render.cpp carries a comment about having made
+        // exactly that mistake once already; this is the same price the panel
+        // charges, which is the whole point of charging it here.
+        float cost = ((float)o.count / 10000.0f) *
+                     conscriptionCostMod(getTotalEffect("conscriptionCostPct", countryId));
+        if (cost < 1.0f) cost = 1.0f;
+        if (cit->second.treasury < cost) return;      // cannot afford it, so it does not happen
+        cit->second.treasury -= cost;
         m_pendingRecruitments.push_back(o);
     });
+
     each("pendingMoveOrders", [&](const nlohmann::json& e) {
         PendingMoveOrder o;
-        o.fromProvince = num(e, "fromProvince", 0);
-        if (!ownsProvince(o.fromProvince)) return;
-        o.toProvince = num(e, "toProvince", 0);
-        o.pct = num(e, "pct", 50);
+        o.fromProvince = (int)intIn(e, "fromProvince", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.fromProvince)) return;
+        o.toProvince = (int)intIn(e, "toProvince", 1, kMaxProvinceId, 0);
+        o.pct = (int)intIn(e, "pct", 0, 100, 50);
+        if (rejected) return;
         // Re-attributed, never taken from the wire: a client does not get to
         // say which country issued its orders.
         o.countryId = countryId;
         m_pendingMoveOrders.push_back(o);
     });
+
     each("pendingDisbandOrders", [&](const nlohmann::json& e) {
         PendingDisbandOrder o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.count = num(e, "count", 0);
+        o.provinceId = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.provinceId)) return;
+        o.count = (int)intIn(e, "count", 0, kMaxTroops, 0);
+        if (rejected) return;
         m_pendingDisbandOrders.push_back(o);
     });
+
+    // A hull costs money and needs a port big enough to lay it down in: $15 and
+    // port level 2 for a destroyer, $40 and level 3 for a carrier, three turns
+    // either way. Those figures lived only in the province panel
+    // (Game_Render.cpp), so over the network a fleet was free, instant, and
+    // buildable in a landlocked province.
     each("pendingShipBuilds", [&](const nlohmann::json& e) {
         PendingShipBuild o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.type = num(e, "type", 0);
-        o.turnsRemaining = num(e, "turnsRemaining", 0);
+        o.provinceId = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.provinceId)) return;
+        o.type = textIn(e, "type");
+        if (rejected) return;
+
+        float price = 0.0f;
+        int needPort = 0;
+        if (o.type == "destroyer")   { price = 15.0f; needPort = 2; }
+        else if (o.type == "carrier"){ price = 40.0f; needPort = 3; }
+        else return;                          // not a hull this game builds
+
+        auto portIt = m_provincePorts.find(o.provinceId);
+        const int portLevel = (portIt != m_provincePorts.end()) ? portIt->second.level : 0;
+        if (portLevel < needPort) return;
+
+        // One yard, one hull. The panel enforces this; without it here a client
+        // could stack a whole navy on a single port.
+        for (const PendingShipBuild& sb : m_pendingShipBuilds)
+            if (sb.provinceId == o.provinceId) return;
+
+        auto cit = m_countries.getAll().find(countryId);
+        if (cit == m_countries.getAll().end() || cit->second.treasury < price) return;
+        cit->second.treasury -= price;
+
+        o.turnsRemaining = 3;                 // set here, never taken from the wire
         m_pendingShipBuilds.push_back(o);
     });
+
     each("pendingScrapShips", [&](const nlohmann::json& e) {
         PendingScrapShip o;
-        o.shipIndex = num(e, "shipIndex", -1);
-        if (!ownsShip(o.shipIndex)) return;
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        if (rejected || !ownsShip(o.shipIndex)) return;
         m_pendingScrapShips.push_back(o);
     });
+
+    // Embarking is FREE -- the panel says so in as many words ("Embark Army
+    // (free, 1t)") -- so there is nothing to charge. What there is to check is
+    // the count: it moves troops that must actually be standing there, and the
+    // wire figure was taken whole. Capped at this country's own garrison, so a
+    // client cannot embark an army it does not have.
     each("pendingEmbarkations", [&](const nlohmann::json& e) {
         PendingEmbark o;
-        o.provinceId = num(e, "provinceId", 0);
-        if (!ownsProvince(o.provinceId)) return;
-        o.count = num(e, "count", 0);
-        o.turnsRemaining = num(e, "turnsRemaining", 0);
+        o.provinceId = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.provinceId)) return;
+        o.count = (int)intIn(e, "count", 1, kMaxTroops, 0);
+        if (rejected || o.count <= 0) return;
+
+        int garrison = 0;
+        auto ait = m_provinceArmies.find(o.provinceId);
+        if (ait != m_provinceArmies.end())
+            for (const ArmyUnit& u : ait->second)
+                if (u.countryId == countryId) garrison += u.count;
+        if (garrison <= 0) return;
+        if (o.count > garrison) o.count = garrison;
+
+        o.turnsRemaining = 1;                 // the panel's figure, set here
         m_pendingEmbarkations.push_back(o);
     });
+
     each("pendingArtilleryOrders", [&](const nlohmann::json& e) {
         PendingArtilleryOrder o;
-        o.fromProvince = num(e, "fromProvince", 0);
-        if (!ownsProvince(o.fromProvince)) return;
-        o.targetProvince = num(e, "targetProvince", 0);
-        o.ammoType = num(e, "ammoType", 0);
+        o.fromProvince = (int)intIn(e, "fromProvince", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(o.fromProvince)) return;
+        o.targetProvince = (int)intIn(e, "targetProvince", 1, kMaxProvinceId, 0);
+        o.ammoType = (int)intIn(e, "ammoType", 0, 64, 0);
+        if (rejected) return;
         m_pendingArtilleryOrders.push_back(o);
     });
+
+    // Longitude and latitude, in degrees. Outside those a destination is not a
+    // place on this world, and the pathing that consumes it has no answer for
+    // one -- which is how an infinity here became a hang rather than a refusal.
     each("pendingShipMoveOrders", [&](const nlohmann::json& e) {
         PendingShipMoveOrder o;
-        o.shipIndex = num(e, "shipIndex", -1);
-        if (!ownsShip(o.shipIndex)) return;
-        o.destLon = num(e, "destLon", 0.0);
-        o.destLat = num(e, "destLat", 0.0);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        if (rejected || !ownsShip(o.shipIndex)) return;
+        o.destLon = (float)realIn(e, "destLon", -180.0, 180.0, 0.0);
+        o.destLat = (float)realIn(e, "destLat", -90.0, 90.0, 0.0);
+        if (rejected) return;
         m_pendingShipMoveOrders.push_back(o);
     });
+
     each("pendingShipEngageOrders", [&](const nlohmann::json& e) {
         PendingShipEngageOrder o;
-        o.shipIndex = num(e, "shipIndex", -1);
-        if (!ownsShip(o.shipIndex)) return;
-        o.targetIndex = num(e, "targetIndex", -1);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        if (rejected || !ownsShip(o.shipIndex)) return;
+        // A target is any ship on the map, including somebody else's -- that is
+        // the point of engaging -- but it has to BE a ship.
+        o.targetIndex = (int)intIn(e, "targetIndex", 0, (long long)m_ships.size() - 1, -1);
+        if (rejected || o.targetIndex < 0 || o.targetIndex >= (int)m_ships.size()) return;
         m_pendingShipEngageOrders.push_back(o);
     });
+
     each("pendingShipBombardOrders", [&](const nlohmann::json& e) {
         PendingShipBombardOrder o;
-        o.shipIndex = num(e, "shipIndex", -1);
-        if (!ownsShip(o.shipIndex)) return;
-        o.targetProvince = num(e, "targetProvince", 0);
-        o.ammoType = num(e, "ammoType", 0);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        if (rejected || !ownsShip(o.shipIndex)) return;
+        o.targetProvince = (int)intIn(e, "targetProvince", 1, kMaxProvinceId, 0);
+        o.ammoType = (int)intIn(e, "ammoType", 0, 64, 0);
+        if (rejected) return;
         m_pendingShipBombardOrders.push_back(o);
     });
+
+    // Said out loud, because a client that keeps sending impossible numbers is
+    // either broken or being driven by somebody testing this function, and a
+    // host running unattended has no other way to notice either.
+    if (dropped > 0)
+        printf("  Country %d sent %zu orders beyond what it could possibly issue;"
+               " ignored.\n", countryId, dropped);
 }
 
 // ------------------------------------------------------------ driving turns --

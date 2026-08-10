@@ -94,18 +94,42 @@ only.</p>
   <li><strong>There is no tutorial.</strong> Province actions live behind the view tabs
       on the bottom bar, and the game does not yet tell you that. This is the single
       biggest thing missing.</li>
-  <li><strong>The AI is not yet a real opponent.</strong> It is a neural network
-      trained by self-play, and it is still learning: on this build it holds 36% of
-      the world against countries playing at random, so it is currently losing to
-      chance. It defends, invades, negotiates and governs — the mechanisms work —
-      but it will not outplay you yet, and the difficulty setting changes how much
-      noise it adds to its own choices rather than how well it plays.</li>
-  <li><strong>No dedicated server.</strong> Hosting means a running copy of the game;
-      closing it ends the session.</li>
+  <li><strong>The AI plays a whole game, and will not outplay a good player.</strong>
+      It is a neural network trained by self-play and against a league of its own
+      frozen past versions. Each turn it picks from four menus: economy (industry,
+      forts, ports, specialisation, warships, research), politics (doctrines,
+      alliances, pacts, guarantees, and how it treats its minorities), war
+      (recruiting, reinforcing a threatened border, attacking, declaring,
+      artillery, offering a ceasefire) and the navy (routed movement, bombardment,
+      landing troops, engaging an enemy fleet). It answers diplomacy with reasons,
+      and keeps its word or does not in ways you can watch.
+      <br />
+      This build also fixes something that had been quietly holding it back: the
+      AI now gets the research discounts it had already paid for. Finishing the
+      industry tree halved a <em>player's</em> build costs and did nothing for the
+      AI, which had been learning to play an economy more expensive than the one
+      you play.
+      <br />
+      What it is not is a match for somebody who knows the game, and the difficulty
+      setting changes how much noise it adds to its own choices rather than how well
+      it plays. An earlier version of this page quoted a win rate; that figure has
+      been withdrawn, because it measured an older build with a method too noisy to
+      support one number. We would rather say nothing than quote a number we cannot
+      stand behind.</li>
+  <li><strong>The dedicated server is built but not released.</strong> A console
+      server with no graphics dependency — it runs on a VPS or in a container —
+      exists and is tested on every platform, but there are no downloads for it
+      yet. For now, hosting means a running copy of the game, and closing it ends
+      the session.</li>
   <li><strong>The browser build cannot host or join.</strong> A browser tab cannot
       listen for players. Signing in does work there now, and everything else —
       the map, the map editor, mods — works in a browser.</li>
-  <li>Long-form (play-by-post) turns are designed and not built.</li>
+  <li><strong>Long-form (play-by-post) turns are built but not yet played.</strong>
+      The whole path exists and is unit-tested — the host publishes each resolved
+      turn, players submit orders sealed with a session key, and both sides work
+      with the host offline. What has not happened is a real campaign across
+      several days on two machines, so treat it as untested rather than
+      finished.</li>
 </ul>
 
 <h2>Licence</h2>

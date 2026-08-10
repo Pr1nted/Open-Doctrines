@@ -5,9 +5,14 @@ import json, os, sys, zipfile
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 ODMAP_PATH = os.path.join(DATA_DIR, "map.odmap")
 
+# political.png is deliberately absent. The game never opened it -- the
+# needed[] list in Game_Loading.cpp does not name it, and
+# generatePoliticalTexture() draws the board from provinces.png and
+# countries.json at load -- so packaging it added 4.7 MB of nothing. See
+# tools/odmap_pack.py.
 REQUIRED_FILES = [
     "land_sea.png", "provinces.png", "provinces.json", "countries.json",
-    "political.png", "metadata.json", "population.json",
+    "metadata.json", "population.json",
     "political_compass.json", "minorities.json", "minority_colors.json",
     "starting_policies.json", "country_compass.json", "starting_minority_policies.json",
 ]

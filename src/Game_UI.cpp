@@ -329,6 +329,26 @@ void Game::updatePopup() {
             // was a silent no-op for alliances/guarantees/NAPs.
             auto& fwd = m_relations[popup.sourceIso][popup.targetIso];
             auto& rev = m_relations[popup.targetIso][popup.sourceIso];
+            // NOT WITH SOMEONE YOU ARE AT WAR WITH.
+            //
+            // A popup outlives the turn it was raised on: the offer can be
+            // sitting unanswered when the country that made it declares war,
+            // and clicking Approve then wrote alliance=true onto a pair with
+            // war=true. Nothing downstream expects both -- allies are skipped
+            // as targets, enemies are attacked, and the same pair was each in
+            // turn depending on which check ran. The war is the newer fact and
+            // the one the player watched happen, so the treaty is what gives.
+            if ((popup.action == "request_alliance" || popup.action == "request_guarantee" ||
+                 popup.action == "request_nap") && (fwd.war || rev.war)) {
+                addNotification(diploDisplayName(popup.sourceIso) +
+                                " declared war before you answered — the offer is void",
+                                Color{235, 130, 90, 255}, 8.0f);
+                Audio::get().playSfx("deal_rejected");
+                m_popupQueue.erase(m_popupQueue.begin());
+                m_popupShowTerms = false;
+                m_popupRefusalReason = REFUSE_NONE;
+                return;
+            }
             if (popup.action == "request_alliance")      { fwd.alliance = true;      rev.alliance = true; }
             else if (popup.action == "request_guarantee"){ fwd.guarantee = true;     rev.guarantee = true; }
             else if (popup.action == "request_nap")      { fwd.nonAggression = true; rev.nonAggression = true; }
@@ -379,7 +399,9 @@ void Game::updatePopup() {
             da.targetIso = popup.targetIso;
             da.action = "apply_ceasefire";
             da.turnsRemaining = 1;
-            m_pendingDiplomaticActions.push_back(da);
+            // Exempt from the one-channel rule by name: this is the deferred
+            // half of an answer already given, not a new overture.
+            queueDiplomaticAction(da);
             std::string key = popup.sourceIso + "|" + popup.targetIso;
             m_acceptedCeasefireTerms[key] = popup.terms;
             // The original request_ceasefire action was already erased from
@@ -1191,6 +1213,19 @@ void Game::updateCeasefireScreen() {
     Rectangle cancelBtn = {(float)(sbX + 8), (float)(buttonY + 36), (float)(sidebarW - 16), 28};
 
     if (CheckCollisionPointRec(mouse, sendBtn) && click) {
+        // One thing at a time, and asked BEFORE the offer is paid for. The
+        // panel that opened this screen greys the button out for a pair with
+        // something pending, so this is the screen agreeing with the panel --
+        // but the money below leaves the treasury the moment the offer is
+        // sent, and an offer refused after that would be money burnt.
+        if (hasPendingDiplomacy(playerC->isoA3, targetC->isoA3)) {
+            addNotification("You already have an offer awaiting " +
+                            diploDisplayName(targetC->isoA3) + "'s answer",
+                            Color{220, 170, 90, 255}, 5.0f);
+            m_inCeasefireScreen = false;
+            m_ceasefireSelectMode = 0;
+            return;
+        }
         // Clamp offer to what the player can actually pay (treasury >= 0)
         double& pTreas = m_countries.getAll()[m_playerCountryId].treasury;
         if (m_ceasefireOurMoney > (int)pTreas) m_ceasefireOurMoney = (int)pTreas;
@@ -1207,7 +1242,7 @@ void Game::updateCeasefireScreen() {
         da.targetIso = targetC->isoA3;
         da.action = "request_ceasefire";
         da.turnsRemaining = 2;
-        m_pendingDiplomaticActions.push_back(da);
+        queueDiplomaticAction(da);
         CeasefireTerms terms;
         terms.ourMoney = m_ceasefireOurMoney;
         terms.theirMoney = m_ceasefireTheirMoney;
@@ -1684,7 +1719,12 @@ void Game::loadStateJson(const std::string& json) {
             da.action = entry["action"].get<std::string>();
             da.turnsRemaining = entry.value("turnsRemaining", 1);
             da.subjectIso = entry.value("subjectIso", std::string());
-            m_pendingDiplomaticActions.push_back(da);
+            // Through the same door as everything else, because a save written
+            // before the one-channel rule existed can carry a queue that
+            // breaks it -- three copies of one declaration, most often. The
+            // extras were always no-ops at resolution; dropping them here is
+            // what stops the loaded game re-staging the popups they produced.
+            queueDiplomaticAction(std::move(da));
         }
     }
 
@@ -1738,11 +1778,24 @@ void Game::loadStateJson(const std::string& json) {
     }
 
     // Minority alignment drift, per country.
+    //
+    // CLAMPED ON THE WAY IN. Saves written before the drift bound existed can
+    // hold values in the hundreds or thousands -- a single war declaration used
+    // to charge -30 per province holding the group -- and the bar can only ever
+    // show 0..100. Loading those verbatim would carry the old irreversibility
+    // into the fixed build: the save would look identical and still refuse to
+    // recover. Anything past the bound was unreachable on screen anyway, so
+    // clamping loses nothing a player could see and restores a position they
+    // can actually govern their way out of.
+    auto loadDrift = [&](int cid, const std::string& name, float v) {
+        m_minorityAlignmentDrift[cid][name] =
+            std::clamp(v, -MINORITY_DRIFT_LIMIT, MINORITY_DRIFT_LIMIT);
+    };
     if (j.contains("alignmentDriftByCountry")) {
         for (auto& [cidKey, node] : j["alignmentDriftByCountry"].items()) {
             const int cid = std::stoi(cidKey);
             for (auto& [name, val] : node.items())
-                m_minorityAlignmentDrift[cid][name] = val.get<float>();
+                loadDrift(cid, name, val.get<float>());
         }
     } else if (j.contains("alignmentDrift")) {
         // MIGRATION. Before minority policy was a country's own, drift was one
@@ -1757,7 +1810,7 @@ void Game::loadStateJson(const std::string& json) {
             if (cid > 0 && cid < SPC_CID) realCountries.push_back(cid);
         for (auto& [name, val] : j["alignmentDrift"].items()) {
             const float drift = val.get<float>();
-            for (int cid : realCountries) m_minorityAlignmentDrift[cid][name] = drift;
+            for (int cid : realCountries) loadDrift(cid, name, drift);
         }
     }
 

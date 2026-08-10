@@ -787,6 +787,30 @@ void Audio::pump() {
     // The helper thread already owns the refill; doing it from here too would
     // just contend on the audio lock for no benefit.
     if (m_bgRunning.load(std::memory_order_acquire)) return;
+
+#ifdef __EMSCRIPTEN__
+    // THE RATE LIMIT GUARDS THE WHOLE FUNCTION, not just the yield below.
+    //
+    // It used to sit under the two UpdateMusicStream calls, which made pump()
+    // cheap to call only in the sense that it did no HARM -- it still took the
+    // audio lock and walked both streams on every single call. Callers priced
+    // that in and pumped conservatively, once every 64 raster rows, and 64 rows
+    // of a 8192x4096 scan is far longer than one audio period. So the buffer
+    // still ran dry between yields and the fragment still looped: the
+    // instrumentation was there and was too sparse to work.
+    //
+    // With the gate first, a call that is not due costs one clock read. That is
+    // what makes "pump every row" affordable, and pumping every row is what
+    // actually keeps the stream fed.
+    //
+    // THIRTY MILLISECONDS, which is three refills inside one Web Audio period
+    // rather than one on its boundary. 16 ms was level with the period and left
+    // no margin for a late refill; 8 ms was tried and is far more often than
+    // the callback can use, and every one of them costs a full stack unwind.
+    double nowMs = emscripten_get_now();
+    if (nowMs - m_lastPumpMs < m_pumpIntervalMs) return;
+#endif
+
     if (m_prev.loaded) UpdateMusicStream(m_prev.music);
     if (m_cur.loaded)  UpdateMusicStream(m_cur.music);
 
@@ -809,16 +833,113 @@ void Audio::pump() {
     //
     // Desktop keeps the helper thread and never reaches this.
     //
-    // Rate-limited so this is safe to call from inside a loop: unwinding and
-    // rewinding the stack is not free, and one turn per frame's worth of time
-    // is all the audio callback needs. Without the limit, adding this call to a
-    // per-province loop would cost more than the loading it is protecting.
-    double nowMs = emscripten_get_now();
-    if (nowMs - m_lastPumpMs < 16.0) return;
-    m_lastPumpMs = nowMs;
+    // HOW LONG THE YIELD ITSELF TOOK IS THE INTERESTING NUMBER. Resuming from
+    // emscripten_sleep(0) costs one turn of the browser's task queue, and a
+    // browser does not always give that back promptly: a hidden or occluded tab
+    // has its timers clamped to roughly one second, which turns a yield that
+    // normally costs under a millisecond into a full second of wall clock.
+    //
+    // At a fixed 30 ms gate that is unbounded damage. The gate is measured in
+    // wall clock, so a yield that took a second guarantees the next call is
+    // also due, and a loading loop that pumps once a row would then spend a
+    // second per row -- a load that takes seconds in a foreground tab would
+    // take hours in a background one. This was not theoretical; it is what a
+    // hidden tab did.
+    //
+    // So the interval backs off when yields turn expensive and recovers when
+    // they are cheap again. The audio has already lost in that situation --
+    // nothing is draining the buffer either -- and the only thing left to
+    // protect is the load finishing at all.
+    double before = emscripten_get_now();
     emscripten_sleep(0);
+    double after = emscripten_get_now();
+
+    if (after - before > 50.0)
+        m_pumpIntervalMs = std::min(1000.0, m_pumpIntervalMs * 2.0);
+    else
+        m_pumpIntervalMs = std::max(PUMP_INTERVAL_MS, m_pumpIntervalMs * 0.5);
+
+    // Charged from AFTER the yield, not before it. Timed from before, the
+    // yield's own cost is counted against the interval, so an expensive one
+    // leaves the next call already due and the backoff above never bites.
+    m_lastPumpMs = after;
 #endif
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Blocking calls that cannot yield
+// ────────────────────────────────────────────────────────────────────────────
+
+#ifdef __EMSCRIPTEN__
+// Stop the graph rather than starve it.
+//
+// Suspending is not the same as pausing the music: pausing changes what the
+// mixer would produce, and the mixer is exactly what is not running. Web Audio
+// hands a blocked page's output node the same block it was given last, over and
+// over, which is the machine-gun loop. A suspended context produces nothing at
+// all, so the same stall comes out as silence.
+//
+// The technique is the one Game::init already uses for the beforeunload dialog,
+// where the thread is taken away from outside and no yield is possible either.
+// A SEPARATE window global from that one on purpose: both can be in flight (a
+// player can close the tab mid-load) and each must resume only what it
+// suspended, or the first resume un-suspends the other's devices early.
+// window.__odBlock counts what each side actually did: {s} suspends, {r}
+// resumes. Two integers, and they are the difference between "the resume did
+// not run" and "the resume ran and the browser refused it" -- which look
+// identical from outside and need opposite fixes. Read them from the console.
+void Audio::suspendDevice() {
+    if (m_blockDepth++ > 0) return;
+    emscripten_run_script(
+        "try{window.__odBlock=window.__odBlock||{s:0,r:0};window.__odBlock.s++;"
+        "window.__odBlockSuspended=[];"
+        "var d=(window.miniaudio&&window.miniaudio.devices)||[];"
+        "for(var i=0;i<d.length;i++){var x=d[i];"
+        "if(x&&x.webaudio&&x.webaudio.state==='running'){"
+        "x.webaudio.suspend();window.__odBlockSuspended.push(x.webaudio);}}"
+        "}catch(e){}");
+    // One turn of the browser's loop so the suspend is actually applied before
+    // the caller stops giving it any. Without this the request is queued behind
+    // the very stall it is meant to cover.
+    emscripten_sleep(0);
+}
+
+void Audio::resumeDevice() {
+    if (m_blockDepth == 0) return;
+    if (--m_blockDepth > 0) return;
+    emscripten_run_script(
+        "try{window.__odBlock=window.__odBlock||{s:0,r:0};window.__odBlock.r++;"
+        "var s=window.__odBlockSuspended||[];"
+        // CLEARED BEFORE THE RESUMES, not after. A throw anywhere in the loop
+        // used to skip the clear, which stranded the list AND left the device
+        // suspended -- silence for the rest of the session, from one bad
+        // element. Clearing first means the worst case is one context that
+        // stays suspended, and the per-element catch means even that needs the
+        // browser to reject the call.
+        "window.__odBlockSuspended=[];"
+        "for(var i=0;i<s.length;i++){try{s[i].resume();}catch(e){}}"
+        "}catch(e){}");
+}
+#endif
+
+void Audio::beginBlockingCall() {
+    if (!m_available) return;
+    beginBackgroundPump();       // desktop: the helper thread keeps it fed
+#ifdef __EMSCRIPTEN__
+    suspendDevice();             // web: no thread to have, so silence instead
+#endif
+}
+
+void Audio::endBlockingCall() {
+    if (!m_available) return;
+#ifdef __EMSCRIPTEN__
+    resumeDevice();
+#endif
+    endBackgroundPump();
+}
+
+Audio::BlockingCall::BlockingCall()  { Audio::get().beginBlockingCall(); }
+Audio::BlockingCall::~BlockingCall() { Audio::get().endBlockingCall(); }
 
 void Audio::backgroundPumpLoop() {
     while (m_bgRunning.load(std::memory_order_acquire)) {

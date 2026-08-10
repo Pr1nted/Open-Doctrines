@@ -1536,6 +1536,46 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                "neither at war with nor allied to%s\n", trespass, stacks,
                trespass ? "   << INVARIANT BROKEN" : "");
     }
+    // TWO ARMIES AT WAR STANDING ON THE SAME PROVINCE, and one of them owns it.
+    //
+    // The battle is the thing that resolves this: whoever wins holds the
+    // ground and the loser is destroyed. A pair still sharing a province after
+    // the turn means some assault settled with one of them, which is exactly
+    // what resolveAssault replaced -- the old code fought the first hostile
+    // stack it found and left every other one standing on ground that had just
+    // changed hands. Counted separately from trespass above, which only sees
+    // stacks with no war to justify them; these have a war and are still wrong.
+    //
+    // Also counts two stacks of ONE country in a province: a move order takes
+    // its share of the first it finds, so the second is an army no order can
+    // reach.
+    {
+        int contested = 0, doubled = 0;
+        for (const auto& [pid, units] : m_provinceArmies) {
+            const int owner = (pid >= 0 && (size_t)pid < m_provinceCountryLookup.size())
+                                ? m_provinceCountryLookup[pid] : 0;
+            std::unordered_set<int> seenCid;
+            for (const auto& u : units) {
+                if (u.count <= 0 || u.countryId <= 0) continue;
+                if (!seenCid.insert(u.countryId).second) doubled++;
+                if (owner > 0 && u.countryId != owner && atWarCids(u.countryId, owner)) {
+                    contested++;
+                    // Named and capped, for the same reason trespass names its
+                    // pairs: the count says how bad, the pair says which
+                    // transition let it happen.
+                    if (contested <= 3) {
+                        const auto* uc = m_countries.getCountry(u.countryId);
+                        printf("[EVAL]   occupation: %s (%d) has %d troop(s) inside %s's "
+                               "prov %d\n", uc ? uc->name.c_str() : "?", u.countryId,
+                               u.count, m_countries.getAll()[owner].name.c_str(), pid);
+                    }
+                }
+            }
+        }
+        printf("[EVAL] occupation     %d stack(s) sharing a province with an owner they "
+               "are at war with, %d duplicate stack(s)%s\n", contested, doubled,
+               (contested || doubled) ? "   << INVARIANT BROKEN" : "");
+    }
     printf("[EVAL] sea combat    %lld engagement(s), %lld hull(s) sunk, of which "
            "%lld loaded transport(s) carrying %lld troops\n",
            m_navEngagements, m_navSinkings, m_navTransportsSunk, m_navCrewDrowned);

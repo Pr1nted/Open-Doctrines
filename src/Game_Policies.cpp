@@ -411,14 +411,17 @@ void Game::applyEthnicPolicyEffects(int countryId) {
             if (processed.count(mg.name)) continue;
             processed.insert(mg.name);
 
-            // Accumulate alignment drift, from THIS country's option set.
-            float driftThisTurn = 0.0f;
+            // The alignment half of the turn comes from minorityDriftPerTurn,
+            // which is also what the Ethnic tab reports -- policy dial plus the
+            // conquered-ground penalty. Only the population and compass effects
+            // are still walked per category here, because those are per
+            // province rather than per country.
+            const float driftThisTurn = minorityDriftPerTurn(countryId, mg.name);
             float growthPctThisTurn = 0.0f; // summed over categories, applied once below
             for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
                 const int oi = ethnicPolicyOption(countryId, mg.name, ci);
                 if (oi < 0 || oi >= (int)m_ethnicPolicyCategories[ci].options.size()) continue;
                 auto& opt = m_ethnicPolicyCategories[ci].options[oi];
-                driftThisTurn += opt.alignmentPerTurn;
                 totalCost += opt.costPerTurn;
 
                 // Population growth: only accumulated here. Applying it inside this
@@ -461,32 +464,12 @@ void Game::applyEthnicPolicyEffects(int countryId) {
                 }
             }
 
-            // Ongoing war debuff: if this province was conquered from an enemy,
-            // minorities get a per-turn alignment penalty while the war continues
-            auto ctIt = m_provinceConquestTurn.find(pid);
-            if (ctIt != m_provinceConquestTurn.end()) {
-                auto prevIt = m_conqueredProvincePrevOwner.find(pid);
-                if (prevIt != m_conqueredProvincePrevOwner.end() && prevIt->second > 0) {
-                    const Country* curC = m_countries.getCountry(countryId);
-                    const Country* prevC = m_countries.getCountry(prevIt->second);
-                    if (curC && prevC) {
-                        auto ar = m_relations.find(curC->isoA3);
-                        if (ar != m_relations.end()) {
-                            auto dr = ar->second.find(prevC->isoA3);
-                            if (dr != ar->second.end() && dr->second.war) {
-                                driftThisTurn -= 5.0f;
-                                // Per conquered province per turn, for every
-                                // country at war. Same reason as the refugee
-                                // lines in Game_TurnLogic.
-                                if (processed.size() < 10 && m_config.aiDebug)
-                                    printf("[DIAG] War alignment penalty for %s in conquered province %d (%s vs %s): -5/turn\n",
-                                           mg.name.c_str(), pid, curC->name.c_str(), prevC->name.c_str());
-                            }
-                        }
-                    }
-                }
-            }
-            m_minorityAlignmentDrift[countryId][mg.name] += driftThisTurn;
+            // The conquered-ground war penalty is part of minorityDriftPerTurn
+            // above, so it is not applied a second time here.
+            if (m_config.aiDebug && processed.size() < 10 && driftThisTurn != 0.0f)
+                printf("[DIAG] %s under country %d: %+.1f/turn\n",
+                       mg.name.c_str(), countryId, driftThisTurn);
+            addMinorityDrift(countryId, mg.name, driftThisTurn);
         }
     }
 
@@ -746,14 +729,92 @@ float Game::getMinorityAlignment(int countryId, const std::string& minorityName)
     return std::max(0.0f, std::min(100.0f, align));
 }
 
-float Game::getMinorityAlignmentTrend(int countryId, const std::string& minorityName) const {
-    float trend = 0.0f;
+// WHY THE BOUND IS ON THE STORED VALUE AND NOT ON THE READER.
+//
+// Alignment is 50 + drift clamped to 0..100, so any drift past +/-50 is
+// invisible. It used to be stored anyway, and that is what made repression
+// permanent: the most repressive option set is -14.5/turn, so twenty turns of
+// it left -290 in a field the bar could only ever show as 0%. Switching back
+// to the default set, worth +3/turn, then bought nothing for the next
+// ninety-seven turns. The player reverted the policy, watched a positive
+// trend, and saw the bar sit at 0% for the rest of the game -- which is the
+// bug as reported: the drift does not go away once it is put.
+//
+// The events are worse than the policies. declareWar's kin penalty was -30 per
+// PROVINCE of the attacker holding that minority, so one declaration against a
+// neighbour could bury a widespread group at -1500, and conquest adds -25 for
+// every province taken. None of that could be worked off inside a game.
+//
+// Clamping here means the stored number is always the number on the bar, so
+// undoing a policy takes as long as setting it did and no longer.
+void Game::addMinorityDrift(int countryId, const std::string& minorityName, float delta) {
+    if (delta == 0.0f) return;
+    float& d = m_minorityAlignmentDrift[countryId][minorityName];
+    d = std::clamp(d + delta, -MINORITY_DRIFT_LIMIT, MINORITY_DRIFT_LIMIT);
+}
+
+float Game::getMinorityPolicyRate(int countryId, const std::string& minorityName) const {
+    float rate = 0.0f;
     for (size_t ci = 0; ci < m_ethnicPolicyCategories.size(); ci++) {
         const int oi = ethnicPolicyOption(countryId, minorityName, ci);
         if (oi >= 0 && oi < (int)m_ethnicPolicyCategories[ci].options.size())
-            trend += m_ethnicPolicyCategories[ci].options[oi].alignmentPerTurn;
+            rate += m_ethnicPolicyCategories[ci].options[oi].alignmentPerTurn;
     }
-    return trend;
+    return rate;
+}
+
+// The whole per-turn rule, in one place because it has two readers.
+//
+// applyEthnicPolicyEffects applies it and the Ethnic tab reports it, and when
+// those were separate the tab reported the policy dial only -- so a minority in
+// ground you had just taken off someone you are still fighting showed
+// "Trend: +3.0%/t" while it was in fact drifting -2 a turn. A rule written
+// twice is a rule that disagrees with itself.
+float Game::minorityDriftPerTurn(int countryId, const std::string& minorityName) const {
+    float rate = getMinorityPolicyRate(countryId, minorityName);
+
+    // Holding conquered ground against an enemy you are still at war with.
+    // Once per minority, not once per province: the resolver's `processed` set
+    // already had that effect, but it landed on whichever province the map
+    // happened to iterate first, so the same position could score differently
+    // between two runs. "Any such province" is the same magnitude, decided.
+    const Country* cur = m_countries.getCountry(countryId);
+    if (!cur) return rate;
+    auto ar = m_relations.find(cur->isoA3);
+    if (ar == m_relations.end()) return rate;
+
+    for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
+        if (prov.countryId != countryId) continue;
+        if (!m_provinceConquestTurn.count(pid)) continue;
+        auto prevIt = m_conqueredProvincePrevOwner.find(pid);
+        if (prevIt == m_conqueredProvincePrevOwner.end() || prevIt->second <= 0) continue;
+        auto mit = m_provinceMinorities.find(pid);
+        if (mit == m_provinceMinorities.end()) continue;
+        bool here = false;
+        for (auto& mg : mit->second) if (mg.name == minorityName) { here = true; break; }
+        if (!here) continue;
+        const Country* prev = m_countries.getCountry(prevIt->second);
+        if (!prev) continue;
+        auto dr = ar->second.find(prev->isoA3);
+        if (dr != ar->second.end() && dr->second.war) return rate - 5.0f;
+    }
+    return rate;
+}
+
+float Game::getMinorityAlignmentTrend(int countryId, const std::string& minorityName) const {
+    const float rate = minorityDriftPerTurn(countryId, minorityName);
+    // What the bar will actually do. A group already pinned at 0 or 100 is not
+    // moving, and reporting the dial's number there is the other half of the
+    // misleading trend: it read "+3.0%/t" against a percentage that had not
+    // changed in fifty turns.
+    float drift = 0.0f;
+    auto cIt = m_minorityAlignmentDrift.find(countryId);
+    if (cIt != m_minorityAlignmentDrift.end()) {
+        auto dit = cIt->second.find(minorityName);
+        if (dit != cIt->second.end()) drift = dit->second;
+    }
+    const float next = std::clamp(drift + rate, -MINORITY_DRIFT_LIMIT, MINORITY_DRIFT_LIMIT);
+    return next - drift;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1487,31 +1548,25 @@ void Game::drawAnalysisTab() {
                     DrawText(TextFormat("Trend: %.1f%%/t", trend), modX, dy + 18, 10, Color{255, 100, 100, 200});
                     modX += MeasureText(TextFormat("Trend: %.1f%%/t", trend), 10) + 16;
                 }
-                // War-with-kin penalty (dynamic check)
+                // The standing war penalty, taken from the rule that applies it
+                // rather than recomputed here.
+                //
+                // This line used to read "-30 War with X" for every war the
+                // player was in against a country with kin. Two things were
+                // wrong with that. The -30 is a one-off charged to the
+                // AGGRESSOR when war is declared, so a country that was
+                // attacked saw a penalty it had never paid; and being a single
+                // past event, it is already inside the alignment number above,
+                // so showing it again read as an ongoing drain that did not
+                // exist. What IS ongoing is the conquered-ground penalty, and
+                // the honest way to display it is the difference the rule makes.
                 {
-                    const Country* pc_a = m_countries.getCountry(m_playerCountryId);
-                    if (pc_a) {
-                        for (auto& [cid2, c2] : m_countries.getAll()) {
-                            if (cid2 == m_playerCountryId) continue;
-                            auto ar = m_relations.find(pc_a->isoA3);
-                            if (ar == m_relations.end()) continue;
-                            auto dr2 = ar->second.find(c2.isoA3);
-                            if (dr2 == ar->second.end() || !dr2->second.war) continue;
-                            long long kinPop = 0;
-                            for (auto& [pid, pv] : m_provinces.getAllProvinces()) {
-                                if (pv.countryId != cid2) continue;
-                                long long pop = m_provincePopulations.count(pid) ? m_provincePopulations[pid] : 0;
-                                auto kmit = m_provinceMinorities.find(pid);
-                                if (kmit == m_provinceMinorities.end()) continue;
-                                for (auto& kmg : kmit->second)
-                                    if (kmg.name == ma.name)
-                                        kinPop += (long long)(pop * kmg.pct / 100.0f);
-                            }
-                            if (kinPop >= 500000) {
-                                DrawText(TextFormat("-30 War with %s", c2.name.c_str()), modX, dy + 18, 10, RED);
-                                modX += MeasureText(TextFormat("-30 War with %s", c2.name.c_str()), 10) + 16;
-                            }
-                        }
+                    const float standing = minorityDriftPerTurn(m_playerCountryId, ma.name)
+                                         - getMinorityPolicyRate(m_playerCountryId, ma.name);
+                    if (standing < -0.01f) {
+                        const char* s = TextFormat("%.0f/t occupied ground", standing);
+                        DrawText(s, modX, dy + 18, 10, RED);
+                        modX += MeasureText(s, 10) + 16;
                     }
                 }
 

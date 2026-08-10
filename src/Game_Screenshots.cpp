@@ -183,10 +183,9 @@ bool Game::tickScreenshotTour() {
         } else if (name == "map-editor") {
             if (!m_mapEditor) {
                 // Loads synchronously on this thread, exactly as the menu does.
-                Audio::get().beginBackgroundPump();
+                Audio::BlockingCall quiet;
                 m_mapEditor = new MapEditor();
                 m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
-                Audio::get().endBackgroundPump();
             }
             m_currentScreen = SCREEN_MAP_EDITOR;
         } else if (name == "world-map") {

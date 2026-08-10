@@ -168,6 +168,22 @@ fill, and pays the same cost at the same moment. There is no separate AI code
 path through the turn resolver, and no way for the AI to build something for
 free.
 
+That sentence was half true for a long time, and the half that was false is worth
+recording. The queues were shared and every build *was* paid for -- nine
+deduction sites, each refusing when the treasury could not cover it. But the
+price was not the same one. `Game_Render.cpp` multiplied every build by the
+research cost modifier and `AISystem.cpp`, working from its own duplicate copy of
+the cost tables, did not. `industryCostPct` reaches 50 and `conscriptionCostPct`
+reaches 50, so a country that had finished those trees built and recruited at
+half price when a person ran it and full price when the AI did.
+
+Nothing about that looked wrong from either side. The AI was not cheating; it was
+being overcharged by its own research, and the economy module learned from the
+overcharged world every training run it ever did. The tables now live in one
+place (`src/BuildCosts.h`) with the modifier beside them, because a shared table
+alone would not have caught this -- what diverged was not the numbers but what
+was done with them.
+
 ### Choosing a verb is not choosing a move
 
 The policy picks a *kind* of action. What that action then does was, for most of
