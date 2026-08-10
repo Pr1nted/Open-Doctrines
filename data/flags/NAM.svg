@@ -1,16 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 90 60" fill="none">
-	<title>Flag of Namibia</title>
-	<defs>
-		<clipPath id="f">
-			<path d="m0 0h90v60H0z"/>
-		</clipPath>
-	</defs>
-	<path fill="#002f6c" d="m0 60V0h90z"/>
-	<path fill="#009a44" d="m90 0v60H0z"/>
-	<g clip-path="url(#f)">
-		<path stroke="#fff" stroke-width="20" d="m0 60L90 0"/>
-		<path stroke="#c8102e" stroke-width="15" d="m0 60L90 0"/>
-	</g>
-	<path transform="scale(.001)" fill="#ffcd00" d="m18000 6341 1553 4205 3447-2865-757 4418 4417-758-2864 3448 4204 1552-4204 1553 2864 3447-4417-757 757 4418-3447-2865-1553 4204-1553-4204-3447 2865 757-4418-4417 757 2864-3447-4204-1553 4204-1552-2864-3448 4417 758-757-4418 3447 2865z"/>
-	<circle stroke="#002f6c" r="5.5" cx="18" cy="16.341"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" fill="none" viewBox="0 0 90 60"><defs><clipPath id="a"><path d="M0 0h90v60H0z"/></clipPath></defs><path fill="#002f6c" d="M0 60V0h90z"/><path fill="#009a44" d="M90 0v60H0z"/><g clip-path="url(#a)"><path stroke="#fff" stroke-width="20" d="M0 60 90 0"/><path stroke="#c8102e" stroke-width="15" d="M0 60 90 0"/></g><path fill="#ffcd00" d="m18 6.3 1.6 4.2L23 7.7l-.8 4.4 4.5-.8-2.9 3.5 4.2 1.5-4.2 1.6 2.9 3.4-4.5-.7.8 4.4-3.4-2.9-1.6 4.2-1.6-4.2L13 25l.8-4.4-4.5.7 2.9-3.4L8 16.3l4.2-1.5-2.9-3.5 4.5.8-.8-4.4 3.4 2.8z"/><circle cx="18" cy="16.3" r="5.5" stroke="#002f6c"/></svg>

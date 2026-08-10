@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" height="600" viewBox="0 0 120 80" width="900">
-  <path d="M0 0h120v80H0z" fill="#fe0000"/>
-  <path d="M0 0h60v40H0z" fill="#000094"/>
-  <path d="M30 5l4 15-4 15-4-15zM15 20l15 4 15-4-15-4z" fill="#fff" id="a"/>
-  <g transform="rotate(30.000000,30.000000,20.000000)">
-    <path d="M30 5l4 15-4 15-4-15zM15 20l15 4 15-4-15-4z" fill="#fff"/>
-  </g>
-  <g transform="rotate(60.000000,30.000000,20.000000)">
-    <path d="M30 5l4 15-4 15-4-15zM15 20l15 4 15-4-15-4z" fill="#fff"/>
-  </g>
-  <circle cx="30" cy="20" fill="#fff" r="8" stroke="#000094"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 120 80"><path fill="#fe0000" d="M0 0h120v80H0z"/><path fill="#000094" d="M0 0h60v40H0z"/><path fill="#fff" d="m30 5 4 15-4 15-4-15zM15 20l15 4 15-4-15-4z"/><path fill="#fff" d="m37.5 7-4 15-11 11 4-15zM17 12.5l11 11 15 4-11-11z"/><path fill="#fff" d="m43 12.5-11 11-15 4 11-11zM22.5 7l4 15 11 11-4-15z"/><circle cx="30" cy="20" r="8" fill="#fff" stroke="#000094"/></svg>

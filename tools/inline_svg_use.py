@@ -13,6 +13,11 @@ Usage:
 import os, sys, re, copy
 import xml.etree.ElementTree as ET
 
+# Pre-rewrite copies go here, under the build output, never inside data/. See
+# process_svg_file for what happened when they went beside the file instead.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKUP_ROOT = os.path.join(REPO_ROOT, "build", "svg-pre-inline")
+
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
 
@@ -251,17 +256,24 @@ def inline_svg_text(svg_text, filepath_hint=""):
 def process_svg_file(filepath):
     """Process a single SVG file. Returns (inlined_count, unresolved_count) or raises.
 
-    Keeps the pre-inlining file under .orig/ beside it. This rewrites in place,
-    and when the transform composition turned out to be wrong there was no way
-    to see it or undo it without re-downloading every flag from Commons -- the
-    only evidence was an emblem in the wrong corner. A copy costs nothing and
-    makes the next inliner bug diffable.
+    Keeps the pre-inlining file, because this rewrites in place and when the
+    transform composition turned out to be wrong there was no way to see it or
+    undo it without re-downloading every flag from Commons -- the only evidence
+    was an emblem in the wrong corner. A copy costs nothing and makes the next
+    inliner bug diffable.
+
+    UNDER build/, NOT beside the file. These backups used to land in
+    data/flags/.orig/, which is inside the directory that ships: 1.4 MB of
+    superseded artwork in every installer and, until it was excluded, in the
+    package every browser visitor waited on before the menu drew. They are
+    developer scaffolding for one rewrite, and git already keeps the real
+    history, so they belong with the build output.
     """
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         original = f.read()
 
     if "<use" in original:
-        orig_dir = os.path.join(os.path.dirname(filepath), ".orig")
+        orig_dir = os.path.join(BACKUP_ROOT, os.path.basename(os.path.dirname(filepath)))
         os.makedirs(orig_dir, exist_ok=True)
         keep = os.path.join(orig_dir, os.path.basename(filepath))
         if not os.path.exists(keep):
