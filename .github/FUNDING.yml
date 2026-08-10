@@ -1,0 +1,14 @@
+# The Sponsor button on the repository header.
+#
+# GitHub Sponsors takes no cut, which is why it is the only entry here. The
+# cost of that is that this line does nothing until the account behind it is
+# enrolled: GitHub hides the button entirely for a username with no active
+# Sponsors profile, so a missing enrolment looks exactly like a missing file
+# and there is nothing to test until it is done. Once, at
+# github.com/sponsors -- identity check, a Stripe Connect bank link, and the
+# tier and profile text. Then the button appears on its own.
+#
+# The game is free and its licence forbids Commercial Use by anyone but the
+# Licensor, so this is the funding path -- Steam has no donate button at all,
+# and itch's "Donate" pricing is the only other one.
+github: Pr1nted

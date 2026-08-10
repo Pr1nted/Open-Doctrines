@@ -1,0 +1,91 @@
+// Steam build script. A TEMPLATE -- the workflow substitutes every __TOKEN__
+// before handing it to steamcmd, so this file is never valid VDF on disk and
+// must not be run by hand without doing the same. See
+// .github/workflows/release-game.yml's `steam` job and docs/steam/README.md.
+//
+// WHY THE PLACEHOLDERS
+//
+// The appid and the depot ids do not exist until someone has paid the Steam
+// Direct fee, and they are account-specific. Hard-coding them would either
+// commit numbers that are wrong for anybody else, or block the whole file on
+// an account that does not exist yet. They come from repository variables
+// instead, exactly as ITCH_TARGET does.
+//
+// WHY setlive IS EMPTY BY DEFAULT
+//
+// An empty setlive uploads the build and promotes it to NOTHING. Someone
+// then presses the button in the Steamworks partner site to put it on a
+// branch. That is deliberately one step less automatic than the itch.io push,
+// for two reasons: Valve reviews the first build of an app before it can go
+// anywhere, and a Steam build set live on `default` is live for every owner
+// within minutes with no undo other than shipping again.
+//
+// Set the STEAM_BRANCH repository variable once the app is out of review and
+// you want promotion to happen in CI. `beta` or `ci` first; `default` only
+// when you mean it.
+"appbuild"
+{
+	"appid"			"__APPID__"
+	"desc"			"__BUILDDESC__"
+
+	// Relative to this file's directory, which the workflow sets to the
+	// staging root it just built. steamcmd resolves both against the
+	// script's own location, so the script has to be written there rather
+	// than read from packaging/.
+	"buildoutput"	"output"
+	"contentroot"	"content"
+
+	"setlive"		"__BRANCH__"
+
+	"depots"
+	{
+		// One depot per platform, each with its own contentroot, because
+		// the four release zips are separate trees rather than one tree
+		// with per-platform subfolders.
+		//
+		// The paths are absolute and written by the workflow. package.py
+		// wraps every zip's payload in a single top-level folder, so the
+		// depot root is that INNER folder -- pointing at the extracted
+		// directory itself would install the game one level down and the
+		// launch option would find nothing.
+		"__DEPOT_WINDOWS__"
+		{
+			"contentroot"	"__CONTENT_WINDOWS__"
+			"FileMapping"
+			{
+				"LocalPath"		"*"
+				"DepotPath"		"."
+				"recursive"		"1"
+			}
+			// Nothing in a package.py tree is a debug symbol today. This
+			// stays as a floor: a depot is what players download, and a
+			// .pdb reaching it is pure size with no benefit.
+			"FileExclusion"	"*.pdb"
+		}
+
+		"__DEPOT_LINUX__"
+		{
+			"contentroot"	"__CONTENT_LINUX__"
+			"FileMapping"
+			{
+				"LocalPath"		"*"
+				"DepotPath"		"."
+				"recursive"		"1"
+			}
+		}
+
+		// NO macOS DEPOT, on purpose.
+		//
+		// Steam requires macOS builds to be code-signed and notarized, and
+		// this project ships neither -- see release-game.yml's Installer
+		// step and the notarization note at the top of src/GameUpdates.h.
+		// A macOS depot would also need the arm64 and x64 builds lipo'd
+		// into one universal binary first, because a Steam depot filters
+		// by operating system and not by architecture.
+		//
+		// Both are solvable and neither is solved. Until they are, macOS
+		// players get the same zips and .dmg they get today, from GitHub
+		// and itch.io. docs/steam/README.md says so where a player-facing
+		// answer is needed.
+	}
+}

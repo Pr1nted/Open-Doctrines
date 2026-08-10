@@ -1,0 +1,107 @@
+# Does the Steam credential actually work?
+#
+# The same question check-itch.yml asks, for the same reason: the Steam upload
+# is the last step of a release, the build is finished and the GitHub release
+# already public by the time it runs, and a credential that has quietly gone
+# stale looks identical to one that was never set.
+#
+# It is MORE necessary here than it is for itch, not less. A butler API key is
+# a token that sits there until it is revoked. A Steam builder session is a
+# refresh token in config.vdf that Valve rotates and expires on its own
+# schedule, so the credential that worked for the last release is not evidence
+# about this one. Run this before you tag.
+#
+# It is READ-ONLY. It logs in and logs out. There is no upload, no app_build
+# script, and nothing that could publish by accident.
+#
+# WHAT IT CANNOT CHECK
+#
+# butler has `status`, which names the channels of a specific game and so
+# proves the target exists. steamcmd has no partner-side equivalent -- there is
+# no "can this account publish to this appid" query. So this proves the login
+# works and the variables are set, and the first real push is still the first
+# proof that the depots are configured correctly. Do that one to a beta branch.
+name: Check Steam credentials
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: steamcmd login
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check the variables are set
+        env:
+          STEAM_APPID: ${{ vars.STEAM_APPID }}
+          STEAM_USERNAME: ${{ vars.STEAM_USERNAME }}
+        run: |
+          # Told apart on purpose, as in check-itch.yml. "Not set" and "set but
+          # rejected" need different fixes and a single "Steam failed" hides
+          # which one you have.
+          fail=0
+          if [ -z "$STEAM_APPID" ]; then
+            echo "STEAM_APPID is not set on this repository."
+            echo "Add it with: gh variable set STEAM_APPID --body 1234560"
+            fail=1
+          elif ! printf '%s' "$STEAM_APPID" | grep -qE '^[0-9]+$'; then
+            echo "STEAM_APPID is '$STEAM_APPID', which is not a number."
+            fail=1
+          fi
+          if [ -z "$STEAM_USERNAME" ]; then
+            echo "STEAM_USERNAME is not set (the builder account's login name)."
+            echo "Add it with: gh variable set STEAM_USERNAME --body od-builder"
+            fail=1
+          fi
+          [ "$fail" = 0 ] || exit 1
+          echo "appid $STEAM_APPID, builder account $STEAM_USERNAME"
+
+      - name: Install steamcmd
+        run: |
+          # 32-bit runtime, which steamcmd still needs on a 64-bit host. Without
+          # it the binary is present and exits immediately with no useful
+          # message at all.
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1
+          mkdir -p steamcmd && cd steamcmd
+          curl -sqL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+            | tar zxf -
+          # First run self-updates and exits non-zero on some versions while
+          # having succeeded. Do it as its own step so a later non-zero means
+          # something.
+          ./steamcmd.sh +quit || true
+
+      - name: Log in
+        env:
+          STEAM_USERNAME: ${{ vars.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          if [ -z "$STEAM_CONFIG_VDF" ]; then
+            echo "STEAM_CONFIG_VDF is not set on this repository."
+            echo "See docs/steam/README.md for how to produce it. It is a"
+            echo "base64 copy of the config.vdf written by a successful"
+            echo "interactive steamcmd login on your own machine."
+            exit 1
+          fi
+          # Never printed, never echoed, and never passed on a command line
+          # where it would reach the process table.
+          mkdir -p ~/Steam/config
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > ~/Steam/config/config.vdf
+
+          # No password. That is the point of the sealed session: if this
+          # succeeds the stored refresh token is still good, and if it prompts
+          # for a Steam Guard code the token has expired and must be remade.
+          # `< /dev/null` turns a prompt into an immediate failure rather than
+          # a job that hangs until the runner times out.
+          cd steamcmd
+          ./steamcmd.sh +login "$STEAM_USERNAME" +quit < /dev/null | tee login.log
+
+          if grep -q "Logged in OK" login.log; then
+            echo "Steam builder session is valid."
+          else
+            echo "::error title=Steam login failed::The stored session did not \
+            authenticate. If the log mentions a Steam Guard code, regenerate \
+            STEAM_CONFIG_VDF per docs/steam/README.md."
+            exit 1
+          fi

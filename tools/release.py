@@ -273,10 +273,13 @@ def cmd_game(args):
     say("  1. builds macOS, Windows and Linux")
     say("  2. uploads artifacts and WAITS for you to play each one")
     say("  3. publishes only after you approve, then pushes to itch.io")
+    say("  4. uploads Windows and Linux to Steam, if Steam is configured --")
+    say("     to the app, not to a branch. Promoting it is still a button")
+    say("     you press. See docs/steam/README.md.")
     if not os.environ.get("BUTLER_API_KEY"):
         warn("BUTLER_API_KEY is not set locally. That is fine -- the itch.io "
              "push uses the repository secret, and is skipped with a warning "
-             "if that is absent too.")
+             "if that is absent too. The same is true of the Steam step.")
 
 
 # -------------------------------------------------------------------- sdk ---

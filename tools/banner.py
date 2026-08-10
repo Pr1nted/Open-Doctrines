@@ -4,19 +4,28 @@
     python3 tools/banner.py                      # every size, 1914, Europe
     python3 tools/banner.py --scenario 1939
     python3 tools/banner.py --size steam-hero --region atlantic
+    python3 tools/banner.py --size steam-vertical --region atlas \
+            --out-dir docs/steam
     python3 tools/banner.py --list               # what the presets are
 
-Writes docs/itch/banner-<size>.png and banner-<size>-plain.png (the same
-picture with no wordmark, for typesetting over by hand).
+Writes <out-dir>/banner-<size>.png and banner-<size>-plain.png (the same
+picture with no wordmark, for typesetting over by hand). The default out-dir is
+docs/itch; the Steam capsules want docs/steam, and --list says which size is
+which store's.
 
 WHY THE MAP COMES OUT OF AN .ODMAP AND NOT A SCREENSHOT
 
 tools/itch-cover.py builds the 630x500 cover from docs/img/world-map.png, which
 is a 1600x900 screenshot: fine at cover size, and about a third of the pixels a
-1920-wide banner needs. Every scenario package already contains political.png at
-**8192x4096** -- the generator's own raster, no UI, no camera, every border
-exactly as the game draws it. Cropping that and coming DOWN to size is sharp
-where upscaling a screenshot is soft, and it costs nothing but a zip read.
+1920-wide banner needs. A scenario's political raster is **8192x4096** -- the
+generator's own picture, no UI, no camera, every border exactly as the game
+draws it. Cropping that and coming DOWN to size is sharp where upscaling a
+screenshot is soft.
+
+The raster is redrawn from the package rather than read out of it, because a
+package does not store one: it is a pure function of province ownership, the
+game rebuilds it at load, and carrying it cost 4.7 MB of a 6 MB map. See
+odmap_pack.political_layer, which is what this calls.
 
 It also means a banner can be made for any scenario, including one somebody
 built in the map editor, rather than only for whatever the last screenshot run
@@ -72,7 +81,31 @@ SIZES = {
     "cover":         (630, 500),    # itch cover image -- the one slot that is
                                     # certain to animate, and the one everybody
                                     # sees before they see the page at all
+
+    # Steam's capsules. Every one of these is REQUIRED before a store page can
+    # be submitted, at exactly these pixel dimensions -- Steam rejects the
+    # upload rather than scaling, and there is no "close enough".
+    #
+    # They are not five crops of one picture. Two are portrait, two are
+    # thumbnails small enough that a world map in them is a blue-grey smudge,
+    # and the hero is nearly four thousand pixels wide. Use --region to pick a
+    # crop per capsule; --region atlas is the one that suits the portrait pair.
+    #
+    # Write them to docs/steam, not docs/itch: --out-dir docs/steam.
+    "steam-header":   (460, 215),   # the one in search, library and wishlists
+    "steam-small":    (231, 87),    # search results. Tiny -- prefer the
+                                    # wordmark reading over the map reading
+    "steam-main":     (616, 353),   # front page and "more like this" strips
+    "steam-vertical": (374, 448),   # portrait, used in the front-page carousel
+    "steam-library":  (600, 900),   # portrait, the player's own library grid
+    "steam-hero":     (3840, 1240), # the banner across a library page
+    "steam-page-bg":  (1438, 810),  # behind the store page itself
 }
+
+# Steam also wants a 1280x720 "library logo": the wordmark alone, TRANSPARENT,
+# no map behind it. That is not a crop of anything and so is not a size here --
+# tools/itch-cover.py already extracts the wordmark from the game's own menu,
+# and docs/steam/README.md says what to do with it.
 
 # Equirectangular, in 8192x4096 pixels: left, top, right, bottom. Hand-picked,
 # because the middle of a world map is the Pacific and an automatic centre crop
@@ -82,6 +115,17 @@ REGIONS = {
     "atlantic": (2100, 500, 5900, 1730),    # the Americas facing the Old World
     "eurasia":  (3600, 500, 8000, 1920),    # Berlin to Beijing
     "world":    (300, 480, 8000, 2960),     # everything except the poles
+    # TALLER THAN IT IS WIDE, which none of the above are. Steam's vertical and
+    # library capsules are portrait, and crop_to_aspect fits a landscape region
+    # to them by throwing away the outer columns -- from `europe` that leaves a
+    # narrow sliver of the Baltic.
+    #
+    # ITS OWN ASPECT IS ALREADY NEARLY 374x448, which matters more than being
+    # tall. crop_to_aspect trims from the CENTRE, so a region far taller than
+    # the capsule loses its top and bottom: Scandinavia-to-the-Cape came out as
+    # Sahara-to-Zambia, a portrait of the game with Europe cut off. This is
+    # sized so the trim is a few pixels and what is in the box is what ships.
+    "atlas":    (3641, 500, 5120, 2300),    # North Cape to the Gulf of Guinea
 }
 
 DEFAULT_SCENARIO = "map"        # Modern Day; the scenarios are named by year
@@ -130,13 +174,20 @@ def menu_silhouette(scenario: str, size):
 
 
 def political(scenario: str) -> Image.Image:
-    """The scenario's political raster, straight out of its package."""
+    """The scenario's political raster.
+
+    Through odmap_pack rather than straight out of the zip: a package no
+    longer stores this layer (it is redrawn from province ownership at load,
+    which is where four fifths of a map's size went), so it is rebuilt here
+    the same way the game rebuilds it.
+    """
     path = os.path.join(MAPS, f"{scenario}.odmap")
     if not os.path.exists(path):
         have = sorted(f[:-6] for f in os.listdir(MAPS) if f.endswith(".odmap"))
         sys.exit(f"no such scenario: {scenario}\navailable: {', '.join(have)}")
-    with zipfile.ZipFile(path) as z:
-        img = Image.open(io.BytesIO(z.read("political.png"))).convert("RGB")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from odmap_pack import political_layer
+    img = political_layer(path)
     # Only the maps that are missing them; a scenario raster already has its
     # own, drawn from real province ids, and re-darkening would double them.
     return img if has_outlines(img) else outline_countries(img)
@@ -634,6 +685,9 @@ def main() -> int:
                     help="which part of the world (default europe)")
     ap.add_argument("--size", default="all",
                     choices=["all"] + sorted(SIZES), help="which banner (default all)")
+    ap.add_argument("--out-dir", default=None,
+                    help="where to write (default docs/itch; use docs/steam"
+                         " for the steam-* capsules)")
     ap.add_argument("--list", action="store_true", help="print the presets and exit")
     ap.add_argument("--merge", action="store_true",
                     help="fade the edges into the itch page background (#050813)")
@@ -658,6 +712,14 @@ def main() -> int:
     ap.add_argument("--palette", type=int, default=256,
                     help="colours in the APNG (default 256; lower is smaller, not better)")
     args = ap.parse_args()
+
+    # Rebinding the module global rather than threading a directory through
+    # build(), animate() and page_background(): there is exactly one output
+    # directory per run, and every writer already reads this one name.
+    global OUT
+    if args.out_dir:
+        OUT = args.out_dir if os.path.isabs(args.out_dir) \
+              else os.path.join(ROOT, args.out_dir)
 
     if args.list:
         print("sizes:")
