@@ -210,6 +210,15 @@ public:
     void announceSubstitution(uint16_t countryId, NetSubstitution reason,
                               const std::string& text);
 
+    /**
+     * Say something to everybody, as the host.
+     *
+     * Goes out as the same ChatFrom a relayed player line does, attributed to
+     * the host's peer id, so a client needs no second code path to show it.
+     * This is what the dedicated server's `say` command sends.
+     */
+    void sendChat(const std::string& text);
+
     void kick(uint16_t peerId, const std::string& reason);
 
     /**

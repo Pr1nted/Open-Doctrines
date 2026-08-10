@@ -949,6 +949,19 @@ void NetHost::announceSubstitution(uint16_t countryId, NetSubstitution reason,
     m_impl->broadcast(NetMsg::Notice, n.encode());
 }
 
+void NetHost::sendChat(const std::string& text) {
+    if (text.empty()) return;
+    // Attributed to the host's own peer id, through the same ChatFrom message a
+    // relayed player line uses. Clients then render it with whatever they show
+    // for the host rather than needing to learn a second kind of chat -- which
+    // is what makes `say` from a dedicated server's console arrive looking like
+    // something a person said, because it is.
+    NetChat c;
+    c.fromPeerId = m_impl->lobby.hostPeerId();
+    c.text = text;
+    m_impl->broadcast(NetMsg::ChatFrom, c.encode());
+}
+
 void NetHost::kick(uint16_t peerId, const std::string& reason) {
     NetRejectMsg r;
     r.text = reason;

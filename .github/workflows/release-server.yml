@@ -1,0 +1,193 @@
+# The dedicated server, released on its own.
+#
+# WHY A SEPARATE WORKFLOW FROM release-game.yml
+#
+# They are different products with different audiences and different contents.
+# The game ships fonts, audio, flags and a renderer to somebody who will
+# double-click it; the server ships a console binary and the maps it hosts to
+# somebody putting it on a box. Bundling them would mean a VPS operator
+# downloading a few hundred megabytes of artwork to run something that never
+# draws a pixel.
+#
+# It is also released on its own SCHEDULE. The server can gain a command or a
+# config setting without the game changing at all, and the reverse is commoner
+# still. A shared tag would force one to be re-cut every time the other moved.
+#
+# WHAT IT DOES NOT SHIP
+#
+# Android. The server core is ready for it -- serverBegin/serverTick/serverEnd
+# exist precisely so a front end can drive it a frame at a time, which is what
+# an Android foreground service needs -- but the app itself (manifest, gradle,
+# the service, the JNI glue) is not written. When it is, it belongs here as a
+# fourth matrix entry building the .so and assembling an APK.
+#
+# THE WINDOWED SERVER IS BUILT AND NOT SHIPPED
+#
+# OpenDoctrinesServerUI links real raylib, so it needs the same graphics stack
+# the game does and is no use on the machines this release targets. It is built
+# in CI so a change that breaks it is caught (it shares every source with the
+# headless one), and left out of the archive.
+
+name: Release server
+
+on:
+  push:
+    tags:
+      - 'server-v*'
+  workflow_dispatch:      # so a build can be cut without tagging
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Server ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false     # one platform failing should not hide the others
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-22.04
+            artifact: OpenDoctrinesServer-linux-x64
+          - name: macos-arm64
+            os: macos-14
+            artifact: OpenDoctrinesServer-macos-arm64
+          - name: windows-x64
+            os: windows-2022
+            artifact: OpenDoctrinesServer-windows-x64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # The HEADLESS server needs none of X11 -- that is the whole point of it.
+      # These are here for the UI target, which is built below as a check and
+      # links real raylib. Without them CMake configures and then fails at link
+      # with a missing -lX11, which reads like a code fault rather than a
+      # missing package.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+                                  libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
+                                  libxcursor-dev libxinerama-dev libwayland-dev \
+                                  libxkbcommon-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build the server
+        run: cmake --build build --config Release --target OpenDoctrinesServer -j 4
+
+      # Built, not shipped. It shares every source with the headless server, so
+      # this is where a change that compiles for one and not the other is found.
+      - name: Build the windowed server (check only)
+        run: cmake --build build --config Release --target OpenDoctrinesServerUI -j 4
+
+      # A server that starts is the only claim worth releasing on. This is the
+      # same script tests/run_all.sh runs: config round-trip, data directory,
+      # map resolution, a whole world load, mod refusal and the console.
+      - name: Smoke test
+        shell: bash
+        run: tests/server_smoke_test.sh build
+
+      - name: Package
+        shell: bash
+        run: |
+          set -eu
+          out="dist/${{ matrix.artifact }}"
+          rm -rf "$out" && mkdir -p "$out"
+
+          # The binary, wherever this generator put it.
+          for c in build/OpenDoctrinesServer build/Release/OpenDoctrinesServer.exe \
+                   build/Release/OpenDoctrinesServer; do
+            [ -f "$c" ] && { cp "$c" "$out/"; break; }
+          done
+          ls "$out" | grep -qi OpenDoctrinesServer || { echo "no binary was packaged"; exit 1; }
+
+          # Only what a server reads. No fonts, no audio, no flags: it never
+          # draws, and shipping the artwork would multiply the download for
+          # files nothing opens.
+          mkdir -p "$out/data"
+          cp -R data/STDmaps "$out/data/"
+          [ -d data/licenses ] && cp -R data/licenses "$out/data/"
+          for f in policies.json research.json; do
+            [ -f "data/$f" ] && cp "data/$f" "$out/data/"
+          done
+          cp LICENSE NOTICE.md "$out/" 2>/dev/null || true
+
+          # A config to edit, generated by the binary itself so the file and
+          # the settings it documents cannot drift apart.
+          ( cd "$out" && ./OpenDoctrinesServer --write-config --config server.json \
+            || ./OpenDoctrinesServer.exe --write-config --config server.json )
+
+          cat > "$out/README.txt" <<'EOF'
+          OpenDoctrines dedicated server
+          ==============================
+
+          Run it:
+
+              ./OpenDoctrinesServer
+
+          It writes server.json on first run and prints a join code. Type `help`
+          at the console for the commands (say, kick, ban, step-go, config...).
+
+          It needs no graphics card, no display and no X11. It does need to be
+          reachable: either let it start a cloudflared tunnel (the default), or
+          set bind-all and forward the port yourself.
+
+          Hosting requires a signed-in account and a registered server
+          credential -- the host verifies every join ticket against the account
+          service, so there is no anonymous hosting.
+
+              ./OpenDoctrinesServer --check     verify the config and content
+              ./OpenDoctrinesServer --help      every option
+
+          The maps in data/STDmaps are what it can host. Drop more .odmap files
+          there, or point `map` at a path.
+          EOF
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -c "Compress-Archive -Path '$out/*' -DestinationPath '$out.zip'"
+          else
+            ( cd dist && tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" )
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/${{ matrix.artifact }}.zip
+            dist/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/server-v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true          # a human reads the notes before anyone downloads
+          name: Dedicated server ${{ github.ref_name }}
+          body: |
+            The OpenDoctrines dedicated server: a console server that needs no
+            graphics card, no display and no X11.
+
+            Unpack it, run `./OpenDoctrinesServer`, and type `help`.
+
+            Hosting requires a signed-in account and a registered server
+            credential. Run `--check` first to verify your config and content
+            without opening a session.
+
+            This is released separately from the game and on its own schedule.
