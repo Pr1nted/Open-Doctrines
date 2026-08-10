@@ -583,6 +583,10 @@ set(GAME_SOURCES
     src/net/TurnStore.cpp
     src/net/TurnStoreRunner.cpp
     src/util/Ed25519.cpp
+    src/util/PngWrite.cpp
+    src/util/FileDialog.cpp
+    src/util/WebAssets.cpp
+    src/util/WebPersist.cpp
     src/net/WorldSync.cpp
     src/net/WsCommon.cpp
     src/net/WsHandshake.cpp
@@ -703,6 +707,115 @@ endif()
 target_include_directories(OpenDoctrines PRIVATE src tools/map_generator)
 # Both system raylib (via find_package) and FetchContent create a target named raylib
 target_link_libraries(OpenDoctrines raylib)
+if(WIN32)
+    # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
+    # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
+    target_link_libraries(OpenDoctrines comdlg32)
+endif()
+
+# --- Dedicated server ---
+#
+# THE SAME SOURCE, WITHOUT A GRAPHICS CARD.
+#
+# A server runs on a VPS: no GPU, no display, often no libGL. The game cannot,
+# because Game::init() calls InitWindow() in every mode and raylib refuses
+# without an OpenGL 3.3 context. So the server is a second BINARY, not a second
+# codebase: it compiles the very same simulation sources and links
+# src/server/ServerRaylib*.cpp INSTEAD OF libraylib.
+#
+# That is the whole trick, and it is worth being explicit about why it is done
+# this way. The host is the authority for combat, economy and turn resolution,
+# so a server carrying its own copy of those rules would not fail as a bug you
+# could find -- it would be a game that disagreed with itself depending on who
+# hosted. Sharing the source makes that impossible by construction.
+#
+# raylib's HEADERS are used (the types must match the client exactly); its
+# library is not linked, and neither is GLFW, GL or an audio backend. A raylib
+# call with no server implementation is a LINK error naming the symbol, which
+# is the property that keeps the graphics layer out.
+if(NOT EMSCRIPTEN AND NOT ANDROID)
+    set(SERVER_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM SERVER_SOURCES main.cpp)
+    list(APPEND SERVER_SOURCES
+        src/Game_Server.cpp                # the host loop, with nobody at the keyboard
+        src/server/ServerMain.cpp
+        src/server/ServerConfig.cpp
+        src/server/ServerConsole.cpp
+        src/server/ServerRaylib.cpp        # hand-written: images, files, text, time
+        src/server/ServerRaylibStubs.cpp)  # generated: the drawing half, as no-ops
+
+    add_executable(OpenDoctrinesServer ${SERVER_SOURCES})
+    target_compile_definitions(OpenDoctrinesServer PRIVATE OD_SERVER=1)
+    target_include_directories(OpenDoctrinesServer PRIVATE src tools/map_generator)
+    # raylib's headers without raylib. Taken from the target's own interface so
+    # this works whether raylib was found system-wide or fetched.
+    target_include_directories(OpenDoctrinesServer PRIVATE
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(OpenDoctrinesServer
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(OpenDoctrinesServer PRIVATE OD_ENABLE_NET=1)
+    endif()
+    target_compile_definitions(OpenDoctrinesServer PRIVATE
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    if(OD_P2P_DEFS)
+        target_link_libraries(OpenDoctrinesServer ${OD_P2P_LIBS})
+        target_compile_definitions(OpenDoctrinesServer PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(OpenDoctrinesServer ws2_32 comdlg32)
+    endif()
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(OpenDoctrinesServer Threads::Threads)
+    endif()
+    if(APPLE)
+        # The same power assertion the AI trainer takes (Game_AITrain.cpp), and
+        # a server wants it more than the trainer does: an unattended host that
+        # let the Mac sleep would drop every player on it.
+        target_link_libraries(OpenDoctrinesServer
+                              "-framework IOKit" "-framework CoreFoundation")
+    endif()
+
+    # --- The same server, with a window ---
+    #
+    # A SECOND target and not a flag, because the headless one links no raylib
+    # at all and that is the property worth protecting: it is what lets it run
+    # in a container. This one links real raylib over the same server core --
+    # the same serverBegin/serverTick/serverEnd, the same config and console.
+    #
+    # It exists for the two places with no terminal to read: somebody
+    # double-clicking a server on their own machine, and Android.
+    set(SERVER_UI_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM SERVER_UI_SOURCES main.cpp)
+    list(APPEND SERVER_UI_SOURCES
+        src/Game_Server.cpp
+        src/server/ServerUIMain.cpp
+        src/server/ServerConfig.cpp
+        src/server/ServerConsole.cpp)
+    add_executable(OpenDoctrinesServerUI EXCLUDE_FROM_ALL ${SERVER_UI_SOURCES})
+    target_compile_definitions(OpenDoctrinesServerUI PRIVATE
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(OpenDoctrinesServerUI PRIVATE src tools/map_generator)
+    target_link_libraries(OpenDoctrinesServerUI raylib)
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(OpenDoctrinesServerUI
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(OpenDoctrinesServerUI PRIVATE OD_ENABLE_NET=1)
+    endif()
+    if(OD_P2P_DEFS)
+        target_link_libraries(OpenDoctrinesServerUI ${OD_P2P_LIBS})
+        target_compile_definitions(OpenDoctrinesServerUI PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(OpenDoctrinesServerUI ws2_32 comdlg32)
+    endif()
+    if(APPLE)
+        target_link_libraries(OpenDoctrinesServerUI
+                              "-framework IOKit" "-framework CoreFoundation")
+    endif()
+endif()
 
 if(OD_NET_BACKEND STREQUAL "mbedtls")
     target_link_libraries(OpenDoctrines MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
@@ -854,11 +967,127 @@ if(EMSCRIPTEN)
              DESTINATION "${OD_WEB_DATA}/${od_web_parent}")
     endforeach()
 
+    # data/flags/.orig/ is editing leftovers -- the pre-edit copies of the SVGs
+    # somebody touched up -- and the game never opens them. The Android staging
+    # further up drops them because aapt2 skips dot-directories and a manifest
+    # listing files aapt2 declined is a first run reporting 60 unreadable
+    # assets. Nothing dropped them here, so 1.4 MB of superseded artwork was
+    # inside the package every browser visitor waits on.
+    file(REMOVE_RECURSE "${OD_WEB_DATA}/flags/.orig")
+
+    # The font, cut down to the characters that can actually be drawn.
+    #
+    # unifont.ttf is 11 MB because Unifont covers the whole BMP. Game::init()
+    # rasterises about six hundred codepoints out of it -- Latin, Latin
+    # Extended-A, Cyrillic, a dozen punctuation marks -- into a single atlas,
+    # and a glyph outside that list is unreachable at runtime however complete
+    # the file is. Every browser visitor was therefore downloading 11 MB, before
+    # the menu drew, to render 600 characters. Subsetting it is 150 KB, byte-for
+    # -byte the same glyphs, and it is the single largest saving on this page.
+    #
+    # The STAGED copy only. data/fonts/unifont.ttf is untouched and every
+    # desktop and Android build still ships the complete font -- there is no
+    # download to pay for there, and the full file costs them nothing but disk.
+    #
+    # DEGRADES: without fontTools the script exits non-zero having written
+    # nothing, and the build carries on with the full font. That is a fat page,
+    # not a broken one, which is the right way round for a missing dev tool --
+    # but it IS worth having, so CI installs it (see .github/workflows).
+    # CACHED outside the staging directory, and regenerated only when the source
+    # font is newer. The staging above wipes and re-copies on every configure,
+    # but file(COPY) preserves timestamps, so the staged tree only changes when
+    # data/ does -- and the link below depends on that tree. Writing a freshly
+    # timestamped font into it on every configure would force a full wasm relink
+    # every time anyone ran cmake, which is minutes for a file that did not
+    # change.
+    set(OD_WEB_CACHE "${CMAKE_BINARY_DIR}/od-web-cache")
+    file(MAKE_DIRECTORY "${OD_WEB_CACHE}")
+    set(od_font_src "${CMAKE_SOURCE_DIR}/data/fonts/unifont.ttf")
+    set(od_font_sub "${OD_WEB_CACHE}/unifont-subset.ttf")
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        if(NOT EXISTS "${od_font_sub}" OR "${od_font_src}" IS_NEWER_THAN "${od_font_sub}")
+            execute_process(
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/subset_font.py"
+                        "${od_font_src}" "${od_font_sub}"
+                RESULT_VARIABLE od_subset_rc
+                OUTPUT_QUIET ERROR_VARIABLE od_subset_err)
+            if(NOT od_subset_rc EQUAL 0)
+                file(REMOVE "${od_font_sub}")
+                message(WARNING
+                    "Web: shipping the FULL 11 MB unifont.ttf -- tools/subset_font.py "
+                    "could not run (pip install fonttools). The page still works; it "
+                    "is ~11 MB heavier than it needs to be. Reason: ${od_subset_err}")
+            endif()
+        endif()
+        if(EXISTS "${od_font_sub}")
+            file(SIZE "${od_font_src}" od_font_was)
+            file(SIZE "${od_font_sub}" od_font_now)
+            file(COPY "${od_font_sub}" DESTINATION "${OD_WEB_CACHE}/staged")
+            file(RENAME "${OD_WEB_CACHE}/staged/unifont-subset.ttf"
+                        "${OD_WEB_DATA}/fonts/unifont.ttf")
+            math(EXPR od_font_was "${od_font_was} / 1048576")
+            math(EXPR od_font_now "${od_font_now} / 1024")
+            message(STATUS "Web: unifont subset ${od_font_was} MB -> ${od_font_now} KB")
+        endif()
+    else()
+        message(WARNING "Web: no Python3, so unifont.ttf ships whole (~11 MB).")
+    endif()
+
+    # The menu background, pulled out of the modern-day scenario at build time.
+    #
+    # initMenuBackground() wants one image, land_sea.png, and its last resort is
+    # to open data/STDmaps/map.odmap and extract that one entry. That was free
+    # when the archive was in the preload. It is not free now that it is not --
+    # the menu would download a 1.6 MB world to draw a backdrop, on a screen
+    # whose whole purpose is to appear immediately. Extracting the PNG here
+    # gives the menu the same picture for 150 KB and no request.
+    #
+    # ARCHIVE_EXTRACT because an .odmap is a zip and CMake can read one; no
+    # unzip on PATH is assumed. If the entry ever moves the menu simply falls
+    # back to the archive as before, so this cannot break the build.
+    # Cached for the same reason the font is: a fresh extraction on every
+    # configure is a fresh timestamp, and the link depends on this tree.
+    set(od_bg_src "${CMAKE_SOURCE_DIR}/data/STDmaps/map.odmap")
+    set(od_bg_out "${OD_WEB_CACHE}/menu_bg/land_sea.png")
+    if(NOT EXISTS "${od_bg_out}" OR "${od_bg_src}" IS_NEWER_THAN "${od_bg_out}")
+        file(REMOVE_RECURSE "${OD_WEB_CACHE}/menu_bg")
+        file(ARCHIVE_EXTRACT INPUT "${od_bg_src}"
+             DESTINATION "${OD_WEB_CACHE}/menu_bg" PATTERNS "land_sea.png")
+    endif()
+    if(EXISTS "${od_bg_out}")
+        file(COPY "${od_bg_out}" DESTINATION "${OD_WEB_CACHE}/staged")
+        file(RENAME "${OD_WEB_CACHE}/staged/land_sea.png"
+                    "${OD_WEB_DATA}/menu_bg.png")
+        message(STATUS "Web: menu background extracted from map.odmap")
+    else()
+        message(WARNING "Web: land_sea.png not found in map.odmap -- the menu "
+                        "will download a scenario to draw its background.")
+    endif()
+
+    # The staged tree IS an input to the link, and CMake cannot see that any
+    # more than it could see shell.html: --preload-file is a string inside
+    # LINK_OPTIONS, read by em++ when it links and by nothing before then. So a
+    # configure that changed what ships -- a new exclusion, a subset font, a
+    # re-exported map -- rebuilt no source, relinked nothing, and left the
+    # PREVIOUS OpenDoctrines.data sitting next to a page that looked rebuilt.
+    # Measured: excluding 45 MB of scenarios produced a .data of exactly the
+    # same size, twice, before this was understood.
+    #
+    # file(COPY) above preserves timestamps, so this only fires when data/
+    # actually changed.
+    file(GLOB_RECURSE od_web_staged "${OD_WEB_DATA}/*")
+    set_property(TARGET OpenDoctrines APPEND PROPERTY LINK_DEPENDS ${od_web_staged})
+
     target_compile_options(OpenDoctrines PRIVATE )
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
         # emscripten_websocket_*; the browser does the TLS.
         "-lwebsocket.js"
+        # IDBFS, the only filesystem here that outlives the tab. Without
+        # this the FS.mount in util/WebPersist.cpp finds no such symbol and
+        # every session starts blank. See WebPersist.h.
+        "-lidbfs.js"
         # emscripten_fetch(), which is how the web build reaches the account
         # service -- see the browser backend in src/net/HttpClient.cpp. Without
         # this the calls link but the symbol does nothing at runtime.
@@ -943,6 +1172,19 @@ if(EMSCRIPTEN)
         # what the index is built from on web, so the mood system knows every
         # track exists before a byte of audio has been downloaded.
         "--exclude-file=*/audio/music/*.ogg"
+        # The six scenarios: the largest thing in the package by a wide margin,
+        # and the clearest case of paying up front for something optional. A
+        # player opens ONE of them, after picking a country, on a screen that
+        # already has a loading bar of its own -- so all six were being
+        # downloaded before the menu drew, to open at most one of them later.
+        # Fetched on demand by odEnsureAsset(); see Game::loadFromODM.
+        #
+        # The *_thumb.png files and maps_index.json deliberately STAY: they are
+        # ~160 KB in total and they are what the new-game browser draws, so the
+        # list of worlds is complete and pictured before any world is fetched.
+        "--exclude-file=*/STDmaps/*.odmap"
+        # The trained AI weights, read when a game starts and never before.
+        "--exclude-file=*/ai/model.bin"
     )
 
     # ...which means they have to be somewhere fetchable. Copied next to the
@@ -957,6 +1199,23 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_SOURCE_DIR}/data/audio/music"
                 "$<TARGET_FILE_DIR:OpenDoctrines>/data/audio/music"
+        # The scenarios and the model, for the same reason and by the same rule:
+        # excluded from the preload above, so they have to be reachable over
+        # HTTP at the path the virtual filesystem knows them by.
+        #
+        # From the STAGED copy, never ${CMAKE_SOURCE_DIR}/data -- the staging
+        # step is the allowlist, and copying around it is how a working tree's
+        # private files reach a public server. See the note on OD_WEB_DATA.
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/STDmaps"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${OD_WEB_DATA}/STDmaps"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/STDmaps"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/ai"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${OD_WEB_DATA}/ai/model.bin"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/ai/model.bin"
         # The favicon shell.html asks for. It has to be a real file NEXT TO the
         # page, not the copy inside data/: a <link rel="icon"> is fetched by the
         # browser over HTTP, and the preloaded data/ only exists inside the
@@ -1272,6 +1531,66 @@ add_executable(GifEncoderTest EXCLUDE_FROM_ALL
     tests/gif_encoder_test.cpp
     src/GifEncoder.cpp)
 target_include_directories(GifEncoderTest PRIVATE src)
+
+# The indexed-PNG writer the .odmap layers go through. Raylib-free like the GIF
+# encoder above, and for the same reason: it is a bitstream writer, so it has to
+# be testable without a window or a map. tests/png_write_check.py then re-reads
+# what it wrote with Pillow, since an encoder cannot verify its own deflate.
+# What the host does with bytes a stranger chose. Links exactly like the
+# dedicated server -- the same simulation, the same no-GL raylib -- because
+# testing order intake means loading a real map, and a test that needed a window
+# could not run anywhere this matters.
+if(NOT EMSCRIPTEN AND NOT ANDROID)
+    set(ORDER_TEST_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM ORDER_TEST_SOURCES main.cpp)
+    list(APPEND ORDER_TEST_SOURCES
+        tests/order_validation_test.cpp
+        src/server/ServerRaylib.cpp
+        src/server/ServerRaylibStubs.cpp)
+    add_executable(OrderValidationTest EXCLUDE_FROM_ALL ${ORDER_TEST_SOURCES})
+    target_compile_definitions(OrderValidationTest PRIVATE OD_SERVER=1
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(OrderValidationTest PRIVATE src tools/map_generator
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(OrderValidationTest
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(OrderValidationTest PRIVATE OD_ENABLE_NET=1)
+    endif()
+    if(OD_P2P_DEFS)
+        target_link_libraries(OrderValidationTest ${OD_P2P_LIBS})
+        target_compile_definitions(OrderValidationTest PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(OrderValidationTest ws2_32 comdlg32)
+    endif()
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(OrderValidationTest Threads::Threads)
+    endif()
+    if(APPLE)
+        target_link_libraries(OrderValidationTest
+                              "-framework IOKit" "-framework CoreFoundation")
+    endif()
+endif()
+
+add_executable(PngWriteTest EXCLUDE_FROM_ALL
+    tests/png_write_test.cpp
+    src/util/PngWrite.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c)
+target_include_directories(PngWriteTest PRIVATE src tools/map_generator
+                           ${raylib_SOURCE_DIR}/src/external)
+
+# Rasterises two SVGs through the game's own nanosvg and compares the pixels.
+# What tools/optimize_flag_svgs.py is checked with -- see the header of either
+# file. Standalone on purpose: no raylib, no game, so it builds and runs
+# anywhere the artwork needs re-optimising.
+add_executable(SvgRenderDiff EXCLUDE_FROM_ALL
+    tests/svg_render_diff.cpp
+    src/renderer/NanoSVGWrapper.cpp)
+target_include_directories(SvgRenderDiff PRIVATE src src/renderer tools/map_generator)
 
 # Finite-difference gradient checks for the AI's hand-written backward passes.
 # Deliberately links only NeuralNet.cpp: these must stay runnable without a

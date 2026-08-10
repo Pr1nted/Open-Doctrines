@@ -12,6 +12,9 @@
 #include "MapEditor.h"
 #include "TextInput.h"
 #include "ProceduralGenerator.h"
+#include "util/PngWrite.h"
+#include "util/FileDialog.h"
+#include "util/WebAssets.h"
 #include "Audio.h"
 #include "ScriptEngine.h"
 #include <sstream>
@@ -214,12 +217,31 @@ void MapEditor::drawStartupDialog() {
         }
     }
 
+    // Third way in, alongside the two lists: a file from anywhere on the
+    // machine. Hidden where the platform has no file picker (web, Android)
+    // rather than shown as a button that does nothing when pressed.
+    float nextY = cy + 108;
+    if (fileDialog::available()) {
+        Rectangle importBtn = {cx-160, nextY, 320, 44};
+        if (drawButton("Import Map File...", importBtn, false, 20)) promptImportFromFile();
+        int hintW = MeasureText(".odmap or .uodmap from anywhere on this computer", 12);
+        DrawText(".odmap or .uodmap from anywhere on this computer",
+                 (int)(cx - hintW / 2), (int)nextY + 48, 12, GRAY);
+        nextY += 74;
+    }
+
     // Explicit, separate action for exiting the tool entirely (back to the
     // game's main menu) — distinct from ESC/unsaved-changes, which only
     // returns here, to this map menu.
-    Rectangle leaveBtn = {cx-160, cy+54+64, 320, 36};
+    Rectangle leaveBtn = {cx-160, nextY + 10, 320, 36};
     if (drawButton("Leave Editor", leaveBtn, false, 16)) {
         m_wantsExit = true;
+    }
+
+    if (m_warningTimer > 0 && !m_warningMsg.empty()) {
+        int tw = MeasureText(m_warningMsg.c_str(), 14);
+        DrawText(m_warningMsg.c_str(), (int)(cx - tw / 2), (int)nextY + 56, 14,
+                 Color{255, 120, 120, 255});
     }
 }
 
@@ -266,7 +288,13 @@ void MapEditor::drawOpenDialog() {
     }
 
     cy += 280;
-    Rectangle openBtn = {cx-100, cy, 200, 40};
+    // Same reasoning as the map browser: the list only knows data/projects,
+    // so a project from anywhere else needs its own way in.
+    if (fileDialog::available()) {
+        Rectangle browseBtn = {cx-220, cy, 200, 40};
+        if (drawButton("Open from File...", browseBtn, false, 16)) promptImportFromFile();
+    }
+    Rectangle openBtn = {fileDialog::available() ? cx+20 : cx-100, cy, 200, 40};
     Rectangle cancelBtn = {cx-100, cy+50, 200, 36};
     if (drawButton("Open", openBtn, false, 18)) {
         if (m_projChoice >= 0 && m_projChoice < (int)m_projFiles.size()) {
@@ -344,16 +372,45 @@ void MapEditor::scanImportableMaps() {
         return name;
     };
 
-    // Standard maps: data/STDmaps/*.odmap
+    // Standard maps: the six in data/STDmaps.
+    //
+    // From maps_index.json rather than by scanning the directory, because on
+    // the web those archives are not on disk until something asks for one --
+    // they are excluded from the preload and fetched on demand, see
+    // util/WebAssets.h. A scan there finds nothing but thumbnails and this
+    // dialog reports that the game ships no maps. The index lists what ships,
+    // which is exactly the question being asked here, and it carries the
+    // scenario's proper name so no archive has to be opened to label a row.
     {
         std::string dir = m_dataDir + "STDmaps/";
-        std::error_code ec;
-        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
-            std::string n = e.path().filename().string();
-            if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
-            std::string path = dir + n;
-            std::string label = readNameFromOdmap(path, n.substr(0, n.size() - 6));
-            m_importEntries.push_back({label + "  [standard]", path, true});
+        bool listed = false;
+        std::ifstream idx(dir + "maps_index.json");
+        if (idx) {
+            try {
+                auto j = nlohmann::json::parse(idx);
+                for (auto& entry : j) {
+                    std::string n = entry.value("filename", std::string());
+                    if (n.size() < 7 || n.substr(n.size() - 6) != ".odmap") continue;
+                    std::string label =
+                        entry.value("name", n.substr(0, n.size() - 6));
+                    m_importEntries.push_back({label + "  [standard]", dir + n, true});
+                    listed = true;
+                }
+            } catch (std::exception& e) {
+                std::cerr << "Map editor: maps_index.json — " << e.what() << std::endl;
+            }
+        }
+        // No index, or an unusable one: read the archives themselves, which is
+        // what this always did and still works wherever they are on disk.
+        if (!listed) {
+            std::error_code ec;
+            for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+                std::string n = e.path().filename().string();
+                if (n.size() < 6 || n.substr(n.size() - 6) != ".odmap") continue;
+                std::string path = dir + n;
+                std::string label = readNameFromOdmap(path, n.substr(0, n.size() - 6));
+                m_importEntries.push_back({label + "  [standard]", path, true});
+            }
         }
     }
     // Custom maps: data/custom_maps/<name>/*.odmap
@@ -411,7 +468,14 @@ void MapEditor::drawImportDialog() {
     }
 
     cy += 340;
-    Rectangle loadBtn = {cx - 100, cy, 200, 40};
+    // The list above can only show what is already in the data directory, so
+    // a map that arrived by download or messenger has no row to click. This is
+    // the way in for those, without asking the player to find data/custom_maps.
+    if (fileDialog::available()) {
+        Rectangle browseBtn = {cx - 220, cy, 200, 40};
+        if (drawButton("Browse Files...", browseBtn, false, 16)) promptImportFromFile();
+    }
+    Rectangle loadBtn = {fileDialog::available() ? cx + 20 : cx - 100, cy, 200, 40};
     Rectangle cancelBtn = {cx - 100, cy + 48, 200, 36};
     bool canLoad = m_importChoice >= 0 && m_importChoice < (int)m_importEntries.size();
     if (drawButton("Load", loadBtn, false, 18) && canLoad) {
@@ -433,8 +497,93 @@ void MapEditor::drawImportDialog() {
     }
 }
 
+// ════════════════════════════════════════════════════════════════
+//  Files in and out of the game
+// ════════════════════════════════════════════════════════════════
+
+// Lowercase extension including the dot, "" if the name has none.
+static std::string extensionOf(const std::string& path) {
+    size_t dot = path.find_last_of('.');
+    size_t slash = path.find_last_of("/\\");
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return {};
+    std::string ext = path.substr(dot);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return (char)tolower(c); });
+    return ext;
+}
+
+bool MapEditor::importFromPath(const std::string& path) {
+    if (path.empty()) return false;
+    const std::string ext = extensionOf(path);
+    // A project carries the editor's own state (undo-able game data, scripts,
+    // generator settings); a map is the packaged result. Both are zips and
+    // both are things a player will drag in, so accept either and pick the
+    // loader by extension rather than making them remember which is which.
+    bool ok = false;
+    if (ext == ".uodmap") {
+        ok = loadProject(path);
+    } else if (ext == ".odmap") {
+        ok = loadExistingMap(path);
+        if (ok) {
+            std::string base = fs::path(path).stem().string();
+            m_mapName = base.empty() ? "Imported Map" : base;
+        }
+    } else {
+        m_warningMsg = "Not a map file (need .odmap or .uodmap)";
+        m_warningTimer = 3.0f;
+        return false;
+    }
+
+    if (ok) {
+        m_projectState = PROJ_EDITING;
+        // Anything from outside data/projects has no project file behind it --
+        // saveProject() writes to data/projects/<name>.uodmap, not back to
+        // where this came from. Marking it unsaved is what makes the exit
+        // guard offer to put a copy there, which is the whole point of having
+        // imported it. A project opened from that folder by way of the file
+        // dialog is already where it belongs, so it stays clean.
+        std::error_code ec;
+        fs::path projects = fs::path(m_dataDir) / "projects";
+        m_dirty = !fs::equivalent(fs::path(path).parent_path(), projects, ec);
+        m_saveStatus = "Imported " + fs::path(path).filename().string();
+        m_saveStatusTimer = 3.0f;
+    } else {
+        m_warningMsg = "Could not read " + fs::path(path).filename().string();
+        m_warningTimer = 3.0f;
+    }
+    return ok;
+}
+
+void MapEditor::promptImportFromFile() {
+    std::string path = fileDialog::open("Open a map or project", {"odmap", "uodmap"});
+    if (!path.empty()) importFromPath(path);
+}
+
+void MapEditor::promptExportToFile() {
+    if (!m_hasProvinces) {
+        m_warningMsg = "Generate provinces before exporting";
+        m_warningTimer = 3.0f;
+        return;
+    }
+    std::string suggested = (m_mapName.empty() ? std::string("map") : m_mapName) + ".odmap";
+    std::string dest = fileDialog::save("Export map", suggested, "odmap");
+    if (dest.empty()) return;  // cancelled
+    std::string written = exportODMap(dest);
+    if (written.empty()) {
+        m_warningMsg = "Could not write " + fs::path(dest).filename().string();
+        m_warningTimer = 3.0f;
+    } else {
+        m_saveStatus = "Exported to " + fs::path(written).filename().string();
+        m_saveStatusTimer = 4.0f;
+    }
+}
+
 bool MapEditor::loadExistingMap(const std::string& path) {
     drawMiniLoadingScreen(0.05f, "Importing map...");
+    // On the web the shipped scenarios are fetched rather than preloaded, and
+    // this is the one place the editor opens one. Blocking, behind the mini
+    // loading screen just drawn. A no-op everywhere else. See WebAssets.h.
+    odEnsureAsset(path);
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_file(&zip, path.c_str(), 0)) return false;
     std::map<std::string, std::vector<uint8_t>> entries;
@@ -530,37 +679,12 @@ bool MapEditor::loadExistingMap(const std::string& path) {
     }
     drawMiniLoadingScreen(0.4f, "Loading provinces and countries...");
 
-    // Prefer the map's own political.png when present (most real .odmap files
-    // have one); only regenerate from province ownership if it's missing.
-    auto polIt = entries.find("political.png");
-    bool loadedPolPng = false;
-    if (polIt != entries.end()) {
-        Image pol = LoadImageFromMemory(".png", polIt->second.data(), (int)polIt->second.size());
-        if (pol.data && pol.width == MAP_W && pol.height == MAP_H) {
-            ImageFormat(&pol, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-            m_politicalPixels.resize(MAP_W * MAP_H);
-            memcpy(m_politicalPixels.data(), pol.data, (size_t)MAP_W * MAP_H * sizeof(Color));
-            loadedPolPng = true;
-        }
-        if (pol.data) UnloadImage(pol);
-    }
-    if (!loadedPolPng) {
-        // Rebuild it from province ownership (each pixel's province -> owning
-        // country -> that country's color) — only reached when no
-        // political.png ships with the archive.
-        m_politicalPixels.assign((size_t)MAP_W * MAP_H, Color{140, 140, 140, 255});
-        const Color SEA_POL = {35, 60, 80, 255};
-        for (int i = 0; i < MAP_W * MAP_H; ++i) {
-            if (!m_editLandSea.isLand(i % MAP_W, i / MAP_W)) { m_politicalPixels[i] = SEA_POL; continue; }
-            const Color& pc = m_provincePixels[i];
-            int pid = Province::colorToId(pc.r, pc.g, pc.b);
-            if (pid == 0) continue;
-            Province* prov = m_editProvinces.getProvinceById(pid);
-            if (!prov) continue;
-            if (const Country* c = m_editCountries.getCountry(prov->countryId))
-                m_politicalPixels[i] = c->color;
-        }
-    }
+    // No political.png is read, even from an archive that still carries one.
+    // computePoliticalGradient() below redraws this layer unconditionally --
+    // it always did -- so decoding a 4.8 MB PNG here only ever produced pixels
+    // that were overwritten a few hundred lines later. Sizing the buffer is
+    // all that pass needs from us.
+    m_politicalPixels.resize(MAP_W * MAP_H);
     UnloadImage(pp);
 
     m_populationJson = getStr("population.json");
@@ -2744,6 +2868,11 @@ std::vector<uint8_t> MapEditor::encodePng(const std::vector<Color>& px, int w, i
     for (int i = 0; i < w * h; ++i) {
         raw[i*4] = px[i].r; raw[i*4+1] = px[i].g; raw[i*4+2] = px[i].b; raw[i*4+3] = 255;
     }
+    // A layer with 256 or fewer distinct colours indexes to a fraction of the
+    // truecolour size and decodes back byte-identical -- land_sea holds three.
+    // Empty means "too many colours to index", which is the province layer.
+    if (std::vector<uint8_t> indexed = pngw::encodeIndexedRGBA(raw.data(), w, h); !indexed.empty())
+        return indexed;
     // stb_image_write's default settings run a per-scanline filter-choice
     // heuristic and a high zlib compression level — fine for small images,
     // but brutally slow at map resolution (8192x4096, called 3x per save).
@@ -2897,19 +3026,26 @@ std::string MapEditor::generateAndExportHeadless(const GeneratorParams& p, const
         sanitizeProvincePixels();
     }
 
-    exportODMap();
-    std::string path = m_dataDir + "custom_maps/" + m_mapName + ".odmap";
-    return fs::exists(path) ? path : std::string();
+    std::string path = exportODMap();
+    return (!path.empty() && fs::exists(path)) ? path : std::string();
 }
 
-void MapEditor::exportODMap() {
+std::string MapEditor::exportODMap(const std::string& destPath) {
     if (!m_hasProvinces) {
         std::cout << "  No provinces to export. Generate provinces first.\n";
-        return;
+        return {};
     }
-    fs::create_directories(m_dataDir + "custom_maps/");
-    std::string odmPath = m_dataDir + "custom_maps/" + m_mapName + ".odmap";
-    if (odmPath.empty()) odmPath = m_dataDir + "custom_maps/map.odmap";
+    std::string odmPath = destPath;
+    if (odmPath.empty()) {
+        fs::create_directories(m_dataDir + "custom_maps/");
+        odmPath = m_dataDir + "custom_maps/" +
+                  (m_mapName.empty() ? std::string("map") : m_mapName) + ".odmap";
+    } else {
+        // A path out of the file dialog can name a directory that was deleted
+        // between the dialog opening and Export being pressed.
+        std::error_code ec;
+        fs::create_directories(fs::path(odmPath).parent_path(), ec);
+    }
 
     // Write temp files
     auto writeStr = [](const std::string& path, const std::string& content) {
@@ -2922,14 +3058,15 @@ void MapEditor::exportODMap() {
     std::string tmpDir = m_dataDir + "tmp_export_" + m_mapName + "/";
     fs::create_directories(tmpDir);
 
-    // PNG encoding of three 8192x4096 layers dominates headless export —
+    // PNG encoding of the 8192x4096 layers dominates headless export —
     // profiled at more self time than the terrain generator itself, because
     // stb tries all five row filters per scanline and then runs a long LZ77
     // hash chain over 33M pixels. The interactive save path already makes this
     // trade (see writePngFast above); the training path was still on stb's
     // defaults. These maps are broad flat-coloured regions, so a fixed filter
     // and a short chain cost very little file size. Restored on scope exit
-    // since these are stb globals shared with the other export paths.
+    // since these are stb globals shared with the other export paths. Only
+    // the province layer still reaches stb — land/sea goes out indexed.
     struct PngSpeedGuard {
         int filter, level;
         PngSpeedGuard() : filter(stbi_write_force_png_filter),
@@ -2943,41 +3080,21 @@ void MapEditor::exportODMap() {
         }
     } pngSpeedGuard;
 
-    // Save land_sea.png from m_pixels
-    {
-        std::vector<uint8_t> raw(MAP_W * MAP_H * 4);
-        for (int i = 0; i < MAP_W * MAP_H; ++i) {
-            raw[i*4]   = m_pixels[i].r;
-            raw[i*4+1] = m_pixels[i].g;
-            raw[i*4+2] = m_pixels[i].b;
-            raw[i*4+3] = 255;
-        }
-        stbi_write_png((tmpDir + "land_sea.png").c_str(), MAP_W, MAP_H, 4, raw.data(), MAP_W * 4);
-    }
-
-    // Save provinces.png
-    if (!m_provincePixels.empty()) {
-        std::vector<uint8_t> raw(MAP_W * MAP_H * 4);
-        for (int i = 0; i < MAP_W * MAP_H; ++i) {
-            raw[i*4]   = m_provincePixels[i].r;
-            raw[i*4+1] = m_provincePixels[i].g;
-            raw[i*4+2] = m_provincePixels[i].b;
-            raw[i*4+3] = 255;
-        }
-        stbi_write_png((tmpDir + "provinces.png").c_str(), MAP_W, MAP_H, 4, raw.data(), MAP_W * 4);
-    }
-
-    // Save political.png
-    if (!m_politicalPixels.empty()) {
-        std::vector<uint8_t> raw(MAP_W * MAP_H * 4);
-        for (int i = 0; i < MAP_W * MAP_H; ++i) {
-            raw[i*4]   = m_politicalPixels[i].r;
-            raw[i*4+1] = m_politicalPixels[i].g;
-            raw[i*4+2] = m_politicalPixels[i].b;
-            raw[i*4+3] = 255;
-        }
-        stbi_write_png((tmpDir + "political.png").c_str(), MAP_W, MAP_H, 4, raw.data(), MAP_W * 4);
-    }
+    // Save land_sea.png and provinces.png. Through encodePng, which indexes
+    // the land/sea layer down to two bits a pixel; political.png is NOT
+    // written at all. The game has never read it -- Game_Loading's needed[]
+    // list does not name it, and generatePoliticalTexture() draws the board
+    // from province ownership at load -- and the editor recomputes the same
+    // picture with computePoliticalGradient(). It was four fifths of every
+    // archive for a layer nothing opened.
+    auto writeBytes = [](const std::string& path, const std::vector<uint8_t>& bytes) {
+        if (bytes.empty()) return;
+        std::ofstream f(path, std::ios::binary);
+        f.write((const char*)bytes.data(), (std::streamsize)bytes.size());
+    };
+    writeBytes(tmpDir + "land_sea.png", encodePng(m_pixels, MAP_W, MAP_H));
+    if (!m_provincePixels.empty())
+        writeBytes(tmpDir + "provinces.png", encodePng(m_provincePixels, MAP_W, MAP_H));
 
     // Save JSON files (countries/relations need ISO codes assigned first)
     ensureIsoCodes();
@@ -3059,25 +3176,30 @@ void MapEditor::exportODMap() {
 
     // Thumbnail: the author's custom image if they set one, else downsample
     // the political map. Either way it ships as a THUMB_W x THUMB_H PNG.
+    // Sampled straight out of m_politicalPixels rather than off a file, since
+    // the political layer is no longer written to the staging dir.
     {
         const int tw = THUMB_W, th = THUMB_H;
-        std::string srcPath = m_thumbnailPath.empty() ? (tmpDir + "political.png") : m_thumbnailPath;
         int sw = 0, sh = 0, sc = 0;
-        unsigned char* srcData = stbi_load(srcPath.c_str(), &sw, &sh, &sc, 4);
-        if (!srcData && !m_thumbnailPath.empty()) {
-            // Custom thumbnail unreadable — fall back rather than shipping none
+        unsigned char* srcData = m_thumbnailPath.empty()
+                                     ? nullptr
+                                     : stbi_load(m_thumbnailPath.c_str(), &sw, &sh, &sc, 4);
+        if (!srcData && !m_thumbnailPath.empty())
             std::cout << "  Custom thumbnail unreadable, falling back to auto-generated\n";
-            srcData = stbi_load((tmpDir + "political.png").c_str(), &sw, &sh, &sc, 4);
+        const unsigned char* src = srcData;
+        if (!src && !m_politicalPixels.empty()) {
+            src = (const unsigned char*)m_politicalPixels.data();
+            sw = MAP_W; sh = MAP_H;
         }
-        if (srcData && sw > 0 && sh > 0) {
+        if (src && sw > 0 && sh > 0) {
             std::vector<unsigned char> thumbData((size_t)tw * th * 4);
             for (int y = 0; y < th; ++y)
                 for (int x = 0; x < tw; ++x)
                     std::memcpy(&thumbData[((size_t)y * tw + x) * 4],
-                                &srcData[((size_t)(y * sh / th) * sw + x * sw / tw) * 4], 4);
+                                &src[((size_t)(y * sh / th) * sw + x * sw / tw) * 4], 4);
             stbi_write_png((tmpDir + "thumb.png").c_str(), tw, th, 4, thumbData.data(), tw * 4);
-            stbi_image_free(srcData);
         }
+        if (srcData) stbi_image_free(srcData);
     }
 
     // Package into .odmap
@@ -3085,7 +3207,7 @@ void MapEditor::exportODMap() {
     if (!mz_zip_writer_init_file(&zip, odmPath.c_str(), 0)) {
         std::cout << "  Failed to create .odmap: " << odmPath << "\n";
         fs::remove_all(tmpDir);
-        return;
+        return {};
     }
 
     auto addFile = [&](const std::string& name) {
@@ -3103,7 +3225,6 @@ void MapEditor::exportODMap() {
     addFile("land_sea.png");
     addFile("provinces.png");
     addFile("provinces.json");
-    addFile("political.png");
     addFile("countries.json");
     addFile("population.json");
     addFile("resources.json");
@@ -3151,6 +3272,7 @@ void MapEditor::exportODMap() {
     fs::remove_all(tmpDir);
 
     std::cout << "  Exported .odmap to: " << odmPath << "\n";
+    return odmPath;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3176,7 +3298,9 @@ bool MapEditor::saveProject() {
         ensureIsoCodes();
         drawMiniLoadingScreen(0.3f, "Encoding map images...");
         entries.emplace_back("provinces.png", encodePng(m_provincePixels, MAP_W, MAP_H));
-        entries.emplace_back("political.png", encodePng(m_politicalPixels, MAP_W, MAP_H));
+        // political.png is not saved: it is province ownership run through
+        // computePoliticalGradient(), recomputed on load for a fraction of
+        // what storing a third 8192x4096 layer costs.
         drawMiniLoadingScreen(0.6f, "Writing game data...");
         addStr("provinces.json", m_provinceJson);
         addStr("countries.json", buildCountriesJson());
@@ -3365,19 +3489,17 @@ bool MapEditor::loadProject(const std::string& path) {
     std::string provJson = getStr("provinces.json");
     std::string countryJson = getStr("countries.json");
     auto ppIt = entries.find("provinces.png");
-    auto polIt = entries.find("political.png");
-    if (ppIt != entries.end() && polIt != entries.end()
-        && !provJson.empty() && !countryJson.empty()) {
+    // A political.png in an older project is ignored rather than read: the
+    // gradient pass at the end of this function overwrites it either way.
+    if (ppIt != entries.end() && !provJson.empty() && !countryJson.empty()) {
         Image pp = LoadImageFromMemory(".png", ppIt->second.data(), (int)ppIt->second.size());
-        Image pol = LoadImageFromMemory(".png", polIt->second.data(), (int)polIt->second.size());
-        if (pp.data && pol.data && pp.width == MAP_W && pp.height == MAP_H
-            && pol.width == MAP_W && pol.height == MAP_H) {
+        if (pp.data && pp.width == MAP_W && pp.height == MAP_H) {
             ImageFormat(&pp, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-            ImageFormat(&pol, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
             m_provincePixels.resize(MAP_W * MAP_H);
+            // Sized, not filled: computePoliticalGradient() at the end of this
+            // function redraws every pixel of it regardless.
             m_politicalPixels.resize(MAP_W * MAP_H);
             memcpy(m_provincePixels.data(), pp.data, (size_t)MAP_W * MAP_H * sizeof(Color));
-            memcpy(m_politicalPixels.data(), pol.data, (size_t)MAP_W * MAP_H * sizeof(Color));
 
             m_editProvinces.loadFromMemory(ppIt->second.data(), (int)ppIt->second.size(), provJson);
             m_editCountries.loadFromJson(countryJson);
@@ -3488,7 +3610,6 @@ bool MapEditor::loadProject(const std::string& path) {
             } catch (...) { std::cout << "  Bad political_compass.json in project\n"; }
         }
         if (pp.data) UnloadImage(pp);
-        if (pol.data) UnloadImage(pol);
     }
 
     // Map scripts
@@ -3567,15 +3688,25 @@ void MapEditor::update(float dt) {
     if (m_genPending == 2) {
         // Tens of seconds of blocking work on the main thread, with no frames in
         // between -- exactly the starvation the world loader had. The helper
-        // thread keeps the music fed for the duration.
-        Audio::get().beginBackgroundPump();
-        m_genStatus = "Generating landmass...";
-        generateMap(m_genParams);
-        m_genStatus = "Generating provinces & countries...";
-        generateProvincesCountries();
-        m_genStatus = "Generating game data...";
-        generateGameData();
-        Audio::get().endBackgroundPump();
+        // thread keeps the music fed for the duration; in a browser, where
+        // there is no thread to have and no loop of ours to pump from, the
+        // device is suspended instead so the stall is silent rather than a
+        // repeating fragment. See Audio::BlockingCall.
+        //
+        // An explicit scope rather than letting the guard run to the return
+        // below, so the device comes back at the same point the hand-written
+        // pair released it. The return is also why this is a guard at all: an
+        // early exit added anywhere in the three calls would, with a manual
+        // pair, have left the game silent until the tab was reloaded.
+        {
+            Audio::BlockingCall quiet;
+            m_genStatus = "Generating landmass...";
+            generateMap(m_genParams);
+            m_genStatus = "Generating provinces & countries...";
+            generateProvincesCountries();
+            m_genStatus = "Generating game data...";
+            generateGameData();
+        }
         m_genPending = 0;
         return;
     }
@@ -3634,6 +3765,26 @@ void MapEditor::update(float dt) {
         !(m_editingSeed || m_editingCountryCount || m_editingCountryName ||
           m_metaEditField >= 0 || m_licenseTextFocus || m_scriptEdOpen)) {
         saveProject();
+    }
+
+    // ── Dropped map files ──
+    // Handled here rather than in updateEdit's drop block because a map can be
+    // dropped on the project chooser too, which is where you would drop one:
+    // you have a file and no project open yet. Only map extensions are taken;
+    // anything else is left on the drop list for updateEdit, which reads it
+    // as a thumbnail or a country flag depending on the tab.
+    if (IsFileDropped()) {
+        FilePathList dropped = LoadDroppedFiles();
+        for (unsigned int i = 0; i < dropped.count; ++i) {
+            std::string ext = extensionOf(dropped.paths[i]);
+            if (ext != ".odmap" && ext != ".uodmap") continue;
+            std::string path = dropped.paths[i];
+            UnloadDroppedFiles(dropped);  // consumed — updateEdit must not see it
+            importFromPath(path);
+            if (m_warningTimer > 0) m_warningTimer -= dt;
+            return;
+        }
+        // Not ours. Left loaded on purpose for the handler in updateEdit.
     }
 
     if (m_projectState != PROJ_EDITING) {
@@ -4528,6 +4679,7 @@ void MapEditor::updateGeneratorPanel() {
     // y = m_toolbarH+315: province size slider
     // y = m_toolbarH+360: Generate World button
     // y = m_toolbarH+410: Export .odmap button
+    // y = m_toolbarH+448: Export to File... button (desktop only)
 
     // Seed + RND button
     Rectangle seedRect = {(float)px, (float)(m_toolbarH + 70), 172, 26};
@@ -4623,11 +4775,23 @@ void MapEditor::updateGeneratorPanel() {
         m_genStatus = "Generating world...";
     }
 
-    // Export .odmap button
+    // Export buttons: into the game's own custom_maps (where the map browser
+    // will find it) and out to a path the player chooses (where they can send
+    // it to someone). Both write the same archive.
     y = m_toolbarH + 410;
     Rectangle exportBtn = {(float)px, (float)y, 200, 34};
     if (drawButton("Export .odmap", exportBtn, false, 14)) {
-        exportODMap();
+        if (exportODMap().empty()) {
+            m_warningMsg = "Export failed";
+            m_warningTimer = 3.0f;
+        } else {
+            m_saveStatus = "Exported to data/custom_maps/";
+            m_saveStatusTimer = 4.0f;
+        }
+    }
+    if (fileDialog::available()) {
+        Rectangle exportFileBtn = {(float)px, (float)(m_toolbarH + 448), 200, 30};
+        if (drawButton("Export to File...", exportFileBtn, false, 13)) promptExportToFile();
     }
 }
 
@@ -4716,13 +4880,18 @@ void MapEditor::drawGeneratorPanel() {
     Rectangle genBtn = {(float)px, (float)(m_toolbarH + 360), 200, 38};
     drawButton("Generate World", genBtn, false, 16);
 
-    // Export .odmap button
+    // Export buttons (see updateGeneratorPanel for the layout this mirrors)
     Rectangle exportBtn = {(float)px, (float)(m_toolbarH + 410), 200, 34};
     drawButton("Export .odmap", exportBtn, false, 14);
+    if (fileDialog::available()) {
+        Rectangle exportFileBtn = {(float)px, (float)(m_toolbarH + 448), 200, 30};
+        drawButton("Export to File...", exportFileBtn, false, 13);
+    }
 
     // Status indicators
-    DrawText(m_hasProvinces ? "Provinces: OK" : "Provinces: --", px, m_toolbarH + 460, 12, m_hasProvinces ? GREEN : GRAY);
-    DrawText(m_hasGameData ? "Game Data: OK" : "Game Data: --", px, m_toolbarH + 475, 12, m_hasGameData ? GREEN : GRAY);
+    int sy = m_toolbarH + (fileDialog::available() ? 490 : 460);
+    DrawText(m_hasProvinces ? "Provinces: OK" : "Provinces: --", px, sy, 12, m_hasProvinces ? GREEN : GRAY);
+    DrawText(m_hasGameData ? "Game Data: OK" : "Game Data: --", px, sy + 15, 12, m_hasGameData ? GREEN : GRAY);
 }
 
 // ── Province Panel ─────────────────────────────────────────────
@@ -8200,10 +8369,26 @@ void MapEditor::drawMetadataPanel() {
         saveProject();
     }
     y += 38;
+    // Import/export sit next to Save because this is the panel about the map
+    // as a thing you hand to someone, not about the map as terrain.
+    if (fileDialog::available()) {
+        Rectangle expBtn = {(float)px, (float)y, (float)listW, 28};
+        if (drawButton("Export to File...", expBtn, false, 13) && inputOk) promptExportToFile();
+        y += 34;
+        Rectangle impBtn = {(float)px, (float)y, (float)listW, 28};
+        if (drawButton("Import Map File...", impBtn, false, 13) && inputOk) promptImportFromFile();
+        y += 38;
+    }
     if (m_saveStatusTimer > 0 && !m_saveStatus.empty()) {
         DrawText(m_saveStatus.c_str(), px, y, 12, Color{140, 220, 140, 255});
         y += 18;
     }
+    if (m_warningTimer > 0 && !m_warningMsg.empty()) {
+        DrawText(m_warningMsg.c_str(), px, y, 12, Color{255, 120, 120, 255});
+        y += 18;
+    }
     DrawText("Saved as .uodmap in data/projects/", px, y, 10, GRAY); y += 13;
-    DrawText("Export .odmap (Generator tab) to play.", px, y, 10, GRAY);
+    DrawText("Export .odmap (Generator tab) to play.", px, y, 10, GRAY); y += 13;
+    if (fileDialog::available())
+        DrawText("Or drop an .odmap/.uodmap on this window.", px, y, 10, GRAY);
 }

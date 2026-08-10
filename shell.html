@@ -8,13 +8,53 @@
      for page zoom. Without it a finger on the map pans the PAGE, and the game
      never sees the gesture at all. */
   canvas{display:block;width:100vw;height:100vh;touch-action:none}
-  #od_fail{position:fixed;inset:0;display:none;place-items:center;padding:8vw;
+
+  /* The boot screen sits ABOVE the canvas and BELOW the failure box, so a
+     module that dies while loading replaces this rather than arguing with it. */
+  #od_boot{position:fixed;inset:0;z-index:10;display:grid;place-items:center;
+           background:#050813;color:#c8ccd8;text-align:center;padding:6vw;
+           font:16px/1.5 system-ui,sans-serif;transition:opacity .45s ease}
+  #od_boot.gone{opacity:0;pointer-events:none}
+  #od_boot h1{margin:0;color:#ffd700;letter-spacing:.06em;font-weight:700;
+              font-size:clamp(28px,6vw,54px)}
+  #od_boot .sub{margin:.35em 0 2.2em;color:#7c869e;font-size:clamp(12px,2vw,15px);
+                letter-spacing:.22em;text-transform:uppercase}
+  #od_bar{width:min(420px,72vw);height:6px;margin:0 auto;border-radius:3px;
+          background:#141c33;overflow:hidden}
+  #od_barfill{width:0;height:100%;background:#ffd700;border-radius:3px;
+              transition:width .2s linear}
+  /* Until the packager reports a total there is no percentage to show, and a bar
+     frozen at zero reads as a hang. This slides instead, which reads as work. */
+  #od_bar.indet #od_barfill{width:35%;animation:od_slide 1.1s ease-in-out infinite}
+  @keyframes od_slide{0%{margin-left:-35%}100%{margin-left:100%}}
+  #od_pct{margin-top:.9em;color:#9aa4bb;font-size:13px;font-variant-numeric:tabular-nums}
+  #od_tip{margin-top:3em;color:#5d677d;font-size:13px;max-width:32em}
+  #od_tip b{color:#8b95ad;font-weight:600}
+
+  #od_fail{position:fixed;inset:0;z-index:20;display:none;place-items:center;padding:8vw;
            font:16px/1.5 system-ui,sans-serif;color:#c8ccd8;background:#050813}
   #od_fail div{max-width:34em}
   #od_fail h1{color:#ffd700;font-size:1.25em;margin:0 0 .6em}
   #od_fail code{color:#9aa4bb;font-size:.85em;word-break:break-word}
 </style>
 </head><body>
+
+<!-- WHY THIS EXISTS: the download is tens of megabytes and the canvas is black
+     until the first frame is drawn, so the honest state of the page for the
+     first several seconds used to be indistinguishable from a broken one. This
+     is plain HTML above the canvas, so it paints on the FIRST frame the browser
+     renders -- before a byte of wasm has arrived -- and it is dismissed from
+     C++ (Game::endFrame) the moment the game actually presents a frame, rather
+     than on a timer that would guess. -->
+<div id="od_boot">
+  <div>
+    <h1>OpenDoctrines</h1>
+    <div class="sub">A Grand Strategy Game</div>
+    <div id="od_bar" class="indet"><div id="od_barfill"></div></div>
+    <div id="od_pct">Loading…</div>
+    <div id="od_tip"></div>
+  </div>
+</div>
 
 <!-- WHY THIS EXISTS: a failure here used to be a black page.
      If the runtime aborts -- and on a phone it sometimes does, most often
@@ -41,12 +81,95 @@ function odFail(why, detail) {
   document.getElementById('od_fail_why').textContent = why;
   document.getElementById('od_fail_detail').textContent = detail || '';
   box.style.display = 'grid';
+  odBootHide(true);   // no bar behind a failure; it would still be creeping
 }
+
+// ------------------------------------------------------------------ boot ----
+//
+// The one thing a player cannot be given during a long download is silence, so
+// the wait is spent on the two controls that no menu explains and that both of
+// the game's first bug reports turned out to be about.
+var OD_TIPS = [
+  'Hold <b>right mouse</b> on a province and drag to a neighbour to move or attack with an army. The circle on the arrow sets how much of the garrison goes.',
+  'Province actions live behind the <b>view tabs on the bottom bar</b> — industry, forts, ports and research each have their own.',
+  'Every turn is recorded. A finished game replays as a <b>timelapse</b> you can export as a GIF from inside the game.',
+  'The <b>research slider</b> is funded against the rest of your budget: what you spend on it is what you are not spending on troops.'
+];
+
+var odBootGone = false;
+
+function odBootHide(instant) {
+  if (odBootGone) return;
+  odBootGone = true;
+  var b = document.getElementById('od_boot');
+  if (!b) return;
+  if (instant) { b.style.display = 'none'; return; }
+  b.classList.add('gone');
+  setTimeout(function () { b.style.display = 'none'; }, 500);
+}
+
+// Called from C++ once a frame has actually been presented -- see
+// Game::endFrame. That is later than "runtime initialised": the game still has
+// a font to rasterise and a menu background to decode after main() starts, and
+// hiding this at runtime-init put a black canvas on screen for those seconds.
+window.odBootDone = function () { odBootHide(false); };
+
+function odBootProgress(loaded, total) {
+  var bar = document.getElementById('od_bar');
+  var fill = document.getElementById('od_barfill');
+  var pct = document.getElementById('od_pct');
+  if (!bar || !fill || !pct) return;
+  if (total > 0) {
+    bar.classList.remove('indet');
+    var f = Math.max(0, Math.min(1, loaded / total));
+    fill.style.width = (f * 100).toFixed(1) + '%';
+    // Megabytes, not a bare percentage: on a slow connection the number people
+    // want is how much is left, and MB is the unit that makes 8% understandable.
+    pct.textContent = (loaded / 1048576).toFixed(1) + ' MB of ' +
+                      (total / 1048576).toFixed(1) + ' MB';
+  } else {
+    bar.classList.add('indet');
+  }
+}
+
+(function () {
+  var t = document.getElementById('od_tip');
+  if (t) t.innerHTML = OD_TIPS[Math.floor(Math.random() * OD_TIPS.length)];
+})();
 
 var Module = {
   locateFile: function(s) { return s; },
   preRun: [],
   postRun: [],
+
+  // Emscripten's own progress reporting. The file packager calls this with
+  // "Downloading data... (12345/67890)" as the .data arrives, and with an empty
+  // string when there is nothing left outstanding.
+  setStatus: function (text) {
+    if (odBootGone) return;
+    var m = /([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/.exec(text || '');
+    if (m) { odBootProgress(parseFloat(m[2]), parseFloat(m[4])); return; }
+    var pct = document.getElementById('od_pct');
+    if (!pct) return;
+    // No byte counts in this one: either the download has finished and the
+    // module is starting up, or emscripten is reporting something else.
+    document.getElementById('od_bar').classList.add('indet');
+    pct.textContent = text ? text : 'Starting the world…';
+  },
+
+  monitorRunDependencies: function (left) {
+    if (!odBootGone && left === 0) Module.setStatus('Starting the world…');
+  },
+
+  // Backstop, and only that. odBootDone from Game::endFrame is the real signal
+  // and is the one that fires in a healthy build; this exists so that a build
+  // where that call is missing -- an old wasm served from cache, a stripped
+  // EM_ASM -- ends up with a playable game behind a stale overlay for a few
+  // seconds rather than forever. Generous, because expiring it early is worse
+  // than expiring it late: early puts a black canvas on screen.
+  onRuntimeInitialized: function () {
+    setTimeout(function () { odBootHide(false); }, 20000);
+  },
   onAbort: function(what) {
     odFail('The game stopped while starting up.', String(what));
   },

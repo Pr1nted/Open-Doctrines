@@ -1,6 +1,7 @@
 #include "GameUpdates.h"
 #include "Game.h"
 #include "OdFile.h"
+#include "util/WebPersist.h"
 #if defined(PLATFORM_ANDROID)
 #include <unistd.h>          // ::chdir, in the Android branch of init() only
 #endif
@@ -819,6 +820,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
 #endif
     m_configPath = m_dataDir + "config.json";
 
+    // Bring back whatever the last session left in IndexedDB, BEFORE the config
+    // is read a few lines below -- a restore that landed afterwards would be a
+    // restore nobody could see. No-op off the web. See util/WebPersist.h.
+    odPersistInit(m_dataDir);
+
     // Tell the updater where the game actually lives before it does anything.
     // GetApplicationDirectory() is the executable's own directory, which is
     // what an update must replace; the working directory can be anywhere when
@@ -1514,6 +1520,12 @@ void Game::run() {
             mpHostTurnUpdate();
         }
 
+        // Web only, and cheap unless something actually changed: writes the
+        // player's state back to IndexedDB so a reload does not lose it. Above
+        // the popup early-out, so a session that sits on a diplomacy popup
+        // still gets saved. See util/WebPersist.h.
+        odPersistTick(m_dataDir);
+
         updateNotifications();
         updatePopup();
         // Block all other update when popup is active (draw popup overlay on any screen)
@@ -2116,6 +2128,26 @@ void Game::endFrame() {
     mpDrawManualExchange(m_screenW, m_screenH);
     drawPadCursor();
     EndDrawing();
+
+#ifdef __EMSCRIPTEN__
+    // Take down the HTML boot screen, ONCE, and only now.
+    //
+    // This is the first moment there is something behind it worth showing. The
+    // earlier signals all lie by some margin: the runtime is initialised before
+    // main() runs, and main() then opens a window, rasterises a font and
+    // decodes the menu background before it draws anything -- seconds during
+    // which dismissing the overlay reveals a black canvas, which is the exact
+    // failure the overlay was added to remove.
+    //
+    // In endFrame rather than in run(), because run() presents frames from two
+    // places: the popup path draws and continues without reaching the bottom of
+    // the loop, and a build that opens on a popup would never have fired this.
+    static bool bootDismissed = false;
+    if (!bootDismissed) {
+        bootDismissed = true;
+        EM_ASM({ if (window.odBootDone) window.odBootDone(); });
+    }
+#endif
 }
 
 // The controller's cursor, which the operating system is not drawing because as

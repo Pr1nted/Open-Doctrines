@@ -154,7 +154,11 @@ private:
     std::string buildProvinceCompassJson() const; // from m_provinceData[...].compassEconomic/Social
     void generateProvincesCountries();
     void generateGameData();
-    void exportODMap();
+    // destPath empty = the usual data/custom_maps/<name>.odmap. Anything else
+    // is a path the player picked out of the system file dialog, which is how
+    // a finished map leaves the game without anyone going hunting for the
+    // data directory. Returns the path written, empty on failure.
+    std::string exportODMap(const std::string& destPath = "");
 
     // ── Editable game data (Phase 0 data model) ──
     std::unordered_map<int, EditorProvinceData> m_provinceData; // pid -> data
@@ -200,6 +204,15 @@ private:
     int m_importScroll = 0;
     void scanImportableMaps();
     bool loadExistingMap(const std::string& path); // .odmap -> editable state
+
+    // ── Files in and out of the game ──
+    // The list above only ever sees what is already inside the data directory.
+    // These take a path from anywhere: a map a friend sent, a project on a USB
+    // stick, an export headed for the desktop. Both set m_saveStatus/m_warning
+    // so the outcome is visible without a console.
+    bool importFromPath(const std::string& path);  // .odmap or .uodmap, by extension
+    void promptImportFromFile();                   // system open dialog -> importFromPath
+    void promptExportToFile();                     // system save dialog -> exportODMap
 
     // UI
     EditMode m_mode = MODE_LANDMASS;

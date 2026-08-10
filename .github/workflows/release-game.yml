@@ -156,6 +156,13 @@ jobs:
       - uses: mymindstorm/setup-emsdk@v14
         with: { version: latest }
 
+      # tools/subset_font.py needs it, and the configure step degrades to
+      # shipping the whole 11 MB Unifont without it -- quietly enough, with only
+      # a CMake warning, that it is worth installing here rather than finding
+      # out from a page that is eleven megabytes heavier than it should be.
+      - name: Install fonttools
+        run: python3 -m pip install --user fonttools
+
       - name: Build
         run: |
           # Same reason as the desktop configure above.
@@ -179,8 +186,11 @@ jobs:
              build-web/OpenDoctrines.wasm \
              build-web/OpenDoctrines.data \
              build-web/icon.png "$out/"
-          # The streamed music, which is deliberately NOT in the preload and so
-          # has to sit beside the page under the path the loader asks for.
+          # Everything deliberately kept OUT of the preload -- the music, the six
+          # scenario archives and the AI model -- which therefore has to sit
+          # beside the page under the exact path the loader asks for. This is
+          # most of the upload by size now, and an upload missing it is a game
+          # that reaches its menu and then cannot start.
           cp -r build-web/data "$out/data"
           (cd "$out" && zip -qr ../OpenDoctrines-web.zip .)
           ls -lh dist/OpenDoctrines-web.zip
@@ -359,4 +369,216 @@ jobs:
           else
             echo "::warning title=No APK::No .apk among the artifacts, so \
             nothing was pushed to the itch android channel."
+          fi
+
+  # Steam, which is the same idea as the itch.io push above and a different
+  # shape in three ways worth knowing before reading the script.
+  #
+  # A SEPARATE JOB rather than another step of `publish`, because steamcmd
+  # needs 32-bit apt packages installed on the runner and the GitHub release
+  # must not wait on that, nor fail with it. `needs: publish` keeps the
+  # ordering -- the release exists before anything reaches a storefront -- while
+  # keeping the failure domains apart.
+  #
+  # IT UPLOADS, IT DOES NOT PROMOTE. The itch push is live the moment butler
+  # returns. A Steam build goes to the app and sits there until a human sets it
+  # live on a branch, unless STEAM_BRANCH says otherwise. See the setlive note
+  # in packaging/steam/app_build.vdf.
+  #
+  # WINDOWS AND LINUX ONLY. There is no macOS depot and that is deliberate;
+  # the reason is written where the depot would be.
+  #
+  # Absent credentials warn and exit 0, exactly as itch does. A storefront that
+  # is not configured yet is not a reason to fail a release that has already
+  # been built, tested, approved and published.
+  steam:
+    name: Push to Steam
+    needs: publish
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+
+      - name: Is Steam configured?
+        id: gate
+        env:
+          STEAM_APPID: ${{ vars.STEAM_APPID }}
+          STEAM_USERNAME: ${{ vars.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          # One gate, checked before anything is installed or extracted, so the
+          # common case -- no Steam account yet -- costs seconds and prints one
+          # clear line instead of failing somewhere deeper.
+          missing=""
+          [ -n "$STEAM_APPID" ]      || missing="$missing STEAM_APPID(var)"
+          [ -n "$STEAM_USERNAME" ]   || missing="$missing STEAM_USERNAME(var)"
+          [ -n "$STEAM_CONFIG_VDF" ] || missing="$missing STEAM_CONFIG_VDF(secret)"
+          if [ -n "$missing" ]; then
+            echo "::warning title=Steam skipped::Not configured ($missing), so \
+            nothing was pushed to Steam. The GitHub release and the itch.io \
+            push above are complete and this is not a failure."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Numeric, because the depot ids are derived from it with shell
+          # arithmetic further down and a non-numeric appid fails there instead
+          # -- two steps later, in a message about depots. Same check
+          # check-steam.yml makes, for the same reason.
+          if ! printf '%s' "$STEAM_APPID" | grep -qE '^[0-9]+$'; then
+            echo "::error title=Bad STEAM_APPID::STEAM_APPID is \
+            '$STEAM_APPID', which is not a number."
+            exit 1
+          fi
+          echo "go=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Stage the depot content
+        if: steps.gate.outputs.go == 'yes'
+        run: |
+          set -e
+          mkdir -p steam/content steam/output
+
+          # The same marker the itch push writes, for the same reason: Steam
+          # owns this install and updates it, so the in-game updater must hold
+          # off. Two updaters writing one directory is how a copy ends up half
+          # one version and half another. See GameUpdates::managedInstall().
+          printf '%s\n' \
+            'This copy of OpenDoctrines is installed by Steam, so the in-game' \
+            'updater will not replace it. Update it through Steam.' \
+            > MANAGED
+
+          # package.py wraps each zip's payload in ONE top-level folder, so the
+          # depot root is that inner folder rather than the extraction
+          # directory. Getting this wrong installs the game one level down,
+          # where the launch option configured in Steamworks finds nothing --
+          # and it fails that way silently, because the upload itself succeeds.
+          stage() {
+            artifact="OpenDoctrines-$1"
+            zip="artifacts/$artifact/$artifact.zip"
+            if [ ! -f "$zip" ]; then
+              echo "::error title=Missing artifact::$zip is not among the \
+              downloaded artifacts, so the $2 depot would ship empty."
+              exit 1
+            fi
+            unzip -q "$zip" -d "steam/content/$2"
+            inner="steam/content/$2/$artifact"
+            if [ ! -d "$inner" ]; then
+              echo "::error title=Unexpected zip layout::$zip did not contain \
+              a top-level $artifact/ folder. package.py's layout changed and \
+              app_build.vdf's contentroot no longer matches it."
+              exit 1
+            fi
+            cp MANAGED "$inner/MANAGED"
+            echo "$2 depot root: $inner"
+            ls "$inner"
+          }
+          stage windows-x64 windows
+          stage linux-x64   linux
+
+      - name: Write the build script
+        if: steps.gate.outputs.go == 'yes'
+        env:
+          STEAM_APPID: ${{ vars.STEAM_APPID }}
+          # Default to appid+1 and appid+2, which is what Steamworks hands out
+          # for the first depots of a new app. Override the variables if your
+          # app's depots were created in another order -- an id that is not
+          # yours belongs to somebody else's app and the push simply fails.
+          STEAM_DEPOT_WINDOWS: ${{ vars.STEAM_DEPOT_WINDOWS }}
+          STEAM_DEPOT_LINUX: ${{ vars.STEAM_DEPOT_LINUX }}
+          # Empty means "upload but promote nothing". See app_build.vdf.
+          STEAM_BRANCH: ${{ vars.STEAM_BRANCH }}
+        run: |
+          set -e
+          dwin=${STEAM_DEPOT_WINDOWS:-$((STEAM_APPID + 1))}
+          dlin=${STEAM_DEPOT_LINUX:-$((STEAM_APPID + 2))}
+
+          # steamcmd resolves buildoutput and contentroot against the SCRIPT's
+          # own directory, so the substituted copy is written into the staging
+          # root rather than left in packaging/.
+          #
+          # `|` as the sed delimiter because every substituted value here is an
+          # absolute path.
+          sed -e "s|__APPID__|$STEAM_APPID|g" \
+              -e "s|__BUILDDESC__|${GITHUB_REF_NAME} (${GITHUB_SHA:0:7})|g" \
+              -e "s|__BRANCH__|${STEAM_BRANCH}|g" \
+              -e "s|__DEPOT_WINDOWS__|$dwin|g" \
+              -e "s|__DEPOT_LINUX__|$dlin|g" \
+              -e "s|__CONTENT_WINDOWS__|$PWD/steam/content/windows/OpenDoctrines-windows-x64|g" \
+              -e "s|__CONTENT_LINUX__|$PWD/steam/content/linux/OpenDoctrines-linux-x64|g" \
+              packaging/steam/app_build.vdf > steam/app_build.vdf
+
+          # No placeholder left in it, or steamcmd reads a literal token as an
+          # app number and reports something unrelated.
+          #
+          # COMMENT LINES ARE EXCLUDED, and that is not tidiness. The template's
+          # own opening line explains that the workflow substitutes every
+          # placeholder -- and to say so it has to contain one. A plain search
+          # for the token shape matches that sentence and fails every release,
+          # in a step whose whole purpose is catching a mistake nobody made.
+          leftover=$(grep -vE '^[[:space:]]*//' steam/app_build.vdf \
+                     | grep -E '__[A-Z_]+__' || true)
+          if [ -n "$leftover" ]; then
+            echo "::error title=Unsubstituted token::steam/app_build.vdf still \
+            contains a placeholder. One was added to the template without a \
+            matching sed rule here."
+            printf '%s\n' "$leftover"
+            exit 1
+          fi
+          echo "appid $STEAM_APPID, depots $dwin (windows) $dlin (linux)"
+          echo "branch: ${STEAM_BRANCH:-<none, promote by hand in Steamworks>}"
+
+      - name: Install steamcmd
+        if: steps.gate.outputs.go == 'yes'
+        run: |
+          # Kept identical to check-steam.yml on purpose; if one needs a fix
+          # the other needs the same one.
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1
+          mkdir -p steamcmd && cd steamcmd
+          curl -sqL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+            | tar zxf -
+          ./steamcmd.sh +quit || true
+
+      - name: Upload
+        if: steps.gate.outputs.go == 'yes'
+        env:
+          STEAM_USERNAME: ${{ vars.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+          # Through env rather than interpolated into the script body, as
+          # everywhere else here: an expression pasted straight into shell is
+          # a habit that is harmless for a repository variable and is not
+          # harmless the first time the value comes from somewhere else.
+          STEAM_BRANCH: ${{ vars.STEAM_BRANCH }}
+        run: |
+          set -e
+          mkdir -p ~/Steam/config
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > ~/Steam/config/config.vdf
+
+          # run_app_build needs an ABSOLUTE path. Given a relative one it
+          # resolves against steamcmd's own directory, not the working
+          # directory, and reports a missing file that is plainly there.
+          #
+          # `< /dev/null` so an expired session fails now instead of waiting
+          # for a Steam Guard code nobody is there to type.
+          cd steamcmd
+          ./steamcmd.sh +login "$STEAM_USERNAME" \
+                        +run_app_build "$GITHUB_WORKSPACE/steam/app_build.vdf" \
+                        +quit < /dev/null | tee build.log || true
+
+          # THE LOG IS THE RESULT, not the exit code. steamcmd exits 0 on
+          # several kinds of failure, including a rejected login, so trusting
+          # $? would report a successful release that uploaded nothing.
+          if grep -qi "Successfully finished" build.log; then
+            echo "Uploaded to Steam."
+            if [ -z "$STEAM_BRANCH" ]; then
+              echo "::notice title=Set it live::The build is uploaded but on \
+              no branch. Promote it in Steamworks > Builds when you are ready."
+            fi
+          else
+            echo "::error title=Steam upload failed::steamcmd did not report a \
+            finished build. The log is above; a login failure and a depot \
+            misconfiguration look different in it."
+            exit 1
           fi

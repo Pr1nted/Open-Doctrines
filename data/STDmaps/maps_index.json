@@ -4,6 +4,7 @@
     "filename": "map.odmap",
     "author": "OpenDoctrines",
     "description": "Present-day world, 185 countries. Population from World Bank totals, resource deposits from USGS surveys and project-authored oil regions, territorial claims, diplomatic relations and ethnic composition.",
+    "license": "CC-BY-4.0",
     "thumbnail": "map_thumb.png",
     "hasScripts": false
   },
@@ -12,6 +13,7 @@
     "filename": "1914.odmap",
     "author": "OpenDoctrines",
     "description": "Five empires and a continent of alliances waiting on one funeral in Sarajevo. Nobody on this map has fought a European war in forty-three years.",
+    "license": "CC-BY-4.0",
     "thumbnail": "1914_thumb.png",
     "hasScripts": false
   },
@@ -20,6 +22,7 @@
     "filename": "1918.odmap",
     "author": "OpenDoctrines",
     "description": "Germany has won in the east and is losing in the west. Four empires have months to live and none of them knows which four.",
+    "license": "CC-BY-4.0",
     "thumbnail": "1918_thumb.png",
     "hasScripts": false
   },
@@ -28,6 +31,7 @@
     "filename": "1939.odmap",
     "author": "OpenDoctrines",
     "description": "Europe on the morning the Wehrmacht crossed the Polish border. Six empires still hold most of the world; the Soviet Union and Germany have just divided the ground between them.",
+    "license": "CC-BY-4.0",
     "thumbnail": "1939_thumb.png",
     "hasScripts": false
   },
@@ -36,6 +40,7 @@
     "filename": "1945.odmap",
     "author": "OpenDoctrines",
     "description": "The war is over and nothing has been settled. Two powers are left standing, Europe is administered by soldiers, and every empire on this map is about to be asked to leave.",
+    "license": "CC-BY-4.0",
     "thumbnail": "1945_thumb.png",
     "hasScripts": false
   },
@@ -44,6 +49,7 @@
     "filename": "1962.odmap",
     "author": "OpenDoctrines",
     "description": "Two blocs, one ocean between them, and missiles in Cuba. Africa is coming out from under Europe faster than anyone planned, and the Sino-Soviet split is a year old.",
+    "license": "CC-BY-4.0",
     "thumbnail": "1962_thumb.png",
     "hasScripts": false
   }

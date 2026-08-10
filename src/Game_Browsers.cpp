@@ -128,30 +128,61 @@ void Game::loadMapEntries() {
     m_mapEntries.clear();
     clearThumbCache();
 
-    // Load standard maps from maps_index.json
-    std::string indexPath = m_dataDir + "maps_index.json";
-    std::ifstream f(indexPath);
+    // Load standard maps from maps_index.json.
+    //
+    // data/STDmaps/maps_index.json, which is where tools/generate_scenario.py
+    // has always written it. This looked one directory up, in data/, so the
+    // file was never found and every launch on every platform fell through to
+    // the scan below -- which opens all six .odmap archives purely to read the
+    // metadata.json inside each. That was invisible on desktop, where they are
+    // already on disk, and is not survivable on the web, where they are now
+    // fetched on demand: the map browser is the screen a player picks a
+    // scenario FROM, so it has to list six worlds before any of them has been
+    // downloaded. See the preload exclusions in CMakeLists.txt.
+    //
+    // The field names below are the ones update_index() writes, not the ones
+    // this code used to guess at. "id" and "thumb" were never in the file, so
+    // every entry took the defaults: id "unknown" for all six, and one
+    // thumbnail path they all shared.
+    std::ifstream f(m_dataDir + "STDmaps/maps_index.json");
+    if (!f) {
+        // Where this used to look. One failed open, and an install that does
+        // keep an index here is still read rather than silently rescanned.
+        f.clear();
+        f.open(m_dataDir + "maps_index.json");
+    }
     if (f) {
         try {
             auto j = nlohmann::json::parse(f);
             for (auto& entry : j) {
                 MapEntry me;
-                me.id = entry.value("id", "unknown");
+                me.filename = entry.value("filename", std::string());
+                if (me.filename.size() < 7 ||
+                    me.filename.substr(me.filename.size() - 6) != ".odmap")
+                    continue;
+                // Derived from the filename, because the index carries no id --
+                // and derived the SAME way the scan below derives it. Two paths
+                // that disagreed about a map's id would be two paths that
+                // disagreed about which thumbnail belongs to it.
+                me.id = me.filename.substr(0, me.filename.size() - 6);
                 me.name = entry.value("name", me.id);
-                me.filename = entry.value("filename", me.id + ".odmap");
                 me.description = entry.value("description", "");
                 me.author = entry.value("author", "");
                 me.license = entry.value("license", "");
-                me.hasScripts = entry.value("scripts", false);
+                me.hasScripts = entry.value("hasScripts", false);
                 me.directory = m_dataDir + "STDmaps/";
-                me.thumbPath = m_dataDir + "STDmaps/" + entry.value("thumb", me.id + "_thumb.png");
+                me.thumbPath = me.directory +
+                               entry.value("thumbnail", me.id + "_thumb.png");
                 me.isStandard = true;
                 m_mapEntries.push_back(me);
             }
         } catch (std::exception& e) {
             std::cerr << "Failed to parse maps_index.json: " << e.what() << std::endl;
         }
-    } else {
+    }
+    // Not an else: an index that is missing, unparseable or empty all mean the
+    // same thing here, and the scan is what rescues each of them.
+    if (m_mapEntries.empty()) {
         // Fallback: scan STDmaps/ for .odmap files
         std::string stdDir = m_dataDir + "STDmaps/";
         // std::filesystem rather than dirent.h, which MSVC does not have. It
@@ -923,21 +954,54 @@ void Game::executeMapImport() {
     src.close();
     dst.close();
 
-    // Generate thumbnail via temp Python script
-    std::string pyScript = destDir + "/_gen_thumb.py";
-    std::ofstream pyf(pyScript);
-    pyf << "import zipfile, io, sys\n"
-           "from PIL import Image\n"
-           "z = zipfile.ZipFile(sys.argv[1])\n"
-           "name = 'political.png' if 'political.png' in z.namelist() else 'provinces.png'\n"
-           "d = z.read(name)\n"
-           "img = Image.open(io.BytesIO(d))\n"
-           "thumb = img.resize((160, 80), Image.NEAREST)\n"
-           "thumb.save(sys.argv[2], 'PNG')\n";
-    pyf.close();
-    std::string thumbCmd = "python3 " + pyScript + " " + odmDest + " " + destDir + "/map_thumb.png";
-    system(thumbCmd.c_str());
-    std::remove(pyScript.c_str());
+    // Browser thumbnail, straight out of the archive.
+    //
+    // This used to write a Python script into the player's data directory and
+    // run it through system(), which meant importing a map quietly required
+    // python3 and Pillow on the machine — neither of which ships with the game,
+    // so on most installs it produced nothing and the map appeared blank in the
+    // browser. It also pasted unquoted paths into a shell command, so a folder
+    // with a space in it was enough to break it.
+    //
+    // Every .odmap carries thumb.png already, drawn at thumbnail scale by
+    // whichever tool built the map. Prefer that, and only fall back to
+    // downsampling a full layer when an archive predates it.
+    {
+        auto entryBytes = [&](const char* name, std::vector<uint8_t>& out) {
+            mz_zip_archive z{};
+            if (!mz_zip_reader_init_file(&z, odmDest.c_str(), 0)) return false;
+            int idx = mz_zip_reader_locate_file(&z, name, nullptr, 0);
+            bool ok = false;
+            if (idx >= 0) {
+                size_t sz = 0;
+                if (void* p = mz_zip_reader_extract_to_heap(&z, idx, &sz, 0)) {
+                    out.assign((uint8_t*)p, (uint8_t*)p + sz);
+                    mz_free(p);
+                    ok = true;
+                }
+            }
+            mz_zip_reader_end(&z);
+            return ok;
+        };
+
+        const std::string thumbDest = destDir + "/map_thumb.png";
+        std::vector<uint8_t> bytes;
+        bool wrote = false;
+        for (const char* name : {"thumb.png", "political.png", "provinces.png"}) {
+            if (!entryBytes(name, bytes)) continue;
+            Image img = LoadImageFromMemory(".png", bytes.data(), (int)bytes.size());
+            if (!img.data) continue;
+            // Nearest-neighbour: these are flat political colours, and
+            // averaging across a border invents a country colour that is
+            // neither neighbour.
+            if (img.width != 160 || img.height != 80) ImageResizeNN(&img, 160, 80);
+            wrote = ExportImage(img, thumbDest.c_str());
+            UnloadImage(img);
+            if (wrote) break;
+        }
+        if (!wrote)
+            std::cout << "Imported map has no usable thumbnail image" << std::endl;
+    }
 
     // Check for scripts/ in the .odmap archive and detect has_scripts
     bool hasScripts = false;

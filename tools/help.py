@@ -37,6 +37,7 @@ GROUPS = [
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
+        "gen_server_raylib_stubs.py",
     ]),
     ("Training the AI", [
         "train.sh", "train_parallel.py", "ai_benchmark.sh", "ai_bench.py",
@@ -57,6 +58,8 @@ GROUPS = [
         "carve_states.py", "carve_borders.py",
         "check_map_history.py", "reanchor_map_history.py", "fetch_ohm_borders.py",
         "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
+        "rebuild_map_preview.py", "check_map_integrity.py",
+        "odmap_pack.py", "shrink_maps.py",
     ]),
     ("Licensing and provenance", [
         "gen_notices.py", "audit_flag_licenses.py", "check_data_licences.py",
@@ -74,6 +77,7 @@ GROUPS = [
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
         "sync_map_symbols.py",
         "generate_icons.py", "generate_web_favicon.py",
+        "subset_font.py", "optimize_flag_svgs.py",
     ]),
 ]
 

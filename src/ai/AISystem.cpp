@@ -1,7 +1,9 @@
 #include "AISystem.h"
 #include "../OdFile.h"
 #include "../Game.h"
+#include "../BuildCosts.h"
 #include "../GameInternals.h"
+#include "../util/WebAssets.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -18,9 +20,13 @@
 // at ENQUEUE time, exactly like the player's buttons — the turn executors
 // never charge money, so skipping the deduction here would let the AI build
 // for free.
-static const int AI_IND_COST[]  = {0, 1, 10, 15, 25, 50, 75, 100, 150, 200, 300};
-static const int AI_FORT_COST[] = {0, 20, 30, 50, 100, 200};
-static const int AI_IND_TURNS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+// The build tables used to be duplicated here, under AI_ names, identical in
+// value to the player's. Identical values were never the problem: the panel
+// multiplied each one by the research cost modifier and this file did not, so
+// a country that had finished the industry tree built at half price when a
+// player ran it and full price when the AI did -- and the economy module spent
+// every training run learning from the expensive version. One table now, and
+// buildCostMod() beside it, so the discount cannot be forgotten again.
 
 static const char* MODULE_NAMES[] = {"econ", "politics", "war", "navy"};
 
@@ -76,6 +82,12 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // model anybody is training. It loads nothing, saves nothing, and should
     // say nothing.
     if (m_modelPath.empty()) return;
+    // Web: the trained weights are excluded from the preload -- 5 MB of a
+    // package the menu waits on, for a file nothing reads until a game starts.
+    // Fetched here, which is the first moment anything wants it. A failed
+    // download is not fatal: loadModel() then finds nothing and the game plays
+    // on a fresh net, exactly as it does on a machine with no model file.
+    odEnsureAsset(m_modelPath);
     if (loadModel()) {
         printf("[AI] Model loaded from %s (%.1f MB)\n", m_modelPath.c_str(),
                serializedSize() / 1048576.0);
@@ -459,7 +471,13 @@ void AISystem::refreshStats() {
             for (const std::string& name : names) {
                 const float a = g.getMinorityAlignment(cid, name);
                 alignSum += a;
-                trendSum += g.getMinorityAlignmentTrend(cid, name);
+                // The policy dial, not the observed trend: ensureTrendBounds
+                // derives m_trendMin/m_trendMax from the option table, and the
+                // validity mask compares against them to decide whether there
+                // is anywhere left to move. The observed trend goes to zero at
+                // the drift bound, which would read as "no options left" on a
+                // country that has every option available.
+                trendSum += g.getMinorityPolicyRate(cid, name);
                 if (a < st.worstAlignment) { st.worstAlignment = a; st.worstMinority = name; }
                 for (size_t ci = 0; ci < g.m_ethnicPolicyCategories.size(); ++ci) {
                     const int oi = g.ethnicPolicyOption(cid, name, ci);
@@ -876,7 +894,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f[32] = st.maxPort >= 1 ? 1.0f : 0.0f;
     f[33] = st.maxPort >= 2 ? 1.0f : 0.0f;
     f[34] = st.maxPort >= 3 ? 1.0f : 0.0f;
-    f[35] = (c->treasury >= AI_IND_COST[1]) ? 1.0f : 0.0f;
+    f[35] = (c->treasury >= IND_COST[1]) ? 1.0f : 0.0f;
     f[36] = std::tanh((float)g.m_rebellionsThisTurnByCid[cid] / 2.0f);
     f[37] = std::tanh(m_turn / 100.0f);
     auto apIt = g.m_countryActivePolicyIndices.find(cid);
@@ -1623,8 +1641,11 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     if (!c) return;
     double t = c->treasury;
     int indCap = industryCap(cid);
-    v[1] = st.industrySum < (float)st.provinces * indCap && t >= AI_IND_COST[1];
-    v[2] = !st.frontiers.empty() && t >= AI_FORT_COST[1];
+    // Gated on the DISCOUNTED price, or the mask forbids a build the country
+    // could actually afford -- which with a finished tree is most of them.
+    const float indMod = buildCostMod(m_g->getTotalEffect("industryCostPct", cid));
+    v[1] = st.industrySum < (float)st.provinces * indCap && t >= IND_COST[1] * indMod;
+    v[2] = !st.frontiers.empty() && t >= FORT_COST[1] * indMod;
     v[3] = t >= 60; // port build/upgrade
     v[4] = st.industrySum >= 1 && t >= 2; // specialize (cost >= 1.5)
     v[5] = st.maxPort >= 2 && t >= 15;    // destroyer
@@ -1975,6 +1996,20 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     // than a string-keyed scan of every relation this country has.
     const int myWars = foreignWarCount(cid);
 
+    // A DECLARATION ALREADY IN FLIGHT IS THIS TURN'S WAR.
+    //
+    // The war module gets ACTIONS_PER_MODULE_PER_TURN goes, and a queued
+    // declaration changes no relation until the turn resolves -- so every
+    // later pick saw the same peaceful border and declared the same war again,
+    // and the count below, which reads wars FOUGHT, never noticed. One
+    // country-turn produced up to three copies of one declaration, or three
+    // separate wars past a cap that says two.
+    //
+    // Checked here rather than in exec because validWar asks this same
+    // function: a rule enforced only at exec would leave "declare war" offered
+    // to the policy all turn and refused every time.
+    if (g.hasPendingDeclaration(c->isoA3)) return false;
+
     // Already fighting two? Nothing is worth a third front.
     if (myWars >= AI_MAX_CONCURRENT_WARS) return false;
     // A country coming apart at home does not go looking for more.
@@ -2010,6 +2045,14 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             }
         }
         if (war || friendly) continue;
+        // ONE CONVERSATION AT A TIME, and this is the half of that rule the
+        // war module kept breaking. The politics module runs first and may
+        // already have offered this neighbour an alliance, a pact or a
+        // guarantee this turn; declaring war on the country we are mid-sentence
+        // with is the confusion the player sees, and it is also how a pact got
+        // broken and the war declared in the same breath, since a pending
+        // break_nap lands here too.
+        if (g.hasPendingDiplomacy(c->isoA3, ec->isoA3)) continue;
         // A NAP does not make this target off-limits, but it does mean the pact
         // has to be broken FIRST -- see the break-then-declare note where the
         // action is issued. The target is still chosen here so the AI can want
@@ -2329,10 +2372,15 @@ std::string AISystem::execEconomy(int cid, int action) {
             auto ind = g.m_provinceIndustry.find(bestPid);
             int nextLv = (ind != g.m_provinceIndustry.end() ? ind->second.level : 0) + 1;
             if (nextLv > 10) return "industry: capped";
-            float cost = (float)AI_IND_COST[nextLv];
+            // x the research discount, exactly as the province panel does.
+            // Without it a finished industry tree cut the player's price in
+            // half and left the AI paying full, which is the single largest
+            // way this opponent was handicapped against the game it plays.
+            float cost = (float)IND_COST[nextLv] *
+                         buildCostMod(g.getTotalEffect("industryCostPct", cid));
             if (c.treasury < cost) return "industry: cannot afford";
             c.treasury -= cost;
-            g.m_pendingUpgrades.push_back({bestPid, "industry", nextLv, AI_IND_TURNS[nextLv]});
+            g.m_pendingUpgrades.push_back({bestPid, "industry", nextLv, IND_TURNS[nextLv]});
             return TextFormat("industry lvl %d in prov %d ($%.0f)", nextLv, bestPid, cost);
         }
         case 2: { // fortify the most THREATENED under-fortified frontier:
@@ -2354,7 +2402,8 @@ std::string AISystem::execEconomy(int cid, int action) {
             }
             if (bestPid < 0) return "fort: no eligible frontier";
             int nextLv = bestLvl + 1;
-            float cost = (float)AI_FORT_COST[std::min(nextLv, 5)];
+            float cost = (float)FORT_COST[std::min(nextLv, 5)] *
+                         buildCostMod(g.getTotalEffect("industryCostPct", cid));
             if (c.treasury < cost) return "fort: cannot afford";
             c.treasury -= cost;
             g.m_pendingUpgrades.push_back({bestPid, "fortification", nextLv, 1});
@@ -2404,18 +2453,32 @@ std::string AISystem::execEconomy(int cid, int action) {
                 for (auto& ps : g.m_pendingSpecializations)
                     if (ps.provinceId == pid) { pending = true; break; }
                 if (pending) continue;
-                auto res = g.m_provinceResources.find(pid);
-                if (res == g.m_provinceResources.end()) continue;
-                struct { const char* n; float a; } rs[] = {
-                    {"Oil", res->second.oil.amount}, {"Gold", res->second.gold.amount},
-                    {"Metal", res->second.metal.amount}, {"Rubber", res->second.rubber.amount},
-                    {"Gemstones", res->second.gemstones.amount}};
-                for (auto& r : rs)
-                    if (r.a > bestAmt) { bestAmt = r.a; bestPid = pid; bestRes = r.n; }
+                // BY THE BOOST, WHICH IS WHAT IT EARNS. This ranked deposits by
+                // `amount` and specialised for the biggest pile of ore; income
+                // is scaled by `boost`, a related but separately jittered
+                // number (see tools/generate_resources.py). The two disagree
+                // often enough to pick the wrong province, and the player's
+                // Optimal brush reads boost -- both sides should be after the
+                // same thing.
+                const char* best = g.bestSpecializationFor(pid);
+                if (!best) continue;
+                const float boost = [&] {
+                    auto res = g.m_provinceResources.find(pid);
+                    if (res == g.m_provinceResources.end()) return 0.0f;
+                    const std::string b = best;
+                    if (b == "Oil")       return res->second.oil.boost;
+                    if (b == "Gold")      return res->second.gold.boost;
+                    if (b == "Metal")     return res->second.metal.boost;
+                    if (b == "Rubber")    return res->second.rubber.boost;
+                    return res->second.gemstones.boost;
+                }();
+                if (boost > bestAmt) { bestAmt = boost; bestPid = pid; bestRes = best; }
             }
             if (bestPid < 0 || !bestRes) return "spec: no candidate";
             auto ind = g.m_provinceIndustry.find(bestPid);
-            float cost = AI_IND_COST[std::clamp(ind->second.level, 0, 10)] * 1.5f;
+            float cost = IND_COST[std::clamp(ind->second.level, 0, IND_MAX_LEVEL)] *
+                         SPECIALIZE_COST_MULT *
+                         buildCostMod(g.getTotalEffect("industryCostPct", cid));
             if (c.treasury < cost) return "spec: cannot afford";
             c.treasury -= cost;
             g.m_pendingSpecializations.push_back({bestPid, bestRes, 3});
@@ -2626,7 +2689,12 @@ std::string AISystem::execPolitics(int cid, int action) {
             }
             if (target < 0) return TextFormat("%s: no suitable target", req);
             const Country* ec = g.m_countries.getCountry(target);
-            g.m_pendingDiplomaticActions.push_back({c->isoA3, ec->isoA3, req, 1});
+            // The loop above already skips a neighbour we have something
+            // pending with, so this refuses nothing in practice -- it is here
+            // so the cooldown and the stat are spent on overtures that were
+            // actually made.
+            if (!g.queueDiplomaticAction({c->isoA3, ec->isoA3, req, 1}))
+                return TextFormat("%s: already in talks with %s", req, ec->name.c_str());
             diploCoolDown(cid, target);
             statsFor(cid).pactsProposed++;
             return TextFormat("%s -> %s", req, ec->name.c_str());
@@ -2772,6 +2840,22 @@ std::string AISystem::execWar(int cid, int action) {
         for (auto& u : it->second) if (u.countryId == owner) n += u.count;
         return n;
     };
+    // EVERYTHING THAT WILL SHOOT BACK, which is what the resolver now fights.
+    //
+    // The assault estimate below used to weigh only the province OWNER's
+    // troops, because that was all the old resolver fought. resolveAssault
+    // counts every stack hostile to the attacker, so an ally of the defender
+    // standing on the same province is real defence -- and an estimate that
+    // cannot see it sends the army into a battle it has already lost on paper.
+    auto hostileGarrisonAt = [&](int pid) -> int {
+        auto it = g.m_provinceArmies.find(pid);
+        if (it == g.m_provinceArmies.end()) return 0;
+        int n = 0;
+        for (auto& u : it->second)
+            if (u.count > 0 && u.countryId > 0 && u.countryId != cid &&
+                !g.alliedCids(cid, u.countryId)) n += u.count;
+        return n;
+    };
     auto atWarWith = [&](int otherCid) -> bool {
         const Country* oc = g.m_countries.getCountry(otherCid);
         if (!oc || relIt == g.m_relations.end()) return false;
@@ -2827,7 +2911,13 @@ std::string AISystem::execWar(int cid, int action) {
             int count = (int)std::min((long long)INT32_MAX,
                                       std::min(maxRecruit, budgetCount));
             if (count < 1000) return "recruit: too poor/small";
-            float cost = std::max(1.0f, count / 10000.0f);
+            // conscriptionCostPct, not "armyCostPct": the latter is not a
+            // real effect name, so asking for it returns zero and silently
+            // means no discount at all. The $1 floor applies after the
+            // modifier, as it does in the panel.
+            float cost = (count / 10000.0f) *
+                         conscriptionCostMod(g.getTotalEffect("conscriptionCostPct", cid));
+            if (cost < 1.0f) cost = 1.0f;
             c.treasury -= cost;
             g.m_pendingRecruitments.push_back({pid, count, 1});
             return TextFormat("recruit %d in prov %d ($%.0f)", count, pid, cost);
@@ -2887,7 +2977,7 @@ std::string AISystem::execWar(int cid, int action) {
                     int nOwner = nid < (int)g.m_provinceCountryLookup.size()
                                      ? g.m_provinceCountryLookup[nid] : 0;
                     if (nOwner != fr.enemyCid) continue;
-                    int defG = garrisonOf(nid, nOwner);
+                    int defG = hostileGarrisonAt(nid);
                     auto ind = g.m_provinceIndustry.find(nid);
                     float fort = ind != g.m_provinceIndustry.end() ? (float)ind->second.fortification : 0.0f;
                     float atk = myG * 0.75f * atkMod;
@@ -2929,7 +3019,7 @@ std::string AISystem::execWar(int cid, int action) {
                     int nOwner = nid < (int)g.m_provinceCountryLookup.size()
                                      ? g.m_provinceCountryLookup[nid] : 0;
                     if (nOwner <= 0 || nOwner == cid || !atWarWith(nOwner)) continue;
-                    int defG = garrisonOf(nid, nOwner);
+                    int defG = hostileGarrisonAt(nid);
                     auto ind = g.m_provinceIndustry.find(nid);
                     float fort = ind != g.m_provinceIndustry.end() ? (float)ind->second.fortification : 0.0f;
                     float atk = myG * 0.75f * atkMod;
@@ -3063,7 +3153,17 @@ std::string AISystem::execWar(int cid, int action) {
                 float need = 0.75f * ATTACK_SAFETY / ch.margin;   // of the ORIGINAL garrison
                 need = std::clamp(need, 0.10f, ATTACK_MAX_COMMIT);
                 if (need > ATTACK_MAX_COMMIT - already) continue;  // not enough left to win
-                const int pct = (int)std::lround(100.0f * need / std::max(0.01f, 1.0f - already));
+                // `need` is a share of the ORIGINAL garrison and an order's pct
+                // now means exactly that, so it goes straight across.
+                //
+                // It used to be divided by what previous prongs had left
+                // behind, because the resolver took each share off a shrinking
+                // pool -- the same arithmetic that made two 50% orders move
+                // 75% of an army. The resolver was the thing that was wrong;
+                // see processArmyMovement. Compensating for it here also meant
+                // the AI and the player's move panel meant different things by
+                // the same number.
+                const int pct = (int)std::lround(100.0f * need);
                 if (pct <= 0 || pct > 100) continue;
                 g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
                 committed[ch.fromPid] = already + need;
@@ -3113,7 +3213,8 @@ std::string AISystem::execWar(int cid, int action) {
             // off-limits outright is what froze the late game, because every
             // border ended up pacted and nothing could ever be declared again.
             if (wt.napBlocked) {
-                g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "break_nap", 1});
+                if (!g.queueDiplomaticAction({c.isoA3, ec->isoA3, "break_nap", 1}))
+                    return std::string("war: already in talks with ") + ec->name;
                 return std::string("break NAP with ") + ec->name +
                        (wt.naval ? " (naval war next turn)" : " (war next turn)");
             }
@@ -3123,10 +3224,20 @@ std::string AISystem::execWar(int cid, int action) {
             // rather than when the declaration resolves next turn: this is the
             // state the country decided from.
             {
+                // Asked BEFORE the goal is chosen, not after. findWarTarget has
+                // already ruled out a target we are mid-sentence with and a
+                // country that has declared once this turn, so this only ever
+                // fires as a backstop -- but chooseStatedWarGoal draws from the
+                // RNG and moves the honesty counters, and a declaration that
+                // never happens must cost neither. (The RNG stream is replayed
+                // by determinism_check.sh; a stray draw is a desync.)
+                if (g.hasPendingDiplomacy(c.isoA3, ec->isoA3) ||
+                    g.hasPendingDeclaration(c.isoA3))
+                    return std::string("war: already in talks with ") + ec->name;
                 PendingDiplomaticAction pda{c.isoA3, ec->isoA3, "declare_war", 1};
                 const int truth = trueWarGoal(cid, wt.cid);
                 pda.statedGoal = chooseStatedWarGoal(cid, wt.cid, truth);
-                g.m_pendingDiplomaticActions.push_back(std::move(pda));
+                g.queueDiplomaticAction(std::move(pda));
             }
             statsFor(cid).warsDeclared++;
             m_declaredUnprovoked = !wt.claimed;
@@ -3298,7 +3409,11 @@ std::string AISystem::execWar(int cid, int action) {
                 posture = "white peace"; // evenly matched — no demands
             }
 
-            g.m_pendingDiplomaticActions.push_back({c.isoA3, ec->isoA3, "request_ceasefire", 1});
+            // Same reasoning as the pact proposals: the target loop already
+            // skipped anyone we have an offer out to, and the terms below, the
+            // cooldown and the stat all belong to an offer that was sent.
+            if (!g.queueDiplomaticAction({c.isoA3, ec->isoA3, "request_ceasefire", 1}))
+                return TextFormat("ceasefire: already in talks with %s", ec->name.c_str());
             if (!terms.ourProvs.empty() || !terms.theirProvs.empty() ||
                 terms.ourMoney || terms.theirMoney ||
                 !terms.ourDropClaims.empty() || !terms.theirDropClaims.empty())
@@ -3735,17 +3850,26 @@ void AISystem::amphibiousReflex(int cid) {
         return true;
     };
 
-    // Landing range must exceed the per-turn step, or a fleet can straddle the
-    // gap: 18 degrees of travel against a 12-degree landing window lets a ship
-    // pass from "too far" to "too far on the other side" without ever being
-    // able to unload. Closing speed is reduced near the target for the same
-    // reason — the last approach is made in small steps.
-    const double LAND_RANGE = 12.0;
-    const double FULL_STEP  = 18.0;
+    // THE HULL'S OWN RANGE, not a constant. This reflex kept the flat 18
+    // degrees the navy module was moved off: 18 degrees is 410 px on the
+    // shipped maps against a player boat's 200, so an AI transport ordered
+    // twice the distance a human's could and its 12-degree landing window let
+    // it unload from 273 px offshore where the player must be within 200. The
+    // resolver clamped the movement, which hid the first half of it and left
+    // the second half working -- the player saw a fleet order stretching
+    // across an ocean and troops coming ashore from further out than they
+    // could manage themselves.
+    //
+    // Landing range must still exceed the per-turn step, or a fleet straddles
+    // the gap -- passing from "too far" to "too far on the other side" without
+    // ever being able to unload. It IS the step now, so that holds by
+    // construction, and the last approach is still made in small steps.
 
     for (size_t i = 0; i < g.m_ships.size(); ++i) {
         auto& s = g.m_ships[i];
         if (s.countryId != cid || s.crew <= 0) continue;
+        const double FULL_STEP  = g.shipMaxRangeDeg(s);
+        const double LAND_RANGE = FULL_STEP;
         bool busy = false;
         for (auto& dd : g.m_pendingShipDisembarks)
             if (dd.shipIndex == (int)i) { busy = true; break; }

@@ -60,10 +60,12 @@ in the map editor and export a new base; nothing here assumes 1,631.
 
 WHAT THE GAME ACTUALLY READS
 
-political.png is NOT the in-game political layer. Game_Loading.cpp builds that
-from provinces.png plus the colours in countries.json and computes the border
-gradient itself at load. political.png is only the map browser's preview, so a
-flat recolour is correct and cheap.
+The political layer is NOT stored. Game_Loading.cpp builds it from
+provinces.png plus the colours in countries.json and computes the border
+gradient itself at load, and MapEditor::computePoliticalGradient() does the
+same for the editor. An archive carries only what cannot be recomputed, which
+is why a scenario package is around a megabyte rather than six. thumb.png IS
+stored -- it is the map browser's preview, needed before any of that runs.
 
 USAGE
 
@@ -1150,70 +1152,6 @@ def build_thumbnail(base, owner, countries, cid_of, width=512):
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB")
 
 
-def build_political_png(base, owner, countries, cid_of):
-    """Ownership recolour with the border gradient the game draws at load.
-
-    A flat recolour is what the game *reads* -- it rebuilds the political layer
-    from provinces.png and countries.json regardless. But political.png is what
-    the map browser and the map editor show, and the base map's has the gradient
-    baked in (9,630 distinct colours against a flat map's 52). A preview that
-    does not look like the game is a preview that misleads, and at thumbnail
-    size the gradient is most of what distinguishes one era from another.
-
-    So this reproduces generatePoliticalTexture() exactly: the same distance
-    field, the same blend toward (40,40,40), the same darkened sea, and the same
-    1px border pass at a third brightness.
-    """
-    import numpy as np
-    from PIL import Image
-    import io as _io
-    img = Image.open(_io.BytesIO(base["_zip"].read("provinces.png"))).convert("RGB")
-    arr = np.array(img, dtype=np.uint8)
-    h, w, _ = arr.shape
-    ids = (arr[:, :, 0].astype(np.uint32) << 16 |
-           arr[:, :, 1].astype(np.uint32) << 8 |
-           arr[:, :, 2].astype(np.uint32))
-
-    # cid per pixel, 0 for sea -- the same array the game builds.
-    cid_lut = np.zeros(int(ids.max()) + 1, dtype=np.int32)
-    for pid, iso in owner.items():
-        if pid <= ids.max():
-            cid_lut[pid] = cid_of.get(iso, UNC_CID)
-    cid_arr = cid_lut[ids]
-
-    dist = border_distance(cid_arr)
-    t = np.minimum(1.0, dist / 60.0)
-
-    color_lut = np.zeros((max(int(cid_arr.max()), max(int(k) for k in countries)) + 1, 3),
-                         dtype=np.float32)
-    for k, v in countries.items():
-        color_lut[int(k)] = hex_to_rgb(v["color"])
-    base_rgb = color_lut[cid_arr]
-
-    # blendColor(): base * (1 - t*0.4) + 40 * t * 0.3
-    out = base_rgb * (1.0 - t[..., None] * 0.4) + 40.0 * t[..., None] * 0.3
-
-    # Sea, darkening away from the coast, exactly as the game does it.
-    inv = (1.0 - t)
-    sea_rgb = np.stack([8 + (inv * 16).astype(np.uint8),
-                        10 + (inv * 22).astype(np.uint8),
-                        15 + (inv * 38).astype(np.uint8)], axis=-1).astype(np.float32)
-    is_sea = cid_arr <= 0
-    out[is_sea] = sea_rgb[is_sea]
-
-    out = np.clip(out, 0, 255).astype(np.uint8)
-
-    # 1px dark border at country boundaries, land only.
-    edge = np.zeros(cid_arr.shape, dtype=bool)
-    edge[:-1, :] |= cid_arr[:-1, :] != cid_arr[1:, :]
-    edge[1:, :] |= cid_arr[:-1, :] != cid_arr[1:, :]
-    edge[:, :-1] |= cid_arr[:, :-1] != cid_arr[:, 1:]
-    edge[:, 1:] |= cid_arr[:, :-1] != cid_arr[:, 1:]
-    edge &= ~is_sea
-    out[edge] = out[edge] // 3
-
-    return Image.fromarray(out, "RGB")
-
 
 # ── packaging ───────────────────────────────────────────────────────
 def province_id_array(base, remap=None):
@@ -1244,7 +1182,7 @@ def encode_provinces_png(ids):
     return buf.getvalue()
 
 
-def write_odmap(path, base, scen, files, political_img, thumb, provinces_png=None):
+def write_odmap(path, base, scen, files, thumb, provinces_png=None):
     import io as _io
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         info = zipfile.ZipInfo("scripts/")
@@ -1265,10 +1203,10 @@ def write_odmap(path, base, scen, files, political_img, thumb, provinces_png=Non
         for name, payload in files.items():
             zf.writestr(name, json.dumps(payload, separators=(",", ":")))
 
-        buf = _io.BytesIO()
-        political_img.save(buf, format="PNG", optimize=True)
-        zf.writestr("political.png", buf.getvalue())
-
+        # No political.png -- see odmap_pack.DERIVED. Nothing read it: the game
+        # rebuilds the political layer from provinces.png at load and the editor
+        # recomputes the same picture with computePoliticalGradient(). At 4.7 MB
+        # it was four fifths of a scenario package.
         tbuf = _io.BytesIO()
         thumb.save(tbuf, format="PNG", optimize=True)
         zf.writestr("thumb.png", tbuf.getvalue())
@@ -1329,6 +1267,10 @@ def update_index(scen, filename):
         "filename": filename,
         "author": scen.get("author", "OpenDoctrines"),
         "description": scen["description"],
+        # The same licence metadata.json carries. The map browser reads this
+        # file rather than opening the archives, so a field only in the archive
+        # is a field the browser cannot show.
+        "license": "CC-BY-4.0",
         "thumbnail": scen["id"] + "_thumb.png",
         "hasScripts": False,
     })
@@ -1443,11 +1385,10 @@ def generate(scenario_id, base_path):
         files["minorities.json"] = minorities
         files["minority_colors.json"] = minority_colors
 
-    political = build_political_png(base, base_owner, countries, cid_of)
     thumb = build_thumbnail(base, base_owner, countries, cid_of)
     out_name = scen["id"] + ".odmap"
     out_path = os.path.join(STDMAPS, out_name)
-    write_odmap(out_path, base, scen, files, political, thumb,
+    write_odmap(out_path, base, scen, files, thumb,
                 encode_provinces_png(province_ids) if remap else None)
     thumb.save(os.path.join(STDMAPS, scen["id"] + "_thumb.png"), optimize=True)
     update_index(scen, out_name)

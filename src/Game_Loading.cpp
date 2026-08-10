@@ -6,6 +6,7 @@
 #include "ai/AISystem.h"
 #include "renderer/FlagRenderer.h"
 #include "OdFile.h"
+#include "util/WebAssets.h"
 #include "miniz.h"
 #include "miniz_zip.h"
 #include "raymath.h"
@@ -159,11 +160,30 @@ void Game::updateLoading() {
         }
         case LOAD_ODM: {
             setLoadingProgress(0.04f, "Loading map data...");
-bool odmOk = loadFromODM(m_loadingOdmPath);
-    if (!odmOk) {
-        std::string dir = m_loadingOdmPath.substr(0, m_loadingOdmPath.find_last_of('/') + 1);
-        if (dir.empty()) dir = m_dataDir;
-        odmOk = loadFromFiles();
+            // THE ONE PHASE WITH NOWHERE TO PUT A PUMP. Every other heavy phase
+            // is a loop over the raster or the country list, so it can yield
+            // from inside; this one is a zip walk and then two stb_image
+            // decodes of an 8192x4096 PNG -- single opaque calls, seconds each,
+            // with no iteration of ours to hang a pump on. On the web that made
+            // it the one part of loading that still looped a fragment after
+            // every other phase had been fixed.
+            //
+            // So it is bracketed instead: silence for the decode, music for the
+            // rest of the load. See Audio::BlockingCall.
+            //
+            // The scope ENDS ABOVE the failure branch, and that placement is
+            // the point: the branch returns, and a suspend still held at that
+            // return would outlive the load and silence the rest of the
+            // session.
+            bool odmOk;
+    {
+        Audio::BlockingCall quiet;
+        odmOk = loadFromODM(m_loadingOdmPath);
+        if (!odmOk) {
+            std::string dir = m_loadingOdmPath.substr(0, m_loadingOdmPath.find_last_of('/') + 1);
+            if (dir.empty()) dir = m_dataDir;
+            odmOk = loadFromFiles();
+        }
     }
     if (!odmOk) {
         // The one that a player actually hits. loadFromODM() failing means the
@@ -238,6 +258,14 @@ bool odmOk = loadFromODM(m_loadingOdmPath);
                 break;
             }
             if (!m_provinceResources.empty() || m_loadingResIdx >= 5) {
+                // Two more full-map uploads, adjacent, and neither has a loop
+                // to pump from -- but measured at about 200 ms together, which
+                // is four audio periods. Too short to be worth suspending the
+                // device: the stop and restart of the music would be more
+                // noticeable than the few repeated blocks it prevents. Top the
+                // buffer up instead. Same reasoning as computeBorderTexture().
+                Audio::get().pump();
+
                 Image resImg{};
                 resImg.data = m_resourceBuffers[0].data();
                 resImg.width = w;
@@ -668,6 +696,9 @@ void Game::buildPopulationLookups() {
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
 
     for (int i = 0; i < totalPixels; ++i) {
+        // Once a raster row's worth. Same reason as the scans in MapRenderer:
+        // this is a full-map pass and nothing refills the music while it runs.
+        if ((i & 8191) == 0) Audio::get().pump();
         Color src = srcPixels[i];
         int pid = Province::colorToId(src.r, src.g, src.b);
         int cid = 0;
@@ -704,6 +735,14 @@ void Game::buildPopulationLookups() {
         };
         // First pass: mark pixels adjacent to a different country or land/sea boundary
         for (int y = 0; y < h; ++y) {
+            // MEASURED: this field is the last unpumped stall of a web load.
+            // It sits between the per-pixel loop above, which yields, and the
+            // texture uploads below, which are bracketed -- so it was the one
+            // stretch left where the browser looped a fragment, about 0.8 s of
+            // it. Attributing it took a timeline of the audio callback against
+            // the suspend windows either side; it is not obvious from reading,
+            // because nothing here looks as expensive as a raster scan.
+            Audio::get().pump();
             for (int x = 0; x < w; ++x) {
                 int i = y * w + x;
                 int cid = m_pixelCountryArray[i];
@@ -724,6 +763,10 @@ void Game::buildPopulationLookups() {
         // BFS outward using 8 neighbors
         size_t qpos = 0;
         while (qpos < queue.size()) {
+            // The queue is seeded with every border pixel and grows to cover
+            // the interiors, so this runs far longer than the seeding pass
+            // above. Same reason, same yield.
+            if ((qpos & 8191) == 0) Audio::get().pump();
             QE cur = queue[qpos++];
             if (cur.dist >= 60) continue;
             int x = cur.idx % w;
@@ -738,31 +781,40 @@ void Game::buildPopulationLookups() {
         }
     }
 
-    // Create political texture from the pixel buffer
-    Image polImg{};
-    polImg.data = m_politicalPixelBuffer.data();
-    polImg.width = w;
-    polImg.height = h;
-    polImg.mipmaps = 1;
-    polImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-    Texture2D polTex = LoadTextureFromImage(polImg);
-    SetTextureFilter(polTex, TEXTURE_FILTER_BILINEAR);
-    m_renderer->setPoliticalTexture(polTex);
-    m_politicalTex = polTex;
+    // ONE guard around all three, not one each. Two full-map uploads and a
+    // third pass inside generatePoliticalTexture() run back to back with
+    // nothing between them, and the bracket nests -- so this is a single
+    // suspend and resume rather than three, which is one gap in the music
+    // instead of three.
+    {
+        Audio::BlockingCall quiet;
 
-    // Create initial population texture from the base buffer
-    Image initImg{};
-    initImg.data = m_populationPixelBuffer.data();
-    initImg.width = w;
-    initImg.height = h;
-    initImg.mipmaps = 1;
-    initImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-    Texture2D tex = LoadTextureFromImage(initImg);
-    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-    m_renderer->setPopulationTexture(tex);
+        // Create political texture from the pixel buffer
+        Image polImg{};
+        polImg.data = m_politicalPixelBuffer.data();
+        polImg.width = w;
+        polImg.height = h;
+        polImg.mipmaps = 1;
+        polImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        Texture2D polTex = LoadTextureFromImage(polImg);
+        SetTextureFilter(polTex, TEXTURE_FILTER_BILINEAR);
+        m_renderer->setPoliticalTexture(polTex);
+        m_politicalTex = polTex;
 
-    // Apply gradient to political texture immediately (not just after turn processing)
-    generatePoliticalTexture();
+        // Create initial population texture from the base buffer
+        Image initImg{};
+        initImg.data = m_populationPixelBuffer.data();
+        initImg.width = w;
+        initImg.height = h;
+        initImg.mipmaps = 1;
+        initImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        Texture2D tex = LoadTextureFromImage(initImg);
+        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+        m_renderer->setPopulationTexture(tex);
+
+        // Apply gradient to political texture immediately (not just after turn processing)
+        generatePoliticalTexture();
+    }
 }
 
 // The inward shading every country carries is a distance field: 0 on a border
@@ -788,7 +840,12 @@ void Game::rebuildGradientField() {
         m_gradientDist[idx] = d;
         queue.push_back({idx, d});
     };
+    // Yielded exactly like the copy of this field inside
+    // buildPopulationLookups(), and for a reason that applies more often: that
+    // one runs once per load, this runs once per TURN, so an unyielded pass
+    // here is a fragment of music looping every time a border moves.
     for (int y = 0; y < h2; ++y) {
+        Audio::get().pump();
         for (int x = 0; x < w2; ++x) {
             int i = y * w2 + x;
             int cid = m_pixelCountryArray[i];
@@ -803,6 +860,7 @@ void Game::rebuildGradientField() {
     }
     size_t qpos = 0;
     while (qpos < queue.size()) {
+        if ((qpos & 8191) == 0) Audio::get().pump();
         QE2 cur = queue[qpos++];
         if (cur.dist >= 60) continue;
         int x = cur.idx % w2, y = cur.idx / w2;
@@ -1061,6 +1119,9 @@ void Game::generateResourceTextureFor(int resIdx) {
 
     const auto* srcPixels = (const Color*)m_provinces.getImage().data;
     for (int idx = 0; idx < w * h; ++idx) {
+        // Five of these run back to back, one per resource, each a full-map
+        // pass. Unpumped they were five separate stalls in one loading phase.
+        if ((idx & 8191) == 0) Audio::get().pump();
         auto& sp = srcPixels[idx];
         if (sp.r == 0 && sp.g == 0 && sp.b == 0) {
             buf[idx] = Color{0, 0, 0, 255};
@@ -1250,9 +1311,14 @@ void Game::computeCountryLabels() {
         // neighbours, and until it finishes nothing else on this thread runs.
         // On the web that includes the browser's audio callback, so the music
         // repeats the last fraction of a second it was given for as long as
-        // this takes. Once a row is often enough; pump() rate-limits itself to
-        // about one turn per frame, so the scan pays almost nothing for it.
-        if ((y & 63) == 0) Audio::get().pump();
+        // this takes.
+        //
+        // ONCE A ROW, not once every 64. At this raster size 64 rows is longer
+        // than a Web Audio period, so the old interval let the buffer run dry
+        // between yields and the fragment looped anyway -- instrumentation that
+        // was present and too sparse to work. pump() now rate-limits itself
+        // before doing anything, so a call that is not due is a clock read.
+        Audio::get().pump();
 
         for (int x = 0; x < w; ++x) {
             int idx = (y * w + x) * 4;
@@ -1581,6 +1647,18 @@ bool Game::loadFromFiles() {
 }
 
 bool Game::loadFromODM(const std::string& odmPath) {
+    // On the web the scenario archives are not in the preload -- they are the
+    // bulk of it, and none of them is touched until a player has picked one, so
+    // preloading all six meant waiting for five worlds nobody asked for before
+    // the menu could draw. This fetches the chosen one, blocking, with the
+    // loading screen already up. See src/util/WebAssets.h.
+    //
+    // Here rather than in the loading state machine because loadMapPack() and
+    // the multiplayer client reach this function without going through it, and
+    // a map that downloads on one path and 404s on another is worse than
+    // either.
+    odEnsureAsset(odmPath);
+
     // Through odFile, not ifstream: on Android the .odmap lives inside the APK
     // and only AAssetManager can reach it. See OdFile.h.
     const std::string zipBytes = odFile::readAll(odmPath);
@@ -2122,7 +2200,11 @@ bool Game::loadGameDataStep1() {
     if (json.empty()) return true;
     try {
         auto resJson = nlohmann::json::parse(json);
+        int pumpTick = 0;
         for (auto& [provStr, res] : resJson.items()) {
+            // Sixteen hundred provinces, each with five resource objects. One
+            // parse is nothing; the loop over all of them is not.
+            if ((++pumpTick & 63) == 0) Audio::get().pump();
             int pid = std::stoi(provStr);
             ProvinceResources pr;
             // Tolerate missing keys (older/procedural maps omit absent resources)
@@ -2170,6 +2252,13 @@ bool Game::loadGameDataStep2() {
     printf("[LOAD] loadGameDataStep2: m_dataDir='%s'\n", m_dataDir.c_str());
     // Load from in-memory .odmap data only (no filesystem fallback for per-map data)
     auto loadJson = [&](const std::string& name) -> std::string {
+        // Every section of this phase comes through here exactly once, which
+        // makes it the one place that sits between two parses. Measured on the
+        // web, this phase was the last unpumped stall of a load -- about a
+        // second, after everything else had been fixed. Putting the yield in
+        // the accessor rather than between the blocks means a section added
+        // later is covered without anyone remembering to.
+        Audio::get().pump();
         auto it = m_odmJsonData.find(name);
         if (it != m_odmJsonData.end()) return it->second;
         return {};
@@ -2265,7 +2354,16 @@ bool Game::loadGameDataStep2() {
                         // Units may belong to a foreign nation; fall back to the owner
                         au.countryId = u.value("country_id", ownerCid);
                         au.count = u["count"].get<int>();
-                        vec.push_back(au);
+                        if (au.count <= 0) continue;
+                        // ONE STACK PER COUNTRY PER PROVINCE. A move order takes
+                        // its share of the first stack it finds with the right
+                        // owner, so a second one is an army nothing can order
+                        // about. Saves written before that was enforced can
+                        // carry them, as can a hand-edited scenario.
+                        bool merged = false;
+                        for (auto& have : vec)
+                            if (have.countryId == au.countryId) { have.count += au.count; merged = true; break; }
+                        if (!merged) vec.push_back(au);
                     }
                     if (!vec.empty()) m_provinceArmies[pid] = std::move(vec);
                 }
@@ -2445,6 +2543,12 @@ bool Game::loadMapPack(const std::string& odmPath) {
             }
             std::cout << "done" << std::endl;
         }
+        // The synchronous reload path's copy of the pair in
+        // LOAD_GEN_RESOURCE_TEXTURES, and it gets the same treatment: the same
+        // two uploads take the same ~200 ms, so a suspend is not worth it here
+        // either.
+        Audio::get().pump();
+
         Image resImg{};
         resImg.data = m_resourceBuffers[0].data();
         resImg.width = w;
@@ -2730,6 +2834,9 @@ void Game::rebuildOwnershipPixels() {
     const auto* srcPixels = (const Color*)provImg.data;
     for (auto& vec : m_countryPixels) vec.clear();
     for (int i = 0; i < totalPixels; ++i) {
+        // Once a raster row's worth. Same reason as the scans in MapRenderer:
+        // this is a full-map pass and nothing refills the music while it runs.
+        if ((i & 8191) == 0) Audio::get().pump();
         Color src = srcPixels[i];
         int pid = Province::colorToId(src.r, src.g, src.b);
         int cid = 0;
@@ -3095,6 +3202,11 @@ void Game::rebuildFlags() {
     m_countryFlags.clear();
 
     for (auto& [id, c] : m_countries.getAll()) {
+        // Two hundred-odd countries, each a rendered 256x128 flag. Individually
+        // quick, collectively one of the longer phases, and it is the LAST
+        // thing before the map appears -- so an unpumped stall here is the one
+        // a player hears just as they expect the game to start.
+        Audio::get().pump();
         const FlagPattern& fp = m_config.showActualFlags ? c.flagActual : c.flagCensored;
         Texture2D tex = FlagRenderer::render(fp, 256, 128, m_dataDir, &m_odmJsonData);
         m_countryFlags[id] = tex;
