@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "util/WebPersist.h"
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -161,6 +162,12 @@ bool Config::load(const std::string& path) {
 }
 
 bool Config::save(const std::string& path) {
+    // Settings are player state, and on the web they live in a filesystem that
+    // dies with the tab. Marked here rather than at the nineteen call sites
+    // that save the config -- this is the one place all of them go through.
+    // No-op off the web. See util/WebPersist.h.
+    odPersistMark();
+
     std::ofstream file(path);
     if (!file) return false;
     file << "{\n";

@@ -1,4 +1,5 @@
 #include "SaveManager.h"
+#include "util/WebPersist.h"
 #include "miniz.h"
 #include "miniz_zip.h"
 #include "json.hpp"
@@ -200,6 +201,9 @@ static std::vector<uint8_t> readFile(const std::string& path) {
 bool SaveManager::createSave(const std::string& odsvPath,
                               const std::string& odmData,
                               const SaveMetadata& meta) {
+    // A save was written. On the web that write went to a filesystem that
+    // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
+    odPersistMark();
     mz_zip_archive zip{};
     if (!mz_zip_writer_init_file(&zip, odsvPath.c_str(), 0))
         return false;
@@ -257,6 +261,9 @@ mz_zip_writer_finalize_archive(&zip);
 bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta,
                              const std::string* stateJson,
                              const std::vector<std::pair<std::string, std::string>>* extraFiles) {
+    // A save was written. On the web that write went to a filesystem that
+    // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
+    odPersistMark();
     std::vector<uint8_t> zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
@@ -395,6 +402,9 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
 // ─── Update last_played ──────────────────────────────────
 
 bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetadata* updatedMeta) {
+    // A save was written. On the web that write went to a filesystem that
+    // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
+    odPersistMark();
     auto meta = updatedMeta ? *updatedMeta : readMetadata(odsvPath);
     if (meta.saveName.empty()) return false;
 
@@ -707,6 +717,9 @@ std::string SaveManager::estimateGrowth(const TurnDelta& avgDelta, int turns) {
 }
 
 bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCountryId) {
+    // A save was written. On the web that write went to a filesystem that
+    // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
+    odPersistMark();
     auto meta = readMetadata(odsvPath);
     if (meta.saveName.empty()) return false;
     meta.playerCountryId = playerCountryId;
@@ -802,6 +815,9 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
 
 bool SaveManager::writeState(const std::string& odsvPath, const std::string& stateJson,
                               const std::vector<std::pair<std::string, std::string>>& extraFiles) {
+    // A save was written. On the web that write went to a filesystem that
+    // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
+    odPersistMark();
     auto zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
