@@ -89,6 +89,26 @@ void Game::initMenuBackground() {
             lsImg = LoadImage(landSeaPath.c_str());
             lsImgOwned = true;
         }
+        // Fallback: a standalone copy of the same image, if one shipped.
+        //
+        // This exists for the web build, and it is the difference between a
+        // menu that draws in a second and one that waits on a scenario. The
+        // fallback below opens data/STDmaps/map.odmap purely to pull one PNG
+        // out of it, and on the web that archive is no longer in the preload --
+        // so reaching it would mean downloading a whole world to draw a
+        // background. The web build stages this file instead (see the
+        // ARCHIVE_EXTRACT step in CMakeLists.txt), extracted from that same
+        // archive at build time, so the picture is identical and costs 150 KB
+        // rather than a scenario. Absent everywhere else, where the archive is
+        // already on disk and the fallback below is free.
+        if (lsImg.data == nullptr) {
+            std::string menuBgPath = m_dataDir + "menu_bg.png";
+            struct stat mbSt;
+            if (stat(menuBgPath.c_str(), &mbSt) == 0) {
+                lsImg = LoadImage(menuBgPath.c_str());
+                lsImgOwned = true;
+            }
+        }
         // Fallback: try loading land_sea.png from STDmaps/.odmap directly
         if (lsImg.data == nullptr) {
             std::string odmPath = m_dataDir + "STDmaps/map.odmap";
@@ -410,10 +430,17 @@ void Game::updateCommunityMenu() {
     Rectangle backBtn = {(float)(centerX - 80), (float)(startY + btnH * 2 + gap + 30), 160, (float)backBtnH};
 
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        // OpenURL, not system("open ..."). `open` is a macOS command: on Windows
+        // the shell wants `start`, on Linux `xdg-open`, and under Emscripten
+        // system() is a stub that returns without doing anything at all. So this
+        // menu -- the only route from the game to the community -- worked on the
+        // one platform it was written on and silently did nothing on the three
+        // that account for almost every player. raylib's OpenURL covers all four,
+        // and is what every other link in this codebase already uses.
         if (CheckCollisionPointRec(mouse, discordBtn)) {
-            system("open https://discord.gg/wqS65jzVv5");
+            OpenURL("https://discord.gg/wqS65jzVv5");
         } else if (CheckCollisionPointRec(mouse, githubBtn)) {
-            system("open https://github.com/Pr1nted/Open-Doctrines");
+            OpenURL("https://github.com/Pr1nted/Open-Doctrines");
         } else if (CheckCollisionPointRec(mouse, backBtn)) {
             Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
@@ -540,10 +567,45 @@ void Game::drawMainMenu() {
     // ── Background: scrolling landmass silhouette ──
     drawMenuBackground();
 
+    // ── Where the buttons are, decided before anything above them is drawn ──
+    //
+    // The header used to be drawn at fixed y -- title 80, subtitle 150, rule
+    // 180 -- while the button block is centred on the window. Those two agree
+    // only on a tall window. The block is 9 items of 50px, so its top sits at
+    // h/2 - 195, and anything shorter than about 790px puts the first menu item
+    // through "A Grand Strategy Game": 720p windows, laptops with browser
+    // chrome, and the itch.io page, whose iframe is wider than it is tall. It
+    // is the first thing anybody sees of this game and it has been overlapping
+    // itself in the store embed.
+    //
+    // So the header is laid out in the room the buttons leave, and gives that
+    // room up in the order it can most afford to: position first, then title
+    // size, then the subtitle, then the rule.
+    const int startY = m_screenH / 2 - (MAIN_MENU_COUNT * itemH) / 2 + 30;
+    const int headerAvail = startY - 16;        // 16px of air above item one
+
+    int titleSize = 60;
+    const int subSize = 20;
+    const bool showSub  = headerAvail >= 130;
+    const bool showRule = headerAvail >= 150;
+
+    auto blockHeight = [&] {
+        return titleSize + (showSub ? 8 + subSize : 0) + (showRule ? 10 + 2 : 0);
+    };
+    // 26 is the floor: a title too small to read is worse than a tight one.
+    while (titleSize > 26 && 10 + blockHeight() > headerAvail) titleSize -= 2;
+
+    // min(80, ...) keeps the original position wherever there is room for it,
+    // so nothing moves on a window that was never broken.
+    const int titleY = std::min(80, std::max(10, headerAvail - blockHeight()));
+    const int subY   = titleY + titleSize + 8;
+    const int ruleY  = subY + (showSub ? subSize + 10 : 0);
+
     // Dark gradient behind title (top area)
-    DrawRectangleGradientV(0, 0, m_screenW, 200, fade({0, 0, 0, 200}), {0, 0, 0, 0});
+    DrawRectangleGradientV(0, 0, m_screenW, std::max(200, ruleY + 20),
+                           fade({0, 0, 0, 200}), {0, 0, 0, 0});
     // Dark gradient behind buttons (center area)
-    int btnStartY = m_screenH / 2 - (MAIN_MENU_COUNT * itemH) / 2 + 30 - 20;
+    int btnStartY = startY - 20;
     int btnEndY = btnStartY + MAIN_MENU_COUNT * itemH + 40;
     DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, fade({0, 0, 0, 180}), {0, 0, 0, 0});
     DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, {0, 0, 0, 0}, fade({0, 0, 0, 180}));
@@ -552,23 +614,24 @@ void Game::drawMainMenu() {
 
     // Title
     const char* title = "OpenDoctrines";
-    int titleSize = 60;
     int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2 + titleDX, 80, titleSize, fade(hexToColor(m_config.accent())));
+    DrawText(title, centerX - titleW / 2 + titleDX, titleY, titleSize, fade(hexToColor(m_config.accent())));
 
-    const char* subtitle = "A Grand Strategy Game";
-    int subSize = 20;
-    int subW = MeasureText(subtitle, subSize);
-    DrawText(subtitle, centerX - subW / 2 + titleDX, 150, subSize, fade(Color{160, 160, 170, 255}));
+    if (showSub) {
+        const char* subtitle = "A Grand Strategy Game";
+        int subW = MeasureText(subtitle, subSize);
+        DrawText(subtitle, centerX - subW / 2 + titleDX, subY, subSize, fade(Color{160, 160, 170, 255}));
+    }
 
     // Decorative line
-    int lineW = 300;
-    DrawRectangle(centerX - lineW / 2 + titleDX, 180, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accent()), 100.0f/255.0f)));
-    DrawRectangle(centerX - lineW / 2 + 1 + titleDX, 181, lineW - 2, 1, fade(Color{100, 90, 50, 60}));
+    if (showRule) {
+        int lineW = 300;
+        DrawRectangle(centerX - lineW / 2 + titleDX, ruleY, lineW, 2, fade(ColorAlpha(hexToColor(m_config.accent()), 100.0f/255.0f)));
+        DrawRectangle(centerX - lineW / 2 + 1 + titleDX, ruleY + 1, lineW - 2, 1, fade(Color{100, 90, 50, 60}));
+    }
 
     // Buttons
     int count = MAIN_MENU_COUNT;
-    int startY = m_screenH / 2 - (count * itemH) / 2 + 30;
 
     Vector2 mouse = getMouse();
     int hovered = -1;
@@ -1132,9 +1195,8 @@ void Game::updateMainMenu() {
                     // thread -- it does not go through the loading screen, so
                     // nothing else refills the music for however long it takes.
                     // Same starvation the world loader had; same fix.
-                    Audio::get().beginBackgroundPump();
+                    Audio::BlockingCall quiet;
                     m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
-                    Audio::get().endBackgroundPump();
                 }
                 m_currentScreen = SCREEN_MAP_EDITOR;
                 break;

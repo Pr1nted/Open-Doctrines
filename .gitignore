@@ -138,6 +138,7 @@ data/ai/model.*.bin
 # them.
 data/ai/league-*.bin
 data/ai/pre-reset-workers/
+data/ai/stale-workers-aug6/
 data/tmp_export___ai_training_*/
 data/custom_maps/__ai_training_*.odmap
 data/custom_maps/__ai_eval_*.odmap
