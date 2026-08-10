@@ -61,13 +61,29 @@ import io
 import json
 import os
 import re
-import shutil
 import sys
-import tempfile
 import zipfile
 
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from odmap_pack import layer_png, write_odmap   # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# THE GRADIENT FIELD IS THE GAME'S, AND THERE IS ONLY ONE OF IT.
+#
+# This file used to carry its own border_distance(): 4-connected, one unit per
+# orthogonal step. Game_Loading.cpp::rebuildGradientField() does something else
+# -- 8-connected, orthogonal steps costing 2 and diagonal 3, capped at 60, a
+# chamfer 2-3 metric. So the shading written here reached its full depth at
+# sixty pixels where the game reaches it at thirty, and every preview this tool
+# wrote was drawn with a gradient twice as wide as the one the player sees.
+#
+# The copy in generate_scenario.py was the correct one and is documented
+# against that C++ line by line, so it is now the only copy. A third
+# implementation is how the first one went wrong unnoticed.
+from generate_scenario import border_distance          # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAPS_DIR = os.path.join(ROOT, "data", "STDmaps")
@@ -189,27 +205,6 @@ def claim_by_nearest_rim(pid, fill):
 
 
 # ── political.png, exactly as the game rebuilds it ──────────────────
-def border_distance(cid, cap=60):
-    """Chebyshev distance to the nearest pixel of a different country id."""
-    edge = np.zeros(cid.shape, dtype=bool)
-    edge[:-1, :] |= cid[:-1, :] != cid[1:, :]
-    edge[1:, :] |= cid[:-1, :] != cid[1:, :]
-    edge[:, :-1] |= cid[:, :-1] != cid[:, 1:]
-    edge[:, 1:] |= cid[:, :-1] != cid[:, 1:]
-    dist = np.full(cid.shape, cap, dtype=np.float32)
-    dist[edge] = 0.0
-    for _ in range(cap):
-        m = dist.copy()
-        m[1:, :] = np.minimum(m[1:, :], dist[:-1, :] + 1)
-        m[:-1, :] = np.minimum(m[:-1, :], dist[1:, :] + 1)
-        m[:, 1:] = np.minimum(m[:, 1:], dist[:, :-1] + 1)
-        m[:, :-1] = np.minimum(m[:, :-1], dist[:, 1:] + 1)
-        if np.array_equal(m, dist):
-            break
-        dist = m
-    return dist
-
-
 def build_political(pid, provinces, countries):
     """Reproduce generatePoliticalTexture(): the browser preview must match
     what the game draws from the same province layer at load."""
@@ -244,6 +239,47 @@ def build_political(pid, provinces, countries):
     edge &= ~is_sea
     out[edge] = out[edge] // 3
     return Image.fromarray(out, "RGB").convert("RGBA")
+
+
+def build_thumb(pid, provinces, countries, width=512):
+    """The browser thumbnail, with its gradient computed at thumbnail scale.
+
+    Shrinking the full-resolution political.png does not give this. The shading
+    runs 60 map pixels inward, which at 1/16 scale is under four thumbnail
+    pixels, so averaging drives the whole world to its darkest value and
+    sampling picks each pixel's shading at an arbitrary depth. Either way the
+    thumbnail comes out darker than the game and noisier than the map.
+
+    So the province ids are downsampled FIRST and the distance field is run on
+    the small array with the cap scaled to match -- the view the game gives at
+    full zoom-out, which is what a thumbnail is for. This is the same reasoning
+    generate_scenario.build_thumbnail() is built on; it lives here so the tools
+    that rewrite a shipped map share one copy of it.
+    """
+    step = max(1, pid.shape[1] // width)
+    small = pid[::step, ::step]
+
+    cid_lut = np.zeros(int(pid.max()) + 1, dtype=np.int32)
+    for k, p in provinces.items():
+        i = int(k)
+        if i <= int(pid.max()):
+            cid_lut[i] = int(p.get("country_id", 0))
+    cid = cid_lut[small]
+
+    cap = max(6, (60 // step) | 1)
+    t = np.minimum(1.0, border_distance(cid, cap=cap) / float(cap))
+
+    top = max(int(cid.max()), max(int(k) for k in countries)) + 1
+    col = np.zeros((top, 3), dtype=np.float32)
+    for k, v in countries.items():
+        h = v["color"].lstrip("#")
+        col[int(k)] = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+
+    out = col[cid] * (1.0 - t[..., None] * 0.4) + 40.0 * t[..., None] * 0.3
+    inv = 1.0 - t
+    sea = np.stack([8 + inv * 16, 10 + inv * 22, 15 + inv * 38], axis=-1)
+    out[cid <= 0] = sea[cid <= 0]
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB")
 
 
 # ── one map ─────────────────────────────────────────────────────────
@@ -294,36 +330,21 @@ def process(name, threshold, check):
     provinces = json.loads(members["provinces.json"])
     countries = json.loads(members["countries.json"])
 
-    def png(arr_or_img):
-        buf = io.BytesIO()
-        img = arr_or_img if isinstance(arr_or_img, Image.Image) \
-            else Image.fromarray(arr_or_img, "RGBA")
-        img.save(buf, format="PNG", optimize=True)
-        return buf.getvalue()
-
-    members["land_sea.png"] = png(ls)
-    members["provinces.png"] = png(pv)
+    members["land_sea.png"] = layer_png(ls)
+    members["provinces.png"] = layer_png(pv)
+    members["thumb.png"] = layer_png(build_thumb(new_pid, provinces, countries))
+    # political.png is not written into the archive -- see odmap_pack.DERIVED.
+    # It is still drawn here because the side thumbnail is cut from it.
     pol = build_political(new_pid, provinces, countries)
-    members["political.png"] = png(pol)
-    thumb = io.BytesIO()
-    pol.convert("RGB").resize((512, 256), Image.NEAREST).save(thumb, format="PNG")
-    members["thumb.png"] = thumb.getvalue()
 
-    fd, tmp = tempfile.mkstemp(suffix=".odmap", dir=MAPS_DIR)
-    os.close(fd)
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-        for d in dirs:
-            z.writestr(d, b"")
-        for fn, data in members.items():
-            z.writestr(fn, data)
-    shutil.move(tmp, path)
+    write_odmap(path, members, dirs)
 
     thumb_side = os.path.join(MAPS_DIR, f"{name}_thumb.png")
     if os.path.exists(thumb_side):
         pol.convert("RGB").resize((160, 80), Image.NEAREST).save(thumb_side)
 
     print(f"      filled {n_px:,} px, {int(changed.sum()):,} pixels changed owner; "
-          f"rewrote land_sea, provinces, political and thumb")
+          f"rewrote land_sea, provinces and thumb")
     return n_bodies
 
 

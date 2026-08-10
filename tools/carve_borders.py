@@ -311,6 +311,15 @@ PLAN = {
          "districts, Turkish since 1921 and drawn here as Soviet."),
     ],
 }
+PLAN["map.odmap"] = [
+    (_ohm("2000-01-01", "Samoa"), "WSM", ["PYF"],
+     "Samoa, whose islands are painted as French Polynesia -- so the country "
+     "exists in countries.json holding no ground at all, and the engine "
+     "eliminates it on the first turn. There are 126 land pixels there and "
+     "they measure about 2,900 sq km against Samoa's real 2,842, so it is "
+     "Samoa the raster has, only labelled as somebody else's."),
+]
+
 PLAN["1962.odmap"] = [
     (_ohm("1962-10-01", "East Germany"), "DDR", ["DEU"],
      "The inner-German border. The scenario draws it as a bounding box over "
@@ -432,6 +441,25 @@ def carve(name, jobs, check):
                 continue
             dst = by_iso[iso]
             mask_in = mask_for(poly)
+            # A COUNTRY WITH NO LAND IS NOT A SLIVER.
+            #
+            # MIN_PIXELS exists to stop a re-trace spawning unclickable
+            # provinces along a frontier -- see its comment. That reasoning is
+            # about slivers shaved off a border, and it blocks the opposite
+            # case too: Samoa is 126 px, under the floor, and it is not a
+            # sliver of anything. It is a sovereign state whose islands are
+            # painted as French Polynesia, so the map hands it no province at
+            # all and the engine eliminates it on turn one.
+            #
+            # So the floor is waived when the country receiving the ground
+            # currently holds none. MIN_SHARE still applies: this cannot shave
+            # a corner off a large province, only give a landless country the
+            # island it is standing on.
+            dst_landless = not any(v.get("country_id") == dst
+                                   for v in provinces.values())
+            floor = 0 if dst_landless else MIN_PIXELS
+            if dst_landless:
+                print(f"      {iso} holds no province; waiving the {MIN_PIXELS}px floor")
             victims = [int(k) for k, v in provinces.items()
                        if v["iso_a3"] in from_isos]
             print(f"   {iso} <- {'/'.join(from_isos)}: {why}")
@@ -443,7 +471,7 @@ def carve(name, jobs, check):
                 cut = sel & mask_in
                 ncut = int(cut.sum())
                 share = ncut / tot
-                if share < MIN_SHARE or ncut < MIN_PIXELS:
+                if share < MIN_SHARE or ncut < floor:
                     continue
                 if share > 1.0 - MIN_SHARE:
                     # Wholly inside: no need for a new id, just change hands.
@@ -457,8 +485,20 @@ def carve(name, jobs, check):
                 next_pid += 1
                 if not check:
                     a[cut] = [(new >> 16) & 255, (new >> 8) & 255, new & 255]
+                    # Name it the way this map names provinces, or not at all.
+                    #
+                    # The scenario maps leave every name blank and the game
+                    # falls back on the country; map.odmap names all 1,641 of
+                    # them "<Country> #<id>". A blank in the middle of a map
+                    # that names everything is the one province that renders
+                    # differently from its neighbours, so follow whichever
+                    # convention the parent province is already using.
+                    parent_named = bool((provinces[str(p)].get("name") or "").strip())
+                    cname = countries.get(str(dst), {}).get("name", iso)
                     provinces[str(new)] = {
-                        "id": new, "name": "", "country_id": dst, "iso_a3": iso,
+                        "id": new,
+                        "name": f"{cname} #{new}" if parent_named else "",
+                        "country_id": dst, "iso_a3": iso,
                         "color": "#%06x" % new,
                     }
                     # Population and resources scale with the land taken; the

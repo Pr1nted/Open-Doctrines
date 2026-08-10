@@ -2576,7 +2576,11 @@ bool Generator::generateProvinces() {
         m_cfg.dataDir + "/land_sea.png",
         m_cfg.dataDir + "/provinces.png",
         m_cfg.dataDir + "/provinces.json",
-        m_cfg.dataDir + "/political.png",
+        // political.png is written to the data dir above, and the thumbnail is
+        // cut from it, but it does NOT go into the archive. Nothing reads it
+        // there: Game_Loading's needed[] list never named it and
+        // generatePoliticalTexture() redraws it from province ownership at
+        // load. Packaging it cost 4.7 MB of a 6 MB map. See tools/odmap_pack.py.
         countriesPath,
         m_cfg.dataDir + "/metadata.json",
         m_cfg.dataDir + "/population.json",

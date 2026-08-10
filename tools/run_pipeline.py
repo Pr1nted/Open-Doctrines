@@ -375,6 +375,39 @@ def main():
     run([sys.executable, os.path.join(TOOLS_DIR, "fix_naval_layer.py")],
         "naval layer repair")
 
+    # THE PREVIEW IS DRAWN LAST BECAUSE EVERYTHING ABOVE MOVES BORDERS.
+    #
+    # 18b draws thumb.png, and then 18c through 18g each
+    # change who owns a pixel: states invented, states restored, provinces cut
+    # along a frontier. None of them redraws the preview, so the browser was
+    # showing scenarios a few percent out of date -- Tibet still inside China,
+    # the GDR still inside Germany -- on maps that played correctly once
+    # loaded. The board is safe either way, since the game rebuilds its own
+    # political layer from provinces.png at load; the preview is the only thing
+    # affected, and it is the only picture you get while choosing a scenario.
+    #
+    # So it is redrawn here, after the last step that can move a border.
+    step("18j", "Redraw the browser preview from final ownership")
+    run([sys.executable, os.path.join(TOOLS_DIR, "rebuild_map_preview.py")],
+        "browser preview")
+
+    # Every id in the finished archives points at something that exists. This
+    # is the last thing before the save is cut, because every tool above can
+    # leave a key behind pointing at a province it deleted or renumbered, and
+    # that failure is silent at build time.
+    step("18k", "Check the finished maps are internally consistent")
+    run([sys.executable, os.path.join(TOOLS_DIR, "check_map_integrity.py"),
+         "--strict"], "map integrity")
+
+    # Re-encode every finished archive, after the last tool that writes one.
+    # A dozen steps above rewrite a map, and asking each of them to remember
+    # the compact encoding is how one of them ends up not doing it -- so this
+    # runs once, over whatever is on disk, and is the only place that has to be
+    # right. It is lossless by construction: odmap_pack decodes each layer it
+    # writes and compares it against the pixels that went in.
+    step("18l", "Re-encode the finished maps to their smallest lossless form")
+    run([sys.executable, os.path.join(TOOLS_DIR, "shrink_maps.py")], "map re-encode")
+
     # ── Step 19: Generate zero-turn save ──────────────────────────
     step(19, "Generate zero-turn save (.odsv)")
     run_ignore_fail(
