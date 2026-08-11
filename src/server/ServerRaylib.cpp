@@ -64,6 +64,29 @@
 #include <vector>
 
 #if defined(_WIN32)
+// NOGDI and NOUSER BEFORE windows.h, and they are not optional here.
+//
+// windows.h pulls in wingdi.h, which declares a function called Rectangle().
+// raylib.h -- included above, because this file IS raylib as far as the server
+// is concerned -- declares a STRUCT called Rectangle. After windows.h the name
+// resolves to the function, so `bool CheckCollisionPointRec(Vector2, Rectangle
+// rec)` stops being a declaration and becomes a syntax error, and MSVC reports
+// it as `'rec': undeclared identifier` several lines running, which points at
+// everything except the cause.
+//
+// This is why the dedicated server has never once compiled on Windows: the
+// error is invisible on macOS and Linux, and the server was only ever built
+// inside the platform qualify job, which had already gone red for other
+// reasons. It also took OrderValidationTest down with it.
+//
+// winuser.h is the same trap one step further on -- CloseWindow, ShowCursor,
+// LoadImage and DrawText are all names raylib uses and this file defines -- so
+// NOUSER goes with it rather than waiting to be discovered separately.
+//
+// Safe because this file wants exactly two things from windows.h, and both are
+// kernel32: GetModuleFileNameW and WideCharToMultiByte.
+#define NOGDI
+#define NOUSER
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
