@@ -1,5 +1,105 @@
 # Changelog
 
+## game 1.0.7a
+
+The browser build is a ninth of the size it was, the borders are surveyed
+rather than traced, armies have a button, and there is a dedicated server.
+
+## The browser build
+
+It used to download 69 MB before the menu drew, behind a canvas that stayed
+black for all of it. It is now 12 MB, and it tells you what it is doing while
+it works.
+
+The six scenarios and the trained AI model are no longer in that download. None
+of them is read until a player has picked a world, so preloading all six meant
+waiting for five worlds nobody asked for; they are fetched when something asks
+for them instead. The font was 11 MB of Unifont to draw about six hundred
+characters, and is now a 147 KB subset of exactly those. The menu no longer
+opens a scenario archive to find its own background.
+
+**Settings and saves survive the tab now.** The web build's data lived in the
+page and nowhere else, so closing it, reloading it, or letting the browser
+reclaim it took the config, every save, every custom map and every installed
+mod with it -- and said nothing, because every write had succeeded. They are
+kept in the browser's own storage and restored on the next visit.
+
+## The map
+
+The borders of eleven countries and regions are now cut from OpenHistoricalMap's
+surveyed outlines instead of being traced by hand: the German-Polish frontier,
+Austria-Hungary, Finland, Hungary, Turkey, Asia, South America, Bhutan, Ecuador
+in 1939, the inner-German border and Luxembourg.
+
+The archives are also a quarter of their old size -- 32.6 MB down to 7.6 MB --
+by encoding the layers as indexed images rather than truecolour. They decode to
+the same pixels; a land/sea layer answers one question per pixel and was being
+stored as four bytes of it.
+
+The flag artwork went from 12 MB to 5.7 MB the same way, and three flags that
+were drawing wrong are fixed. Belize, Bhutan and the Kingdom of Serbia carried
+their fills in a stylesheet the renderer does not apply, so Serbia drew as a
+black field instead of a tricolour and Belize drew a black disc where its arms
+should be.
+
+## Playing
+
+**Armies have a button.** Moving one meant holding the army-move key and
+dragging, which is discoverable only by reading the keybinds, and players
+reasonably concluded armies could not be moved at all. The province panel now
+has a Move Army button; the label carries the keybind too, so the faster way is
+learned from the slower one rather than instead of it.
+
+**Disband All and Scrap All**, with the order counts and a way to cancel them.
+Bulk upgrade and bulk specialise for provinces. Resource income is shown per
+province, with the specialisation boost broken out.
+
+**Population growth is a rule of its own.** It used to be a side effect of the
+default deportation policy, which reached only provinces that had a minority
+and scaled with how many -- so an ethnically homogeneous province never grew at
+all, and a three-minority province grew three times as fast as its neighbour.
+Every province now grows once a turn, at a rate research modifies rather than
+provides.
+
+Diplomacy refuses what it used to accept twice: an offer already awaiting an
+answer, a second round of talks in one turn, a declaration already queued.
+
+## The AI
+
+It was being punished for making peace. A ceasefire that landed cost the war
+module half a point on top of the reward for the peace itself, and a ceasefire
+that was refused cost it half a point for nothing. It was also charged for its
+own conquests, so keeping what it had taken read as a loss. Both are fixed, and
+the model shipped here is the one worker from an overnight pool that beat its
+own starting point.
+
+## The dedicated server
+
+A console server that needs no graphics card, no display and no X11 -- it
+compiles the same simulation as the game against a raylib of its own, so the
+two cannot disagree about the rules, and the binary links nothing that draws.
+
+**It is released separately, on its own tag and its own schedule.** A VPS
+operator should not download a few hundred megabytes of artwork to run
+something that never draws a pixel.
+
+## Fixed
+
+**The Discord and GitHub buttons did nothing** on Windows, Linux and in a
+browser. They ran a macOS command, so the only route from the game to its
+community worked on one platform and failed silently on the three where nearly
+every player is.
+
+**The main menu overlapped itself** on any window shorter than about 790 pixels
+-- 720p, a laptop with browser chrome, the store page's embed -- drawing the
+first menu item straight through the subtitle. The header now lays out in the
+room the buttons leave.
+
+**The map list had never been read from the file that describes it.** It was
+looked for one directory up, under field names the generator does not write, so
+every launch on every platform fell through to opening all six archives to find
+out what they were.
+
 ## sdk 1.1
 
 Gearbox 1.1. Nine new capability modules and 94 new imports, taking the ABI to
