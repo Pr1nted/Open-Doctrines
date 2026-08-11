@@ -88,9 +88,17 @@ jobs:
       # Pillow decodes the GIFs the encoder writes. An encoder cannot verify its
       # own LZW: a stream with a mis-sized code still has a valid header and
       # still opens.
+      #
+      # numpy is what the shipped-map checks read pixels with -- the water,
+      # naval-layer, integrity, preview and encoding checks all walk a province
+      # or land/sea layer as an array. Without it those five report a
+      # ModuleNotFoundError, run_all.sh counts five failures, and qualify.sh
+      # says the platform is not qualified for a reason that has nothing to do
+      # with the platform. Which is exactly what happened: they pass on a
+      # developer machine, where numpy is always already there.
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
-      - run: python -m pip install --quiet Pillow
+      - run: python -m pip install --quiet Pillow numpy
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -406,3 +414,82 @@ jobs:
           # copied next to the page. A deployment without it is a silent game.
           test -d build-web/data/audio/music || { echo "streamed music was not copied"; exit 1; }
           ls -lh build-web/OpenDoctrines.* build-web/data/audio/music | head -20
+
+  # ── The dedicated server, on its own ────────────────────────────────────
+  #
+  # The server is already built and smoke-tested inside qualify, but only
+  # there: a twenty-minute job that also builds the game, opens a window under
+  # xvfb and runs the whole suite. When that job goes red -- as it did for a
+  # missing numpy -- it says nothing about whether the server is healthy, and
+  # the server is the half of this project somebody is expected to run
+  # unattended on a machine they are paying for.
+  #
+  # release-server.yml builds it too, and only on a tag. By then a break is
+  # already in a release.
+  #
+  # So: its own job, on every push, failing on its own.
+  server:
+    name: server (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64,   os: ubuntu-22.04 }
+          - { name: macos-arm64, os: macos-14 }
+          - { name: windows-x64, os: windows-2022 }
+    steps:
+      - uses: actions/checkout@v5
+
+      # raylib is configured even for this target -- the server compiles
+      # against its HEADERS so the two cannot disagree about a struct -- and
+      # raylib's own CMakeLists wants the X11/GL/ALSA development headers on
+      # Linux before it will configure. So they are installed to BUILD it. The
+      # point of the server is that none of them are needed to RUN it, and that
+      # is what the link check below actually asserts.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+                                  libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
+                                  libxcursor-dev libxinerama-dev libwayland-dev \
+                                  libxkbcommon-dev
+
+      - name: Build the server only
+        run: |
+          cmake -B build-server -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-server --config Release --target OpenDoctrinesServer -j 2
+
+      - name: Smoke test
+        shell: bash
+        run: tests/server_smoke_test.sh build-server
+
+      # THE PROPERTY THE SERVER EXISTS FOR.
+      #
+      # "Runs on a VPS or in a container" is a claim about what the binary
+      # needs at runtime, and it is one line of CMake away from being false --
+      # target_link_libraries(OpenDoctrinesServer raylib) would build, pass
+      # every test, and quietly require a GPU stack on the host. Nothing else
+      # in this repository would notice. This does.
+      #
+      # Windows is left out rather than faked: dumpbin needs a developer shell,
+      # and asserting nothing is worse than asserting it somewhere else.
+      - name: The binary needs no graphics stack
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          bin=build-server/OpenDoctrinesServer
+          test -x "$bin" || { echo "no server binary at $bin"; exit 1; }
+          if [ "$RUNNER_OS" = "Linux" ]; then libs=$(ldd "$bin"); else libs=$(otool -L "$bin"); fi
+          echo "$libs"
+          for bad in raylib libGL libGLX libEGL libX11 libXrandr libXi libXcursor \
+                     libXinerama libwayland libxkbcommon libasound OpenGL.framework; do
+            if printf '%s' "$libs" | grep -qi -- "$bad"; then
+              echo "FAIL: the dedicated server links $bad -- it is meant to run headless"
+              exit 1
+            fi
+          done
+          echo "ok: links nothing graphical"
