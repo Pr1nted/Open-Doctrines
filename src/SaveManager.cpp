@@ -24,10 +24,29 @@ void SaveManager::writeU32(std::vector<uint8_t>& buf, uint32_t v) {
     buf.push_back((uint8_t)((v >> 24) & 0xFF));
 }
 
+void SaveManager::writeU64(std::vector<uint8_t>& buf, uint64_t v) {
+    writeU32(buf, (uint32_t)(v & 0xFFFFFFFFu));
+    writeU32(buf, (uint32_t)((v >> 32) & 0xFFFFFFFFu));
+}
+
 void SaveManager::writeFloat(std::vector<uint8_t>& buf, float v) {
     uint32_t bits;
     memcpy(&bits, &v, sizeof(bits));
     writeU32(buf, bits);
+}
+
+// A population the 32-bit province field cannot hold, and so has to be named
+// again in the trailer. Negative is not a population the game produces, but
+// (uint32_t)(-1) is 4.29 billion, so it is worth being exact about rather than
+// trusting: anything outside the field's range goes in the table.
+static bool popNeedsWideField(long long pop) {
+    return pop < 0 || pop > (long long)UINT32_MAX;
+}
+
+static uint32_t popSaturated(long long pop) {
+    if (pop < 0) return 0;
+    if (pop > (long long)UINT32_MAX) return UINT32_MAX;
+    return (uint32_t)pop;
 }
 
 // ─── Pack one turn delta to binary ───────────────────────
@@ -54,7 +73,7 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
         if (p.popModifierChanged)     mask |= 1 << 7;
         writeU16(buf, mask);
         if (p.ownerChanged)           writeU16(buf, (uint16_t)p.newOwner);
-        if (p.populationChanged)      writeU32(buf, (uint32_t)p.newPopulation);
+        if (p.populationChanged)      writeU32(buf, popSaturated(p.newPopulation));
         if (p.industryLevelChanged)   buf.push_back((uint8_t)p.newIndustryLevel);
         if (p.fortificationChanged)   buf.push_back((uint8_t)p.newFortification);
         if (p.incomeChanged)          writeFloat(buf, p.newIncome);
@@ -90,12 +109,30 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
         }
     }
 
-    // Research/pacification state
-    buf.push_back(0x01); // extra_flags: bit 0 = has_research_state
+    // Populations too large for the province field above. Written here, in the
+    // trailer, rather than beside the field they correct: a build that has
+    // never heard of them stops reading at the end of the research block and
+    // still walks the province stream at the right offsets. Inside the stream
+    // the same four bytes would shift every entry after them.
+    std::vector<const ProvinceDelta*> widePops;
+    for (auto& p : delta.provinces)
+        if (p.populationChanged && popNeedsWideField(p.newPopulation))
+            widePops.push_back(&p);
+
+    uint8_t extraFlags = 0x01;                          // bit 0 = research state
+    if (!widePops.empty()) extraFlags |= 0x02;          // bit 1 = wide populations
+    buf.push_back(extraFlags);
     writeFloat(buf, delta.researchAllocation);
     writeFloat(buf, delta.pacificationAllocation);
     writeU16(buf, (uint16_t)(delta.researchActiveNode + 1)); // -1 → 0 offset
     writeU16(buf, (uint16_t)delta.researchPoints);
+    if (!widePops.empty()) {
+        writeU16(buf, (uint16_t)widePops.size());
+        for (const ProvinceDelta* p : widePops) {
+            writeU16(buf, (uint16_t)p->provinceId);
+            writeU64(buf, (uint64_t)p->newPopulation);
+        }
+    }
     buf.push_back(0xFF); // end marker
 
     return buf;
@@ -110,6 +147,11 @@ static uint16_t readU16(const uint8_t*& ptr) {
 static uint32_t readU32(const uint8_t*& ptr) {
     uint32_t v = (uint32_t)(ptr[0] | ((uint32_t)ptr[1] << 8) | ((uint32_t)ptr[2] << 16) | ((uint32_t)ptr[3] << 24));
     ptr += 4; return v;
+}
+static uint64_t readU64(const uint8_t*& ptr) {
+    uint64_t lo = readU32(ptr);
+    uint64_t hi = readU32(ptr);
+    return lo | (hi << 32);
 }
 static float readFloat(const uint8_t*& ptr) {
     uint32_t bits = readU32(ptr);
@@ -169,15 +211,42 @@ bool SaveManager::unpackTurn(const uint8_t* data, size_t size, TurnDelta& out) {
         }
     }
 
-    // Research/pacification state (optional, backward-compatible with old saves)
+    // Trailer (optional, backward-compatible with old saves)
     if (ptr + 1 <= end) {
         uint8_t extraFlags = *ptr++;
-        if ((extraFlags & 1) && ptr + 11 <= end) {
-            out.researchAllocation = readFloat(ptr);
-            out.pacificationAllocation = readFloat(ptr);
-            int activeRaw = (int)readU16(ptr);
-            out.researchActiveNode = activeRaw - 1; // undo +1 offset
-            out.researchPoints = (int)readU16(ptr);
+        bool trailerIntact = true;
+        // Research/pacification state.
+        //
+        // 12, not the 11 this used to check: the four fields below are
+        // 4+4+2+2 bytes. Well-formed data always had a thirteenth byte (the end
+        // marker) so the short guard never showed up on a real save -- but this
+        // same decoder parses turns arriving off a socket, where a packet cut
+        // to exactly 11 trailing bytes read one past its end.
+        if (extraFlags & 1) {
+            if (ptr + 12 <= end) {
+                out.researchAllocation = readFloat(ptr);
+                out.pacificationAllocation = readFloat(ptr);
+                int activeRaw = (int)readU16(ptr);
+                out.researchActiveNode = activeRaw - 1; // undo +1 offset
+                out.researchPoints = (int)readU16(ptr);
+            } else {
+                // Nothing after this is at a known offset any more.
+                trailerIntact = false;
+            }
+        }
+        // Populations that did not fit the province field, at full width.
+        if (trailerIntact && (extraFlags & 2) && ptr + 2 <= end) {
+            uint16_t wideCount = readU16(ptr);
+            for (uint16_t i = 0; i < wideCount; ++i) {
+                if (ptr + 10 > end) return false;
+                int pid = (int)readU16(ptr);
+                long long pop = (long long)readU64(ptr);
+                for (auto& p : out.provinces)
+                    if (p.provinceId == pid && p.populationChanged) {
+                        p.newPopulation = pop;
+                        break;
+                    }
+            }
         }
     }
 
@@ -672,7 +741,12 @@ size_t SaveManager::estimateDeltaSize(const TurnDelta& delta) {
         s += 3; // provinceId + unitCount
         s += a.units.size() * 6; // each unit: countryId(2) + count(4)
     }
-    s += 12; // research/pacification: extra_flags(1) + alloc(4) + pacAlloc(4) + activeNode(2) + points(2) + endMarker(1)
+    s += 14; // research/pacification: extra_flags(1) + alloc(4) + pacAlloc(4) + activeNode(2) + points(2) + endMarker(1)
+    // Wide populations, when any province outgrew the 32-bit field.
+    size_t wide = 0;
+    for (auto& p : delta.provinces)
+        if (p.populationChanged && popNeedsWideField(p.newPopulation)) wide++;
+    if (wide) s += 2 + wide * 10; // count(2) + each: provinceId(2) + population(8)
     return s;
 }
 

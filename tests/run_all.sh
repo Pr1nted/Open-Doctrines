@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -127,6 +127,7 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
     && run "dedicated server starts" "$root/tests/server_smoke_test.sh" "$build" \
     || note_fail "dedicated server build"
 run "neural net gradients" "$bin/NeuralNetTest"
+run "odsv turn delta"  "$bin/SaveDeltaTest"
 
 step "the same seed plays the same game"
 "$root/tests/determinism_check.sh" "$build" || fail=1

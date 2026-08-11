@@ -26,7 +26,7 @@
 //     uint16 changed_bitmask
 //     [packed field data per set bit:
 //       OWNER(0):        uint16 country_id
-//       POPULATION(1):   int32  population
+//       POPULATION(1):   uint32 population, saturating (see below)
 //       INDUSTRY_LVL(2): uint8  level
 //       FORTIFICATION(3):uint8  fort
 //       INCOME(4):       float  income
@@ -45,6 +45,34 @@
 //   Actions:
 //     uint16 action_count
 //     each: uint8 type + [variable]
+//   Trailer:
+//     uint8 extra_flags
+//       bit 0 — research state follows: float allocation, float pacification,
+//               uint16 active_node + 1, uint16 points   (12 bytes)
+//       bit 1 — wide populations follow: uint16 count, then count entries of
+//               uint16 province_id + uint64 population
+//     uint8 0xFF end marker
+//
+// Populations wider than the 32-bit field
+// ---------------------------------------
+// A province may hold up to Game::MAX_PROVINCE_POP (1e10), which a uint32
+// cannot represent. POPULATION(1) therefore carries min(pop, UINT32_MAX), and
+// any province whose population exceeds that is ALSO listed in the wide table
+// with its exact 64-bit value, which the reader applies on top of the field.
+//
+// The split is what keeps the format compatible in both directions. A save
+// below 4.29e9 -- every save that exists today, and most that ever will -- is
+// byte-identical to what the previous build wrote, since the table is only
+// emitted when something needs it. And because the extra bytes live in the
+// trailer rather than inside the province stream, a build that predates the
+// table still parses every province entry at the right offset; it just reads
+// the saturated figure instead of the exact one. That matters because this is
+// also the multiplayer wire format (see packTurn below): mixing builds costs a
+// stale number on one screen, not a mis-framed turn.
+//
+// Saturating rather than wrapping is the same argument. (uint32_t)6e9 is
+// 1,705,032,704 -- a province of six billion came back as one of 1.7 billion
+// with nothing to indicate it had ever been anything else.
 
 struct ProvinceDelta {
     int provinceId = 0;
@@ -150,5 +178,6 @@ public:
 private:
     static void writeU16(std::vector<uint8_t>& buf, uint16_t v);
     static void writeU32(std::vector<uint8_t>& buf, uint32_t v);
+    static void writeU64(std::vector<uint8_t>& buf, uint64_t v);
     static void writeFloat(std::vector<uint8_t>& buf, float v);
 };

@@ -706,13 +706,13 @@ def main():
     # read against this number.
     noise = None
     if args.noise_runs >= 2:
-      try:
-        with KeepAwake(), SwapModel(args.model):
-            noise = noise_floor(binary, args.maps, max(args.turns), seeds[0],
-                                args.difficulty, args.noise_runs, flags)
-      except RunFailed as e:
-        print(f"\nABORTED during the noise probe: {e}", file=sys.stderr)
-        return 3
+        try:
+            with KeepAwake(), SwapModel(args.model):
+                noise = noise_floor(binary, args.maps, max(args.turns), seeds[0],
+                                    args.difficulty, args.noise_runs, flags)
+        except RunFailed as e:
+            print(f"\nABORTED during the noise probe: {e}", file=sys.stderr)
+            return 3
         if noise:
             print(f"\n  NOISE FLOOR ({args.noise_runs} identical runs, seed {seeds[0]}, "
                   f"{max(args.turns)}t)")

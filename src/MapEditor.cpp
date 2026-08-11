@@ -5819,7 +5819,7 @@ static const std::vector<EthnicPolicyCategory>& ethnicRelationCategories() {
     static const std::vector<EthnicPolicyCategory> cats = {
         {"deportation", "Deportation Policy", {
             {"Harsh",   "Force relocation. -2.5% align/turn, -2% pop/turn, shifts right", -2.5f, -2.0f, 0.0f, 1.0f, 0.0f, false},
-            {"Medium",  "Status quo. No alignment or population changes.", 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, true},
+            {"Medium",  "Status quo. No alignment or population changes.", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, true},
             {"Light",   "Encourage immigration. +1.5% align/turn, +1.5% pop/turn", 1.5f, 1.5f, 0.0f, 0.0f, 0.0f, false},
         }},
         {"economic", "Economic Incentives", {

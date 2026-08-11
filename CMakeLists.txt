@@ -1600,6 +1600,23 @@ add_executable(NeuralNetTest EXCLUDE_FROM_ALL
     src/ai/NeuralNet.cpp)
 target_include_directories(NeuralNetTest PRIVATE src)
 
+# The .odsv turn delta codec. It is both the save format and the multiplayer
+# wire format, so the cases here are a round trip AND what happens when the
+# bytes are a stranger's. Links SaveManager.cpp alone -- no window, no map.
+add_executable(SaveDeltaTest EXCLUDE_FROM_ALL
+    tests/save_delta_test.cpp
+    src/SaveManager.cpp
+    # SaveManager notes every write for the web build's persistence, so the
+    # symbol has to exist even here, where the whole file compiles away to
+    # four empty functions. See util/WebPersist.h.
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveDeltaTest PRIVATE src tests tools/map_generator)
+
 
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp

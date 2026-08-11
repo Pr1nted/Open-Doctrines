@@ -97,6 +97,17 @@ public:
     // in-game province and far below the point where the arithmetic degrades.
     static constexpr long long MAX_PROVINCE_POP = 10000000000LL;
 
+    // Baseline population growth, in percent per turn, before research. The
+    // world grew at 0.5%/turn for a long time as an undocumented side effect of
+    // the default deportation policy, which reached only provinces that had a
+    // minority and scaled with how many of them there were. This replaces it
+    // with a rule that applies to every province once a turn, and it is set
+    // lower because it now covers every province rather than a handful per
+    // country. 0.25%/turn is ~2.7x over a 400-turn game before research.
+    // This is the tuning knob for how fast the world (and, through
+    // maxRecruit = pop/5, every army) grows.
+    static constexpr float BASE_POP_GROWTH_PCT = 0.25f;
+
     friend class ScriptEngine;
     friend class AISystem;
     /**
@@ -1920,6 +1931,7 @@ public:
     void drawEthnicTab();
     void updateEthnicTab();
     void applyEthnicPolicyEffects(int countryId);
+    void growCountryPopulation(int countryId);
 
     // ─── Menu background ──────────────────────────
     Texture2D m_menuBgTex{};

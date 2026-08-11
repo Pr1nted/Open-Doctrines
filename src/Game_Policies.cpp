@@ -130,8 +130,17 @@ void Game::initEthnicPolicyCategories() {
     addCat("deportation", "Deportation Policy", {
         {"Harsh",   "Force relocation. -2.5% align/turn, -2% pop/turn, shifts right",
             -2.5f, -2.0f, 0.0f, 1.0f, 0.0f, false},
+        // Medium's pop growth is 0, not the +0.5 it carried for a long time.
+        // Every other option here states its numbers in its own description;
+        // this one promises "no population changes", so the 0.5 was something
+        // nobody was told about — and being the default, it was the game's only
+        // population growth, applied per minority per province. Homogeneous
+        // provinces never grew and a three-minority province grew three times
+        // as fast as a one-minority neighbour, which is no world-population
+        // rule anyone designed. If the world should grow, that wants a rule of
+        // its own; the research tree has an unwired popGrowthPct hook for it.
         {"Medium",  "Status quo. No alignment or population changes.",
-            0.0f, 0.5f, 0.0f, 0.0f, 0.0f, true},
+            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, true},
         {"Light",   "Encourage immigration. +1.5% align/turn, +1.5% pop/turn",
             1.5f, 1.5f, 0.0f, 0.0f, 0.0f, false},
     });
@@ -398,6 +407,40 @@ void Game::applyPolicyEffects(int countryId) {
     }
 }
 
+// Population growth, as a rule of its own rather than a side effect of an
+// ethnic policy nobody was told about.
+//
+// The tourism branch has described this since it was written -- "Population
+// growth +5/10/20%" -- but nothing ever read popGrowthPct, so the branch bought
+// a migration bonus and a dead stat, and the world's only growth came from the
+// default deportation option. Research MODIFIES the rate here, it does not
+// provide it: +5% means 1.05x the baseline, the same whole-percent convention
+// conscriptionPct and armyAtkPct use at their call sites.
+//
+// Every province the country owns grows once per turn. The old behaviour ran
+// inside the per-minority loop, so ethnically homogeneous provinces never grew
+// at all and a three-minority province grew three times as fast as its
+// neighbour -- the province, not its minority list, is what has people in it.
+void Game::growCountryPopulation(int countryId) {
+    const float mod = 1.0f + getTotalEffect("popGrowthPct", countryId) / 100.0f;
+    const float rate = BASE_POP_GROWTH_PCT * mod / 100.0f;
+    if (rate <= 0.0f) return;
+
+    for (int pid : provincesOf(countryId)) {
+        auto popIt = m_provincePopulations.find(pid);
+        if (popIt == m_provincePopulations.end()) continue;
+        const long long pop = popIt->second;
+        if (pop <= 0) continue;
+        // Logistic taper toward MAX_PROVINCE_POP, matching the ethnic-policy
+        // path: a bare clamp bounds the value but parks every province at
+        // exactly the ceiling, and a population feature that reads the same
+        // everywhere is no more use to the AI than an overflowing one.
+        const double headroom = std::max(0.0, 1.0 - (double)pop / (double)MAX_PROVINCE_POP);
+        const long long growth = (long long)((double)pop * rate * headroom);
+        popIt->second = std::clamp(pop + growth, 0LL, MAX_PROVINCE_POP);
+    }
+}
+
 void Game::applyEthnicPolicyEffects(int countryId) {
     // Per-turn ethnic policy effects on alignment drift, population, and compass
     std::unordered_set<std::string> processed; // track which minorities we've processed
@@ -505,6 +548,7 @@ void Game::updatePolicies() {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
         applyPolicyEffects(cid);
         applyEthnicPolicyEffects(cid);
+        growCountryPopulation(cid);
         // NOTE: artillery is deliberately NOT processed here. processCountryTurn()
         // already calls processArtilleryOrders() for every country earlier in the
         // turn; doing it again here made every bombardment apply its damage twice.

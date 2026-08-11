@@ -2,24 +2,32 @@
 
 ```
 description.html   paste into the page description (HTML mode)
-theme.css          reference only -- see the note below
+theme.css          the page CSS -- inert until itch enables the box, see below
 README.md          this
 ```
 
-## Read this first: itch has no custom CSS field
+## Read this first: the CSS box is off until itch turns it on
 
 The **Edit theme** panel gives you colour pickers, two font dropdowns, a
-screenshot layout dropdown and three image uploads. That is the whole surface.
-There is no box to paste a stylesheet into, so `theme.css` cannot be applied as
-written.
+screenshot layout dropdown and three image uploads. On a normal account that is
+the whole surface — which is exactly why an earlier version of this file said
+itch had no custom CSS at all. It does. The box is simply not shown until itch
+enables it for the account:
 
-It is kept because it is the design in a form you can read — every value in the
-table below comes from it — and because if you ever move the page somewhere that
-does take CSS, it is ready.
+> get in touch with us and ask for custom CSS to be enabled for your account
+> — itch.io/docs/creators/design
 
-What this actually means for the page: **the description carries it.** Structure,
-images and honest copy are what you control, and they matter more than styling
-would have.
+There is no self-serve toggle and no setting to hunt for. **Asked 2026-08-04;
+still pending as of 2026-08-08**, with no acknowledgement — which is normal for
+a manual request to a small team, and indistinguishable from a contact form that
+silently failed. If this line is still here long after those dates, chase it or
+delete it.
+
+Until the box appears, `theme.css` cannot be applied and **the description
+carries the page.** Structure, images and honest copy are what you control, and
+they matter more than styling would have. Everything in `theme.css` is written
+against the live page markup and is ready to paste the day it is switched on —
+see *§2a* for the one theme field that has to change at the same moment.
 
 Everything the page shows is in `docs/img/`, produced by `tools/screenshots.sh`.
 When the game's UI changes, re-run that and re-upload; the page and the game do
@@ -55,7 +63,7 @@ the ones that make it stop looking like a default itch page.
 
 | Section | Field | Value | Why |
 |---|---|---|---|
-| Color | **BG** | `#050813` | The game's menu background, sampled from `docs/img/main-menu.png`. |
+| Color | **BG** | `#050813` (`#080E20` once CSS is on — §2a) | The game's menu background, sampled from `docs/img/main-menu.png`. |
 | Color | **BG 2** | `#0b1122` | Must NOT equal BG. This is the content column; identical values make the page one flat black rectangle with the text floating on it. |
 | Color | **Text** | `#c8ccd8` | |
 | Color | **Link** | `#ffd700` | |
@@ -70,6 +78,22 @@ the ones that make it stop looking like a default itch page.
 Gold rather than green because gold is the **shipped default** — the accent is
 configurable in Settings, so screenshots from a customised build will not match
 what a new player sees.
+
+### 2a. BG has two correct values, and which one depends on the CSS
+
+`#050813` is right for the page as it stands. **Change it to `#080E20` in the
+same sitting that `theme.css` goes in**, and not before.
+
+`theme.css` paints the sea itself, from `initMenuBackground()`'s rgb(8,14,32),
+because `page-bg-menu.png` carries land on a transparent sea — whatever colour
+sits behind it *is* the sea. BG is then what shows in the places the stylesheet
+cannot reach: the itch header strip, and the itch app. At `#050813` those sit a
+shade off the sea the page is painting and the join is visible; at `#080E20`
+they agree. With no CSS there is no painted sea to match, and `#050813` is the
+menu background as sampled.
+
+The same conditional is documented at the top of `theme.css`. If the two ever
+disagree again, that file is the one that knows why.
 
 ### The three image slots
 

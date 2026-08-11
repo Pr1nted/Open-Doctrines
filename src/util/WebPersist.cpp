@@ -2,10 +2,14 @@
 
 #include <iostream>
 
-#include "raylib.h"
-
+// raylib and OdState are needed by the web BODY of these functions and by
+// nothing else -- off the web every one of them is empty. Kept inside the
+// guard so this file links into targets that have neither: SaveDeltaTest
+// deliberately builds SaveManager.cpp alone, with no window and no map, and
+// SaveManager calls odPersistMark().
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include "raylib.h"
 #include "../OdState.h"
 #endif
 

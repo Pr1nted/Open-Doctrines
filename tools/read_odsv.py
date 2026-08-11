@@ -20,6 +20,12 @@ def unpack_turn(data):
         v = struct.unpack_from('<I', data, pos)[0]
         pos += 4
         return v
+    def r64():
+        nonlocal pos
+        v = struct.unpack_from('<Q', data, pos)[0]
+        pos += 8
+        return v
+
     def rf32():
         nonlocal pos
         v = struct.unpack_from('<f', data, pos)[0]
@@ -51,17 +57,34 @@ def unpack_turn(data):
         6: "pop_income",
         7: "pop_modifier",
     }
-    field_readers = {
-        0: lambda: r16(),
-        1: lambda: r32(),
-        2: lambda: data[pos] if (pos := pos + 1) or True else None,  # hacky
-        3: lambda: data[pos] if (pos := pos + 1) or True else None,
-        4: lambda: rf32(),
-        5: lambda: rf32(),
-        6: lambda: rf32(),
-        7: lambda: rf32(),
-    }
+    # Every set bit MUST be consumed. A bit this dict does not know about is a
+    # field of unknown width, and skipping it without advancing leaves every
+    # entry after it read at the wrong offset -- which is not an error where it
+    # happens, it is an IndexError several hundred bytes later, in the armies.
+    # That is what a missing ship COUNTRY_ID(4) did: this tool could not read
+    # any save in which a ship had changed hands.
+    def read_field(bit, readers, what):
+        if bit not in readers:
+            raise ValueError(f"unknown {what} field bit {bit} in turn "
+                             f"{turn_num}; this tool is older than the save")
+        return readers[bit]()
 
+    def r8():
+        nonlocal pos
+        v = data[pos]
+        pos += 1
+        return v
+
+    prov_readers = {
+        0: r16,                             # owner
+        1: r32,                             # population (see the trailer below)
+        2: r8,                              # industry level
+        3: r8,                              # fortification
+        4: lambda: round(rf32(), 4),        # income
+        5: lambda: round(rf32(), 4),        # resource income
+        6: lambda: round(rf32(), 4),        # pop income
+        7: lambda: round(rf32(), 4),        # pop modifier
+    }
     for _ in range(prov_count):
         pid = r16()
         mask = r16()
@@ -69,38 +92,26 @@ def unpack_turn(data):
         for bit in range(16):
             if mask & (1 << bit):
                 name = field_names.get(bit, f"bit{bit}")
-                if bit == 2:
-                    fields["changed"][name] = data[pos]; pos += 1
-                elif bit == 3:
-                    fields["changed"][name] = data[pos]; pos += 1
-                elif bit in (0,):
-                    fields["changed"][name] = r16()
-                elif bit in (1,):
-                    fields["changed"][name] = r32()
-                elif bit in (4, 5, 6, 7):
-                    fields["changed"][name] = round(rf32(), 4)
-                else:
-                    fields["changed"][name] = f"<skip:{bit}>"
+                fields["changed"][name] = read_field(bit, prov_readers, "province")
         result["provinces"].append(fields)
 
-    ship_field_names = {0: "lat", 1: "lon", 2: "health", 3: "crew"}
+    ship_field_names = {0: "lat", 1: "lon", 2: "health", 3: "crew",
+                        4: "country_id"}
+    ship_readers = {
+        0: lambda: round(rf32(), 6),
+        1: lambda: round(rf32(), 6),
+        2: r8,
+        3: r16,
+        4: r16,
+    }
     for _ in range(ship_count):
         sidx = r16()
-        mask = data[pos]; pos += 1
+        mask = r8()
         fields = {"ship_index": sidx, "changed": {}}
         for bit in range(8):
             if mask & (1 << bit):
                 name = ship_field_names.get(bit, f"bit{bit}")
-                if bit == 0:
-                    fields["changed"][name] = round(rf32(), 6)
-                elif bit == 1:
-                    fields["changed"][name] = round(rf32(), 6)
-                elif bit == 2:
-                    fields["changed"][name] = data[pos]; pos += 1
-                elif bit == 3:
-                    fields["changed"][name] = r16()
-                else:
-                    fields["changed"][name] = f"<skip:{bit}>"
+                fields["changed"][name] = read_field(bit, ship_readers, "ship")
         result["ships"].append(fields)
 
     for _ in range(army_count):
@@ -112,6 +123,28 @@ def unpack_turn(data):
             count = r32()
             units.append({"country_id": cid, "count": count})
         result["armies"].append({"province_id": pid, "units": units})
+
+    # Trailer. Bit 0 is research state; bit 1 is the wide-population table,
+    # which carries the exact figure for any province the 32-bit field above
+    # could only saturate. Applied over the field, as SaveManager does.
+    if pos < len(data):
+        flags = data[pos]; pos += 1
+        if flags & 1:
+            result["research"] = {
+                "allocation": round(rf32(), 4),
+                "pacification": round(rf32(), 4),
+                "active_node": r16() - 1,
+                "points": r16(),
+            }
+        if flags & 2:
+            wide = {}
+            for _ in range(r16()):
+                pid = r16()
+                wide[pid] = r64()
+            for p in result["provinces"]:
+                if p["province_id"] in wide and "population" in p["changed"]:
+                    p["changed"]["population"] = wide[p["province_id"]]
+            result["wide_populations"] = len(wide)
 
     return result
 
@@ -184,6 +217,9 @@ def main():
         print(f"  armies: {len(decoded['armies'])} entries")
         for a in decoded['armies'][:3]:
             print(f"    province {a['province_id']}: {len(a['units'])} units")
+        if decoded.get('wide_populations'):
+            print(f"  populations too large for the 32-bit field: "
+                  f"{decoded['wide_populations']}")
         print()
 
     zf.close()
