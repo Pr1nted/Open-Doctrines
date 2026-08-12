@@ -2935,6 +2935,15 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     if (!savePath.empty()) {
         std::string stateJson = SaveManager::readState(savePath);
         loadStateJson(stateJson);
+        // A restyled country's flag has to be drawn again, and only here: this
+        // is after rebuildFlags() ran further up (which built every flag from
+        // the .odmap, before the save had been read) and after the archive is
+        // available, which it is not inside loadStateJson itself.
+        if (m_identityFlagsDirty) {
+            rebuildFlags();
+            if (m_renderer) m_renderer->setCountryFlags(&m_countryFlags);
+            m_identityFlagsDirty = false;
+        }
     }
 
     // Regenerate borders, glow maps, and political texture with updated ownership

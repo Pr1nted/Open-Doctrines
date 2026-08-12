@@ -19,6 +19,29 @@ struct Country {
     float compassEconomic = 0.0f;  // -100 (left) to +100 (right)
     float compassSocial = 0.0f;    // -100 (auth) to +100 (libertarian)
     std::vector<std::string> research; // researched tech node IDs
+
+    // ── What this country was called and flew before politics changed it ──
+    //
+    // Written once, the first time a government goes far enough for
+    // Game::updatePoliticalIdentities() to restyle it, and never again. Every
+    // restyle is computed from THESE rather than from the current name and
+    // flag, so a country that swings left, further left, and then back to the
+    // centre lands on exactly what it started with instead of an approximation
+    // that drifted a little at each step.
+    //
+    // Empty rootName means "never restyled"; it is not a copy of `name`.
+    std::string rootName;
+    FlagPattern rootFlag;
+    bool        rootSaved = false;
+
+    // The identity currently expressed, as ints so the save format stays plain
+    // JSON numbers. See PoliticalIdentity.h -- these are IdeologyQuadrant and
+    // IdeologyIntensity. Persisted because the hysteresis needs to know what
+    // was already showing, and `identityTurn` because a change is rate-limited
+    // and a reload must not hand out a free one.
+    int identityQuadrant  = 0;
+    int identityIntensity = 0;
+    int identityTurn      = -1000;
 };
 
 class CountryMap {

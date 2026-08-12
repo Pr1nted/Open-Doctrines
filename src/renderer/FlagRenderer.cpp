@@ -567,6 +567,19 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
                 } else {
                     dst = svgImg;
                 }
+                // Symbols go ON TOP of a real flag image, they are not
+                // skipped by it.
+                //
+                // This branch used to return the loaded image untouched, so a
+                // pattern that carried symbols alongside an imagePath silently
+                // lost them -- and since almost every real country's flag IS an
+                // image, that meant the political-identity overlay
+                // (PoliticalIdentity.h) drew on nobody. The British Empire
+                // became the "British Free Republic" flying an unaltered Union
+                // Jack.
+                for (const auto& sym : pattern.symbols)
+                    drawSymbol(&dst, sym, width, height, baseDir, odmData);
+
                 if (pattern.censored) imageBlur(&dst, 4);
                 Texture2D tex = LoadTextureFromImage(dst);
                 UnloadImage(dst);
@@ -590,6 +603,9 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
             }
             if (src.data != nullptr) {
                 ImageResize(&src, width, height);
+                // Same reason as the SVG branch above.
+                for (const auto& sym : pattern.symbols)
+                    drawSymbol(&src, sym, width, height, baseDir, odmData);
                 if (pattern.censored) imageBlur(&src, 4);
                 Texture2D tex = LoadTextureFromImage(src);
                 UnloadImage(src);

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "PoliticalIdentity.h"
 #include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -1558,6 +1559,22 @@ std::string Game::saveStateJson() {
         node["social"] = pc.social;
     }
 
+    // Political identity (PoliticalIdentity.h). ONLY the identity is stored --
+    // never the restyled name or the restyled flag.
+    //
+    // Those are derived, and the originals come back from the .odmap on load,
+    // so re-applying the transform reproduces them exactly. Storing the
+    // restyled name instead would be actively wrong: the next load would take
+    // "People's Republic of Poland" as the root and the one after that would
+    // produce "People's Republic of People's Republic of Poland".
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (c.identityQuadrant == 0) continue;
+        auto& node = j["politicalIdentity"][std::to_string(cid)];
+        node["quadrant"]  = c.identityQuadrant;
+        node["intensity"] = c.identityIntensity;
+        node["turn"]      = c.identityTurn;
+    }
+
     // Post-revolt cooldowns, for the same reason: without them a save/load
     // makes every province that has just been pacified immediately eligible to
     // rise again, and reloading becomes a way to re-roll the map.
@@ -1908,6 +1925,45 @@ void Game::loadStateJson(const std::string& json) {
             m_countryCompass[cid] = { node.value("economic", 0.0f),
                                       node.value("social",   0.0f) };
         }
+    }
+
+    // Re-apply the identities the save recorded. The map has just been read, so
+    // every country's name and flag are the ORIGINALS right now -- which is
+    // exactly what the root is, and why nothing about the root needs saving.
+    //
+    // Absent from older saves, which is correct for them: they were written by
+    // a build where no country had ever been restyled.
+    if (j.contains("politicalIdentity")) {
+        for (auto& [key, node] : j["politicalIdentity"].items()) {
+            const int cid = std::stoi(key);
+            auto& all = m_countries.getAll();
+            auto cit = all.find(cid);
+            if (cit == all.end()) continue;
+            Country& c = cit->second;
+            if (!c.rootSaved) {
+                c.rootName  = c.name;
+                c.rootFlag  = c.flagActual;
+                c.rootSaved = true;
+            }
+            c.identityQuadrant  = node.value("quadrant", 0);
+            c.identityIntensity = node.value("intensity", 0);
+            c.identityTurn      = node.value("turn", -1000);
+
+            PoliticalIdentity id;
+            id.quadrant  = (IdeologyQuadrant)c.identityQuadrant;
+            id.intensity = (IdeologyIntensity)c.identityIntensity;
+            c.name          = politid::applyName(c.rootName, id);
+            c.flagActual    = politid::applyFlag(c.rootFlag, id);
+            c.flagCensored  = c.flagActual;
+        }
+        // The label layer and the flag textures are both built from what has
+        // just changed. The textures cannot be rebuilt HERE: the .odmap entries
+        // they are drawn from (m_odmJsonData) are not populated at this point
+        // in the load, and rendering against an empty archive produces a blank
+        // grey rectangle -- which is how the first attempt at this replaced the
+        // Union Jack with nothing at all. Deferred to the caller instead.
+        m_labelsDirty = true;
+        m_identityFlagsDirty = true;
     }
 
     // Post-revolt cooldowns (see saveStateJson). Absent from older saves, which

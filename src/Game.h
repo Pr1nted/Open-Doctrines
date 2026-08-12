@@ -1890,6 +1890,12 @@ public:
     void cancelPolicy(int activePolicyIndex);
     void applyPolicyEffects(int countryId);
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
+    /**
+     * Rename and restyle countries whose government has moved far enough.
+     * Once a turn, after policy effects have shifted the compass. See
+     * PoliticalIdentity.h.
+     */
+    void updatePoliticalIdentities();
     float getCountryUnrest(int countryId) const;
     void drawPoliciesTab();
     void updatePoliciesTab();
@@ -2662,6 +2668,9 @@ private:
      * keeps one code path for the part that actually moves territory.
      */
     bool m_tradeMode = false;
+    /** Set by the state loader when it restyles a country; consumed once the
+     *  map archive is available and flags can actually be drawn. */
+    bool m_identityFlagsDirty = false;
     std::string m_ceasefireTargetIso;   // ISO of country we're negotiating with
     // Which money slider the mouse grabbed, or -1. A slider that only tracks
     // while the cursor is inside its bar cannot be dragged to zero: the value

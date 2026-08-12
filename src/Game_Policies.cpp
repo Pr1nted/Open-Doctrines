@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "PoliticalIdentity.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
@@ -553,6 +554,11 @@ void Game::updatePolicies() {
         // already calls processArtilleryOrders() for every country earlier in the
         // turn; doing it again here made every bombardment apply its damage twice.
     }
+
+    // After the loop above, not inside it: applyPolicyEffects() is what moves
+    // the government compass, so every country's position is final for this
+    // turn only once all of them have run.
+    updatePoliticalIdentities();
     // Clean up cancelled/completed policies
     std::vector<ActivePolicy> newActive;
     std::unordered_map<int, std::vector<int>> newIndices;
@@ -1824,5 +1830,94 @@ void Game::updateEthnicTab() {
             }
             dy += expandedH;
         }
+    }
+}
+
+// ─── Political identity ──────────────────────────────────────────────────
+//
+// A government that has spent fifty turns enacting collectivisation is not the
+// country it started as, and until now nothing said so: the name and the flag
+// were fixed at load and never moved again. This reads the compass once a turn
+// and restyles the countries that have gone somewhere.
+//
+// See PoliticalIdentity.h for the model. The two properties worth restating
+// here, because this is the function that would break them:
+//
+//   The ORIGINAL is the input. Every restyle is computed from Country::rootName
+//   and rootFlag, never from the current pair, so nothing compounds and a
+//   country that swings back arrives at exactly what it was.
+//
+//   Changes are rate-limited. A doctrine can cross the whole threshold gap in
+//   one step, so the radius pair alone is not enough -- identityTurn holds the
+//   line, and it is saved, so reloading cannot buy a free change.
+void Game::updatePoliticalIdentities() {
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
+
+        auto compassIt = m_countryCompass.find(cid);
+        if (compassIt == m_countryCompass.end()) continue;
+
+        PoliticalIdentity current;
+        current.quadrant  = (IdeologyQuadrant)c.identityQuadrant;
+        current.intensity = (IdeologyIntensity)c.identityIntensity;
+
+        const PoliticalIdentity next = politid::classify(
+            compassIt->second.economic, compassIt->second.social, current);
+        if (next == current) continue;
+        if (m_turnNumber - c.identityTurn < politid::MIN_DWELL_TURNS) continue;
+
+        // First restyle: remember what this country actually was. Everything
+        // after reads from here, including the return journey.
+        if (!c.rootSaved) {
+            c.rootName  = c.name;
+            c.rootFlag  = c.flagActual;
+            c.rootSaved = true;
+        }
+
+        const std::string before = c.name;
+        c.name       = politid::applyName(c.rootName, next);
+        c.flagActual = politid::applyFlag(c.rootFlag, next);
+        // The censored variant tracks the actual one: it exists to hide hate
+        // symbols, and a generated flag never carries one, so they agree.
+        c.flagCensored   = c.flagActual;
+        c.identityQuadrant  = (int)next.quadrant;
+        c.identityIntensity = (int)next.intensity;
+        c.identityTurn      = m_turnNumber;
+
+        // The texture is cached per country and would otherwise keep showing
+        // the old flag for the rest of the game. Same guard the rebel path
+        // uses: FlagRenderer ends in LoadTextureFromImage, and a headless run
+        // has no GL context to put it on.
+        if (!m_headless) {
+            auto fit = m_countryFlags.find(cid);
+            if (fit != m_countryFlags.end() && fit->second.id > 0)
+                UnloadTexture(fit->second);
+            m_countryFlags[cid] = FlagRenderer::render(c.flagActual, 256, 128, "", &m_odmJsonData);
+        }
+        // Names are drawn from a prebuilt label layer.
+        m_labelsDirty = true;
+
+        // Worth telling the player about: it is the visible consequence of
+        // doctrines they or a neighbour chose, and it is how they find out a
+        // rival has gone somewhere.
+        // A country whose original name already used the form its new identity
+        // wants -- "State of Lithuana" becoming authoritarian -- keeps the same
+        // name. The flag still changes, so the identity is real and is
+        // recorded, but announcing "X has become X" is noise.
+        if (before == c.name) {
+            printf("[IDENTITY] %s: flag restyled (%s), name unchanged\n",
+                   c.name.c_str(), politid::quadrantName(next.quadrant));
+        } else if (cid == m_playerCountryId) {
+            addNotification("Your government's course has remade the country: " +
+                            before + " is now " + c.name,
+                            hexToColor(m_config.accent()), 8.0f);
+        } else if (m_playerCountryId > 0) {
+            addNotification(before + " has become " + c.name,
+                            Color{170, 180, 210, 255}, 6.0f);
+        }
+        printf("[IDENTITY] cid=%d %s -> %s (%s, econ=%.0f soc=%.0f)\n",
+               cid, before.c_str(), c.name.c_str(),
+               politid::quadrantName(next.quadrant),
+               compassIt->second.economic, compassIt->second.social);
     }
 }

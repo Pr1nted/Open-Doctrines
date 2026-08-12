@@ -585,6 +585,7 @@ set(GAME_SOURCES
     src/util/Ed25519.cpp
     src/util/PngWrite.cpp
     src/util/FileDialog.cpp
+    src/PoliticalIdentity.cpp
     src/util/WebAssets.cpp
     src/util/WebPersist.cpp
     src/net/WorldSync.cpp
