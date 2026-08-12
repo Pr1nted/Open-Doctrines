@@ -397,7 +397,11 @@ void Game::updatePopup() {
             PendingDiplomaticAction da;
             da.sourceIso = popup.sourceIso;
             da.targetIso = popup.targetIso;
-            da.action = "apply_ceasefire";
+            // Which offer the player just accepted. popup.action carries the
+            // original request, so a trade applies as a trade -- otherwise
+            // accepting one would end a war that was never being fought.
+            da.action = (popup.action == "propose_trade") ? "apply_trade"
+                                                          : "apply_ceasefire";
             da.turnsRemaining = 1;
             // Exempt from the one-channel rule by name: this is the deferred
             // half of an answer already given, not a new overture.
@@ -767,14 +771,14 @@ void Game::drawCeasefireScreen() {
     const Country* playerC = m_countries.getCountry(m_playerCountryId);
     const Country* targetC = !m_ceasefireTargetIso.empty() ? m_countries.getCountryByCode(m_ceasefireTargetIso) : nullptr;
     if (!playerC || !targetC) {
-        std::string title = "Peace Negotiation";
+        std::string title = m_tradeMode ? "Trade Proposal" : "Peace Negotiation";
         int titleW = MeasureText(title.c_str(), 28);
         DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 16, 28, hexToColor(m_config.accent()));
         DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
         return;
     }
 
-    std::string title = "Peace Negotiation - " + targetC->name;
+    std::string title = (m_tradeMode ? "Trade Proposal - " : "Peace Negotiation - ") + targetC->name;
     int titleW = MeasureText(title.c_str(), 28);
     DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 12, 28, hexToColor(m_config.accent()));
 
@@ -1066,8 +1070,9 @@ void Game::drawCeasefireScreen() {
     Color sendBg = sendHov ? Color{40, 180, 60, 240} : Color{30, 120, 40, 220};
     DrawRectangleRounded(sendBtn, 0.1f, 4, sendBg);
     DrawRectangleRoundedLines(sendBtn, 0.1f, 4, Color{80, 220, 100, 220});
-    int sendW = MeasureText("Send Ceasefire Offer", 13);
-    DrawText("Send Ceasefire Offer", (int)(sendBtn.x + (sendBtn.width - sendW) / 2), (int)(sendBtn.y + 9), 13, WHITE);
+    const char* sendLabel = m_tradeMode ? "Send Trade Offer" : "Send Ceasefire Offer";
+    int sendW = MeasureText(sendLabel, 13);
+    DrawText(sendLabel, (int)(sendBtn.x + (sendBtn.width - sendW) / 2), (int)(sendBtn.y + 9), 13, WHITE);
 
     Rectangle cancelBtn = {(float)(sbX + 8), (float)(buttonY + 36), (float)(sidebarW - 16), 28};
     bool cancelHov = CheckCollisionPointRec(mouse, cancelBtn);
@@ -1265,7 +1270,9 @@ void Game::updateCeasefireScreen() {
         PendingDiplomaticAction da;
         da.sourceIso = playerC->isoA3;
         da.targetIso = targetC->isoA3;
-        da.action = "request_ceasefire";
+        // Same screen, same terms, different word on the wire. The resolution
+        // in Game_TurnLogic branches on this to decide whether a war ends.
+        da.action = m_tradeMode ? "propose_trade" : "request_ceasefire";
         da.turnsRemaining = 2;
         queueDiplomaticAction(da);
         CeasefireTerms terms;
@@ -1277,7 +1284,8 @@ void Game::updateCeasefireScreen() {
         terms.theirDropClaims = m_ceasefireTheirDropClaims;
         std::string key = playerC->isoA3 + "|" + targetC->isoA3;
         m_pendingCeasefireTerms[key] = terms;
-        printf("[CEASEFIRE] Offer sent: %s -> %s (offer=$%d demand=$%d)\n",
+        printf("[%s] Offer sent: %s -> %s (offer=$%d demand=$%d)\n",
+               m_tradeMode ? "TRADE" : "CEASEFIRE",
                playerC->isoA3.c_str(), targetC->isoA3.c_str(),
                m_ceasefireOurMoney, m_ceasefireTheirMoney);
         m_inCeasefireScreen = false;

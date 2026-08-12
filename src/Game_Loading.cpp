@@ -3102,6 +3102,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_specDropdownProvince = -1;
     m_armySliderActive = false;
     m_inCeasefireScreen = false;
+    m_tradeMode = false;
     m_ceasefireTargetIso.clear();
     m_ceasefireOurMoney = 0;
     m_ceasefireTheirMoney = 0;

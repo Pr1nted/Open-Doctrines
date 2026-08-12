@@ -3755,7 +3755,8 @@ bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
     // deferred second halves of a decision already taken and already answered
     // -- the request they came from was erased when it resolved -- so the
     // one-channel rule has nothing to say about them.
-    const bool bookkeeping = (da.action == "apply_ceasefire" || da.action == "cancel");
+    const bool bookkeeping = (da.action == "apply_ceasefire" ||
+                              da.action == "apply_trade" || da.action == "cancel");
     if (!bookkeeping) {
         if (hasPendingDiplomacy(da.sourceIso, da.targetIso)) return false;
         if (da.action == "declare_war" && hasPendingDeclaration(da.sourceIso)) return false;
@@ -3787,7 +3788,8 @@ void Game::processDiplomaticRequests() {
             && da.sourceIso != playerIso
             && (da.action == "request_alliance" || da.action == "request_guarantee"
              || da.action == "request_nap" || da.action == "declare_war"
-             || da.action == "request_ceasefire" || da.action == "call_to_arms");
+             || da.action == "request_ceasefire" || da.action == "propose_trade"
+             || da.action == "call_to_arms");
         if (isRequestToPlayer) {
             // Find requesting country ID
             int reqCid = -1;
@@ -3798,7 +3800,8 @@ void Game::processDiplomaticRequests() {
             const Country* srcC = m_countries.getCountry(reqCid);
             std::string srcName = srcC ? srcC->name : da.sourceIso;
 
-            if (da.action == "request_ceasefire") {
+            if (da.action == "request_ceasefire" || da.action == "propose_trade") {
+                const bool isTrade = (da.action == "propose_trade");
                 // Special flow: show terms in the popup.
                 // Three-turn flow:
                 //   Turn 1 (this): pop the popup up to the player and let them Accept/Reject.
@@ -3815,7 +3818,8 @@ void Game::processDiplomaticRequests() {
 
                 // Build a brief summary
                 std::string summary;
-                summary += srcName + " proposes a ceasefire.\n";
+                summary += srcName + (isTrade ? " proposes a trade.\n"
+                                                : " proposes a ceasefire.\n");
                 if (terms.ourMoney > 0)  summary += TextFormat("  Offers %d gold\n", terms.ourMoney);
                 if (terms.theirMoney > 0) summary += TextFormat("  Demands %d gold\n", terms.theirMoney);
                 if (!terms.ourProvs.empty()) summary += TextFormat("  Cedes %zu province(s)\n", terms.ourProvs.size());
@@ -3823,7 +3827,8 @@ void Game::processDiplomaticRequests() {
                 if (!terms.ourDropClaims.empty()) summary += TextFormat("  Drops %zu own claim(s)\n", terms.ourDropClaims.size());
                 if (!terms.theirDropClaims.empty()) summary += TextFormat("  Demands you drop %zu claim(s)\n", terms.theirDropClaims.size());
                 if (summary.back() == '\n') summary.pop_back();
-                pushPopup(PopupType::CEASEFIRE_REQUEST, "Ceasefire Offer", summary,
+                pushPopup(PopupType::CEASEFIRE_REQUEST,
+                          isTrade ? "Trade Offer" : "Ceasefire Offer", summary,
                           reqCid, da.action, da.sourceIso, da.targetIso);
                 // Attach the terms to the popup entry so draw/update can show + apply them.
                 if (!m_popupQueue.empty()) m_popupQueue.back().terms = terms;
@@ -4158,6 +4163,65 @@ void Game::processDiplomaticRequests() {
                 }
                 printf("[CEASEFIRE] War ended: %s vs %s (aiAccepts=%d mutual=%d)\n",
                        da.sourceIso.c_str(), da.targetIso.c_str(), aiAccepts, mutualCeasefire);
+            } else if (da.action == "propose_trade") {
+                // A ceasefire without the war. The terms live in the same map
+                // under the same key and move through the same executor; the
+                // only differences are that no war ends, no armies are sent
+                // home, and there is no mutual-offer tiebreak to run -- two
+                // countries proposing trades to each other is not a conflict,
+                // it is two trades.
+                std::string key = da.sourceIso + "|" + da.targetIso;
+                auto tit = m_pendingCeasefireTerms.find(key);
+                int trTgtCid = cidForIso(da.targetIso);
+                bool aiAccepts = true;
+                int trStated = REFUSE_NONE;
+                if (m_ai && trTgtCid >= 0 && trTgtCid != m_playerCountryId)
+                    aiAccepts = m_ai->decideDiplomacy(trTgtCid, "propose_trade",
+                                                      da.sourceIso, std::string(), &trStated);
+
+                if (aiAccepts) {
+                    if (tit != m_pendingCeasefireTerms.end()) {
+                        // endsWar = false: this is the whole difference.
+                        applyCeasefireTerms(da.sourceIso, da.targetIso, tit->second,
+                                            da.sourceIso == playerIso, false);
+                        m_pendingCeasefireTerms.erase(tit);
+                    }
+                    if (da.sourceIso == playerIso || da.targetIso == playerIso) {
+                        const Country* otherC = m_countries.getCountryByCode(
+                            (da.sourceIso == playerIso) ? da.targetIso : da.sourceIso);
+                        std::string otherName = otherC ? otherC->name
+                                              : (da.sourceIso == playerIso ? da.targetIso : da.sourceIso);
+                        pushPopup(PopupType::WAR_DECLARED, "Trade Agreed",
+                            otherName + " has accepted your trade proposal.",
+                            0, "trade_accepted", da.sourceIso, da.targetIso);
+                    }
+                } else {
+                    // Refunded on exactly the same rule as a rejected ceasefire:
+                    // only the player pays up front, so only the player is owed
+                    // anything back. Refunding an AI sender would mint treasury.
+                    if (tit != m_pendingCeasefireTerms.end()) {
+                        int refund = tit->second.ourMoney;
+                        if (refund > 0 && da.sourceIso == playerIso) {
+                            int srcCid = -1;
+                            for (auto& [cid, c] : m_countries.getAll())
+                                if (c.isoA3 == da.sourceIso) { srcCid = cid; break; }
+                            if (srcCid >= 0)
+                                m_countries.getAll()[srcCid].treasury += refund;
+                        }
+                        m_pendingCeasefireTerms.erase(tit);
+                    }
+                    if (da.sourceIso == playerIso) {
+                        const Country* otherC = m_countries.getCountryByCode(da.targetIso);
+                        std::string otherName = otherC ? otherC->name : da.targetIso;
+                        pushPopup(PopupType::WAR_DECLARED, "Trade Rejected",
+                            otherName + " has rejected your trade proposal" +
+                            (refusalText(trStated) ? std::string(" — ") + refusalText(trStated)
+                                                   : std::string()) + ".",
+                            0, "trade_rejected", da.sourceIso, da.targetIso);
+                    }
+                }
+                printf("[TRADE] %s -> %s (accepted=%d)\n",
+                       da.sourceIso.c_str(), da.targetIso.c_str(), aiAccepts);
             } else if (da.action == "cancel") {
                 // Dummy action — refund offered money (cancelled by mutual ceasefire override)
                 std::string key2 = da.sourceIso + "|" + da.targetIso;
@@ -4191,6 +4255,19 @@ void Game::processDiplomaticRequests() {
                                              cidForIso(da.targetIso));
                 }
                 printf("[CEASEFIRE] Accepted offer applied: %s vs %s\n", da.sourceIso.c_str(), da.targetIso.c_str());
+            } else if (da.action == "apply_trade") {
+                // The deferred half of a trade the player accepted. Same shape
+                // as apply_ceasefire and deliberately missing the same two
+                // lines: no war ends, and endsWar=false keeps the armies where
+                // they are.
+                std::string key = da.sourceIso + "|" + da.targetIso;
+                auto tit = m_acceptedCeasefireTerms.find(key);
+                if (tit != m_acceptedCeasefireTerms.end()) {
+                    applyCeasefireTerms(da.sourceIso, da.targetIso, tit->second, false, false);
+                    m_acceptedCeasefireTerms.erase(tit);
+                }
+                printf("[TRADE] Accepted offer applied: %s -> %s\n",
+                       da.sourceIso.c_str(), da.targetIso.c_str());
             } else if (da.action == "declare_war") {
                 // Guarantee chains + kin penalties + notifications all live in
                 // the helper so every declaration behaves identically.
@@ -4353,7 +4430,7 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
             revokeClaim(toC->isoA3, pid);
 }
 
-void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted) {
+void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted, bool endsWar) {
     int srcCid = -1, tgtCid = -1;
     for (auto& [cid, c] : m_countries.getAll()) {
         if (c.isoA3 == sourceIso) srcCid = cid;
@@ -4438,7 +4515,12 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     // The war is over, so nobody's troops may still be standing on the other's
     // soil. Done last, after every province transfer above, so ownership is
     // final when we decide what counts as foreign territory.
-    withdrawArmiesAfterPeace(srcCid, tgtCid);
+    //
+    // Skipped for a trade, which ends no war: the two may still be at peace and
+    // simply swapping ground, or at war with third parties whose fronts this
+    // has nothing to do with. Walking armies home there would hand out a free
+    // retreat in exchange for a province.
+    if (endsWar) withdrawArmiesAfterPeace(srcCid, tgtCid);
 }
 
 // === expelStrandedArmies ===

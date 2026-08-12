@@ -1072,6 +1072,13 @@ void Game::drawCountryPanel() {
                 }
                 acts.push_back({"Request Alliance", "request_alliance", anyDiploPending && !hasPending("request_alliance")});
                 acts.push_back({"Request Guarantee", "request_guarantee", anyDiploPending && !hasPending("request_guarantee")});
+                // Peacetime only, and in this list rather than as a button of
+                // its own: the list already lays itself out above Current
+                // Claims, greys an entry while something is pending with this
+                // country, and is where every other approach to them lives. At
+                // war the equivalent is Request Ceasefire, which already
+                // carries terms.
+                acts.push_back({"Propose Trade", "propose_trade", anyDiploPending && !hasPending("propose_trade")});
                 if (!hasNonAgg)
                     acts.push_back({"Declare War", "declare_war", anyDiploPending && !hasPending("declare_war")});
             }
@@ -1182,8 +1189,10 @@ void Game::drawCountryPanel() {
                 }
                 if (drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border) && !disabled) {
                     if (pending) cancelPending(ab.action);
-                    else if (ab.action == "request_ceasefire") {
-                        // Open ceasefire negotiation screen
+                    else if (ab.action == "request_ceasefire" || ab.action == "propose_trade") {
+                        // Open the negotiation screen. Same screen for both:
+                        // the terms are identical and only the wording, the
+                        // queued action and whether a war ends differ.
                         m_ceasefireTargetIso = targetC->isoA3;
                         m_ceasefireOurMoney = 0;
                         m_ceasefireTheirMoney = 0;
@@ -1194,6 +1203,7 @@ void Game::drawCountryPanel() {
                         m_ceasefireTheirDropClaims.clear();
                         m_ceasefireSelectMode = 0;
                         m_ceasefireOverlayDirty = true;
+                        m_tradeMode = (ab.action == "propose_trade");
                         m_inCeasefireScreen = true;
                     } else if (ab.action == "call_to_arms") {
                         // Not queued blind: this one can be refused for reasons

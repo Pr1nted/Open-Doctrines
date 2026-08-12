@@ -2651,6 +2651,17 @@ private:
 
     // ─── Ceasefire / Peace negotiation state ───
     bool m_inCeasefireScreen = false;
+    /**
+     * The negotiation screen is showing a TRADE, not a ceasefire.
+     *
+     * The two are the same screen because they are the same act: provinces,
+     * money and claims moving both ways, agreed by both sides. A ceasefire is
+     * that plus an end to a war, which is the only thing this flag changes --
+     * the wording, the action queued, and whether applyCeasefireTerms() runs
+     * its war-ending tail. Reusing CeasefireTerms and the same pending map
+     * keeps one code path for the part that actually moves territory.
+     */
+    bool m_tradeMode = false;
     std::string m_ceasefireTargetIso;   // ISO of country we're negotiating with
     // Which money slider the mouse grabbed, or -1. A slider that only tracks
     // while the cursor is inside its bar cannot be dragged to zero: the value
@@ -2694,7 +2705,16 @@ private:
     // transition left it there. An assault is settled the turn it is made (see
     // resolveAssault), so ground held without owning it is always a leftover.
     void expelStrandedArmies();
-    void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false);
+    /**
+     * Move the provinces, claims and money a set of terms describes.
+     *
+     * endsWar tells it whether this is a peace. A ceasefire passes true and
+     * gets the withdrawal at the end -- nobody's troops may still be standing
+     * on the other's soil once the war is over. A trade passes false: no war
+     * ended, so the armies stay exactly where they are, and sending them home
+     * would be a free retreat bought with a province.
+     */
+    void applyCeasefireTerms(const std::string& sourceIso, const std::string& targetIso, const CeasefireTerms& terms, bool alreadyDeducted = false, bool endsWar = true);
 
     void drawCeasefireScreen();
     // A thumbnail of the political map cropped to the land an offer touches,
