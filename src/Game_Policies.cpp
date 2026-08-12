@@ -1888,14 +1888,23 @@ void Game::updatePoliticalIdentities() {
         // the old flag for the rest of the game. Same guard the rebel path
         // uses: FlagRenderer ends in LoadTextureFromImage, and a headless run
         // has no GL context to put it on.
-        if (!m_headless) {
+        // !m_aiTraining as well as !m_headless.
+        //
+        // FlagRenderer::render ends in LoadTextureFromImage, and a training run
+        // has no usable GL context to put a texture on -- the call lands on a
+        // null function pointer and the process dies at address zero, which is
+        // exactly what it did: --train-ai segfaulted on its first turn, every
+        // time, because this runs for every country every turn. Self-play never
+        // looks at a flag, so there is nothing to draw for.
+        if (!m_headless && !m_aiTraining) {
             auto fit = m_countryFlags.find(cid);
             if (fit != m_countryFlags.end() && fit->second.id > 0)
                 UnloadTexture(fit->second);
             m_countryFlags[cid] = FlagRenderer::render(c.flagActual, 256, 128, "", &m_odmJsonData);
         }
-        // Names are drawn from a prebuilt label layer.
-        m_labelsDirty = true;
+        // Names are drawn from a prebuilt label layer; nothing draws one during
+        // self-play either.
+        if (!m_aiTraining) m_labelsDirty = true;
 
         // Worth telling the player about: it is the visible consequence of
         // doctrines they or a neighbour chose, and it is how they find out a
