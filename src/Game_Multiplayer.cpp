@@ -1030,6 +1030,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     DrawText(h1, centerX - MeasureText(h1, 15) / 2, y, 15, Color{150, 160, 180, 255});
     y += 21;
     DrawText(h2, centerX - MeasureText(h2, 15) / 2, y, 15, Color{130, 140, 160, 255});
+    y += 21;
 #else
     const int btnW = 260, btnH = 52, gap = 16;
     const MpButton join = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
@@ -1048,7 +1049,28 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
         m_mpPage = MpPage::HostSetup;
         m_mpFocus = 2;
     }
+    y += btnH;
 #endif
+
+    // The way out.
+    //
+    // Escape has always done this (see updateMultiplayerMenu), and Join and
+    // Host Setup have both had a Back button all along. This page -- the one
+    // every other one is reached FROM -- had neither, so the only way back to
+    // the main menu was a key that a phone does not have and that the itch.io
+    // embed swallows. On those two, which is most of the people who open this
+    // game, the multiplayer screen was somewhere you could get into and not
+    // out of.
+    //
+    // Drawn after the #endif so both builds get it, and positioned from `y`,
+    // which each branch above leaves just below its own content.
+    y += 26;
+    const int backW = 200, backH = 46;
+    const MpButton leave = buttonAt((float)(centerX - backW / 2), (float)y,
+                                    (float)backW, (float)backH, mouse);
+    drawButton(leave, "Back to Menu", 19, Color{34, 36, 44, 220},
+               Color{90, 95, 110, 190});
+    if (click && leave.hovered) m_currentScreen = SCREEN_MENU;
 }
 
 // --------------------------------------------------------------------- join --
