@@ -3105,6 +3105,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_ceasefireTargetIso.clear();
     m_ceasefireOurMoney = 0;
     m_ceasefireTheirMoney = 0;
+    m_ceasefireMoneyDrag = -1;
     m_ceasefireOurProvs.clear();
     m_ceasefireTheirProvs.clear();
     m_ceasefireOurDropClaims.clear();

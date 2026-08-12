@@ -995,7 +995,7 @@ void Game::drawCeasefireScreen() {
     DrawText("Money", sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 18;
 
-    auto drawMoneySlider = [&](const char* label, int& value, int max, Color col) {
+    auto drawMoneySlider = [&](int slot, const char* label, int& value, int max, Color col) {
         DrawText(label, sbX + 8, curY, 11, WHITE);
         char buf[32]; snprintf(buf, sizeof(buf), "%d", value);
         int tw = MeasureText(buf, 11);
@@ -1004,9 +1004,26 @@ void Game::drawCeasefireScreen() {
         Rectangle slr = {(float)(sbX + 8), (float)curY, (float)(sidebarW - 16), 10};
         DrawRectangle((int)slr.x, (int)slr.y, (int)slr.width, (int)slr.height, Color{40, 40, 50, 200});
         if (max > 0) {
-            int hov = (int)((mouse.x - slr.x) / slr.width * max);
-            bool dragHeld = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, slr);
-            if (dragHeld) { value = std::max(0, std::min(max, hov)); }
+            // GRAB, then follow the mouse until it is released -- even when it
+            // leaves the bar.
+            //
+            // This used to update only while the cursor was inside the
+            // rectangle, and the two things follow from that. Dragging left to
+            // empty an offer stopped the instant the cursor crossed the left
+            // edge, so the value stuck at whatever it had reached; and the only
+            // way to reach zero was to release on the single leftmost column of
+            // pixels, because everything right of it rounds to at least one
+            // step. Zero is not a corner case here -- it is "never mind, I am
+            // not paying them" -- and it was a one-pixel target.
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, slr))
+                m_ceasefireMoneyDrag = slot;
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+                m_ceasefireMoneyDrag = -1;
+            if (m_ceasefireMoneyDrag == slot) {
+                float t = (mouse.x - slr.x) / slr.width;
+                t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);   // past either end pins
+                value = (int)(t * max + 0.5f);
+            }
             int fill = (int)(slr.width * value / std::max(1, max));
             DrawRectangle((int)slr.x, (int)slr.y, fill, (int)slr.height, col);
         }
@@ -1014,10 +1031,18 @@ void Game::drawCeasefireScreen() {
         curY += 16;
     };
 
-    int pMax = (int)std::max(0.0, m_countries.getAll()[m_playerCountryId].treasury + 1000);
-    int tMax = (int)std::max(0.0, targetC->treasury + 1000);
-    drawMoneySlider("Money we offer", m_ceasefireOurMoney, pMax, Color{40, 200, 40, 220});
-    drawMoneySlider("Money we demand", m_ceasefireTheirMoney, tMax, Color{220, 60, 60, 220});
+    // What each side ACTUALLY has, not a thousand more than that.
+    //
+    // Both maxima used to be treasury + 1000, so the slider let you compose an
+    // offer of money you do not have and a demand for money they do not have.
+    // Nothing said so: the terms were clamped silently when the offer was sent
+    // (see the clamp further down) and again when it was executed, so the deal
+    // you agreed to was not the deal you built, and the number you dragged to
+    // was never the number that moved.
+    int pMax = (int)std::max(0.0, m_countries.getAll()[m_playerCountryId].treasury);
+    int tMax = (int)std::max(0.0, targetC->treasury);
+    drawMoneySlider(0, "Money we offer", m_ceasefireOurMoney, pMax, Color{40, 200, 40, 220});
+    drawMoneySlider(1, "Money we demand", m_ceasefireTheirMoney, tMax, Color{220, 60, 60, 220});
 
     curY += 4;
 

@@ -1187,6 +1187,7 @@ void Game::drawCountryPanel() {
                         m_ceasefireTargetIso = targetC->isoA3;
                         m_ceasefireOurMoney = 0;
                         m_ceasefireTheirMoney = 0;
+                        m_ceasefireMoneyDrag = -1;
                         m_ceasefireOurProvs.clear();
                         m_ceasefireTheirProvs.clear();
                         m_ceasefireOurDropClaims.clear();

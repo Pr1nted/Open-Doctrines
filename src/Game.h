@@ -2652,6 +2652,12 @@ private:
     // ─── Ceasefire / Peace negotiation state ───
     bool m_inCeasefireScreen = false;
     std::string m_ceasefireTargetIso;   // ISO of country we're negotiating with
+    // Which money slider the mouse grabbed, or -1. A slider that only tracks
+    // while the cursor is inside its bar cannot be dragged to zero: the value
+    // stops updating the moment the cursor crosses the left edge, which is the
+    // exact gesture for emptying it. See drawMoneySlider().
+    int m_ceasefireMoneyDrag = -1;      // 0 = we offer, 1 = we demand
+
     int m_ceasefireOurMoney = 0;        // money we offer
     int m_ceasefireTheirMoney = 0;      // money we demand
     std::vector<int> m_ceasefireOurProvs;   // province IDs we cede
