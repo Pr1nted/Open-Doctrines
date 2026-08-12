@@ -1738,7 +1738,22 @@ public:
     std::vector<Color> m_countryRelationColors;
     std::unordered_map<int, ProvinceResources> m_provinceResources;
     int m_activeResourceIdx = 0;   // 0=oil, 1=gold, 2=rubber, 3=gemstones, 4=metal
-    std::array<std::vector<Color>, 5> m_resourceBuffers;
+    // ONE resource layer in memory, not five.
+    //
+    // These are full-map RGBA buffers -- 8192x4096x4 is 128 MB each -- and all
+    // five were generated at load and kept for the session: 640 MB to display
+    // one of them. Only m_activeResourceIdx is ever on screen, and
+    // generateResourceTextureFor() can rebuild any of them from
+    // m_provinceResources in a single pass, so the other four were being stored
+    // because nobody had priced them.
+    //
+    // This was the largest single item in the 1.2 GB a scenario load added to
+    // the heap, which is why a phone could reach the menu and die on the map.
+    // m_resourceBufferIdx says which resource the buffer currently holds, or
+    // -1 for none; generateResourceTexture() refills it when the player
+    // switches, which is the only moment it can become wrong.
+    std::vector<Color> m_resourceBuffer;
+    int m_resourceBufferIdx = -1;
     void generateResourceTexture();
     void generateResourceTextureFor(int resIdx);
     Texture2D m_resourceTex{};

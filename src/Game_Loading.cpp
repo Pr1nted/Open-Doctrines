@@ -247,14 +247,18 @@ void Game::updateLoading() {
             int w = m_provinces.getWidth();
             int h = m_provinces.getHeight();
             if (m_loadingResIdx == 0) {
-                for (int r = 0; r < 5; ++r)
-                    m_resourceBuffers[r].resize(w * h, Color{40, 40, 40, 255});
+                m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
+                m_resourceBufferIdx = -1;
             }
-            if (m_loadingResIdx < 5 && !m_provinceResources.empty()) {
-                generateResourceTextureFor(m_loadingResIdx);
-                setLoadingProgress(0.55f + m_loadingResIdx * 0.05f,
-                    TextFormat("Generating %s textures...", RESOURCE_NAMES[m_loadingResIdx]));
-                m_loadingResIdx++;
+            // Only the resource that is about to be shown. The other four are
+            // rebuilt if and when the player asks for them -- see
+            // generateResourceTexture(). This used to generate all five and
+            // keep them, at 128 MB apiece.
+            if (m_loadingResIdx == 0 && !m_provinceResources.empty()) {
+                generateResourceTextureFor(m_activeResourceIdx);
+                setLoadingProgress(0.55f,
+                    TextFormat("Generating %s textures...", RESOURCE_NAMES[m_activeResourceIdx]));
+                m_loadingResIdx = 5;
                 break;
             }
             if (!m_provinceResources.empty() || m_loadingResIdx >= 5) {
@@ -267,7 +271,7 @@ void Game::updateLoading() {
                 Audio::get().pump();
 
                 Image resImg{};
-                resImg.data = m_resourceBuffers[0].data();
+                resImg.data = m_resourceBuffer.data();
                 resImg.width = w;
                 resImg.height = h;
                 resImg.mipmaps = 1;
@@ -1096,7 +1100,10 @@ void Game::generateResourceTextureFor(int resIdx) {
     int w = m_provinces.getWidth();
     int h = m_provinces.getHeight();
 
-    auto& buf = m_resourceBuffers[resIdx];
+    if (m_resourceBuffer.size() != (size_t)w * h)
+        m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
+    auto& buf = m_resourceBuffer;
+    m_resourceBufferIdx = resIdx;
 
     // First pass: find max resource amount for this resource type
     float maxAmount = 1.0f;
@@ -1149,7 +1156,13 @@ void Game::generateResourceTextureFor(int resIdx) {
 }
 
 void Game::generateResourceTexture() {
-    m_renderer->updateResourceTexture(m_resourceBuffers[m_activeResourceIdx].data());
+    // Refill only when the player has actually switched. This is called every
+    // frame the resource view is up, so the guard is what keeps a full-map
+    // regeneration from running sixty times a second.
+    if (m_resourceBufferIdx != m_activeResourceIdx && !m_provinceResources.empty())
+        generateResourceTextureFor(m_activeResourceIdx);
+    if (m_resourceBuffer.empty()) return;
+    m_renderer->updateResourceTexture(m_resourceBuffer.data());
 }
 
 void Game::generateIcons() {
@@ -1742,8 +1755,25 @@ bool Game::loadFromODM(const std::string& odmPath) {
 
     for (int i = 0; i < found; ++i) {
         auto& e = entries[i];
-        if (e.name == "land_sea.png")
+        if (e.name == "land_sea.png") {
             m_landSea.loadFromMemory(e.data, (int)e.size);
+            // 128 MB back, immediately.
+            //
+            // The layer is 8192x4096 RGBA and every question anyone asks it is
+            // isLand(x, y) -- one bit. It is on the GPU by now, and the mask
+            // dropPixels() keeps answers that question at 1/32nd the size, so
+            // holding the pixels for the rest of the session buys nothing.
+            //
+            // This is what made a scenario unloadable on a phone: the heap
+            // starts at 512 MB, the province layer needs another 128 MB of its
+            // own and genuinely uses them, and this took a third of what was
+            // left to store a boolean. The menu came up because nothing before
+            // the map is big; the map is where the tab died.
+            //
+            // The game's copy only. The map editor owns its own LandSeaMap and
+            // paints into its pixels, so it must never be told to do this.
+            m_landSea.dropPixels();
+        }
         else if (e.name == "provinces.png" || e.name == "provinces.json") {
             // Need both png + json — load when we have json too
         }
@@ -2025,7 +2055,8 @@ void Game::unloadGameData() {
     std::vector<Color>().swap(m_politicalPixelBuffer);
     std::vector<uint8_t>().swap(m_gradientDist);
     std::vector<Color>().swap(m_claimsPixelBuffer);
-    for (auto& b : m_resourceBuffers) std::vector<Color>().swap(b);
+    std::vector<Color>().swap(m_resourceBuffer);
+    m_resourceBufferIdx = -1;
     // Clean up script engine
     if (m_scriptEngine) { delete m_scriptEngine; m_scriptEngine = nullptr; }
     m_scriptErrors.clear();
@@ -2528,19 +2559,18 @@ bool Game::loadMapPack(const std::string& odmPath) {
     setLoadingProgress(0.7f, "Generating resource textures...");
     drawLoadingScreen();
 
-    // Pre-generate all 5 resource buffers
+    // Generate the ONE resource layer that will be displayed. The others are
+    // built on demand; see generateResourceTexture().
     {
         int w = m_provinces.getWidth();
         int h = m_provinces.getHeight();
-        for (int r = 0; r < 5; ++r)
-            m_resourceBuffers[r].resize(w * h, Color{40, 40, 40, 255});
+        m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
+        m_resourceBufferIdx = -1;
         if (!m_provinceResources.empty()) {
-            std::cout << "  Generating resource textures... " << std::flush;
-            for (int r = 0; r < 5; ++r) {
-                generateResourceTextureFor(r);
-                setLoadingProgress(0.7f + (r * 0.04f), "Generating resource textures...");
-                drawLoadingScreen();
-            }
+            std::cout << "  Generating resource texture... " << std::flush;
+            generateResourceTextureFor(m_activeResourceIdx);
+            setLoadingProgress(0.7f, "Generating resource textures...");
+            drawLoadingScreen();
             std::cout << "done" << std::endl;
         }
         // The synchronous reload path's copy of the pair in
@@ -2550,7 +2580,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
         Audio::get().pump();
 
         Image resImg{};
-        resImg.data = m_resourceBuffers[0].data();
+        resImg.data = m_resourceBuffer.data();
         resImg.width = w;
         resImg.height = h;
         resImg.mipmaps = 1;
