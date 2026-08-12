@@ -142,6 +142,16 @@ std::string trim(std::string s) {
 struct NameCore { std::string text; bool adjective = false; };
 
 NameCore geographicCore(const std::string& name) {
+    // "<anything containing a form> of <Core>" -- catches "Imperial State of
+    // Iran" and "Grand Duchy of X", where the form word is not at the start and
+    // so is missed by the exact prefixes below.
+    const std::string::size_type ofPos = name.rfind(" of ");
+    if (ofPos != std::string::npos) {
+        const std::string head = name.substr(0, ofPos);
+        for (const char* f : FORMS)
+            if (head.find(f) != std::string::npos)
+                return { trim(name.substr(ofPos + 4)), false };
+    }
     for (const char* f : FORMS) {
         const std::string form(f);
         // "<Form> of <Core>" -- what follows "of" is a noun.
@@ -190,6 +200,10 @@ FormWords formFor(const PoliticalIdentity& id) {
 }
 
 }  // namespace
+
+std::string geographicCoreOf(const std::string& name) {
+    return geographicCore(name).text;
+}
 
 std::string applyName(const std::string& rootName, const PoliticalIdentity& id) {
     if (!id.expressed() || rootName.empty()) return rootName;

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "PoliticalIdentity.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
@@ -1265,6 +1266,25 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         }
         return s;
     };
+    // The parent's UNSTYLED name, for building a breakaway's own.
+    //
+    // Country::name may now carry a political form -- "Autocracy of
+    // Afghanistan" once its government went far enough (PoliticalIdentity.h) --
+    // and naming a secession off that produced "Republic of Central Autocracy
+    // of Afghanistan". The root is what a new state on the same ground would
+    // actually name itself after.
+    auto parentRootName = [&](int cid) -> std::string {
+        auto& all = m_countries.getAll();
+        auto it = all.find(cid);
+        if (it == all.end()) return std::string();
+        const std::string raw = it->second.rootSaved && !it->second.rootName.empty()
+                              ? it->second.rootName : it->second.name;
+        // And without its form of government: a secession from the "Kingdom of
+        // Italy" names itself after Italy, not after the kingdom.
+        const std::string core = politid::geographicCoreOf(raw);
+        return core.empty() ? raw : core;
+    };
+
     auto deriveTerritory = [&](const std::string& ethnicity) -> std::string {
         std::string root = ethnicity;
         if (root.empty()) return ethnicity;
@@ -1289,6 +1309,15 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             char firstS = tolower(sfx.front());
             // If last letter of base equals first letter of suffix, drop one
             if (lastB == firstS) return base + sfx.substr(1);
+            // A vowel-initial suffix on a vowel-final base collides: Korea+ia
+            // is "Koreia", Chinese+ia is "Chineseia", Cape Verde+ia is "Cape
+            // Verdeia". English drops the base vowel instead -- Korea+ia is
+            // just Korea -- so the suffix adds nothing and the caller should
+            // move on to a directional form rather than take this.
+            auto isVowel = [](char ch) {
+                return ch=='a'||ch=='e'||ch=='i'||ch=='o'||ch=='u';
+            };
+            if (isVowel(lastB) && isVowel(firstS)) return std::string();
             return base + sfx;
         };
 
@@ -1306,16 +1335,21 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             // Also try just dropping the 'n' (Russian → Russia)
             t = root.substr(0, root.size()-1);
             if (!nameConflicts(t)) return t;
-            // Try + "a" as fallback
-            t = root.substr(0, root.size()-3) + "a";
-            if (!nameConflicts(t)) return t;
+            // NO "-ia" -> "-a" fallback. It produced Lithuanian -> "Lithuana"
+            // and Bulgarian -> "Bulgara", which are not words in any language
+            // and read as a typo rather than a country. When the real name is
+            // taken -- and it usually is, by the parent -- falling through to
+            // the directional republic below is the honest answer.
         }
         // For endsInAn (Assyrian → Assyria): strip "an" + "ia" (but only if not also endsInIan which we already tried)
         if (endsInAn && !endsInIan) {
-            std::string t = root.substr(0, root.size()-2) + "ia";
-            if (!nameConflicts(t)) return t;
-            t = root.substr(0, root.size()-2) + "a";
-            if (!nameConflicts(t)) return t;
+            // Through addSuffix, not raw concatenation: "Korean" minus "an" is
+            // "Kore", and "Kore" + "ia" is "Koreia". addSuffix refuses a
+            // vowel-on-vowel join, which is what makes that come out empty and
+            // fall through to a directional name instead.
+            std::string t = addSuffix(root.substr(0, root.size()-2), "ia");
+            if (!t.empty() && !nameConflicts(t)) return t;
+            // No "-a" fallback: "Assyra" is not a fallback, it is a typo.
         }
         // For endsInIn (Montenegrin → Montenegro): strip "in" + "o"
         if (endsInIn) {
@@ -1335,11 +1369,13 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         }
         // For endsInEse (Japanese → Japan): strip "ese" + leave as root base
         if (endsInEse) {
+            // The bare stem FIRST. Japanese -> Japan, not Japana: this had the
+            // two the wrong way round, so the invented form won whenever it was
+            // free, which it always was.
             std::string base = root.substr(0, root.size()-3);
-            std::string t = base + "a";
-            if (!nameConflicts(t)) return t;
-            t = base;
-            if (!nameConflicts(t)) return t;
+            if (!nameConflicts(base)) return base;
+            // and nothing else. Japanese -> Japan; if Japan is taken, the
+            // answer is a direction on Japan, not "Japana".
         }
         // For endsInE (Basque → basque): try root + "ia", root itself
         if (endsInE) {
@@ -1357,22 +1393,52 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             }
         }
 
-        // Generic suffix trial with vowel deduplication
-        for (int sii : suffixOrder) {
-            const std::string& sfx = SUFFIXES[sii];
-            std::string t;
-            if (endsInI && sfx.empty()) {
-                t = root.substr(0, root.size()-1);
-            } else {
-                t = addSuffix(root, sfx);
+        // The generic trial bolts a suffix onto whatever it is given, and what
+        // it is given here is a DEMONYM. "Albanian" + "istan" is
+        // "Albanianistan"; "Bulgarian" + "stan" is "Bulgarianstan"; "Croatian"
+        // + "istan" is "Croatianistan". None of those is a place.
+        //
+        // The demonym cases above already know the right transformation for
+        // each ending, so if they did not produce a free name it is because the
+        // real country name is taken -- almost always by the parent this is
+        // seceding from. Inventing a misspelling is the wrong answer to that.
+        const bool isDemonym = endsInIan || endsInAn || endsInIsh ||
+                               endsInEse || endsInI || endsInIn;
+        if (!isDemonym) {
+            for (int sii : suffixOrder) {
+                const std::string& sfx = SUFFIXES[sii];
+                std::string t;
+                if (endsInI && sfx.empty()) {
+                    t = root.substr(0, root.size()-1);
+                } else {
+                    t = addSuffix(root, sfx);
+                }
+                if (t.empty()) continue;
+                if (!nameConflicts(t)) return t;
             }
-            if (t.empty()) continue;
+        }
+
+        // Last resort: the REAL country name with a direction on it, which is
+        // what a state in this position calls itself -- there are two Koreas
+        // and neither is spelled wrong. Built from the properly-formed name
+        // even though that name is taken, because the direction is what makes
+        // it distinct.
+        std::string proper = root;
+        if (endsInIan)      proper = root.substr(0, root.size() - 3) + "ia";
+        else if (endsInAn)  proper = root.substr(0, root.size() - 2) + "ia";
+        else if (endsInIsh) proper = root.substr(0, root.size() - 3) + "land";
+        else if (endsInEse) proper = root.substr(0, root.size() - 3);
+        else if (endsInIn)  proper = root.substr(0, root.size() - 2) + "o";
+        proper = stripDirection(proper);
+        if (!proper.empty() && !nameConflicts(proper)) return proper;
+
+        static const char* lastDirs[] = {"Northern ", "Southern ", "Eastern ",
+                                         "Western ", "Central "};
+        for (int d = 0; d < 5; ++d) {
+            std::string t = std::string(lastDirs[(simRand() + d) % 5]) + proper;
             if (!nameConflicts(t)) return t;
         }
-        // Last resort: directional modifier on root
-        std::string dirRoot = stripDirection(root);
-        if (dirRoot != root && !nameConflicts(dirRoot)) return dirRoot;
-        return root;
+        return proper.empty() ? root : proper;
     };
 
     auto makeDirectionalName = [&](const std::string& base, const std::string& parentName) -> std::string {
@@ -1396,7 +1462,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     if (hasEthnicBasis) {
         // Step 1: See if the ethnicity name itself is too close to an existing country
         // (e.g., "Japanese" → Japan exists, "Georgian" → Georgia exists)
-        std::string parentName = m_countries.getAll()[parentCid].name;
+        std::string parentName = parentRootName(parentCid);
         std::string territory = deriveTerritory(ethnicName);
 
         // Step 2: if territory conflicts with existing countries, try directional
@@ -1414,7 +1480,10 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             else if (avgSoc < -20) countryName = "State of " + territory;
             else countryName = "Republic of " + territory;
         } else {
-            static const char* genSuffixes[] = {" Liberation Front", " National Council", " Independence Movement", " State"};
+            // A state, not a campaign. "Liberation Front" and "Independence
+            // Movement" name the thing that FOUGHT for a country; they are not
+            // what the country is called once it exists.
+            static const char* genSuffixes[] = {" Republic", " Union", " Federation", " State"};
             int si = simRand() % 4;
             countryName = territory + genSuffixes[si];
         }
@@ -1425,7 +1494,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         }
     } else {
         // Region-based naming — try directional first if parent country has many provinces
-        std::string parentName = m_countries.getAll()[parentCid].name;
+        std::string parentName = parentRootName(parentCid);
         std::string nameBase = regionName;
         std::string baseName;
 
@@ -1444,33 +1513,36 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             }
         } else {
             // Original ideology template approach
+            // Every one of these names a government. The old tables were built
+            // from insurgency language -- Liberation Army, Separatist Movement,
+            // Freedom Fighters, Resistance Council -- which reads as a faction
+            // that does not believe its own claim. They also now use the same
+            // vocabulary as PoliticalIdentity.h, so a breakaway that is
+            // communist and a country that TURNS communist speak alike.
             static const char* leftPre[] = {
-                "People's Liberation Army of ", "Socialist Movement of ",
-                "People's Republic of ", "Revolutionary Council of ",
-                "Popular Front for the Liberation of "
+                "Socialist Union of ", "People's Republic of ",
+                "Workers' Republic of ", "Socialist Republic of ",
+                "People's Federation of "
             };
             static const char* farLeftPre[] = {
-                "People's Liberation Army of ", "Communist Party of ",
-                "People's Republic of ", "Red Army of "
+                "People's Republic of ", "Socialist Union of ",
+                "Workers' Republic of ", "People's Commune of "
             };
             static const char* rightPre[] = {
-                "Free ", "Liberation Front of ", "Independence Movement of ",
+                "Free State of ", "Republic of ", "Commonwealth of ",
                 "Democratic Alliance of "
             };
             static const char* farRightPre[] = {
-                "Free State of ", "National Front of ", "Liberation Army of "
+                "National State of ", "Free State of ", "Dominion of "
             };
             static const char* authPre[] = {
-                "National Salvation Council of ", "State of ",
-                "Authority for the Liberation of "
+                "State of ", "Autocracy of ", "Directorate of "
             };
             static const char* libPre[] = {
-                "Democratic Movement of ", "Free People of ",
-                "Liberal Alliance of "
+                "Free Republic of ", "Free State of ", "Commonwealth of "
             };
             static const char* neutralPre[] = {
-                "Liberation Army of ", "Freedom Fighters of ",
-                "Separatist Movement of ", "Resistance Council of "
+                "Republic of ", "State of ", "Federation of ", "Union of "
             };
             static const char* leftOneWord[] = {
                 "The Commune", "The Collective", "Soviet", "The Union"
@@ -1491,7 +1563,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
                 "The Republic", "The Commonwealth", "The Concord"
             };
             static const char* neutralOneWord[] = {
-                "Libertalia", "The Resistance", "The Front", "The Movement"
+                "The Republic", "The Free State", "The Federation", "The Union"
             };
 
             const char** multiWordSet = neutralPre;
@@ -1527,16 +1599,39 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         }
         // Final conflict check for region-based path
         if (nameConflicts(countryName)) {
-            std::string parentName = m_countries.getAll()[parentCid].name;
+            std::string parentName = parentRootName(parentCid);
             countryName = makeDirectionalName(regionName.empty() ? parentName : regionName, parentName);
         }
     }
 
     // Safety net: if name still conflicts, use a generic pattern
     if (nameConflicts(countryName)) {
-        std::string parentName = m_countries.getAll()[parentCid].name;
-        static const char* fallbackDirs[] = {"South ", "North ", "East ", "West ", "Central "};
-        countryName = std::string(fallbackDirs[simRand() % 5]) + parentName + " Breakaway";
+        std::string parentName = parentRootName(parentCid);
+        // "<Dir> <Parent> Breakaway" was the parent's word for them, not their
+        // own. A government that has taken and holds territory believes it IS
+        // the country -- nobody declares independence and then files the paper
+        // under "Breakaway". A directional republic is what such a state
+        // actually calls itself.
+        static const char* fallbackDirs[] = {"Northern ", "Southern ", "Eastern ",
+                                             "Western ", "Central "};
+        countryName = "Republic of " + std::string(fallbackDirs[simRand() % 5]) + parentName;
+    }
+
+    // Nothing ships with a blank name. An empty territory string used to reach
+    // the templates and come out as " Federation" -- a leading space and a form
+    // of government belonging to nowhere.
+    {
+        std::string trimmed = countryName;
+        while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(trimmed.begin());
+        while (!trimmed.empty() && trimmed.back()  == ' ') trimmed.pop_back();
+        if (trimmed.size() < 3) {
+            static const char* dirs[] = {"Northern ", "Southern ", "Eastern ",
+                                         "Western ", "Central "};
+            std::string base = parentRootName(parentCid);
+            if (base.empty()) base = "Territory";
+            trimmed = "Republic of " + std::string(dirs[simRand() % 5]) + base;
+        }
+        countryName = trimmed;
     }
 
     int rebelNum = rebelCid - 60000;

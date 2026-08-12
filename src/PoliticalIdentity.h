@@ -132,6 +132,14 @@ std::string applyName(const std::string& rootName, const PoliticalIdentity& id);
  */
 FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& id);
 
+/**
+ * The geographic core of a country name: "Kingdom of Italy" -> "Italy".
+ *
+ * Shared with the breakaway namer, which must not build "Democratic Alliance of
+ * Kingdom of Italy" out of a parent that already carries a form.
+ */
+std::string geographicCoreOf(const std::string& name);
+
 /** For notifications: "communist", "nationalist", ... */
 const char* quadrantName(IdeologyQuadrant q);
 
