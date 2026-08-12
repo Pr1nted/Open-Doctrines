@@ -4649,6 +4649,16 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
     feats[90] = (action == "request_alliance") ? 1.0f : 0.0f;
     feats[91] = (action == "request_nap") ? 1.0f : 0.0f;
     feats[92] = (action == "request_guarantee") ? 1.0f : 0.0f;
+    // Trade, in slot 112 rather than a new one on the end.
+    //
+    // 112-139 are inside FEATURE_COUNT already and have never been written, so
+    // the input vector does not change shape and every existing model.bin
+    // still loads. The weight on this slot has never seen a gradient -- the
+    // input was always zero -- so it starts neutral and the decision rests on
+    // the features that ARE trained, chiefly the deal-value pair below. That
+    // is the right starting behaviour for a trade: judge it on what is being
+    // offered, and let training sharpen the rest.
+    feats[112] = (action == "propose_trade") ? 1.0f : 0.0f;
 
     // ── Call to arms ──
     // Judged on completely different terms from a treaty proposal: this is
@@ -4736,8 +4746,13 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
     // fortune, or demand them, and the answer was identical, because the terms
     // were never looked at. Signed from the RECIPIENT's point of view — what
     // they gain minus what they give up.
+    // A trade is the same question as a ceasefire minus the war, so it is
+    // valued through the same pair -- the terms live in the same map under the
+    // same key. Without this a trade offer would reach the net with an empty
+    // deal and be judged on army ratios alone, which is the exact bug the
+    // comment above describes.
     float netProv = 0.0f, netMoney = 0.0f;
-    if (action == "request_ceasefire") {
+    if (action == "request_ceasefire" || action == "propose_trade") {
         const Country* tc = m_g->m_countries.getCountry(targetCid);
         if (tc) {
             auto tit = m_g->m_pendingCeasefireTerms.find(sourceIso + "|" + tc->isoA3);

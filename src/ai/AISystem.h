@@ -2151,6 +2151,20 @@ private:
     // dozen neighbours fire one overture every turn for a dozen turns straight
     // — that, not the per-pair rate, is what flooded the log.
     std::unordered_map<int, int> m_diploNextTurn;
+    // Per-RECIPIENT budget, and the one that was missing.
+    //
+    // The two above throttle a proposer: a pair may talk every 25 turns, and
+    // any one country may open its mouth every 5. Neither says anything about
+    // how often a country is ASKED. With a hundred and eighty-five countries
+    // in play, twenty neighbours each behaving perfectly still lands an offer
+    // on the same doorstep several times a turn, which is what being on the
+    // receiving end actually feels like -- and the player, who has to answer
+    // every one with a modal popup, feels it hardest.
+    //
+    // Symmetrical with m_diploNextTurn on purpose. It applies to every country
+    // equally rather than special-casing the player, because an AI drowning in
+    // offers it must evaluate is the same waste of turns.
+    std::unordered_map<int, int> m_diploNextIncoming;
     static long long diploKey(int a, int b) {
         int lo = a < b ? a : b, hi = a < b ? b : a;
         return ((long long)lo << 24) | (long long)hi;
@@ -2159,14 +2173,24 @@ private:
         auto it = m_diploNextTurn.find(cid);
         return it == m_diploNextTurn.end() || m_turn >= it->second;
     }
+    /** Has this country been left alone long enough to be asked again? */
+    bool diploIncomingReady(int targetCid) const {
+        auto it = m_diploNextIncoming.find(targetCid);
+        return it == m_diploNextIncoming.end() || m_turn >= it->second;
+    }
     bool diploReady(int sourceCid, int targetCid) const {
         if (!diploBudgetReady(sourceCid)) return false;
+        if (!diploIncomingReady(targetCid)) return false;
         auto it = m_diploCooldownUntil.find(diploKey(sourceCid, targetCid));
         return it == m_diploCooldownUntil.end() || m_turn >= it->second;
     }
     void diploCoolDown(int sourceCid, int targetCid) {
         m_diploCooldownUntil[diploKey(sourceCid, targetCid)] = m_turn + 25;
         m_diploNextTurn[sourceCid] = m_turn + 5;
+        // Four turns of quiet for whoever was just asked. Deliberately shorter
+        // than the proposer's own budget: this is meant to stop a queue
+        // forming at one country's door, not to stop the world from talking.
+        m_diploNextIncoming[targetCid] = m_turn + 4;
     }
     long long m_worldArmy = 0;
     long long m_worldProvinces = 0;
