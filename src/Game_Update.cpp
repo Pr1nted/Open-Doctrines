@@ -632,7 +632,10 @@ void Game::update(float dt) {
             int startX = m_screenW - btnSize - 12;
             int totalH = 4 * btnSize + 3 * btnSpacing;
             int startY = (m_screenH - totalH) / 2;
-            struct { int id; bool disabled; } sbtns[] = {{1, isSpectator}, {2, false}, {3, isSpectator}, {4, false}};
+            // Must match drawSidebarButtons(): a button drawn greyed and still
+            // clickable is worse than either.
+            struct { int id; bool disabled; } sbtns[] = {{1, isSpectator}, {2, false},
+                                                        {3, isSpectator}, {4, isSpectator}};
             for (int i = 0; i < 4; ++i) {
                 if (sbtns[i].disabled) continue;
                 Rectangle r = {(float)startX, (float)(startY + i * (btnSize + btnSpacing)),

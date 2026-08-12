@@ -2003,7 +2003,11 @@ void Game::drawSidebarButtons() {
         {m_iconPolicies, "Politics", 1, isSpectator},
         {m_iconEconomy, "Economy", 2, false},
         {m_iconClaims, "Claims", 3, isSpectator},
-        {{}, "Research", 4, false},
+        // Research is a spending decision -- it moves the budget slider and
+        // picks what the country works towards -- so a spectator has no more
+        // business in it than in Politics or Claims, which have always been
+        // greyed. It was the one that was missed.
+        {{}, "Research", 4, isSpectator},
     };
     static constexpr int BTN_COUNT = 4;
 
