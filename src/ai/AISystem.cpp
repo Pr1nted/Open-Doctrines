@@ -30,6 +30,32 @@
 
 static const char* MODULE_NAMES[] = {"econ", "politics", "war", "navy"};
 
+// ─── What a country will pay to get its way without a war ───────────────────
+//
+// A trade offer is money for land, or money for a renounced claim. These are
+// the prices, and they are deliberately generous compared to what a war costs:
+// the point of the action is that a country with a full treasury and a border
+// grievance has an alternative to invading, and an alternative nobody accepts
+// is not an alternative.
+//
+// Below this there is nothing to offer that anyone would take, and the country
+// is better off keeping its money.
+static constexpr double TRADE_MIN_TREASURY = 400.0;
+// Never bet the treasury on a deal that can still be refused. A country that
+// emptied itself into one offer would be defenceless for the turns it takes to
+// be answered.
+static constexpr double TRADE_MAX_TREASURY_SHARE = 0.40;
+// Asking price, before the share cap: what one province and one renounced
+// claim are each worth in gold. A claim is cheaper because it is a promise
+// rather than territory.
+static constexpr double TRADE_PRICE_PER_PROV  = 900.0;
+static constexpr double TRADE_PRICE_PER_CLAIM = 250.0;
+// One province at a time. Buying three at once is how a trade stops reading as
+// a border settlement and starts reading as a partition -- and it is far more
+// likely to be refused, which costs a turn and a cooldown for nothing.
+static constexpr size_t TRADE_MAX_PROVS  = 1;
+static constexpr size_t TRADE_MAX_CLAIMS = 2;
+
 // Research is a player-only system, so AI countries would report level-0 caps
 // forever and could never build anything. They get a baseline capability
 // instead; researched levels still raise the cap when a map grants them.
@@ -1709,6 +1735,20 @@ void AISystem::validPolitics(int cid, std::vector<bool>& v) {
     ensureTrendBounds();
     v[9]  = st.minorities > 0 && st.minorityTrend < m_trendMax - 1e-3f;
     v[10] = st.minorities > 0 && st.minorityTrend > m_trendMin + 1e-3f;
+
+    // Trade: money to buy with, a neighbour to buy from, and the same overture
+    // budget the pact proposals answer to.
+    //
+    // WHAT is bought and from WHOM is decided in exec, which already walks the
+    // frontier list. Deciding it here as well would pay for that walk on every
+    // country's turn instead of only on the turns this action is chosen -- the
+    // same reasoning that keeps the mask for actions 5-7 down to "has a
+    // neighbour". The treasury floor is the one thing worth checking early:
+    // an offer of nothing is not a trade, and a broke country would otherwise
+    // burn its overture budget discovering that in exec.
+    const Country* selfC = g.m_countries.getCountry(cid);
+    v[11] = hasNeighbor && diploBudgetReady(cid) &&
+            selfC && selfC->treasury >= TRADE_MIN_TREASURY;
 }
 
 void AISystem::ensureTrendBounds() const {
@@ -2822,6 +2862,127 @@ std::string AISystem::execPolitics(int cid, int action) {
                               target.c_str(),
                               g.m_ethnicPolicyCategories[bestCat].displayName.c_str(),
                               g.m_ethnicPolicyCategories[bestCat].options[bestOpt].name.c_str());
+        }
+        case 11: { // buy it instead of invading it
+            // WHY THIS EXISTS
+            //
+            // Trade shipped with a complete RECEIVING half -- the diplomacy net
+            // judges an incoming offer on the value of the goods, and the player
+            // gets a popup with terms -- and no sending half at all. Nothing in
+            // this file ever queued a propose_trade, so AI-to-AI trade could not
+            // occur, and feature 112 ("this is a trade") was therefore zero in
+            // every self-play turn ever run: the weight on it could never
+            // receive a gradient, and no amount of training could teach the AI
+            // anything about trade. This is the half that was missing.
+            //
+            // WHAT IT OFFERS: money, and only money.
+            //
+            // Land-for-land is a swap CeasefireTerms can express and the deal
+            // features cannot yet price. netProv counts provinces, not what they
+            // are worth, so a country that traded its industrial core for two
+            // border marshes would look to the net like it broke even. Until
+            // there is a valuation to trade on, the AI buys and does not barter.
+            const Country* c = g.m_countries.getCountry(cid);
+            if (!c) return "trade: no country";
+
+            // What we will spend. Capped as a share of the treasury because the
+            // offer can still be refused, and a country that emptied itself into
+            // a proposal would be defenceless while it waited for an answer.
+            const double budget0 = c->treasury * TRADE_MAX_TREASURY_SHARE;
+            if (budget0 < TRADE_PRICE_PER_CLAIM) return "trade: cannot afford anything";
+
+            auto relIt = g.m_relations.find(c->isoA3);
+            auto myClaims = g.m_claims.find(c->isoA3);
+
+            int bestTarget = -1; double bestWorth = -1.0;
+            CeasefireTerms bestTerms; double bestPrice = 0.0;
+
+            std::unordered_set<int> seen;
+            for (auto& fr : m_stats[cid].frontiers) {
+                const int tcid = fr.enemyCid;
+                if (!seen.insert(tcid).second) continue;
+                const Country* ec = g.m_countries.getCountry(tcid);
+                if (!ec || ec->isoA3.empty()) continue;
+                // At peace, by definition: a proposal made across a live front is
+                // a ceasefire, and that is action 6 of the war module.
+                if (relIt != g.m_relations.end()) {
+                    auto rr = relIt->second.find(ec->isoA3);
+                    if (rr != relIt->second.end() && rr->second.war) continue;
+                }
+                if (!diploReady(cid, tcid)) continue;
+                bool pendingReq = false;
+                for (auto& da : g.m_pendingDiplomaticActions)
+                    if (da.sourceIso == c->isoA3 && da.targetIso == ec->isoA3) { pendingReq = true; break; }
+                if (pendingReq) continue;
+
+                // THE ASK, built inside the budget rather than trimmed to fit
+                // afterwards. Land first because it is what the country actually
+                // wants; renunciations spend whatever is left.
+                CeasefireTerms terms;
+                double budget = budget0, value = 0.0;
+
+                // Land we claim and they hold. This is the grievance that would
+                // otherwise become a war goal.
+                if (myClaims != g.m_claims.end() && budget >= TRADE_PRICE_PER_PROV) {
+                    for (int pid : myClaims->second) {
+                        if (terms.theirProvs.size() >= TRADE_MAX_PROVS) break;
+                        const int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
+                                              ? g.m_provinceCountryLookup[pid] : 0;
+                        if (owner != tcid) continue;
+                        terms.theirProvs.push_back(pid);
+                        budget -= TRADE_PRICE_PER_PROV;
+                        value  += TRADE_PRICE_PER_PROV;
+                        if (budget < TRADE_PRICE_PER_PROV) break;
+                    }
+                }
+                // Claims of theirs on our land. Buying one off is the cheapest
+                // border security there is -- it removes the stated reason for a
+                // war before anyone has to garrison against it.
+                auto theirClaims = g.m_claims.find(ec->isoA3);
+                if (theirClaims != g.m_claims.end()) {
+                    for (int pid : theirClaims->second) {
+                        if (terms.theirDropClaims.size() >= TRADE_MAX_CLAIMS) break;
+                        if (budget < TRADE_PRICE_PER_CLAIM) break;
+                        const int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
+                                              ? g.m_provinceCountryLookup[pid] : 0;
+                        if (owner != cid) continue;
+                        terms.theirDropClaims.push_back(pid);
+                        budget -= TRADE_PRICE_PER_CLAIM;
+                        value  += TRADE_PRICE_PER_CLAIM;
+                    }
+                }
+                if (terms.theirProvs.empty() && terms.theirDropClaims.empty()) continue;
+
+                // WORTH HAVING, AND LIKELY TO AGREE -- the same product the pact
+                // proposals score on, and for the same reason: every refusal
+                // costs a turn and a cooldown, so the partner most likely to say
+                // yes is worth more than the prize that is merely largest.
+                const float pAccept = predictAcceptance(tcid, "propose_trade", cid);
+                const double worth = value * (0.15 + 0.85 * pAccept);
+                if (worth > bestWorth) {
+                    bestWorth  = worth;
+                    bestTarget = tcid;
+                    bestTerms  = terms;
+                    bestPrice  = value;
+                }
+            }
+            if (bestTarget < 0) return "trade: nothing worth buying nearby";
+
+            const Country* ec = g.m_countries.getCountry(bestTarget);
+            // Priced at exactly what was asked for. The money is deducted when
+            // the offer RESOLVES, not now: applyCeasefireTerms charges an AI
+            // sender itself (alreadyDeducted is player-only), and charging here
+            // as well would bill the country twice for one deal.
+            bestTerms.ourMoney = (int)bestPrice;
+
+            if (!g.queueDiplomaticAction({c->isoA3, ec->isoA3, "propose_trade", 1}))
+                return TextFormat("trade: already in talks with %s", ec->name.c_str());
+            g.m_pendingCeasefireTerms[c->isoA3 + "|" + ec->isoA3] = bestTerms;
+            diploCoolDown(cid, bestTarget);
+            statsFor(cid).tradesOffered++;
+            return TextFormat("offer trade to %s (%d gold for %zu prov, %zu claim)",
+                              ec->name.c_str(), bestTerms.ourMoney,
+                              bestTerms.theirProvs.size(), bestTerms.theirDropClaims.size());
         }
         default: return "politics hold";
     }
@@ -6193,11 +6354,12 @@ const float AISystem::STANCE_ECON[STANCE_COUNT][ECON_ACTIONS] = {
 };
 // pol: hold enact pacUp pacDown cancel alliance nap guarantee calming
 //      conciliate repress
+// politics: hold policy pac+ pac- cancel ally nap guarantee calm concil repress TRADE
 const float AISystem::STANCE_POL[STANCE_COUNT][POL_ACTIONS] = {
-    { 0,  0,  0,  0,  0, +1,  0,  0,  0,  0,  0},      // expand: allies for the war
-    { 0,  0,  0,  0,  0,  0, +1,  0, +1, +1, -1},      // consolidate: digest, don't provoke
-    { 0,  0,  0,  0,  0, +1,  0, +1, +1,  0,  0},      // defend: guarantees and calm
-    { 0,  0,  0,  0,  0,  0, +1,  0,  0, +1,  0},      // develop: be left alone
+    { 0,  0,  0,  0,  0, +1,  0,  0,  0,  0,  0,  0},  // expand: allies for the war
+    { 0,  0,  0,  0,  0,  0, +1,  0, +1, +1, -1, +1},  // consolidate: buy it, don't take it
+    { 0,  0,  0,  0,  0, +1,  0, +1, +1,  0,  0,  0},  // defend: guarantees and calm
+    { 0,  0,  0,  0,  0,  0, +1,  0,  0, +1,  0, +1},  // develop: money is the cheap lever
 };
 // war: hold recruit reinforce attack declare artillery ceasefire stage
 const float AISystem::STANCE_WAR[STANCE_COUNT][WAR_ACTIONS] = {

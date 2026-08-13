@@ -114,8 +114,18 @@ public:
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,
     //           5 propose alliance, 6 propose NAP, 7 propose guarantee,
     //           8 enact a policy aimed at calming the country,
-    //           9 conciliate a minority, 10 repress a minority
-    static constexpr int POL_ACTIONS  = 11;
+    //           9 conciliate a minority, 10 repress a minority,
+    //           11 propose a trade
+    //
+    // 11 was added after the trade system shipped, and widening this head is
+    // what lets the AI ever OFFER one. Until it existed, feature 112 ("this is
+    // a trade") was fed to the diplomacy net but could only ever be 1 when a
+    // human proposed -- so in self-play it was always 0, the weight on it never
+    // saw a gradient, and no amount of training could teach the AI anything
+    // about trade. Growing a policy head is a supported migration: see
+    // NeuralNet::deserialize, which keeps the ten learned outputs and starts
+    // this one from its Xavier initialisation.
+    static constexpr int POL_ACTIONS  = 12;
     // War: 0 hold, 1 recruit, 2 reinforce, 3 attack, 4 declare war,
     //      5 artillery, 6 offer ceasefire, 7 stage troops in allied territory
     static constexpr int WAR_ACTIONS  = 8;
@@ -835,7 +845,8 @@ public:
     // ── Training progress feed (cheap, for the trainer dashboard) ──
     struct TrainStats {
         long long warsDeclared = 0, ceasefiresOffered = 0,
-                  pactsProposed = 0, researchCompleted = 0;
+                  pactsProposed = 0, researchCompleted = 0,
+                  tradesOffered = 0;
         // Amphibious pipeline. Troops embarked but never landed means the fleet
         // is stuck at sea — the failure mode that leaves island maps frozen.
         // landings counts assaults on hostile shores only; unloadsHome counts

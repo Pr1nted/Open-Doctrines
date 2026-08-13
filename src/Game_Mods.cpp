@@ -841,7 +841,8 @@ const char* const kEconActionNames[] = {
 const char* const kPolActionNames[] = {
     "hold", "enact_policy", "pacify_up", "pacify_down", "cancel_policy",
     "propose_alliance", "propose_nap", "propose_guarantee",
-    "enact_calming_policy", "conciliate_minority", "repress_minority"};
+    "enact_calming_policy", "conciliate_minority", "repress_minority",
+    "propose_trade"};
 const char* const kWarActionNames[] = {
     "hold", "recruit", "reinforce", "attack", "declare_war", "artillery",
     "offer_ceasefire", "stage_troops"};
