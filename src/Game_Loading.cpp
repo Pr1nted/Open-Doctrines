@@ -1511,7 +1511,7 @@ bool Game::loadFromFiles() {
                 int pid = std::stoi(provStr);
                 float left = comp["left"].get<float>();
                 float auth = comp["auth"].get<float>();
-                m_provinceCompass[pid] = {-left, -auth};   // see the note at the country loader
+                m_provinceCompass[pid] = makeCompassVec(-left, -auth);   // see the note at the country loader
             }
         } catch (...) {}
     }
@@ -1624,7 +1624,7 @@ bool Game::loadFromFiles() {
                         // together. The rebellion code uses |x|+|y| and
                         // sqrt(dx^2+dy^2), and neither changes when both sides
                         // flip sign.
-                        m_countryCompass[cid] = {-left, -auth};
+                        m_countryCompass[cid] = makeCompass(-left, -auth);
                         break;
                     }
                 }
@@ -1906,7 +1906,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     int pid = std::stoi(provStr);
                     float left = comp["left"].get<float>();
                     float auth = comp["auth"].get<float>();
-                    m_provinceCompass[pid] = {-left, -auth};   // see the note at the country loader
+                    m_provinceCompass[pid] = makeCompassVec(-left, -auth);   // see the note at the country loader
                 }
             } catch (...) {}
             break;
@@ -1948,7 +1948,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
                             // Negated on both axes, exactly as m_provinceCompass
                             // is — see the loose-file loader above for why the
                             // two must always be converted together.
-                            m_countryCompass[cid] = {-left, -auth};
+                            m_countryCompass[cid] = makeCompass(-left, -auth);
                             break;
                         }
                     }

@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <!-- Saltire, corner to corner.
+  <!-- Hammer, head and haft, canted so it does not read as a letter T.
        Drawn by tools/generate_symbols.py. Regenerate rather than
        hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <polygon points="-100,-56.0 -56.0,-100 0,-44.0 56.0,-100 100,-56.0 44.0,0 100,56.0 56.0,100 0,44.0 -56.0,100 -100,56.0 -44.0,0"/>
+    <polygon points="-3.03,-98.75 87.03,-46.75 62.03,-3.44 -28.03,-55.44"/>
+    <polygon points="4.01,-36.94 29.99,-21.94 -29.01,80.25 -54.99,65.25"/>
   </g>
 </svg>

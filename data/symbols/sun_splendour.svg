@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Sun in splendour: disc and straight rays.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
+  <g fill="#fff">
+    <circle cx="0" cy="0" r="42"/>
+    <polygon points="0.00,-98.00 -5.51,-43.65 5.51,-43.65"/>
+    <polygon points="49.00,-84.87 17.05,-40.56 26.60,-35.05"/>
+    <polygon points="84.87,-49.00 35.05,-26.60 40.56,-17.05"/>
+    <polygon points="98.00,0.00 43.65,-5.51 43.65,5.51"/>
+    <polygon points="84.87,49.00 40.56,17.05 35.05,26.60"/>
+    <polygon points="49.00,84.87 26.60,35.05 17.05,40.56"/>
+    <polygon points="0.00,98.00 5.51,43.65 -5.51,43.65"/>
+    <polygon points="-49.00,84.87 -17.05,40.56 -26.60,35.05"/>
+    <polygon points="-84.87,49.00 -35.05,26.60 -40.56,17.05"/>
+    <polygon points="-98.00,0.00 -43.65,5.51 -43.65,-5.51"/>
+    <polygon points="-84.87,-49.00 -40.56,-17.05 -35.05,-26.60"/>
+    <polygon points="-49.00,-84.87 -26.60,-35.05 -17.05,-40.56"/>
+  </g>
+</svg>

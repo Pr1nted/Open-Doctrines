@@ -237,7 +237,7 @@ void Game::initCountryCompass() {
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
         if (m_countryCompass.find(cid) == m_countryCompass.end()) {
-            m_countryCompass[cid] = {c.compassEconomic, c.compassSocial};
+            m_countryCompass[cid] = makeCompass(c.compassEconomic, c.compassSocial);
         }
     }
 }
@@ -326,8 +326,10 @@ void Game::cancelPolicy(int activePolicyIndex) {
 void Game::shiftCountryCompass(int countryId, float econDelta, float socDelta) {
     auto it = m_countryCompass.find(countryId);
     if (it != m_countryCompass.end()) {
-        it->second.economic = std::clamp(it->second.economic + econDelta, -100.0f, 100.0f);
-        it->second.social = std::clamp(it->second.social + socDelta, -100.0f, 100.0f);
+        // Same bound as every ingestion point, from the same constant, so the
+        // range cannot drift apart in two places again.
+        it->second = makeCompass(it->second.economic + econDelta,
+                                 it->second.social   + socDelta);
     }
 }
  
@@ -1869,17 +1871,27 @@ void Game::updatePoliticalIdentities() {
         // First restyle: remember what this country actually was. Everything
         // after reads from here, including the return journey.
         if (!c.rootSaved) {
-            c.rootName  = c.name;
-            c.rootFlag  = c.flagActual;
-            c.rootSaved = true;
+            c.rootName         = c.name;
+            c.rootFlag         = c.flagActual;
+            c.rootFlagCensored = c.flagCensored;
+            c.rootSaved        = true;
         }
 
         const std::string before = c.name;
         c.name       = politid::applyName(c.rootName, next);
-        c.flagActual = politid::applyFlag(c.rootFlag, next);
-        // The censored variant tracks the actual one: it exists to hide hate
-        // symbols, and a generated flag never carries one, so they agree.
-        c.flagCensored   = c.flagActual;
+        // Seeded from the ROOT name, so this country picks the same charge out
+        // of its identity's vocabulary every time: on the host, on every
+        // client, and after a reload. The root name is what is stored, and it
+        // does not change when the country renames itself -- seeding from the
+        // current name would redraw the emblem at every threshold crossing.
+        const uint32_t seed = politid::seedFromName(c.rootName);
+        c.flagActual = politid::applyFlag(c.rootFlag, next, seed, false);
+        // Built separately, NOT copied from the actual one. A radical
+        // nationalist government can now charge its flag with a swastika, so
+        // the two genuinely differ: the censored build takes the next charge in
+        // the same vocabulary instead, off the censored root, and comes out as
+        // a clean radical-nationalist flag rather than a mosaic of a dirty one.
+        c.flagCensored = politid::applyFlag(c.rootFlagCensored, next, seed, true);
         c.identityQuadrant  = (int)next.quadrant;
         c.identityIntensity = (int)next.intensity;
         c.identityTurn      = m_turnNumber;
@@ -1900,7 +1912,24 @@ void Game::updatePoliticalIdentities() {
             auto fit = m_countryFlags.find(cid);
             if (fit != m_countryFlags.end() && fit->second.id > 0)
                 UnloadTexture(fit->second);
-            m_countryFlags[cid] = FlagRenderer::render(c.flagActual, 256, 128, "", &m_odmJsonData);
+            // m_dataDir, NOT "". The emblem is a symbol, symbols live in
+            // <data>/symbols/*.svg, and FlagRenderer only maps a star or a gear
+            // or a hammer-and-sickle to its SVG when it has a baseDir to look
+            // in. With an empty one, fourteen of the sixteen identities drew
+            // NOTHING -- the restyled flag came back byte-identical to the
+            // original -- and the two that did (circle, outlined circle) only
+            // because they have procedural fallbacks. It looked correct after a
+            // save and reload, because rebuildFlags() passes m_dataDir, which
+            // is how it survived being verified.
+            // Whichever variant the player has asked for, the same choice
+            // rebuildFlags() makes at load. Rendering flagActual unconditionally
+            // was survivable only while the two were copies of each other; now
+            // that a radical nationalist flag can carry a swastika, a player
+            // with censoring on would have been shown it anyway -- until they
+            // saved and reloaded, which is the same shape of fault as the
+            // missing emblem above.
+            const FlagPattern& shown = m_config.showActualFlags ? c.flagActual : c.flagCensored;
+            m_countryFlags[cid] = FlagRenderer::render(shown, 256, 128, m_dataDir, &m_odmJsonData);
         }
         // Names are drawn from a prebuilt label layer; nothing draws one during
         // self-play either.

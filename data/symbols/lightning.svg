@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
-  <!-- Saltire, corner to corner.
+  <!-- Lightning bolt: two limbs of even weight meeting at a step.
        Drawn by tools/generate_symbols.py. Regenerate rather than
        hand-edit, and rasterise the result before trusting it. -->
   <g fill="#fff">
-    <polygon points="-100,-56.0 -56.0,-100 0,-44.0 56.0,-100 100,-56.0 44.0,0 100,56.0 56.0,100 0,44.0 -56.0,100 -100,56.0 -44.0,0"/>
+    <polygon points="34,-94 -46,10 2,10 -34,94 50,-16 4,-16 42,-94"/>
   </g>
 </svg>

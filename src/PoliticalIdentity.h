@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "renderer/FlagRenderer.h"
@@ -125,12 +126,36 @@ PoliticalIdentity classify(float economic, float social, const PoliticalIdentity
 std::string applyName(const std::string& rootName, const PoliticalIdentity& id);
 
 /**
+ * A stable seed for a country, from its name.
+ *
+ * FNV-1a rather than std::hash, which is not required to give the same answer
+ * in two different standard libraries -- a host and a client would then draw
+ * different flags for the same country, and a save moved between machines would
+ * come back looking like somewhere else.
+ */
+uint32_t seedFromName(const std::string& name);
+
+/**
  * The country's own flag, restyled.
  *
  * Takes the ORIGINAL pattern every time rather than the current one, so the
  * transform never compounds and reverting is exact.
+ *
+ * `seed` chooses among the several charges an identity can take, so that two
+ * hundred countries do not all reach for the same star. Pass seedFromName() of
+ * the ROOT name: it must not change when the country renames itself, or a
+ * government would redraw its emblem every time it crossed a threshold.
+ *
+ * `avoidHateSymbols` builds the CENSORED variant. A radical nationalist
+ * government can charge its flag with a swastika, which is the one symbol in
+ * the vocabulary a player may not want to see; with this set, the charge falls
+ * through to the next in the same vocabulary. The censored flag is therefore a
+ * clean flag rather than a mosaic of a dirty one -- and because the substitute
+ * comes from the same list, the country still looks like a radical nationalist
+ * one. Call it twice, once each way, and store both.
  */
-FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& id);
+FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& id,
+                      uint32_t seed = 0, bool avoidHateSymbols = false);
 
 /**
  * The geographic core of a country name: "Kingdom of Italy" -> "Italy".

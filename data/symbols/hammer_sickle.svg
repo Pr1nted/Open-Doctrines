@@ -6,9 +6,17 @@
         xmlns:svg="http://www.w3.org/2000/svg"
         xmlns="http://www.w3.org/2000/svg"
         id="svg10"
-        height="600"
-        width="600"
+        height="200"
+        width="200"
+        viewBox="115.5 103.5 163 163"
         version="1.1">
+  <!-- The two paths below are drawn between roughly (122,110) and (272,260),
+       but the file declared a 600x600 canvas and no viewBox, so the emblem
+       occupied a quarter of its own box and sat in the top-left corner of it:
+       rasterised into a flag it came out a third of the size of every other
+       symbol and off-centre. The viewBox frames the content the way the rest
+       of data/symbols/ does -- about 92% of the box, centred -- and the paths
+       are untouched. -->
   <metadata
           id="metadata16">
     <rdf:RDF>

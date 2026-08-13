@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <unordered_map>
+#include <vector>
 #include <cstring>
 #include "nanosvg.h"
 #include "nanosvgrast.h"
@@ -82,6 +83,428 @@ void FlagRenderer::drawLine(Image* img, int x1, int y1, int x2, int y2, int thic
     }
 }
 
+void FlagRenderer::fillRing(Image* img, int cx, int cy, int rOuter, int rInner, Color c) {
+    if (rInner < 0) rInner = 0;
+    for (int dy = -rOuter; dy <= rOuter; ++dy)
+        for (int dx = -rOuter; dx <= rOuter; ++dx) {
+            const int d2 = dx * dx + dy * dy;
+            if (d2 > rOuter * rOuter || d2 < rInner * rInner) continue;
+            const int px = cx + dx, py = cy + dy;
+            if (px >= 0 && px < img->width && py >= 0 && py < img->height)
+                ImageDrawPixel(img, px, py, c);
+        }
+}
+
+// ══════════════════════════════════════════════════════
+//  Reading the field a generated emblem is about to land on
+// ══════════════════════════════════════════════════════
+
+static float luminanceOf(Color c) {
+    return (c.r * 0.2126f + c.g * 0.7152f + c.b * 0.0722f) / 255.0f;
+}
+
+// Above this, the best square placeSymbol could find -- at any size the
+// arrangement will shrink to -- is still not somewhere an emblem can sit, and
+// an EmblemField::AUTO_ symbol gets a field of its own instead.
+//
+// Measured against the shipped flags rather than guessed, at committed
+// intensity. France, Italy, Sweden and Brazil come out at 0.000 -- they have a
+// plain band or a plain field an emblem sits in whole -- and Japan, Turkey,
+// Poland and Switzerland reach 0.026 at worst. The Union Jack starts at 0.033
+// and the American flag at 0.189, because neither has a plain patch anywhere on
+// it, and Nepal starts at 0.074 because a pennon's diagonal cuts every square.
+// The two populations do not overlap and this sits in the gap.
+//
+// Radical intensities of otherwise-clean flags land above it where their larger
+// arrangements cannot fit anywhere whole -- Sweden 0.150, Brazil 0.117 -- and
+// those are exactly the ones that looked wrong straddling a cross arm or a
+// globe, so they get a field too.
+static constexpr float EMBLEM_FIELD_THRESHOLD = 0.030f;
+
+/**
+ * How light, and how BUSY, the square an emblem would occupy is.
+ *
+ * Variance is the useful half. A flag has plenty of room on it and almost none
+ * of it is uniform: the mean alone would happily drop a star onto the middle of
+ * the Union Jack, where the average of navy, white and red is a perfectly
+ * reasonable mid-grey and the picture underneath is a mess.
+ */
+FlagRenderer::FieldStats FlagRenderer::measureField(const Image& img, int cx, int cy, int r) {
+    return measureRegion(img, cx - r, cy - r, 2 * r + 1, 2 * r + 1);
+}
+
+FlagRenderer::FieldStats FlagRenderer::measureRegion(const Image& img, int rx, int ry, int rw, int rh) {
+    FieldStats out;
+    constexpr int BINS = 32;
+    int hist[BINS] = {0};
+    double sum = 0.0, sumSq = 0.0;
+    int n = 0, opaque = 0;
+    // Every third pixel: this runs for a handful of candidates per flag and the
+    // answer does not change at full density.
+    const int step = std::max(1, std::min(rw, rh) / 24);
+    for (int y = ry; y < ry + rh; y += step)
+        for (int x = rx; x < rx + rw; x += step) {
+            ++n;
+            if (x < 0 || x >= img.width || y < 0 || y >= img.height) continue;
+            const Color c = GetImageColor(img, x, y);
+            if (c.a < 8) continue;              // letterbox padding: not flag
+            const float l = luminanceOf(c);
+            sum += l; sumSq += l * l; ++opaque;
+            int b = (int)(l * BINS);
+            hist[b < 0 ? 0 : (b >= BINS ? BINS - 1 : b)]++;
+        }
+    if (n == 0 || opaque == 0) return out;      // coverage 0: nothing to land on
+    out.mean     = (float)(sum / opaque);
+    out.variance = (float)std::max(0.0, sumSq / opaque - out.mean * (double)out.mean);
+    out.coverage = (float)opaque / (float)n;
+
+    // How much of the square is ONE colour.
+    //
+    // This is the number that matters and variance is not a substitute for it.
+    // An emblem looks wrong when it STRADDLES something -- the arm of a cross,
+    // the edge of a device -- and a straddle is two flat colours in one square,
+    // which is a shape variance barely registers: sixty per cent of Sweden's
+    // maroon field against forty of its red cross is a variance of 0.016, well
+    // under a threshold calibrated on the Union Jack's five-way mess. As a
+    // fraction it is forty per cent foreign, which is exactly what it looks
+    // like. Japan's disc, meanwhile, is a device an emblem sits happily inside,
+    // and it is pure -- so this rejects what looks bad and permits what does
+    // not, where "busy-ness" rejected both or neither.
+    int best = 0, bestIdx = 0;
+    for (int b = 0; b < BINS; ++b)
+        if (hist[b] > best) { best = hist[b]; bestIdx = b; }
+    int nearMode = 0;
+    for (int b = std::max(0, bestIdx - 1); b <= std::min(BINS - 1, bestIdx + 1); ++b)
+        nearMode += hist[b];
+    out.purity = (float)nearMode / (float)opaque;
+    return out;
+}
+
+/**
+ * Where on this particular flag the emblem should actually go.
+ *
+ * The pattern's own (x, y) is candidate one and wins ties, so an authored
+ * position is only overruled when it is measurably bad. The rest are the places
+ * a flag conventionally carries a device -- the two cantons, the two lower
+ * quarters, the centre.
+ *
+ * Scored on two things, because either alone picks badly. Plainness alone puts
+ * a white star on the white half of Poland, which is where it was and which is
+ * nowhere. Contrast alone puts it in the middle of the Union Jack, where a
+ * white star and the average of navy-white-red are satisfyingly far apart and
+ * the picture underneath is a mess. Wanting both finds the red band, which is
+ * where a person would have put it.
+ */
+FlagRenderer::FlagBounds FlagRenderer::flagBounds(const Image& img) {
+    int x0 = img.width, y0 = img.height, x1 = -1, y1 = -1;
+    for (int y = 0; y < img.height; ++y)
+        for (int x = 0; x < img.width; ++x)
+            if (GetImageColor(img, x, y).a >= 8) {
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
+                if (y < y0) y0 = y;
+                if (y > y1) y1 = y;
+            }
+    if (x1 < 0) return {0, 0, img.width, img.height};      // nothing drawn yet
+    return {x0, y0, x1 - x0 + 1, y1 - y0 + 1};
+}
+
+/** fillRect, but only where there is already flag to paint on. */
+void FlagRenderer::fillRectMasked(Image* img, int x, int y, int w, int h, Color c) {
+    for (int dy = 0; dy < h; ++dy)
+        for (int dx = 0; dx < w; ++dx) {
+            const int px = x + dx, py = y + dy;
+            if (px < 0 || px >= img->width || py < 0 || py >= img->height) continue;
+            if (GetImageColor(*img, px, py).a < 8) continue;   // outside the flag's shape
+            ImageDrawPixel(img, px, py, c);
+        }
+}
+
+float FlagRenderer::placeSymbol(const Image& img, const FlagSymbol& sym, const FlagBounds& b,
+                                 int r, Color symbolColor, int* cx, int* cy) {
+    const float symLum = luminanceOf(symbolColor);
+    // A grid rather than a handful of named spots. Five candidates was not
+    // enough on Japan: every corner of the hinomaru flag is white, so no
+    // candidate both contrasted and sat clear of the disc, and the emblem stayed
+    // in the canton clipping the disc's edge. A sweep finds the inside of the
+    // disc, which is plain, contrasts, and is where a device on that flag would
+    // actually go.
+    static const float XS[] = {0.18f, 0.32f, 0.50f, 0.68f, 0.82f};
+    static const float YS[] = {0.24f, 0.50f, 0.76f};
+
+    float bestScore = 0.0f, bestQuality = 0.0f;
+    int   bestX = *cx, bestY = *cy;
+    bool  haveBest = false;
+
+    // Fractions are of the FLAG, not of the canvas. On Switzerland, which is
+    // square and sits in the left half of its slot, an 0.82 candidate was in
+    // the empty right half; on Nepal every candidate past the pennon's diagonal
+    // was outside the flag altogether.
+    auto consider = [&](float fx, float fy) {
+        int px = b.x + (int)(fx * b.w);
+        int py = b.y + (int)(fy * b.h);
+        // Same clamp the drawing does, so a candidate is scored where it would
+        // actually be drawn rather than where it was asked for.
+        if (px - r < b.x)         px = b.x + r;
+        if (py - r < b.y)         py = b.y + r;
+        if (px + r > b.x + b.w)   px = b.x + b.w - r;
+        if (py + r > b.y + b.h)   py = b.y + b.h - r;
+
+        const FieldStats st = measureField(img, px, py, r);
+        const float shortfall = std::max(0.0f, 0.32f - std::fabs(symLum - st.mean));
+        // How far this is from the position the pattern asked for, as a
+        // fraction of the flag. It is a tie-breaker, not a driver: the canton
+        // keeps the emblem unless somewhere else is measurably better for it.
+        const float dx = (fx - sym.x), dy = (fy - sym.y);
+        const float pull = std::sqrt(dx * dx + dy * dy);
+        // Hanging off the edge of a letterboxed flag into the transparent
+        // padding is disqualifying, not merely a bit worse.
+        const float offFlag = (1.0f - st.coverage) * 2.0f;
+        // Two numbers, deliberately. `quality` is how good this spot is for the
+        // emblem and is what gets RETURNED, because the caller uses it to
+        // decide whether the flag has anywhere at all. `score` adds the
+        // distance from the canton, which only ever picks between spots and
+        // must not make a perfectly good far-away one look bad.
+        const float quality = (1.0f - st.purity) + shortfall * 0.25f + offFlag;
+        const float score   = quality + pull * 0.05f;
+        if (!haveBest || score < bestScore) {
+            bestScore = score; bestQuality = quality; bestX = px; bestY = py; haveBest = true;
+        }
+    };
+
+    consider(sym.x, sym.y);                    // what the pattern asked for
+    for (float fx : XS)
+        for (float fy : YS)
+            consider(fx, fy);
+
+    // Then walk downhill from whichever cell won, halving the step each pass.
+    // The grid gets the emblem onto the right FEATURE; this centres it on that
+    // feature. Without it the star landed on the nearest grid point to the
+    // hinomaru rather than on the hinomaru, and hung over the edge.
+    float step = 0.06f;
+    for (int pass = 0; pass < 3; ++pass) {
+        const float bx = (float)(bestX - b.x) / (float)b.w;
+        const float by = (float)(bestY - b.y) / (float)b.h;
+        for (int oy = -1; oy <= 1; ++oy)
+            for (int ox = -1; ox <= 1; ++ox)
+                if (ox || oy) consider(bx + ox * step, by + oy * step);
+        step *= 0.5f;
+    }
+
+    *cx = bestX;
+    *cy = bestY;
+    return bestQuality;
+}
+
+// ══════════════════════════════════════════════════════
+//  Ideological recolouring
+// ══════════════════════════════════════════════════════
+
+namespace {
+
+struct Hsl { float h, s, l; };
+
+Hsl toHsl(Color c) {
+    const float r = c.r / 255.0f, g = c.g / 255.0f, b = c.b / 255.0f;
+    const float mx = std::fmax(r, std::fmax(g, b));
+    const float mn = std::fmin(r, std::fmin(g, b));
+    Hsl o{0.0f, 0.0f, (mx + mn) * 0.5f};
+    const float d = mx - mn;
+    if (d < 1e-6f) return o;                      // grey: hue is undefined
+    o.s = d / (1.0f - std::fabs(2.0f * o.l - 1.0f));
+    if      (mx == r) o.h = 60.0f * std::fmod((g - b) / d, 6.0f);
+    else if (mx == g) o.h = 60.0f * ((b - r) / d + 2.0f);
+    else              o.h = 60.0f * ((r - g) / d + 4.0f);
+    if (o.h < 0.0f) o.h += 360.0f;
+    return o;
+}
+
+Color toRgb(Hsl v, unsigned char alpha) {
+    const float c = (1.0f - std::fabs(2.0f * v.l - 1.0f)) * v.s;
+    const float x = c * (1.0f - std::fabs(std::fmod(v.h / 60.0f, 2.0f) - 1.0f));
+    const float m = v.l - c * 0.5f;
+    float r = 0.0f, g = 0.0f, b = 0.0f;
+    if      (v.h <  60.0f) { r = c; g = x; }
+    else if (v.h < 120.0f) { r = x; g = c; }
+    else if (v.h < 180.0f) { g = c; b = x; }
+    else if (v.h < 240.0f) { g = x; b = c; }
+    else if (v.h < 300.0f) { r = x; b = c; }
+    else                   { r = c; b = x; }
+    auto to8 = [&](float v8) {
+        const float f = (v8 + m) * 255.0f;
+        return (unsigned char)(f < 0.0f ? 0.0f : (f > 255.0f ? 255.0f : f));
+    };
+    return { to8(r), to8(g), to8(b), alpha };
+}
+
+float lerpf(float a, float b, float t) { return a + (b - a) * t; }
+
+}  // namespace
+
+// A pixel that carries the flag's politics rather than its structure. White,
+// black and near-greys are left EXACTLY alone -- Poland's white half, the white
+// stripes of the United States, a tricolour's white band are what the country
+// still looks like afterwards, and tinting them is what makes a restyled flag
+// look dirty rather than changed.
+static bool isChromatic(const Hsl& v) {
+    return v.s >= 0.14f && v.l <= 0.88f && v.l >= 0.10f;
+}
+
+/**
+ * One colour, restyled. `t` is where it ranks among the flag's own chromatic
+ * colours, 0 for the darkest and 1 for the lightest; see FlagRecolor.
+ */
+static Color restyleOne(Color c, const FlagRecolor& rc, float t) {
+    Hsl v = toHsl(c);
+    if (!isChromatic(v)) return c;
+
+    const float tgtSat   = lerpf(rc.shadeSat,   rc.sat,   t);
+    const float tgtLight = lerpf(rc.shadeLight, rc.light, t);
+
+    if (rc.shiftHue) v.h = rc.hue;      // replaced, never interpolated
+    v.s = lerpf(v.s, tgtSat,   rc.weight);
+    v.l = lerpf(v.l, tgtLight, rc.weight);
+    return toRgb(v, c.a);
+}
+
+/**
+ * The whole flag, restyled -- raster included.
+ *
+ * This is the part that makes an ideological change FUNDAMENTAL rather than a
+ * sticker. Nearly every country flies an image, so recolouring only the
+ * pattern palette meant the overwhelming majority of restyles were an emblem
+ * dropped on an otherwise untouched flag. The layout, proportions and white are
+ * all preserved, so the country is still recognisable at a glance on the map --
+ * what changes is what it is made of.
+ *
+ * Two passes: the first learns how dark and how light this particular flag's
+ * colours are, the second maps them onto the ideology's band. See FlagRecolor
+ * for why the range has to come from the flag rather than from a constant.
+ */
+void FlagRenderer::recolorFlag(Image* img, const FlagRecolor& rc) {
+    if (!rc.active) return;
+
+    // The flag's ACTUAL colours, found as the populated bins of a histogram.
+    //
+    // Neither the literal range nor a percentile of it works, and both were
+    // tried. A raster flag's edges are antialiased, so between a navy union and
+    // a red stripe there is a continuum of in-between pixels: on the American
+    // flag, with thirteen stripe boundaries, those fringes are nearly a fifth
+    // of every chromatic pixel on it. The range reached almost white, the 92nd
+    // percentile still landed in the fringe, and both put the stripes a third
+    // of the way up a band whose top they should have owned -- so they came out
+    // olive, which is the exact fault the banding exists to fix.
+    //
+    // A real colour occupies ONE bin and holds a large share of the flag. A
+    // fringe is spread thinly across many. Ignoring bins below a floor keeps
+    // the first and discards the second.
+    constexpr int BINS = 64;
+    constexpr int HUE_BINS = 24;
+    int hist[BINS] = {0};
+    int hueHist[HUE_BINS] = {0};
+    int total = 0;
+    for (int y = 0; y < img->height; ++y)
+        for (int x = 0; x < img->width; ++x) {
+            const Color c = GetImageColor(*img, x, y);
+            if (c.a == 0) continue;
+            const Hsl v = toHsl(c);
+            if (!isChromatic(v)) continue;
+            int b = (int)(v.l * BINS);
+            if (b < 0) b = 0;
+            if (b >= BINS) b = BINS - 1;
+            ++hist[b];
+            int hb = (int)(v.h * HUE_BINS / 360.0f);
+            hueHist[hb < 0 ? 0 : (hb >= HUE_BINS ? HUE_BINS - 1 : hb)]++;
+            ++total;
+        }
+
+    // The flag's own colours, in order, so a colour can be placed by its RANK
+    // rather than by where its lightness happens to fall.
+    //
+    // Brazil is why. Its green sits at lightness 0.30 and the blue of its globe
+    // at 0.23, against a yellow at 0.50 -- so on a straight lightness map the
+    // field and the globe both landed within a few per cent of the dark end of
+    // the band and came out the same colour, and the globe stopped being a
+    // device on a field and became a smudge in it. Ranked, three colours become
+    // three colours: shade, middle, and the ideology's own.
+    std::vector<int> tones;
+    float lo = 0.0f, hi = 1.0f;
+    if (total > 0) {
+        // 6% of the flag's chromatic area. At 2.5% the Union Jack's red-to-white
+        // antialiasing formed a 3% plateau one bin above its red, which stretched
+        // the top of the band past the colour that should have owned it and put
+        // the whole flag back in the olive it was rescued from. A colour a flag
+        // is actually MADE of is never this rare.
+        const int floorCount = std::max(1, total / 16);
+        int loBin = -1, hiBin = -1;
+        for (int b = 0; b < BINS; ++b)
+            if (hist[b] >= floorCount) {
+                if (loBin < 0) loBin = b;
+                hiBin = b;
+                // Adjacent bins are one antialiased colour, not two.
+                if (tones.empty() || b - tones.back() > 1) tones.push_back(b);
+            }
+        if (loBin < 0) {
+            // Nothing concentrated enough -- a flag that is mostly gradient, a
+            // painted coat of arms. Fall back to the range of what is there.
+            for (int b = 0; b < BINS; ++b)
+                if (hist[b] > 0) { if (loBin < 0) loBin = b; hiBin = b; }
+        }
+        if (loBin >= 0) {
+            lo = (loBin + 0.5f) / BINS;
+            hi = (hiBin + 0.5f) / BINS;
+        }
+    }
+
+    // The flag's own dominant hue, for the target that does not have one.
+    //
+    // Nationalism darkens rather than recolours, and the first version of that
+    // kept every colour's own hue -- which on a three-colour flag produced three
+    // muted hues, and three muted hues is the definition of mud: Brazil came out
+    // a grey-green field, an olive diamond and a blue-grey globe, all at once.
+    // Pulling everything to the hue the flag ALREADY mostly is keeps it
+    // coherent, and keeps it recognisably that country's flag, without turning
+    // every nationalist flag on the map the same charcoal.
+    FlagRecolor rcx = rc;
+    if (!rc.shiftHue) {
+        int bestHue = 0, bestCount = -1;
+        for (int i = 0; i < HUE_BINS; ++i)
+            if (hueHist[i] > bestCount) { bestCount = hueHist[i]; bestHue = i; }
+        rcx.shiftHue = true;
+        rcx.hue = (bestHue + 0.5f) * 360.0f / HUE_BINS;
+    }
+
+    // A flag with one chromatic colour -- Poland, Japan, Turkey -- has no range
+    // to rank, and its single colour should become the ideology's colour
+    // outright rather than something halfway down the band.
+    const bool ranked = (hi - lo) > 0.10f;
+
+    for (int y = 0; y < img->height; ++y)
+        for (int x = 0; x < img->width; ++x) {
+            const Color c = GetImageColor(*img, x, y);
+            if (c.a == 0) continue;
+            float t = 1.0f;
+            if (ranked) {
+                const Hsl v = toHsl(c);
+                if (tones.size() >= 3) {
+                    // Placed by rank: nearest tone wins, and the tones are
+                    // spread evenly across the band whatever their spacing.
+                    size_t nearest = 0;
+                    float bestD = 1e9f;
+                    for (size_t i = 0; i < tones.size(); ++i) {
+                        const float d = std::fabs(v.l - (tones[i] + 0.5f) / BINS);
+                        if (d < bestD) { bestD = d; nearest = i; }
+                    }
+                    t = (float)nearest / (float)(tones.size() - 1);
+                } else {
+                    t = (v.l - lo) / (hi - lo);
+                    t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+                }
+            }
+            ImageDrawPixel(img, x, y, restyleOne(c, rcx, t));
+        }
+}
+
 void FlagRenderer::imagePixelate(Image* img, int blockSize) {
     for (int y = 0; y < img->height; y += blockSize)
         for (int x = 0; x < img->width; x += blockSize) {
@@ -116,8 +539,16 @@ void FlagRenderer::imageBlur(Image* img, int radius) {
     // at all.
     //
     // A mosaic also obscures better than a blur: a swastika at 4px of blur is
-    // still legible in outline, and averaged into 12px blocks it is not.
-    const int block = std::max(2, radius * 3);
+    // still legible in outline.
+    //
+    // But 12px blocks did NOT make it illegible either, which is what this used
+    // to compute -- `radius * 3` at the radius 4 every caller passes. Rendered
+    // and looked at, the shipped German flag came through a censoring pass with
+    // its emblem perfectly readable: a symbol drawn at a quarter of the flag's
+    // width survives being averaged into blocks a twentieth of it. The block
+    // has to scale with the FLAG, not with a constant, because that is what the
+    // symbol on it scales with.
+    const int block = std::max({2, radius * 3, std::min(img->width, img->height) / 6});
     for (int by = 0; by < img->height; by += block) {
         for (int bx = 0; bx < img->width; bx += block) {
             const int x1 = std::min(bx + block, img->width);
@@ -439,6 +870,122 @@ void FlagRenderer::drawFlagBackground(Image* img, const FlagPattern& pattern, in
     }
 }
 
+// ══════════════════════════════════════════════════════
+//  Arrangements
+// ══════════════════════════════════════════════════════
+
+// How far a whole arrangement reaches from its centre, so that the placement
+// search measures -- and the flag bounds clamp -- the GROUP rather than the one
+// emblem at the middle of it.
+// Every constant below is paired with one in layoutInstances(); they are the
+// same geometry read two ways, and changing one without the other either clips
+// the arrangement at the flag's edge or reserves space it does not use.
+namespace {
+constexpr float ROW_R      = 0.45f, ROW_STEP  = 2.30f;   // step is in units of ROW_R
+constexpr float ARC_R      = 0.30f, ARC_RAD   = 0.90f, ARC_SPAN = 1.80f;
+constexpr float CIRCLE_R   = 0.32f, CIRCLE_RAD = 0.72f;
+constexpr float ESC_MAIN_R = 0.78f, ESC_SAT_R = 0.20f, ESC_RAD = 1.25f, ESC_SPAN = 1.50f;
+}  // namespace
+
+int FlagRenderer::groupExtent(const FlagSymbol& sym, int r) {
+    const int n = std::max(1, sym.count);
+    switch (sym.layout) {
+        case SymbolLayout::ROW:
+            return (int)(r * (ROW_R * ROW_STEP * (n - 1) * 0.5f + ROW_R)) + 1;
+        case SymbolLayout::ARC:      return (int)(r * (ARC_RAD + ARC_R)) + 1;
+        case SymbolLayout::CIRCLE:   return (int)(r * (CIRCLE_RAD + CIRCLE_R)) + 1;
+        case SymbolLayout::GRID:     return (int)(r * 1.10f) + 1;
+        case SymbolLayout::ESCORTED: return (int)(r * (ESC_RAD + ESC_SAT_R)) + 1;
+        default:                     return r;
+    }
+}
+
+void FlagRenderer::layoutInstances(const FlagSymbol& sym, int cx, int cy, int r,
+                                    std::vector<SymbolInstance>& out) {
+    const int n = std::max(1, sym.count);
+    switch (sym.layout) {
+        case SymbolLayout::SINGLE:
+            out.push_back({sym.type, cx, cy, r});
+            break;
+
+        case SymbolLayout::ROW: {
+            const int rs = std::max(2, (int)(r * ROW_R));
+            const int step = (int)(rs * ROW_STEP);
+            const int x0 = cx - step * (n - 1) / 2;
+            for (int i = 0; i < n; ++i) out.push_back({sym.type, x0 + step * i, cy, rs});
+            break;
+        }
+        case SymbolLayout::ARC: {
+            // A shallow arc of the kind that sits above a charge on a great
+            // many real flags. The stars are small and the arc is wide: at the
+            // first sizes tried they were half the primary's radius on a
+            // three-quarter-radius arc, which put their centres closer together
+            // than their own diameters and fused them into one spiked blob.
+            const int rs = std::max(2, (int)(r * ARC_R));
+            const float radius = r * ARC_RAD;
+            const float start = -1.5708f - ARC_SPAN * 0.5f;   // centred on straight up
+            for (int i = 0; i < n; ++i) {
+                const float t = (n == 1) ? 0.5f : (float)i / (float)(n - 1);
+                const float a = start + ARC_SPAN * t;
+                out.push_back({sym.type,
+                               cx + (int)(std::cos(a) * radius),
+                               cy + (int)(std::sin(a) * radius),
+                               rs});
+            }
+            break;
+        }
+        case SymbolLayout::CIRCLE: {
+            const int rs = std::max(2, (int)(r * CIRCLE_R));
+            const float radius = r * CIRCLE_RAD;
+            for (int i = 0; i < n; ++i) {
+                const float a = -1.5708f + 6.28319f * (float)i / (float)n;
+                out.push_back({sym.type,
+                               cx + (int)(std::cos(a) * radius),
+                               cy + (int)(std::sin(a) * radius),
+                               rs});
+            }
+            break;
+        }
+        case SymbolLayout::GRID: {
+            // Rows and columns, as wide as it is tall or one wider, which is
+            // how a canton full of stars is actually laid out.
+            int cols = 1;
+            while (cols * cols < n) ++cols;
+            const int rows = (n + cols - 1) / cols;
+            const float span = r * 2.0f;
+            const float stepX = span / (float)(cols + 1);
+            const float stepY = span / (float)(rows + 1);
+            const int rs = std::max(2, (int)(std::min(stepX, stepY) * 0.46f));
+            for (int i = 0; i < n; ++i) {
+                const int col = i % cols, row = i / cols;
+                out.push_back({sym.type,
+                               cx - (int)(span * 0.5f) + (int)(stepX * (col + 1)),
+                               cy - (int)(span * 0.5f) + (int)(stepY * (row + 1)),
+                               rs});
+            }
+            break;
+        }
+        case SymbolLayout::ESCORTED: {
+            // One charge with a train of small stars beside it. The satellites
+            // are always five-pointed stars whatever the primary is, which is
+            // the convention every flag using this arrangement follows.
+            out.push_back({sym.type, cx, cy, (int)(r * ESC_MAIN_R)});
+            const int rs = std::max(2, (int)(r * ESC_SAT_R));
+            const float radius = r * ESC_RAD;
+            const float start = -1.25f;
+            for (int i = 0; i < n; ++i) {
+                const float t = (n == 1) ? 0.5f : (float)i / (float)(n - 1);
+                const float a = start + ESC_SPAN * t;
+                out.push_back({SymbolType::STAR_5,
+                               cx + (int)(std::cos(a) * radius),
+                               cy + (int)(std::sin(a) * radius),
+                               rs});
+            }
+            break;
+        }
+    }
+}
+
 void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int height, const std::string& baseDir,
                                const std::unordered_map<std::string, std::string>* odmData) {
     int cx = (int)(sym.x * width);
@@ -448,8 +995,199 @@ void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int 
 
     Color sc = getColor(sym.colors, 0, WHITE);
 
+    // ── The two legacy "several stars" types, in the terms that now exist ──
+    //
+    // STARS_CIRCLE and STARS_GRID predate SymbolLayout and had neither an SVG
+    // nor a procedural fallback, so a flag asking for either drew nothing at
+    // all. They are an arrangement of stars, which is exactly what a layout is.
+    FlagSymbol effective = sym;
+    if (sym.type == SymbolType::STARS_CIRCLE || sym.type == SymbolType::STARS_GRID) {
+        effective.type   = SymbolType::STAR_5;
+        effective.layout = (sym.type == SymbolType::STARS_CIRCLE) ? SymbolLayout::CIRCLE
+                                                                  : SymbolLayout::GRID;
+        if (effective.count <= 0) effective.count = 12;
+    }
+    const FlagSymbol& s = effective;
+
+    // Where the flag actually is on this canvas. Everything below reasons in
+    // these bounds; see FlagBounds.
+    const FlagBounds b = flagBounds(*img);
+    if (s.autoPlace) { cx = b.x + (int)(s.x * b.w); cy = b.y + (int)(s.y * b.h); }
+    if (s.autoPlace || s.field != EmblemField::NONE)
+        r = (int)(s.size * std::min(b.w, b.h));
+    if (r < 1) r = 1;
+
+    // ── Generated emblems: find somewhere to put it, and make it readable ──
+    //
+    // All three of these are opt-in, so an authored flag is drawn exactly where
+    // and how its author said. Only PoliticalIdentity::applyFlag sets them.
+    int extent = groupExtent(s, r);
+    float placementScore = 0.0f;
+    if (s.autoPlace) {
+        // Try the arrangement at full size, then smaller, and keep the LARGEST
+        // that finds somewhere good. A flag can have a perfectly good home for
+        // an emblem and no room for a five-star escort at the same size --
+        // Poland's red band is 55 pixels tall and the full group is 96 -- and
+        // shrinking to fit is a better answer there than covering the flag with
+        // a field it did not need. The field is for flags where NO size works.
+        // Not far, though. Shrinking to 0.60 let an emblem squeeze between two
+        // American stripes and score well, which is why half the United States
+        // plates ended up with a small charge sitting on the flag instead of
+        // the field they needed: an emblem small enough to fit anywhere is an
+        // emblem too small to be the country's. A Nordic cross divides its flag
+        // into four quarters barely fifty pixels tall, though, and an escorted
+        // arrangement at 0.70 still straddles the arms; 0.58 fits inside one,
+        // which is where a cross flag has always carried a badge.
+        const float SCALES[] = {1.00f, 0.85f, 0.70f, 0.58f};
+        bool have = false;
+        int bestR = r, bestX = cx, bestY = cy, bestExtent = extent;
+        for (float scale : SCALES) {
+            const int rr = std::max(4, (int)(r * scale));
+            const int ex = groupExtent(s, rr);
+            int px = cx, py = cy;
+            const float q = placeSymbol(*img, s, b, ex, sc, &px, &py);
+            if (!have || q < placementScore) {
+                placementScore = q; bestR = rr; bestX = px; bestY = py; bestExtent = ex;
+                have = true;
+            }
+            if (q <= EMBLEM_FIELD_THRESHOLD) break;   // good enough, and the biggest that is
+        }
+        r = bestR; cx = bestX; cy = bestY; extent = bestExtent;
+    }
+
+    // ── ...and where there is nowhere for it to go, give it somewhere ──
+    //
+    // The United States is stripes edge to edge with a union full of stars, and
+    // the Union Jack is crossed into every corner: the search returns the least
+    // bad square on a flag that has no good one, and an emblem there sits ON
+    // the flag rather than in it. A plain field of its own is what a revolution
+    // marking an old flag has always resorted to, and it is only drawn when the
+    // flag leaves no alternative -- Poland, Japan and Sweden never see one.
+    EmblemField field = s.field;
+    if (field == EmblemField::AUTO_CANTON || field == EmblemField::AUTO_HOIST) {
+        const bool needed = s.autoPlace && placementScore > EMBLEM_FIELD_THRESHOLD;
+        field = !needed ? EmblemField::NONE
+                        : (s.field == EmblemField::AUTO_HOIST ? EmblemField::HOIST
+                                                                : EmblemField::CANTON);
+    }
+    if (field == EmblemField::CANTON || field == EmblemField::HOIST) {
+        // 0.42 for both, not a narrower band for the hoist. An American canton
+        // reaches 0.40 across, so a 0.30 band left a strip of the old union
+        // standing beside the new one -- which reads as a rendering fault
+        // rather than as a flag. A device's field has to finish what it starts.
+        // Sized and positioned in the FLAG's bounds, and painted only where
+        // there is flag under it.
+        //
+        // Both halves of that matter and neither was true. In canvas terms the
+        // Swiss flag is the left half of its slot, so a field 0.42 of the CANVAS
+        // wide was 0.84 of the flag and swallowed the cross whole; and Nepal is
+        // a pennon, so a rectangle drawn over it filled in the notch and the
+        // diagonal and left a plain red rectangle where the only
+        // non-quadrilateral flag in the world had been.
+        const int bandW   = (int)(b.w * 0.42f);
+        const int cantonH = (int)(b.h * 0.55f);
+
+        // WHICH corner, and whether a band at all.
+        //
+        // The hoist is where a device conventionally goes, so it is tried
+        // first -- but a flag whose OWN device is at the hoist gets it cut in
+        // half, and Turkey is exactly that: a full-height band over the left of
+        // it covered the crescent and left the star stranded on the edge. So
+        // every reasonable position is measured and the one covering the
+        // PLAINEST part of the flag wins, with the conventional one favoured on
+        // anything close. Purity is the right measure again: a region that is
+        // one flat colour is the part of a flag carrying nothing.
+        struct Slot { int x, y, w, h; float bias; };
+        const bool wantBand = (field == EmblemField::HOIST);
+        const Slot slots[] = {
+            {b.x,                  b.y,                  bandW, b.h,     wantBand ? 0.00f : 0.07f},
+            {b.x + b.w - bandW,    b.y,                  bandW, b.h,     wantBand ? 0.05f : 0.10f},
+            {b.x,                  b.y,                  bandW, cantonH, wantBand ? 0.07f : 0.00f},
+            {b.x + b.w - bandW,    b.y,                  bandW, cantonH, wantBand ? 0.10f : 0.05f},
+            {b.x,                  b.y + b.h - cantonH,  bandW, cantonH, wantBand ? 0.10f : 0.06f},
+        };
+        const Slot* best = &slots[0];
+        FieldStats under = measureRegion(*img, best->x, best->y, best->w, best->h);
+        float bestCost = (1.0f - under.purity) + best->bias;
+        for (const Slot& sl : slots) {
+            const FieldStats st = measureRegion(*img, sl.x, sl.y, sl.w, sl.h);
+            const float cost = (1.0f - st.purity) + sl.bias;
+            if (cost < bestCost) { bestCost = cost; best = &sl; under = st; }
+        }
+        const int fx = best->x, fy = best->y, fw = best->w, fh = best->h;
+
+        fillRectMasked(img, fx, fy, fw, fh, s.fieldColor);
+
+        // Where it does not separate itself, fimbriate it -- the same answer as
+        // for an emblem that will not show against its ground, and the reason
+        // real flags outline a canton at all.
+        if (std::fabs(luminanceOf(s.fieldColor) - under.mean) < 0.16f) {
+            const Color edge = (luminanceOf(s.fieldColor) > 0.5f) ? Color{20, 22, 28, 255}
+                                                                    : Color{245, 245, 242, 255};
+            const int t = std::max(2, b.h / 48);
+            // Only the edges that face the rest of the flag: an edge on the
+            // flag's own border is a line drawn on nothing.
+            if (fx > b.x)              fillRectMasked(img, fx, fy, t, fh, edge);
+            if (fx + fw < b.x + b.w)   fillRectMasked(img, fx + fw - t, fy, t, fh, edge);
+            if (fy > b.y)              fillRectMasked(img, fx, fy, fw, t, edge);
+            if (fy + fh < b.y + b.h)   fillRectMasked(img, fx, fy + fh - t, fw, t, edge);
+        }
+
+        cx = fx + fw / 2;
+        cy = fy + fh / 2;
+        // Refit the arrangement to the field it now lives in.
+        const int fit = (int)(std::min(fw, fh) * 0.46f);
+        if (extent > fit) {
+            r = std::max(2, r * fit / std::max(1, extent));
+            extent = groupExtent(s, r);
+        }
+    }
+
+    int outlineWidth = 0;
+    Color outlineColor = BLANK;
+    if (s.autoContrast) {
+        // A white star on Poland's white half is not a subtle problem, it is an
+        // invisible emblem. The fix is the one vexillology already uses for two
+        // colours that will not sit next to each other: fimbriate it. The
+        // emblem keeps the colour its identity gives it -- white for committed,
+        // gold for radical -- and gains an outline in whichever extreme the
+        // field is furthest from. Measured AFTER any field is drawn, so an
+        // emblem on its own field is judged against that field.
+        const FieldStats stats = measureField(*img, cx, cy, extent);
+        const float symLum = luminanceOf(sc);
+        if (std::fabs(symLum - stats.mean) < 0.30f || stats.variance > 0.02f) {
+            outlineColor = (stats.mean > 0.5f) ? Color{20, 22, 28, 255}
+                                               : Color{245, 245, 242, 255};
+            // ...unless the outline would be the emblem's own colour, in which
+            // case the pair reads as one shape and nothing has been gained.
+            if (std::fabs(luminanceOf(outlineColor) - symLum) < 0.30f)
+                outlineColor = (symLum > 0.5f) ? Color{20, 22, 28, 255}
+                                               : Color{245, 245, 242, 255};
+            outlineWidth = std::max(2, r / 9);
+        }
+    }
+
+    std::vector<SymbolInstance> instances;
+    layoutInstances(s, cx, cy, r, instances);
+    for (const SymbolInstance& in : instances)
+        drawOneSymbol(img, s, in.type, in.cx, in.cy, in.r, sc,
+                      outlineWidth, outlineColor, baseDir, odmData);
+}
+
+void FlagRenderer::drawOneSymbol(Image* img, const FlagSymbol& sym, SymbolType type,
+                                  int cx, int cy, int r, Color sc,
+                                  int outlineWidth, Color outlineColor,
+                                  const std::string& baseDir,
+                                  const std::unordered_map<std::string, std::string>* odmData) {
+    const int width = img->width, height = img->height;
+
+    // The outline is sized from the arrangement, but a satellite star is a
+    // fraction of the primary and would be swallowed by an outline scaled to
+    // it. Every instance gets one proportional to itself.
+    if (outlineWidth > 0) outlineWidth = std::max(1, std::min(outlineWidth, r / 5));
+
     // ── SVG redirect: map old procedural types to SVG_FILE ──
-    SymbolType effectiveType = sym.type;
+    SymbolType effectiveType = type;
     std::string svgPath;
     auto mapToSVG = [&](SymbolType t, const char* svgName) {
         if (effectiveType == t) {
@@ -458,7 +1196,16 @@ void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int 
             effectiveType = SymbolType::SVG_FILE;
         }
     };
-    if (!baseDir.empty()) {
+    // Unconditionally, NOT `if (!baseDir.empty())`.
+    //
+    // An empty baseDir is not "no data directory", it is what Android uses on
+    // purpose (Game.cpp: m_dataDir = "" so that "symbols/star5.svg" reaches the
+    // APK asset through android_fopen). Gating the mapping on it meant every
+    // symbol fell through to the procedural switch below, which has fallbacks
+    // for five of the twenty-odd types, so on Android a flag's star simply did
+    // not appear. rasterizeSVG already tries the archive and then the path, and
+    // reports a miss once, so there is nothing for the guard to protect.
+    {
         mapToSVG(SymbolType::STAR_5,        "star5.svg");
         mapToSVG(SymbolType::STAR_6,        "star6.svg");
         mapToSVG(SymbolType::STAR_7,        "star7.svg");
@@ -477,11 +1224,27 @@ void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int 
         mapToSVG(SymbolType::CROSSED_SWORDS,"crossed_swords.svg");
         mapToSVG(SymbolType::MOUNTAIN,      "mountain.svg");
         mapToSVG(SymbolType::TREE,          "tree.svg");
+        // Ten SVGs shipped in data/symbols/ that no SymbolType could name, and
+        // so could never appear on a flag. eagle_nazi.svg is deliberately still
+        // not among them, for the same reason applyFlag will not generate a
+        // swastika: an authored historical flag may carry one, nothing else
+        // should be able to reach for it by accident.
+        mapToSVG(SymbolType::ANCHOR,        "anchor.svg");
+        mapToSVG(SymbolType::TORCH,         "torch.svg");
+        mapToSVG(SymbolType::ROSE,          "rose.svg");
+        mapToSVG(SymbolType::FASCES,        "fasces.svg");
+        mapToSVG(SymbolType::CROSS_PATTEE,  "cross_pattee.svg");
+        mapToSVG(SymbolType::STAR_4,        "star_4.svg");
+        mapToSVG(SymbolType::STAR_OF_DAVID, "star_of_david.svg");
+        mapToSVG(SymbolType::WREATH,         "wreath.svg");
+        mapToSVG(SymbolType::HAMMER,         "hammer.svg");
+        mapToSVG(SymbolType::LIGHTNING,      "lightning.svg");
+        mapToSVG(SymbolType::SUN_SPLENDOUR,  "sun_splendour.svg");
     }
 
     switch (effectiveType) {
         case SymbolType::SVG_FILE: {
-            const std::string& svgName = (sym.type == SymbolType::SVG_FILE) ? sym.text : svgPath;
+            const std::string& svgName = (type == SymbolType::SVG_FILE) ? sym.text : svgPath;
             if (!svgName.empty()) {
                                 // Clamp position so symbol stays within flag bounds
                 int halfRaster = r;  // raster is r*2, half is r
@@ -494,7 +1257,7 @@ void FlagRenderer::drawSymbol(Image* img, const FlagSymbol& sym, int width, int 
 Image svgImg = rasterizeSVG(svgName, r * 2, r * 2, baseDir, odmData);
                 if (svgImg.data != nullptr) {
                     // Recolor SVG to match symbol color
-                    Color targetColor = getColor(sym.colors, 0, WHITE);
+                    const Color targetColor = sc;
                     if (!(targetColor.r == 255 && targetColor.g == 255 && targetColor.b == 255)) {
                         Image recolored = recolorImage(svgImg, targetColor);
                         UnloadImage(svgImg);
@@ -503,6 +1266,19 @@ Image svgImg = rasterizeSVG(svgName, r * 2, r * 2, baseDir, odmData);
                     // Composite onto flag at (cx, cy) centered
                     int hw = svgImg.width / 2;
                     int hh = svgImg.height / 2;
+                    // Fimbriation first, as a dilation of the symbol's own
+                    // silhouette: every opaque pixel stamps a disc of outline
+                    // colour, and the symbol is then drawn over the middle of
+                    // it. Following the shape rather than boxing it is what
+                    // makes it read as part of the emblem.
+                    if (outlineWidth > 0) {
+                        for (int sy = 0; sy < svgImg.height; ++sy)
+                            for (int sx = 0; sx < svgImg.width; ++sx) {
+                                if (GetImageColor(svgImg, sx, sy).a < 100) continue;
+                                fillCircle(img, cx + sx - hw, cy + sy - hh,
+                                           outlineWidth, outlineColor);
+                            }
+                    }
                     for (int sy = 0; sy < svgImg.height; ++sy) {
                         for (int sx = 0; sx < svgImg.width; ++sx) {
                             Color pc = GetImageColor(svgImg, sx, sy);
@@ -521,13 +1297,35 @@ Image svgImg = rasterizeSVG(svgName, r * 2, r * 2, baseDir, odmData);
         }
 
         // ── Procedural fallbacks (for symbols without SVG) ──
-        case SymbolType::CIRCLE:         fillCircle(img, cx, cy, r, sc); break;
-        case SymbolType::DISC:
+        case SymbolType::CIRCLE:
+            if (outlineWidth > 0) fillCircle(img, cx, cy, r + outlineWidth, outlineColor);
             fillCircle(img, cx, cy, r, sc);
-            fillCircle(img, cx, cy, r * 3 / 5, getColor(sym.colors, 1, DARKGRAY));
             break;
+        case SymbolType::DISC: {
+            // An "outlined circle" is an annulus, and the flag shows through
+            // the middle of it. It used to be a filled disc with a second disc
+            // of DARKGRAY stamped in the centre, which on a flag carrying one
+            // colour -- every generated emblem does -- drew a grey dot inside a
+            // white blob and read as a rendering fault rather than a device.
+            const int rInner = r * 3 / 5;
+            if (sym.colors.size() > 1) {
+                fillCircle(img, cx, cy, r, sc);
+                fillCircle(img, cx, cy, rInner, sym.colors[1]);
+                break;
+            }
+            if (outlineWidth > 0) {
+                fillRing(img, cx, cy, r + outlineWidth, rInner - outlineWidth, outlineColor);
+            }
+            fillRing(img, cx, cy, r, rInner, sc);
+            break;
+        }
         case SymbolType::TRIANGLE: {
             int hh = r, hw = r;
+            if (outlineWidth > 0) {
+                const int o = outlineWidth;
+                fillTriangle(img, cx, cy - hh - o * 2, cx - hw - o, cy + hh + o,
+                             cx + hw + o, cy + hh + o, outlineColor);
+            }
             fillTriangle(img, cx, cy - hh, cx - hw, cy + hh, cx + hw, cy + hh, sc);
             break;
         }
@@ -567,21 +1365,7 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
                 } else {
                     dst = svgImg;
                 }
-                // Symbols go ON TOP of a real flag image, they are not
-                // skipped by it.
-                //
-                // This branch used to return the loaded image untouched, so a
-                // pattern that carried symbols alongside an imagePath silently
-                // lost them -- and since almost every real country's flag IS an
-                // image, that meant the political-identity overlay
-                // (PoliticalIdentity.h) drew on nobody. The British Empire
-                // became the "British Free Republic" flying an unaltered Union
-                // Jack.
-                for (const auto& sym : pattern.symbols)
-                    drawSymbol(&dst, sym, width, height, baseDir, odmData);
-
-                if (pattern.censored) imageBlur(&dst, 4);
-                Texture2D tex = LoadTextureFromImage(dst);
+                Texture2D tex = compose(&dst, pattern, width, height, baseDir, odmData);
                 UnloadImage(dst);
                 return tex;
             }
@@ -603,11 +1387,7 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
             }
             if (src.data != nullptr) {
                 ImageResize(&src, width, height);
-                // Same reason as the SVG branch above.
-                for (const auto& sym : pattern.symbols)
-                    drawSymbol(&src, sym, width, height, baseDir, odmData);
-                if (pattern.censored) imageBlur(&src, 4);
-                Texture2D tex = LoadTextureFromImage(src);
+                Texture2D tex = compose(&src, pattern, width, height, baseDir, odmData);
                 UnloadImage(src);
                 return tex;
             }
@@ -616,13 +1396,38 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
 
     Image img = GenImageColor(width, height, BLANK);
     drawFlagBackground(&img, pattern, width, height);
-    for (const auto& sym : pattern.symbols)
-        drawSymbol(&img, sym, width, height, baseDir, odmData);
-
-    if (pattern.censored) imageBlur(&img, 4);
-    Texture2D tex = LoadTextureFromImage(img);
+    Texture2D tex = compose(&img, pattern, width, height, baseDir, odmData);
     UnloadImage(img);
     return tex;
+}
+
+/**
+ * Everything that happens to a flag after its field is on the canvas, wherever
+ * that canvas came from.
+ *
+ * The three branches of render() -- SVG, raster, generated pattern -- used to
+ * each carry their own copy of this tail, which is how the SVG one came to
+ * return early and skip symbols entirely while the other two drew them. There
+ * is one copy now, and the order it imposes is the order the result depends on:
+ * the recolour must not touch the emblem, and the contrast measurement behind
+ * the emblem must see the recoloured flag.
+ */
+Texture2D FlagRenderer::compose(Image* img, const FlagPattern& pattern, int width, int height,
+                                 const std::string& baseDir,
+                                 const std::unordered_map<std::string, std::string>* odmData) {
+    recolorFlag(img, pattern.recolor);
+
+    // Symbols go ON TOP of a real flag image, they are not skipped by it. The
+    // SVG branch used to return the loaded image untouched, so a pattern that
+    // carried symbols alongside an imagePath silently lost them -- and since
+    // almost every real country's flag IS an image, the political-identity
+    // overlay drew on nobody. The British Empire became the "British Free
+    // Republic" flying an unaltered Union Jack.
+    for (const auto& sym : pattern.symbols)
+        drawSymbol(img, sym, width, height, baseDir, odmData);
+
+    if (pattern.censored) imageBlur(img, 4);
+    return LoadTextureFromImage(*img);
 }
 
 // ══════════════════════════════════════════════════════
@@ -632,8 +1437,25 @@ Texture2D FlagRenderer::render(const FlagPattern& pattern, int width, int height
 Image FlagRenderer::rasterizeSVG(const std::string& filePath, int width, int height, const std::string& baseDir,
                                   const std::unordered_map<std::string, std::string>* odmData) {
     std::string fullPath = baseDir.empty() ? filePath : baseDir + "/" + filePath;
+    // Keyed on the SIZE as well as the path.
+    //
+    // It was keyed on the path alone, which was survivable only while every
+    // symbol on a flag was the same size: the first rasterisation won and every
+    // later request for that file got it back at whatever size that was,
+    // because the compositor in drawOneSymbol sizes itself from the image it is
+    // given rather than the size it asked for. The moment one flag wanted a
+    // star at two sizes -- a charge with a train of small stars beside it --
+    // the small ones came back as full-size ones and the arrangement fused into
+    // a single blob.
+    const std::string cacheKey = fullPath + "@" + std::to_string(width) + "x" + std::to_string(height);
     static std::unordered_map<std::string, Image> s_cache;
-    auto cit = s_cache.find(fullPath);
+    // Sizes are chosen per flag now, so the key space is no longer tiny. This
+    // is a cache, not a registry: when it stops being cheap, drop it.
+    if (s_cache.size() > 512) {
+        for (auto& e : s_cache) UnloadImage(e.second);
+        s_cache.clear();
+    }
+    auto cit = s_cache.find(cacheKey);
     if (cit != s_cache.end()) {
         Image copy = GenImageColor(cit->second.width, cit->second.height, BLANK);
         for (int y = 0; y < cit->second.height; ++y)
@@ -704,7 +1526,7 @@ Image FlagRenderer::rasterizeSVG(const std::string& filePath, int width, int hei
     free(rgba);
 
     Image cached = ImageCopy(img);
-    s_cache[fullPath] = cached;
+    s_cache[cacheKey] = cached;
 
     return img;
 }

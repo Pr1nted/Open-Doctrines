@@ -1948,8 +1948,13 @@ void MapEditor::regenerateFlag(Country& c) {
     static const SymbolType symTypes[] = {
         SymbolType::STAR_5, SymbolType::STAR_6, SymbolType::CRESCENT, SymbolType::SUN,
         SymbolType::GEAR, SymbolType::MOUNTAIN, SymbolType::TREE, SymbolType::DIAMOND,
-        SymbolType::CROSS_LATIN, SymbolType::CROSS_SALTIR};
-    s.type = symTypes[ri(10)];
+        SymbolType::CROSS_LATIN, SymbolType::CROSS_SALTIR,
+        // The rest of data/symbols/, which a generated flag could not reach
+        // while no SymbolType named them.
+        SymbolType::ANCHOR, SymbolType::TORCH, SymbolType::ROSE,
+        SymbolType::CROSS_PATTEE, SymbolType::STAR_4, SymbolType::STAR_7,
+        SymbolType::CROSS_MALTESE, SymbolType::CRESCENT_STAR};
+    s.type = symTypes[ri((int)(sizeof(symTypes) / sizeof(symTypes[0])))];
     float lum = (0.299f * rr + 0.587f * gg + 0.114f * bb) / 255.0f;
     s.colors = { lum > 0.6f ? Color{26, 26, 34, 255} : white };
     s.x = 0.5f;
@@ -2952,6 +2957,17 @@ std::string MapEditor::buildCountriesJson() const {
                         case SymbolType::DIAMOND: st = "diamond"; break;
                         case SymbolType::SUN: st = "sun"; break;
                         case SymbolType::GEAR: st = "gear"; break;
+                        case SymbolType::WREATH: st = "wreath"; break;
+                        case SymbolType::HAMMER: st = "hammer"; break;
+                        case SymbolType::LIGHTNING: st = "lightning"; break;
+                        case SymbolType::SUN_SPLENDOUR: st = "sun_splendour"; break;
+                        case SymbolType::ANCHOR: st = "anchor"; break;
+                        case SymbolType::TORCH: st = "torch"; break;
+                        case SymbolType::ROSE: st = "rose"; break;
+                        case SymbolType::FASCES: st = "fasces"; break;
+                        case SymbolType::CROSS_PATTEE: st = "cross_pattee"; break;
+                        case SymbolType::STAR_4: st = "star_4"; break;
+                        case SymbolType::STAR_OF_DAVID: st = "star_of_david"; break;
                         case SymbolType::MOUNTAIN: st = "mountain"; break;
                         case SymbolType::TREE: st = "tree"; break;
                         case SymbolType::TEXT_BLOCK: st = "text_block"; break;

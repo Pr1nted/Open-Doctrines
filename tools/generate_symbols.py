@@ -186,12 +186,114 @@ def star7():
             "Seven-pointed star, as on the Iraqi and Jordanian flags.")
 
 
+def rot_poly(pts, deg, cx=0.0, cy=0.0):
+    """Polygon points rotated about a centre, computed here rather than left to
+    an SVG transform: nanosvg's transform support is not something the rest of
+    this file relies on, and a symbol that renders in a browser and not in the
+    game is worse than no symbol."""
+    a = math.radians(deg)
+    ca, sa = math.cos(a), math.sin(a)
+    return " ".join(f"{cx + x * ca - y * sa:.2f},{cy + x * sa + y * ca:.2f}"
+                    for x, y in pts)
+
+
+def rect_pts(x, y, w, h):
+    return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+
+
+def cross_saltir():
+    """The downloaded one filled 56% of its box against ~92% for every other
+    symbol here, so a saltire drew visibly smaller than the star beside it. A
+    saltire is two bars corner to corner; drawn, it reaches them.
+
+    The arm is 31 wide, not the 42 tried first: at 42 the four openings between
+    the arms close up at 24px and the whole thing reads as a blob rather than as
+    a cross."""
+    d = 44.0                      # vertical offset at the corner
+    body = (f'    <polygon points="-100,{-100 + d} {-100 + d},-100 '
+            f'0,{-d} {100 - d},-100 100,{-100 + d} {d},0 '
+            f'100,{100 - d} {100 - d},100 0,{d} '
+            f'{-100 + d},100 -100,{100 - d} {-d},0"/>')
+    return body, "Saltire, corner to corner."
+
+
+def wreath():
+    # A ring of leaves with a gap at the top, which is what makes it read as a
+    # wreath rather than as a gear. Each leaf is a four-point diamond pointing
+    # outward: at 32px a laurel leaf's real outline is one grey smudge, and a
+    # diamond at the same size is a leaf.
+    # Longer leaves and fewer of them than the first attempt, which drew
+    # fourteen short ones and read as a ring of dots -- at 24px a wreath has to
+    # be a ring of *strokes*, and the gap at the top has to be wide enough to
+    # still be a gap after antialiasing.
+    ring, leaf_l, leaf_w = 62.0, 40.0, 20.0
+    gap = 62.0                                   # degrees of opening at the top
+    n = 12
+    span = 360.0 - gap
+    out = []
+    for i in range(n):
+        a = math.radians(-90 + gap / 2 + span * i / (n - 1))
+        ca, sa = math.cos(a), math.sin(a)
+        # The leaf lies ALONG the ring, not pointing out of it. Radial leaves
+        # were the second attempt and they read as a sunburst -- which is a
+        # symbol this set already has, drawn better, in sun_splendour. Laid
+        # tangentially the same leaves make a scalloped ring, which is a wreath.
+        pts = [(ring, leaf_l / 2), (ring + leaf_w, 0.0),
+               (ring, -leaf_l / 2), (ring - leaf_w, 0.0)]
+        rot = " ".join(f"{x * ca - y * sa:.2f},{x * sa + y * ca:.2f}" for x, y in pts)
+        out.append(f'    <polygon points="{rot}"/>')
+    return "\n".join(out), "Laurel wreath: a ring of leaves, open at the top."
+
+
+def hammer():
+    # Head and handle, both rectangles -- but ANGLED. Drawn upright they make a
+    # capital T and read as one, which is what the first version did. Thirty
+    # degrees off vertical is enough for the eye to take it as a tool.
+    head = rot_poly(rect_pts(-52, -84, 104, 50), 30.0)
+    haft = rot_poly(rect_pts(-15, -34, 30, 118), 30.0)
+    return (f'    <polygon points="{head}"/>\n    <polygon points="{haft}"/>',
+            "Hammer, head and haft, canted so it does not read as a letter T.")
+
+
+
+
+def lightning():
+    # The first attempt had a wide upper limb and a narrow lower one, and the
+    # two crossbars sat almost on the same line: at flag size it read as a
+    # lumpy arrow rather than a bolt. A bolt is TWO limbs of the same weight
+    # meeting at an offset step, and the step has to be the widest part of it.
+    body = ('    <polygon points="34,-94 -46,10 2,10 -34,94 50,-16 4,-16 '
+            '42,-94"/>')
+    return body, "Lightning bolt: two limbs of even weight meeting at a step."
+
+
+def sun_splendour():
+    # A disc with straight triangular rays, as against sun.svg's wavy ones.
+    disc = '    <circle cx="0" cy="0" r="42"/>'
+    rays = []
+    n = 12
+    for i in range(n):
+        a = math.radians(-90 + 360.0 * i / n)
+        half = math.radians(360.0 / n * 0.24)
+        tip = (98 * math.cos(a), 98 * math.sin(a))
+        l = (44 * math.cos(a - half), 44 * math.sin(a - half))
+        r = (44 * math.cos(a + half), 44 * math.sin(a + half))
+        rays.append(f'    <polygon points="{tip[0]:.2f},{tip[1]:.2f} '
+                    f'{l[0]:.2f},{l[1]:.2f} {r[0]:.2f},{r[1]:.2f}"/>')
+    return disc + "\n" + "\n".join(rays), "Sun in splendour: disc and straight rays."
+
+
 SYMBOLS = {
     "circle_stars": circle_stars, "crescent_star": crescent_star,
     "star7": star7,
     "swastika": swastika,
     "hammer_sickle": hammer_sickle, "mountain": mountain, "rose": rose,
     "sword": sword, "torch": torch, "tree": tree,
+    # Drawn to widen what a generated flag can be charged with: with one emblem
+    # per identity, every communist country in the world flew the same star.
+    "cross_saltir": cross_saltir, "wreath": wreath, "hammer": hammer,
+    "lightning": lightning,
+    "sun_splendour": sun_splendour,
 }
 
 

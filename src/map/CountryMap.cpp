@@ -20,6 +20,17 @@ static SymbolType parseSymbolType(const std::string& s) {
     if (s == "triangle") return SymbolType::TRIANGLE;
     if (s == "diamond") return SymbolType::DIAMOND;
     if (s == "gear") return SymbolType::GEAR;
+    if (s == "wreath") return SymbolType::WREATH;
+    if (s == "hammer") return SymbolType::HAMMER;
+    if (s == "lightning") return SymbolType::LIGHTNING;
+    if (s == "sun_splendour") return SymbolType::SUN_SPLENDOUR;
+    if (s == "anchor") return SymbolType::ANCHOR;
+    if (s == "torch") return SymbolType::TORCH;
+    if (s == "rose") return SymbolType::ROSE;
+    if (s == "fasces") return SymbolType::FASCES;
+    if (s == "cross_pattee") return SymbolType::CROSS_PATTEE;
+    if (s == "star_4") return SymbolType::STAR_4;
+    if (s == "star_of_david") return SymbolType::STAR_OF_DAVID;
     if (s == "hammer_sickle") return SymbolType::HAMMER_SICKLE;
     if (s == "swastika") return SymbolType::SWASTIKA;
     if (s == "sword") return SymbolType::SWORD;

@@ -3041,6 +3041,17 @@ std::string flagPatternToJsonString(const FlagPattern& fp) {
                 case SymbolType::TRIANGLE:       st = "triangle"; break;
                 case SymbolType::DIAMOND:        st = "diamond"; break;
                 case SymbolType::GEAR:           st = "gear"; break;
+                case SymbolType::WREATH: st = "wreath"; break;
+                case SymbolType::HAMMER: st = "hammer"; break;
+                case SymbolType::LIGHTNING: st = "lightning"; break;
+                case SymbolType::SUN_SPLENDOUR: st = "sun_splendour"; break;
+                case SymbolType::ANCHOR:          st = "anchor"; break;
+                case SymbolType::TORCH:           st = "torch"; break;
+                case SymbolType::ROSE:            st = "rose"; break;
+                case SymbolType::FASCES:          st = "fasces"; break;
+                case SymbolType::CROSS_PATTEE:    st = "cross_pattee"; break;
+                case SymbolType::STAR_4:          st = "star_4"; break;
+                case SymbolType::STAR_OF_DAVID:   st = "star_of_david"; break;
                 case SymbolType::HAMMER_SICKLE:  st = "hammer_sickle"; break;
                 case SymbolType::SWASTIKA:       st = "swastika"; break;
                 case SymbolType::SWORD:          st = "sword"; break;

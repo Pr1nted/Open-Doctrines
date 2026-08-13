@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <!-- Laurel wreath: a ring of leaves, open at the top.
+       Drawn by tools/generate_symbols.py. Regenerate rather than
+       hand-edit, and rasterise the result before trusting it. -->
+  <g fill="#fff">
+    <polygon points="49.08,-42.84 42.23,-70.29 14.79,-63.45 21.63,-36.00"/>
+    <polygon points="63.20,-15.79 69.61,-43.34 42.06,-49.75 35.65,-22.20"/>
+    <polygon points="63.46,14.72 81.71,-6.89 60.10,-25.14 41.85,-3.53"/>
+    <polygon points="49.79,42.01 75.88,31.08 64.95,4.99 38.87,15.92"/>
+    <polygon points="25.20,60.07 53.40,62.23 55.56,34.02 27.35,31.87"/>
+    <polygon points="-4.92,64.96 19.21,79.72 33.97,55.59 9.84,40.83"/>
+    <polygon points="-33.97,55.59 -19.21,79.72 4.92,64.96 -9.84,40.83"/>
+    <polygon points="-55.56,34.02 -53.40,62.23 -25.20,60.07 -27.35,31.87"/>
+    <polygon points="-64.95,4.99 -75.88,31.08 -49.79,42.01 -38.87,15.92"/>
+    <polygon points="-60.10,-25.14 -81.71,-6.89 -63.46,14.72 -41.85,-3.53"/>
+    <polygon points="-42.06,-49.75 -69.61,-43.34 -63.20,-15.79 -35.65,-22.20"/>
+    <polygon points="-14.79,-63.45 -42.23,-70.29 -49.08,-42.84 -21.63,-36.00"/>
+  </g>
+</svg>

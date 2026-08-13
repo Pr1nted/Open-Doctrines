@@ -6,18 +6,29 @@ namespace politid {
 
 namespace {
 
-// The ideological colours a restyled flag pulls toward. Not replacements --
-// applyFlag() BLENDS toward these, so a country's own palette survives.
-constexpr Color RED_LEFT   = {170,  30,  30, 255};   // communist / socialist
-constexpr Color DARK_RIGHT = { 40,  42,  50, 255};   // nationalist
-constexpr Color GOLD_LIB   = {210, 175,  60, 255};   // liberal
+/**
+ * What a restyled palette moves toward, and the solid colour that goes with it.
+ *
+ * The HSL reasoning behind these fields lives on FlagRecolor in
+ * FlagRenderer.h -- the transform itself is the renderer's, because most
+ * countries fly a raster image and there is no palette here to rewrite.
+ */
+struct Restyle { FlagRecolor recolor; Color solid; };
 
-Color blend(Color a, Color b, float t) {
-    auto mix = [&](unsigned char x, unsigned char y) {
-        return (unsigned char)(x + (int)((y - x) * t));
-    };
-    return { mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), 255 };
-}
+//                          active shiftHue   hue    sat  light  shadeSat shadeLight weight
+// Red keeps a colour at its dark end: a maroon-and-scarlet flag is a flag, and
+// the two read against each other.
+constexpr Restyle RED_LEFT   = { { true, true,   2.0f, 0.68f, 0.46f, 0.50f, 0.20f, 0.0f }, {158, 32, 32, 255} };
+// Gold does NOT. Gold at low lightness is olive, so the dark end of a gold
+// restyle goes almost neutral and the gold itself only appears where the flag
+// was already light. That is the difference between a charcoal-and-gold Union
+// Jack and a wet field.
+constexpr Restyle GOLD_LIB   = { { true, true,  45.0f, 0.70f, 0.58f, 0.10f, 0.17f, 0.0f }, {194, 152, 44, 255} };
+// Nationalism reads as a DARKENING of a country's own colours, not as a move
+// toward a hue -- charcoal has no meaningful hue to move to, and forcing one
+// turns every flag the same grey. This target keeps each colour where it is on
+// the wheel and takes the light and the saturation out of it.
+constexpr Restyle DARK_RIGHT = { { true, false,  0.0f, 0.28f, 0.34f, 0.10f, 0.15f, 0.0f }, { 38, 40, 48, 255} };
 
 bool usesEconAxis(IdeologyQuadrant q) {
     switch (q) {
@@ -109,8 +120,42 @@ namespace {
 const char* const FORMS[] = {
     "Mongolian People's Republic", "People's Republic", "Socialist Union",
     "National State", "Free Republic", "Free Communes", "Free State",
-    "Federation", "Commonwealth", "Principality", "Sultanate", "Emirate",
-    "Dominion", "Kingdom", "Republic", "Empire", "Duchy", "Union", "State",
+    "Merchant Republic", "Workers' Republic", "Free Territories",
+    "Federation", "Confederation", "Commonwealth", "Principality",
+    "Protectorate", "Sultanate", "Caliphate", "Shogunate", "Emirate",
+    "Imamate", "Khanate", "Tsardom", "Dominion", "Mandate", "Cooperative",
+    "Autocracy", "Kingdom", "Republic", "Emirates", "Empire", "Duchy",
+    "Union", "Reich", "SFSR", "SSR",
+    // Plurals and abbreviations before their singulars, and before the bare
+    // words they contain: "United States" must not fall through to "State" and
+    // come out as "United State".
+    "Territories", "Territory", "States", "State", "Areas", "Rep.", "Is.",
+};
+
+// Words that qualify a form rather than name a place. They are stripped from
+// the core after the form comes off, because they belonged to the government
+// that just fell: the "Second" in "Second Polish Republic" numbered THAT
+// republic, and carrying it forward produced the "Second Polish Socialist
+// Union" -- a state naming itself after its predecessor's ordinal.
+const char* const LEADING_QUALIFIERS[] = {
+    "First", "Second", "Third", "Fourth", "Fifth",
+    "Allied", "Occupied", "Provisional", "Greater", "Grand", "Imperial",
+    "Royal", "Sublime", "Federal", "Federated", "Democratic", "Socialist",
+    "People's", "Communist", "National", "Dem.", "Rep.", "FR",
+};
+const char* const TRAILING_QUALIFIERS[] = {
+    "Democratic", "Socialist", "People's", "Communist", "Federal", "National",
+};
+
+// A "core" that is one of these is not a place. "United Kingdom" reduces to
+// "United", "Soviet Union" to "Soviet", "Blocked Territory" to "Blocked" --
+// none of which can carry a new form, and "People's Republic of United" is
+// worse than leaving the name alone. A country whose name has no geographic
+// noun in it keeps that name; only its flag changes.
+const char* const NOT_A_PLACE[] = {
+    "United", "Soviet", "Allied", "Occupied", "Blocked", "Free", "Democratic",
+    "Socialist", "People's", "Communist", "Federal", "National", "Imperial",
+    "Royal", "Provisional",
 };
 
 bool startsWith(const std::string& s, const std::string& p) {
@@ -141,6 +186,47 @@ std::string trim(std::string s) {
  */
 struct NameCore { std::string text; bool adjective = false; };
 
+/** Takes the fallen government's qualifiers off a core, front and back. */
+std::string stripQualifiers(std::string core) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const char* q : LEADING_QUALIFIERS) {
+            const std::string w = std::string(q) + " ";
+            if (startsWith(core, w) && core.size() > w.size()) {
+                core = trim(core.substr(w.size()));
+                changed = true;
+                break;
+            }
+        }
+        for (const char* q : TRAILING_QUALIFIERS) {
+            const std::string w = " " + std::string(q);
+            if (endsWith(core, w) && core.size() > w.size()) {
+                core = trim(core.substr(0, core.size() - w.size()));
+                changed = true;
+                break;
+            }
+        }
+    }
+    return core;
+}
+
+bool namesAPlace(const std::string& core) {
+    if (core.empty()) return false;
+    for (const char* w : NOT_A_PLACE)
+        if (core == w) return false;
+
+    // A core left dangling on a connective means the form came off the wrong
+    // end of the name: "S. Geo. and the Is." matched the "Is." form and left
+    // "S. Geo. and the", which went on to produce the "S. Geo. and the
+    // People's Republic". If the remainder does not finish, it is not a name.
+    const std::string::size_type sp = core.rfind(' ');
+    const std::string last = (sp == std::string::npos) ? core : core.substr(sp + 1);
+    for (const char* w : {"and", "the", "of", "de", "da", "del", "and the", "&"})
+        if (last == w) return false;
+    return true;
+}
+
 NameCore geographicCore(const std::string& name) {
     // "<anything containing a form> of <Core>" -- catches "Imperial State of
     // Iran" and "Grand Duchy of X", where the form word is not at the start and
@@ -150,18 +236,22 @@ NameCore geographicCore(const std::string& name) {
         const std::string head = name.substr(0, ofPos);
         for (const char* f : FORMS)
             if (head.find(f) != std::string::npos)
-                return { trim(name.substr(ofPos + 4)), false };
+                return { stripQualifiers(trim(name.substr(ofPos + 4))), false };
     }
     for (const char* f : FORMS) {
         const std::string form(f);
         // "<Form> of <Core>" -- what follows "of" is a noun.
         if (startsWith(name, form + " of "))
-            return { trim(name.substr(form.size() + 4)), false };
+            return { stripQualifiers(trim(name.substr(form.size() + 4))), false };
         // "<Core> <Form>" -- what precedes a form is an adjective.
         if (endsWith(name, " " + form))
-            return { trim(name.substr(0, name.size() - form.size() - 1)), true };
+            return { stripQualifiers(trim(name.substr(0, name.size() - form.size() - 1))), true };
     }
-    return { name, false };
+    // No form at all. The name is the place -- but a qualifier can still be
+    // sitting in front of it ("Occupied Japan", "Dem. Rep. Congo"), and those
+    // describe a situation rather than a country. "New Zealand" survives this
+    // because "New" is not one of them; it is not a zealand that is new.
+    return { stripQualifiers(name), false };
 }
 
 /** The two halves of a form: the phrase used with "of", and the bare noun. */
@@ -202,14 +292,23 @@ FormWords formFor(const PoliticalIdentity& id) {
 }  // namespace
 
 std::string geographicCoreOf(const std::string& name) {
-    return geographicCore(name).text;
+    // Falls back to the WHOLE name, not to the extracted fragment, when the
+    // fragment does not name anywhere. The breakaway namer builds on this too,
+    // and a secession from the United Kingdom must not call itself the
+    // Democratic Alliance of United.
+    const NameCore core = geographicCore(name);
+    return namesAPlace(core.text) ? core.text : name;
 }
 
 std::string applyName(const std::string& rootName, const PoliticalIdentity& id) {
     if (!id.expressed() || rootName.empty()) return rootName;
 
     const NameCore core = geographicCore(rootName);
-    if (core.text.empty()) return rootName;
+    // Not every name has a place in it. "United Kingdom" reduces to "United"
+    // and "Soviet Union" to "Soviet"; neither can carry a form, and inventing
+    // one produces a country that does not sound like anywhere. Those keep
+    // their name and change only their flag, which is still the visible event.
+    if (!namesAPlace(core.text)) return rootName;
 
     const FormWords w = formFor(id);
     if (!w.phrase[0]) return rootName;
@@ -218,76 +317,238 @@ std::string applyName(const std::string& rootName, const PoliticalIdentity& id) 
                           : std::string(w.phrase) + " of " + core.text;
 }
 
-FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& id) {
+uint32_t seedFromName(const std::string& name) {
+    uint32_t h = 2166136261u;                    // FNV-1a, 32-bit
+    for (unsigned char c : name) { h ^= c; h *= 16777619u; }
+    return h;
+}
+
+namespace {
+
+/** What a flag is charged with: the device, how they are arranged, how many. */
+struct Charge { SymbolType emblem; SymbolLayout layout; int count; };
+
+// Every vocabulary below has exactly this many entries.
+constexpr unsigned CHARGES_PER_IDENTITY = 4;
+
+/**
+ * The charges an identity can take, and the one this country takes.
+ *
+ * FOUR PER IDENTITY, NOT ONE.
+ *
+ * A single fixed emblem per identity is correct for one country and wrong for a
+ * map: every communist government in the world reached for the same white star,
+ * and with two hundred countries on the board that reads as one flag repeated
+ * rather than as a world of them. Each identity now has a small vocabulary and
+ * a country picks from it by name, so its choice is arbitrary but never random
+ * -- the same country makes the same choice on the host, on every client, and
+ * on reload, which is what stops a flag changing when nothing about the country
+ * did.
+ *
+ * Between them these use twenty-three of the symbols in data/symbols/, against
+ * the eleven a fixed mapping could reach.
+ *
+ * NOT among them: the swastika, and not the Reichsadler either. Both ship for
+ * the historical flags that carry them and both are censorable; neither is
+ * something a procedure should be able to invent for a country that never had
+ * one. Anything a generated flag can wear, it will eventually wear.
+ */
+/** Symbols a generated flag must not invent for a country that never had one. */
+bool isHateSymbol(SymbolType t) {
+    return t == SymbolType::SWASTIKA;
+}
+
+Charge chargeFor(IdeologyQuadrant q, bool radical, uint32_t seed, bool avoidHateSymbols) {
+    static const Charge COMMUNIST_C[] = {
+        {SymbolType::STAR_5, SymbolLayout::SINGLE, 0},
+        {SymbolType::STAR_5, SymbolLayout::ARC,    3},
+        {SymbolType::TORCH,  SymbolLayout::SINGLE, 0},
+        {SymbolType::HAMMER, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge COMMUNIST_R[] = {
+        {SymbolType::HAMMER_SICKLE, SymbolLayout::ESCORTED, 4},
+        {SymbolType::HAMMER_SICKLE, SymbolLayout::SINGLE,   0},
+        {SymbolType::STAR_5,        SymbolLayout::ESCORTED, 5},
+        {SymbolType::HAMMER,        SymbolLayout::ESCORTED, 4},
+    };
+    static const Charge SOCIALIST_C[] = {
+        {SymbolType::STAR_5, SymbolLayout::ROW,    3},
+        {SymbolType::ROSE,   SymbolLayout::SINGLE, 0},
+        {SymbolType::GEAR,   SymbolLayout::SINGLE, 0},
+        {SymbolType::WREATH, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge SOCIALIST_R[] = {
+        {SymbolType::GEAR,   SymbolLayout::ESCORTED, 5},
+        {SymbolType::ROSE,   SymbolLayout::ARC,      3},
+        {SymbolType::TORCH,  SymbolLayout::ESCORTED, 4},
+        {SymbolType::HAMMER, SymbolLayout::ROW,      3},
+    };
+    static const Charge NATIONALIST_C[] = {
+        {SymbolType::CROSS_LATIN,  SymbolLayout::SINGLE, 0},
+        {SymbolType::CROSS_PATTEE, SymbolLayout::SINGLE, 0},
+        {SymbolType::STAR_4,       SymbolLayout::SINGLE, 0},
+        {SymbolType::LIGHTNING,    SymbolLayout::SINGLE, 0},
+    };
+    // The swastika sits HERE and nowhere else, and only ever in the flag a
+    // player has asked to see uncensored: the censored variant is built with
+    // avoidHateSymbols and takes the next charge along instead, so switching
+    // censoring on gives a clean flag rather than a mosaic of a dirty one.
+    static const Charge NATIONALIST_R[] = {
+        {SymbolType::CROSSED_SWORDS, SymbolLayout::SINGLE,   0},
+        {SymbolType::FASCES,         SymbolLayout::SINGLE,   0},
+        {SymbolType::SWASTIKA,       SymbolLayout::SINGLE,   0},
+        {SymbolType::LIGHTNING,      SymbolLayout::ESCORTED, 4},
+    };
+    static const Charge LIBERAL_C[] = {
+        {SymbolType::CIRCLE, SymbolLayout::SINGLE, 0},
+        {SymbolType::STAR_4, SymbolLayout::SINGLE, 0},
+        {SymbolType::TORCH,  SymbolLayout::SINGLE, 0},
+        {SymbolType::WREATH, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge LIBERAL_R[] = {
+        {SymbolType::SUN_RAYS,      SymbolLayout::SINGLE, 0},
+        {SymbolType::SUN,           SymbolLayout::SINGLE, 0},
+        {SymbolType::TORCH,         SymbolLayout::ARC,    3},
+        {SymbolType::SUN_SPLENDOUR, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge AUTHORITARIAN_C[] = {
+        {SymbolType::DIAMOND,      SymbolLayout::SINGLE, 0},
+        {SymbolType::CROSS_PATTEE, SymbolLayout::SINGLE, 0},
+        {SymbolType::ANCHOR,       SymbolLayout::SINGLE, 0},
+        {SymbolType::CROSS_MALTESE, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge AUTHORITARIAN_R[] = {
+        {SymbolType::SWORD,          SymbolLayout::SINGLE, 0},
+        {SymbolType::CROSSED_SWORDS, SymbolLayout::SINGLE, 0},
+        {SymbolType::FASCES,         SymbolLayout::SINGLE, 0},
+        {SymbolType::LIGHTNING,      SymbolLayout::SINGLE, 0},
+    };
+    // A liberty tree, not a disc: liberal-committed already has the disc and
+    // they already share the gold, and two identities that come out as the same
+    // picture are two identities the player cannot tell apart.
+    static const Charge LIBERTARIAN_C[] = {
+        {SymbolType::TREE,     SymbolLayout::SINGLE, 0},
+        {SymbolType::MOUNTAIN, SymbolLayout::SINGLE, 0},
+        {SymbolType::STAR_4,   SymbolLayout::SINGLE, 0},
+        {SymbolType::WREATH,   SymbolLayout::SINGLE, 0},
+    };
+    // A ring of equals, with nothing at the centre of it, deliberately.
+    static const Charge LIBERTARIAN_R[] = {
+        {SymbolType::STAR_5, SymbolLayout::CIRCLE,   7},
+        {SymbolType::TREE,   SymbolLayout::ARC,      3},
+        {SymbolType::STAR_4, SymbolLayout::CIRCLE,   5},
+        {SymbolType::TREE,   SymbolLayout::CIRCLE,   6},
+    };
+    static const Charge COLLECTIVIST_C[] = {
+        {SymbolType::GEAR,     SymbolLayout::SINGLE, 0},
+        {SymbolType::ANCHOR,   SymbolLayout::SINGLE, 0},
+        {SymbolType::MOUNTAIN, SymbolLayout::SINGLE, 0},
+        {SymbolType::HAMMER,   SymbolLayout::SINGLE, 0},
+    };
+    static const Charge COLLECTIVIST_R[] = {
+        {SymbolType::GEAR,   SymbolLayout::ROW,      3},
+        {SymbolType::ANCHOR, SymbolLayout::ESCORTED, 4},
+        {SymbolType::GEAR,   SymbolLayout::ESCORTED, 4},
+        {SymbolType::HAMMER, SymbolLayout::ROW,      3},
+    };
+    static const Charge CAPITALIST_C[] = {
+        {SymbolType::DISC,   SymbolLayout::SINGLE, 0},
+        {SymbolType::ANCHOR, SymbolLayout::SINGLE, 0},
+        {SymbolType::STAR_4, SymbolLayout::SINGLE, 0},
+        {SymbolType::WREATH, SymbolLayout::SINGLE, 0},
+    };
+    static const Charge CAPITALIST_R[] = {
+        {SymbolType::STAR_5, SymbolLayout::ROW,    3},
+        {SymbolType::SUN,    SymbolLayout::SINGLE, 0},
+        {SymbolType::DISC,   SymbolLayout::ROW,    3},
+        {SymbolType::SUN_SPLENDOUR, SymbolLayout::SINGLE, 0},
+    };
+
+    const Charge* set = COMMUNIST_C;
+    switch (q) {
+        case IdeologyQuadrant::Communist:     set = radical ? COMMUNIST_R     : COMMUNIST_C;     break;
+        case IdeologyQuadrant::Socialist:     set = radical ? SOCIALIST_R     : SOCIALIST_C;     break;
+        case IdeologyQuadrant::Nationalist:   set = radical ? NATIONALIST_R   : NATIONALIST_C;   break;
+        case IdeologyQuadrant::Liberal:       set = radical ? LIBERAL_R       : LIBERAL_C;       break;
+        case IdeologyQuadrant::Authoritarian: set = radical ? AUTHORITARIAN_R : AUTHORITARIAN_C; break;
+        case IdeologyQuadrant::Libertarian:   set = radical ? LIBERTARIAN_R   : LIBERTARIAN_C;   break;
+        case IdeologyQuadrant::Collectivist:  set = radical ? COLLECTIVIST_R  : COLLECTIVIST_C;  break;
+        case IdeologyQuadrant::Capitalist:    set = radical ? CAPITALIST_R    : CAPITALIST_C;    break;
+        default: break;
+    }
+    // Mixed, because the low bits of an FNV hash of two names differing in one
+    // letter are not independent, and neighbouring countries would cluster on
+    // the same choice.
+    uint32_t h = seed;
+    h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15;
+    unsigned pick = h % CHARGES_PER_IDENTITY;
+    if (avoidHateSymbols && isHateSymbol(set[pick].emblem))
+        pick = (pick + 1u) % CHARGES_PER_IDENTITY;
+    return set[pick];
+}
+
+Restyle paletteFor(IdeologyQuadrant q) {
+    switch (q) {
+        case IdeologyQuadrant::Nationalist:
+        case IdeologyQuadrant::Authoritarian:
+            return DARK_RIGHT;
+        case IdeologyQuadrant::Liberal:
+        case IdeologyQuadrant::Libertarian:
+        case IdeologyQuadrant::Capitalist:
+            return GOLD_LIB;
+        default:
+            return RED_LEFT;      // communist, socialist, collectivist
+    }
+}
+
+}  // namespace
+
+FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& id,
+                      uint32_t seed, bool avoidHateSymbols) {
     FlagPattern f = originalFlag;
     if (!id.expressed()) return f;
 
-    // A flag loaded from a file is an IMAGE, and there is nothing to restyle --
-    // recolouring is a pattern operation. Rather than throw the country's real
-    // flag away, the emblem is added over it and the image is kept.
-    const bool isImage = !f.imagePath.empty();
-
     const bool radical = (id.intensity == IdeologyIntensity::Radical);
-    const float pull   = radical ? 0.55f : 0.30f;   // how far the palette moves
+    // How far the saturation and lightness move toward the band. High for both,
+    // because the band already carries the flag's own contrast: a half-hearted
+    // move lands between the flag's colours and the ideology's, which is where
+    // mud lives. What separates committed from radical is the charge and the
+    // field, not a weaker colour.
+    const float pull   = radical ? 1.00f : 0.85f;
 
-    Color toward = RED_LEFT;
-    SymbolType emblem = SymbolType::STAR_5;
-    switch (id.quadrant) {
-        case IdeologyQuadrant::Communist:
-            toward = RED_LEFT;
-            emblem = radical ? SymbolType::HAMMER_SICKLE : SymbolType::STAR_5;
-            break;
-        case IdeologyQuadrant::Socialist:
-            toward = RED_LEFT;
-            emblem = radical ? SymbolType::GEAR : SymbolType::STAR_5;
-            break;
-        case IdeologyQuadrant::Nationalist:
-            toward = DARK_RIGHT;
-            // Deliberately NOT the swastika, which exists in the vocabulary for
-            // historical flags that shipped with it and is censorable. A
-            // generated flag must not manufacture one.
-            emblem = radical ? SymbolType::CROSSED_SWORDS : SymbolType::CROSS_LATIN;
-            break;
-        case IdeologyQuadrant::Liberal:
-            toward = GOLD_LIB;
-            emblem = radical ? SymbolType::SUN_RAYS : SymbolType::CIRCLE;
-            break;
-        // The single-axis identities. Their palettes pull less far than the
-        // committed quadrants above, because a country that has gone a long way
-        // on one axis and nowhere on the other is making a weaker statement.
-        case IdeologyQuadrant::Authoritarian:
-            toward = DARK_RIGHT;
-            emblem = radical ? SymbolType::SWORD : SymbolType::DIAMOND;
-            break;
-        case IdeologyQuadrant::Libertarian:
-            toward = GOLD_LIB;
-            emblem = SymbolType::CIRCLE;
-            break;
-        case IdeologyQuadrant::Collectivist:
-            toward = RED_LEFT;
-            emblem = SymbolType::GEAR;
-            break;
-        case IdeologyQuadrant::Capitalist:
-            toward = GOLD_LIB;
-            emblem = radical ? SymbolType::STAR_5 : SymbolType::DISC;
-            break;
-        default:
-            return f;
-    }
+    const Restyle toward = paletteFor(id.quadrant);
+    const Charge  charge = chargeFor(id.quadrant, radical, seed, avoidHateSymbols);
 
-    if (!isImage)
-        for (Color& c : f.colors) c = blend(c, toward, pull);
+    // The recolour goes to the renderer rather than being applied here, because
+    // a country's flag is nearly always a raster IMAGE and there is no palette
+    // at this level to rewrite. Handing over the transform instead of the
+    // result is what lets the same rule reach the pixels of the Union Jack and
+    // the three colours of a breakaway state's tricolour alike -- and it is
+    // what makes an ideological change fundamental rather than a sticker.
+    f.recolor        = toward.recolor;
+    f.recolor.weight = pull;
 
-    // One emblem, in the canton, at a size that reads at 256x128 and does not
-    // swallow the flag. Replaces any emblem a previous restyle added -- but
-    // applyFlag is always called with the ORIGINAL, so in practice this is the
-    // first and only one.
+    // Replaces any emblem a previous restyle added -- but applyFlag is always
+    // called with the ORIGINAL, so in practice this is the first and only one.
     FlagSymbol sym;
-    sym.type   = emblem;
+    sym.type   = charge.emblem;
+    sym.layout = charge.layout;
+    sym.count  = charge.count;
     sym.colors = { radical ? Color{245, 225, 120, 255} : Color{240, 240, 240, 255} };
-    sym.x      = 0.22f;
-    sym.y      = 0.30f;
-    sym.size   = radical ? 0.28f : 0.22f;
+    // The canton is where a device goes, so it is what is ASKED for -- but this
+    // one emblem is dropped onto two hundred flags nobody looked at, and on
+    // Japan the canton is the edge of the hinomaru and on the United States it
+    // is the middle of the union. The renderer can see the finished pixels and
+    // this cannot, so it decides where the emblem lands, whether it needs an
+    // outline, and -- on a flag with no room anywhere, which the American and
+    // British flags genuinely are -- whether to give it a field of its own.
+    sym.x            = 0.22f;
+    sym.y            = 0.28f;
+    sym.size         = radical ? 0.26f : 0.21f;
+    sym.autoPlace    = true;
+    sym.autoContrast = true;
+    sym.field        = radical ? EmblemField::AUTO_HOIST : EmblemField::AUTO_CANTON;
+    sym.fieldColor   = toward.solid;
     f.symbols.push_back(sym);
     return f;
 }

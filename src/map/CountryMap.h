@@ -32,6 +32,12 @@ struct Country {
     // Empty rootName means "never restyled"; it is not a copy of `name`.
     std::string rootName;
     FlagPattern rootFlag;
+    // The censored original, kept alongside it. A restyle is computed from the
+    // root, and the censored restyle has to be computed from the CENSORED root
+    // or a country whose real flag carries a hate symbol would keep carrying it
+    // through the censored view: the recolour changes an image's colours, it
+    // does not change what is drawn on it.
+    FlagPattern rootFlagCensored;
     bool        rootSaved = false;
 
     // The identity currently expressed, as ints so the save format stays plain
