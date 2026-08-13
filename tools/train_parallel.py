@@ -124,10 +124,23 @@ def _fitness(path, binary=None, seed=4242):
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data", "ai")
 
-# One world measured at ~3 GB resident. Leave a few GB for the OS and whatever
-# else the machine is doing, or the kernel starts killing workers mid-map and
-# the run silently becomes a slower single-worker run.
-GB_PER_WORKER = 3.0
+# Leave a few GB for the OS and whatever else the machine is doing, or the
+# kernel starts killing workers mid-map and the run silently becomes a slower
+# single-worker run.
+#
+# 0.7, not the 3.0 this used to say. A world WAS ~3 GB resident, and on a 16 GB
+# machine that arithmetic allowed exactly three workers. Then the land/sea
+# pixel buffer and four of the five resource buffers stopped being kept after
+# load (LandSeaMap::dropPixels, Game_Loading.cpp), which took ~636 MB off every
+# loaded world: three workers were measured at 0.4-0.6 GB resident each. The
+# constant was never revisited, so the cap stayed where the old footprint put
+# it and two thirds of the machine sat idle during training.
+#
+# Note this does NOT mean more workers is faster. --limit is a share of the
+# MACHINE that gets divided among them (per_worker_limit below), so doubling
+# the workers halves what each one gets and buys diversity, not throughput.
+# Memory stopped being the binding constraint here; CPU budget still is.
+GB_PER_WORKER = 0.7
 GB_RESERVED = 4.0
 
 
@@ -179,6 +192,17 @@ def main():
                          "periodically exploited and perturbed")
     ap.add_argument("extra", nargs="*", help="extra args passed to every worker")
     args = ap.parse_args()
+
+    # Make Ctrl-C mean what the docstring says it means, even in the background.
+    #
+    # A shell starting this with `&` (nohup, a CI step, anything non-interactive)
+    # sets SIGINT to SIG_IGN in the child, and Python KEEPS an inherited SIG_IGN
+    # rather than installing its own handler -- so the interrupt path below was
+    # simply unreachable for every backgrounded run, and the only way to stop one
+    # was to kill the workers and let the wait loop fall through. Restoring the
+    # default handler explicitly costs nothing when launched interactively and
+    # makes "stop and merge" work when it was not.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
 
     binary = find_binary()
     n = args.workers if args.workers > 0 else safe_worker_count()
