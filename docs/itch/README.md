@@ -6,28 +6,40 @@ theme.css          the page CSS -- inert until itch enables the box, see below
 README.md          this
 ```
 
-## Read this first: the CSS box is off until itch turns it on
+## Read this first: the CSS box is on — asked 2026-08-04, granted 2026-08-14
 
 The **Edit theme** panel gives you colour pickers, two font dropdowns, a
 screenshot layout dropdown and three image uploads. On a normal account that is
 the whole surface — which is exactly why an earlier version of this file said
-itch had no custom CSS at all. It does. The box is simply not shown until itch
-enables it for the account:
+itch had no custom CSS at all. It does, and it is enabled per ACCOUNT, by hand,
+on request:
 
 > get in touch with us and ask for custom CSS to be enabled for your account
 > — itch.io/docs/creators/design
 
-There is no self-serve toggle and no setting to hunt for. **Asked 2026-08-04;
-still pending as of 2026-08-08**, with no acknowledgement — which is normal for
-a manual request to a small team, and indistinguishable from a contact form that
-silently failed. If this line is still here long after those dates, chase it or
-delete it.
+There is no self-serve toggle. The request took ten days with no acknowledgement
+along the way, which is normal for a manual queue and indistinguishable from a
+contact form that silently failed — so if you ask for anything else there, do
+not read silence as refusal.
 
-Until the box appears, `theme.css` cannot be applied and **the description
-carries the page.** Structure, images and honest copy are what you control, and
-they matter more than styling would have. Everything in `theme.css` is written
-against the live page markup and is ready to paste the day it is switched on —
-see *§2a* for the one theme field that has to change at the same moment.
+`theme.css` is ready to paste into the box at the bottom of the **Edit theme**
+sidebar. Two things to do in the SAME sitting, not after:
+
+- change **BG** from `#050813` to `#080E20` — see *§2a*, and the note at the top
+  of `theme.css`. The stylesheet paints the sea, and BG is what shows where the
+  stylesheet cannot reach; leave it and the join is visible.
+- check the page at phone width. itch's own docs ask for this after heavy
+  customisation. `theme.css` already switches its effects off under 700px and
+  honours `prefers-reduced-motion`, so this is a confirmation, not a fix.
+
+It is ONE paste. `page-blasts.css` is the generated shell-position fragment and
+is already merged into `theme.css`; it lives here only so `tools/banner.py
+--page-bg` has somewhere to write.
+
+**butler cannot do any of this.** It pushes build files to a channel and nothing
+else — not the theme, not the CSS, not the description, cover or screenshots.
+Those are dashboard-only, and there is no API for them. See §5 for what butler
+IS for.
 
 Everything the page shows is in `docs/img/`, produced by `tools/screenshots.sh`.
 When the game's UI changes, re-run that and re-upload; the page and the game do
@@ -99,9 +111,29 @@ disagree again, that file is the one that knows why.
 
 | Slot | What it is | Suggestion |
 |---|---|---|
-| **Banner** | Wide image above the page | Skip it, or crop the top third of `docs/img/world-map.png`. A banner competes with the first screenshot directly below it. |
+| **Banner** | Wide image above the page | Upload **`banner-itch-wide.png`** (1600x500, 460 KB). Required — see below. |
 | **Background** | Behind the content column | Upload **`page-background.png`**, in this folder. Ready to use. |
 | **Embed BG** | Behind the web build's frame | `#050813` flat, only if you upload the web build. |
+
+### The banner slot is not optional once the CSS is on
+
+An earlier version of this file said to skip the banner. With `theme.css`
+applied that is wrong, and it is wrong in a way that looks like the stylesheet
+is broken rather than like a missing upload.
+
+The animated banner is painted by CSS, on `#header.has_image`. **itch only adds
+`has_image` to that element when a banner has been uploaded** — with an empty
+slot there is no class, no height, and no banner, however correct the CSS is.
+
+So upload `banner-itch-wide.png`. What you upload is not what visitors see: the
+rule carries `!important` and replaces it with the 42-frame
+`banner-itch-wide-eras.webp` over jsDelivr, because itch's uploader takes only
+PNG, GIF and JPG, and its GIFs have rendered as stills since October 2025. The
+upload's only jobs are to switch the class on and to be the still that shows
+where CSS cannot reach — the itch app, and any browser that fails to fetch the
+WebP. That is why the small single-frame PNG is the right file and the 4.7 MB
+animated one is not: ten times the weight for a frame nobody sees on the web
+page.
 
 `page-background.png` is 1920x960 and already prepared. It is built from the
 LAST FRAME of the political timelapse rather than from a screenshot, because a

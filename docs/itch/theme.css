@@ -33,10 +33,48 @@
        ::before/::after of elements the page already has.
      - No JavaScript. Everything here is keyframes and gradients.
 
-   SELECTORS are from the live page markup, not guessed:
-       body.game_layout_widget > #wrapper > .main.wrapper.game_page_wrapper
-       > #inner_column > .view_game_page > #header, .formatted_description,
-         .screenshot_list, .info_panel_wrapper
+   IMAGES come from jsDelivr, PINNED TO A TAG. Not raw.githubusercontent, which
+   sends headers that stop other sites embedding it and fails silently in a way
+   that looks exactly like a typo. itch's own CSP on a game page is only
+   frame-ancestors, so an external stylesheet image is allowed.
+
+   The tag is the point. jsDelivr caches a BRANCH url (@main) for about a week
+   with no way to purge it on your own schedule, so regenerating page-bg-menu.png
+   would leave the live page serving the old art for days, invisibly. A tag is
+   immutable and cached forever, which is the trade this file wants: art changes
+   are rare, and a stale background nobody can flush is worse than an edit here.
+
+   SO: when you regenerate either image, bump BOTH urls below to the new tag in
+   the same commit, and re-paste. Verified 200 at v1.0.7a on 2026-08-14.
+
+   SELECTORS, re-read off the live page on 2026-08-14 (they had drifted):
+
+       body.embedded_game.game_layout_widget.layout_widget.responsive
+       └ div#wrapper.main.wrapper.game_page_wrapper
+         └ div#inner_column.inner_column.size_large.family_lato
+           ├ div#header.header
+           └ div#view_html_game_<id>.view_html_game_page.view_game_page.buy_on_top
+             └ … .formatted_description, .screenshot_list, .info_panel_wrapper,
+                 #view_game_footer, and .buy_row inside .left_col
+
+   Three things this file used to get wrong, all now fixed:
+
+     - #wrapper IS .main.wrapper.game_page_wrapper. It is the same element, not
+       its parent, so every `#wrapper > .main` matched nothing and two of the
+       fourteen shells never fired. They now hang off #header instead, NOT off
+       #wrapper: #wrapper::before is the map and ::after is its vignette, so
+       moving the shells there would have overwritten the map with a blast.
+       Every element gets at most two shells because it has at most two
+       pseudo-elements, which is the whole reason this list is as long as it is.
+     - the buy row is .buy_row, not .header_buy_row. Two more shells.
+     - #header is a sibling of .view_game_page under #inner_column, NOT a child
+       of it.
+
+   Whether that is itch renaming things or the page gaining a web-build embed
+   since this was written (body carries .embedded_game now, and the game element
+   is .view_html_game_page) does not matter much -- the lesson is that these are
+   itch's internal class names and they move. Re-check with querySelectorAll
+   against the live page before believing any of it.
    =========================================================================== */
 
 :root {
@@ -101,7 +139,7 @@ body.game_layout_widget {
     height: 50vw;                /* the raster is 2:1; this box IS the map */
     z-index: -4;
     pointer-events: none;
-    background: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/itch/page-bg-menu.png") 0 0 / 100% 100% no-repeat;
+    background: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@v1.0.7a/docs/itch/page-bg-menu.png") 0 0 / 100% 100% no-repeat;
     opacity: 0.85;   /* land only; the sea is the page itself */
     /* THE RISE, AND NOTHING ELSE.
        There used to be a slow horizontal drift here as well, the way the menu
@@ -218,8 +256,8 @@ body.game_layout_widget {
     100%     { scale: 1;    opacity: 0; }                   /* spent */
 }
 
-body.game_layout_widget #wrapper > .main::before,
-body.game_layout_widget #wrapper > .main::after,
+body.game_layout_widget #header::before,
+body.game_layout_widget #header::after,
 body.game_layout_widget .view_game_page::before,
 body.game_layout_widget .view_game_page::after,
 body.game_layout_widget .formatted_description::before,
@@ -230,8 +268,8 @@ body.game_layout_widget .info_panel_wrapper::before,
 body.game_layout_widget .info_panel_wrapper::after,
 body.game_layout_widget #view_game_footer::before,
 body.game_layout_widget #view_game_footer::after,
-body.game_layout_widget .header_buy_row::before,
-body.game_layout_widget .header_buy_row::after {
+body.game_layout_widget .buy_row::before,
+body.game_layout_widget .buy_row::after {
     content: "";
     position: fixed;
     z-index: -3;
@@ -270,8 +308,8 @@ body.game_layout_widget .header_buy_row::after {
    are fractions of that same box, and the shells carry the same
    scroll animation as the map, so they land on the same country at
    every scroll position and every window size. */
-body.game_layout_widget #wrapper > .main::before { left: 79.5vw; top: 13.20vw; animation-duration: 5.5s, auto; animation-delay: 0.0s, 0s; }
-body.game_layout_widget #wrapper > .main::after { left: 66.0vw; top: 16.91vw; animation-duration: 6.4s, auto; animation-delay: 0.61s, 0s; }
+body.game_layout_widget #header::before { left: 79.5vw; top: 13.20vw; animation-duration: 5.5s, auto; animation-delay: 0.0s, 0s; }
+body.game_layout_widget #header::after { left: 66.0vw; top: 16.91vw; animation-duration: 6.4s, auto; animation-delay: 0.61s, 0s; }
 body.game_layout_widget .view_game_page::before { left: 48.9vw; top: 23.16vw; animation-duration: 7.3s, auto; animation-delay: 1.22s, 0s; }
 body.game_layout_widget .view_game_page::after { left: 20.8vw; top: 19.57vw; animation-duration: 8.2s, auto; animation-delay: 1.83s, 0s; }
 body.game_layout_widget .formatted_description::before { left: 60.0vw; top: 24.22vw; animation-duration: 9.1s, auto; animation-delay: 2.44s, 0s; }
@@ -282,8 +320,8 @@ body.game_layout_widget .info_panel_wrapper::before { left: 32.7vw; top: 27.77vw
 body.game_layout_widget .info_panel_wrapper::after { left: 59.6vw; top: 30.86vw; animation-duration: 9.1s, auto; animation-delay: 5.49s, 0s; }
 body.game_layout_widget #view_game_footer::before { left: 63.7vw; top: 10.74vw; animation-duration: 5.5s, auto; animation-delay: 0.6s, 0s; }
 body.game_layout_widget #view_game_footer::after { left: 83.1vw; top: 32.54vw; animation-duration: 6.4s, auto; animation-delay: 0.31s, 0s; }
-body.game_layout_widget .header_buy_row::before { left: 52.3vw; top: 11.09vw; animation-duration: 7.3s, auto; animation-delay: 0.02s, 0s; }
-body.game_layout_widget .header_buy_row::after { left: 30.0vw; top: 36.25vw; animation-duration: 8.2s, auto; animation-delay: 7.93s, 0s; }
+body.game_layout_widget .buy_row::before { left: 52.3vw; top: 11.09vw; animation-duration: 7.3s, auto; animation-delay: 0.02s, 0s; }
+body.game_layout_widget .buy_row::after { left: 30.0vw; top: 36.25vw; animation-duration: 8.2s, auto; animation-delay: 7.93s, 0s; }
 
 /* Different calibres, which reads as distance without a third layer. */
 body.game_layout_widget .view_game_page::after      { width: 132px; height: 132px; margin: -66px 0 0 -66px; }
@@ -501,7 +539,7 @@ body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68p
    into the page colour exactly where the text begins.
 */
 #header.has_image {
-    background-image: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@main/docs/itch/banner-itch-wide-eras.webp") !important;
+    background-image: url("https://cdn.jsdelivr.net/gh/Pr1nted/Open-Doctrines@v1.0.7a/docs/itch/banner-itch-wide-eras.webp") !important;
     background-size: cover !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
@@ -569,8 +607,8 @@ body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68p
     #inner_column::after { animation: none; }
     #wrapper::after  { animation: none; opacity: 0.6; }
 
-    body.game_layout_widget #wrapper > .main::before,
-    body.game_layout_widget #wrapper > .main::after,
+    body.game_layout_widget #header::before,
+    body.game_layout_widget #header::after,
     body.game_layout_widget .view_game_page::before,
     body.game_layout_widget .view_game_page::after,
     body.game_layout_widget .formatted_description::before,
@@ -581,8 +619,8 @@ body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68p
     body.game_layout_widget .info_panel_wrapper::after,
     body.game_layout_widget #view_game_footer::before,
     body.game_layout_widget #view_game_footer::after,
-    body.game_layout_widget .header_buy_row::before,
-    body.game_layout_widget .header_buy_row::after {
+    body.game_layout_widget .buy_row::before,
+    body.game_layout_widget .buy_row::after {
         display: none;
     }
 }
@@ -630,8 +668,8 @@ body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68p
 /* The blasts are sized in viewport units, and at 390px wide they stop being
    distant and start being in the way. */
 @media (max-width: 700px) {
-    body.game_layout_widget #wrapper > .main::before,
-    body.game_layout_widget #wrapper > .main::after,
+    body.game_layout_widget #header::before,
+    body.game_layout_widget #header::after,
     body.game_layout_widget .view_game_page::before,
     body.game_layout_widget .view_game_page::after,
     body.game_layout_widget .formatted_description::before,
@@ -642,8 +680,8 @@ body.game_layout_widget .info_panel_wrapper::before { width:  68px; height:  68p
     body.game_layout_widget .info_panel_wrapper::after,
     body.game_layout_widget #view_game_footer::before,
     body.game_layout_widget #view_game_footer::after,
-    body.game_layout_widget .header_buy_row::before,
-    body.game_layout_widget .header_buy_row::after {
+    body.game_layout_widget .buy_row::before,
+    body.game_layout_widget .buy_row::after {
         display: none;
     }
 }
