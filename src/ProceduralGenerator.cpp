@@ -81,22 +81,34 @@ static std::string generateCountryName(int cid, int seed) {
     int p = pat(rng);
     std::string name;
     auto cap = [](std::string s) { s[0] = (char)toupper(s[0]); return s; };
+    // Every join here glues two fragments that were written without knowing what
+    // they would meet. Half the roots and prefixes end in the letter a suffix
+    // begins with -- "brel" + "land" is "Brelland", "yarl" + "land" is
+    // "Yarlland", "bel" + "land" is "Belland" -- and a doubled letter at the
+    // seam is what makes an invented name read as a typo rather than a place.
+    // One shared join, so a fragment added later cannot reintroduce it.
+    auto join = [](const std::string& a, const std::string& b) {
+        if (a.empty()) return b;
+        if (b.empty()) return a;
+        if (tolower(a.back()) == tolower(b.front())) return a + b.substr(1);
+        return a + b;
+    };
     switch (p) {
         case 0: case 1: {
             std::string r = roots[std::uniform_int_distribution<int>(0,nRoots-1)(rng)];
-            name = cap(r) + ((p==0)?"ia":"land");
+            name = cap(join(r, (p==0) ? "ia" : "land"));
             break;
         }
         case 2: case 3: {
             std::string pr = prefixes[std::uniform_int_distribution<int>(0,nPrefs-1)(rng)];
             std::string r = roots[std::uniform_int_distribution<int>(0,nRoots-1)(rng)];
-            name = cap(pr) + r;
+            name = cap(join(pr, r));
             break;
         }
         default: {
             std::string pr = prefixes[std::uniform_int_distribution<int>(0,nPrefs-1)(rng)];
             std::string s = suffixes[std::uniform_int_distribution<int>(0,nSuffs-1)(rng)];
-            name = cap(pr) + s;
+            name = cap(join(pr, s));
             break;
         }
     }

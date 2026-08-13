@@ -815,7 +815,9 @@ void Game::restoreRebels(const std::string& savePath) {
                 auto fit = m_countryFlags.find(cid);
                 if (fit != m_countryFlags.end() && fit->second.id > 0)
                     UnloadTexture(fit->second);
-                m_countryFlags[cid] = FlagRenderer::render(rc->flagActual, 256, 128, "", &m_odmJsonData);
+                // m_dataDir: a rebel flag carries a symbol too, and an empty
+                // baseDir is what stops FlagRenderer finding the SVG for it.
+                m_countryFlags[cid] = FlagRenderer::render(rc->flagActual, 256, 128, m_dataDir, &m_odmJsonData);
             }
         }
         std::cout << "  Restored " << j.size() << " rebel countries" << std::endl;
@@ -1168,6 +1170,56 @@ int Game::allocateRebelCid() {
 }
 
 // === createRebelCountry ===
+namespace {
+
+/**
+ * The country an adjective names, where English refuses to derive it.
+ *
+ * Two callers need this and neither can compute it. deriveTerritory turns a
+ * minority's demonym into a homeland -- "French" into France -- and no suffix
+ * rule reaches it: France is not in "French", Netherlands is not in "Dutch",
+ * and Canada is not in "Canadian" (every -ian rule yields "Canadia"). A table
+ * is the honest tool for an irregular language; another rule fixes Canada and
+ * breaks Lithuania, which is the loop this file's comments record losing.
+ *
+ * The second caller is the parent's own name. geographicCoreOf("French
+ * Republic") is "French" -- correct, and correctly ADJECTIVAL, the same way
+ * "Slovak Republic" gives "Slovak" -- but a breakaway then built "Republic of
+ * Eastern French" out of it, an adjective standing where a place should.
+ *
+ * Returns empty when the word is regular, which means the caller's own rules
+ * are fine and should run.
+ */
+std::string properPlaceName(const std::string& word) {
+    struct Irregular { const char* adjective; const char* place; };
+    static const Irregular IRREGULARS[] = {
+        {"french","France"},      {"dutch","Netherlands"},  {"canadian","Canada"},
+        {"belarusian","Belarus"}, {"polish","Poland"},      {"spanish","Spain"},
+        {"british","Britain"},    {"greek","Greece"},       {"danish","Denmark"},
+        {"swedish","Sweden"},     {"turkish","Turkey"},     {"finnish","Finland"},
+        {"welsh","Wales"},        {"scottish","Scotland"},  {"irish","Ireland"},
+        {"norwegian","Norway"},   {"mexican","Mexico"},     {"brazilian","Brazil"},
+        {"chinese","China"},      {"japanese","Japan"},     {"portuguese","Portugal"},
+        {"maltese","Malta"},      {"thai","Thailand"},      {"swiss","Switzerland"},
+        {"slovak","Slovakia"},    {"czech","Czechia"},      {"icelandic","Iceland"},
+        // The rest of the adjectival country names a scenario actually ships.
+        // "German Empire" and "Soviet Union" core to "German" and "Soviet", and
+        // a breakaway built "West German" out of the first; the Soviet republics
+        // have no country of their own on a 1939 map, so the referent lookup
+        // cannot help and "Ukrainian" became "Ukrainia".
+        {"american","America"},   {"german","Germany"},     {"soviet","Soviet Union"},
+        {"ukrainian","Ukraine"},  {"uzbek","Uzbekistan"},   {"kazakh","Kazakhstan"},
+        {"tajik","Tajikistan"},   {"turkmen","Turkmenistan"},{"kyrgyz","Kyrgyzstan"},
+    };
+    std::string w = word;
+    std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+    for (const auto& ir : IRREGULARS)
+        if (w == ir.adjective) return std::string(ir.place);
+    return std::string();
+}
+
+}  // namespace
+
 void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds) {
     std::string regionName;
     long long totalPop = 0;
@@ -1282,15 +1334,84 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // And without its form of government: a secession from the "Kingdom of
         // Italy" names itself after Italy, not after the kingdom.
         const std::string core = politid::geographicCoreOf(raw);
-        return core.empty() ? raw : core;
+        if (core.empty()) return raw;
+        // ...and as a PLACE, not an adjective. "French Republic" cores to
+        // "French", which is right for "the French army" and wrong for
+        // "Republic of Eastern French" -- and this name is only ever used as
+        // the second kind.
+        if (std::string place = properPlaceName(core); !place.empty()) return place;
+        return core;
+    };
+
+    // The country a demonym is ALREADY the demonym OF, if it is on this map.
+    //
+    // This is what stops the invention. "Mexican" must not become "Mexicia"
+    // while Mexico is sitting right there as the parent -- and it did, for
+    // 11.9% of all breakaway names measured over 1,375 of them: Mexicia,
+    // Canadia, Brazilia, Norwegia, Belarusia, Greekia. Each was returned
+    // precisely BECAUSE it was invented: a made-up stem collides with nothing,
+    // so it passed the conflict check that the real name would have failed, and
+    // the directional fallback that exists for exactly this case never ran.
+    //
+    // Returning the real name instead puts it back on that path -- the caller
+    // conflict-checks it, finds the parent, and asks for a direction. "Northern
+    // Mexico" is both correct and the thing such a state would actually call
+    // itself.
+    //
+    // Matched on a PREFIX, because English builds demonyms by mangling the
+    // tail and no suffix rule survives it: Mexico/Mexican share "Mexic",
+    // Canada/Canadian share "Canad", Norway/Norwegian share "Norw", Greece/
+    // Greek share "Gree". Four characters is enough to be the same place, and
+    // long enough that Chad does not marry Chadic.
+    auto existingReferent = [&](const std::string& r) -> std::string {
+        if (r.size() < 4) return std::string();
+        std::string rl = r;
+        std::transform(rl.begin(), rl.end(), rl.begin(), ::tolower);
+        std::string best; size_t bestN = 0;
+        for (auto& [cid, c] : m_countries.getAll()) {
+            if (cid == rebelCid || c.name.empty()) continue;
+            // The GEOGRAPHIC core: a country that has renamed itself "People's
+            // Republic of Mexico" is still the country Mexican refers to.
+            const std::string core = politid::geographicCoreOf(
+                c.rootSaved && !c.rootName.empty() ? c.rootName : c.name);
+            if (core.size() < 4) continue;
+            std::string cl = core;
+            std::transform(cl.begin(), cl.end(), cl.begin(), ::tolower);
+            size_t n = 0;
+            while (n < cl.size() && n < rl.size() && cl[n] == rl[n]) ++n;
+            if (n >= 4 && n > bestN) { bestN = n; best = core; }
+        }
+        return best;
     };
 
     auto deriveTerritory = [&](const std::string& ethnicity) -> std::string {
         std::string root = ethnicity;
         if (root.empty()) return ethnicity;
+
+        // THE LAST WORD IS THE DEMONYM; everything before it says which group,
+        // not which place. Minority names arrive qualified -- "Mestizo
+        // Mexican", "English Canadian", "White Brazilian", "Han Chinese" -- and
+        // suffixing the whole string is what produced "Mestizo Mexicia" and
+        // "Han Chin", the two most common breakaway names on the map. A state
+        // is named for its ground, so the ground is what the rules run on.
+        if (auto sp = root.find_last_of(' '); sp != std::string::npos)
+            root = root.substr(sp + 1);
         // Strip trailing 's' (e.g., "Assyrians" → "Assyrian")
-        if (root.back() == 's') root.pop_back();
+        if (!root.empty() && root.back() == 's') root.pop_back();
         if (root.empty()) return ethnicity;
+
+        // The irregulars first, because no rule below reaches them, and they are
+        // independent of who is on the map -- which is what makes this work in
+        // 1914, where the referent lookup finds no Canada because Canada is
+        // still a dominion.
+        if (std::string place = properPlaceName(root); !place.empty()) return place;
+
+        // Then the map itself: a demonym whose country is already on it.
+        //
+        // Only when the place already exists: "Assyrian" finds no Assyria on the
+        // map and still becomes Assyria below, which is right -- inventing is
+        // only wrong when the real answer was available and ignored.
+        if (std::string ref = existingReferent(root); !ref.empty()) return ref;
 
         bool endsInI = root.back() == 'i';
         bool endsInN = root.back() == 'n';
@@ -1300,6 +1421,14 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         bool endsInIan = root.size() >= 4 && root.substr(root.size()-3) == "ian";
         bool endsInIsh = root.size() >= 4 && root.substr(root.size()-3) == "ish";
         bool endsInEse = root.size() >= 4 && root.substr(root.size()-3) == "ese";
+        // French, Dutch, Welsh. These are demonyms that no suffix rule can turn
+        // into a country -- France and the Netherlands are not derivable from
+        // them -- and leaving them out of the demonym test let the generic trial
+        // below return the word itself, because its suffix list contains "" and
+        // "French" does not literally contain "France". That shipped states
+        // called "Socialist Republic of French" and "West French".
+        bool endsInCh  = root.size() >= 4 && root.substr(root.size()-2) == "ch";
+        bool endsInSh  = root.size() >= 4 && root.substr(root.size()-2) == "sh";
 
         // Helper: add suffix avoiding doubled vowels
         auto addSuffix = [&](const std::string& base, const std::string& sfx) -> std::string {
@@ -1356,16 +1485,28 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             std::string t = root.substr(0, root.size()-2) + "o";
             if (!nameConflicts(t)) return t;
         }
-        // For endsInI (Punjabi → Punjab): drop 'i' + "ab"
+        // For endsInI (Punjabi → Punjab): drop the 'i'.
+        //
+        // Drop it, and stop. This used to be `base + "ab"`, which is not what
+        // its own comment said and not what English does: "Punjabi" minus 'i'
+        // is already "Punjab", so adding "ab" produced "Punjabab", and
+        // "Hindustani" produced "Hindustanab". Measured at 2% of breakaway
+        // names. Dropping the 'i' alone gives Punjab, Hindustan and Bengal.
         if (endsInI) {
-            std::string base = root.substr(0, root.size()-1);
-            std::string t = base + "ab";
+            std::string t = root.substr(0, root.size()-1);
             if (!nameConflicts(t)) return t;
         }
         // For endsInish (English → England): strip "ish" + "land"
+        //
+        // Through addSuffix, not raw concatenation. Half the demonyms this fires
+        // on end in the letter "land" begins with: "English" minus "ish" is
+        // "Engl", and "Engl" + "land" is "Englland". Measured over one training
+        // run: Polland x504, Orlland x504, Brelland x314, Englland x138.
+        // addSuffix already collapses a doubled letter, which is exactly what
+        // turns those back into England and Poland.
         if (endsInIsh) {
-            std::string t = root.substr(0, root.size()-3) + "land";
-            if (!nameConflicts(t)) return t;
+            std::string t = addSuffix(root.substr(0, root.size()-3), "land");
+            if (!t.empty() && !nameConflicts(t)) return t;
         }
         // For endsInEse (Japanese → Japan): strip "ese" + leave as root base
         if (endsInEse) {
@@ -1403,7 +1544,8 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // real country name is taken -- almost always by the parent this is
         // seceding from. Inventing a misspelling is the wrong answer to that.
         const bool isDemonym = endsInIan || endsInAn || endsInIsh ||
-                               endsInEse || endsInI || endsInIn;
+                               endsInEse || endsInI || endsInIn ||
+                               endsInCh || endsInSh;
         if (!isDemonym) {
             for (int sii : suffixOrder) {
                 const std::string& sfx = SUFFIXES[sii];
@@ -1423,12 +1565,40 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // and neither is spelled wrong. Built from the properly-formed name
         // even though that name is taken, because the direction is what makes
         // it distinct.
-        std::string proper = root;
-        if (endsInIan)      proper = root.substr(0, root.size() - 3) + "ia";
-        else if (endsInAn)  proper = root.substr(0, root.size() - 2) + "ia";
-        else if (endsInIsh) proper = root.substr(0, root.size() - 3) + "land";
+        // Built with the same joins as the branches above, for the same reason:
+        // this path is where "Western Englland" came from. A country reached by
+        // the last resort is still a country and still has to be spelled like
+        // one -- a direction on a misspelling is just a longer misspelling.
+        //
+        // Where addSuffix refuses a join (a vowel meeting a vowel) the properly
+        // formed name is the demonym without its final "n" -- Korean -> Korea,
+        // Russian -> Russia -- which is what English actually does and what the
+        // -ian branch above already tries first.
+        // Empty, NOT root. Seeding this with the demonym meant the guard below
+        // could never fire -- "French" was already sitting in `proper`, so
+        // "nothing could be derived" looked exactly like "the answer is French",
+        // and the last resort put a direction on it.
+        std::string proper;
+        auto joinOrDropN = [&](size_t strip) {
+            std::string t = addSuffix(root.substr(0, root.size() - strip), "ia");
+            if (!t.empty()) return t;
+            return root.back() == 'n' ? root.substr(0, root.size() - 1) : root;
+        };
+        if (endsInIan)      proper = joinOrDropN(3);
+        else if (endsInAn)  proper = joinOrDropN(2);
+        else if (endsInIsh) proper = addSuffix(root.substr(0, root.size() - 3), "land");
         else if (endsInEse) proper = root.substr(0, root.size() - 3);
         else if (endsInIn)  proper = root.substr(0, root.size() - 2) + "o";
+        // A demonym nothing could turn into a place name is not a place name.
+        //
+        // Falling back to the word itself is how "West French" happened: a
+        // direction on an adjective. Returning nothing hands the decision to the
+        // caller, which names the state after the country it is actually
+        // breaking away FROM -- which is what such a state is.
+        if (proper.empty()) {
+            if (isDemonym) return std::string();
+            proper = root;
+        }
         proper = stripDirection(proper);
         if (!proper.empty() && !nameConflicts(proper)) return proper;
 
@@ -1466,7 +1636,12 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         std::string territory = deriveTerritory(ethnicName);
 
         // Step 2: if territory conflicts with existing countries, try directional
-        if (nameConflicts(territory)) {
+        //
+        // Empty counts as conflicting. deriveTerritory now returns nothing
+        // rather than hand back a bare demonym, and makeDirectionalName reads an
+        // empty base as "use the parent" -- so a Breton rising in France becomes
+        // "North France" instead of "West French".
+        if (territory.empty() || nameConflicts(territory)) {
             territory = makeDirectionalName(territory, parentName);
         }
 
@@ -1624,7 +1799,22 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         std::string trimmed = countryName;
         while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(trimmed.begin());
         while (!trimmed.empty() && trimmed.back()  == ' ') trimmed.pop_back();
-        if (trimmed.size() < 3) {
+        // A form of government is not a country name.
+        //
+        // The length test below catches "" and " ", but " Federation" trims to
+        // a perfectly respectable ten characters and shipped as a country
+        // called "Federation" -- a constitutional arrangement belonging to
+        // nowhere. "The Federation" and "The Imperium" are deliberate and stay:
+        // a junta that names itself after its own institution reads as a junta.
+        // A BARE one reads as a missing string.
+        static const char* const BARE_FORMS[] = {
+            "Federation", "Republic", "Union", "State", "Commonwealth",
+            "Confederation", "Directorate", "Alliance", "Council", "Authority",
+        };
+        bool bare = false;
+        for (const char* f : BARE_FORMS)
+            if (trimmed == f) { bare = true; break; }
+        if (bare || trimmed.size() < 3) {
             static const char* dirs[] = {"Northern ", "Southern ", "Eastern ",
                                          "Western ", "Central "};
             std::string base = parentRootName(parentCid);
@@ -2055,7 +2245,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 
     m_countries.getAll()[rebelCid] = rebel;
     if (!rebel.isoA3.empty()) m_isoToCid[rebel.isoA3] = rebelCid;
-    m_countryCompass[rebelCid] = {avgEcon, avgSoc};
+    m_countryCompass[rebelCid] = makeCompass(avgEcon, avgSoc);
 
     if (rebelCid >= (int)m_countryPixels.size())
         m_countryPixels.resize(rebelCid + 1);
@@ -2067,7 +2257,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     // history re-creates every rebellion in it, so a timelapse export of any
     // world that ever had one crashed here at address zero.
     if (!m_headless) {
-        Texture2D tex = FlagRenderer::render(rebel.flagActual, 256, 128, "", &m_odmJsonData);
+        Texture2D tex = FlagRenderer::render(rebel.flagActual, 256, 128, m_dataDir, &m_odmJsonData);
         m_countryFlags[rebelCid] = tex;
     }
 
