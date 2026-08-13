@@ -266,6 +266,41 @@ struct PoliticalCompass {
     float social = 0.0f;     // -100 (authoritarian) to +100 (libertarian)
 };
 
+// ─── The compass is a bounded space, and has to be made one ──────────────────
+//
+// Those ranges above were a comment, not a rule. shiftCountryCompass clamps
+// what it adds, but every place a compass ENTERS the game -- the map's
+// political_compass.json, a country's own fields, a save file, the average
+// taken over a new rebel's provinces -- assigned whatever it was handed. One
+// training run logged econ=9988 soc=-7669, and 25,701 identity lines outside
+// the documented range.
+//
+// That is not a cosmetic overflow. PoliticalIdentity works in radii from the
+// centre -- committed at 45, radical at 72, released at 32 -- so a country
+// sitting at r=12,000 is permanently Radical and the hysteresis that is
+// supposed to let it back can never reach it. The same values are read by
+// getProvinceRebellionChance as a distance, and fed to the AI's feature vector,
+// where an unbounded input is how NaN gets into a net.
+//
+// Clamped at ingestion rather than at use: there is one bounded truth, and
+// every reader should be able to trust it without re-checking.
+inline constexpr float COMPASS_MIN = -100.0f;
+inline constexpr float COMPASS_MAX =  100.0f;
+
+inline float clampCompassAxis(float v) {
+    // NaN first: it compares false against everything, so a plain clamp lets it
+    // straight through -- and NaN on the compass propagates into the policy net
+    // exactly like the exploded stats that caused the training SIGSEGV.
+    if (!(v == v)) return 0.0f;
+    return v < COMPASS_MIN ? COMPASS_MIN : (v > COMPASS_MAX ? COMPASS_MAX : v);
+}
+inline PoliticalCompass makeCompass(float economic, float social) {
+    return { clampCompassAxis(economic), clampCompassAxis(social) };
+}
+inline Vector2 makeCompassVec(float economic, float social) {
+    return { clampCompassAxis(economic), clampCompassAxis(social) };
+}
+
 // ─── Minorities ─────────────────────────────────────────────
 struct MinorityGroup {
     std::string name;

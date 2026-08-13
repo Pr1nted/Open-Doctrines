@@ -1922,8 +1922,8 @@ void Game::loadStateJson(const std::string& json) {
     if (j.contains("countryCompass")) {
         for (auto& [key, node] : j["countryCompass"].items()) {
             const int cid = std::stoi(key);
-            m_countryCompass[cid] = { node.value("economic", 0.0f),
-                                      node.value("social",   0.0f) };
+            m_countryCompass[cid] = makeCompass(node.value("economic", 0.0f),
+                                                node.value("social",   0.0f));
         }
     }
 

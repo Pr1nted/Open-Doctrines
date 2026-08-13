@@ -755,7 +755,8 @@ void Game::drawCountryPanel() {
         // Ensure compass data exists (fallback hash-based if missing)
         if (m_provinceCompass.find(selPid) == m_provinceCompass.end()) {
             int h = selPid * 1103515245 + 12345;
-            m_provinceCompass[selPid] = {(float)((h & 0xFF) % 201 - 100), (float)(((h >> 8) & 0xFF) % 201 - 100)};
+            m_provinceCompass[selPid] = makeCompassVec((float)((h & 0xFF) % 201 - 100),
+                                                       (float)(((h >> 8) & 0xFF) % 201 - 100));
         }
 
         auto compIt = m_provinceCompass.find(selPid);
