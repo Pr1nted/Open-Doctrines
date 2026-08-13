@@ -417,6 +417,20 @@ private:
     void startNewGame(const std::string& mapName);
     void startNewGameWithName(const std::string& mapName, const std::string& worldName);
 
+    // Enter gameplay as a country: unlocks the techs its built level implies,
+    // stamps the save, hands the map back to the player and sets SCREEN_PLAYING.
+    // Shared by the country-select popup and Quick Start.
+    void commitPlayerCountry(int countryId);
+
+    // Quick Start: main menu straight to a turn, no scenario or country asked
+    // for. See the block comment in Game_Menus.cpp.
+    void startQuickStart();
+    // Which country Quick Start hands over. Valid only once a map is loaded --
+    // it reads m_playableCountryIds. Returns 0 if there is nothing playable.
+    int pickQuickStartCountry() const;
+    // Set by startQuickStart, read and cleared by LOAD_FINALIZE.
+    bool m_quickStartPending = false;
+
     void startLoadedGame(const std::string& saveName);
     void scanDirectory(const std::string& dir, const std::string& ext, std::vector<std::string>& out);
 

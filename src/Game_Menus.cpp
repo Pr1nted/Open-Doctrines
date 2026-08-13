@@ -1181,14 +1181,17 @@ void Game::updateMainMenu() {
     if (activate) {
         m_menuIndex = std::clamp(m_menuIndex, 0, count - 1);
         switch (m_menuIndex) {
-            case 0: // Play Singleplayer
+            case 0: // Quick Start
+                startQuickStart();
+                break;
+            case 1: // Play Singleplayer
                 m_menuIndex = 0;
                 m_currentScreen = SCREEN_SINGLEPLAYER;
                 break;
-            case 1: // Play Multiplayer
+            case 2: // Play Multiplayer
                 openMultiplayerMenu();
                 break;
-            case 2: // Map Editor
+            case 3: // Map Editor
                 if (!m_mapEditor) {
                     m_mapEditor = new MapEditor();
                     // Loads the map synchronously, right here on the main
@@ -1200,7 +1203,7 @@ void Game::updateMainMenu() {
                 }
                 m_currentScreen = SCREEN_MAP_EDITOR;
                 break;
-            case 3: // Mod Menu
+            case 4: // Mod Menu
                 m_modIndex = 0;
                 m_modScroll = 0;
                 m_modAdvancedFor = m_modDeleteFor = m_modAiWarnFor = -1;
@@ -1208,21 +1211,21 @@ void Game::updateMainMenu() {
                 m_currentScreen = SCREEN_MODS;
                 Audio::get().playSfx("click_light");
                 break;
-            case 4: // Community
+            case 5: // Community
                 m_currentScreen = SCREEN_COMMUNITY;
                 break;
-            case 5: // Account
+            case 6: // Account
                 openAccountMenu();
                 break;
-            case 6: // Credits
+            case 7: // Credits
                 if (!m_creditsLoaded) loadCredits();
                 m_creditsScroll = 0.0f;
                 m_currentScreen = SCREEN_CREDITS;
                 break;
-            case 7: // Save .odstate
+            case 8: // Save .odstate
                 openOdStateSave();
                 break;
-            case 8: // Load .odstate
+            case 9: // Load .odstate
                 openOdStateLoad();
                 break;
         }
@@ -1874,91 +1877,13 @@ void Game::updateCountrySelect() {
         // --- Confirmation popup active ---
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             if (CheckCollisionPointRec(mouse, yesRect)) {
-                // Confirm: play as this country
-                m_playerCountryId = m_pendingCountryId;
-                const Country* pc = m_countries.getCountry(m_playerCountryId);
-                std::cerr << "[DIAG] Player confirmed country " << m_playerCountryId
-                          << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
-                auto compassIt = m_countryCompass.find(m_playerCountryId);
-                if (compassIt != m_countryCompass.end()) {
-                    std::cerr << "[DIAG]   Compass: econ=" << compassIt->second.economic
-                              << " soc=" << compassIt->second.social << std::endl;
-                } else {
-                    std::cerr << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
-                }
-                // Auto-unlock techs matching built industry/fort/port levels
-                {
-                    int maxInd = 0, maxFort = 0, maxPort = 0;
-                    for (auto& [pid, p] : m_provinces.getAllProvinces()) {
-                        if (p.countryId != m_playerCountryId) continue;
-                        auto it = m_provinceIndustry.find(pid);
-                        if (it != m_provinceIndustry.end()) {
-                            if (it->second.level > maxInd) maxInd = it->second.level;
-                            if (it->second.fortification > maxFort) maxFort = it->second.fortification;
-                        }
-                        auto pt = m_provincePorts.find(pid);
-                        if (pt != m_provincePorts.end() && pt->second.level > maxPort)
-                            maxPort = pt->second.level;
-                    }
-                    std::function<void(const std::string&)> unlockRec;
-                    unlockRec = [&](const std::string& nodeId) {
-                        for (auto& n : m_researchNodes) {
-                            if (n.id == nodeId) {
-                                if (m_countryResearched[m_playerCountryId].count(n.id)) return;
-                                // Don't unlock if a mutex sibling is already researched
-                                if (n.mutexGroup > 0) {
-                                    for (auto& sib : m_researchNodes) {
-                                        if (sib.id != nodeId && sib.mutexGroup == n.mutexGroup && m_countryResearched[m_playerCountryId].count(sib.id))
-                                            return;
-                                    }
-                                }
-                                m_countryResearched[m_playerCountryId].insert(n.id);
-                                for (auto& dep : n.deps)
-                                    unlockRec(dep);
-                                break;
-                            }
-                        }
-                    };
-                    for (auto& n : m_researchNodes) {
-                        if (n.industryLevel > 0 && n.industryLevel <= maxInd)
-                            unlockRec(n.id);
-                        if (n.fortLevel > 0 && n.fortLevel <= maxFort)
-                            unlockRec(n.id);
-                        if (n.portLevel > 0 && n.portLevel <= maxPort)
-                            unlockRec(n.id);
-                    }
-                    bool hasCarrier = false;
-                    for (auto& ship : m_ships) {
-                        if (ship.countryId == m_playerCountryId) {
-                            m_countryResearched[m_playerCountryId].insert("navy1");
-                            if (ship.type == "carrier") hasCarrier = true;
-                        }
-                    }
-                    if (hasCarrier) {
-                        m_countryResearched[m_playerCountryId].insert("arty1");
-                    }
-                }
-                // Sync per-country research into global research nodes
-                for (auto& n : m_researchNodes)
-                    n.researched = hasResearched(n.id, m_playerCountryId);
-                auto c = m_countries.getCountry(m_pendingCountryId);
-                std::cout << "  Player selected: " << (c ? c->name : "ID " + std::to_string(m_pendingCountryId)) << std::endl;
-                if (!m_currentSavePath.empty()) {
-                    SaveManager::updatePlayerCountry(m_currentSavePath, m_playerCountryId);
-                }
+                // Confirm: play as this country. The work itself lives in
+                // commitPlayerCountry, because Quick Start reaches gameplay
+                // without ever drawing this popup and must arrive in exactly
+                // the same state -- techs unlocked, save stamped, renderer
+                // handed back to the player.
+                commitPlayerCountry(m_pendingCountryId);
                 m_pendingCountryId = 0;
-                m_dpiScale = GetWindowScaleDPI().x;
-                m_screenW = GetScreenWidth();
-                m_screenH = GetScreenHeight();
-                if (m_renderer) {
-                    m_renderer->resize(m_screenW, m_screenH);
-                    m_renderer->setDpiScale(m_dpiScale);
-                    m_renderer->setBlockLeftPan(false);
-                    m_renderer->setSelectedProvince(0);
-                    m_renderer->rebuildSelectionGlow();
-                    m_renderer->setShowCountryNames(false);
-                }
-                m_currentScreen = SCREEN_PLAYING;
             } else if (CheckCollisionPointRec(mouse, noRect)) {
                 // Cancel
                 m_pendingCountryId = 0;
@@ -1970,6 +1895,184 @@ void Game::updateCountrySelect() {
             m_pendingCountryId = 0;
         }
     }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// commitPlayerCountry — take a country and enter gameplay as it
+//
+// Everything that has to be true the moment SCREEN_PLAYING starts. Two callers
+// reach it: the country-select popup's Yes button, and Quick Start, which never
+// shows that popup at all. It was inline in the popup handler, which meant the
+// only way to start a game as somebody was to draw a dialog and click it.
+// ────────────────────────────────────────────────────────────────────────────
+void Game::commitPlayerCountry(int countryId) {
+    m_playerCountryId = countryId;
+    const Country* pc = m_countries.getCountry(m_playerCountryId);
+    std::cerr << "[DIAG] Player confirmed country " << m_playerCountryId
+              << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
+    auto compassIt = m_countryCompass.find(m_playerCountryId);
+    if (compassIt != m_countryCompass.end()) {
+        std::cerr << "[DIAG]   Compass: econ=" << compassIt->second.economic
+                  << " soc=" << compassIt->second.social << std::endl;
+    } else {
+        std::cerr << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
+    }
+    // Auto-unlock techs matching built industry/fort/port levels
+    {
+        int maxInd = 0, maxFort = 0, maxPort = 0;
+        for (auto& [pid, p] : m_provinces.getAllProvinces()) {
+            if (p.countryId != m_playerCountryId) continue;
+            auto it = m_provinceIndustry.find(pid);
+            if (it != m_provinceIndustry.end()) {
+                if (it->second.level > maxInd) maxInd = it->second.level;
+                if (it->second.fortification > maxFort) maxFort = it->second.fortification;
+            }
+            auto pt = m_provincePorts.find(pid);
+            if (pt != m_provincePorts.end() && pt->second.level > maxPort)
+                maxPort = pt->second.level;
+        }
+        std::function<void(const std::string&)> unlockRec;
+        unlockRec = [&](const std::string& nodeId) {
+            for (auto& n : m_researchNodes) {
+                if (n.id == nodeId) {
+                    if (m_countryResearched[m_playerCountryId].count(n.id)) return;
+                    // Don't unlock if a mutex sibling is already researched
+                    if (n.mutexGroup > 0) {
+                        for (auto& sib : m_researchNodes) {
+                            if (sib.id != nodeId && sib.mutexGroup == n.mutexGroup && m_countryResearched[m_playerCountryId].count(sib.id))
+                                return;
+                        }
+                    }
+                    m_countryResearched[m_playerCountryId].insert(n.id);
+                    for (auto& dep : n.deps)
+                        unlockRec(dep);
+                    break;
+                }
+            }
+        };
+        for (auto& n : m_researchNodes) {
+            if (n.industryLevel > 0 && n.industryLevel <= maxInd)
+                unlockRec(n.id);
+            if (n.fortLevel > 0 && n.fortLevel <= maxFort)
+                unlockRec(n.id);
+            if (n.portLevel > 0 && n.portLevel <= maxPort)
+                unlockRec(n.id);
+        }
+        bool hasCarrier = false;
+        for (auto& ship : m_ships) {
+            if (ship.countryId == m_playerCountryId) {
+                m_countryResearched[m_playerCountryId].insert("navy1");
+                if (ship.type == "carrier") hasCarrier = true;
+            }
+        }
+        if (hasCarrier) {
+            m_countryResearched[m_playerCountryId].insert("arty1");
+        }
+    }
+    // Sync per-country research into global research nodes
+    for (auto& n : m_researchNodes)
+        n.researched = hasResearched(n.id, m_playerCountryId);
+    std::cout << "  Player selected: "
+              << (pc ? pc->name : "ID " + std::to_string(m_playerCountryId)) << std::endl;
+    if (!m_currentSavePath.empty()) {
+        SaveManager::updatePlayerCountry(m_currentSavePath, m_playerCountryId);
+    }
+    m_dpiScale = GetWindowScaleDPI().x;
+    m_screenW = GetScreenWidth();
+    m_screenH = GetScreenHeight();
+    if (m_renderer) {
+        m_renderer->resize(m_screenW, m_screenH);
+        m_renderer->setDpiScale(m_dpiScale);
+        m_renderer->setBlockLeftPan(false);
+        m_renderer->setSelectedProvince(0);
+        m_renderer->rebuildSelectionGlow();
+        m_renderer->setShowCountryNames(false);
+    }
+    m_currentScreen = SCREEN_PLAYING;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Quick Start
+//
+// WHY THIS EXISTS: reaching gameplay took four screens and five clicks — main
+// menu, Play Singleplayer, New World, pick a scenario, name a world, then pick
+// one country out of up to 185 on a map with no indication which of them is a
+// reasonable first go. On the web build that is the whole of a first visit, and
+// most visitors spent it in menus.
+//
+// This is the same code path a normal new game takes — startNewGameWithName,
+// the async loader, commitPlayerCountry — with the three questions answered in
+// advance rather than a second, shorter loader that could drift away from it.
+// ────────────────────────────────────────────────────────────────────────────
+
+// The scenario Quick Start opens. 1939 because it is the one the game's own
+// audience arrives looking for, and because it is a world already in motion:
+// claims, guarantees and armies are placed on turn one, so something happens
+// whether or not the player has worked out what the buttons do yet.
+static const char* kQuickStartMap = "STDmaps/1939.odmap";
+
+// Countries to hand a first-time player, best first, by ISO A3.
+//
+// A first country wants to be recognisable, big enough to survive a mistake,
+// and already in a situation — not a great power with nothing to fear and not a
+// minor that is gone by turn thirty. The list is tried in order against
+// whatever the loaded map actually contains, so a map that has never heard of
+// these still gets a sensible answer from the fallback below.
+static const char* kQuickStartCountries[] = {
+    "FRA",  // industrialised, threatened, and has to choose who to trust
+    "GBR",  // the naval game, and an empire that needs holding together
+    "ITA",  // middling power with claims in reach and a decision to make
+    "POL",  // hard, but the one everyone recognises the position of
+    "USA",  // safe, rich, slow — the gentlest of them if nothing else matched
+};
+
+int Game::pickQuickStartCountry() const {
+    if (m_playableCountryIds.empty()) return 0;
+
+    for (const char* iso : kQuickStartCountries) {
+        const Country* c = m_countries.getCountryByCode(iso);
+        if (!c) continue;
+        // Playable is not the same as present: a country can exist in the map's
+        // country table and hold no provinces on this scenario's start date.
+        if (std::find(m_playableCountryIds.begin(), m_playableCountryIds.end(),
+                      c->id) == m_playableCountryIds.end()) continue;
+        return c->id;
+    }
+
+    // Nothing on the list is here — a custom or generated map. Take the largest
+    // country by province count, which on an unknown map is the one most likely
+    // to still be standing in twenty turns.
+    std::unordered_map<int, int> provCount;
+    for (auto& [pid, p] : m_provinces.getAllProvinces()) provCount[p.countryId]++;
+    int best = 0, bestN = -1;
+    for (int cid : m_playableCountryIds) {
+        const int n = provCount.count(cid) ? provCount.at(cid) : 0;
+        if (n > bestN) { bestN = n; best = cid; }
+    }
+    return best;
+}
+
+void Game::startQuickStart() {
+    // Named for the player, not for the file. Quick Start is the path taken by
+    // someone who has not decided to keep anything yet, and "Quick Start" in a
+    // world list a week later says what it was.
+    std::string name = "Quick Start";
+    std::string savePath = m_dataDir + "saves/" + name + ".odsv";
+    struct stat chkStat;
+    int suffix = 1;
+    while (stat(savePath.c_str(), &chkStat) == 0) {
+        name = "Quick Start (" + std::to_string(suffix) + ")";
+        savePath = m_dataDir + "saves/" + name + ".odsv";
+        suffix++;
+    }
+
+    // Read by LOAD_FINALIZE, which would otherwise stop at country select.
+    // Cleared there, and on a failed load, so an abandoned Quick Start cannot
+    // silently choose a country for the next world the player opens by hand.
+    m_quickStartPending = true;
+
+    Audio::get().playSfx("confirm");
+    startNewGameWithName(m_dataDir + kQuickStartMap, name);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -539,6 +539,41 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                     m_currentScreen = SCREEN_PLAYING;
                 }
             }
+
+            // Quick Start answered the country question on the main menu, so
+            // the screen both branches above lead to is the one screen it must
+            // not stop on.
+            //
+            // Keyed on where the load ACTUALLY ended up, not on which branch
+            // ran: m_loadingShouldCreateSave is already false by here — the
+            // LOAD_CREATE_SAVE phase clears it — so a new game arrives at
+            // country select through the "loaded game with no saved country"
+            // path, not the new-game one. Testing the outcome covers both and
+            // cannot be wrong about which is which.
+            //
+            // Cleared unconditionally, so a Quick Start that found nothing
+            // playable falls back to country select rather than staying armed
+            // and choosing a country for the next world opened by hand.
+            if (m_quickStartPending) {
+                m_quickStartPending = false;
+                if (m_currentScreen == SCREEN_COUNTRY_SELECT) {
+                    const int cid = pickQuickStartCountry();
+                    if (cid > 0) {
+                        commitPlayerCountry(cid);   // sets SCREEN_PLAYING
+                        // The loader framed the whole world for country select.
+                        // Nobody choosing their own country needs to be told
+                        // where it is; somebody who was handed one does.
+                        auto cit = m_countryCenters.find(cid);
+                        if (m_renderer && cit != m_countryCenters.end())
+                            m_renderer->flyTo(cit->second.x, cit->second.y, 2.5f, 3.0f);
+                    } else {
+                        std::cerr << "[QuickStart] no playable country on "
+                                  << m_newWorldMapPath << " — falling back to "
+                                     "country select" << std::endl;
+                    }
+                }
+            }
+
             // A revert queued from the history screen: the world only just came
             // back up, so this is the first point at which the rewind is safe.
             if (m_pendingRevertTurn >= 0) {

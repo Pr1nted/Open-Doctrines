@@ -120,8 +120,12 @@ const int MENU_COUNT = 4;
 // but "put my whole setup on a stick and carry it to another machine" is not a
 // web-only wish, and a menu that differs per platform is one more thing for a
 // player to be told about. See OdState.h.
-const char* MAIN_MENU_ITEMS[] = {"Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate"};
-const int MAIN_MENU_COUNT = 9;
+// Quick Start is first because it is the only item a first-time player should
+// have to read. Everything below it assumes you already know what the game is;
+// it answers the scenario and country questions itself and starts a turn. See
+// Game::startQuickStart.
+const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate"};
+const int MAIN_MENU_COUNT = 10;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 
@@ -1683,6 +1687,10 @@ void Game::run() {
                 // Loading completed — present one final frame then transition
                 endFrame();
                 if (m_loadingFailed) {
+                    // LOAD_FINALIZE never ran, so it never cleared this. An
+                    // armed Quick Start outliving the load that armed it would
+                    // pick a country for whatever the player opened next.
+                    m_quickStartPending = false;
                     m_currentScreen = SCREEN_MENU;
                 } else if (m_currentScreen == SCREEN_LOADING) {
                     // LOAD_FINALIZE didn't set a screen (old path), default to country select
