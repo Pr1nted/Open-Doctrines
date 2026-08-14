@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -97,7 +98,7 @@ void drain(NetHost* host, NetSession* session, Seen& seen) {
     }
 }
 
-NetHost::Config hostConfig(const std::string& issuer) {
+NetHost::Config hostConfig(const std::string& issuer, int port = 0, bool bindAll = false) {
     NetHost::Config c;
     c.issuer = issuer;
     c.token = "mock-session-token";
@@ -106,8 +107,11 @@ NetHost::Config hostConfig(const std::string& issuer) {
     c.gameVersion = "test";
     // Port 0: the OS picks one, so running this never collides with whatever
     // else is on the machine. Loopback only -- the test opens nothing.
-    c.port = 0;
-    c.bindAll = false;
+    //
+    // `host` mode overrides both: an outside client has to be told where to
+    // connect, and cannot be told a port that was chosen after it asked.
+    c.port = port;
+    c.bindAll = bindAll;
     c.lobby.maxPlayers = 8;
     return c;
 }
@@ -801,11 +805,82 @@ int testParty(const std::string& issuer) {
 
 }  // namespace
 
+// --------------------------------------------------------------- host mode ----
+
+/**
+ * A real host that STAYS UP, for a client this process does not control.
+ *
+ * Every other mode here drives both ends and exits, which proves the transport
+ * but cannot answer "can the browser build join?" -- the web client is a
+ * separate program that has to connect to something already listening. Hosting
+ * needs an issuer, a token and a server credential (Host.cpp: open), so without
+ * this the only way to get a joinable host was a real account and a real sign
+ * in, on a machine where somebody would rather not use their own.
+ *
+ * Against the mock issuer it needs neither. Same NetHost, same credential path,
+ * same handshake -- just left running until interrupted.
+ *
+ *     NetConnectTest <issuer-url> host [port] [--all]
+ *
+ * --all binds every interface instead of loopback, for joining from another
+ * device. Off by default: this opens a port, and a test binary should not widen
+ * its blast radius unless asked.
+ */
+static volatile std::sig_atomic_t g_stop = 0;
+
+int runHost(const std::string& issuer, int port, bool bindAll) {
+    printf("\n=== host mode: staying up for an external client ===\n");
+
+    NetHost host;
+    Seen seen;
+    if (!host.open(hostConfig(issuer, port, bindAll))) {
+        printf("FAIL: the host did not start: %s\n", host.error().c_str());
+        return 1;
+    }
+    const bool live = pumpUntil(&host, nullptr, [&] {
+        drain(&host, nullptr, seen);
+        return host.phase() == NetHost::Phase::Live ||
+               host.phase() == NetHost::Phase::Closed;
+    });
+    if (!live || host.phase() != NetHost::Phase::Live) {
+        printf("FAIL: the host never reached Live: %s\n",
+               host.error().empty() ? "timed out" : host.error().c_str());
+        return 1;
+    }
+
+    printf("\n  listening : %s\n", host.listenNote().c_str());
+    printf("  join code : %s\n", host.code().c_str());
+    printf("  url       : ws://%s:%d\n", bindAll ? "<this-machine>" : "127.0.0.1", port);
+    printf("\n  A browser on http://localhost is a secure context, so ws:// is\n"
+           "  allowed and no certificate is needed for a local test.\n");
+    printf("  Ctrl-C to stop.\n\n");
+
+    std::signal(SIGINT, [](int) { g_stop = 1; });
+
+    size_t lastPending = SIZE_MAX;
+    while (!g_stop && host.phase() == NetHost::Phase::Live) {
+        host.update();
+        drain(&host, nullptr, seen);
+        // Only when it changes: a heartbeat every 50ms would bury the one line
+        // that matters, which is somebody actually arriving.
+        const size_t pending = host.unauthenticatedCount();
+        if (pending != lastPending) {
+            printf("  [host] %zu connection(s) mid-handshake\n", pending);
+            lastPending = pending;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    printf("\n  closing.\n");
+    host.close();
+    return 0;
+}
+
 int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|live>\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|party|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -818,6 +893,14 @@ int main(int argc, char** argv) {
     else if (mode == "mods") testMods(issuer);
     else if (mode == "party") testParty(issuer);
     else if (mode == "live") testLive(issuer);
+    else if (mode == "host") {
+        // Not a check-counting mode: it reports its own success and returns,
+        // so the "N checks, 0 failed" tail below would be a lie about it.
+        int port = (argc > 3 && argv[3][0] != '-') ? atoi(argv[3]) : 7777;
+        bool all = false;
+        for (int i = 3; i < argc; ++i) if (std::strcmp(argv[i], "--all") == 0) all = true;
+        return runHost(issuer, port, all);
+    }
     else { printf("unknown mode %s\n", mode.c_str()); return 2; }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
