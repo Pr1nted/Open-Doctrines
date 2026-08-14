@@ -41,6 +41,14 @@ struct Config {
     int aiDifficulty = 1;
     bool aiDebug = false;   // log AI decisions + enable the in-game AI overlay
 
+    // A small credit in the corner of an exported timelapse GIF.
+    //
+    // On by default, because the export is the most shareable thing the game
+    // produces and it used to travel with nothing on it saying what it was.
+    // Off is this one line, and it is honoured everywhere the GIF is written,
+    // including --export-timelapse.
+    bool timelapseWatermark = true;
+
     // Audio, 0..1. What reaches the device is master * category, so pulling
     // master to zero silences the game without disturbing the two settings
     // under it. Music sits below effects by default because it plays

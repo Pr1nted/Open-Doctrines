@@ -71,6 +71,11 @@ int main(int argc, char** argv) {
             }
         }
         Game g;
+        // Turn the corner credit off for this run without editing config.json,
+        // which is what a script wants when it is generating art rather than
+        // sharing a playthrough.
+        for (int k = i + 2; k < argc; ++k)
+            if (strcmp(argv[k], "--no-watermark") == 0) g.setTimelapseWatermark(false);
         bool ok = g.exportTimelapseHeadless(save, out, w, h, 6, view);
         return ok ? 0 : 1;
     }

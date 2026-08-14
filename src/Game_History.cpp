@@ -10,6 +10,7 @@
 
 #include "Game.h"
 #include "TextInput.h"
+#include "TimelapseMark.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "GifEncoder.h"
@@ -364,6 +365,66 @@ void Game::renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, floa
                 rgba[o + 2] = edge ? 255 : col.b;
             }
     }
+
+    drawTimelapseMark(rgba, outW, outH);
+}
+
+/**
+ * The one thing an exported timelapse says about where it came from.
+ *
+ * A finished game exports a map of the whole war, and that GIF is the most
+ * shareable thing this project produces -- but it left carrying no name, so
+ * every repost was an orphan. This is the smallest mark that fixes that.
+ *
+ * DELIBERATELY QUIET. 11px, bottom-right, blended at a little over half
+ * opacity. A watermark that competes with the map is one people crop out, and
+ * a cropped watermark credits nobody.
+ *
+ * Drawn INTO the frame rather than composited afterwards, because
+ * renderHistoryFrame is also what feeds GifEncoder::addPaletteSample -- so the
+ * mark's greys are in the 8-bit palette before any frame is written. Added
+ * later it would quantise to whatever the map happened to leave room for.
+ *
+ * Off is one line in config.json (`timelapseWatermark: false`). On by default:
+ * the whole point is the shares that happen without anyone thinking about it.
+ */
+void Game::drawTimelapseMark(std::vector<uint8_t>& rgba, int outW, int outH) const {
+    const bool on = (m_watermarkOverride >= 0) ? (m_watermarkOverride == 1)
+                                              : m_config.timelapseWatermark;
+    if (!on) return;
+    // Below this it is a smudge rather than a credit, and a smudge is just dirt
+    // on somebody's export.
+    if (outW < 420 || outH < 160) return;
+
+    const int margin = 8;
+    const int x0 = outW - odmark::WIDTH  - margin;
+    const int y0 = outH - odmark::HEIGHT - margin;
+    if (x0 < 0 || y0 < 0) return;
+
+    // Shadow pass first, then ink. What is underneath is arbitrary -- ocean
+    // here, pale desert there -- so light-on-dark alone is illegible half the
+    // time. One offset dark pass gives the glyphs an edge to sit against
+    // wherever they land, which is what lets a single opacity work everywhere.
+    constexpr float INK_ALPHA    = 0.58f;
+    constexpr float SHADOW_ALPHA = 0.38f;
+    auto blend = [&](int x, int y, unsigned char cov, float strength, int lum) {
+        if (x < 0 || y < 0 || x >= outW || y >= outH) return;
+        const float a = (cov / 255.0f) * strength;
+        if (a <= 0.0f) return;
+        const size_t o = ((size_t)y * outW + x) * 4;
+        for (int c = 0; c < 3; ++c)
+            rgba[o + c] = (unsigned char)(rgba[o + c] * (1.0f - a) + lum * a);
+    };
+    for (int y = 0; y < odmark::HEIGHT; ++y)
+        for (int x = 0; x < odmark::WIDTH; ++x) {
+            const unsigned char cov = odmark::ALPHA[(size_t)y * odmark::WIDTH + x];
+            if (cov) blend(x0 + x + 1, y0 + y + 1, cov, SHADOW_ALPHA, 0);
+        }
+    for (int y = 0; y < odmark::HEIGHT; ++y)
+        for (int x = 0; x < odmark::WIDTH; ++x) {
+            const unsigned char cov = odmark::ALPHA[(size_t)y * odmark::WIDTH + x];
+            if (cov) blend(x0 + x, y0 + y, cov, INK_ALPHA, 255);
+        }
 }
 
 
@@ -402,6 +463,29 @@ bool Game::exportTimelapseHeadless(const std::string& savePath,
                                    HistoryView view) {
     m_headless = true;
     m_historyView = view;
+
+    // The watermark setting has to mean the same thing here as it does in the
+    // game, and this path never calls init() -- which is what normally finds
+    // data/ and reads config.json. Without this, `timelapseWatermark: false`
+    // was silently ignored by --export-timelapse: the one export people script,
+    // and therefore the one they would most want to control.
+    if (m_configPath.empty()) {
+        std::string appDir = GetApplicationDirectory();
+        if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
+            appDir += '/';
+        std::vector<std::string> cand{appDir + "data/", appDir + "../data/", "data/"};
+        if (const char* over = getenv("OD_DATA_DIR")) {
+            std::string d = over;
+            if (!d.empty()) {
+                if (d.back() != '/') d += '/';
+                cand.insert(cand.begin(), d);
+            }
+        }
+        for (const auto& d : cand)
+            if (FileExists((d + "config.json").c_str())) { m_configPath = d + "config.json"; break; }
+        if (!m_configPath.empty()) m_config.load(m_configPath);
+    }
+
     if (!loadHistoryMapData(savePath)) {
         fprintf(stderr, "could not read map data out of %s\n", savePath.c_str());
         return false;

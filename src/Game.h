@@ -2082,6 +2082,16 @@ public:
     // the export and a headless run was the progress overlay. Worth having:
     // it makes the export testable, scriptable for promo renders, and usable on
     // a machine with no display.
+    /**
+     * Force the timelapse credit off (or on) for this run only.
+     *
+     * Backs `--no-watermark`. Beats config.json rather than writing to it: a
+     * script generating art wants a clean frame this once, not to change what
+     * the player's own exports look like from then on -- the same reasoning as
+     * --resource-limit.
+     */
+    void setTimelapseWatermark(bool on) { m_watermarkOverride = on ? 1 : 0; }
+
     bool exportTimelapseHeadless(const std::string& savePath,
                                  const std::string& outPath,
                                  int outW, int outH, int subFrames,
@@ -2093,6 +2103,11 @@ private:
     void renderHistoryFrame(const TurnSnapshot& a, const TurnSnapshot& b, float t,
                             int outW, int outH, std::vector<uint8_t>& rgba,
                             HistoryView view = HV_POLITICAL);
+    /** The small credit burned into every exported timelapse frame.
+     *  Config-gated (timelapseWatermark), on by default. */
+    void drawTimelapseMark(std::vector<uint8_t>& rgba, int outW, int outH) const;
+    // -1 unset (follow config.json), 0 forced off, 1 forced on.
+    int m_watermarkOverride = -1;
     bool exportHistoryGif(const std::string& savePath, int outW, int outH,
                           int subFrames, const std::string& destPath, std::string& outMsg);
     bool revertToTurn(int turn);
