@@ -45,10 +45,29 @@ static constexpr double TRADE_MIN_TREASURY = 400.0;
 // emptied itself into one offer would be defenceless for the turns it takes to
 // be answered.
 static constexpr double TRADE_MAX_TREASURY_SHARE = 0.40;
-// Asking price, before the share cap: what one province and one renounced
-// claim are each worth in gold. A claim is cheaper because it is a promise
-// rather than territory.
-static constexpr double TRADE_PRICE_PER_PROV  = 900.0;
+// What land costs: a multiple of what that land actually earns.
+//
+// This was a flat 900 per province, and a flat price is wrong in both
+// directions at once. Against BuildCosts.h a carrier is 40 and industry X is
+// 300, so 900 bought a swamp for the price of twenty-two carriers -- while an
+// industrial core went for the same money. Measured over a 21.5-hour run: 6,537
+// trades at a 95% ACCEPT rate, which is what a market looks like when the
+// seller is always overpaid. The buyer held more land and its countries died
+// faster (survival 90% against 98%), which is what draining a treasury for
+// ground you then cannot defend looks like from the outside.
+//
+// So: price = the province's own income per turn, times a payback period. That
+// is how anything income-producing is valued, and it makes the AI's offer track
+// the same thing the RECEIVER's deal-value features are reading -- the two sides
+// finally arguing about one number rather than two.
+static constexpr double TRADE_PAYBACK_TURNS = 24.0;
+// Floors and ceilings, because income alone misprices the tails. A province
+// earning nothing is still a port, a border, or somebody's homeland; a
+// metropolis is not worth a treasury nobody could raise.
+static constexpr double TRADE_PRICE_PROV_MIN = 120.0;
+static constexpr double TRADE_PRICE_PROV_MAX = 1400.0;
+// A claim is a promise rather than territory, and stays flat: what it is worth
+// is the war it prevents, which has nothing to do with the ground's income.
 static constexpr double TRADE_PRICE_PER_CLAIM = 250.0;
 // One province at a time. Buying three at once is how a trade stops reading as
 // a border settlement and starts reading as a partition -- and it is far more
@@ -2885,6 +2904,18 @@ std::string AISystem::execPolitics(int cid, int action) {
             const Country* c = g.m_countries.getCountry(cid);
             if (!c) return "trade: no country";
 
+            // What one province costs: a payback period on its own income.
+            // Clamped at both ends -- see the constants for why income alone
+            // misprices a port that earns nothing and a metropolis that earns
+            // more than anyone can pay.
+            auto provincePrice = [&](int pid) -> double {
+                auto it = g.m_provinceIndustry.find(pid);
+                const double perTurn = (it != g.m_provinceIndustry.end())
+                                     ? (double)it->second.income : 0.0;
+                return std::clamp(perTurn * TRADE_PAYBACK_TURNS,
+                                  TRADE_PRICE_PROV_MIN, TRADE_PRICE_PROV_MAX);
+            };
+
             // What we will spend. Capped as a share of the treasury because the
             // offer can still be refused, and a country that emptied itself into
             // a proposal would be defenceless while it waited for an answer.
@@ -2923,16 +2954,22 @@ std::string AISystem::execPolitics(int cid, int action) {
 
                 // Land we claim and they hold. This is the grievance that would
                 // otherwise become a war goal.
-                if (myClaims != g.m_claims.end() && budget >= TRADE_PRICE_PER_PROV) {
+                //
+                // Priced per province off what that province earns, so the offer
+                // is proportionate to the thing being bought rather than to a
+                // constant that fitted neither end of the map.
+                if (myClaims != g.m_claims.end() && budget >= TRADE_PRICE_PROV_MIN) {
                     for (int pid : myClaims->second) {
                         if (terms.theirProvs.size() >= TRADE_MAX_PROVS) break;
                         const int owner = (pid >= 0 && pid < (int)g.m_provinceCountryLookup.size())
                                               ? g.m_provinceCountryLookup[pid] : 0;
                         if (owner != tcid) continue;
+                        const double price = provincePrice(pid);
+                        if (price > budget) continue;   // a richer one may still fit
                         terms.theirProvs.push_back(pid);
-                        budget -= TRADE_PRICE_PER_PROV;
-                        value  += TRADE_PRICE_PER_PROV;
-                        if (budget < TRADE_PRICE_PER_PROV) break;
+                        budget -= price;
+                        value  += price;
+                        if (budget < TRADE_PRICE_PROV_MIN) break;
                     }
                 }
                 // Claims of theirs on our land. Buying one off is the cheapest
