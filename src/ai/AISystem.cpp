@@ -4956,14 +4956,44 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
             auto tit = m_g->m_pendingCeasefireTerms.find(sourceIso + "|" + tc->isoA3);
             if (tit != m_g->m_pendingCeasefireTerms.end()) {
                 const CeasefireTerms& t = tit->second;
-                netProv = (float)t.ourProvs.size() - (float)t.theirProvs.size()
-                        + 0.25f * ((float)t.ourDropClaims.size() -
-                                   (float)t.theirDropClaims.size());
+                // LAND IN GOLD, not land by the head.
+                //
+                // This counted provinces: a swamp and an industrial core both
+                // scored 1, so the feature could say how MUCH ground moved and
+                // never what it was worth. Worse, the two halves of a deal were
+                // on scales that did not meet -- 3 provinces to 500 gold -- so
+                // the ordinary offer of ~400 gold for one province arrived as
+                // +0.66 money against -0.32 land and was simply correct to
+                // accept. Measured across two 3,400+ trade runs: 95.0% accepted
+                // under flat pricing and 95.3% after the asker started pricing
+                // by income, which is what a threshold nobody can fail looks
+                // like.
+                //
+                // Valuing both sides in gold is what lets a refusal happen. The
+                // basis is the asker's own (provincePrice, exec case 11), so the
+                // two ends of a trade finally measure the same thing.
+                auto landGold = [&](const std::vector<int>& pids) {
+                    double sum = 0.0;
+                    for (int pid : pids) {
+                        auto pit = m_g->m_provinceIndustry.find(pid);
+                        const double perTurn = (pit != m_g->m_provinceIndustry.end())
+                                             ? (double)pit->second.income : 0.0;
+                        sum += std::clamp(perTurn * TRADE_PAYBACK_TURNS,
+                                          TRADE_PRICE_PROV_MIN, TRADE_PRICE_PROV_MAX);
+                    }
+                    return sum;
+                };
+                netProv = (float)(landGold(t.ourProvs) - landGold(t.theirProvs)
+                        + TRADE_PRICE_PER_CLAIM * ((double)t.ourDropClaims.size() -
+                                                   (double)t.theirDropClaims.size()));
                 netMoney = (float)t.ourMoney - (float)t.theirMoney;
             }
         }
     }
-    feats[93] = std::tanh(netProv / 3.0f);
+    // Same divisor for both, because both are now gold. That is the whole point:
+    // a deal is good when what arrives outweighs what leaves, and neither side
+    // can be made to look bigger by the units it happens to be counted in.
+    feats[93] = std::tanh(netProv / 500.0f);
     feats[94] = std::tanh(netMoney / 500.0f);
 
     std::vector<bool> valid(DIPLO_ACTIONS, true);
