@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Game_Gdtl.h"
 #include "GameInternals.h"
 #include "Audio.h"
 #include "MapEditor.h"
@@ -47,6 +48,14 @@ const Shot SHOTS[] = {
     {"mods",          20, false},
     {"multiplayer",   20, false},
     {"map-editor",    45, false},
+    // The translation layer, in a build that has it with the option switched
+    // on -- see the skip in tickScreenshotTour. Before the world shots because
+    // they need no world, and loading one costs seconds.
+    {"gdtl-info",        20, false},
+    {"gdtl-warning",     20, false},
+    {"gdtl-destination", 20, false},
+    {"gdtl-result",      20, false},
+
     {"world-map",     45, true},
     {"province",      20, true},
     {"policies",      20, true},
@@ -54,6 +63,11 @@ const Shot SHOTS[] = {
     {"research",      20, true},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
+
+// A shot that only exists when the feature does.
+bool isGdtlShot(const char* name) {
+    return std::string(name).rfind("gdtl-", 0) == 0;
+}
 
 }  // namespace
 
@@ -97,6 +111,14 @@ bool Game::tickScreenshotTour() {
         return false;
     }
     const Shot& shot = SHOTS[m_shotIndex];
+
+    // Skip whole screens the build does not have rather than photographing a
+    // browser with no button on it.
+    if (isGdtlShot(shot.name) && !(m_config.gdtl && Gdtl::available())) {
+        ++m_shotIndex;
+        m_shotFrame = 0;
+        return true;
+    }
 
     // ── frame 0: put the game on the screen this shot wants ──
     if (m_shotFrame == 0) {
@@ -188,6 +210,30 @@ bool Game::tickScreenshotTour() {
                 m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
             }
             m_currentScreen = SCREEN_MAP_EDITOR;
+        } else if (name == "gdtl-info") {
+            // The map browser, with the info panel open on the first world --
+            // which is where the Translate button lives.
+            loadMapEntries();
+            m_mapTabIndex = 0;
+            m_currentScreen = SCREEN_MAP_SELECT;
+            m_gdtlStage = GdtlStage::None;
+            m_showMapInfoPopup = true;
+            m_mapInfoIndex = 0;
+        } else if (name == "gdtl-warning") {
+            m_showMapInfoPopup = false;
+            m_mapInfoIndex = -1;
+            m_gdtlMapIndex = 0;
+            m_gdtlStage = GdtlStage::Warning;
+        } else if (name == "gdtl-destination") {
+            m_gdtlStage = GdtlStage::Destination;
+        } else if (name == "gdtl-result") {
+            // Not a mock-up: this runs the conversion the button runs, through
+            // the same method, and photographs whatever it actually reported.
+            const std::string out = m_shotDir + "/gdtl-translated-map";
+            std::filesystem::remove_all(out);
+            gdtlTranslateTo(out);
+            printf("[SHOT] gdtl: ok=%d notes=%zu %s\n", (int)m_gdtlOk, m_gdtlNotes.size(),
+                   m_gdtlMessage.c_str());
         } else if (name == "world-map") {
             m_activeViewTab = 0;          // no panel: this shot is the map itself
         } else if (name == "province") {

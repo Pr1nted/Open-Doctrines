@@ -1331,7 +1331,7 @@ void Game::drawGdtlDialogs() {
                 DrawText(where.c_str(), x + 28, ty, 13, Color{120, 125, 140, 255});
                 ty += 22;
             } else if (m_gdtlFound.empty()) {
-                DrawText("Nothing found in the usual places — point at it yourself, or just save to a folder.",
+                DrawText("Nothing found in the usual places - point at it yourself, or just save to a folder.",
                          x + 28, ty, 13, Color{190, 150, 100, 255});
                 ty += 22;
             } else {
@@ -1391,7 +1391,7 @@ void Game::drawGdtlDialogs() {
                                    Color{130, 175, 145, 255});
         } else {
             const std::string head =
-                std::to_string(m_gdtlNotes.size()) + " note(s) — what did not cross cleanly:";
+                std::to_string(m_gdtlNotes.size()) + " note(s) - what did not cross cleanly:";
             DrawText(head.c_str(), x + 28, ty, 15, Color{220, 190, 110, 255});
             ty += 24;
 
@@ -1407,7 +1407,7 @@ void Game::drawGdtlDialogs() {
             for (int i = 0; i < rows && m_gdtlNotesScroll + i < (int)m_gdtlNotes.size(); ++i) {
                 std::string line = m_gdtlNotes[m_gdtlNotesScroll + i];
                 const size_t fit = (size_t)((w - 70) / 7);
-                if (line.size() > fit) line = line.substr(0, fit - 1) + "\xe2\x80\xa6";
+                if (line.size() > fit) line = line.substr(0, fit - 3) + "...";
                 DrawText(("- " + line).c_str(), x + 28, ty, 13, Color{175, 180, 195, 255});
                 ty += rowH;
             }
