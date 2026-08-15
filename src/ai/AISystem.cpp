@@ -5879,6 +5879,19 @@ void AISystem::endTurn() {
             // permanently, including the model file saved to disk).
             for (int m = 0; m < MOD_COUNT; ++m)
                 if (!std::isfinite(rewards[m])) rewards[m] = 0.0f;
+            // THE DEAL ITSELF, credited to the decision that made it.
+            //
+            // Everything above is how the country is doing in general, which is
+            // the signal a single trade drowns in. 0.5 puts a good deal at an
+            // eighth of winning the map (+4.0): enough to be felt, not enough to
+            // be chased instead of the win.
+            {
+                auto toIt = m_tradeOutcome.find(cid);
+                if (toIt != m_tradeOutcome.end()) {
+                    diploReward += std::tanh(toIt->second / 500.0f) * 0.5f;
+                    m_tradeOutcome.erase(toIt);
+                }
+            }
             if (!std::isfinite(diploReward)) diploReward = 0.0f;
 
             // Where the window ended, so the decision that opened it can be

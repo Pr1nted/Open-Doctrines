@@ -557,6 +557,8 @@ public:
     // `statedReasonOut`, when given, receives what the country SAYS about a
     // refusal -- which is chosen separately from why it actually refused, and
     // need not match. REFUSE_NONE means it declined to explain itself.
+    void noteTradeOutcome(int cid, float goldDelta) { m_tradeOutcome[cid] += goldDelta; }
+
     bool decideDiplomacy(int targetCid, const std::string& action,
                          const std::string& sourceIso,
                          const std::string& subjectIso = std::string(),
@@ -2176,6 +2178,9 @@ private:
     // equally rather than special-casing the player, because an AI drowning in
     // offers it must evaluate is the same waste of turns.
     std::unordered_map<int, int> m_diploNextIncoming;
+    // Gold-denominated value of trades resolved since this country's last
+    // reward window. See noteTradeOutcome.
+    std::unordered_map<int, float> m_tradeOutcome;
     static long long diploKey(int a, int b) {
         int lo = a < b ? a : b, hi = a < b ? b : a;
         return ((long long)lo << 24) | (long long)hi;
@@ -2812,6 +2817,21 @@ private:
     // spending its overture budget on partners who have stopped believing it.
     float predictAcceptance(int partnerCid, const char* requestKind,
                             int askerCid) const;
+
+    /**
+     * What a resolved trade was actually worth to this country, in gold.
+     *
+     * Positive when more value arrived than left. Consumed once by the next
+     * reward window (see where diploReward is assembled) and then cleared, so a
+     * single deal is credited to the decision that made it and to nothing else.
+     *
+     * This exists because the diplomacy head had no way to feel a bad trade.
+     * Every non-terminal decision was rewarded from the same global signal, so
+     * accepting a ruinous offer and refusing a generous one produced identical
+     * learning -- which is why the accept rate sat at 95.0%, 95.3% and 95.5%
+     * across a flat price, an income-based price and a corrected valuation.
+     * None of those told the net anything; this does.
+     */
 
     bool loadModel();
 };

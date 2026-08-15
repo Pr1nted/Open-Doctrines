@@ -4467,6 +4467,34 @@ void Game::processDiplomaticRequests() {
                 if (aiAccepts) {
                     if (tit != m_pendingCeasefireTerms.end()) {
                         // endsWar = false: this is the whole difference.
+                        // WHAT THE DEAL WAS WORTH, to each side, in gold.
+                        //
+                        // Credited here rather than left to the end of the game,
+                        // because that is the whole problem this answers: a trade
+                        // resolved at turn 40 was previously rewarded only by how
+                        // the country looked at turn 400, where one deal is noise.
+                        // Land is valued the same way both halves of a trade
+                        // already value it -- income times a payback period -- so
+                        // the reward, the asking price and the receiver's features
+                        // are finally three views of one number.
+                        if (m_ai) {
+                            const CeasefireTerms& tt = tit->second;
+                            auto landGold = [&](const std::vector<int>& pids) {
+                                float sum = 0.0f;
+                                for (int pid : pids) {
+                                    auto pit = m_provinceIndustry.find(pid);
+                                    const float perTurn = (pit != m_provinceIndustry.end())
+                                                        ? pit->second.income : 0.0f;
+                                    sum += std::clamp(perTurn * 24.0f, 120.0f, 1400.0f);
+                                }
+                                return sum;
+                            };
+                            const float srcGain = landGold(tt.theirProvs) - landGold(tt.ourProvs)
+                                                + (float)tt.theirMoney - (float)tt.ourMoney;
+                            const int srcCid = cidForIso(da.sourceIso);
+                            if (srcCid >= 0) m_ai->noteTradeOutcome(srcCid,  srcGain);
+                            if (trTgtCid >= 0) m_ai->noteTradeOutcome(trTgtCid, -srcGain);
+                        }
                         applyCeasefireTerms(da.sourceIso, da.targetIso, tit->second,
                                             da.sourceIso == playerIso, false);
                         m_pendingCeasefireTerms.erase(tit);
