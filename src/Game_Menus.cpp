@@ -10,6 +10,7 @@
 #include "miniz.h"
 #include "miniz_zip.h"
 #include "Keybinds.h"
+#include "Game_Gdtl.h"
 #include "raymath.h"
 #include <iostream>
 #include <cmath>
@@ -2313,7 +2314,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 1) || isVolumeSetting(m_settingsTab, i)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 2) || isVolumeSetting(m_settingsTab, i)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -2479,6 +2480,7 @@ void Game::updateSettingsFromMenu() {
             }
             else if (m_settingsTab == 4 && m_settingsIndex == 5) { m_config.gameUpdateChecks = true; }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
+            else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
             else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                 if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                     *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -2594,6 +2596,18 @@ void Game::updateSettingsFromMenu() {
             } else {
                 m_config.aiLearning = !m_config.aiLearning;
                 Audio::get().playSfx(m_config.aiLearning ? "toggle_on" : "toggle_off");
+            }
+        } else if (strcmp(s.label, "GDTL") == 0) {
+            if (!Gdtl::available()) {
+                m_menuFeedback = "This build has no translation layer — rebuild with -DOD_ENABLE_GDTL=ON";
+                m_menuFeedbackTimer = 5.0f;
+            } else {
+                m_config.gdtl = !m_config.gdtl;
+                Audio::get().playSfx(m_config.gdtl ? "toggle_on" : "toggle_off");
+                m_menuFeedback = m_config.gdtl
+                    ? "On — experimental. Worlds can be translated to Greater Diplomacy 5 maps"
+                    : "Off";
+                m_menuFeedbackTimer = 4.0f;
             }
         } else if (strcmp(s.label, "AI Difficulty") == 0) {
             m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;

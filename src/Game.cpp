@@ -280,9 +280,13 @@ const int ADVANCED_COUNT = 7;
 // that self-play training is building.
 const Setting EXPERIMENTAL_ITEMS[] = {
     {"AI Learning", false, -1},
+    // Greater Diplomacy translation layer. Off by default: it writes maps for
+    // a second game out of worlds built for this one, and what survives the
+    // crossing depends on the map. Every use of it warns first.
+    {"GDTL", false, -1},
     {"Back", false, -1},
 };
-const int EXPERIMENTAL_COUNT = 2;
+const int EXPERIMENTAL_COUNT = 3;
 
 const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS};
 const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT};
@@ -522,6 +526,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += cfg.gameUpdateChecks ? ": On" : ": Off";
     } else if (tab == 5 && index == 0) {
         label += cfg.aiLearning ? ": On" : ": Off";
+    } else if (tab == 5 && index == 1) {
+        label += cfg.gdtl ? ": On" : ": Off";
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
     } else if (tab == 3) {

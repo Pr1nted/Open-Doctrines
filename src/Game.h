@@ -1193,6 +1193,28 @@ public:
     // Map info popup
     bool m_showMapInfoPopup = false;
     int m_mapInfoIndex = -1;
+
+    // ─── Greater Diplomacy translation layer (Experimental) ───
+    //
+    // Three dialogs in sequence, and the order is the point: the warning is
+    // never skipped, and nothing is written until after a destination has been
+    // chosen. See Game_Gdtl.h and drawGdtlDialogs().
+    enum class GdtlStage { None, Warning, Destination, Result };
+    GdtlStage m_gdtlStage = GdtlStage::None;
+    int m_gdtlMapIndex = -1;              // which map is being translated
+    // Installations found by the last search. Empty and m_gdtlSearched false
+    // means no search has been run -- the game has not looked at the disk.
+    std::vector<std::string> m_gdtlFound;
+    bool m_gdtlSearched = false;
+    bool m_gdtlOk = false;
+    std::string m_gdtlMessage;
+    std::vector<std::string> m_gdtlNotes;
+    int m_gdtlNotesScroll = 0;
+
+    void drawGdtlDialogs();               // returns via m_gdtlStage
+    void gdtlTranslateTo(const std::string& destDir);
+    void gdtlDownloadInBrowser();
+    void gdtlImportFromGd5();
     std::vector<Notification> m_notifications;
     void addNotification(const std::string& msg, Color color = WHITE, float duration = 6.0f);
     void updateNotifications();

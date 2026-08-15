@@ -503,6 +503,49 @@ else()
     set(OD_P2P_DEFS "")
     set(OD_P2P_LIBS "")
 endif()
+# --- Greater Diplomacy translation layer (GDTL) ---
+#
+# open-dragoman converts a world between this game's .odmap and Greater
+# Diplomacy 5's map directories. It is a separate MIT project with no code from
+# either game in it, fetched at a tag so a build is reproducible.
+#
+# OFF BY DEFAULT, and the reason is not build time. The feature it enables is
+# experimental, it writes maps a second game will read, and the option in the
+# Experimental tab is itself off until a player turns it on -- shipping the
+# dependency in every build to sit behind two switches is not worth the fetch.
+# Turn it on with -DOD_ENABLE_GDTL=ON.
+option(OD_ENABLE_GDTL "Build the Greater Diplomacy 5 translation layer (fetches open-dragoman)" OFF)
+
+set(OD_GDTL_BACKEND "none")
+if(OD_ENABLE_GDTL)
+    include(FetchContent)
+    set(DRAGOMAN_BUILD_TESTS  OFF CACHE BOOL "" FORCE)
+    set(DRAGOMAN_BUILD_CLI    OFF CACHE BOOL "" FORCE)
+    # Static only. The game is packaged as a bundle or a single executable and
+    # has nowhere to put a second shared object next to it.
+    set(DRAGOMAN_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(dragoman
+        GIT_REPOSITORY https://github.com/Pr1nted/dragoman.git
+        GIT_TAG v0.3.0
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
+    )
+    set(_od_skip_install "${CMAKE_SKIP_INSTALL_RULES}")
+    set(CMAKE_SKIP_INSTALL_RULES ON)
+    FetchContent_MakeAvailable(dragoman)
+    set(CMAKE_SKIP_INSTALL_RULES "${_od_skip_install}")
+    set(OD_GDTL_BACKEND "dragoman")
+endif()
+
+if(OD_GDTL_BACKEND STREQUAL "dragoman")
+    set(OD_GDTL_DEFS OD_ENABLE_GDTL=1)
+    set(OD_GDTL_LIBS dragoman)
+else()
+    set(OD_GDTL_DEFS "")
+    set(OD_GDTL_LIBS "")
+endif()
+message(STATUS "Greater Diplomacy translation: ${OD_GDTL_BACKEND}")
+
 message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 
 # --- Game target ---
@@ -524,6 +567,12 @@ set(GAME_SOURCES
     src/OdState.cpp
     src/Game_Account.cpp
     src/Game_Browsers.cpp
+    # Built on every platform. Without OD_ENABLE_GDTL it compiles to stubs that
+    # report the feature as unavailable, so the call sites in the browsers do
+    # not have to be conditional. See its header.
+    src/Game_Gdtl.cpp
+    # The system file chooser. Was private to Game_Browsers.cpp and macOS-only.
+    src/util/NativeDialog.cpp
     src/Game_Claims.cpp
     src/Game_Economy.cpp
     src/Game_Loading.cpp
@@ -834,6 +883,11 @@ target_compile_definitions(OpenDoctrines PRIVATE
 if(OD_P2P_DEFS)
     target_link_libraries(OpenDoctrines ${OD_P2P_LIBS})
     target_compile_definitions(OpenDoctrines PRIVATE ${OD_P2P_DEFS})
+endif()
+
+if(OD_GDTL_DEFS)
+    target_link_libraries(OpenDoctrines ${OD_GDTL_LIBS})
+    target_compile_definitions(OpenDoctrines PRIVATE ${OD_GDTL_DEFS})
 endif()
 
 if(OD_MODS_BACKEND STREQUAL "wamr")

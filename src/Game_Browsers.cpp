@@ -4,6 +4,8 @@
 #include "SaveManager.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
+#include "Game_Gdtl.h"
+#include "util/NativeDialog.h"
 #include "raymath.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -875,24 +877,15 @@ void Game::updateWorldBrowser() {
     }
 }
 
-// ─── Native file dialog (macOS via osascript) ───────────
+// ─── Native file dialog ─────────────────────────────────
+//
+// This was osascript behind an #ifdef __APPLE__ and an empty string
+// everywhere else, so "Import .odmap" opened a picker on macOS and did nothing
+// whatsoever on Windows and Linux -- a button that looked live and was not.
+// The real thing lives in util/NativeDialog.cpp now and speaks all three
+// desktops; this is kept as the name the call sites already use.
 static std::string nativeOpenFileDialog(const std::string& title, const std::string& type) {
-#ifdef __APPLE__
-    std::string script = "osascript -e 'POSIX path of (choose file with prompt \"" + title + "\" of type {\"" + type + "\"})' 2>/dev/null";
-    FILE* pipe = popen(script.c_str(), "r");
-    if (!pipe) return "";
-    char buf[4096];
-    std::string result;
-    while (fgets(buf, sizeof(buf), pipe)) result += buf;
-    pclose(pipe);
-    // Trim trailing newline
-    while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
-        result.pop_back();
-    return result;
-#else
-    (void)title; (void)type;
-    return "";
-#endif
+    return NativeDialog::openFile(title, type);
 }
 
 // ─── Validate .odmap file ──────────────────────────────
@@ -1049,6 +1042,391 @@ void Game::executeMapImport() {
     m_showImportNameDialog = false;
     m_importPath.clear();
     m_importName.clear();
+}
+
+// ─── Greater Diplomacy translation layer ─────────────────
+//
+// Three dialogs, always in this order: a warning that says what is about to
+// happen, a destination that says where, and a result that says what actually
+// crossed. The player can leave at any of them and nothing has been written.
+//
+// The feature is invisible unless it is switched on in the Experimental tab
+// AND the build has the library, so the checks are `m_config.gdtl &&
+// Gdtl::available()` everywhere and never one or the other.
+
+// A place to build a map before anyone has said where it should live. On the
+// web this is the browser's in-memory filesystem, which is exactly right: the
+// map is zipped out of it and handed to the browser as a download.
+static std::string gdtlScratch(const std::string& dataDir) {
+    return dataDir + "gdtl_work";
+}
+
+static void removeTree(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+}
+
+void Game::gdtlTranslateTo(const std::string& destDir) {
+    if (m_gdtlMapIndex < 0 || m_gdtlMapIndex >= (int)m_mapEntries.size()) return;
+    auto& entry = m_mapEntries[m_gdtlMapIndex];
+    const std::string source = entry.directory + entry.filename;
+
+    // Never write over something that is already there. A player pointing at
+    // their own installation is pointing at a folder full of maps they made.
+    if (std::filesystem::exists(destDir)) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "There is already something at " + destDir + " — nothing was written.";
+        m_gdtlNotes.clear();
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    Gdtl::Result r = Gdtl::toGd5(source, destDir);
+    m_gdtlOk = r.ok;
+    m_gdtlNotes = r.notes;
+    m_gdtlNotesScroll = 0;
+    m_gdtlMessage = r.ok ? ("Wrote " + destDir)
+                         : ("Could not translate this world: " + r.error);
+    if (!r.ok) removeTree(destDir);   // a half-written map is worse than none
+    m_gdtlStage = GdtlStage::Result;
+}
+
+void Game::gdtlDownloadInBrowser() {
+    if (m_gdtlMapIndex < 0 || m_gdtlMapIndex >= (int)m_mapEntries.size()) return;
+    auto& entry = m_mapEntries[m_gdtlMapIndex];
+
+    const std::string work = gdtlScratch(m_dataDir);
+    removeTree(work);
+    const std::string mapDir = work + "/" + entry.name;
+
+    Gdtl::Result r = Gdtl::toGd5(entry.directory + entry.filename, mapDir);
+    m_gdtlNotes = r.notes;
+    m_gdtlNotesScroll = 0;
+    if (!r.ok) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "Could not translate this world: " + r.error;
+        removeTree(work);
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    // A GD5 map is a folder and a download is one file, so it goes as a zip.
+    const std::string zipPath = work + "/" + entry.name + ".zip";
+    std::string zipError;
+    if (!Gdtl::zipDirectory(mapDir, zipPath, zipError)) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "Translated, but could not package it: " + zipError;
+        removeTree(work);
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    m_gdtlOk = true;
+    if (Gdtl::offerBrowserDownload(zipPath, entry.name + ".zip")) {
+        m_gdtlMessage = "Downloading " + entry.name + ".zip — unzip it into Greater Diplomacy 5's base_maps folder.";
+    } else {
+        m_gdtlMessage = "Wrote " + zipPath;
+    }
+    m_gdtlStage = GdtlStage::Result;
+}
+
+void Game::gdtlImportFromGd5() {
+    const std::string dir = NativeDialog::openFolder("Select a Greater Diplomacy 5 map folder");
+    if (dir.empty()) return;
+
+    const std::string work = gdtlScratch(m_dataDir);
+    removeTree(work);
+    std::filesystem::create_directories(work);
+
+    // Name it after the folder it came from, which is what that game calls it.
+    std::string name = dir;
+    while (!name.empty() && (name.back() == '/' || name.back() == '\\')) name.pop_back();
+    const size_t slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    if (name.empty()) name = "Imported Map";
+
+    const std::string odmap = work + "/" + name + ".odmap";
+    Gdtl::Result r = Gdtl::toOdmap(dir, odmap);
+    m_gdtlNotes = r.notes;
+    m_gdtlNotesScroll = 0;
+    if (!r.ok) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "Could not read that as a Greater Diplomacy 5 map: " + r.error;
+        m_gdtlMapIndex = -1;
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    // Hand it to the importer the player already knows: same name prompt, same
+    // validation, same thumbnail. The converted file is an .odmap like any other.
+    m_importPath = odmap;
+    m_importName = name;
+    m_showImportNameDialog = true;
+}
+
+void Game::drawGdtlDialogs() {
+    if (m_gdtlStage == GdtlStage::None) return;
+    const Vector2 mouse = GetMousePosition();
+    const Color accent = hexToColor(m_config.accent());
+
+    // One button, drawn and answered in the same place so the two cannot drift.
+    const auto button = [&](Rectangle r, const char* label, Color base, Color hot) {
+        const bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.2f, 8, hov ? hot : base);
+        DrawText(label, (int)(r.x + (r.width - MeasureText(label, 20)) / 2), (int)(r.y + 9), 20,
+                 WHITE);
+        return hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    };
+    const auto close = [&]() {
+        m_gdtlStage = GdtlStage::None;
+        m_gdtlMapIndex = -1;
+        m_gdtlNotes.clear();
+    };
+
+    DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 190});
+
+    // ── 1. The warning ──
+    if (m_gdtlStage == GdtlStage::Warning) {
+        const int w = 640, h = 380;
+        const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 2;
+        DrawRectangle(x, y, w, h, {20, 20, 30, 245});
+        DrawRectangleLines(x, y, w, h, Color{200, 160, 60, 220});
+
+        const char* title = "Experimental: translate to Greater Diplomacy 5";
+        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 20, 24,
+                 Color{240, 200, 90, 255});
+
+        // Said plainly, because a player agreeing to this should know what they
+        // are agreeing to: it is lossy, it is not this game's format, and the
+        // result is only as good as the two games' overlap.
+        const char* lines[] = {
+            "This converts the world into a map for a different game.",
+            "",
+            "The two games do not store the same things. Fortifications, ports and",
+            "several research nodes have no counterpart and are left behind; ocean",
+            "provinces are invented because Greater Diplomacy 5 needs them and this",
+            "game does not draw any. What could not cross is listed afterwards.",
+            "",
+            "Anything without a home in the other game is carried in a sidecar file",
+            "beside the map, so translating back returns it. Neither game reads the",
+            "other's extra files, so the map still loads normally in both.",
+            "",
+            "Nothing already on disk is overwritten, and nothing is sent anywhere.",
+        };
+        int ty = y + 62;
+        for (const char* line : lines) {
+            DrawText(line, x + 28, ty, 15, Color{190, 195, 205, 255});
+            ty += 20;
+        }
+
+        const std::string ver = "open-dragoman " + Gdtl::version();
+        DrawText(ver.c_str(), x + 28, y + h - 68, 13, Color{110, 115, 130, 255});
+
+        if (button({(float)(x + w - 340), (float)(y + h - 56), 150, 38}, "Cancel",
+                   Color{60, 60, 80, 255}, Color{85, 85, 110, 255})) {
+            Audio::get().playSfx("click_light");
+            close();
+            return;
+        }
+        if (button({(float)(x + w - 176), (float)(y + h - 56), 150, 38}, "Continue",
+                   Color{40, 90, 60, 255}, Color{55, 125, 80, 255})) {
+            Audio::get().playSfx("click_light");
+#ifdef __EMSCRIPTEN__
+            gdtlDownloadInBrowser();   // a browser has one destination
+#else
+            m_gdtlStage = GdtlStage::Destination;
+#endif
+            return;
+        }
+        if (IsKeyPressed(KEY_ESCAPE)) close();
+        return;
+    }
+
+    // ── 2. Where it goes (desktop only) ──
+    if (m_gdtlStage == GdtlStage::Destination) {
+        const std::string mapName = (m_gdtlMapIndex >= 0 && m_gdtlMapIndex < (int)m_mapEntries.size())
+            ? m_mapEntries[m_gdtlMapIndex].name : std::string("Map");
+        const bool haveInstall = !m_config.gd5Path.empty() && Gdtl::looksLikeGd5(m_config.gd5Path);
+
+        const int w = 660;
+        const int h = 300 + (int)std::min<size_t>(m_gdtlFound.size(), 4) * 30;
+        const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 2;
+        DrawRectangle(x, y, w, h, {20, 20, 30, 245});
+        DrawRectangleLines(x, y, w, h, ColorAlpha(accent, 0.7f));
+
+        const char* title = "Where should the translated map go?";
+        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 18, 24, accent);
+
+        int ty = y + 60;
+
+        // (a) Straight into the other game, if we know where it is.
+        if (haveInstall) {
+            DrawText("Greater Diplomacy 5 is at:", x + 28, ty, 15, Color{150, 170, 190, 255});
+            ty += 20;
+            DrawText(m_config.gd5Path.c_str(), x + 28, ty, 14, Color{200, 205, 215, 255});
+            ty += 26;
+            if (button({(float)(x + 28), (float)ty, 300, 38}, "Install into that copy",
+                       Color{40, 90, 60, 255}, Color{55, 125, 80, 255})) {
+                Audio::get().playSfx("click_light");
+                gdtlTranslateTo(Gdtl::mapDestination(m_config.gd5Path, mapName));
+                return;
+            }
+            if (button({(float)(x + 340), (float)ty, 200, 38}, "Forget that path",
+                       Color{70, 50, 50, 255}, Color{100, 65, 65, 255})) {
+                Audio::get().playSfx("click_light");
+                m_config.gd5Path.clear();
+                m_config.save(m_configPath);
+                return;
+            }
+            ty += 54;
+        }
+
+        // (b) Anywhere the player likes.
+        if (button({(float)(x + 28), (float)ty, 300, 38}, "Save to a folder...",
+                   Color{40, 70, 110, 255}, Color{55, 95, 145, 255})) {
+            Audio::get().playSfx("click_light");
+            const std::string dir = NativeDialog::openFolder("Where should the map be written?");
+            if (!dir.empty()) {
+                std::string base = dir;
+                while (!base.empty() && (base.back() == '/' || base.back() == '\\')) base.pop_back();
+                gdtlTranslateTo(base + "/" + mapName);
+            }
+            return;
+        }
+        ty += 50;
+
+        // (c) Look for the game -- only ever because this button was pressed.
+        if (!haveInstall) {
+            if (button({(float)(x + 28), (float)ty, 300, 38}, "Search for the game",
+                       Color{50, 55, 85, 255}, Color{70, 78, 115, 255})) {
+                Audio::get().playSfx("click_light");
+                m_gdtlFound = Gdtl::findGd5Installations();
+                m_gdtlSearched = true;
+                return;
+            }
+            if (button({(float)(x + 340), (float)ty, 260, 38}, "Point at it myself...",
+                       Color{50, 55, 85, 255}, Color{70, 78, 115, 255})) {
+                Audio::get().playSfx("click_light");
+                const std::string dir =
+                    NativeDialog::openFolder("Select the Greater Diplomacy 5 folder");
+                if (!dir.empty()) {
+                    if (Gdtl::looksLikeGd5(dir)) {
+                        m_config.gd5Path = dir;
+                        m_config.save(m_configPath);
+                    } else {
+                        m_gdtlFound.clear();
+                        m_gdtlSearched = true;
+                    }
+                }
+                return;
+            }
+            ty += 46;
+
+            // What a search would look at, before it looks. A player is
+            // entitled to know that before pressing the button, not after.
+            if (!m_gdtlSearched) {
+                const auto roots = Gdtl::searchLocations();
+                std::string where = "Searches " + std::to_string(roots.size()) +
+                                    " usual install folders, one level deep. Nothing else is read.";
+                DrawText(where.c_str(), x + 28, ty, 13, Color{120, 125, 140, 255});
+                ty += 22;
+            } else if (m_gdtlFound.empty()) {
+                DrawText("Nothing found in the usual places — point at it yourself, or just save to a folder.",
+                         x + 28, ty, 13, Color{190, 150, 100, 255});
+                ty += 22;
+            } else {
+                DrawText("Found:", x + 28, ty, 14, Color{150, 170, 190, 255});
+                ty += 20;
+                for (size_t i = 0; i < m_gdtlFound.size() && i < 4; ++i) {
+                    const Rectangle row = {(float)(x + 28), (float)ty, (float)(w - 56), 26};
+                    const bool hov = CheckCollisionPointRec(mouse, row);
+                    if (hov) DrawRectangleRec(row, Color{40, 60, 90, 200});
+                    DrawText(m_gdtlFound[i].c_str(), x + 34, ty + 5, 14,
+                             hov ? WHITE : Color{190, 195, 205, 255});
+                    if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                        Audio::get().playSfx("click_light");
+                        m_config.gd5Path = m_gdtlFound[i];
+                        m_config.save(m_configPath);
+                        return;
+                    }
+                    ty += 28;
+                }
+            }
+        }
+
+        if (button({(float)(x + w - 176), (float)(y + h - 56), 150, 38}, "Cancel",
+                   Color{60, 60, 80, 255}, Color{85, 85, 110, 255})) {
+            Audio::get().playSfx("click_light");
+            close();
+            return;
+        }
+        if (IsKeyPressed(KEY_ESCAPE)) close();
+        return;
+    }
+
+    // ── 3. What happened ──
+    if (m_gdtlStage == GdtlStage::Result) {
+        const int w = 700, h = 460;
+        const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 2;
+        DrawRectangle(x, y, w, h, {20, 20, 30, 245});
+        DrawRectangleLines(x, y, w, h,
+                           m_gdtlOk ? Color{80, 160, 100, 220} : Color{180, 80, 80, 220});
+
+        const char* title = m_gdtlOk ? "Translated" : "Not translated";
+        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 18, 24,
+                 m_gdtlOk ? Color{120, 220, 150, 255} : Color{240, 130, 130, 255});
+
+        // The path can be long; wrap rather than run off the dialog.
+        int ty = y + 58;
+        const int perLine = (w - 56) / 8;
+        for (size_t i = 0; i < m_gdtlMessage.size(); i += perLine) {
+            DrawText(m_gdtlMessage.substr(i, perLine).c_str(), x + 28, ty, 15,
+                     Color{200, 205, 215, 255});
+            ty += 20;
+        }
+
+        ty += 12;
+        if (m_gdtlNotes.empty()) {
+            if (m_gdtlOk) DrawText("Nothing was lost that the library could name.", x + 28, ty, 14,
+                                   Color{130, 175, 145, 255});
+        } else {
+            const std::string head =
+                std::to_string(m_gdtlNotes.size()) + " note(s) — what did not cross cleanly:";
+            DrawText(head.c_str(), x + 28, ty, 15, Color{220, 190, 110, 255});
+            ty += 24;
+
+            const int listBottom = y + h - 70;
+            const int rowH = 19;
+            const int rows = std::max(1, (listBottom - ty) / rowH);
+            const int maxScroll = std::max(0, (int)m_gdtlNotes.size() - rows);
+            m_gdtlNotesScroll = std::clamp(m_gdtlNotesScroll, 0, maxScroll);
+            const float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f)
+                m_gdtlNotesScroll = std::clamp(m_gdtlNotesScroll - (int)wheel, 0, maxScroll);
+
+            for (int i = 0; i < rows && m_gdtlNotesScroll + i < (int)m_gdtlNotes.size(); ++i) {
+                std::string line = m_gdtlNotes[m_gdtlNotesScroll + i];
+                const size_t fit = (size_t)((w - 70) / 7);
+                if (line.size() > fit) line = line.substr(0, fit - 1) + "\xe2\x80\xa6";
+                DrawText(("- " + line).c_str(), x + 28, ty, 13, Color{175, 180, 195, 255});
+                ty += rowH;
+            }
+            if (maxScroll > 0) {
+                const std::string more = "scroll for " + std::to_string(maxScroll) + " more";
+                DrawText(more.c_str(), x + w - 28 - MeasureText(more.c_str(), 12), y + h - 66, 12,
+                         Color{120, 125, 140, 255});
+            }
+        }
+
+        if (button({(float)(x + w - 176), (float)(y + h - 56), 150, 38}, "Close",
+                   Color{60, 60, 80, 255}, Color{85, 85, 110, 255})) {
+            Audio::get().playSfx("click_light");
+            close();
+            return;
+        }
+        if (IsKeyPressed(KEY_ESCAPE)) close();
+        return;
+    }
 }
 
 // ─── Map browser ─────────────────────────────────────────
@@ -1224,6 +1602,13 @@ void Game::drawMapBrowser() {
         return;
     }
 
+    // The translation dialogs sit in front of everything in this browser: they
+    // are modal, and one of them is a warning that must not be clicked past.
+    if (m_gdtlStage != GdtlStage::None) {
+        drawGdtlDialogs();
+        return;
+    }
+
     // Map info popup
     if (m_showMapInfoPopup && m_mapInfoIndex >= 0 && m_mapInfoIndex < (int)m_mapEntries.size()) {
         auto& entry = m_mapEntries[m_mapInfoIndex];
@@ -1299,6 +1684,33 @@ void Game::drawMapBrowser() {
                 m_licenseScroll = 0;
                 m_showMapInfoPopup = false;
                 m_mapInfoIndex = -1;
+            }
+        }
+
+        // Translate button (Experimental: GDTL)
+        //
+        // Only when the player has turned the option on and the build has the
+        // library. Sits beside View License, and moves right when both are
+        // there. Pressing it does not translate anything -- it opens the
+        // warning, which is the only door to the conversion.
+        if (m_config.gdtl && Gdtl::available()) {
+            const int transW = 160;
+            const int transX = licenseBtnX + (showLicenseBtn ? licenseBtnW + 12 : 0);
+            Rectangle transBtn = {(float)transX, (float)licenseBtnY, (float)transW, (float)licenseBtnH};
+            const bool transHov = CheckCollisionPointRec(mouse, transBtn);
+            DrawRectangleRounded(transBtn, 0.2f, 8,
+                                 transHov ? Color{120, 90, 40, 255} : Color{85, 65, 30, 255});
+            DrawText("Translate", transX + (transW - MeasureText("Translate", 20)) / 2,
+                     licenseBtnY + 8, 20, Color{245, 220, 160, 255});
+            if (transHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("click_light");
+                m_gdtlMapIndex = m_mapInfoIndex;
+                m_gdtlStage = GdtlStage::Warning;
+                m_gdtlNotes.clear();
+                m_gdtlMessage.clear();
+                m_showMapInfoPopup = false;
+                m_mapInfoIndex = -1;
+                return;
             }
         }
 
@@ -1497,7 +1909,11 @@ void Game::drawMapBrowser() {
 
     // Custom tab: add "Import .odmap" entry as last item
     bool showImportBtn = (m_mapTabIndex == 1);
+    // A second import card, for a map that is not in this game's format yet.
+    // Same tab, same shape, same place -- it is the same act.
+    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available();
     int importIdx = (int)visible.size();
+    int gd5ImportIdx = importIdx + 1;
 
     // Layout: vertical list with cards
     int cardX = 60;
@@ -1506,7 +1922,7 @@ void Game::drawMapBrowser() {
     int cardGap = 8;
     int listStartY = 130;
 
-    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0);
+    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0);
     int maxVisibleCards = std::max(1, (m_screenH - listStartY - 60) / (cardH + cardGap));
     int maxScroll = std::max(0, totalItems - maxVisibleCards);
     m_mapScroll = std::clamp(m_mapScroll, 0, maxScroll);
@@ -1553,6 +1969,7 @@ void Game::drawMapBrowser() {
         if (y + cardH < 0 || y > m_screenH) continue;
 
         bool isImportBtn = showImportBtn && vi == importIdx;
+        bool isGd5ImportBtn = showGd5ImportBtn && vi == gd5ImportIdx;
         bool isSelected = (vi == m_mapIndex);
         bool isHovered = CheckCollisionPointRec(mouse, {(float)cardX, (float)y, (float)cardW, (float)cardH});
         Color bgColor = isSelected ? Color{60, 70, 100, 180} : (isHovered ? Color{255, 255, 255, 15} : Color{15, 17, 28, 200});
@@ -1570,6 +1987,18 @@ void Game::drawMapBrowser() {
             int plusSize = 40;
             DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{100, 200, 100, 200});
             DrawText("Import .odmap", icX - MeasureText("Import .odmap", 20) / 2, icY + 10, 20, Color{100, 200, 100, static_cast<unsigned char>(isHovered ? 255 : 180)});
+        } else if (isGd5ImportBtn) {
+            // The same card in the colour the translation layer uses elsewhere,
+            // so it reads as the experimental one at a glance.
+            int icX = centerX;
+            int icY = y + cardH / 2;
+            int plusSize = 40;
+            DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{220, 180, 90, 200});
+            const char* label = "Import Greater Diplomacy 5 map";
+            DrawText(label, icX - MeasureText(label, 18) / 2, icY + 12, 18,
+                     Color{220, 180, 90, static_cast<unsigned char>(isHovered ? 255 : 180)});
+            const char* sub = "experimental";
+            DrawText(sub, icX - MeasureText(sub, 12) / 2, icY + 34, 12, Color{150, 130, 90, 200});
         } else {
             int realIdx = visible[vi];
             auto& entry = m_mapEntries[realIdx];
@@ -1707,6 +2136,7 @@ void Game::updateMapBrowser() {
     // the draw pass would be the tidier fix; this is the correct one either way,
     // because a modal must stop the screen behind it from seeing the click.
     if (m_showMapInfoPopup || m_showLicensePopup) return;
+    if (m_gdtlStage != GdtlStage::None) return;
 
     Vector2 mouse = getMouse();
     int centerX = m_screenW / 2;
@@ -1917,8 +2347,12 @@ void Game::updateMapBrowser() {
     }
 
     bool showImportBtn = (m_mapTabIndex == 1);
+    // A second import card, for a map that is not in this game's format yet.
+    // Same tab, same shape, same place -- it is the same act.
+    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available();
     int importIdx = (int)visible.size();
-    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0);
+    int gd5ImportIdx = importIdx + 1;
+    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0);
     if (totalItems == 0) return;
 
     int cardX = 60;
@@ -1965,6 +2399,12 @@ void Game::updateMapBrowser() {
         if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) continue;
         if (!CheckCollisionPointRec(mouse, cardRect)) continue;
         Audio::get().playSfx("click_light");
+
+        if (showGd5ImportBtn && vi == gd5ImportIdx) {
+            // A folder, not a file: that game keeps a map as a directory.
+            gdtlImportFromGd5();
+            return;
+        }
 
         if (showImportBtn && vi == importIdx) {
             // Import .odmap via native file dialog
@@ -2024,6 +2464,7 @@ void Game::updateMapBrowser() {
     if (activate) {
         m_mapIndex = std::clamp(m_mapIndex, 0, totalItems - 1);
         if (showImportBtn && m_mapIndex == importIdx) return; // handled above
+        if (showGd5ImportBtn && m_mapIndex == gd5ImportIdx) return; // handled above
         int realIdx = visible[m_mapIndex];
         auto& entry = m_mapEntries[realIdx];
         // Show world name dialog before starting

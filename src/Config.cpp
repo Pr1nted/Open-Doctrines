@@ -102,6 +102,8 @@ bool Config::load(const std::string& path) {
     aiDebug = findBool(json, "aiDebug", false);
     timelapseWatermark = findBool(json, "timelapseWatermark", true);
     aiLearning = findBool(json, "aiLearning", false);
+    gdtl = findBool(json, "gdtl", false);
+    gd5Path = findConfigString(json, "gd5Path", "");
     masterVolume = std::clamp(findFloat(json, "masterVolume", 0.8f), 0.0f, 1.0f);
     musicVolume  = std::clamp(findFloat(json, "musicVolume",  0.6f), 0.0f, 1.0f);
     sfxVolume    = std::clamp(findFloat(json, "sfxVolume",    0.8f), 0.0f, 1.0f);
@@ -188,6 +190,8 @@ bool Config::save(const std::string& path) {
     file << "  \"aiDebug\": " << (aiDebug ? "true" : "false") << ",\n";
     file << "  \"timelapseWatermark\": " << (timelapseWatermark ? "true" : "false") << ",\n";
     file << "  \"aiLearning\": " << (aiLearning ? "true" : "false") << ",\n";
+    file << "  \"gdtl\": " << (gdtl ? "true" : "false") << ",\n";
+    file << "  \"gd5Path\": \"" << gd5Path << "\",\n";
     file << "  \"masterVolume\": " << masterVolume << ",\n";
     file << "  \"musicVolume\": " << musicVolume << ",\n";
     file << "  \"sfxVolume\": " << sfxVolume << ",\n";

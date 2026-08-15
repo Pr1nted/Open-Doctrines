@@ -1481,6 +1481,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId];
                 m_config.save(m_configPath);
@@ -1582,6 +1583,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 4 && m_settingsIndex == 2) { m_config.showConsole = false; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
                 else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                     if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                         *v = VOLUME_DEFAULTS[m_settingsIndex];

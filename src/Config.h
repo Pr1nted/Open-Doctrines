@@ -74,6 +74,22 @@ struct Config {
     // long self-play training run has accumulated in the shared model.
     bool aiLearning = false;
 
+    // The Greater Diplomacy 5 translation layer (Experimental tab).
+    //
+    // Off by default. It converts a world into a second game's map format, and
+    // the conversion is lossy in ways that depend on the map -- so it is opt-in
+    // and every use of it warns before it writes anything. Only meaningful in a
+    // build made with -DOD_ENABLE_GDTL=ON; without that the option is still
+    // stored but the feature reports itself unavailable.
+    bool gdtl = false;
+
+    // Where Greater Diplomacy 5 lives, if the player has told us.
+    //
+    // Empty by default and NEVER filled in by guessing: the game does not look
+    // for other software on the disk unless a player asks it to, from the
+    // translate dialog, and what the search finds is shown before it is saved.
+    std::string gd5Path;
+
     // Ask each mod's declared updateUrl whether a newer version exists.
     //
     // OFF BY DEFAULT, and it stays that way unless the player turns it on. This
