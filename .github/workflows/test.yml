@@ -150,6 +150,40 @@ jobs:
           # and hand back the same absent GPU this exists to work around.
           echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
 
+      # NINJA, NOT MSBUILD, and the reason is what -j means.
+      #
+      # CMake defaults to the Visual Studio generator on Windows, where
+      # `cmake --build -j4` becomes MSBuild /m:4 -- four parallel PROJECTS.
+      # Every build in qualify.sh names one target, so there was one project to
+      # spread across four ways of spreading it, and cl.exe walked its
+      # translation units one at a time. That is how a job with the same core
+      # count as Linux spent 24 minutes building what Linux built in 10, and
+      # why this job was cancelled at its 30 minute cap for weeks.
+      #
+      # Ninja parallelises at the file, like make does, so -j means the same
+      # thing on all four platforms. It also makes the build tree single-config
+      # -- build/OpenDoctrines.exe rather than build/Release/OpenDoctrines.exe
+      # -- which every script here already probes for, because they were
+      # written against both layouts from the start.
+      #
+      # Ninja needs cl.exe on PATH, which the Visual Studio generator arranges
+      # for itself and Ninja cannot. That is all this action does: run
+      # vcvarsall and export what it sets. Ninja itself ships on the runner
+      # image, and the check below says so plainly rather than letting CMake
+      # report a missing generator.
+      - name: MSVC environment (for Ninja)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build with Ninja
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          command -v ninja >/dev/null || { echo "ninja is not on PATH"; exit 1; }
+          ninja --version
+          # Read by cmake itself, so qualify.sh needs to know nothing about it.
+          echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+
       - name: Qualify
         shell: bash
         run: tools/qualify.sh build
@@ -174,6 +208,9 @@ jobs:
           set -e
           BIN=build/OpenDoctrines
           [ -d "build/OpenDoctrines.app" ] && BIN=build/OpenDoctrines.app
+          # Both Windows layouts: Ninja writes build/, MSBuild writes
+          # build/Release/. Checked in that order so whichever one exists wins.
+          [ -f "build/OpenDoctrines.exe" ] && BIN=build/OpenDoctrines.exe
           [ -f "build/Release/OpenDoctrines.exe" ] && BIN=build/Release/OpenDoctrines.exe
           python3 tools/package.py --binary "$BIN" --out dist/pkg
 
@@ -457,8 +494,18 @@ jobs:
                                   libxcursor-dev libxinerama-dev libwayland-dev \
                                   libxkbcommon-dev
 
+      # Same generator as the qualify job, for the same reason -- see the note
+      # on it there. Kept in step deliberately: two Windows jobs building the
+      # same code through different generators is a difference that only ever
+      # shows up as one of them failing.
+      - name: MSVC environment (for Ninja)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build the server only
+        shell: bash
         run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then export CMAKE_GENERATOR=Ninja; fi
           cmake -B build-server -DCMAKE_BUILD_TYPE=Release
           cmake --build build-server --config Release --target OpenDoctrinesServer -j 2
 

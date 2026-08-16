@@ -37,8 +37,14 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
 bin=""
+# Both Windows layouts. Ninja writes build/OpenDoctrines.exe and MSBuild
+# writes build/Release/OpenDoctrines.exe; the extensionless name is not a
+# reliable test for either under Git Bash, and this check SKIPS rather than
+# fails when it finds nothing -- so a missed path here is a check that quietly
+# stops running.
 for c in "$build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines" \
-         "$build/OpenDoctrines" "$build/Release/OpenDoctrines.exe"; do
+         "$build/OpenDoctrines" "$build/OpenDoctrines.exe" \
+         "$build/Release/OpenDoctrines.exe"; do
     [ -x "$c" ] && { bin="$c"; break; }
 done
 if [ -z "$bin" ]; then

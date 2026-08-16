@@ -85,6 +85,13 @@ if(MSVC)
     # was cancelled at the job's 30 minute cap before its tests could finish.
     # Same core count, same work, one platform doing it one file at a time.
     #
+    # CI has since moved to Ninja, which parallelises at the file and makes
+    # this a no-op there -- cl.exe gets one source at a time either way. It
+    # stays for everyone building with the Visual Studio generator, which is
+    # what CMake still picks by default on Windows and what Visual Studio and
+    # CLion use: the slow build is the default one, and a flag in the build
+    # file reaches them where a line in a workflow does not.
+    #
     # /MP with no number uses the effective processor count. It is safe with
     # precompiled headers and applies to the fetched dependencies too, which
     # are several of the heaviest translation units in the build.
