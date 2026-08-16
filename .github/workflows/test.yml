@@ -465,6 +465,113 @@ jobs:
   # already in a release.
   #
   # So: its own job, on every push, failing on its own.
+  # ------------------------------------------------------------------ GDTL ---
+  # The Greater Diplomacy translation layer, which no other job here builds:
+  # OD_ENABLE_GDTL is off by default, so every other build compiles it to stubs
+  # and would not notice if the real thing stopped compiling at all.
+  #
+  # The desktop flow was driven by hand on macOS. Nothing had ever run it on
+  # Windows, Linux, Android or the web -- and three of those four have their own
+  # answer to "where does a file go" and "is there a file chooser at all", which
+  # is exactly the kind of difference that is invisible until somebody is
+  # holding the platform it is wrong on.
+  #
+  # Three platforms build the test and RUN it. Android cannot run here, so it
+  # is built and its architecture checked. The web runs under node with
+  # NODERAWFS, which is the same code a browser executes against MEMFS.
+  gdtl:
+    name: translation layer (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64,   os: ubuntu-22.04 }
+          - { name: macos-arm64, os: macos-14 }
+          - { name: windows-x64, os: windows-2022 }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      # Same generator as everywhere else on Windows -- see the qualify job.
+      - name: MSVC environment (for Ninja)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Build with Ninja
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+
+      - name: Build and run
+        shell: bash
+        run: |
+          set -e
+          cmake -B build-gdtl -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
+                -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
+          cmake --build build-gdtl --config Release --target GdtlTest -j 4
+          # Both layouts, for the same reason as everywhere else here.
+          for c in build-gdtl/GdtlTest build-gdtl/GdtlTest.exe \
+                   build-gdtl/Release/GdtlTest.exe; do
+            [ -f "$c" ] && { "$c"; exit $?; }
+          done
+          echo "no GdtlTest was built"; exit 1
+
+  gdtl-android:
+    name: translation layer (android)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Locate the NDK
+        run: |
+          set -e
+          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+      # Built, not run: this is an aarch64 Android binary on an x86 Linux
+      # runner. What it proves is that the layer compiles and LINKS for the
+      # platform -- which is where a #ifdef that forgot Android shows up, since
+      # __linux__ is defined there too.
+      - name: Cross-compile the test
+        run: |
+          set -e
+          cmake -B build-gdtl-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF -DOD_ENABLE_GDTL=ON
+          cmake --build build-gdtl-android --target GdtlTest -j 4
+          file build-gdtl-android/GdtlTest
+          file build-gdtl-android/GdtlTest | grep -q "ARM aarch64" || {
+            echo "that is not an Android binary"; exit 1; }
+
+  gdtl-web:
+    name: translation layer (web)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mymindstorm/setup-emsdk@v14
+      # Run, not merely built. NODERAWFS hands it node's filesystem in place of
+      # the MEMFS a browser gives it; the conversion reads and writes ordinary
+      # paths either way, so this exercises the same code the download path
+      # runs before it hands the browser a blob.
+      - name: Build and run under node
+        run: |
+          set -e
+          emcmake cmake -B build-gdtl-web -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
+                        -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
+          emmake cmake --build build-gdtl-web --target GdtlTest -j 4
+          node build-gdtl-web/GdtlTest.js
+
   server:
     name: server (${{ matrix.name }})
     runs-on: ${{ matrix.os }}

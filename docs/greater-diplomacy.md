@@ -95,6 +95,25 @@ sets out the change that would make it take effect.
 For the full field-by-field account, see
 [What Crosses](https://github.com/Pr1nted/dragoman/wiki/What-Crosses).
 
+## What is tested, and where
+
+`tests/gdtl_test.cpp` translates a shipped world, packs it, converts it back and
+checks the archive carries what this game's loader insists on. CI builds and
+runs it on Linux, macOS, Windows and the web, and cross-compiles it for Android.
+
+That last part matters more than it looks. Three of those five have their own
+answer to *where does a file go* and *is there a file chooser at all*, and
+`__linux__` is defined on Android too — so a platform check that forgets Android
+sends a phone looking for `zenity`. The test asserts the two answers agree: a
+platform with no file chooser must also offer nothing to search, because both
+are shown to the player in the same dialog.
+
+| platform | translate | import | destination |
+| --- | --- | --- | --- |
+| Windows, macOS, Linux | yes | yes | you choose, or into a detected installation |
+| Web | yes | no — a browser will not hand a page a folder | downloaded as a zip |
+| Android | yes | no — no file chooser | a zip in the game's own storage |
+
 ## Where things go
 
 | | |
@@ -102,3 +121,4 @@ For the full field-by-field account, see
 | `gdtl` | `data/config.json` — the Experimental toggle |
 | `gd5Path` | `data/config.json` — the installation you pointed at, empty until you do |
 | `data/gdtl_work/` | scratch space for a conversion; rebuilt each time |
+| `data/gdtl/` | where web and Android keep a finished map |

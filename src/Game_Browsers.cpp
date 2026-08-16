@@ -1091,6 +1091,12 @@ void Game::gdtlTranslateTo(const std::string& destDir) {
     m_gdtlStage = GdtlStage::Result;
 }
 
+// The export for a platform that cannot ask where the map should go: the web,
+// which hands the browser a download, and Android, which has neither a file
+// chooser nor a copy of the other game to install into. Both get a zip,
+// because a GD5 map is a folder and neither platform gives a player one to
+// open. On Android it stays in the game's own storage and the result dialog
+// says where -- the same bargain the timelapse export already makes.
 void Game::gdtlDownloadInBrowser() {
     if (m_gdtlMapIndex < 0 || m_gdtlMapIndex >= (int)m_mapEntries.size()) return;
     auto& entry = m_mapEntries[m_gdtlMapIndex];
@@ -1123,10 +1129,23 @@ void Game::gdtlDownloadInBrowser() {
 
     m_gdtlOk = true;
     if (Gdtl::offerBrowserDownload(zipPath, entry.name + ".zip")) {
-        m_gdtlMessage = "Downloading " + entry.name + ".zip — unzip it into Greater Diplomacy 5's base_maps folder.";
+        m_gdtlMessage = "Downloading " + entry.name +
+                        ".zip - unzip it into Greater Diplomacy 5's base_maps folder.";
     } else {
-        m_gdtlMessage = "Wrote " + zipPath;
+        // Nothing to hand it to, so it is kept rather than left in the scratch
+        // directory the next conversion deletes.
+        const std::string keep = Gdtl::unattendedDestination(m_dataDir, entry.name) + ".zip";
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(keep).parent_path(), ec);
+        std::filesystem::remove(keep, ec);
+        std::filesystem::rename(zipPath, keep, ec);
+        if (ec) std::filesystem::copy_file(zipPath, keep, ec);
+        m_gdtlMessage = ec ? ("Translated, but could not save it: " + ec.message())
+                           : ("Wrote " + keep + " - copy it to a computer and unzip it into "
+                              "Greater Diplomacy 5's base_maps folder.");
+        m_gdtlOk = !ec;
     }
+    removeTree(work);
     m_gdtlStage = GdtlStage::Result;
 }
 
@@ -1231,11 +1250,10 @@ void Game::drawGdtlDialogs() {
         if (button({(float)(x + w - 176), (float)(y + h - 56), 150, 38}, "Continue",
                    Color{40, 90, 60, 255}, Color{55, 125, 80, 255})) {
             Audio::get().playSfx("click_light");
-#ifdef __EMSCRIPTEN__
-            gdtlDownloadInBrowser();   // a browser has one destination
-#else
-            m_gdtlStage = GdtlStage::Destination;
-#endif
+            // A platform with no file chooser has exactly one destination, so
+            // it is not offered a dialog listing three.
+            if (Gdtl::canChooseLocation()) m_gdtlStage = GdtlStage::Destination;
+            else gdtlDownloadInBrowser();
             return;
         }
         if (IsKeyPressed(KEY_ESCAPE)) close();
@@ -1911,7 +1929,8 @@ void Game::drawMapBrowser() {
     bool showImportBtn = (m_mapTabIndex == 1);
     // A second import card, for a map that is not in this game's format yet.
     // Same tab, same shape, same place -- it is the same act.
-    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available();
+    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
+                            Gdtl::canChooseLocation();  // it asks for a folder
     int importIdx = (int)visible.size();
     int gd5ImportIdx = importIdx + 1;
 
@@ -2349,7 +2368,8 @@ void Game::updateMapBrowser() {
     bool showImportBtn = (m_mapTabIndex == 1);
     // A second import card, for a map that is not in this game's format yet.
     // Same tab, same shape, same place -- it is the same act.
-    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available();
+    bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
+                            Gdtl::canChooseLocation();  // it asks for a folder
     int importIdx = (int)visible.size();
     int gd5ImportIdx = importIdx + 1;
     int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0);

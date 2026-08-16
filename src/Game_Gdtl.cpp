@@ -1,6 +1,8 @@
 // Greater Diplomacy translation layer -- see Game_Gdtl.h.
 #include "Game_Gdtl.h"
 
+#include "util/NativeDialog.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -37,6 +39,12 @@ bool isFile(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && !(st.st_mode & S_IFDIR);
 }
+
+// Only the platforms that actually search for an installation need these. On
+// the web and on Android nothing calls them, and an unused static function is
+// a warning -- which, in a build that turns warnings into errors, is a broken
+// build on the two platforms this feature is quietest on.
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
 
 std::string env(const char* name) {
     const char* v = std::getenv(name);
@@ -97,6 +105,8 @@ std::vector<std::string> candidateChildren(const std::string& root) {
     std::sort(out.begin(), out.end());
     return out;
 }
+
+#endif  // !__EMSCRIPTEN__ && !__ANDROID__
 
 #ifdef OD_ENABLE_GDTL
 // Turn open-dragoman's report into the sentences the dialog shows, worst
@@ -195,6 +205,21 @@ Result toOdmap(const std::string& gd5Dir, const std::string& odmapPath) {
 
 // ---------------------------------------------------------------- finding GD5
 
+bool canChooseLocation() {
+    return NativeDialog::available();
+}
+
+std::string unattendedDestination(const std::string& dataDir, const std::string& mapName) {
+    std::string safe;
+    for (char c : mapName) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == ' ';
+        safe += ok ? c : '_';
+    }
+    if (safe.empty()) safe = "Translated Map";
+    return dataDir + "gdtl/" + safe;
+}
+
 bool looksLikeGd5(const std::string& dir) {
     if (dir.empty() || !isDirectory(dir)) return false;
 #if defined(_WIN32)
@@ -216,6 +241,12 @@ bool looksLikeGd5(const std::string& dir) {
 
 std::vector<std::string> searchLocations() {
     std::vector<std::string> roots;
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    // Nothing to search. Returned empty rather than listing a phone's home
+    // directory, because the dialog prints this count to say what it is about
+    // to read and it must not claim to be about to read anything.
+    return roots;
+#else
     const std::string h = home();
 
 #if defined(_WIN32)
@@ -251,12 +282,14 @@ std::vector<std::string> searchLocations() {
     roots.push_back("/usr/local/games");
 #endif
     return roots;
+#endif
 }
 
 std::vector<std::string> findGd5Installations() {
     std::vector<std::string> found;
-#ifdef __EMSCRIPTEN__
-    // There is no other software on a browser's filesystem to find.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    // No other software on a browser's filesystem to find, and no desktop
+    // build of Greater Diplomacy 5 to find on a phone.
     return found;
 #else
     for (const std::string& root : searchLocations()) {

@@ -1394,6 +1394,36 @@ endif()
 # Every vector is from FIPS 180-4 or RFC 8032, never from our own output: this
 # is the code that decides whether a join ticket is genuine, and it is the one
 # place where being wrong is both silent and total.
+# --- the Greater Diplomacy translation layer ---
+# Only exists when the layer does. It translates a shipped map on whatever
+# platform is running it, which is the only check that covers Windows, Linux,
+# Android and the web -- the desktop flow was only ever driven by hand on
+# macOS. See tests/gdtl_test.cpp.
+if(OD_GDTL_BACKEND STREQUAL "dragoman")
+    add_executable(GdtlTest EXCLUDE_FROM_ALL
+        tests/gdtl_test.cpp
+        src/Game_Gdtl.cpp
+        src/util/NativeDialog.cpp
+        tools/map_generator/miniz.c
+        tools/map_generator/miniz_tdef.c
+        tools/map_generator/miniz_tinfl.c
+        tools/map_generator/miniz_zip.c
+    )
+    target_include_directories(GdtlTest PRIVATE src tests tools/map_generator)
+    target_link_libraries(GdtlTest ${OD_GDTL_LIBS})
+    target_compile_definitions(GdtlTest PRIVATE ${OD_GDTL_DEFS}
+                               OD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    if(EMSCRIPTEN)
+        # So the web build's test can RUN rather than merely link. NODERAWFS
+        # gives it node's real filesystem, which is what MEMFS is standing in
+        # for in a browser -- the conversion reads and writes ordinary paths
+        # either way, and this is the only way to prove that on the platform
+        # where nobody can click the button.
+        target_link_options(GdtlTest PRIVATE
+            -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+    endif()
+endif()
+
 add_executable(NetCryptoTest EXCLUDE_FROM_ALL
     tests/net_crypto_test.cpp
     src/util/Ed25519.cpp

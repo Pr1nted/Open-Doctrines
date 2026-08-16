@@ -19,6 +19,15 @@
 
 namespace NativeDialog {
 
+// Is there a system file chooser here at all?
+//
+// False on the web and on Android, which have no such thing: a browser will
+// not hand a page a path, and an Android app has no desktop to ask. Callers
+// must check rather than treating "" as a cancelled dialog, because on those
+// two the dialog was never offered and the interface should not have shown a
+// button that leads to one.
+bool available();
+
 // Pick one existing file. `extension` is without the dot ("odmap"); empty
 // offers everything.
 std::string openFile(const std::string& title, const std::string& extension);

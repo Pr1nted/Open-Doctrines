@@ -47,6 +47,20 @@ Result toGd5(const std::string& odmapPath, const std::string& outDir);
 // A Greater Diplomacy 5 map directory -> .odmap.
 Result toOdmap(const std::string& gd5Dir, const std::string& odmapPath);
 
+// Can the player choose where the map goes?
+//
+// False on the web and on Android, where there is no file chooser and no
+// second game to install into. There the destination is decided for them --
+// the browser is handed a download, Android gets a file in the game's own
+// storage -- and the interface skips the step rather than showing a dialog
+// whose every button does nothing.
+bool canChooseLocation();
+
+// Where a map goes on a platform that cannot ask. `dataDir` is the game's own
+// data directory; the file is a zip, because a GD5 map is a folder and neither
+// of these platforms gives a player one to open.
+std::string unattendedDestination(const std::string& dataDir, const std::string& mapName);
+
 // ---------------------------------------------------------------- finding GD5
 //
 // The game does not look for other software on this computer on its own. These

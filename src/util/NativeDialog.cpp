@@ -7,7 +7,7 @@ namespace NativeDialog {
 
 namespace {
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
 // Run a command and take its first line of output as a path.
 std::string capture(const std::string& command) {
 #if defined(_WIN32)
@@ -42,7 +42,7 @@ std::string safeTitle(const std::string& title) {
     return out;
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 // Whichever of the two desktops' dialogs is installed, or empty for neither.
 const char* linuxHelper() {
     if (system("command -v zenity >/dev/null 2>&1") == 0) return "zenity";
@@ -50,12 +50,20 @@ const char* linuxHelper() {
     return nullptr;
 }
 #endif
-#endif  // !__EMSCRIPTEN__
+#endif  // !__EMSCRIPTEN__ && !__ANDROID__
 
 }  // namespace
 
+bool available() {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    return false;
+#else
+    return true;
+#endif
+}
+
 std::string openFile(const std::string& title, const std::string& extension) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
     (void)title;
     (void)extension;
     return "";
@@ -90,7 +98,7 @@ std::string openFile(const std::string& title, const std::string& extension) {
 }
 
 std::string openFolder(const std::string& title) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
     (void)title;
     return "";
 #elif defined(__APPLE__)
