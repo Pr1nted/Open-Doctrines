@@ -2,10 +2,19 @@
 
 ## game 1.0.8a
 
-- Countries rename and recolour themselves as their politics move. Breakaway
-  states are named after places, not adjectives.
-- The AI proposes trades, and prices land at what it earns rather than by
-  counting provinces.
+- **Trade deals.** "Propose Trade" sits in the peacetime diplomacy list:
+  provinces, money and claims moving both ways by agreement. A ceasefire
+  without the war. The AI proposes them too, and prices land at what it earns
+  rather than by counting provinces.
+- **Flags are recoloured, not replaced.** A country whose politics move keeps
+  its own flag, shifted toward the palette its politics imply, so reverting is
+  exact. Seven symbols that shipped with nothing able to name them — anchor,
+  torch, rose, fasces, cross pattée, four-pointed star, star of David — can be
+  used now, and one device means a government where several mean a union.
+  Previously every ideology reached for the same star.
+- **Rebellion names.** 18.5% of generated breakaway names were malformed —
+  "Mestizo Mexicia", "Han Chin". They are named after places now.
+- Countries rename and restyle themselves as their politics move.
 - **Quick Start** on the main menu puts you straight into a turn.
 - Ceasefire offers can be any amount you actually have, including nothing.
 - **Experimental:** translate maps to and from
