@@ -312,6 +312,12 @@ Alpha, and the honest version of that word:
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 
+  Where it stands, measured rather than asserted: it reliably beats random play,
+  and is currently about level with the hand-written strategy it is benchmarked
+  against (`--vs-script`: 0.99x the land, 3 wins to 4 with one draw over eight
+  worlds). Parity with that rung is the target it has reached and not yet passed.
+  It is still being trained.
+
   What it does: four action menus, chosen by the network each turn — economy
   (12 actions: industry, forts, ports, specialisation, two hull types, research
   funding and direction), politics (11: doctrines, alliances, non-aggression
