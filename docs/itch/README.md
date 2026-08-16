@@ -282,8 +282,11 @@ Two things to know before you do:
 - `build-web/data/audio/music/` **must** be inside the zip. Music is streamed
   rather than preloaded, and a zip without it gives a silent game.
 
-The web build also cannot host or join multiplayer, which the description
-already says.
+The web build cannot HOST multiplayer -- a browser tab cannot listen for
+players -- but it can JOIN one, which the description says. Do not shorten that
+to "no multiplayer on web" when writing the page: joining from a browser is a
+feature, and this page told players it did not exist for a fortnight after it
+started working.
 
 ---
 

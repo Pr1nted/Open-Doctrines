@@ -698,8 +698,39 @@ void Game::odFitCanvasToWindow() {
     // a canvas that no longer exists.
     emscripten_set_canvas_element_size("#canvas", w, h);
     SetWindowSize(w, h);
-    m_screenW = w;
-    m_screenH = h;
+
+    // And then the part that actually moves the GL viewport.
+    //
+    // SetWindowSize() on web is one line -- glfwSetWindowSize() -- and that
+    // does not touch raylib's own viewport or its cached screen size. The
+    // function that does is EmscriptenResizeCallback(), which is static, and
+    // which raylib registers for the window's real resize event. That is
+    // exactly why a genuine user resize fixed this and nothing else did: a
+    // synthetic 'resize' event is untrusted and never reaches it.
+    //
+    // SetWindowMinSize() is the way in. It is public API, and with
+    // FLAG_WINDOW_RESIZABLE set -- which init() does -- its last act is to
+    // call EmscriptenResizeCallback() directly, which re-reads
+    // window.innerWidth/innerHeight, resizes the canvas, calls SetupViewport()
+    // and updates CORE.Window.screen. Everything this function was trying to
+    // achieve by hand, done by the code that owns those fields.
+    //
+    // 1x1 because the argument is a real minimum that would clamp every later
+    // resize, and nothing else in this game sets one. A minimum of one pixel
+    // constrains nothing; the call is here for its side effect, which is worth
+    // saying out loud rather than leaving as a mystery.
+    //
+    // Kept even though the bug it targets could not be reproduced here -- see
+    // init() -- because it is cheap, it cannot make a correct canvas wrong,
+    // and it makes the viewport follow the canvas by construction rather than
+    // by the browser happening to agree.
+    SetWindowMinSize(1, 1);
+
+    // Read back rather than assumed: if the callback clamped or the browser
+    // disagreed, the game should lay out for what raylib actually has.
+    const int actualW = GetScreenWidth(), actualH = GetScreenHeight();
+    m_screenW = (actualW > 0) ? actualW : w;
+    m_screenH = (actualH > 0) ? actualH : h;
 }
 #endif
 
@@ -1120,25 +1151,31 @@ bool Game::init(int screenW, int screenH, const char* title) {
         "if(!document.hidden)window.__odAudioResume();});"
     );
 
-    // KNOWN BUG, not yet fixed: on first load the game renders into a ~400x300
-    // corner of a full-size canvas. It becomes correct the moment the window is
-    // resized, because that runs the IsWindowResized() path in run(), which
-    // recomputes everything properly. Nobody resizes a window they have just
-    // opened, so this is only ever visible on the first screen a player sees.
+    // KNOWN BUG: on first load the game renders into a ~400x300 corner of a
+    // full-size canvas, and becomes correct the moment the window is resized.
     //
-    // What has been ruled out, so the next attempt does not start from zero:
+    // The mechanism is now understood, and odFitCanvasToWindow() acts on it --
+    // read the note there before touching this. In short: the canvas was never
+    // wrong, raylib's GL viewport was, and SetWindowMinSize() is the only
+    // public call that reaches the code which moves it.
+    //
+    // NOT CONFIRMED FIXED, and that is worth stating plainly rather than
+    // leaving the next person to assume. The symptom would not reproduce in
+    // Chromium at all: a plain page, a reload, and an iframe started at
+    // 400x300 and grown to 1000x700 after load -- the itch shape -- all
+    // rendered correctly WITHOUT the change, canvas framebuffer, CSS box and
+    // window.innerWidth agreeing at every step. So the fix is reasoned rather
+    // than demonstrated, and whoever sees the bug in the wild is the one who
+    // can say whether it worked. If it recurs, the next thing to learn is
+    // which browser and which embed show it, because this machine could not.
+    //
+    // What has been ruled out, so a later attempt does not start from zero:
     //   - the canvas element is fine. Framebuffer and CSS size both match
     //     window.innerWidth/innerHeight, and devicePixelRatio is 1.
-    //   - emscripten_set_canvas_element_size() + SetWindowSize() here does NOT
-    //     help: GetScreenWidth() immediately afterwards still returns raylib's
-    //     cached size, so raylib's GL viewport stays at the old dimensions.
-    //   - dispatching a synthetic window 'resize' event does NOT help either;
-    //     raylib registers an emscripten resize callback that appears not to
-    //     act on untrusted events. A real user resize does work.
-    //
-    // So the fix likely belongs in the frame loop -- comparing the canvas size
-    // against m_screenW each frame and driving the existing resize path when
-    // they disagree -- rather than in this one-shot init.
+    //   - SetWindowSize() is glfwSetWindowSize() on web and touches no
+    //     viewport, which is why calling it here changed nothing.
+    //   - a synthetic 'resize' event is untrusted and never reaches raylib's
+    //     EmscriptenResizeCallback. A real user resize does, and works.
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
     TraceLog(LOG_INFO, ("[OD] GetScreen: " + std::to_string(GetScreenWidth()) + "x" + std::to_string(GetScreenHeight())).c_str());
