@@ -395,10 +395,15 @@ Alpha, and the honest version of that word:
   are built and tested. A **dedicated server** now exists (`OpenDoctrinesServer`)
   — a console server with no graphics dependency at all, so it runs on a VPS or
   in a container. It compiles the same simulation as the game against a raylib
-  of its own, so the two cannot disagree about the rules. It is **not yet
-  released**: it builds and is smoke-tested on every CI platform
-  (`tests/server_smoke_test.sh`), has no packaged artefacts, and its optional
-  UI mode and Android build are unfinished.
+  of its own, so the two cannot disagree about the rules. It is packaged for
+  Linux, macOS and Windows by its own workflow on a `server-v*` tag —
+  deliberately not the game's, since a VPS operator should not download a few
+  hundred megabytes of artwork to run something that never draws a pixel. Each
+  build is smoke-tested (`tests/server_smoke_test.sh`) on the grounds that a
+  server which starts is the only claim worth releasing on, and each release
+  waits as a draft until somebody has read the notes. Its optional windowed
+  mode is built as a check and not shipped, and the Android build is
+  unfinished.
 - There is **no tutorial**. Province actions live behind the view tabs on the
   bottom bar, and the game does not currently tell you that.
 - **Long-form (play-by-paste) turns are built but not yet played.** The whole
