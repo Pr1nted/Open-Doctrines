@@ -2,108 +2,22 @@
 
 ## game 1.0.8a
 
-Countries now look like what they have become, the AI will offer you a trade,
-and a world can be translated into a different game entirely.
+- Countries rename and recolour themselves as their politics move. Breakaway
+  states are named after places, not adjectives.
+- The AI proposes trades, and prices land at what it earns rather than by
+  counting provinces.
+- **Quick Start** on the main menu puts you straight into a turn.
+- Ceasefire offers can be any amount you actually have, including nothing.
+- **Experimental:** translate maps to and from
+  [Greater Diplomacy 5](https://github.com/GitGetGot415/Greater-Diplomacy-5).
+  Off by default; Settings → Experimental. Lossy, and it says what it lost.
+- Fixed: a way out of the multiplayer screen that is not Escape, Research
+  greyed for spectators, and loading a scenario no longer asks a phone for
+  1.7 GB.
+- Windows builds in about half the time.
 
-## Politics you can see
-
-A country that changes its politics changes its name and its colours to match.
-A republic that turns authoritarian stops being drawn in the same shade it was
-under a parliament, and stops being called the same thing. The political
-compass it moves through is a bounded space now rather than a comment saying
-it ought to be one, so a country cannot drift off the edge of its own politics.
-
-Breakaway states name themselves after places rather than after adjectives.
-They were arriving as things like "Separatist Insurgency"; they now come out as
-countries, named for the ground they hold.
-
-## Trade
-
-The AI will propose a trade to a country it is at peace with, and it has been
-taught what one is worth. Land is priced at what the land actually earns rather
-than by counting provinces, and a country weighs territory it is asked to give
-up against the money it is offered for it. The head of the network that makes
-these decisions is now paid for the trade it actually made, not the one it
-opened with — it had been learning from the wrong half of its own behaviour.
-
-Offers no longer pile up at one door: a country that has already been asked is
-not asked again in the same breath.
-
-Ceasefire money now offers what you have, and can offer nothing. Being broke is
-a position in a negotiation, not a reason for the interface to refuse.
-
-## Getting into a game
-
-**Quick Start** puts you in a turn from the main menu instead of four screens
-later.
-
-The multiplayer screen has a way out that is not the Escape key. Research is
-greyed out for spectators, the way Politics and Claims already were, rather
-than opening a screen with nothing in it.
-
-Loading a scenario no longer asks a phone for 1.7 GB.
-
-## Translating maps to Greater Diplomacy 5 — experimental
-
-A world can be written out as a map for [Greater Diplomacy
-5](https://github.com/GitGetGot415/Greater-Diplomacy-5), and one of its maps
-read back in. The conversion is done by
-[open-dragoman](https://github.com/Pr1nted/dragoman), a separate MIT library
-with no code from either game in it.
-
-It is off in every build and off again inside the builds that have it, until
-you turn it on in Settings → Experimental. Every use of it warns first, because
-translation is lossy in ways that depend on the map: fortification and port
-technology have no counterpart in the other game, ocean provinces are invented
-because that game cannot draw water that is not a province, and research only
-partly corresponds. Whatever could not cross is listed afterwards.
-
-Anything the other game has no field for is carried in a sidecar file beside
-the map, which both games ignore — so a translated map loads normally there and
-comes home intact if it is translated back.
-
-The game can also find a Greater Diplomacy 5 installation and write the map
-straight into it. It does not look at your disk for other software until you
-press the button that says it will, and then it reads a fixed list of the usual
-install folders, one level deep, and nothing else.
-
-Greater Diplomacy 5 has [merged the other
-half](https://github.com/GitGetGot415/Greater-Diplomacy-5/pull/34), so the
-translation works from either side.
-
-## Smaller things
-
-A shared timelapse is signed quietly, so one that gets passed around leads
-somewhere. The itch.io page's stylesheet points at selectors that still exist.
-Flags are no longer drawn for nobody during self-play training, and Ctrl-C
-stops and merges a training run started in the background.
-
-## Under the hood
-
-The Windows build stopped compiling one file at a time on four cores: it was
-taking 24 minutes against Linux's 10 from the same `-j4`, because the Visual
-Studio generator spreads work across projects rather than files. CI builds it
-with Ninja now, and `/MP` fixes the same problem for anyone building with the
-default generator.
-
-Both games write down where they are, so neither has to search for the other:
-one small file per game, specified in open-dragoman's `docs/locator.md`, and
-treated as a claim to verify rather than a fact — a game that is deleted never
-corrects its own entry.
-
-## Known, and said rather than hidden
-
-The dedicated server still has no downloads. It builds and is smoke-tested on
-every platform, and the release plumbing exists, but nothing is published yet.
-
-Long-form (play-by-post) turns remain built and unit-tested but never played
-across a real campaign.
-
-On the web, the game may render into a corner of the page on first load until
-the window is resized. The cause is understood and this release changes the
-code that ought to fix it — but the fault would not reproduce in any browser
-here, so it is a reasoned fix rather than a demonstrated one. If you see it,
-which browser and which page it happened on is the useful thing to report.
+Not yet: the dedicated server has no downloads, and long-form turns are built
+but never played across a real campaign.
 
 ## game 1.0.7a
 
