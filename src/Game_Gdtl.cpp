@@ -347,13 +347,31 @@ void writeLocator(const std::string& gameRoot) {
     std::filesystem::create_directories(dir, ec);
     if (ec) return;
 
+    // Resolved before it is written down. The caller derives this from the
+    // data directory, which on macOS makes it
+    // OpenDoctrines.app/Contents/MacOS/.. -- correct, and read by a program
+    // without complaint, but this file is meant to be legible to a person
+    // looking for where their game went as well. weakly_canonical also
+    // absolutises it, so a relative path from an odd working directory does
+    // not get recorded as one.
+    //
+    // weakly_canonical does NOT require the path to exist: it resolves the
+    // part that does and normalises the rest, so a game that has just been
+    // deleted still yields a tidy path rather than an error. That is the
+    // wanted behaviour -- a reader verifies before trusting, so a stale entry
+    // it can reject beats an absent one it cannot. The error branch is for
+    // the genuine failures, a permission or a loop, and writes the original
+    // rather than nothing for the same reason.
+    std::filesystem::path resolved = std::filesystem::weakly_canonical(gameRoot, ec);
+    const std::string root = ec ? gameRoot : resolved.string();
+
     std::ofstream out(dir + "/open-doctrines.json", std::ios::trunc);
     if (!out) return;
 
     // Escaped, because a path may contain a backslash on Windows and could
     // contain a quote anywhere.
     std::string escaped;
-    for (char c : gameRoot) {
+    for (char c : root) {
         if (c == '\\' || c == '"') escaped += '\\';
         escaped += c;
     }
