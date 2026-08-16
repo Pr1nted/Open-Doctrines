@@ -1394,6 +1394,16 @@ endif()
 # Every vector is from FIPS 180-4 or RFC 8032, never from our own output: this
 # is the code that decides whether a join ticket is genuine, and it is the one
 # place where being wrong is both silent and total.
+# --- the system file chooser ---
+# Built everywhere, unconditionally: this is the code between a caller's string
+# and a shell, and the platform it is wrong on is the one that has to run it.
+# See tests/native_dialog_test.cpp for what a test can and cannot reach here.
+add_executable(NativeDialogTest EXCLUDE_FROM_ALL
+    tests/native_dialog_test.cpp
+    src/util/NativeDialog.cpp
+)
+target_include_directories(NativeDialogTest PRIVATE src tests)
+
 # --- the Greater Diplomacy translation layer ---
 # Only exists when the layer does. It translates a shipped map on whatever
 # platform is running it, which is the only check that covers Windows, Linux,

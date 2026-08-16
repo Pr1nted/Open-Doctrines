@@ -1299,6 +1299,15 @@ void Game::drawGdtlDialogs() {
             ty += 54;
         }
 
+        // A desktop with no chooser installed. Without this the buttons below
+        // are live, return "" the moment they are pressed, and are
+        // indistinguishable from a player changing their mind.
+        if (!NativeDialog::helperInstalled()) {
+            DrawText("No file chooser found. Install zenity or kdialog to pick a folder.",
+                     x + 28, ty, 14, Color{220, 150, 100, 255});
+            ty += 24;
+        }
+
         // (b) Anywhere the player likes.
         if (button({(float)(x + 28), (float)ty, 300, 38}, "Save to a folder...",
                    Color{40, 70, 110, 255}, Color{55, 95, 145, 255})) {

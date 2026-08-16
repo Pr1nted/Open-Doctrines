@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -80,6 +80,10 @@ check() {
 }
 
 run "archive reader"   "$bin/ModArchiveTest"
+# The file chooser, on the platform running this. It opens nothing: what it
+# checks is the command built for the platform's own helper, and whether
+# that helper accepts it. See the file for what a test cannot reach here.
+run "file chooser"     "$bin/NativeDialogTest"
 run "mod sides + attestation" "$bin/NetAttestTest"
 run "net protocol"     "$bin/NetProtocolTest"
 run "account client"   "$bin/NetAccountTest"

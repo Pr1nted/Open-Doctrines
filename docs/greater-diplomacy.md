@@ -108,9 +108,20 @@ sends a phone looking for `zenity`. The test asserts the two answers agree: a
 platform with no file chooser must also offer nothing to search, because both
 are shown to the player in the same dialog.
 
+The file chooser itself is tested by `tests/native_dialog_test.cpp`, which runs
+in the ordinary suite on every desktop. It cannot click an OK button, and does
+not pretend to. What it does check is where this actually breaks: that the
+command built for the platform's own helper is right, that a title full of
+shell punctuation cannot escape into it, that the chosen path comes back whole
+including spaces — and, where the helper is present, that the helper accepts
+the command. On Linux CI that means running the real zenity under a virtual
+display; on Windows it runs the generated PowerShell as far as constructing the
+dialog and setting its properties, stopping just short of showing the window.
+
 | platform | translate | import | destination |
 | --- | --- | --- | --- |
 | Windows, macOS, Linux | yes | yes | you choose, or into a detected installation |
+| Linux without zenity or kdialog | yes | yes | the dialog says so rather than doing nothing |
 | Web | yes | no — a browser will not hand a page a folder | downloaded as a zip |
 | Android | yes | no — no file chooser | a zip in the game's own storage |
 

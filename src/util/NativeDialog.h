@@ -28,6 +28,34 @@ namespace NativeDialog {
 // button that leads to one.
 bool available();
 
+enum class Kind { File, Folder };
+
+// Is there actually a chooser program here to run?
+//
+// Different from available(). A Linux desktop HAS the concept of a file
+// chooser and may still have neither zenity nor kdialog installed, and then
+// every dialog returns "" -- which callers read as "the player pressed
+// Cancel", so the button does nothing at all and says nothing about why.
+// Check this to tell them instead.
+bool helperInstalled();
+
+// The exact command openFile/openFolder would run, built but not run.
+//
+// Exposed because a modal dialog is the one part of this that CI cannot click
+// -- and the part that actually breaks is not the clicking. It is a quote in
+// the wrong place, a flag the installed helper does not have, a title that
+// ends the string it was pasted into. Those live here, and a test can read
+// them on a machine that cannot open a window.
+//
+// Empty when there is no helper to run: the web, Android, and a Linux desktop
+// with neither zenity nor kdialog installed.
+std::string commandFor(Kind kind, const std::string& title, const std::string& extension);
+
+// A title with the shell's punctuation taken out of it. Exposed for the same
+// reason as commandFor: this is the function standing between a caller's
+// string and a shell, and it should be tested as one.
+std::string safeTitle(const std::string& title);
+
 // Pick one existing file. `extension` is without the dot ("odmap"); empty
 // offers everything.
 std::string openFile(const std::string& title, const std::string& extension);
