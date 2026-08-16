@@ -79,7 +79,33 @@ std::vector<std::string> searchLocations();
 
 // Search those locations. Returns every installation found, which may be empty
 // and is not an error -- the player then picks a folder by hand, or does not.
+//
+// A locator file is read first, and when it checks out nothing is searched at
+// all -- see below.
 std::vector<std::string> findGd5Installations();
+
+// ------------------------------------------------------------------ locators
+//
+// A game writing down where it is, so the other one does not have to guess.
+// One small JSON file per game in a shared per-user directory; the format is
+// specified in open-dragoman's docs/locator.md and both games implement it.
+//
+// This is a shortcut, never a requirement. A player who has never launched the
+// other game has no locator to read, and the search above still exists for
+// exactly that case.
+
+// Say where THIS game is. Called once at startup, best effort: a read-only or
+// missing directory is not worth interrupting anyone over.
+void writeLocator(const std::string& gameRoot);
+
+// Where Greater Diplomacy 5 says it is, or empty.
+//
+// A locator is a CLAIM, not a fact. A game that was moved corrects its file on
+// its next launch and one that was deleted never does, so a file pointing at
+// nothing is the normal state rather than an edge case. The path is checked
+// with looksLikeGd5() before it is returned, and a file that fails is ignored
+// and left alone -- it is not ours to delete.
+std::string gd5FromLocator();
 
 // Where a translated map belongs inside an installation, ready to be listed by
 // that game. Empty if the path is not one.

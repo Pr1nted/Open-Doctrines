@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -285,6 +287,106 @@ std::vector<std::string> searchLocations() {
 #endif
 }
 
+// ------------------------------------------------------------------ locators
+
+namespace {
+
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+const char* kLocatorDirName = "game-locators";
+
+std::string locatorDir() {
+#if defined(_WIN32)
+    const std::string base = env("LOCALAPPDATA");
+    return base.empty() ? std::string() : base + "\\" + kLocatorDirName;
+#elif defined(__APPLE__)
+    const std::string h = home();
+    return h.empty() ? std::string() : h + "/Library/Application Support/" + kLocatorDirName;
+#else
+    std::string base = env("XDG_DATA_HOME");
+    if (base.empty()) {
+        const std::string h = home();
+        if (h.empty()) return std::string();
+        base = h + "/.local/share";
+    }
+    return base + "/" + kLocatorDirName;
+#endif
+}
+
+// The value of a top-level string key, without pulling a JSON parser into a
+// file that has no other use for one. The locator is a flat object this game
+// and one other write, so this reads exactly the shape it is given and
+// answers empty for anything else.
+std::string jsonString(const std::string& text, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    size_t at = text.find(needle);
+    if (at == std::string::npos) return std::string();
+    at = text.find(':', at + needle.size());
+    if (at == std::string::npos) return std::string();
+    at = text.find('"', at);
+    if (at == std::string::npos) return std::string();
+    std::string out;
+    for (size_t i = at + 1; i < text.size(); ++i) {
+        if (text[i] == '\\' && i + 1 < text.size()) { out += text[++i]; continue; }
+        if (text[i] == '"') break;
+        out += text[i];
+    }
+    return out;
+}
+#endif
+
+}  // namespace
+
+void writeLocator(const std::string& gameRoot) {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    (void)gameRoot;   // nowhere shared to write it, and nothing to read it
+#else
+    const std::string dir = locatorDir();
+    if (dir.empty() || gameRoot.empty()) return;
+
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return;
+
+    std::ofstream out(dir + "/open-doctrines.json", std::ios::trunc);
+    if (!out) return;
+
+    // Escaped, because a path may contain a backslash on Windows and could
+    // contain a quote anywhere.
+    std::string escaped;
+    for (char c : gameRoot) {
+        if (c == '\\' || c == '"') escaped += '\\';
+        escaped += c;
+    }
+    out << "{\n"
+        << "  \"locator\": 1,\n"
+        << "  \"id\": \"open-doctrines\",\n"
+        << "  \"name\": \"Open Doctrines\",\n"
+        << "  \"path\": \"" << escaped << "\"\n"
+        << "}\n";
+#endif
+}
+
+std::string gd5FromLocator() {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    return std::string();
+#else
+    const std::string dir = locatorDir();
+    if (dir.empty()) return std::string();
+
+    std::ifstream in(dir + "/greater-diplomacy-5.json");
+    if (!in) return std::string();
+    const std::string text((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+
+    // A format this code does not know is not one to guess the fields of.
+    if (jsonString(text, "id") != "greater-diplomacy-5") return std::string();
+    if (text.find("\"locator\"") == std::string::npos) return std::string();
+
+    const std::string claimed = jsonString(text, "path");
+    return looksLikeGd5(claimed) ? claimed : std::string();
+#endif
+}
+
 std::vector<std::string> findGd5Installations() {
     std::vector<std::string> found;
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -292,6 +394,11 @@ std::vector<std::string> findGd5Installations() {
     // build of Greater Diplomacy 5 to find on a phone.
     return found;
 #else
+    // Cheapest first: if that game has ever run here it has written down
+    // where it is, and nothing needs searching.
+    if (const std::string claimed = gd5FromLocator(); !claimed.empty())
+        found.push_back(claimed);
+
     for (const std::string& root : searchLocations()) {
         // A root may be the installation itself -- somebody who put the game in
         // ~/Games/GreaterDiplomacy5 and somebody who made ~/Games the game are
@@ -303,9 +410,14 @@ std::vector<std::string> findGd5Installations() {
         for (const std::string& child : candidateChildren(root))
             if (looksLikeGd5(child)) found.push_back(child);
     }
-    std::sort(found.begin(), found.end());
-    found.erase(std::unique(found.begin(), found.end()), found.end());
-    return found;
+    // Deduplicated in place rather than sorted: the locator's answer was put
+    // first because it is the one the other game itself vouched for, and
+    // sorting would bury it under whatever the search turned up alphabetically.
+    std::vector<std::string> unique;
+    for (const std::string& path : found)
+        if (std::find(unique.begin(), unique.end(), path) == unique.end())
+            unique.push_back(path);
+    return unique;
 #endif
 }
 

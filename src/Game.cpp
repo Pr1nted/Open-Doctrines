@@ -1,5 +1,6 @@
 #include "GameUpdates.h"
 #include "Game.h"
+#include "Game_Gdtl.h"
 #include "OdFile.h"
 #include "util/WebPersist.h"
 #if defined(PLATFORM_ANDROID)
@@ -797,6 +798,24 @@ bool Game::init(int screenW, int screenH, const char* title) {
             m_dataDir = d;
             std::cout << "Data directory overridden: " << m_dataDir << std::endl;
         }
+    }
+
+    // Write down where this game is, so anything wanting to translate a map
+    // into it does not have to go looking. Best effort, never fatal, and it
+    // says only where the game is -- see Game_Gdtl.h.
+    //
+    // Unconditional, and deliberately not behind the GDTL option: the file is
+    // for the OTHER program to read, and a player who has never opened this
+    // game's Experimental tab still benefits from Greater Diplomacy 5 finding
+    // this one. It is rewritten every launch, which is what makes a moved
+    // install correct itself.
+    {
+        std::string root = m_dataDir;
+        // The game's root, not its data folder: strip a trailing "data/".
+        while (!root.empty() && root.back() == '/') root.pop_back();
+        const size_t cut = root.rfind("/data");
+        if (cut != std::string::npos && cut + 5 == root.size()) root.resize(cut);
+        Gdtl::writeLocator(root);
     }
 
     // ...and now say so if the directory actually chosen has no data in it.
