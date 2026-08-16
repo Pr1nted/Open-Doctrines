@@ -70,15 +70,27 @@ int main() {
     // command and, on two platforms, into a script inside that command. If a
     // caller ever passes a map name through, none of this may survive into the
     // command as punctuation.
-    const std::string hostile =
-        NativeDialog::commandFor(NativeDialog::Kind::Folder,
-                                 "a'b\"c`d$e;f&g|h(i)j<k>l\nm", "");
-    for (const char* danger : {"'a", "\"c", "`d", "$e", ";f", "&g", "|h", "(i", ")j", "<k",
-                               ">l"}) {
-        check(!contains(hostile, danger),
-              std::string("a title cannot smuggle in ") + danger[0]);
+    const std::string nasty = "a'b\"c`d$e;f&g|h(i)j<k>l\nm";
+    const std::string cleaned = NativeDialog::safeTitle(nasty);
+
+    // Asserted on the CLEANED title rather than by hunting for pairs in the
+    // finished command. The command legitimately puts quotes around the title
+    // -- $d.Title='...' on Windows, --title='...' for zenity -- so a search of
+    // the command for a quote next to a letter finds the one the command added
+    // and calls it a leak. That is not a subtle distinction to get wrong: it
+    // reported a hole in the sanitiser where there was none, on one platform
+    // and not the others, purely because of how each quotes.
+    for (char c : std::string("'\"`$;&|()<>\n\r\\")) {
+        check(cleaned.find(c) == std::string::npos,
+              std::string("the sanitiser removes ") + (c == '\n' ? std::string("a newline")
+                                                     : c == '\r' ? std::string("a return")
+                                                     : std::string(1, c)));
     }
-    check(!contains(hostile, "\n"), "a title cannot smuggle in a newline");
+    check(cleaned.size() == nasty.size(), "and removes it by replacement, not by deletion");
+
+    // And what the command carries is that cleaned title, nothing else.
+    const std::string hostile = NativeDialog::commandFor(NativeDialog::Kind::Folder, nasty, "");
+    check(contains(hostile, cleaned), "the command carries the cleaned title");
     check(NativeDialog::safeTitle("plain words 123-_.") == "plain words 123-_.",
           "an ordinary title is left alone");
 
