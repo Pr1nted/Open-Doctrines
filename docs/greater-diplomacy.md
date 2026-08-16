@@ -113,10 +113,16 @@ in the ordinary suite on every desktop. It cannot click an OK button, and does
 not pretend to. What it does check is where this actually breaks: that the
 command built for the platform's own helper is right, that a title full of
 shell punctuation cannot escape into it, that the chosen path comes back whole
-including spaces — and, where the helper is present, that the helper accepts
-the command. On Linux CI that means running the real zenity under a virtual
-display; on Windows it runs the generated PowerShell as far as constructing the
-dialog and setting its properties, stopping just short of showing the window.
+including spaces — and, where the helper answers, that the helper accepts the
+command.
+
+On Windows that last part genuinely runs: the generated PowerShell is executed
+as far as constructing the dialog and setting its properties, stopping just
+short of showing the window. On Linux it does **not**. zenity pulls in
+xdg-desktop-portal, and on a runner with no desktop it starts GTK and never
+returns — so the check reports a skip and the test says so rather than
+implying coverage it does not have. Tried with Xvfb and a real session bus; it
+hangs there too. That one only runs on a desktop.
 
 | platform | translate | import | destination |
 | --- | --- | --- | --- |
