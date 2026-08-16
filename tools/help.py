@@ -76,7 +76,7 @@ GROUPS = [
         "generate_symbols.py",
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
         "sync_map_symbols.py",
-        "generate_icons.py", "generate_web_favicon.py",
+        "generate_icons.py", "generate_web_favicon.py", "make_watermark.py",
         "subset_font.py", "optimize_flag_svgs.py",
     ]),
 ]
