@@ -555,9 +555,29 @@ if(OD_ENABLE_GDTL)
     # Static only. The game is packaged as a bundle or a single executable and
     # has nowhere to put a second shared object next to it.
     set(DRAGOMAN_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    # Which open-dragoman to build against. `main` by default, so a fix there
+    # reaches this game without anyone remembering to bump a number here --
+    # which is the failure this replaces: the pin sat at v0.3.0 while 0.3.1
+    # fixed a bug that stopped every Python caller converting ten of Greater
+    # Diplomacy 5's twelve shipped maps.
+    #
+    # The cost is real and worth stating: a build is then only reproducible
+    # against whatever that branch was on the day. What makes it tolerable is
+    # that this game's CI builds the translation layer on five platforms on
+    # every push, so a regression upstream surfaces here within a run rather
+    # than in somebody's release.
+    #
+    # Set it for a build that must not move -- a release, a bisect, an
+    # investigation:
+    #
+    #     cmake -B build -DOD_ENABLE_GDTL=ON -DOD_DRAGOMAN_REF=v0.3.1
+    set(OD_DRAGOMAN_REF "main" CACHE STRING
+        "open-dragoman git ref to build against (a tag pins it; main tracks it)")
+    message(STATUS "Greater Diplomacy translation: open-dragoman @ ${OD_DRAGOMAN_REF}")
+
     FetchContent_Declare(dragoman
         GIT_REPOSITORY https://github.com/Pr1nted/dragoman.git
-        GIT_TAG v0.3.0
+        GIT_TAG ${OD_DRAGOMAN_REF}
         GIT_SHALLOW TRUE
         EXCLUDE_FROM_ALL
     )
