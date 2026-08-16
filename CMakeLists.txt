@@ -70,6 +70,30 @@ message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 # MSVC is only defined once project() has run, hence the position here.
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+    # Compile a project's source files in parallel.
+    #
+    # Without this a Windows build is effectively SERIAL, and not because the
+    # machine is slow. `cmake --build -j4` means four parallel compiles under
+    # make and Ninja, but under the Visual Studio generator it becomes MSBuild
+    # /m:4 -- four parallel *projects*. Every build here names one target, so
+    # there is one project, and cl.exe walks its fifty translation units one at
+    # a time while three cores sit idle.
+    #
+    # Measured on the same CI runners, all with -j4: the qualify build took
+    # 24 minutes on Windows against 10 on Linux and 12 on macOS, and Windows
+    # was cancelled at the job's 30 minute cap before its tests could finish.
+    # Same core count, same work, one platform doing it one file at a time.
+    #
+    # /MP with no number uses the effective processor count. It is safe with
+    # precompiled headers and applies to the fetched dependencies too, which
+    # are several of the heaviest translation units in the build.
+    #
+    # C and C++ only. WAMR assembles invokeNative with ml64, and an assembler
+    # handed a compiler switch it has never heard of stops rather than ignores
+    # it -- so an unguarded add_compile_options would trade a slow Windows
+    # build for one that does not link.
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/MP>)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
