@@ -493,11 +493,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # zenity and a display, so the file chooser test can ask the REAL helper
-      # whether it accepts the flags this code builds. Without them that check
-      # skips, and skipping is how the Linux dialog stayed unrun in the first
-      # place. The qualify job does not install zenity, so this is the only
-      # place the Linux chooser is exercised against the actual program.
+      # zenity, so the file chooser test builds its command through the real
+      # zenity branch rather than the "no helper installed" one. The qualify
+      # job installs neither, so this is the only place that path is exercised.
+      #
+      # The test's last step -- asking the installed zenity whether it accepts
+      # those flags -- does NOT run here, and the test says so rather than
+      # pretending. zenity pulls in xdg-desktop-portal, and on a runner with no
+      # desktop it starts GTK and never returns; it hung this job at its thirty
+      # minute cap three runs running before the test learned to bound it.
+      # Reproduced with Xvfb and a real session bus, and it hangs there too.
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |

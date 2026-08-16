@@ -102,14 +102,45 @@ int main() {
     // otherwise reach a player as a dialog that never appears.
 #if defined(__linux__) && !defined(__ANDROID__)
     if (std::getenv("DISPLAY") && contains(file, "zenity")) {
-        // zenity's own timeout, so nothing waits on a person. 5 is its exit
-        // code for "timed out", which means it got as far as showing a window.
         std::string timed = file;
         const size_t redirect = timed.find(" 2>/dev/null");
         if (redirect != std::string::npos) timed = timed.substr(0, redirect);
-        const int rc = std::system((timed + " --timeout=1 >/dev/null 2>&1").c_str());
-        check(WEXITSTATUS(rc) == 5 || WEXITSTATUS(rc) == 1,
-              "the installed zenity accepts these flags");
+
+        // Three guards, and the middle one is the one that matters.
+        //
+        // --timeout=1 is zenity's own, so nothing waits on a person. But it
+        // times out the DIALOG, and installing zenity also pulls in
+        // xdg-desktop-portal -- so on a bare Xvfb with no session bus, GTK
+        // blocks in the portal handshake before there is any dialog to time
+        // out, and zenity never returns at all. That hung this test on CI
+        // until the job was killed at its thirty minute cap, three runs
+        // running, while the same test finished in a second on a desktop.
+        //
+        // So: GTK_USE_PORTAL=0 asks for GTK's own chooser instead of the
+        // portal, and `timeout` bounds the whole thing from outside whatever
+        // either of them decides to do.
+        //
+        // Bounded, not fixed. Tried in a container with zenity, Xvfb AND a
+        // real session bus, zenity still gets as far as starting GTK and does
+        // not come back -- so on CI this reports a skip, and the check only
+        // truly runs on a desktop. What CI does still get from having zenity
+        // installed is everything above: the command is built through the
+        // zenity branch rather than the "no helper here" one.
+        const std::string probe = "GTK_USE_PORTAL=0 timeout 15 " + timed +
+                                  " --timeout=1 >/dev/null 2>&1";
+        const int status = std::system(probe.c_str());
+        const int rc = WEXITSTATUS(status);
+
+        // 5 is zenity timing out, 1 is a cancel: either means it understood
+        // its flags and got as far as a window. 124 is `timeout` killing it,
+        // which answers nothing -- and a check that cannot run is a skip, not
+        // a pass and not a failure.
+        if (rc == 124) {
+            std::printf("  skip  zenity did not return in 15s (no session bus?)\n");
+        } else {
+            check(rc == 5 || rc == 1,
+                  "the installed zenity accepts these flags (exit " + std::to_string(rc) + ")");
+        }
     } else {
         std::printf("  skip  no DISPLAY or no zenity: cannot ask the real helper\n");
     }
