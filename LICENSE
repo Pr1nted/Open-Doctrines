@@ -1,5 +1,5 @@
 OpenDoctrines Non-Commercial License
-Version 1.0
+Version 1.1
 
 Copyright (c) OpenDoctrines. All rights reserved.
 
@@ -67,30 +67,34 @@ includes part of the Software itself.
 "Contribution" means any work you deliberately submit for inclusion in the
 Software -- a pull request, a patch, or anything else offered for the same
 purpose. Reporting a bug, writing about the Software, or creating Content
-under clause 3 is not a Contribution.
+under clause 3 is not a Contribution, and nothing in this clause or in
+CLA.md reaches any of them.
 
-You keep the copyright in your Contribution. You are not assigning it.
+Contributions are governed by the OpenDoctrines Contributor License
+Agreement, in CLA.md, which forms part of this license. Submitting a
+Contribution means accepting it. In summary, and CLA.md governs if this
+summary and it ever differ:
 
-By submitting a Contribution you grant the Licensor a perpetual, worldwide,
-non-exclusive, royalty-free, irrevocable license to use, reproduce, modify,
-distribute and sublicense it as part of the Software, under this license and
-under any other terms the Licensor releases the Software under, including
-commercial terms.
-
-This grant runs to the Licensor only. It does not give any other person a
-right to your Contribution beyond what clause 1 gives them in the Software as
-a whole, and it does not permit the Licensor to relicense your Contribution
-separately from the Software.
-
-You confirm that you are legally able to make this grant -- that the work is
-yours, or that whoever holds the rights has authorised you.
+  (a) you assign the copyright in your Contribution to the Licensor, who
+      becomes its owner and may use, change, relicense, sell or sublicense
+      it without asking you, paying you or crediting you;
+  (b) where the law does not permit that assignment, you grant instead the
+      broadest exclusive license it does permit, to the same effect;
+  (c) you waive your moral rights in the Contribution as far as the law
+      allows, and agree not to assert what cannot be waived;
+  (d) you keep a perpetual license to use your own Contribution anywhere
+      else, for any purpose, including commercially; and
+  (e) you confirm the work is yours to give, and that no employer,
+      university or other license conflicts with that.
 
 Why this clause exists, stated plainly: clause 5 lets the Licensor relicense
-the Software, but that power reaches only the Licensor's own copyright.
-Without an inbound grant, one accepted patch would leave a piece of the
-Software that the Licensor cannot relicense and cannot remove without
-rewriting it. This clause keeps that from happening. It asks for no more than
-that.
+the Software, but that power reaches only rights the Licensor holds. A
+contributor who keeps the copyright in an accepted patch keeps a veto over
+what the Software as a whole can later become, and the patch cannot be
+removed years later without rewriting it. Assignment settles that at the
+moment the work arrives rather than leaving it to be discovered. The license
+back in (d) is the counterweight: what a contributor gives up is exclusivity,
+not the use of their own work.
 
 
 5. FUTURE VERSIONS OF THIS LICENSE

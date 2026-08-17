@@ -2,12 +2,36 @@
 
 ## Rights
 
-Clause 4 of [LICENSE](LICENSE) covers this and is short enough to read. The
-summary: **you keep the copyright in what you write.** You grant the project a
-licence to ship it as part of OpenDoctrines, including under future terms.
+**Read [CLA.md](CLA.md) before you send a pull request. Sending one means you
+accept it.** It is the Contributor License Agreement, and clause 4 of
+[LICENSE](LICENSE) makes it part of the licence.
 
-There is no CLA to sign and no copyright to assign. Instead, sign off each
-commit with the [Developer Certificate of Origin](https://developercertificate.org/):
+The summary, which CLA.md overrides wherever the two differ:
+
+- **You assign the copyright in your contribution to the project.** It becomes
+  the Licensor's to use, change, relicense, sell or sublicense, without asking
+  you, paying you or crediting you. You are not a co-owner of OpenDoctrines or
+  of anything in it.
+- **You keep the right to use your own work anywhere else, forever** —
+  clause 6. Commercially, in your own projects, in someone else's. What you
+  give up is exclusivity, not access to your own code.
+- **Mods, maps, saves and videos are not contributions.** Clause 3 of LICENSE
+  still says they are yours, and the CLA does not reach them. Nothing here
+  applies to a separate project you build on the Gearbox SDK either.
+
+The reason is in CLA.md under "Why this exists". Short version: the licence can
+change in future, that power reaches only rights the project holds, and one
+accepted patch under a non-exclusive grant would leave a piece that cannot be
+relicensed and cannot be removed without rewriting it.
+
+Do both of these on your first pull request:
+
+**1. Add yourself to [CLA-SIGNATURES.md](CLA-SIGNATURES.md)**, in the same pull
+request as your change. Git records who added the line and when; that is the
+signature. Any name or handle will do — the project does not collect legal
+names.
+
+**2. Sign off each commit:**
 
 ```bash
 git commit -s -m "your message"
@@ -19,9 +43,11 @@ git commit -s -m "your message"
 Signed-off-by: Your Name <you@example.com>
 ```
 
-That line means you wrote the change, or you have the right to submit it. If
-your employer owns your work, get their sign-off before you send it — that is
-the part people forget, and it is the part that is expensive to unwind later.
+That line means the [Developer Certificate of Origin](https://developercertificate.org/)
+and clause 7 of the CLA: you wrote the change, or you have the right to submit
+it. If your employer owns your work, get their sign-off before you send it —
+that is the part people forget, and it is the part that is expensive to unwind
+later.
 
 ## Data and assets
 

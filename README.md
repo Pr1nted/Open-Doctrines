@@ -426,4 +426,9 @@ Third-party data and libraries are credited in [NOTICE.md](NOTICE.md), generated
 from `tools/provenance.json` and checked in CI so attribution cannot silently
 drift.
 
-[Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+Pull requests are covered by a [Contributor License Agreement](CLA.md):
+copyright in a contribution is assigned to the project, and the contributor
+keeps a perpetual licence to use their own work anywhere else. Mods, maps,
+saves and videos are not contributions and stay yours.
+
+[Contributing](CONTRIBUTING.md) · [CLA](CLA.md) · [Code of conduct](CODE_OF_CONDUCT.md)
