@@ -1,5 +1,22 @@
 # Changelog
 
+## Licence
+
+Nothing to install: this changed in the repository, between releases, and
+applies to anyone opening a pull request.
+
+**The licence is version 1.1, and contributions are assigned rather than
+licensed.** Clause 4 used to say a contributor keeps the copyright in their
+patch; it now points at [CLA.md](CLA.md), which assigns it to the project —
+with a licence back, so a contributor keeps the right to use their own work
+anywhere else, commercially included. The reason is that clause 5 lets the
+licence change later, and that power reaches only rights the project holds.
+
+Playing is unaffected, and so are mods, maps, saves and videos: clause 3 still
+says those are yours, and the CLA says it again. Every commit in the repository
+predates this, which is the only moment such a thing can arrive without asking
+somebody to re-sign for work they already gave.
+
 ## game 1.0.8a
 
 - **Trade deals.** "Propose Trade" sits in the peacetime diplomacy list:
