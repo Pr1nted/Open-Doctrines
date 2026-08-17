@@ -1,0 +1,54 @@
+# Who gets asked to review what.
+#
+# Every line here names the same person, because there is one maintainer. Said
+# plainly so the file is not mistaken for more than it is:
+#
+#   - it auto-requests a review on every pull request, so nothing arrives
+#     unassigned and nothing sits waiting for someone to notice it;
+#   - it puts an owner beside a path in the review UI; and
+#   - it blocks nothing. CODEOWNERS is only enforced where a branch requires
+#     review from code owners, and `main` has no protection rule. Turning one
+#     on is the step that gives this file teeth — until then it is routing,
+#     not a gate.
+#
+# The path entries below are redundant today and deliberate anyway. They mark
+# the files where an unreviewed change is expensive rather than merely wrong,
+# and they become load-bearing the moment a second person has push access —
+# which is exactly when nobody will remember to write them.
+
+# Everything, unless something below is more specific. Last match wins.
+*                           @Pr1nted
+
+# The live service: accounts, tokens and the relay. It holds account records
+# and issues what everything downstream trusts, so a change here reaches every
+# player at once and cannot be rolled back by not installing an update.
+/net/                       @Pr1nted
+
+# Terms. Changing any of these changes what a contribution or a download
+# means, which is not a code review. The two under net/ come after the
+# directory above them on purpose: last match wins, so the specific rule has
+# to be the later one.
+/LICENSE                    @Pr1nted
+/CLA.md                     @Pr1nted
+/CLA-SIGNATURES.md          @Pr1nted
+/SECURITY.md                @Pr1nted
+/CODE_OF_CONDUCT.md         @Pr1nted
+/CONTRIBUTING.md            @Pr1nted
+/net/TERMS.md               @Pr1nted
+/net/PRIVACY.md             @Pr1nted
+
+# The security boundaries themselves — the mod sandbox and the multiplayer
+# stack. SECURITY.md explains why these two directories are where a bug costs
+# the most.
+/src/mods/                  @Pr1nted
+/src/net/                   @Pr1nted
+
+# Attribution. NOTICE.md, data/credits.txt and the credits screen are all
+# generated from this one file, and the test suite fails if they drift.
+/tools/provenance.json      @Pr1nted
+/data/licenses/             @Pr1nted
+
+# Release and signing plumbing. What ships, and from where.
+/.github/workflows/         @Pr1nted
+/tools/release.py           @Pr1nted
+/packaging/                 @Pr1nted
