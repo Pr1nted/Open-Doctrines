@@ -29,8 +29,18 @@
 name: Test
 
 on:
+  # main only, NOT "**". A branch in this repository that is pushed and then
+  # opened as a pull request matched both triggers, and fourteen jobs ran twice
+  # for one commit -- two complete runs, two sets of runner minutes, and two
+  # rows per context in the checks list. Pull requests are covered by the
+  # pull_request trigger below, forks included; what a branches-["**"] push
+  # trigger adds on top of that is only the duplicate.
+  #
+  # The cost is that a branch pushed with no pull request open gets no CI until
+  # one is opened. That is the intended path now that main requires a reviewed
+  # pull request from anyone but the maintainer.
   push:
-    branches: ["**"]
+    branches: [main]
     tags-ignore: ["**"]        # tags are release-game.yml's job, not this one
   pull_request:
   workflow_dispatch:
