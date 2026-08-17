@@ -21,6 +21,8 @@ commitment to effort, not a guarantee of outcome — and the licence provides th
 software as is, without warranty.
 
 If you find a security issue, report it rather than publish it first.
+[SECURITY.md](SECURITY.md) says where, what is in scope, and what the
+architecture already assumes.
 
 ## 2. Customisability
 

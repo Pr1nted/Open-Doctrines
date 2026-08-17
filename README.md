@@ -431,4 +431,7 @@ copyright in a contribution is assigned to the project, and the contributor
 keeps a perpetual licence to use their own work anywhere else. Mods, maps,
 saves and videos are not contributions and stay yours.
 
-[Contributing](CONTRIBUTING.md) · [CLA](CLA.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+Security issues go through [private vulnerability reporting](https://github.com/Pr1nted/Open-Doctrines/security/advisories/new),
+not the issue tracker — scope and known limits are in [SECURITY.md](SECURITY.md).
+
+[Contributing](CONTRIBUTING.md) · [CLA](CLA.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
