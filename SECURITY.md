@@ -158,3 +158,5 @@ and where there are none.
   the code lives.
 - **Windows builds are verified in CI rather than on real hardware**, so
   platform-specific issues there are likelier to survive review.
+
+<!-- review-gate test: this line is not meant to be merged. -->
