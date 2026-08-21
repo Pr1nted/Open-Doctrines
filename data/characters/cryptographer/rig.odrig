@@ -1,0 +1,228 @@
+# The Cryptographer: the one who reads other people's mail.
+#
+# The second character to get a body of their own, and the first written FROM a
+# drawing rather than from the engine's needs. data/characters/test/ exists to
+# exercise every feature; this one exists to look like somebody.
+#
+# ── PROPORTIONED ON THE MEASURED BASIS ──
+#
+# The ratios come from data/characters/signals_officer/rig.odrig, which was authored
+# off a drawing with a ruler. This character was first written by eye, and by
+# eye meant shoulders NARROWER THAN THE HEAD -- a clavicle of 20 against a head
+# of 46, about 0.4 head-widths to each shoulder where a person measures 1.1 to
+# 1.3. That is most of what made the old skeletons read as a child's drawing of
+# somebody rather than as somebody.
+#
+# So every length here is stated in HEAD DIAMETERS first and rig units second.
+# Change `size` on the head and multiply through and the character rescales
+# without going out of proportion.
+#
+#   bone         heads   units (head = 42)
+#   neck          0.27      11
+#   head length   0.48      20
+#   chest         1.70      71
+#   clavicle      1.12      47
+#   upper arm     1.10      46
+#   forearm       1.02      43
+#   hand          0.85      36
+#
+# ── AND NOT THE SAME PERSON AS THE SIGNALS OFFICER ──
+#
+# Same basis, different build, because two characters on one set of numbers are
+# one character in two hats. Where they differ, and why:
+#
+#   head 42 against 46      a smaller head on a slighter frame
+#   chest 1.70 against 1.65 leaner, less blocky through the body
+#   clavicle 1.12 against   NARROWER. The Signals Officer fills a doorway;
+#     the other's 1.27      this one has spent the war at a desk with a lamp.
+#   hand 0.85 against 1.27  NORMAL hands. The other's are outsized because
+#                           that drawing exaggerates them and the whole pose is
+#                           about them -- it is a property of that character,
+#                           not of the measuring.
+#
+# The character notes that were here before still hold: a hat means a head
+# drawn wider than the skull under it, and a built-up collar means a short neck
+# with the head sitting down into it.
+
+# ── Spine. Shorter and squarer than the Advisor's: this one stands like ──
+#    somebody who has been at a desk, not somebody addressing a room.
+bone root    len 0   angle 0
+bone hips    parent root  len 0   angle 0    sway 1.0
+bone chest   parent hips  len 71  angle -90  breath 1.0  sway 0.5
+bone neck    parent chest len 11  angle 0    breath 0.4  gaze 0.3
+head head    parent neck  len 20  angle 0    size 42     gaze 1.0  breath 0.2
+
+# ── Pelvis and legs. Scissored off at the knee on stage; they are here so the
+#    sway has something to move and the stance reads as weight on one foot. ──
+bone hipL    parent hips len 14 angle 180  sway 0.6
+bone hipR    parent hips len 14 angle 0    sway 0.6
+bone legL    parent hipL len 40 angle -90
+bone legR    parent hipR len 40 angle 90
+
+# ── Shoulders. 1.12 head-widths to each joint, which is a real person's and
+#    nearly two and a half times what this character used to have. ──
+bone clavL   parent chest len 47 angle 90   breath 0.6
+bone armL.up parent clavL len 46 angle 90   breath 0.2
+bone armL.fore parent armL.up len 43 angle 10
+hand handL   parent armL.fore len 0 angle 0 atlas hands size 36
+
+bone clavR   parent chest len 47 angle -90  breath 0.6
+bone armR.up parent clavR len 46 angle -90  breath 0.2
+bone armR.fore parent armR.up len 43 angle -10
+hand handR   parent armR.fore len 0 angle 0 atlas hands size 36
+
+# ── The overcoat. ──
+#
+# Six segments where the Advisor has five, and heavier: this is wool to the
+# knee, not a suit jacket. Every number here is a fabric decision and they only
+# make sense together --
+#
+#   gravity 520  it hangs rather than floats
+#   damp 0.94    heavy cloth keeps its swing longer than light cloth does
+#   stiff 0.58   softer than the Advisor's, so it folds instead of swinging as
+#                a board
+#   drag 1.35    and this is the one that reads: a coat with that much mass is
+#                LEFT BEHIND when the shoulder moves, and cracks at the hem
+#                when the movement stops. See Cloth::drag.
+#   wind 0.7     it catches less of a gust than a lighter garment would, which
+#                is the whole reason windCatch is authored per garment: tune
+#                the wind until a coat looks right and a scarf becomes canvas.
+cloth coatL parent clavL segs 6 len 14 stiff 0.58 damp 0.94 gravity 520 drag 1.35 wind 0.7
+cloth coatR parent clavR segs 6 len 14 stiff 0.58 damp 0.94 gravity 520 drag 1.35 wind 0.7
+
+# ─────────────────────────────────────────────────────────────────────────
+# Poses.
+#
+# Named to match the Advisor's wherever they mean the same thing -- idle,
+# point, shrug, think, hands_up -- so a script can change who is speaking
+# without changing what they are doing. A pose that exists for one character
+# and not another is a page that silently does nothing.
+#
+# A pose says only what it CHANGES; every bone it does not name returns to
+# rest, so poses cannot quietly compose into each other.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Arms down and slightly forward, shoulders a little dropped. Not at attention:
+# this one is tired, and the difference between the two is about six degrees.
+pose idle 0.5s inoutquad
+  chest      -88
+  neck       5
+  clavL      84
+  clavR      -84
+  armL.up    84
+  armL.fore  14
+  armR.up    -84
+  armR.fore  -14
+  handL      relaxed facing -0.85
+  handR      relaxed facing -0.85
+
+# THE DRAWING. Both arms up, elbows wide, palms turned fully to the viewer.
+#
+# THE ELBOWS BREAK OUTWARD. Raising your arms with the palms turned to somebody
+# rotates the whole arm at the shoulder and the elbow goes with it, so the
+# forearm angles take the OPPOSITE sign to the upper arms'. Bend them the same
+# way and the arm comes out nearly straight, the rotation has nowhere to show,
+# and the hands read as stuck on the ends rather than turned over.
+#
+# facing 1.0 is deliberate and is the best value available here, not a lazy
+# round number: it is the only one at which the palm is at full width. Backing
+# off to 0.9 "for some depth" turns the thumb back across the palm and shortens
+# it, because below 1 the out-of-palm axis works against the thumb's reach.
+pose hands_up 0.55s inoutquad
+  chest      -90
+  neck       -4
+  clavL      72
+  clavR      -72
+  armL.up    -44
+  armL.fore  -38
+  armR.up    44
+  armR.fore  38
+  handL      open facing 1.0
+  handR      open facing 1.0
+
+# Reading an intercept: both hands up in front of the chest, close together,
+# head down over them. The pose this character is actually for.
+#
+# The hands are turned nearly edge-on -- a sheet held up to read is seen along
+# its edge, and so are the hands holding it.
+#
+# The elbow angles were SOLVED against the landmark rather than nudged: with
+# the re-proportioned arms the old numbers overshot and put the two hands
+# through each other in the middle of the chest. Two-bone IK onto the sternum,
+# then mirrored -- taking each arm's own IK solution gives two different elbow
+# branches and a body that is subtly lopsided.
+#
+# The sternum, note, and NOT the chin: those are 23 units apart on a chest of
+# 71, and aiming at the wrong one turns a character reading a page into one
+# covering their face with it. Which is exactly what the first attempt did.
+pose decode 0.5s inoutquad
+  chest      -84
+  neck       16
+  head       10
+  clavL      88
+  clavR      -88
+  armL.up    105
+  armL.fore  123
+  armR.up    -105
+  armR.fore  -123
+  handL      relaxed facing 0.25
+  handR      relaxed facing -0.25
+
+# One hand to the chin, the other arm folded across. Required by the tutorial,
+# which puts this character on screen with `pose=think`.
+pose think 0.6s inoutquad
+  chest      -86
+  neck       12
+  head       8
+  clavL      88
+  clavR      -78
+  armL.up    82
+  armL.fore  90
+  armR.up    -132
+  armR.fore  -120
+  handL      relaxed facing -0.7
+  handR      fist facing -0.6
+
+# Pointing at the map, weight turned into it. The elbow keeps a bend in it: an
+# arm run out straight is a signpost, and the difference between indicating
+# something and being a signpost is about twenty degrees at the elbow.
+pose point 0.4s inoutquad
+  chest      -92
+  neck       -8
+  clavL      88
+  clavR      -82
+  armL.up    82
+  armL.fore  14
+  armR.up    -40
+  armR.fore  34
+  head       -4
+  handL      relaxed facing -0.85
+  handR      point facing -0.85
+
+# "I only read them, Minister." A shrug is a MOVEMENT, not a posture: the
+# shoulders go up fast, are seen up, and come back down. Which is why this is
+# the pose with keyframes on it, and why the way in is `outback` -- an "out"
+# easing leaves at full speed, which is wrong for an arm swing and exactly
+# right for a shrug.
+pose shrug 0.24s outback hold 0.4s then idle
+  chest      -86
+  neck       6
+  clavL      52
+  clavR      -52
+  armL.up    56
+  armL.fore  -34
+  armR.up    -56
+  armR.fore  34
+  handL      open facing 0.85
+  handR      open facing 0.85
+
+# ...and down again. A keyframe inherits everything it does not name, so the
+# arms stay out here while only the shoulders drop, and `then idle` puts the
+# body away after a beat rather than leaving it standing with its arms out.
+key 0.5s inoutquad hold 1.0s
+  clavL      78
+  clavR      -78
+  armL.up    60
+  armL.fore  30
+  armR.up    -60
+  armR.fore  -30

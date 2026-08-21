@@ -1,0 +1,89 @@
+// A pose walk, not a scene. Opened with F10 from the menu.
+//
+// WHY A SCRIPT AND NOT A KEY THAT CYCLES POSES
+//
+// The thing worth testing is not the pose, it is the TRANSITION into it -- a
+// pose is a still and can be checked in the contact sheet RigPreview writes.
+// What only the running game shows is the move: whether an arm takes the short
+// way round, whether the coat is left behind and catches up, whether a gesture
+// with keyframes holds long enough to be seen before it puts itself away.
+//
+// So this walks a character through every pose in their .odrig, one page per
+// pose, in an order chosen to make the transitions hard: big swings, sign
+// changes, a page that moves and poses at once, and a mirrored page so the
+// coat can be checked against the wind while the body faces the other way.
+//
+// It ends by handing over to another character, because a SPEAKER CHANGE is
+// its own path through syncRigToDialog -- a second rig gets loaded, the body
+// fades, and the pose interpolates from whatever the last one was standing in.
+//
+// Every pose named here must exist in the speaker's .odrig. A page that names
+// one that does not prints "[RIG] no pose" and holds the previous shape, which
+// is easy to miss -- so if a page looks like it did nothing, read the console
+// before you read the rig.
+
+:: anchor=left size=20 pad=26 enter=type speed=60 line=1.4 pose=idle at=0.5,0.5 scale=0.85
+
+@Signals Officer
+**idle.** Arms down, backs of the hands out. This is what everything below
+returns to, so it is the one to be sure of first.
+---
+@Signals Officer
+:: pose=hands_up
+**hands_up.** The drawing: elbows low and wide, hands level with the hat, palms
+turned fully over.
+
+The long way from `idle` — every arm bone changes sign, so if an elbow takes
+the long way round through the body, this is the page that shows it.
+---
+@Signals Officer
+:: pose=spread
+**spread.** The same palms at waist height. A big fall from arms-up with the
+coat following late: watch the hem rather than the hands.
+---
+@Signals Officer
+:: pose=tip_hat
+**tip_hat.** One arm up, one staying put. The asymmetric case — the still arm
+must actually stay still rather than drifting with the other one.
+---
+@Signals Officer
+:: pose=think
+**think.** A small move from `tip_hat`, which is the point of putting them next
+to each other: it should not look like a jump.
+---
+@Signals Officer
+:: pose=point at=0.32,0.5
+**point.** Moving and posing at once. The body walks left while the arm comes
+out — placement runs on its own timer, so this is where the two would fight if
+they were going to.
+---
+@Signals Officer
+:: pose=shrug at=0.5,0.5
+**shrug.** The only pose here with keyframes on it: shoulders snap up, hold,
+drop, and then it puts itself back to `idle` without this script saying so.
+
+Do not click straight through — the whole point is what happens while you wait.
+---
+@Signals Officer
+:: pose=hands_up at=0.66,0.5 flip=1
+**mirrored.** The same pose, facing the other way.
+
+The coat must stream the SAME way as it did on the page before: the wind
+belongs to the scene, and a body that turns round does not take the weather
+with it.
+---
+@Cryptographer
+:: pose=decode at=0.36,0.5 flip=0 scale=1.0
+**A different body.** The speaker changed, so a second rig loaded and this one
+fades in rather than the first one melting into it.
+
+Both are built on the same measured basis now, so what you are looking for is
+not a proportion error — it is whether they read as two different *people*.
+Smaller head, narrower shoulders, ordinary hands.
+---
+@Signals Officer
+:: pose=idle at=0.5,0.5 scale=0.85
+**idle** again, and back to the first body.
+
+That is the whole walk. F9 hides the labels, F8 mirrors, the right mouse button
+drags the body somewhere else, and the wheel scales it.
