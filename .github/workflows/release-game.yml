@@ -106,6 +106,34 @@ jobs:
           python3 tools/package.py --binary "$BIN" \
                                    --out "dist/${{ matrix.artifact }}" --zip
 
+      # THE ARTIFACT ABOUT TO BE UPLOADED, not a build made to test with.
+      #
+      # The test job compiles its own copy WITHOUT -DOD_ACCOUNT_ISSUER, so the
+      # binary players download is the one nothing runs. That is not a
+      # hypothetical gap: v1.0.4a shipped with sign-in disabled on all four
+      # platforms, and CI was green, because the thing that was broken existed
+      # only in the build nobody tested.
+      #
+      # So this reads the packaged tree itself, at the last moment before it
+      # leaves the machine. The URL is a plain string literal in the binary --
+      # bakedAccountIssuer() returns it -- so its absence means the define did
+      # not reach this build.
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service in ${{ matrix.artifact }}::This \
+            build does not contain $issuer, so sign-in would be missing for every \
+            player who downloads it -- which is exactly what shipped in v1.0.4a. \
+            Check the -DOD_ACCOUNT_ISSUER on the configure step."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
