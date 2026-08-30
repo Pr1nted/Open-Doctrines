@@ -178,8 +178,10 @@ jobs:
               echo "hits for 'workers.dev'   : $(LC_ALL=C grep -c "workers.dev" "$exe" 2>/dev/null || echo 0)"
               echo "hits for 'opendoctrines' : $(LC_ALL=C grep -c "opendoctrines" "$exe" 2>/dev/null || echo 0)"
               echo "hits for 'accountIssuer' : $(LC_ALL=C grep -c "accountIssuer" "$exe" 2>/dev/null || echo 0)"
-              echo "longest URL-ish strings:"
-              LC_ALL=C strings -a "$exe" 2>/dev/null | grep -i "http" | sort -u | head -5 || true
+              echo "the strings that mention the host:"
+              LC_ALL=C strings -a "$exe" 2>/dev/null | grep -i "workers.dev\|opendoctrines" | sort -u | head -8 || true
+              echo "and with a shorter minimum run length:"
+              LC_ALL=C strings -a -n 4 "$exe" 2>/dev/null | grep -i "opendoctrines" | sort -u | head -8 || true
             fi
             echo "--------------------------------------"
             echo "::error title=No account service in ${{ matrix.artifact }}::This \
