@@ -101,7 +101,7 @@ jobs:
         # wrong for a release, which would then only be reproducible against
         # whatever that branch was on the day. Bump this to the tag a release is
         # meant to carry; see the option's own comment in CMakeLists.txt.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON -DOD_DRAGOMAN_REF=v0.4.0
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON -DOD_DRAGOMAN_REF=v0.4.1
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
