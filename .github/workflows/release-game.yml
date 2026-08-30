@@ -148,6 +148,23 @@ jobs:
           # difference was the locale rather than the build.
           found=$(LC_ALL=C grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
           if [ -z "$found" ]; then
+            # SAY WHAT WAS ACTUALLY THERE. "not found" alone sent an
+            # investigation through the shell, the locale and the strip step
+            # before anybody could tell whether the string was missing, partial,
+            # or simply being looked for in the wrong place.
+            echo "--- what the artifact does contain ---"
+            ls -la "dist/${{ matrix.artifact }}" | head -20 || true
+            exe=$(find "dist/${{ matrix.artifact }}" -maxdepth 3 -type f -name "OpenDoctrines*" | head -1)
+            echo "binary: ${exe:-<none found>}"
+            if [ -n "$exe" ]; then
+              file "$exe" || true
+              echo "hits for 'workers.dev'   : $(LC_ALL=C grep -c "workers.dev" "$exe" 2>/dev/null || echo 0)"
+              echo "hits for 'opendoctrines' : $(LC_ALL=C grep -c "opendoctrines" "$exe" 2>/dev/null || echo 0)"
+              echo "hits for 'accountIssuer' : $(LC_ALL=C grep -c "accountIssuer" "$exe" 2>/dev/null || echo 0)"
+              echo "longest URL-ish strings:"
+              LC_ALL=C strings -a "$exe" 2>/dev/null | grep -i "http" | sort -u | head -5 || true
+            fi
+            echo "--------------------------------------"
             echo "::error title=No account service in ${{ matrix.artifact }}::This \
             build does not contain $issuer, so sign-in would be missing for every \
             player who downloads it -- which is exactly what shipped in v1.0.4a. \
