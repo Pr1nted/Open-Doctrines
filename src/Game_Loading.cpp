@@ -1,5 +1,10 @@
 #include "Game.h"
 #include "util/LoadLog.h"
+// getrusage() below. Guarded the way Game.cpp guards the same header: MSVC has
+// no <sys/resource.h>, and emscripten reports the wasm heap instead.
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <sys/resource.h>
+#endif
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
 #include <emscripten/heap.h>
@@ -148,6 +153,11 @@ static void logHeapAt(const char* phase) {
     // figure for this game is 1.8 GB while the menu's heap is 344 MB.
     const double mb = (double)emscripten_get_heap_size() / (1024.0 * 1024.0);
     printf("[MEM] %-26s heap %.0f MB\n", phase, mb);
+#elif defined(_WIN32)
+    // No getrusage on Windows. This line is a diagnostic for a load that dies
+    // partway, so the phase name is the part worth keeping; the figure is not
+    // worth dragging psapi in for.
+    printf("[MEM] %-26s (peak rss not sampled here)\n", phase);
 #else
     struct rusage ru{};
     if (getrusage(RUSAGE_SELF, &ru) == 0) {
