@@ -144,15 +144,24 @@ GROUPS = [
 
 def first_line(path):
     """The summary line, taken from the script itself."""
+    # encoding="utf-8" EXPLICITLY, on every read below.
+    #
+    # Without it Python uses the locale's codec, which on a Windows runner is
+    # cp1252. Two of these files carry UTF-8 further down; ast.parse died on
+    # the decode, the except swallowed it, and the tool was reported as having
+    # no docstring at all -- so CI failed the tool index on Windows and passed
+    # everywhere else. The repository is UTF-8; say so rather than asking the
+    # machine.
     try:
         if path.endswith(".py"):
-            doc = ast.get_docstring(ast.parse(open(path).read())) or ""
+            with open(path, encoding="utf-8") as f:
+                doc = ast.get_docstring(ast.parse(f.read())) or ""
             return doc.strip().split("\n")[0]
         # Shell scripts: the first comment line after the shebang that says
         # something. A bare "#" spacer above the summary is ordinary style, and
         # reading it as "no header" would only force every script into one
         # layout to satisfy the checker.
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 if line.startswith("#!"):
                     continue
