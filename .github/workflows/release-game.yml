@@ -166,6 +166,24 @@ jobs:
       # leaves the machine. The URL is a plain string literal in the binary --
       # bakedAccountIssuer() returns it -- so its absence means the define did
       # not reach this build.
+      # The same three questions, asked of the PACKAGED copy this time. The
+      # built binary answers yes to all of them and the artifact is said to
+      # answer no, so one of these two files is not what it is assumed to be.
+      - name: What the packaged binary actually holds
+        shell: bash
+        run: |
+          d="dist/${{ matrix.artifact }}"
+          b=$(find "$d" -maxdepth 3 -type f -name "OpenDoctrines*" ! -name "*.txt" | head -1)
+          echo "packaged binary: ${b:-<none>}"
+          [ -n "$b" ] || exit 0
+          ls -l "$b"
+          echo "opendoctrines-net : $(LC_ALL=C grep -c "opendoctrines-net" "$b" 2>/dev/null || echo 0)"
+          echo "full URL          : $(LC_ALL=C grep -c "https://opendoctrines-net.opendoctrines.workers.dev" "$b" 2>/dev/null || echo 0)"
+          echo "-F full URL       : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$b" 2>/dev/null || echo 0)"
+          src=build/OpenDoctrines
+          [ -d "build/OpenDoctrines.app" ] && src=build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines
+          [ -f "$src" ] && { echo "built binary size : $(stat -c%s "$src" 2>/dev/null || stat -f%z "$src")"; }
+
       - name: The packaged copy carries the account service
         shell: bash
         run: |
