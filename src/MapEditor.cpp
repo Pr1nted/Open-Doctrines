@@ -7504,6 +7504,13 @@ void MapEditor::openScriptEditor(const std::string& name) {
 void MapEditor::lintScriptEditor() {
     m_scriptEdErrors.clear();
     struct Frame { std::string kw; int line; };
+    int declaredVersion = ScriptEngine::ENGINE_VERSION;
+    for (const auto& l : m_scriptEdLines) {
+        const size_t a = l.find_first_not_of(" \t");
+        if (a == std::string::npos) continue;
+        if (l.compare(a, 14, "#OD/MapEngine/") == 0) sscanf(l.c_str() + a + 14, "%d", &declaredVersion);
+        break;
+    }
     std::vector<Frame> stack;
     int depthAtWait = 0;
     for (int i = 0; i < (int)m_scriptEdLines.size(); ++i) {
@@ -7523,6 +7530,10 @@ void MapEditor::lintScriptEditor() {
             if (norm != line) { line = norm; tokens = tokenizeStatic(line); if (tokens.empty()) continue; }
         }
         const std::string& kw = tokens[0];
+        if (declaredVersion < 2 && ScriptEngine::isVersion2StatementPublic(kw)) {
+            m_scriptEdErrors[i] = "'" + kw + "' needs #OD/MapEngine/2";
+            continue;
+        }
 
         if (kw == "if" || kw == "unless" || kw == "foreach" || kw == "while" ||
             kw == "for" || kw == "repeat" || kw == "try") {
@@ -7730,6 +7741,28 @@ void MapEditor::drawScriptEditorOverlay() {
              16, 14, 20, ACCENT);
     DrawText(T("Ctrl/Cmd+S save · ESC save & close · Tab completes hint · Shift+arrows/drag select · Ctrl+C/X/V/A"),
              16, 40, 12, Color{150, 150, 170, 220});
+    // ── A script pinned to an older engine version says so, loudly ──
+    //
+    // The header is not decoration: version 1 refuses version 2's statements
+    // at run time, so an author writing `for` into a file that still says
+    // /1 would otherwise only find out when the map loads.
+    {
+        int declared = ScriptEngine::ENGINE_VERSION;
+        for (const auto& l : m_scriptEdLines) {
+            const size_t a = l.find_first_not_of(" \t");
+            if (a == std::string::npos) continue;
+            if (l.compare(a, 14, "#OD/MapEngine/") == 0) { sscanf(l.c_str() + a + 14, "%d", &declared); }
+            break;
+        }
+        if (declared < ScriptEngine::ENGINE_VERSION) {
+            const std::string warn =
+                TextFormat(T("Engine version %d: version %d statements (for, repeat, break, "
+                             "try, jump, print) are refused here"),
+                           declared, ScriptEngine::ENGINE_VERSION);
+            DrawText(warn.c_str(), 16, m_screenH - 22, 12, Color{235, 190, 90, 255});
+        }
+    }
+
     if (!m_scriptEdErrors.empty()) {
         std::string errMsg = std::to_string(m_scriptEdErrors.size()) + " error" +
                              (m_scriptEdErrors.size() == 1 ? "" : "s");

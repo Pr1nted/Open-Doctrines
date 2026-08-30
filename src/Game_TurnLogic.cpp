@@ -2392,6 +2392,7 @@ void Game::processRebellions(int countryId) {
     // the script mid-sentence. tutorialAct("rebellion") calls
     // createRebelCountry directly and is not affected by this.
     if (m_tutorialMode) return;
+    if (m_scriptRebellionsOff) return;   // `set rules.rebellions false`
 
     // One census per turn, shared by every country processed in it. Counting
     // per faction would walk the country table thousands of times on the very

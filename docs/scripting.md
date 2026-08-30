@@ -2,9 +2,13 @@
 
 ## Version: 2 (OD/MapEngine/2)
 
-Version 1 files still run unchanged — everything added in 2 is backward
-compatible, and the header declares which set of features a script expects
-rather than gating them.
+Version 1 files still run: everything version 2 ADDS is backward compatible.
+The header is not decoration, though — a file that declares version 1 gets
+version 1's language, and version 2 statements (`for`, `repeat`, `break`,
+`continue`, `print`, `elseif`, `unless`, `label`, `jump`, `spawn`, `stop`,
+`try`) are refused in it, with a message saying to change the header. The map
+editor shows the same warning while you type, so a pinned version never
+surprises you at load.
 
 ## Overview
 
@@ -343,6 +347,37 @@ print "turn " + map.turn                # goes to the log
 
 `break` and `continue` act on the innermost loop that encloses them, whether
 that is `foreach`, `while`, `for` or `repeat`.
+
+## Naming a country without knowing its code
+
+`country.ISO` needs a code, and a generated world hands out codes the mapmaker
+never sees. These do not:
+
+```
+foreach country in world
+    if country.province_count > 20 and country.is_ai
+        print country.name + " is big"
+    endif
+next
+
+country.of_province.42.treasury     # whoever owns province 42
+country.largest.name                # most provinces held
+country.player.treasury             # the human's country
+map.country_count
+```
+
+Inside `foreach country in world` the fields are `country.iso`, `country.name`,
+`country.treasury`, `country.province_count` and `country.is_ai`. The order is
+by country id and does not change between runs, so a map plays the same twice.
+
+## Rules a map can change
+
+```
+set rules.rebellions false      # no revolts in this scenario
+```
+
+Readable too — `if rules.rebellions`. More switches will live under the same
+`rules.` name.
 
 ## Mods
 

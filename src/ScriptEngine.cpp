@@ -116,6 +116,7 @@ bool ScriptEngine::preprocess(const std::string& name, const std::string& conten
             if (line.rfind("#OD/MapEngine/", 0) == 0) {
                 int ver = 0;
                 sscanf(line.c_str() + 14, "%d", &ver);
+                m_scriptVersion = ver;
                 if (ver < MIN_ENGINE_VERSION || ver > ENGINE_VERSION) {
                     addError(name, lineNum, "Unsupported script engine version " + std::to_string(ver) +
                                             " (this build runs " + std::to_string(MIN_ENGINE_VERSION) +
@@ -295,6 +296,19 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
 
         // Check for block-ending keywords
         std::string kw = tokens[0];
+
+        // A version 1 file gets version 1's language. Refused with the fix in
+        // the message, because the alternative -- running it anyway -- means
+        // the header is decoration and a map that pins a version still breaks
+        // when the engine moves.
+        if (m_scriptVersion < 2 && isVersion2Statement(kw)) {
+            addError(scriptName, lineIdx + 1,
+                     "'" + kw + "' needs engine version 2; this script declares " +
+                     std::to_string(m_scriptVersion) +
+                     " (change the header to #OD/MapEngine/2)");
+            lineIdx++;
+            continue;
+        }
         if (kw == "endif" || kw == "next" || kw == "else" || kw == "elseif" || kw == "endwhile") {
             return true; // block ended — caller handles
         }
@@ -451,9 +465,10 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         // foreach item in array.NAME / foreach item in list.NAME
         if (kw == "foreach") {
             if (tokens.size() < 4 || tokens[2] != "in" ||
-                (tokens[1] != "province" && tokens[1] != "item")) {
+                (tokens[1] != "province" && tokens[1] != "item" && tokens[1] != "country")) {
                 addError(scriptName, lineIdx + 1,
-                         "foreach: expected 'foreach province in country.ISO' or 'foreach item in array/list.NAME'");
+                         "foreach: expected 'foreach province in country.ISO', "
+                         "'foreach country in world', or 'foreach item in array/list.NAME'");
                 lineIdx++; return false;
             }
             std::string sourceRef = tokens[3];
@@ -472,6 +487,50 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 blockEnd++;
             }
             if (depth != 0) { addError(scriptName, lineIdx + 1, "foreach: missing next"); return false; }
+
+            // ── foreach country in world ──
+            //
+            // The answer to "a generated map has codes nobody knows": walk
+            // them all and decide from what each one IS. Bound the same way
+            // the province loop binds its fields -- as literal local keys, so
+            // `country.treasury` inside the body is an exact lookup.
+            if (tokens[1] == "country") {
+                if (sourceRef != "world") {
+                    addError(scriptName, lineIdx + 1, "foreach country: expected 'in world'");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                auto& vars = const_cast<std::unordered_map<std::string, ScriptValue>&>(localVars);
+                std::vector<int> cids;
+                for (const auto& [id, c] : m_game->m_countries.getAll()) {
+                    (void)c;
+                    if (id > 0 && id < Game::REBEL_CID_MIN) cids.push_back(id);
+                }
+                std::sort(cids.begin(), cids.end());   // stable, so a map plays the same twice
+                for (int cid : cids) {
+                    const Country* c = m_game->m_countries.getCountry(cid);
+                    if (!c) continue;
+                    long long owned = 0;
+                    for (int owner : m_game->m_provinceCountryLookup) if (owner == cid) ++owned;
+                    vars["country"] = ScriptValue::makeStr(c->isoA3);
+                    vars["country.iso"] = ScriptValue::makeStr(c->isoA3);
+                    vars["country.name"] = ScriptValue::makeStr(c->name);
+                    vars["country.treasury"] = ScriptValue::makeFloat(c->treasury);
+                    vars["country.province_count"] = ScriptValue::makeInt(owned);
+                    vars["country.is_ai"] = ScriptValue::makeBool(cid != m_game->m_playerCountryId);
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                    if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                    if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                    if (!m_jumpLabel.empty() || m_stopped) break;
+                }
+                for (const char* k : {"country", "country.iso", "country.name", "country.treasury",
+                                      "country.province_count", "country.is_ai"})
+                    vars.erase(k);
+                lineIdx = blockEnd + 1;
+                continue;
+            }
+
 
             auto& vars = const_cast<std::unordered_map<std::string, ScriptValue>&>(localVars);
 
@@ -864,6 +923,16 @@ void ScriptEngine::execCollectionStmt(const std::vector<std::string>& tokens, co
 }
 
 
+bool ScriptEngine::isVersion2StatementPublic(const std::string& kw) { return isVersion2Statement(kw); }
+
+bool ScriptEngine::isVersion2Statement(const std::string& kw) {
+    static const char* kV2[] = {"for", "repeat", "break", "continue", "print", "elseif",
+                                "unless", "label", "jump", "spawn", "stop",
+                                "try", "catch", "endtry"};
+    for (const char* k : kV2) if (kw == k) return true;
+    return false;
+}
+
 ScriptValue ScriptEngine::evalExpr(const std::string& expr,
                                     const std::unordered_map<std::string, ScriptValue>& localVars) {
     // ── THE REAL PARSER FIRST, THE OLD ONE AS A FALLBACK ──
@@ -1097,6 +1166,57 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             return ScriptValue::makeStr("Unknown");
         }
         if (prop == "turn") return ScriptValue::makeInt(m_game->m_turnNumber);
+        if (prop == "country_count") {
+            long long n = 0;
+            for (const auto& [id, c] : m_game->m_countries.getAll()) {
+                (void)c;
+                if (id > 0 && id < Game::REBEL_CID_MIN) ++n;
+            }
+            return ScriptValue::makeInt(n);
+        }
+    }
+
+    // rules.<name> — readable as well as settable
+    if (dots.size() == 2 && dots[0] == "rules") {
+        if (dots[1] == "rebellions") return ScriptValue::makeBool(!m_game->m_scriptRebellionsOff);
+        return {};
+    }
+
+    // ── Naming a country without knowing its code ──
+    //
+    // A generated world hands out codes the mapmaker never sees, so
+    // `country.ISO` is unusable there. These name a country by something a
+    // script CAN know: who owns a province, who is biggest, who the player
+    // is. Each rewrites to the ISO form and falls through to it, so there is
+    // one implementation of every country property.
+    if (dots.size() >= 3 && dots[0] == "country" &&
+        (dots[1] == "of_province" || dots[1] == "largest" || dots[1] == "player")) {
+        int cid = -1;
+        size_t propAt = 2;
+        if (dots[1] == "of_province") {
+            if (dots.size() < 4) return {};
+            int pid = 0;
+            try { pid = std::stoi(dots[2]); } catch (...) { return {}; }
+            if (const Province* p = m_game->m_provinces.getProvinceById(pid)) cid = p->countryId;
+            propAt = 3;
+        } else if (dots[1] == "player") {
+            cid = m_game->m_playerCountryId;
+        } else {
+            long long best = -1;
+            for (const auto& [id, c] : m_game->m_countries.getAll()) {
+                (void)c;
+                if (id <= 0 || id >= Game::REBEL_CID_MIN) continue;
+                long long n = 0;
+                for (int owner : m_game->m_provinceCountryLookup) if (owner == id) ++n;
+                if (n > best) { best = n; cid = id; }
+            }
+        }
+        const Country* c = (cid > 0) ? m_game->m_countries.getCountry(cid) : nullptr;
+        if (!c) return {};
+        std::string rebuilt = "country." + c->isoA3;
+        for (size_t k = propAt; k < dots.size(); ++k) rebuilt += "." + dots[k];
+        for (size_t k = 1; k < parts.size(); ++k) rebuilt += " " + parts[k];
+        return resolveRef(rebuilt, localVars);
     }
 
     // country.ISO.property
@@ -1197,6 +1317,14 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             else cur += c;
         }
         if (!cur.empty()) dots.push_back(cur);
+    }
+
+    // ── rules.<name> — simulation switches a map can throw ──
+    if (dots.size() == 2 && dots[0] == "rules") {
+        const std::string& which = dots[1];
+        if (which == "rebellions") { m_game->m_scriptRebellionsOff = !val.asBool(); return true; }
+        addError("", 0, "rules: no switch called '" + which + "'");
+        return false;
     }
 
     if (dots.empty()) return false;

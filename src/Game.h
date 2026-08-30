@@ -3354,6 +3354,12 @@ private:
     enum TurnState {
         TURN_NORMAL,        // Playing normally
     } m_turnState = TURN_NORMAL;
+    // Turned off by a map script with `set rules.rebellions false`. A
+    // generated world can be built around a premise that revolts contradict,
+    // and the tutorial already suppresses them the same way -- this gives a
+    // mapmaker the switch the tutorial has.
+    bool m_scriptRebellionsOff = false;
+
     int m_turnNumber = 0;
 
     // ─── Script engine ───

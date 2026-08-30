@@ -39,6 +39,11 @@ somebody to re-sign for work they already gave.
   the C way — `x++`, `x--`, `x += 1`, with `set` optional. Version 1 scripts
   run unchanged. Fixed: an `if`
   with an `else` ran both halves.
+- **Scripts can find a country without knowing its code.** A generated world
+  hands out codes the mapmaker never sees, so `foreach country in world`,
+  `country.of_province.42`, `country.largest` and `country.player` name one by
+  what it is instead. Maps can also switch rules off:
+  `set rules.rebellions false`.
 - **Scripts can ask what mods are installed.** `if mod.com.example.extra`, and
   `.version`/`.name` alongside it, so a map can offer something extra without
   requiring it. Also `try`/`catch`, `label`/`jump`/`stop`, and `spawn` for

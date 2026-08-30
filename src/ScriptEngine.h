@@ -69,6 +69,10 @@ public:
     static const int ENGINE_VERSION = 2;
     static const int MIN_ENGINE_VERSION = 1;
 
+    // The editor lints against the same rule the engine enforces, so a line
+    // the game will refuse is flagged while it is being typed.
+    static bool isVersion2StatementPublic(const std::string& kw);
+
 private:
     Game* m_game;
     std::vector<ScriptError> m_errors;
@@ -165,6 +169,13 @@ private:
     // Inside a `try`, an error is caught here instead of being reported. The
     // depth matters because a try inside a try must not swallow the outer
     // one's errors after its own catch has run.
+    // The version the running script declared in its header. Version 2
+    // statements are refused in a version 1 file: a script that says it is
+    // version 1 must behave the way version 1 did, or "pin the version"
+    // means nothing.
+    int m_scriptVersion = ENGINE_VERSION;
+    static bool isVersion2Statement(const std::string& kw);
+
     int m_tryDepth = 0;
     bool m_errorCaught = false;
     std::string m_caughtMsg;
