@@ -54,6 +54,9 @@ GROUPS = [
         # real when it sits inside the spread.
         "ai_ab.py",
         "od_bench.py",
+        # Concurrency gate for game processes: each spikes ~2 GB loading the
+        # map, and four at once is what put a 16 GB machine into swap.
+        "odlock.py",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
