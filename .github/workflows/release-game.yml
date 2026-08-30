@@ -137,6 +137,12 @@ jobs:
           echo "--- linked binary: $bin ---"
           if [ -f "$bin" ]; then
             echo "opendoctrines-net in binary : $(LC_ALL=C grep -c "opendoctrines-net" "$bin" 2>/dev/null || echo 0)"
+            # And after the strip packaging applies, which is the only thing
+            # that touches the binary between here and the artifact.
+            cp "$bin" /tmp/probe.bin
+            if [ "$RUNNER_OS" = "macOS" ]; then strip -S -x /tmp/probe.bin || true
+            else strip --strip-unneeded /tmp/probe.bin || true; fi
+            echo "opendoctrines-net after strip: $(LC_ALL=C grep -c "opendoctrines-net" /tmp/probe.bin 2>/dev/null || echo 0)"
           fi
 
       - name: Package (clean)
