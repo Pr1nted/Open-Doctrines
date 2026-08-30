@@ -1,6 +1,10 @@
 # OpenDoctrines Map Scripting Engine
 
-## Version: 1 (OD/MapEngine/1)
+## Version: 2 (OD/MapEngine/2)
+
+Version 1 files still run unchanged — everything added in 2 is backward
+compatible, and the header declares which set of features a script expects
+rather than gating them.
 
 ## Overview
 
@@ -213,6 +217,134 @@ Rules:
 - A script can contain several `waitUntil`s; they gate stages in order.
 - Global `var.*`, arrays and lists survive across suspensions.
 
+## Expressions
+
+Anywhere a condition is taken — `if`, `while`, `waitUntil` — and on the right
+of `set ... =`, the text is a full expression.
+
+| | |
+|---|---|
+| arithmetic | `+` `-` `*` `/` `%` |
+| comparison | `==` `!=` `<` `<=` `>` `>=` |
+| boolean | `and` `or` `not` (or `&&` `||` `!`) |
+| grouping | `( ... )` |
+| functions | `min` `max` `abs` `round` `floor` `ceil` `clamp` `len` |
+
+Precedence runs the way it reads: `*` `/` `%` bind tighter than `+` `-`, which
+bind tighter than comparison, which binds tighter than `and`, then `or`. So
+`a + 1 > b and c` groups as `((a + 1) > b) and c`, and parentheses override it.
+
+```
+if country.USA.treasury > 1000 and not country.USA.at_war_with RUS
+if (province.42.population + province.43.population) / 2 > 500000
+while var.round < 10 or var.pressure > 3
+```
+
+`and` and `or` short-circuit: if the left side settles the answer, the right
+side is never evaluated.
+
+Division always produces a decimal — `3 / 2` is `1.50`, not `1` — because
+integer division quietly discarding the remainder is the kind of thing a map
+only reveals much later. Use `%` for the remainder. `+` joins strings when
+either side is one.
+
+`min` and `max` take any number of arguments; `clamp(v, lo, hi)` takes three.
+
+```
+set var.share = clamp(province.42.population / 1000, 0, 100)
+set var.worst = min(country.USA.treasury, country.RUS.treasury, 0)
+```
+
+An expression that cannot be parsed, or that names something unknown, is an
+error on that line and the script stops; it is never silently zero.
+
+## set with expressions
+
+`set` takes a plain value as it always did:
+
+```
+set country.USA.treasury 10000
+set map.date Modern Day
+```
+
+Add `=` and the right-hand side becomes an expression instead:
+
+```
+set country.USA.treasury = country.USA.treasury * 2
+set var.total = province.42.population + province.43.population
+set var.label = "Year " + map.turn
+```
+
+The `=` is what distinguishes the two, and it is required for exactly that
+reason: `set map.date Modern Day` is a legal plain value, so a bare value
+cannot be read as arithmetic without turning every hyphenated name into a
+subtraction. Scripts written before expressions existed have no `=` and behave
+exactly as they did.
+
+`+=`, `-=`, `*=` and `/=` fold against the current value:
+
+```
+set country.USA.treasury += 500
+set var.round += 1
+```
+
+## More ways to say it
+
+```
+unless country.USA.at_war_with RUS      # if not (…)
+    set var.peace true
+endif
+
+if map.turn < 5
+    set var.phase "early"
+elseif map.turn < 20
+    set var.phase "middle"
+else
+    set var.phase "late"
+endif
+
+for var.i = 1 to 10                     # counting loop
+    set var.total += var.i
+next
+
+repeat 3                                # the same, without the variable
+    set var.ticks += 1
+next
+
+foreach province in country.USA
+    if province.population < 1000
+        continue                        # skip to the next one
+    endif
+    if province.population > 900000
+        break                           # leave the loop
+    endif
+next
+
+print "turn " + map.turn                # goes to the log
+```
+
+`break` and `continue` act on the innermost loop that encloses them, whether
+that is `foreach`, `while`, `for` or `repeat`.
+
+## Blocks
+
+The language is a tree, and so is a block editor: `2 + 3 * 4` is one block
+holding two, and `if a and b` is a boolean block in an `if` block's slot. Text
+and blocks are two views of the same structure, and converting between them
+does not lose anything.
+
+Two properties make that safe, and both are held by tests:
+
+- **Structure is explicit.** One command per line, and every block that opens
+  is closed by name — `endif`, `next`, `endwhile`. Nesting never has to be
+  guessed from indentation, which is cosmetic here.
+- **Round-tripping is stable.** Reading an expression into a tree and writing
+  it back produces text that reads the same way and parses to the same tree,
+  with parentheses kept only where dropping them would regroup the expression.
+
+Comments and blank lines belong to the line below them, so a script that goes
+to blocks and back keeps them.
+
 ## Value Types
 
 - Integers: `42`, `-5`, `0`
@@ -292,8 +424,8 @@ extension when displaying error messages.
 
 ## Limitations
 
-- Expressions support a single comparison per condition — no arithmetic,
-  `and`/`or`, or parentheses (beyond the optional `waitUntil(...)` pair).
+- Conditions are full expressions (see **Expressions**). What is still missing
+  is user-defined functions and a `for i = 1 to N` counting loop.
 - `waitUntil` must be at top level.
 - Suspended scripts are **not** saved into save games: when a save is loaded,
   entry scripts run again from the top and re-suspend at their first false

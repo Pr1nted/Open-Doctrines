@@ -55,7 +55,12 @@ public:
     // Get the last error (for debug display)
     const std::vector<ScriptError>& getErrors() const { return m_errors; }
 
-    static const int ENGINE_VERSION = 1;
+    // 2 adds expressions (arithmetic, and/or, parentheses, calls), `set =`
+    // and its compound forms, elseif, for/repeat, break/continue and print.
+    // Version 1 files still run: everything added is backward compatible, and
+    // the header is a declaration of intent rather than a gate.
+    static const int ENGINE_VERSION = 2;
+    static const int MIN_ENGINE_VERSION = 1;
 
 private:
     Game* m_game;
@@ -122,6 +127,12 @@ private:
 
     // Compare two values with an operator
     bool compareValues(const ScriptValue& lhs, const std::string& op, const ScriptValue& rhs);
+
+    // Set by `break` / `continue`, cleared by the loop that consumes it.
+    // A member rather than a return value because executeBlock's bool already
+    // means "the block ended" and the two are not the same thing.
+    enum class LoopSignal { NONE, BREAK, CONTINUE };
+    LoopSignal m_loopSignal = LoopSignal::NONE;
 
     // Error helper
     void addError(const std::string& scriptName, int lineNum, const std::string& msg);

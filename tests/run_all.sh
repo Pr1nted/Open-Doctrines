@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest NeuralNetTest ModelBlobTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -136,6 +136,7 @@ run "neural net gradients" "$bin/NeuralNetTest"
 # is the only copy of every hour of training, so "it round-trips" is checked
 # on the real bytes and not only on synthetic ones.
 run "ai model container" "$bin/ModelBlobTest" "$root/data/ai/model.bin"
+run "map-script expressions" "$bin/ScriptExprTest"
 run "odsv turn delta"  "$bin/SaveDeltaTest"
 # The dialogue markup and its line breaker, then the character rig: loading
 # the shipped test character, skinning it, blending poses, and the blink

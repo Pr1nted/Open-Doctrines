@@ -1,49 +1,11 @@
 #include "ScriptEngine.h"
+#include "script/Expr.h"
 #include "Game.h"
 #include "GameInternals.h"
+#include <cstring>
 #include <sstream>
 #include <algorithm>
 #include <cmath>
-
-std::string ScriptValue::asString() const {
-    switch (type) {
-        case INT: return std::to_string(intVal);
-        case FLOAT: { char buf[32]; snprintf(buf, sizeof(buf), "%.2f", floatVal); return buf; }
-        case STRING: return strVal;
-        case BOOL: return boolVal ? "true" : "false";
-        default: return "";
-    }
-}
-
-long long ScriptValue::asInt() const {
-    switch (type) {
-        case INT: return intVal;
-        case FLOAT: return (long long)floatVal;
-        case BOOL: return boolVal ? 1 : 0;
-        case STRING: { try { return std::stoll(strVal); } catch (...) { return 0; } }
-        default: return 0;
-    }
-}
-
-double ScriptValue::asFloat() const {
-    switch (type) {
-        case INT: return (double)intVal;
-        case FLOAT: return floatVal;
-        case BOOL: return boolVal ? 1.0 : 0.0;
-        case STRING: { try { return std::stod(strVal); } catch (...) { return 0; } }
-        default: return 0;
-    }
-}
-
-bool ScriptValue::asBool() const {
-    switch (type) {
-        case INT: return intVal != 0;
-        case FLOAT: return floatVal != 0.0;
-        case BOOL: return boolVal;
-        case STRING: return strVal == "true" || strVal == "1";
-        default: return false;
-    }
-}
 
 ScriptEngine::ScriptEngine(Game* game) : m_game(game) {}
 
@@ -144,9 +106,10 @@ bool ScriptEngine::preprocess(const std::string& name, const std::string& conten
             if (line.rfind("#OD/MapEngine/", 0) == 0) {
                 int ver = 0;
                 sscanf(line.c_str() + 14, "%d", &ver);
-                if (ver != ENGINE_VERSION) {
+                if (ver < MIN_ENGINE_VERSION || ver > ENGINE_VERSION) {
                     addError(name, lineNum, "Unsupported script engine version " + std::to_string(ver) +
-                                            " (expected " + std::to_string(ENGINE_VERSION) + ")");
+                                            " (this build runs " + std::to_string(MIN_ENGINE_VERSION) +
+                                            "-" + std::to_string(ENGINE_VERSION) + ")");
                     ok = false;
                     break;
                 }
@@ -261,44 +224,83 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
 
         // Check for block-ending keywords
         std::string kw = tokens[0];
-        if (kw == "endif" || kw == "next" || kw == "else" || kw == "endwhile") {
+        if (kw == "endif" || kw == "next" || kw == "else" || kw == "elseif" || kw == "endwhile") {
             return true; // block ended — caller handles
         }
 
-        // if statement
-        if (kw == "if") {
-            if (tokens.size() < 2) { addError(scriptName, lineIdx + 1, "if: missing condition"); lineIdx++; return false; }
-            // Reconstruct expression: everything after "if"
-            std::string expr = line.substr(2); // skip "if"
-            // Find matching else/endif
-            int blockStart = lineIdx + 1;
-            int blockEnd = blockStart;
+        // break / continue — consumed by the innermost enclosing loop.
+        if (kw == "break" || kw == "continue") {
+            m_loopSignal = (kw == "break") ? LoopSignal::BREAK : LoopSignal::CONTINUE;
+            lineIdx++;
+            return true;   // stop this block; the loop decides what happens next
+        }
+
+        // print <expr-or-text> — the only way to see inside a running script.
+        if (kw == "print") {
+            std::string rest = line.size() > 5 ? line.substr(6) : "";
+            size_t rs = rest.find_first_not_of(" \t");
+            rest = (rs == std::string::npos) ? "" : rest.substr(rs);
+            bool ok = false; std::string perr;
+            ScriptValue v = odscript::evaluate(
+                rest, [&](const std::string& n) { return resolveRef(n, localVars); }, ok, perr);
+            printf("[SCRIPT] %s: %s\n", scriptName.c_str(),
+                   ok ? v.asString().c_str() : rest.c_str());
+            lineIdx++;
+            continue;
+        }
+
+        // if / elseif / else / endif
+        //
+        // `unless X` is `if not X`, rewritten here rather than duplicated.
+        if (kw == "if" || kw == "unless") {
+            if (tokens.size() < 2) { addError(scriptName, lineIdx + 1, kw + ": missing condition"); lineIdx++; return false; }
+            std::string expr = line.substr(kw.size());
+            if (kw == "unless") expr = "not (" + expr + ")";
+
+            // ── FIND THE endif, AND THE else/elseif ARMS SEPARATELY ──
+            //
+            // The previous version stopped its scan at `else` and then set the
+            // resume point to that line + 1 -- the first line of the else body,
+            // which therefore ran whatever the condition was, and the trailing
+            // `endif` ended the ENCLOSING block early. No shipped map used
+            // `else`, so it never surfaced.
+            const int blockStart = lineIdx + 1;
+            int endIdx = -1;
             int depth = 1;
-            int elseIdx = -1;
-            while (blockEnd < (int)lines.size() && depth > 0) {
-                auto bt = tokenize(lines[blockEnd]);
-                if (!bt.empty()) {
-                    if (bt[0] == "if" || bt[0] == "foreach" || bt[0] == "while") depth++;
-                    else if (bt[0] == "endif" || bt[0] == "next" || bt[0] == "endwhile") depth--;
-                    else if (bt[0] == "else" && depth == 1) { elseIdx = blockEnd; depth--; }
+            std::vector<int> arms;      // the else/elseif lines at this level
+            for (int i = blockStart; i < (int)lines.size(); ++i) {
+                auto bt = tokenize(lines[i]);
+                if (bt.empty()) continue;
+                if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
+                    bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") {
+                    depth++;
+                } else if (bt[0] == "endif" || bt[0] == "next" || bt[0] == "endwhile") {
+                    if (--depth == 0) { endIdx = i; break; }
+                } else if ((bt[0] == "else" || bt[0] == "elseif") && depth == 1) {
+                    arms.push_back(i);
                 }
-                if (depth == 0) break;
-                blockEnd++;
             }
-            if (depth != 0) { addError(scriptName, lineIdx + 1, "if: missing endif"); return false; }
+            if (endIdx < 0) { addError(scriptName, lineIdx + 1, "if: missing endif"); return false; }
 
-            // Evaluate condition
-            bool cond = evalExpr(expr, localVars).asBool();
-
-            // Execute the appropriate block
-            int subIdx = blockStart;
-            if (cond) {
-                executeBlock(lines, subIdx, scriptName, localVars);
-            } else if (elseIdx >= 0) {
-                subIdx = elseIdx + 1;
+            // Walk the arms in order and run the first whose condition holds.
+            int bodyStart = -1;
+            if (evalExpr(expr, localVars).asBool()) {
+                bodyStart = blockStart;
+            } else {
+                for (size_t a = 0; a < arms.size(); ++a) {
+                    auto bt = tokenize(lines[arms[a]]);
+                    if (bt[0] == "else") { bodyStart = arms[a] + 1; break; }
+                    // elseif <cond>
+                    std::string sub = lines[arms[a]].substr(lines[arms[a]].find("elseif") + 6);
+                    if (evalExpr(sub, localVars).asBool()) { bodyStart = arms[a] + 1; break; }
+                }
+            }
+            if (bodyStart >= 0) {
+                int subIdx = bodyStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
             }
-            lineIdx = blockEnd + 1; // skip past endif
+            lineIdx = endIdx + 1;
+            if (m_loopSignal != LoopSignal::NONE) return true;   // let the loop see it
             continue;
         }
 
@@ -359,6 +361,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                     vars["item.index"] = ScriptValue::makeInt((long long)i);
                     int subIdx = blockStart;
                     executeBlock(lines, subIdx, scriptName, localVars);
+                if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
                 }
                 vars.erase("item");
                 vars.erase("item.index");
@@ -398,6 +402,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 // Execute the block body
                 int subIdx = blockStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
+                if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
             }
             // Clean up local var
             vars.erase("province");
@@ -418,6 +424,73 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         }
 
         // while loop
+        // for <ref> = <from> to <to>   ... next
+        // repeat <count>                ... next
+        //
+        // Both are counting loops, which the language had no way to write: a
+        // fixed number of turns of something took a var, a while, and a manual
+        // increment, three lines to say "ten times".
+        if (kw == "for" || kw == "repeat") {
+            std::string loopRef;
+            long long from = 1, to = 0;
+            bool parsedHead = false;
+            if (kw == "repeat" && tokens.size() >= 2) {
+                std::string cntExpr = line.substr(6);
+                bool ok = false; std::string cerr;
+                ScriptValue c = odscript::evaluate(
+                    cntExpr, [&](const std::string& n) { return resolveRef(n, localVars); }, ok, cerr);
+                if (ok) { from = 1; to = c.asInt(); parsedHead = true; }
+                else addError(scriptName, lineIdx + 1, "repeat: " + cerr);
+            } else if (kw == "for" && tokens.size() >= 5 && tokens[2] == "=") {
+                // for var.i = <expr> to <expr>
+                const size_t toPos = line.find(" to ");
+                if (toPos != std::string::npos) {
+                    const size_t eqPos = line.find('=');
+                    std::string fromExpr = line.substr(eqPos + 1, toPos - eqPos - 1);
+                    std::string toExpr = line.substr(toPos + 4);
+                    bool ok1 = false, ok2 = false; std::string e1, e2;
+                    auto res = [&](const std::string& n) { return resolveRef(n, localVars); };
+                    ScriptValue a = odscript::evaluate(fromExpr, res, ok1, e1);
+                    ScriptValue b = odscript::evaluate(toExpr, res, ok2, e2);
+                    if (ok1 && ok2) {
+                        loopRef = tokens[1]; from = a.asInt(); to = b.asInt(); parsedHead = true;
+                    } else {
+                        addError(scriptName, lineIdx + 1, "for: " + (ok1 ? e2 : e1));
+                    }
+                } else {
+                    addError(scriptName, lineIdx + 1, "for: expected 'for <var> = <from> to <to>'");
+                }
+            } else {
+                addError(scriptName, lineIdx + 1, kw + ": malformed loop header");
+            }
+
+            const int blockStart = lineIdx + 1;
+            int endIdx = -1, depth = 1;
+            for (int i = blockStart; i < (int)lines.size(); ++i) {
+                auto bt = tokenize(lines[i]);
+                if (bt.empty()) continue;
+                if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
+                    bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") depth++;
+                else if (bt[0] == "next" || bt[0] == "endif" || bt[0] == "endwhile") {
+                    if (--depth == 0) { endIdx = i; break; }
+                }
+            }
+            if (endIdx < 0) { addError(scriptName, lineIdx + 1, kw + ": missing next"); return false; }
+
+            if (parsedHead) {
+                long long guard = 0;
+                for (long long v = from; v <= to && guard < 100000; ++v, ++guard) {
+                    if (!loopRef.empty()) setRef(loopRef, ScriptValue::makeInt(v), localVars);
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                    if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                    if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                }
+            }
+            lineIdx = endIdx + 1;
+            continue;
+        }
+
         if (kw == "while") {
             if (tokens.size() < 2) { addError(scriptName, lineIdx + 1, "while: missing condition"); lineIdx++; return false; }
             std::string expr = line.substr(5);
@@ -427,7 +500,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             while (blockEnd < (int)lines.size() && depth > 0) {
                 auto bt = tokenize(lines[blockEnd]);
                 if (!bt.empty()) {
-                    if (bt[0] == "if" || bt[0] == "foreach" || bt[0] == "while") depth++;
+                    if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
+                        bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") depth++;
                     else if (bt[0] == "endwhile" || bt[0] == "endif" || bt[0] == "next") depth--;
                 }
                 if (depth == 0) break;
@@ -439,6 +513,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             while (evalExpr(expr, localVars).asBool() && maxIters-- > 0) {
                 int subIdx = blockStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
+                if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
             }
             if (maxIters <= 0) addError(scriptName, lineIdx + 1, "while: exceeded 10000 iterations");
             lineIdx = blockEnd + 1;
@@ -459,6 +535,59 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             // Trim
             size_t s = valStr.find_first_not_of(" \t");
             if (s != std::string::npos) valStr = valStr.substr(s);
+            // ── `set x = <expr>` AND `set x += <expr>` ──
+            //
+            // The `=` is what makes the value an EXPRESSION rather than a
+            // literal, and it is required for exactly that reason: `set
+            // map.date Modern Day` is legal in shipped maps, so a bare value
+            // cannot be parsed as arithmetic without turning every hyphenated
+            // name into a subtraction. With the marker there is no ambiguity
+            // -- old scripts have no `=` and are untouched.
+            bool assignHandled = false;
+            {
+                static const char* kAssign[] = {"+=", "-=", "*=", "/=", "="};
+                for (const char* aop : kAssign) {
+                    const size_t alen = strlen(aop);
+                    if (valStr.compare(0, alen, aop) != 0) continue;
+                    std::string rhs = valStr.substr(alen);
+                    size_t rs = rhs.find_first_not_of(" \t");
+                    rhs = (rs == std::string::npos) ? "" : rhs.substr(rs);
+
+                    bool ok = false;
+                    std::string err;
+                    ScriptValue rv = odscript::evaluate(
+                        rhs, [&](const std::string& n) { return resolveRef(n, localVars); },
+                        ok, err);
+                    if (!ok) {
+                        addError(scriptName, lineIdx + 1, "set: " + err);
+                        assignHandled = true;
+                        break;
+                    }
+                    if (alen == 2) {   // compound: fold against what is there
+                        const std::string binop(1, aop[0]);
+                        auto tree = odscript::parse(ref + " " + binop + " (" + rhs + ")", err);
+                        if (!tree) {
+                            addError(scriptName, lineIdx + 1, "set: " + err);
+                            assignHandled = true;
+                            break;
+                        }
+                        rv = odscript::eval(*tree,
+                                            [&](const std::string& n) { return resolveRef(n, localVars); },
+                                            err);
+                        if (!err.empty()) {
+                            addError(scriptName, lineIdx + 1, "set: " + err);
+                            assignHandled = true;
+                            break;
+                        }
+                    }
+                    if (!setRef(ref, rv, localVars))
+                        addError(scriptName, lineIdx + 1, "set: cannot set " + ref);
+                    assignHandled = true;
+                    break;
+                }
+            }
+            if (assignHandled) { lineIdx++; continue; }
+
             ScriptValue val;
             // Try to parse as int, float, bool, or string
             if (valStr == "true") val = ScriptValue::makeBool(true);
@@ -593,6 +722,25 @@ void ScriptEngine::execCollectionStmt(const std::vector<std::string>& tokens, co
 
 ScriptValue ScriptEngine::evalExpr(const std::string& expr,
                                     const std::unordered_map<std::string, ScriptValue>& localVars) {
+    // ── THE REAL PARSER FIRST, THE OLD ONE AS A FALLBACK ──
+    //
+    // odscript handles precedence, parentheses, arithmetic and and/or; the
+    // code below it handles exactly one comparison and cannot be given more.
+    // Both are kept because the old one accepts something the new one cannot:
+    // an UNQUOTED multi-word value, as in `if map.date == Modern Day`. That is
+    // in shipped maps, and a stricter parser would fail them at load with a
+    // syntax error, so a parse failure here means "try the old way" rather
+    // than "the script is wrong". A parse that SUCCEEDS is always preferred.
+    {
+        bool ok = false;
+        std::string err;
+        ScriptValue v = odscript::evaluate(
+            expr,
+            [&](const std::string& name) { return resolveRef(name, localVars); },
+            ok, err);
+        if (ok) return v;
+    }
+
     // Parse: <value> <operator> <value>  OR  just <value>
     std::string trimmed = expr;
     size_t s = trimmed.find_first_not_of(" \t");
