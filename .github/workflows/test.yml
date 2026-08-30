@@ -65,9 +65,15 @@ jobs:
     # A hang must not cost six hours. GitHub's default job timeout is 360
     # minutes, and a test that blocks on stdin will happily use all of it: one
     # did, holding a Windows runner for 26 minutes before anyone looked and
-    # heading for the full six. The slowest honest run here is Windows at about
-    # nine minutes, so 30 is generous and still fails fast.
-    timeout-minutes: 30
+    # heading for the full six.
+    #
+    # 30 WAS generous when the slowest honest run was Windows at nine minutes.
+    # It is not now -- the localisation, comms, dialogue and mod suites landed
+    # since, and the measured times are macos-arm64 12, linux 16, macos-x64 25,
+    # and Windows over 30: it was cancelled mid-suite with thousands of checks
+    # passed and none failed. A cap that cuts off honest work teaches people to
+    # ignore red, which is worse than a slow run.
+    timeout-minutes: 60
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
