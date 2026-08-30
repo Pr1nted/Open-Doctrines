@@ -39,10 +39,16 @@ somebody to re-sign for work they already gave.
   the C way — `x++`, `x--`, `x += 1`, with `set` optional. Version 1 scripts
   run unchanged. Fixed: an `if`
   with an `else` ran both halves.
+- **Scripts can ask what mods are installed.** `if mod.com.example.extra`, and
+  `.version`/`.name` alongside it, so a map can offer something extra without
+  requiring it. Also `try`/`catch`, `label`/`jump`/`stop`, and `spawn` for
+  running several flows in one script — cooperative, not threaded, so it
+  behaves the same in a browser.
 - **Scripts can be edited as blocks.** A Text/Blocks toggle in the map
   editor's script IDE: drag statements around, add them from a palette, and
-  switch back. The two views are the same file — a script that goes to blocks
-  and back is byte for byte what it was.
+  switch back. The two views are the same file: statements, comments and blank
+  lines all survive the trip, and only decorative indentation is re-aligned to
+  the nesting the blocks show.
 - **Greater Diplomacy 5 translation.** Exporting a map in the browser no
   longer loses large worlds: the download link was being released in the same
   tick it was clicked, before the browser had finished reading it.

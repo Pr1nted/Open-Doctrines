@@ -223,6 +223,51 @@ int main() {
               "the block editor classifies x++ as an assignment");
     }
 
+    printf("\n  -- try/catch, labels and tasks in the block model --\n");
+    {
+        const std::string src =
+            "#OD/MapEngine/2\n"
+            "label start\n"
+            "try\n"
+            "    set var.x = 1 / 0\n"
+            "catch\n"
+            "    print error\n"
+            "endtry\n"
+            "if mod.com.example.extra\n"
+            "    spawn helper\n"
+            "endif\n"
+            "stop\n"
+            "label helper\n"
+            "var.ticks++\n"
+            "jump start\n";
+        odscript::Doc d = odscript::parseScript(src);
+        check(d.error.empty(), "try/catch and labels parse  [" + d.error + "]");
+        check(odscript::unparseScript(d) == src, "and round-trip byte-identical");
+
+        // What "byte-identical" does NOT cover: indentation that does not
+        // follow the block structure. `label` opens nothing, so a line
+        // indented under it for looks is put back at column 0. Worth pinning
+        // down, because the promise people will hear is "my file is untouched"
+        // and this is the one way it is not.
+        const std::string cosmetic = "label helper\n    var.ticks++\n";
+        odscript::Doc c = odscript::parseScript(cosmetic);
+        const std::string normalised = odscript::unparseScript(c);
+        check(normalised == "label helper\nvar.ticks++\n",
+              "decorative indentation is normalised, not preserved");
+        check(odscript::unparseScript(odscript::parseScript(normalised)) == normalised,
+              "and is stable once normalised");
+
+        check(odscript::classify("try") == odscript::Block::TRY, "try is a block");
+        check(odscript::classify("label start") == odscript::Block::LABEL, "label is a label");
+        check(odscript::classify("jump start") == odscript::Block::JUMP, "jump is a jump");
+        check(odscript::classify("spawn helper") == odscript::Block::JUMP, "so is spawn");
+        check(odscript::classify("stop") == odscript::Block::JUMP, "and stop");
+
+        odscript::Doc bad = odscript::parseScript("try\n    set var.x 1\n");
+        check(bad.error.find("endtry") != std::string::npos,
+              "an unclosed try names endtry: " + bad.error);
+    }
+
     printf("\n  -- moving blocks around (what the editor's drag does) --\n");
     {
         const std::string src =

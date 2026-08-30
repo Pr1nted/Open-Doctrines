@@ -7387,6 +7387,7 @@ static bool isScriptKeyword(const std::string& t) {
     static const char* kws[] = {"set","if","else","elseif","unless","endif","foreach","in","next",
                                 "while","endwhile","for","to","repeat","break","continue","print",
                                 "waitUntil","include","array","list","create","push","remove",
+                                "label","jump","spawn","stop","try","catch","endtry","mod",
                                 "pushfront","pushback","popfront","popback","true","false",
                                 // expression functions, so they highlight too
                                 "min","max","abs","round","floor","ceil","clamp","len",
@@ -7524,9 +7525,9 @@ void MapEditor::lintScriptEditor() {
         const std::string& kw = tokens[0];
 
         if (kw == "if" || kw == "unless" || kw == "foreach" || kw == "while" ||
-            kw == "for" || kw == "repeat") {
+            kw == "for" || kw == "repeat" || kw == "try") {
             stack.push_back({kw, i});
-        } else if (kw == "endif" || kw == "next" || kw == "endwhile") {
+        } else if (kw == "endif" || kw == "next" || kw == "endwhile" || kw == "endtry") {
             // `next` closes foreach, for AND repeat; `endif` closes if and
             // unless. Version 2 added three openers and the lint knew none of
             // them, so a valid script came up red -- six errors on the demo.
@@ -7534,13 +7535,19 @@ void MapEditor::lintScriptEditor() {
             bool matches;
             if (kw == "endif")        matches = (top == "if" || top == "unless");
             else if (kw == "next")    matches = (top == "foreach" || top == "for" || top == "repeat");
+            else if (kw == "endtry")  matches = (top == "try");
             else                      matches = (top == "while");
-            const char* want = kw == "endif" ? "if" : (kw == "next" ? "foreach/for/repeat" : "while");
+            const char* want = kw == "endif" ? "if"
+                             : (kw == "next" ? "foreach/for/repeat"
+                             : (kw == "endtry" ? "try" : "while"));
             if (!matches) {
                 m_scriptEdErrors[i] = std::string("'") + kw + "' without a matching '" + want + "'";
             } else {
                 stack.pop_back();
             }
+        } else if (kw == "catch") {
+            if (stack.empty() || stack.back().kw != "try")
+                m_scriptEdErrors[i] = "'catch' without a 'try'";
         } else if (kw == "else" || kw == "elseif") {
             if (stack.empty() || (stack.back().kw != "if" && stack.back().kw != "unless"))
                 m_scriptEdErrors[i] = "'else' outside an if block";

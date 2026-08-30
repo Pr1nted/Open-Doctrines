@@ -344,6 +344,82 @@ print "turn " + map.turn                # goes to the log
 `break` and `continue` act on the innermost loop that encloses them, whether
 that is `foreach`, `while`, `for` or `repeat`.
 
+## Mods
+
+`mod.<id>` asks whether a mod is installed and running. A mod that is not
+there answers `false` rather than failing, so a script can offer something
+extra without requiring it:
+
+```
+if mod.com.example.extra
+    print "extra content is on"
+endif
+
+print mod.com.example.extra.version
+```
+
+| field | |
+|---|---|
+| `mod.<id>` | true when installed **and** enabled |
+| `mod.<id>.loaded`, `.enabled` | the same, spelled out |
+| `mod.<id>.version` | the manifest version |
+| `mod.<id>.name` | the display name |
+
+Mod ids contain dots, so where the id ends and a field begins is decided by
+matching against the mods actually installed, longest first — `mod.com.a.b`
+and `mod.com.a.b.version` both work even when a mod called `com.a` also
+exists.
+
+Calling a mod's own commands from a script is **not** possible yet: nothing in
+the mod ABI lets a mod add script commands. See docs/gearbox-abi.md.
+
+## Labels, jumps and stopping
+
+```
+label retry
+    ...
+jump retry            # resume there, leaving any open block
+stop                  # end the script, without it being an error
+```
+
+`jump` unwinds whatever is open — an `if` inside a `foreach` inside a `try` —
+and continues at the label. Backwards jumps are loops, and are capped so a
+script that jumps to itself forever cannot hang the game.
+
+## try / catch
+
+```
+try
+    set var.x = 100 / var.divisor
+catch
+    print "that did not work: " + error
+endtry
+```
+
+An error inside the `try` — a bad reference, a division by zero, a malformed
+expression — stops being a reported error and becomes the `error` variable
+inside `catch`, which holds the message. Without a `catch` the error is
+swallowed and the script carries on after `endtry`.
+
+## Doing several things at once
+
+There are no threads — the game runs in a browser too — so `spawn` starts
+another **flow**, not another thread:
+
+```
+spawn watcher
+stop
+
+label watcher
+    waitUntil map.turn >= 20
+    print "turn twenty"
+```
+
+Each task runs until it reaches a `waitUntil`, then parks exactly as a script
+does, and the next turn resumes whichever tasks are ready. They interleave at
+wait boundaries, one at a time, which is what keeps the simulation
+deterministic. Up to 64 tasks may be alive at once.
+
 ## Blocks
 
 The language is a tree, and so is a block editor: `2 + 3 * 4` is one block
@@ -359,6 +435,11 @@ Two properties make that safe, and both are held by tests:
 - **Round-tripping is stable.** Reading an expression into a tree and writing
   it back produces text that reads the same way and parses to the same tree,
   with parentheses kept only where dropping them would regroup the expression.
+
+The one thing a visit to the block editor does change is indentation that does
+not follow the block structure: it is re-indented to match the nesting, since
+that is what the blocks show. Indentation inside `if`, `foreach`, `for`,
+`while` and `try` is already structural and comes back exactly as it was.
 
 Comments and blank lines belong to the line below them, so a script that goes
 to blocks and back keeps them.

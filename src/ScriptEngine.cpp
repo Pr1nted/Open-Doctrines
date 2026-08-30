@@ -1,6 +1,7 @@
 #include "ScriptEngine.h"
 #include "script/Expr.h"
 #include "Game.h"
+#include "mods/ModManager.h"
 #include "GameInternals.h"
 #include <cctype>
 #include <cstring>
@@ -29,6 +30,14 @@ std::vector<std::string> ScriptEngine::tokenize(const std::string& line) {
 }
 
 void ScriptEngine::addError(const std::string& scriptName, int lineNum, const std::string& msg) {
+    // Inside a try, the error becomes a value the script can handle rather
+    // than a line in the error list. The FIRST one wins: a catch block reads
+    // what went wrong, and later failures in the same try would overwrite the
+    // thing it is about to report.
+    if (m_tryDepth > 0) {
+        if (!m_errorCaught) { m_errorCaught = true; m_caughtMsg = msg; }
+        return;
+    }
     m_errors.push_back({scriptName, msg, lineNum});
     printf("[SCRIPT] Error in %s line %d: %s\n", scriptName.c_str(), lineNum, msg.c_str());
 }
@@ -158,6 +167,7 @@ std::string ScriptEngine::waitCondition(const std::string& line) {
 
 void ScriptEngine::runLines(const std::string& name, std::vector<std::string> lines, int startLine) {
     int pc = startLine;
+    long long jumps = 0;
     while (pc < (int)lines.size()) {
         if (isWaitLine(lines[pc])) {
             std::string expr = waitCondition(lines[pc]);
@@ -195,7 +205,47 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
         std::unordered_map<std::string, ScriptValue> localVars;
         int idx = 0;
         executeBlock(segment, idx, name, localVars);
+
+        if (m_stopped) { m_stopped = false; return; }
+        if (!m_jumpLabel.empty()) {
+            // Resolved here, against every line, so a jump can cross the
+            // waitUntil boundaries this loop splits on.
+            const std::string want = m_jumpLabel;
+            m_jumpLabel.clear();
+            int found = -1;
+            for (int i2 = 0; i2 < (int)lines.size(); ++i2) {
+                auto lt = tokenize(lines[i2]);
+                if (lt.size() >= 2 && lt[0] == "label" && lt[1] == want) { found = i2; break; }
+            }
+            if (found < 0) {
+                addError(name, pc + 1, "jump: no label '" + want + "'");
+                return;
+            }
+            // A jump BACKWARDS is a loop, and a script that jumps to its own
+            // label forever would hang the game on the turn it loaded.
+            if (++jumps > 100000) {
+                addError(name, pc + 1, "jump: too many jumps (a loop that never ends?)");
+                return;
+            }
+            pc = found + 1;
+            continue;
+        }
         pc = end;
+    }
+
+    // Tasks spawned along the way run once the spawner is done with its own
+    // segment. Drained iteratively rather than recursively so a task that
+    // spawns a task does not grow the C++ stack.
+    while (!m_pendingTasks.empty()) {
+        PendingTask t = std::move(m_pendingTasks.front());
+        m_pendingTasks.erase(m_pendingTasks.begin());
+        int at = -1;
+        for (int i2 = 0; i2 < (int)t.lines.size(); ++i2) {
+            auto lt = tokenize(t.lines[i2]);
+            if (lt.size() >= 2 && lt[0] == "label" && lt[1] == t.label) { at = i2; break; }
+        }
+        if (at < 0) { addError(t.name, 0, "spawn: no label '" + t.label + "'"); continue; }
+        runLines(t.name + " [" + t.label + "]", std::move(t.lines), at + 1);
     }
 }
 
@@ -248,6 +298,78 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         if (kw == "endif" || kw == "next" || kw == "else" || kw == "elseif" || kw == "endwhile") {
             return true; // block ended — caller handles
         }
+
+        // label <name> — a marker. Costs nothing at runtime.
+        if (kw == "label") { lineIdx++; continue; }
+
+        // jump <name> — resume at that label, unwinding whatever is open.
+        if (kw == "jump") {
+            if (tokens.size() < 2) {
+                addError(scriptName, lineIdx + 1, "jump: which label?");
+                lineIdx++; continue;
+            }
+            m_jumpLabel = tokens[1];
+            return true;              // unwind; runLines finds the label
+        }
+
+        // spawn <label> — start another flow there; this one carries on.
+        if (kw == "spawn") {
+            if (tokens.size() < 2) {
+                addError(scriptName, lineIdx + 1, "spawn: which label?");
+                lineIdx++; continue;
+            }
+            if ((int)(m_pendingTasks.size() + m_suspended.size()) >= MAX_LIVE_TASKS) {
+                addError(scriptName, lineIdx + 1,
+                         "spawn: too many tasks (limit " + std::to_string(MAX_LIVE_TASKS) + ")");
+                lineIdx++; continue;
+            }
+            m_pendingTasks.push_back({scriptName, lines, tokens[1]});
+            lineIdx++;
+            continue;
+        }
+
+        // stop — end the script here, without it being an error.
+        if (kw == "stop") { m_stopped = true; lineIdx++; return true; }
+
+        // try / catch / endtry
+        if (kw == "try") {
+            const int bodyStart = lineIdx + 1;
+            int catchIdx = -1, endIdx = -1, depth = 1;
+            for (int i2 = bodyStart; i2 < (int)lines.size(); ++i2) {
+                auto bt = tokenize(lines[i2]);
+                if (bt.empty()) continue;
+                if (bt[0] == "try") depth++;
+                else if (bt[0] == "endtry") { if (--depth == 0) { endIdx = i2; break; } }
+                else if (bt[0] == "catch" && depth == 1) catchIdx = i2;
+            }
+            if (endIdx < 0) { addError(scriptName, lineIdx + 1, "try: missing endtry"); return false; }
+
+            const bool outerCaught = m_errorCaught;
+            const std::string outerMsg = m_caughtMsg;
+            m_errorCaught = false;
+            m_caughtMsg.clear();
+            m_tryDepth++;
+            int subIdx = bodyStart;
+            executeBlock(lines, subIdx, scriptName, localVars);
+            m_tryDepth--;
+
+            const bool failed = m_errorCaught;
+            const std::string msg = m_caughtMsg;
+            m_errorCaught = outerCaught;
+            m_caughtMsg = outerMsg;
+
+            if (failed && catchIdx >= 0 && m_jumpLabel.empty() && !m_stopped) {
+                // `error` is the message, readable inside the catch only.
+                auto lv = localVars;
+                lv["error"] = ScriptValue::makeStr(msg);
+                int cIdx = catchIdx + 1;
+                executeBlock(lines, cIdx, scriptName, lv);
+            }
+            lineIdx = endIdx + 1;
+            if (!m_jumpLabel.empty() || m_stopped || m_loopSignal != LoopSignal::NONE) return true;
+            continue;
+        }
+        if (kw == "catch" || kw == "endtry") return true;   // ends the try body
 
         // break / continue — consumed by the innermost enclosing loop.
         if (kw == "break" || kw == "continue") {
@@ -844,6 +966,61 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
     // Quoted string
     if (ref.size() >= 2 && ref.front() == '"' && ref.back() == '"')
         return ScriptValue::makeStr(ref.substr(1, ref.size() - 2));
+
+    // ── mod.<id> and mod.<id>.<field> ──
+    //
+    // Mod ids are reverse-DNS and full of dots, so where the id stops and a
+    // field starts cannot be decided by splitting on '.'. It is decided by
+    // matching against the ids that are actually installed, longest first --
+    // `mod.com.example.x` is the mod, `mod.com.example.x.version` is its
+    // version, and both work even if some other mod is called `com.example`.
+    //
+    // An id that is not installed resolves to a MOD that is simply false,
+    // never an error: asking whether a mod is present is the point, and a
+    // script that asks about one the player does not have must still run.
+    if (ref.rfind("mod.", 0) == 0) {
+        const std::string rest = ref.substr(4);
+        std::string bestId;
+        bool bestLoaded = false;
+        std::string bestField;
+        for (const auto& m : ModManager::get().mods()) {
+            const std::string& id = m.id;
+            if (id.empty() || rest.compare(0, id.size(), id) != 0) continue;
+            std::string field;
+            if (rest.size() == id.size())            field.clear();
+            else if (rest[id.size()] == '.')         field = rest.substr(id.size() + 1);
+            else                                    continue;   // a longer id, not this one
+            if (id.size() <= bestId.size()) continue;            // keep the longest match
+            bestId = id;
+            bestField = field;
+            bestLoaded = m.enabled && m.state == ModState::Active;
+            if (field.empty()) continue;
+            // Fields resolve below, once the best id is settled.
+        }
+        if (bestId.empty()) {
+            // Not installed. The reference still answers, as false.
+            const size_t dot = rest.find_last_of('.');
+            static const char* kFields[] = {"loaded", "enabled", "version", "name"};
+            bool looksLikeField = false;
+            if (dot != std::string::npos)
+                for (const char* f : kFields)
+                    if (rest.compare(dot + 1, std::string::npos, f) == 0) looksLikeField = true;
+            if (looksLikeField) return ScriptValue::makeStr("");
+            return ScriptValue::makeMod(rest, false);
+        }
+        if (bestField.empty()) return ScriptValue::makeMod(bestId, bestLoaded);
+        for (const auto& m : ModManager::get().mods()) {
+            if (m.id != bestId) continue;
+            if (bestField == "loaded" || bestField == "enabled")
+                return ScriptValue::makeBool(bestLoaded);
+            if (bestField == "version") return ScriptValue::makeStr(m.manifest.version);
+            if (bestField == "name")
+                return ScriptValue::makeStr(m.manifest.name.empty() ? m.id : m.manifest.name);
+            break;
+        }
+        addError("", 0, "mod." + bestId + ": unknown field '" + bestField + "'");
+        return {};
+    }
 
     // Parse references
     // country.ISO.property

@@ -31,6 +31,9 @@ struct Block {
         COLLECTION, // array … / list …
         BREAK,
         CONTINUE,
+        LABEL,      // label <name>
+        JUMP,       // jump <name> / spawn <name> / stop
+        TRY,        // try … catch … endtry
         IF,         // holds arms: the `if` body, then each elseif/else body
         FOREACH,
         WHILE,

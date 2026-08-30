@@ -23,12 +23,13 @@ bool isComment(const std::string& t) { return !t.empty() && t[0] == '#'; }
 
 bool isOpener(const std::string& w) {
     return w == "if" || w == "unless" || w == "foreach" || w == "while" ||
-           w == "for" || w == "repeat";
+           w == "for" || w == "repeat" || w == "try";
 }
 bool isTerminator(const std::string& w) {
-    return w == "endif" || w == "next" || w == "endwhile";
+    return w == "endif" || w == "next" || w == "endwhile" || w == "endtry";
 }
-bool isArm(const std::string& w) { return w == "else" || w == "elseif"; }
+// `catch` opens the second arm of a try, the way `else` does for an if.
+bool isArm(const std::string& w) { return w == "else" || w == "elseif" || w == "catch"; }
 
 struct Parser {
     std::vector<std::string> lines;
@@ -76,7 +77,8 @@ struct Parser {
                     if (stop.empty()) {
                         if (error.empty())
                             error = "missing " + std::string(w == "if" || w == "unless" ? "endif"
-                                          : (w == "while" ? "endwhile" : "next")) +
+                                          : (w == "while" ? "endwhile"
+                                          : (w == "try" ? "endtry" : "next"))) +
                                     " for '" + line + "'";
                         b.tail = tail;
                         return out.push_back(std::move(b)), out;
@@ -188,6 +190,9 @@ Block::Kind classify(const std::string& line) {
     if (w == "array" || w == "list") return Block::COLLECTION;
     if (w == "break") return Block::BREAK;
     if (w == "continue") return Block::CONTINUE;
+    if (w == "label") return Block::LABEL;
+    if (w == "jump" || w == "spawn" || w == "stop") return Block::JUMP;
+    if (w == "try") return Block::TRY;
     if (w == "if" || w == "unless") return Block::IF;
     if (w == "foreach") return Block::FOREACH;
     if (w == "while") return Block::WHILE;

@@ -15,6 +15,7 @@ std::string ScriptValue::asString() const {
         case FLOAT: { char buf[32]; snprintf(buf, sizeof(buf), "%.2f", floatVal); return buf; }
         case STRING: return strVal;
         case BOOL: return boolVal ? "true" : "false";
+        case MOD:  return strVal;          // the id, which is what a person reads
         default: return "";
     }
 }
@@ -24,6 +25,7 @@ long long ScriptValue::asInt() const {
         case INT: return intVal;
         case FLOAT: return (long long)floatVal;
         case BOOL: return boolVal ? 1 : 0;
+        case MOD:  return boolVal ? 1 : 0;
         case STRING: { try { return std::stoll(strVal); } catch (...) { return 0; } }
         default: return 0;
     }
@@ -34,6 +36,7 @@ double ScriptValue::asFloat() const {
         case INT: return (double)intVal;
         case FLOAT: return floatVal;
         case BOOL: return boolVal ? 1.0 : 0.0;
+        case MOD:  return boolVal ? 1.0 : 0.0;
         case STRING: { try { return std::stod(strVal); } catch (...) { return 0; } }
         default: return 0;
     }
@@ -44,6 +47,8 @@ bool ScriptValue::asBool() const {
         case INT: return intVal != 0;
         case FLOAT: return floatVal != 0.0;
         case BOOL: return boolVal;
+        // A mod is "true" when it is installed and enabled.
+        case MOD:  return boolVal;
         case STRING: return strVal == "true" || strVal == "1";
         default: return false;
     }
