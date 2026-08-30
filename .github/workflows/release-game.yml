@@ -183,6 +183,16 @@ jobs:
           src=build/OpenDoctrines
           [ -d "build/OpenDoctrines.app" ] && src=build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines
           [ -f "$src" ] && { echo "built binary size : $(stat -c%s "$src" 2>/dev/null || stat -f%z "$src")"; }
+          # The bytes themselves. Every question so far has been answered by a
+          # match count, and the counts disagree with each other -- so read the
+          # actual neighbourhood of the string instead of asking about it.
+          off=$(LC_ALL=C grep -aob "opendoctrines-net" "$b" 2>/dev/null | head -1 | cut -d: -f1)
+          echo "first offset: ${off:-<none>}"
+          if [ -n "$off" ]; then
+            start=$(( off > 60 ? off - 60 : 0 ))
+            dd if="$b" bs=1 skip="$start" count=200 2>/dev/null | tr -c "[:print:]" "." || true
+            echo ""
+          fi
 
       - name: The packaged copy carries the account service
         shell: bash
