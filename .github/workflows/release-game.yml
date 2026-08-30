@@ -96,12 +96,19 @@ jobs:
         # covered by GdtlTest; the browser one has never been clicked through by
         # anybody, and the freeze it had was in exactly this kind of code.
         #
+        # OD_DRAGOMAN_REF IS QUOTED, and has to be. This step runs in PowerShell
+        # on Windows, which ate the unquoted value: the same command line that
+        # gave CMake `v0.4.1` on Linux and macOS gave it `v0` on Windows, and
+        # the clone then failed with "invalid reference: v0". Three platforms
+        # green, one red, on an identical string -- the quotes are what make
+        # the argument survive the shell.
+        #
         # OD_DRAGOMAN_REF is PINNED. It defaults to `main`, which is right for
         # CI -- an upstream regression should surface here within a run -- and
         # wrong for a release, which would then only be reproducible against
         # whatever that branch was on the day. Bump this to the tag a release is
         # meant to carry; see the option's own comment in CMakeLists.txt.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON -DOD_DRAGOMAN_REF=v0.4.1
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.4.1"
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
@@ -134,7 +141,12 @@ jobs:
         run: |
           set -e
           issuer="https://opendoctrines-net.opendoctrines.workers.dev"
-          found=$(grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          # LC_ALL=C, because GNU grep in a UTF-8 locale can decline to match
+          # inside a binary whose bytes are not valid UTF-8 -- which an
+          # executable's are not. macOS (BSD grep) found the string and Linux
+          # did not, on binaries built from the same command line, and the
+          # difference was the locale rather than the build.
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
           if [ -z "$found" ]; then
             echo "::error title=No account service in ${{ matrix.artifact }}::This \
             build does not contain $issuer, so sign-in would be missing for every \
@@ -165,7 +177,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          found=$(grep -rla "dragoman_sidecar" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          found=$(LC_ALL=C grep -rla "dragoman_sidecar" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
           if [ -z "$found" ]; then
             echo "::error title=No translation layer in ${{ matrix.artifact }}::This \
             build has no open-dragoman in it, so Settings -> Experimental -> GDTL \
