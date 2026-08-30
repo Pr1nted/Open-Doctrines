@@ -191,6 +191,7 @@ Block::Kind classify(const std::string& line) {
     if (w == "break") return Block::BREAK;
     if (w == "continue") return Block::CONTINUE;
     if (w == "label") return Block::LABEL;
+    if (w == "dialog") return Block::PRINT;      // a speaking statement, coloured as one
     if (w == "jump" || w == "spawn" || w == "stop") return Block::JUMP;
     if (w == "try") return Block::TRY;
     if (w == "if" || w == "unless") return Block::IF;

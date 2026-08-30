@@ -177,6 +177,13 @@ struct Profile {
      * and the tool prints them.
      */
     std::string image;
+    /**
+     * The PNG itself, when the art does not live on disk. A map carries its
+     * cast inside the .odmap, and the archive is already held in memory --
+     * writing it out to a temp file just to hand raylib a path would put a
+     * map's private art on the player's disk. Empty means "use `image`".
+     */
+    std::string imageBytes;
     float imgEyeY = 0.338f;   ///< eye line, from the top of the image
     float imgEyeGap = 0.223f; ///< separation, fraction of image width
     float imgEyeW = 0.132f;   ///< the whole eye, not the part that shows

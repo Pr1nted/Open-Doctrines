@@ -1751,6 +1751,15 @@ public:
     // once the world it asked for is actually on screen -- the same shape as
     // m_quickStartPending, because it rides on the same loader.
     dlg::Box m_dialog;
+
+    // Characters a MAP brought with it, merged over the base cast while that
+    // map is loaded and dropped when it unloads. Scoped that way on purpose:
+    // a map's cast is the map's, and must not leak into the next one or into
+    // the tutorial's.
+    std::vector<std::string> m_mapCastNames;
+    void loadMapCast();
+    /// Runs a dialogue the MAP carries (dialog/<name>.oddlg inside the .odmap).
+    bool beginMapDialogue(const std::string& name);
     bool m_dialogOpen = false;
     bool m_tutorialPending = false;
 

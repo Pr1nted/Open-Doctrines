@@ -39,6 +39,13 @@ somebody to re-sign for work they already gave.
   the C way — `x++`, `x--`, `x += 1`, with `set` optional. Version 1 scripts
   run unchanged. Fixed: an `if`
   with an `else` ran both halves.
+- **A map can bring its own characters.** `comms/cast.json`, portraits and
+  `.oddlg` dialogue inside the .odmap, played with `dialog <name>` — the same
+  speaking window, live eyes and accent colouring the tutorial uses, scoped to
+  the map that carries them.
+- **Fixed: map scripts never ran.** Starting a new game takes the asynchronous
+  loading path, and only the synchronous one ever started the script engine —
+  so a map's scripts did nothing in ordinary play.
 - **Scripts can find a country without knowing its code.** A generated world
   hands out codes the mapmaker never sees, so `foreach country in world`,
   `country.of_province.42`, `country.largest` and `country.player` name one by

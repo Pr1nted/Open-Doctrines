@@ -213,11 +213,21 @@ void Transmission::setProfile(const Profile& p) {
         m_signalTex = Texture2D{};
     }
     m_profile = p;
-    if (!p.image.empty()) {
-        m_signalTex = LoadTexture(p.image.c_str());
+    if (!p.image.empty() || !p.imageBytes.empty()) {
+        // From memory when the art came out of an archive, from the path
+        // otherwise. Both end up as one Image, so everything below -- the
+        // skin sample beside the eye -- is written once.
+        Image im{};
+        if (!p.imageBytes.empty()) {
+            im = LoadImageFromMemory(".png", (const unsigned char*)p.imageBytes.data(),
+                                     (int)p.imageBytes.size());
+            if (im.data) m_signalTex = LoadTextureFromImage(im);
+        } else {
+            m_signalTex = LoadTexture(p.image.c_str());
+        }
         if (m_signalTex.id == 0)
             TraceLog(LOG_WARNING, "COMMS: no signal image at %s; drawing the silhouette instead",
-                     p.image.c_str());
+                     p.imageBytes.empty() ? p.image.c_str() : "(from the map archive)");
         else
             SetTextureFilter(m_signalTex, TEXTURE_FILTER_BILINEAR);
 
@@ -226,7 +236,7 @@ void Transmission::setProfile(const Profile& p) {
         // a character whose skin is 113 and wrong for one whose skin is 233,
         // where it made the sclera darker than the cheek and the eye read as
         // a hole with a rim round it.
-        Image im = LoadImage(p.image.c_str());
+        if (!im.data && p.imageBytes.empty()) im = LoadImage(p.image.c_str());
         if (im.data) {
             ImageFormat(&im, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
             const Color* px = (const Color*)im.data;

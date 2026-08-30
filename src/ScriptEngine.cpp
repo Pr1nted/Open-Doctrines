@@ -326,6 +326,24 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             return true;              // unwind; runLines finds the label
         }
 
+        // dialog <name> — play a dialogue the map carries.
+        //
+        // The same window, markup and cast machinery the tutorial uses, with
+        // the script and the portraits coming out of the .odmap instead of
+        // data/. A map that has no such dialogue says so rather than failing
+        // silently, because a missing call is invisible on screen.
+        if (kw == "dialog") {
+            if (tokens.size() < 2) {
+                addError(scriptName, lineIdx + 1, "dialog: which dialogue?");
+                lineIdx++; continue;
+            }
+            if (!m_game->beginMapDialogue(tokens[1]))
+                addError(scriptName, lineIdx + 1,
+                         "dialog: no dialog/" + tokens[1] + ".oddlg in this map");
+            lineIdx++;
+            continue;
+        }
+
         // spawn <label> — start another flow there; this one carries on.
         if (kw == "spawn") {
             if (tokens.size() < 2) {
@@ -928,7 +946,7 @@ bool ScriptEngine::isVersion2StatementPublic(const std::string& kw) { return isV
 bool ScriptEngine::isVersion2Statement(const std::string& kw) {
     static const char* kV2[] = {"for", "repeat", "break", "continue", "print", "elseif",
                                 "unless", "label", "jump", "spawn", "stop",
-                                "try", "catch", "endtry"};
+                                "try", "catch", "endtry", "dialog"};
     for (const char* k : kV2) if (kw == k) return true;
     return false;
 }

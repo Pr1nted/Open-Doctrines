@@ -7388,6 +7388,7 @@ static bool isScriptKeyword(const std::string& t) {
                                 "while","endwhile","for","to","repeat","break","continue","print",
                                 "waitUntil","include","array","list","create","push","remove",
                                 "label","jump","spawn","stop","try","catch","endtry","mod",
+                                "dialog","rules","world",
                                 "pushfront","pushback","popfront","popback","true","false",
                                 // expression functions, so they highlight too
                                 "min","max","abs","round","floor","ceil","clamp","len",

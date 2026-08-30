@@ -56,6 +56,7 @@ const Template kPalette[] = {
     {"break",           "break",                             nullptr},
     {"continue",        "continue",                          nullptr},
     {"wait until",      "waitUntil map.turn >= 10",          nullptr},
+    {"play dialogue",   "dialog intro",                      nullptr},
     {"include",         "include \"library\"",               nullptr},
 };
 

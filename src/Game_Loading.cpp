@@ -323,6 +323,16 @@ void Game::updateLoading() {
             printf("[LOAD] LOAD_GAME_DATA_OTHER: m_relations.size=%zu\n", m_relations.size());
             // Always load step 2 - relations may be in ODM but policies/ships/etc are in JSON files
             loadGameDataStep2();
+            // ── AND THE MAP'S OWN SCRIPTS ──
+            //
+            // The synchronous loader has run these since map scripting
+            // existed, in loadGameData(). This state machine -- the path
+            // every ordinary "start a new game" takes -- never did, so
+            // m_scriptEngine stayed null, tick() had nothing to tick, and a
+            // map's scripts simply did not run in normal play. Not noticed
+            // because the shipped maps carry none, and the one path that DID
+            // run them is the one the editor's preview uses.
+            runMapScripts();
             m_loadingPhase = LOAD_INIT_RENDERER;
             break;
         }
@@ -1953,9 +1963,14 @@ bool Game::loadFromODM(const std::string& odmPath) {
                 std::string entryName = fstat.m_filename;
                 if (entryName.empty() || entryName.back() == '/') continue; // directory marker
                 bool isScript = entryName.rfind("scripts/", 0) == 0;
+                // comms/ and dialog/ carry a map's own cast and its dialogue.
+                // They are kept in memory rather than written out: the
+                // portraits are loaded from these bytes directly, so a map's
+                // art never lands on the player's disk.
+                bool isCast = entryName.rfind("comms/", 0) == 0 || entryName.rfind("dialog/", 0) == 0;
                 if (entryName.rfind("licenses/", 0) == 0 || entryName.rfind("symbols/", 0) == 0 ||
                     (entryName.rfind("flags/", 0) == 0 && entryName.find(".svg") != std::string::npos) ||
-                    isScript) {
+                    isScript || isCast) {
                     // Check if already extracted
                     bool already = false;
                     for (auto& e : entries) if (e.name == entryName) { already = true; break; }

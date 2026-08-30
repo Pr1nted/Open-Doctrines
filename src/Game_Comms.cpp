@@ -324,6 +324,72 @@ void Game::loadCommsCast() {
     }
 }
 
+// ── A map's own cast ──
+//
+// comms/cast.json inside the .odmap, with its portraits beside it. Read from
+// the archive already in memory, so nothing is written to disk, and layered
+// OVER the base cast: a map may add characters, and may replace one of the
+// game's own for its own story, but only while it is loaded.
+void Game::loadMapCast() {
+    loadCommsCast();                       // the base cast first, so a map layers over it
+    for (const std::string& n : m_mapCastNames) { m_cast.erase(n); m_castVoice.erase(n); m_castLabel.erase(n); }
+    m_mapCastNames.clear();
+
+    auto it = m_odmJsonData.find("comms/cast.json");
+    if (it == m_odmJsonData.end()) return;
+    try {
+        nlohmann::json j = nlohmann::json::parse(it->second, nullptr, true, true);
+        const nlohmann::json chars = j.value("characters", nlohmann::json::object());
+        for (auto& [name, c] : chars.items()) {
+            comms::Profile p;
+            comms::profileFromJson(c, "", p);     // no directory: the art is in the archive
+            if (!p.image.empty()) {
+                auto img = m_odmJsonData.find("comms/" + p.image);
+                if (img != m_odmJsonData.end()) p.imageBytes = img->second;
+                else LoadLog() << "[comms] map cast '" << name << "': no comms/" << p.image
+                               << " in the archive" << std::endl;
+                p.image.clear();                  // it is bytes now, not a path
+            }
+            p.seed = comms::seedFromName(name);
+            m_cast[name] = p;
+            m_castVoice[name] = c.value("voice", std::string("narrator"));
+            m_castLabel[name] = {c.value("display", name),
+                                 c.value("role", std::string()),
+                                 c.value("short", std::string())};
+            m_mapCastNames.push_back(name);
+        }
+        LoadLog() << "[comms] map cast: " << m_mapCastNames.size() << " character(s)" << std::endl;
+    } catch (const std::exception& e) {
+        LoadLog() << "[comms] map cast.json: " << e.what() << std::endl;
+    }
+}
+
+// A dialogue the map carries. Same markup and the same window as the
+// tutorial's, parsed straight out of the archive.
+bool Game::beginMapDialogue(const std::string& name) {
+    loadMapCast();
+    // The active language first, then the map's default, so a map may ship
+    // translations the way the game does.
+    const std::string lang = od::i18n::language();
+    const char* tries[] = {nullptr, nullptr, nullptr};
+    const std::string a = "dialog/" + lang + "/" + name + ".oddlg";
+    const std::string b = "dialog/en/" + name + ".oddlg";
+    const std::string c = "dialog/" + name + ".oddlg";
+    const std::string* order[] = {&a, &b, &c};
+    (void)tries;
+    for (const std::string* pth : order) {
+        auto d = m_odmJsonData.find(*pth);
+        if (d == m_odmJsonData.end()) continue;
+        dlg::Script sc = dlg::parse(d->second);
+        beginDialogue("");                       // wire the resolvers and reset state
+        m_dialogScript = name;
+        m_dialog.openScript(std::move(sc));
+        m_dialogOpen = true;
+        return true;
+    }
+    return false;
+}
+
 void Game::commsSpeaker(const std::string& speaker) {
     if (!m_commsBuilt) return;
     // Narration has no face. A page with no @speaker is the script talking,

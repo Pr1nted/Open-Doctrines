@@ -408,6 +408,35 @@ exists.
 Calling a mod's own commands from a script is **not** possible yet: nothing in
 the mod ABI lets a mod add script commands. See docs/gearbox-abi.md.
 
+## Characters and dialogue
+
+A map can carry its own cast and play it from a script. Everything lives
+inside the `.odmap`:
+
+```
+comms/cast.json          the characters
+comms/envoy.png          greyscale art, recoloured to the player's accent
+dialog/en/intro.oddlg    the dialogue, in the markup the tutorial uses
+```
+
+```
+dialog intro             # plays dialog/<language>/intro.oddlg, or en/
+```
+
+`comms/cast.json` has the same shape as the game's own — see
+`data/comms/cast.json`, which documents every field. `image` names a PNG
+beside it **inside the archive**; the art is loaded from those bytes, so a
+map's portraits are never written to the player's disk. Eyes, brows and mouth
+are drawn live over the art, which is why the art is drawn without them and
+their positions are given as fractions of the image.
+
+A map's characters are layered over the game's while that map is loaded, and
+dropped when it unloads. A map may add characters, or replace one of the
+game's own for its own story, but only inside itself.
+
+The map's `metadata.json` must say `"has_scripts": true` — the loader trusts
+that field, and a map without it has its scripts ignored.
+
 ## Labels, jumps and stopping
 
 ```
