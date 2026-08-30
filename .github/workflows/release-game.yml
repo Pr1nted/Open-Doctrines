@@ -115,6 +115,30 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --target OpenDoctrines -j 4
 
+      # WHICH STAGE LOSES IT.
+      #
+      # The Linux artifact has no account-service URL in it while CMake reports
+      # the right one, so the loss is between the flags and the binary. This
+      # says where: the generated define, then the object Config.cpp compiles
+      # to, then the executable the linker produces.
+      - name: Where the account service went
+        shell: bash
+        run: |
+          echo "--- generated define ---"
+          grep -ho "OD_ACCOUNT_ISSUER=[^ ]*" build/CMakeFiles/OpenDoctrines.dir/flags.make | head -2 || echo "(not in flags.make)"
+          obj=$(find build -name "Config.cpp.o" | head -1)
+          echo "--- object: ${obj:-<none>} ---"
+          if [ -n "$obj" ]; then
+            echo "opendoctrines-net in object : $(LC_ALL=C grep -c "opendoctrines-net" "$obj" 2>/dev/null || echo 0)"
+          fi
+          bin=build/OpenDoctrines
+          [ -f "build/Release/OpenDoctrines.exe" ] && bin=build/Release/OpenDoctrines.exe
+          [ -d "build/OpenDoctrines.app" ] && bin=build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines
+          echo "--- linked binary: $bin ---"
+          if [ -f "$bin" ]; then
+            echo "opendoctrines-net in binary : $(LC_ALL=C grep -c "opendoctrines-net" "$bin" 2>/dev/null || echo 0)"
+          fi
+
       - name: Package (clean)
         shell: bash
         run: |
