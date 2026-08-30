@@ -27,15 +27,21 @@
 #include "json.hpp"
 #include "comms/CastFile.h"
 
-void Game::toggleComms() {
-    if (!m_commsBuilt) {
+// The window itself, built once. Split out of toggleComms() because a map's
+// dialogue needs the window to EXIST without toggling whether it is shown:
+// calling the toggle to build it opened and then closed the link, and the
+// speaker never appeared -- the map's character spoke from a text box with
+// nobody on the screen.
+bool Game::ensureCommsBuilt() {
+    if (m_commsBuilt) return true;
+    {
         // Needs a GL context, so it cannot be built with the rest of Game.
         // Both slots are built together: the second is idle and costs a
         // render target, and building it lazily would mean compiling a
         // shader in the middle of a conversation.
         if (!m_comms.open() || !m_comms2.open()) {
             addNotification("Communication window unavailable", RED);
-            return;
+            return false;
         }
         m_commsBuilt = true;
 
@@ -49,6 +55,11 @@ void Game::toggleComms() {
         m_comms.setSignal({0.88f, 1.0f});
         m_comms2.setSignal({0.80f, 1.0f});
     }
+    return m_commsBuilt;
+}
+
+void Game::toggleComms() {
+    if (!ensureCommsBuilt()) return;
     m_commsOpen = !m_commsOpen;
     if (m_commsOpen) {
         m_comms.lookWander();
@@ -382,6 +393,8 @@ bool Game::beginMapDialogue(const std::string& name) {
         if (d == m_odmJsonData.end()) continue;
         dlg::Script sc = dlg::parse(d->second);
         beginDialogue("");                       // wire the resolvers and reset state
+        // The speaker needs somewhere to appear.
+        if (ensureCommsBuilt()) m_commsOpen = true;
         m_dialogScript = name;
         m_dialog.openScript(std::move(sc));
         m_dialogOpen = true;

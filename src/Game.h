@@ -1758,6 +1758,8 @@ public:
     // the tutorial's.
     std::vector<std::string> m_mapCastNames;
     void loadMapCast();
+    /// Builds the communication window if it is not built yet. Needs a GL context.
+    bool ensureCommsBuilt();
     /// Runs a dialogue the MAP carries (dialog/<name>.oddlg inside the .odmap).
     bool beginMapDialogue(const std::string& name);
     bool m_dialogOpen = false;
