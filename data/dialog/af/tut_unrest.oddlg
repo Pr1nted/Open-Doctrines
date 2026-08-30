@@ -1,0 +1,39 @@
+// Vertaling - eise en onrus.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Eise en onrus. Maak die eisepaneel oop. Dit is een onderwerp, wat die koppelvlak
+ook al sê.
+---
+@Signals Officer
+'n §**Eis**§ is die verskil tussen 'n oorlog wat die wêreld duld en een wat almal
+teen jou verenig. Druk een deur wat jy hou en jy vereffen 'n grief; vat grond wat
+jy nooit geëis het nie en jy is die grief.
+---
+@Signals Officer
+Lê die eis §**voor**§ die oorlog in, nie daarna nie. 'n Eis wat die beurt ná die
+inname van die provinsie ingedien word, kul niemand nie en kos dieselfde.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Maak dit toe.
+---
+@Signals Officer
+§**Onrus**§ is wat grondvat aan die grond doen. Verowerde provinsies neem dit
+kwalik, minderhede nog meer, en diensplig sowel as sensuur koop jou krag nou teen
+onrus later.
+---
+@Signals Officer
+Verby 'n drempel hou 'n provinsie op betaal en begin organiseer. Verby die volgende
+loop dit weg - en dit loop weg as 'n §**land**§, met jou nywerheid, jou bevolking
+en 'n baie bepaalde mening oor jou.
+
+Jy kry 'n waarskuwing. Jy kry nie altyd 'n tweede nie.
+---
+@Signals Officer
+Die middels is ongewild of stadig: sit 'n garnisoen daar, bestee daaraan, of gee
+dit wat dit wil hê. Kies vroeg, want al drie vat beurte om te werk.
+
+Dit is onrus. Iets anders?

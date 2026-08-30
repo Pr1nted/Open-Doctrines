@@ -1,0 +1,55 @@
+// 翻译。:: 行和说话人姓名是标识符，不要翻译。
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+喂，哪位?
+---
+@
+...
+---
+@Pr1nted
+哦... 你是新来的... 什么? §**从没管过一个国家?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... 你知道吗? 是我的错...
+---
+@Pr1nted
+:: enter=type speed=42
+只是我没空亲自带教程，所以得把你交给我的一位熟人，行吗? 我需要时间，总得做更新
+啊。
+---
+@Signals Officer
+喂? 哪个 §**Pr1nted**§?
+---
+@Pr1nted
+呃... 嗨米娅，我需要一个/小小的忙，/带一位新玩家转转好吗?
+---
+@Signals Officer
+</叹气/>
+---
+@Pr1nted
+**拜托!** 我付你钱是干什么的?
+---
+@Signals Officer
+好吧... 行，行。
+---
+@Pr1nted
+太好了! 米娅小姐会把一切都讲给你听：游戏怎么运作，还有它的基础。要是基础你都懂，
+只想聊具体的东西，现在就说，
+> 给我讲讲基础 -> basics
+> 基础我懂，聊具体的 -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+很好，开始吧。
+---
+@Pr1nted
+:: act=tune_out
+好，希望你们处得来! Pr1nted 收线。

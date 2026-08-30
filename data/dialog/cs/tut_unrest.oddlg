@@ -1,0 +1,39 @@
+// Překlad - nároky a nepokoje.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Nároky a nepokoje. Otevřete panel nároků. Je to jedno téma, ať už rozhraní
+říká cokoli.
+---
+@Signals Officer
+§**Nárok**§ je rozdíl mezi válkou, kterou svět strpí, a válkou, která proti vám
+sjednotí všechny. Uplatněte ten, který držíte, a vyrovnáváte křivdu; vezměte
+půdu, na kterou jste si nikdy nedělal nárok, a tou křivdou jste vy.
+---
+@Signals Officer
+Podejte nárok §**před**§ válkou, ne po ní. Nárok podaný tah po zabrání provincie
+nikoho neoklame a stojí stejně.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zavřete ho.
+---
+@Signals Officer
+§**Nepokoje**§ jsou to, co braní půdy udělá s tou půdou. Dobyté provincie to
+nesou nelibě, menšiny ještě víc, a odvod i cenzura vám kupují sílu teď výměnou
+za nepokoje potom.
+---
+@Signals Officer
+Za určitou hranicí provincie přestane platit a začne se organizovat. Za další
+odejde - a odejde jako §**země**§, s vaším průmyslem, vaším obyvatelstvem a
+velmi určitým názorem na vás.
+
+Dostanete varování. Druhé ne vždycky.
+---
+@Signals Officer
+Léky jsou nepopulární nebo pomalé: dejte tam posádku, utrácejte na ni, nebo jí
+dejte, co chce. Rozhodněte se brzy, protože všechny tři potřebují tahy.
+
+To jsou nepokoje. Ještě něco?

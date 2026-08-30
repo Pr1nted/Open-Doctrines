@@ -1,4 +1,11 @@
 #include "Game.h"
+#include "util/LoadLog.h"
+#include <sys/resource.h>
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#include <emscripten/heap.h>
+#endif
+#include "Palette.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "SaveManager.h"
@@ -76,7 +83,7 @@ void Game::showLoadingScreen() {
                 }
             }
         } catch (...) {
-            std::cerr << "Failed to parse tips.json" << std::endl;
+            LoadLog() << "Failed to parse tips.json" << std::endl;
         }
     }
 
@@ -109,7 +116,7 @@ void Game::startLoading(const std::string& odmPath) {
     m_loadingResIdx = 0;
     m_loadingFailed = false;
     m_loadError.clear();
-    std::cout << "Started async loading: " << odmPath << std::endl;
+    LoadLog() << "Started async loading: " << odmPath << std::endl;
 }
 
 void Game::startLoadingSave(const std::string& savePath) {
@@ -121,18 +128,77 @@ void Game::startLoadingSave(const std::string& savePath) {
     m_loadingResIdx = 0;
     m_loadingFailed = false;
     m_loadError.clear();
-    std::cout << "Started async save loading: " << savePath << std::endl;
+    LoadLog() << "Started async save loading: " << savePath << std::endl;
+}
+
+// ─── HOW MUCH MEMORY IS IN USE, AT EACH STEP OF A LOAD ────────────────────
+//
+// A phone does not report a crash. iOS Safari kills the tab and reloads it, so
+// the player sees the menu again with no message and there is nothing to read
+// afterwards -- which is exactly what happened here: the menu ran, entering a
+// world did not, and no console output survived.
+//
+// So the size is printed as each phase BEGINS, and the last line to arrive
+// names the phase that could not be finished. Cheap enough to leave on: one
+// line per phase, once per load, on a path that is already doing file I/O.
+static void logHeapAt(const char* phase) {
+#if defined(__EMSCRIPTEN__)
+    // The wasm heap is the thing the browser caps, and the only number that
+    // matters here. Desktop RSS is not a stand-in: it counts GPU textures
+    // that live outside the heap in a browser, which is why the desktop
+    // figure for this game is 1.8 GB while the menu's heap is 344 MB.
+    const double mb = (double)emscripten_get_heap_size() / (1024.0 * 1024.0);
+    printf("[MEM] %-26s heap %.0f MB\n", phase, mb);
+#else
+    struct rusage ru{};
+    if (getrusage(RUSAGE_SELF, &ru) == 0) {
+        // maxrss is bytes on macOS, kilobytes on Linux.
+#if defined(__APPLE__)
+        const double mb = (double)ru.ru_maxrss / (1024.0 * 1024.0);
+#else
+        const double mb = (double)ru.ru_maxrss / 1024.0;
+#endif
+        printf("[MEM] %-26s peak rss %.0f MB\n", phase, mb);
+    }
+#endif
+    fflush(stdout);
+}
+
+static const char* loadPhaseName(int p) {
+    switch (p) {
+        case 1:  return "extract odmap";
+        case 2:  return "load map";
+        case 3:  return "game data: resources";
+        case 4:  return "game data: relations";
+        case 5:  return "init renderer";
+        case 6:  return "population lookups";
+        case 7:  return "resource textures";
+        case 8:  return "icons";
+        case 9:  return "province data";
+        case 10: return "country labels";
+        case 11: return "create save";
+        case 12: return "save finalize";
+        case 13: return "finalize";
+        default: return "?";
+    }
 }
 
 void Game::updateLoading() {
     if (m_loadingPhase == LOAD_NONE || m_loadingPhase == LOAD_DONE) return;
+
+    // One line the first time each phase is entered.
+    static int lastLogged = -1;
+    if ((int)m_loadingPhase != lastLogged) {
+        lastLogged = (int)m_loadingPhase;
+        logHeapAt(loadPhaseName((int)m_loadingPhase));
+    }
 
     switch (m_loadingPhase) {
         case LOAD_ODM_SAVE: {
             setLoadingProgress(0.03f, "Extracting map from save...");
             std::vector<uint8_t> odmData = SaveManager::extractODM(m_loadingSavePath);
             if (odmData.empty()) {
-                std::cerr << "  Failed to extract .odmap from " << m_loadingSavePath << std::endl;
+                LoadLog() << "  Failed to extract .odmap from " << m_loadingSavePath << std::endl;
                 m_loadError = "That save file has no map inside it, or could not "
                               "be read:\n" + m_loadingSavePath;
                 m_loadingFailed = true;
@@ -144,7 +210,7 @@ void Game::updateLoading() {
             {
                 std::ofstream out(m_loadingTempOdm, std::ios::binary);
                 if (!out) {
-                    std::cerr << "  Failed to write temp .odmap" << std::endl;
+                    LoadLog() << "  Failed to write temp .odmap" << std::endl;
                     m_loadError = "The map could not be unpacked from the save. "
                                   "The game could not write to:\n" + m_loadingTempOdm;
                     m_loadingFailed = true;
@@ -190,10 +256,41 @@ void Game::updateLoading() {
         // .odmap could not be opened or parsed, and loadFromFiles() cannot
         // rescue it in a shipped copy: it reads loose JSON that is not
         // packaged, so it only ever succeeds in a working tree.
+#if defined(__EMSCRIPTEN__)
+        // ON THE WEB THIS IS A DOWNLOAD, NOT A FILE.
+        //
+        // Scenarios are excluded from the preload and fetched at the moment
+        // one is opened -- see odEnsureAsset() and the --exclude-file rules in
+        // CMakeLists.txt -- so the only two ways to arrive here are a request
+        // that did not come back and a deployment that uploaded the page
+        // without the data/ directory beside it.
+        //
+        // The message below used to be the desktop one, and it named neither:
+        // it blamed security software and told the player to check the game's
+        // data folder, which in a browser does not exist. It also ran off both
+        // sides of a phone screen, so the path -- the one part that says WHICH
+        // world -- was the part that could not be read. See the banner in
+        // Game_Menus.cpp, which now wraps.
+        const std::string url = (!m_loadingOdmPath.empty() && m_loadingOdmPath[0] == '/')
+                              ? m_loadingOdmPath.substr(1) : m_loadingOdmPath;
+        m_loadError = "This world could not be downloaded:\n" + url +
+                      "\n\nThe connection may have dropped, or this copy of the "
+                      "game may have been put online without its data folder "
+                      "next to the page. Try again.";
+        // "Try again" has to mean something. odEnsureAsset remembers a failure
+        // for the rest of the session so a per-frame caller cannot spin on a
+        // 404, and that is the wrong answer for a world the player asked for:
+        // without this, every later attempt returned the cached no without
+        // touching the network, and the second press behaved exactly like the
+        // first however good the connection had become.
+        odForgetAsset(m_loadingOdmPath);
+        LoadLog() << "[load] scenario download failed: " << url << std::endl;
+#else
         m_loadError = "This map could not be loaded:\n" + m_loadingOdmPath +
                       "\n\nThe file may be missing, incomplete or blocked by "
                       "security software. Check that the game's data folder is "
                       "intact.";
+#endif
         m_loadingFailed = true;
         m_loadingPhase = LOAD_DONE;
         hideLoadingScreen();
@@ -244,53 +341,19 @@ void Game::updateLoading() {
             break;
         }
         case LOAD_GEN_RESOURCE_TEXTURES: {
-            int w = m_provinces.getWidth();
-            int h = m_provinces.getHeight();
-            if (m_loadingResIdx == 0) {
-                m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
-                m_resourceBufferIdx = -1;
-            }
-            // Only the resource that is about to be shown. The other four are
-            // rebuilt if and when the player asks for them -- see
-            // generateResourceTexture(). This used to generate all five and
-            // keep them, at 128 MB apiece.
-            if (m_loadingResIdx == 0 && !m_provinceResources.empty()) {
-                generateResourceTextureFor(m_activeResourceIdx);
-                setLoadingProgress(0.55f,
-                    TextFormat("Generating %s textures...", RESOURCE_NAMES[m_activeResourceIdx]));
-                m_loadingResIdx = 5;
-                break;
-            }
-            if (!m_provinceResources.empty() || m_loadingResIdx >= 5) {
-                // Two more full-map uploads, adjacent, and neither has a loop
-                // to pump from -- but measured at about 200 ms together, which
-                // is four audio periods. Too short to be worth suspending the
-                // device: the stop and restart of the music would be more
-                // noticeable than the few repeated blocks it prevents. Top the
-                // buffer up instead. Same reasoning as computeBorderTexture().
-                Audio::get().pump();
-
-                Image resImg{};
-                resImg.data = m_resourceBuffer.data();
-                resImg.width = w;
-                resImg.height = h;
-                resImg.mipmaps = 1;
-                resImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-                Texture2D resTex = LoadTextureFromImage(resImg);
-                SetTextureFilter(resTex, TEXTURE_FILTER_BILINEAR);
-                if (m_renderer) m_renderer->setResourceTexture(resTex);
-
-                m_claimsPixelBuffer.resize(w * h, Color{0, 0, 0, 0});
-                Image claimsImg{};
-                claimsImg.data = m_claimsPixelBuffer.data();
-                claimsImg.width = w;
-                claimsImg.height = h;
-                claimsImg.mipmaps = 1;
-                claimsImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-                Texture2D claimsTex = LoadTextureFromImage(claimsImg);
-                SetTextureFilter(claimsTex, TEXTURE_FILTER_BILINEAR);
-                if (m_renderer) m_renderer->setClaimsTexture(claimsTex);
-            }
+            // NOTHING IS ALLOCATED HERE ANY MORE.
+            //
+            // This phase used to build four map-sized things up front: the
+            // resource buffer and its texture, and the claims buffer and its
+            // texture. At 8192x4096 that is 128 MB apiece, and the heap went
+            // from 783 MB to 1427 MB across this one step -- which is where an
+            // iPhone's tab was killed, every time, having got through every
+            // other phase.
+            //
+            // A player who never opens the Resources or Claims view never
+            // needs any of it, and one who does can wait the fraction of a
+            // second it takes to build then. See ensureResourceTexture() and
+            // ensureClaimsTexture().
             m_loadingPhase = LOAD_GEN_ICONS;
             break;
         }
@@ -395,7 +458,7 @@ void Game::updateLoading() {
                         { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
                         SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles);
                     }
-                    std::cout << "Auto-created save: " << m_currentSavePath << std::endl;
+                    LoadLog() << "Auto-created save: " << m_currentSavePath << std::endl;
                 }
                 m_loadingShouldCreateSave = false;
                 m_loadingWorldName.clear();
@@ -424,7 +487,7 @@ void Game::updateLoading() {
 
                 bool replayOk = replaySaveTurns(m_loadingSavePath);
                 if (!replayOk) {
-                    std::cerr << "  Failed to replay save turns" << std::endl;
+                    LoadLog() << "  Failed to replay save turns" << std::endl;
                 }
                 if (!m_loadingTempOdm.empty()) {
                     std::remove(m_loadingTempOdm.c_str());
@@ -486,7 +549,7 @@ void Game::updateLoading() {
                 m_renderer->flyTo(m_landSea.getWidth() / 2.0f, m_landSea.getHeight() / 2.0f, worldZ, 10.0f);
             }
 
-            std::cout << "  Loaded " << m_provinces.getAllProvinces().size() << " provinces, "
+            LoadLog() << "  Loaded " << m_provinces.getAllProvinces().size() << " provinces, "
                       << m_countries.size() << " countries, "
                       << m_playableCountryIds.size() << " playable" << std::endl;
 
@@ -514,7 +577,7 @@ void Game::updateLoading() {
                     // Sync per-country research into global nodes
                     for (auto& n : m_researchNodes)
                         n.researched = hasResearched(n.id, savedCid);
-                    std::cout << "  Restored player: " << m_countries.getCountry(savedCid)->name << std::endl;
+                    LoadLog() << "  Restored player: " << m_countries.getCountry(savedCid)->name << std::endl;
                 } else {
                     // No saved country — prompt user to choose
                     m_playerCountryId = 0;
@@ -527,14 +590,14 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                         m_renderer->setShowCountryNames(false);
                     }
                     const Country* pc = m_countries.getCountry(m_playerCountryId);
-                    std::cerr << "[DIAG] Entering gameplay as country " << m_playerCountryId
+                    LoadLog() << "[DIAG] Entering gameplay as country " << m_playerCountryId
                               << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
                     auto compassIt = m_countryCompass.find(m_playerCountryId);
                     if (compassIt != m_countryCompass.end()) {
-                        std::cerr << "[DIAG]   Compass: econ=" << compassIt->second.economic
+                        LoadLog() << "[DIAG]   Compass: econ=" << compassIt->second.economic
                                   << " soc=" << compassIt->second.social << std::endl;
                     } else {
-                        std::cerr << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
+                        LoadLog() << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
                     }
                     m_currentScreen = SCREEN_PLAYING;
                 }
@@ -567,7 +630,7 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                         if (m_renderer && cit != m_countryCenters.end())
                             m_renderer->flyTo(cit->second.x, cit->second.y, 2.5f, 3.0f);
                     } else {
-                        std::cerr << "[QuickStart] no playable country on "
+                        LoadLog() << "[QuickStart] no playable country on "
                                   << m_newWorldMapPath << " — falling back to "
                                      "country select" << std::endl;
                     }
@@ -582,7 +645,7 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                 m_pendingRevertTurn = -1;
                 m_pendingRevertSave.clear();
                 if (!applyTurnRewind(sp, t))
-                    std::cerr << "  Revert to turn " << t << " failed: "
+                    LoadLog() << "  Revert to turn " << t << " failed: "
                               << m_historyStatus << std::endl;
             }
 
@@ -597,7 +660,11 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
 
 void Game::setLoadingProgress(float progress, const std::string& status) {
     m_loadingProgress = std::clamp(progress, 0.0f, 1.0f);
-    m_loadingStatus = status;
+    // Translated HERE, at the one place all thirty-three phases pass through,
+    // rather than at each of them. The loading screen is the first thing a
+    // player sees after picking a language, and it was reading "Initializing
+    // renderer..." in English while the menu behind it was not.
+    m_loadingStatus = od::i18n::tr(status);
 
     // Every loading phase announces itself through here, which makes this the
     // one place that reliably sits between two blocks of heavy work. The main
@@ -681,11 +748,103 @@ void Game::drawLoadingScreen() {
         }
 
         const std::string& tip = m_loadingTips[m_currentTipIndex];
-        DrawText("Tip:", 30, m_screenH - 50, 18, hexToColor(m_config.accent()));
-        DrawText(tip.c_str(), 30, m_screenH - 25, 16, LIGHTGRAY);
+        DrawText(T("Tip:"), 30, m_screenH - 50, 18, hexToColor(m_config.accent()));
+        DrawText(T(tip), 30, m_screenH - 25, 16, LIGHTGRAY);
     }
 
     EndDrawing();
+}
+
+// ─── THE INWARD SHADE EVERY COUNTRY CARRIES ───────────────────────────────
+//
+// A distance field: 0 on a pixel that touches another owner, growing inward.
+// generatePoliticalTexture() is the only thing that reads it, as
+//
+//     float t = std::min(1.0f, m_gradientDist[i] / 60.0f);
+//
+// so every value of 60 or more is one value to the game, and the field only
+// has to be exact below that.
+//
+// WHY IT IS NOT A BFS ANY MORE. It was, in two copies -- here and in
+// rebuildGradientField() -- and the queue was the thing that killed an
+// iPhone. Measured on data/STDmaps/map.odmap at 8192x4096, the queue ends
+// holding 33,554,432 entries: at eight bytes apiece that is 256 MB, and it is
+// asked for in the middle of a load that is already holding 783 MB. An
+// iPhone's devlog stops exactly here --
+//
+//     [MEM]   pop: +gradientDist       heap 783 MB
+//     [MEM]   pop: after fill loop     heap 783 MB
+//     <tab killed, menu again>
+//
+// -- with the loading bar still reading 40%, because the bar is drawn at the
+// END of the frame that ran the previous phase. The number on screen when a
+// load dies names the phase BEFORE the one that died.
+//
+// Two raster passes instead, forward then backward, over the 8-neighbour
+// chamfer mask the BFS was walking anyway (orth 2, diag 3). That is the
+// standard sequential distance transform and it is exact for this metric on
+// an unobstructed grid, which this is -- nothing here blocks propagation. It
+// allocates NOTHING beyond the field itself. Verified against the old BFS on
+// the real 8192x4096 map: 0 differing pixels once the min(d, 60) above is
+// applied.
+//
+// The >= 60 test inside relax() is the BFS's own cut, kept: it refused to
+// expand out of a pixel that had already reached 60.
+static void odBuildGradientField(const uint16_t* owner, int w, int h,
+                                 std::vector<uint8_t>& out) {
+    const size_t total = (size_t)w * h;
+    out.assign(total, 255);
+
+    // Seeds: a pixel with a 4-neighbour under different ownership.
+    for (int y = 0; y < h; ++y) {
+        // Once a row, as everywhere else on this path -- nothing refills the
+        // music while a full-raster pass runs. See Audio::pump().
+        Audio::get().pump();
+        const size_t row = (size_t)y * w;
+        for (int x = 0; x < w; ++x) {
+            const uint16_t c = owner[row + x];
+            if ((x > 0     && owner[row + x - 1] != c) ||
+                (x < w - 1 && owner[row + x + 1] != c) ||
+                (y > 0     && owner[row - w + x]  != c) ||
+                (y < h - 1 && owner[row + w + x]  != c))
+                out[row + x] = 0;
+        }
+    }
+
+    auto relax = [&out](size_t i, size_t from, uint8_t step) {
+        const uint8_t d = out[from];
+        if (d >= 60) return;                 // the BFS did not expand from here
+        const uint8_t nd = (uint8_t)(d + step);
+        if (nd < out[i]) out[i] = nd;
+    };
+
+    for (int y = 0; y < h; ++y) {            // forward: up-left half of the mask
+        Audio::get().pump();
+        const size_t row = (size_t)y * w;
+        for (int x = 0; x < w; ++x) {
+            const size_t i = row + x;
+            if (y > 0) {
+                relax(i, i - w, 2);
+                if (x > 0)     relax(i, i - w - 1, 3);
+                if (x < w - 1) relax(i, i - w + 1, 3);
+            }
+            if (x > 0) relax(i, i - 1, 2);
+        }
+    }
+
+    for (int y = h - 1; y >= 0; --y) {       // backward: down-right half
+        Audio::get().pump();
+        const size_t row = (size_t)y * w;
+        for (int x = w - 1; x >= 0; --x) {
+            const size_t i = row + x;
+            if (y < h - 1) {
+                relax(i, i + w, 2);
+                if (x > 0)     relax(i, i + w - 1, 3);
+                if (x < w - 1) relax(i, i + w + 1, 3);
+            }
+            if (x < w - 1) relax(i, i + 1, 2);
+        }
+    }
 }
 
 void Game::buildPopulationLookups() {
@@ -713,10 +872,20 @@ void Game::buildPopulationLookups() {
     int totalPixels = w * h;
     const auto* srcPixels = (const Color*)provImg.data;
 
+    // Checkpoints INSIDE the phase, not just at its edges.
+    //
+    // The phase boundaries said the heap went 783 -> 1104 MB across this
+    // function and that a phone died somewhere in between. That is not enough
+    // to know what to cut: one of these four is the one that crosses the
+    // line. Reporting after each says which, and therefore what the device's
+    // actual ceiling is.
+    logHeapAt("  pop: before arrays");
     m_pixelCountryArray.assign(totalPixels, 0);
-    m_populationPixelBuffer.resize(totalPixels);
+    logHeapAt("  pop: +pixelCountryArray");
     m_politicalPixelBuffer.resize(totalPixels);
+    logHeapAt("  pop: +politicalPixelBuffer");
     m_gradientDist.assign(totalPixels, 255);
+    logHeapAt("  pop: +gradientDist");
 
     int maxCid = 0;
     for (auto& [cid, c] : m_countries.getAll())
@@ -733,6 +902,7 @@ void Game::buildPopulationLookups() {
     m_portAnchorCache.clear();
     m_countryPixels.resize(maxCid + 1);
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
+    logHeapAt("  pop: +countryPixels(empty)");
 
     for (int i = 0; i < totalPixels; ++i) {
         // Once a raster row's worth. Same reason as the scans in MapRenderer:
@@ -743,13 +913,11 @@ void Game::buildPopulationLookups() {
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
-        m_pixelCountryArray[i] = cid;
+        m_pixelCountryArray[i] = (uint16_t)cid;
 
         if (pid == 0 || cid == 0) {
-            m_populationPixelBuffer[i] = Color{10, 15, 40, 255};
             m_politicalPixelBuffer[i] = Color{10, 15, 40, 255};
         } else {
-            m_populationPixelBuffer[i] = Color{60, 60, 60, 255};
             const Country* c = m_countries.getCountry(cid);
             m_politicalPixelBuffer[i] = c ? c->color : Color{80, 80, 80, 255};
         }
@@ -757,68 +925,14 @@ void Game::buildPopulationLookups() {
         if (cid > 0 && cid <= maxCid)
             m_countryPixels[cid].push_back(i);
 
-        if (pid > 0)
-            m_provincePixels[pid].push_back(i);
+        // m_provincePixels is NOT filled here any more: it is one int per map
+        // pixel -- 128 MB -- and only the claims overlay reads it. Built on
+        // first use instead; see ensureProvincePixels().
     }
 
-    // Compute gradient distance field (multi-source BFS from borders)
-    // 8-neighbor with scaled distances: orth = +2, diag = +3 (ratio ~1:1.5 approximating 1:√2)
-    {
-        struct QE { int idx; uint8_t dist; };
-        std::vector<QE> queue;
-        auto enqueue = [&](int idx, uint8_t d) {
-            if (idx < 0 || idx >= totalPixels) return;
-            if (m_gradientDist[idx] <= d) return;
-            m_gradientDist[idx] = d;
-            queue.push_back({idx, d});
-        };
-        // First pass: mark pixels adjacent to a different country or land/sea boundary
-        for (int y = 0; y < h; ++y) {
-            // MEASURED: this field is the last unpumped stall of a web load.
-            // It sits between the per-pixel loop above, which yields, and the
-            // texture uploads below, which are bracketed -- so it was the one
-            // stretch left where the browser looped a fragment, about 0.8 s of
-            // it. Attributing it took a timeline of the audio callback against
-            // the suspend windows either side; it is not obvious from reading,
-            // because nothing here looks as expensive as a raster scan.
-            Audio::get().pump();
-            for (int x = 0; x < w; ++x) {
-                int i = y * w + x;
-                int cid = m_pixelCountryArray[i];
-                // Check 4 orthogonal neighbors for border detection
-                int nx[4] = {x-1, x+1, x, x};
-                int ny[4] = {y, y, y-1, y+1};
-                for (int k = 0; k < 4; ++k) {
-                    if (nx[k] < 0 || nx[k] >= w) continue;
-                    if (ny[k] < 0 || ny[k] >= h) continue;
-                    int ni = ny[k] * w + nx[k];
-                    if (m_pixelCountryArray[ni] != cid) {
-                        enqueue(i, 0);
-                        break;
-                    }
-                }
-            }
-        }
-        // BFS outward using 8 neighbors
-        size_t qpos = 0;
-        while (qpos < queue.size()) {
-            // The queue is seeded with every border pixel and grows to cover
-            // the interiors, so this runs far longer than the seeding pass
-            // above. Same reason, same yield.
-            if ((qpos & 8191) == 0) Audio::get().pump();
-            QE cur = queue[qpos++];
-            if (cur.dist >= 60) continue;
-            int x = cur.idx % w;
-            int y = cur.idx / w;
-            int nx[8] = {x-1, x+1, x, x, x-1, x-1, x+1, x+1};
-            int ny[8] = {y, y, y-1, y+1, y-1, y+1, y-1, y+1};
-            for (int k = 0; k < 8; ++k) {
-                if (nx[k] < 0 || nx[k] >= w || ny[k] < 0 || ny[k] >= h) continue;
-                int step = (k < 4) ? 2 : 3; // orth +2, diag +3
-                enqueue(ny[k] * w + nx[k], cur.dist + step);
-            }
-        }
-    }
+    logHeapAt("  pop: after fill loop");
+
+    odBuildGradientField(m_pixelCountryArray.data(), w, h, m_gradientDist);
 
     // ONE guard around all three, not one each. Two full-map uploads and a
     // third pass inside generatePoliticalTexture() run back to back with
@@ -840,16 +954,10 @@ void Game::buildPopulationLookups() {
         m_renderer->setPoliticalTexture(polTex);
         m_politicalTex = polTex;
 
-        // Create initial population texture from the base buffer
-        Image initImg{};
-        initImg.data = m_populationPixelBuffer.data();
-        initImg.width = w;
-        initImg.height = h;
-        initImg.mipmaps = 1;
-        initImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        Texture2D tex = LoadTextureFromImage(initImg);
-        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-        m_renderer->setPopulationTexture(tex);
+        // The population overlay is built the first time it is asked for --
+        // see ensurePopulationTexture(). It is one map-sized buffer plus one
+        // map-sized texture, and a player who never opens the Population view
+        // never needs either.
 
         // Apply gradient to political texture immediately (not just after turn processing)
         generatePoliticalTexture();
@@ -866,50 +974,12 @@ void Game::buildPopulationLookups() {
 // frame, which is why the caller checks m_gradientDirty first.
 void Game::rebuildGradientField() {
     const Image& provImg = m_provinces.getImage();
-    int w2 = provImg.width, h2 = provImg.height;
-    int totalPixels = w2 * h2;
-    if ((int)m_pixelCountryArray.size() != totalPixels) return;
-
-    struct QE2 { int idx; uint8_t dist; };
-    std::vector<QE2> queue;
-    m_gradientDist.assign(totalPixels, 255);
-    auto enqueue = [&](int idx, uint8_t d) {
-        if (idx < 0 || idx >= totalPixels) return;
-        if (m_gradientDist[idx] <= d) return;
-        m_gradientDist[idx] = d;
-        queue.push_back({idx, d});
-    };
-    // Yielded exactly like the copy of this field inside
-    // buildPopulationLookups(), and for a reason that applies more often: that
-    // one runs once per load, this runs once per TURN, so an unyielded pass
-    // here is a fragment of music looping every time a border moves.
-    for (int y = 0; y < h2; ++y) {
-        Audio::get().pump();
-        for (int x = 0; x < w2; ++x) {
-            int i = y * w2 + x;
-            int cid = m_pixelCountryArray[i];
-            int nx[4] = {x-1, x+1, x, x};
-            int ny[4] = {y, y, y-1, y+1};
-            for (int k = 0; k < 4; ++k) {
-                if (nx[k] < 0 || nx[k] >= w2) continue;
-                if (ny[k] < 0 || ny[k] >= h2) continue;
-                if (m_pixelCountryArray[ny[k] * w2 + nx[k]] != cid) { enqueue(i, 0); break; }
-            }
-        }
-    }
-    size_t qpos = 0;
-    while (qpos < queue.size()) {
-        if ((qpos & 8191) == 0) Audio::get().pump();
-        QE2 cur = queue[qpos++];
-        if (cur.dist >= 60) continue;
-        int x = cur.idx % w2, y = cur.idx / w2;
-        int nx[8] = {x-1, x+1, x, x, x-1, x-1, x+1, x+1};
-        int ny[8] = {y, y, y-1, y+1, y-1, y+1, y-1, y+1};
-        for (int k = 0; k < 8; ++k) {
-            if (nx[k] < 0 || nx[k] >= w2 || ny[k] < 0 || ny[k] >= h2) continue;
-            enqueue(ny[k] * w2 + nx[k], cur.dist + ((k < 4) ? 2 : 3));
-        }
-    }
+    const int w2 = provImg.width, h2 = provImg.height;
+    if ((int)m_pixelCountryArray.size() != w2 * h2) return;
+    // The same field, by the same routine as the load builds it. It was a
+    // second copy of the BFS, and this one ran once per TURN -- so the 256 MB
+    // queue described above was not a load-time cost, it was a per-turn one.
+    odBuildGradientField(m_pixelCountryArray.data(), w2, h2, m_gradientDist);
     m_gradientDirty = false;
 }
 
@@ -961,7 +1031,63 @@ void Game::generatePoliticalTexture() {
     m_renderer->updatePoliticalTexture(m_politicalPixelBuffer.data());
 }
 
+void Game::ensureProvincePixels() {
+    if (!m_provincePixels.empty()) return;
+    const Image& provImg = m_provinces.getImage();
+    const int w = provImg.width, h = provImg.height;
+    if (w <= 0 || h <= 0 || !provImg.data) return;
+    const int total = w * h;
+
+    // Province id -> the pixels that belong to it. Built once per world when
+    // something first asks, because it is one int per map pixel -- 128 MB at
+    // 8192x4096 -- and only the claims overlay reads it. Unlike
+    // m_countryPixels this is never mutated afterwards, so rebuilding it here
+    // rather than during the load costs one walk and loses nothing.
+    const auto* src = (const Color*)provImg.data;
+    for (int i = 0; i < total; ++i) {
+        if ((i & 8191) == 0) Audio::get().pump();
+        const int pid = Province::colorToId(src[i].r, src[i].g, src[i].b);
+        if (pid > 0) m_provincePixels[pid].push_back(i);
+    }
+}
+
+void Game::ensurePopulationTexture() {
+    if (!m_populationPixelBuffer.empty()) return;
+    const Image& provImg = m_provinces.getImage();
+    const int w = provImg.width, h = provImg.height;
+    if (w <= 0 || h <= 0 || !provImg.data) return;
+    const int total = w * h;
+
+    // The base colouring the load pass used to produce inline. Doing it here
+    // costs one full-map walk the first time the view is opened, and nothing
+    // at all for a player who never opens it.
+    m_populationPixelBuffer.resize(total);
+    const auto* src = (const Color*)provImg.data;
+    for (int i = 0; i < total; ++i) {
+        if ((i & 8191) == 0) Audio::get().pump();
+        const int pid = Province::colorToId(src[i].r, src[i].g, src[i].b);
+        const int cid = (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
+                            ? m_provinceCountryLookup[pid] : 0;
+        m_populationPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255}
+                                                            : Color{60, 60, 60, 255};
+    }
+
+    Image img{};
+    img.data = m_populationPixelBuffer.data();
+    img.width = w;
+    img.height = h;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    Texture2D tex = LoadTextureFromImage(img);
+    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+    if (m_renderer) m_renderer->setPopulationTexture(tex);
+}
+
 void Game::generatePopulationTexture(int countryId, int prevCountryId) {
+    // Indexes m_populationPixelBuffer; built on demand. See
+    // ensurePopulationTexture().
+    ensurePopulationTexture();
+    if (m_populationPixelBuffer.empty()) return;
     int w = m_provinces.getWidth();
     int h = m_provinces.getHeight();
 
@@ -999,20 +1125,24 @@ void Game::generatePopulationTexture(int countryId, int prevCountryId) {
 }
 
 void Game::generateRelationsTexture(int countryId, int prevCountryId) {
+    // Indexes m_populationPixelBuffer; built on demand. See
+    // ensurePopulationTexture().
+    ensurePopulationTexture();
+    if (m_populationPixelBuffer.empty()) return;
     int maxCid = (int)m_countryRelationColors.size() - 1;
 
     const Country* hc = (countryId > 0) ? m_countries.getCountry(countryId) : nullptr;
     if (hc)
-        std::cout << "Relations: selected " << hc->name << " (ISO=" << hc->isoA3 << ")" << std::endl;
+        LoadLog() << "Relations: selected " << hc->name << " (ISO=" << hc->isoA3 << ")" << std::endl;
 
     // Precompute relation colors for all countries relative to the new selected country
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid < 0 || cid > maxCid) continue;
 
-        Color col{80, 80, 80, 255};
+        Color col = odPalette::relation(odPalette::Rel::Neutral);
 
         if (cid == countryId) {
-            col = Color{0, 100, 255, 255};
+            col = odPalette::relation(odPalette::Rel::Self);
         } else if (countryId > 0) {
             const Country* hc = m_countries.getCountry(countryId);
             if (hc) {
@@ -1024,10 +1154,10 @@ void Game::generateRelationsTexture(int countryId, int prevCountryId) {
                     if (st != rt->second.end()) {
                         found = true;
                         auto& rel = st->second;
-                        if (rel.war)               col = Color{255, 50, 50, 255};
-                        else if (rel.alliance)      col = Color{50, 200, 50, 255};
-                        else if (rel.guarantee)     col = Color{255, 255, 50, 255};
-                        else if (rel.nonAggression) col = Color{255, 165, 0, 255};
+                        if (rel.war)               col = odPalette::relation(odPalette::Rel::War);
+                        else if (rel.alliance)      col = odPalette::relation(odPalette::Rel::Alliance);
+                        else if (rel.guarantee)     col = odPalette::relation(odPalette::Rel::Guarantee);
+                        else if (rel.nonAggression) col = odPalette::relation(odPalette::Rel::NonAggression);
                     }
                 }
                 // Fallback: check target → selected (symmetric display)
@@ -1037,10 +1167,10 @@ void Game::generateRelationsTexture(int countryId, int prevCountryId) {
                         auto st2 = rt2->second.find(hc->isoA3);
                         if (st2 != rt2->second.end()) {
                             auto& rel = st2->second;
-                            if (rel.war)               col = Color{255, 50, 50, 255};
-                            else if (rel.alliance)      col = Color{50, 200, 50, 255};
-                            else if (rel.guarantee)     col = Color{255, 255, 50, 255};
-                            else if (rel.nonAggression) col = Color{255, 165, 0, 255};
+                            if (rel.war)               col = odPalette::relation(odPalette::Rel::War);
+                            else if (rel.alliance)      col = odPalette::relation(odPalette::Rel::Alliance);
+                            else if (rel.guarantee)     col = odPalette::relation(odPalette::Rel::Guarantee);
+                            else if (rel.nonAggression) col = odPalette::relation(odPalette::Rel::NonAggression);
                         }
                     }
                 }
@@ -1063,6 +1193,11 @@ void Game::generateRelationsTexture(int countryId, int prevCountryId) {
 }
 
 void Game::generateClaimsTexture() {
+    // Both of these are built on demand now, and this function indexes one
+    // and looks up the other. See ensureClaimsTexture() / ensureProvincePixels().
+    ensureClaimsTexture();
+    ensureProvincePixels();
+    if (m_claimsPixelBuffer.empty()) return;
     int w = m_provinces.getWidth();
     std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
 
@@ -1190,7 +1325,48 @@ void Game::generateResourceTextureFor(int resIdx) {
     }
 }
 
+void Game::ensureResourceTexture() {
+    if (!m_resourceBuffer.empty()) return;
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
+    m_resourceBufferIdx = -1;
+    if (!m_provinceResources.empty()) generateResourceTextureFor(m_activeResourceIdx);
+
+    Image img{};
+    img.data = m_resourceBuffer.data();
+    img.width = w;
+    img.height = h;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    Texture2D tex = LoadTextureFromImage(img);
+    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+    if (m_renderer) m_renderer->setResourceTexture(tex);
+}
+
+void Game::ensureClaimsTexture() {
+    if (!m_claimsPixelBuffer.empty()) return;
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (w <= 0 || h <= 0) return;
+
+    m_claimsPixelBuffer.assign((size_t)w * h, Color{0, 0, 0, 0});
+
+    Image img{};
+    img.data = m_claimsPixelBuffer.data();
+    img.width = w;
+    img.height = h;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    Texture2D tex = LoadTextureFromImage(img);
+    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+    if (m_renderer) m_renderer->setClaimsTexture(tex);
+}
+
 void Game::generateResourceTexture() {
+    // First call in this world builds the buffer and the texture; see
+    // ensureResourceTexture().
+    ensureResourceTexture();
     // Refill only when the player has actually switched. This is called every
     // frame the resource view is up, so the guard is what keeps a full-map
     // regeneration from running sixty times a second.
@@ -1502,7 +1678,12 @@ void Game::computeCountryLabels() {
             float curvature = (fabs(perpSum) > 0.001f) ?
                 (perpSum > 0 ? curvMag : -curvMag) : 0.0f;
 
-            m_countryLabels.push_back({country->name, center, angle, fontSize, span, curvature});
+            // The name as this language writes it. The label is baked here
+            // and drawn for the rest of the session, so applyLanguage()
+            // recomputes them -- otherwise the map keeps the alphabet the
+            // world happened to be loaded in.
+            m_countryLabels.push_back({od::i18n::properName(country->name),
+                                       center, angle, fontSize, span, curvature});
         }
     }
 }
@@ -1510,14 +1691,14 @@ void Game::computeCountryLabels() {
 bool Game::loadFromFiles() {
     std::string landPath = m_dataDir + "land_sea.png";
     if (!m_landSea.load(landPath)) {
-        std::cerr << "Failed to load " << landPath << std::endl;
+        LoadLog() << "Failed to load " << landPath << std::endl;
         return false;
     }
 
     std::string provImg = m_dataDir + "provinces.png";
     std::string provJson = m_dataDir + "provinces.json";
     if (!m_provinces.load(provImg, provJson)) {
-        std::cerr << "Failed to load provinces from " << provImg << std::endl;
+        LoadLog() << "Failed to load provinces from " << provImg << std::endl;
         return false;
     }
 
@@ -1608,7 +1789,7 @@ bool Game::loadFromFiles() {
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "  Failed to parse starting_policies.json: " << e.what() << std::endl;
+            LoadLog() << "  Failed to parse starting_policies.json: " << e.what() << std::endl;
         }
         printf("[POLICY] Loaded %zu starting policy entries\n", m_startingPolicies.size());
     } else {
@@ -1665,7 +1846,7 @@ bool Game::loadFromFiles() {
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "  Failed to parse country_compass.json: " << e.what() << std::endl;
+            LoadLog() << "  Failed to parse country_compass.json: " << e.what() << std::endl;
         }
     }
 
@@ -1687,7 +1868,7 @@ bool Game::loadFromFiles() {
                 m_startingMinorityPolicies[iso] = std::move(perMinority);
             }
         } catch (const std::exception& e) {
-            std::cerr << "  Failed to parse starting_minority_policies.json: " << e.what() << std::endl;
+            LoadLog() << "  Failed to parse starting_minority_policies.json: " << e.what() << std::endl;
         }
     }
 
@@ -1784,7 +1965,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
 
     if (found < 5) {
         for (auto& e : entries) free(e.data);
-        std::cerr << "  Incomplete .odmap archive" << std::endl;
+        LoadLog() << "  Incomplete .odmap archive" << std::endl;
         return false;
     }
 
@@ -1963,7 +2144,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     }
                 }
             } catch (const std::exception& e) {
-                std::cerr << "  Failed to parse starting_policies.json: " << e.what() << std::endl;
+                LoadLog() << "  Failed to parse starting_policies.json: " << e.what() << std::endl;
             }
             break;
         }
@@ -2027,9 +2208,9 @@ bool Game::loadFromODM(const std::string& odmPath) {
                         vec.push_back({g["n"].get<std::string>(), g["p"].get<float>()});
                     if (!vec.empty()) m_provinceMinorities[pid] = std::move(vec);
                 }
-                std::cout << "  Loaded minorities for " << m_provinceMinorities.size() << " provinces" << std::endl;
+                LoadLog() << "  Loaded minorities for " << m_provinceMinorities.size() << " provinces" << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "  Failed to parse minorities.json: " << e.what() << std::endl;
+                LoadLog() << "  Failed to parse minorities.json: " << e.what() << std::endl;
             }
             break;
         }
@@ -2044,9 +2225,9 @@ bool Game::loadFromODM(const std::string& odmPath) {
                     auto& arr = rgb;
                     m_minorityColors[name] = {(uint8_t)(int)arr[0], (uint8_t)(int)arr[1], (uint8_t)(int)arr[2], 255};
                 }
-                std::cout << "  Loaded " << m_minorityColors.size() << " minority colors" << std::endl;
+                LoadLog() << "  Loaded " << m_minorityColors.size() << " minority colors" << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "  Failed to parse minority_colors.json: " << e.what() << std::endl;
+                LoadLog() << "  Failed to parse minority_colors.json: " << e.what() << std::endl;
             }
             break;
         }
@@ -2067,7 +2248,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
     for (auto& e : entries) free(e.data);
 
     if (!m_provinces.getWidth()) {
-        std::cerr << "  Failed to load provinces from .odmap" << std::endl;
+        LoadLog() << "  Failed to load provinces from .odmap" << std::endl;
         return false;
     }
 
@@ -2083,7 +2264,7 @@ void Game::unloadGameData() {
     // capacity; clear() alone would keep it reserved). At 33.5M pixels these
     // total well over a gigabyte — leaving them resident while the NEXT map is
     // generated is what pushes long training runs into an out-of-memory kill.
-    std::vector<int>().swap(m_pixelCountryArray);
+    std::vector<uint16_t>().swap(m_pixelCountryArray);
     std::vector<std::vector<int>>().swap(m_countryPixels);
     std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
     std::vector<Color>().swap(m_populationPixelBuffer);
@@ -2260,7 +2441,7 @@ bool Game::loadGameDataStep1() {
     if (it != m_odmJsonData.end()) {
         json = it->second;
     } else {
-        std::cerr << "  resources.json not found in .odmap archive" << std::endl;
+        LoadLog() << "  resources.json not found in .odmap archive" << std::endl;
         return true;
     }
     if (json.empty()) return true;
@@ -2307,9 +2488,9 @@ bool Game::loadGameDataStep1() {
                 }
             }
         }
-        std::cout << "  Loaded resources for " << m_provinceResources.size() << " provinces" << std::endl;
+        LoadLog() << "  Loaded resources for " << m_provinceResources.size() << " provinces" << std::endl;
     } catch (...) {
-        std::cerr << "  Failed to parse resources.json" << std::endl;
+        LoadLog() << "  Failed to parse resources.json" << std::endl;
     }
     return true;
 }
@@ -2354,9 +2535,9 @@ bool Game::loadGameDataStep2() {
                         m_relations[iso][targetIso] = cr;
                     }
                 }
-                std::cout << "  Loaded relations for " << m_relations.size() << " countries" << std::endl;
+                LoadLog() << "  Loaded relations for " << m_relations.size() << " countries" << std::endl;
             } catch (...) {
-                std::cerr << "  Failed to parse relations.json" << std::endl;
+                LoadLog() << "  Failed to parse relations.json" << std::endl;
             }
         }
     }
@@ -2378,9 +2559,9 @@ bool Game::loadGameDataStep2() {
                     for (int pid : pids)
                         m_claimsByProvince[pid].push_back(iso);
                 }
-                std::cout << "  Loaded claims for " << m_claims.size() << " countries" << std::endl;
+                LoadLog() << "  Loaded claims for " << m_claims.size() << " countries" << std::endl;
             } catch (...) {
-                std::cerr << "  Failed to parse claims.json" << std::endl;
+                LoadLog() << "  Failed to parse claims.json" << std::endl;
             }
         }
     }
@@ -2397,9 +2578,9 @@ bool Game::loadGameDataStep2() {
                     pi.level = info.value("level", 1);
                     m_provincePorts[pid] = pi;
                 }
-                std::cout << "  Loaded ports for " << m_provincePorts.size() << " provinces" << std::endl;
+                LoadLog() << "  Loaded ports for " << m_provincePorts.size() << " provinces" << std::endl;
             } catch (...) {
-                std::cerr << "  Failed to parse ports.json" << std::endl;
+                LoadLog() << "  Failed to parse ports.json" << std::endl;
             }
         }
     }
@@ -2433,9 +2614,9 @@ bool Game::loadGameDataStep2() {
                     }
                     if (!vec.empty()) m_provinceArmies[pid] = std::move(vec);
                 }
-                std::cout << "  Loaded armies for " << m_provinceArmies.size() << " provinces" << std::endl;
+                LoadLog() << "  Loaded armies for " << m_provinceArmies.size() << " provinces" << std::endl;
             } catch (...) {
-                std::cerr << "  Failed to parse armies.json" << std::endl;
+                LoadLog() << "  Failed to parse armies.json" << std::endl;
             }
         }
     }
@@ -2470,15 +2651,15 @@ bool Game::loadGameDataStep2() {
                     m_ships.push_back(ns);
                 }
                 if (beached)
-                    std::cout << "  Refloated " << beached
+                    LoadLog() << "  Refloated " << beached
                               << " ship(s) that loaded on land" << std::endl;
-                std::cout << "  Loaded " << m_ships.size() << " ships" << std::endl;
+                LoadLog() << "  Loaded " << m_ships.size() << " ships" << std::endl;
                 // Ocean topology, built once now that the raster is in memory.
                 // See Game::NavGrid -- the navy plans on this instead of
                 // steering at a straight line and stopping at the first coast.
                 buildNavGrid();
             } catch (...) {
-                std::cerr << "  Failed to parse ships.json" << std::endl;
+                LoadLog() << "  Failed to parse ships.json" << std::endl;
             }
         }
     }
@@ -2548,7 +2729,7 @@ void Game::loadGameData() {
 }
 
 bool Game::loadMapPack(const std::string& odmPath) {
-    std::cout << "Loading map: " << odmPath << std::endl;
+    LoadLog() << "Loading map: " << odmPath << std::endl;
 
     showLoadingScreen();
     setLoadingProgress(0.1f, "Loading map data...");
@@ -2602,11 +2783,11 @@ bool Game::loadMapPack(const std::string& odmPath) {
         m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
         m_resourceBufferIdx = -1;
         if (!m_provinceResources.empty()) {
-            std::cout << "  Generating resource texture... " << std::flush;
+            LoadLog() << "  Generating resource texture... " << std::flush;
             generateResourceTextureFor(m_activeResourceIdx);
             setLoadingProgress(0.7f, "Generating resource textures...");
             drawLoadingScreen();
-            std::cout << "done" << std::endl;
+            LoadLog() << "done" << std::endl;
         }
         // The synchronous reload path's copy of the pair in
         // LOAD_GEN_RESOURCE_TEXTURES, and it gets the same treatment: the same
@@ -2675,22 +2856,22 @@ bool Game::loadMapPack(const std::string& odmPath) {
     // Set player country (default: Spectator)
     if (m_playerCountryId == 0) {
         m_playerCountryId = SPC_CID;
-        std::cout << "  Player country: Spectator (ID " << SPC_CID << ")" << std::endl;
+        LoadLog() << "  Player country: Spectator (ID " << SPC_CID << ")" << std::endl;
         auto spcFlag = m_countryFlags.find(SPC_CID);
         if (spcFlag != m_countryFlags.end()) {
-            std::cout << "  SPC flag tex id: " << spcFlag->second.id << std::endl;
+            LoadLog() << "  SPC flag tex id: " << spcFlag->second.id << std::endl;
         } else {
-            std::cout << "  SPC flag NOT FOUND in m_countryFlags!" << std::endl;
+            LoadLog() << "  SPC flag NOT FOUND in m_countryFlags!" << std::endl;
         }
         const Country* spc = m_countries.getCountry(SPC_CID);
         if (spc) {
-            std::cout << "  SPC country found: " << spc->name << " (" << spc->isoA3 << ")" << std::endl;
+            LoadLog() << "  SPC country found: " << spc->name << " (" << spc->isoA3 << ")" << std::endl;
         } else {
-            std::cout << "  SPC country NOT FOUND!" << std::endl;
+            LoadLog() << "  SPC country NOT FOUND!" << std::endl;
         }
     }
 
-    std::cout << "  Loaded " << m_provinces.getAllProvinces().size() << " provinces, "
+    LoadLog() << "  Loaded " << m_provinces.getAllProvinces().size() << " provinces, "
               << m_countries.size() << " countries" << std::endl;
 
     setLoadingProgress(0.98f, "Finalizing...");
@@ -2710,7 +2891,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
 }
 
 bool Game::loadSaveFile(const std::string& savePath) {
-    std::cout << "Loading save: " << savePath << std::endl;
+    LoadLog() << "Loading save: " << savePath << std::endl;
 
     showLoadingScreen();
     setLoadingProgress(0.1f, "Extracting map data...");
@@ -2719,7 +2900,7 @@ bool Game::loadSaveFile(const std::string& savePath) {
     // Extract map.odmap from the .odsv ZIP into memory
     std::vector<uint8_t> odmData = SaveManager::extractODM(savePath);
     if (odmData.empty()) {
-        std::cerr << "  Failed to extract .odmap from " << savePath << std::endl;
+        LoadLog() << "  Failed to extract .odmap from " << savePath << std::endl;
         hideLoadingScreen();
         return false;
     }
@@ -2731,7 +2912,7 @@ bool Game::loadSaveFile(const std::string& savePath) {
     std::string tempOdm = savePath + ".tmp.odmap";
     {
         std::ofstream out(tempOdm, std::ios::binary);
-        if (!out) { std::cerr << "  Failed to write temp .odmap" << std::endl; hideLoadingScreen(); return false; }
+        if (!out) { LoadLog() << "  Failed to write temp .odmap" << std::endl; hideLoadingScreen(); return false; }
         out.write(reinterpret_cast<const char*>(odmData.data()), odmData.size());
     }
 
@@ -2753,25 +2934,29 @@ bool Game::loadSaveFile(const std::string& savePath) {
     try {
         meta = SaveManager::readMetadata(savePath);
     } catch (...) {
-        std::cerr << "  Failed to read save metadata" << std::endl;
+        LoadLog() << "  Failed to read save metadata" << std::endl;
         hideLoadingScreen();
         return false;
     }
 
     int turnCount = meta.turnCount;
-    std::cout << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
+    LoadLog() << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
 
     setLoadingProgress(0.75f, "Replaying game turns...");
     drawLoadingScreen();
 
     for (int t = 1; t <= turnCount; t++) {
         float turnProgress = 0.75f + (t / (float)turnCount) * 0.2f;
-        setLoadingProgress(turnProgress, "Replaying turn " + std::to_string(t) + " of " + std::to_string(turnCount) + "...");
+        // One sentence with two numbers in it. Built with + it was three
+        // fragments -- "Replaying turn ", " of " -- and neither half is a
+        // thing anybody can translate on its own.
+        setLoadingProgress(turnProgress,
+                           TextFormat(T("Replaying turn %d of %d..."), t, turnCount));
         drawLoadingScreen();
 
         TurnDelta delta = SaveManager::readTurn(savePath, t);
         if (delta.turnNumber != t) {
-            std::cerr << "  Turn mismatch at " << t << std::endl;
+            LoadLog() << "  Turn mismatch at " << t << std::endl;
             continue;
         }
         // Apply province changes
@@ -2818,7 +3003,7 @@ bool Game::loadSaveFile(const std::string& savePath) {
     setLoadingProgress(0.98f, "Finalizing save load...");
     drawLoadingScreen();
 
-    std::cout << "  Save replayed successfully" << std::endl;
+    LoadLog() << "  Save replayed successfully" << std::endl;
 
     hideLoadingScreen();
     return true;
@@ -2907,7 +3092,7 @@ void Game::rebuildOwnershipPixels() {
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
-        m_pixelCountryArray[i] = cid;
+        m_pixelCountryArray[i] = (uint16_t)cid;
         m_politicalPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255} :
             (m_countries.getCountry(cid) ? m_countries.getCountry(cid)->color : Color{80, 80, 80, 255});
         if (cid > 0 && cid < (int)m_countryPixels.size())
@@ -2935,12 +3120,12 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     try {
         meta = SaveManager::readMetadata(savePath);
     } catch (...) {
-        std::cerr << "  Failed to read save metadata" << std::endl;
+        LoadLog() << "  Failed to read save metadata" << std::endl;
         return false;
     }
 
     int turnCount = meta.turnCount;
-    std::cout << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
+    LoadLog() << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
 
     // Must happen BEFORE the deltas are applied: those deltas set province
     // owners to rebel country ids, and if those countries don't exist yet the
@@ -2950,7 +3135,7 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     for (int t = 1; t <= turnCount; t++) {
         TurnDelta delta = SaveManager::readTurn(savePath, t);
         if (delta.turnNumber != t) {
-            std::cerr << "  Turn mismatch at " << t << std::endl;
+            LoadLog() << "  Turn mismatch at " << t << std::endl;
             continue;
         }
         applyTurnDelta(delta);
@@ -2984,7 +3169,7 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     // Regenerate borders, glow maps, and political texture with updated ownership
     reloadBorders();
 
-    std::cout << "  Save replayed successfully" << std::endl;
+    LoadLog() << "  Save replayed successfully" << std::endl;
     return true;
 }
 
@@ -3070,17 +3255,24 @@ void Game::startNewGame(const std::string& mapName) {
             m_autoCreatedSave = true;
             m_unsavedChanges = false;
             m_turnCount = 0;
-            std::cout << "Auto-created save: " << m_currentSavePath << std::endl;
+            LoadLog() << "Auto-created save: " << m_currentSavePath << std::endl;
         }
 
         m_currentScreen = SCREEN_PLAYING;
     } else {
-        std::cerr << "Failed to load map: " << mapName << std::endl;
+        LoadLog() << "Failed to load map: " << mapName << std::endl;
         m_currentScreen = SCREEN_MENU;
     }
 }
 
 void Game::startNewGameWithName(const std::string& mapName, const std::string& worldName) {
+    // Cleared here rather than trusted to be false: this is the one door every
+    // new world comes through, and startTutorial sets the flag again straight
+    // after calling it. The AI switch goes with it -- a real game played after
+    // a tutorial must not quietly face turtles.
+    m_tutorialMode = false;
+    AISystem::s_tutorialAI = false;
+    m_forcedStartIso.clear();
     unloadGameData();
     // Clear all game state
     m_provincePopulations.clear();
@@ -3207,6 +3399,8 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
 }
 
 void Game::startLoadedGame(const std::string& saveName) {
+    m_tutorialMode = false;   // a real world, whatever the last one was
+    AISystem::s_tutorialAI = false;
     unloadGameData();
     // Clear all game state (same as startNewGame)
     m_provincePopulations.clear();

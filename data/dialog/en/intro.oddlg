@@ -1,0 +1,64 @@
+// The first thing a new player hears: Pr1nted hands them over to Mia.
+//
+// Runs on the MAIN MENU, before any map is loaded, so nothing here may refer
+// to a country, a province or a turn -- there is no game yet.
+//
+// NOBODY SAYS "dials in". A speaker arriving on the link is the window's job
+// -- changing speaker drops the signal and brings the new one up through the
+// static -- so writing it as an action would put the stage direction on
+// screen AND leave the effect undone. The end of the call is act=tune_out for
+// the same reason.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hello, who is this?
+---
+@
+...
+---
+@Pr1nted
+Oh... You're new here... What? §**never ran a country before?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... You know? My bad...
+---
+@Pr1nted
+:: enter=type speed=42
+However, I don't have enough to do the tutorial myself, so I'll have to leave
+you with a friend of mine, ok? I need time, have to make future updates, right?
+---
+@Signals Officer
+Hello? What §**Pr1nted**§?
+---
+@Pr1nted
+Umm... Hey Mia, I need a /tiny little favour,/ could you help a new player around?
+---
+@Signals Officer
+</Sigh/>
+---
+@Pr1nted
+**Come 'on'!** What do I pay you for?
+---
+@Signals Officer
+Fine... Alright, alright.
+---
+@Pr1nted
+Good! So Miss Mia will show you around, how the game works and the basics of it,
+or if you know the basics, but want to talk about specifics, tell us now,
+> Show me the basics -> basics
+> I know the basics, talk specifics -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Great, let's get started.
+---
+@Pr1nted
+:: act=tune_out
+Great, hopefully you two get along! Pr1nted out.

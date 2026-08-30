@@ -1,0 +1,31 @@
+// Prevod - raziskave.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Raziskave. Odprite jih - pritožba je vedno ista - nič, kar začnete, se kot da
+nikoli ne konča - in to ni napaka, to je bistvo.
+---
+@Signals Officer
+Vse tu se meri v potezah, ki jih še niste odigrali. Kar začnete zdaj, pride
+dolgo potem, ko ste pozabili, da ste to hoteli, kar pomeni, da je edini slab
+trenutek za začetek pozneje.
+---
+@Signals Officer
+Črpa iz istega denarja kot vojska. Država, ki raziskuje vse, ne postavi nič, in
+država, ki postavi vse, bo čez dvajset potez še vedno bíla vojno prejšnjega
+desetletja.
+
+Izberite smer. Ne izberite vseh.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Spet zaprite - §**x**§ v kotu.
+---
+@Signals Officer
+Dokončano delo se ne uporabi za nazaj. Nova oprema pride najprej k novim
+enotam, zato je poteza, ko se nekaj dokonča, poteza za pogled na to, kaj
+gradite, ne poteza za počitek.
+
+To so raziskave. Še kaj?

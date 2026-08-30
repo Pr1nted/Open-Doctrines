@@ -1,0 +1,32 @@
+// Prevod - skupni zaključek vseh poti.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Gor torej. Dve stvari, ki nista na nobenem zemljevidu.
+
+§**Shranjene igre.**§ Pravi svet se zapisuje sam, medtem ko igrate, in vas tam
+čaka. Naš ne: nič od tega, kar ste pravkar naredili, ni bilo ohranjeno, in prav
+v tem je smisel vadbenega otoka.
+---
+@Signals Officer
+:: point=menu.2
+§**Igra za več igralcev.**§ En stroj gosti, vsi drugi se mu pridružijo. Poteza
+se razreši, ko se vsi igralci javijo pripravljene, zato igra teče s hitrostjo
+najpočasnejšega.
+
+Igrajte z ljudmi, ki odgovarjajo na sporočila.
+---
+@Pr1nted
+Še živi? Dobro. Temeljita je, to ji moram priznati.
+
+Bi šla skozi še kaj, ali sva končala?
+> Nazaj dol in predelajmo nekaj določenega -> world:specifics
+> To je vse, hvala
+---
+@Pr1nted
+:: act=end_tutorial
+Prav. Pojdite izgubit nekaj partij, tako se to usede.
+
+Pr1nted, konec.

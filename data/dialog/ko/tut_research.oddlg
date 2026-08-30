@@ -1,0 +1,28 @@
+// 번역 - 연구.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+연구입니다. 여세요 — 불평은 늘 같습니다 — 시작한 게 도무지 끝나지 않는다고 — 그런데
+이건 결함이 아니라 그렇게 만든 겁니다.
+---
+@Signals Officer
+여기 있는 모든 것은 아직 플레이하지 않은 턴으로 측정됩니다. 지금 시작한 것은 그걸
+원했다는 사실을 잊은 한참 뒤에 도착합니다. 즉 시작하기 나쁜 때는 '나중'뿐입니다.
+---
+@Signals Officer
+군대와 같은 지갑에서 끌어씁니다. 모든 것을 연구하는 나라는 아무것도 배치하지 못하고,
+모든 것을 배치하는 나라는 스무 턴 뒤에도 지난 10년의 전쟁을 치르고 있습니다.
+
+한 갈래를 고르세요. 전부 고르지는 마시고요.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+다시 닫으세요 — 모서리의 §**x**§입니다.
+---
+@Signals Officer
+끝난 성과는 소급해 적용되지 않습니다. 새 장비는 새 편성에 먼저 가므로, 무언가 완성된
+턴은 무엇을 만들고 있는지 살펴볼 턴이지 한숨 돌릴 턴이 아닙니다.
+
+이것이 연구입니다. 더 있습니까?

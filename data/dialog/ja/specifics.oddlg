@@ -1,0 +1,14 @@
+// 翻訳 - 話題メニュー。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+なるほど、大枠はご存じですね。では実際のところ何をお求めで?
+
+一つ選んでください。きちんと掘り下げます。終わったらまた聞いてください。
+> 艦船、港、そして軍を海の向こうへ渡すこと -> script:tut_ships
+> 研究と、始めたものが何ひとつ終わらない理由 -> script:tut_research
+> 経済、工業、そして金の出どころ -> script:tut_economy
+> 請求権、不安、そして自国民に州を失うこと -> script:tut_unrest
+> 同盟、停戦、そのほかの外交 -> script:tut_diplomacy
+> ほかにはない、以上です -> script:outro

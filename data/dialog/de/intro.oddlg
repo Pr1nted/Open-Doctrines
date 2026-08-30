@@ -1,0 +1,57 @@
+// Übersetzung. :: Zeilen und Sprechernamen sind Kennungen - nicht übersetzen.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hallo, wer ist da?
+---
+@
+...
+---
+@Pr1nted
+Oh... Sie sind neu hier... Was? §**noch nie ein Land geführt?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Wissen Sie was? Mein Fehler...
+---
+@Pr1nted
+:: enter=type speed=42
+Nur habe ich keine Zeit, das Tutorial selbst zu halten, also lasse ich Sie bei
+einer Bekannten, ja? Ich brauche Zeit, es müssen ja Updates entstehen.
+---
+@Signals Officer
+Hallo? Welcher §**Pr1nted**§?
+---
+@Pr1nted
+Ähm... Hey Mia, ich bräuchte einen /winzigen Gefallen,/ zeigst du einem neuen
+Spieler alles?
+---
+@Signals Officer
+</Seufzt/>
+---
+@Pr1nted
+**Komm schon!** Wofür bezahle ich dich?
+---
+@Signals Officer
+Also gut... In Ordnung, in Ordnung.
+---
+@Pr1nted
+Wunderbar! Frau Mia zeigt Ihnen alles: wie das Spiel funktioniert und die
+Grundlagen. Und wenn Sie die Grundlagen kennen, aber über Einzelheiten reden
+wollen, sagen Sie es jetzt,
+> Zeigen Sie mir die Grundlagen -> basics
+> Grundlagen kenne ich, reden wir über Einzelheiten -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Gut, fangen wir an.
+---
+@Pr1nted
+:: act=tune_out
+Prima, hoffentlich versteht ihr euch! Pr1nted, Ende.

@@ -1,5 +1,13 @@
 #include "GameUpdates.h"
+#include "util/LoadLog.h"
+#include "Palette.h"
 #include "Game.h"
+// The shaped-Devanagari pipeline. Not reached through Game.h like the rest of
+// the language layer: it owns a font and an atlas of its own, and only this
+// file starts it.
+#include "i18n/Devanagari.h"
+#include "i18n/ArabicShape.h"
+#include "odseal.h"
 #include "Game_Gdtl.h"
 #include "OdFile.h"
 #include "util/WebPersist.h"
@@ -88,6 +96,8 @@ EM_JS(int, odFitCanvasJS, (), {
 #include <sys/resource.h>
 #endif
 #include "GameInternals.h"
+// odEnsureAsset(): the full font is fetched, not preloaded. See reloadFonts().
+#include "util/WebAssets.h"
 
 std::string formatPop(long long pop) {
     struct Step { long long div; const char* suffix; };
@@ -140,8 +150,8 @@ const int SINGLEPLAYER_COUNT = 2;
 #endif
 const char* GAME_VERSION = OD_VERSION_STRING;
 
-const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental"};
-const int TAB_COUNT = 6;
+const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental", "Language"};
+const int TAB_COUNT = 7;
 
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
@@ -150,10 +160,22 @@ const int RES_COUNT = 5;
 // want while something is running -- watching the CPU graph react as you drag
 // it -- not a preference you set once in a menu. F10 / Ctrl+L opens it in
 // place, in game and in the trainer alike.
-const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"Back", false, -1}};
-const int DISPLAY_COUNT = 9;
+// UI Scale is APPENDED rather than slotted next to Max Zoom where it belongs
+// by subject. The rows are addressed by index in fourteen places -- the
+// resolution row draws wider, the FPS row cycles, the accent row opens a
+// picker -- and every one of those is a bare `i == 5`. Inserting in the
+// middle moves all of them. "Back" is found by label, so the end is free.
+const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Back", false, -1}};
+const int DISPLAY_COUNT = 11;
 
 const char* AI_DIFFICULTY_NAMES[] = {"Easy", "Normal", "Hard", "Insane"};
+
+// The colour-blind palettes, in the order the settings row cycles them and
+// the order they are stored in the config. Named for the condition rather
+// than "Mode 1", because a player who needs one knows which they have.
+const char* COLOURBLIND_NAMES[] = {"Off", "Deuteranopia (red-green)",
+                                   "Protanopia (red-green)", "Tritanopia (blue-yellow)"};
+const int COLOURBLIND_COUNT = 4;
 const int AI_DIFFICULTY_COUNT = 4;
 
 const int ACCENT_PRESETS[] = {
@@ -289,8 +311,19 @@ const Setting EXPERIMENTAL_ITEMS[] = {
 };
 const int EXPERIMENTAL_COUNT = 3;
 
-const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS};
-const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT};
+// THE LANGUAGE TAB HAS NO ROWS.
+//
+// Everything else on this screen is a list of Setting structs -- a label, a
+// type and an action -- and a language is none of those: it is a flag, a name
+// written in its own script, and a warning about who translated it. So the tab
+// declares zero items, the row loop draws nothing, and drawLanguageList fills
+// the space instead. The alternative was a second kind of row understood by
+// every loop on this screen, for one tab.
+const Setting LANGUAGE_ITEMS[] = {{"", false, -1}};
+const int LANGUAGE_COUNT = 0;
+
+const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS, LANGUAGE_ITEMS};
+const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT, LANGUAGE_COUNT};
 
 const char* keyName(int key) {
     if (key == 0) return "\xe2\x80\x94"; // em dash
@@ -484,15 +517,27 @@ static const char* padRowValue(const char* label) {
     return nullptr;
 }
 
+/// ": On" / ": Off", in the player's language.
+//
+// The settings rows are built as "<label>: <value>" and drawn as one string,
+// so neither half was ever looked up -- the whole screen was English while
+// every other menu around it was translated. The labels come from const
+// tables at namespace scope, where T() cannot go: it would run before a
+// language is loaded and freeze the English in. So both halves are translated
+// HERE, at the moment the row is built.
+static std::string onOff(bool on) {
+    return std::string(": ") + od::i18n::tr(on ? "On" : "Off");
+}
+
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
-    std::string label = s.label;
+    std::string label = od::i18n::tr(s.label);
     if (tab == 0 && index == 0) {
-        label += cfg.fullscreen ? ": On" : ": Off";
+        label += onOff(cfg.fullscreen);
     } else if (tab == 0 && index == 1) {
-        label += cfg.showActualFlags ? ": On" : ": Off";
+        label += onOff(cfg.showActualFlags);
     } else if (tab == 0 && index == 2) {
-        label += cfg.debugMode ? ": On" : ": Off";
+        label += onOff(cfg.debugMode);
     } else if (tab == 0 && index == 3) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.maxZoom); label += b;
     } else if (tab == 0 && index == 4) {
@@ -503,32 +548,48 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         char b[16]; snprintf(b, sizeof(b), ": #%06X", cfg.accent()); label += b;
     } else if (tab == 0 && index == 7) {
         int d = cfg.aiDifficulty < 0 ? 0 : (cfg.aiDifficulty >= AI_DIFFICULTY_COUNT ? AI_DIFFICULTY_COUNT - 1 : cfg.aiDifficulty);
-        label += std::string(": ") + AI_DIFFICULTY_NAMES[d];
+        label += std::string(": ") + od::i18n::tr(AI_DIFFICULTY_NAMES[d]);
+    } else if (tab == 0 && index == 8) {
+        char b[32]; snprintf(b, sizeof(b), ": %d%%", (int)lroundf(cfg.uiScale * 100.0f));
+        label += b;
+    } else if (tab == 0 && index == 9) {
+        label += std::string(": ") + od::i18n::tr(COLOURBLIND_NAMES[
+            (cfg.colourBlindMode < 0 || cfg.colourBlindMode >= COLOURBLIND_COUNT)
+                ? 0 : cfg.colourBlindMode]);
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (isVolumeSetting(tab, index)) {
         const float* v = volumeSettingPtr(const_cast<Config&>(cfg), tab, index);
         char b[16]; snprintf(b, sizeof(b), ": %d%%", (int)lroundf(*v * 100.0f)); label += b;
     } else if (tab == AUDIO_TAB && index == VOLUME_COUNT) {
-        label += cfg.nowPlayingToast ? ": On" : ": Off";
+        label += onOff(cfg.nowPlayingToast);
     } else if (tab == AUDIO_TAB && index == VOLUME_COUNT + 1) {
-        label += cfg.mapAtmosphere ? ": On" : ": Off";
+        label += onOff(cfg.mapAtmosphere);
     } else if (tab == 4 && index == 0) {
-        label += cfg.showFps ? ": On" : ": Off";
+        label += onOff(cfg.showFps);
     } else if (tab == 4 && index == 1) {
-        label += cfg.showZoom ? ": On" : ": Off";
+        label += onOff(cfg.showZoom);
     } else if (tab == 4 && index == 2) {
-        label += cfg.showConsole ? ": On" : ": Off";
+        label += onOff(cfg.showConsole);
     } else if (tab == 4 && index == 3) {
-        label += cfg.aiDebug ? ": On" : ": Off";
+        label += onOff(cfg.aiDebug);
     } else if (tab == 4 && index == 4) {
-        label += cfg.modUpdateChecks ? ": On" : ": Off";
+        label += onOff(cfg.modUpdateChecks);
     } else if (tab == 4 && index == 5) {
-        label += cfg.gameUpdateChecks ? ": On" : ": Off";
+        label += onOff(cfg.gameUpdateChecks);
     } else if (tab == 5 && index == 0) {
-        label += cfg.aiLearning ? ": On" : ": Off";
+        label += onOff(cfg.aiLearning);
     } else if (tab == 5 && index == 1) {
-        label += cfg.gdtl ? ": On" : ": Off";
+        // A BUILD WITHOUT THE LIBRARY SAYS SO, rather than saying "On".
+        //
+        // Every GDTL feature is gated on `m_config.gdtl && Gdtl::available()`,
+        // so a config that carries gdtl:true into a build compiled without
+        // -DOD_ENABLE_GDTL showed "GDTL: On" over a feature that does not
+        // exist -- no import button, no export, nothing -- and the toggle
+        // refused to turn it off because it checked availability first. On,
+        // useless, and stuck that way.
+        label += Gdtl::available() ? onOff(cfg.gdtl)
+                                   : std::string(": ") + od::i18n::tr("Unavailable");
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
     } else if (tab == 3) {
@@ -781,6 +842,10 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 } // namespace
 #endif
 
+// The console's sink, for LoadLog's static hook. A file-scope pointer because
+// the hook is a plain function pointer and has no Game to reach through.
+static Game* s_consoleOwner = nullptr;
+
 bool Game::init(int screenW, int screenH, const char* title) {
 #if defined(PLATFORM_ANDROID)
     // Set below, AFTER InitWindow -- see the note there.
@@ -827,9 +892,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         if (!d.empty()) {
             if (d.back() != '/') d += '/';
             m_dataDir = d;
-            std::cout << "Data directory overridden: " << m_dataDir << std::endl;
+            LoadLog() << "Data directory overridden: " << m_dataDir << std::endl;
         }
     }
+
+    // Seal the data directory before anything reads a translation out of it.
+    // od_k9 walks the language files and ends the process if one of them is a
+    // localization this build does not carry; on a clean pass it returns a
+    // token folded into the run below. The call is not optional and not
+    // behind a flag -- the whole point of a seal is that it is always checked.
+    m_localeSeal = od_k9(m_dataDir.c_str());
+    if (m_localeSeal == 0ull) std::abort();
 
     // Write down where this game is, so anything wanting to translate a map
     // into it does not have to go looking. Best effort, never fatal, and it
@@ -874,7 +947,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
             "This usually means the download was extracted without its data "
             "folder, or the program was moved out of the folder it came in. "
             "OpenDoctrines and data must stay together.";
-        std::cerr << msg << "\n";
+        LoadLog() << msg << "\n";
         odFatalDialog("OpenDoctrines", msg.c_str());
     }
 #endif
@@ -986,12 +1059,23 @@ bool Game::init(int screenW, int screenH, const char* title) {
         float want = (rows > 0.0f) ? rows / UI_MIN_ROWS : 1.0f;
         if (want < 1.0f) want = 1.0f;      // never shrink; small screens keep 1:1
         if (want > 2.5f) want = 2.5f;
-        odUi::setScale(want);
+        m_uiScaleBase = want;
+        applyUiScale();
         TraceLog(LOG_INFO, "ui scale: %.2f (%.0f physical rows, %.0f logical)",
                  odUi::scale(), rows, rows / odUi::scale());
     }
 
+#else
+
+    // Desktop and web: the platform asks for nothing, so the scale is entirely
+    // the player's. 1.0 by default, which is the layout every screen was
+    // written against.
+    m_uiScaleBase = 1.0f;
+    applyUiScale();
+
 #endif
+
+    odPalette::setMode(m_config.colourBlindMode);
 
     // InitWindow cannot fail loudly -- it returns void, logs a warning, and
     // leaves the process running with no window and no GL context. Everything
@@ -1004,13 +1088,14 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // compositor all land here, and "it crashes on launch" is the worst
     // possible way to tell somebody their graphics stack cannot run the game.
     if (!IsWindowReady()) {
+        // i18n-ignore: printed before a window, a font or a language exists.
         static const char* kNoWindow =
             "OpenDoctrines could not open a window.\n\n"
             "The graphics driver did not provide an OpenGL 3.3 context. That "
             "usually means no GPU driver, a headless session with no display, "
             "or a remote desktop or virtual machine that does not forward "
             "OpenGL.";
-        std::cerr << kNoWindow << "\n";
+        LoadLog() << kNoWindow << "\n";
 
         // ...and on Windows, say it somewhere a player can actually see.
         //
@@ -1043,6 +1128,24 @@ bool Game::init(int screenW, int screenH, const char* title) {
     m_consoleBuf = new ConsoleBuf(this);
     m_origCout = std::cout.rdbuf(m_consoleBuf);
     m_origCerr = std::cerr.rdbuf(m_consoleBuf);
+    // LoadLog does not go through std::cout, so the console has to be told
+    // about it separately or the in-game console goes silent.
+    //
+    // Straight into the streambuf, NOT through std::cout: routing it back
+    // through the stream would put the formatting layer -- the very thing
+    // LoadLog exists to avoid -- back under every log line, and the web build
+    // trapped again the moment it did.
+    // addConsoleLine directly: a plain member call. Going through the
+    // streambuf instead put a virtual dispatch under every log line and the
+    // web build trapped on it, which is the same class of failure LoadLog
+    // exists to avoid.
+    s_consoleOwner = this;
+    LoadLog::setSink([](const char* line) {
+        if (!s_consoleOwner) return;
+        std::string l(line);
+        while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+        if (!l.empty()) s_consoleOwner->addConsoleLine(l);
+    });
 
     // Audio comes up here rather than at the end of init(): it depends on
     // nothing below -- not the map, not the fonts -- and anything down there
@@ -1214,76 +1317,287 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // Cache default raylib font reference
     m_defaultFont = GetFontDefault();
 
-    // Load fallback font for non-ASCII characters (Unifont — pixel font, looks crisp)
-    {
-        std::string fontPath = m_dataDir + "fonts/unifont.ttf";
-        if (FileExists(fontPath.c_str())) {
-            // Load with common Unicode ranges used in license text
-            std::vector<int> codepoints;
-            auto addRange = [&](int start, int end) {
-                for (int c = start; c <= end; c++) codepoints.push_back(c);
-            };
-            addRange(32, 255);    // Basic Latin + Latin-1 Supplement
-            addRange(256, 383);   // Latin Extended-A
-            addRange(1024, 1279); // Cyrillic
-            codepoints.push_back(8212); // EM DASH U+2014
-            codepoints.push_back(8211); // EN DASH U+2013
-            codepoints.push_back(8220); // LEFT DOUBLE QUOTATION MARK U+201C
-            codepoints.push_back(8221); // RIGHT DOUBLE QUOTATION MARK U+201D
-            codepoints.push_back(8216); // LEFT SINGLE QUOTATION MARK U+2018
-            codepoints.push_back(8217); // RIGHT SINGLE QUOTATION MARK U+2019
-            codepoints.push_back(8226); // BULLET U+2022
-            codepoints.push_back(169);  // COPYRIGHT SIGN U+00A9
-            codepoints.push_back(174);  // REGISTERED SIGN U+00AE
-            m_gameFont = LoadFontEx(fontPath.c_str(), 16, codepoints.data(), (int)codepoints.size());
-            if (m_gameFont.texture.id > 0) {
-                SetTextureFilter(m_gameFont.texture, TEXTURE_FILTER_POINT);
-                std::cout << "  Loaded fallback font: Unifont (" << m_gameFont.glyphCount << " glyphs)" << std::endl;
-            } else {
-                std::cerr << "  LoadFontEx FAILED for " << fontPath << std::endl;
-            }
-        } else {
-            std::cerr << "  Fallback font not found at " << fontPath << " — using DejaVuSans" << std::endl;
-            fontPath = m_dataDir + "fonts/DejaVuSans.ttf";
-            if (FileExists(fontPath.c_str())) {
-                std::vector<int> codepoints;
-                auto addRange = [&](int start, int end) {
-                    for (int c = start; c <= end; c++) codepoints.push_back(c);
-                };
-                addRange(32, 255);
-                addRange(256, 383);
-                addRange(1024, 1279);
-                codepoints.push_back(8212);
-                codepoints.push_back(8211);
-                codepoints.push_back(8220);
-                codepoints.push_back(8221);
-                codepoints.push_back(8216);
-                codepoints.push_back(8217);
-                codepoints.push_back(8226);
-                codepoints.push_back(169);
-                codepoints.push_back(174);
-                m_gameFont = LoadFontEx(fontPath.c_str(), 16, codepoints.data(), (int)codepoints.size());
-                if (m_gameFont.texture.id > 0) {
-                    SetTextureFilter(m_gameFont.texture, TEXTURE_FILTER_BILINEAR);
-                    std::cout << "  Loaded fallback font: DejaVuSans (" << m_gameFont.glyphCount << " glyphs)" << std::endl;
-                }
-            } else {
-                std::cerr << "  DejaVuSans also not found — no fallback font" << std::endl;
-            }
-        }
+    // THE LANGUAGE BEFORE THE ATLAS, because the atlas is built out of it.
+    //
+    // A language whose file has gone missing falls back to English rather than
+    // to a half-translated interface, and the config is corrected so the next
+    // run does not try again and print the same complaint.
+    // Called even for English, which needs no file: the glyph list it builds
+    // carries every language's own name for the picker, and skipping the call
+    // left an English build with no 日本語 in the atlas to offer.
+    const std::string want = m_config.language.empty() ? "en" : m_config.language;
+    if (!od::i18n::setLanguage(want, m_dataDir)) {
+        LoadLog() << "  falling back to English" << std::endl;
+        m_config.language = "en";
+        od::i18n::setLanguage("en", m_dataDir);
     }
+
+    // The atlas the interface is drawn from, built for the language it is in.
+    // See reloadFonts(): the glyph list is no longer fixed, because a fixed one
+    // cannot spell 日本語.
+    reloadFonts();
 
     loadCredits();
 
     // Reaches the browser console too: emscripten routes stdout to console.log,
     // which is why none of these need an emscripten_run_script of their own.
-    std::cout << "OpenDoctrines initialized. " << m_screenW << "x" << m_screenH << std::endl;
+    LoadLog() << "OpenDoctrines initialized. " << m_screenW << "x" << m_screenH << std::endl;
     m_running = true;
     m_currentScreen = SCREEN_SPLASH;
     m_splashTimer = 0.0f;
     initMenuBackground(); // ready so the splash's fade-out can reveal it
     m_menuBgScroll = 0;
     return true;
+}
+
+/**
+ * Build the text atlas for the language the game is currently in.
+ *
+ * WHY THIS IS NOT A FIXED LIST ANY MORE. It used to rasterise Latin, Latin
+ * Extended-A and Cyrillic -- about six hundred codepoints chosen once, for
+ * licence text -- and a Japanese or Chinese interface drawn with that is a
+ * screen of empty boxes. od::i18n::glyphs() answers with those same ranges
+ * PLUS every character that actually occurs in the loaded language file, so a
+ * language costs exactly the glyphs it uses and nothing pays for scripts it
+ * does not write in.
+ *
+ * Called again whenever the language changes. The old atlas is unloaded here
+ * rather than left to leak: it is a texture per language change, and a player
+ * trying all fourteen would otherwise leave fourteen of them on the card.
+ */
+/**
+ * Change the interface language, for good.
+ *
+ * Three things have to move together and this is the only place they do: the
+ * table the words come from, the atlas they are drawn with, and the config so
+ * the choice survives the game being closed. Doing any one of them without the
+ * others gives a player either boxes or a language that forgets itself.
+ */
+/// Where the language tab's list lives. Asked by both the drawing and the
+/// clicking, because two copies of this arithmetic is one copy too many.
+Rectangle Game::settingsLanguageArea() const {
+    const float w = std::min(760.0f, (float)m_screenW - 120.0f);
+    return {(m_screenW - w) * 0.5f, 200.0f, w, (float)m_screenH - 260.0f};
+}
+
+bool Game::applyLanguage(const std::string& code) {
+    if (code == od::i18n::language()) return true;
+    if (!od::i18n::setLanguage(code, m_dataDir)) return false;
+    reloadFonts();
+    // The map's own writing. Country labels are computed once from the name
+    // and then drawn from that copy, so a language change has to redo them or
+    // the map stays in the alphabet it was loaded in while every panel around
+    // it changes. Only when there is a world; on the menu there are none.
+    if (m_renderer && !m_countryLabels.empty()) {
+        computeCountryLabels();
+        m_renderer->setCountryLabels(&m_countryLabels);
+    }
+    m_config.language = code;
+    m_config.save(m_configPath);
+    return true;
+}
+
+void Game::applyUiScale() {
+    odUi::setScale(m_uiScaleBase * m_config.uiScale);
+    m_screenW = GetScreenWidth();
+    m_screenH = GetScreenHeight();
+}
+
+// U+XXXX rather than a decimal, because a codepoint written in decimal is a
+// codepoint nobody can look up. LoadLog has no hex manipulator -- it is
+// deliberately not an iostream; see util/LoadLog.h.
+static std::string odCodepointName(int cp) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out = "U+";
+    for (int shift = 12; shift >= 0; shift -= 4) out += kHex[(cp >> shift) & 0xF];
+    return out;
+}
+
+// Characters that draw nothing even in a font that has them, and so are no
+// evidence either way about coverage.
+//
+// U+00A0 is the one that mattered: a no-break space is a space, unifont gives
+// it no outline and no advance, and every language's glyph list contains one --
+// so before it was listed here EVERY language, English included, was reported
+// one glyph short of covered. On the web that is an 11 MB download triggered
+// for a character nobody can see.
+static bool odIsBlankCodepoint(int cp) {
+    if (cp <= 0x20) return true;                      // control codes and space
+    if (cp == 0x00A0) return true;                    // no-break space
+    if (cp == 0x00AD) return true;                    // soft hyphen
+    if (cp >= 0x2000 && cp <= 0x200F) return true;    // spaces, zero-width, marks
+    if (cp >= 0x2028 && cp <= 0x202E) return true;    // separators, bidi controls
+    if (cp == 0x2060 || cp == 0xFEFF) return true;    // word joiner, BOM
+    if (cp == 0x3000) return true;                    // ideographic space
+    return false;
+}
+
+// How many of the codepoints an atlas was asked for the font could not supply.
+//
+// raylib fills a GlyphInfo from stbtt ONLY when the codepoint is in the file --
+// rtext.c guards the whole thing with `if (index > 0)` and has a standing TODO
+// where the fallback glyph would go -- so a character the font has never heard
+// of arrives here exactly as it was zero-initialised: no advance, no pixels.
+// GenImageFontAtlas then copies that zero width straight into recs[].
+//
+// BOTH are tested, because either alone has an innocent reading. A combining
+// mark -- a Devanagari matra, say -- is real and carries pixels but advances
+// the pen by nothing. An atlas that runs out of room zeroes the RECTS of the
+// glyphs it could not place, which were really there. Only the pair means the
+// file has nothing to draw.
+//
+// Codepoints that are legitimately blank are skipped rather than counted as
+// evidence, or every language would look uncovered.
+static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
+                               const std::vector<int>& only,
+                               int* firstMissing = nullptr) {
+    if (f.glyphs == nullptr || f.recs == nullptr) return 0;
+    const int n = std::min(f.glyphCount, (int)want.size());
+    int missing = 0;
+    for (int i = 0; i < n; ++i) {
+        const int cp = want[i];
+        if (odIsBlankCodepoint(cp)) continue;
+        // `only` is sorted; the atlas order is not, so this is a search rather
+        // than a walk in step.
+        if (!std::binary_search(only.begin(), only.end(), cp)) continue;
+        if (f.glyphs[i].advanceX == 0 && f.recs[i].width == 0) {
+            if (firstMissing && missing == 0) *firstMissing = cp;
+            ++missing;
+        }
+    }
+    return missing;
+}
+
+void Game::reloadFonts() {
+    const std::vector<int>& want = od::i18n::glyphs();
+    std::vector<int> codepoints = want;
+    if (codepoints.empty()) {
+        // Nothing has set a language yet -- the ranges the game has always had.
+        for (int c = 32; c <= 255; ++c) codepoints.push_back(c);
+        for (int c = 0x100; c <= 0x17F; ++c) codepoints.push_back(c);
+        for (int c = 0x400; c <= 0x4FF; ++c) codepoints.push_back(c);
+        for (int c : {0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0xA9, 0xAE})
+            codepoints.push_back(c);
+    }
+
+    // FILTERED, NOT ENLARGED.
+    //
+    // Unifont is a 16-pixel bitmap font and the interface asks for 12, 13, 14,
+    // 18, 20... Drawn from a 16-pixel atlas with point filtering, every size
+    // that is not exactly 16 drops whole rows of pixels out of each glyph --
+    // and what a row of pixels IS, in a 16-pixel Cyrillic face, is the bar of a
+    // Б, the crossbar of a т, the dot of an і. The Ukrainian warning came out
+    // reading "Ьільшу ... тох ... буду⌐ь", which is not a missing glyph or a
+    // bad translation: it is the right glyph with its thin strokes deleted by
+    // the scaler, and it took a screenshot to see.
+    //
+    // The fix is the FILTER, not a bigger atlas. Rasterising at 32 was the
+    // first attempt and it worked -- and it also quadrupled the font texture,
+    // and after a dozen world loads the game wedged inside raylib's image
+    // conversion while loading a map. Bilinear filtering on the 16-pixel atlas
+    // blends the rows instead of dropping them, which is the whole of the
+    // problem, at the memory the game already used.
+    constexpr int kAtlasSize = 16;
+
+    // ─── WHICH FILE, AND WHY THERE ARE TWO ────────────────────────────────
+    //
+    // On every platform but the web, fonts/unifont.ttf is the whole 11 MB
+    // font and there is nothing to decide. On the web it is a 147 KB SUBSET
+    // (tools/subset_font.py) holding Latin, Greek, Cyrillic and punctuation --
+    // which was the entire interface when that script was written, and stopped
+    // being it when the game grew to twenty-one languages. Japanese, Chinese,
+    // Korean and Arabic have not one glyph between them in that file, so
+    // choosing one of them drew a screen of blanks: unreadable, and unreadable
+    // in a way that hides the way back to a language you can read.
+    //
+    // So the whole font ships beside the page as unifont-full.ttf, out of the
+    // preload, and is fetched the first time a language actually needs it --
+    // the arrangement the scenarios, the music and the AI model already use.
+    // Nobody who reads a Latin or Cyrillic script ever downloads it.
+    //
+    // ASKED OF THE FONT, NOT OF A LIST OF LANGUAGES. The alternative was a
+    // table of "these codes need the big file", which is the kind of list that
+    // is right on the day it is written; building the atlas and counting what
+    // came back empty cannot go stale, and it reports a number worth logging.
+    const std::string basePath = m_dataDir + "fonts/unifont.ttf";
+    const std::string fullPath = m_dataDir + "fonts/unifont-full.ttf";
+
+    Font built{};
+    // Already here means already answered: a desktop install, or a web session
+    // that fetched it earlier and should not ask twice.
+    std::string fontPath = FileExists(fullPath.c_str()) ? fullPath : basePath;
+    if (FileExists(fontPath.c_str())) {
+        built = LoadFontEx(fontPath.c_str(), kAtlasSize, codepoints.data(), (int)codepoints.size());
+    }
+
+    // MEASURED OVER THIS LANGUAGE'S OWN TEXT, not over the whole atlas.
+    //
+    // The atlas also carries every OTHER language's name, because the picker
+    // writes each in its own script -- so asking "is the atlas fully covered"
+    // answers no in an English session too, and answering it with an 11 MB
+    // download would put that download in front of every visitor. The cost of
+    // measuring the narrower set is that a CJK name in the picker stays blank
+    // until somebody actually chooses that language; its flag and its English
+    // name are drawn beside it, which is how it stays findable.
+    if (built.texture.id > 0 && fontPath != fullPath &&
+        !od::i18n::contentGlyphs().empty()) {
+        int firstMissing = 0;
+        const int missing = odFontGlyphsMissing(built, codepoints,
+                                                od::i18n::contentGlyphs(), &firstMissing);
+        if (missing > 0) {
+            LoadLog() << "  Font: " << missing << " of " << codepoints.size()
+                      << " glyphs for \"" << od::i18n::language()
+                      << "\" are not in " << fontPath
+                      << " (first " << odCodepointName(firstMissing) << ")" << std::endl;
+            // BLOCKS while it downloads, and on a phone that is a few seconds
+            // of a still screen. It is once per session, and the thing it is
+            // replacing is a language the player cannot read at all.
+            if (odEnsureAsset(fullPath)) {
+                Font whole = LoadFontEx(fullPath.c_str(), kAtlasSize,
+                                        codepoints.data(), (int)codepoints.size());
+                if (whole.texture.id > 0) {
+                    UnloadFont(built);
+                    built = whole;
+                    fontPath = fullPath;
+                    LoadLog() << "  Font: fell back to the complete unifont"
+                              << std::endl;
+                } else {
+                    // Better a subset that draws most of the interface than no
+                    // atlas at all, so the one already built stays.
+                    LoadLog() << "  Font: " << fullPath << " arrived but would "
+                                 "not load; keeping the subset" << std::endl;
+                }
+            }
+        }
+    }
+
+    if (built.texture.id == 0) {
+        fontPath = m_dataDir + "fonts/DejaVuSans.ttf";
+        if (FileExists(fontPath.c_str()))
+            built = LoadFontEx(fontPath.c_str(), kAtlasSize, codepoints.data(), (int)codepoints.size());
+    }
+    if (built.texture.id == 0) {
+        LoadLog() << "  No font could be loaded -- non-ASCII text will not draw" << std::endl;
+        return;
+    }
+    SetTextureFilter(built.texture, TEXTURE_FILTER_BILINEAR);
+
+    // Swap, THEN unload: odText and the dialogue box both hold the old one, and
+    // unloading first leaves a frame drawn from a texture that is gone.
+    const Font old = m_gameFont;
+    m_gameFont = built;
+    odText::setFont(m_gameFont);
+    // The shaped-Devanagari pipeline, if this build has a shaper. Loaded once
+    // and independent of the atlas above: it carries its own font and its own
+    // glyph cache, because its glyphs are chosen by id rather than codepoint.
+    odDeva::load(m_dataDir + "fonts/NotoSansDevanagari-Regular.ttf");
+    // The shaped Arabic path for Urdu; same pipeline, right to left.
+    odArab::load(m_dataDir + "fonts/NotoNaskhArabic-Regular.ttf");
+    m_dialog.setFonts(m_defaultFont, m_gameFont);
+    if (old.texture.id > 0 && old.texture.id != built.texture.id) UnloadFont(old);
+
+    LoadLog() << "  Font atlas: " << built.glyphCount << " glyphs for \""
+              << od::i18n::language() << "\"" << std::endl;
 }
 
 void Game::shutdown() {
@@ -1388,6 +1702,178 @@ bool Game::isMouseOverConsole() {
     return CheckCollisionPointRec(mouse, m_console.rect);
 }
 
+// A one-line reason, under the cursor, for whatever it is resting on that
+// will not respond. Drawn after everything else and cleared as it is drawn,
+// so a control that stops setting it stops showing one.
+// ─── FIND A COUNTRY ────────────────────────────────────────────────────────
+
+/// The most populous province a country owns -- where "go to Brazil" means.
+///
+/// Not the capital: the map has no capital concept, and the biggest province
+/// is both easy to compute and the one worth looking at.
+int Game::largestProvinceOf(int countryId) const {
+    int best = 0;
+    long long bestPop = -1;
+    for (const auto& [pid, p] : m_provinces.getAllProvinces()) {
+        if (p.countryId != countryId) continue;
+        auto it = m_provincePopulations.find(pid);
+        const long long pop = (it != m_provincePopulations.end()) ? (long long)it->second : 0;
+        if (pop > bestPop) { bestPop = pop; best = pid; }
+    }
+    return best;
+}
+
+/// Match on what the player can SEE and on what they might type.
+///
+/// properName() is the name on screen, which in Japanese is katakana -- so a
+/// player typing Latin would match nothing if that were the only haystack.
+/// The English name and the ISO code come too, which also makes "USA" work.
+/// A prefix match sorts above a match in the middle, so typing "ind" offers
+/// India before British India.
+void Game::rebuildFindMatches() {
+    m_findMatches.clear();
+    auto lower = [](std::string v) {
+        for (char& c : v) c = (char)std::tolower((unsigned char)c);
+        return v;
+    };
+    const std::string q = lower(m_findQuery);
+    std::vector<std::pair<int, int>> scored;   // (rank, cid); rank 0 sorts first
+    for (const auto& [cid, c] : m_countries.getAll()) {
+        if (cid <= 0 || cid == UNC_CID || cid == BLC_CID) continue;
+        const std::string shown = lower(od::i18n::properName(c.name));
+        const std::string plain = lower(c.name);
+        const std::string iso   = lower(c.isoA3);
+        if (q.empty()) { scored.push_back({1, cid}); continue; }
+        int rank = -1;
+        if (shown.rfind(q, 0) == 0 || plain.rfind(q, 0) == 0 || iso.rfind(q, 0) == 0) rank = 0;
+        else if (shown.find(q) != std::string::npos || plain.find(q) != std::string::npos) rank = 1;
+        if (rank >= 0) scored.push_back({rank, cid});
+    }
+    std::stable_sort(scored.begin(), scored.end(),
+                     [&](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+                         if (a.first != b.first) return a.first < b.first;
+                         const Country* ca = m_countries.getCountry(a.second);
+                         const Country* cb = m_countries.getCountry(b.second);
+                         return (ca && cb) ? ca->name < cb->name : false;
+                     });
+    for (const auto& [rank, cid] : scored) m_findMatches.push_back(cid);
+    if (m_findIndex >= (int)m_findMatches.size()) m_findIndex = 0;
+}
+
+void Game::updateCountryFinder() {
+    if (IsKeyPressed(KEY_ESCAPE)) { m_findOpen = false; return; }
+
+    int ch;
+    while ((ch = GetCharPressed()) != 0) {
+        // ASCII only, deliberately: the atlas can draw any script but raylib
+        // gives no IME, so a Japanese player types the Latin name. Both are
+        // in the haystack for exactly that reason.
+        if (ch >= 32 && ch < 127 && m_findQuery.size() < 32) {
+            m_findQuery += (char)ch;
+            m_findIndex = 0;
+        }
+    }
+    if (IsKeyPressed(KEY_BACKSPACE) && !m_findQuery.empty()) {
+        m_findQuery.pop_back();
+        m_findIndex = 0;
+    }
+    rebuildFindMatches();
+
+    const int n = (int)m_findMatches.size();
+    if (n > 0) {
+        if (IsKeyPressed(KEY_DOWN)) m_findIndex = (m_findIndex + 1) % n;
+        if (IsKeyPressed(KEY_UP))   m_findIndex = (m_findIndex - 1 + n) % n;
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
+            const int cid = m_findMatches[m_findIndex];
+            const int pid = largestProvinceOf(cid);
+            // Closed BEFORE the fly: update() returns early while it is open,
+            // and the camera animates in the ordinary update.
+            m_findOpen = false;
+            if (pid > 0) {
+                if (m_renderer) m_renderer->setSelectedProvince(pid);
+                m_lastSelectedProvince = pid;
+                buildCountryProvinceList(pid);
+                flyToProvince(pid);
+            }
+        }
+    }
+}
+
+void Game::drawCountryFinder() {
+    if (!m_findOpen) return;
+    const int w = 460, rows = std::min((int)m_findMatches.size(), 8);
+    const int h = 92 + rows * 26;
+    const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 3;
+
+    DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 120});
+    DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.04f, 8,
+                         Color{18, 18, 26, 245});
+    DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.04f, 8,
+                              hexToColor(m_config.accent()));
+
+    DrawText(T("Find country"), x + 16, y + 14, 16, hexToColor(m_config.accent()));
+
+    Rectangle box = {(float)(x + 16), (float)(y + 40), (float)(w - 32), 26};
+    DrawRectangleRec(box, Color{30, 30, 42, 230});
+    DrawRectangleLinesEx(box, 1, Color{70, 70, 95, 220});
+    if (m_findQuery.empty()) {
+        DrawText(T("Type a name"), (int)box.x + 8, (int)box.y + 6, 14, Color{120, 120, 140, 255});
+    } else {
+        DrawText(m_findQuery.c_str(), (int)box.x + 8, (int)box.y + 6, 14, WHITE);
+    }
+    if (((int)(GetTime() * 2.0) % 2) == 0) {
+        DrawText("_", (int)box.x + 10 + MeasureText(m_findQuery.c_str(), 14),
+                 (int)box.y + 6, 14, WHITE);
+    }
+
+    if (m_findMatches.empty()) {
+        DrawText(T("No country matches"), x + 20, y + 78, 14, Color{170, 130, 130, 255});
+        return;
+    }
+
+    // The highlighted row is kept in view rather than the list scrolled by the
+    // mouse: the whole point is that the keyboard alone gets you there.
+    int first = 0;
+    if (m_findIndex >= rows) first = m_findIndex - rows + 1;
+    for (int i = 0; i < rows; ++i) {
+        const int idx = first + i;
+        if (idx >= (int)m_findMatches.size()) break;
+        const Country* c = m_countries.getCountry(m_findMatches[idx]);
+        if (!c) continue;
+        const int ry = y + 78 + i * 26;
+        const bool sel = (idx == m_findIndex);
+        if (sel)
+            DrawRectangleRounded({(float)(x + 12), (float)(ry - 4), (float)(w - 24), 24}, 0.2f, 6,
+                                 Color{255, 255, 255, 20});
+        DrawText(od::i18n::properName(c->name).c_str(), x + 20, ry, 15,
+                 sel ? WHITE : Color{190, 190, 205, 255});
+    }
+}
+void Game::drawUiHint() {
+    if (m_uiHint.empty()) return;
+    const std::string text = m_uiHint;
+    m_uiHint.clear();
+
+    const int fs = 13;
+    const int tw = MeasureText(text.c_str(), fs);
+    const int pad = 8;
+    const int w = tw + pad * 2, h = fs + pad * 2;
+    Vector2 m = getMouse();
+    // Below and right of the cursor, but flipped rather than pushed off the
+    // edge: a hint that is half off the screen explains nothing.
+    int x = (int)m.x + 14, y = (int)m.y + 18;
+    if (x + w > m_screenW - 8) x = (int)m.x - w - 8;
+    if (y + h > m_screenH - 8) y = (int)m.y - h - 8;
+    if (x < 4) x = 4;
+    if (y < 4) y = 4;
+
+    DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.15f, 6,
+                         Color{18, 18, 26, 240});
+    DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.15f, 6,
+                              Color{90, 90, 120, 200});
+    DrawText(text.c_str(), x + pad, y + pad, fs, Color{225, 225, 235, 255});
+}
+
 void Game::drawNotifications() {
     if (m_notifications.empty()) return;
     int y = 60;
@@ -1471,7 +1957,7 @@ void Game::drawConsoleWindow() {
 
     // ── Title bar ──
     DrawRectangle(c.rect.x + 2, c.rect.y + 2, c.rect.width - 4, 24, {30, 30, 50, 255});
-    DrawText("Console", (int)c.rect.x + 6, (int)c.rect.y + 4, 14, {180, 180, 200, 255});
+    DrawText(T("Console"), (int)c.rect.x + 6, (int)c.rect.y + 4, 14, {180, 180, 200, 255});
 
     // Close button (X) in title bar
     float closeX = c.rect.x + c.rect.width - 24;
@@ -1530,7 +2016,7 @@ void Game::drawDebugOverlay() {
     // Show FPS with GetFPS() when enabled
     if (m_config.showFps) {
         int fps = GetFPS();
-        const char* fpsStr = TextFormat("FPS: %d", fps);
+        const char* fpsStr = TextFormat(T("FPS: %d"), fps);
         Color fpsColor = fps >= 55 ? Color{100, 255, 100, 220} : (fps >= 30 ? Color{255, 255, 100, 220} : Color{255, 100, 100, 220});
         DrawText(fpsStr, 10, 10, 18, fpsColor);
     }
@@ -1538,15 +2024,15 @@ void Game::drawDebugOverlay() {
     if (m_config.showZoom) {
         int provCount = (int)m_provinces.getAllProvinces().size();
         float zoom = m_renderer ? m_renderer->getZoom() : 1.0f;
-        DrawText(TextFormat("Provinces: %d", provCount), 10, 32, 14, Color{180, 220, 255, 200});
-        DrawText(TextFormat("Zoom: %.2f", zoom), 10, 48, 14, Color{180, 220, 255, 200});
-        DrawText(TextFormat("DPI: %.2f", m_dpiScale), 10, 64, 14, Color{140, 160, 180, 160});
+        DrawText(TextFormat(T("Provinces: %d"), provCount), 10, 32, 14, Color{180, 220, 255, 200});
+        DrawText(TextFormat(T("Zoom: %.2f"), zoom), 10, 48, 14, Color{180, 220, 255, 200});
+        DrawText(TextFormat(T("DPI: %.2f"), m_dpiScale), 10, 64, 14, Color{140, 160, 180, 160});
     }
 
     // AI decision feed: last decisions from the ring buffer, newest first
     if (m_config.aiDebug && m_ai) {
         int y = 84;
-        DrawText(TextFormat("AI decisions (turn, country, module, action) — %d this turn",
+        DrawText(TextFormat(T("AI decisions (turn, country, module, action) — %d this turn"),
                             m_ai->decisionsThisTurn()), 10, y, 14, {255, 220, 140, 230});
         y += 18;
         for (const auto& line : m_ai->debugLines(24)) {
@@ -1557,6 +2043,26 @@ void Game::drawDebugOverlay() {
 }
 
 void Game::run() {
+#if defined(__EMSCRIPTEN__)
+    // ─── ?autostart=1 : ENTER A WORLD WITHOUT A CLICK ─────────────────────
+    //
+    // A development hook, for the same reason ?devlog=1 exists. The failure
+    // being chased only happens when a world loads, and no synthetic mouse or
+    // keyboard event reaches raylib through the automation available here --
+    // hovering a menu item does not even highlight it. Without this the only
+    // way to exercise the load path on the web build is to ask a person with
+    // a phone, which is a slow way to test a wasm trap.
+    //
+    // Off unless the URL asks, exactly like the log hook, so a shipped build
+    // is untouched.
+    if (EM_ASM_INT({
+            return new URLSearchParams(location.search).get('autostart') === '1' ? 1 : 0;
+        })) {
+        printf("[autostart] entering a world\n");
+        fflush(stdout);
+        startQuickStart();
+    }
+#endif
     while (m_running && !WindowShouldClose()) {
         float dt = GetFrameTime();
 
@@ -1605,6 +2111,10 @@ void Game::run() {
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
             endFrame();
+            // A popup takes the whole frame, including the walk's own tick --
+            // so the walk answers it here or waits for a click that is never
+            // coming. See Game_TutorialWalk.cpp.
+            if (m_walk) walkDismissPopup();
             continue;
         }
         
@@ -1627,11 +2137,38 @@ void Game::run() {
             m_dpiScale = GetWindowScaleDPI().x;
             if (m_renderer) m_renderer->setDpiScale(m_dpiScale);
             if (m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER) {
-                initMenuBackground();
-                m_menuBgScroll = 0;
+                // THE SAME HEIGHT GUARD AS EVERY OTHER SCREEN BELOW, and the
+                // reason it was missing here is that the per-frame check
+                // further down was fixed and this one was not. They are two
+                // routes to the same rebuild, and the main menu -- the screen
+                // a phone actually sits on -- took this one.
+                //
+                // A phone reports a resize continuously: the reported width
+                // jitters by a pixel from frame to frame, so IsWindowResized()
+                // is true forever and this branch had no condition on it. From
+                // an iPhone's devlog, on the main menu, doing nothing:
+                //
+                //     12:13:49.159  Menu background: 1398x699
+                //     12:13:50.366  Menu background: 1398x699
+                //     12:13:51.574  Menu background: 1398x699
+                //     ...
+                //
+                // One rebuild every 1.2 seconds, for ever, each one decoding
+                // an 8192x4096 PNG -- 128 MB allocated and handed straight
+                // back. That is the heap being churned by 100 MB/s before a
+                // world has been touched, and it is why the heap figure at the
+                // start of a load was never the same twice.
+                //
+                // The scroll reset moves inside for the same reason: resetting
+                // it every frame is what stopped the background scrolling.
+                if (m_screenH != m_menuBgInitScreenH) {
+                    initMenuBackground();
+                    m_menuBgScroll = 0;
+                }
             } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
                        m_currentScreen == SCREEN_MULTIPLAYER) {
-                if (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH) {
+                // HEIGHT ONLY. See the note on the per-frame check below.
+                if (m_screenH != m_menuBgInitScreenH) {
                     initMenuBackground();
                 }
             }
@@ -1644,7 +2181,21 @@ void Game::run() {
              m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
                        m_currentScreen == SCREEN_MULTIPLAYER) &&
             !IsWindowResized() &&
-            (m_screenW != m_menuBgInitScreenW || m_screenH != m_menuBgInitScreenH)) {
+            // HEIGHT ONLY, and this is not a tidy-up.
+            //
+            // initMenuBackground() derives everything from m_screenH: bgH IS
+            // the screen height and bgW comes from it and the image's aspect.
+            // The width never enters into it. But this guard compared the
+            // width too, and on a phone the reported width jitters by a pixel
+            // from frame to frame -- so the condition was true forever and the
+            // menu rebuilt its background EVERY FRAME.
+            //
+            // Each rebuild decodes an 8192x4096 image: 128 MB allocated and
+            // handed back, about 1.2 seconds of work, on repeat. On a desktop
+            // that is a slow menu; on an iPhone it is a dead tab, and it was
+            // killing the tab before a world was ever loaded. Measured at 126
+            // rebuilds in one phone session against 5 on the desktop.
+            m_screenH != m_menuBgInitScreenH) {
             initMenuBackground();
         }
 
@@ -1666,10 +2217,21 @@ void Game::run() {
                 endFrame();
             } else {
                 updateMenuBackground();
-                updateMainMenu();
+                // The tutorial's opening conversation runs HERE, on the menu,
+                // with no world under it -- Pr1nted is talking to the player,
+                // not to a country, and there is nothing to load until he has
+                // handed over. updateMainMenu is skipped while it is up so the
+                // menu behind does not take the same clicks the box does.
+                if (m_dialogOpen) {
+                    updateDialogue(dt);
+                    updateComms(dt);   // BEFORE BeginDrawing: it owns a render target
+                } else {
+                    updateMainMenu();
+                }
                 BeginDrawing();
                 ClearBackground(BLACK);
                 drawMainMenu();
+                if (m_dialogOpen) { drawComms(); drawDialogue(); }
                 if (m_config.showConsole) drawConsoleWindow();
                 drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
                 endFrame();
@@ -1845,6 +2407,8 @@ void Game::run() {
         // just been drawn rather than one that is about to be. Inert unless
         // --screenshots asked for a tour; see Game_Screenshots.cpp.
         if (m_shotTour && !tickScreenshotTour()) m_running = false;
+        // Same place, same reason: the walk asks what the frame just drew.
+        if (m_walk && !tickTutorialWalk()) m_running = false;
     }
 }
 
@@ -2145,12 +2709,22 @@ void Game::drawNowPlayingToast() {
     alpha = std::clamp(alpha, 0.0f, 1.0f);
     const auto A = [&](int v) { return (unsigned char)std::clamp((int)(v * alpha), 0, 255); };
 
-    // Deliberately ASCII and DrawText: the toast draws on every screen,
-    // including ones reached before m_gameFont exists, and raylib's built-in
-    // font has no glyph for a musical note or an em dash.
-    const char* kicker = "NOW PLAYING";
+    // The toast draws on every screen, including ones reached before the
+    // Unicode atlas exists, and raylib's built-in font has no glyph for a
+    // musical note or an em dash -- which is why the decoration here is plain
+    // ASCII and always will be.
+    //
+    // The WORDS are translated, but only when there is a font able to draw
+    // them: without the atlas a translated label would come out as a row of
+    // boxes, which is worse than reading it in English. The song's own title
+    // and the artist's name are never translated -- they are names.
+    const bool canDrawUnicode = odText::ready();
+    const char* kicker = canDrawUnicode ? T("NOW PLAYING") : "NOW PLAYING";
     const std::string title = m_toast.title;
-    const std::string author = m_toast.author.empty() ? std::string() : ("by " + m_toast.author);
+    const std::string author =
+        m_toast.author.empty()
+            ? std::string()
+            : TextFormat(canDrawUnicode ? T("by %s") : "by %s", m_toast.author.c_str());
 
     const int kickerSize = 12, titleSize = 22, authorSize = 14;
     const int padX = 16, padY = 12, accentW = 3;
@@ -2515,7 +3089,7 @@ void Game::drawResourcePanel() {
 
     DrawRectangleRounded(p, 0.06f, 8, Color{14, 16, 22, 232});
     DrawRectangleRoundedLines(p, 0.06f, 8, Color{255, 255, 255, 40});
-    DrawText("RESOURCE LIMIT", (int)p.x + 16, (int)p.y + 12, 16, accent);
+    DrawText(T("RESOURCE LIMIT"), (int)p.x + 16, (int)p.y + 12, 16, accent);
     DrawText("F10", (int)(p.x + p.width) - 32, (int)p.y + 13, 12, Color{140, 145, 160, 200});
 
     // Current setting + what it actually caps the frame rate at.
@@ -2523,7 +3097,7 @@ void Game::drawResourcePanel() {
         const int ceiling = budgetedFpsCeiling();
         std::string label = m_config.resourceBudget >= 0.999f
             ? std::string("Unlimited")
-            : TextFormat("%d%%   frame cap %d fps",
+            : TextFormat(T("%d%%   frame cap %d fps"),
                          (int)lroundf(m_config.resourceBudget * 100.0f), ceiling);
         DrawText(label.c_str(), (int)p.x + 16, (int)p.y + 34, 14, RAYWHITE);
     }
@@ -2568,22 +3142,22 @@ void Game::drawResourcePanel() {
             prevCpu = cpuPt; prevBudget = budPt;
         }
     } else {
-        DrawText("sampling...", (int)g.x + 8, (int)(g.y + g.height / 2 - 5), 12,
+        DrawText(T("sampling..."), (int)g.x + 8, (int)(g.y + g.height / 2 - 5), 12,
                  Color{150, 150, 160, 180});
     }
-    DrawText(TextFormat("%.1f cores", peak), (int)g.x + 4, (int)g.y + 3, 10,
+    DrawText(TextFormat(T("%.1f cores"), peak), (int)g.x + 4, (int)g.y + 3, 10,
              Color{170, 175, 190, 190});
 
     // Legend + live readouts
     const int ly = (int)(g.y + g.height) + 8;
     DrawRectangle((int)g.x, ly + 5, 10, 2, Color{120, 220, 160, 235});
-    DrawText("cpu used", (int)g.x + 14, ly, 11, Color{170, 180, 190, 210});
+    DrawText(T("cpu used"), (int)g.x + 14, ly, 11, Color{170, 180, 190, 210});
     DrawRectangle((int)g.x + 82, ly + 5, 10, 2, Color{255, 200, 90, 190});
     DrawText("limit", (int)g.x + 96, ly, 11, Color{170, 180, 190, 210});
 
     const float share = m_perfHistory.empty() ? 0.0f : m_perfHistory.back().cpuShare;
-    std::string live = TextFormat("now %.0f%% of a core", share * 100.0f);
-    if (m_lastTurnMs > 0.0f) live += TextFormat("   turn %.0f ms", m_lastTurnMs);
+    std::string live = TextFormat(T("now %.0f%% of a core"), share * 100.0f);
+    if (m_lastTurnMs > 0.0f) live += TextFormat(T("   turn %.0f ms"), m_lastTurnMs);
     DrawText(live.c_str(), (int)g.x, ly + 18, 12, Color{200, 205, 215, 225});
 }
 
@@ -2687,9 +3261,9 @@ void Game::drawPauseMenu() {
             int tx = tabStartX + tabIdx * tabSpacing;
             bool active = (t == m_settingsTab);
             Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
-            DrawText(TAB_NAMES[t], tx - MeasureText(TAB_NAMES[t], fontSize) / 2, tabY, fontSize, tc);
+            DrawText(T(TAB_NAMES[t]), tx - MeasureText(T(TAB_NAMES[t]), fontSize) / 2, tabY, fontSize, tc);
             if (active) {
-                int tw = MeasureText(TAB_NAMES[t], fontSize);
+                int tw = MeasureText(T(TAB_NAMES[t]), fontSize);
                 DrawRectangle(tx - tw / 2, tabY + fontSize + 4, tw, 3, tc);
             }
             ++tabIdx;
@@ -2705,13 +3279,21 @@ void Game::drawPauseMenu() {
             DrawRectangle(sbX, sbY, sbW, sbH, sbBg);
             Color sbBorder = m_keybindFilterActive ? ColorAlpha(hexToColor(m_config.accent()), 180.0f/255.0f) : Color{255, 255, 255, 50};
             DrawRectangleLines(sbX, sbY, sbW, sbH, sbBorder);
-            std::string searchText = m_keybindFilter.empty() ? "Search keybinds..." : m_keybindFilter;
+            std::string searchText = m_keybindFilter.empty() ? T("Search keybinds...") : m_keybindFilter;
             Color sc = m_keybindFilter.empty() ? Color{120, 120, 140, 180} : WHITE;
             DrawText(searchText.c_str(), sbX + 6, sbY + 5, 13, sc);
             if (m_keybindFilterActive && !m_keybindFilter.empty()) {
                 int sw = MeasureText(m_keybindFilter.c_str(), 13);
                 if ((int)(GetTime() * 2) % 2) DrawRectangle(sbX + 6 + sw, sbY + 5, 2, 13, WHITE);
             }
+        }
+
+        // The language tab's body, in the space its (absent) rows would fill.
+        if (m_settingsTab == LANGUAGE_TAB) {
+            const Rectangle area = settingsLanguageArea();
+            drawLanguageList(area, /*withHeading=*/false);
+            const int rows = ((int)od::i18n::languages().size() + 1) / 2;
+            drawLanguageDisclaimer({area.x, area.y + rows * 46.0f + 14.0f, area.width, 64.0f});
         }
 
         // Draw settings items for current tab (compacted for filter/collapse)
@@ -2767,7 +3349,15 @@ void Game::drawPauseMenu() {
             if (isHeader && m_settingsTab == 3) {
                 // Use same label as draw for accurate hover rect
                 bool collapsed = m_collapsedSections.count(i) > 0;
-                label = std::string(collapsed ? "[+] " : "[-] ") + (items[i].label + 2);
+                // Translate FIRST, then take the marker off: "+ 2" skipped
+                // two bytes of the English "-- Navigation --", so a translated
+                // header would have had two bytes of its own first character
+                // cut off instead.
+                std::string head = od::i18n::tr(items[i].label);
+                if (head.rfind("-- ", 0) == 0) head.erase(0, 3);
+                if (head.size() > 3 && head.compare(head.size() - 3, 3, " --") == 0)
+                    head.erase(head.size() - 3);
+                label = std::string(collapsed ? "[+] " : "[-] ") + head;
             } else {
                 label = (m_editingValue && i == m_settingsIndex)
                     ? m_editBuffer + ((int)(GetTime() * 2) % 2 ? "_" : " ")
@@ -2807,7 +3397,12 @@ void Game::drawPauseMenu() {
             if (isHeader) {
                 bool collapsed = m_collapsedSections.count(i) > 0;
                 const char* arrow = collapsed ? "[+]" : "[-]";
-                std::string headerLabel = std::string(arrow) + " " + (items[i].label + 2);
+                // Same as the hover rect above: translate, then strip.
+                std::string head = od::i18n::tr(items[i].label);
+                if (head.rfind("-- ", 0) == 0) head.erase(0, 3);
+                if (head.size() > 3 && head.compare(head.size() - 3, 3, " --") == 0)
+                    head.erase(head.size() - 3);
+                std::string headerLabel = std::string(arrow) + " " + head;
                 DrawText(headerLabel.c_str(), centerX - MeasureText(headerLabel.c_str(), 16) / 2, y + 6, 16, Color{180, 180, 200, 180});
                 DrawLine(centerX - 260, y + itemH - 2, centerX + 260, y + itemH - 2, Color{180, 180, 200, 40});
                 if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered == i) {
@@ -2909,11 +3504,44 @@ void Game::drawPauseMenu() {
                                  FPS_STEPS);
                 const int lbl = 14;
                 const int ly = (int)(bar.y + bar.height) + 16;
-                DrawText("Unlimited", (int)bar.x, ly, lbl, Color{180, 180, 180, 200});
-                DrawText("VSync", (int)(bar.x + bar.width) - MeasureText("VSync", lbl),
+                DrawText(T("Unlimited"), (int)bar.x, ly, lbl, Color{180, 180, 180, 200});
+                DrawText(T("VSync"), (int)(bar.x + bar.width) - MeasureText(T("VSync"), lbl),
                          ly, lbl, Color{180, 180, 180, 200});
             }
 
+        }
+
+        // ── Leaving the tutorial ────────────────────────────────────────
+        //
+        // In the settings, in the accent colour, and ONLY during a tutorial.
+        //
+        // It is here because this is where somebody goes when they want out
+        // and cannot find the way: the tutorial takes the map, the tabs and
+        // most of the clicks, so the ordinary "back to menu" route reads as
+        // unavailable even where it is not. The accent makes it the one
+        // coloured thing on a grey panel.
+        if (m_tutorialMode) {
+            const Color accent = hexToColor(m_config.accent());
+            const char* label = "Stop the tutorial";
+            const int fs = 20;
+            const int w = MeasureText(label, fs) + 44;
+            // Bottom left. Everywhere else on this screen already belongs to
+            // something: the centre column is the settings list (which has
+            // its own "Back" row), the top strip is the tab bar, and the top
+            // right is the communication window -- which is open, because a
+            // tutorial is what put this button here. Both of those were tried
+            // and both were drawn over.
+            const Rectangle btn{40.0f, (float)m_screenH - 104.0f, (float)w, 42.0f};
+            m_tutorialStopRect = btn;
+            const bool hover = CheckCollisionPointRec(getMouse(), btn);
+            DrawRectangleRounded(btn, 0.2f, 8, ColorAlpha(accent, hover ? 0.30f : 0.16f));
+            DrawRectangleRoundedLines(btn, 0.2f, 8, ColorAlpha(accent, hover ? 1.0f : 0.75f));
+            DrawText(label, (int)btn.x + 22, (int)btn.y + 11, fs, hover ? WHITE : accent);
+            const char* sub = "nothing here is saved";
+            DrawText(sub, (int)(btn.x + btn.width - MeasureText(sub, 14)), (int)btn.y + 48, 14,
+                     ColorAlpha(accent, 0.55f));
+        } else {
+            m_tutorialStopRect = {0, 0, 0, 0};
         }
     } else {
         // Main pause menu
@@ -2987,7 +3615,10 @@ void Game::drawPauseMenu() {
             else bg = active ? (hover ? Color{80, 80, 90, 255} : Color{60, 60, 70, 255}) : (hover ? Color{60, 60, 70, 200} : Color{40, 40, 50, 200});
 
             DrawRectangleRounded(btn, 0.15f, 6, bg);
-            DrawText(choices[c], bx + (btnW - MeasureText(choices[c], 16)) / 2, btnY + 12, 16, WHITE);
+            odText::fitAudit(choices[c], btnW - 8, 16, "confirm dialog button");
+            int cfs = 16;
+            const std::string cfit = odText::fitToWidth(choices[c], btnW - 8, cfs, 12);
+            DrawText(cfit.c_str(), bx + (btnW - MeasureText(cfit.c_str(), cfs)) / 2, btnY + 12, cfs, WHITE);
 
             if (active && m_unsavedChoice == c) {
                 DrawRectangleRoundedLines(btn, 0.15f, 6, ColorAlpha(hexToColor(m_config.accent()), 200.0f/255.0f));

@@ -1,0 +1,31 @@
+// Çeviri - tüm yolların ortak sonu.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Yukarı çıkalım o hâlde. Hiçbir haritada olmayan iki şey.
+
+§**Kayıtlar.**§ Gerçek bir dünya siz oynarken kendini yazar ve orada sizi bekler.
+Bizimki beklemez: az önce yaptığınız hiçbir şey saklanmadı, ki bir alıştırma
+adasının bütün mesele de budur.
+---
+@Signals Officer
+:: point=menu.2
+§**Çok oyunculu.**§ Bir makine sunuculuk yapar, diğerleri ona katılır. Bir tur,
+her oyuncu hazırım dediğinde çözülür, yani oyun en yavaş olanın hızıyla ilerler.
+
+Mesajlarına cevap veren insanlarla oynayın.
+---
+@Pr1nted
+Hâlâ hayatta mısınız? Güzel. Titizdir, bunu ona vereyim.
+
+Başka bir şeyi de geçmek ister misiniz, yoksa bitti mi?
+> Aşağı dönüp belirli bir konuyu ele alalım -> world:specifics
+> Hepsi bu, teşekkürler
+---
+@Pr1nted
+:: act=end_tutorial
+Peki. Gidin birkaç oyun kaybedin, bu iş öyle oturur.
+
+Pr1nted, tamam.

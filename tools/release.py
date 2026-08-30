@@ -87,6 +87,15 @@ DATA_ALLOWLIST = [
                       # per-worker model.wN.bin, model.bin.prev, two hand-made
                       # checkpoints and a folder of superseded workers. The game
                       # loads model.bin and nothing else, so name it.
+    "lang",           # the interface in every language but English.
+                      # od::i18n::setLanguage() opens data/lang/<code>.json and
+                      # returns false when it is missing, so a release without
+                      # this had a language picker in which every entry failed
+                      # and the game stayed English for everyone.
+    "dialog",         # the .oddlg scripts the tutorial and the character
+                      # exchanges are written in, one directory per language.
+                      # Absent, Game_TutorialWalk finds no route it can open
+                      # and the tutorial does nothing at all.
     "tips.json",
     "credits.txt",
     "policies.json",  # the doctrine catalogue. Shipped maps carry their own

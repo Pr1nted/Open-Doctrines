@@ -1,0 +1,30 @@
+// Çeviri - araştırma.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Araştırma. Açın - şikâyet hep aynıdır - başladığınız hiçbir şey bitmiyor gibidir -
+ve bu bir hata değil, işin özü budur.
+---
+@Signals Officer
+Buradaki her şey henüz oynamadığınız turlarla ölçülür. Şimdi başlattığınız şey,
+onu istediğinizi unuttuktan çok sonra gelir; yani başlamak için tek kötü zaman
+daha sonrasıdır.
+---
+@Signals Officer
+Orduyla aynı paradan çeker. Her şeyi araştıran bir ülke hiçbir şey sahaya sürmez,
+her şeyi sahaya süren bir ülke ise yirmi tur sonra hâlâ geçen on yılın savaşını
+yapıyor olur.
+
+Bir hat seçin. Hepsini seçmeyin.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Tekrar kapatın - köşedeki §**x**§.
+---
+@Signals Officer
+Biten iş geriye dönük uygulanmaz. Yeni teçhizat önce yeni birliklere ulaşır, yani
+bir şeyin tamamlandığı tur, ne inşa ettiğinize bakma turudur, rahatlama turu değil.
+
+Araştırma budur. Başka bir şey?

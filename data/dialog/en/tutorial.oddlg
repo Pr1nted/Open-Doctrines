@@ -1,0 +1,314 @@
+// Mia's lesson, on the tutorial map (tools/make_tutorial_map.py).
+//
+// The geography is fixed and so are the province ids, which is what lets this
+// point at particular ground: Ashford is the player, Kestrel shares the
+// western island, Verrick has the eastern one, and Hallow Rock sits in the
+// strait between.
+//
+// KEYS ARE NEVER WRITTEN OUT. {key=army_move} asks what that action is bound
+// to right now; a tutorial that says "press M" is wrong for everyone who
+// rebound it, and wrong silently -- they press M, nothing happens, and the
+// game looks broken rather than the text.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Right. Ashford. Seven provinces, one neighbour who already
+dislikes us, and an island we cannot walk to.
+
+Small enough to learn on. That is the whole reason we are here.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Click any province and this panel tells you what it is: who owns it, who
+lives there, what it produces and how close they are to rioting about it.
+
+Everything you do in this game, you do to a province.
+---
+@Signals Officer
+:: point=view.population
+The bar along the bottom is not eight buttons. It is eight ways of looking at
+the SAME map, and you will spend the whole game switching between them.
+
+This one paints every province by how many people live in it.
+---
+@Signals Officer
+:: point=view.industry
+Industry. Where the factories are, and therefore where the money and the
+equipment come from.
+
+Population and industry together tell you which provinces are worth taking and
+which are just ground.
+---
+@Signals Officer
+:: point=view.defence
+Defence shows the forts. Dark means somebody has dug in, and an attack into
+dark ground costs far more than the numbers suggest.
+---
+@Signals Officer
+:: point=view.relations
+Relations: who is at war with whom, and who is guaranteeing whom. Check it
+before you start something -- half the wars people lose here were with three
+countries, not one.
+---
+@Signals Officer
+:: point=view.army
+Army. Every garrison on the map at once, yours and theirs.
+
+This is the one to be in while you are moving men, because it is the only one
+that shows what is waiting for them.
+---
+@Signals Officer
+:: point=view.navy
+Navy does the same for ships, and it is where you load transports from.
+
+Resources and Country Names are the last two, and they do what they say.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**The economy**§, first, because everything else is paid for out of it.
+
+Open it.
+---
+@Signals Officer
+Industry is what you build with, and it grows where population already is.
+Put a factory somewhere empty and you have bought a very expensive shed.
+
+Income arrives once a turn. Spend it before you have it and the shortfall
+comes out of readiness.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Now close it again -- same button. The panel covers the map, and I cannot
+show you anything out there while you are in here.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+§**Research**§ next. Open it.
+---
+@Signals Officer
+Nothing you start here finishes this turn, and most of it finishes long
+after you have forgotten you wanted it.
+
+Which is exactly why it is worth starting early.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Out again.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politics**§. In you go.
+---
+@Signals Officer
+Policies cost upkeep, not a lump sum -- they are a standing bill, and they
+move where the country sits politically.
+
+Conscription fills the ranks. It also makes people who did not want to be in
+the ranks, and that is the number to watch.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+And out.
+---
+@Signals Officer
+That number is §**unrest**§.
+
+A province with high unrest stops paying and starts organising. Ignore it long
+enough and it leaves -- with its industry, its population, and its opinion of
+you.
+
+You get a warning. You do not always get a second one.
+---
+@Signals Officer
+:: point=view.relations
+One more thing before the panels: a war does not have to end by somebody
+dying.
+
+§**Ceasefire**§ and §**trade**§ offers arrive as a window with terms on it --
+who stops fighting, who gives up what. Read the terms. Accept and the war
+ends on those terms, not on nice ones.
+---
+@Signals Officer
+You can open one too, from the relations view: pick a country you are at war
+with and ask. They say yes when they are losing and no when they are not,
+which is most of the diplomacy in this game.
+
+A §**trade deal**§ is the same shape without the war: goods for money, every
+turn, until somebody cancels.
+---
+@Signals Officer
+And nobody will offer you either during this lesson. I have told them not to.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Last panel. §**Claims**§ are how a war becomes legitimate.
+---
+@Signals Officer
+Press a claim you have and the world shrugs. Take ground you never claimed,
+and everyone who was undecided about you stops being undecided.
+
+Make the claim BEFORE the war. One filed afterwards fools nobody.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Close it, and we will go and use some of this.
+---
+@Signals Officer
+Now the army.
+
+Select a province you own, hold §{key=army_move}§ and click where the men
+should go. Neighbouring province only -- an army walks, it does not teleport.
+---
+@Signals Officer
+Artillery is on §{key=artillery_wheel}§. Hold it and the wheel opens: mortars
+through to things I would rather not put in writing.
+
+Ships have their own: §{key=ship_move}§ to move, §{key=ship_wheel}§ for their
+guns, §{key=ship_engage}§ to pick a fight.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Armies do not appear from nowhere either. §**You recruit them**§, province by
+province, out of the people living there.
+
+Select one of ours and look at the panel.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+There is a slider and a §**Recruit**§ button. The slider is how much of what
+that province can spare you are taking this turn -- roughly a fifth of its
+population at most, less where people are unhappy.
+
+It costs money, and the men arrive next turn. Order some now.
+---
+@Signals Officer
+A province you have stripped of men is a province anybody can walk into, and
+one you have stripped of people is poorer for ever. Recruiting is spending
+something, not making it.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Before you move anybody: §**nothing happens until you end the turn.**§
+
+You may have noticed it greyed out until now. That was me.
+
+You give orders. They sit there. You press this, and then they all happen at
+once -- which is why a whole campaign can be decided in a single turn if the
+orders were good.
+---
+@Signals Officer
+Kestrel holds the eastern end of our island, they are already at war with us,
+and they have forty-eight thousand men to their name.
+
+We have seven hundred and twenty thousand.
+---
+@Signals Officer
+:: until=destroyed:KES
+So do it in §**one turn**§. Order every province of theirs taken -- all four,
+one after another, before you end anything -- and then press Process Turn and
+watch the lot resolve.
+
+That is the rhythm of this game. Everything else is detail.
+---
+@Signals Officer
+:: act=rebellion
+... You have a problem at home.
+
+Unrest in the provinces you just took has gone over. They have declared for
+themselves and they are not asking.
+---
+@Signals Officer
+:: until=rebels:none
+This is what I meant. A rebellion is a country now -- it has provinces, men,
+and a border with you.
+
+Put it down the same way you put down anything else. It will not be as easy
+as Kestrel was.
+---
+@Signals Officer
+Which leaves Verrick, across the water.
+
+No land route. No amount of marching gets an army there, and this is where
+most people stall.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+And we are §**not at war with them**§. Kestrel came to us already hostile;
+Verrick has done nothing, and you cannot land on a country you are at peace
+with.
+
+So we declare. Any view except Population, and click one of their provinces.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Their province panel lists what we may do to them, §**Declare War**§ among
+them. Above it is the §**war goal**§ -- what you say you are after. Click it
+to cycle.
+
+The goal is not decoration: it is what the rest of the world judges you by,
+and what a ceasefire will be argued over later.
+---
+@Signals Officer
+Declare it -- and then §**end the turn**§. A declaration is an order like any
+other: it is filed now and it happens when the turn resolves. Nothing changes
+on the map until you press the button.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Here is the whole crossing, in four moves. Select one of our coastal
+provinces -- one with a §**port**§ and men in it.
+---
+@Signals Officer
+:: point=panel.province
+It needs §**men standing in it**§. Embarking does not summon an army from
+anywhere -- it puts the garrison that is already there onto a boat, so a port
+with an empty province embarks nothing.
+
+March some in first if you have to.
+---
+@Signals Officer
+:: point=panel.province
+Then, in that province's panel: §**Embark Army**§. Free, one turn.
+
+Press it and end the turn. The garrison leaves the province and becomes a
+§**boat**§ off the coast, carrying them as its crew.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Now go to the §**navy**§ view. You cannot give a ship an order from the
+population map -- the boat is not on it.
+---
+@Signals Officer
+Select the boat. Press §**Move**§, and then -- this is the part nobody
+guesses -- click on §**land**§.
+
+Water moves it. A coast §**puts the men ashore there**§. That is the landing;
+there is no separate button for it.
+---
+@Signals Officer
+:: until=destroyed:VER
+So: men in a port province, embark, end the turn, navy view, move the boat,
+click land.
+
+And go §**via Hallow Rock**§. That is not a shortcut, it is the route: a boat
+carries only so far, and Verrick's coast is beyond that in one go. Land on the
+rock, end the turn, then cross the second half.
+
+And keep the boat away from their destroyer. A loaded one sinks with everybody
+on it.
+---
+@Signals Officer
+:: point=tab.claims
+And claim the ground before you take it, not after. You know why now.
+---
+@Signals Officer
+That is all of it. Economy, research, politics, unrest, claims,
+armies, ships.
+
+Everything else is detail, and you will pick the detail up by losing to it.
+---
+@Signals Officer
+:: act=then:outro
+And that is the island. Come back up to the menu with me -- the last two
+things are not down here.

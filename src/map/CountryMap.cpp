@@ -1,4 +1,6 @@
 #include "CountryMap.h"
+#include "util/LoadLog.h"
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 
@@ -101,17 +103,36 @@ static FlagPattern parseFlag(const nlohmann::json& j) {
 }
 
 bool CountryMap::load(const std::string& jsonPath) {
-    std::ifstream f(jsonPath);
-    if (!f.is_open()) {
-        std::cerr << "Could not open " << jsonPath << std::endl;
+    // stdio, NOT std::ifstream.
+    //
+    // This runs inside the map load, and the map load yields to the browser
+    // through Asyncify every few thousand provinces so the audio does not
+    // stutter. Coming back in, libc++'s iostream machinery traps the whole
+    // module -- constructing a basic_filebuf was enough:
+    //
+    //     RuntimeError: null function
+    //       at basic_filebuf<char>::basic_filebuf()
+    //       at CountryMap::load()
+    //       at Object.doRewind
+    //
+    // and the load simply stopped, with no message and no world. fopen has
+    // none of that machinery behind it. See src/util/LoadLog.h for the same
+    // reasoning applied to the logging.
+    std::FILE* f = std::fopen(jsonPath.c_str(), "rb");
+    if (!f) {
+        LoadLog() << "Could not open " << jsonPath << std::endl;
         return false;
     }
-    std::string content((std::istreambuf_iterator<char>(f)),
-                         std::istreambuf_iterator<char>());
+    std::string content;
+    char buf[16384];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) content.append(buf, n);
+    std::fclose(f);
     return loadFromJson(content);
 }
 
 bool CountryMap::loadFromJson(const std::string& jsonStr) {
+    printf("[countries] loadFromJson %zu bytes\n", jsonStr.size()); fflush(stdout);
     try {
         nlohmann::json j = nlohmann::json::parse(jsonStr);
         for (auto& [key, val] : j.items()) {
@@ -140,12 +161,19 @@ bool CountryMap::loadFromJson(const std::string& jsonStr) {
             }
             m_countries[c.id] = c;
             if (c.id > 65000) {
-                std::cout << "  HIGH ID: " << c.id << " (" << c.isoA3 << " - " << c.name << ")" << std::endl;
+                printf("  HIGH ID: %d (%s - %s)\n", c.id, c.isoA3.c_str(), c.name.c_str());
             }
         }
         return true;
     } catch (std::exception& e) {
-        std::cerr << "Country JSON parse error: " << e.what() << std::endl;
+        // printf, NOT LoadLog().
+        //
+        // Under Asyncify this handler is reached on a REWIND, and the ostream
+        // call trapped there with "null function" -- taking the whole load
+        // with it and telling nobody why. printf has no virtual dispatch and
+        // no locale machinery behind it, so it survives the same path.
+        printf("Country JSON parse error: %s\n", e.what());
+        fflush(stdout);
         return false;
     }
 }

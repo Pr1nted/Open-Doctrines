@@ -1197,7 +1197,10 @@ void Game::drawModsMenu() {
 
     // Runtime line: says plainly when this build cannot run mods at all.
     {
-        std::string line = std::string("Runtime: ") + ModRuntime::get().backendName();
+        // The backend's NAME is a product name ("WAMR", "browser
+        // WebAssembly") and stays as it is; the word in front of it is a word.
+        std::string line = TextFormat(T("Runtime: %s"),
+                                      ModRuntime::get().backendName());
         Color c = ModRuntime::get().available() ? Color{150, 150, 165, 255}
                                                 : Color{220, 120, 100, 255};
         if (!ModRuntime::get().available())
@@ -1361,8 +1364,11 @@ void Game::drawModsMenu() {
         bool bh = CheckCollisionPointRec(mouse, b);
         DrawRectangleRounded(b, 0.25f, 8, bh ? Color{70, 75, 100, 255} : Color{30, 33, 48, 220});
         DrawRectangleRoundedLines(b, 0.25f, 8, Color{70, 70, 100, 180});
-        int tw = MeasureText(label, 16);
-        DrawText(label, x + (w - tw) / 2, by + 10, 16, tint);
+        // One place, like every other label helper: the three bars below pass
+        // a literal and it is looked up here.
+        const char* shown = T(label);
+        int tw = MeasureText(shown, 16);
+        DrawText(shown, x + (w - tw) / 2, by + 10, 16, tint);
     };
     bar("Add from computer", 40, 200, WHITE);
     bar("Reload modloader", 250, 190, WHITE);
@@ -1422,7 +1428,7 @@ void Game::drawModAdvanced() {
 
     std::string t = "Permissions — " + (e.manifestValid ? e.manifest.name : e.fileName);
     drawHybridText(x + 24, y + 20, 22, t.c_str(), accent);
-    DrawText("Only what the mod requested can be granted.", x + 24, y + 50, 13,
+    DrawText(T("Only what the mod requested can be granted."), x + 24, y + 50, 13,
              Color{150, 150, 160, 255});
 
     // Every capability the build knows about, so one added to kModules cannot
@@ -1512,7 +1518,7 @@ void Game::drawModAdvanced() {
         }
     }
     if (shown == 0) {
-        DrawText("None with the mods you have enabled.", x + 28, ry, 13,
+        DrawText(T("None with the mods you have enabled."), x + 28, ry, 13,
                  Color{130, 130, 140, 255});
     }
 
@@ -1522,7 +1528,7 @@ void Game::drawModAdvanced() {
     Rectangle close{(float)(x + w - 120), (float)(y + h - 46), 96.0f, 32.0f};
     bool ch = CheckCollisionPointRec(mouse, close);
     DrawRectangleRounded(close, 0.25f, 8, ch ? Color{70, 75, 100, 255} : Color{35, 38, 55, 220});
-    DrawText("Close", (int)close.x + 24, (int)close.y + 8, 16, WHITE);
+    DrawText(T("Close"), (int)close.x + 24, (int)close.y + 8, 16, WHITE);
 }
 
 void Game::drawModDeleteConfirm() {
@@ -1538,11 +1544,11 @@ void Game::drawModDeleteConfirm() {
                          Color{20, 20, 32, 245});
     DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.06f, 10,
                               Color{70, 70, 100, 220});
-    DrawText("Delete this mod?", x + 24, y + 22, 22, WHITE);
+    DrawText(T("Delete this mod?"), x + 24, y + 22, 22, WHITE);
     drawHybridText(x + 24, y + 58, 15,
                    (e.manifestValid ? e.manifest.name : e.fileName).c_str(),
                    Color{190, 190, 200, 255});
-    DrawText("The .odmod file is removed from disk.", x + 24, y + 82, 13,
+    DrawText(T("The .odmod file is removed from disk."), x + 24, y + 82, 13,
              Color{150, 150, 160, 255});
 
     Rectangle del{(float)(x + w - 220), (float)(y + h - 52), 96.0f, 34.0f};
@@ -1553,8 +1559,8 @@ void Game::drawModDeleteConfirm() {
     DrawRectangleRounded(can, 0.25f, 8,
                          CheckCollisionPointRec(mouse, can) ? Color{70, 75, 100, 255}
                                                             : Color{35, 38, 55, 220});
-    DrawText("Delete", (int)del.x + 20, (int)del.y + 9, 16, WHITE);
-    DrawText("Cancel", (int)can.x + 20, (int)can.y + 9, 16, WHITE);
+    DrawText(T("Delete"), (int)del.x + 20, (int)del.y + 9, 16, WHITE);
+    DrawText(T("Cancel"), (int)can.x + 20, (int)can.y + 9, 16, WHITE);
 }
 
 void Game::drawModAiWarning() {
@@ -1567,13 +1573,12 @@ void Game::drawModAiWarning() {
     DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.06f, 10,
                               Color{170, 90, 80, 220});
 
-    DrawText("AI Learning is on", x + 24, y + 22, 24, Color{240, 170, 150, 255});
-    DrawText("Mods can change what the AI sees and how turns resolve.", x + 24, y + 62, 15,
+    DrawText(T("AI Learning is on"), x + 24, y + 22, 24, Color{240, 170, 150, 255});
+    DrawText(T("Mods can change what the AI sees and how turns resolve."), x + 24, y + 62, 15,
              Color{205, 205, 215, 255});
-    DrawText("Training with a mod loaded silently corrupts the model in", x + 24, y + 84, 15,
-             Color{205, 205, 215, 255});
-    std::string f = "data/ai/model.bin — and the damage is invisible until it is done.";
-    drawHybridText(x + 24, y + 106, 15, f.c_str(), Color{205, 205, 215, 255});
+    odText::drawWrapped(
+        T("Training with a mod loaded silently corrupts the model in data/ai/model.bin — and the damage is invisible until it is done."),
+        x + 24, y + 84, w - 48, 15, Color{205, 205, 215, 255});
 
     Rectangle off{(float)(x + 24), (float)(y + h - 58), 250.0f, 36.0f};
     Rectangle can{(float)(x + w - 130), (float)(y + h - 58), 106.0f, 36.0f};
@@ -1583,8 +1588,11 @@ void Game::drawModAiWarning() {
     DrawRectangleRounded(can, 0.25f, 8,
                          CheckCollisionPointRec(mouse, can) ? Color{70, 75, 100, 255}
                                                             : Color{35, 38, 55, 220});
-    DrawText("Turn off AI Learning and enable", (int)off.x + 14, (int)off.y + 10, 15, WHITE);
-    DrawText("Cancel", (int)can.x + 24, (int)can.y + 10, 16, WHITE);
+    // Completed from "Turn off AI Learning and enable", which stopped mid
+    // sentence: it is a button, the player reads it before pressing it, and
+    // there is no second line for it to run onto.
+    DrawText(T("Turn off AI Learning and enable mods"), (int)off.x + 14, (int)off.y + 10, 15, WHITE);
+    DrawText(T("Cancel"), (int)can.x + 24, (int)can.y + 10, 16, WHITE);
 }
 
 void Game::drawModReloadingOverlay() {
@@ -1842,7 +1850,7 @@ void Game::updateModsMenu() {
                     if (ModConflicts::get().anyFor(me.id))
                         badgeX += MeasureText("conflict", 12) + 14 + 6;
                     Rectangle upB{(float)badgeX, row.y + 55,
-                                  (float)(MeasureText("Can be updated", 12) + 14), 19.0f};
+                                  (float)(MeasureText(T("Can be updated"), 12) + 14), 19.0f};
                     if (CheckCollisionPointRec(mouse, upB)) {
                         Audio::get().playSfx("click_light");
                         OpenURL(up->page.c_str());

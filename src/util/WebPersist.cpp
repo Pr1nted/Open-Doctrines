@@ -1,4 +1,5 @@
 #include "WebPersist.h"
+#include "util/LoadLog.h"
 
 #include <iostream>
 
@@ -42,7 +43,7 @@ void waitForSync() {
     const double deadline = GetTime() + 15.0;
     while (!EM_ASM_INT({ return Module.odPersistDone | 0; })) {
         if (GetTime() > deadline) {
-            std::cerr << "[persist] IndexedDB did not answer; "
+            LoadLog() << "[persist] IndexedDB did not answer; "
                          "this session will not be saved" << std::endl;
             return;
         }
@@ -112,7 +113,7 @@ void odPersistInit(const std::string& dataDir) {
     g_lastWrite = GetTime();
 
     if (!FileExists(kArchive)) {
-        std::cout << "[persist] no previous session stored" << std::endl;
+        LoadLog() << "[persist] no previous session stored" << std::endl;
         return;
     }
 
@@ -123,9 +124,9 @@ void odPersistInit(const std::string& dataDir) {
     std::string err;
     int count = 0;
     if (OdState::load(dataDir, kArchive, err, &count))
-        std::cout << "[persist] restored " << count << " file(s)" << std::endl;
+        LoadLog() << "[persist] restored " << count << " file(s)" << std::endl;
     else
-        std::cerr << "[persist] could not restore: " << err << std::endl;
+        LoadLog() << "[persist] could not restore: " << err << std::endl;
 #endif
 }
 
@@ -156,7 +157,7 @@ void odPersistFlush(const std::string& dataDir) {
     std::string err;
     int count = 0;
     if (!OdState::save(dataDir, kArchive, err, &count)) {
-        std::cerr << "[persist] could not write: " << err << std::endl;
+        LoadLog() << "[persist] could not write: " << err << std::endl;
         return;
     }
 

@@ -28,6 +28,10 @@
 #include <string>
 #include <vector>
 
+// Headless: Locale calls odText::setComplexArabic, which lives in Text.cpp
+// behind raylib. Same stub, same reason, as locale_test.cpp.
+namespace odText { void setComplexArabic(bool) {} }
+
 namespace {
 
 int g_failures = 0;

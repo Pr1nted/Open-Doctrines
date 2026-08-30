@@ -1,4 +1,6 @@
 #include "Game.h"
+#include "util/LoadLog.h"
+#include "ai/MoneyLedger.h"
 #include "PoliticalIdentity.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -454,6 +456,10 @@ void Game::processTurn() {
         processNavyCombat(navyCid);
     }
     processDiplomaticRequests();
+    // After the diplomacy, because that is what changes who has standing
+    // where: the ceasefire that strands a stack and the withdrawal that
+    // rescues it land on the same turn. See repatriateStrandedArmies.
+    repatriateStrandedArmies();
     // After the requests, so a claim made this turn gets its full window, and
     // beside decayWarWeariness below because it is the same kind of thing: the
     // world slowly letting go of what happened.
@@ -648,6 +654,29 @@ void Game::processTurn() {
     // for mid-turn: reloads happen between turns, never inside one.
     ModManager::get().postTurn(m_turnNumber);
 
+    // ── THE BENCHMARK ENDS ITSELF ──
+    //
+    // A person's seat has to stop on the same turn the model's did or the two
+    // numbers are not the same measurement, and "please stop at 120" is not a
+    // protocol. Same arithmetic the eval prints: the seat's share of every
+    // province anybody owns. See Game::startBenchSeat.
+    if (m_benchPlayUntilTurn > 0 && m_turnNumber >= m_benchPlayUntilTurn) {
+        long long mine = 0, owned = 0;
+        for (int owner : m_provinceCountryLookup) {
+            if (owner <= 0 || owner >= REBEL_CID_MIN) continue;
+            ++owned;
+            if (owner == m_playerCountryId) ++mine;
+        }
+        const double share = owned ? 100.0 * (double)mine / (double)owned : 0.0;
+        const Country* pc = m_countries.getCountry(m_playerCountryId);
+        printf("[BENCH] seat %s  score %.1f  (share of the world held after "
+               "%d turns)\n", pc ? pc->isoA3.c_str() : "?", share,
+               m_benchPlayUntilTurn);
+        fflush(stdout);
+        m_benchScoreShare = (float)share;
+        m_benchPlayUntilTurn = 0;   // report once
+    }
+
     drawFrame(1.0f, "Done!");
     if (m_config.aiDebug) printf("[TURN] Turn %d processed.\n", turnNum);
 
@@ -820,8 +849,8 @@ void Game::restoreRebels(const std::string& savePath) {
                 m_countryFlags[cid] = FlagRenderer::render(rc->flagActual, 256, 128, m_dataDir, &m_odmJsonData);
             }
         }
-        std::cout << "  Restored " << j.size() << " rebel countries" << std::endl;
-    } catch (...) { std::cerr << "  Failed to parse rebels.json" << std::endl; }
+        LoadLog() << "  Restored " << j.size() << " rebel countries" << std::endl;
+    } catch (...) { LoadLog() << "  Failed to parse rebels.json" << std::endl; }
 }
 
 void Game::rebuildIsoIndex() {
@@ -1142,7 +1171,7 @@ void Game::synthesizeMissingRebels() {
         if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
     }
     rebuildIsoIndex();
-    std::cout << "  Synthesized " << missing.size()
+    LoadLog() << "  Synthesized " << missing.size()
               << " placeholder rebel state(s) missing from the save" << std::endl;
 }
 
@@ -1307,6 +1336,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 
     // Helper: derive a plausible territory name from an ethnicity
     static const std::vector<std::string> SUFFIXES = {"ia", "a", "stan", "istan", "land", ""};
+    // i18n-ignore: builds the English name; the display forms live in Locale.cpp
     static const char* DIR_WORDS[] = {"south ", "north ", "east ", "west ", "central "};
     auto stripDirection = [&](const std::string& s) -> std::string {
         std::string low = s;
@@ -1602,6 +1632,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         proper = stripDirection(proper);
         if (!proper.empty() && !nameConflicts(proper)) return proper;
 
+        // i18n-ignore: builds the English name; the display forms live in Locale.cpp
         static const char* lastDirs[] = {"Northern ", "Southern ", "Eastern ",
                                          "Western ", "Central "};
         for (int d = 0; d < 5; ++d) {
@@ -1612,6 +1643,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     };
 
     auto makeDirectionalName = [&](const std::string& base, const std::string& parentName) -> std::string {
+        // i18n-ignore: builds the English name; the display forms live in Locale.cpp
         static const char* dirs[] = {"South ", "North ", "East ", "West ", "Central "};
         std::string place = base.empty() ? parentName : base;
         if (place.size() > 4 && place.substr(0,4) == "The ") place = place.substr(4);
@@ -1658,6 +1690,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             // A state, not a campaign. "Liberation Front" and "Independence
             // Movement" name the thing that FOUGHT for a country; they are not
             // what the country is called once it exists.
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* genSuffixes[] = {" Republic", " Union", " Federation", " State"};
             int si = simRand() % 4;
             countryName = territory + genSuffixes[si];
@@ -1694,49 +1727,63 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
             // that does not believe its own claim. They also now use the same
             // vocabulary as PoliticalIdentity.h, so a breakaway that is
             // communist and a country that TURNS communist speak alike.
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* leftPre[] = {
                 "Socialist Union of ", "People's Republic of ",
                 "Workers' Republic of ", "Socialist Republic of ",
                 "People's Federation of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* farLeftPre[] = {
                 "People's Republic of ", "Socialist Union of ",
                 "Workers' Republic of ", "People's Commune of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* rightPre[] = {
                 "Free State of ", "Republic of ", "Commonwealth of ",
                 "Democratic Alliance of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* farRightPre[] = {
                 "National State of ", "Free State of ", "Dominion of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* authPre[] = {
                 "State of ", "Autocracy of ", "Directorate of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* libPre[] = {
                 "Free Republic of ", "Free State of ", "Commonwealth of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* neutralPre[] = {
                 "Republic of ", "State of ", "Federation of ", "Union of "
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* leftOneWord[] = {
                 "The Commune", "The Collective", "Soviet", "The Union"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* farLeftOneWord[] = {
                 "The Commune", "The Collective", "Soviet", "Red Star", "The Proletariat"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* rightOneWord[] = {
                 "The Alliance", "The Federation", "The Directorate"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* farRightOneWord[] = {
                 "The Dominion", "The Imperium", "The Authority"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* authOneWord[] = {
                 "The Junta", "The Council", "The Order"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* libOneWord[] = {
                 "The Republic", "The Commonwealth", "The Concord"
             };
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* neutralOneWord[] = {
                 "The Republic", "The Free State", "The Federation", "The Union"
             };
@@ -1787,6 +1834,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // the country -- nobody declares independence and then files the paper
         // under "Breakaway". A directional republic is what such a state
         // actually calls itself.
+        // i18n-ignore: builds the English name; the display forms live in Locale.cpp
         static const char* fallbackDirs[] = {"Northern ", "Southern ", "Eastern ",
                                              "Western ", "Central "};
         countryName = "Republic of " + std::string(fallbackDirs[simRand() % 5]) + parentName;
@@ -1815,6 +1863,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         for (const char* f : BARE_FORMS)
             if (trimmed == f) { bare = true; break; }
         if (bare || trimmed.size() < 3) {
+            // i18n-ignore: builds the English name; the display forms live in Locale.cpp
             static const char* dirs[] = {"Northern ", "Southern ", "Eastern ",
                                          "Western ", "Central "};
             std::string base = parentRootName(parentCid);
@@ -2275,9 +2324,15 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     // Notify player if this affects them
     if (parentCid == m_playerCountryId) {
         std::string parentName = m_countries.getAll()[parentCid].name;
+        // One sentence with the names in it, and the names put through
+        // properName: this was three English fragments glued round two raw
+        // country names, so the whole popup stayed in English.
         pushPopup(PopupType::REBELLION,
-            "Breakaway State!",
-            countryName + " has declared independence!\nWar: " + parentName + " vs " + countryName,
+            T("Breakaway State!"),
+            TextFormat(T("%s has declared independence!\nWar: %s vs %s"),
+                       od::i18n::properName(countryName).c_str(),
+                       od::i18n::properName(parentName).c_str(),
+                       od::i18n::properName(countryName).c_str()),
             rebelCid);
     }
 
@@ -2296,7 +2351,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         if (ppIt != m_provincePixels.end()) {
             for (int idx : ppIt->second) {
                 if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                    m_pixelCountryArray[idx] = rebelCid;
+                    m_pixelCountryArray[idx] = (uint16_t)rebelCid;
                 // Populate rebel's m_countryPixels
                 if (rebelCid >= 0 && rebelCid < (int)m_countryPixels.size())
                     m_countryPixels[rebelCid].push_back(idx);
@@ -2331,6 +2386,13 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
 
 // === processRebellions ===
 void Game::processRebellions(int countryId) {
+    // Not in the tutorial. The lesson stages exactly one revolt, at the point
+    // it is ready to explain what unrest is -- and an organic one arriving
+    // before that (or a second one during it) is a live game contradicting
+    // the script mid-sentence. tutorialAct("rebellion") calls
+    // createRebelCountry directly and is not affected by this.
+    if (m_tutorialMode) return;
+
     // One census per turn, shared by every country processed in it. Counting
     // per faction would walk the country table thousands of times on the very
     // maps this exists to protect.
@@ -2575,12 +2637,26 @@ void Game::processEconomy(int countryId) {
     float net = cs.total - cs.expenses;
     treasury += net;
 
+    // Where the money goes, when asked. See src/ai/MoneyLedger.h.
+    money::tick();
+    money::add(money::INCOME_INDUSTRY,     cs.gross);
+    money::add(money::INCOME_RESOURCE,     cs.resource);
+    money::add(money::INCOME_POP,          cs.pop);
+    money::add(money::UPKEEP_ARMY,        -cs.armyExpenses);
+    money::add(money::UPKEEP_NAVY,        -cs.navyExpenses);
+    money::add(money::UPKEEP_POLICY,      -cs.policyCosts);
+    money::add(money::UPKEEP_MINORITY,    -cs.minorityCosts);
+    money::add(money::BUDGET_RESEARCH,    -cs.researchCost);
+    money::add(money::BUDGET_PACIFICATION,-cs.pacificationCost);
+    money::add(money::UPKEEP_INDUSTRY,    -cs.industryUpkeep);
+
     // GOING BROKE USED TO BE FREE. The line here was `if (treasury < 0)
     // treasury = 0;` -- the shortfall was deleted and the turn moved on, so a
     // country could keep a fleet and an army it had no income for, for ever.
     // Nothing anywhere else noticed, because nothing else looked.
     if (treasury >= 0.0) { m_bankruptCountries.erase(countryId); return; }
     const float shortfall = (float)(-treasury);
+    money::add(money::WRITTEN_OFF, -(double)shortfall);
     treasury = 0.0;
     m_bankruptCountries.insert(countryId);
     applyBankruptcyPenalties(countryId, shortfall, cs);
@@ -2672,6 +2748,13 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
     }
 
     // ── 3. Minority settlements back to their free options ──────────────
+    // BEFORE the ships and troops below, and that order is load-bearing.
+    // Moving this step to last -- on the reasoning that minority cuts are
+    // the only ones that raise unrest -- measured 107 -> 73 across six
+    // seats, hurting five of them: 1914:SWE 200 -> 50, 1939:USA 84 -> 33,
+    // and modern:CHN, the seat it was meant to rescue, 8 -> 4. Disbanding a
+    // field army mid-war loses the country THIS turn; unrest is slow and
+    // survivable. Materiel is not the cheap cut. Do not reorder this.
     // Every category has an option that costs nothing. Dropping to it saves the
     // whole minority bill at once, and is paid for in alignment — which is the
     // right price for a government that has run out of money, and one it will
@@ -2943,6 +3026,7 @@ void Game::processShipDisembarks(int countryId) {
             }
             const float dx = cit->second.x - (float)sx, dy = cit->second.y - (float)sy;
             if (std::sqrt(dx * dx + dy * dy) > shipMaxRangePx(ship)) {
+                m_navLandingsOutOfRange++;
                 if (m_config.aiDebug)
                     printf("[LANDING] cid=%d prov %d out of range, order dropped\n",
                            countryId, pid);
@@ -2959,7 +3043,13 @@ void Game::processShipDisembarks(int countryId) {
         // tenth of a failed landing inside the defender's province forever, and
         // it took an ALLY's coast off them if they had no troops standing on it.
         int survivors = 0;
+        // Whose shore this is, decided BEFORE the assault resolves -- taking
+        // the province changes the answer, and an invasion that succeeds must
+        // not be counted as bringing the cargo home.
+        const bool hostileShore = dst->countryId != countryId &&
+                                  atWarCids(countryId, dst->countryId);
         const bool took = resolveAssault(countryId, pid, crew, survivors);
+        if (m_ai) m_ai->noteLanding(countryId, hostileShore);
         if (m_config.aiDebug && took)
             printf("[LANDING] cid=%d took prov %d with %d of %d\n",
                    countryId, pid, survivors, crew);
@@ -2968,15 +3058,7 @@ void Game::processShipDisembarks(int countryId) {
         m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
         if (shipIdx >= 0 && shipIdx < (int)m_ships.size()) {
             m_ships.erase(m_ships.begin() + shipIdx);
-            // Shift pending order indices to account for removal
-            auto shiftIdx = [&](int& idx) { if (idx > shipIdx) idx--; };
-            for (auto& mo : m_pendingShipMoveOrders) shiftIdx(mo.shipIndex);
-            // Engage orders reference TWO ships; forgetting targetIndex here
-            // skewed every queued engagement one ship over after a disembark.
-            for (auto& eo : m_pendingShipEngageOrders) { shiftIdx(eo.shipIndex); shiftIdx(eo.targetIndex); }
-            for (auto& bo : m_pendingShipBombardOrders) shiftIdx(bo.shipIndex);
-            for (auto& d : m_pendingShipDisembarks) shiftIdx(d.shipIndex);
-            for (auto& ss : m_pendingScrapShips) shiftIdx(ss.shipIndex);
+            forgetShipOrders(shipIdx);
         }
     }
 }
@@ -2989,6 +3071,30 @@ void Game::processRecruitments(int countryId) {
         if (!pit || pit->countryId != countryId) { ++i; continue; }
         r.turnsRemaining--;
         if (r.turnsRemaining <= 0) {
+            // ── THE MEN COME FROM SOMEWHERE ──
+            //
+            // Recruiting used to add soldiers and leave the province's
+            // population untouched, so a province was an infinite source of
+            // men: pop/5 per order, every order, for ever, and the only real
+            // limit on an army was how many orders a country was allowed to
+            // give. Benched by hand that produced a 102-million-man army from
+            // eighty provinces without the population moving at all.
+            //
+            // Deducted HERE, in the resolver, so it binds every path that can
+            // raise troops -- the AI, the player's panel, multiplayer orders
+            // and the tutorial -- rather than in whichever of them was edited
+            // most recently. Clamped, because a province may have shrunk
+            // between the order and its arrival.
+            auto popIt = m_provincePopulations.find(r.provinceId);
+            if (popIt != m_provincePopulations.end()) {
+                const long long taken = std::min<long long>(r.count, popIt->second);
+                popIt->second = std::max(0LL, popIt->second - taken);
+                r.count = (int)std::min<long long>(r.count, taken);
+            }
+            if (r.count <= 0) {
+                m_pendingRecruitments.erase(m_pendingRecruitments.begin() + i);
+                continue;
+            }
             auto& armies = m_provinceArmies[r.provinceId];
             auto it = std::find_if(armies.begin(), armies.end(), [&](auto& u) { return u.countryId == countryId; });
             if (it != armies.end()) it->count += r.count;
@@ -2996,6 +3102,14 @@ void Game::processRecruitments(int countryId) {
             m_pendingRecruitments.erase(m_pendingRecruitments.begin() + i);
         } else ++i;
     }
+}
+
+long long Game::availableManpower(int provinceId) const {
+    auto it = m_provincePopulations.find(provinceId);
+    long long pool = it == m_provincePopulations.end() ? 0 : it->second;
+    for (const auto& r : m_pendingRecruitments)
+        if (r.provinceId == provinceId) pool -= r.count;
+    return std::max(0LL, pool);
 }
 
 // === disbandableProvinces / disbandAllArmies / cancelAllDisbands ===
@@ -3354,98 +3468,229 @@ void Game::processArmyMovement(int countryId) {
     }
 }
 
+// === forgetShipOrders ===
+//
+// One hull has left the world; every queue that names a hull by INDEX has to be
+// told. Two things happen to each order: one that referred to the departing
+// ship is dropped, and one that referred to a ship after it is shifted down.
+//
+// The shift was already done at both removal sites, by two copies of the same
+// lambda. The DROP was not done anywhere, and it did not previously matter much
+// because a ship order was created and consumed inside one turn -- an order
+// left pointing at a dead index was about to be thrown away regardless. A move
+// order now survives the turn (see PendingShipMoveOrder), so an index left
+// dangling is an order that silently transfers to whichever hull slid into that
+// slot: a sunk transport's voyage inherited by an unrelated destroyer.
+void Game::forgetShipOrders(int removedIdx) {
+    auto fix = [&](auto& vec, auto refersToRemoved) {
+        for (auto it = vec.begin(); it != vec.end(); ) {
+            if (refersToRemoved(*it)) { it = vec.erase(it); continue; }
+            ++it;
+        }
+        for (auto& o : vec) if (o.shipIndex > removedIdx) o.shipIndex--;
+    };
+    fix(m_pendingShipMoveOrders,    [&](const auto& o){ return o.shipIndex == removedIdx; });
+    fix(m_pendingShipBombardOrders, [&](const auto& o){ return o.shipIndex == removedIdx; });
+    fix(m_pendingShipDisembarks,    [&](const auto& o){ return o.shipIndex == removedIdx; });
+    fix(m_pendingScrapShips,        [&](const auto& o){ return o.shipIndex == removedIdx; });
+    // Engage names TWO hulls, and an order whose TARGET has been sunk is as
+    // dead as one whose firer has. Forgetting targetIndex here is what skewed
+    // every queued engagement one ship over after a disembark.
+    fix(m_pendingShipEngageOrders,
+        [&](const PendingShipEngageOrder& o){
+            return o.shipIndex == removedIdx || o.targetIndex == removedIdx; });
+    for (auto& eo : m_pendingShipEngageOrders)
+        if (eo.targetIndex > removedIdx) eo.targetIndex--;
+    // The player's own selection, which the disembark path never shifted -- so
+    // landing an army quietly moved the selection onto somebody else's hull.
+    for (auto it = m_selectedShipIndices.begin(); it != m_selectedShipIndices.end(); ) {
+        if (*it == removedIdx) it = m_selectedShipIndices.erase(it);
+        else { if (*it > removedIdx) (*it)--; ++it; }
+    }
+}
+
 // === processNavyMovement ===
+//
+// ONE TURN'S STEAMING ALONG A ROUTE THAT SURVIVES THE TURN.
+//
+// This used to take the destination, walk the straight line to it in 32 steps,
+// stop at the last water, and then DELETE the order. Three consequences, all
+// measured on the shipped scenarios:
+//
+//   - A crossing that had to round a headland never could. The hull was thrown
+//     back on the same beach and re-aimed down the same chord every turn. 80%
+//     of every ship move in the world covered less than a twentieth of what it
+//     asked for, and after the aim-point bugs were fixed, every remaining one
+//     was a destination that WAS water, in the SAME sea, behind a cape.
+//   - The player could only ever give an order that finished this turn, so an
+//     ocean crossing was eight clicks on eight turns per transport.
+//   - Game::navRoute -- a working sea router with a real water graph behind it
+//     -- had no caller in the resolver at all. The AI used it to pick an aim
+//     point and then threw the rest of the path away.
+//
+// So the order now carries the route and the resolver spends a turn's range
+// along it. The router's own legs are trusted: they run between adjacent cells
+// of a graph flood-filled from the raster, and re-deriving that by sampling the
+// chord between two proven water cells only rejects legs the router already
+// proved -- which is most of what the old code was rejecting. The FINAL leg is
+// different, because its endpoint was chosen by a person or by the AI rather
+// than by the router, so that one is still walked and clamped at the coast.
 void Game::processNavyMovement(int countryId) {
-    // Move ships towards their destinations
     for (size_t i = 0; i < m_pendingShipMoveOrders.size(); ) {
         auto& mo = m_pendingShipMoveOrders[i];
         if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) { ++i; continue; }
         auto& ship = m_ships[mo.shipIndex];
         if (ship.countryId != countryId) { ++i; continue; }
 
-        // SHIPS DO NOT SAIL OVERLAND.
+        // ── Plan, once ──
         //
-        // This assigned the destination outright and nothing anywhere asked
-        // whether that point was at sea. The AI queues a straight-line step of
-        // up to eighteen degrees toward a target port (execNavy's "move
-        // fleet"), so any crossing whose direct line clips a landmass -- the
-        // Adriatic toward anywhere north, say -- parked the hull in the middle
-        // of Austria. LandSeaMap::isLand has existed the whole time; the navy
-        // simply never asked it.
+        // Every caller writes a destination and leaves the route empty, so this
+        // is where a click becomes a voyage. Planned once and remembered:
+        // re-planning each turn would cost a BFS per hull per turn and, worse,
+        // would let a fleet oscillate between two equal-length paths.
         //
-        // Fixed HERE rather than in the AI because this is the one place every
-        // order arrives: the player's clicks, the AI's steps and the
-        // multiplayer path all end up on this line.
-        //
-        // CLAMPED, not refused. The ship sails as far along its line as there
-        // is water and stops at the coast, which is what a fleet ordered
-        // somewhere unreachable should do -- and it keeps a blocked navy from
-        // silently doing nothing every turn while the order is thrown away.
-        {
-            auto navigable = [&](double lon, double lat) {
-                return !m_landSea.isLand((float)lon, (float)lat);
-            };
-            double dLon = mo.destLon - ship.lon;
-            double dLat = mo.destLat - ship.lat;
-            // RANGE IS ENFORCED HERE, not in the UI that draws the circle.
-            // The overlay refused an out-of-range click, so the rule bound the
-            // player and nobody else: the AI wrote whatever destination it
-            // liked straight into this queue, and multiplayer orders arrive
-            // here without ever having passed a hover check. Clamping the
-            // vector rather than dropping the order means a long haul takes
-            // the number of turns it should instead of silently not happening.
-            {
-                const double maxDeg = shipMaxRangeDeg(ship);
-                const double dist = std::sqrt(dLon * dLon + dLat * dLat);
-                if (dist > maxDeg && dist > 0.0) {
-                    const double k = maxDeg / dist;
-                    dLon *= k; dLat *= k;
-                }
+        // A destination the router cannot reach still gets an order -- the
+        // single-leg straight line, which is what this function always did.
+        // That keeps a mod or an old order that names a point in a lake, or a
+        // map with no nav grid at all, behaving exactly as it used to instead
+        // of silently doing nothing.
+        if (!mo.planned) {
+            mo.planned = true;
+            mo.route.clear();
+            std::vector<std::pair<double, double>> way;
+            if (navRoute(ship.lon, ship.lat, mo.destLon, mo.destLat, way))
+                mo.route = std::move(way);
+            // The destination itself is always the last leg. navRoute's final
+            // waypoint is the water cell NEAREST the destination, which for a
+            // port approach is the same point and for a hand-picked one is up
+            // to a cell away.
+            if (mo.route.empty() ||
+                mo.route.back().first != mo.destLon || mo.route.back().second != mo.destLat)
+                mo.route.emplace_back(mo.destLon, mo.destLat);
+        }
+
+        // A hull that is ALREADY beached -- from a save written before any of
+        // this existed, or from a map whose ship placement disagrees with its
+        // own raster -- has to be able to get off. It takes the FIRST water it
+        // finds along the leg instead of the last, so old worlds heal rather
+        // than staying stuck for ever.
+        const bool beached = m_landSea.isLand((float)ship.lon, (float)ship.lat);
+
+        // RANGE IS ENFORCED HERE, not in the UI that draws the circle. The
+        // overlay refused an out-of-range click, so the rule bound the player
+        // and nobody else: the AI wrote whatever destination it liked straight
+        // into this queue, and multiplayer orders arrive here without ever
+        // having passed a hover check.
+        double budget = shipMaxRangeDeg(ship);
+        const double startLon = ship.lon, startLat = ship.lat;
+        // What the whole turn was ASKED for, for the routing diagnostic below:
+        // the distance to this turn's furthest reachable point, not to a
+        // destination that may be six turns away. Anything else would report a
+        // voyage in progress as a stall for every turn but its last.
+        double want = 0.0, got = 0.0;
+        // See the skip note below.
+        int skips = 0;
+        const int MAX_SKIPS = 4;
+
+        while (budget > 1e-9 && !mo.route.empty()) {
+            const double legLon = mo.route.front().first;
+            const double legLat = mo.route.front().second;
+            const double dLon = legLon - ship.lon, dLat = legLat - ship.lat;
+            const double legDist = std::sqrt(dLon * dLon + dLat * dLat);
+            if (legDist < 1e-9) { mo.route.erase(mo.route.begin()); continue; }
+
+            const bool finalLeg = (mo.route.size() == 1);
+            const double take = std::min(budget, legDist);
+            want += take;
+
+            if (!finalLeg && take >= legDist - 1e-9) {
+                // A whole router leg. Its endpoint is a water pixel the graph
+                // chose, so the hull lands at sea by construction and the
+                // chord between two adjacent cells is the router's business.
+                ship.lon = legLon; ship.lat = legLat;
+                budget -= legDist;
+                mo.route.erase(mo.route.begin());
+                continue;
             }
+
+            // Either the last leg, or as far along this one as the turn
+            // reaches. Walked and clamped, because the hull is going to STOP
+            // somewhere along here and that somewhere has to be water.
+            const double tEnd = take / legDist;
             const int STEPS = 32;
-            // A hull that is ALREADY beached -- from a save written before this
-            // existed -- has to be able to get off. It takes the first water it
-            // finds along the line instead of the last, so old worlds heal
-            // rather than staying stuck forever.
-            const bool beached = !navigable(ship.lon, ship.lat);
             double bestLon = ship.lon, bestLat = ship.lat;
-            for (int s = 1; s <= STEPS; ++s) {
-                const double t = (double)s / (double)STEPS;
+            for (int k = 1; k <= STEPS; ++k) {
+                const double t = tEnd * (double)k / (double)STEPS;
                 const double lon = ship.lon + dLon * t;
                 const double lat = ship.lat + dLat * t;
-                if (navigable(lon, lat)) {
+                if (!m_landSea.isLand((float)lon, (float)lat)) {
                     bestLon = lon; bestLat = lat;
-                    if (beached) break;          // first water: refloat
+                    if (beached) break;            // first water: refloat
                 } else if (!beached) {
-                    break;                        // last water: stop at the coast
+                    break;                          // last water: stop at the coast
                 }
             }
-            // ROUTING DIAGNOSTIC. A move that covers almost none of its
-            // requested distance was stopped by a coastline. The AI aims at the
-            // nearest enemy port by STRAIGHT-LINE distance (AISystem's
-            // findEnemyPort) with no water-path test, so a port behind a
-            // headland is targeted forever and the hull re-clamps against the
-            // same shore every turn.
-            {
-                const double want = std::sqrt(dLon * dLon + dLat * dLat);
-                const double got  = std::sqrt((bestLon - ship.lon) * (bestLon - ship.lon) +
-                                              (bestLat - ship.lat) * (bestLat - ship.lat));
-                // ONLY JOURNEYS COUNT. A hull holding station off a hostile
-                // shore is re-ordered to close the last fraction of a degree
-                // every turn and clamped by the beach every turn -- correct
-                // behaviour that the first version of this counted as a stall,
-                // which is why it read 93% while invasions were landing.
-                // 1 degree is about 23 raster pixels: past station-keeping,
-                // short of a crossing.
-                if (want > 1.0) {
-                    m_navMoves++;
-                    if (got < want * 0.05) m_navBlocked++;
-                }
+
+            // ── A LEG THAT GOES NOWHERE IS SKIPPED, NOT SAT ON ──
+            //
+            // The router's legs run cell centre to cell centre, but the hull is
+            // somewhere ARBITRARY inside its own cell -- and the chord from
+            // where it actually floats to the next cell's water pixel is the
+            // one segment on the whole route that nothing proved. A hull tucked
+            // behind a spit inside its own cell is blocked on leg one and, with
+            // the rest of a perfectly good route sitting behind it, went nowhere
+            // for ever.
+            //
+            // So a leg that yields no progress is discarded and the next one
+            // tried, in the same turn. The route is a chain of touching water
+            // cells, so the leg after the blocked one usually clears the
+            // obstacle the hull is tucked behind. Bounded, because the point is
+            // to step over a local obstruction and not to let a fleet walk its
+            // whole route in straight lines across a continent -- and it cannot
+            // cheat in any case: every position is still clamped to water.
+            const double moved = std::hypot(bestLon - ship.lon, bestLat - ship.lat);
+            if (moved < legDist * 1e-3 && mo.route.size() > 1 && skips < MAX_SKIPS) {
+                skips++;
+                mo.route.erase(mo.route.begin());
+                continue;                           // same budget, next waypoint
             }
-            ship.lon = bestLon;
-            ship.lat = bestLat;
+
+            ship.lon = bestLon; ship.lat = bestLat;
+            if (take >= legDist - 1e-9) mo.route.erase(mo.route.begin());
+            budget = 0.0;                           // partial legs end the turn
+            break;
         }
-        m_pendingShipMoveOrders.erase(m_pendingShipMoveOrders.begin() + i);
+
+        {
+            const double mLon = ship.lon - startLon, mLat = ship.lat - startLat;
+            got = std::sqrt(mLon * mLon + mLat * mLat);
+            // ONLY JOURNEYS COUNT. A hull holding station off a hostile shore
+            // is re-ordered to close the last fraction of a degree every turn
+            // and clamped by the beach every turn -- correct behaviour that the
+            // first version of this counted as a stall, which is why it read
+            // 93% while invasions were landing. 1 degree is about 23 raster
+            // pixels: past station-keeping, short of a crossing.
+            if (want > 1.0) {
+                m_navMoves++;
+                if (got < want * 0.05) {
+                    m_navBlocked++;
+                    if (m_landSea.isLand((float)mo.destLon, (float)mo.destLat))
+                        m_navDestOnLand++;
+                    else if (!navReachable(startLon, startLat, mo.destLon, mo.destLat))
+                        m_navDestOtherSea++;
+                }
+            }
+        }
+
+        // ARRIVED, or STUCK. The order is kept for next turn only while it is
+        // still making progress -- a voyage that covered nothing this turn is
+        // one the resolver cannot execute, and holding it would leave the hull
+        // grinding at the same coast for the rest of the game while the AI,
+        // which skips ships that already have an order, never reconsiders it.
+        const bool arrived = mo.route.empty();
+        const bool stuck   = (got < 1e-6);
+        if (arrived || stuck) m_pendingShipMoveOrders.erase(m_pendingShipMoveOrders.begin() + i);
+        else ++i;
     }
 }
 
@@ -3540,16 +3785,8 @@ void Game::cleanupSunkShips() {
     // Remove all ships with countryId == UNC_CID (sunk/scrapped) and shift pending order indices
     for (int i = (int)m_ships.size() - 1; i >= 0; i--) {
         if (m_ships[i].countryId == UNC_CID) {
-            int removedIdx = i;
             m_ships.erase(m_ships.begin() + i);
-            // Shift all pending order indices that reference ships after the removed one
-            auto shiftIdx = [&](int& idx) { if (idx > removedIdx) idx--; };
-            for (auto& eo : m_pendingShipEngageOrders) { shiftIdx(eo.shipIndex); shiftIdx(eo.targetIndex); }
-            for (auto& mo : m_pendingShipMoveOrders) shiftIdx(mo.shipIndex);
-            for (auto& bo : m_pendingShipBombardOrders) shiftIdx(bo.shipIndex);
-            for (auto& d : m_pendingShipDisembarks) shiftIdx(d.shipIndex);
-            for (auto& ss : m_pendingScrapShips) shiftIdx(ss.shipIndex);
-            for (int& idx : m_selectedShipIndices) shiftIdx(idx);
+            forgetShipOrders(i);
         }
     }
 }
@@ -3807,8 +4044,8 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
                g.c_str(), defenderIso.c_str(), attackerIso.c_str());
         declareWar(g, attackerIso, false); // one level only
         if (!playerIso.empty() && g == playerIso)
-            addNotification("You honour your guarantee of " + defenderIso +
-                            " and are now at war with " + attackerIso, RED, 8.0f);
+            addNotification(TextFormat(T("You honour your guarantee of %s and are now at war with %s"),
+                                       defenderIso.c_str(), attackerIso.c_str()), RED, 8.0f);
     }
 
     // A guarantee compels; an alliance asks. Allies get a call to arms they can
@@ -3847,9 +4084,12 @@ void Game::decayWarWeariness() {
 // Returns nullptr for anything that is not one of the three proposals, which
 // is what keeps break_* and the ceasefire flow out of these notifications.
 static const char* diploRequestPhrase(const std::string& action) {
-    if (action == "request_alliance")  return "an alliance";
-    if (action == "request_guarantee") return "a mutual guarantee";
-    if (action == "request_nap")       return "a non-aggression pact";
+    // TRANSLATED HERE, because these leave as ARGUMENTS. The sentence around
+    // them was translated and they were not, so a Ukrainian player was told
+    // "Verrick прийняли вашу пропозицію: a non-aggression pact".
+    if (action == "request_alliance")  return T("an alliance");
+    if (action == "request_guarantee") return T("a mutual guarantee");
+    if (action == "request_nap")       return T("a non-aggression pact");
     return nullptr;
 }
 
@@ -3859,7 +4099,7 @@ std::string Game::diploDisplayName(const std::string& iso) const {
     const int cid = cidForIso(iso);
     if (cid >= 0) {
         if (const Country* c = m_countries.getCountry(cid))
-            if (!c->name.empty()) return c->name;
+            if (!c->name.empty()) return od::i18n::properName(c->name);
     }
     return iso;
 }
@@ -3944,8 +4184,10 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
     m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
     if (m_ai) m_ai->noteCallIssued(m_playerCountryId);
 
-    addNotification("You call " + diploDisplayName(allyIso) + " to arms against " +
-                    diploDisplayName(bestEnemy), Color{200, 200, 240, 255}, 7.0f);
+    addNotification(TextFormat(T("You call %s to arms against %s"),
+                               diploDisplayName(allyIso).c_str(),
+                               diploDisplayName(bestEnemy).c_str()),
+                    Color{200, 200, 240, 255}, 7.0f);
     printf("[WAR] %s calls its ally %s to arms against %s (player)\n",
            myIso.c_str(), allyIso.c_str(), bestEnemy.c_str());
     outWhy.clear();
@@ -4058,6 +4300,97 @@ bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
 }
 
 // === processDiplomaticRequests ===
+// === repatriateStrandedArmies ===
+//
+// See the declaration for why this exists. The shape of the rule:
+//
+//   STRANDED means: a real country's stack, in a real country's province,
+//   with neither a war nor an alliance between them. During a war the stack
+//   is an occupation; under an alliance it is a guest; with neither it is a
+//   state no order the game accepts can produce, only a treaty landing under
+//   an army that had marched somewhere legally.
+//
+//   HOME is the nearest owned province BY THE PROVINCE GRAPH, not by the map
+//   distance -- armies walk, and the graph is the thing they walk on. A BFS
+//   over m_provinceNeighbors from the stranded province finds it; a country
+//   that no longer owns anything gets its stack disbanded, which is what
+//   defeat already means everywhere else.
+//
+//   REBELS ARE EXEMPT in both directions. Rebel-held land is a war zone
+//   whatever the relations table says, so a stack standing on it is not
+//   stranded; and a rebel stack inside a country IS the insurrection --
+//   sending it home would put down every revolt as a tidiness measure.
+void Game::repatriateStrandedArmies() {
+    struct Move { int fromPid; int cid; int count; };
+    std::vector<Move> moves;
+
+    for (auto& [pid, units] : m_provinceArmies) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p) continue;
+        const int host = p->countryId;
+        if (host <= 0 || host >= REBEL_CID_MIN) continue;   // unowned or rebel-held
+        const Country* hc = m_countries.getCountry(host);
+        if (!hc) continue;
+        for (const auto& u : units) {
+            const int guest = u.countryId;
+            if (u.count <= 0 || guest == host) continue;
+            if (guest <= 0 || guest >= REBEL_CID_MIN) continue;   // rebels stay
+            const Country* gc = m_countries.getCountry(guest);
+            if (!gc) continue;
+            bool standing = false;
+            auto gr = m_relations.find(gc->isoA3);
+            if (gr != m_relations.end()) {
+                auto rr = gr->second.find(hc->isoA3);
+                if (rr != gr->second.end())
+                    standing = rr->second.war || rr->second.alliance;
+            }
+            if (!standing) moves.push_back({pid, guest, u.count});
+        }
+    }
+    if (moves.empty()) return;
+    // Applied in a sorted order, not in unordered_map order: two runs of the
+    // same turn must send the same stacks home in the same sequence.
+    std::sort(moves.begin(), moves.end(), [](const Move& a, const Move& b) {
+        return a.fromPid != b.fromPid ? a.fromPid < b.fromPid : a.cid < b.cid;
+    });
+
+    for (const Move& mv : moves) {
+        // Nearest owned province by BFS over the graph the army would walk.
+        int home = -1;
+        std::unordered_set<int> seen{mv.fromPid};
+        std::deque<int> q{mv.fromPid};
+        while (!q.empty() && home < 0) {
+            const int cur = q.front();
+            q.pop_front();
+            auto nIt = m_provinceNeighbors.find(cur);
+            if (nIt == m_provinceNeighbors.end()) continue;
+            for (int n : nIt->second) {
+                if (!seen.insert(n).second) continue;
+                const Province* np = m_provinces.getProvinceById(n);
+                if (np && np->countryId == mv.cid) { home = n; break; }
+                q.push_back(n);
+            }
+        }
+        // Take the stack off where it stood, whatever happens to it next.
+        auto aIt = m_provinceArmies.find(mv.fromPid);
+        if (aIt == m_provinceArmies.end()) continue;
+        auto& arr = aIt->second;
+        arr.erase(std::remove_if(arr.begin(), arr.end(),
+                  [&](const ArmyUnit& u) { return u.countryId == mv.cid; }),
+                  arr.end());
+        if (arr.empty()) m_provinceArmies.erase(aIt);
+        if (home >= 0) {
+            addTroopsTo(home, mv.cid, mv.count);
+            printf("[REPATRIATE] cid=%d: %d troops walked home %d -> %d\n",
+                   mv.cid, mv.count, mv.fromPid, home);
+        } else {
+            // Landless: nowhere to walk to. Defeat already disbands elsewhere.
+            printf("[REPATRIATE] cid=%d: %d troops in prov %d disbanded (no home)\n",
+                   mv.cid, mv.count, mv.fromPid);
+        }
+    }
+}
+
 void Game::processDiplomaticRequests() {
     // Get player ISO
     std::string playerIso;
@@ -4075,6 +4408,20 @@ void Game::processDiplomaticRequests() {
              || da.action == "request_nap" || da.action == "declare_war"
              || da.action == "request_ceasefire" || da.action == "propose_trade"
              || da.action == "call_to_arms");
+
+        // NOT DURING THE TUTORIAL -- but only the ones aimed AT the player.
+        //
+        // Each of those is a modal popup landing on somebody a script has
+        // just told to do something else: a window over the thing Mia is
+        // pointing at, with buttons the gate will not let them press.
+        // Ceasefires and trade are taught here, later and on purpose.
+        //
+        // THE PLAYER'S OWN ORDERS STILL RESOLVE. This check used to sit at
+        // the top of the loop and skipped every pending action there was, so
+        // the tutorial told the player to declare war on Verrick, they did,
+        // and the declaration sat in the queue for ever -- the one page that
+        // waits for that war could never pass.
+        if (m_tutorialMode && isRequestToPlayer) { ++i; continue; }
         if (isRequestToPlayer) {
             // Find requesting country ID
             int reqCid = -1;
@@ -4105,12 +4452,12 @@ void Game::processDiplomaticRequests() {
                 std::string summary;
                 summary += srcName + (isTrade ? " proposes a trade.\n"
                                                 : " proposes a ceasefire.\n");
-                if (terms.ourMoney > 0)  summary += TextFormat("  Offers %d gold\n", terms.ourMoney);
-                if (terms.theirMoney > 0) summary += TextFormat("  Demands %d gold\n", terms.theirMoney);
-                if (!terms.ourProvs.empty()) summary += TextFormat("  Cedes %zu province(s)\n", terms.ourProvs.size());
-                if (!terms.theirProvs.empty()) summary += TextFormat("  Demands %zu province(s)\n", terms.theirProvs.size());
-                if (!terms.ourDropClaims.empty()) summary += TextFormat("  Drops %zu own claim(s)\n", terms.ourDropClaims.size());
-                if (!terms.theirDropClaims.empty()) summary += TextFormat("  Demands you drop %zu claim(s)\n", terms.theirDropClaims.size());
+                if (terms.ourMoney > 0)  summary += TextFormat(T("  Offers %d gold\n"), terms.ourMoney);
+                if (terms.theirMoney > 0) summary += TextFormat(T("  Demands %d gold\n"), terms.theirMoney);
+                if (!terms.ourProvs.empty()) summary += TextFormat(T("  Cedes %zu province(s)\n"), terms.ourProvs.size());
+                if (!terms.theirProvs.empty()) summary += TextFormat(T("  Demands %zu province(s)\n"), terms.theirProvs.size());
+                if (!terms.ourDropClaims.empty()) summary += TextFormat(T("  Drops %zu own claim(s)\n"), terms.ourDropClaims.size());
+                if (!terms.theirDropClaims.empty()) summary += TextFormat(T("  Demands you drop %zu claim(s)\n"), terms.theirDropClaims.size());
                 if (summary.back() == '\n') summary.pop_back();
                 pushPopup(PopupType::CEASEFIRE_REQUEST,
                           isTrade ? "Trade Offer" : "Ceasefire Offer", summary,
@@ -4126,20 +4473,20 @@ void Game::processDiplomaticRequests() {
             PopupType pt = (da.action == "declare_war") ? PopupType::WAR_DECLARED : PopupType::DIPLOMATIC_REQUEST;
             std::string msg2;
             if (da.action == "declare_war") {
-                title = "War Declared!";
+                title = T("War Declared!");
                 msg2 = srcName + " has declared war on " + (playerIso.empty() ? da.targetIso : "you") + "!";
                 if (const char* why = warGoalText(da.statedGoal))
                     msg2 += std::string("\n\nThey declare it ") + why + ".";
                 else
                     msg2 += "\n\nThey give no reason.";
             } else if (da.action == "request_alliance") {
-                title = "Alliance Request";
+                title = T("Alliance Request");
                 msg2 = srcName + " proposes an alliance.";
             } else if (da.action == "request_guarantee") {
-                title = "Guarantee Request";
+                title = T("Guarantee Request");
                 msg2 = srcName + " requests a mutual guarantee.";
             } else if (da.action == "request_nap") {
-                title = "Non-Aggression Proposal";
+                title = T("Non-Aggression Proposal");
                 msg2 = srcName + " proposes a non-aggression pact.";
             } else if (da.action == "call_to_arms") {
                 int aggCid = cidForIso(da.subjectIso);
@@ -4189,8 +4536,9 @@ void Game::processDiplomaticRequests() {
                     // marching because you asked is the single most useful
                     // thing diplomacy does, and it was reported only to stdout.
                     if (!playerIso.empty() && da.sourceIso == playerIso) {
-                        addNotification(diploDisplayName(da.targetIso) + " answers your call and joins the war against " +
-                                        diploDisplayName(da.subjectIso),
+                        addNotification(TextFormat(T("%s answers your call and joins the war against %s"),
+                                                   diploDisplayName(da.targetIso).c_str(),
+                                                   diploDisplayName(da.subjectIso).c_str()),
                                         Color{140, 220, 150, 255}, 8.0f);
                         Audio::get().playSfx("deal_accepted");
                     }
@@ -4236,9 +4584,10 @@ void Game::processDiplomaticRequests() {
                         // countries for three different things in one turn was
                         // told only that somebody "rejected your request".
                         const char* what = diploRequestPhrase(da.action);
-                        std::string msg = diploDisplayName(da.targetIso) +
-                                          " declined your offer of " +
-                                          (what ? what : "an agreement");
+                        std::string msg =
+                            TextFormat(T("%s declined your offer of %s"),
+                                       diploDisplayName(da.targetIso).c_str(),
+                                       what ? what : T("an agreement"));
                         // ...AND WHAT THEY SAID ABOUT IT, when they said
                         // anything. Not necessarily the truth: see
                         // AISystem::chooseStatedRefusal.
@@ -4265,8 +4614,8 @@ void Game::processDiplomaticRequests() {
                  da.action == "request_nap") &&
                 hasRelation(da.sourceIso, da.targetIso, &CountryRelation::war)) {
                 if (!playerIso.empty() && da.sourceIso == playerIso)
-                    addNotification("Your offer to " + diploDisplayName(da.targetIso) +
-                                    " is void — you are at war",
+                    addNotification(TextFormat(T("Your offer to %s is void — you are at war"),
+                                               diploDisplayName(da.targetIso).c_str()),
                                     Color{235, 130, 90, 255}, 7.0f);
                 printf("[DIPLO] %s → %s: %s dropped, the pair is at war\n",
                        da.sourceIso.c_str(), da.targetIso.c_str(), da.action.c_str());
@@ -4281,7 +4630,12 @@ void Game::processDiplomaticRequests() {
             // each of the three branches below.
             if (!playerIso.empty() && da.sourceIso == playerIso) {
                 if (const char* what = diploRequestPhrase(da.action)) {
-                    addNotification(diploDisplayName(da.targetIso) + " accepted your offer of " + what,
+                    // One sentence with two holes in it, not three pieces
+                    // glued together: a translator has to be able to move the
+                    // name and the thing agreed past each other, and gluing
+                    // fixes the English order into every language.
+                    addNotification(TextFormat(T("%s accepted your offer of %s"),
+                                               diploDisplayName(da.targetIso).c_str(), what),
                                     Color{140, 220, 150, 255}, 7.0f);
                     Audio::get().playSfx("deal_accepted");
                 }
@@ -4707,7 +5061,7 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
             const auto& px = ppIt->second;
             for (int idx : px)
                 if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                    m_pixelCountryArray[idx] = toCid;
+                    m_pixelCountryArray[idx] = (uint16_t)toCid;
             // One pass over the old owner's pixel list, not a full scan of it
             // per transferred pixel. The original nested erase was O(province
             // pixels x country pixels) — invisible while this was dead code
@@ -4944,7 +5298,7 @@ void Game::transferCountryPixels(int pid, int newOwner, int oldOwner) {
     const auto& provincePixels = ppIt->second;
     for (int idx : provincePixels)
         if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-            m_pixelCountryArray[idx] = newOwner;
+            m_pixelCountryArray[idx] = (uint16_t)newOwner;
     // m_countryPixels only feeds texture generation (political, relations,
     // population, claims overlays) -- never game logic. Maintaining it costs a
     // full scan of the owning country's pixel list on every province capture,
@@ -5175,55 +5529,154 @@ void Game::buildNavGrid() {
     m_nav.py.assign(n, -1);
     m_nav.component.assign(n, -1);
 
-    // A cell counts as navigable if it holds ANY water, and remembers the water
-    // pixel closest to its middle. Storing a real pixel rather than the cell
-    // centre is what keeps every waypoint at sea: a coastal cell's geometric
-    // centre is very often on the beach.
+    // ── TRUE CONNECTIVITY, AT RASTER RESOLUTION ──
+    //
+    // The components below used to be flood-filled over the CELLS: a cell was
+    // navigable if it held any water at all, and two navigable cells were
+    // joined if they touched. On the shipped 8192x4096 map a cell is 32 px --
+    // about 1.4 degrees -- so a cell holding one pixel of an inland lake and a
+    // neighbouring cell holding one pixel of ocean were declared the same sea.
+    //
+    // Measured on data/STDmaps/map.odmap: that rule put 23,907 of 24,111
+    // navigable cells -- 99.2% of all water on Earth -- into a single body,
+    // and among the things it declared reachable from the mid-Atlantic were
+    // Lake Michigan, Lake Superior and LAKE TITICACA, 3,800 m up in the Andes.
+    // It is why a Russian transport was screenshotted sitting in the Great
+    // Lakes: navReachable said yes, so findEnemyPort targeted a Canadian
+    // harbour and navRoute obligingly produced a route through Quebec.
+    //
+    // So connectivity is now decided by the raster and not by the grid: water
+    // pixels are flood-filled at full resolution with a run-based union-find,
+    // and a cell inherits the component of the water in it. The grid stays a
+    // grid -- it is still what the BFS in navRoute walks -- but it can no
+    // longer invent a canal that the map does not have.
+    //
+    // ONE PASS, ROW BY ROW: a component id per pixel would be 134 MB, so only
+    // the runs are kept (a few tens per row) and a cell looks its pixel up by
+    // binary search. This is the same shape of union-find the province
+    // component labelling uses, for the same reason.
+    struct Run { int x0, x1; int id; };
+    std::vector<std::vector<Run>> rows((size_t)H);
+    std::vector<int> parent;
+    parent.reserve(1u << 16);
+    auto makeSet = [&]() { parent.push_back((int)parent.size()); return (int)parent.size() - 1; };
+    auto find = [&](int x) {
+        int r = x;
+        while (parent[r] != r) r = parent[r];
+        while (parent[x] != r) { const int nx = parent[x]; parent[x] = r; x = nx; }
+        return r;
+    };
+    auto unite = [&](int a, int b) {
+        a = find(a); b = find(b);
+        if (a != b) parent[b] = a;
+    };
+
+    // HOW WIDE A NECK OF LAND STILL COUNTS AS A STRAIT.
+    //
+    // The raster is a picture of coastlines, not a chart, and at 8192 px the
+    // Bosphorus and the Dardanelles are simply not drawn -- so pixel-exact
+    // connectivity locks the Black Sea, the Sea of Azov and the Sea of Marmara
+    // away from the Mediterranean, which is a worse answer than the one being
+    // replaced. Closing gaps of up to 8 px (about 40 km at the equator) opens
+    // all three and nothing else: measured across the whole shipped raster,
+    // every value from 8 to 16 px gives the identical answer, and the Great
+    // Lakes, the Caspian, Baikal, Ladoga, Balkhash, Victoria, the Great Salt
+    // Lake and Titicaca all stay where they belong. 24 px starts swallowing
+    // Ladoga, so the plateau is wide and this sits at its near edge.
+    const int STRAIT = 8;
+
+    for (int y = 0; y < H; ++y) {
+        auto& rs = rows[(size_t)y];
+        bool inRun = false;
+        for (int x = 0; x < W; ++x) {
+            const bool water = !m_landSea.isLand(x, y);
+            if (water && !inRun) { rs.push_back({x, x + 1, makeSet()}); inRun = true; }
+            else if (water)      { rs.back().x1 = x + 1; }
+            else                 { inRun = false; }
+        }
+        // A strait crossed left-to-right: two runs with only a neck between.
+        for (size_t k = 1; k < rs.size(); ++k)
+            if (rs[k].x0 - rs[k - 1].x1 <= STRAIT) unite(rs[k - 1].id, rs[k].id);
+        // The world wraps in x, so the first and last run of a row touch.
+        if (rs.size() > 1 && rs.front().x0 == 0 && rs.back().x1 == W)
+            unite(rs.front().id, rs.back().id);
+    }
+
+    // Vertically, the same rule. Two runs g rows apart that overlap in x mean a
+    // column where both ends are water and at most g-1 rows of land lie
+    // between, so walking g from 1 to STRAIT+1 closes every vertical gap up to
+    // STRAIT -- and g == 1 is ordinary 4-connectivity. The +/-1 slack on the
+    // overlap test makes the adjacency 8-connected, matching what the cell
+    // flood fill did before.
+    for (int y = 0; y + 1 < H; ++y) {
+        const auto& a = rows[(size_t)y];
+        if (a.empty()) continue;
+        for (int g = 1; g <= STRAIT + 1 && y + g < H; ++g) {
+            const auto& b = rows[(size_t)(y + g)];
+            if (b.empty()) continue;
+            size_t i = 0, j = 0;
+            while (i < a.size() && j < b.size()) {
+                // Slack only for directly adjacent rows: a diagonal touch is
+                // contact, a diagonal near-miss eight rows away is not.
+                const int slack = (g == 1) ? 1 : 0;
+                if (a[i].x1 + slack > b[j].x0 && b[j].x1 + slack > a[i].x0)
+                    unite(a[i].id, b[j].id);
+                if (a[i].x1 < b[j].x1) ++i; else ++j;
+            }
+            if (g == 1) {   // the wrap seam, between neighbouring rows
+                if (a.front().x0 == 0 && b.back().x1 == W)  unite(a.front().id, b.back().id);
+                if (b.front().x0 == 0 && a.back().x1 == W)  unite(b.front().id, a.back().id);
+            }
+        }
+    }
+
+    // A cell counts as navigable if it holds ANY water, and remembers a real
+    // water pixel inside it -- storing the cell's geometric centre instead
+    // would very often name a beach.
+    //
+    // THE PIXEL IS CHOSEN FROM THE LARGEST BODY IN THE CELL, not simply the one
+    // nearest the middle. A coastal cell frequently holds both the sea and a
+    // pond behind the dunes; letting the pond win would hand the cell the
+    // pond's component and punch a hole in the coastal route for no reason
+    // anyone could see on the map.
+    std::unordered_map<int, long long> bodySize;
+    for (int y = 0; y < H; ++y)
+        for (const Run& r : rows[(size_t)y]) bodySize[find(r.id)] += r.x1 - r.x0;
+
+    std::unordered_map<int, int> denseLabel;
     for (int cy = 0; cy < m_nav.h; ++cy) {
         for (int cx = 0; cx < m_nav.w; ++cx) {
             const int x0 = cx * CELL, y0 = cy * CELL;
             const int x1 = std::min(x0 + CELL, W), y1 = std::min(y0 + CELL, H);
             const double mx = (x0 + x1) * 0.5, my = (y0 + y1) * 0.5;
-            double bestD = 1e18; int bx = -1, by = -1;
-            for (int y = y0; y < y1; ++y)
-                for (int x = x0; x < x1; ++x) {
-                    if (m_landSea.isLand(x, y)) continue;
-                    const double d = (x - mx) * (x - mx) + (y - my) * (y - my);
-                    if (d < bestD) { bestD = d; bx = x; by = y; }
+            long long bestBody = -1;
+            double bestD = 1e18;
+            int bx = -1, by = -1, broot = -1;
+            for (int y = y0; y < y1; ++y) {
+                for (const Run& r : rows[(size_t)y]) {
+                    if (r.x1 <= x0) continue;
+                    if (r.x0 >= x1) break;
+                    const int root = find(r.id);
+                    const long long size = bodySize[root];
+                    for (int x = std::max(r.x0, x0); x < std::min(r.x1, x1); ++x) {
+                        const double d = (x - mx) * (x - mx) + (y - my) * (y - my);
+                        if (size > bestBody || (size == bestBody && d < bestD)) {
+                            bestBody = size; bestD = d; bx = x; by = y; broot = root;
+                        }
+                    }
                 }
+            }
             if (bx >= 0) {
                 const size_t i = (size_t)cy * m_nav.w + cx;
                 m_nav.navigable[i] = 1;
                 m_nav.px[i] = bx; m_nav.py[i] = by;
+                auto ins = denseLabel.emplace(broot, (int)denseLabel.size());
+                m_nav.component[i] = ins.first->second;
             }
         }
     }
+    const int label = (int)denseLabel.size();
 
-    // Connected components, 8-way, wrapping in x because the world does.
-    int label = 0;
-    std::vector<int> stack;
-    for (size_t seed = 0; seed < n; ++seed) {
-        if (!m_nav.navigable[seed] || m_nav.component[seed] >= 0) continue;
-        m_nav.component[seed] = label;
-        stack.clear();
-        stack.push_back((int)seed);
-        while (!stack.empty()) {
-            const int cur = stack.back(); stack.pop_back();
-            const int cx = cur % m_nav.w, cy = cur / m_nav.w;
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx) {
-                    if (!dx && !dy) continue;
-                    int nx = cx + dx, ny = cy + dy;
-                    if (ny < 0 || ny >= m_nav.h) continue;
-                    if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
-                    const size_t ni = (size_t)ny * m_nav.w + nx;
-                    if (!m_nav.navigable[ni] || m_nav.component[ni] >= 0) continue;
-                    m_nav.component[ni] = label;
-                    stack.push_back((int)ni);
-                }
-        }
-        label++;
-    }
     printf("  Sea routing: %dx%d cells, %d water body(ies)\n", m_nav.w, m_nav.h, label);
 }
 
@@ -5246,6 +5699,38 @@ int Game::navCellNear(const NavGrid& g, int px, int py) {
             }
     }
     return -1;
+}
+
+bool Game::portApproach(int provinceId, double& lon, double& lat) const {
+    if (!m_nav.ready()) return false;
+    auto cIt = m_provinceCenters.find(provinceId);
+    if (cIt == m_provinceCenters.end()) return false;
+    const int mapW = m_provinces.getWidth(), mapH = m_provinces.getHeight();
+    if (mapW <= 0 || mapH <= 0) return false;
+    // The province centre is in PROVINCE-raster pixels; the nav grid indexes
+    // the LAND/SEA raster. They are the same size on every shipped map, but
+    // going through lon/lat rather than assuming that is what keeps a mod with
+    // mismatched rasters from aiming its navies into the void.
+    const double cLon = cIt->second.x / mapW * 360.0 - 180.0;
+    const double cLat = 90.0 - cIt->second.y / mapH * 180.0;
+    int px, py;
+    m_landSea.lonLatToPixel((float)cLon, (float)cLat, px, py);
+    const int cell = navCellNear(m_nav, px, py);
+    if (cell < 0) return false;
+    float wLon, wLat;
+    m_landSea.pixelToLonLat(m_nav.px[cell], m_nav.py[cell], wLon, wLat);
+    lon = wLon; lat = wLat;
+    return true;
+}
+
+int Game::seaBodyOfPort(int provinceId) const {
+    if (!m_nav.ready()) return -1;
+    double lon = 0.0, lat = 0.0;
+    if (!portApproach(provinceId, lon, lat)) return -1;
+    int px = 0, py = 0;
+    m_landSea.lonLatToPixel((float)lon, (float)lat, px, py);
+    const int cell = navCellNear(m_nav, px, py);
+    return cell >= 0 ? m_nav.component[cell] : -1;
 }
 
 bool Game::navReachable(double lon1, double lat1, double lon2, double lat2) const {
@@ -5296,6 +5781,15 @@ bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
 
     // Plain BFS. The grid is small and every hop costs the same, so the extra
     // machinery of A* would buy nothing measurable here.
+    //
+    // CONFINED TO ONE BODY OF WATER. The components come from the raster now
+    // (see buildNavGrid), but two cells that touch on the grid can belong to
+    // different seas -- a coastal cell and the cell holding the lake behind it
+    // -- and without this test the BFS would walk straight from one into the
+    // other and hand back a "route" over the beach between them. The
+    // component check at the top of this function only screens the endpoints;
+    // this is what keeps every hop in between honest.
+    const int body = m_nav.component[start];
     const size_t n = m_nav.navigable.size();
     std::vector<int32_t> prev(n, -2);
     std::deque<int> q;
@@ -5313,6 +5807,7 @@ bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
                 if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
                 const size_t ni = (size_t)ny * m_nav.w + nx;
                 if (!m_nav.navigable[ni] || prev[ni] != -2) continue;
+                if (m_nav.component[ni] != body) continue;
                 prev[ni] = cur;
                 if ((int)ni == goal) { found = true; break; }
                 q.push_back((int)ni);

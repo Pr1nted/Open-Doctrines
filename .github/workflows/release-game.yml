@@ -90,7 +90,18 @@ jobs:
         # this across lines broke the Windows configure and nothing else, which
         # is the confusing way for it to fail: three platforms green, one red,
         # in a step that had not changed on any of them.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
+        #
+        # GDTL is ON here and OFF in the web job below, deliberately. The
+        # desktop flow has been driven through its own UI and its round trip is
+        # covered by GdtlTest; the browser one has never been clicked through by
+        # anybody, and the freeze it had was in exactly this kind of code.
+        #
+        # OD_DRAGOMAN_REF is PINNED. It defaults to `main`, which is right for
+        # CI -- an upstream regression should surface here within a run -- and
+        # wrong for a release, which would then only be reproducible against
+        # whatever that branch was on the day. Bump this to the tag a release is
+        # meant to carry; see the option's own comment in CMakeLists.txt.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON -DOD_DRAGOMAN_REF=v0.3.2
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
@@ -132,6 +143,37 @@ jobs:
             exit 1
           fi
           echo "account service found in:"
+          echo "$found"
+
+      # The same guard, for the same reason, on the other flag this configure
+      # step carries. OD_ENABLE_GDTL is OFF by default and the whole layer
+      # compiles to stubs without it -- so a release that loses the flag still
+      # builds, still packages, still passes every test, and ships a game whose
+      # Experimental toggle refuses to turn on. Nothing about that is visible
+      # from the outside, which is what makes it worth a check rather than a
+      # habit.
+      #
+      # THE SENTINEL IS CHOSEN, not obvious. "open-dragoman" is wrong: the map
+      # info popup prints that as a label whether or not the layer is built, so
+      # a stub build passes a grep for it -- tried, and it did. The library's
+      # diagnostic sentences are library-owned but are prose, and a guard that
+      # fails when upstream rewords a message is a guard nobody keeps. So this
+      # looks for the sidecar directory's name, which is part of the on-disk
+      # format: every converted map contains one, and renaming it upstream
+      # would break round trips, so it cannot drift quietly.
+      - name: The packaged copy carries the translation layer
+        shell: bash
+        run: |
+          set -e
+          found=$(grep -rla "dragoman_sidecar" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No translation layer in ${{ matrix.artifact }}::This \
+            build has no open-dragoman in it, so Settings -> Experimental -> GDTL \
+            would refuse to turn on for every player who downloads it. Check the \
+            -DOD_ENABLE_GDTL=ON on the configure step."
+            exit 1
+          fi
+          echo "translation layer found in:"
           echo "$found"
 
       - uses: actions/upload-artifact@v4

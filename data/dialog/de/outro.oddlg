@@ -1,0 +1,32 @@
+// Übersetzung - der gemeinsame Abschluss aller Wege.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Dann nach oben. Zwei Dinge, die auf keiner Karte stehen.
+
+§**Spielstände.**§ Eine echte Welt schreibt sich mit, während Sie spielen, und
+wartet dort auf Sie. Unsere nicht - nichts von dem, was Sie eben getan haben,
+wurde behalten, und genau darum geht es bei einer Übungsinsel.
+---
+@Signals Officer
+:: point=menu.2
+§**Mehrspieler.**§ Ein Rechner richtet aus, alle anderen treten bei. Eine Runde
+wird abgerechnet, wenn jeder Spieler bereit gemeldet hat, also läuft die Partie
+im Tempo des Langsamsten.
+
+Spielen Sie mit Leuten, die auf Nachrichten antworten.
+---
+@Pr1nted
+Noch am Leben? Gut. Gründlich ist sie, das muss man ihr lassen.
+
+Wollen Sie noch etwas durchgehen, oder sind wir fertig?
+> Zurück nach unten und etwas Bestimmtes durchgehen -> world:specifics
+> Das ist alles, danke
+---
+@Pr1nted
+:: act=end_tutorial
+Also gut. Gehen Sie ein paar Partien verlieren, so geht das rein.
+
+Pr1nted, Ende.

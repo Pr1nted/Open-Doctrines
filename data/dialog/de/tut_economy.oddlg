@@ -1,0 +1,35 @@
+// Übersetzung - die Wirtschaft.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Die Wirtschaft - öffnen Sie sie. Alles andere in diesem Spiel ist ein Streit
+darüber, wie man ausgibt, was sie hervorbringt.
+---
+@Signals Officer
+§**Industrie**§ wächst dort, wo schon Menschen sind. Eine Fabrik in einer
+leeren Provinz ist ein teurer Schuppen - der Rohstoff ist die Bevölkerung,
+nicht das Gebäude.
+---
+@Signals Officer
+Einnahmen kommen einmal pro Runde, in der Runde. Nehmen Sie mehr auf sich, als
+Sie haben, und der Fehlbetrag wartet nicht höflich: er geht von der
+Einsatzbereitschaft ab, und Sie erfahren davon in einer Schlacht.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Wieder hinaus, und sehen wir uns stattdessen eine einzelne Provinz an.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klicken Sie eine von unseren an. Pro Provinz zeigt das Feld, was sie erzeugt und
+was sie hält. Rohstoffe sind verarbeitet mehr wert als gefördert, also ist eine
+Industrieprovinz neben einer reichen mehr wert als jede für sich.
+---
+@Signals Officer
+Und Politiken sind eine §**laufende Rechnung**§, kein Kauf. Jede, die Sie
+führen, wird jede Runde abgezogen, für immer, ob sie noch etwas bewirkt oder
+nicht.
+
+Das ist die Wirtschaft. Sonst noch etwas?

@@ -1,0 +1,96 @@
+// Tłumaczenie - dyplomacja.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Dyplomacja. Cała mieszka w jednej liście, a lista należy do §**kraju**§ - więc
+docierasz do niej, klikając czyjąś ziemię.
+
+Zaczekam na każdym kroku. Nic tu nie idzie szybko.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Najpierw widok §**stosunków**§. Maluje mapę wedle tego, kto z kim wojuje, kto
+jest w sojuszu i kto komu dał gwarancje.
+---
+@Signals Officer
+Spójrz na niego, zanim cokolwiek zaczniesz. Połowa wojen przegranych tutaj
+toczyła się przeciw trzem krajom, nie jednemu - i wszystkie trzy były na tej
+mapie przed pierwszym strzałem.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Teraz kliknij prowincję należącą do §**Verrick**§, za wodą.
+
+Nie Kestrel: z nimi już wojujemy, a kraj, z którym wojujesz, oferuje dokładnie
+jedno. Do tego jeszcze dojdziemy - a dopóki nie wybierzesz kogoś, z kim jesteśmy
+w pokoju, ta strona będzie po prostu czekać.
+---
+@Signals Officer
+W ich panelu urosła lista. Co w niej jest, zależy całkowicie od tego, kim już
+dla siebie jesteście: nigdy nie wybierasz spośród wszystkich opcji, tylko
+spośród tych, na które pozwala obecna relacja.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Najłagodniejszy punkt to §**pakt o nieagresji**§: obietnica, że nie zaatakujesz,
+i nic więcej.
+
+Poproś o niego. Zapytanie nic nie kosztuje.
+---
+@Signals Officer
+Złożone - a teraz spójrz na listę. §**Wszystko inne zszarzało**§, a pozycja,
+której właśnie użyłeś, zmieniła się w §**Anuluj**§.
+
+Jedna prośba naraz do jednego kraju. To nie błąd, na który trafiłeś, to zasada:
+oni odpowiadają na ostatnią rzecz, którą powiedziałeś, i dopóki nie odpowiedzą,
+twoim jedynym ruchem jest ją cofnąć.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Więc zakończ turę. Prośba pójdzie, oni odpowiedzą, a lista wróci.
+
+Mogą odmówić. To ich sprawa, a nie twoja wina.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Znowu Verrick. §**Sojusz**§ to następny szczebel - nie tylko obietnica
+nieatakowania, ale obietnica przyłączenia się.
+
+Poproś o niego.
+---
+@Signals Officer
+Z sojusznikiem pojawia się jeszcze jedna pozycja: §**Wezwanie do broni**§,
+które wciąga ich w wojnę, którą już toczysz.
+
+Tego też mogą odmówić. Sojusznik, który odmówił dwa razy, to sojusznik na
+papierze i wart mniej więcej tyle samo.
+---
+@Signals Officer
+Dwa, których nie użyłeś: §**gwarancja**§ jest jednostronna - obiecujesz bronić
+kogoś, kto nie obiecał ci nic. Małe kraje je zbierają, duże rozdają, by kupić
+spokój.
+
+A §**handel**§ to towary za pieniądze co turę, dopóki ktoś nie zerwie. To
+jedyna pozycja, która wzbogaca obie strony, i dlatego właśnie o niej się
+zapomina.
+---
+@Signals Officer
+Gdy pakt jest podpisany, patrz, co znika z listy: §**Wypowiedz wojnę
+przepada**§. Najpierw musisz zerwać pakt, publicznie, na oczach wszystkich.
+
+Po to jest pakt. To nie tarcza, to świadek.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+A na §**wojnie**§ cała lista zwija się do jednej pozycji: §**Poproś o
+rozejm**§. Wraca z warunkami: kto przestaje i kto co zatrzymuje.
+
+Zgadzają się, gdy przegrywają, i odmawiają, gdy nie. Żadne proszenie nie zmieni
+tego, które z dwojga jest prawdą.
+---
+@Signals Officer
+Kestrel jest na tej mapie na czerwono, i to jest lista, którą by ci pokazali.
+---
+@Signals Officer
+To jest dyplomacja. Coś jeszcze?

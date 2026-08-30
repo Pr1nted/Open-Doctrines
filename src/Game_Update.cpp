@@ -143,13 +143,67 @@ void Game::handlePauseMenu() {
 void Game::update(float dt) {
     // Turn history takes all input while open (it draws over the pause menu)
     if (m_inHistory) { updateHistoryScreen(); return; }
-    int newW = GetScreenWidth();
-    int newH = GetScreenHeight();
-    if (newW != m_screenW || newH != m_screenH) {
-        m_screenW = newW;
-        m_screenH = newH;
-        m_renderer->resize(m_screenW, m_screenH);
+
+    // The country finder, on the same terms: while it is open it owns the
+    // keyboard, or typing "n" into it would also step to the next province.
+    if (m_findOpen) { updateCountryFinder(); return; }
+    if (m_currentScreen == SCREEN_PLAYING && !m_paused && !m_dialogOpen &&
+        !m_inResearch && !m_inEconomy && !m_inPolitics && !m_inClaims &&
+        !m_inSettings) {
+        const bool ctrlF = (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                            IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) &&
+                           IsKeyPressed(KEY_F);
+        if (ctrlF || IsKeyPressed(KEY_SLASH)) {
+            m_findOpen = true;
+            m_findQuery.clear();
+            m_findIndex = 0;
+            rebuildFindMatches();
+            return;
+        }
     }
+
+    // THE SCREEN SIZE FIRST, before anything reads it.
+    //
+    // This used to sit below updateDialogue, so on any frame the window
+    // changed size the dialogue box, the communication window and the
+    // tutorial's input gate all computed their rectangles from the PREVIOUS
+    // size. For a single resize that is one wrong frame; while the edge is
+    // being dragged it is every frame, and the tutorial's highlight sits
+    // visibly away from the thing it is pointing at for as long as you drag.
+    {
+        const int newW = GetScreenWidth();
+        const int newH = GetScreenHeight();
+        if (newW != m_screenW || newH != m_screenH) {
+            m_screenW = newW;
+            m_screenH = newH;
+            if (m_renderer) m_renderer->resize(m_screenW, m_screenH);
+            // Every offered rectangle belongs to the old geometry. Dropping
+            // them means the pointer draws nothing for one frame rather than
+            // drawing a ring around where a button used to be.
+            m_uiTargets.clear();
+        }
+    }
+
+    // The communication window. Updated HERE rather than in draw(): it renders
+    // its picture into a target of its own, and raylib cannot nest targets --
+    // doing it mid-frame would quietly end the game's frame instead.
+    updateDialogue(dt);
+
+    // A SCRIPT CAN END THE WORLD MID-FRAME.
+    //
+    // The tutorial's sign-off carries act=to_menu: it unloads the game data
+    // and deletes the renderer, from inside updateDialogue, from inside this
+    // function -- and everything below here is the playing-screen update,
+    // which then runs against a world that no longer exists.
+    //
+    // Nothing after this point is safe once the screen has changed, and the
+    // check is cheap. draw() has had the same guard all along; update() did
+    // not, so the handover from the lesson to the outro crashed on the frame
+    // it happened.
+    if (m_currentScreen != SCREEN_PLAYING) return;
+
+    if (IsKeyPressed(KEY_F9)) toggleComms();
+    updateComms(dt);
     // Keybind capture mode — freezes all other input
     if (m_waitingForKey) {
         int pressed = GetKeyPressed();
@@ -209,8 +263,12 @@ void Game::update(float dt) {
             m_renderer->setShowClaims(false);
             m_renderer->setPaused(false);
         }
-        std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-        m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+        // The claims buffer is built on demand; an empty one has nothing to
+        // clear and no texture to push. See ensureClaimsTexture().
+        if (!m_claimsPixelBuffer.empty()) {
+            std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
+            m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+        }
         return;
     }
 
@@ -277,13 +335,18 @@ void Game::update(float dt) {
                 int w = m_provinces.getWidth();
                 int h = m_provinces.getHeight();
                 const auto* srcPixels = (const Color*)m_provinces.getImage().data;
-                for (int i = 0; i < w * h; ++i) {
-                    int pid = Province::colorToId(srcPixels[i].r, srcPixels[i].g, srcPixels[i].b);
-                    m_populationPixelBuffer[i] = (pid == 0)
-                        ? Color{10, 15, 40, 255}
-                        : landColor;
+                // Built on demand; indexing an empty buffer would run off
+                // the end. See ensurePopulationTexture().
+                ensurePopulationTexture();
+                if (!m_populationPixelBuffer.empty()) {
+                    for (int i = 0; i < w * h; ++i) {
+                        int pid = Province::colorToId(srcPixels[i].r, srcPixels[i].g, srcPixels[i].b);
+                        m_populationPixelBuffer[i] = (pid == 0)
+                            ? Color{10, 15, 40, 255}
+                            : landColor;
+                    }
+                    m_renderer->updatePopulationTexture(m_populationPixelBuffer.data());
                 }
-                m_renderer->updatePopulationTexture(m_populationPixelBuffer.data());
             }
         }
     }
@@ -325,6 +388,7 @@ void Game::update(float dt) {
         Rectangle pRect = {0, (float)panelY, 360, (float)panelH};
         if (m_renderer->getSelectedProvinceId() <= 0 && m_selectedShipIndices.empty()) pRect.height = 0;
         m_renderer->setProvincePanelRect(pRect);
+        if (pRect.height > 0) offerUiTarget("panel.province", pRect);
     }
 
     // Track any player interaction as an unsaved change
@@ -640,6 +704,10 @@ void Game::update(float dt) {
                 if (sbtns[i].disabled) continue;
                 Rectangle r = {(float)startX, (float)(startY + i * (btnSize + btnSpacing)),
                                (float)btnSize, (float)btnSize};
+                // While the tutorial is pointing somewhere, that is the only
+                // tab that opens. Otherwise "click Economy" is followed by
+                // the player in Research and Mia still talking about tax.
+                if (tutorialBlocksInput(mp)) break;
                 if (CheckCollisionPointRec(mp, r)) {
                     int tid = sbtns[i].id;
                     if (tid == 3) {
@@ -656,8 +724,12 @@ void Game::update(float dt) {
                                 m_renderer->setShowClaims(false);
                                 m_renderer->setPaused(false);
                             }
-                            std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-                            m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+                            // Built on demand; an empty buffer has nothing to
+                            // clear. See ensureClaimsTexture().
+                            if (!m_claimsPixelBuffer.empty()) {
+                                std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
+                                m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+                            }
                         } else {
                             // Open (close economy/policy first)
                             m_inEconomy = false;
@@ -763,7 +835,13 @@ void Game::update(float dt) {
             } else {
                 m_renderer->setBlockLeftPan(false);
             }
-            m_renderer->setPaused(false);
+            // A gated tutorial page holds the map still -- unless the page is
+            // about the province panel, which has nothing in it until a
+            // province is clicked. This is the same switch the policy,
+            // economy and research overlays use to say "not now", so the map
+            // has ONE idea of being blocked rather than two that can
+            // disagree.
+            m_renderer->setPaused(tutorialGateHoldsMap());
             int sel = m_renderer->getSelectedProvinceId();
 
             // Clear claims view when selecting a non-involved province
@@ -1209,6 +1287,15 @@ void Game::update(float dt) {
 
     if (m_inSettings) {
         if (isMouseOverConsole()) return;
+        // Taken before anything else in the panel: it sits below the list and
+        // must not have to compete with a setting row for the same click.
+        if (m_tutorialMode && m_tutorialStopRect.width > 0 &&
+            IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            CheckCollisionPointRec(getMouse(), m_tutorialStopRect)) {
+            Audio::get().playSfx("click_light");
+            stopTutorial();
+            return;
+        }
         if (m_settingsTab < 0 || m_settingsTab >= TAB_COUNT) m_settingsTab = 0;
         const Setting* items = TAB_ITEMS[m_settingsTab];
         int count = TAB_ITEM_COUNTS[m_settingsTab];
@@ -1285,7 +1372,7 @@ void Game::update(float dt) {
             for (int t = 0; t < TAB_COUNT; ++t) {
                 if (t == 4 && !m_config.debugMode) continue;
                 int tx = tabStartX + tabIdx * tabSpacing;
-                int tw = MeasureText(TAB_NAMES[t], fontSize);
+                int tw = MeasureText(T(TAB_NAMES[t]), fontSize);
                 Rectangle tabRect = { (float)(tx - tw/2), (float)tabY, (float)tw, (float)(fontSize + 10) };
                 if (CheckCollisionPointRec(mouse, tabRect)) {
                     m_settingsTab = t;
@@ -1301,6 +1388,12 @@ void Game::update(float dt) {
                 ++tabIdx;
             }
         }
+
+        // The language tab answers its own clicks: its rows are flags and names
+        // rather than Setting structs, so none of the row handling below knows
+        // what to do with one.
+        if (m_settingsTab == LANGUAGE_TAB && updateLanguageList(settingsLanguageArea(), false))
+            return;
 
         // Scroll wheel for scrolling item list
         float wheel = GetMouseWheelMove();
@@ -1648,8 +1741,9 @@ void Game::update(float dt) {
                 // Mirrors the main-menu copy in Game_Menus.cpp; see the note
                 // there. The two settings implementations are separate.
                 if (!m_config.aiLearning && ModManager::get().anyEnabled()) {
-                    addNotification("Disable all mods first - training with mods "
-                                    "loaded corrupts the model",
+                    // One literal, not two adjacent ones: the compiler joins
+                    // them but the extractor sees two half-sentences.
+                    addNotification(T("Disable all mods first - training with mods loaded corrupts the model"),
                                     Color{230, 160, 140, 255}, 6.0f);
                 } else {
                     m_config.aiLearning = !m_config.aiLearning;

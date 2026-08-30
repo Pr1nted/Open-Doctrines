@@ -15,10 +15,27 @@ const std::string& bakedAccountIssuer();
 struct Config {
     float flySpeed = 2.0f;
     float maxZoom = 5.0f;
+    /// How much bigger the whole interface is drawn. 1.0 is the layout the
+    /// game was written against; odUi applies it in one place and getMouse()
+    /// divides the pointer back down, so no screen knows it exists.
+    /// Composed with the platform's own minimum on Android rather than
+    /// replacing it -- a phone that needs 1.2x to be legible still gets it.
+    float uiScale = 1.0f;
+    /// Which colour-blind palette to paint meaning in.
+    /// 0 off, 1 deuteranopia, 2 protanopia, 3 tritanopia -- odPalette::Mode.
+    /// See src/Palette.h and tools/check_palette.py.
+    int colourBlindMode = 0;
     int screenW = 1600;
     int screenH = 900;
     bool fullscreen = false;
     bool showActualFlags = true;
+    /**
+     * Which language the interface is in: "en", "uk", "ja", ... See
+     * src/i18n/Locale.h. Stored as the code rather than as an index, so a
+     * language added in the middle of the list does not silently move
+     * everybody who had chosen the one after it.
+     */
+    std::string language = "en";
     /** The account terms and privacy policy have been accepted. */
     bool accountAgreed = false;
     bool debugMode = false;

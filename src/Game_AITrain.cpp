@@ -1,4 +1,6 @@
 #include "Game.h"
+#include <fstream>
+#include "ai/MoneyLedger.h"
 #include "GameInternals.h"
 #include "MapEditor.h"
 #include "ai/AISystem.h"
@@ -483,6 +485,72 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
                                     ms2 / 3600, (ms2 / 60) % 60, ms2 % 60),
                          m_screenW - 340, 36, 20, {255, 215, 0, 255});
             }
+            // ── WHAT THE MODEL IS CURRENTLY WORTH ──
+            //
+            // Written by tools/od_bench.py (the pool re-runs it on a timer; see
+            // BENCH_EVERY_SECONDS) into data/ai/bench_score.txt as one line:
+            // "RATING SEATS SEEDS EPOCH TOTALSEATS". Read here, not computed,
+            // because the estimate costs a minute of simulation and a training
+            // window must not stop to take it.
+            //
+            // It exists because everything else on this screen is a statement
+            // about the REWARD -- which went up all through a five-hour run
+            // that cost seven points of land against a rusher. A number that
+            // does not depend on what the model is being compared to is the
+            // only thing on this HUD that can contradict the others.
+            {
+                static double lastPoll = -1e9;
+                static std::string scoreLine;
+                const double nowSec = GetTime();
+                if (nowSec - lastPoll > 10.0) {
+                    lastPoll = nowSec;
+                    std::ifstream sf(m_dataDir + "ai/bench_score.txt");
+                    std::string raw;
+                    if (sf && std::getline(sf, raw)) {
+                        int rating = 0, seats = 0, seeds = 0, totalSeats = 0;
+                        long long epoch = 0;
+                        if (sscanf(raw.c_str(), "%d %d %d %lld %d",
+                                   &rating, &seats, &seeds, &epoch,
+                                   &totalSeats) >= 4) {
+                            // Age, not a timestamp: the question a HUD answers
+                            // is whether this number still describes the model
+                            // on disk, and "14m ago" says that at a glance.
+                            const long long ageMin =
+                                (long long)((time(nullptr) - epoch) / 60);
+                            char age[32];
+                            if (ageMin < 1)        snprintf(age, sizeof(age), "just now");
+                            else if (ageMin < 60)  snprintf(age, sizeof(age), "%lldm ago", ageMin);
+                            else                   snprintf(age, sizeof(age), "%lldh%02lldm ago",
+                                                            ageMin / 60, ageMin % 60);
+                            // A partial run is NOT the rating and must not
+                            // read like one. --quick covers the two France
+                            // seats, one of which is the rusher the model
+                            // scores ~0 on, so it lands far below the full
+                            // six-seat number for the same model (97 vs 120).
+                            // Reporting bare "97" invites reading it as the
+                            // AI's score; "2 of 6" is what stops that.
+                            if (totalSeats > 0 && seats < totalSeats)
+                                scoreLine = TextFormat(
+                                    "OD BENCH ~%d   quick: %d of %d seats x %d seed%s   %s",
+                                    rating, seats, totalSeats, seeds,
+                                    seeds == 1 ? "" : "s", age);
+                            else
+                                scoreLine = TextFormat(
+                                    "OD BENCH %d   %d seat%s x %d seed%s   %s",
+                                    rating, seats, seats == 1 ? "" : "s",
+                                    seeds, seeds == 1 ? "" : "s", age);
+                        }
+                    }
+                }
+                // One line ABOVE the footer, which already owns
+                // m_screenH - 40. Drawing both at the same y superimposed them
+                // into an unreadable smear -- the kind of thing that only shows
+                // up in a screenshot, because neither draw call is wrong on its
+                // own and nothing warns about two strings at one position.
+                if (!scoreLine.empty())
+                    DrawText(scoreLine.c_str(), 40, m_screenH - 64, 20,
+                             {120, 220, 160, 255});
+            }
             DrawText(TextFormat("Map %d%s [%s]   turn %d   %.2f s/turn   total %lld turns", m + 1,
                                 infinite ? "" : TextFormat("/%d", numMaps), sc.name,
                                 t + 1, mapSecs / (t + 1), totalTurns),
@@ -577,6 +645,14 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             static const char* WN[AISystem::WAR_ACTIONS] = {
                 "hold", "recruit", "reinforce", "attack",
                 "declare war", "artillery", "ceasefire", "stage"};
+            // Behavioural cloning: does the policy agree with the teacher more
+            // than it did? The rate is the whole evidence that cloning is
+            // pulling rather than merely running -- see BC_DEFAULT_WEIGHT.
+            if (T.bcSamples > 0)
+                printf("[TRAIN] cloning: agreed with the script on %.1f%% of "
+                       "%lld decisions\n",
+                       100.0 * (double)T.bcAgreed / (double)T.bcSamples,
+                       T.bcSamples);
             long long tot = 0;
             for (int i = 0; i < AISystem::WAR_ACTIONS; ++i) tot += T.warAdvN[i];
             if (tot > 0) {
@@ -648,7 +724,10 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     // makes a benchmark worse than having none.
     const bool vsOpponent = !opponentModel.empty();
     const bool vsScript = AISystem::s_scriptedControl;
-    const bool split = vsRandom || vsOpponent || vsScript;
+    // A seat run is a split run: the seat is the model cohort, everything else
+    // is the control. See m_benchSeatIso.
+    const bool benchSeat = !m_benchSeatIso.empty();
+    const bool split = vsRandom || vsOpponent || vsScript || benchSeat;
     const bool duel = AISystem::s_scriptDuel;
     const char* CONTROL = duel ? "AGGRESSOR"
                         : vsOpponent ? "OPPONENT" : vsScript ? "SCRIPT" : "RANDOM";
@@ -782,6 +861,20 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // run, because a mean over "three generated and two historical" is a
         // number with no referent and every stored row would need a footnote.
         const ShippedMap* ship = scenarios ? &SHIPPED_MAPS[m % SHIPPED_COUNT] : nullptr;
+        // A seat names its own world, so the benchmark does not have to play
+        // five scenarios it is not scoring to reach the sixth.
+        if (ship && !m_benchSeatMap.empty()) {
+            const ShippedMap* want = nullptr;
+            for (const auto& sm : SHIPPED_MAPS)
+                if (m_benchSeatMap == sm.name) { want = &sm; break; }
+            if (!want) {
+                fprintf(stderr, "[BENCH] no shipped scenario named '%s'\n",
+                        m_benchSeatMap.c_str());
+                restore();
+                return false;
+            }
+            ship = want;
+        }
         const Scenario& sc = SCENARIOS[m % SCENARIO_COUNT];
         MapEditor::GeneratorParams p;
         p.seed = (int)(rng() & 0x7FFFFFFF);
@@ -882,7 +975,83 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // the end is a difference in play rather than in dealt hands. The seed
         // is fixed, so the split is identical in every run of this map.
         std::unordered_set<int> randomCids;
-        if (split) {
+        if (benchSeat) {
+            // ── ONE SEAT, EVERYTHING ELSE SCRIPTED ──
+            //
+            // The matched-cohort split below exists to make two halves of a
+            // world comparable to each other. That is the wrong shape for an
+            // absolute score: it measures the model AGAINST something, so the
+            // number moves when the something does, and a whole lineage can
+            // drift downhill while every reading says "improved" -- which is
+            // exactly what happened over five hours on 2026-08-29.
+            //
+            // So: one country is played, every other country in the world plays
+            // the scripted rung, and the rung never changes. The seat's final
+            // share of the world is then a fixed ruler. The same seat can be
+            // played by a person, which is the only way to know what the number
+            // is supposed to be worth.
+            int seatCid = -1;
+            for (const auto& [ccid, c] : m_countries.getAll()) {
+                if (c.isoA3 == m_benchSeatIso) { seatCid = ccid; break; }
+            }
+            if (seatCid < 0) {
+                fprintf(stderr, "[BENCH] no country '%s' on this map; skipping\n",
+                        m_benchSeatIso.c_str());
+                continue;
+            }
+            for (int owner : m_provinceCountryLookup)
+                if (owner > 0 && owner < REBEL_CID_MIN && owner != seatCid)
+                    randomCids.insert(owner);
+
+            // ── A RUSHING NEIGHBOURHOOD, NOT A RUSHING WORLD ──
+            //
+            // Everyone who shares a land border with the seat attacks without
+            // pause; everyone else plays the ordinary rung. The whole-world
+            // version of this seat scored 13 out of 100 for every model tried,
+            // which is not a hard seat, it is an unrankable one. See
+            // AISystem::s_exploitCids.
+            AISystem::s_exploitCids.clear();
+            if (m_benchRushNeighbours != 0) {
+                std::unordered_set<int> nbrCids;
+                for (const auto& [pid, nbrs] : m_provinceNeighbors) {
+                    if (pid < 0 || pid >= (int)m_provinceCountryLookup.size()) continue;
+                    if (m_provinceCountryLookup[pid] != seatCid) continue;
+                    for (int nb : nbrs) {
+                        if (nb < 0 || nb >= (int)m_provinceCountryLookup.size()) continue;
+                        const int owner = m_provinceCountryLookup[nb];
+                        if (owner > 0 && owner < REBEL_CID_MIN && owner != seatCid)
+                            nbrCids.insert(owner);
+                    }
+                }
+                // HOW MANY of them, largest first. Every neighbour at once is
+                // not a softer seat than a rushing world, it is a harder one --
+                // measured, and the reason is that the seat is then the only
+                // non-rusher any of them can see, so all of them converge on
+                // it. In a world-wide rush the aggressors are busy with each
+                // other. One aggressive neighbour is the seat that was wanted.
+                std::vector<std::pair<int, int>> ranked;   // (provinces, cid)
+                for (int nc : nbrCids) {
+                    int n = 0;
+                    for (int owner : m_provinceCountryLookup) if (owner == nc) ++n;
+                    ranked.push_back({n, nc});
+                }
+                std::sort(ranked.rbegin(), ranked.rend());
+                const size_t want = m_benchRushNeighbours < 0
+                                  ? ranked.size()
+                                  : (size_t)m_benchRushNeighbours;
+                for (size_t k = 0; k < ranked.size() && k < want; ++k)
+                    AISystem::s_exploitCids.insert(ranked[k].second);
+                printf("[BENCH] rushing neighbours: %zu of %zu that border the seat\n",
+                       AISystem::s_exploitCids.size(), nbrCids.size());
+            }
+            r.trainedCount = 1;
+            r.randomCount = (int)randomCids.size();
+            for (int owner : m_provinceCountryLookup) {
+                if (owner <= 0 || owner >= REBEL_CID_MIN) continue;
+                if (owner == seatCid) r.trainedStartProv++;
+                else                  r.randomStartProv++;
+            }
+        } else if (split) {
             std::unordered_map<int, int> startSize;
             for (int owner : m_provinceCountryLookup)
                 if (owner > 0 && owner < REBEL_CID_MIN) startSize[owner]++;
@@ -1204,6 +1373,156 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                        ECON_NAME[i], M.econOffered[i], M.econChosen[i], mt,
                        R.econOffered[i], R.econChosen[i], rt);
             }
+            // HOW OFTEN THE TREASURY, AND NOTHING ELSE, WITHHELD THE ACTION.
+            // Read next to the row above: a build with a high take rate and a
+            // large number here is not a policy that ignores it, it is a policy
+            // that is rarely allowed to have it. See TrainStats::econCashBlocked.
+            printf("[EVAL]   -- econ action: withheld for want of money "
+                   "(%% of substantively available turns) --\n");
+            for (int i = 1; i < AISystem::ECON_ACTIONS; ++i) {
+                const long long mAvail = M.econOffered[i] + M.econCashBlocked[i];
+                const long long rAvail = R.econOffered[i] + R.econCashBlocked[i];
+                if (!mAvail && !rAvail) continue;
+                printf("[EVAL]     %-11s %7lld/%-7lld (%4.1f%%)  %7lld/%-7lld (%4.1f%%)\n",
+                       ECON_NAME[i], M.econCashBlocked[i], mAvail,
+                       mAvail ? 100.0 * M.econCashBlocked[i] / mAvail : 0.0,
+                       R.econCashBlocked[i], rAvail,
+                       rAvail ? 100.0 * R.econCashBlocked[i] / rAvail : 0.0);
+            }
+
+            {
+                auto purse = [](const AISystem::TrainStats& S, const char* who) {
+                    if (!S.purseTurns) return;
+                    const double n = (double)S.purseTurns;
+                    printf("[EVAL]     %-8s treasury %8.1f  gross %7.2f  net %7.2f  "
+                           "standing bill %6.2f  |  %4.1f%% at a loss, %4.1f%% under $8\n",
+                           who, S.purseTreasury / n, S.purseGross / n, S.purseNet / n,
+                           S.purseUpkeep / n,
+                           100.0 * S.purseNetNegative / n, 100.0 * S.purseBroke / n);
+                };
+                printf("[EVAL]   -- the purse: mean per country-turn --\n");
+                purse(M, "model");
+                purse(R, control);
+
+                // WHERE IT WENT. The modules run economy, politics, war, navy
+                // in that order and each spends before the next is asked, so
+                // this says whether the war head is being starved by the ones
+                // ahead of it or is declining money it was offered. See
+                // TrainStats::spendEcon.
+                auto spend = [](const AISystem::TrainStats& S, const char* who) {
+                    if (!S.spendTurns) return;
+                    const double n = (double)S.spendTurns;
+                    printf("[EVAL]     %-8s econ %6.2f  pol %6.2f  war %6.2f  "
+                           "navy %6.2f  |  war had >=$8 on %4.1f%% of turns, "
+                           "spent on %4.1f%%\n",
+                           who, S.spendEcon / n, S.spendPol / n, S.spendWar / n,
+                           S.spendNavy / n, 100.0 * S.warRich / n,
+                           100.0 * S.warSpent / n);
+                };
+                auto bill = [](const AISystem::TrainStats& S, const char* who) {
+                    if (!S.purseTurns) return;
+                    const double n = (double)S.purseTurns;
+                    printf("[EVAL]     %-8s policies %6.2f  minorities %6.2f  "
+                           "pacification %6.2f\n", who, S.upkeepPolicy / n,
+                           S.upkeepMinority / n, S.upkeepPacify / n);
+                };
+                printf("[EVAL]   -- the standing bill, split --\n");
+                bill(M, "model");
+                bill(R, control);
+                auto costs = [](const AISystem::TrainStats& S, const char* who) {
+                    if (!S.purseTurns) return;
+                    const double n = (double)S.purseTurns;
+                    const double gross = S.purseGross / n;
+                    const double exp = (S.expArmy + S.expNavy + S.expIndustry +
+                                        S.expResearch + S.upkeepPolicy +
+                                        S.upkeepMinority + S.upkeepPacify) / n;
+                    printf("[EVAL]     %-8s army %6.2f  navy %6.2f  industry %6.2f  "
+                           "research %6.2f  |  expenses %6.2f of gross %6.2f (%4.1f%%)\n",
+                           who, S.expArmy / n, S.expNavy / n, S.expIndustry / n,
+                           S.expResearch / n, exp, gross,
+                           gross > 0.0 ? 100.0 * exp / gross : 0.0);
+                };
+                printf("[EVAL]   -- the rest of the expense side --\n");
+                costs(M, "model");
+                costs(R, control);
+                printf("[EVAL]   -- spent per country-turn, by module --\n");
+                spend(M, "model");
+                spend(R, control);
+            }
+
+            static const char* POL_NAME[AISystem::POL_ACTIONS] = {
+                "hold", "enact", "pacify up", "pacify dn", "cancel",
+                "alliance", "nap", "guarantee", "calming", "conciliate",
+                "repress", "trade"};
+            printf("[EVAL]   -- politics action: offered / chosen (take%%) --\n");
+            for (int i = 0; i < AISystem::POL_ACTIONS; ++i) {
+                const double mt = M.polOffered[i] ? 100.0 * M.polChosen[i] / M.polOffered[i] : 0.0;
+                const double rt = R.polOffered[i] ? 100.0 * R.polChosen[i] / R.polOffered[i] : 0.0;
+                printf("[EVAL]     %-11s %7lld/%-7lld (%4.1f%%)  %7lld/%-7lld (%4.1f%%)\n",
+                       POL_NAME[i], M.polOffered[i], M.polChosen[i], mt,
+                       R.polOffered[i], R.polChosen[i], rt);
+            }
+
+            // ── CHOSEN, AND HAD NO EFFECT ──
+            //
+            // See TrainStats::noopChosen. Any line here is a wasted country-turn
+            // that still recorded a sample and still trained the head that the
+            // action was safe and free. Every AI defect found so far was one of
+            // these, and each was found by hand; this is so the next one is not.
+            {
+                static const char* NOOP_ECON[AISystem::ECON_ACTIONS] = {
+                    "save", "industry", "fort", "port", "specialize", "destroyer",
+                    "carrier", "fund up", "fund down", "focus bldg", "focus army",
+                    "focus navy"};
+                static const char* NOOP_POL[AISystem::POL_ACTIONS] = {
+                    "hold", "enact", "pacify up", "pacify dn", "cancel",
+                    "alliance", "nap", "guarantee", "calming", "conciliate",
+                    "repress", "trade"};
+                static const char* NOOP_WAR[AISystem::WAR_ACTIONS] = {
+                    "hold", "recruit", "reinforce", "attack", "declare war",
+                    "artillery", "ceasefire", "stage"};
+                static const char* NOOP_NAVY[AISystem::NAVY_ACTIONS] = {
+                    "hold", "move", "bombard", "embark", "land", "scrap", "engage"};
+                const char* const* NAMES[AISystem::MOD_COUNT] =
+                    {NOOP_ECON, NOOP_POL, NOOP_WAR, NOOP_NAVY};
+                const int NACT[AISystem::MOD_COUNT] = {
+                    AISystem::ECON_ACTIONS, AISystem::POL_ACTIONS,
+                    AISystem::WAR_ACTIONS, AISystem::NAVY_ACTIONS};
+                const char* MODN[AISystem::MOD_COUNT] = {"econ", "pol", "war", "navy"};
+                printf("[EVAL]   -- chosen but did nothing (wasted country-turns) --\n");
+                bool anyNoop = false;
+                for (int m = 0; m < AISystem::MOD_COUNT; ++m)
+                    for (int i = 1; i < NACT[m]; ++i) {
+                        if (!M.noopChosen[m][i]) continue;
+                        const long long chosen =
+                            (m == 0) ? M.econChosen[i] : (m == 1) ? M.polChosen[i]
+                          : (m == 2) ? M.warChosen[i]  : M.navyChosen[i];
+                        anyNoop = true;
+                        printf("[EVAL]     %-4s %-11s %7lld / %-7lld (%4.1f%% wasted)\n",
+                               MODN[m], NAMES[m][i], M.noopChosen[m][i], chosen,
+                               chosen ? 100.0 * M.noopChosen[m][i] / chosen : 0.0);
+                    }
+                if (!anyNoop)
+                    printf("[EVAL]     none -- every chosen action had an effect\n");
+            }
+
+            printf("[EVAL]     pact proposals: %lld chosen, %lld found nobody to ask "
+                   "(%4.1f%% wasted)   |   %lld / %lld (%4.1f%%)\n",
+                   M.pactTried, M.pactNoTarget,
+                   M.pactTried ? 100.0 * M.pactNoTarget / M.pactTried : 0.0,
+                   R.pactTried, R.pactNoTarget,
+                   R.pactTried ? 100.0 * R.pactNoTarget / R.pactTried : 0.0);
+
+            static const char* NAVY_NAME[AISystem::NAVY_ACTIONS] = {
+                "hold", "move", "bombard", "embark", "land", "scrap", "engage"};
+            printf("[EVAL]   -- navy action: offered / chosen (take%%) --\n");
+            for (int i = 0; i < AISystem::NAVY_ACTIONS; ++i) {
+                const double mt = M.navyOffered[i] ? 100.0 * M.navyChosen[i] / M.navyOffered[i] : 0.0;
+                const double rt = R.navyOffered[i] ? 100.0 * R.navyChosen[i] / R.navyOffered[i] : 0.0;
+                printf("[EVAL]     %-11s %7lld/%-7lld (%4.1f%%)  %7lld/%-7lld (%4.1f%%)\n",
+                       NAVY_NAME[i], M.navyOffered[i], M.navyChosen[i], mt,
+                       R.navyOffered[i], R.navyChosen[i], rt);
+            }
             printf("[EVAL]     research picks         %7lld   %7lld\n",
                    M.researchPicked, R.researchPicked);
             printf("[EVAL]       ...armed a node      %7lld   %7lld\n",
@@ -1338,6 +1657,7 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     long long dipReq = 0, dipYes = 0;
     long long embarks = 0, landings = 0, home = 0, scrapped = 0;
     long long conciliated = 0, repressed = 0, calming = 0;
+    long long tradeOffers = 0, tradeYes = 0, tradeNo = 0;
     long long bankruptTurns = 0, austerityCuts = 0;
     long long trainedProv = 0, randomProv = 0, trainedAlive = 0, randomAlive = 0;
     long long trainedStart = 0, randomStart = 0, modelWins = 0, randomWins = 0;
@@ -1357,6 +1677,9 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         home += r.stats.unloadsHome;       scrapped += r.stats.shipsScrapped;
         bankruptTurns += r.stats.bankruptTurns;
         austerityCuts += r.stats.austerityCuts;
+        tradeOffers += r.stats.tradesOffered;
+        tradeYes    += r.stats.tradesAccepted;
+        tradeNo     += r.stats.tradesRefused;
         conciliated += r.stats.minorityConciliations;
         repressed += r.stats.minorityRepressions;
         calming += r.stats.calmingPolicies;
@@ -1409,10 +1732,18 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     }
     printf("[EVAL] agreements    %.0f%% of %lld diplomatic requests accepted\n",
            dipReq ? 100.0 * dipYes / dipReq : 0.0, dipReq);
+    // TRADE, WHICH NOTHING REPORTED AT ALL. An AI that never proposes and one
+    // that proposes constantly and is always refused are the same silence in
+    // every other line of this report, and they need opposite fixes.
+    printf("[EVAL] trade         %lld offer(s) made, %lld accepted, %lld refused"
+           " (%.0f%% accepted)\n", tradeOffers, tradeYes, tradeNo,
+           (tradeYes + tradeNo) ? 100.0 * tradeYes / (tradeYes + tradeNo) : 0.0);
     printf("[EVAL] coalition      %.0f%% of %lld calls to arms answered, %lld staging moves\n",
            calls ? 100.0 * answered / calls : 0.0, calls, staged);
-    printf("[EVAL] amphibious     %.0f%% of %lld embarkations reached a hostile shore (%lld came home)\n",
-           embarks ? 100.0 * landings / embarks : 0.0, embarks, home);
+    printf("[EVAL] amphibious     %.0f%% of %lld embarkations reached a hostile shore "
+           "(%lld came home, %lld landing order(s) dropped as out of range)\n",
+           embarks ? 100.0 * landings / embarks : 0.0, embarks, home,
+           m_navLandingsOutOfRange);
     printf("[EVAL] fleet          %.2f hulls scrapped per 1k country-turns\n", scrapped / kct);
     printf("[EVAL] unrest         %.2f rebellions, %.2f research nodes per 1k country-turns\n",
            rebels / kct, research / kct);
@@ -1580,8 +1911,15 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
            "%lld loaded transport(s) carrying %lld troops\n",
            m_navEngagements, m_navSinkings, m_navTransportsSunk, m_navCrewDrowned);
     printf("[EVAL] routing       %lld of %lld ship move(s) stopped dead by land "
-           "(%.0f%%)\n", m_navBlocked, m_navMoves,
-           m_navMoves ? 100.0 * (double)m_navBlocked / (double)m_navMoves : 0.0);
+           "(%.0f%%), of which %lld were ordered onto dry land (%.0f%%)\n",
+           m_navBlocked, m_navMoves,
+           m_navMoves ? 100.0 * (double)m_navBlocked / (double)m_navMoves : 0.0,
+           m_navDestOnLand,
+           m_navBlocked ? 100.0 * (double)m_navDestOnLand / (double)m_navBlocked : 0.0);
+    printf("[EVAL]               %lld more were aimed into a different body of "
+           "water; the remaining %lld are the router's own failures\n",
+           m_navDestOtherSea,
+           m_navBlocked - m_navDestOnLand - m_navDestOtherSea);
     // A HULL SITTING ON LAND IS ALWAYS A BUG, whoever moved it there. The navy
     // executor used to assign its destination outright with no water test, so
     // any crossing whose straight line clipped a headland beached the ship
@@ -1612,6 +1950,19 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                "  policy updates\n",
                m_ai->moduleUpdates(0), m_ai->moduleUpdates(1),
                m_ai->moduleUpdates(2), m_ai->moduleUpdates(3));
+    // WHETHER THE FORWARD MODEL IS PLANNING YET. Search is inert below its
+    // warmup and play is then bit-identical to a build without it, which is
+    // exactly what makes the state impossible to read off behaviour. See
+    // AISystem::DYN_WARMUP_UPDATES.
+    if (m_ai)
+        printf("[EVAL] forward model %llu update(s), %.0f%% of warmup -- search %s\n",
+               m_ai->dynamicsUpdates(),
+               100.0 * (double)m_ai->dynamicsUpdates() /
+                   (double)AISystem::DYN_WARMUP_UPDATES,
+               m_ai->searchActive() ? "ACTIVE"
+                   : (m_ai->dynamicsUpdates() >= AISystem::DYN_WARMUP_UPDATES
+                          ? "trained, but this difficulty does not search"
+                          : "still warming up"));
     // The playability line. Not about how well it plays -- about whether the
     // player is waiting for it. 185 countries thinking on the present-day map
     // is where this stops being free.
@@ -1687,6 +2038,16 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                vsOpponent ? "level with the opponent"
                           : vsScript ? "level with the scripted player"
                                      : "no better than a coin flip");
+        // ── THE ABSOLUTE SCORE ──
+        // With one seat played and the rest of the world on the frozen rung,
+        // `share` IS the seat's share of the world -- no opponent in it, so the
+        // number means the same thing next month as it does today. Printed on
+        // its own line, machine-readable, because tools/od_bench.py averages it
+        // over a fixed set of seats and a person's run has to produce the same
+        // line to be comparable. See m_benchSeatIso.
+        if (benchSeat)
+            printf("[BENCH] seat %s  score %.1f  (share of the world held after "
+                   "%d turns)\n", m_benchSeatIso.c_str(), share, turnsPerMap);
         printf("[EVAL] survival       %.0f%% of model countries, %.0f%% of %s countries\n",
                tSurv, rSurv, control);
         // One number to watch across model versions. Below 1.0 the model is
@@ -1705,6 +2066,8 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                vsOpponent ? "the opponent"
                           : vsScript ? "the scripted player" : "a coin flip");
     }
+
+    money::dump();
 
     printf("[EVAL] CSV,maps,turns,decided,frozen,alive_pct,largest_pct,herfindahl,"
            "wars_k,ceasefires_k,pacts_k,calls_answered_pct,landing_pct,scrap_k,rebellions_k,"
@@ -1741,6 +2104,179 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
 // it produces is a world with a real turn history, which is the input
 // --export-timelapse has always needed and never had a way to make.
 //
+// ────────────────────────────────────────────────────────────────────────────
+// runBenchAgent — a benchmark seat played BY HAND, one turn per invocation
+//
+// The seat bench answers "how good is this model" on an absolute scale. This
+// answers the other half: how good is anyone else on the same scale, without
+// needing them at a keyboard for two hours. It prints the position and the
+// legal actions, applies the choices it was given, resolves one turn, and
+// exits -- so a caller with no session of its own (a script, a person, an
+// agent driving it a call at a time) can play a full seat by invoking it
+// repeatedly against the same save.
+//
+// FAIRNESS IS THE WHOLE POINT, so the menu is the policy's own: same masks via
+// AISystem::agentLegal, same executors via agentExec, same country, same
+// scripted opposition, same 120 turns. A difference in the final score is then
+// a difference in judgement, not in what was on offer -- which also means a
+// player who feels limited here is telling us the ACTION SPACE is the ceiling,
+// and that is worth knowing separately from whether the policy chooses well.
+// ────────────────────────────────────────────────────────────────────────────
+bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
+                         unsigned int seed, int untilTurn) {
+    applyFpsTarget(-1);
+    Audio::s_disabled = true;
+
+    startBenchSeat(seatSpec, untilTurn);
+    while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {
+        if (WindowShouldClose()) return false;
+        updateLoading();
+    }
+    if (m_loadingFailed) { fprintf(stderr, "[AGENT] load failed\n"); return false; }
+    hideLoadingScreen();
+    m_currentScreen = SCREEN_PLAYING;
+    m_benchPlayUntilTurn = untilTurn;
+
+    // ── THE SAME WORLD THE MODEL PLAYED ──
+    //
+    // Turn logic calls rand() directly (combat rolls, rebellion chances) and
+    // raylib's InitWindow seeds that from the wall clock, so without this every
+    // agent run is a DIFFERENT game from the one the model was scored on and
+    // the comparison is unpaired. That is not a small caveat here: the model's
+    // three seeds on 1914:FRA:rush came out 0.3, 9.3 and 9.8 -- a spread far
+    // wider than any plausible difference between two players. Same two lines,
+    // same reason, as the eval loop; see the note at "SEED THE C PRNG".
+    //
+    // DERIVED THE WAY THE EVAL DERIVES IT, not used raw. runAIEvaluation seeds
+    // an mt19937 with the run's base seed and draws a per-map seed from it --
+    // `p.seed = rng() & 0x7FFFFFFF` -- so seeding rand() with the base seed
+    // here would produce a DIFFERENT world from the one the model was scored
+    // on, while looking for all the world like the same one. The first draw is
+    // the first map's seed, which is the map a one-map seat run plays.
+    std::mt19937 seatRng(seed);
+    const unsigned int mapSeed = (unsigned int)(seatRng() & 0x7FFFFFFF);
+    srand(mapSeed);
+    seedSimRng(mapSeed);
+    printf("[AGENT] seed %u -> map seed %u (the world the model was scored on)\n",
+           seed, mapSeed);
+
+    const int cid = m_playerCountryId;
+    const Country* me = m_countries.getCountry(cid);
+    if (!me) { fprintf(stderr, "[AGENT] no seat country\n"); return false; }
+    if (!m_ai)
+        m_ai = new AISystem(this, m_evalModelOverride.empty()
+                                      ? m_dataDir + m_aiModelPath
+                                      : m_evalModelOverride);
+
+    static const char* ECON_N[] = {"save","industry","fort","port","specialize",
+        "destroyer","carrier","fund up","fund down","focus bldg","focus army","focus navy"};
+    static const char* POL_N[] = {"hold","enact","pacify up","pacify dn","cancel",
+        "alliance","nap","guarantee","calming","conciliate","repress","trade"};
+    static const char* WAR_N[] = {"hold","recruit","reinforce","attack","declare war",
+        "artillery","ceasefire","stage"};
+    static const char* NAVY_N[] = {"hold","move","bombard","embark","land","scrap","engage"};
+    struct ModInfo { const char* letter; const char* label; const char* const* names; };
+    static const ModInfo MODS[] = {
+        {"e", "economy",  ECON_N}, {"p", "politics", POL_N},
+        {"w", "war",      WAR_N},  {"n", "navy",     NAVY_N},
+    };
+
+    printf("[AGENT] seat %s, %d turns. Write choices to %s, one line per turn.\n",
+           seatSpec.c_str(), untilTurn, pipePath.c_str());
+    fflush(stdout);
+
+    while (m_turnNumber < untilTurn) {
+        m_ai->agentRefresh();
+
+        // ── The position ──
+        const CountryIncomeSnapshot inc = computeCountryIncome(cid);
+        long long mine = 0, owned = 0, army = 0;
+        for (int owner : m_provinceCountryLookup) {
+            if (owner <= 0 || owner >= REBEL_CID_MIN) continue;
+            ++owned; if (owner == cid) ++mine;
+        }
+        for (const auto& [pid, units] : m_provinceArmies)
+            for (const auto& u : units) if (u.countryId == cid) army += u.count;
+        std::string warList;
+        if (auto rIt = m_relations.find(me->isoA3); rIt != m_relations.end())
+            for (const auto& [iso, rel] : rIt->second)
+                if (rel.war) { if (!warList.empty()) warList += " "; warList += iso; }
+
+        printf("\n[AGENT] ===== turn %d/%d  %s (%s) =====\n", m_turnNumber, untilTurn,
+               me->name.c_str(), me->isoA3.c_str());
+        printf("[AGENT] land %lld/%lld (%.2f%% of the world)  army %lld  treasury %.1f\n",
+               mine, owned, owned ? 100.0 * (double)mine / (double)owned : 0.0,
+               army, me->treasury);
+        printf("[AGENT] gross %.1f net %.1f  (army %.1f navy %.1f industry %.1f "
+               "research %.1f minorities %.1f)\n", inc.total, inc.net,
+               inc.armyExpenses, inc.navyExpenses, inc.industryUpkeep,
+               inc.researchCost, inc.minorityCosts);
+        printf("[AGENT] at war with: %s\n", warList.empty() ? "(nobody)" : warList.c_str());
+        for (int mod = 0; mod < 4; ++mod) {
+            std::vector<bool> legal;
+            m_ai->agentLegal(cid, mod, legal);
+            std::string line;
+            for (size_t a = 0; a < legal.size(); ++a) {
+                if (!legal[a]) continue;
+                if (!line.empty()) line += "  ";
+                line += MODS[mod].letter + std::string(":") + std::to_string(a) +
+                        " " + MODS[mod].names[a];
+            }
+            printf("[AGENT] %-8s %s\n", MODS[mod].label, line.c_str());
+        }
+        printf("[AGENT] waiting\n");
+        fflush(stdout);
+
+        // ── One line of choices, from whoever is playing ──
+        //
+        // Opened per turn: a FIFO returns EOF when its writer closes, so a
+        // single long-lived handle would end the game after the first command.
+        // Opening fresh blocks until the next writer appears, which is exactly
+        // the turn boundary.
+        std::string cmds;
+        {
+            FILE* in = fopen(pipePath.c_str(), "r");
+            if (!in) { fprintf(stderr, "[AGENT] cannot open %s\n", pipePath.c_str()); return false; }
+            char buf[1024];
+            if (fgets(buf, sizeof(buf), in)) cmds = buf;
+            fclose(in);
+        }
+        while (!cmds.empty() && (cmds.back() == '\n' || cmds.back() == '\r')) cmds.pop_back();
+        if (cmds == "quit") { printf("[AGENT] stopped early at turn %d\n", m_turnNumber); break; }
+
+        size_t at = 0;
+        while (at < cmds.size()) {
+            const size_t comma = cmds.find(',', at);
+            std::string tok = cmds.substr(at, comma == std::string::npos
+                                               ? std::string::npos : comma - at);
+            at = (comma == std::string::npos) ? cmds.size() : comma + 1;
+            while (!tok.empty() && tok.front() == ' ') tok.erase(tok.begin());
+            if (tok.size() < 3 || tok[1] != ':') continue;
+            const char* found = strchr("epwn", tok[0]);
+            if (!found) { printf("[AGENT] ? unknown module in %s\n", tok.c_str()); continue; }
+            const int mod = (int)(found - "epwn");
+            const int act = atoi(tok.c_str() + 2);
+            std::vector<bool> legal;
+            m_ai->agentLegal(cid, mod, legal);
+            if (act < 0 || act >= (int)legal.size() || !legal[act]) {
+                printf("[AGENT] REFUSED %s: not legal this turn\n", tok.c_str());
+                continue;
+            }
+            printf("[AGENT] did %s -> %s\n", tok.c_str(),
+                   m_ai->agentExec(cid, mod, act).c_str());
+            m_ai->agentRefresh();
+        }
+
+        processTurn();
+        PollInputEvents();
+    }
+
+    // m_benchPlayUntilTurn prints the [BENCH] line from processTurn itself.
+    applyFpsTarget(m_config.fpsTarget);
+    return true;
+}
+
+
 // It is also the smallest honest end-to-end check of a build: load a map,
 // resolve turns, write an archive. A platform where that works is a platform
 // where the game runs, and it needs nobody at the keyboard to say so.

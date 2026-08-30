@@ -1,0 +1,32 @@
+// Překlad - ekonomika.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomika - otevřete ji. Všechno ostatní v této hře je spor o to, jak utratit
+to, co vyrobí.
+---
+@Signals Officer
+§**Průmysl**§ roste tam, kde už lidé jsou. Továrna v prázdné provincii je drahá
+kůlna: surovinou je obyvatelstvo, ne budova.
+---
+@Signals Officer
+Příjem přichází jednou za tah, v tahu. Zavažte se k víc, než máte, a schodek
+zdvořile nepočká: strhne se z připravenosti a dozvíte se o tom v bitvě.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Zase ven a podívejme se místo toho na jedinou provincii.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klikněte na některou naši. U každé provincie panel ukazuje, co vyrábí a co
+drží. Suroviny mají větší cenu zpracované než vytěžené, takže průmyslová
+provincie vedle bohaté má větší cenu než každá zvlášť.
+---
+@Signals Officer
+A politiky jsou §**trvalý účet**§, ne nákup. Každá, kterou vedete, se odečítá
+každý tah, napořád, ať už ještě něco přináší, nebo ne.
+
+To je ekonomika. Ještě něco?

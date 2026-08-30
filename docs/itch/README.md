@@ -279,8 +279,21 @@ enabled.
 Two things to know before you do:
 
 - the package is ~97 MB, so first load is slow on a poor connection; and
-- `build-web/data/audio/music/` **must** be inside the zip. Music is streamed
-  rather than preloaded, and a zip without it gives a silent game.
+- everything under `build-web/data/` **must** be inside the zip, not just the
+  four files at the root. Four things live there because they are fetched at
+  the moment they are needed rather than preloaded, and a zip without them
+  fails silently and differently each time:
+
+  | | what a zip without it looks like |
+  |---|---|
+  | `data/audio/music/` | a silent game |
+  | `data/STDmaps/` | "This world could not be downloaded" on every scenario |
+  | `data/ai/model.bin` | no trained opponent |
+  | `data/fonts/unifont-full.ttf` | Japanese, Chinese, Korean and Arabic draw as blanks |
+
+  The 11 MB font is the odd one: it is NOT part of the 97 MB anybody
+  downloads. Only a player who picks a language the 147 KB subset cannot draw
+  ever asks for it. See `Game::reloadFonts()`.
 
 The web build cannot HOST multiplayer -- a browser tab cannot listen for
 players -- but it can JOIN one, which the description says. Do not shorten that

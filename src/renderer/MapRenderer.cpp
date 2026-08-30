@@ -9,6 +9,8 @@
 // nothing drains the audio buffer while this thread is inside a 33-million-pixel
 // scan. Audio::pump() is the yield. See its comment for why a browser needs one.
 #include "../Audio.h"
+// T(): the debug overlays below are drawn text like any other.
+#include "../i18n/Locale.h"
 #include "raymath.h"
 #include <cmath>
 #include <algorithm>
@@ -84,6 +86,74 @@ void MapRenderer::updatePoliticalTextureRec(const void* rectData, int x, int y, 
         UpdateTextureRec(m_politicalTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
 }
 
+// ─── THE BORDER LAYER'S PIXEL ─────────────────────────────────────────────
+//
+// Two bytes: a luminance the draw tint overrides anyway, and coverage.
+//
+// It was four, as 0xFFFFFF00|alpha written as a little-endian uint32 into an
+// R8G8B8A8 texture. Read that back a byte at a time and it is R=alpha,
+// G=B=A=255 -- NOT white-with-alpha, which is what the constant looks like it
+// says. So every marked pixel has always drawn fully OPAQUE, and the 180 an
+// edge computes and the 50 its neighbour computes have never reached the
+// screen: the halo is in the arithmetic and has never been in the picture.
+//
+// THE LOOK IS UNCHANGED HERE, deliberately. kBorderAlpha is 255 for anything
+// marked, which is the pixel that has always been drawn. Correcting it is a
+// one-line change -- pass the computed alpha through instead -- and it
+// lightens every border on every map, so it is a decision to take on its own
+// rather than the side effect of a memory fix. Nothing about the format
+// stands in the way: the byte is there either way.
+//
+// WHY TWO BYTES IS THE POINT. Both draw sites tint with
+// ColorAlpha(BLACK, 0.15f), so this texture supplies coverage and nothing
+// else; three of its four channels were a constant. At 8192x4096 that is
+// 128 MB of heap and 128 MB of GPU, halved. The GPU half is the one that
+// matters on a phone: a scenario load builds THREE full-map textures --
+// land/sea, political, and this -- and a browser tab's texture budget is not
+// the wasm heap the [MEM] lines in Game_Loading.cpp measure.
+//
+// GRAY_ALPHA is GL_LUMINANCE_ALPHA on the ES2 path the web and Android builds
+// take, sampled as (L,L,L,A); the font atlas has always shipped in it, so it
+// is a format this build is already known to accept. Desktop GL 3.3 gets
+// GL_RG8 and a swizzle, which raylib sets for us.
+static constexpr size_t kBorderBpp = 2;
+static constexpr uint8_t kBorderMarked = 255;
+
+static inline void writeBorderTexel(uint8_t* dst, uint8_t alpha) {
+    dst[0] = 255;                                 // luminance; the tint wins
+    dst[1] = alpha ? kBorderMarked : (uint8_t)0;  // coverage
+}
+
+// Is this pixel on a province edge? Wraps in x, because the map is a cylinder,
+// and counts the top and bottom rows as edges -- which is what the flood fill
+// this replaced did by construction, and what the live-paint path below has
+// always done. ONE definition now, shared by both, instead of two that agreed
+// only by inspection.
+static inline bool provEdgeAt(const uint32_t* pixels, int mapW, int mapH,
+                              int px, int py) {
+    const uint32_t centre = pixels[(size_t)py * mapW + px];
+    if (centre == 0) return false;
+    const int l = (px == 0) ? mapW - 1 : px - 1;
+    const int r = (px == mapW - 1) ? 0 : px + 1;
+    return pixels[(size_t)py * mapW + l] != centre ||
+           pixels[(size_t)py * mapW + r] != centre ||
+           (py == 0 || pixels[(size_t)(py - 1) * mapW + px] != centre) ||
+           (py == mapH - 1 || pixels[(size_t)(py + 1) * mapW + px] != centre);
+}
+
+// 180 on an edge pixel, 50 on the one-pixel halo around one, 0 elsewhere.
+static inline uint8_t borderAlphaAt(const uint32_t* pixels, int mapW, int mapH,
+                                    int px, int py) {
+    if (provEdgeAt(pixels, mapW, mapH, px, py)) return 180;
+    const int l = (px == 0) ? mapW - 1 : px - 1;
+    const int r = (px == mapW - 1) ? 0 : px + 1;
+    if (provEdgeAt(pixels, mapW, mapH, l, py) ||
+        provEdgeAt(pixels, mapW, mapH, r, py) ||
+        (py > 0 && provEdgeAt(pixels, mapW, mapH, px, py - 1)) ||
+        (py < mapH - 1 && provEdgeAt(pixels, mapW, mapH, px, py + 1))) return 50;
+    return 0;
+}
+
 void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH,
                                      int rx, int ry, int rw, int rh) {
     if (m_borderTex.id == 0 || provPixels == nullptr || m_borderPixels.empty()) return;
@@ -93,34 +163,13 @@ void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH
     if (x0 > x1 || y0 > y1) return;
 
     const auto* pixels = reinterpret_cast<const uint32_t*>(provPixels);
-    auto isBorder = [&](int px, int py) -> bool {
-        uint32_t center = pixels[py * mapW + px];
-        if (center == 0) return false;
-        int l = (px == 0) ? mapW - 1 : px - 1;
-        int r = (px == mapW - 1) ? 0 : px + 1;
-        return pixels[py * mapW + l] != center || pixels[py * mapW + r] != center ||
-               (py == 0 || pixels[(py - 1) * mapW + px] != center) ||
-               (py == mapH - 1 || pixels[(py + 1) * mapW + px] != center);
-    };
-
-    int w = x1 - x0 + 1, h = y1 - y0 + 1;
-    std::vector<uint32_t> rect((size_t)w * h, 0);
-    auto* full = reinterpret_cast<uint32_t*>(m_borderPixels.data());
+    const int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    std::vector<uint8_t> rect((size_t)w * h * kBorderBpp, 0);
     for (int py = y0; py <= y1; ++py) {
         for (int px = x0; px <= x1; ++px) {
-            uint8_t a = 0;
-            if (isBorder(px, py)) {
-                a = 180;
-            } else {
-                int l = (px == 0) ? mapW - 1 : px - 1;
-                int r = (px == mapW - 1) ? 0 : px + 1;
-                if (isBorder(l, py) || isBorder(r, py) ||
-                    (py > 0 && isBorder(px, py - 1)) ||
-                    (py < mapH - 1 && isBorder(px, py + 1))) a = 50;
-            }
-            uint32_t v = a ? (0xFFFFFF00u | a) : 0u; // same encoding as computeBorderTexture
-            rect[(size_t)(py - y0) * w + (px - x0)] = v;
-            full[(size_t)py * mapW + px] = v;
+            const uint8_t a = borderAlphaAt(pixels, mapW, mapH, px, py);
+            writeBorderTexel(&rect[((size_t)(py - y0) * w + (px - x0)) * kBorderBpp], a);
+            writeBorderTexel(&m_borderPixels[((size_t)py * mapW + px) * kBorderBpp], a);
         }
     }
     UpdateTextureRec(m_borderTex, {(float)x0, (float)y0, (float)w, (float)h}, rect.data());
@@ -164,13 +213,51 @@ void MapRenderer::updateClaimsTextureRec(const void* rectData, int x, int y, int
 void MapRenderer::computeBorderTexture(const Image& provImage) {
     if (provImage.data == nullptr) return;
 
-    int mapW = provImage.width;
-    int mapH = provImage.height;
+    const int mapW = provImage.width;
+    const int mapH = provImage.height;
     const auto* pixels = static_cast<const uint32_t*>(provImage.data);
 
-    std::vector<int> borderDist(mapW * mapH, 99);
-    struct QEntry { int x, y; };
-    std::vector<QEntry> queue;
+    // ─── WHAT THIS USED TO COST, AND WHY IT MATTERED ──────────────────────
+    //
+    // This is the phase an iPhone died in: the loading bar reached 40%,
+    // "Initializing renderer", and the tab was gone. It was not the texture
+    // upload. It was the three full-map working buffers this function held at
+    // once, on an 8192x4096 map:
+    //
+    //     borderDist    vector<int>       128 MB   a distance field
+    //     queue         vector<QEntry>     31 MB   4.1 M BFS entries, and a
+    //                                              push_back doubling makes
+    //                                              the peak twice that
+    //     borderPixels  vector<uint32_t>  128 MB   built, then COPIED into
+    //     m_borderPixels                  128 MB   ...this, both live at once
+    //
+    // ~450 MB, all transient. Transient does not help: the wasm heap only ever
+    // grows, so a spike the allocator hands straight back still raises the
+    // tab's high-water mark for good, and the high-water mark is what Safari
+    // kills on.
+    //
+    // None of it was needed. The distance field was only ever read as "is d
+    // 0, 1, or more" -- and the BFS never expanded past 1, so it computed
+    // nothing beyond "is this pixel an edge, or next to one". That is two
+    // local tests, and the live-paint path above had been computing them
+    // directly all along.
+    //
+    // So: no distance field, no queue, no second output buffer. Three rows of
+    // edge flags -- 24 KB at this width -- rolled down the image, written
+    // straight into m_borderPixels. One pass over the pixels instead of three,
+    // and the same picture out.
+    m_borderPixels.assign((size_t)mapW * mapH * kBorderBpp, 0);
+
+    std::vector<uint8_t> flagRows((size_t)mapW * 3, 0);
+    uint8_t* rows[3] = { flagRows.data(), flagRows.data() + mapW, flagRows.data() + 2 * mapW };
+    auto fillFlags = [&](uint8_t* out, int y) {
+        if (y < 0 || y >= mapH) { std::fill(out, out + mapW, (uint8_t)0); return; }
+        for (int px = 0; px < mapW; ++px)
+            out[px] = provEdgeAt(pixels, mapW, mapH, px, y) ? 1 : 0;
+    };
+    fillFlags(rows[0], -1);
+    fillFlags(rows[1], 0);
+    fillFlags(rows[2], 1);
 
     for (int py = 0; py < mapH; ++py) {
         // Once a row. pump() rate-limits itself and costs a clock read when it
@@ -179,61 +266,32 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
         // interval and was longer than an audio period at this raster size,
         // which is how the buffer ran dry with the instrumentation in place.
         Audio::get().pump();
+        const uint8_t* prev = rows[0];
+        const uint8_t* cur  = rows[1];
+        const uint8_t* next = rows[2];
+        uint8_t* dst = m_borderPixels.data() + (size_t)py * mapW * kBorderBpp;
         for (int px = 0; px < mapW; ++px) {
-            uint32_t center = pixels[py * mapW + px];
-            if (center == 0) continue;
-            int leftPx = (px == 0) ? mapW - 1 : px - 1;
-            int rightPx = (px == mapW - 1) ? 0 : px + 1;
-            if (pixels[py * mapW + leftPx] != center ||
-                pixels[py * mapW + rightPx] != center ||
-                (py == 0 || pixels[(py - 1) * mapW + px] != center) ||
-                (py == mapH - 1 || pixels[(py + 1) * mapW + px] != center)) {
-                borderDist[py * mapW + px] = 0;
-                queue.push_back({px, py});
+            uint8_t a = 0;
+            if (cur[px]) {
+                a = 180;
+            } else {
+                const int l = (px == 0) ? mapW - 1 : px - 1;
+                const int r = (px == mapW - 1) ? 0 : px + 1;
+                if (cur[l] || cur[r] || prev[px] || next[px]) a = 50;
             }
+            writeBorderTexel(dst + (size_t)px * kBorderBpp, a);
         }
+        // Roll the window down and refill the row that just fell off the top.
+        uint8_t* recycled = rows[0];
+        rows[0] = rows[1];
+        rows[1] = rows[2];
+        rows[2] = recycled;
+        fillFlags(rows[2], py + 2);
     }
 
-    int dx[4] = {1, -1, 0, 0};
-    int dy[4] = {0, 0, 1, -1};
-    size_t head = 0;
-    while (head < queue.size()) {
-        auto [cx, cy] = queue[head++];
-        int cd = borderDist[cy * mapW + cx];
-        if (cd >= 1) continue;
-        for (int i = 0; i < 4; ++i) {
-            int nx = cx + dx[i];
-            if (nx < 0) nx += mapW;
-            if (nx >= mapW) nx -= mapW;
-            int ny = cy + dy[i];
-            if (ny < 0 || ny >= mapH) continue;
-            int nf = ny * mapW + nx;
-            if (borderDist[nf] > cd + 1) {
-                borderDist[nf] = cd + 1;
-                queue.push_back({nx, ny});
-            }
-        }
-    }
-
-    std::vector<uint32_t> borderPixels(mapW * mapH, 0);
-    for (int i = 0; i < mapW * mapH; ++i) {
-        int d = borderDist[i];
-        if (d > 1) continue;
-        uint8_t a;
-        switch (d) {
-            case 0: a = 180; break;
-            case 1: a = 50; break;
-            default: a = 0; break;
-        }
-        borderPixels[i] = 0xFFFFFF00 | a;
-    }
-
-    m_borderPixels.assign(reinterpret_cast<const uint8_t*>(borderPixels.data()),
-                          reinterpret_cast<const uint8_t*>(borderPixels.data()) + mapW * mapH * 4);
-
-    // The scan above yields every row; this does not and cannot. Allocating a
-    // 8192x4096 image, memcpy'ing 134 MB into it and handing that to the driver
-    // are four opaque calls with no iteration of ours between them.
+    // The scan above yields every row; this does not and cannot. Handing a
+    // 8192x4096 surface to the driver is one opaque call with no iteration of
+    // ours inside it.
     //
     // NOT a BlockingCall, though it was one. Measured, this region is about
     // 130 ms -- three audio periods. Suspending the device for that costs a
@@ -245,10 +303,17 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     // headroom the stream can be given, and it costs nothing.
     Audio::get().pump();
     if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
-    Image img = GenImageColor(mapW, mapH, {0, 0, 0, 0});
-    memcpy(img.data, m_borderPixels.data(), mapW * mapH * 4);
+    // STRAIGHT FROM THE VECTOR WE ALREADY HOLD. LoadTextureFromImage only
+    // reads the pixels, so an Image header pointing at m_borderPixels does the
+    // job with no copy and nothing to free. It is not owned, so it must NOT be
+    // unloaded.
+    Image img{};
+    img.data = m_borderPixels.data();
+    img.width = mapW;
+    img.height = mapH;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_borderTex = LoadTextureFromImage(img);
-    UnloadImage(img);
 }
 
 void MapRenderer::resize(int screenW, int screenH) {
@@ -403,7 +468,13 @@ void MapRenderer::buildProvinceData(
             }
 
             // Build glow map
-            uint8_t ba = m_borderPixels[pi + 3];
+            //
+            // INDEXED BY THE BORDER LAYER'S OWN STRIDE, not the province
+            // image's. These two buffers cover the same pixels and no longer
+            // have the same pixel: `pi` is a byte offset into a 4-byte RGBA
+            // image, and reading the coverage byte at pi+3 was only ever right
+            // while the border layer was also four bytes wide.
+            uint8_t ba = m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1];
             if (ba > 0) {
                 int foundPid = 0;
                 for (int pass = 0; pass < 5 && foundPid == 0; ++pass) {
@@ -789,7 +860,7 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     } else if (m_debugMode && py >= 0 && py < m_mapH) {
         float lon, lat;
         landSea.pixelToLonLat(pxWrapped, py, lon, lat);
-        DrawText(TextFormat("Ocean (%.1f, %.1f)", lon, lat), 10, 5, 20, SKYBLUE);
+        DrawText(TextFormat(T("Ocean (%.1f, %.1f)"), lon, lat), 10, 5, 20, SKYBLUE);
     }
 
     // Click to select province (skip if clicking bottom panel or province info panel)
@@ -818,12 +889,12 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             }
         }
 
-        DrawText(TextFormat("Zoom: %.1fx  |  Scroll to zoom, Left-drag to pan",
+        DrawText(TextFormat(T("Zoom: %.1fx  |  Scroll to zoom, Left-drag to pan"),
                             m_camera.zoom),
                  10, m_screenH - 25, 16, LIGHTGRAY);
 
         int provCount = provinces.getAllProvinces().size();
-        DrawText(TextFormat("Provinces: %d", provCount), 10, m_screenH - 45, 16, LIGHTGRAY);
+        DrawText(TextFormat(T("Provinces: %d"), provCount), 10, m_screenH - 45, 16, LIGHTGRAY);
     }
 
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {

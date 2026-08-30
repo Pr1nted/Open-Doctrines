@@ -1,0 +1,32 @@
+// Tłumaczenie - wspólne zakończenie wszystkich ścieżek.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+No to na górę. Dwie rzeczy, których nie ma na żadnej mapie.
+
+§**Zapisy.**§ Prawdziwy świat zapisuje się, kiedy grasz, i czeka tam na ciebie.
+Nasz nie: nic z tego, co przed chwilą zrobiłeś, nie zostało zachowane, i o to
+w wyspie treningowej właśnie chodzi.
+---
+@Signals Officer
+:: point=menu.2
+§**Gra wieloosobowa.**§ Jedna maszyna prowadzi grę, reszta się do niej
+podłącza. Tura kończy się, gdy wszyscy gracze zgłoszą gotowość, więc gra idzie
+w tempie najwolniejszego.
+
+Graj z ludźmi, którzy odpisują na wiadomości.
+---
+@Pr1nted
+Jeszcze żyjesz? Dobrze. Jest dokładna, tego jej nie odmówię.
+
+Chcesz omówić coś jeszcze, czy kończymy?
+> Wróćmy na dół i omówmy coś konkretnego -> world:specifics
+> To wszystko, dzięki
+---
+@Pr1nted
+:: act=end_tutorial
+Dobra. Idź i przegraj kilka razy, tak się to wchłania.
+
+Pr1nted się rozłącza.

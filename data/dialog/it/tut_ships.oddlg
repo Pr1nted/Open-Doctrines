@@ -1,0 +1,48 @@
+// Traduzione - la traversata navale.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Le navi, allora. È qui che si ferma la maggior parte della gente, e si ferma
+ogni volta nello stesso punto: l'esercito è sulla costa e non succede niente.
+---
+@Signals Officer
+Un esercito non attraversa l'acqua da solo, e l'ordine "carica su quella nave"
+non esiste. Lo fa la provincia.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Seleziona una provincia costiera che abbia un §**porto**§ E §**uomini
+dentro**§. L'imbarco sposta la guarnigione già presente; un porto vuoto non
+imbarca proprio niente, ed è da lì che nasce quasi tutta la confusione.
+
+Il suo pannello ha §**Imbarca esercito**§: gratis, un turno. Premilo e termina
+il turno.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Gli uomini ora sono una §**barca**§ al largo. Vai alla vista §**navale**§: le
+navi non prendono ordini da nessuna delle altre sette.
+
+§{key=ship_move}§ la muove, §{key=ship_wheel}§ apre i suoi cannoni,
+§{key=ship_engage}§ le dice di ingaggiare.
+---
+@Signals Officer
+Per sbarcare: seleziona la barca, premi §**Muovi**§ e clicca sulla §**terra**§.
+
+L'acqua la sposta. La terra la scarica. Un solo pulsante fa entrambe le cose,
+ed è per questo che la gente naviga avanti e indietro cercando l'altro.
+---
+@Signals Officer
+Due cose che nessuno ti dice.
+
+Un trasporto carico è un bersaglio, e affonda con gli uomini a bordo. E uno
+sbarco in una provincia difesa arriva sfinito: prendi la costa vuota accanto e
+cammina, invece di sbarcare sul forte.
+---
+@Signals Officer
+§**Hallow Rock**§, nello stretto, non è facoltativa. Una barca ha un'autonomia,
+e l'isola lontana è oltre: lo scoglio è quindi il primo sbarco, e il secondo
+salto parte da lì.
+
+Queste sono le navi. Altro?

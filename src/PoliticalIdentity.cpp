@@ -117,6 +117,7 @@ namespace {
 //
 // Longest first: "People's Republic" must be tried before "Republic", or the
 // leftover "People's" survives into the result.
+// i18n-ignore: English forms matched against English names, never shown.
 const char* const FORMS[] = {
     "Mongolian People's Republic", "People's Republic", "Socialist Union",
     "National State", "Free Republic", "Free Communes", "Free State",
@@ -137,12 +138,14 @@ const char* const FORMS[] = {
 // that just fell: the "Second" in "Second Polish Republic" numbered THAT
 // republic, and carrying it forward produced the "Second Polish Socialist
 // Union" -- a state naming itself after its predecessor's ordinal.
+// i18n-ignore: matched, not shown.
 const char* const LEADING_QUALIFIERS[] = {
     "First", "Second", "Third", "Fourth", "Fifth",
     "Allied", "Occupied", "Provisional", "Greater", "Grand", "Imperial",
     "Royal", "Sublime", "Federal", "Federated", "Democratic", "Socialist",
     "People's", "Communist", "National", "Dem.", "Rep.", "FR",
 };
+// i18n-ignore: matched, not shown.
 const char* const TRAILING_QUALIFIERS[] = {
     "Democratic", "Socialist", "People's", "Communist", "Federal", "National",
 };
@@ -152,6 +155,7 @@ const char* const TRAILING_QUALIFIERS[] = {
 // none of which can carry a new form, and "People's Republic of United" is
 // worse than leaving the name alone. A country whose name has no geographic
 // noun in it keeps that name; only its flag changes.
+// i18n-ignore: matched, not shown.
 const char* const NOT_A_PLACE[] = {
     "United", "Soviet", "Allied", "Occupied", "Blocked", "Free", "Democratic",
     "Socialist", "People's", "Communist", "Federal", "National", "Imperial",

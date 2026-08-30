@@ -1,0 +1,33 @@
+// Specialised: the economy.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+The economy -- open it. Everything else in the game is an argument about how to spend
+what this produces.
+---
+@Signals Officer
+§**Industry**§ grows where people already are. A factory in an empty province
+is an expensive shed -- the population is the input, not the building.
+---
+@Signals Officer
+Income arrives once a turn, on the turn. Commit to more than you have and the
+shortfall does not politely wait: it comes out of readiness, and you find out
+about it in a battle.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Out again, and we will look at a single province instead.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Click one of ours. Per province, the panel shows what it produces and what it
+holds. Resources are worth more processed than dug up, so an industrial
+province beside a rich one is worth more than either alone.
+---
+@Signals Officer
+And policies are a §**standing bill**§, not a purchase. Every one you run is
+subtracted every turn, forever, whether or not it is still doing anything.
+
+That is the economy. Anything else?

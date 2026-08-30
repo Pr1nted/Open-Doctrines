@@ -1,0 +1,47 @@
+// Specialised: the naval crossing, in detail.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Ships, then. This is the one that stops most people, and it stops them in the
+same place every time: the army is at the coast and nothing happens.
+---
+@Signals Officer
+An army does not cross water by itself, and there is no "load onto that ship"
+order. The province does it.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Select a coastal province that has a §**port**§ AND §**men standing in it**§.
+Embarking moves the garrison that is already there; an empty port embarks
+nothing at all, which is where most of the confusion starts.
+
+Its panel has §**Embark Army**§ -- free, one turn. Press it and end the turn.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+The men are now a §**boat**§ off the coast. Go to the §**navy**§ view -- ships
+take no orders from any of the other seven.
+
+§{key=ship_move}§ moves it, §{key=ship_wheel}§ opens its guns,
+§{key=ship_engage}§ tells it to pick a fight.
+---
+@Signals Officer
+To land: select the boat, press §**Move**§, and click on §**land**§.
+
+Water moves it. Land unloads it. One button does both, which is why people
+sail back and forth looking for the other one.
+---
+@Signals Officer
+Two things nobody tells you.
+
+A loaded transport is a target, and it sinks with the men aboard. And a landing
+into a defended province arrives tired -- take the empty coast next door and
+walk, rather than landing on the fort.
+---
+@Signals Officer
+§**Hallow Rock**§, in the strait, is not optional. A boat has a range, and the
+far island is outside it -- so the rock is the first landing, and the second
+hop goes from there.
+
+That is ships. Anything else?

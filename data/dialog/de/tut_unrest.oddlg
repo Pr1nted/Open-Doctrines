@@ -1,0 +1,42 @@
+// Übersetzung - Ansprüche und Unruhe.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Ansprüche und Unruhe. Öffnen Sie das Anspruchsfeld. Das ist ein Thema, was auch
+immer die Oberfläche sagt.
+---
+@Signals Officer
+Ein §**Anspruch**§ ist der Unterschied zwischen einem Krieg, den die Welt
+duldet, und einem, der alle gegen Sie eint. Machen Sie einen geltend, den Sie
+halten, und Sie begleichen ein Unrecht; nehmen Sie Land, das Sie nie
+beansprucht haben, und Sie sind das Unrecht.
+---
+@Signals Officer
+Melden Sie den Anspruch §**vor**§ dem Krieg an, nicht danach. Ein Anspruch, der
+eine Runde nach der Eroberung eingereicht wird, täuscht niemanden und kostet
+dasselbe.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Schließen Sie es.
+---
+@Signals Officer
+§**Unruhe**§ ist das, was das Nehmen von Land mit dem Land macht. Eroberte
+Provinzen nehmen es übel, Minderheiten noch mehr, und Wehrpflicht wie Zensur
+kaufen Ihnen Stärke jetzt gegen Unruhe später.
+---
+@Signals Officer
+Ab einer Schwelle hört eine Provinz auf zu zahlen und fängt an, sich zu
+organisieren. Ab der nächsten geht sie - und sie geht als §**Land**§, mit Ihrer
+Industrie, Ihrer Bevölkerung und einer sehr bestimmten Meinung über Sie.
+
+Sie bekommen eine Warnung. Eine zweite nicht immer.
+---
+@Signals Officer
+Die Mittel sind unbeliebt oder langsam: Besatzung hinlegen, Geld hineinstecken
+oder ihr geben, was sie will. Entscheiden Sie früh, denn alle drei brauchen
+Runden.
+
+Das ist die Unruhe. Sonst noch etwas?

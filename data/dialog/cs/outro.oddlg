@@ -1,0 +1,32 @@
+// Překlad - společný závěr všech cest.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Tak nahoru. Dvě věci, které nejsou na žádné mapě.
+
+§**Uložené hry.**§ Skutečný svět se zapisuje sám, zatímco hrajete, a čeká tam
+na vás. Náš ne: nic z toho, co jste právě udělal, se neuchovalo, a přesně o to
+u cvičného ostrova jde.
+---
+@Signals Officer
+:: point=menu.2
+§**Hra více hráčů.**§ Jeden stroj hostí a ostatní se připojí. Tah se vyhodnotí,
+až se všichni hráči ohlásí připraveni, takže hra jde rychlostí toho
+nejpomalejšího.
+
+Hrajte s lidmi, kteří odpovídají na zprávy.
+---
+@Pr1nted
+Ještě žijete? Dobře. Je důkladná, to se jí musí nechat.
+
+Chcete probrat ještě něco, nebo jsme hotovi?
+> Vrátit se dolů a probrat něco konkrétního -> world:specifics
+> To je vše, díky
+---
+@Pr1nted
+:: act=end_tutorial
+Dobrá. Jděte pár partií prohrát, tak se to vstřebá.
+
+Pr1nted končí.

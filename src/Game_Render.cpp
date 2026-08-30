@@ -1,4 +1,6 @@
 #include "Game.h"
+#include "util/LoadLog.h"
+#include "Palette.h"
 #include "BuildCosts.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -11,6 +13,8 @@
 #include <string>
 #include <unordered_set>
 #include <cstdio>
+#include <sstream>   // localisedDate, below
+#include <cstring>
 #ifdef _WIN32
 #include <direct.h>
 #endif
@@ -18,6 +22,69 @@
 #ifndef _WIN32
 #endif
 #include <ctime>
+
+namespace {
+
+// ─── THE DATE, IN THE PLAYER'S LANGUAGE ────────────────────────────────
+//
+// m_mapDate is a STORED string -- "August 1940 AD" -- written into the save
+// and into the .odmap, so it cannot be translated in place: a Japanese player
+// would save a file a German player could not read the date of. This
+// translates it for the screen only, and leaves the stored value alone.
+//
+// NAMED PLACEHOLDERS, NOT %s, because the parts do not come in the same order
+// in every language: English writes the month first, Japanese writes the year
+// first and glues 年 to it. printf's positional specifiers (%1$s) would say
+// that too, but MSVC does not implement them, so the substitution is done
+// here. A language that wants English order simply leaves the key alone.
+//
+// Anything that does not parse -- a custom map's "Spring of the Third Age" --
+// is returned untouched, because it is prose somebody wrote, not a date this
+// code has any business rearranging.
+std::string localisedDate(const std::string& raw) {
+    // SEASONS COUNT AS MONTHS HERE. A scenario is asked for "<Month> <Year>
+    // <AD|BC>", but the tutorial map has always said "Spring 1936 AD" and no
+    // check ever rejected it -- so the one date every new player sees was the
+    // one date that fell through to English. A season in the first slot is the
+    // same shape as a month and reads the same way; only genuine prose ("of
+    // the Third Age") should still come back untouched.
+    static const char* kMonths[] = {
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+        "Spring", "Summer", "Autumn", "Winter",
+    };
+    std::istringstream in(raw);
+    std::string month, year, era;
+    if (!(in >> month >> year >> era)) return raw;
+    { std::string extra; if (in >> extra) return raw; }      // more than three words
+    if (era != "AD" && era != "BC") return raw;
+    if (year.empty() || year.find_first_not_of("0123456789") != std::string::npos) return raw;
+    bool known = false;
+    for (const char* m : kMonths) known = known || (month == m);
+    if (!known) return raw;
+
+    // The three values are looked up FIRST and the tags named after, on lines
+    // of their own. Written the other way round -- {"{month}", tr(month)} --
+    // tools/i18n_extract.py sees a literal on a line with a tr() call, decides
+    // it is drawn text, and puts "{month}" in front of twenty translators as a
+    // string to translate. It is a placeholder; the only key here is the one
+    // above.
+    const std::string monthText = od::i18n::tr(month);
+    const std::string eraText   = od::i18n::tr(era);
+
+    std::string out = T("{month} {year} {era}");
+    auto put = [&out](const char* tag, const std::string& value) {
+        const size_t at = out.find(tag);
+        if (at != std::string::npos) out.replace(at, strlen(tag), value);
+    };
+    put("{month}", monthText);
+    put("{year}", year);
+    put("{era}", eraText);
+    return out;
+}
+
+}  // namespace
+
 
 
 // What an upgrade costs and how long it takes.
@@ -29,8 +96,11 @@
 // modifier lives beside it.
 
 void Game::drawBottomPanel() {
+    const bool compact = compactHud();
     const int barW = std::min(880, m_screenW - 32);
-    const int barH = 80;
+    // Without the words under them the icons need half the height, which is
+    // half a phone screen's worth of map handed back.
+    const int barH = bottomBarH();
     const int barX = m_screenW - barW - 16;
     const int barY = m_screenH - barH - 16;
 
@@ -57,6 +127,13 @@ void Game::drawBottomPanel() {
 
         Vector2 mouse = getMouse();
         Rectangle btnRect = {(float)(buttonStartX + i * buttonW), (float)barY, (float)buttonW, (float)barH};
+        // By id, not by the label beside it: the words are translated, the
+        // slot is not. "view.army" is the army view wherever it says that.
+        static const char* kViewName[] = {"view.population", "view.industry",
+                                          "view.defence", "view.relations",
+                                          "view.army", "view.navy",
+                                          "view.resources", "view.names"};
+        offerUiTarget(kViewName[i], btnRect);
         bool hovered = !m_paused && CheckCollisionPointRec(mouse, btnRect);
 
         Color iconColor = LIGHTGRAY;
@@ -71,6 +148,15 @@ void Game::drawBottomPanel() {
         }
 
         DrawTextureEx(icons[i], {(float)ix, (float)iconY}, 0.0f, (float)iconSize / 64.0f, iconColor);
+        if (compact) {
+            // The name still reaches the player, through the hint under the
+            // cursor rather than a word that does not fit beneath the icon.
+            if (hovered) m_uiHint = T(labels[i]);
+            if (m_activeViewTab == i + 1)
+                DrawRectangle(cx - iconSize / 2, iconY + iconSize + 2, iconSize, 2,
+                              hexToColor(m_config.accent()));
+            continue;
+        }
         int tw = MeasureText(labels[i], fontSize);
         DrawText(labels[i], cx - tw / 2, labelY, fontSize, textColor);
 
@@ -82,10 +168,16 @@ void Game::drawBottomPanel() {
 }
 
 void Game::drawCountryPanel() {
-    const int panelW = 360;
+    // 360 was a third of a desktop window and is nine tenths of a phone one.
+    // The sidebar owns 112 points on the right, so the panel takes what is
+    // left and no more -- it used to run straight underneath it.
+    const int panelW = std::min(360, m_screenW - 124);
     const int panelX = 0;
-    const int panelH = std::min(m_screenH - 80 - 16 - 68, 700);
     const int panelY = 68;
+    // STOPS ABOVE THE PROCESS TURN BUTTON. See Game::leftPanelBottom(): this
+    // used to run to the bottom bar, which on a phone put it straight over
+    // that button and swallowed its clicks.
+    const int panelH = std::min(leftPanelBottom() - panelY, 700);
     const int pad = 16;
 
     // Solid panel background
@@ -102,7 +194,9 @@ void Game::drawCountryPanel() {
             auto& ship = m_ships[shipIdx];
             int cid = ship.countryId;
             const Country* country = m_countries.getCountry(cid);
-            const char* cname = country ? country->name.c_str() : "Unknown";
+            const std::string cnameS = country ? od::i18n::properName(country->name)
+                                              : std::string(T("Unknown"));
+            const char* cname = cnameS.c_str();
             Color shipCol = country ? country->color : WHITE;
 
             auto fit = m_countryFlags.find(cid);
@@ -114,7 +208,7 @@ void Game::drawCountryPanel() {
             }
 
             DrawText(TextFormat("%s", ship.type.c_str()), panelX + pad, panelY + 28, 24, WHITE);
-            DrawText(TextFormat("Country: %s", cname), panelX + pad, panelY + 56, 14, LIGHTGRAY);
+            DrawText(TextFormat(T("Country: %s"), cname), panelX + pad, panelY + 56, 14, LIGHTGRAY);
 
             int iconX = panelX + pad;
             int iconY = panelY + 82;
@@ -131,11 +225,11 @@ void Game::drawCountryPanel() {
 
             int yOff = panelY + 110;
             if (ship.crew > 0) {
-                DrawText(TextFormat("Crew: %d", ship.crew), panelX + pad, yOff, 14, LIGHTGRAY);
+                DrawText(TextFormat(T("Crew: %d"), ship.crew), panelX + pad, yOff, 14, LIGHTGRAY);
                 yOff += 20;
             }
 
-            DrawText("Health:", panelX + pad, yOff, 14, LIGHTGRAY);
+            DrawText(T("Health:"), panelX + pad, yOff, 14, LIGHTGRAY);
             int hbX = panelX + 70;
             int hbY = yOff;
             int hbW = 120;
@@ -152,7 +246,7 @@ void Game::drawCountryPanel() {
                 if (m_countryShipIndices[i] == shipIdx) { ci = i; }
                 cn++;
             }
-            DrawText(TextFormat("Ship %d of %d", ci + 1, cn), panelX + pad, yOff, 14, LIGHTGRAY);
+            DrawText(TextFormat(T("Ship %d of %d"), ci + 1, cn), panelX + pad, yOff, 14, LIGHTGRAY);
             yOff += 40;
 
             // Destroy / Cancel Scrap button
@@ -431,7 +525,7 @@ void Game::drawCountryPanel() {
             }
 
             // Title
-            DrawText(TextFormat("Selected Ships (%d)", selCount), panelX + pad, panelY + 6, 16, WHITE);
+            DrawText(TextFormat(T("Selected Ships (%d)"), selCount), panelX + pad, panelY + 6, 16, WHITE);
             DrawLine(panelX, panelY + headerH - 2, panelX + panelW, panelY + headerH - 2, Color{100, 100, 150, 150});
 
             // Clip region
@@ -445,7 +539,9 @@ void Game::drawCountryPanel() {
                 auto& ship = m_ships[idx];
                 const Country* c = m_countries.getCountry(ship.countryId);
                 Color col = c ? c->color : WHITE;
-                const char* cname = c ? c->name.c_str() : "Unknown";
+                const std::string cnameS = c ? od::i18n::properName(c->name)
+                                             : std::string(T("Unknown"));
+                const char* cname = cnameS.c_str();
 
                 // Row background
                 Color bg = Color{255, 255, 255, 8};
@@ -481,7 +577,7 @@ void Game::drawCountryPanel() {
                 int tx = panelX + 24;
                 DrawText(TextFormat("%s", ship.type.c_str()), tx, yOff + 2, 12, WHITE);
                 if (ship.crew > 0)
-                    DrawText(TextFormat("Crew: %d", ship.crew), tx, yOff + 16, 10, LIGHTGRAY);
+                    DrawText(TextFormat(T("Crew: %d"), ship.crew), tx, yOff + 16, 10, LIGHTGRAY);
 
                 // Country on right
                 DrawText(cname, panelX + panelW - pad - MeasureText(cname, 10), yOff + 2, 10, LIGHTGRAY);
@@ -553,24 +649,38 @@ void Game::drawCountryPanel() {
     // Country name
     int nameY = flagY + flagH + 8;
     int nameSize = 24;
-    DrawText(country->name.c_str(), panelX + pad, nameY, nameSize, WHITE);
+    DrawText(od::i18n::properName(country->name).c_str(), panelX + pad, nameY, nameSize, WHITE);
 
     // ─── Claim info (shown in relations view or claims view) ─────
+    //
+    // THE PROVINCE COUNT SITS BELOW THIS, NOT ON TOP OF IT. Both were placed
+    // at nameY + nameSize + 8 and neither knew about the other, so on any
+    // claimed province in the relations view "Claimed by:" was drawn straight
+    // over "%d provinces" -- two labels in the same pixels, which reads as one
+    // corrupt word. It needs a claimed province to show up, which is why the
+    // screenshot set never had it in frame.
+    int claimBottomY = 0;              // 0 when no claim block was drawn
     if (m_activeViewTab == 4 || m_showClaims) {
         auto claimIt = m_claimsByProvince.find(selPid);
         if (claimIt != m_claimsByProvince.end() && !claimIt->second.empty()) {
             int claimY = nameY + nameSize + 8;
-            DrawText("Claimed by:", panelX + pad, claimY, 16, Color{255, 200, 100, 255});
+            DrawText(T("Claimed by:"), panelX + pad, claimY, 16, Color{255, 200, 100, 255});
             int lineY = claimY + 20;
             for (const std::string& claimantIso : claimIt->second) {
                 const Country* claimant = nullptr;
                 for (auto& [cid, c] : m_countries.getAll()) {
                     if (c.isoA3 == claimantIso) { claimant = &c; break; }
                 }
-                const char* name = claimant ? claimant->name.c_str() : claimantIso.c_str();
-                DrawText(TextFormat("  %s", name), panelX + pad, lineY, 14, LIGHTGRAY);
+                // Through properName like every other country name on screen:
+                // this one went straight to DrawText, so the claimant stayed
+                // in Latin while the country it is claiming from was written
+                // in the player's script one line above it.
+                const std::string name = claimant
+                    ? od::i18n::properName(claimant->name) : claimantIso;
+                DrawText(TextFormat("  %s", name.c_str()), panelX + pad, lineY, 14, LIGHTGRAY);
                 lineY += 16;
             }
+            claimBottomY = lineY;
         }
     }
 
@@ -606,8 +716,8 @@ void Game::drawCountryPanel() {
             m_cachedAvgCompass.y /= m_cachedAvgCompassCount;
         }
     }
-    int provY = nameY + nameSize + 8;
-    DrawText(TextFormat("%d provinces", m_cachedProvCount), panelX + pad, provY, 18, LIGHTGRAY);
+    int provY = claimBottomY ? claimBottomY + 6 : nameY + nameSize + 8;
+    DrawText(TextFormat(T("%d provinces"), m_cachedProvCount), panelX + pad, provY, 18, LIGHTGRAY);
 
     // ─── Country statistics (shown in general view and industry view) ─────
     if (m_activeViewTab == 0 || m_activeViewTab == 2) {
@@ -618,13 +728,15 @@ void Game::drawCountryPanel() {
                 statsY += 20 + claimIt->second.size() * 16;
             }
         }
-        DrawText("Country Statistics", panelX + pad, statsY, 18, WHITE);
-        DrawText(TextFormat("Annual Income: %.1f", m_cachedCountryIncome),
+        offerUiTarget("panel.stats", {(float)(panelX + pad - 6), (float)statsY - 4,
+                                      300.0f, 96.0f});
+        DrawText(T("Country Statistics"), panelX + pad, statsY, 18, WHITE);
+        DrawText(TextFormat(T("Annual Income: %.1f"), m_cachedCountryIncome),
                  panelX + pad, statsY + 24, 16, hexToColor(m_config.accent()));
-        DrawText(TextFormat("Industrial Provinces: %d", m_cachedIndustryCount),
+        DrawText(TextFormat(T("Industrial Provinces: %d"), m_cachedIndustryCount),
                  panelX + pad, statsY + 44, 14, LIGHTGRAY);
         if (m_activeViewTab == 0 && cid == m_playerCountryId) {
-            DrawText("Keys: 2=Industry 3=Fort 5=Army 6=Navy",
+            DrawText(T("Keys: 2=Industry 3=Fort 5=Army 6=Navy"),
                      panelX + pad, statsY + 64, 12, Color{180, 180, 200, 200});
         }
     }
@@ -642,10 +754,10 @@ void Game::drawCountryPanel() {
         int relY = provY + 24 + claimSectionH;
         static int relDebugCounter = 0;
         if (relDebugCounter++ % 120 == 0) {
-            std::cout << "Panel: country=" << country->name << " iso=" << country->isoA3
+            LoadLog() << "Panel: country=" << country->name << " iso=" << country->isoA3
                       << " m_relations.size=" << m_relations.size() << std::endl;
             if (m_relations.count(country->isoA3)) {
-                std::cout << "  FRA has " << m_relations[country->isoA3].size() << " entries" << std::endl;
+                LoadLog() << "  FRA has " << m_relations[country->isoA3].size() << " entries" << std::endl;
             }
         }
         auto rt = m_relations.find(country->isoA3);
@@ -671,10 +783,10 @@ void Game::drawCountryPanel() {
             for (auto& [target, rel] : rt->second) {
                 const char* relLabel = nullptr;
                 Color relCol;
-                if (rel.war) { relLabel = "War"; relCol = Color{255, 50, 50, 255}; }
-                else if (rel.alliance) { relLabel = "Alliance"; relCol = Color{50, 200, 50, 255}; }
-                else if (rel.guarantee) { relLabel = "Guarantee"; relCol = Color{255, 255, 50, 255}; }
-                else if (rel.nonAggression) { relLabel = "Non-aggr"; relCol = Color{255, 165, 0, 255}; }
+                if (rel.war) { relLabel = T("War"); relCol = odPalette::relation(odPalette::Rel::War); }
+                else if (rel.alliance) { relLabel = T("Alliance"); relCol = odPalette::relation(odPalette::Rel::Alliance); }
+                else if (rel.guarantee) { relLabel = T("Guarantee"); relCol = odPalette::relation(odPalette::Rel::Guarantee); }
+                else if (rel.nonAggression) { relLabel = T("Non-aggr"); relCol = odPalette::relation(odPalette::Rel::NonAggression); }
                 else continue;
 
                 const Country* tc = nullptr;
@@ -682,7 +794,7 @@ void Game::drawCountryPanel() {
                     if (tcEntry.isoA3 == target) { tc = &tcEntry; break; }
                 if (tc && relY + 16 < panelY + panelH - 8) {
                     DrawRectangle(panelX + pad, relY, 8, 8, relCol);
-                    DrawText(TextFormat("%s: %s", relLabel, tc->name.c_str()),
+                    DrawText(TextFormat("%s: %s", relLabel, od::i18n::properName(tc->name).c_str()),
                              panelX + pad + 14, relY - 3, 12, LIGHTGRAY);
                     relY += 16;
                 }
@@ -692,10 +804,10 @@ void Game::drawCountryPanel() {
             for (auto& [relType, iso] : incoming) {
                 Color relCol;
                 const char* relLabel;
-                if (relType == "war") { relLabel = "War"; relCol = Color{255, 50, 50, 255}; }
-                else if (relType == "alliance") { relLabel = "Alliance"; relCol = Color{50, 200, 50, 255}; }
-                else if (relType == "guarantee") { relLabel = "Guarantee"; relCol = Color{255, 255, 50, 255}; }
-                else if (relType == "non_aggression") { relLabel = "Non-aggr"; relCol = Color{255, 165, 0, 255}; }
+                if (relType == "war") { relLabel = T("War"); relCol = odPalette::relation(odPalette::Rel::War); }
+                else if (relType == "alliance") { relLabel = T("Alliance"); relCol = odPalette::relation(odPalette::Rel::Alliance); }
+                else if (relType == "guarantee") { relLabel = T("Guarantee"); relCol = odPalette::relation(odPalette::Rel::Guarantee); }
+                else if (relType == "non_aggression") { relLabel = T("Non-aggr"); relCol = odPalette::relation(odPalette::Rel::NonAggression); }
                 else continue;
 
                 const Country* tc = nullptr;
@@ -703,7 +815,7 @@ void Game::drawCountryPanel() {
                     if (tcEntry2.isoA3 == iso) { tc = &tcEntry2; break; }
                 if (tc && relY + 16 < panelY + panelH - 8) {
                     DrawRectangle(panelX + pad, relY, 8, 8, relCol);
-                    DrawText(TextFormat("%s: %s", relLabel, tc->name.c_str()),
+                    DrawText(TextFormat("%s: %s", relLabel, od::i18n::properName(tc->name).c_str()),
                              panelX + pad + 14, relY - 3, 12, LIGHTGRAY);
                     relY += 16;
                 }
@@ -718,15 +830,15 @@ void Game::drawCountryPanel() {
         float pct = (m_cachedCountryPop > 0) ? (100.0f * provPop / m_cachedCountryPop) : 0.0f;
 
         int popY = provY + 28;
-        DrawText("Population", panelX + pad, popY, 22, WHITE);
-        DrawText(TextFormat("Country: %s", formatPop(m_cachedCountryPop).c_str()), panelX + pad + 8, popY + 28, 18, LIGHTGRAY);
-        DrawText(TextFormat("Province: %s (%.1f%%)", formatPop(provPop).c_str(), pct), panelX + pad + 8, popY + 52, 18, LIGHTGRAY);
+        DrawText(T("Population"), panelX + pad, popY, 22, WHITE);
+        DrawText(TextFormat(T("Country: %s"), formatPop(m_cachedCountryPop).c_str()), panelX + pad + 8, popY + 28, 18, LIGHTGRAY);
+        DrawText(TextFormat(T("Province: %s (%.1f%%)"), formatPop(provPop).c_str(), pct), panelX + pad + 8, popY + 52, 18, LIGHTGRAY);
 
         // Unrest
         float unrest = getProvinceRebellionChance(selPid);
         int unrestY = popY + 80;
         Color uc = unrest < 20 ? GREEN : (unrest < 50 ? ORANGE : RED);
-        DrawText(TextFormat("Unrest: %.1f%%", unrest), panelX + pad + 8, unrestY, 16, uc);
+        DrawText(TextFormat(T("Unrest: %.1f%%"), unrest), panelX + pad + 8, unrestY, 16, uc);
 
         // ─── Political compass ────────────────────────────
         int compSize = 120;
@@ -736,7 +848,7 @@ void Game::drawCountryPanel() {
         int midY = compY + compSize / 2;
         const int labelFont = 13;
 
-        DrawText("Political Compass", panelX + pad, compY - 30, 18, WHITE);
+        DrawText(T("Political Compass"), panelX + pad, compY - 30, 18, WHITE);
 
         // Background
         DrawRectangle(compX, compY, compSize, compSize, {20, 20, 30, 220});
@@ -747,10 +859,10 @@ void Game::drawCountryPanel() {
         DrawLine(midX, compY, midX, compY + compSize, {70, 70, 90, 180});
 
         // Labels
-        DrawText("Left", compX - MeasureText("Left", labelFont) - 4, midY - 7, labelFont, {150, 100, 100, 220});
-        DrawText("Right", compX + compSize + 4, midY - 7, labelFont, {100, 100, 150, 220});
-        DrawText("Authoritarian", midX - MeasureText("Authoritarian", labelFont) / 2, compY - 14, labelFont, {150, 100, 100, 220});
-        DrawText("Liberal", midX - MeasureText("Liberal", labelFont) / 2, compY + compSize + 2, labelFont, {100, 100, 150, 220});
+        DrawText(T("Left"), compX - MeasureText(T("Left"), labelFont) - 4, midY - 7, labelFont, {150, 100, 100, 220});
+        DrawText(T("Right"), compX + compSize + 4, midY - 7, labelFont, {100, 100, 150, 220});
+        DrawText(T("Authoritarian"), midX - MeasureText(T("Authoritarian"), labelFont) / 2, compY - 14, labelFont, {150, 100, 100, 220});
+        DrawText(T("Liberal"), midX - MeasureText(T("Liberal"), labelFont) / 2, compY + compSize + 2, labelFont, {100, 100, 150, 220});
 
         // Ensure compass data exists (fallback hash-based if missing)
         if (m_provinceCompass.find(selPid) == m_provinceCompass.end()) {
@@ -771,8 +883,8 @@ void Game::drawCountryPanel() {
 
             // Numerical values
             int valY = compY + compSize + 22;
-            DrawText(TextFormat("Left-Right: %+d", (int)compIt->second.x), panelX + pad, valY, 14, LIGHTGRAY);
-            DrawText(TextFormat("Auth-Lib:   %+d", (int)compIt->second.y), panelX + pad, valY + 18, 14, LIGHTGRAY);
+            DrawText(TextFormat(T("Left-Right: %+d"), (int)compIt->second.x), panelX + pad, valY, 14, LIGHTGRAY);
+            DrawText(TextFormat(T("Auth-Lib:   %+d"), (int)compIt->second.y), panelX + pad, valY + 18, 14, LIGHTGRAY);
 
             // Draw country average as a smaller cross
             float ax = compX + compSize / 2 - m_cachedAvgCompass.x * (compSize / 2 - 8) / 100.0f;
@@ -790,7 +902,7 @@ void Game::drawCountryPanel() {
             Vector2 pieCenter{(float)(pieX + pieSize / 2), (float)(pieY + pieSize / 2)};
             float pieRadius = pieSize / 2.0f - 2;
 
-            DrawText("Ethnic Groups", panelX + pad, pieY - 18, 16, WHITE);
+            DrawText(T("Ethnic Groups"), panelX + pad, pieY - 18, 16, WHITE);
 
             float startAngle = -90.0f;
             for (auto& g : minorIt->second) {
@@ -813,8 +925,11 @@ void Game::drawCountryPanel() {
                 Color col = colIt != m_minorityColors.end() ? colIt->second : DARKGRAY;
                 DrawRectangle(legX, legY + itemCount * 16, 10, 10, col);
                 DrawRectangleLines(legX, legY + itemCount * 16, 10, 10, {100, 100, 120, 150});
-                DrawText(g.name.c_str(), legX + 14, legY + itemCount * 16, 12, LIGHTGRAY);
-                DrawText(TextFormat("%.1f%%", g.pct), legX + 14 + MeasureText(g.name.c_str(), 12) + 6, legY + itemCount * 16, 12, GRAY);
+                const std::string gName = od::i18n::properName(g.name);
+                DrawText(gName.c_str(), legX + 14, legY + itemCount * 16, 12, LIGHTGRAY);
+                DrawText(TextFormat("%.1f%%", g.pct),
+                         legX + 14 + MeasureText(gName.c_str(), 12) + 6,
+                         legY + itemCount * 16, 12, GRAY);
                 itemCount++;
             }
         }
@@ -826,13 +941,13 @@ void Game::drawCountryPanel() {
         if (resIt != m_provinceResources.end()) {
             int rY = panelY + 155;
             int rX = panelX + pad;
-            DrawText("Resources", rX, rY - 18, 16, WHITE);
+            DrawText(T("Resources"), rX, rY - 18, 16, WHITE);
             const auto& res = resIt->second;
             const ProvinceResource* prs[5] = {&res.oil, &res.gold, &res.rubber, &res.gemstones, &res.metal};
             for (int i = 0; i < 5; ++i) {
                 int lineY = rY + i * 16;
                 Color col = (i == m_activeResourceIdx) ? WHITE : LIGHTGRAY;
-                DrawText(TextFormat("%s: %.1f  (boost: +%.1f%%)",
+                DrawText(TextFormat(T("%s: %.1f  (boost: +%.1f%%)"),
                     RESOURCE_NAMES[i], prs[i]->amount, prs[i]->boost),
                     rX, lineY, 14, col);
             }
@@ -846,9 +961,9 @@ void Game::drawCountryPanel() {
             int rY = panelY + 200;
             int rX = panelX + pad;
             const auto& ind = indIt->second;
-            DrawText(TextFormat("Level %s", ROMAN_NUMERALS[ind.level]),
+            DrawText(TextFormat(T("Level %s"), ROMAN_NUMERALS[ind.level]),
                      rX, rY, 16, WHITE);
-            DrawText(TextFormat("Income: %.1f/turn", ind.income),
+            DrawText(TextFormat(T("Income: %.1f/turn"), ind.income),
                      rX, rY + 20, 14, YELLOW);
             // The specialised figure, because that is the one being banked --
             // see provinceResourceIncome. The base is shown beside it when a
@@ -857,18 +972,18 @@ void Game::drawCountryPanel() {
             {
                 const float eff = provinceResourceIncome(selPid);
                 if (eff > ind.resourceIncome + 0.05f)
-                    DrawText(TextFormat("Resource income: %.1f  (base %.1f)",
+                    DrawText(TextFormat(T("Resource income: %.1f  (base %.1f)"),
                                         eff, ind.resourceIncome),
                              rX, rY + 40, 14, Color{170, 220, 170, 255});
                 else
-                    DrawText(TextFormat("Resource income: %.1f", ind.resourceIncome),
+                    DrawText(TextFormat(T("Resource income: %.1f"), ind.resourceIncome),
                              rX, rY + 40, 14, LIGHTGRAY);
             }
-            DrawText(TextFormat("Population bonus: +%.0f%% (x%.2f)",
+            DrawText(TextFormat(T("Population bonus: +%.0f%% (x%.2f)"),
                      (ind.popModifier - 1.0f) * 100.0f, ind.popModifier),
                      rX, rY + 60, 14, LIGHTGRAY);
             if (!ind.specialization.empty()) {
-                DrawText(TextFormat("Specialization: %s", ind.specialization.c_str()),
+                DrawText(TextFormat(T("Specialization: %s"), od::i18n::tr(ind.specialization)),
                          rX, rY + 82, 14, LIGHTGRAY);
                 auto resIt = m_provinceResources.find(selPid);
                 if (resIt != m_provinceResources.end()) {
@@ -880,7 +995,7 @@ void Game::drawCountryPanel() {
                     else if (ind.specialization == "Gemstones") bonus = res.gemstones.boost;
                     else if (ind.specialization == "Metal") bonus = res.metal.boost;
                     if (bonus > 0.0f)
-                        DrawText(TextFormat("Specialization bonus: +%.1f%% resource income",
+                        DrawText(TextFormat(T("Specialization bonus: +%.1f%% resource income"),
                                             bonus),
                                  rX, rY + 102, 14, GREEN);
                 }
@@ -895,17 +1010,17 @@ void Game::drawCountryPanel() {
             int rY = panelY + 200;
             int rX = panelX + pad;
             const auto& ind = indIt->second;
-            DrawText("Fortification", rX, rY, 18, WHITE);
-            DrawText(TextFormat("Level: %d/6", ind.fortification),
+            DrawText(T("Fortification"), rX, rY, 18, WHITE);
+            DrawText(TextFormat(T("Level: %d/6"), ind.fortification),
                      rX, rY + 24, 16, LIGHTGRAY);
-            DrawText(TextFormat("Defence bonus: +%d%%", ind.fortification * 10),
+            DrawText(TextFormat(T("Defence bonus: +%d%%"), ind.fortification * 10),
                      rX, rY + 44, 14, GREEN);
         } else {
             int rY = panelY + 200;
             int rX = panelX + pad;
-            DrawText("Fortification", rX, rY, 18, WHITE);
-            DrawText("Level: 0/6", rX, rY + 24, 16, LIGHTGRAY);
-            DrawText("Defence bonus: +0%", rX, rY + 44, 14, LIGHTGRAY);
+            DrawText(T("Fortification"), rX, rY, 18, WHITE);
+            DrawText(T("Level: 0/6"), rX, rY + 24, 16, LIGHTGRAY);
+            DrawText(T("Defence bonus: +0%"), rX, rY + 44, 14, LIGHTGRAY);
         }
     }
 
@@ -914,18 +1029,20 @@ void Game::drawCountryPanel() {
         auto armyIt = m_provinceArmies.find(selPid);
         int rY = panelY + 200;
         int rX = panelX + pad;
-        DrawText("Garrison", rX, rY, 18, WHITE);
+        DrawText(T("Garrison"), rX, rY, 18, WHITE);
         if (armyIt != m_provinceArmies.end() && !armyIt->second.empty()) {
             int lineY = rY + 24;
             for (auto& unit : armyIt->second) {
                 const Country* c = m_countries.getCountry(unit.countryId);
-                const char* cname = c ? c->name.c_str() : "Unknown";
-                DrawText(TextFormat("%s: %s soldiers", cname, formatTroops(unit.count).c_str()),
+                const std::string cnameS = c ? od::i18n::properName(c->name)
+                                             : std::string(T("Unknown"));
+                const char* cname = cnameS.c_str();
+                DrawText(TextFormat(T("%s: %s soldiers"), cname, formatTroops(unit.count).c_str()),
                          rX, lineY, 14, LIGHTGRAY);
                 lineY += 18;
             }
         } else {
-            DrawText("No garrison", rX, rY + 24, 14, LIGHTGRAY);
+            DrawText(T("No garrison"), rX, rY + 24, 14, LIGHTGRAY);
         }
     }
 
@@ -935,8 +1052,8 @@ void Game::drawCountryPanel() {
         int rX = panelX + pad;
         auto portIt = m_provincePorts.find(selPid);
         if (portIt != m_provincePorts.end()) {
-            DrawText("Port", rX, rY, 18, WHITE);
-            DrawText(TextFormat("Level: %d", portIt->second.level),
+            DrawText(T("Port|the harbour a ship is built in"), rX, rY, 18, WHITE);
+            DrawText(TextFormat(T("Level: %d"), portIt->second.level),
                      rX, rY + 24, 14, LIGHTGRAY);
         }
         // Check for ships near this province
@@ -948,17 +1065,22 @@ void Game::drawCountryPanel() {
             }
             if (shipCount > 0) {
                 int sy = rY + (portIt != m_provincePorts.end() ? 48 : 0);
-                DrawText(TextFormat("Country ships: %d", shipCount), rX, sy, 14, LIGHTGRAY);
+                DrawText(TextFormat(T("Country ships: %d"), shipCount), rX, sy, 14, LIGHTGRAY);
             }
         }
     }
 
     // ─── Action Buttons ────────────
     // Helper: draw a single action button, returns true if clicked
-    auto drawActBtn = [&](int x, int y, int w, int h, const char* label, bool disabled, Color bg, Color border) -> bool {
+    auto drawActBtn = [&](int x, int y, int w, int h, const char* label, bool disabled, Color bg, Color border,
+                          const char* whyDisabled = nullptr) -> bool {
         Rectangle r = {(float)x, (float)y, (float)w, (float)h};
         Vector2 mse = getMouse();
-        bool hovered = !m_paused && m_turnState == TURN_NORMAL && !disabled && CheckCollisionPointRec(mse, r);
+        const bool over = CheckCollisionPointRec(mse, r);
+        bool hovered = !m_paused && m_turnState == TURN_NORMAL && !disabled && over;
+        // A disabled button still answers the cursor -- saying why is the
+        // whole point of it being greyed rather than absent.
+        if (disabled && over && whyDisabled && *whyDisabled) m_uiHint = whyDisabled;
         Color bgc = disabled ? Color{20, 20, 25, 200} : (hovered ? Color{
             (unsigned char)std::min(255, bg.r + 30),
             (unsigned char)std::min(255, bg.g + 30),
@@ -968,8 +1090,18 @@ void Game::drawCountryPanel() {
         DrawRectangleRoundedLines(r, 0.08f, 6, bdc);
         Color tc = disabled ? Color{80, 80, 80, 200} : WHITE;
         int fs = 11;
-        int tw = MeasureText(label, fs);
-        DrawText(label, x + (w - tw) / 2, y + (h - fs) / 2, fs, tc);
+        // The label is CENTRED, so one wider than the button does not clip --
+        // it spills out of both ends and over whatever is beside it. That was
+        // true in ENGLISH -- the act above this one used to read "Request
+        // Mutual Guarantee", and "Cancel Request Mutual Guarantee" was 170px
+        // of label in a 154px button -- and true of ninety-three translations,
+        // which is the tell that the button was wrong rather than the words.
+        // The English was shortened and fitToWidth catches the rest, dropping
+        // a point or two of type before it cuts anything.
+        odText::fitAudit(label, w - 8, fs, "diplomacy act button");
+        const std::string fitted = odText::fitToWidth(label, w - 8, fs);
+        int tw = MeasureText(fitted.c_str(), fs);
+        DrawText(fitted.c_str(), x + (w - tw) / 2, y + (h - fs) / 2, fs, tc);
 
         // Centralised on purpose: seventeen call sites reach this lambda, and
         // wiring the sound at each of them is seventeen chances to forget one.
@@ -1057,31 +1189,31 @@ void Game::drawCountryPanel() {
                 // exists -- requestAllyJoinWar() re-checks both and says why if
                 // it refuses, so this is enabled whenever the player is at war
                 // with anyone rather than duplicating the eligibility rules.
-                acts.push_back({"Call to Arms", "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
-                acts.push_back({"Break Alliance", "break_alliance", anyDiploPending && !hasPending("break_alliance")});
-                acts.push_back({"Request Mutual Guarantee", "add_guarantee", anyDiploPending && !hasPending("add_guarantee")});
+                acts.push_back({T("Call to Arms"), "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
+                acts.push_back({T("Break Alliance"), "break_alliance", anyDiploPending && !hasPending("break_alliance")});
+                acts.push_back({T("Mutual Guarantee"), "add_guarantee", anyDiploPending && !hasPending("add_guarantee")});
             } else if (hasGuar) {
-                acts.push_back({"Break Guarantee", "break_guarantee", anyDiploPending && !hasPending("break_guarantee")});
-                acts.push_back({"Request Alliance", "request_alliance", anyDiploPending && !hasPending("request_alliance")});
+                acts.push_back({T("Break Guarantee"), "break_guarantee", anyDiploPending && !hasPending("break_guarantee")});
+                acts.push_back({T("Request Alliance"), "request_alliance", anyDiploPending && !hasPending("request_alliance")});
             } else if (hasWar) {
-                acts.push_back({"Request Ceasefire", "request_ceasefire", anyDiploPending && !hasPending("request_ceasefire")});
+                acts.push_back({T("Request Ceasefire"), "request_ceasefire", anyDiploPending && !hasPending("request_ceasefire")});
             } else if (!hasWar) {
                 if (hasNonAgg) {
-                    acts.push_back({"Break NAP", "break_nap", anyDiploPending && !hasPending("break_nap")});
+                    acts.push_back({T("Break NAP"), "break_nap", anyDiploPending && !hasPending("break_nap")});
                 } else {
-                    acts.push_back({"Request NAP", "request_nap", anyDiploPending && !hasPending("request_nap")});
+                    acts.push_back({T("Request NAP"), "request_nap", anyDiploPending && !hasPending("request_nap")});
                 }
-                acts.push_back({"Request Alliance", "request_alliance", anyDiploPending && !hasPending("request_alliance")});
-                acts.push_back({"Request Guarantee", "request_guarantee", anyDiploPending && !hasPending("request_guarantee")});
+                acts.push_back({T("Request Alliance"), "request_alliance", anyDiploPending && !hasPending("request_alliance")});
+                acts.push_back({T("Request Guarantee"), "request_guarantee", anyDiploPending && !hasPending("request_guarantee")});
                 // Peacetime only, and in this list rather than as a button of
                 // its own: the list already lays itself out above Current
                 // Claims, greys an entry while something is pending with this
                 // country, and is where every other approach to them lives. At
                 // war the equivalent is Request Ceasefire, which already
                 // carries terms.
-                acts.push_back({"Propose Trade", "propose_trade", anyDiploPending && !hasPending("propose_trade")});
+                acts.push_back({T("Propose Trade"), "propose_trade", anyDiploPending && !hasPending("propose_trade")});
                 if (!hasNonAgg)
-                    acts.push_back({"Declare War", "declare_war", anyDiploPending && !hasPending("declare_war")});
+                    acts.push_back({T("Declare War"), "declare_war", anyDiploPending && !hasPending("declare_war")});
             }
 
             // Layout: 2 columns, single button spans full width
@@ -1119,9 +1251,9 @@ void Game::drawCountryPanel() {
                                          : Color{225, 110, 110, 255};
                     };
                     const int wy = btnStartY - 52;
-                    DrawText("Their word:", panelX + pad, wy, 13, Color{170, 170, 180, 255});
+                    DrawText(T("Their word:"), panelX + pad, wy, 13, Color{170, 170, 180, 255});
                     DrawText(word(theirs), panelX + pad + 84, wy, 13, tint(theirs));
-                    DrawText("Yours:", panelX + pad + 168, wy, 13, Color{170, 170, 180, 255});
+                    DrawText(T("Yours:"), panelX + pad + 168, wy, 13, Color{170, 170, 180, 255});
                     DrawText(word(ours), panelX + pad + 216, wy, 13, tint(ours));
                 }
             }
@@ -1142,7 +1274,7 @@ void Game::drawCountryPanel() {
                                      cbHover ? Color{70, 44, 44, 255} : Color{46, 30, 30, 220});
                 DrawRectangleRoundedLines(cbBtn, 0.15f, 6, Color{110, 70, 70, 200});
                 const std::string cbLbl =
-                    std::string("If you declare: ") + warGoalTextOwn(m_declareWarGoal);
+                    TextFormat(T("If you declare: %s"), od::i18n::tr(warGoalTextOwn(m_declareWarGoal)));
                 DrawText(cbLbl.c_str(), (int)cbBtn.x + 8, (int)cbBtn.y + 5, 13,
                          m_declareWarGoal == WAR_GOAL_NONE ? Color{150, 145, 145, 255}
                                                            : Color{230, 195, 160, 255});
@@ -1156,17 +1288,27 @@ void Game::drawCountryPanel() {
                 int bx = col == 1 ? panelX + pad + halfBtnW + btnGap : panelX + pad;
                 int by = btnStartY + row * (btnH + btnGap);
                 bool pending = hasPending(ab.action);
-                std::string labelStr = pending ? std::string("Cancel ") + ab.action : std::string(ab.label);
+                // "Cancel request_nap" was the ACTION ID glued to an English
+                // word -- an id on a button, in every language including
+                // English. The label the entry already carries is the words
+                // for the same thing, so the cancel form is built from that.
+                std::string labelStr = pending
+                    ? TextFormat(T("Cancel %s"), ab.label)
+                    : std::string(ab.label);
                 // Replace underscores with spaces for cancel text
                 for (size_t i = 0; i < labelStr.size(); ++i)
                     if (labelStr[i] == '_') labelStr[i] = ' ';
                 if (ab.action == "request_ceasefire" && pending)
-                    labelStr = "Ceasefire Pending...";
+                    labelStr = T("Ceasefire Pending...");
                 const char* label = labelStr.c_str();
                 bool disabled = ab.disabled;
+                const char* whyDisabled = ab.disabled
+                    ? T("One request at a time to each country.") : nullptr;
                 // Disable cancel for ceasefire requests while awaiting review
-                if (ab.action == "request_ceasefire" && pending)
+                if (ab.action == "request_ceasefire" && pending) {
                     disabled = true;
+                    whyDisabled = T("Waiting for them to answer.");
+                }
                 Color bg, border;
                 if (ab.action == "declare_war") {
                     bg = Color{80, 20, 20, 220}; border = Color{180, 60, 60, 200};
@@ -1188,7 +1330,7 @@ void Game::drawCountryPanel() {
                     else if (ab.action == "request_guarantee")  m_btnSfxOverride = "request_guarantee";
                     else if (ab.action == "request_ceasefire")  m_btnSfxOverride = "request_ceasefire";
                 }
-                if (drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border) && !disabled) {
+                if (drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border, whyDisabled) && !disabled) {
                     if (pending) cancelPending(ab.action);
                     else if (ab.action == "request_ceasefire" || ab.action == "propose_trade") {
                         // Open the negotiation screen. Same screen for both:
@@ -1281,22 +1423,22 @@ void Game::drawCountryPanel() {
         const char* upgLabel;
         Color upgBg, upgBd;
         if (atHardCap) {
-            upgLabel = "Max level (10)";
+            upgLabel = T("Max level (10)");
             upgDisabled = true;
             upgBg = Color{30, 30, 20, 200}; upgBd = Color{80, 80, 50, 150};
         } else if (atResearchCap && maxIndLevel < 10) {
-            upgLabel = "Upgrade locked, research next industry";
+            upgLabel = T("Upgrade locked, research next industry");
             upgDisabled = true;
             upgBg = Color{30, 30, 40, 200}; upgBd = Color{80, 80, 120, 150};
         } else if (!canAfford) {
-            upgLabel = TextFormat("Upgrade to level %d ($%.0f, 0/%dt)", nextLv, upgradeCost, turnsToBuild);
+            upgLabel = TextFormat(T("Upgrade to level %d ($%.0f, 0/%dt)"), nextLv, upgradeCost, turnsToBuild);
             upgDisabled = true;
             upgBg = Color{20, 20, 25, 200}; upgBd = Color{40, 40, 50, 150};
         } else if (upgradePending) {
-            upgLabel = TextFormat("Building... (%d turns)", turnsToBuild);
+            upgLabel = TextFormat(T("Building... (%d turns)"), turnsToBuild);
             upgBg = Color{30, 40, 20, 220}; upgBd = Color{80, 120, 60, 200};
         } else {
-            upgLabel = TextFormat("Upgrade to level %d ($%.0f, 0/%dt)", nextLv, upgradeCost, turnsToBuild);
+            upgLabel = TextFormat(T("Upgrade to level %d ($%.0f, 0/%dt)"), nextLv, upgradeCost, turnsToBuild);
             upgBg = Color{20, 60, 30, 220}; upgBd = Color{60, 180, 80, 200};
         }
         if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH, upgLabel, upgDisabled, upgBg, upgBd) && !upgDisabled && !atHardCap && !atResearchCap && canAfford && !upgradePending) {
@@ -1319,10 +1461,15 @@ void Game::drawCountryPanel() {
         std::string currentSpec = (indIt != m_provinceIndustry.end()) ? indIt->second.specialization : "";
         std::string specTarget;
         for (auto& sp : m_pendingSpecializations) if (sp.provinceId == selPid) specTarget = sp.specialization;
+        // The resource name is an argument, and arguments are not looked up:
+        // "Specialize (Rubber)" came out with the sentence translated and the
+        // resource still in English, in the middle of it.
         const char* specLabel = specPending
-                               ? TextFormat("Specializing to %s... (3t)", specTarget.c_str())
-                               : TextFormat("Specialize (%s) ($%.0f, 3t)",
-                                   currentSpec.empty() ? "choose" : currentSpec.c_str(), specCost);
+                               ? TextFormat(T("Specializing to %s... (3t)"),
+                                   od::i18n::tr(specTarget))
+                               : TextFormat(T("Specialize (%s) ($%.0f, 3t)"),
+                                   currentSpec.empty() ? T("choose one")
+                                                       : od::i18n::tr(currentSpec), specCost);
         if (drawActBtn(panelX + pad, specBtnY, btnW * 2 + btnGap, btnH, specLabel, !canSpec, specBg, specBd) && canSpec) {
             if (m_specDropdownProvince == selPid) m_specDropdownProvince = -1;
             else { m_specDropdownProvince = selPid; m_specDropdownHover = 0; }
@@ -1409,26 +1556,26 @@ void Game::drawCountryPanel() {
         const char* label;
         Color bg, bd;
         if (atHardCap) {
-            label = "Max level (5)";
+            label = T("Max level (5)");
             btnDisabled = true;
             bg = Color{30, 30, 20, 200}; bd = Color{80, 80, 50, 150};
         } else if (atResearchCap && maxFort < 5) {
-            label = TextFormat("Research next level (max %d)", maxFort);
+            label = TextFormat(T("Research next level (max %d)"), maxFort);
             btnDisabled = true;
             bg = Color{30, 30, 40, 200}; bd = Color{80, 80, 120, 150};
         } else if (!canAfford) {
             label = fortLevel == 0
-                ? TextFormat("Build Fort ($%.0f, 0/%dt)", fortCost, turnsToBuild)
-                : TextFormat("Upgrade Fort to level %d ($%.0f, 0/%dt)", nextLv, fortCost, turnsToBuild);
+                ? TextFormat(T("Build Fort ($%.0f, 0/%dt)"), fortCost, turnsToBuild)
+                : TextFormat(T("Upgrade Fort to level %d ($%.0f, 0/%dt)"), nextLv, fortCost, turnsToBuild);
             btnDisabled = true;
             bg = Color{20, 20, 25, 200}; bd = Color{40, 40, 50, 150};
         } else if (fortPending) {
-            label = TextFormat("Building... (%d turns)", turnsToBuild);
+            label = TextFormat(T("Building... (%d turns)"), turnsToBuild);
             bg = Color{30, 40, 20, 220}; bd = Color{80, 120, 60, 200};
         } else {
             label = fortLevel == 0
-                ? TextFormat("Build Fort ($%.0f, 0/%dt)", fortCost, turnsToBuild)
-                : TextFormat("Upgrade Fort to level %d ($%.0f, 0/%dt)", nextLv, fortCost, turnsToBuild);
+                ? TextFormat(T("Build Fort ($%.0f, 0/%dt)"), fortCost, turnsToBuild)
+                : TextFormat(T("Upgrade Fort to level %d ($%.0f, 0/%dt)"), nextLv, fortCost, turnsToBuild);
             bg = Color{20, 50, 50, 220}; bd = Color{60, 160, 160, 200};
         }
         if (drawActBtn(panelX + pad, btnStartY, panelW - pad * 2, btnH, label, btnDisabled, bg, bd) && !btnDisabled && !atHardCap && !atResearchCap && canAfford && !fortPending) {
@@ -1555,7 +1702,7 @@ void Game::drawCountryPanel() {
                 Color cBg = Color{80, 30, 20, 220};
                 Color cBd = Color{180, 80, 50, 200};
 if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
-                TextFormat("Cancel (%s, $%.0f)", formatTroops(pr.count).c_str(), currentCost),
+                TextFormat(T("Cancel (%s, $%.0f)"), formatTroops(pr.count).c_str(), currentCost),
                 false, cBg, cBd)) {
                     treasury += currentCost;
                     m_pendingRecruitments.erase(m_pendingRecruitments.begin() + pri);
@@ -1566,7 +1713,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color rBg = canRecruit ? Color{20, 60, 30, 220} : Color{20, 20, 25, 200};
             Color rBd = canRecruit ? Color{60, 180, 80, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
-                TextFormat("Recruit %s ($%.0f)", formatPop(recruitCount / 100).c_str(), recruitCost),
+                TextFormat(T("Recruit %s ($%.0f)"), formatPop(recruitCount / 100).c_str(), recruitCost),
                 !canRecruit, rBg, rBd) && canRecruit) {
                 treasury -= recruitCost;
                 m_pendingRecruitments.push_back({selPid, recruitCount, 1});
@@ -1619,7 +1766,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             const char* bind = keyName(m_config.keybinds[ACTION_ARMY_MOVE]);
             const char* label =
                 armed ? "Click a neighbouring province  (Esc to cancel)"
-                      : TextFormat("Move Army  (or drag with %s)", bind);
+                      : TextFormat(T("Move Army  (or drag with %s)"), bind);
 
             Color mBg = armed    ? Color{20, 50, 80, 235}
                       : canMove  ? Color{20, 45, 70, 220}
@@ -1646,7 +1793,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             if (orderCount > 0) {
                 int coY = disbandBtnY;
                 if (drawActBtn(panelX + pad + btnW + btnGap, coY, btnW, btnH,
-                    TextFormat("Cancel Orders (%d)", orderCount), false,
+                    TextFormat(T("Cancel Orders (%d)"), orderCount), false,
                     Color{60, 30, 20, 220}, Color{180, 80, 40, 200})) {
                     cancelArmyMovesFrom(selPid);
                     static const struct { const char* id; float cost; } ARTY_CANCEL_COST[] = {
@@ -1752,10 +1899,10 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     DrawRectangleLines(ddX, iy, ddW, ddH, Color{60, 60, 90, 200});
                     DrawRectangle(ddX + 3, iy + 4, 14, 14, art.col);
                     DrawText(art.name, ddX + 22, iy + 3, 12, WHITE);
-                    std::string effect = TextFormat("$%.0f %d%% troops", art.cost, (int)art.troopKill);
-                    if (art.popKill > 0) effect += TextFormat(" %d%% pop", (int)art.popKill);
-                    if (art.fortDmg > 0) effect += TextFormat(" fort-%d", (int)art.fortDmg);
-                    if (art.indDmg > 0) effect += TextFormat(" ind-%d", art.indDmg);
+                    std::string effect = TextFormat(T("$%.0f %d%% troops"), art.cost, (int)art.troopKill);
+                    if (art.popKill > 0) effect += TextFormat(T(" %d%% pop"), (int)art.popKill);
+                    if (art.fortDmg > 0) effect += TextFormat(T(" fort-%d"), (int)art.fortDmg);
+                    if (art.indDmg > 0) effect += TextFormat(T(" ind-%d"), art.indDmg);
                     DrawText(effect.c_str(), ddX + ddW - MeasureText(effect.c_str(), 10) - 4, iy + 4, 10, LIGHTGRAY);
                     if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         m_artillerySelectedType = art.id;
@@ -1764,7 +1911,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     optIdx++;
                 }
                 if (optIdx == 0) {
-                    DrawText("No artillery techs researched", ddX + 4, ddY + 4, 12, Color{120, 120, 140, 200});
+                    DrawText(T("No artillery techs researched"), ddX + 4, ddY + 4, 12, Color{120, 120, 140, 200});
                 }
                 // Close dropdown on click outside — exit mode entirely
                 Vector2 mse2 = getMouse();
@@ -1781,11 +1928,11 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             // After type selected, show targeting hint and cancel/confirmation
             if (hasSelectedType) {
                 if (m_artilleryTargetPid <= 0) {
-                    DrawText("Click a neighboring province to target", panelX + pad, artBtnY - 14, 11, YELLOW);
+                    DrawText(T("Click a neighboring province to target"), panelX + pad, artBtnY - 14, 11, YELLOW);
                 } else {
                     for (auto& art : ALL_ARTY) {
                         if (art.id == m_artillerySelectedType) {
-                            DrawText(TextFormat("Firing %s PID %d ($%.0f)", art.name, m_artilleryTargetPid, art.cost),
+                            DrawText(TextFormat(T("Firing %s PID %d ($%.0f)"), art.name, m_artilleryTargetPid, art.cost),
                                      panelX + pad, artBtnY + btnH + 2, 11, GREEN);
                             break;
                         }
@@ -1800,7 +1947,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 if (artyOrderCount > 0) {
                     int caY = artBtnY + btnH + btnGap;
                     if (drawActBtn(panelX + pad, caY, btnW * 2 + btnGap, btnH,
-                        TextFormat("Cancel Artillery (%d)", artyOrderCount), false,
+                        TextFormat(T("Cancel Artillery (%d)"), artyOrderCount), false,
                         Color{60, 30, 20, 220}, Color{180, 80, 40, 200})) {
                         double& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
                         for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
@@ -1842,19 +1989,19 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             const char* pLabel;
             Color pBg, pBd;
             if (atHardCap) {
-                pLabel = "Max port level (3)";
+                pLabel = T("Max port level (3)");
                 pBg = Color{30, 30, 20, 200}; pBd = Color{80, 80, 50, 150};
             } else if (atResearchCap) {
-                pLabel = "Research next port level";
+                pLabel = T("Research next port level");
                 pBg = Color{30, 30, 40, 200}; pBd = Color{80, 80, 120, 150};
             } else if (portPending) {
-                pLabel = TextFormat("Building Port... (3 turns)");
+                pLabel = TextFormat(T("Building Port... (3 turns)"));
                 pBg = Color{30, 40, 20, 220}; pBd = Color{80, 120, 60, 200};
             } else if (!canUpgradePort) {
-                pLabel = TextFormat("Upgrade Port lv%d ($%.0f, 3t)", portLevel + 1, 60.0f * (portLevel + 1));
+                pLabel = TextFormat(T("Upgrade Port lv%d ($%.0f, 3t)"), portLevel + 1, 60.0f * (portLevel + 1));
                 pBg = Color{20, 20, 25, 200}; pBd = Color{40, 40, 50, 150};
             } else {
-                pLabel = TextFormat("Upgrade Port lv%d ($%.0f, 3t)", portLevel + 1, 60.0f * (portLevel + 1));
+                pLabel = TextFormat(T("Upgrade Port lv%d ($%.0f, 3t)"), portLevel + 1, 60.0f * (portLevel + 1));
                 pBg = Color{20, 50, 70, 220}; pBd = Color{60, 140, 200, 200};
             }
             if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH, pLabel, !canUpgradePort, pBg, pBd) && canUpgradePort) {
@@ -1875,7 +2022,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color eBg = canEmbark ? Color{30, 40, 60, 220} : Color{20, 20, 25, 200};
             Color eBd = canEmbark ? Color{60, 100, 200, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, row2Y, btnW, btnH,
-                alreadyEmbarking ? "Embarking... (1t)" : "Embark Army (free, 1t)",
+                alreadyEmbarking ? T("Embarking... (1t)") : T("Embark Army (free, 1t)"),
                 !canEmbark, eBg, eBd) && canEmbark) {
                 // Embark all garrison troops from this province
                 int totalTroops = 0;
@@ -1894,8 +2041,8 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color dBg = canDestroyer ? Color{20, 50, 50, 220} : Color{20, 20, 25, 200};
             Color dBd = canDestroyer ? Color{60, 160, 160, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad + btnW + btnGap, row2Y, btnW, btnH,
-                portLevel < 2 ? "Requires Port Lv.2"
-                : "Build Destroyer ($15, 3t)", !canDestroyer, dBg, dBd) && canDestroyer) {
+                portLevel < 2 ? T("Requires Port Lv.2")
+                : T("Build Destroyer ($15, 3t)"), !canDestroyer, dBg, dBd) && canDestroyer) {
                 treasury -= 15.0f;
                 m_pendingShipBuilds.push_back({selPid, "destroyer", 3});
             }
@@ -1903,19 +2050,19 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color cBg = canCarrier ? Color{50, 30, 60, 220} : Color{20, 20, 25, 200};
             Color cBd = canCarrier ? Color{140, 80, 180, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, row3Y, btnW * 2 + btnGap, btnH,
-                portLevel < 3 ? "Requires Port Lv.3"
-                : "Build Carrier ($40, 3t)", !canCarrier, cBg, cBd) && canCarrier) {
+                portLevel < 3 ? T("Requires Port Lv.3")
+                : T("Build Carrier ($40, 3t)"), !canCarrier, cBg, cBd) && canCarrier) {
                 treasury -= 40.0f;
                 m_pendingShipBuilds.push_back({selPid, "carrier", 3});
             }
         } else if (isOwnProv) {
             bool coastal = isProvinceCoastal(selPid);
             bool canBuildPort = coastal && !portPending && treasury >= 60.0f;
-            const char* noPortReason = coastal ? "" : " (not coastal)";
+            const char* noPortReason = coastal ? "" : T(" (not coastal)");
             Color pBg = canBuildPort ? Color{20, 50, 70, 220} : Color{20, 20, 25, 200};
             Color pBd = canBuildPort ? Color{60, 140, 200, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH,
-                TextFormat("Build Port%s ($60, 3t)", noPortReason), !canBuildPort, pBg, pBd) && canBuildPort) {
+                TextFormat(T("Build Port%s ($60, 3t)"), noPortReason), !canBuildPort, pBg, pBd) && canBuildPort) {
                 treasury -= 60.0f;
                 m_pendingUpgrades.push_back({selPid, "port", 1, 3});
                 Audio::get().playSfx("build_port", 0.04f);
@@ -2010,21 +2157,32 @@ void Game::drawSidebarButtons() {
     int startY = (m_screenH - totalH) / 2;
 
     struct SBtn { Texture2D tex; const char* label; int id; bool disabled; };
+    // T() here rather than at the draw: this is a struct table, and the
+    // extractor only reads plain `const char*[]` tables (see i18n_extract.py
+    // for why it is not widened). Wrapping the label is what puts it in
+    // en.json at all.
     SBtn btns[] = {
-        {m_iconPolicies, "Politics", 1, isSpectator},
-        {m_iconEconomy, "Economy", 2, false},
-        {m_iconClaims, "Claims", 3, isSpectator},
+        {m_iconPolicies, T("Politics"), 1, isSpectator},
+        {m_iconEconomy, T("Economy"), 2, false},
+        {m_iconClaims, T("Claims"), 3, isSpectator},
         // Research is a spending decision -- it moves the budget slider and
         // picks what the country works towards -- so a spectator has no more
         // business in it than in Politics or Claims, which have always been
         // greyed. It was the one that was missed.
-        {{}, "Research", 4, isSpectator},
+        {{}, T("Research"), 4, isSpectator},
     };
     static constexpr int BTN_COUNT = 4;
 
     for (int i = 0; i < BTN_COUNT; ++i) {
         int y = startY + i * (btnSize + btnSpacing);
         Rectangle r = {(float)startX, (float)y, (float)btnSize, (float)btnSize};
+        // Offer it to the tutorial by a stable name. The label is what the
+        // player reads and may be translated; the id is what the script
+        // writes, so the name is built from the id and never from the words.
+        static const char* kTabName[] = {"tab.map", "tab.politics", "tab.economy",
+                                         "tab.claims", "tab.research"};
+        if (btns[i].id >= 0 && btns[i].id < (int)(sizeof(kTabName) / sizeof(*kTabName)))
+            offerUiTarget(kTabName[btns[i].id], r);
         Vector2 mouse = getMouse();
         bool hovered = !m_paused && !btns[i].disabled && CheckCollisionPointRec(mouse, r);
         bool active = (m_activeSidebarTab == btns[i].id);
@@ -2073,6 +2231,49 @@ void Game::drawSidebarButtons() {
         // Small corner dot as a colour-blind-friendly second cue
         if (alert) DrawCircle((int)(r.x + r.width - 10), (int)(r.y + 10), 4.0f, ColorAlpha(accent, pulse));
     }
+
+    // ─── FIND A COUNTRY ───────────────────────────────────────────────────
+    //
+    // Above the tabs rather than among them, and shorter, because it is an
+    // ACTION and they are tabs: pressing it opens a search, not a panel, and
+    // nothing about it stays "active" afterwards. Ctrl+F and "/" still work --
+    // this is the half that a player who does not read shortcut lists can find.
+    {
+        // Icon above the label, like the tabs below it: side by side left the
+        // text 64px of a 100px button and "Find country" came out as "Find
+        // count...". The full width is what a translation needs -- German says
+        // "Land suchen", Ukrainian "Знайти країну".
+        const int findH = 46;
+        const int findY = startY - findH - 10;
+        Rectangle fr = {(float)startX, (float)findY, (float)btnSize, (float)findH};
+        offerUiTarget("btn.find", fr);
+        const bool fhov = !m_paused && CheckCollisionPointRec(getMouse(), fr);
+        DrawRectangleRounded(fr, 0.25f, 8,
+                             fhov ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180});
+        DrawRectangleRoundedLines(fr, 0.25f, 8,
+                                  fhov ? Color{140, 140, 170, 200} : Color{80, 80, 100, 150});
+
+        // A magnifier from two primitives: there is no icon texture for this
+        // and one more PNG in the atlas is not worth a glyph nobody can miss.
+        const Color fc = fhov ? WHITE : LIGHTGRAY;
+        const float cx = fr.x + btnSize / 2.0f, cy = fr.y + 14.0f;
+        DrawCircleLines((int)cx, (int)cy, 6.0f, fc);
+        DrawLineEx({cx + 4.5f, cy + 4.5f}, {cx + 9.0f, cy + 9.0f}, 2.0f, fc);
+
+        int lfs = 12;
+        const std::string flabel = odText::fitToWidth(T("Find country"), btnSize - 8, lfs, 9);
+        DrawText(flabel.c_str(),
+                 (int)fr.x + (btnSize - MeasureText(flabel.c_str(), lfs)) / 2,
+                 (int)(fr.y + findH - lfs - 4), lfs, fc);
+
+        if (fhov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            Audio::get().playSfx("click_heavy");
+            m_findOpen = true;
+            m_findQuery.clear();
+            m_findIndex = 0;
+            rebuildFindMatches();
+        }
+    }
 }
 
 void Game::draw() {
@@ -2105,7 +2306,10 @@ void Game::drawInner() {
         {
             int panelW = 360;
             int panelY = 48;
-            int panelH = std::min(m_screenH - 80 - 16 - 48, 700);
+            // The HIT-TEST rect, and the one that actually broke the button:
+            // MapRenderer treats it as dead space, so a Process Turn under it
+            // was unclickable rather than merely hidden.
+            int panelH = std::min(leftPanelBottom() - panelY, 700);
             if (m_specDropdownProvince > 0) panelH += 160;
             bool panelVisible = m_renderer->getSelectedProvinceId() > 0 || !m_selectedShipIndices.empty();
             m_renderer->setProvincePanelRect(panelVisible
@@ -2565,19 +2769,10 @@ void Game::drawInner() {
             if (guar || nap) return false; // guarantee/NAP blocked
             return false; // neutral blocked
         };
-        // Water body connectivity check (sample points along line)
-        auto waterPathClear = [&](int px1, int py1, int px2, int py2) -> bool {
-            int steps = std::max(std::abs(px2-px1), std::abs(py2-py1)) / 20 + 2;
-            for (int s = 0; s <= steps; s++) {
-                float t = (float)s / (float)steps;
-                int cx = (int)(px1 + (px2-px1)*t + 0.5f);
-                int cy = (int)(py1 + (py2-py1)*t + 0.5f);
-                if (cx < 0 || cx >= m_landSea.getWidth() || cy < 0 || cy >= m_landSea.getHeight())
-                    return false;
-                if (m_landSea.isLand(cx, cy)) return false;
-            }
-            return true;
-        };
+        // The straight-line water test that used to gate a move destination is
+        // gone with the rule it enforced: ships follow a route, so "is the
+        // chord clear" is not a question about whether a fleet can get there.
+        // Game::navReachable answers the one that is.
 
         // Update hover targets for ship action modes
         m_shipActionHoverShipIdx = -1;
@@ -2859,7 +3054,7 @@ void Game::drawInner() {
                 DrawLine((int)(ax + aSize * 0.3f + o * 0.3f), (int)(ay + aSize * 0.25f + o * 0.3f),
                          (int)(ax + aSize * 0.38f + o * 0.3f), (int)(ay + aSize * 0.3f + o * 0.3f), portCol);
             }
-            const char* lvltxt = TextFormat("Lv.%d", port.level);
+            const char* lvltxt = TextFormat(T("Lv.%d"), port.level);
             int fs = (int)(10 * cam.zoom);
             if (fs < 7) fs = 7;
             int tw = MeasureText(lvltxt, fs);
@@ -3022,15 +3217,59 @@ void Game::drawInner() {
                             }
                         }
                     } else if (!m_landSea.isLand(px, py)) {
-                        // Water move
+                        // ── A WATER MOVE IS A VOYAGE, NOT A HOP ──
+                        //
+                        // This demanded that the click be inside one turn's
+                        // range AND on a clear straight line, so an ocean
+                        // crossing was: find a point within ~200 px that is
+                        // also on an unobstructed water line, click, wait a
+                        // turn, repeat. Eight times, per transport.
+                        //
+                        // Both rules were also in the wrong place. The range
+                        // lives in processNavyMovement, which clamps to it, and
+                        // the straight line was never the rule at all -- ships
+                        // follow a route now. What is left is the only thing
+                        // that was ever a real constraint: the destination has
+                        // to be water this hull can actually reach by sea, and
+                        // Game::navReachable is the authority on that.
                         float lon, lat;
                         m_landSea.pixelToLonLat(px, py, lon, lat);
-                        float dx = (float)(px - sx), dy = (float)(py - sy);
-                        float dist = sqrtf(dx*dx + dy*dy);
-                        bool inRange = (dist <= maxRange);
-                        bool wpOk = waterPathClear(sx, sy, px, py);
-                        validDest = inRange && wpOk;
+                        validDest = navReachable(srcShip.lon, srcShip.lat, lon, lat);
                         lineCol = validDest ? GREEN : RED;
+
+                        // ── The route, and how long it takes ──
+                        // Previewing what the resolver will do, from the same
+                        // function the resolver plans with, so what is drawn
+                        // and what happens cannot disagree.
+                        if (validDest) {
+                            std::vector<std::pair<double,double>> way;
+                            navRoute(srcShip.lon, srcShip.lat, lon, lat, way);
+                            way.emplace_back((double)lon, (double)lat);
+                            double total = 0.0;
+                            double cl = srcShip.lon, ct = srcShip.lat;
+                            Vector2 prev = sp;
+                            for (auto& [wl, wt] : way) {
+                                total += std::hypot(wl - cl, wt - ct);
+                                cl = wl; ct = wt;
+                                int wx, wy;
+                                m_landSea.lonLatToPixel((float)wl, (float)wt, wx, wy);
+                                Vector2 cur = worldToScreen({(float)wx, (float)wy});
+                                DrawLineEx(prev, cur, 2.0f, ColorAlpha(GREEN, 0.55f));
+                                prev = cur;
+                            }
+                            const double per = shipMaxRangeDeg(srcShip);
+                            const int turns = per > 1e-9
+                                ? (int)std::ceil(total / per) : 0;
+                            // TWO KEYS, NOT AN "s" GLUED ON THE END. The
+                            // plural was `"%d turn%s"` with the s supplied as
+                            // an argument, which is a rule about English
+                            // spelling standing in for a rule about number --
+                            // and leaves a translator a %s they cannot place.
+                            const char* eta = (turns == 1)
+                                ? TextFormat(T("%d turn"), turns)
+                                : TextFormat(T("%d turns"), turns);
+                            DrawText(eta, (int)mouse.x + 14, (int)mouse.y - 6, 12, WHITE);
+                        }
                     }
                 }
                 hoverScr = mouse;
@@ -3203,9 +3442,13 @@ void Game::drawInner() {
     if (!m_paused && m_turnState == TURN_NORMAL && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         Vector2 sm = getMouse();
         int sbBtnW = 180, sbBtnH = 36, sbGap = 8;
-        int sbX = 12, sbY = m_screenH - 58;
+        // From the same helper the panels clamp themselves against, so the
+        // two cannot drift apart again.
+        int sbX = 12, sbY = bottomLeftStubTop();
         Rectangle ptRect = {(float)sbX, (float)sbY, (float)sbBtnW, (float)sbBtnH};
-        if (CheckCollisionPointRec(sm, ptRect)) {
+        // The tutorial decides when a turn may be ended. Drawn greyed to
+        // match; see the button itself for why.
+        if (CheckCollisionPointRec(sm, ptRect) && tutorialAllowsEndTurn()) {
             if (mpIsClient()) {
                 // A client never resolves a turn: it submits and waits for the
                 // world the host produced. Resolving locally would compute a
@@ -3457,7 +3700,7 @@ void Game::drawInner() {
                 Color lc = wresearched ? (whover ? BLACK : WHITE) : Color{80,80,80,200};
                 DrawText(WTYPE_NAME[wi], (int)(lp.x - MeasureText(WTYPE_NAME[wi], lfs)*0.5f), (int)(lp.y - lfs*0.5f), lfs, lc);
             }
-            DrawText("Artillery", (int)(wc.x - MeasureText("Artillery", 9)*0.5f), (int)(wc.y - 5), 9, ColorAlpha(WHITE, 180));
+            DrawText(T("Artillery"), (int)(wc.x - MeasureText(T("Artillery"), 9)*0.5f), (int)(wc.y - 5), 9, ColorAlpha(WHITE, 180));
         }
         // ─── Army move order arrows + sliders ───
         if (m_activeViewTab == 5) {
@@ -3731,7 +3974,7 @@ void Game::drawInner() {
                         DrawText(WTYPE_NAME[wi], (int)(lp.x - MeasureText(WTYPE_NAME[wi], lfs)*0.5f), (int)(lp.y - lfs*0.5f), lfs, lc);
                     }
                     // Center label
-                    DrawText("Artillery", (int)(wc.x - MeasureText("Artillery", 9)*0.5f), (int)(wc.y - 5), 9, ColorAlpha(WHITE, 180));
+                    DrawText(T("Artillery"), (int)(wc.x - MeasureText(T("Artillery"), 9)*0.5f), (int)(wc.y - 5), 9, ColorAlpha(WHITE, 180));
                 }
             }
 
@@ -3802,19 +4045,23 @@ void Game::drawInner() {
             }
         }
     }
-    // Always show date and legends, regardless of spectator mode
+    
+// Always show date and legends, regardless of spectator mode
     if (!m_mapDate.empty() || m_playerCountryId == SPC_CID) {
         const int fontDate = 20;
         const int padX = 12, padY = 6;
         const int mainBarW = std::min(880, m_screenW - 32);
         const int mainBarX = m_screenW - mainBarW - 16;
-        const int mainBarY = m_screenH - 80 - 16;
-        const char* dateText = m_mapDate.empty() ? "Spectator Mode" : m_mapDate.c_str();
+        const int mainBarY = m_screenH - bottomBarH() - 16;
+        const std::string shownDate = localisedDate(m_mapDate);
+        const char* dateText = m_mapDate.empty() ? T("Spectator Mode") : shownDate.c_str();
         int dateW = MeasureText(dateText, fontDate);
         int dateH = fontDate + padY * 2;
         int datePanelW = dateW + padX * 2 + 4;
         int dateX = mainBarX + mainBarW - datePanelW;
         int dateY = mainBarY - dateH - 4;
+        offerUiTarget("label.date", {(float)dateX, (float)dateY,
+                                     (float)datePanelW, (float)dateH});
         DrawRectangleGradientH(dateX, dateY, datePanelW, dateH,
                                {0, 0, 0, 0}, {0, 0, 0, 180});
         DrawText(dateText, dateX + padX, dateY + padY, fontDate,
@@ -3823,13 +4070,17 @@ void Game::drawInner() {
         // Relations legend — above the toolbar, left of the date
         if (m_activeViewTab == 4) {
             struct LegendItem { const char* label; Color color; };
+            // T() AT THE TABLE, not at the draw. A struct table is not a
+            // shape tools/i18n_extract.py collects -- it cannot tell a label
+            // from an id inside one -- so the labels are wrapped where they
+            // are written, which is what puts them in front of a translator.
             LegendItem items[] = {
-                {"Self",    {0, 100, 255, 255}},
-                {"War",     {255, 50, 50, 255}},
-                {"Alliance",{50, 200, 50, 255}},
-                {"Guarantee",{255, 255, 50, 255}},
-                {"Non-aggr",{255, 165, 0, 255}},
-                {"Neutral", {80, 80, 80, 255}},
+                {T("Self"),      odPalette::relation(odPalette::Rel::Self)},
+                {T("War"),       odPalette::relation(odPalette::Rel::War)},
+                {T("Alliance"),  odPalette::relation(odPalette::Rel::Alliance)},
+                {T("Guarantee"), odPalette::relation(odPalette::Rel::Guarantee)},
+                {T("Non-aggr"),  odPalette::relation(odPalette::Rel::NonAggression)},
+                {T("Neutral"),   odPalette::relation(odPalette::Rel::Neutral)},
             };
             int legFont = 14;
             int swatchSize = 10;
@@ -3859,7 +4110,7 @@ void Game::drawInner() {
     if (m_activeViewTab == 7 && (!m_mapDate.empty() || m_playerCountryId == SPC_CID)) {
         const int mainBarW = std::min(880, m_screenW - 32);
         const int mainBarX = m_screenW - mainBarW - 16;
-        const int mainBarY = m_screenH - 80 - 16;
+        const int mainBarY = m_screenH - bottomBarH() - 16;
         const int fontDate = 20;
         const int padX = 12, padY = 6;
         int dateH = fontDate + padY * 2;
@@ -3889,7 +4140,7 @@ void Game::drawInner() {
     if (m_activeViewTab == 6 && (!m_mapDate.empty() || m_playerCountryId == SPC_CID)) {
         const int mainBarW2 = std::min(880, m_screenW - 32);
         const int mainBarX2 = m_screenW - mainBarW2 - 16;
-        const int mainBarY2 = m_screenH - 80 - 16;
+        const int mainBarY2 = m_screenH - bottomBarH() - 16;
         const int fontD = 20;
         const int pX = 12, pY = 6;
         int dH = fontD + pY * 2;
@@ -3926,10 +4177,20 @@ void Game::drawInner() {
     // Player country indicator — always visible, top-left corner
     if (m_playerCountryId > 0) {
         int ph = 64;
-        DrawRectangle(0, 0, 360, ph, {10, 10, 15, 220});
-        DrawText("PLAYING AS", 12, 4, 10, {160, 160, 170, 255});
+        // Who you are and what you have. Two targets, not one: a lesson about
+        // money wants the balance ringed, not the whole banner with the flag
+        // and the country name in it.
+        // FULL WIDTH WHEN THERE IS NOT MUCH OF IT. The banner was 360 points
+        // wide whatever the window was, so on a 402-point phone it left a
+        // 42-point strip of bare map down its right edge with whatever country
+        // label happened to be there showing through it.
+        const int bannerW = compactHud() ? m_screenW : 360;
+        offerUiTarget("panel.country", {0, 0, (float)bannerW, (float)ph});
+        offerUiTarget("label.treasury", {8, 40, 130, 22});
+        DrawRectangle(0, 0, bannerW, ph, {10, 10, 15, 220});
+        DrawText(T("PLAYING AS"), 12, 4, 10, {160, 160, 170, 255});
         if (m_playerCountryId == SPC_CID) {
-            DrawText("SPECTATOR", 12, 18, 20, {200, 200, 210, 255});
+            DrawText(T("SPECTATOR"), 12, 18, 20, {200, 200, 210, 255});
         } else {
             const Country* pc = m_countries.getCountry(m_playerCountryId);
             if (pc) {
@@ -3937,10 +4198,17 @@ void Game::drawInner() {
                 if (pfit != m_countryFlags.end() && pfit->second.id > 0) {
                     DrawTexturePro(pfit->second,
                         {0, 0, (float)pfit->second.width, (float)pfit->second.height},
-                        {360 - 12 - 80, 6, 80, 32},
+                        {(float)(bannerW - 12 - 80), 6, 80, 32},
                         {0, 0}, 0.0f, WHITE);
                 }
-                DrawText(pc->name.c_str(), 12, 18, 20, WHITE);
+                // The player's OWN country, top-left on every screen, was
+                // the one country name never put through properName -- and
+                // the one drawn with no idea how much room it had, so
+                // "United States of America" ran underneath its own flag.
+                int nameFs = 20;
+                const std::string shownName = odText::fitToWidth(
+                    od::i18n::properName(pc->name), bannerW - 12 - 92, nameFs, 13);
+                DrawText(shownName.c_str(), 12, 18, nameFs, WHITE);
                 float treasury = pc->treasury;
                 Color balCol = (treasury >= 0) ? Color{180, 230, 180, 255} : Color{230, 130, 130, 255};
                 DrawText(TextFormat("$%.2f", treasury), 12, 44, 14, balCol);
@@ -3959,13 +4227,22 @@ void Game::drawInner() {
     // ─── Bottom-left stub buttons (only when not processing turn) ───
     if ((!m_mapDate.empty() || m_playerCountryId == SPC_CID) && m_turnState == TURN_NORMAL) {
         int sbBtnW = 180, sbBtnH = 36, sbGap = 8;
-        int sbX = 12, sbY = m_screenH - 58;
+        int sbX = 12, sbY = m_screenH - bottomBarH() - 16 - sbBtnH - 6;
         Vector2 sm = getMouse();
         // Process Turn stub
         Rectangle ptRect = {(float)sbX, (float)sbY, (float)sbBtnW, (float)sbBtnH};
-        bool ptHov = !m_paused && CheckCollisionPointRec(sm, ptRect);
-        DrawRectangleRounded(ptRect, 0.1f, 6, ptHov ? Color{40,100,60,220} : Color{30,70,45,220});
-        DrawRectangleRoundedLines(ptRect, 0.1f, 6, Color{60,150,90,180});
+        offerUiTarget("button.end_turn", ptRect);
+        // Greyed while the tutorial is not asking for it, and drawn that way
+        // rather than merely ignoring the click: a button that looks alive
+        // and does nothing reads as a bug, and this is the button the whole
+        // lesson is building up to pressing.
+        const bool ptAllowed = tutorialAllowsEndTurn();
+        bool ptHov = !m_paused && ptAllowed && CheckCollisionPointRec(sm, ptRect);
+        DrawRectangleRounded(ptRect, 0.1f, 6,
+            !ptAllowed ? Color{28, 34, 30, 200}
+                       : ptHov ? Color{40,100,60,220} : Color{30,70,45,220});
+        DrawRectangleRoundedLines(ptRect, 0.1f, 6,
+            ptAllowed ? Color{60,150,90,180} : Color{60, 70, 62, 140});
         // What the button actually does depends on who you are: a client says
         // "ready", the host says "my orders are in" -- and neither resolves
         // anything by itself.
@@ -3973,7 +4250,8 @@ void Game::drawInner() {
                             ? (mpAmReady() ? "Not ready" : "Ready")
                             : "Process Turn";
         int ptw = MeasureText(ptLabel, 16);
-        DrawText(ptLabel, sbX+(sbBtnW-ptw)/2, sbY+10, 16, WHITE);
+        DrawText(ptLabel, sbX+(sbBtnW-ptw)/2, sbY+10, 16,
+                 ptAllowed ? WHITE : Color{120, 130, 124, 220});
 
         // ─── who the turn is waiting on, and for how long ───
         //
@@ -4008,9 +4286,28 @@ void Game::drawInner() {
 
     // Draw notifications
     drawNotifications();
+    drawCountryFinder();
+    drawUiHint();
 
     // Draw ceasefire screen on top if active
     if (m_inCeasefireScreen) drawCeasefireScreen();
+
+    // Every overlay panel closes by the same X in the top right -- economy,
+    // politics, research and claims all place it at exactly this rectangle.
+    // Offered whenever one of them is up, because a tutorial that says "close
+    // it again" while ringing the TAB is pointing at the wrong control: the
+    // tab opened it, the X shuts it.
+    if (m_inEconomy || m_inPolitics || m_inResearch || m_inClaims)
+        offerUiTarget("panel.close", {(float)(m_screenW - 44), 8, 36, 36});
+
+    // The pointer goes UNDER the textbox and over everything else: it rings a
+    // piece of the interface, so it has to be drawn after that interface, and
+    // it must not be drawn over the words explaining what it is pointing at.
+    drawTutorialPointer();
+
+    // The comms window sits over the map but under mod panels and dialogs.
+    drawComms();
+    drawDialogue();
 
     // Mod panels last, so a mod can never paint over a game dialog.
     drawModPanels();
@@ -4042,13 +4339,15 @@ const char* Game::bulkPaintType() const {
 
 std::string Game::bulkPaintLabel() const {
     if (m_bulkTarget == BULK_SPECIALIZE)
-        return m_bulkSpecResource.empty() ? "best-resource specialization"
-                                          : m_bulkSpecResource + " specialization";
+        return m_bulkSpecResource.empty()
+                   ? std::string(T("best-resource specialization"))
+                   : TextFormat(T("%s specialization"),
+                                od::i18n::tr(m_bulkSpecResource));
     const char* t = bulkPaintType();
     if (!t) return "";
-    if (strcmp(t, "industry") == 0) return "industry upgrade";
-    if (strcmp(t, "fortification") == 0) return "fort upgrade";
-    return "port upgrade";
+    if (strcmp(t, "industry") == 0) return T("industry upgrade");
+    if (strcmp(t, "fortification") == 0) return T("fort upgrade");
+    return T("port upgrade");
 }
 
 bool Game::upgradeQuote(int provinceId, const char* type,
@@ -4250,7 +4549,7 @@ void Game::commitBulkSelection() {
     // set is unordered, so "which half" would not even be stable.
     const double treasury = m_countries.getAll()[m_playerCountryId].treasury;
     if (treasury < cost) {
-        addNotification(TextFormat("Not enough money: %d %s%s cost $%.0f, you have $%.0f.",
+        addNotification(TextFormat(T("Not enough money: %d %s%s cost $%.0f, you have $%.0f."),
                                    count, bulkPaintLabel().c_str(), count == 1 ? "" : "s",
                                    (double)cost, treasury),
                         Color{230, 130, 130, 255});
@@ -4269,7 +4568,7 @@ void Game::commitBulkSelection() {
         Audio::get().playSfx(spec ? "build_industry"
                                   : (strcmp(type, "port") == 0 ? "build_port"
                                                                : "build_industry"), 0.04f);
-        addNotification(TextFormat("Queued %d %s%s for $%.0f.", queued,
+        addNotification(TextFormat(T("Queued %d %s%s for $%.0f."), queued,
                                    bulkPaintLabel().c_str(),
                                    queued == 1 ? "" : "s", (double)cost));
     }
@@ -4371,10 +4670,10 @@ void Game::buildToolbarRow(std::vector<ToolbarButton>& out) const {
                            id, std::move(label), on});
         };
         if (pending > 0)
-            addUpper(TB_SCRAP_ALL, 200, TextFormat("Cancel scrap (%d)", pending), true);
+            addUpper(TB_SCRAP_ALL, 200, TextFormat(T("Cancel scrap (%d)"), pending), true);
         else if (const int n = scrappableShips())
             addUpper(TB_SCRAP_ALL, 200,
-                     TextFormat("Scrap all (%d hull%s)", n, n == 1 ? "" : "s"), false);
+                     TextFormat(n == 1 ? T("Scrap all (%d hull)") : T("Scrap all (%d hulls)"), n), false);
     }
 
     // ── The army view's one control ──
@@ -4386,13 +4685,13 @@ void Game::buildToolbarRow(std::vector<ToolbarButton>& out) const {
         }
         if (pendingProvs > 0) {
             add(TB_DISBAND_ALL, 210,
-                TextFormat("Cancel disband (%d)", pendingProvs), true);
+                TextFormat(T("Cancel disband (%d)"), pendingProvs), true);
         } else {
             long long troops = 0;
             const int n = disbandableProvinces(troops);
             if (n > 0)
                 add(TB_DISBAND_ALL, 210,
-                    TextFormat("Disband all (%s)", formatTroops(troops).c_str()), false);
+                    TextFormat(T("Disband all (%s)"), formatTroops(troops).c_str()), false);
         }
         return;
     }
@@ -4404,16 +4703,19 @@ void Game::buildToolbarRow(std::vector<ToolbarButton>& out) const {
     const bool specOn = m_bulkPaint && m_bulkTarget == BULK_SPECIALIZE;
     const bool upgOn  = m_bulkPaint && m_bulkTarget == BULK_UPGRADE;
 
-    add(TB_BULK_UPGRADE, 150, upgOn ? "Bulk upgrade: on" : "Bulk upgrade", upgOn);
+    // T() HERE, not at the draw site: buildToolbarRow hands the label to the
+    // renderer as a std::string, and by then it is a value with no key.
+    add(TB_BULK_UPGRADE, 150, upgOn ? T("Bulk upgrade: on") : T("Bulk upgrade"), upgOn);
     if (specView)
-        add(TB_BULK_SPECIALIZE, 165, specOn ? "Bulk specialize: on" : "Bulk specialize", specOn);
+        add(TB_BULK_SPECIALIZE, 165,
+            specOn ? T("Bulk specialize: on") : T("Bulk specialize"), specOn);
 
     // The map editor's compromise, borrowed whole: while a brush owns the left
     // button the map cannot be dragged, and a player who cannot move the map
     // cannot reach the provinces they meant to paint. So it is one toggle,
     // right beside the thing that took panning away.
     if (m_bulkPaint)
-        add(TB_BULK_PANMODE, 90, m_bulkPanMode ? "Pan" : "Paint", !m_bulkPanMode);
+        add(TB_BULK_PANMODE, 90, m_bulkPanMode ? T("Pan") : T("Paint"), !m_bulkPanMode);
 
     // ── Which resource the specialisation brush paints ──
     //
@@ -4444,13 +4746,12 @@ bool Game::handleToolbarRowClick(Vector2 mouse) {
             case TB_DISBAND_ALL: {
                 const int cancelled = cancelAllDisbands();
                 if (cancelled > 0) {
-                    addNotification(TextFormat("Cancelled %d disband order%s.",
+                    addNotification(TextFormat(T("Cancelled %d disband order%s."),
                                                cancelled, cancelled == 1 ? "" : "s"));
                 } else {
                     const int n = disbandAllArmies();
                     if (n > 0)
-                        addNotification(TextFormat("Disbanding every garrison in %d "
-                                                   "province%s at the end of the turn.",
+                        addNotification(TextFormat(T("Disbanding every garrison in %d province%s at the end of the turn."),
                                                    n, n == 1 ? "" : "s"),
                                         Color{235, 170, 120, 255}, 7.0f);
                 }
@@ -4459,13 +4760,13 @@ bool Game::handleToolbarRowClick(Vector2 mouse) {
             case TB_SCRAP_ALL: {
                 const int cancelled = cancelAllScraps();
                 if (cancelled > 0) {
-                    addNotification(TextFormat("Cancelled %d scrap order%s.",
+                    addNotification(TextFormat(T("Cancelled %d scrap order%s."),
                                                cancelled, cancelled == 1 ? "" : "s"));
                 } else {
                     const int n = scrapAllShips();
                     if (n > 0)
-                        addNotification(TextFormat("Scrapping %d hull%s at the end of "
-                                                   "the turn.", n, n == 1 ? "" : "s"),
+                        addNotification(TextFormat(T("Scrapping %d hull%s at the end of the turn."),
+                                                   n, n == 1 ? "" : "s"),
                                         Color{235, 170, 120, 255}, 7.0f);
                 }
                 break;
@@ -4597,7 +4898,7 @@ void Game::drawBulkConfirmPanel() {
     DrawRectangle(px, py, panelW, panelH, Color{12, 14, 20, 245});
     DrawRectangleLines(px, py, panelW, panelH, Color{110, 120, 145, 200});
 
-    DrawText(TextFormat("%d province%s: %s", count, count == 1 ? "" : "s",
+    DrawText(TextFormat(T("%d province%s: %s"), count, count == 1 ? "" : "s",
                         bulkPaintLabel().c_str()),
              px + 12, py + 10, 16, WHITE);
     // Under Optimal the count hides five different answers, so the split is
@@ -4619,7 +4920,7 @@ void Game::drawBulkConfirmPanel() {
             DrawText(split.c_str(), px + 12, py + 31, 13, Color{190, 190, 210, 255});
     }
     // The number that decides the button, in the colour of the answer.
-    DrawText(TextFormat("$%.0f  of  $%.0f", (double)cost, treasury),
+    DrawText(TextFormat(T("$%.0f  of  $%.0f"), (double)cost, treasury),
              px + 12, py + (bulkSplitShown() ? 50 : 30), 14,
              affordable ? Color{170, 220, 170, 255} : Color{235, 140, 140, 255});
 
@@ -4644,7 +4945,7 @@ void Game::drawBulkConfirmPanel() {
     const bool noHover = !m_paused && CheckCollisionPointRec(mouse, noRect);
     DrawRectangle(cx, byy, bw, bh, noHover ? Color{70, 45, 45, 235} : Color{45, 32, 32, 225});
     DrawRectangleLines(cx, byy, bw, bh, Color{140, 100, 100, 190});
-    const int noTw = MeasureText("Clear", 14);
-    DrawText("Clear", cx + (bw - noTw) / 2, byy + (bh - 14) / 2, 14,
+    const int noTw = MeasureText(T("Clear"), 14);
+    DrawText(T("Clear"), cx + (bw - noTw) / 2, byy + (bh - 14) / 2, 14,
              noHover ? WHITE : LIGHTGRAY);
 }

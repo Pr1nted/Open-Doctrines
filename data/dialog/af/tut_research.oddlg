@@ -1,0 +1,31 @@
+// Vertaling - navorsing.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Navorsing. Maak dit oop - die klagte is altyd dieselfde - niks wat jy begin lyk
+ooit klaar te kom nie - en dit is nie 'n fout nie, dit is die punt.
+---
+@Signals Officer
+Alles hier word gemeet in beurte wat jy nog nie gespeel het nie. Wat jy nou begin,
+land lank nadat jy vergeet het jy wou dit hê, wat beteken die enigste slegte tyd om
+te begin is later.
+---
+@Signals Officer
+Dit put uit dieselfde geld as die leër. 'n Land wat alles navors stel niks op nie,
+en 'n land wat alles opstel veg oor twintig beurte nog steeds die oorlog van die
+vorige dekade.
+
+Kies 'n baan. Moenie almal kies nie.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Maak dit weer toe - die §**x**§ in die hoek.
+---
+@Signals Officer
+Voltooide werk pas homself nie met terugwerkende krag toe nie. Nuwe toerusting
+bereik eers nuwe formasies, so die beurt waarin iets voltooi is die beurt om te
+kyk wat jy bou, nie die beurt om te ontspan nie.
+
+Dit is navorsing. Iets anders?

@@ -408,6 +408,16 @@ def main():
     step("18l", "Re-encode the finished maps to their smallest lossless form")
     run([sys.executable, os.path.join(TOOLS_DIR, "shrink_maps.py")], "map re-encode")
 
+    # The same pass for the images that do NOT live inside an archive: the
+    # flags this pipeline downloads, the app icon, the map thumbnails. Same
+    # argument as 18l, and here too it runs once at the end rather than being
+    # something each downloader has to remember. Failure is not fatal -- a
+    # bigger PNG is a bigger PNG, not a broken build -- so the pipeline carries
+    # on and says so.
+    step("18m", "Re-encode the loose PNGs to their smallest lossless form")
+    run_ignore_fail([sys.executable, os.path.join(TOOLS_DIR, "shrink_pngs.py"), "--quiet"],
+                    "png re-encode")
+
     # ── Step 19: Generate zero-turn save ──────────────────────────
     step(19, "Generate zero-turn save (.odsv)")
     run_ignore_fail(

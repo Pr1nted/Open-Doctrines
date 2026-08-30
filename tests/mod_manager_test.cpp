@@ -18,6 +18,12 @@
 #include <filesystem>
 #include <vector>
 
+// ModManager::modStateName puts the mod states through T(), which links the
+// translation table -- and Locale calls odText::setComplexArabic on every
+// language change. That lives in Text.cpp with raylib behind it, and this test
+// is headless and never draws. Same stub, same reason, as locale_test.cpp.
+namespace odText { void setComplexArabic(bool) {} }
+
 namespace {
 
 int g_failures = 0;

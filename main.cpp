@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     // is meant to run unattended. The text still goes to stderr.
     for (int i = 1; i < argc; ++i) {
         static const char* kHeadless[] = {
-            "--train-ai", "--eval-ai", "--simulate", "--screenshots",
+            "--train-ai", "--eval-ai", "--simulate", "--screenshots", "--tutorial-walk",
             "--export-timelapse", "--merge-ai", "--reset-ai-head",
         };
         for (const char* f : kHeadless)
@@ -152,6 +152,34 @@ int main(int argc, char** argv) {
         return g.runHeadlessSimulation(map, turns, world) ? 0 : 1;
     }
 
+    // --measure-text <jobs.tsv> <out.tsv>
+    //
+    // Measure strings the way the GAME measures them, in whatever language is
+    // asked for, and write the widths out. It exists because nothing outside
+    // the game can do this honestly: a translation with non-Latin characters
+    // is measured against the per-language glyph atlas, a pure-ASCII one goes
+    // to raylib's own variable-width font, and Urdu goes through HarfBuzz --
+    // three different answers, none of them a character count. An offline
+    // model of that was wrong by up to 17% on the first strings it was checked
+    // against, which is the whole margin a button has.
+    //
+    // Input:  <language>\t<fontSize>\t<text>
+    // Output: <language>\t<fontSize>\t<width>\t<text>
+    //
+    // tools/i18n_fit.py drives it. Needs a window, because the atlas it
+    // measures against is a texture.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--measure-text") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--measure-text needs an input and an output path\n");
+            return 2;
+        }
+        Audio::s_disabled = true;
+        Game g;
+        if (!g.init(1600, 900, "OpenDoctrines — measuring")) return 1;
+        return g.measureTextJobs(argv[i + 1], argv[i + 2]) ? 0 : 1;
+    }
+
     // --screenshots <dir> [save.odsv]
     // Walks the game through a fixed list of screens and writes a PNG of each,
     // so the images in README.md and on the store page can be retaken with one
@@ -197,6 +225,74 @@ int main(int argc, char** argv) {
         game.beginScreenshotTour(shotDir, shotSave);
         game.run();
         return 0;
+    }
+
+    // --tutorial-walk
+    // Plays every route of the tutorial, page by page, and reports every page
+    // that points at nothing, waits on a condition that never comes true, or
+    // offers a choice that opens a script which is not there. Needs a window
+    // for the same reason the tour does: the checks are about what was drawn.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--tutorial-walk") != 0) continue;
+        game.beginTutorialWalk();
+        game.run();
+        return game.tutorialWalkProblems() == 0 ? 0 : 1;
+    }
+
+    // --bench-play <map:ISO> [turns]
+    //
+    // Puts a PERSON on one of the benchmark seats the AI is scored on: same map,
+    // same country, every other country played by the frozen scripted rung, and
+    // the run stops and prints its score on the same turn the model's did. That
+    // last part is the whole point -- a human number and a model number on one
+    // scale, so "how good is the AI" has an answer somebody can check.
+    //
+    //   tools/od_bench.py --list-seats     what the seats are
+    //   OpenDoctrines --bench-play 1939:NOR
+    //   OpenDoctrines --bench-play 1939:NOR:rush
+    //
+    // A normal window, because a person is playing it.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--bench-play") != 0) continue;
+        if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+            fprintf(stderr, "--bench-play needs a seat, e.g. 1939:NOR "
+                            "or 1939:NOR:rush\n");
+            return 2;
+        }
+        int untilTurn = 120;   // must match tools/od_bench.py TURNS
+        if (i + 2 < argc && argv[i + 2][0] >= '0' && argv[i + 2][0] <= '9')
+            untilTurn = atoi(argv[i + 2]);
+        game.startBenchSeat(argv[i + 1], untilTurn);
+        game.run();
+        return 0;
+    }
+
+    // --bench-agent <seat> <save.odsv> [--do e:1,w:2] [--until N]
+    //
+    // A benchmark seat played by hand, a turn per invocation, against the same
+    // scripted world the model faces. Prints the position and the legal actions
+    // and stops; run it again with --do to take them. See Game::runBenchAgent.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--bench-agent") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--bench-agent needs a seat and a command FIFO, e.g. "
+                            "mkfifo /tmp/od.fifo && --bench-agent 1914:FRA:rush /tmp/od.fifo\n");
+            return 2;
+        }
+        AISystem::s_readOnlyModel = true;
+        Audio::s_disabled = true;
+        const std::string seat = argv[i + 1];
+        const std::string save = argv[i + 2];
+        int until = 120;
+        unsigned int seed = 20260801u;   // the seat bench's first seed
+        for (int k = 1; k < argc - 1; ++k) {
+            if (strcmp(argv[k], "--until") == 0) until = atoi(argv[k + 1]);
+            if (strcmp(argv[k], "--seed") == 0)
+                seed = (unsigned int)strtoul(argv[k + 1], nullptr, 10);
+        }
+        Game g;
+        if (!g.init(1600, 900, "OpenDoctrines — bench agent")) return 1;
+        return g.runBenchAgent(seat, save, seed, until) ? 0 : 1;
     }
 
     // Headless AI self-play training:
@@ -305,10 +401,43 @@ int main(int argc, char** argv) {
         bool vsRandom = false, scenarios = false;
         std::string vsModel;
         for (int i = 1; i < argc; ++i) {
+            // --bench-seat <ISO>: the ABSOLUTE score. One country is played by
+            // the model and every other country in the world plays the frozen
+            // scripted rung, so the result does not depend on what it was
+            // measured against -- unlike ADVANTAGE, --vs-model and the ordinary
+            // cohort split, all of which move when the opponent moves. The same
+            // seat can be played by a person; see tools/od_bench.py.
+            if (strcmp(argv[i], "--bench-seat") == 0 && i + 1 < argc) {
+                game.setBenchSeat(argv[i + 1]);
+                AISystem::s_scriptedControl = true;
+            }
+            // --rush-neighbours: with --bench-seat and --vs-exploit, only the
+            // seat's land neighbours play the exploit. See s_exploitCids.
+            // --rush-neighbours [N]: only the seat's N largest land neighbours
+            // play the exploit (default 1; "all" for every neighbour). See the
+            // note in Game_AITrain -- all of them at once is HARDER than a
+            // world-wide rush, not softer.
+            if (strcmp(argv[i], "--rush-neighbours") == 0) {
+                int howMany = 1;
+                if (i + 1 < argc && strcmp(argv[i + 1], "all") == 0) howMany = -1;
+                else if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9')
+                    howMany = atoi(argv[i + 1]);
+                game.setBenchRushNeighbours(howMany);
+            }
             if (strcmp(argv[i], "--vs-random") == 0) vsRandom = true;
             if (strcmp(argv[i], "--scenarios") == 0) scenarios = true;
             if (strcmp(argv[i], "--vs-script") == 0)
                 AISystem::s_scriptedControl = true;
+            // --vs-exploit <n>: the control cohort plays one of the hand-written
+            // EXPLOITS instead of a yardstick -- a one-note human strategy
+            // played every turn without deviation. See AISystem::ScriptVariant.
+            // 2 tech, 3 blitz, 4 diplomacy hub, 5 sea power.
+            if (strcmp(argv[i], "--vs-exploit") == 0 && i + 1 < argc) {
+                AISystem::s_scriptedControl = true;
+                AISystem::s_exploitVariant =
+                    std::clamp(atoi(argv[i + 1]), 2,
+                               (int)AISystem::SCRIPT_VARIANT_COUNT - 1);
+            }
             // Script against script: no network anywhere. The MODEL cohort
             // turtles, the control attacks, and the only question on the table
             // is whether aggression pays in this game at all.
@@ -354,6 +483,12 @@ int main(int argc, char** argv) {
         game.loadSaveAndStart(std::string(argv[i]));
         break;
     }
+
+    // --tutorial: in at the deep end, exactly as clicking the menu's "?"
+    // does. After the save-path loop above, so it wins over a save named on
+    // the same line rather than racing it.
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--tutorial") == 0) { game.startTutorial(); break; }
 
     game.run();
     return 0;

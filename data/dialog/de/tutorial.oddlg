@@ -1,0 +1,317 @@
+// Übersetzung - Mias Lektion. :: Zeilen, Sprecher und {key=...} sind Kennungen.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Also. Ashford. Sieben Provinzen, ein Nachbar, der uns schon nicht mag, und eine
+Insel, zu der wir nicht laufen können.
+
+Klein genug zum Lernen. Genau darum sind wir hier.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klicken Sie eine beliebige Provinz an, und dieses Feld sagt Ihnen, was sie ist:
+wem sie gehört, wer dort lebt, was sie erzeugt und wie nah die Leute daran
+sind, deswegen zu randalieren.
+
+Alles, was Sie in diesem Spiel tun, tun Sie einer Provinz.
+---
+@Signals Officer
+:: point=view.population
+Die Leiste unten sind nicht acht Knöpfe. Es sind acht Arten, DIESELBE Karte
+anzusehen, und Sie werden das ganze Spiel zwischen ihnen wechseln.
+
+Diese färbt jede Provinz danach, wie viele Menschen darin leben.
+---
+@Signals Officer
+:: point=view.industry
+Industrie. Wo die Fabriken stehen und damit, woher Geld und Gerät kommen.
+
+Bevölkerung und Industrie zusammen sagen Ihnen, welche Provinzen sich zu nehmen
+lohnen und welche bloß Boden sind.
+---
+@Signals Officer
+:: point=view.defence
+Verteidigung zeigt die Forts. Dunkel heißt, jemand hat sich eingegraben, und
+ein Angriff in dunklen Boden kostet weit mehr, als die Zahlen vermuten lassen.
+---
+@Signals Officer
+:: point=view.relations
+Beziehungen: wer mit wem Krieg führt und wer wem eine Garantie gibt. Prüfen Sie
+das, bevor Sie etwas anfangen - die Hälfte der hier verlorenen Kriege ging
+gegen drei Länder, nicht gegen eines.
+---
+@Signals Officer
+:: point=view.army
+Heer. Jede Besatzung auf der Karte zugleich, Ihre und ihre.
+
+In dieser Ansicht sollten Sie sein, während Sie Männer bewegen, denn nur sie
+zeigt, was auf sie wartet.
+---
+@Signals Officer
+:: point=view.navy
+Marine tut dasselbe für Schiffe, und von dort verladen Sie Transporter.
+
+Rohstoffe und Ländernamen sind die letzten beiden und tun, was sie sagen.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Zuerst §**die Wirtschaft**§, denn aus ihr wird alles andere bezahlt.
+
+Öffnen Sie sie.
+---
+@Signals Officer
+Industrie ist das, womit Sie bauen, und sie wächst dort, wo schon Bevölkerung
+ist. Stellen Sie eine Fabrik ins Leere, und Sie haben einen sehr teuren
+Schuppen gekauft.
+
+Einnahmen kommen einmal pro Runde. Geben Sie sie aus, bevor Sie sie haben, und
+der Fehlbetrag geht von der Einsatzbereitschaft ab.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Jetzt wieder schließen - derselbe Knopf. Das Feld verdeckt die Karte, und ich
+kann Ihnen da draußen nichts zeigen, solange Sie hier drin sind.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+§**Forschung**§ als Nächstes. Öffnen Sie sie.
+---
+@Signals Officer
+Nichts, was Sie hier beginnen, wird diese Runde fertig, und das meiste wird
+lange fertig, nachdem Sie vergessen haben, dass Sie es wollten.
+
+Genau deshalb lohnt es sich, früh anzufangen.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Wieder hinaus.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politik**§. Hinein mit Ihnen.
+---
+@Signals Officer
+Politiken kosten Unterhalt, keine einmalige Summe - sie sind eine laufende
+Rechnung, und sie verschieben, wo das Land politisch steht.
+
+Wehrpflicht füllt die Reihen. Sie schafft auch Leute, die nicht in den Reihen
+sein wollten, und das ist die Zahl, die man beobachtet.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Und hinaus.
+---
+@Signals Officer
+Diese Zahl ist die §**Unruhe**§.
+
+Eine Provinz mit hoher Unruhe hört auf zu zahlen und fängt an, sich zu
+organisieren. Ignorieren Sie es lange genug, und sie geht - mit ihrer
+Industrie, ihrer Bevölkerung und ihrer Meinung über Sie.
+
+Sie bekommen eine Warnung. Eine zweite nicht immer.
+---
+@Signals Officer
+:: point=view.relations
+Noch eines vor den Feldern: ein Krieg muss nicht damit enden, dass jemand
+stirbt.
+
+§**Waffenstillstands**§- und §**Handels**§-Angebote kommen als Fenster mit
+Bedingungen - wer aufhört zu kämpfen, wer was aufgibt. Lesen Sie die
+Bedingungen. Nehmen Sie an, und der Krieg endet zu diesen Bedingungen, nicht zu
+netten.
+---
+@Signals Officer
+Sie können auch selbst eines eröffnen, aus der Beziehungen-Ansicht: wählen Sie
+ein Land, mit dem Sie im Krieg sind, und fragen Sie. Sie sagen ja, wenn sie
+verlieren, und nein, wenn nicht, und darin besteht die meiste Diplomatie dieses
+Spiels.
+
+Ein §**Handelsabkommen**§ hat dieselbe Form ohne Krieg: Ware gegen Geld, jede
+Runde, bis jemand kündigt.
+---
+@Signals Officer
+Und niemand wird Ihnen während dieser Lektion eines von beidem anbieten. Ich
+habe es ihnen untersagt.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Letztes Feld. §**Ansprüche**§ sind, wie ein Krieg rechtmäßig wird.
+---
+@Signals Officer
+Machen Sie einen Anspruch geltend, den Sie haben, und die Welt zuckt mit den
+Schultern. Nehmen Sie Boden, den Sie nie beansprucht haben, und jeder, der
+unentschieden über Sie war, ist es nicht mehr.
+
+Melden Sie den Anspruch VOR dem Krieg an. Einer danach täuscht niemanden.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Schließen Sie es, und gehen wir etwas davon anwenden.
+---
+@Signals Officer
+Nun das Heer.
+
+Wählen Sie eine Provinz, die Ihnen gehört, halten Sie §{key=army_move}§ und
+klicken Sie dorthin, wo die Männer hin sollen. Nur eine Nachbarprovinz - ein
+Heer marschiert, es springt nicht.
+---
+@Signals Officer
+Artillerie liegt auf §{key=artillery_wheel}§. Halten Sie es, und das Rad
+öffnet sich: von Mörsern bis zu Dingen, die ich lieber nicht aufschreibe.
+
+Schiffe haben eigene: §{key=ship_move}§ zum Bewegen, §{key=ship_wheel}§ für
+ihre Geschütze, §{key=ship_engage}§, um einen Kampf zu suchen.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Auch Heere entstehen nicht aus dem Nichts. §**Sie heben sie aus**§, Provinz für
+Provinz, aus den Menschen, die dort leben.
+
+Wählen Sie eine von unseren und sehen Sie sich das Feld an.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Da sind ein Schieber und ein §**Ausheben**§-Knopf. Der Schieber ist, wie viel
+von dem, was die Provinz entbehren kann, Sie diese Runde nehmen - höchstens
+etwa ein Fünftel ihrer Bevölkerung, weniger, wo die Leute unzufrieden sind.
+
+Es kostet Geld, und die Männer treffen nächste Runde ein. Ordern Sie jetzt
+welche.
+---
+@Signals Officer
+Eine Provinz, der Sie die Männer genommen haben, ist eine Provinz, in die jeder
+hineinlaufen kann, und eine, der Sie die Menschen genommen haben, bleibt für
+immer ärmer. Ausheben gibt etwas aus, es schafft nichts.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Bevor Sie irgendjemanden bewegen: §**nichts geschieht, bis Sie die Runde
+beenden.**§
+
+Sie haben ihn vielleicht ausgegraut bemerkt. Das war ich.
+
+Sie geben Befehle. Die liegen da. Sie drücken hier, und dann geschehen sie alle
+zugleich - und deshalb kann ein ganzer Feldzug in einer einzigen Runde
+entschieden werden, wenn die Befehle gut waren.
+---
+@Signals Officer
+Kestrel hält das Ostende unserer Insel, sie sind schon im Krieg mit uns, und
+sie haben achtundvierzigtausend Mann.
+
+Wir haben siebenhundertzwanzigtausend.
+---
+@Signals Officer
+:: until=destroyed:KES
+Also tun Sie es in §**einer Runde**§. Befehlen Sie, jede ihrer Provinzen zu
+nehmen - alle vier, eine nach der anderen, bevor Sie irgendetwas beenden - und
+drücken Sie dann Runde abrechnen und sehen Sie zu, wie sich alles auflöst.
+
+Das ist der Takt dieses Spiels. Alles andere sind Einzelheiten.
+---
+@Signals Officer
+:: act=rebellion
+... Sie haben ein Problem zu Hause.
+
+Die Unruhe in den eben genommenen Provinzen ist übergelaufen. Sie haben sich
+für sich selbst erklärt, und sie fragen nicht.
+---
+@Signals Officer
+:: until=rebels:none
+Das habe ich gemeint. Ein Aufstand ist jetzt ein Land - er hat Provinzen,
+Männer und eine Grenze mit Ihnen.
+
+Schlagen Sie ihn nieder wie alles andere auch. So leicht wie Kestrel wird es
+nicht.
+---
+@Signals Officer
+Bleibt Verrick, jenseits des Wassers.
+
+Kein Landweg. Kein Marsch bringt ein Heer dorthin, und hier bleiben die meisten
+stecken.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Und wir sind §**nicht im Krieg mit ihnen**§. Kestrel kam schon feindlich zu
+uns; Verrick hat nichts getan, und man kann nicht in einem Land landen, mit dem
+man Frieden hat.
+
+Also erklären wir. Jede Ansicht außer Bevölkerung, und klicken Sie eine ihrer
+Provinzen an.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Ihr Provinzfeld führt auf, was wir mit ihnen tun dürfen, §**Krieg erklären**§
+darunter. Darüber steht das §**Kriegsziel**§ - das, worauf Sie es angeblich
+abgesehen haben. Klicken Sie, um durchzuschalten.
+
+Das Ziel ist keine Verzierung: daran misst Sie die übrige Welt, und darüber
+wird später ein Waffenstillstand verhandelt.
+---
+@Signals Officer
+Erklären Sie ihn - und dann §**beenden Sie die Runde**§. Eine Erklärung ist ein
+Befehl wie jeder andere: sie wird jetzt eingereicht und geschieht, wenn die
+Runde abgerechnet wird. Auf der Karte ändert sich nichts, bis Sie den Knopf
+drücken.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Hier ist die ganze Überfahrt, in vier Zügen. Wählen Sie eine unserer
+Küstenprovinzen - eine mit §**Hafen**§ und Männern darin.
+---
+@Signals Officer
+:: point=panel.province
+Es müssen §**Männer darin stehen**§. Einschiffen ruft kein Heer herbei - es
+setzt die Besatzung, die schon da ist, auf ein Boot, also schifft ein Hafen mit
+leerer Provinz nichts ein.
+
+Marschieren Sie notfalls erst welche hinein.
+---
+@Signals Officer
+:: point=panel.province
+Dann, im Feld dieser Provinz: §**Heer einschiffen**§. Kostenlos, eine Runde.
+
+Drücken Sie es und beenden Sie die Runde. Die Besatzung verlässt die Provinz
+und wird zu einem §**Boot**§ vor der Küste, das sie als seine Mannschaft trägt.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Gehen Sie nun in die §**Marine**§-Ansicht. Von der Bevölkerungskarte aus können
+Sie einem Schiff keinen Befehl geben - das Boot ist nicht darauf.
+---
+@Signals Officer
+Wählen Sie das Boot. Drücken Sie §**Bewegen**§, und dann - das errät niemand -
+klicken Sie auf §**Land**§.
+
+Wasser bewegt es. Eine Küste §**setzt die Männer dort an Land**§. Das ist die
+Landung; einen eigenen Knopf dafür gibt es nicht.
+---
+@Signals Officer
+:: until=destroyed:VER
+Also: Männer in einer Hafenprovinz, einschiffen, Runde beenden,
+Marine-Ansicht, Boot bewegen, auf Land klicken.
+
+Und gehen Sie §**über Hallow Rock**§. Das ist keine Abkürzung, das ist die
+Route: ein Boot trägt nur so weit, und Verricks Küste liegt in einem Zug
+darüber hinaus. Landen Sie auf dem Fels, beenden Sie die Runde, dann die zweite
+Hälfte.
+
+Und halten Sie das Boot von ihrem Zerstörer fern. Ein beladenes sinkt mit allen
+an Bord.
+---
+@Signals Officer
+:: point=tab.claims
+Und beanspruchen Sie den Boden, bevor Sie ihn nehmen, nicht danach. Jetzt
+wissen Sie, warum.
+---
+@Signals Officer
+Das ist alles. Wirtschaft, Forschung, Politik, Unruhe, Ansprüche, Heere,
+Schiffe.
+
+Alles andere sind Einzelheiten, und die Einzelheiten lernen Sie, indem Sie an
+ihnen verlieren.
+---
+@Signals Officer
+:: act=then:outro
+Und das ist die Insel. Kommen Sie mit mir hoch ins Menü - die letzten zwei
+Dinge sind nicht hier unten.

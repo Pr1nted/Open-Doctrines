@@ -1,0 +1,34 @@
+// Çeviri - ekonomi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomi - açın. Bu oyundaki diğer her şey, onun ürettiğini nasıl harcayacağınız
+üzerine bir tartışmadır.
+---
+@Signals Officer
+§**Sanayi**§ insanların zaten olduğu yerde büyür. Boş bir ildeki fabrika pahalı
+bir barakadır: hammadde nüfustur, bina değil.
+---
+@Signals Officer
+Gelir tur başına bir kez, turun içinde gelir. Elinizdekinden fazlasına
+girişirseniz açık kibarca beklemez: hazırlıktan düşer ve siz bunu bir muharebede
+öğrenirsiniz.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Tekrar dışarı, bunun yerine tek bir ile bakalım.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Bizimkilerden birine tıklayın. Her il için panel neyi ürettiğini ve neye sahip
+olduğunu gösterir. Kaynaklar işlenmiş hâlde çıkarılmış hâlinden daha değerlidir,
+bu yüzden zengin bir ilin yanındaki sanayi ili, ikisinin tek başına toplamından
+daha değerlidir.
+---
+@Signals Officer
+Politikalar ise bir §**sürekli fatura**§, bir satın alma değil. Yürüttüğünüz her
+biri her tur düşülür, sonsuza dek, hâlâ bir işe yarasa da yaramasa da.
+
+Ekonomi budur. Başka bir şey?

@@ -1,0 +1,34 @@
+// Tłumaczenie - gospodarka.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Gospodarka - otwórz ją. Wszystko inne w tej grze jest sporem o to, jak wydać
+to, co ona wytwarza.
+---
+@Signals Officer
+§**Przemysł**§ rośnie tam, gdzie już są ludzie. Fabryka w pustej prowincji to
+droga szopa: surowcem jest ludność, nie budynek.
+---
+@Signals Officer
+Dochód przychodzi raz na turę, w turze. Weź na siebie więcej, niż masz, a
+niedobór nie poczeka grzecznie: odliczy się od gotowości, a dowiesz się o tym
+w bitwie.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Teraz zamknij i spójrzmy zamiast tego na pojedynczą prowincję.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kliknij którąś naszą. Dla każdej prowincji panel pokazuje, co wytwarza i co
+posiada. Surowce są warte więcej przetworzone niż wydobyte, więc prowincja
+przemysłowa obok bogatej jest warta więcej niż każda z osobna.
+---
+@Signals Officer
+A polityki to §**stały rachunek**§, nie jednorazowy zakup. Każda, którą
+prowadzisz, odejmuje się co turę, na zawsze, niezależnie od tego, czy jeszcze
+cokolwiek daje.
+
+To jest gospodarka. Coś jeszcze?

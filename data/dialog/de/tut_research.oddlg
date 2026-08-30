@@ -1,0 +1,32 @@
+// Übersetzung - die Forschung.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Forschung. Öffnen Sie sie - die Klage ist immer dieselbe - nichts, was man
+anfängt, scheint je fertig zu werden - und das ist kein Fehler, das ist der
+Sinn.
+---
+@Signals Officer
+Alles hier wird in Runden gemessen, die Sie noch nicht gespielt haben. Was Sie
+jetzt beginnen, trifft lange ein, nachdem Sie vergessen haben, dass Sie es
+wollten - also ist der einzige schlechte Zeitpunkt, später anzufangen.
+---
+@Signals Officer
+Es zieht aus demselben Geld wie das Heer. Ein Land, das alles erforscht, stellt
+nichts auf, und ein Land, das alles aufstellt, führt in zwanzig Runden noch den
+Krieg des letzten Jahrzehnts.
+
+Wählen Sie eine Richtung. Nicht alle.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Wieder schließen - das §**x**§ in der Ecke.
+---
+@Signals Officer
+Fertige Arbeit wirkt nicht rückwirkend. Neues Gerät erreicht zuerst neue
+Verbände, also ist die Runde, in der etwas fertig wird, die Runde, in der Sie
+prüfen, was Sie bauen - nicht die Runde zum Ausruhen.
+
+Das ist die Forschung. Sonst noch etwas?

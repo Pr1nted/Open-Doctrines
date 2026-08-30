@@ -1,0 +1,48 @@
+// Vertaling - die see-oortog.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Skepe dan. Dit is die een wat die meeste mense stop, en dit stop hulle elke keer
+op dieselfde plek: die leër is by die kus en niks gebeur nie.
+---
+@Signals Officer
+'n Leër steek nie self water oor nie, en daar is geen "laai op daardie skip"-bevel
+nie. Die provinsie doen dit.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Kies 'n kusprovinsie met 'n §**hawe**§ EN §**manne wat daarin staan**§. Inskeping
+skuif die garnisoen wat reeds daar is; 'n leë hawe skeep glad niks in nie, en dit
+is waar die meeste verwarring begin.
+
+Sy paneel het §**Skeep leër in**§ - gratis, een beurt. Druk dit en beëindig die
+beurt.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Die manne is nou 'n §**boot**§ voor die kus. Gaan na die §**vloot**§-aansig -
+skepe neem uit geen van die ander sewe bevele nie.
+
+§{key=ship_move}§ beweeg dit, §{key=ship_wheel}§ maak sy kanonne oop,
+§{key=ship_engage}§ sê dit moet 'n geveg aanknoop.
+---
+@Signals Officer
+Om te land: kies die boot, druk §**Beweeg**§, en klik op §**land**§.
+
+Water beweeg dit. Land laai dit af. Een knoppie doen albei, en dis waarom mense
+heen en weer vaar op soek na die ander een.
+---
+@Signals Officer
+Twee dinge wat niemand jou vertel nie.
+
+'n Gelaaide vervoerskip is 'n teiken, en dit sink met die manne aan boord. En 'n
+landing in 'n verdedigde provinsie kom moeg aan - vat die leë kus langsaan en stap,
+eerder as om op die fort te land.
+---
+@Signals Officer
+§**Hallow Rock**§, in die straat, is nie opsioneel nie. 'n Boot het 'n bereik, en
+die verre eiland is daarbuite - die rots is dus die eerste landing, en die tweede
+sprong vertrek daarvandaan.
+
+Dit is skepe. Iets anders?

@@ -1,0 +1,57 @@
+// Traducción. Las líneas :: y los nombres de los hablantes son identificadores.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hola, ¿quién es?
+---
+@
+...
+---
+@Pr1nted
+Ah... Eres nuevo aquí... ¿Qué? §**¿nunca has dirigido un país?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... ¿Sabes qué? Culpa mía...
+---
+@Pr1nted
+:: enter=type speed=42
+Pero no tengo tiempo para dar el tutorial yo mismo, así que te dejaré con una
+amiga, ¿vale? Necesito tiempo, hay que sacar actualizaciones.
+---
+@Signals Officer
+¿Diga? ¿Qué §**Pr1nted**§?
+---
+@Pr1nted
+Eh... Hola Mia, necesito un /favorcito de nada,/ ¿le enseñas esto a un jugador
+nuevo?
+---
+@Signals Officer
+</Suspira/>
+---
+@Pr1nted
+**¡Venga ya!** ¿Para qué te pago?
+---
+@Signals Officer
+Está bien... Vale, vale.
+---
+@Pr1nted
+¡Estupendo! La señorita Mia te lo enseñará todo: cómo funciona el juego y sus
+fundamentos. Y si ya conoces los fundamentos pero quieres hablar de temas
+concretos, dilo ahora,
+> Enséñame lo básico -> basics
+> Conozco lo básico, hablemos de temas concretos -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Bien, empecemos.
+---
+@Pr1nted
+:: act=tune_out
+¡Perfecto, espero que os llevéis bien! Pr1nted, corto.

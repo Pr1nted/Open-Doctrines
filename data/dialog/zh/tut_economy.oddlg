@@ -1,0 +1,30 @@
+// 翻译 - 经济。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+经济——打开它。这游戏里其余的一切，都是在争论它产出的东西该怎么花。
+---
+@Signals Officer
+§**工业**§在已经有人的地方生长。空省里的工厂是座昂贵的棚子：原料是人口，不是
+建筑。
+---
+@Signals Officer
+收入每回合来一次，就在这个回合。承担超过手头的份额，缺口不会客气地等着：它从战备
+里扣，而你会在一场战斗里才知道。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+再出来，我们改看单个省份。
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+点我们的一个。对每个省，面板会显示它产出什么、持有什么。资源加工过比挖出来更值钱，
+所以富省旁边的工业省，比它们各自单独都更值钱。
+---
+@Signals Officer
+而政策是一张§**长期账单**§，不是一次买卖。你推行的每一项都每回合扣一次，永远如此，
+不管它还起不起作用。
+
+这就是经济。还有别的吗?

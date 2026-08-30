@@ -1,0 +1,100 @@
+// Übersetzung - die Diplomatie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatie. Sie steckt ganz in einer Liste, und die Liste gehört einem
+§**Land**§ - Sie erreichen sie also, indem Sie jemandes Boden anklicken.
+
+Ich warte bei jedem Schritt. Hier geht nichts schnell.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Zuerst die §**Beziehungen**§-Ansicht. Sie färbt die Karte danach, wer mit wem
+Krieg führt, wer verbündet ist und wer wem eine Garantie gegeben hat.
+---
+@Signals Officer
+Sehen Sie sie an, bevor Sie etwas beginnen. Die Hälfte der hier verlorenen
+Kriege ging gegen drei Länder statt gegen eines - und alle drei standen vor dem
+ersten Schuss auf dieser Karte.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Klicken Sie nun eine Provinz von §**Verrick**§ an, jenseits des Wassers.
+
+Nicht Kestrel: mit denen sind wir schon im Krieg, und ein Land, mit dem Sie im
+Krieg sind, bietet genau eines. Dazu kommen wir noch - und bis Sie jemanden
+wählen, mit dem wir in Frieden sind, wartet diese Seite einfach weiter.
+---
+@Signals Officer
+Ihrem Feld ist eine Liste gewachsen. Was darin steht, hängt ganz davon ab, was
+Sie einander schon sind - Sie wählen nie aus allen Möglichkeiten, nur aus
+denen, die Ihr jetziges Verhältnis erlaubt.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Das Mildeste darin ist ein §**Nichtangriffspakt**§: das Versprechen, nicht
+anzugreifen, und sonst nichts.
+
+Bitten Sie darum. Fragen kostet nichts.
+---
+@Signals Officer
+Eingereicht - und nun sehen Sie die Liste an. §**Alles andere ist grau**§, und
+der Eintrag, den Sie eben benutzt haben, ist zu §**Abbrechen**§ geworden.
+
+Eine Anfrage zugleich an ein Land. Das ist kein Fehler, auf den Sie gestoßen
+sind, das ist die Regel: sie beantworten das Letzte, was Sie gesagt haben, und
+bis dahin ist Ihr einziger Zug, es zurückzunehmen.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Beenden Sie also die Runde. Die Anfrage geht hinaus, sie antworten, und die
+Liste kommt zurück.
+
+Sie dürfen ablehnen. Das ist ihre Sache und kein Fehler von Ihnen.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Wieder Verrick. Ein §**Bündnis**§ ist die nächste Stufe - nicht bloß das
+Versprechen, nicht anzugreifen, sondern das Versprechen mitzumachen.
+
+Bitten Sie darum.
+---
+@Signals Officer
+Mit einem Verbündeten erscheint ein Eintrag mehr: §**Zu den Waffen rufen**§,
+der sie in einen Krieg zieht, den Sie schon führen.
+
+Auch das dürfen sie ablehnen. Ein Verbündeter, der zweimal ablehnt, ist ein
+Verbündeter auf dem Papier und ungefähr ebenso viel wert.
+---
+@Signals Officer
+Die zwei ungenutzten: eine §**Garantie**§ ist die einseitige - Sie versprechen,
+jemanden zu verteidigen, der Ihnen nichts versprochen hat. Kleine Länder
+sammeln sie, große verteilen sie, um Ruhe zu kaufen.
+
+Und §**Handel**§ ist Ware gegen Geld, jede Runde, bis jemand kündigt. Es ist
+der einzige Eintrag, der beide reicher macht, und genau deshalb vergisst man
+ihn.
+---
+@Signals Officer
+Ist ein Pakt unterschrieben, achten Sie darauf, was die Liste verlässt:
+§**Krieg erklären verschwindet**§. Sie müssen den Pakt erst brechen, öffentlich,
+wo alle es sehen.
+
+Dafür ist ein Pakt da. Er ist kein Schild, er ist ein Zeuge.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Und im §**Krieg**§ fällt die ganze Liste auf einen Eintrag zusammen:
+§**Waffenstillstand erbitten**§. Er kommt mit Bedingungen zurück - wer aufhört
+und wer was behält.
+
+Sie nehmen an, wenn sie verlieren, und lehnen ab, wenn nicht. Kein Bitten
+ändert, welches von beidem zutrifft.
+---
+@Signals Officer
+Kestrel ist auf dieser Karte rot, und das ist die Liste, die sie Ihnen zeigen
+würden.
+---
+@Signals Officer
+Das ist die Diplomatie. Sonst noch etwas?

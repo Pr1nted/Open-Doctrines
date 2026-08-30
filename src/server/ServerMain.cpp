@@ -19,6 +19,7 @@
 #include "ServerConsole.h"
 
 #include "../Game.h"
+#include "../ai/AISystem.h"   // mergeModelFiles; see --merge-ai below
 
 #include <csignal>
 #include <cstdio>
@@ -74,7 +75,8 @@ void usage() {
         "  --eval-ai [maps] [turnsPerMap] [seed] [difficulty]\n"
         "                    measure a model without learning from it\n"
         "  --worker <id> --workers <n>   one process of a parallel pool\n"
-        "  --vs-random | --vs-model <p> | --scenarios   what to measure against\n"
+        "  --vs-random | --vs-model <p> | --vs-script | --scenarios   what to measure against\n"
+        "  --merge-ai <out> <in...>  fold worker models into one\n"
         "  --write-config    write a commented default config file and exit\n"
         "  --help            this text\n"
         "\n"
@@ -93,6 +95,32 @@ int main(int argc, char** argv) {
     //
     // Handled before the config file, because they are not a server: they take
     // no session, open no port, and have nothing a server.json would say.
+    // --merge-ai <out.bin> <in1.bin> [in2.bin ...]
+    //
+    // HERE AS WELL AS IN THE GAME BINARY, because the pool that produces the
+    // inputs now runs on this one: train_parallel.py switched to the headless
+    // binary so its workers stop dying when the display sleeps, and then its
+    // final step -- folding the workers back into data/ai/model.bin -- called a
+    // flag this parser rejected. Measured 2026-08-24: eleven hours and 96 maps
+    // across three workers, stopped cleanly, "[POOL] merging 3 model(s)"
+    // printed, and model.bin came back byte-identical to the one the run
+    // started from. The training was all still there in the worker files; the
+    // step that harvests it was the half that could not run.
+    //
+    // AISystem::mergeModelFiles is static and touches no Game, no window and no
+    // world, which is why it can live in both.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) != "--merge-ai") continue;
+        std::vector<std::string> inputs;
+        for (int k = i + 2; k < argc && std::string(argv[k]).rfind("--", 0) != 0; ++k)
+            inputs.push_back(argv[k]);
+        if (i + 1 >= argc || inputs.empty()) {
+            fprintf(stderr, "--merge-ai needs an output path and at least one input\n");
+            return 2;
+        }
+        return AISystem::mergeModelFiles(argv[i + 1], inputs) ? 0 : 1;
+    }
+
     {
         auto numAfter = [&](int i, int n) -> const char* {
             // Positional arguments only, and only while they look like numbers,
@@ -130,6 +158,18 @@ int main(int argc, char** argv) {
                 else if (f == "--vs-model" && k + 1 < argc) o.vsModel = argv[k + 1];
                 else if (f == "--vs-random")               o.vsRandom = true;
                 else if (f == "--scenarios")               o.scenarios = true;
+                // THE SCRIPTED RUNG, which only main.cpp could switch on until
+                // now. tools/ai_bench.py takes --vs-script, and the bench moved
+                // to this binary -- so the flag was accepted by the bench, hit a
+                // parser that ignores what it does not know, and the run
+                // measured a DIFFERENT control than the one asked for, silently,
+                // under the right heading. "Beats a coin flip" is not the
+                // question when the goal is parity with a competent player.
+                else if (f == "--vs-script")               AISystem::s_scriptedControl = true;
+                else if (f == "--script-duel") {
+                    AISystem::s_scriptedControl = true;
+                    AISystem::s_scriptDuel = true;
+                }
             }
             Game game;
             return game.runHeadlessAI(o);
@@ -163,7 +203,8 @@ int main(int argc, char** argv) {
         else if (a == "--write-config")      writeConfig = true;
         else if (a == "--train-ai" || a == "--eval-ai" || a == "--worker" ||
                  a == "--workers" || a == "--vs-model" || a == "--vs-random" ||
-                 a == "--scenarios") {
+                 a == "--scenarios" || a == "--resource-limit" ||
+                 a == "--vs-script" || a == "--script-duel") {
             // Consumed by the headless-AI block above, which returns before
             // reaching here. Listed so the loop does not reject them when they
             // trail a mode this parser never sees.

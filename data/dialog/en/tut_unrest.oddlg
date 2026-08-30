@@ -1,0 +1,38 @@
+// Specialised: claims, unrest and rebellion.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Claims and unrest. Open the claims panel. These are one subject, whatever the interface says.
+---
+@Signals Officer
+A §**claim**§ is the difference between a war the world tolerates and a war
+that unites everyone against you. Press one you hold and you are settling a
+grievance; take ground you never claimed and you are the grievance.
+---
+@Signals Officer
+Make the claim §**before**§ the war, not after. A claim filed the turn after
+you took the province fools nobody and costs the same.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Close it.
+---
+@Signals Officer
+§**Unrest**§ is what taking ground does to the ground. Conquered provinces
+resent it, minorities resent it more, and conscription and censorship both
+buy you strength now against unrest later.
+---
+@Signals Officer
+Past a threshold a province stops paying and starts organising. Past the next
+one it leaves -- and it leaves as a §**country**§, with your industry, your
+population and a very specific opinion of you.
+
+You get a warning. You do not always get a second one.
+---
+@Signals Officer
+The cures are unpopular or slow: garrison it, spend on it, or give it what it
+wants. Choose early, because all three take turns to work.
+
+That is unrest. Anything else?

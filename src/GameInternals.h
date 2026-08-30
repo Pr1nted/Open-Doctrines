@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "raylib.h"
 
 struct Config;
@@ -16,6 +17,17 @@ struct Setting { const char* label; bool isValue; int actionId; };
 // the null label. Leaving the bound off makes the initializer the single
 // source of truth, and the static_asserts in Game.cpp keep each hand-written
 // *_COUNT honest.
+
+// Breaks text into lines that fit `maxW` at `fontSize`, keeping any newlines
+// the text already has. Words stay whole where they fit; one wider than the
+// line is broken at a UTF-8 character boundary, never mid-sequence.
+//
+// That last part is not hypothetical. The map info popup used to cut the
+// description every N bytes on the assumption that a character is nine pixels
+// wide, which splits a word mid-syllable in English and splits a codepoint in
+// half in the nine languages this game ships that need more than one byte for
+// one character.
+std::vector<std::string> wrapText(const std::string& text, int fontSize, int maxW);
 
 Color hexToColor(int hex);
 std::string formatPop(long long pop);
@@ -38,6 +50,8 @@ extern const Setting DISPLAY_ITEMS[];
 extern const char* AI_DIFFICULTY_NAMES[];
 extern const int AI_DIFFICULTY_COUNT;
 extern const int DISPLAY_COUNT;
+extern const char* COLOURBLIND_NAMES[];
+extern const int COLOURBLIND_COUNT;
 extern const int ACCENT_PRESETS[];
 extern const int ACCENT_PRESETS_COUNT;
 extern const Setting CONTROLS_ITEMS[];
@@ -51,7 +65,10 @@ extern const Setting ADVANCED_ITEMS[];
 extern const int ADVANCED_COUNT;
 extern const Setting EXPERIMENTAL_ITEMS[];
 extern const int EXPERIMENTAL_COUNT;
-extern const Setting* TAB_ITEMS[6];
+// Unsized deliberately: the count lives in TAB_COUNT and nowhere else, so
+// adding a tab is one edit rather than one edit and a silent excess-elements
+// error in a file that does not mention tabs.
+extern const Setting* TAB_ITEMS[];
 extern const int TAB_ITEM_COUNTS[];
 extern float FLY_SPEED_VALS[];
 extern const int FLY_SPEED_COUNT;
@@ -63,6 +80,7 @@ extern const int MAX_ZOOM_COUNT;
 // rows as sliders rather than as plain text, so both have to recognise them;
 // naming the tab here is what keeps that from being a bare 2 in a dozen places.
 constexpr int AUDIO_TAB = 2;
+constexpr int LANGUAGE_TAB = 6;   ///< the tab with no rows; see TAB_ITEMS
 constexpr int VOLUME_COUNT = 3;
 
 bool isVolumeSetting(int tab, int index);

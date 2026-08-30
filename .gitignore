@@ -120,6 +120,15 @@ data/config.json
 data/ai/model.w*.bin
 data/ai/model.bin.prev
 data/ai/*.tmp
+# Suffixed copies of model.bin itself: the pre-merge and rejected snapshots the
+# pool leaves behind, and a plain uncompressed copy of the shipped weights.
+#
+# The plain copy is worth having on disk and never worth committing. model.bin
+# is an ODAZ container now (see src/ai/ModelBlob.h), which a build from before
+# that cannot read -- it reports "Fresh model" and will happily save fresh
+# weights over it twenty turns later. Keeping the plain bytes beside it is the
+# way back from that, and from anything else that eats the file.
+data/ai/model.bin.*
 # Hand-made checkpoints taken before a change that cannot be undone by
 # training -- resetting a module head, or altering what the reward means.
 # Worth keeping on disk to roll back to, never worth committing: each is a
@@ -162,3 +171,18 @@ docs/itch/banner-itch-wide.png
 docs/itch/banner-itch-wide-plain.png
 docs/itch/banner-*-plain.webp
 docs/itch/banner-*eras*.webp
+
+# The sealed integrity dependency ships as a built archive, not as source.
+# third_party/odseal/ (the archive + header) is committed; the source is not.
+/guard/
+
+# Runtime artefacts of the AI tooling, not sources
+data/ai/.odlocks/
+data/ai/bench_score.txt
+data/ai/model.bin.prestart
+data/ai/stale-workers-aug16/
+
+# Scratch output from the palette/PNG tools
+depth*.png
+out.png
+manifest.txt

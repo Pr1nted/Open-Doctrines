@@ -1,0 +1,35 @@
+// Traduzione - l'economia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+L'economia: aprila. Tutto il resto in questo gioco è una discussione su come
+spendere ciò che essa produce.
+---
+@Signals Officer
+L'§**industria**§ cresce dove c'è già gente. Una fabbrica in una provincia
+vuota è un capannone costoso: la materia prima è la popolazione, non
+l'edificio.
+---
+@Signals Officer
+Le entrate arrivano una volta per turno, nel turno. Impegnati oltre quello che
+hai e l'ammanco non aspetta educatamente: esce dalla prontezza, e lo scopri in
+battaglia.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Esci di nuovo, e guardiamo invece una singola provincia.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Clicca una delle nostre. Per provincia, il pannello mostra cosa produce e cosa
+detiene. Le risorse valgono di più lavorate che estratte, quindi una provincia
+industriale accanto a una ricca vale più di ciascuna presa da sola.
+---
+@Signals Officer
+E le politiche sono una §**spesa fissa**§, non un acquisto. Ognuna che porti
+avanti viene sottratta ogni turno, per sempre, che serva ancora a qualcosa o
+no.
+
+Questa è l'economia. Altro?

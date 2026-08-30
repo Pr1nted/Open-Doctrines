@@ -1,0 +1,46 @@
+// Çeviri - deniz geçişi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Gemiler o hâlde. Çoğu insanı durduran budur ve onları her seferinde aynı yerde
+durdurur: ordu kıyıdadır ve hiçbir şey olmaz.
+---
+@Signals Officer
+Bir ordu suyu kendi başına geçmez ve "şu gemiye yükle" diye bir emir yoktur. Bunu
+il yapar.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+§**Limanı**§ OLAN VE §**içinde adamları duran**§ bir kıyı ili seçin. Gemiye bindirme
+zaten orada olan garnizonu taşır; boş bir liman hiçbir şey bindirmez, ve kafa
+karışıklığının çoğu buradan başlar.
+
+Panelinde §**Orduyu bindir**§ var - bedava, bir tur. Basın ve turu bitirin.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Adamlar artık kıyı açığında bir §**tekne**§. §**Donanma**§ görünümüne geçin -
+gemiler diğer yedisinin hiçbirinden emir almaz.
+
+§{key=ship_move}§ onu hareket ettirir, §{key=ship_wheel}§ toplarını açar,
+§{key=ship_engage}§ ona çatışmaya girmesini söyler.
+---
+@Signals Officer
+Karaya çıkarmak için: tekneyi seçin, §**Hareket**§ basın ve §**karaya**§ tıklayın.
+
+Su onu taşır. Kara onu boşaltır. Tek bir düğme ikisini de yapar, ve insanlar bu
+yüzden ötekini arayarak bir ileri bir geri gider gelir.
+---
+@Signals Officer
+Kimsenin size söylemediği iki şey.
+
+Yüklü bir nakliye gemisi hedeftir ve içindeki adamlarla birlikte batar. Savunulan
+bir ile yapılan çıkarma da yorgun varır: kalenin üstüne inmek yerine yandaki boş
+kıyıyı alıp yürüyün.
+---
+@Signals Officer
+Boğazdaki §**Hallow Rock**§ isteğe bağlı değildir. Teknenin menzili vardır ve uzak
+ada bunun ötesindedir - yani kaya ilk çıkarmadır, ikinci sıçrayış oradan yapılır.
+
+Gemiler budur. Başka bir şey?

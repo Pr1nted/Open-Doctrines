@@ -1,0 +1,40 @@
+// Traducción - reclamaciones y descontento.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Reclamaciones y descontento. Abre el panel de reclamaciones. Son un mismo tema,
+diga lo que diga la interfaz.
+---
+@Signals Officer
+Una §**reclamación**§ es la diferencia entre una guerra que el mundo tolera y
+una que une a todos en tu contra. Haz valer una que tengas y estarás saldando
+un agravio; toma tierra que nunca reclamaste y el agravio eres tú.
+---
+@Signals Officer
+Presenta la reclamación §**antes**§ de la guerra, no después. Una reclamación
+presentada el turno siguiente a tomar la provincia no engaña a nadie y cuesta
+lo mismo.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Ciérralo.
+---
+@Signals Officer
+El §**descontento**§ es lo que tomar tierra le hace a la tierra. Las provincias
+conquistadas lo resienten, las minorías más aún, y tanto el reclutamiento como
+la censura te compran fuerza ahora a cambio de descontento después.
+---
+@Signals Officer
+Pasado un umbral, una provincia deja de pagar y empieza a organizarse. Pasado
+el siguiente, se marcha, y se marcha como §**país**§, con tu industria, tu
+población y una opinión muy concreta sobre ti.
+
+Recibes un aviso. No siempre recibes un segundo.
+---
+@Signals Officer
+Los remedios son impopulares o lentos: guarnécela, gasta en ella o dale lo que
+quiere. Elige pronto, porque los tres tardan turnos en surtir efecto.
+
+Eso es el descontento. ¿Algo más?

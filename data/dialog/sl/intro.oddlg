@@ -1,0 +1,56 @@
+// Prevod. Vrstice :: in imena govorcev so identifikatorji - ne prevajati.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Halo, kdo je?
+---
+@
+...
+---
+@Pr1nted
+Oh... Novi ste tukaj... Kaj? §**nikoli niste vodili države?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Veste kaj? Moja napaka...
+---
+@Pr1nted
+:: enter=type speed=42
+Le da nimam časa, da bi vodnik izpeljal sam, zato vas bom pustil pri svoji
+znanki, prav? Rabim čas, saj morajo nastajati posodobitve.
+---
+@Signals Officer
+Halo? Kateri §**Pr1nted**§?
+---
+@Pr1nted
+Hm... Živjo Mia, potreboval bi /čisto majhno uslugo,/ boš razkazala novemu
+igralcu?
+---
+@Signals Officer
+</Vzdih/>
+---
+@Pr1nted
+**Daj no!** Za kaj te pa plačujem?
+---
+@Signals Officer
+No prav... Dobro, dobro.
+---
+@Pr1nted
+Odlično! Gospodična Mia vam bo vse pokazala: kako igra deluje in njene osnove.
+Če pa osnove poznate in bi radi govorili o posameznih rečeh, povejte zdaj,
+> Pokažite mi osnove -> basics
+> Osnove poznam, govorimo o posameznih rečeh -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Odlično, začnimo.
+---
+@Pr1nted
+:: act=tune_out
+Dobro, upam, da se boste ujela! Pr1nted, konec.

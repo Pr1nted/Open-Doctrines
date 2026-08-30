@@ -613,18 +613,36 @@ bool WindowShouldClose(void) { return g_stopRequested; }
 
 // ─── rlgl ───────────────────────────────────────────────────────────
 //
-// UiScale.h scales the whole UI by pushing a matrix (see rlgl.h). That is the
-// only rlgl this project uses, and on a server it is three no-ops: there is no
-// matrix stack because there is no renderer to hold one.
+// Two things in this project reach past raylib into its GL layer, and on a
+// server both are no-ops: there is no matrix stack and no scissor box because
+// there is no renderer to hold either.
+//
+//   UiScale.h            scales the whole UI by pushing a matrix
+//   comms/Transmission   clips the eyelid to a straight cut with the scissor,
+//                        and draws an elliptical ring by scaling a circular
+//                        one, which needs the matrix stack too
+//
+// These are NOT in ServerRaylibStubs.cpp because that file is generated from
+// raylib.h, and rlgl is a separate header the generator does not read.
 //
 // Declared here rather than by including rlgl.h, which pulls in the GL loader.
 
 extern "C" {
 void rlPushMatrix(void);
 void rlPopMatrix(void);
+void rlTranslatef(float x, float y, float z);
 void rlScalef(float x, float y, float z);
+void rlEnableScissorTest(void);
+void rlDisableScissorTest(void);
+void rlScissor(int x, int y, int width, int height);
+void rlDrawRenderBatchActive(void);
 }
 
 void rlPushMatrix(void) {}
 void rlPopMatrix(void) {}
+void rlTranslatef(float, float, float) {}
 void rlScalef(float, float, float) {}
+void rlEnableScissorTest(void) {}
+void rlDisableScissorTest(void) {}
+void rlScissor(int, int, int, int) {}
+void rlDrawRenderBatchActive(void) {}

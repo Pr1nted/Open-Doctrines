@@ -171,11 +171,11 @@ void Game::drawPopup() {
                 std::string out;
                 size_t n = v.size() < 4 ? v.size() : 4;
                 for (size_t i = 0; i < n; i++) { if (i) out += ", "; out += provName(v[i]); }
-                if (v.size() > n) out += TextFormat(" +%d more", (int)(v.size() - n));
+                if (v.size() > n) out += TextFormat(T(" +%d more"), (int)(v.size() - n));
                 return out;
             };
             auto gold = [](int g) -> std::string {
-                return g > 0 ? TextFormat("%d gold", g) : "-";
+                return g > 0 ? TextFormat(T("%d gold"), g) : "-";
             };
 
             Color accent = hexToColor(m_config.accent());
@@ -193,12 +193,12 @@ void Game::drawPopup() {
                 ty += 20;
             };
 
-            section(TextFormat("%s gives you", them.c_str()), Color{120, 210, 140, 255});
+            section(TextFormat(T("%s gives you"), them.c_str()), Color{120, 210, 140, 255});
             row("Money",           gold(popup.terms.ourMoney));
             row("Provinces",       listOf(popup.terms.ourProvs));
             row("Claims dropped",  listOf(popup.terms.ourDropClaims));
             ty += 10;
-            section(TextFormat("%s asks from you", them.c_str()), Color{225, 130, 120, 255});
+            section(TextFormat(T("%s asks from you"), them.c_str()), Color{225, 130, 120, 255});
             row("Money",           gold(popup.terms.theirMoney));
             row("Provinces",       listOf(popup.terms.theirProvs));
             row("Claims to drop",  listOf(popup.terms.theirDropClaims));
@@ -207,7 +207,7 @@ void Game::drawPopup() {
                 popup.terms.ourMoney == 0 && popup.terms.theirMoney == 0 &&
                 popup.terms.ourDropClaims.empty() && popup.terms.theirDropClaims.empty()) {
                 ty += 8;
-                DrawText("A white peace: nothing changes hands.", tx, ty, 14, accent);
+                DrawText(T("A white peace: nothing changes hands."), tx, ty, 14, accent);
             } else {
                 // A list of province NUMBERS is not something anyone can judge
                 // an offer from. "Provinces: 854, 1283, 1290" tells the player
@@ -256,8 +256,8 @@ void Game::drawPopup() {
 
         DrawRectangleRounded(rejectBtn, 0.15f, 6, rejHover ? Color{200, 50, 50, 255} : Color{140, 30, 30, 220});
         DrawRectangleRoundedLines(rejectBtn, 0.15f, 6, rejHover ? Color{240, 70, 70, 255} : Color{170, 50, 50, 200});
-        int rejW = MeasureText("Reject", 18);
-        DrawText("Reject", (int)(rejectBtn.x + (btnW - rejW) / 2), (int)(rejectBtn.y + 10), 18, WHITE);
+        int rejW = MeasureText(T("Reject"), 18);
+        DrawText(T("Reject"), (int)(rejectBtn.x + (btnW - rejW) / 2), (int)(rejectBtn.y + 10), 18, WHITE);
     } else {
         // OK button (REBELLION, WAR_DECLARED)
         Rectangle okBtn = {(float)(popX + (popW - btnW) / 2), (float)btnY, (float)btnW, (float)btnH};
@@ -266,8 +266,8 @@ void Game::drawPopup() {
 
         DrawRectangleRounded(okBtn, 0.15f, 6, okHover ? Color{60, 60, 80, 255} : Color{40, 40, 60, 220});
         DrawRectangleRoundedLines(okBtn, 0.15f, 6, okHover ? Color{100, 100, 130, 255} : Color{70, 70, 90, 200});
-        int okW = MeasureText("OK", 18);
-        DrawText("OK", (int)(okBtn.x + (btnW - okW) / 2), (int)(okBtn.y + 10), 18, WHITE);
+        int okW = MeasureText(T("OK"), 18);
+        DrawText(T("OK"), (int)(okBtn.x + (btnW - okW) / 2), (int)(okBtn.y + 10), 18, WHITE);
     }
 }
 
@@ -359,8 +359,8 @@ void Game::updatePopup() {
                 // in processDiplomaticRequests.
                 declareWar(popup.targetIso, popup.subjectIso, false);
                 addWarWeariness(m_playerCountryId, CALL_TO_ARMS_UNREST);
-                addNotification("You honour your alliance with " + popup.sourceIso +
-                                " — unrest rises at home", ORANGE, 8.0f);
+                addNotification(TextFormat(T("You honour your alliance with %s — unrest rises at home"),
+                                           popup.sourceIso.c_str()), ORANGE, 8.0f);
             }
             // The treaty exists as of this click -- the lines above just set it.
             Audio::get().playSfx("treaty_signed");
@@ -376,8 +376,8 @@ void Game::updatePopup() {
                 // Refusing is free at home and costs the alliance instead.
                 m_relations[popup.sourceIso][popup.targetIso].alliance = false;
                 m_relations[popup.targetIso][popup.sourceIso].alliance = false;
-                addNotification("You refused " + popup.sourceIso +
-                                "'s call to arms — the alliance is over", ORANGE, 8.0f);
+                addNotification(TextFormat(T("You refused %s's call to arms — the alliance is over"),
+                                           popup.sourceIso.c_str()), ORANGE, 8.0f);
             }
             tellRefusal(popup.sourceIso, m_popupRefusalReason);
             Audio::get().playSfx("deal_rejected");
@@ -640,7 +640,7 @@ void Game::drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long
 
     // Say so: a map you can zoom looks exactly like one you cannot.
     const char* hint = m_popupTermsMapZoom > 1.01f || m_popupTermsMapZoom < 0.99f
-                     ? TextFormat("%.1fx  right-click resets", m_popupTermsMapZoom)
+                     ? TextFormat(T("%.1fx  right-click resets"), m_popupTermsMapZoom)
                      : "scroll to zoom, drag to pan";
     int hw = MeasureText(hint, 11);
     DrawRectangle(x + w - hw - 12, y + 4, hw + 8, 15, Color{12, 14, 22, 170});
@@ -775,7 +775,7 @@ void Game::drawCeasefireScreen() {
         std::string title = m_tradeMode ? "Trade Proposal" : "Peace Negotiation";
         int titleW = MeasureText(title.c_str(), 28);
         DrawText(title.c_str(), panelX + (panelW - titleW) / 2, panelY + 16, 28, hexToColor(m_config.accent()));
-        DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
+        DrawText(T("ESC to close"), 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
         return;
     }
 
@@ -948,7 +948,7 @@ void Game::drawCeasefireScreen() {
         DrawRectangle((int)dX, (int)dYf, (int)dW, (int)dH, {30, 30, 50, 255});
     }
     DrawRectangleLines((int)dX, (int)dYf, (int)dW, (int)dH, {80, 80, 120, 180});
-    DrawText("Drag map to pan | Scroll to zoom | Click province to toggle", (int)dX + 4, (int)(dYf + dH - 18), 12, Color{180, 180, 200, 140});
+    DrawText(T("Drag map to pan | Scroll to zoom | Click province to toggle"), (int)dX + 4, (int)(dYf + dH - 18), 12, Color{180, 180, 200, 140});
 
     // ── Sidebar ─────
     DrawRectangle(sbX, sbY, sidebarW, sbH, {15, 15, 25, 220});
@@ -957,7 +957,7 @@ void Game::drawCeasefireScreen() {
     int curY = sbY + 8;
 
     // Section header: "Selection Mode"
-    DrawText("Selection Mode", sbX + 8, curY, 13, hexToColor(m_config.accent()));
+    DrawText(T("Selection Mode"), sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 20;
 
     int modeBtnH = 26;
@@ -993,11 +993,11 @@ void Game::drawCeasefireScreen() {
             default: return "Idle";
         }
     };
-    DrawText(TextFormat("Mode: %s", modeLabel(m_ceasefireSelectMode)), sbX + 8, curY, 11, LIGHTGRAY);
+    DrawText(TextFormat(T("Mode: %s"), modeLabel(m_ceasefireSelectMode)), sbX + 8, curY, 11, LIGHTGRAY);
     curY += 18;
 
     // ── Money inputs (integer sliders) ──
-    DrawText("Money", sbX + 8, curY, 13, hexToColor(m_config.accent()));
+    DrawText(T("Money"), sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 18;
 
     auto drawMoneySlider = [&](int slot, const char* label, int& value, int max, Color col) {
@@ -1052,15 +1052,15 @@ void Game::drawCeasefireScreen() {
     curY += 4;
 
     // ── Summary ──
-    DrawText("Summary", sbX + 8, curY, 13, hexToColor(m_config.accent()));
+    DrawText(T("Summary"), sbX + 8, curY, 13, hexToColor(m_config.accent()));
     curY += 18;
-    DrawText(TextFormat("Cede: %d province(s)", (int)m_ceasefireOurProvs.size()), sbX + 8, curY, 11, Color{120, 180, 255, 255}); curY += 16;
-    DrawText(TextFormat("Demand: %d province(s)", (int)m_ceasefireTheirProvs.size()), sbX + 8, curY, 11, Color{255, 180, 80, 255}); curY += 16;
-    DrawText(TextFormat("Drop our claims: %d", (int)m_ceasefireOurDropClaims.size()), sbX + 8, curY, 11, Color{255, 100, 100, 255}); curY += 16;
-    DrawText(TextFormat("They drop claims: %d", (int)m_ceasefireTheirDropClaims.size()), sbX + 8, curY, 11, Color{220, 130, 220, 255}); curY += 16;
+    DrawText(TextFormat(T("Cede: %d province(s)"), (int)m_ceasefireOurProvs.size()), sbX + 8, curY, 11, Color{120, 180, 255, 255}); curY += 16;
+    DrawText(TextFormat(T("Demand: %d province(s)"), (int)m_ceasefireTheirProvs.size()), sbX + 8, curY, 11, Color{255, 180, 80, 255}); curY += 16;
+    DrawText(TextFormat(T("Drop our claims: %d"), (int)m_ceasefireOurDropClaims.size()), sbX + 8, curY, 11, Color{255, 100, 100, 255}); curY += 16;
+    DrawText(TextFormat(T("They drop claims: %d"), (int)m_ceasefireTheirDropClaims.size()), sbX + 8, curY, 11, Color{220, 130, 220, 255}); curY += 16;
 
     if (!lockedPids.empty()) {
-        DrawText(TextFormat("Locked by other offers: %d", (int)lockedPids.size()), sbX + 8, curY, 11, Color{120, 120, 120, 255}); curY += 16;
+        DrawText(TextFormat(T("Locked by other offers: %d"), (int)lockedPids.size()), sbX + 8, curY, 11, Color{120, 120, 120, 255}); curY += 16;
     }
 
     // Bottom buttons (anchored to sidebar bottom)
@@ -1079,10 +1079,10 @@ void Game::drawCeasefireScreen() {
     bool cancelHov = CheckCollisionPointRec(mouse, cancelBtn);
     DrawRectangleRounded(cancelBtn, 0.1f, 4, cancelHov ? Color{80, 40, 40, 240} : Color{60, 30, 30, 220});
     DrawRectangleRoundedLines(cancelBtn, 0.1f, 4, Color{180, 100, 100, 220});
-    int cancelW = MeasureText("Cancel", 12);
-    DrawText("Cancel", (int)(cancelBtn.x + (cancelBtn.width - cancelW) / 2), (int)(cancelBtn.y + 8), 12, WHITE);
+    int cancelW = MeasureText(T("Cancel"), 12);
+    DrawText(T("Cancel"), (int)(cancelBtn.x + (cancelBtn.width - cancelW) / 2), (int)(cancelBtn.y + 8), 12, WHITE);
 
-    DrawText("ESC or X to close", panelX + 8, panelY + panelH - 18, 11, Color{120, 120, 140, 200});
+    DrawText(T("ESC or X to close"), panelX + 8, panelY + panelH - 18, 11, Color{120, 120, 140, 200});
 }
 
 void Game::updateCeasefireScreen() {
@@ -1250,8 +1250,8 @@ void Game::updateCeasefireScreen() {
         // but the money below leaves the treasury the moment the offer is
         // sent, and an offer refused after that would be money burnt.
         if (hasPendingDiplomacy(playerC->isoA3, targetC->isoA3)) {
-            addNotification("You already have an offer awaiting " +
-                            diploDisplayName(targetC->isoA3) + "'s answer",
+            addNotification(TextFormat(T("You already have an offer awaiting %s's answer"),
+                                       diploDisplayName(targetC->isoA3).c_str()),
                             Color{220, 170, 90, 255}, 5.0f);
             m_inCeasefireScreen = false;
             m_ceasefireSelectMode = 0;

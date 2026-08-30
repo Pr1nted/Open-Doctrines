@@ -1,0 +1,294 @@
+// Çeviri - Mia'nın dersi. :: , konuşmacılar ve {key=...} tanımlayıcıdır.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Pekâlâ. Ashford. Yedi il, bizden şimdiden hoşlanmayan bir komşu ve yürüyerek
+gidemeyeceğimiz bir ada.
+
+Üzerinde öğrenecek kadar küçük. Burada olmamızın bütün sebebi bu.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Herhangi bir ile tıklayın, bu panel size onun ne olduğunu söyler: kimin olduğunu,
+kimin yaşadığını, ne ürettiğini ve bu yüzden ayaklanmaya ne kadar yakın olduklarını.
+
+Bu oyunda yaptığınız her şeyi bir ile yaparsınız.
+---
+@Signals Officer
+:: point=view.population
+Alttaki çubuk sekiz düğme değildir. AYNI haritaya bakmanın sekiz yoludur ve bütün
+oyun boyunca aralarında geçiş yapacaksınız.
+
+Bu, her ili içinde kaç kişi yaşadığına göre boyar.
+---
+@Signals Officer
+:: point=view.industry
+Sanayi. Fabrikaların nerede olduğu, dolayısıyla paranın ve teçhizatın nereden geldiği.
+
+Nüfus ve sanayi birlikte, hangi illerin alınmaya değer, hangilerinin sadece toprak
+olduğunu söyler.
+---
+@Signals Officer
+:: point=view.defence
+Savunma tahkimatları gösterir. Koyu renk birinin siper kazdığı anlamına gelir ve koyu
+toprağa yapılan saldırı sayıların ima ettiğinden çok daha pahalıya patlar.
+---
+@Signals Officer
+:: point=view.relations
+İlişkiler: kimin kiminle savaştığı ve kimin kime güvence verdiği. Bir şeye girişmeden
+önce buna bakın - burada kaybedilen savaşların yarısı bir değil üç ülkeyleydi.
+---
+@Signals Officer
+:: point=view.army
+Ordu. Haritadaki her garnizon aynı anda, sizinkiler ve onlarınkiler.
+
+Adam kaydırırken bulunulacak görünüm budur, çünkü onları neyin beklediğini gösteren
+tek görünüm odur.
+---
+@Signals Officer
+:: point=view.navy
+Donanma aynısını gemiler için yapar ve nakliye gemilerini oradan yüklersiniz.
+
+Kaynaklar ve Ülke Adları son ikisidir ve dedikleri şeyi yaparlar.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Önce §**ekonomi**§, çünkü diğer her şey ondan ödenir.
+
+Açın.
+---
+@Signals Officer
+Sanayi, kendisiyle inşa ettiğiniz şeydir ve nüfusun zaten olduğu yerde büyür. Boş bir
+yere fabrika koyarsanız çok pahalı bir baraka satın almış olursunuz.
+
+Gelir tur başına bir kez gelir. Elinize geçmeden harcarsanız açık hazırlıktan düşer.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Şimdi tekrar kapatın - aynı düğme. Panel haritayı örtüyor ve siz burada içerideyken
+size dışarıda hiçbir şey gösteremem.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Sırada §**araştırma**§. Açın.
+---
+@Signals Officer
+Burada başlattığınız hiçbir şey bu turda bitmez ve çoğu, onu istediğinizi
+unuttuğunuzdan çok sonra biter.
+
+Erken başlamaya değmesinin sebebi tam olarak budur.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Tekrar dışarı.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Girin.
+---
+@Signals Officer
+Politikalar tek seferlik bir tutar değil, bakım masrafı ister - sürekli bir faturadır
+ve ülkenin siyaseten nerede durduğunu kaydırır.
+
+Askere alma safları doldurur. Aynı zamanda saflarda olmak istemeyen insanlar da
+yaratır, ve izlenecek sayı işte odur.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Ve dışarı.
+---
+@Signals Officer
+O sayı §**huzursuzluktur**§.
+
+Huzursuzluğu yüksek bir il ödemeyi bırakır ve örgütlenmeye başlar. Yeterince uzun
+görmezden gelin, ayrılır - sanayisiyle, nüfusuyla ve sizin hakkınızdaki görüşüyle.
+
+Bir uyarı alırsınız. İkincisini her zaman almazsınız.
+---
+@Signals Officer
+:: point=view.relations
+Panellerden önce bir şey daha: bir savaşın birinin ölmesiyle bitmesi şart değil.
+
+§**Ateşkes**§ ve §**ticaret**§ teklifleri şartların yazdığı bir pencere olarak gelir:
+kim savaşmayı bırakır, kim neden vazgeçer. Şartları okuyun. Kabul ederseniz savaş o
+şartlarla biter, hoş şartlarla değil.
+---
+@Signals Officer
+Siz de bir tane açabilirsiniz, ilişkiler görünümünden: savaşta olduğunuz bir ülkeyi
+seçin ve sorun. Kaybederken evet, kaybetmezken hayır derler, ki bu oyundaki
+diplomasinin çoğu bundan ibarettir.
+
+Bir §**ticaret anlaşması**§ savaşsız hâliyle aynı biçimdir: biri iptal edene kadar
+her tur mal karşılığı para.
+---
+@Signals Officer
+Ve bu ders boyunca kimse size ikisinden birini teklif etmeyecek. Onlara yasakladım.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Son panel. §**Talepler**§, bir savaşın nasıl meşru hâle geldiğidir.
+---
+@Signals Officer
+Elinizdeki bir talebi öne sürün, dünya omuz silker. Hiç talep etmediğiniz toprağı
+alın, sizin hakkınızda kararsız olan herkes kararsız olmayı bırakır.
+
+Talebi savaştan ÖNCE sunun. Sonradan sunulan kimseyi kandırmaz.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Kapatın, gidip bunlardan bir kısmını kullanalım.
+---
+@Signals Officer
+Şimdi ordu.
+
+Sahip olduğunuz bir ili seçin, §{key=army_move}§ tuşunu basılı tutun ve adamların
+gitmesi gereken yere tıklayın. Yalnızca komşu il - bir ordu yürür, ışınlanmaz.
+---
+@Signals Officer
+Topçu §{key=artillery_wheel}§ üzerindedir. Basılı tutun, çark açılır: havanlardan
+yazıya dökmeyi tercih etmediğim şeylere kadar.
+
+Gemilerin kendi tuşları var: §{key=ship_move}§ hareket için, §{key=ship_wheel}§
+topları için, §{key=ship_engage}§ çatışmaya girmek için.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ordular da yoktan var olmaz. §**Onları siz toplarsınız**§, il il, orada yaşayan
+insanlardan.
+
+Bizimkilerden birini seçin ve panele bakın.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Bir kaydırıcı ve bir §**Topla**§ düğmesi var. Kaydırıcı, o ilin ayırabileceğinin ne
+kadarını bu tur aldığınızdır - en fazla nüfusunun beşte biri kadar, insanların
+mutsuz olduğu yerde daha az.
+
+Para tutar ve adamlar gelecek tur varır. Şimdi birkaç tane sipariş edin.
+---
+@Signals Officer
+Adamlarını çektiğiniz bir il, herkesin içine yürüyebileceği bir ildir; halkını
+çektiğiniz bir il ise sonsuza dek daha yoksuldur. Toplamak bir şeyi harcamaktır,
+üretmek değil.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Kimseyi kımıldatmadan önce: §**turu bitirene kadar hiçbir şey olmaz.**§
+
+Şimdiye kadar gri olduğunu fark etmiş olabilirsiniz. O bendim.
+
+Siz emir verirsiniz. Orada dururlar. Buna basarsınız ve o zaman hepsi aynı anda olur -
+emirler iyiyse bütün bir seferin tek bir turda karara bağlanabilmesinin sebebi budur.
+---
+@Signals Officer
+Kestrel adamızın doğu ucunu tutuyor, bizimle zaten savaştalar ve kırk sekiz bin
+adamları var.
+
+Bizim yedi yüz yirmi bin.
+---
+@Signals Officer
+:: until=destroyed:KES
+O hâlde bunu §**tek turda**§ yapın. Onların her ilinin alınmasını emredin - dördünü
+de, birbiri ardına, hiçbir şeyi bitirmeden - sonra Turu İşle düğmesine basın ve
+hepsinin çözülmesini izleyin.
+
+Bu oyunun ritmi budur. Diğer her şey ayrıntıdır.
+---
+@Signals Officer
+:: act=rebellion
+... Evde bir sorununuz var.
+
+Az önce aldığınız illerdeki huzursuzluk sınırı aştı. Kendi adlarına ilan ettiler ve
+sormuyorlar.
+---
+@Signals Officer
+:: until=rebels:none
+Kastettiğim buydu. Bir isyan artık bir ülkedir - illeri, adamları ve sizinle bir
+sınırı vardır.
+
+Onu diğer her şeyi bastırdığınız gibi bastırın. Kestrel kadar kolay olmayacak.
+---
+@Signals Officer
+Geriye suyun karşısındaki Verrick kalıyor.
+
+Kara yolu yok. Ne kadar yürünürse yürünsün bir ordu oraya varmaz, ve çoğu insan tam
+burada takılır.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Ve onlarla §**savaşta değiliz**§. Kestrel bize zaten düşman olarak geldi; Verrick
+hiçbir şey yapmadı ve barışta olduğunuz bir ülkeye çıkarma yapamazsınız.
+
+O yüzden ilan ediyoruz. Nüfus dışında herhangi bir görünüm ve onların illerinden
+birine tıklayın.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+İllerinin paneli onlara neler yapabileceğimizi sıralar, §**Savaş ilan et**§ de
+aralarında. Onun üstünde §**savaş hedefi**§ var - peşinde olduğunuzu söylediğiniz şey.
+Değiştirmek için tıklayın.
+
+Hedef süs değildir: dünyanın geri kalanı sizi ona göre yargılar ve ilerideki bir
+ateşkes onun üzerinden tartışılır.
+---
+@Signals Officer
+İlan edin - ve sonra §**turu bitirin**§. Bir ilan, diğerleri gibi bir emirdir: şimdi
+sunulur ve tur çözüldüğünde gerçekleşir. Düğmeye basana dek haritada hiçbir şey
+değişmez.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+İşte bütün geçiş, dört hamlede. Kıyı illerimizden birini seçin - §**limanı**§ ve
+adamları olan birini.
+---
+@Signals Officer
+:: point=panel.province
+İçinde §**adamların durması**§ gerekir. Bindirme hiçbir yerden ordu çağırmaz - zaten
+orada olan garnizonu bir tekneye bindirir, yani ili boş olan bir liman hiçbir şey
+bindirmez.
+
+Gerekirse önce içeri birkaç kişi yürütün.
+---
+@Signals Officer
+:: point=panel.province
+Sonra o ilin panelinde: §**Orduyu bindir**§. Bedava, bir tur.
+
+Basın ve turu bitirin. Garnizon ili terk eder ve kıyı açığında, onları mürettebatı
+olarak taşıyan bir §**tekneye**§ dönüşür.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Şimdi §**donanma**§ görünümüne gidin. Bir gemiye nüfus haritasından emir veremezsiniz -
+tekne onun üzerinde değil.
+---
+@Signals Officer
+Tekneyi seçin. §**Hareket**§ basın ve sonra - kimsenin tahmin edemediği kısım - 
+§**karaya**§ tıklayın.
+
+Su onu taşır. Bir kıyı §**adamları oraya çıkarır**§. Çıkarma budur; onun için ayrı
+bir düğme yoktur.
+---
+@Signals Officer
+:: until=destroyed:VER
+Yani: limanı olan bir ilde adamlar, bindirme, turu bitir, donanma görünümü, tekneyi
+hareket ettir, karaya tıkla.
+
+Ve §**Hallow Rock üzerinden**§ gidin. Bu bir kestirme değil, güzergâhın kendisi: bir
+tekne ancak o kadar taşır ve Verrick'in kıyısı tek seferde bunun ötesindedir. Kayaya
+çıkın, turu bitirin, sonra ikinci yarıyı geçin.
+
+Ve tekneyi onların muhribinden uzak tutun. Yüklü olan, içindeki herkesle batar.
+---
+@Signals Officer
+:: point=tab.claims
+Ve toprağı almadan önce talep edin, aldıktan sonra değil. Artık nedenini biliyorsunuz.
+---
+@Signals Officer
+Hepsi bu. Ekonomi, araştırma, politika, huzursuzluk, talepler, ordular, gemiler.
+
+Diğer her şey ayrıntıdır ve ayrıntıyı ona kaybederek öğrenirsiniz.
+---
+@Signals Officer
+:: act=then:outro
+Ve ada bu. Benimle yukarı, menüye gelin - son iki şey burada aşağıda değil.

@@ -1,0 +1,56 @@
+// Vertaling. Die :: reëls en sprekername is identifiseerders - moenie vertaal nie.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hallo, wie is dit?
+---
+@
+...
+---
+@Pr1nted
+O... Jy is nuut hier... Wat? §**nog nooit 'n land bestuur nie?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Weet jy wat? My fout...
+---
+@Pr1nted
+:: enter=type speed=42
+Net dat ek nie tyd het om die handleiding self te doen nie, so ek los jou by 'n
+kennis van my, goed? Ek het tyd nodig, opdaterings moet mos gemaak word.
+---
+@Signals Officer
+Hallo? Watter §**Pr1nted**§?
+---
+@Pr1nted
+Um... Haai Mia, ek het 'n /piepklein gunsie/ nodig, sal jy 'n nuwe speler
+rondwys?
+---
+@Signals Officer
+</Sug/>
+---
+@Pr1nted
+**Toe nou!** Waarvoor betaal ek jou?
+---
+@Signals Officer
+Goed dan... Nou ja, nou ja.
+---
+@Pr1nted
+Uitstekend! Juffrou Mia sal jou alles wys: hoe die spel werk en die grondslae
+daarvan. En as jy die grondslae ken maar oor besonderhede wil praat, sê dit nou,
+> Wys my die grondslae -> basics
+> Ek ken die grondslae, kom ons praat besonderhede -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Wonderlik, kom ons begin.
+---
+@Pr1nted
+:: act=tune_out
+Goed, hopelik kom julle klaar! Pr1nted, uit.

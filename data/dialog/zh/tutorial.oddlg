@@ -1,0 +1,264 @@
+// 翻译 - 米娅的课。:: 行、说话人与 {key=...} 都是标识符。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+好。Ashford。七个省，一个已经不喜欢我们的邻居，还有一座走不过去的岛。
+
+小到够拿来学。我们在这儿的全部理由就是这个。
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+点任意一个省，这块面板就告诉你它是什么：归谁，谁住在那儿，产出什么，以及他们离为此
+闹起来还有多远。
+
+在这游戏里你做的每一件事，都是对一个省做的。
+---
+@Signals Officer
+:: point=view.population
+底下那条不是八个按钮。那是看§同一张§地图的八种方式，你整局都会在它们之间切换。
+
+这一个按住着多少人来给每个省上色。
+---
+@Signals Officer
+:: point=view.industry
+工业。工厂在哪儿，也就是钱和装备从哪儿来。
+
+人口和工业放在一起，告诉你哪些省值得拿，哪些只是地。
+---
+@Signals Officer
+:: point=view.defence
+防御显示要塞。深色表示有人挖了工事，而攻进深色的地，代价远比数字暗示的高。
+---
+@Signals Officer
+:: point=view.relations
+关系：谁在跟谁打仗，谁给谁作担保。动手之前查一查——在这儿输掉的战争，一半是跟三个
+国家打的，不是一个。
+---
+@Signals Officer
+:: point=view.army
+陆军。地图上所有驻军一次看全，你的和他们的。
+
+调动人马的时候就该待在这个视图里，因为只有它显示等着他们的是什么。
+---
+@Signals Officer
+:: point=view.navy
+海军对船只做同样的事，你也是从这里装载运输船的。
+
+资源和国名是最后两个，名字就是它们做的事。
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+先是§**经济**§，因为其余的一切都从它里头付。
+
+打开它。
+---
+@Signals Officer
+工业是你用来建设的东西，它在已经有人口的地方生长。把工厂摆在空地上，你就买了一座
+非常昂贵的棚子。
+
+收入每回合来一次。在到手之前就花掉，缺口就从战备里扣。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+现在再关上——同一个按钮。面板盖住了地图，你在里头的时候，我没法给你看外面的任何
+东西。
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+接着是§**研究**§。打开它。
+---
+@Signals Officer
+你在这里开始的东西没有一样会在本回合完成，而大多数会在你早忘了自己想要它之后很久
+才完成。
+
+而这恰恰就是值得早开始的原因。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+再出来。
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**政治**§。进去吧。
+---
+@Signals Officer
+政策要的是维持费，不是一笔总价——它们是长期账单，还会挪动国家在政治上站的位置。
+
+征兵填满队列。它同时也造出了不想待在队列里的人，而那才是要盯的数字。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+然后出来。
+---
+@Signals Officer
+那个数字就是§**动荡**§。
+
+动荡高的省份不再上缴，开始组织起来。放着不管够久，它就走了——带着它的工业、它的人口，
+和它对你的看法。
+
+你会得到一次警告。第二次未必有。
+---
+@Signals Officer
+:: point=view.relations
+进面板之前还有一件事：战争不一定要以某人死掉收场。
+
+§**停火**§和§**贸易**§的提议会作为一扇写着条件的窗口出现：谁停止作战，谁放弃什么。
+读条件。接受了，战争就按那些条件结束，不是按好听的条件。
+---
+@Signals Officer
+你也可以自己开一个，从关系视图：选一个你正在交战的国家，然后开口。他们输的时候说好，
+不输的时候说不好，这游戏里的外交大半就是这么回事。
+
+§**贸易协定**§是没有战争的同一个形状：每回合以货易钱，直到有人取消。
+---
+@Signals Officer
+而在这堂课期间，没人会向你提出这两样中的任何一样。我不许他们。
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+最后一块面板。§**宣称**§是战争如何变得名正言顺的办法。
+---
+@Signals Officer
+推行一个你手里有的宣称，世界耸耸肩。夺取你从未宣称过的地，所有对你还犹豫的人就不再
+犹豫了。
+
+在战争§之前§提出宣称。事后提的骗不了谁。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+关上它，我们去用一点这些东西。
+---
+@Signals Officer
+现在说陆军。
+
+选一个你拥有的省，按住 §{key=army_move}§ 然后点人马该去的地方。只能是相邻的省——
+军队是走过去的，不会瞬移。
+---
+@Signals Officer
+炮兵在 §{key=artillery_wheel}§ 上。按住它，轮盘就打开：从迫击炮到一些我宁可不落笔的
+东西。
+
+船只有自己的：§{key=ship_move}§ 移动，§{key=ship_wheel}§ 开炮，§{key=ship_engage}§
+接战。
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+军队也不是凭空冒出来的。§**是你征来的**§，一个省一个省地，从住在那里的人当中。
+
+选我们的一个，看看面板。
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+那儿有一个滑块和一个§**征募**§按钮。滑块是这个回合你从该省能匀出的部分里拿走多少——
+至多约五分之一的人口，人们不满的地方还要更少。
+
+这要花钱，人下回合才到。现在就订一些。
+---
+@Signals Officer
+被你抽走了兵的省，是谁都能走进去的省；被你抽走了人的省，则会永远更穷。征募是在花掉
+某样东西，不是在造出它。
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+在你调动任何人之前：§**在你结束回合之前，什么都不会发生。**§
+
+你也许注意到它一直是灰的。那是我。
+
+你下命令。命令搁在那儿。你按下这个，然后它们一齐发生——这也正是为什么命令要是下得好，
+整场战役可以在一个回合里定下来。
+---
+@Signals Officer
+Kestrel 占着我们这座岛的东端，他们已经在跟我们打，手上有四万八千人。
+
+我们有七十二万。
+---
+@Signals Officer
+:: until=destroyed:KES
+所以在§**一个回合**§里做完。下令把他们每一个省都拿下——四个全要，一个接一个，在你
+结束任何东西之前——然后按“处理回合”，看着这一整套结算完。
+
+这就是这游戏的节奏。其余的都是细节。
+---
+@Signals Officer
+:: act=rebellion
+... 你家里出事了。
+
+你刚拿下的那些省，动荡越线了。他们已经宣布自立，而且不是在请示。
+---
+@Signals Officer
+:: until=rebels:none
+我说的就是这个。叛乱现在是个国家了——它有省份、有人，还有跟你接壤的边界。
+
+像镇压别的东西一样镇压它。不会有 Kestrel 那么容易。
+---
+@Signals Officer
+那就剩下海那边的 Verrick 了。
+
+没有陆路。再怎么行军也把军队送不过去，而大多数人正是卡在这儿。
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+而且我们§**没有跟他们交战**§。Kestrel 来的时候就已经是敌意的；Verrick 什么也没做，
+而你不能在一个与你和平的国家登陆。
+
+所以我们宣战。除人口视图外的任意视图，点他们的一个省。
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+他们的省份面板列出我们可以对他们做什么，§**宣战**§就在其中。它上面是§**战争目标**§——
+你声称自己要的是什么。点它来切换。
+
+目标不是装饰：世界其余部分是照着它评判你的，日后停火也会围着它争。
+---
+@Signals Officer
+宣了它——然后§**结束回合**§。宣战跟别的命令一样：现在提交，等回合结算时才发生。在你
+按下按钮之前，地图上什么都不会变。
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+整个渡海，四步走完。选我们的一个沿海省——要有§**港口**§并且驻着兵的。
+---
+@Signals Officer
+:: point=panel.province
+里面得§**驻着兵**§。登船不会从哪儿变出一支军队——它把已经在那里的驻军放上船，所以
+省份空着的港口什么也装不上。
+
+需要的话先调些人进去。
+---
+@Signals Officer
+:: point=panel.province
+然后，在那个省的面板里：§**军队登船**§。免费，一回合。
+
+按下去，结束回合。驻军离开省份，变成海岸外的一条§**船**§，把他们当作船员载着。
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+现在切到§**海军**§视图。你没法从人口地图上给船下命令——船不在那上面。
+---
+@Signals Officer
+选中船。按§**移动**§，然后——这是没人猜得到的部分——点§**陆地**§。
+
+水面让它移动。海岸§**把人放上岸**§。那就是登陆；没有单独的按钮。
+---
+@Signals Officer
+:: until=destroyed:VER
+所以：兵在有港口的省，登船，结束回合，海军视图，移动船，点陆地。
+
+而且要§**经由 Hallow Rock**§。那不是捷径，那就是航线：船只能载这么远，而 Verrick 的
+海岸一次到不了。在那块礁上登陆，结束回合，再走后半程。
+
+还有，让船离他们的驱逐舰远点。满载的一条沉下去，船上所有人都跟着。
+---
+@Signals Officer
+:: point=tab.claims
+还有，在你拿地之前就宣称，不是拿完之后。你现在知道为什么了。
+---
+@Signals Officer
+就这些了。经济、研究、政治、动荡、宣称、军队、船只。
+
+其余的都是细节，而细节你会靠输给它们学会。
+---
+@Signals Officer
+:: act=then:outro
+这就是这座岛。跟我上去回菜单——最后两样不在下面这儿。

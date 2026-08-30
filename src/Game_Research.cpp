@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "util/LoadLog.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "ai/AISystem.h"   // noteResearchStall, called from progressCountryResearch
@@ -185,6 +186,39 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
         "buildings","industry",{"ind10"},400,650,1180).resourceModPct=25;
     m_researchNodes.back().mutexGroup=1;
 
+    // ─── Buildings > Industrial Efficiency ───
+    //
+    // The one answer to industry upkeep. The rate is total-levels/600 charged
+    // against gross industry income, so it grows quadratically as a country
+    // industrialises and was, before this branch, completely unavoidable --
+    // no doctrine lever and no research node touched it. This is deliberately
+    // its own subcategory rather than more nodes on the industry spine: it is a
+    // parallel investment a player chooses INSTEAD of the next level, which is
+    // the decision the upkeep curve is there to create.
+    //
+    // The three linear nodes total 45%, and the two exclusive capstones take it
+    // to 60% or 55% with a sweetener. Upkeep is never removed: at the 45% cap a
+    // huge empire still pays about a fifth of its industrial income, so the
+    // brake on the snowball survives, it just stops being a wall.
+    add("ind_eff1","Standardised Parts",
+        "Interchangeable components and common tooling. Industry upkeep -15%",
+        "buildings","efficiency",{"ind3"},30,1050,280).industryUpkeepPct=15;
+    add("ind_eff2","Assembly Line",
+        "Continuous flow production. Industry upkeep -15%",
+        "buildings","efficiency",{"ind_eff1"},60,1050,380).industryUpkeepPct=15;
+    add("ind_eff3","Scientific Management",
+        "Time-and-motion study across the works. Industry upkeep -15%",
+        "buildings","efficiency",{"ind_eff2"},110,1050,480).industryUpkeepPct=15;
+    add("ind_eff_grid","National Power Grid",
+        "One grid, one tariff. Industry upkeep -15%",
+        "buildings","efficiency",{"ind_eff3"},220,880,580).industryUpkeepPct=15;
+    m_researchNodes.back().mutexGroup=11;
+    add("ind_eff_auto","Automation",
+        "Machines that mind themselves. Industry upkeep -10%, population modifier +15%",
+        "buildings","efficiency",{"ind_eff3"},220,1220,580).industryUpkeepPct=10;
+    m_researchNodes.back().popModPct=15;
+    m_researchNodes.back().mutexGroup=11;
+
     // ─── Buildings > Ports (linear, 3) ───
     add("port1","Port I",   "Unlocks level 1 ports (basic naval access)",
         "buildings","ports",{},5,780,80).portLevel=1;
@@ -367,7 +401,7 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
         "misc","misc",{"pop_bonus4"},150,300,480).popModPct=10;
     m_researchNodes.back().infinite=true;
 
-    std::cout << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
+    LoadLog() << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
 }
 
 void Game::initResearchTrees() {
@@ -408,7 +442,7 @@ void Game::initResearchTrees() {
             setResearched(cid, "basic_training");
         }
     }
-    std::cout << "  Applied per-country starting research" << std::endl;
+    LoadLog() << "  Applied per-country starting research" << std::endl;
 }
 
 bool Game::hasResearched(const std::string& nodeId, int countryId) const {
@@ -526,6 +560,7 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
         else if (effectField == "popModPct") total += n.popModPct;
         else if (effectField == "resourceModPct") total += n.resourceModPct;
         else if (effectField == "industryCostPct") total += n.industryCostPct;
+        else if (effectField == "industryUpkeepPct") total += n.industryUpkeepPct;
         else if (effectField == "passiveIncome") total += n.passiveIncome;
         else if (effectField == "popGrowthPct") total += n.popGrowthPct;
         else if (effectField == "migrationRate") total += n.migrationRate;
@@ -534,6 +569,20 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
         else if (effectField == "navyAtkPct") total += n.navyAtkPct;
         else if (effectField == "navyDefPct") total += n.navyDefPct;
         else if (effectField == "navySpeedPct") total += n.navySpeedPct;
+    }
+    // ...AND THE DOCTRINES IN FORCE. See Policy::levers: these were parsed into
+    // nothing and summed nowhere, so every doctrine's advertised effects were
+    // decoration. Only doctrines that have finished implementing count --
+    // turnsRemaining > 0 is still being enacted, < 0 is not in force at all --
+    // which is what the implementation delay is for.
+    for (const auto& ap : m_activePolicies) {
+        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        for (const auto& q : m_allPolicies) {
+            if (q.id != ap.policyId) continue;
+            auto lv = q.levers.find(effectField);
+            if (lv != q.levers.end()) total += lv->second;
+            break;
+        }
     }
     return total;
 }
@@ -554,22 +603,22 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
 std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     auto it = m_countryCompass.find(countryId);
     if (it == m_countryCompass.end())
-        return "This country has no political compass.";
+        return T("This country has no political compass.");
     const auto& pc = it->second;
 
     // economic runs -100 (left) to +100 (right); social -100 (authoritarian)
     // to +100 (libertarian). See PoliticalCompass.
     if (pc.economic < p.minEcon)
-        return TextFormat("Your economy is too far left for this (%.0f; needs %.0f or higher).",
+        return TextFormat(T("Your economy is too far left for this (%.0f; needs %.0f or higher)."),
                           pc.economic, p.minEcon);
     if (pc.economic > p.maxEcon)
-        return TextFormat("Your economy is too far right for this (%.0f; needs %.0f or lower).",
+        return TextFormat(T("Your economy is too far right for this (%.0f; needs %.0f or lower)."),
                           pc.economic, p.maxEcon);
     if (pc.social < p.minSoc)
-        return TextFormat("Your government is too authoritarian for this (%.0f; needs %.0f or higher).",
+        return TextFormat(T("Your government is too authoritarian for this (%.0f; needs %.0f or higher)."),
                           pc.social, p.minSoc);
     if (pc.social > p.maxSoc)
-        return TextFormat("Your government is too libertarian for this (%.0f; needs %.0f or lower).",
+        return TextFormat(T("Your government is too libertarian for this (%.0f; needs %.0f or lower)."),
                           pc.social, p.maxSoc);
 
     auto displayName = [&](const std::string& id) {
@@ -581,19 +630,20 @@ std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     for (const auto& ap : m_activePolicies) {
         if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
         if (ap.policyId == p.id)
-            return ap.turnsRemaining > 0 ? "Already being implemented."
-                                         : "Already in force.";
-        for (const auto& inc : p.incompatibleWith)
-            if (ap.policyId == inc)
-                return "Conflicts with " + displayName(inc) +
-                       ", which is active. Repeal it first.";
+            return ap.turnsRemaining > 0 ? T("Already being implemented.")
+                                         : T("Already in force.");
+        if (policiesConflict(p.id, ap.policyId))
+            // One sentence with the name in it, not three pieces glued
+            // together: the name does not sit in the middle in every language.
+            return TextFormat(T("Conflicts with %s, which is active. Repeal it first."),
+                              od::i18n::tr(displayName(ap.policyId)));
     }
 
     auto cs = computeCountryIncome(countryId);
     float available = cs.total - (cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts);
     available = std::max(0.0f, available);
     if (p.costPerTurn > 0 && available < p.costPerTurn)
-        return TextFormat("Costs %d/turn and only %.0f is spare.", p.costPerTurn, available);
+        return TextFormat(T("Costs %d/turn and only %.0f is spare."), p.costPerTurn, available);
 
     return "";
 }
@@ -601,6 +651,33 @@ std::string Game::policyBlockReason(int countryId, const Policy& p) const {
 bool Game::canCountryEnactPolicy(int countryId, const Policy& p) const {
     return policyBlockReason(countryId, p).empty();
 }
+
+namespace {
+
+/// What a research branch is CALLED, as against what the data calls it.
+///
+/// The tree draws node.subcategory straight from the definition -- lowercase
+/// "fortifications", "ports", "efficiency" -- which reads as a leaked field
+/// name and is the one shape tools/i18n_extract.py refuses to collect, on the
+/// grounds that a bare lowercase word is usually an id. It usually is. So the
+/// id stays an id and the heading is a heading.
+const char* subcategoryLabel(const std::string& id) {
+    if (id == "army")           return T("Army");
+    if (id == "navy")           return T("Navy");
+    if (id == "artillery")      return T("Artillery");
+    if (id == "conscription")   return T("Conscription");
+    if (id == "efficiency")     return T("Efficiency");
+    if (id == "fortifications") return T("Fortifications");
+    if (id == "indoctrination") return T("Indoctrination");
+    if (id == "industry")       return T("Industry");
+    if (id == "ports")          return T("Ports");
+    if (id == "tourism")        return T("Tourism");
+    if (id == "misc")           return T("Miscellaneous");
+    return T(id);
+}
+
+}  // namespace
+
 
 void Game::drawResearchTab() {
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 200});
@@ -620,7 +697,7 @@ void Game::drawResearchTab() {
         if (m_renderer) m_renderer->setPaused(false);
         return;
     }
-    DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
+    DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     // ─── Category tabs ───
     const char* catNames[] = {"Buildings", "Army", "Population", "Misc"};
@@ -699,7 +776,7 @@ void Game::drawResearchTab() {
     }
 
     if (catIndices.empty()) {
-        DrawText("No research trees in this category", m_screenW / 2 - 100, m_screenH / 2, 14, LIGHTGRAY);
+        DrawText(T("No research trees in this category"), m_screenW / 2 - 100, m_screenH / 2, 14, LIGHTGRAY);
     }
 
     // ─── Subcategory labels ───
@@ -710,7 +787,8 @@ void Game::drawResearchTab() {
             lastSubcat = node.subcategory;
             int lx = (int)(node.posX * m_researchZoom + m_researchCamX);
             int ly = (int)(node.posY * m_researchZoom + m_researchCamY);
-            DrawText(node.subcategory.c_str(), lx, ly - (int)(26 * m_researchZoom), (int)(14 * m_researchZoom), {180, 180, 200, 200});
+            DrawText(subcategoryLabel(node.subcategory),
+                     lx, ly - (int)(26 * m_researchZoom), (int)(14 * m_researchZoom), {180, 180, 200, 200});
         }
     }
 
@@ -778,8 +856,8 @@ void Game::drawResearchTab() {
         DrawRectangleRounded(r, 0.15f, 8, bg);
         DrawRectangleRoundedLines(r, 0.15f, 8, border);
         int fs = (int)(12 * m_researchZoom); if (fs < 7) fs = 7; if (fs > 20) fs = 20;
-        int textW = MeasureText(node.name.c_str(), fs);
-        DrawText(node.name.c_str(), nx + nodeW / 2 - textW / 2, ny + 4, fs, WHITE);
+        int textW = MeasureText(T(node.name), fs);
+        DrawText(T(node.name), nx + nodeW / 2 - textW / 2, ny + 4, fs, WHITE);
         int infoFs = (int)(8 * m_researchZoom); if (infoFs < 6) infoFs = 6; if (infoFs > 14) infoFs = 14;
         if (node.inProgress) {
             float pct = (float)node.invested / node.cost;
@@ -787,19 +865,19 @@ void Game::drawResearchTab() {
             int barY = ny + nodeH - barH - 4;
             DrawRectangle(nx + 4, barY, nodeW - 8, barH, {60, 60, 60, 200});
             DrawRectangle(nx + 4, barY, (int)((nodeW - 8) * pct), barH, {220, 200, 60, 255});
-            DrawText(TextFormat("%d/%d RP", node.invested, node.cost), nx + 4, barY - infoFs - 2, infoFs, {200, 200, 200, 200});
+            DrawText(TextFormat(T("%d/%d RP"), node.invested, node.cost), nx + 4, barY - infoFs - 2, infoFs, {200, 200, 200, 200});
         } else if (!node.researched) {
-            DrawText(TextFormat("%d RP", node.cost), nx + 4, ny + nodeH - infoFs - 6, infoFs, {160, 160, 160, 200});
+            DrawText(TextFormat(T("%d RP"), node.cost), nx + 4, ny + nodeH - infoFs - 6, infoFs, {160, 160, 160, 200});
         } else {
-            DrawText("DONE", nx + 4, ny + nodeH - infoFs - 6, infoFs, {100, 200, 100, 200});
+            DrawText(T("DONE"), nx + 4, ny + nodeH - infoFs - 6, infoFs, {100, 200, 100, 200});
         }
     }
 
     // ─── Hover tooltip ───
     if (m_researchHoveredNode >= 0) {
         auto& node = m_researchNodes[m_researchHoveredNode];
-        int tw0 = MeasureText(node.name.c_str(), 14);
-        int dw = MeasureText(node.desc.c_str(), 11);
+        int tw0 = MeasureText(T(node.name), 14);
+        int dw = MeasureText(T(node.desc), 11);
         int tipW = std::max(tw0, dw) + 20;
         int tipX = (int)mouse.x + 16; if (tipX + tipW > m_screenW) tipX = m_screenW - tipW - 8;
         int tipY = (int)mouse.y + 16;
@@ -807,10 +885,10 @@ void Game::drawResearchTab() {
         if (!node.researched && !node.inProgress && !node.isAvailable(m_researchNodes)) tipH += 12;
         DrawRectangle(tipX, tipY, tipW, tipH, {10, 10, 20, 220});
         DrawRectangleLines(tipX, tipY, tipW, tipH, {100, 100, 140, 200});
-        DrawText(node.name.c_str(), tipX + 10, tipY + 4, 14, WHITE);
-        DrawText(node.desc.c_str(), tipX + 10, tipY + 22, 11, {200, 200, 200, 255});
+        DrawText(T(node.name), tipX + 10, tipY + 4, 14, WHITE);
+        DrawText(T(node.desc), tipX + 10, tipY + 22, 11, {200, 200, 200, 255});
         if (!node.researched && !node.inProgress && !node.isAvailable(m_researchNodes))
-            DrawText("LOCKED - Research prerequisites first", tipX + 10, tipY + 36, 10, {200, 100, 100, 255});
+            DrawText(T("LOCKED - Research prerequisites first"), tipX + 10, tipY + 36, 10, {200, 100, 100, 255});
     }
 
     // ─── Click to start research ───
@@ -833,13 +911,13 @@ void Game::drawResearchTab() {
     // ─── Bottom bar: research points + allocation + currently researching ───
     int barY2 = m_screenH - 50;
     DrawRectangle(0, barY2, m_screenW, 50, {10, 10, 15, 220});
-    DrawText(TextFormat("Research Points: %d", m_researchPoints), 16, barY2 + 8, 16, hexToColor(m_config.accent()));
+    DrawText(TextFormat(T("Research Points: %d"), m_researchPoints), 16, barY2 + 8, 16, hexToColor(m_config.accent()));
 
     // Currently researching indicator
     if (m_researchActiveNode >= 0 && m_researchActiveNode < (int)m_researchNodes.size()) {
         auto& rn = m_researchNodes[m_researchActiveNode];
         int rx = m_screenW / 2 - 200;
-        DrawText(TextFormat("Researching: %s (%d/%d RP)", rn.name.c_str(), rn.invested, rn.cost),
+        DrawText(TextFormat(T("Researching: %s (%d/%d RP)"), rn.name.c_str(), rn.invested, rn.cost),
                  rx, barY2 + 8, 14, {200, 200, 100, 255});
     }
 
@@ -855,7 +933,7 @@ void Game::drawResearchTab() {
     int sliderW = 300;
     int sliderH = 18;
 
-    DrawText("Econ Allocation:", sliderX - 120, sliderY + 1, 13, LIGHTGRAY);
+    DrawText(T("Econ Allocation:"), sliderX - 120, sliderY + 1, 13, LIGHTGRAY);
     DrawRectangle(sliderX, sliderY, sliderW, sliderH, {40, 40, 50, 200});
     // Show max affordable boundary
     int maxFillW = (int)(sliderW * maxAllocFrac);
@@ -866,7 +944,7 @@ void Game::drawResearchTab() {
     DrawText(TextFormat("%d%%", (int)(m_researchAllocation * 100)), sliderX + sliderW + 8, sliderY + 1, 13, WHITE);
     float allocAmount2 = cs2.total * m_researchAllocation;
     int rpPerTurn = 1 + (int)(sqrtf(allocAmount2 * 0.5f));
-    DrawText(TextFormat("(+%d RP/turn)", rpPerTurn), sliderX + sliderW + 60, sliderY + 1, 11, LIGHTGRAY);
+    DrawText(TextFormat(T("(+%d RP/turn)"), rpPerTurn), sliderX + sliderW + 60, sliderY + 1, 11, LIGHTGRAY);
 
     {
         const Rectangle allocBar = {(float)sliderX, (float)sliderY,

@@ -1,0 +1,14 @@
+// Çeviri - konu menüsü.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Peki, genel hatlarını biliyorsunuz. O hâlde asıl ne istiyorsunuz?
+
+Birini seçin, düzgünce anlatayım. Bitirince yine sorun.
+> Gemiler, limanlar ve orduyu sudan geçirmek -> script:tut_ships
+> Araştırma ve başladığınız hiçbir şeyin neden bitmediği -> script:tut_research
+> Ekonomi, sanayi ve paranın nereden geldiği -> script:tut_economy
+> Talepler, huzursuzluk ve illeri kendi halkınıza kaptırmak -> script:tut_unrest
+> İttifaklar, ateşkesler ve diplomasinin geri kalanı -> script:tut_diplomacy
+> Başka bir şey yok, bitirdim -> script:outro

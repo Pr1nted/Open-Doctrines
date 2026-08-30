@@ -1,0 +1,14 @@
+// Vertaling - die onderwerpkieslys.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Goed, jy ken die vorm daarvan. Wat wil jy dan eintlik hê?
+
+Kies een en ek gaan behoorlik daardeur. Vra weer wanneer ons klaar is.
+> Skepe, hawens en hoe 'n leër oor water kom -> script:tut_ships
+> Navorsing, en waarom niks wat jy begin ooit klaarkom nie -> script:tut_research
+> Die ekonomie, nywerheid en waar die geld vandaan kom -> script:tut_economy
+> Eise, onrus en provinsies aan jou eie mense verloor -> script:tut_unrest
+> Bondgenootskappe, skietstakings en die res van diplomasie -> script:tut_diplomacy
+> Niks verder nie, ek is klaar -> script:outro

@@ -1,0 +1,277 @@
+# Rebuild the sealed odseal archives, one per platform we ship on.
+#
+# WHY THIS WORKFLOW EXISTS
+#
+# odseal ships as a binary, not as source (docs/odseal.md). That buys the thing
+# it is meant to buy, and it costs this: a closed component and a clone that
+# builds are only compatible if a prebuilt exists for EVERY target. Producing
+# five archives by hand, on five machines, is exactly the chore that silently
+# stops happening -- and the way it fails is a red CI on a platform nobody built
+# for, long after the change that caused it.
+#
+# So the archives are built here, from one source, with one set of flags, and
+# committed back. Nobody has to own a Windows machine to ship a Windows build.
+#
+# WHERE THE SOURCE COMES FROM
+#
+# Not from this repository -- guard/ is gitignored and is not published. It is
+# checked out from a private repository named by the ODSEAL_SOURCE_REPO secret
+# using ODSEAL_SOURCE_TOKEN. Without those two the job stops immediately and
+# says so, rather than building nothing and committing an empty archive.
+#
+# THE SOURCE MUST NOT LEAK. It is never printed, never uploaded as an artifact,
+# and the checkout is removed before any artifact is packed. Only the stripped
+# archives leave this workflow.
+#
+# EVERY ARCHIVE IS TESTED BEFORE IT IS COMMITTED. A prebuilt that links but
+# misbehaves is worse than one that is missing: the first ships a broken
+# guarantee, the second fails the configure with an explanation. Where the
+# runner can execute the target it runs tests/odseal_test.cpp against the real
+# archive. Where it cannot -- Android is cross-compiled -- it checks the
+# archive exports the four symbols and nothing else.
+
+name: odseal prebuilts
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to commit the rebuilt archives to"
+        required: false
+        default: "main"
+
+# Two of these running at once would race on the same files in the commit job.
+concurrency:
+  group: odseal-prebuilts
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false          # one platform's toolchain breaking should not hide the rest
+      matrix:
+        include:
+          - { name: macos-universal, os: macos-14 }
+          - { name: linux-x86_64,    os: ubuntu-22.04 }
+          - { name: windows-x86_64,  os: windows-2022 }
+          - { name: web-wasm32,      os: ubuntu-22.04 }
+          - { name: android-arm64-v8a, os: ubuntu-22.04 }
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Fail here, loudly, rather than later with an empty archive. A missing
+      # secret is a configuration mistake and it should read like one.
+      - name: Check the source secrets are configured
+        shell: bash
+        env:
+          REPO: ${{ secrets.ODSEAL_SOURCE_REPO }}
+          TOKEN: ${{ secrets.ODSEAL_SOURCE_TOKEN }}
+        run: |
+          set -e
+          test -n "$REPO"  || { echo "ODSEAL_SOURCE_REPO is not set -- see docs/odseal.md"; exit 1; }
+          test -n "$TOKEN" || { echo "ODSEAL_SOURCE_TOKEN is not set -- see docs/odseal.md"; exit 1; }
+
+      # The private source, into guard/. persist-credentials is off so the token
+      # is not left in a .git/config that a later step could read or print.
+      - name: Fetch the sealed source
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ secrets.ODSEAL_SOURCE_REPO }}
+          token: ${{ secrets.ODSEAL_SOURCE_TOKEN }}
+          path: guard
+          persist-credentials: false
+
+      - name: Confirm the source arrived
+        shell: bash
+        run: |
+          set -e
+          test -f guard/odseal.cpp || { echo "guard/odseal.cpp missing from the private repo"; exit 1; }
+          test -f guard/odseal.h   || { echo "guard/odseal.h missing from the private repo";   exit 1; }
+          echo "source present"      # deliberately says nothing about its contents
+
+      # ── the five toolchains ──
+
+      - name: Build (macOS universal)
+        if: matrix.name == 'macos-universal'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          for A in arm64 x86_64; do
+            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer \
+                -arch $A -mmacosx-version-min=11.0 -c guard/odseal.cpp -o "odseal-$A.o"
+            strip -x "odseal-$A.o"
+          done
+          lipo -create odseal-arm64.o odseal-x86_64.o -output odseal.o
+          ar rcs out/libodseal.a odseal.o
+          lipo -archs out/libodseal.a
+
+      - name: Build (Linux x86_64)
+        if: matrix.name == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          g++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          strip --strip-unneeded odseal.o
+          ar rcs out/libodseal.a odseal.o
+
+      - name: MSVC environment
+        if: matrix.name == 'windows-x86_64'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # MSVC hides symbols unless they are exported, so there is no visibility
+      # flag to pass; /GR- is the no-RTTI equivalent. The artifact is a .lib.
+      - name: Build (Windows x86_64)
+        if: matrix.name == 'windows-x86_64'
+        shell: cmd
+        run: |
+          mkdir out
+          cl /nologo /std:c++17 /O2 /GR- /EHsc /c guard\odseal.cpp /Foodseal.obj || exit /b 1
+          lib /nologo /OUT:out\odseal.lib odseal.obj || exit /b 1
+
+      - uses: mymindstorm/setup-emsdk@v14
+        if: matrix.name == 'web-wasm32'
+
+      - name: Build (web wasm32)
+        if: matrix.name == 'web-wasm32'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          em++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -c guard/odseal.cpp -o odseal.o
+          emar rcs out/libodseal.a odseal.o
+
+      # Same NDK discovery as the android job in test.yml: name it explicitly so
+      # a runner image bump cannot change the compiler under us.
+      - name: Locate the NDK
+        if: matrix.name == 'android-arm64-v8a'
+        shell: bash
+        run: |
+          set -e
+          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "using $NDK"
+
+      - name: Build (android arm64-v8a)
+        if: matrix.name == 'android-arm64-v8a'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          "$TC/aarch64-linux-android24-clang++" \
+              -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC/llvm-strip" --strip-unneeded odseal.o
+          "$TC/llvm-ar" rcs out/libodseal.a odseal.o
+
+      # ── the source goes no further ──
+      #
+      # Removed before the archive is packed, so there is no path by which a
+      # later step or a stray artifact upload could carry it out of the runner.
+      - name: Drop the sealed source
+        if: always()
+        shell: bash
+        run: rm -rf guard
+
+      # ── prove the archive before trusting it ──
+
+      - name: Test the archive (native)
+        if: matrix.name == 'macos-universal' || matrix.name == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -e
+          c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
+          ./odseal_test
+
+      - name: Test the archive (Windows)
+        if: matrix.name == 'windows-x86_64'
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /O2 /EHsc /I third_party\odseal tests\odseal_test.cpp out\odseal.lib /Feodseal_test.exe || exit /b 1
+          odseal_test.exe || exit /b 1
+
+      # wasm cannot run natively, but node runs what emscripten emits, so this
+      # is the same test rather than a weaker stand-in.
+      - name: Test the archive (web, under node)
+        if: matrix.name == 'web-wasm32'
+        shell: bash
+        run: |
+          set -e
+          em++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test.js
+          node odseal_test.js
+
+      # Android is cross-compiled and there is no device here, so the contract
+      # cannot be executed. What CAN be checked is the shape of the archive:
+      # the four entry points, and nothing else exported to point a reader at
+      # what it does.
+      - name: Check the archive (android, symbols only)
+        if: matrix.name == 'android-arm64-v8a'
+        shell: bash
+        run: |
+          set -e
+          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          GOT="$("$TC/llvm-nm" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+          echo "exports: $GOT"
+          test "$GOT" = "od_fz od_k9 od_s7 od_v3 " || { echo "unexpected exports"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: odseal-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    name: commit the archives
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: incoming
+
+      # One directory per platform, named exactly as CMakeLists.txt looks for
+      # it. A mismatch here is a configure error on someone else's machine, so
+      # the names are spelled out rather than derived.
+      - name: Place the archives
+        shell: bash
+        run: |
+          set -e
+          install -D incoming/odseal-macos-universal/libodseal.a   third_party/odseal/macos-universal/libodseal.a
+          install -D incoming/odseal-linux-x86_64/libodseal.a      third_party/odseal/linux-x86_64/libodseal.a
+          install -D incoming/odseal-web-wasm32/libodseal.a        third_party/odseal/web-wasm32/libodseal.a
+          install -D incoming/odseal-android-arm64-v8a/libodseal.a third_party/odseal/android-arm64-v8a/libodseal.a
+          install -D incoming/odseal-windows-x86_64/odseal.lib     third_party/odseal/windows-x86_64/odseal.lib
+          rm -rf incoming
+          find third_party/odseal -type f | sort
+
+      - name: Commit if anything changed
+        shell: bash
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add third_party/odseal
+          # Nothing to do is a normal outcome: the source did not change.
+          if git diff --cached --quiet; then
+            echo "archives are unchanged"
+            exit 0
+          fi
+          git commit -m "Rebuild the odseal prebuilts"
+          git push origin HEAD:${{ inputs.ref }}

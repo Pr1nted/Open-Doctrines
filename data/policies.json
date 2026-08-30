@@ -1,16 +1,32 @@
 {
-  "policy_version": 3,
+  "policy_version": 4,
   "policies": [
     {
       "id": "land_reform",
       "name": "Land Reform",
       "category": "left",
-      "folder": "Left",
-      "description": "Redistribute land to peasants. Boosts rural minorities, shifts economic left.",
+      "description": "Redistribute land to peasants. Feeds the country and angers those who owned it.",
       "cost_per_turn": 5,
       "implementation_turns": 4,
-      "compass_shift": { "economic": -15, "social": -10 },
-      "requirements": { "min_economic": -100, "max_economic": 0, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": -15,
+        "social": -10
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 20,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 0.5,
+        "resourceModPct": 8
+      },
+      "incompatible_with": [
+        "privatization",
+        "flat_tax"
+      ],
+      "folder": "Left",
       "effects": {
         "minority_growth_rate": 0.02,
         "immigration_boost": 0.0,
@@ -19,22 +35,50 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["privatization", "flat_tax"],
       "tradeoffs": {
-        "gains": ["+2%/turn minority growth", "-1%/turn unrest"],
-        "costs": ["-5/turn income", "Economic: -15 total shift", "Social: -10 total shift"]
-      }
+        "gains": [
+          "Population growth +0.5%/turn",
+          "Resource income +8%",
+          "Unrest -1.0%",
+          "Minority growth +2%/turn"
+        ],
+        "costs": [
+          "-5/turn income",
+          "Economic -15",
+          "Social -10"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "state_industry",
       "name": "State Industry Expansion",
       "category": "left",
-      "folder": "Left",
-      "description": "Nationalize key industries. Shifts economic left, increases state revenue share.",
+      "description": "Nationalise the commanding heights. Factories get cheaper; the men who ran them leave.",
       "cost_per_turn": 10,
       "implementation_turns": 5,
-      "compass_shift": { "economic": -20, "social": -5 },
-      "requirements": { "min_economic": -100, "max_economic": 20, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": -20,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 40,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 18,
+        "passiveIncome": 3,
+        "resourceModPct": -5
+      },
+      "incompatible_with": [
+        "privatization",
+        "deregulation",
+        "austerity_programme",
+        "agrarian_priority"
+      ],
+      "folder": "Left",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -43,22 +87,42 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["privatization", "deregulation"],
       "tradeoffs": {
-        "gains": ["State controls +20% of industry income", "Economic: -20 total shift"],
-        "costs": ["-10/turn income (subsidies)", "Social: -5 total shift"]
-      }
+        "gains": [
+          "Industry cost -18%",
+          "Treasury +3/turn"
+        ],
+        "costs": [
+          "Resource income -5%",
+          "-10/turn income",
+          "Economic -20",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "worker_rights",
       "name": "Worker Rights Act",
       "category": "left",
-      "folder": "Left",
-      "description": "Strengthen unions and labor protections. Shifts social libertarian, reduces unrest.",
+      "description": "Unions, hours, safety. A healthier country and a dearer conscript.",
       "cost_per_turn": 3,
       "implementation_turns": 3,
-      "compass_shift": { "economic": -5, "social": 15 },
-      "requirements": { "min_economic": -100, "max_economic": 50, "min_social": -50, "max_social": 100 },
+      "compass_shift": {
+        "economic": -5,
+        "social": 15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 1.0,
+        "conscriptionCostPct": -15
+      },
+      "folder": "Left",
       "effects": {
         "minority_growth_rate": 0.01,
         "immigration_boost": 0.0,
@@ -67,22 +131,51 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": [],
       "tradeoffs": {
-        "gains": ["+1%/turn minority growth", "-2%/turn unrest"],
-        "costs": ["-3/turn income", "Economic: -5 total shift", "Social: +15 total shift"]
-      }
+        "gains": [
+          "Population growth +1.0%/turn",
+          "Unrest -2.0%",
+          "Minority growth +1%/turn"
+        ],
+        "costs": [
+          "Recruitment cost +15%",
+          "-3/turn income",
+          "Economic -5",
+          "Social +15"
+        ]
+      },
+      "incompatible_with": [
+        "deregulation",
+        "total_war_economy",
+        "war_economy_total"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "wealth_tax",
       "name": "Progressive Wealth Tax",
       "category": "left",
-      "folder": "Left",
-      "description": "Tax the wealthy heavily. Shifts economic left, funds social programs.",
+      "description": "Tax the rich heavily. Pays for the state; capital finds other countries.",
       "cost_per_turn": 0,
       "implementation_turns": 2,
-      "compass_shift": { "economic": -10, "social": 0 },
-      "requirements": { "min_economic": -100, "max_economic": 30, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": -10,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 50,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "passiveIncome": 6,
+        "industryCostPct": -10
+      },
+      "incompatible_with": [
+        "flat_tax"
+      ],
+      "folder": "Left",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -91,22 +184,98 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["flat_tax"],
       "tradeoffs": {
-        "gains": ["+5/turn pacification budget", "-1.5%/turn unrest"],
-        "costs": ["Economic: -10 total shift"]
-      }
+        "gains": [
+          "Treasury +6/turn",
+          "Unrest -1.5%",
+          "Pacification budget +5/turn"
+        ],
+        "costs": [
+          "Industry cost +10%",
+          "Economic -10"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "total_war_economy",
+      "name": "Total War Economy",
+      "category": "left",
+      "description": "Every factory to the front. Nothing is built that does not shoot.",
+      "cost_per_turn": 14,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": -20,
+        "social": -20
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "conscriptionCostPct": 25,
+        "armyAtkPct": 10,
+        "navyCostPct": 15,
+        "industryCostPct": -20,
+        "popGrowthPct": -1.0
+      },
+      "incompatible_with": [
+        "consumer_economy",
+        "war_economy_total",
+        "consumer_goods_priority",
+        "demobilisation",
+        "worker_rights"
+      ],
+      "folder": "Left",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.03,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Recruitment cost -25%",
+          "Army attack +10%",
+          "Ship cost -15%"
+        ],
+        "costs": [
+          "Industry cost +20%",
+          "Population growth -1.0%/turn",
+          "Unrest +3.0%",
+          "-14/turn income",
+          "Economic -20",
+          "Social -20"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "deregulation",
       "name": "Economic Deregulation",
       "category": "right",
-      "folder": "Right",
-      "description": "Reduce business regulations. Shifts economic right, boosts private income.",
+      "description": "Get the state out of the way. Building is cheap; nobody is watching.",
       "cost_per_turn": 0,
       "implementation_turns": 2,
-      "compass_shift": { "economic": 15, "social": 5 },
-      "requirements": { "min_economic": 0, "max_economic": 100, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": 15,
+        "social": 5
+      },
+      "requirements": {
+        "min_economic": -40,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 20,
+        "passiveIncome": 4
+      },
+      "folder": "Right",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -115,22 +284,46 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["state_industry", "wealth_tax"],
       "tradeoffs": {
-        "gains": ["Industry income +10%", "Economic: +15 total shift"],
-        "costs": ["+1%/turn unrest", "Social: +5 total shift"]
-      }
+        "gains": [
+          "Industry cost -20%",
+          "Treasury +4/turn"
+        ],
+        "costs": [
+          "Unrest +1.0%",
+          "Economic +15",
+          "Social +5"
+        ]
+      },
+      "incompatible_with": [
+        "state_industry",
+        "worker_rights"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "privatization",
-      "name": "Mass Privatization",
+      "name": "Privatisation",
       "category": "right",
-      "folder": "Right",
-      "description": "Sell state assets to private owners. One-time revenue + ongoing private growth.",
+      "description": "Sell the state's holdings. A windfall, then somebody else owns the mines.",
       "cost_per_turn": 0,
       "implementation_turns": 4,
-      "compass_shift": { "economic": 20, "social": -5 },
-      "requirements": { "min_economic": -20, "max_economic": 100, "min_social": -100, "max_social": 50 },
+      "compass_shift": {
+        "economic": 20,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -30,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 25,
+        "maintenanceCostPct": 10,
+        "resourceModPct": -8
+      },
+      "folder": "Right",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -139,22 +332,46 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["land_reform", "state_industry"],
       "tradeoffs": {
-        "gains": ["Economic: +20 total shift", "Private industry thrives"],
-        "costs": ["-5/turn income (lost state revenue)", "Social: -5 total shift"]
-      }
+        "gains": [
+          "Industry cost -25%",
+          "Upkeep -10%"
+        ],
+        "costs": [
+          "Resource income -8%",
+          "Economic +20",
+          "Social -5"
+        ]
+      },
+      "incompatible_with": [
+        "land_reform",
+        "state_industry",
+        "full_employment"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "flat_tax",
-      "name": "Flat Tax Reform",
+      "name": "Flat Tax",
       "category": "right",
-      "folder": "Right",
-      "description": "Simplify tax code with flat rate. Shifts economic right, boosts investment.",
+      "description": "One rate for everyone. Simple, popular with those who have most.",
       "cost_per_turn": 0,
       "implementation_turns": 2,
-      "compass_shift": { "economic": 10, "social": 0 },
-      "requirements": { "min_economic": -50, "max_economic": 100, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": 10,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -60,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "passiveIncome": 7,
+        "popGrowthPct": -0.5
+      },
+      "folder": "Right",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -163,22 +380,148 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["land_reform", "wealth_tax"],
       "tradeoffs": {
-        "gains": ["Industry income +5%", "Economic: +10 total shift"],
-        "costs": ["+0.5%/turn unrest"]
-      }
+        "gains": [
+          "Treasury +7/turn"
+        ],
+        "costs": [
+          "Population growth -0.5%/turn",
+          "Unrest +0.5%",
+          "Economic +10"
+        ]
+      },
+      "incompatible_with": [
+        "land_reform",
+        "wealth_tax"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "consumer_economy",
+      "name": "Consumer Economy",
+      "category": "right",
+      "description": "Build for the people who live here. They are happier, and there are fewer shells.",
+      "cost_per_turn": 6,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 15,
+        "social": 15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popModPct": 12,
+        "popGrowthPct": 1.5,
+        "conscriptionPct": -20,
+        "armyAtkPct": -5
+      },
+      "incompatible_with": [
+        "total_war_economy",
+        "mass_mobilisation",
+        "consumer_goods_priority",
+        "war_economy_total"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.04,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population income +12%",
+          "Population growth +1.5%/turn",
+          "Unrest -4.0%"
+        ],
+        "costs": [
+          "Manpower -20%",
+          "Army attack -5%",
+          "-6/turn income",
+          "Economic +15",
+          "Social +15"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "free_trade",
+      "name": "Free Trade",
+      "category": "right",
+      "description": "Open the ports. Wealth arrives by sea, and so does everything else.",
+      "cost_per_turn": 0,
+      "implementation_turns": 3,
+      "compass_shift": {
+        "economic": 18,
+        "social": 8
+      },
+      "requirements": {
+        "min_economic": -40,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "passiveIncome": 8,
+        "resourceModPct": 10,
+        "navySpeedPct": 10,
+        "industryCostPct": -8
+      },
+      "incompatible_with": [
+        "autarky"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Treasury +8/turn",
+          "Resource income +10%",
+          "Ship speed +10%"
+        ],
+        "costs": [
+          "Industry cost +8%",
+          "Economic +18",
+          "Social +8"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "national_unity",
-      "name": "National Unity Campaign",
+      "name": "National Unity Act",
       "category": "authoritarian",
-      "folder": "Authoritarian",
-      "description": "Promote single national identity. Reduces minority unrest, shifts authoritarian.",
+      "description": "One nation, one story. The line holds; nobody says otherwise.",
       "cost_per_turn": 8,
       "implementation_turns": 3,
-      "compass_shift": { "economic": 0, "social": -20 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 0 },
+      "compass_shift": {
+        "economic": 0,
+        "social": -20
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 40
+      },
+      "levers": {
+        "armyDefPct": 10,
+        "indoctrinationPct": 10,
+        "migrationRate": -10
+      },
+      "folder": "Authoritarian",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -187,22 +530,50 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["minority_rights", "decentralization"],
       "tradeoffs": {
-        "gains": ["-3%/turn unrest", "Minority assimilation +2%/turn"],
-        "costs": ["-8/turn income", "Social: -20 total shift", "Minority growth -2%/turn"]
-      }
+        "gains": [
+          "Army defence +10%",
+          "Indoctrination +10%",
+          "Unrest -3.0%"
+        ],
+        "costs": [
+          "Migration -10%",
+          "-8/turn income",
+          "Social -20"
+        ]
+      },
+      "incompatible_with": [
+        "minority_rights",
+        "open_borders",
+        "decentralization"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "censorship",
-      "name": "Media Control & Censorship",
+      "name": "Press Censorship",
       "category": "authoritarian",
-      "folder": "Authoritarian",
-      "description": "Control information flow. Reduces unrest, shifts authoritarian.",
+      "description": "Nothing is printed that was not approved. Quiet, and blind.",
       "cost_per_turn": 4,
       "implementation_turns": 2,
-      "compass_shift": { "economic": 0, "social": -15 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 20 },
+      "compass_shift": {
+        "economic": 0,
+        "social": -15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 50
+      },
+      "levers": {
+        "indoctrinationPct": 15,
+        "migrationRate": -12
+      },
+      "incompatible_with": [
+        "free_press"
+      ],
+      "folder": "Authoritarian",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -211,22 +582,47 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["free_press"],
       "tradeoffs": {
-        "gains": ["+2/turn pacification budget", "-2%/turn unrest"],
-        "costs": ["-4/turn income", "Social: -15 total shift", "Immigration -5%"]
-      }
+        "gains": [
+          "Indoctrination +15%",
+          "Unrest -2.0%",
+          "Pacification budget +2/turn"
+        ],
+        "costs": [
+          "Migration -12%",
+          "-4/turn income",
+          "Social -15"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "conscription",
-      "name": "Mandatory Conscription",
+      "name": "Universal Conscription",
       "category": "authoritarian",
-      "folder": "Authoritarian",
-      "description": "Draft all eligible citizens. Boosts army, shifts authoritarian.",
+      "description": "Every man of age. The army is enormous and the fields are empty.",
       "cost_per_turn": 6,
       "implementation_turns": 3,
-      "compass_shift": { "economic": 5, "social": -15 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 100 },
+      "compass_shift": {
+        "economic": 5,
+        "social": -15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "conscriptionPct": 30,
+        "conscriptionCostPct": 15,
+        "popGrowthPct": -0.5
+      },
+      "incompatible_with": [
+        "professional_army",
+        "demobilisation"
+      ],
+      "folder": "Authoritarian",
       "effects": {
         "minority_growth_rate": -0.01,
         "immigration_boost": 0.0,
@@ -235,22 +631,45 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": [],
       "tradeoffs": {
-        "gains": ["Army manpower +50%", "Economic: +5 total shift"],
-        "costs": ["-6/turn income", "Social: -15 total shift", "+1%/turn unrest", "Minority growth -1%/turn"]
-      }
+        "gains": [
+          "Manpower +30%",
+          "Recruitment cost -15%"
+        ],
+        "costs": [
+          "Population growth -0.5%/turn",
+          "Unrest +1.0%",
+          "Minority growth -1%/turn",
+          "-6/turn income",
+          "Economic +5",
+          "Social -15"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "secret_police",
-      "name": "Internal Security Apparatus",
+      "name": "Secret Police",
       "category": "authoritarian",
-      "folder": "Authoritarian",
-      "description": "Expand secret police. Strongly reduces unrest, shifts authoritarian.",
+      "description": "They know before you do. Nothing organises twice.",
       "cost_per_turn": 12,
       "implementation_turns": 3,
-      "compass_shift": { "economic": 0, "social": -25 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 10 },
+      "compass_shift": {
+        "economic": 0,
+        "social": -25
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 30
+      },
+      "levers": {
+        "indoctrinationPct": 20,
+        "migrationRate": -25,
+        "popGrowthPct": -0.5
+      },
+      "folder": "Authoritarian",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -259,22 +678,154 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["free_press", "minority_rights"],
       "tradeoffs": {
-        "gains": ["+10/turn pacification budget", "-5%/turn unrest"],
-        "costs": ["-12/turn income", "Social: -25 total shift", "Immigration -15%"]
-      }
+        "gains": [
+          "Indoctrination +20%",
+          "Unrest -5.0%",
+          "Pacification budget +10/turn"
+        ],
+        "costs": [
+          "Migration -25%",
+          "Population growth -0.5%/turn",
+          "-12/turn income",
+          "Social -25"
+        ]
+      },
+      "incompatible_with": [
+        "free_press",
+        "general_amnesty",
+        "minority_rights"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "autarky",
+      "name": "Autarky",
+      "category": "authoritarian",
+      "description": "Need nobody. Everything is made here, badly, and cannot be blockaded away.",
+      "cost_per_turn": 9,
+      "implementation_turns": 5,
+      "compass_shift": {
+        "economic": -10,
+        "social": -15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "resourceModPct": 15,
+        "industryCostPct": -12,
+        "passiveIncome": -4,
+        "maintenanceCostPct": 10
+      },
+      "incompatible_with": [
+        "free_trade",
+        "merchant_marine"
+      ],
+      "folder": "Authoritarian",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Resource income +15%",
+          "Upkeep -10%"
+        ],
+        "costs": [
+          "Industry cost +12%",
+          "Treasury -4/turn",
+          "-9/turn income",
+          "Economic -10",
+          "Social -15"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "mass_mobilisation",
+      "name": "Mass Mobilisation",
+      "category": "authoritarian",
+      "description": "The whole country under arms. It cannot be kept up for long.",
+      "cost_per_turn": 11,
+      "implementation_turns": 2,
+      "compass_shift": {
+        "economic": -5,
+        "social": -18
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "conscriptionPct": 45,
+        "armyDefPct": 8,
+        "popGrowthPct": -1.5,
+        "popModPct": -10
+      },
+      "incompatible_with": [
+        "professional_army",
+        "consumer_economy",
+        "demobilisation",
+        "consumer_goods_priority"
+      ],
+      "folder": "Authoritarian",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.04,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Manpower +45%",
+          "Army defence +8%"
+        ],
+        "costs": [
+          "Population growth -1.5%/turn",
+          "Population income -10%",
+          "Unrest +4.0%",
+          "-11/turn income",
+          "Economic -5",
+          "Social -18"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "minority_rights",
       "name": "Minority Rights Charter",
       "category": "libertarian",
-      "folder": "Libertarian",
-      "description": "Guarantee cultural autonomy. Boosts minority growth, shifts libertarian.",
+      "description": "Rights written down and meant. The country grows and argues.",
       "cost_per_turn": 6,
       "implementation_turns": 4,
-      "compass_shift": { "economic": 5, "social": 20 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": 0, "max_social": 100 },
+      "compass_shift": {
+        "economic": 5,
+        "social": 20
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -40,
+        "max_social": 100
+      },
+      "levers": {
+        "migrationRate": 15,
+        "popGrowthPct": 1.0,
+        "indoctrinationPct": -10
+      },
+      "folder": "Libertarian",
       "effects": {
         "minority_growth_rate": 0.03,
         "immigration_boost": 0.0,
@@ -283,22 +834,52 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["national_unity", "secret_police"],
       "tradeoffs": {
-        "gains": ["+3%/turn minority growth", "-2%/turn unrest", "Immigration +10%"],
-        "costs": ["-6/turn income", "Economic: +5 total shift", "Social: +20 total shift"]
-      }
+        "gains": [
+          "Migration +15%",
+          "Population growth +1.0%/turn",
+          "Unrest -2.0%",
+          "Minority growth +3%/turn"
+        ],
+        "costs": [
+          "Indoctrination -10%",
+          "-6/turn income",
+          "Economic +5",
+          "Social +20"
+        ]
+      },
+      "incompatible_with": [
+        "secret_police",
+        "martial_law",
+        "national_unity",
+        "colonial_office"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "open_borders",
-      "name": "Open Immigration Policy",
+      "name": "Open Borders",
       "category": "libertarian",
-      "folder": "Libertarian",
-      "description": "Encourage immigration. Boosts population, shifts libertarian.",
+      "description": "Anyone may come. They bring their hands and their grievances.",
       "cost_per_turn": 3,
       "implementation_turns": 3,
-      "compass_shift": { "economic": 5, "social": 15 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": 0, "max_social": 100 },
+      "compass_shift": {
+        "economic": 5,
+        "social": 15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -30,
+        "max_social": 100
+      },
+      "levers": {
+        "migrationRate": 30,
+        "popModPct": 8,
+        "popGrowthPct": 1.5,
+        "indoctrinationPct": -12
+      },
+      "folder": "Libertarian",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.02,
@@ -307,22 +888,55 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["national_unity", "secret_police"],
       "tradeoffs": {
-        "gains": ["Population +2%/turn", "Workforce +3%", "Social: +15 total shift"],
-        "costs": ["-3/turn income", "Economic: +5 total shift", "Integration unrest +1%"]
-      }
+        "gains": [
+          "Migration +30%",
+          "Population income +8%",
+          "Population growth +1.5%/turn",
+          "Unrest -1.0%",
+          "Immigration +2%"
+        ],
+        "costs": [
+          "Indoctrination -12%",
+          "-3/turn income",
+          "Economic +5",
+          "Social +15"
+        ]
+      },
+      "incompatible_with": [
+        "national_unity",
+        "traditionalism"
+      ],
+      "propaganda_duration": 0
     },
     {
       "id": "free_press",
-      "name": "Press Freedom Act",
+      "name": "Free Press",
       "category": "libertarian",
-      "folder": "Libertarian",
-      "description": "Guarantee free media. Reduces unrest, shifts libertarian.",
+      "description": "Print it. The government finds out what it is doing wrong, publicly.",
       "cost_per_turn": 2,
       "implementation_turns": 2,
-      "compass_shift": { "economic": 0, "social": 15 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -20, "max_social": 100 },
+      "compass_shift": {
+        "economic": 0,
+        "social": 15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -50,
+        "max_social": 100
+      },
+      "levers": {
+        "indoctrinationPct": -15,
+        "passiveIncome": 3
+      },
+      "incompatible_with": [
+        "censorship",
+        "martial_law",
+        "secret_police",
+        "opposition_smear"
+      ],
+      "folder": "Libertarian",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -331,22 +945,42 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["censorship", "secret_police"],
       "tradeoffs": {
-        "gains": ["-1.5%/turn unrest", "Immigration +5%"],
-        "costs": ["-2/turn income", "Social: +15 total shift"]
-      }
+        "gains": [
+          "Treasury +3/turn",
+          "Unrest -1.5%"
+        ],
+        "costs": [
+          "Indoctrination -15%",
+          "-2/turn income",
+          "Social +15"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "decentralization",
-      "name": "Administrative Decentralization",
+      "name": "Decentralisation",
       "category": "libertarian",
-      "folder": "Libertarian",
-      "description": "Transfer power to local governments. Reduces center-periphery tension.",
+      "description": "Let the provinces decide. They build faster and answer slower.",
       "cost_per_turn": 5,
       "implementation_turns": 4,
-      "compass_shift": { "economic": 0, "social": 10 },
-      "requirements": { "min_economic": -50, "max_economic": 50, "min_social": -50, "max_social": 100 },
+      "compass_shift": {
+        "economic": 0,
+        "social": 10
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 12,
+        "armyDefPct": 6,
+        "conscriptionPct": -12
+      },
+      "folder": "Libertarian",
       "effects": {
         "minority_growth_rate": 0.01,
         "immigration_boost": 0.0,
@@ -355,23 +989,456 @@
         "public_opinion_shift": 0.0,
         "target_minority": ""
       },
-      "incompatible_with": ["national_unity"],
       "tradeoffs": {
-        "gains": ["+1%/turn minority growth", "-2%/turn unrest", "Local income +5%"],
-        "costs": ["-5/turn income", "Social: +10 total shift"]
-      }
+        "gains": [
+          "Industry cost -12%",
+          "Army defence +6%",
+          "Unrest -2.0%",
+          "Minority growth +1%/turn"
+        ],
+        "costs": [
+          "Manpower -12%",
+          "-5/turn income",
+          "Social +10"
+        ]
+      },
+      "incompatible_with": [
+        "martial_law",
+        "national_unity"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "general_amnesty",
+      "name": "General Amnesty",
+      "category": "libertarian",
+      "description": "Let them come home. The prisons empty and so does the grievance.",
+      "cost_per_turn": 7,
+      "implementation_turns": 2,
+      "compass_shift": {
+        "economic": 0,
+        "social": 18
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "indoctrinationPct": -8,
+        "conscriptionPct": -8
+      },
+      "folder": "Libertarian",
+      "effects": {
+        "minority_growth_rate": 0.02,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.06,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Unrest -6.0%",
+          "Minority growth +2%/turn"
+        ],
+        "costs": [
+          "Indoctrination -8%",
+          "Manpower -8%",
+          "-7/turn income",
+          "Social +18"
+        ]
+      },
+      "incompatible_with": [
+        "martial_law",
+        "secret_police"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "professional_army",
+      "name": "Professional Army",
+      "category": "libertarian",
+      "description": "Fewer soldiers, and every one of them meant it. Expensive.",
+      "cost_per_turn": 10,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 8,
+        "social": 10
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "armyAtkPct": 18,
+        "armyDefPct": 12,
+        "conscriptionPct": -25,
+        "conscriptionCostPct": -20
+      },
+      "incompatible_with": [
+        "conscription",
+        "mass_mobilisation"
+      ],
+      "folder": "Libertarian",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Army attack +18%",
+          "Army defence +12%"
+        ],
+        "costs": [
+          "Manpower -25%",
+          "Recruitment cost +20%",
+          "-10/turn income",
+          "Economic +8",
+          "Social +10"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "naval_supremacy",
+      "name": "Naval Supremacy",
+      "category": "right",
+      "description": "The fleet first, and the army with what is left.",
+      "cost_per_turn": 12,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 8,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "navyCostPct": 25,
+        "navyAtkPct": 15,
+        "navyDefPct": 10,
+        "navySpeedPct": 15,
+        "armyAtkPct": -8
+      },
+      "incompatible_with": [
+        "continental_army",
+        "naval_supremacy_doctrine",
+        "continental_army_doctrine"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Ship cost -25%",
+          "Ship attack +15%",
+          "Ship defence +10%",
+          "Ship speed +15%"
+        ],
+        "costs": [
+          "Army attack -8%",
+          "-12/turn income",
+          "Economic +8",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "continental_army",
+      "name": "Continental Army",
+      "category": "authoritarian",
+      "description": "Land wars are won by armies. The fleet can wait.",
+      "cost_per_turn": 10,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": -5,
+        "social": -10
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "armyAtkPct": 12,
+        "armyDefPct": 12,
+        "conscriptionCostPct": 15,
+        "navyCostPct": -20,
+        "navySpeedPct": -10
+      },
+      "incompatible_with": [
+        "naval_supremacy",
+        "continental_army_doctrine",
+        "naval_supremacy_doctrine"
+      ],
+      "folder": "Authoritarian",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Army attack +12%",
+          "Army defence +12%",
+          "Recruitment cost -15%"
+        ],
+        "costs": [
+          "Ship cost +20%",
+          "Ship speed -10%",
+          "-10/turn income",
+          "Economic -5",
+          "Social -10"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "colonial_office",
+      "name": "Colonial Office",
+      "category": "right",
+      "description": "Govern the empire from one desk. Efficient, and resented.",
+      "cost_per_turn": 8,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 12,
+        "social": -12
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "resourceModPct": 18,
+        "passiveIncome": 6,
+        "migrationRate": -10
+      },
+      "incompatible_with": [
+        "commonwealth_settlement",
+        "minority_rights"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": -0.01,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.02,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Resource income +18%",
+          "Treasury +6/turn"
+        ],
+        "costs": [
+          "Migration -10%",
+          "Unrest +2.0%",
+          "Minority growth -1%/turn",
+          "-8/turn income",
+          "Economic +12",
+          "Social -12"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "commonwealth_settlement",
+      "name": "Commonwealth Settlement",
+      "category": "libertarian",
+      "description": "Partners, not possessions. Slower, and it holds.",
+      "cost_per_turn": 9,
+      "implementation_turns": 5,
+      "compass_shift": {
+        "economic": 0,
+        "social": 18
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "migrationRate": 18,
+        "popGrowthPct": 1.0,
+        "resourceModPct": -8
+      },
+      "incompatible_with": [
+        "colonial_office"
+      ],
+      "folder": "Libertarian",
+      "effects": {
+        "minority_growth_rate": 0.02,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.05,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Migration +18%",
+          "Population growth +1.0%/turn",
+          "Unrest -5.0%",
+          "Minority growth +2%/turn"
+        ],
+        "costs": [
+          "Resource income -8%",
+          "-9/turn income",
+          "Social +18"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "technocracy",
+      "name": "Technocracy",
+      "category": "miscellaneous",
+      "description": "Rule by those who can do the arithmetic. Nobody voted for them.",
+      "cost_per_turn": 10,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 0,
+        "social": -8
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 15,
+        "resourceModPct": 10,
+        "indoctrinationPct": 8,
+        "popGrowthPct": -0.5
+      },
+      "incompatible_with": [
+        "traditionalism"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Industry cost -15%",
+          "Resource income +10%",
+          "Indoctrination +8%"
+        ],
+        "costs": [
+          "Population growth -0.5%/turn",
+          "-10/turn income",
+          "Social -8"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "traditionalism",
+      "name": "Traditionalism",
+      "category": "miscellaneous",
+      "description": "The old ways, kept. The country is calm and does not change.",
+      "cost_per_turn": 4,
+      "implementation_turns": 3,
+      "compass_shift": {
+        "economic": 5,
+        "social": -12
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 1.0,
+        "indoctrinationPct": 12,
+        "industryCostPct": -10,
+        "migrationRate": -15
+      },
+      "incompatible_with": [
+        "technocracy",
+        "open_borders",
+        "civil_service_reform"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.05,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +1.0%/turn",
+          "Indoctrination +12%",
+          "Unrest -5.0%"
+        ],
+        "costs": [
+          "Industry cost +10%",
+          "Migration -15%",
+          "-4/turn income",
+          "Economic +5",
+          "Social -12"
+        ]
+      },
+      "propaganda_duration": 0
     },
     {
       "id": "patriotic_education",
-      "name": "Patriotic Education Campaign",
+      "name": "Patriotic Education",
       "category": "miscellaneous",
-      "folder": "Miscellaneous",
-      "description": "Launch a short-term patriotic campaign to shift public opinion toward government values.",
+      "description": "A campaign. The next generation is taught who they are.",
       "cost_per_turn": 4,
       "implementation_turns": 1,
-      "propaganda_duration": 3,
-      "compass_shift": { "economic": 0, "social": 0 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 100 },
+      "propaganda_duration": 12,
+      "compass_shift": {
+        "economic": 0,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "indoctrinationPct": 12
+      },
+      "folder": "Miscellaneous",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -380,23 +1447,40 @@
         "public_opinion_shift": -0.5,
         "target_minority": ""
       },
-      "incompatible_with": [],
       "tradeoffs": {
-        "gains": ["Shifts public opinion toward government (-0.5/turn)", "-1%/turn unrest while active"],
-        "costs": ["-4/turn income", "Auto-cancels after 3 turns"]
-      }
+        "gains": [
+          "Indoctrination +12%",
+          "Unrest -1.0%",
+          "Pulls provinces toward the government"
+        ],
+        "costs": [
+          "-4/turn income"
+        ]
+      },
+      "incompatible_with": []
     },
     {
       "id": "opposition_smear",
       "name": "Opposition Smear Campaign",
       "category": "miscellaneous",
-      "folder": "Miscellaneous",
-      "description": "Discredit opposition ideologies through media. Polarizes public away from extremes.",
+      "description": "A campaign. Whoever was gaining is now explaining.",
       "cost_per_turn": 6,
       "implementation_turns": 1,
-      "propaganda_duration": 3,
-      "compass_shift": { "economic": 0, "social": 0 },
-      "requirements": { "min_economic": -100, "max_economic": 100, "min_social": -100, "max_social": 100 },
+      "propaganda_duration": 8,
+      "compass_shift": {
+        "economic": 0,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "indoctrinationPct": 8
+      },
+      "folder": "Miscellaneous",
       "effects": {
         "minority_growth_rate": 0.0,
         "immigration_boost": 0.0,
@@ -405,11 +1489,790 @@
         "public_opinion_shift": -0.3,
         "target_minority": ""
       },
-      "incompatible_with": [],
       "tradeoffs": {
-        "gains": ["Shifts public opinion toward government (-0.3/turn)", "-0.5%/turn unrest while active"],
-        "costs": ["-6/turn income", "Auto-cancels after 3 turns"]
-      }
+        "gains": [
+          "Indoctrination +8%",
+          "Unrest -0.5%",
+          "Pulls provinces toward the government"
+        ],
+        "costs": [
+          "-6/turn income"
+        ]
+      },
+      "incompatible_with": [
+        "free_press"
+      ]
+    },
+    {
+      "id": "rationalisation",
+      "name": "Industrial Rationalisation",
+      "category": "right",
+      "description": "Merge the works, close the worst, standardise the rest. Efficient, and somebody's town dies.",
+      "cost_per_turn": 6,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 12,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -40,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryUpkeepPct": 20,
+        "popGrowthPct": -0.5
+      },
+      "incompatible_with": [
+        "full_employment",
+        "agrarian_priority"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.02,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Industry upkeep -20%"
+        ],
+        "costs": [
+          "Population growth -0.5%/turn",
+          "Unrest +2.0%",
+          "-6/turn income",
+          "Economic +12",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "full_employment",
+      "name": "Full Employment Guarantee",
+      "category": "left",
+      "description": "Everyone works, whether or not the work is needed. Nobody starves and nothing is cheap.",
+      "cost_per_turn": 12,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": -18,
+        "social": 5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 30,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryUpkeepPct": -15,
+        "popGrowthPct": 1.2,
+        "conscriptionPct": 10
+      },
+      "incompatible_with": [
+        "rationalisation",
+        "austerity_programme",
+        "privatization"
+      ],
+      "folder": "Left",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.04,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +1.2%/turn",
+          "Manpower +10%",
+          "Unrest -4.0%"
+        ],
+        "costs": [
+          "Industry upkeep +15%",
+          "-12/turn income",
+          "Economic -18",
+          "Social +5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "infrastructure_programme",
+      "name": "National Infrastructure Programme",
+      "category": "miscellaneous",
+      "description": "Roads, rail, wire. Everything afterwards is cheaper; the bill arrives first.",
+      "cost_per_turn": 14,
+      "implementation_turns": 6,
+      "compass_shift": {
+        "economic": -8,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryCostPct": 20,
+        "resourceModPct": 10,
+        "navySpeedPct": 5
+      },
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Industry cost -20%",
+          "Resource income +10%",
+          "Ship speed +5%"
+        ],
+        "costs": [
+          "-14/turn income",
+          "Economic -8"
+        ]
+      },
+      "incompatible_with": [
+        "agrarian_priority",
+        "austerity_programme"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "agrarian_priority",
+      "name": "Agrarian Priority",
+      "category": "miscellaneous",
+      "description": "The countryside first. The nation eats well and builds slowly.",
+      "cost_per_turn": 3,
+      "implementation_turns": 3,
+      "compass_shift": {
+        "economic": -5,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 1.5,
+        "resourceModPct": 12,
+        "industryCostPct": -20
+      },
+      "incompatible_with": [
+        "infrastructure_programme",
+        "rationalisation",
+        "state_industry"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.03,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +1.5%/turn",
+          "Resource income +12%",
+          "Unrest -3.0%"
+        ],
+        "costs": [
+          "Industry cost +20%",
+          "-3/turn income",
+          "Economic -5",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "naval_supremacy_doctrine",
+      "name": "Naval Supremacy Doctrine",
+      "category": "miscellaneous",
+      "description": "The fleet is the country's shield and its budget. The army waits.",
+      "cost_per_turn": 10,
+      "implementation_turns": 5,
+      "compass_shift": {
+        "economic": 5,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "navyAtkPct": 15,
+        "navyDefPct": 10,
+        "navyCostPct": 12,
+        "armyAtkPct": -8
+      },
+      "incompatible_with": [
+        "continental_army_doctrine",
+        "naval_supremacy",
+        "continental_army"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Ship attack +15%",
+          "Ship defence +10%",
+          "Ship cost -12%"
+        ],
+        "costs": [
+          "Army attack -8%",
+          "-10/turn income",
+          "Economic +5",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "continental_army_doctrine",
+      "name": "Continental Army Doctrine",
+      "category": "miscellaneous",
+      "description": "Wars are won by men on ground. The admirals are told to economise.",
+      "cost_per_turn": 8,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": -5,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "armyAtkPct": 12,
+        "armyDefPct": 10,
+        "conscriptionCostPct": 10,
+        "navyAtkPct": -10,
+        "navySpeedPct": -8
+      },
+      "incompatible_with": [
+        "naval_supremacy_doctrine",
+        "continental_army",
+        "naval_supremacy"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Army attack +12%",
+          "Army defence +10%",
+          "Recruitment cost -10%"
+        ],
+        "costs": [
+          "Ship attack -10%",
+          "Ship speed -8%",
+          "-8/turn income",
+          "Economic -5",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "merchant_marine",
+      "name": "Merchant Marine Act",
+      "category": "right",
+      "description": "Subsidise the hulls that carry cargo. They carry troops too, when asked.",
+      "cost_per_turn": 7,
+      "implementation_turns": 3,
+      "compass_shift": {
+        "economic": 8,
+        "social": 5
+      },
+      "requirements": {
+        "min_economic": -30,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "navyCostPct": 15,
+        "navySpeedPct": 10,
+        "resourceModPct": 8,
+        "navyDefPct": -5
+      },
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.0,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Ship cost -15%",
+          "Ship speed +10%",
+          "Resource income +8%"
+        ],
+        "costs": [
+          "Ship defence -5%",
+          "-7/turn income",
+          "Economic +8",
+          "Social +5"
+        ]
+      },
+      "incompatible_with": [
+        "autarky"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "war_economy_total",
+      "name": "Total Mobilisation Economy",
+      "category": "left",
+      "description": "Everything the country has, aimed at the front. There is no going back cheaply.",
+      "cost_per_turn": 18,
+      "implementation_turns": 5,
+      "compass_shift": {
+        "economic": -20,
+        "social": -15
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "conscriptionPct": 25,
+        "industryCostPct": 15,
+        "armyAtkPct": 10,
+        "popGrowthPct": -1.5,
+        "migrationRate": -20
+      },
+      "incompatible_with": [
+        "consumer_goods_priority",
+        "demobilisation",
+        "total_war_economy",
+        "consumer_economy",
+        "worker_rights"
+      ],
+      "folder": "Left",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.06,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Manpower +25%",
+          "Industry cost -15%",
+          "Army attack +10%"
+        ],
+        "costs": [
+          "Population growth -1.5%/turn",
+          "Migration -20%",
+          "Unrest +6.0%",
+          "-18/turn income",
+          "Economic -20",
+          "Social -15"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "consumer_goods_priority",
+      "name": "Consumer Goods Priority",
+      "category": "right",
+      "description": "Butter, not guns. The country is content and slow to anger.",
+      "cost_per_turn": 5,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": 15,
+        "social": 10
+      },
+      "requirements": {
+        "min_economic": -20,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 1.2,
+        "popModPct": 15,
+        "conscriptionPct": -20,
+        "armyAtkPct": -5
+      },
+      "incompatible_with": [
+        "war_economy_total",
+        "consumer_economy",
+        "total_war_economy",
+        "mass_mobilisation"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.15,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.06,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +1.2%/turn",
+          "Population income +15%",
+          "Unrest -6.0%",
+          "Immigration +15%"
+        ],
+        "costs": [
+          "Manpower -20%",
+          "Army attack -5%",
+          "-5/turn income",
+          "Economic +15",
+          "Social +10"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "demobilisation",
+      "name": "Demobilisation",
+      "category": "miscellaneous",
+      "description": "Send them home. The barracks empty and the fields fill.",
+      "cost_per_turn": 0,
+      "implementation_turns": 2,
+      "compass_shift": {
+        "economic": 0,
+        "social": 8
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "maintenanceCostPct": 25,
+        "popGrowthPct": 1.0,
+        "conscriptionPct": -25,
+        "armyDefPct": -10
+      },
+      "incompatible_with": [
+        "war_economy_total",
+        "conscription",
+        "total_war_economy",
+        "mass_mobilisation"
+      ],
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.04,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Upkeep -25%",
+          "Population growth +1.0%/turn",
+          "Unrest -4.0%"
+        ],
+        "costs": [
+          "Manpower -25%",
+          "Army defence -10%",
+          "Social +8"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "veterans_settlement",
+      "name": "Veterans' Settlement",
+      "category": "miscellaneous",
+      "description": "Land for those who served. Loyal country, and the ledger notices.",
+      "cost_per_turn": 8,
+      "implementation_turns": 4,
+      "compass_shift": {
+        "economic": -5,
+        "social": 0
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 0.8,
+        "conscriptionPct": 8,
+        "indoctrinationPct": 6
+      },
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.05,
+        "public_opinion_shift": -0.3,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +0.8%/turn",
+          "Manpower +8%",
+          "Indoctrination +6%",
+          "Unrest -5.0%",
+          "Pulls provinces toward the government"
+        ],
+        "costs": [
+          "-8/turn income",
+          "Economic -5"
+        ]
+      },
+      "incompatible_with": [],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "universal_healthcare",
+      "name": "Universal Healthcare",
+      "category": "left",
+      "description": "Care at the point of need. A bigger, healthier, more expensive nation.",
+      "cost_per_turn": 16,
+      "implementation_turns": 5,
+      "compass_shift": {
+        "economic": -15,
+        "social": 10
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 40,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "popGrowthPct": 2.0,
+        "conscriptionPct": 8,
+        "popModPct": -8
+      },
+      "folder": "Left",
+      "effects": {
+        "minority_growth_rate": 0.015,
+        "immigration_boost": 0.1,
+        "pacification_cost": 0.0,
+        "unrest_reduction": 0.06,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Population growth +2.0%/turn",
+          "Manpower +8%",
+          "Unrest -6.0%",
+          "Minority growth +2%/turn",
+          "Immigration +10%"
+        ],
+        "costs": [
+          "Population income -8%",
+          "-16/turn income",
+          "Economic -15",
+          "Social +10"
+        ]
+      },
+      "incompatible_with": [
+        "austerity_programme"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "austerity_programme",
+      "name": "Austerity Programme",
+      "category": "right",
+      "description": "Cut until the books balance. They balance.",
+      "cost_per_turn": 0,
+      "implementation_turns": 2,
+      "compass_shift": {
+        "economic": 18,
+        "social": -5
+      },
+      "requirements": {
+        "min_economic": -20,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "maintenanceCostPct": 20,
+        "industryUpkeepPct": 15,
+        "passiveIncome": 8,
+        "popGrowthPct": -1.0
+      },
+      "incompatible_with": [
+        "universal_healthcare",
+        "full_employment",
+        "infrastructure_programme",
+        "state_industry"
+      ],
+      "folder": "Right",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.08,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Upkeep -20%",
+          "Industry upkeep -15%",
+          "Treasury +8/turn"
+        ],
+        "costs": [
+          "Population growth -1.0%/turn",
+          "Unrest +8.0%",
+          "Economic +18",
+          "Social -5"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "civil_service_reform",
+      "name": "Civil Service Reform",
+      "category": "miscellaneous",
+      "description": "Examinations, not connections. Slow to bed in, and then it simply works.",
+      "cost_per_turn": 6,
+      "implementation_turns": 6,
+      "compass_shift": {
+        "economic": 0,
+        "social": 5
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 100
+      },
+      "levers": {
+        "industryUpkeepPct": 10,
+        "passiveIncome": 5,
+        "indoctrinationPct": -5
+      },
+      "folder": "Miscellaneous",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 4.0,
+        "unrest_reduction": 0.03,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Industry upkeep -10%",
+          "Treasury +5/turn",
+          "Unrest -3.0%",
+          "Pacification budget +4/turn"
+        ],
+        "costs": [
+          "Indoctrination -5%",
+          "-6/turn income",
+          "Social +5"
+        ]
+      },
+      "incompatible_with": [
+        "traditionalism"
+      ],
+      "propaganda_duration": 0
+    },
+    {
+      "id": "martial_law",
+      "name": "Martial Law",
+      "category": "authoritarian",
+      "description": "The army governs. Order is immediate and it is remembered.",
+      "cost_per_turn": 12,
+      "implementation_turns": 1,
+      "compass_shift": {
+        "economic": 0,
+        "social": -25
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 20
+      },
+      "levers": {
+        "armyDefPct": 10,
+        "popGrowthPct": -1.0,
+        "migrationRate": -25
+      },
+      "incompatible_with": [
+        "general_amnesty",
+        "free_press",
+        "minority_rights",
+        "decentralization"
+      ],
+      "folder": "Authoritarian",
+      "effects": {
+        "minority_growth_rate": -0.02,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.15,
+        "public_opinion_shift": -0.4,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "Army defence +10%",
+          "Pulls provinces toward the government"
+        ],
+        "costs": [
+          "Population growth -1.0%/turn",
+          "Migration -25%",
+          "Unrest +15.0%",
+          "Minority growth -2%/turn",
+          "-12/turn income",
+          "Social -25"
+        ]
+      },
+      "propaganda_duration": 0
     }
   ]
 }

@@ -1,0 +1,83 @@
+// 翻译 - 外交。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+外交。它整个都住在一份列表里，而这份列表属于一个§**国家**§——所以你是靠点某人的
+地才够得着它。
+
+每一步我都会等。这里没有什么是快的。
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+先看§**关系**§视图。它按谁在跟谁打仗、谁跟谁结盟、谁给谁作了担保来给地图上色。
+---
+@Signals Officer
+动手之前先看看它。在这儿输掉的战争，一半是对三个国家而不是一个——而且那三个在第一
+枪之前就都在这张地图上了。
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+现在点海那边属于§**Verrick**§的一个省。
+
+不是 Kestrel：跟他们我们已经在打了，而一个跟你交战的国家只提供一样东西。那个我们
+会说到——在你选中一个我们与之和平的对象之前，这一页就只是接着等。
+---
+@Signals Officer
+他们的面板上长出了一份列表。里面有什么，完全取决于你们彼此已经是什么关系：你从来
+不是从所有选项里挑，只是从当前关系允许的那些里挑。
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+里面最温和的是§**互不侵犯条约**§：一个不进攻的承诺，仅此而已。
+
+去要一个。问一句不花钱。
+---
+@Signals Officer
+提交了——现在看看列表。§**其余的全变灰了**§，而你刚用过的那一项变成了§**取消**§。
+
+对一个国家一次一个请求。这不是你撞上的毛病，这就是规则：他们正在回答你最后说的那句
+话，在他们答复之前，你唯一能走的一步是把话收回。
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+所以结束回合。请求发出去，他们答复，列表就回来了。
+
+他们可以拒绝。那是他们的事，不是你哪里做错了。
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+再来 Verrick。§**同盟**§是更上一级——不只是不进攻的承诺，而是加入进来的承诺。
+
+去要一个。
+---
+@Signals Officer
+有了盟友，会多出一项：§**号召参战**§，把他们拖进你已经在打的战争里。
+
+这个他们也可以拒绝。拒绝两次的盟友是纸面上的盟友，值的也差不多就那么多。
+---
+@Signals Officer
+你没用过的那两个：§**担保**§是不对等的那个——你承诺保卫一个对你什么都没承诺的人。
+小国收集它们；大国把它们发出去，买个清静。
+
+而§**贸易**§是每回合以货易钱，直到有人取消。它是唯一让双方都变富的一项，也正因如此
+人们才忘了它在那儿。
+---
+@Signals Officer
+条约一旦签下，看看列表里少了什么：§**宣战不见了**§。你得先撕毁条约，公开地，在所有
+人都看着你做的时候。
+
+条约就是干这个的。它不是盾牌，它是证人。
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+而在§**战争**§中，整份列表塌缩成一项：§**请求停火**§。它带着条件回来：谁停手，谁保
+留什么。
+
+他们输的时候接受，不输的时候拒绝。再怎么求也改变不了这两者哪个为真。
+---
+@Signals Officer
+Kestrel 在这张地图上是红的，而那正是他们会给你看的列表。
+---
+@Signals Officer
+这就是外交。还有别的吗?

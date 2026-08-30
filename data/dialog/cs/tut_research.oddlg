@@ -1,0 +1,31 @@
+// Překlad - výzkum.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Výzkum. Otevřete ho - stížnost je vždycky stejná - nic, co začnete, se jako by
+nikdy nedokončí - a to není chyba, to je smysl.
+---
+@Signals Officer
+Všechno se tu měří v tazích, které jste ještě neodehrál. Co začnete teď,
+dorazí dlouho poté, co zapomenete, že jste to chtěl, což znamená, že jediná
+špatná chvíle na začátek je později.
+---
+@Signals Officer
+Čerpá ze stejných peněz jako armáda. Země, která zkoumá všechno, nestaví nic, a
+země, která staví všechno, bude za dvacet tahů pořád vést válku minulého
+desetiletí.
+
+Vyberte si směr. Nevybírejte všechny.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Zase zavřete - §**x**§ v rohu.
+---
+@Signals Officer
+Dokončená práce se neuplatňuje zpětně. Nové vybavení se dostane nejdřív k novým
+útvarům, takže tah, kdy se něco dokončí, je tah na to podívat se, co stavíte, ne
+tah na odpočinek.
+
+To je výzkum. Ještě něco?

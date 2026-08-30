@@ -1,0 +1,43 @@
+// Traduction - revendications et troubles.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Revendications et troubles. Ouvrez le panneau des revendications. C'est un seul
+sujet, quoi qu'en dise l'interface.
+---
+@Signals Officer
+Une §**revendication**§ fait la différence entre une guerre que le monde tolère
+et une guerre qui unit tout le monde contre vous. Faites valoir celle que vous
+détenez et vous réglez un tort ; prenez une terre que vous n'avez jamais
+revendiquée et le tort, c'est vous.
+---
+@Signals Officer
+Déposez la revendication §**avant**§ la guerre, pas après. Une revendication
+déposée le tour suivant la prise de la province ne trompe personne et coûte
+autant.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Fermez-le.
+---
+@Signals Officer
+Les §**troubles**§, c'est ce que prendre une terre fait à la terre. Les
+provinces conquises le prennent mal, les minorités plus encore, et la
+conscription comme la censure vous achètent de la force maintenant contre des
+troubles plus tard.
+---
+@Signals Officer
+Passé un seuil, une province cesse de payer et commence à s'organiser. Passé le
+suivant, elle part, et elle part en tant que §**pays**§, avec votre industrie,
+votre population et une opinion très précise sur vous.
+
+Vous recevez un avertissement. Pas toujours un second.
+---
+@Signals Officer
+Les remèdes sont impopulaires ou lents : y mettre une garnison, y dépenser, ou
+lui donner ce qu'elle veut. Choisissez tôt, car les trois mettent des tours à
+agir.
+
+Voilà les troubles. Autre chose ?

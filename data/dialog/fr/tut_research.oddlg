@@ -1,0 +1,32 @@
+// Traduction - la recherche.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+La recherche. Ouvrez-la : la plainte est toujours la même, rien de ce qu'on
+commence ne semble jamais aboutir, et ce n'est pas un défaut, c'est le
+principe.
+---
+@Signals Officer
+Tout ici se mesure en tours que vous n'avez pas encore joués. Ce que vous
+lancez maintenant arrive bien après que vous avez oublié le vouloir, ce qui
+veut dire que le seul mauvais moment pour commencer, c'est plus tard.
+---
+@Signals Officer
+Elle puise dans le même argent que l'armée. Un pays qui cherche tout n'aligne
+rien, et un pays qui aligne tout mènera encore, dans vingt tours, la guerre de
+la décennie passée.
+
+Choisissez une voie. Ne les prenez pas toutes.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Refermez : le §**x**§ dans le coin.
+---
+@Signals Officer
+Un travail achevé ne s'applique pas rétroactivement. Le matériel neuf va
+d'abord aux formations neuves, donc le tour où quelque chose s'achève est le
+tour où l'on regarde ce que l'on construit, pas celui où l'on souffle.
+
+Voilà la recherche. Autre chose ?

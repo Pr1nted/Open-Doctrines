@@ -1,0 +1,32 @@
+// Preklad - spoločný záver všetkých ciest.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Tak hore. Dve veci, ktoré nie sú na žiadnej mape.
+
+§**Uložené hry.**§ Skutočný svet sa zapisuje sám, kým hráte, a čaká tam na vás.
+Náš nie: nič z toho, čo ste práve urobili, sa neuchovalo, a presne o to pri
+cvičnom ostrove ide.
+---
+@Signals Officer
+:: point=menu.2
+§**Hra viacerých hráčov.**§ Jeden stroj hostí a ostatní sa pripoja. Ťah sa
+vyhodnotí, keď sa všetci hráči ohlásia pripravení, takže hra ide rýchlosťou toho
+najpomalšieho.
+
+Hrajte s ľuďmi, ktorí odpovedajú na správy.
+---
+@Pr1nted
+Ešte žijete? Dobre. Je dôkladná, to sa jej musí nechať.
+
+Chcete prebrať ešte niečo, alebo sme hotoví?
+> Vrátiť sa dolu a prebrať niečo konkrétne -> world:specifics
+> To je všetko, vďaka
+---
+@Pr1nted
+:: act=end_tutorial
+Dobre. Choďte pár partií prehrať, tak sa to vstrebe.
+
+Pr1nted končí.

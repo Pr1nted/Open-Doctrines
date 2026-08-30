@@ -1,4 +1,5 @@
 #include "OdState.h"
+#include <cstdio>
 #include "miniz.h"
 #include "miniz_zip.h"
 
@@ -72,10 +73,17 @@ bool safeEntryName(const std::string& name) {
 }
 
 std::string readWhole(const fs::path& p, bool& ok) {
-    std::ifstream f(p, std::ios::binary);
+    // stdio, NOT std::ifstream. This runs while a world is being saved during
+    // a load, and the load yields to the browser through Asyncify; on the way
+    // back in, constructing a basic_filebuf traps the module with a bare
+    // "null function". See src/util/LoadLog.h.
+    std::FILE* f = std::fopen(p.string().c_str(), "rb");
     if (!f) { ok = false; return {}; }
-    std::string data((std::istreambuf_iterator<char>(f)),
-                      std::istreambuf_iterator<char>());
+    std::string data;
+    char buf[16384];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) data.append(buf, n);
+    std::fclose(f);
     ok = true;
     return data;
 }

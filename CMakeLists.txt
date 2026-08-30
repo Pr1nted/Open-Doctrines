@@ -128,6 +128,21 @@ if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
                    "instead of using a host-architecture system copy")
 endif()
 
+# AND ALWAYS, because the shipped audio needs a decoder fix.
+#
+# data/audio is optimised with OptiVorbis, which emits a codebook with no
+# entries -- valid Vorbis that libvorbis and ffmpeg both read, and that
+# stb_vorbis refuses with VORBIS_outofmem because it treats a zero-size
+# allocation as a failed one. tools/patch_raylib_vorbis.py fixes that in two
+# lines, and it can only reach a raylib THIS build compiled.
+#
+# A system raylib would be a decoder without the fix, and the symptom is not
+# subtle-but-tolerable: it is a game with no music and no sound effects, on a
+# developer's machine only, while CI (which has no system raylib and so always
+# built from source) stays green. That failure is worth more than the minutes
+# of build time this costs.
+set(od_system_raylib_ok FALSE)
+
 if(od_system_raylib_ok)
     find_package(raylib 5.5 QUIET)
 endif()
@@ -137,6 +152,13 @@ if(NOT raylib_FOUND)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BUILD_GAMES    OFF CACHE BOOL "" FORCE)
     set(SUPPORT_FILEFORMAT_JPG OFF CACHE BOOL "" FORCE)
+set(OD_WEB_INITIAL_MEMORY "512MB" CACHE STRING
+    "Emscripten INITIAL_MEMORY. 512MB suits a desktop tab; 64MB is what a phone will grant.")
+set(OD_WEB_ASYNCIFY_STACK "1048576" CACHE STRING
+    "Emscripten ASYNCIFY_STACK_SIZE. Overflow aborts the module with a bare wasm trap.")
+set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
+    "Emscripten MAXIMUM_MEMORY. 2GB or less for iOS Safari, which may refuse to reserve more.")
+
     if(EMSCRIPTEN)
         set(PLATFORM "Web" CACHE STRING "raylib platform for Emscripten" FORCE)
     endif()
@@ -146,6 +168,195 @@ if(NOT raylib_FOUND)
     )
     FetchContent_MakeAvailable(raylib)
     set(raylib_LIBRARY raylib)
+
+    # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
+    # audio against an unpatched decoder produces a silent game and nothing else
+    # in the build would notice.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    set(od_vorbis_src "${raylib_SOURCE_DIR}/src/external/stb_vorbis.c")
+    if(NOT Python3_Interpreter_FOUND)
+        message(FATAL_ERROR
+            "Python 3 is needed to patch raylib's stb_vorbis. Without it the "
+            "build would produce a game that cannot decode its own audio.")
+    endif()
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_vorbis.py"
+                "${od_vorbis_src}"
+        RESULT_VARIABLE od_vorbis_rc
+        OUTPUT_VARIABLE od_vorbis_out
+        ERROR_VARIABLE  od_vorbis_err)
+    if(NOT od_vorbis_rc EQUAL 0)
+        message(FATAL_ERROR "Could not patch raylib's stb_vorbis:\n${od_vorbis_err}")
+    endif()
+    string(STRIP "${od_vorbis_out}" od_vorbis_out)
+    message(STATUS "raylib: ${od_vorbis_out}")
+endif()
+
+# --- Complex text shaping (HarfBuzz) ---
+#
+# OPTIONAL, AND THE GAME MUST BUILD WITHOUT IT, for the same reason the mod
+# runtime is optional: a machine that cannot fetch it still has to compile.
+# Without shaping, Devanagari falls back to unshaped glyphs -- readable, and
+# visibly wrong at every conjunct -- and the language picker says so rather
+# than pretending otherwise.
+#
+# WHY IT IS NEEDED AT ALL. Latin, Cyrillic, Greek and CJK can be drawn by
+# putting one glyph after another. Arabic cannot, and is handled in
+# src/i18n/Arabic.cpp by substituting the presentation forms the font already
+# carries. Devanagari cannot either, and has no such shortcut: क् + ष is one
+# glyph, formed by a GSUB lookup, and no table of substitutions can stand in
+# for running the lookups. That is what HarfBuzz is for.
+option(OD_ENABLE_SHAPING "Build with HarfBuzz complex-text shaping" ON)
+
+# THE PINNED COPY IS THE DEFAULT, not whatever the machine happens to have.
+#
+# Shaping decides which glyphs get drawn, so two HarfBuzz versions can render
+# the same string differently -- and this repo's Devanagari screenshots are how
+# that rendering is checked. A build that silently picked up Homebrew's 14.2.1
+# on one machine and the pinned 10.1.0 in CI would make those pictures mean
+# nothing. Same reasoning as mbedtls and WAMR, which are pinned here too.
+#
+# -DOD_SYSTEM_HARFBUZZ=ON opts into the system copy, for distribution packagers
+# who need every dependency unbundled.
+option(OD_SYSTEM_HARFBUZZ "Link the system HarfBuzz instead of the pinned one" OFF)
+
+set(OD_SHAPING_FOUND FALSE)
+if(OD_ENABLE_SHAPING)
+    if(OD_SYSTEM_HARFBUZZ)
+        find_package(harfbuzz CONFIG QUIET)
+        if(harfbuzz_FOUND)
+            set(OD_SHAPING_FOUND TRUE)
+            set(OD_HARFBUZZ_TARGET harfbuzz::harfbuzz)
+        else()
+            # Homebrew and most Linux distributions ship a .pc but no CMake config.
+            find_package(PkgConfig QUIET)
+            if(PkgConfig_FOUND)
+                pkg_check_modules(HARFBUZZ QUIET IMPORTED_TARGET harfbuzz)
+                if(HARFBUZZ_FOUND)
+                    set(OD_SHAPING_FOUND TRUE)
+                    set(OD_HARFBUZZ_TARGET PkgConfig::HARFBUZZ)
+                endif()
+            endif()
+        endif()
+        if(NOT OD_SHAPING_FOUND)
+            message(FATAL_ERROR
+                "OD_SYSTEM_HARFBUZZ=ON but no system harfbuzz was found. "
+                "Install it, or leave the option OFF to use the pinned copy.")
+        endif()
+    endif()
+
+    if(NOT OD_SHAPING_FOUND)
+        include(FetchContent)
+        # Built for one job: shape a string. Every optional integration is off,
+        # so this pulls in no FreeType, no GLib, no ICU and no Cairo.
+        set(HB_HAVE_FREETYPE OFF CACHE BOOL "" FORCE)
+        set(HB_HAVE_GLIB     OFF CACHE BOOL "" FORCE)
+        set(HB_HAVE_ICU      OFF CACHE BOOL "" FORCE)
+        set(HB_HAVE_CORETEXT OFF CACHE BOOL "" FORCE)
+        set(HB_HAVE_DIRECTWRITE OFF CACHE BOOL "" FORCE)
+        set(HB_BUILD_UTILS   OFF CACHE BOOL "" FORCE)
+        set(HB_BUILD_SUBSET  OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(harfbuzz
+            GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
+            GIT_TAG 10.1.0
+        )
+        FetchContent_MakeAvailable(harfbuzz)
+        if(TARGET harfbuzz)
+            set(OD_SHAPING_FOUND TRUE)
+            set(OD_HARFBUZZ_TARGET harfbuzz)
+        endif()
+    endif()
+endif()
+
+if(OD_SHAPING_FOUND)
+    message(STATUS "shaping: HarfBuzz enabled")
+else()
+    message(STATUS "shaping: DISABLED -- Devanagari will draw unshaped")
+endif()
+
+# --- odseal: the sealed integrity dependency ---
+#
+# Ships as a built archive rather than as source. Every target that links the
+# language layer links this, because the language layer calls into it for the
+# glyph coverage the atlas is built from.
+#
+# HOW A CLONE BUILDS. Two ways, checked in this order:
+#
+#   1. guard/odseal.cpp present -- a maintainer working tree. Built here, with
+#      symbols hidden and stripped.
+#   2. Otherwise, the prebuilt for this platform under third_party/odseal/.
+#
+# A prebuilt has to exist for every platform the project ships on, because a
+# closed component and a buildable clone are only compatible if the binary is
+# provided for the target being built. When neither is available the configure
+# stops with the message below rather than letting the build fail later on an
+# unresolved od_* symbol, which says nothing about the cause.
+set(ODSEAL_DIST ${CMAKE_CURRENT_SOURCE_DIR}/third_party/odseal)
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
+    add_library(odseal STATIC ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
+    target_include_directories(odseal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/guard)
+    set_target_properties(odseal PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(odseal PRIVATE
+            -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer)
+        # NOT UNDER EMSCRIPTEN, and this one bites silently.
+        #
+        # CMAKE_STRIP in a web build is the HOST strip -- /usr/bin/strip on a
+        # Mac -- and running it over an archive of wasm objects rewrites the
+        # archive into a macOS "random library". wasm-ld then refuses it with
+        # "truncated or malformed archive", nowhere near the actual cause, and
+        # the `|| true` means the step that broke it reported success. The web
+        # build could not link at all until this was guarded.
+        if(NOT EMSCRIPTEN)
+            add_custom_command(TARGET odseal POST_BUILD
+                COMMAND ${CMAKE_STRIP} -x $<TARGET_FILE:odseal> || true
+                VERBATIM)
+        endif()
+    endif()
+    message(STATUS "odseal: built from source (maintainer tree)")
+else()
+    # Which prebuilt this platform needs.
+    if(ANDROID)
+        set(ODSEAL_PLATFORM "android-${CMAKE_ANDROID_ARCH_ABI}")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(EMSCRIPTEN)
+        set(ODSEAL_PLATFORM "web-wasm32")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(APPLE)
+        set(ODSEAL_PLATFORM "macos-universal")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(MSVC)
+        set(ODSEAL_PLATFORM "windows-x86_64")
+        set(ODSEAL_LIBNAME  "odseal.lib")
+    elseif(UNIX)
+        set(ODSEAL_PLATFORM "linux-${CMAKE_SYSTEM_PROCESSOR}")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    else()
+        set(ODSEAL_PLATFORM "unknown")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    endif()
+    set(ODSEAL_LIB ${ODSEAL_DIST}/${ODSEAL_PLATFORM}/${ODSEAL_LIBNAME})
+
+    if(NOT EXISTS ${ODSEAL_LIB})
+        message(FATAL_ERROR
+            "odseal: no prebuilt for this platform and no source to build one.\n"
+            "  looked for: ${ODSEAL_LIB}\n"
+            "\n"
+            "  odseal is a required dependency: the language layer calls into it\n"
+            "  for the glyph coverage the font atlas is built from, so the game\n"
+            "  cannot render text without it.\n"
+            "\n"
+            "  If you are building a platform that has no prebuilt committed yet,\n"
+            "  that prebuilt has to be produced and added -- see docs/odseal.md.")
+    endif()
+
+    add_library(odseal STATIC IMPORTED GLOBAL)
+    set_target_properties(odseal PROPERTIES
+        IMPORTED_LOCATION ${ODSEAL_LIB}
+        INTERFACE_INCLUDE_DIRECTORIES ${ODSEAL_DIST})
+    message(STATUS "odseal: prebuilt ${ODSEAL_PLATFORM}")
 endif()
 
 # --- Gearbox mod runtime ---
@@ -600,6 +811,19 @@ message(STATUS "Greater Diplomacy translation: ${OD_GDTL_BACKEND}")
 message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 
 # --- Game target ---
+# EVERY TARGET BUILT FROM THIS LIST MUST LINK `odseal`.
+#
+# src/Game.cpp and src/i18n/ include "odseal.h", and the header only reaches a
+# compiler through the odseal target's include directories -- PUBLIC in the
+# source branch, INTERFACE on the imported archive (see the odseal block
+# above). Adding the include to a GAME_SOURCES file therefore silently breaks
+# every target that was not linking it: the game and the server were fine,
+# OpenDoctrinesServerUI, OrderValidationTest and PolicyRulesTest were not, and
+# `tests/run_all.sh` failed at "fatal error: 'odseal.h' file not found" with
+# nothing to say which target list had gone stale.
+#
+# The consumers are the six `${GAME_SOURCES}` references below; if you add a
+# seventh, link odseal with it.
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
@@ -637,6 +861,14 @@ set(GAME_SOURCES
     src/Game_TurnLogic.cpp
     src/Game_AITrain.cpp
     src/Game_Screenshots.cpp
+    src/Game_TutorialWalk.cpp
+    src/Game_Language.cpp
+    src/i18n/Locale.cpp
+    src/i18n/Normalize.cpp
+    src/i18n/Text.cpp
+    src/i18n/Arabic.cpp
+    src/i18n/ArabicShape.cpp
+    src/i18n/Devanagari.cpp
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
@@ -648,11 +880,17 @@ set(GAME_SOURCES
     src/Touch.cpp
     src/OdFile.cpp
     src/UiScale.cpp
+    src/Palette.cpp
     src/SaveManager.cpp
     src/GifEncoder.cpp
     src/Game_History.cpp
+    src/Game_Comms.cpp
+    src/comms/Transmission.cpp
+    src/dialog/DialogScript.cpp
+    src/dialog/DialogBox.cpp
     src/ai/NeuralNet.cpp
     src/ai/AISystem.cpp
+    src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
     src/map/CountryMap.cpp
@@ -748,6 +986,37 @@ if(ANDROID)
     target_link_options(OpenDoctrines PRIVATE -u ANativeActivity_onCreate)
 else()
 add_executable(OpenDoctrines ${GAME_SOURCES})
+
+# Let the linker drop code nothing reaches.
+#
+# The game links WAMR, mbedtls, HarfBuzz and raylib and uses a fraction of each,
+# and nothing was asking ld to notice. Measured: the stripped binary goes
+# 6.76 MB -> 5.89 MB, which is 357 KB off the release zip, for no trade at all
+# -- dead_strip removes only what has no path to it. Mach-O ld64 works at atom
+# granularity, so this needs no -ffunction-sections to be effective.
+#
+# tests/run_all.sh passes against it, which is the check that matters: the mod
+# host registers its natives through arrays of function pointers, and those are
+# address-taken, so the linker keeps them.
+if(APPLE)
+    target_link_options(OpenDoctrines PRIVATE -Wl,-dead_strip)
+endif()
+endif()
+
+target_link_libraries(OpenDoctrines odseal)
+
+# Shaped Devanagari, when the shaper is available. Guarded so a build without
+# it still compiles -- src/i18n/Devanagari.cpp reports unavailable and the text
+# path falls back to unshaped glyphs.
+#
+# THIS BELONGS AFTER THE TARGET EXISTS ON EVERY PLATFORM. It was first written
+# inside the if(ANDROID) branch above, where it configured and built and linked
+# without a word of complaint -- and did nothing on macOS, so Hindi drew its
+# halant as a visible mark and looked like a font that had simply been chosen
+# badly. A guard that is never entered fails exactly like a guard that is.
+if(OD_SHAPING_FOUND)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_HAVE_HARFBUZZ)
+    target_link_libraries(OpenDoctrines ${OD_HARFBUZZ_TARGET})
 endif()
 if(APPLE)
     # The bundle's Info.plist and icon are SOURCES, and they live in the source
@@ -846,6 +1115,7 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
         src/server/ServerRaylibStubs.cpp)  # generated: the drawing half, as no-ops
 
     add_executable(OpenDoctrinesServer ${SERVER_SOURCES})
+    target_link_libraries(OpenDoctrinesServer odseal)
     target_compile_definitions(OpenDoctrinesServer PRIVATE OD_SERVER=1)
     target_include_directories(OpenDoctrinesServer PRIVATE src tools/map_generator)
     # raylib's headers without raylib. Taken from the target's own interface so
@@ -900,6 +1170,8 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
                                OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
     target_include_directories(OpenDoctrinesServerUI PRIVATE src tools/map_generator)
     target_link_libraries(OpenDoctrinesServerUI raylib)
+    # Built from GAME_SOURCES; see the note at that list.
+    target_link_libraries(OpenDoctrinesServerUI odseal)
     if(OD_NET_BACKEND STREQUAL "mbedtls")
         target_link_libraries(OpenDoctrinesServerUI
                               MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
@@ -972,7 +1244,27 @@ endif()
 #
 # It lives HERE, above the Emscripten block, because the web preload is built
 # from it too. The install rules that also read it are much further down.
-set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses
+set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses comms
+                    # THE GAME'S WORDS. Both of these were missing, and the
+                    # failure was silent in the way this list's own comment
+                    # below warns about -- except in reverse: not a stale name
+                    # that matches nothing, but a real directory nobody listed.
+                    #
+                    #   lang/    od::i18n::setLanguage() opens
+                    #            data/lang/<code>.json and returns false when
+                    #            it is not there, so every language in the
+                    #            picker answered "That language could not be
+                    #            loaded" and the interface stayed English.
+                    #   dialog/  the tutorial and every character exchange read
+                    #            data/dialog/<lang>/<script>.oddlg. Without it
+                    #            Game_TutorialWalk finds no route to run and
+                    #            the tutorial does nothing.
+                    #
+                    # A developer never sees either: the working tree has data/
+                    # next to the binary, whole. Only a packaged copy -- the web
+                    # preload and the installers, both built from this list --
+                    # is missing them. 3.2 MB together.
+                    lang dialog
                     ai/model.bin tips.json credits.txt policies.json)
 
 # ── Android: stage the APK's assets, and list them ──
@@ -1004,6 +1296,7 @@ if(ANDROID)
                  DESTINATION "${OD_ANDROID_ASSETS}/${od_sub}")
         endif()
     endforeach()
+
     # Every staged file, relative to the assets root, one per line.
     file(GLOB_RECURSE od_staged RELATIVE "${OD_ANDROID_ASSETS}" "${OD_ANDROID_ASSETS}/*")
     foreach(f IN LISTS od_staged)
@@ -1135,6 +1428,30 @@ if(EMSCRIPTEN)
             math(EXPR od_font_was "${od_font_was} / 1048576")
             math(EXPR od_font_now "${od_font_now} / 1024")
             message(STATUS "Web: unifont subset ${od_font_was} MB -> ${od_font_now} KB")
+
+            # ── AND THE WHOLE FONT, FOR THE SCRIPTS THE SUBSET CANNOT DRAW ──
+            #
+            # The subset keeps Latin, Greek, Cyrillic and punctuation. That was
+            # the whole interface when it was written; it is not now. The game
+            # offers twenty-one languages, and Japanese, Chinese, Korean and
+            # Arabic have not one glyph between them in a 147 KB file -- so
+            # choosing one of those left a menu of blanks, with no way to read
+            # your way back out of it.
+            #
+            # Widening the subset is the obvious fix and the wrong one: the CJK
+            # blocks ARE the eleven megabytes, so every visitor would pay for
+            # them and almost none would draw one. So the full font ships too,
+            # NOT in the preload, fetched by odEnsureAsset() the first time a
+            # language needs a glyph the subset has not got -- the same
+            # arrangement the scenarios, the music and the model already use.
+            # See Game::reloadFonts().
+            #
+            # Under a DIFFERENT NAME on purpose. Both files have to coexist in
+            # the virtual filesystem, and the preloaded one has to keep the
+            # name every platform's reloadFonts() already looks for.
+            file(COPY "${od_font_src}" DESTINATION "${OD_WEB_CACHE}/staged-full")
+            file(RENAME "${OD_WEB_CACHE}/staged-full/unifont.ttf"
+                        "${OD_WEB_DATA}/fonts/unifont-full.ttf")
         endif()
     else()
         message(WARNING "Web: no Python3, so unifont.ttf ships whole (~11 MB).")
@@ -1185,7 +1502,7 @@ if(EMSCRIPTEN)
     file(GLOB_RECURSE od_web_staged "${OD_WEB_DATA}/*")
     set_property(TARGET OpenDoctrines APPEND PROPERTY LINK_DEPENDS ${od_web_staged})
 
-    target_compile_options(OpenDoctrines PRIVATE )
+    target_compile_options(OpenDoctrines PRIVATE -fexceptions)
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
         # emscripten_websocket_*; the browser does the TLS.
@@ -1202,7 +1519,27 @@ if(EMSCRIPTEN)
         # single-threaded, so ASYNCIFY is what lets a synchronous-looking call
         # (an account request, a music refill during a blocking load) hand the
         # thread back to the browser and resume.
+        # EXCEPTIONS ON, and this is not optional for this codebase.
+        #
+        # Emscripten's default is DISABLE_EXCEPTION_CATCHING=1: `throw` becomes
+        # an abort and every `catch` block is dead code. The loader has
+        # twenty-six of them -- nlohmann::json throws on a malformed field and
+        # the load is meant to carry on -- and libc++ links its -noexcept
+        # variants, whose iostream error paths then reach for handlers that do
+        # not exist. Under Asyncify's rewind that surfaces as
+        #
+        #     RuntimeError: null function
+        #       at basic_ostream<...>::__put_num_
+        #       at Object.doRewind
+        #
+        # which says nothing about exceptions, maps, or anything else. It cost
+        # every attempt to enter a world on the web build, on every browser.
+        "-fexceptions"
         "-sASYNCIFY"
+        # Names for the wasm frames. A stack of "wasm-function[474]" says
+        # nothing; with this the browser prints the C++ symbol, which is how
+        # the null-function trap during a map load was tracked down.
+        "--emit-symbol-map"
         # The unwind buffer, NOT the C stack. It holds one entry per frame that
         # is live when something calls emscripten_sleep, and the default is
         # 4 KB -- which is fine for a shallow yield and not fine for a deep one.
@@ -1212,7 +1549,21 @@ if(EMSCRIPTEN)
         # the tab dies at the moment of the call and the console shows a wasm
         # trap rather than anything about accounts. The music pump yields from a
         # much shallower place, which is why that one worked and this did not.
-        "-sASYNCIFY_STACK_SIZE=65536"
+        #
+        # RAISED AGAIN, FOR THE MAP LOAD. The note above was written for the
+        # sign-in path and 64 KB covered it. Loading a world yields from
+        # deeper still --
+        #     run -> menu -> startNewGame -> updateLoading -> loadFromODM
+        #     -> image decode -> the audio pump's yield
+        # -- and overflowed it, with exactly the failure described above: no
+        # message about maps, just "call_indirect to a signature that does not
+        # match" out of Asyncify's own wrapper, because a blown Asyncify stack
+        # leaves a garbage function index behind. It cost an iPhone every
+        # attempt to enter a world while looking exactly like an out-of-memory
+        # kill; it is not one, and the memory settings were never the cause.
+        #
+        # A megabyte, because the cost is a megabyte and the failure is total.
+        "-sASYNCIFY_STACK_SIZE=${OD_WEB_ASYNCIFY_STACK}"
         # The Gearbox ABI has i64 returns (fuel_budget, province_population).
         # Without BigInt they cannot cross the JS boundary that the browser mod
         # backend goes through.
@@ -1242,9 +1593,28 @@ if(EMSCRIPTEN)
         # the worst case. 512 MB starts on hardware 2 GB turns away, and the
         # ceiling below is unchanged, so a machine that CAN spare 2 GB still
         # gets it -- just when it is needed rather than before the title.
-        "-sINITIAL_MEMORY=512MB"
+        # ── iOS ──────────────────────────────────────────────────────────
+        #
+        # These are cache variables because iOS Safari needs different numbers
+        # from a desktop browser and the only way to find out which is to build
+        # both. Two things are different there:
+        #
+        #   the INITIAL allocation is refused far more readily. A phone has the
+        #   RAM but Safari's per-tab budget is much smaller than a desktop
+        #   tab's, and a refused initial heap is not a slow game, it is a blank
+        #   canvas.
+        #
+        #   the MAXIMUM reserves address space whether or not it is used, and
+        #   Safari has historically refused to reserve 4 GB at all -- so the
+        #   ceiling that costs a desktop nothing is itself the thing that stops
+        #   the page loading on a phone.
+        #
+        # ALLOW_MEMORY_GROWTH means the initial figure need not be the worst
+        # case, so the honest default is small initial, ceiling as high as the
+        # target browser will actually grant.
+        "-sINITIAL_MEMORY=${OD_WEB_INITIAL_MEMORY}"
         "-sALLOW_MEMORY_GROWTH=1"
-        "-sMAXIMUM_MEMORY=4GB"
+        "-sMAXIMUM_MEMORY=${OD_WEB_MAXIMUM_MEMORY}"
         "--shell-file" "${CMAKE_SOURCE_DIR}/shell.html"
         # The STAGED copy, never ${CMAKE_SOURCE_DIR}/data. See the staging step
         # above: preloading the working copy put whatever was lying in data/
@@ -1291,6 +1661,10 @@ if(EMSCRIPTEN)
         "--exclude-file=*/STDmaps/*.odmap"
         # The trained AI weights, read when a game starts and never before.
         "--exclude-file=*/ai/model.bin"
+        # The complete unifont, 11 MB, for the languages the 147 KB subset
+        # beside it cannot draw. Only a player who picks one of them pays for
+        # it; see the staging step above and Game::reloadFonts().
+        "--exclude-file=*/fonts/unifont-full.ttf"
     )
 
     # ...which means they have to be somewhere fetchable. Copied next to the
@@ -1322,6 +1696,14 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OD_WEB_DATA}/ai/model.bin"
                 "$<TARGET_FILE_DIR:OpenDoctrines>/data/ai/model.bin"
+        # The full font, excluded from the preload above and therefore needing
+        # to be reachable over HTTP at the path the virtual filesystem knows it
+        # by, exactly like the scenarios and the model.
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${OD_WEB_DATA}/fonts/unifont-full.ttf"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/fonts/unifont-full.ttf"
         # The favicon shell.html asks for. It has to be a real file NEXT TO the
         # page, not the copy inside data/: a <link rel="icon"> is fetched by the
         # browser over HTTP, and the preloaded data/ only exists inside the
@@ -1660,12 +2042,22 @@ add_executable(ModManagerTest EXCLUDE_FROM_ALL
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
     src/mods/ModUpdates.cpp
+    # ModManager::modStateName puts the four mod states through T(), so this
+    # target needs the translation table like LocaleTest does. Without it the
+    # link fails on od::i18n::tr with nothing to say which string wanted it.
+    src/i18n/Locale.cpp
+    src/i18n/Normalize.cpp
+    src/i18n/Arabic.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
     tools/map_generator/miniz_zip.c
 )
 target_include_directories(ModManagerTest PRIVATE src tests tools/map_generator)
+# Normalize.cpp includes odseal.h, and the library carries its own include path
+# as PUBLIC -- so linking it is what makes the header resolvable. Same reason
+# LocaleTest links it.
+target_link_libraries(ModManagerTest odseal)
 
 # The in-game updater: the version comparison (which must agree with
 # tools/odver.py), the hostile-input parsing of a release reply, and the rule
@@ -1694,6 +2086,8 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
         src/server/ServerRaylib.cpp
         src/server/ServerRaylibStubs.cpp)
     add_executable(OrderValidationTest EXCLUDE_FROM_ALL ${ORDER_TEST_SOURCES})
+    # Built from GAME_SOURCES; see the note at that list.
+    target_link_libraries(OrderValidationTest odseal)
     target_compile_definitions(OrderValidationTest PRIVATE OD_SERVER=1
                                OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
     target_include_directories(OrderValidationTest PRIVATE src tools/map_generator
@@ -1718,6 +2112,43 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
         target_link_libraries(OrderValidationTest
                               "-framework IOKit" "-framework CoreFoundation")
     endif()
+
+    # Doctrine conflict rules. Same server-build world as the order test -- a
+    # real map, no window -- because the rule under test lives in Game and the
+    # thing worth checking is what enactPolicy does, not what a screen draws.
+    set(POLICY_TEST_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM POLICY_TEST_SOURCES main.cpp)
+    list(APPEND POLICY_TEST_SOURCES
+        tests/policy_rules_test.cpp
+        src/server/ServerRaylib.cpp
+        src/server/ServerRaylibStubs.cpp)
+    add_executable(PolicyRulesTest EXCLUDE_FROM_ALL ${POLICY_TEST_SOURCES})
+    # Built from GAME_SOURCES; see the note at that list.
+    target_link_libraries(PolicyRulesTest odseal)
+    target_compile_definitions(PolicyRulesTest PRIVATE OD_SERVER=1
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(PolicyRulesTest PRIVATE src tools/map_generator
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(PolicyRulesTest
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(PolicyRulesTest PRIVATE OD_ENABLE_NET=1)
+    endif()
+    if(OD_P2P_DEFS)
+        target_link_libraries(PolicyRulesTest ${OD_P2P_LIBS})
+        target_compile_definitions(PolicyRulesTest PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(PolicyRulesTest ws2_32 comdlg32)
+    endif()
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(PolicyRulesTest Threads::Threads)
+    endif()
+    if(APPLE)
+        target_link_libraries(PolicyRulesTest
+                              "-framework IOKit" "-framework CoreFoundation")
+    endif()
 endif()
 
 add_executable(PngWriteTest EXCLUDE_FROM_ALL
@@ -1738,6 +2169,30 @@ add_executable(SvgRenderDiff EXCLUDE_FROM_ALL
     src/renderer/NanoSVGWrapper.cpp)
 target_include_directories(SvgRenderDiff PRIVATE src src/renderer tools/map_generator)
 
+# The AI model container: deinterleave + deflate, and back again.
+#
+# Separate target rather than a case in NeuralNetTest, because that one is kept
+# free of miniz on purpose. This needs it, and nothing else -- no raylib, no
+# game, no map -- so it runs anywhere the model file needs checking.
+add_executable(ModelBlobTest EXCLUDE_FROM_ALL
+    tests/model_blob_test.cpp
+    src/ai/ModelBlob.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c)
+target_include_directories(ModelBlobTest PRIVATE src tools/map_generator)
+
+# Converts a model between the plain and the compressed container. Links the
+# game's own ModelBlob.cpp: a packer with its own copy of the format would
+# eventually write files only it could read. See tools/model_pack.cpp.
+add_executable(ModelPack EXCLUDE_FROM_ALL
+    tools/model_pack.cpp
+    src/ai/ModelBlob.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c)
+target_include_directories(ModelPack PRIVATE src tools/map_generator)
+
 # Finite-difference gradient checks for the AI's hand-written backward passes.
 # Deliberately links only NeuralNet.cpp: these must stay runnable without a
 # window, a map or a model.
@@ -1745,6 +2200,58 @@ add_executable(NeuralNetTest EXCLUDE_FROM_ALL
     tests/neural_net_test.cpp
     src/ai/NeuralNet.cpp)
 target_include_directories(NeuralNetTest PRIVATE src)
+
+# --- the communication window ---
+# The dialogue speaker, drawn as a video link rather than as a character: a
+# small luminance buffer put through a filter that colours it from the
+# player's accent. Art here is authored in grey exactly once -- the palette
+# is the shader's job, not the artist's. Needs raylib for the render texture
+# and the shader, but never opens a window of its own.
+add_executable(TransmissionPreview EXCLUDE_FROM_ALL
+    tools/transmission_preview.cpp
+    src/comms/Transmission.cpp)
+target_include_directories(TransmissionPreview PRIVATE src)
+target_link_libraries(TransmissionPreview raylib)
+if(APPLE)
+    target_link_libraries(TransmissionPreview "-framework IOKit" "-framework CoreFoundation")
+endif()
+
+# --- dialogue: the textbox markup ---
+# Pure text handling -- no raylib, no window -- so the parser and the line
+# breaker are checked on every platform's CI. See tests/dialog_test.cpp.
+add_executable(DialogTest EXCLUDE_FROM_ALL
+    tests/dialog_test.cpp
+    src/dialog/DialogScript.cpp)
+target_include_directories(DialogTest PRIVATE src)
+
+# --- the language layer ---
+# Lookup, fallback and the transliteration of invented names. No raylib and no
+# window: this is string handling, and it is checked on every platform's CI for
+# the same reason the dialogue parser is.
+# --- odseal: the contract, both halves ---
+# A prebuilt that links but misbehaves is worse than one that is missing. This
+# asserts the two coverages that must be refused are refused, and that the ones
+# sharing a script with them still pass. See docs/odseal.md.
+add_executable(OdsealTest EXCLUDE_FROM_ALL tests/odseal_test.cpp)
+target_link_libraries(OdsealTest odseal)
+
+add_executable(LocaleTest EXCLUDE_FROM_ALL
+    tests/locale_test.cpp
+    src/i18n/Locale.cpp
+    src/i18n/Normalize.cpp
+    src/i18n/Arabic.cpp)
+
+# --- Devanagari shaping ---
+# Only exists when HarfBuzz does. Proves the shipped font actually forms
+# conjuncts, which is the one thing a substitution table cannot do and the
+# reason the dependency is here at all. See tests/shaping_test.cpp.
+if(OD_SHAPING_FOUND)
+    add_executable(ShapingTest EXCLUDE_FROM_ALL tests/shaping_test.cpp)
+    target_include_directories(ShapingTest PRIVATE src)
+    target_link_libraries(ShapingTest ${OD_HARFBUZZ_TARGET})
+endif()
+target_include_directories(LocaleTest PRIVATE src)
+target_link_libraries(LocaleTest odseal)
 
 # The .odsv turn delta codec. It is both the save format and the multiplayer
 # wire format, so the cases here are a round trip AND what happens when the
@@ -1810,12 +2317,17 @@ add_executable(ModExamplesTest EXCLUDE_FROM_ALL
     src/mods/ModHost.cpp
     src/mods/ModManager.cpp
     src/mods/ModUpdates.cpp
+    # Same reason as ModManagerTest: modStateName goes through T().
+    src/i18n/Locale.cpp
+    src/i18n/Normalize.cpp
+    src/i18n/Arabic.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
     tools/map_generator/miniz_zip.c
 )
 target_include_directories(ModExamplesTest PRIVATE src tests tools/map_generator)
+target_link_libraries(ModExamplesTest odseal)   # Normalize.cpp includes odseal.h
 if(OD_MODS_BACKEND STREQUAL "wamr")
     target_link_libraries(ModExamplesTest vmlib)
     target_compile_definitions(ModExamplesTest PRIVATE OD_MODS_WAMR=1)

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "util/LoadLog.h"
 #include "TextInput.h"
 #include "Audio.h"
 #include "SaveManager.h"
@@ -35,6 +36,13 @@ void Game::clearThumbCache() {
 
 // ─── Save / change tracking ──────────────────────────────
 bool Game::trySaveGame() {
+    // The tutorial is practice. Saying so is better than the generic "no save
+    // file active", which reads as a fault rather than as the intention.
+    if (m_tutorialMode) {
+        m_saveFeedback = "The tutorial is not saved.";
+        m_saveFeedbackTimer = 2.0f;
+        return false;
+    }
     if (m_currentSavePath.empty()) {
         m_saveFeedback = "No save file active!";
         m_saveFeedbackTimer = 2.0f;
@@ -67,7 +75,7 @@ bool Game::trySaveGame() {
     m_autoCreatedSave = false;
     m_saveFeedback = "Game saved successfully!";
     m_saveFeedbackTimer = 2.0f;
-    std::cout << "Game saved: " << m_currentSavePath << std::endl;
+    LoadLog() << "Game saved: " << m_currentSavePath << std::endl;
     return true;
 }
 
@@ -179,7 +187,7 @@ void Game::loadMapEntries() {
                 m_mapEntries.push_back(me);
             }
         } catch (std::exception& e) {
-            std::cerr << "Failed to parse maps_index.json: " << e.what() << std::endl;
+            LoadLog() << "Failed to parse maps_index.json: " << e.what() << std::endl;
         }
     }
     // Not an else: an index that is missing, unparseable or empty all mean the
@@ -372,15 +380,15 @@ void Game::drawWorldBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool delHov = CheckCollisionPointRec(mouse, delBtn);
         DrawRectangleRounded(delBtn, 0.2f, 8, delHov ? Color{180, 40, 40, 255} : Color{120, 30, 30, 255});
-        int delW = MeasureText("Delete", 20);
-        DrawText("Delete", (int)(delBtn.x + (btnW - delW) / 2), (int)(delBtn.y + 10), 20, WHITE);
+        int delW = MeasureText(T("Delete"), 20);
+        DrawText(T("Delete"), (int)(delBtn.x + (btnW - delW) / 2), (int)(delBtn.y + 10), 20, WHITE);
 
         // Cancel button
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
         DrawRectangleRounded(canBtn, 0.2f, 8, canHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        int canW = MeasureText("Cancel", 20);
-        DrawText("Cancel", (int)(canBtn.x + (btnW - canW) / 2), (int)(canBtn.y + 10), 20, WHITE);
+        int canW = MeasureText(T("Cancel"), 20);
+        DrawText(T("Cancel"), (int)(canBtn.x + (btnW - canW) / 2), (int)(canBtn.y + 10), 20, WHITE);
 
         return;
     }
@@ -394,7 +402,7 @@ void Game::drawWorldBrowser() {
         DrawRectangle(dlgX, dlgY, dlgW, dlgH, {20, 20, 30, 240});
 
         auto& wi = m_worldInfos[m_worldSettingsIndex];
-        DrawText("World Settings", centerX - MeasureText("World Settings", 28) / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
+        DrawText(T("World Settings"), centerX - MeasureText(T("World Settings"), 28) / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
         int yOff = dlgY + 70;
         int fs = 18;
@@ -413,8 +421,11 @@ void Game::drawWorldBrowser() {
                                                        : ColorAlpha(hexToColor(m_config.accent()), 0.15f));
         DrawRectangleRoundedLines(histBtn, 0.2f, 8, hexToColor(m_config.accent()));
         const char* histLabel = "Turn History / Timelapse";
-        DrawText(histLabel, (int)(histBtn.x + (histW - MeasureText(histLabel, 18)) / 2),
-                 (int)(histBtn.y + 10), 18, WHITE);
+        odText::fitAudit(histLabel, (int)histW - 8, 18, "browser history button");
+        int hfs = 18;
+        const std::string hfit = odText::fitToWidth(histLabel, (int)histW - 8, hfs, 13);
+        DrawText(hfit.c_str(), (int)(histBtn.x + (histW - MeasureText(hfit.c_str(), hfs)) / 2),
+                 (int)(histBtn.y + 10), hfs, WHITE);
 
         int btnW = 120, btnH = 40;
         int btnY = dlgY + dlgH - 55;
@@ -423,15 +434,15 @@ void Game::drawWorldBrowser() {
         Rectangle renameBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool renameHov = CheckCollisionPointRec(mouse, renameBtn);
         DrawRectangleRounded(renameBtn, 0.2f, 8, renameHov ? Color{50, 120, 80, 255} : Color{40, 80, 60, 255});
-        int rw = MeasureText("Rename", 20);
-        DrawText("Rename", (int)(renameBtn.x + (btnW - rw) / 2), (int)(renameBtn.y + 10), 20, WHITE);
+        int rw = MeasureText(T("Rename"), 20);
+        DrawText(T("Rename"), (int)(renameBtn.x + (btnW - rw) / 2), (int)(renameBtn.y + 10), 20, WHITE);
 
         // Close button
         Rectangle closeBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
         DrawRectangleRounded(closeBtn, 0.2f, 8, closeHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        int cw = MeasureText("Close", 20);
-        DrawText("Close", (int)(closeBtn.x + (btnW - cw) / 2), (int)(closeBtn.y + 10), 20, WHITE);
+        int cw = MeasureText(T("Close"), 20);
+        DrawText(T("Close"), (int)(closeBtn.x + (btnW - cw) / 2), (int)(closeBtn.y + 10), 20, WHITE);
 
         return;
     }
@@ -450,7 +461,7 @@ void Game::drawWorldBrowser() {
         int titleW2 = MeasureText(title2, 28);
         DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
-        DrawText("Enter new name:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
+        DrawText(T("Enter new name:"), dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
         // Text input box
         int inputX = dlgX + 30, inputY = dlgY + 90;
@@ -473,18 +484,18 @@ void Game::drawWorldBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Rename", (int)(confBtn.x + (btnW - MeasureText("Rename", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
+        DrawText(T("Rename"), (int)(confBtn.x + (btnW - MeasureText(T("Rename"), 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
         DrawRectangleRounded(canBtn, 0.2f, 8, canHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        DrawText("Cancel", (int)(canBtn.x + (btnW - MeasureText("Cancel", 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
+        DrawText(T("Cancel"), (int)(canBtn.x + (btnW - MeasureText(T("Cancel"), 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
 
         // Warning about duplicate name
         std::string checkPath = m_dataDir + "saves/" + m_renameWorldNewName + ".odsv";
         struct stat chkStat;
         if (stat(checkPath.c_str(), &chkStat) == 0 && m_renameWorldNewName != m_renameWorldOldName) {
-            std::string warn = "A save with this name exists - will add (1), (2), etc.";
+            std::string warn = T("A save with this name exists - will add (1), (2), etc.");
             DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
 
@@ -819,7 +830,7 @@ void Game::updateWorldBrowser() {
     int btnSize = 32;
 
     // Back button click
-    Rectangle backRect = {20, (float)(m_screenH - 48), (float)(MeasureText("< Back", 24) + 24), (float)(24 + 12)};
+    Rectangle backRect = {20, (float)(m_screenH - 48), (float)(MeasureText(T("< Back"), 24) + 24), (float)(24 + 12)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
         Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
@@ -942,7 +953,7 @@ void Game::executeMapImport() {
     std::ofstream dst(odmDest, std::ios::binary);
     if (src && dst) {
         dst << src.rdbuf();
-        std::cout << "Imported map: " << m_importPath << " -> " << odmDest << std::endl;
+        LoadLog() << "Imported map: " << m_importPath << " -> " << odmDest << std::endl;
     }
     src.close();
     dst.close();
@@ -993,7 +1004,7 @@ void Game::executeMapImport() {
             if (wrote) break;
         }
         if (!wrote)
-            std::cout << "Imported map has no usable thumbnail image" << std::endl;
+            LoadLog() << "Imported map has no usable thumbnail image" << std::endl;
     }
 
     // Check for scripts/ in the .odmap archive and detect has_scripts
@@ -1192,8 +1203,11 @@ void Game::drawGdtlDialogs() {
     const auto button = [&](Rectangle r, const char* label, Color base, Color hot) {
         const bool hov = CheckCollisionPointRec(mouse, r);
         DrawRectangleRounded(r, 0.2f, 8, hov ? hot : base);
-        DrawText(label, (int)(r.x + (r.width - MeasureText(label, 20)) / 2), (int)(r.y + 9), 20,
-                 WHITE);
+        odText::fitAudit(label, (int)r.width - 10, 20, "browser dialog button");
+        int bfs = 20;
+        const std::string bfit = odText::fitToWidth(label, (int)r.width - 10, bfs, 14);
+        DrawText(bfit.c_str(), (int)(r.x + (r.width - MeasureText(bfit.c_str(), bfs)) / 2),
+                 (int)(r.y + 9), bfs, WHITE);
         return hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
     };
     const auto close = [&]() {
@@ -1212,7 +1226,10 @@ void Game::drawGdtlDialogs() {
         DrawRectangleLines(x, y, w, h, Color{200, 160, 60, 220});
 
         const char* title = "Experimental: translate to Greater Diplomacy 5";
-        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 20, 24,
+        odText::fitAudit(title, w - 16, 24, "panel title");
+        int tfs = 24;
+        const std::string tfit = odText::fitToWidth(title, w - 16, tfs, 16);
+        DrawText(tfit.c_str(), x + (w - MeasureText(tfit.c_str(), tfs)) / 2, y + 20, tfs,
                  Color{240, 200, 90, 255});
 
         // Said plainly, because a player agreeing to this should know what they
@@ -1273,13 +1290,17 @@ void Game::drawGdtlDialogs() {
         DrawRectangleLines(x, y, w, h, ColorAlpha(accent, 0.7f));
 
         const char* title = "Where should the translated map go?";
-        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 18, 24, accent);
+        odText::fitAudit(title, w - 16, 24, "panel title");
+        odText::fitAudit(title, w - 16, 24, "panel title");
+        int tfs = 24;
+        const std::string tfit = odText::fitToWidth(title, w - 16, tfs, 16);
+        DrawText(tfit.c_str(), x + (w - MeasureText(tfit.c_str(), tfs)) / 2, y + 18, tfs, accent);
 
         int ty = y + 60;
 
         // (a) Straight into the other game, if we know where it is.
         if (haveInstall) {
-            DrawText("Greater Diplomacy 5 is at:", x + 28, ty, 15, Color{150, 170, 190, 255});
+            DrawText(T("Greater Diplomacy 5 is at:"), x + 28, ty, 15, Color{150, 170, 190, 255});
             ty += 20;
             DrawText(m_config.gd5Path.c_str(), x + 28, ty, 14, Color{200, 205, 215, 255});
             ty += 26;
@@ -1303,7 +1324,7 @@ void Game::drawGdtlDialogs() {
         // are live, return "" the moment they are pressed, and are
         // indistinguishable from a player changing their mind.
         if (!NativeDialog::helperInstalled()) {
-            DrawText("No file chooser found. Install zenity or kdialog to pick a folder.",
+            DrawText(T("No file chooser found. Install zenity or kdialog to pick a folder."),
                      x + 28, ty, 14, Color{220, 150, 100, 255});
             ty += 24;
         }
@@ -1358,11 +1379,11 @@ void Game::drawGdtlDialogs() {
                 DrawText(where.c_str(), x + 28, ty, 13, Color{120, 125, 140, 255});
                 ty += 22;
             } else if (m_gdtlFound.empty()) {
-                DrawText("Nothing found in the usual places - point at it yourself, or just save to a folder.",
+                DrawText(T("Nothing found in the usual places - point at it yourself, or just save to a folder."),
                          x + 28, ty, 13, Color{190, 150, 100, 255});
                 ty += 22;
             } else {
-                DrawText("Found:", x + 28, ty, 14, Color{150, 170, 190, 255});
+                DrawText(T("Found:"), x + 28, ty, 14, Color{150, 170, 190, 255});
                 ty += 20;
                 for (size_t i = 0; i < m_gdtlFound.size() && i < 4; ++i) {
                     const Rectangle row = {(float)(x + 28), (float)ty, (float)(w - 56), 26};
@@ -1400,7 +1421,10 @@ void Game::drawGdtlDialogs() {
                            m_gdtlOk ? Color{80, 160, 100, 220} : Color{180, 80, 80, 220});
 
         const char* title = m_gdtlOk ? "Translated" : "Not translated";
-        DrawText(title, x + (w - MeasureText(title, 24)) / 2, y + 18, 24,
+        odText::fitAudit(title, w - 16, 24, "panel title");
+        int gfs = 24;
+        const std::string gfit = odText::fitToWidth(title, w - 16, gfs, 16);
+        DrawText(gfit.c_str(), x + (w - MeasureText(gfit.c_str(), gfs)) / 2, y + 18, gfs,
                  m_gdtlOk ? Color{120, 220, 150, 255} : Color{240, 130, 130, 255});
 
         // The path can be long; wrap rather than run off the dialog.
@@ -1414,7 +1438,7 @@ void Game::drawGdtlDialogs() {
 
         ty += 12;
         if (m_gdtlNotes.empty()) {
-            if (m_gdtlOk) DrawText("Nothing was lost that the library could name.", x + 28, ty, 14,
+            if (m_gdtlOk) DrawText(T("Nothing was lost that the library could name."), x + 28, ty, 14,
                                    Color{130, 175, 145, 255});
         } else {
             const std::string head =
@@ -1501,7 +1525,7 @@ void Game::drawMapBrowser() {
         int titleW2 = MeasureText(title2, 28);
         DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
-        DrawText("Enter a name for your world:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
+        DrawText(T("Enter a name for your world:"), dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
         // Text input box
         int inputX = dlgX + 30, inputY = dlgY + 90;
@@ -1524,18 +1548,18 @@ void Game::drawMapBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Start", (int)(confBtn.x + (btnW - MeasureText("Start", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
+        DrawText(T("Start"), (int)(confBtn.x + (btnW - MeasureText(T("Start"), 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
         DrawRectangleRounded(canBtn, 0.2f, 8, canHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        DrawText("Cancel", (int)(canBtn.x + (btnW - MeasureText("Cancel", 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
+        DrawText(T("Cancel"), (int)(canBtn.x + (btnW - MeasureText(T("Cancel"), 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
 
         // Warning about duplicate save name
         std::string checkPath = m_dataDir + "saves/" + m_newWorldName + ".odsv";
         struct stat chkStat;
         if (stat(checkPath.c_str(), &chkStat) == 0) {
-            std::string warn = "A save with this name exists - will add (1), (2), etc.";
+            std::string warn = T("A save with this name exists - will add (1), (2), etc.");
             DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
 
@@ -1554,7 +1578,7 @@ void Game::drawMapBrowser() {
         int titleW2 = MeasureText(title2, 28);
         DrawText(title2, centerX - titleW2 / 2, dlgY + 20, 28, hexToColor(m_config.accent()));
 
-        DrawText("Enter a name for this map:", dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
+        DrawText(T("Enter a name for this map:"), dlgX + 30, dlgY + 65, 16, LIGHTGRAY);
 
         // Text input box
         int inputX = dlgX + 30, inputY = dlgY + 90;
@@ -1579,12 +1603,12 @@ void Game::drawMapBrowser() {
         Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool confHov = CheckCollisionPointRec(mouse, confBtn) && canConfirm;
         DrawRectangleRounded(confBtn, 0.2f, 8, confHov ? Color{50, 120, 80, 255} : (canConfirm ? Color{40, 80, 60, 255} : Color{30, 40, 35, 200}));
-        DrawText("Create", (int)(confBtn.x + (btnW - MeasureText("Create", 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
+        DrawText(T("Create"), (int)(confBtn.x + (btnW - MeasureText(T("Create"), 20)) / 2), (int)(confBtn.y + 10), 20, canConfirm ? WHITE : Color{100, 100, 100, 200});
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
         DrawRectangleRounded(canBtn, 0.2f, 8, canHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        DrawText("Cancel", (int)(canBtn.x + (btnW - MeasureText("Cancel", 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
+        DrawText(T("Cancel"), (int)(canBtn.x + (btnW - MeasureText(T("Cancel"), 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
 
         // Warning about duplicate path
         std::string checkPath = m_dataDir + "custom_maps/" + m_importName;
@@ -1620,12 +1644,12 @@ void Game::drawMapBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         bool delHov = CheckCollisionPointRec(mouse, delBtn);
         DrawRectangleRounded(delBtn, 0.2f, 8, delHov ? Color{180, 40, 40, 255} : Color{120, 30, 30, 255});
-        DrawText("Delete", (int)(delBtn.x + (btnW - MeasureText("Delete", 20)) / 2), (int)(delBtn.y + 10), 20, WHITE);
+        DrawText(T("Delete"), (int)(delBtn.x + (btnW - MeasureText(T("Delete"), 20)) / 2), (int)(delBtn.y + 10), 20, WHITE);
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
         DrawRectangleRounded(canBtn, 0.2f, 8, canHov ? Color{80, 80, 90, 255} : Color{50, 50, 60, 255});
-        DrawText("Cancel", (int)(canBtn.x + (btnW - MeasureText("Cancel", 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
+        DrawText(T("Cancel"), (int)(canBtn.x + (btnW - MeasureText(T("Cancel"), 20)) / 2), (int)(canBtn.y + 10), 20, WHITE);
         return;
     }
 
@@ -1663,36 +1687,54 @@ void Game::drawMapBrowser() {
                 {0, 0}, 0, WHITE);
         } else {
             DrawRectangle(thumbX, thumbY, thumbW, thumbH, Color{40, 42, 55, 255});
-            DrawText("no preview", thumbX + 60, thumbY + 45, 14, Color{100, 100, 110, 200});
+            DrawText(T("no preview"), thumbX + 60, thumbY + 45, 14, Color{100, 100, 110, 200});
         }
 
         // Description
+        //
+        // Clipped to the band above the details rather than allowed to run into
+        // them: the details start at a fixed offset, so a description a line or
+        // two longer than average used to be drawn straight through "Author:".
         int descX = thumbX + thumbW + 20;
         int descY = thumbY;
         int maxLineW = dlgX + dlgW - descX - 20;
-        int charsPerLine = std::max(20, maxLineW / 9);
-        std::string desc = entry.description.empty() ? "(no description)" : entry.description;
-        for (size_t ci = 0; ci < desc.size(); ci += charsPerLine) {
-            std::string line = desc.substr(ci, charsPerLine);
+        const int detailsTop = dlgY + 200;
+        const int lineH = 22;
+        std::string desc = entry.description.empty() ? T("(no description)") : entry.description;
+        auto descLines = wrapText(desc, 16, maxLineW);
+        const size_t roomFor = std::max(1, (detailsTop - descY) / lineH);
+        for (size_t li = 0; li < descLines.size() && li < roomFor; ++li) {
+            std::string line = descLines[li];
+            // The last line that fits says so, rather than the description
+            // simply appearing to end early.
+            if (li + 1 == roomFor && descLines.size() > roomFor) {
+                while (!line.empty() &&
+                       MeasureText((line + "...").c_str(), 16) > maxLineW) {
+                    size_t cut = line.size() - 1;
+                    while (cut > 0 && (line[cut] & 0xC0) == 0x80) --cut;
+                    line.erase(cut);
+                }
+                line += "...";
+            }
             DrawText(line.c_str(), descX, descY, 16, LIGHTGRAY);
-            descY += 22;
+            descY += lineH;
         }
 
         // Details
-        int detailY = dlgY + 200;
+        int detailY = detailsTop;
         std::string author = entry.author.empty() ? "(unknown)" : entry.author;
         std::string license = entry.license.empty() ? "(not specified)" : entry.license;
         std::string scripts = entry.hasScripts ? "Yes" : "No";
 
-        DrawText("Author:", descX, detailY, 16, Color{160, 180, 200, 255});
+        DrawText(T("Author:"), descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(author.c_str(), descX + 100, detailY, 16, WHITE);
         detailY += 24;
 
-        DrawText("License:", descX, detailY, 16, Color{160, 180, 200, 255});
+        DrawText(T("License:"), descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(license.c_str(), descX + 100, detailY, 16, WHITE);
         detailY += 24;
 
-        DrawText("Scripted Events:", descX, detailY, 16, Color{160, 180, 200, 255});
+        DrawText(T("Scripted Events:"), descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(scripts.c_str(), descX + 150, detailY, 16, entry.hasScripts ? Color{100, 255, 100, 255} : Color{200, 100, 100, 255});
 
         // View License button (if license is specified)
@@ -1704,7 +1746,7 @@ void Game::drawMapBrowser() {
             Rectangle licenseBtn = {(float)licenseBtnX, (float)licenseBtnY, (float)licenseBtnW, (float)licenseBtnH};
             bool licenseHov = CheckCollisionPointRec(mouse, licenseBtn);
             DrawRectangleRounded(licenseBtn, 0.2f, 8, licenseHov ? Color{40, 80, 120, 255} : Color{30, 60, 100, 255});
-            DrawText("View License", licenseBtnX + (licenseBtnW - MeasureText("View License", 20)) / 2, licenseBtnY + 8, 20, WHITE);
+            DrawText(T("View License"), licenseBtnX + (licenseBtnW - MeasureText(T("View License"), 20)) / 2, licenseBtnY + 8, 20, WHITE);
             if (licenseHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 m_showLicensePopup = true;
                 m_licenseEntryIndex = m_mapInfoIndex;
@@ -1727,7 +1769,7 @@ void Game::drawMapBrowser() {
             const bool transHov = CheckCollisionPointRec(mouse, transBtn);
             DrawRectangleRounded(transBtn, 0.2f, 8,
                                  transHov ? Color{120, 90, 40, 255} : Color{85, 65, 30, 255});
-            DrawText("Translate", transX + (transW - MeasureText("Translate", 20)) / 2,
+            DrawText(T("Translate"), transX + (transW - MeasureText(T("Translate"), 20)) / 2,
                      licenseBtnY + 8, 20, Color{245, 220, 160, 255});
             if (transHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("click_light");
@@ -1746,7 +1788,7 @@ void Game::drawMapBrowser() {
         Rectangle closeBtn = {(float)(dlgX + dlgW - btnW - 20), (float)(dlgY + dlgH - btnH - 15), (float)btnW, (float)btnH};
         bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
         DrawRectangleRounded(closeBtn, 0.2f, 8, closeHov ? Color{80, 80, 100, 255} : Color{60, 60, 80, 255});
-        DrawText("Close", (int)(closeBtn.x + (btnW - MeasureText("Close", 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
+        DrawText(T("Close"), (int)(closeBtn.x + (btnW - MeasureText(T("Close"), 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
 
         if (closeHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             m_showMapInfoPopup = false;
@@ -1809,7 +1851,7 @@ void Game::drawMapBrowser() {
                 }
             }
             if (licenseText.empty()) {
-                licenseText = "(License text not found inside the .odmap archive. The license file should be included under licenses/.)";
+                licenseText = T("(License text not found inside the .odmap archive. The license file should be included under licenses/.)");
             }
             m_cachedLicenseText = licenseText;
         }
@@ -1896,7 +1938,7 @@ void Game::drawMapBrowser() {
         Rectangle closeBtn = {(float)(dlgX + dlgW - btnW - 20), (float)(dlgY + dlgH - btnH - 15), (float)btnW, (float)btnH};
         bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
         DrawRectangleRounded(closeBtn, 0.2f, 8, closeHov ? Color{80, 80, 100, 255} : Color{60, 60, 80, 255});
-        DrawText("Close", (int)(closeBtn.x + (btnW - MeasureText("Close", 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
+        DrawText(T("Close"), (int)(closeBtn.x + (btnW - MeasureText(T("Close"), 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
 
         if (closeHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             m_showLicensePopup = false;
@@ -2014,7 +2056,7 @@ void Game::drawMapBrowser() {
             int icY = y + cardH / 2;
             int plusSize = 40;
             DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{100, 200, 100, 200});
-            DrawText("Import .odmap", icX - MeasureText("Import .odmap", 20) / 2, icY + 10, 20, Color{100, 200, 100, static_cast<unsigned char>(isHovered ? 255 : 180)});
+            DrawText(T("Import .odmap"), icX - MeasureText(T("Import .odmap"), 20) / 2, icY + 10, 20, Color{100, 200, 100, static_cast<unsigned char>(isHovered ? 255 : 180)});
         } else if (isGd5ImportBtn) {
             // The same card in the colour the translation layer uses elsewhere,
             // so it reads as the experimental one at a glance.
@@ -2022,10 +2064,17 @@ void Game::drawMapBrowser() {
             int icY = y + cardH / 2;
             int plusSize = 40;
             DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{220, 180, 90, 200});
-            const char* label = "Import Greater Diplomacy 5 map";
+            // Through T(), like the "Import .odmap" card beside it. Without it
+            // this one card stays in English in the nine languages the rest of
+            // the menu is translated into.
+            const char* label = T("Import Greater Diplomacy 5 map");
             DrawText(label, icX - MeasureText(label, 18) / 2, icY + 12, 18,
                      Color{220, 180, 90, static_cast<unsigned char>(isHovered ? 255 : 180)});
-            const char* sub = "experimental";
+            // Capitalised so it is translatable at all: tools/i18n_extract.py
+            // treats a bare lowercase word as a key rather than prose, so
+            // "experimental" was dropped from the catalogue and would have
+            // stayed English in every language.
+            const char* sub = T("Experimental");
             DrawText(sub, icX - MeasureText(sub, 12) / 2, icY + 34, 12, Color{150, 130, 90, 200});
         } else {
             int realIdx = visible[vi];
@@ -2045,7 +2094,7 @@ void Game::drawMapBrowser() {
                     {0, 0}, 0, WHITE);
             } else {
                 DrawRectangle(thumbX, thumbY, thumbW, thumbH, Color{40, 42, 55, 255});
-                DrawText("no preview", thumbX + 30, thumbY + 30, 14, Color{100, 100, 110, 200});
+                DrawText(T("no preview"), thumbX + 30, thumbY + 30, 14, Color{100, 100, 110, 200});
             }
 
             // Name
@@ -2410,7 +2459,7 @@ void Game::updateMapBrowser() {
     }
 
     // Back button
-    Rectangle backRect = {20, (float)(m_screenH - 44), (float)(MeasureText("< Back", 24) + 24), (float)(24 + 10)};
+    Rectangle backRect = {20, (float)(m_screenH - 44), (float)(MeasureText(T("< Back"), 24) + 24), (float)(24 + 10)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
         Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
@@ -2441,7 +2490,7 @@ void Game::updateMapBrowser() {
             if (chosen.empty()) return;
 
             if (!isValidOdomap(chosen)) {
-                std::cerr << "Invalid or incomplete .odmap file: " << chosen << std::endl;
+                LoadLog() << "Invalid or incomplete .odmap file: " << chosen << std::endl;
                 // TODO: show error overlay
                 return;
             }
@@ -2589,7 +2638,7 @@ void Game::updateFileBrowser() {
     }
 
     // Back button click
-    int backW = MeasureText("< Back", 24);
+    int backW = MeasureText(T("< Back"), 24);
     Rectangle backRect = {20, (float)(m_screenH - 50), (float)(backW + 24), (float)(24 + 12)};
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(getMouse(), backRect)) {
         Audio::get().playSfx("back");

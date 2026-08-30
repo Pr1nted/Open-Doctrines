@@ -1,0 +1,14 @@
+// 번역 - 주제 메뉴.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+좋아요, 큰 틀은 아시는군요. 그럼 실제로 무엇을 원하시죠?
+
+하나 고르세요. 제대로 짚어 드리겠습니다. 끝나면 다시 물으세요.
+> 함선, 항구, 그리고 군대를 물 건너 보내기 -> script:tut_ships
+> 연구, 그리고 시작한 것이 왜 하나도 끝나지 않는지 -> script:tut_research
+> 경제, 공업, 그리고 돈이 어디서 나오는지 -> script:tut_economy
+> 청구권, 불안, 그리고 자국민에게 주를 잃는 일 -> script:tut_unrest
+> 동맹, 휴전, 그 밖의 외교 -> script:tut_diplomacy
+> 더는 없습니다, 끝났어요 -> script:outro

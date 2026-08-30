@@ -1,0 +1,31 @@
+// Traduzione - la ricerca.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Ricerca. Aprila: la lamentela è sempre la stessa, niente di ciò che inizi
+sembra mai concludersi, e non è un difetto, è il punto.
+---
+@Signals Officer
+Qui tutto si misura in turni che non hai ancora giocato. Ciò che avvii adesso
+arriva molto dopo che hai dimenticato di volerlo, il che significa che l'unico
+momento sbagliato per iniziare è più tardi.
+---
+@Signals Officer
+Attinge agli stessi soldi dell'esercito. Un paese che ricerca tutto non schiera
+niente, e un paese che schiera tutto fra venti turni starà ancora combattendo
+la guerra del decennio scorso.
+
+Scegli una linea. Non sceglierle tutte.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Richiudila: la §**x**§ nell'angolo.
+---
+@Signals Officer
+Il lavoro concluso non si applica retroattivamente. L'equipaggiamento nuovo
+arriva prima alle formazioni nuove, quindi il turno in cui qualcosa si completa
+è il turno in cui guardare cosa stai costruendo, non quello in cui rilassarsi.
+
+Questa è la ricerca. Altro?

@@ -1,0 +1,49 @@
+// Traducción - la travesía naval.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Barcos, entonces. Esto es lo que detiene a la mayoría, y los detiene siempre en
+el mismo punto: el ejército está en la costa y no pasa nada.
+---
+@Signals Officer
+Un ejército no cruza el agua solo, y no existe la orden "cargar en ese barco".
+Lo hace la provincia.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Selecciona una provincia costera que tenga §**puerto**§ Y §**hombres dentro**§.
+Embarcar mueve la guarnición que ya está allí; un puerto vacío no embarca nada,
+y ahí empieza casi toda la confusión.
+
+Su panel tiene §**Embarcar ejército**§: gratis, un turno. Púlsalo y termina el
+turno.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Los hombres son ahora un §**barco**§ frente a la costa. Ve a la vista
+§**naval**§: los barcos no aceptan órdenes desde ninguna de las otras siete.
+
+§{key=ship_move}§ lo mueve, §{key=ship_wheel}§ abre sus cañones,
+§{key=ship_engage}§ le dice que entable combate.
+---
+@Signals Officer
+Para desembarcar: selecciona el barco, pulsa §**Mover**§ y haz clic en
+§**tierra**§.
+
+El agua lo mueve. La tierra lo descarga. Un solo botón hace ambas cosas, y por
+eso la gente navega de un lado a otro buscando el otro.
+---
+@Signals Officer
+Dos cosas que nadie te cuenta.
+
+Un transporte cargado es un blanco, y se hunde con los hombres a bordo. Y un
+desembarco en una provincia defendida llega agotado: toma la costa vacía de al
+lado y camina, en vez de desembarcar sobre el fuerte.
+---
+@Signals Officer
+§**Hallow Rock**§, en el estrecho, no es opcional. Un barco tiene alcance, y la
+isla lejana queda fuera de él, así que la roca es el primer desembarco y el
+segundo salto sale de ahí.
+
+Eso son los barcos. ¿Algo más?

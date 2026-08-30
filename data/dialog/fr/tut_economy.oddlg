@@ -1,0 +1,36 @@
+// Traduction - l'économie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+L'économie : ouvrez-la. Tout le reste du jeu est une dispute sur la façon de
+dépenser ce qu'elle produit.
+---
+@Signals Officer
+L'§**industrie**§ pousse là où il y a déjà des gens. Une usine dans une
+province vide est un hangar hors de prix : la matière première, c'est la
+population, pas le bâtiment.
+---
+@Signals Officer
+Le revenu arrive une fois par tour, dans le tour. Engagez-vous au-delà de ce
+que vous avez et le manque n'attend pas poliment : il se prend sur la
+préparation, et vous l'apprenez au milieu d'une bataille.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Ressortez, et regardons plutôt une seule province.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Cliquez sur une des nôtres. Par province, le panneau montre ce qu'elle produit
+et ce qu'elle détient. Les ressources valent plus transformées qu'extraites,
+donc une province industrielle à côté d'une province riche vaut plus que
+chacune séparément.
+---
+@Signals Officer
+Et les politiques sont une §**facture permanente**§, pas un achat. Chacune que
+vous menez est retranchée chaque tour, indéfiniment, qu'elle serve encore à
+quelque chose ou non.
+
+Voilà l'économie. Autre chose ?

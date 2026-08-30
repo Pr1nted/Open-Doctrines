@@ -59,6 +59,11 @@ done
 
 # Signed out, on no account service, with the music silent -- the "now playing"
 # toast is charming in the game and clutter in a screenshot.
+#
+# gdtl is on because the tour's five translation-layer shots skip themselves
+# when it is off, and a skip here looks exactly like a feature with no images.
+# A build made without -DOD_ENABLE_GDTL=ON still skips them, which is right:
+# there is nothing to photograph.
 cat > "$data/config.json" <<'EOF'
 {
   "accountIssuer": "",
@@ -68,7 +73,8 @@ cat > "$data/config.json" <<'EOF'
   "nowPlayingToast": false,
   "showFps": false,
   "showZoom": false,
-  "debugMode": false
+  "debugMode": false,
+  "gdtl": true
 }
 EOF
 

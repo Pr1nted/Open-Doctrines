@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Palette.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "raymath.h"
@@ -13,6 +14,7 @@ void Game::clearClaimsView() {
     m_lastClaimsCountryId = -1;
     m_renderer->setShowClaims(false);
     m_activeSidebarTab = 0;
+    ensureClaimsTexture();
     std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
     m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
 }
@@ -104,6 +106,8 @@ bool Game::isCountryInvolvedInClaims(int countryId, int claimantCid) {
 }
 
 void Game::drawClaimsTab() {
+    // Reads m_provincePixels, which is built on demand.
+    ensureProvincePixels();
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 180});
 
     const Country* pc = m_countries.getCountry(m_playerCountryId);
@@ -129,13 +133,14 @@ void Game::drawClaimsTab() {
             m_renderer->setShowClaims(false);
             m_renderer->setPaused(false);
         }
+        ensureClaimsTexture();
         std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
         m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
     }
-    DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
+    DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     // Title
-    DrawText(TextFormat("Territorial Claims - %s", pc->name.c_str()), 20, 16, 22, hexToColor(m_config.accent()));
+    DrawText(TextFormat(T("Territorial Claims - %s"), od::i18n::properName(pc->name).c_str()), 20, 16, 22, hexToColor(m_config.accent()));
 
     // ─── Tabs ───
     int tabY = 100;
@@ -172,6 +177,7 @@ void Game::drawClaimsTab() {
                 m_showClaims = false;
                 if (m_renderer) {
                     m_renderer->setShowClaims(false);
+                    ensureClaimsTexture();
                     std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
                     m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
                 }
@@ -459,7 +465,7 @@ void Game::drawClaimsTab() {
     DrawRectangleLines(iDrawX, iDrawY, iDrawW, iDrawH, {80, 80, 120, 180});
     // Drag hint
     if (!m_claimsEditMode)
-        DrawText("Drag to pan | Scroll to zoom", iDrawX + 4, iDrawY + iDrawH - 18, 12, Color{180, 180, 200, 120});
+        DrawText(T("Drag to pan | Scroll to zoom"), iDrawX + 4, iDrawY + iDrawH - 18, 12, Color{180, 180, 200, 120});
 
     // ─── List panel (sidebar right of map) ───
     int listX = m_screenW - listW - 20;
@@ -475,7 +481,7 @@ void Game::drawClaimsTab() {
 
     if (m_claimsTab == 0) {
         if (m_claimsEditMode) {
-            DrawText("Click map to add/drop claims", listX + 8, drawY, 11, YELLOW);
+            DrawText(T("Click map to add/drop claims"), listX + 8, drawY, 11, YELLOW);
             drawY += 18;
         }
 
@@ -498,7 +504,7 @@ void Game::drawClaimsTab() {
         }
 
         if (display.empty()) {
-            DrawText("No claims", listX + listW/2 - 30, drawY + 10, 14, LIGHTGRAY);
+            DrawText(T("No claims"), listX + listW/2 - 30, drawY + 10, 14, LIGHTGRAY);
             drawY += 36;
         } else {
             for (int pid : display) {
@@ -512,12 +518,14 @@ void Game::drawClaimsTab() {
                     Color dotCol = owner ? owner->color : DARKGRAY;
                     DrawRectangle(listX + 8, drawY + 2, 16, 16, dotCol);
 
-                    std::string label = ppIt->second.name;
-                    if (owner) label += " (" + owner->name + ")";
+                    std::string label = od::i18n::properName(ppIt->second.name);
+                    if (owner)
+                        label += TextFormat(" (%s)",
+                                            od::i18n::properName(owner->name).c_str());
                     DrawText(label.c_str(), listX + 30, drawY + 2, 12, WHITE);
 
-                    if (inPendingAdd || inAdd) DrawText("[+]", listX + listW - 50, drawY, 13, GREEN);
-                    else if (inPendingDrop || inDrop) DrawText("[-]", listX + listW - 50, drawY, 13, RED);
+                    if (inPendingAdd || inAdd) DrawText("[+]", listX + listW - 50, drawY, 13, odPalette::of(odPalette::Role::Good));
+                    else if (inPendingDrop || inDrop) DrawText("[-]", listX + listW - 50, drawY, 13, odPalette::of(odPalette::Role::Bad));
 
                     if (m_claimsEditMode && CheckCollisionPointRec(mouse, {(float)(listX + 4), (float)drawY, (float)(listW - 8), 22}) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         bool isCur = std::find(currentClaims.begin(), currentClaims.end(), pid) != currentClaims.end();
@@ -545,7 +553,7 @@ void Game::drawClaimsTab() {
             Rectangle confirmBtn = {(float)(centerX - 170), (float)btnY, 160, 34};
             DrawRectangleRec(confirmBtn, {40, 160, 40, 220});
             DrawRectangleLinesEx(confirmBtn, 1, {80, 200, 80, 255});
-            DrawText("Confirm Changes", centerX - 170 + 80 - MeasureText("Confirm Changes", 15)/2, btnY + 8, 15, WHITE);
+            DrawText(T("Confirm Changes"), centerX - 170 + 80 - MeasureText(T("Confirm Changes"), 15)/2, btnY + 8, 15, WHITE);
             if (CheckCollisionPointRec(mouse, confirmBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("confirm");
                 // Move edits to pending (applied on next turn)
@@ -567,7 +575,7 @@ void Game::drawClaimsTab() {
             Rectangle cancelBtn = {(float)(centerX + 10), (float)btnY, 160, 34};
             DrawRectangleRec(cancelBtn, {80, 40, 40, 200});
             DrawRectangleLinesEx(cancelBtn, 1, {140, 80, 80, 255});
-            DrawText("Cancel", centerX + 10 + 80 - MeasureText("Cancel", 15)/2, btnY + 8, 15, LIGHTGRAY);
+            DrawText(T("Cancel"), centerX + 10 + 80 - MeasureText(T("Cancel"), 15)/2, btnY + 8, 15, LIGHTGRAY);
             if (CheckCollisionPointRec(mouse, cancelBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("back");
                 m_claimsEditToAdd.clear();
@@ -575,13 +583,13 @@ void Game::drawClaimsTab() {
                 m_claimsEditMode = false;
                 m_claimsOverlayDirty = true;
             }
-            DrawText(TextFormat("Add: %d  Drop: %d", (int)m_claimsEditToAdd.size(), (int)m_claimsEditToDrop.size()),
+            DrawText(TextFormat(T("Add: %d  Drop: %d"), (int)m_claimsEditToAdd.size(), (int)m_claimsEditToDrop.size()),
                      centerX - 60, btnY + 40, 12, LIGHTGRAY);
         } else {
             Rectangle editBtn = {(float)(centerX - 60), (float)btnAreaY, 120, 32};
             DrawRectangleRec(editBtn, {40, 80, 160, 220});
             DrawRectangleLinesEx(editBtn, 1, {80, 120, 200, 255});
-            DrawText("Edit Claims", centerX - MeasureText("Edit Claims", 16)/2, btnAreaY + 6, 16, WHITE);
+            DrawText(T("Edit Claims"), centerX - MeasureText(T("Edit Claims"), 16)/2, btnAreaY + 6, 16, WHITE);
             if (CheckCollisionPointRec(mouse, editBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("click_light");
                 m_claimsEditMode = true;
@@ -594,14 +602,14 @@ void Game::drawClaimsTab() {
             }
             // Show pending changes that will apply next turn
             if (!m_claimsPendingAdd.empty() || !m_claimsPendingDrop.empty()) {
-                DrawText(TextFormat("Pending: +%d -%d (next turn)", (int)m_claimsPendingAdd.size(), (int)m_claimsPendingDrop.size()),
+                DrawText(TextFormat(T("Pending: +%d -%d (next turn)"), (int)m_claimsPendingAdd.size(), (int)m_claimsPendingDrop.size()),
                          centerX - 100, btnAreaY + 36, 12, Color{255, 200, 80, 255});
             }
         }
 
     } else if (m_claimsTab == 1) {
         if (m_claimsPovList.empty()) {
-            DrawText("No claims on your territory", listX + 20, drawY + 10, 14, LIGHTGRAY);
+            DrawText(T("No claims on your territory"), listX + 20, drawY + 10, 14, LIGHTGRAY);
             drawY += 36;
         } else {
             int selIdx = std::min(m_claimsPovIndex, (int)m_claimsPovList.size() - 1);
@@ -666,8 +674,8 @@ void Game::drawClaimsTab() {
                     DrawRectangle(listX + 8, drawY + 2, 16, 16, dotCol);
                     DrawText(ppIt->second.name.c_str(), listX + 28, drawY + 2, 12, WHITE);
                     int claimLabelX = listX + 28;
-                    DrawText("Disputed by: ", claimLabelX, drawY + 16, 10, Color{180, 180, 180, 255});
-                    claimLabelX += MeasureText("Disputed by: ", 10);
+                    DrawText(T("Disputed by: "), claimLabelX, drawY + 16, 10, Color{180, 180, 180, 255});
+                    claimLabelX += MeasureText(T("Disputed by: "), 10);
                     for (size_t oi = 0; oi < others.size(); oi++) {
                         const Country* claimer = nullptr;
                         for (auto& [cid2, c2] : m_countries.getAll()) {
@@ -682,7 +690,7 @@ void Game::drawClaimsTab() {
             }
         }
         if (!hasDisputed) {
-            DrawText("No disputed claims", listX + listW/2 - 50, drawY + 10, 14, LIGHTGRAY);
+            DrawText(T("No disputed claims"), listX + listW/2 - 50, drawY + 10, 14, LIGHTGRAY);
             drawY += 36;
         }
     EndScissorMode();
@@ -703,7 +711,7 @@ void Game::drawClaimsTab() {
             if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
             if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
 
-            DrawText("Pacification Budget:", slX, slY - 20, 13, WHITE);
+            DrawText(T("Pacification Budget:"), slX, slY - 20, 13, WHITE);
             DrawRectangle(slX, slY, slW, slH, {40, 40, 50, 200});
             int maxFill = (int)(slW * maxAllocFrac);
             if (maxFill > 0) DrawRectangle(slX, slY, maxFill, slH, {40, 50, 60, 150});
@@ -714,7 +722,7 @@ void Game::drawClaimsTab() {
             // 50, matching the engine formula — this screen used to claim x60
             // while the engine applied x50, overstating suppression by 20%.
             float pacPct = m_pacificationAllocation * 50.0f;
-            DrawText(TextFormat("Suppression: %.1f%%", pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
+            DrawText(TextFormat(T("Suppression: %.1f%%"), pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
 
             {
                 const Rectangle pacBar = {(float)slX, (float)slY, (float)slW, (float)slH};

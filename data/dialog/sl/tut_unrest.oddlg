@@ -1,0 +1,39 @@
+// Prevod - zahtevki in nemiri.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Zahtevki in nemiri. Odprite ploščo zahtevkov. To je ena tema, karkoli pravi
+vmesnik.
+---
+@Signals Officer
+§**Zahtevek**§ je razlika med vojno, ki jo svet prenese, in vojno, ki vse
+združi proti vam. Uveljavite tistega, ki ga imate, in poravnavate krivico;
+vzemite zemljo, ki je nikoli niste zahtevali, in krivica ste vi.
+---
+@Signals Officer
+Vložite zahtevek §**pred**§ vojno, ne po njej. Zahtevek, vložen potezo po
+zavzetju province, ne preslepi nikogar in stane enako.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zaprite jo.
+---
+@Signals Officer
+§**Nemiri**§ so to, kar jemanje zemlje naredi zemlji. Osvojene province to
+zamerijo, manjšine še bolj, nabor in cenzura pa vam kupita moč zdaj v zameno za
+nemire pozneje.
+---
+@Signals Officer
+Čez določen prag provinca neha plačevati in se začne organizirati. Čez
+naslednjega odide - in odide kot §**država**§, z vašo industrijo, vašim
+prebivalstvom in zelo določenim mnenjem o vas.
+
+Dobite opozorilo. Drugega ne vedno.
+---
+@Signals Officer
+Zdravila so nepriljubljena ali počasna: postavite posadko, vlagajte vanjo ali ji
+dajte, kar hoče. Odločite se zgodaj, saj vsa tri potrebujejo poteze.
+
+To so nemiri. Še kaj?

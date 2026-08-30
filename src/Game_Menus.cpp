@@ -1,4 +1,7 @@
 #include "Game.h"
+#include "util/LoadLog.h"
+#include "Palette.h"
+#include "ai/AISystem.h"   // s_scriptedControl, for startBenchSeat
 #include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -60,6 +63,39 @@ Rectangle menuGearIconRect(int screenW, int dy) {
     const float rightmost = (float)(screenW - 16 - kMenuIconSize);
     return { kCanQuitToDesktop ? rightmost - 16 - kMenuIconSize : rightmost,
              (float)(16 + dy), (float)kMenuIconSize, (float)kMenuIconSize };
+}
+
+// The language flag, immediately left of the gear.
+//
+// Not inside the settings list, or at least not only there: a player who does
+// not read English cannot be asked to find "Settings" and then "Language" in a
+// language they do not have. A flag in the corner is the one control on this
+// screen that needs no words at all.
+Rectangle menuLanguageIconRect(int screenW, int dy) {
+    const Rectangle gear = menuGearIconRect(screenW, dy);
+    return { gear.x - 16 - kMenuIconSize, gear.y, (float)kMenuIconSize, (float)kMenuIconSize };
+}
+
+// The tutorial button, bottom right. Not in the list above it: a first-time
+// player looking for help looks in the corner, and a menu entry between
+// "Quick Start" and "Play Singleplayer" is something you only find if you
+// were already reading every line.
+Rectangle menuTutorialRect(int screenW, int screenH) {
+    // WIDTH COMES FROM THE LABEL, not from a constant.
+    //
+    // 148 was measured against the English word and fits it. It does not fit
+    // "الدرس التعليمي", which ran out of the left end of the button and over
+    // the map -- and it is the button's LEFT edge that moves, because the
+    // thing is pinned to the bottom-right corner, so the overflow lands in the
+    // middle of the screen where it cannot be missed.
+    //
+    // The layout inside is fixed: the "?" sits 26 in from the left, the label
+    // starts 22 after that, so the button is that offset plus the label plus
+    // the same 26 of breathing room on the right.
+    const float label = (float)MeasureText(T("Tutorial"), 19);
+    const float w = std::max(148.0f, 26.0f + 22.0f + label + 26.0f);
+    const float h = 44.0f, margin = 22.0f;
+    return { (float)screenW - margin - w, (float)screenH - margin - h, w, h };
 }
 
 }  // namespace
@@ -191,7 +227,7 @@ void Game::initMenuBackground() {
     UnloadImage(resized);
     if (lsImgOwned) UnloadImage(lsImg);
 
-    std::cout << "  Menu background: " << bgW << "x" << bgH
+    LoadLog() << "  Menu background: " << bgW << "x" << bgH
               << ", " << m_menuBgLandCoords.size() << " land pixels" << std::endl;
     m_menuBgInitScreenW = m_screenW;
     m_menuBgInitScreenH = m_screenH;
@@ -285,7 +321,7 @@ void Game::updateMenuBackground() {
 void Game::loadCredits() {
     m_credits.clear();
     std::ifstream f(m_dataDir + "credits.txt");
-    if (!f) { std::cerr << "[CREDITS] File not found: data/credits.txt" << std::endl; return; }
+    if (!f) { LoadLog() << "[CREDITS] File not found: data/credits.txt" << std::endl; return; }
     std::string line;
     while (std::getline(f, line)) {
         // Trim trailing whitespace
@@ -310,7 +346,7 @@ void Game::loadCredits() {
     }
     m_creditsLoaded = true;
     m_creditsScroll = 0.0f;
-    std::cout << "[CREDITS] Loaded " << m_credits.size() << " entries" << std::endl;
+    LoadLog() << "[CREDITS] Loaded " << m_credits.size() << " entries" << std::endl;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -411,7 +447,7 @@ void Game::drawCredits() {
     DrawLine(cx + 8, cy - 8, cx - 8, cy + 8, xCol);
 
     // Hint
-    DrawText("ESC to close", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
+    DrawText(T("ESC to close"), 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -507,7 +543,7 @@ void Game::drawCommunityMenu() {
             DrawTexturePro(discordIcon, {0, 0, (float)discordIcon.width, (float)discordIcon.height},
                 {r.x + 16, r.y + (btnH - 36) / 2.0f, iw, 36}, {0, 0}, 0, WHITE);
         }
-        DrawText("Discord", centerX - MeasureText("Discord", fontSize) / 2, startY + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
+        DrawText(T("Discord"), centerX - MeasureText(T("Discord"), fontSize) / 2, startY + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
     }
 
     // GitHub button
@@ -525,7 +561,7 @@ void Game::drawCommunityMenu() {
             DrawTexturePro(githubIcon, {0, 0, (float)githubIcon.width, (float)githubIcon.height},
                 {r.x + 16, r.y + (btnH - 36) / 2.0f, iw, 36}, {0, 0}, 0, WHITE);
         }
-        DrawText("GitHub", centerX - MeasureText("GitHub", fontSize) / 2, startY + btnH + gap + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
+        DrawText(T("GitHub"), centerX - MeasureText(T("GitHub"), fontSize) / 2, startY + btnH + gap + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
     }
 
     // Back button
@@ -536,10 +572,10 @@ void Game::drawCommunityMenu() {
         Color bd = hover ? Color{150, 150, 170, 255} : Color{110, 110, 130, 200};
         DrawRectangleRounded(r, 0.15f, 8, bg);
         DrawRectangleRoundedLines(r, 0.15f, 8, bd);
-        DrawText("Back", centerX - MeasureText("Back", 22) / 2, r.y + (backBtnH - 22) / 2, 22, hover ? WHITE : LIGHTGRAY);
+        DrawText(T("Back"), centerX - MeasureText(T("Back"), 22) / 2, r.y + (backBtnH - 22) / 2, 22, hover ? WHITE : LIGHTGRAY);
     }
 
-    DrawText("ESC to go back", 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
+    DrawText(T("ESC to go back"), 10, m_screenH - 24, 14, Color{80, 80, 90, 200});
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -549,6 +585,34 @@ void Game::drawMainMenu() {
     int centerX = m_screenW / 2;
     int fontSize = 30;
     int itemH = 50;
+
+    // ── NARROW SCREENS ───────────────────────────────────────────────────
+    //
+    // The menu already shrinks its title to fit the HEIGHT it is given. It
+    // never looked at the width, because on a desktop window there is always
+    // enough -- and on a phone held upright there is not. An iPhone reports
+    // about 400 logical points across, "OpenDoctrines" at 60pt wants 430, and
+    // the title ran off both edges of the screen.
+    //
+    // The items are measured too, and in EVERY language: "Play Singleplayer"
+    // fits where "Jogar em um jogador" or "Мультиплеєр өткізу" may not, and
+    // the widest one is what has to fit.
+    {
+        int widest = 0;
+        for (int i = 0; i < MAIN_MENU_COUNT; ++i)
+            widest = std::max(widest, MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize));
+        // 16 is the floor. Below that the list stops being a menu and starts
+        // being a paragraph, and the answer is to turn the phone sideways.
+        while (fontSize > 16 && widest > m_screenW - 32) {
+            fontSize -= 2;
+            widest = 0;
+            for (int i = 0; i < MAIN_MENU_COUNT; ++i)
+                widest = std::max(widest, MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize));
+        }
+        // The row height follows the type, or a 16pt list keeps 50pt gaps and
+        // walks off the bottom of the screen.
+        itemH = std::max(26, fontSize + 20);
+    }
 
     // ── Intro animation (after the splash): title slides in from the left,
     //    buttons from the right, icons from above, everything fading up.
@@ -595,6 +659,10 @@ void Game::drawMainMenu() {
     };
     // 26 is the floor: a title too small to read is worse than a tight one.
     while (titleSize > 26 && 10 + blockHeight() > headerAvail) titleSize -= 2;
+    // And the same for the width, with a lower floor -- a title that does not
+    // fit is not tight, it is cut in half.
+    while (titleSize > 18 && MeasureText("OpenDoctrines", titleSize) > m_screenW - 24)
+        titleSize -= 2;
 
     // min(80, ...) keeps the original position wherever there is room for it,
     // so nothing moves on a window that was never broken.
@@ -619,7 +687,7 @@ void Game::drawMainMenu() {
     DrawText(title, centerX - titleW / 2 + titleDX, titleY, titleSize, fade(hexToColor(m_config.accent())));
 
     if (showSub) {
-        const char* subtitle = "A Grand Strategy Game";
+        const char* subtitle = T("A Grand Strategy Game");
         int subW = MeasureText(subtitle, subSize);
         DrawText(subtitle, centerX - subW / 2 + titleDX, subY, subSize, fade(Color{160, 160, 170, 255}));
     }
@@ -639,7 +707,7 @@ void Game::drawMainMenu() {
     if (m_menuIntro >= 1.0f) {
         for (int i = 0; i < count; ++i) {
             int y = startY + i * itemH;
-            int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
+            int tw = MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize);
             Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
             if (CheckCollisionPointRec(mouse, rect)) { hovered = i; break; }
         }
@@ -652,10 +720,14 @@ void Game::drawMainMenu() {
         Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
         Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
-        int tw = MeasureText(MAIN_MENU_ITEMS[i], fontSize);
+        int tw = MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize);
         Rectangle rect = { (float)(centerX - tw / 2 - 20 + btnDX), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
+        // Offered to the tutorial by INDEX, not by label: the words are what
+        // the player reads and may be translated, the position is what the
+        // entry is. "menu.1" is Load/Singleplayer wherever it says that.
+        offerUiTarget("menu." + std::to_string(i), rect);
         DrawRectangleRounded(rect, 0.1f, 8, fade(bgColor));
-        DrawText(MAIN_MENU_ITEMS[i], centerX - tw / 2 + btnDX, y, fontSize, fade(textColor));
+        DrawText(T(MAIN_MENU_ITEMS[i]), centerX - tw / 2 + btnDX, y, fontSize, fade(textColor));
 
         if (isSelected) {
             int underlineW = tw + 20;
@@ -678,6 +750,22 @@ void Game::drawMainMenu() {
 
     // Top-right icons: Settings (gear), and Quit (X) where there is somewhere
     // to quit to -- see kCanQuitToDesktop.
+
+    // The language flag, left of the gear.
+    {
+        Rectangle langRect = menuLanguageIconRect(m_screenW, iconDY);
+        bool langHover = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, langRect);
+        DrawRectangleRounded(langRect, 0.3f, 6,
+                             fade(langHover ? Color{255, 255, 255, 24} : BLANK));
+        Texture2D flag = languageFlag(od::i18n::current().flagIso);
+        const Rectangle dst{langRect.x + 3.0f, langRect.y + 8.0f,
+                            (float)kMenuIconSize - 6.0f, (float)kMenuIconSize - 16.0f};
+        if (flag.id > 0) {
+            DrawTexturePro(flag, {0, 0, (float)flag.width, (float)flag.height}, dst,
+                           {0, 0}, 0.0f, fade(WHITE));
+            DrawRectangleLinesEx(dst, 1, fade(Color{0, 0, 0, 120}));
+        }
+    }
 
     // Gear icon (settings) — reuse style from world browser
     {
@@ -714,6 +802,44 @@ void Game::drawMainMenu() {
     }
 
     // Version info
+    // ── the tutorial, in the corner where help belongs ──
+    {
+        const Rectangle r = menuTutorialRect(m_screenW, m_screenH);
+        const bool hover = CheckCollisionPointRec(GetMousePosition(), r);
+        const Color accent = hexToColor(m_config.accent());
+        DrawRectangleRounded(r, 0.28f, 8, fade(Color{16, 18, 24, hover ? (unsigned char)235
+                                                                      : (unsigned char)190}));
+        DrawRectangleRoundedLines(r, 0.28f, 8, fade(ColorAlpha(accent, hover ? 0.95f : 0.55f)));
+
+        // The mark first, then the word: the "?" is what is recognised across
+        // the room, the label is what removes any doubt about which help.
+        const float cy = r.y + r.height * 0.5f;
+        const float qx = r.x + 26.0f;
+        DrawCircleLinesV({qx, cy}, 13.0f, fade(ColorAlpha(accent, hover ? 1.0f : 0.7f)));
+        const int qs = 20;
+        // Centred on the "?" ITSELF, not on its line box. DrawText places the
+        // box, and a glyph does not sit in the middle of one: the box carries
+        // the ascent and descent of every OTHER glyph in the font too, so a
+        // "?" -- which has no descender -- lands high and left of where the
+        // arithmetic says it should. Hence the -1 fudge that used to be here,
+        // which was right at one size and wrong at the rest.
+        //
+        // The glyph's own ink box is exact and the font will tell us it.
+        {
+            const Font& f = GetFontDefault();
+            const GlyphInfo g = GetGlyphInfo(f, '?');
+            const float k = (float)qs / (float)f.baseSize;
+            const float inkX = g.offsetX * k, inkW = g.image.width * k;
+            const float inkY = g.offsetY * k, inkH = g.image.height * k;
+            DrawText("?", (int)std::lround(qx - inkX - inkW * 0.5f),
+                          (int)std::lround(cy - inkY - inkH * 0.5f), qs,
+                     fade(hover ? WHITE : ColorAlpha(accent, 0.9f)));
+        }
+        const int ts = 19;
+        DrawText(T("Tutorial"), (int)(qx + 22), (int)cy - ts / 2, ts,
+                 fade(hover ? WHITE : Color{190, 195, 205, 230}));
+    }
+
     DrawText(TextFormat("v%s", GAME_VERSION), 10, m_screenH - 24, 14, fade(Color{80, 80, 90, 200}));
 
     // Why the last load failed, if it did.
@@ -723,7 +849,7 @@ void Game::drawMainMenu() {
     // end up on the menu with no idea why. That is what "scenarios do not load"
     // looks like from the outside, and it reads identically whether the map file
     // is missing, the download was truncated, or antivirus ate the data folder.
-    // The reasons existed all along, on std::cerr, which a Windows GUI build
+    // The reasons existed all along, on LoadLog(), which a Windows GUI build
     // does not have.
     //
     // Drawn above the menu's own text rather than over it, and cleared the
@@ -731,22 +857,37 @@ void Game::drawMainMenu() {
     if (!m_loadError.empty()) {
         const int pad = 10;
         const int fs  = 15;
+        // WRAPPED TO THE SCREEN, and this is not tidying.
+        //
+        // The box was sized to its widest line and then centred, so a message
+        // wider than the window got a NEGATIVE x and ran off both edges. Every
+        // one of these messages names a path, a path is the longest thing in
+        // it, and the phone this was reported from is 390 points wide -- so on
+        // the surface where the message matters most, the half that says WHICH
+        // file was the half off the screen. wrapText() breaks on words and, for
+        // a word longer than the line, on a UTF-8 boundary, which a path needs.
+        const int maxW = std::max(120, m_screenW - 32 - pad * 2);
         std::vector<std::string> lines;
         {
             std::string cur;
+            auto flush = [&]() {
+                for (const std::string& piece : wrapText(cur, fs, maxW))
+                    lines.push_back(piece);
+                cur.clear();
+            };
             for (char ch : m_loadError) {
-                if (ch == '\n') { lines.push_back(cur); cur.clear(); }
+                if (ch == '\n') flush();
                 else cur += ch;
             }
-            lines.push_back(cur);
+            flush();
         }
         int wide = 0;
         for (const auto& l : lines) wide = std::max(wide, MeasureText(l.c_str(), fs));
 
         const int boxH = (int)lines.size() * (fs + 4) + pad * 2;
-        const int boxW = wide + pad * 2;
-        const int boxX = m_screenW / 2 - boxW / 2;
-        const int boxY = m_screenH - boxH - 40;
+        const int boxW = std::min(wide + pad * 2, m_screenW - 32);
+        const int boxX = std::max(16, m_screenW / 2 - boxW / 2);
+        const int boxY = std::max(8, m_screenH - boxH - 40);
 
         DrawRectangle(boxX, boxY, boxW, boxH, ColorAlpha(Color{40, 10, 10, 255}, a * 0.92f));
         DrawRectangleLines(boxX, boxY, boxW, boxH, fade(Color{200, 70, 70, 255}));
@@ -797,7 +938,7 @@ void Game::drawMainMenu() {
 
         // The label sits on the same centre line, by the same rule.
         const int labelSize = 14;
-        DrawText("Update available", (int)r.x + 28, dotY - labelSize / 2, labelSize,
+        DrawText(T("Update available"), (int)r.x + 28, dotY - labelSize / 2, labelSize,
                  fade(hov ? WHITE : Color{200, 200, 210, 255}));
     }
 
@@ -808,6 +949,9 @@ void Game::drawMainMenu() {
     }
 
     if (m_updatePanel) drawUpdatePanel();
+    // Above the menu and below the state prompt: it is modal, and the thing it
+    // is modal over is the menu.
+    if (m_languageOpen) drawLanguagePicker();
     // Last, so it covers everything above -- it owns the keyboard while it is
     // up and must look like it does.
     drawOdStatePrompt();
@@ -889,14 +1033,38 @@ UpdatePanelLayout updatePanelLayout(int screenW, int screenH) {
     return L;
 }
 
-// Breaks text into lines that fit `maxW`, keeping the newlines the release
-// notes already contain.
+}  // namespace
+
+// Declared in GameInternals.h, where the reasoning lives. Outside the
+// anonymous namespace above because the map browser wraps text too, and two
+// implementations of this is how one of them ends up being the one that
+// splits a codepoint.
 std::vector<std::string> wrapText(const std::string& text, int fontSize, int maxW) {
     std::vector<std::string> lines;
     std::string line;
     auto flush = [&]() { lines.push_back(line); line.clear(); };
     std::string word;
     auto pushWord = [&]() {
+        if (word.empty()) return;
+        // A word too wide for a line of its own has to be broken somewhere, and
+        // the only safe place is between characters. Scripts written without
+        // spaces arrive here as one enormous word, so this is their only path.
+        while (MeasureText(word.c_str(), fontSize) > maxW) {
+            if (!line.empty()) flush();
+            std::string piece;
+            size_t i = 0;
+            while (i < word.size()) {
+                size_t next = i + 1;
+                while (next < word.size() && (word[next] & 0xC0) == 0x80) ++next;
+                std::string grown = piece + word.substr(i, next - i);
+                if (!piece.empty() && MeasureText(grown.c_str(), fontSize) > maxW) break;
+                piece = grown;
+                i = next;
+            }
+            if (piece.empty()) break;  // narrower than one character: give up
+            lines.push_back(piece);
+            word.erase(0, piece.size());
+        }
         if (word.empty()) return;
         std::string candidate = line.empty() ? word : line + " " + word;
         if (MeasureText(candidate.c_str(), fontSize) > maxW && !line.empty()) {
@@ -917,8 +1085,6 @@ std::vector<std::string> wrapText(const std::string& text, int fontSize, int max
     return lines;
 }
 
-}  // namespace
-
 Rectangle Game::updateBadgeRect() const {
     return {6.0f, (float)m_screenH - 52.0f, 160.0f, 26.0f};
 }
@@ -936,12 +1102,12 @@ void Game::drawUpdatePanel() {
     int x = (int)L.panel.x + 28;
     int y = (int)L.panel.y + 24;
 
-    DrawText("A new version is available", x, y, 24, accent);
+    DrawText(T("A new version is available"), x, y, 24, accent);
     y += 38;
 
-    DrawText(TextFormat("You have  v%s", GAME_VERSION), x, y, 16,
+    DrawText(TextFormat(T("You have  v%s"), GAME_VERSION), x, y, 16,
              Color{170, 170, 180, 255});
-    DrawText(TextFormat("Newest  v%s", st.latest.c_str()), x + 260, y, 16, WHITE);
+    DrawText(TextFormat(T("Newest  v%s"), st.latest.c_str()), x + 260, y, 16, WHITE);
     y += 30;
 
     DrawLine(x, y, (int)(L.panel.x + L.panel.width) - 28, y,
@@ -954,7 +1120,7 @@ void Game::drawUpdatePanel() {
     const int notesW = (int)L.panel.width - 56;
     switch (st.stage) {
         case Stage::Downloading: {
-            DrawText(TextFormat("Downloading…  %d%%", st.percent), x, y, 16, WHITE);
+            DrawText(TextFormat(T("Downloading…  %d%%"), st.percent), x, y, 16, WHITE);
             Rectangle bar = {(float)x, (float)y + 26, (float)notesW, 10};
             DrawRectangleRounded(bar, 0.5f, 6, Color{50, 50, 58, 255});
             Rectangle fill = bar;
@@ -963,41 +1129,39 @@ void Game::drawUpdatePanel() {
             break;
         }
         case Stage::Installing:
-            DrawText("Installing…", x, y, 16, WHITE);
-            DrawText("Your saves, worlds and mods are not touched.", x, y + 24, 14,
+            DrawText(T("Installing…"), x, y, 16, WHITE);
+            DrawText(T("Your saves, worlds and mods are not touched."), x, y + 24, 14,
                      Color{150, 150, 160, 255});
             break;
         case Stage::Restart:
-            DrawText("Installed.", x, y, 18, accent);
-            DrawText("Quit and start OpenDoctrines again to play the new version.",
+            DrawText(T("Installed."), x, y, 18, accent);
+            DrawText(T("Quit and start OpenDoctrines again to play the new version."),
                      x, y + 28, 15, Color{200, 200, 210, 255});
             break;
         case Stage::OpenedPage:
-            DrawText("Opened the download page in your browser.", x, y, 16, WHITE);
-            DrawText("Download the new version and replace this copy — macOS builds",
-                     x, y + 26, 14, Color{150, 150, 160, 255});
-            DrawText("are not signed, so the game cannot replace itself here.",
-                     x, y + 44, 14, Color{150, 150, 160, 255});
+            DrawText(T("Opened the download page in your browser."), x, y, 16, WHITE);
+            odText::drawWrapped(
+                T("Download the new version and replace this copy — macOS builds are not signed, so the game cannot replace itself here."),
+                x, y + 26, 520, 14, Color{150, 150, 160, 255});
             break;
         case Stage::Managed:
             // Deliberately does NOT offer the download page. This copy is owned
             // by something else, and sending the player to a zip would have
             // them install a second, unmanaged copy beside the managed one.
-            DrawText("This copy is updated for you.", x, y, 16, WHITE);
-            DrawText("It was installed by a package manager, a store or an installer,",
-                     x, y + 26, 14, Color{150, 150, 160, 255});
-            DrawText("so updating it here would put the two out of step. Update it the",
-                     x, y + 44, 14, Color{150, 150, 160, 255});
-            DrawText("same way you installed it.",
-                     x, y + 62, 14, Color{150, 150, 160, 255});
+            DrawText(T("This copy is updated for you."), x, y, 16, WHITE);
+            // One sentence, wrapped here. It used to be three DrawText calls,
+            // which made three half-sentences for a translator to guess at.
+            odText::drawWrapped(
+                T("It was installed by a package manager, a store or an installer, so updating it here would put the two out of step. Update it the same way you installed it."),
+                x, y + 26, 520, 14, Color{150, 150, 160, 255});
             break;
         case Stage::Failed: {
-            DrawText("The update did not finish.", x, y, 16, Color{235, 120, 120, 255});
+            DrawText(T("The update did not finish."), x, y, 16, Color{235, 120, 120, 255});
             auto lines = wrapText(st.error, 14, notesW);
             for (size_t i = 0; i < lines.size() && i < 3; ++i)
                 DrawText(lines[i].c_str(), x, y + 26 + (int)i * 18, 14,
                          Color{170, 170, 180, 255});
-            DrawText("Nothing was changed. You can download it yourself instead.",
+            DrawText(T("Nothing was changed. You can download it yourself instead."),
                      x, y + 26 + 3 * 18, 14, Color{150, 150, 160, 255});
             break;
         }
@@ -1008,7 +1172,7 @@ void Game::drawUpdatePanel() {
                     DrawText(lines[i].c_str(), x, y + (int)i * 20, 15,
                              Color{190, 190, 200, 255});
             } else {
-                DrawText("No release notes were published for this version.", x, y, 15,
+                DrawText(T("No release notes were published for this version."), x, y, 15,
                          Color{150, 150, 160, 255});
             }
             break;
@@ -1025,7 +1189,7 @@ void Game::drawUpdatePanel() {
                                                          : "Open download page";
             break;
         case Stage::Failed:
-            primaryLabel = "Open download page";
+            primaryLabel = T("Open download page");
             break;
         default:
             break;
@@ -1082,6 +1246,10 @@ bool Game::updatePanelClick(Vector2 mouse) {
 
 void Game::updateMainMenu() {
     if (isMouseOverConsole()) return;
+
+    // The picker is modal: while it is up it takes every click, or a menu
+    // entry behind it answers for the language the player was aiming at.
+    if (m_languageOpen) { updateLanguagePicker(); return; }
 
     // One check per session, and only ever with the setting on. check() is
     // also a no-op when disabled, so the gate holds even if this call site is
@@ -1153,7 +1321,7 @@ void Game::updateMainMenu() {
 
     for (int i = 0; i < count; ++i) {
         int y = startY + i * itemH;
-        int tw = MeasureText(MAIN_MENU_ITEMS[i], 30);
+        int tw = MeasureText(T(MAIN_MENU_ITEMS[i]), 30);
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; break; }
     }
@@ -1176,6 +1344,7 @@ void Game::updateMainMenu() {
     // nothing here may answer for where it would have been -- an invisible
     // hitbox in the corner is worse than the button was.
     bool gearHover = CheckCollisionPointRec(mouse, menuGearIconRect(m_screenW, 0));
+    bool langHover = CheckCollisionPointRec(mouse, menuLanguageIconRect(m_screenW, 0));
     bool quitHover = kCanQuitToDesktop &&
                      CheckCollisionPointRec(mouse, menuQuitIconRect(m_screenW, 0));
 
@@ -1240,8 +1409,16 @@ void Game::updateMainMenu() {
             m_settingsIndex = 0;
             m_settingsScroll = 0;
         }
+        if (langHover) {
+            m_languageOpen = true;
+            Audio::get().playSfx("click_light");
+        }
         if (quitHover) {
             m_running = false;
+        }
+        if (CheckCollisionPointRec(mouse, menuTutorialRect(m_screenW, m_screenH))) {
+            Audio::get().playSfx("click_heavy");
+            startTutorial();
         }
     }
 }
@@ -1439,7 +1616,7 @@ void Game::drawOdStatePrompt() {
     int y = boxY + pad;
 
     if (m_odStatePrompt == ODP_SAVE_NAME) {
-        DrawText("Save your progress as", boxX + pad, y, 22, accent);
+        DrawText(T("Save your progress as"), boxX + pad, y, 22, accent);
         y += 34;
 #ifdef __EMSCRIPTEN__
         const char* where = "Your browser will download it. Keep it safe -- closing this tab loses everything else.";
@@ -1458,12 +1635,12 @@ void Game::drawOdStatePrompt() {
         if (((int)(GetTime() * 2)) % 2 == 0) shown += "_";      // caret
         DrawText(shown.c_str(), boxX + pad + 8, y + 8, 18, WHITE);
         y += 46;
-        DrawText("Enter to save     Esc to cancel", boxX + pad, y, 14, Color{140, 140, 150, 255});
+        DrawText(T("Enter to save     Esc to cancel"), boxX + pad, y, 14, Color{140, 140, 150, 255});
         return;
     }
 
     if (m_odStatePrompt == ODP_PICK_FILE) {
-        DrawText("Restore which .odstate?", boxX + pad, y, 22, accent);
+        DrawText(T("Restore which .odstate?"), boxX + pad, y, 22, accent);
         y += 36;
         int shown = std::min((int)m_odStateFiles.size(), 8);
         int first = std::max(0, std::min(m_odStatePick - shown + 1, (int)m_odStateFiles.size() - shown));
@@ -1478,21 +1655,21 @@ void Game::drawOdStatePrompt() {
             y += 26;
         }
         y += 8;
-        DrawText("Enter to restore     Esc to cancel", boxX + pad, y, 14, Color{140, 140, 150, 255});
+        DrawText(T("Enter to restore     Esc to cancel"), boxX + pad, y, 14, Color{140, 140, 150, 255});
         return;
     }
 
     if (m_odStatePrompt == ODP_MODS_WARNING) {
-        DrawText("This archive contains mods", boxX + pad, y, 22, Color{240, 190, 90, 255});
+        DrawText(T("This archive contains mods"), boxX + pad, y, 22, Color{240, 190, 90, 255});
         y += 34;
-        DrawText(TextFormat("%d installed mod%s will be restored along with your saves.",
+        DrawText(TextFormat(T("%d installed mod%s will be restored along with your saves."),
                             m_odStatePendingMods, m_odStatePendingMods == 1 ? "" : "s"),
                  boxX + pad, y, 16, Color{215, 215, 225, 255});
         y += 24;
-        DrawText("Mods run code inside the game. Restore them only from an archive you trust.",
+        DrawText(T("Mods run code inside the game. Restore them only from an archive you trust."),
                  boxX + pad, y, 15, Color{190, 190, 200, 255});
         y += 34;
-        DrawText("Y  restore everything        N  cancel", boxX + pad, y, 16, WHITE);
+        DrawText(T("Y  restore everything        N  cancel"), boxX + pad, y, 16, WHITE);
         return;
     }
 }
@@ -1661,9 +1838,9 @@ void Game::drawCountrySelect() {
     int centerX = m_screenW / 2;
 
     // Title
-    DrawText("SELECT YOUR COUNTRY", centerX - MeasureText("SELECT YOUR COUNTRY", 40) / 2, 15, 40, hexToColor(m_config.accent()));
-    DrawText("Click on a country on the map to play, or use the button below",
-             centerX - MeasureText("Click on a country on the map to play, or use the button below", 18) / 2, 60, 18, LIGHTGRAY);
+    DrawText(T("SELECT YOUR COUNTRY"), centerX - MeasureText(T("SELECT YOUR COUNTRY"), 40) / 2, 15, 40, hexToColor(m_config.accent()));
+    DrawText(T("Click on a country on the map to play, or use the button below"),
+             centerX - MeasureText(T("Click on a country on the map to play, or use the button below"), 18) / 2, 60, 18, LIGHTGRAY);
 
     // "Continue as Spectator" button (bottom-right)
     const char* spectateText = "Continue as Spectator";
@@ -1716,11 +1893,11 @@ void Game::drawCountrySelect() {
             }
 
             DrawRectangleRounded(L.yes, 0.3f, 6, {50, 180, 70, 255});
-            DrawText("Yes", (int)(L.yes.x + (L.yes.width - MeasureText("Yes", 20)) / 2),
+            DrawText(T("Yes"), (int)(L.yes.x + (L.yes.width - MeasureText(T("Yes"), 20)) / 2),
                      (int)(L.yes.y + (L.yes.height - 20) / 2), 20, WHITE);
 
             DrawRectangleRounded(L.no, 0.3f, 6, {200, 60, 60, 255});
-            DrawText("No", (int)(L.no.x + (L.no.width - MeasureText("No", 20)) / 2),
+            DrawText(T("No"), (int)(L.no.x + (L.no.width - MeasureText(T("No"), 20)) / 2),
                      (int)(L.no.y + (L.no.height - 20) / 2), 20, WHITE);
         }
     }
@@ -1832,7 +2009,7 @@ void Game::updateCountrySelect() {
                 for (auto& n : m_researchNodes)
                     n.researched = false;
                 m_pendingCountryId = 0;
-                std::cout << "  Player selected: SPECTATOR" << std::endl;
+                LoadLog() << "  Player selected: SPECTATOR" << std::endl;
                 if (!m_currentSavePath.empty()) {
                     SaveManager::updatePlayerCountry(m_currentSavePath, SPC_CID);
                 }
@@ -1909,14 +2086,14 @@ void Game::updateCountrySelect() {
 void Game::commitPlayerCountry(int countryId) {
     m_playerCountryId = countryId;
     const Country* pc = m_countries.getCountry(m_playerCountryId);
-    std::cerr << "[DIAG] Player confirmed country " << m_playerCountryId
+    LoadLog() << "[DIAG] Player confirmed country " << m_playerCountryId
               << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
     auto compassIt = m_countryCompass.find(m_playerCountryId);
     if (compassIt != m_countryCompass.end()) {
-        std::cerr << "[DIAG]   Compass: econ=" << compassIt->second.economic
+        LoadLog() << "[DIAG]   Compass: econ=" << compassIt->second.economic
                   << " soc=" << compassIt->second.social << std::endl;
     } else {
-        std::cerr << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
+        LoadLog() << "[DIAG]   NO COMPASS ENTRY!" << std::endl;
     }
     // Auto-unlock techs matching built industry/fort/port levels
     {
@@ -1973,7 +2150,7 @@ void Game::commitPlayerCountry(int countryId) {
     // Sync per-country research into global research nodes
     for (auto& n : m_researchNodes)
         n.researched = hasResearched(n.id, m_playerCountryId);
-    std::cout << "  Player selected: "
+    LoadLog() << "  Player selected: "
               << (pc ? pc->name : "ID " + std::to_string(m_playerCountryId)) << std::endl;
     if (!m_currentSavePath.empty()) {
         SaveManager::updatePlayerCountry(m_currentSavePath, m_playerCountryId);
@@ -2030,6 +2207,18 @@ static const char* kQuickStartCountries[] = {
 int Game::pickQuickStartCountry() const {
     if (m_playableCountryIds.empty()) return 0;
 
+    // Somebody asked for a particular country -- the tutorial does, because
+    // its script says the name out loud. An explicit request beats every
+    // heuristic below it.
+    if (!m_forcedStartIso.empty()) {
+        const Country* c = m_countries.getCountryByCode(m_forcedStartIso.c_str());
+        if (c && std::find(m_playableCountryIds.begin(), m_playableCountryIds.end(),
+                           c->id) != m_playableCountryIds.end())
+            return c->id;
+        LoadLog() << "[QuickStart] asked for \"" << m_forcedStartIso
+                  << "\" and it is not playable here" << std::endl;
+    }
+
     for (const char* iso : kQuickStartCountries) {
         const Country* c = m_countries.getCountryByCode(iso);
         if (!c) continue;
@@ -2051,6 +2240,78 @@ int Game::pickQuickStartCountry() const {
         if (n > bestN) { bestN = n; best = cid; }
     }
     return best;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// startBenchSeat — put a PERSON on the same seat the model is scored on
+//
+// The whole value of an absolute score is that a person can post one to the
+// same scale, so the team knows what the AI's number is worth. That only holds
+// if the two runs are the same experiment, which means three things and all of
+// them matter:
+//
+//   the same map and the same country          -- m_forcedStartIso below
+//   the same opposition                        -- s_scriptedControl, so every
+//     other country plays the frozen hand-written rung rather than the model.
+//     Without this a person would be scored against whatever model happens to
+//     be on disk today, and their score would rot the moment it was retrained,
+//     which is the disease the benchmark exists to cure.
+//   the same length                            -- m_benchPlayUntilTurn, which
+//     stops and reports rather than trusting anyone to count turns.
+//
+// See tools/od_bench.py for the seat list and what the number means.
+// ────────────────────────────────────────────────────────────────────────────
+void Game::startBenchSeat(const std::string& spec, int untilTurn) {
+    // "map:ISO" or "map:ISO:rush" -- see tools/od_bench.py for the seat list.
+    // A rush seat puts every other country on SCRIPT_BLITZ instead of the
+    // ordinary rung, which is the half of the benchmark that measures whether
+    // you can survive rather than whether you can play.
+    std::string mapName = "1914", iso = spec, world = "rung";
+    const size_t colon = spec.find(':');
+    if (colon != std::string::npos) {
+        mapName = spec.substr(0, colon);
+        iso = spec.substr(colon + 1);
+        const size_t colon2 = iso.find(':');
+        if (colon2 != std::string::npos) {
+            world = iso.substr(colon2 + 1);
+            iso = iso.substr(0, colon2);
+        }
+    }
+    static const std::pair<const char*, const char*> kBenchMaps[] = {
+        {"1914", "STDmaps/1914.odmap"}, {"1918", "STDmaps/1918.odmap"},
+        {"1939", "STDmaps/1939.odmap"}, {"1945", "STDmaps/1945.odmap"},
+        {"1962", "STDmaps/1962.odmap"}, {"modern", "STDmaps/map.odmap"},
+    };
+    const char* file = nullptr;
+    for (const auto& [name, path] : kBenchMaps)
+        if (mapName == name) { file = path; break; }
+    if (!file) {
+        LoadLog() << "[BENCH] no shipped scenario named \"" << mapName
+                  << "\"" << std::endl;
+        return;
+    }
+
+    m_forcedStartIso = iso;
+    m_benchPlayUntilTurn = untilTurn;
+    m_benchScoreShare = -1.0f;
+    // Every other country on the frozen rung -- see the note above.
+    AISystem::s_scriptedControl = true;
+    // "rush" = the whole world attacks; "hood" = the seat's largest land
+    // neighbour does and everyone else plays the rung. See tools/od_bench.py
+    // for why one neighbour is the softer of the two, counter-intuitively.
+    AISystem::s_exploitVariant =
+        (world == "rush" || world == "hood") ? AISystem::SCRIPT_BLITZ : -1;
+    m_benchRushNeighbours = (world == "hood") ? 1 : 0;
+    // Rides the Quick Start loader so country select is skipped and the seat is
+    // committed by pickQuickStartCountry, which honours m_forcedStartIso.
+    m_quickStartPending = true;
+    LoadLog() << "[BENCH] seat " << mapName << ":" << iso << " (" << world
+              << ") for " << untilTurn << " turns, every other country "
+              << (world == "rush" ? "ATTACKING without pause"
+                  : world == "hood" ? "on the rung, except your largest neighbour"
+                                    : "on the scripted rung")
+              << std::endl;
+    startNewGameWithName(m_dataDir + file, "Bench " + mapName + " " + iso);
 }
 
 void Game::startQuickStart() {
@@ -2241,7 +2502,7 @@ void Game::updateSettingsFromMenu() {
         for (int t = 0; t < TAB_COUNT; ++t) {
             if (t == 4 && !m_config.debugMode) continue;
             int tx = tabStartX2 + tabIdx * tabSpacing;
-            int tw = MeasureText(TAB_NAMES[t], 30);
+            int tw = MeasureText(T(TAB_NAMES[t]), 30);
             Rectangle tabRect = { (float)(tx - tw/2), (float)tabY, (float)tw, (float)(30 + 10) };
             if (CheckCollisionPointRec(mouse, tabRect)) {
                 m_settingsTab = t;
@@ -2257,6 +2518,12 @@ void Game::updateSettingsFromMenu() {
             ++tabIdx;
         }
     }
+
+    // The language tab answers its own clicks: its rows are flags and names
+    // rather than Setting structs, so none of the row handling below knows
+    // what to do with one.
+    if (m_settingsTab == LANGUAGE_TAB && updateLanguageList(settingsLanguageArea(), false))
+        return;
 
     // Scroll wheel
     float wheel = GetMouseWheelMove();
@@ -2314,7 +2581,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 7) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 2) || isVolumeSetting(m_settingsTab, i)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 9) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 2) || isVolumeSetting(m_settingsTab, i)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -2430,6 +2697,27 @@ void Game::updateSettingsFromMenu() {
     }
 
     // AI difficulty cycling
+    // UI Scale, in steps a player can tell apart. Applied as it changes rather
+    // than on leaving the screen, because the thing being adjusted is the size
+    // of the row doing the adjusting.
+    if (m_settingsIndex == 9 && m_settingsTab == 0 && (left || right)) {
+        m_config.colourBlindMode =
+            (m_config.colourBlindMode + (right ? 1 : COLOURBLIND_COUNT - 1)) % COLOURBLIND_COUNT;
+        odPalette::setMode(m_config.colourBlindMode);
+        generatePoliticalTexture();
+        m_config.save(m_configPath);
+        return;
+    }
+    if (m_settingsIndex == 8 && m_settingsTab == 0 && (left || right)) {
+        static float UI_SCALE_VALS[] = {0.75f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f};
+        const int n = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCALE_VALS[0]));
+        int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, n);
+        idx = (idx + (right ? 1 : -1) + n) % n;
+        m_config.uiScale = UI_SCALE_VALS[idx];
+        applyUiScale();
+        m_config.save(m_configPath);
+        return;
+    }
     if (m_settingsIndex == 7 && m_settingsTab == 0 && (left || right)) {
         m_config.aiDifficulty = (m_config.aiDifficulty + (right ? 1 : -1) + AI_DIFFICULTY_COUNT) % AI_DIFFICULTY_COUNT;
     }
@@ -2464,6 +2752,8 @@ void Game::updateSettingsFromMenu() {
             } else if (m_settingsTab == 0 && m_settingsIndex == 1) { m_config.showActualFlags = true; }
             else if (m_settingsTab == 0 && m_settingsIndex == 2) { m_config.debugMode = false; }
             else if (m_settingsTab == 0 && m_settingsIndex == 3) { m_config.maxZoom = 5.0f; }
+            else if (m_settingsTab == 0 && m_settingsIndex == 8) { m_config.uiScale = 1.0f; applyUiScale(); }
+            else if (m_settingsTab == 0 && m_settingsIndex == 9) { m_config.colourBlindMode = 0; odPalette::setMode(0); generatePoliticalTexture(); }
             else if (m_settingsTab == 0 && m_settingsIndex == 4) { m_config.screenW = 1920; m_config.screenH = 1080; forceWindowResize(1920, 1080); }
             else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
             else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
@@ -2591,22 +2881,30 @@ void Game::updateSettingsFromMenu() {
             // Never on while a mod is: a mod can change what the AI observes,
             // and training against that silently corrupts data/ai/model.bin.
             if (!m_config.aiLearning && ModManager::get().anyEnabled()) {
-                m_menuFeedback = "Disable all mods first — training with mods loaded corrupts the model";
+                m_menuFeedback = T("Disable all mods first — training with mods loaded corrupts the model");
                 m_menuFeedbackTimer = 4.0f;
             } else {
                 m_config.aiLearning = !m_config.aiLearning;
                 Audio::get().playSfx(m_config.aiLearning ? "toggle_on" : "toggle_off");
             }
         } else if (strcmp(s.label, "GDTL") == 0) {
-            if (!Gdtl::available()) {
-                m_menuFeedback = "This build has no translation layer — rebuild with -DOD_ENABLE_GDTL=ON";
+            // TURNING IT OFF IS ALWAYS ALLOWED. Only turning it ON needs the
+            // library: this checked availability before either direction, so a
+            // config carrying gdtl:true into a build without the layer could
+            // not be switched back -- the one thing a player in that state
+            // actually wants to do.
+            if (m_config.gdtl) {
+                m_config.gdtl = false;
+                Audio::get().playSfx("toggle_off");
+                m_menuFeedback = T("Off");
+                m_menuFeedbackTimer = 4.0f;
+            } else if (!Gdtl::available()) {
+                m_menuFeedback = T("This build has no translation layer — rebuild with -DOD_ENABLE_GDTL=ON");
                 m_menuFeedbackTimer = 5.0f;
             } else {
-                m_config.gdtl = !m_config.gdtl;
-                Audio::get().playSfx(m_config.gdtl ? "toggle_on" : "toggle_off");
-                m_menuFeedback = m_config.gdtl
-                    ? "On — experimental. Worlds can be translated to Greater Diplomacy 5 maps"
-                    : "Off";
+                m_config.gdtl = true;
+                Audio::get().playSfx("toggle_on");
+                m_menuFeedback = T("On — experimental. Worlds can be translated to Greater Diplomacy 5 maps");
                 m_menuFeedbackTimer = 4.0f;
             }
         } else if (strcmp(s.label, "AI Difficulty") == 0) {

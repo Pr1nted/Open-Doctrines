@@ -1,0 +1,31 @@
+// Tłumaczenie - badania.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Badania. Otwórz - narzekanie jest zawsze to samo - nic zaczętego jakby nigdy
+się nie kończy - i to nie błąd, to zamysł.
+---
+@Signals Officer
+Wszystko tutaj mierzy się turami, których jeszcze nie rozegrałeś. To, co
+zaczniesz teraz, przyjdzie długo po tym, jak zapomnisz, że tego chciałeś, a
+zatem jedyną złą chwilą na start jest później.
+---
+@Signals Officer
+Czerpie z tych samych pieniędzy co wojsko. Kraj, który bada wszystko, nie
+wystawia nic, a kraj, który wystawia wszystko, za dwadzieścia tur wciąż
+prowadzi wojnę sprzed dekady.
+
+Wybierz kierunek. Nie wybieraj wszystkich.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Zamknij z powrotem - §**x**§ w rogu.
+---
+@Signals Officer
+Skończona praca nie stosuje się wstecz. Nowy sprzęt trafia najpierw do nowych
+formacji, więc tura, w której coś się kończy, to tura na spojrzenie, co
+budujesz, a nie tura na odpoczynek.
+
+To są badania. Coś jeszcze?

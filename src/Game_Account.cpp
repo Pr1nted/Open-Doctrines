@@ -57,8 +57,16 @@ void drawButton(const Button& b, const char* label, int fontSize,
                                : base;
     DrawRectangleRounded(b.rect, 0.15f, 8, bg);
     DrawRectangleRoundedLines(b.rect, 0.15f, 8, enabled ? border : Color{70, 70, 80, 180});
-    const int tw = MeasureText(label, fontSize);
-    DrawText(label, (int)(b.rect.x + (b.rect.width - tw) / 2),
+    const char* shown = T(label);
+    // THE LABEL IS TRANSLATED HERE, not at the hundred call sites.
+    //
+    // Every button on this screen comes through this function, so this is the
+    // one place that has to know about the language -- the same reasoning that
+    // put the shadowed DrawText in i18n/Text.h rather than editing 970 draw
+    // sites. A caller passing a literal gets it translated for free; the
+    // extractor is told about this function so those literals reach en.json.
+    const int tw = MeasureText(shown, fontSize);
+    DrawText(shown, (int)(b.rect.x + (b.rect.width - tw) / 2),
              (int)(b.rect.y + (b.rect.height - fontSize) / 2), fontSize,
              enabled ? (b.hovered ? WHITE : LIGHTGRAY) : Color{110, 110, 120, 255});
 }
@@ -297,7 +305,7 @@ void Game::updateAccountMenu() {
                     if (!isLinked) client.beginLink(p);
                     else if (info.linked.size() > 1) client.unlink(p);
                     else {
-                        m_accountNote = "That is your only way to sign in. Link another first.";
+                        m_accountNote = T("That is your only way to sign in. Link another first.");
                         m_accountNoteTimer = 4.0f;
                     }
                     return;
@@ -316,7 +324,7 @@ void Game::updateAccountMenu() {
                 } else {
                     if (CheckCollisionPointRec(mouse, L.idCopy)) {
                         SetClipboardText(info.id.c_str());
-                        m_accountNote = "Account ID copied.";
+                        m_accountNote = T("Account ID copied.");
                         m_accountNoteTimer = 3.0f;
                         return;
                     }
@@ -474,7 +482,7 @@ void Game::drawAccountMenu() {
                                                       : Color{175, 150, 110, 220});
             if (m_accountAgreed)
                 DrawText("x", (int)agree.rect.x + 9, (int)agree.rect.y + 4, 18, WHITE);
-            DrawText("I agree to the terms of use and privacy policy",
+            DrawText(T("I agree to the terms of use and privacy policy"),
                      (int)agree.rect.x + 36, (int)agree.rect.y + 5, 16,
                      m_accountAgreed ? Color{200, 210, 200, 255}
                                      : Color{225, 205, 165, 255});
@@ -732,7 +740,7 @@ void Game::drawAccountField(int x, int y, int w, int h) {
 
     const int fontSize = 22;
     if (m_accountNickField.empty() && !m_accountFieldFocused) {
-        DrawText("click to type", x + 14, y + (h - 16) / 2, 16, Color{90, 90, 100, 255});
+        DrawText(T("click to type"), x + 14, y + (h - 16) / 2, 16, Color{90, 90, 100, 255});
     } else {
         DrawText(m_accountNickField.c_str(), x + 14, y + (h - fontSize) / 2, fontSize, WHITE);
         if (m_accountFieldFocused && ((int)(GetTime() * 2) % 2) == 0) {

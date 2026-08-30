@@ -1,0 +1,56 @@
+// Çeviri. :: satırları ve konuşmacı adları tanımlayıcıdır - çevrilmez.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Alo, kim o?
+---
+@
+...
+---
+@Pr1nted
+Ah... Burada yenisiniz... Ne? §**hiç ülke yönetmediniz mi?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Bakın ne diyeceğim? Benim hatam...
+---
+@Pr1nted
+:: enter=type speed=42
+Yalnız öğreticiyi kendim yapacak vaktim yok, o yüzden sizi bir tanıdığıma
+bırakacağım, olur mu? Zamana ihtiyacım var, güncellemeler çıkması lazım.
+---
+@Signals Officer
+Alo? Hangi §**Pr1nted**§?
+---
+@Pr1nted
+Şey... Selam Mia, /minicik bir iyilik/ lazım, yeni bir oyuncuya etrafı gezdirir
+misin?
+---
+@Signals Officer
+</İç çeker/>
+---
+@Pr1nted
+**Hadi ama!** Sana ne diye para veriyorum?
+---
+@Signals Officer
+Peki... Tamam, tamam.
+---
+@Pr1nted
+Harika! Mia Hanım size her şeyi gösterecek: oyun nasıl işliyor ve temelleri. Eğer
+temelleri biliyor ama belirli konuları konuşmak istiyorsanız, şimdi söyleyin,
+> Bana temelleri göster -> basics
+> Temelleri biliyorum, belirli konulara geçelim -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Güzel, başlayalım.
+---
+@Pr1nted
+:: act=tune_out
+İyi, umarım anlaşırsınız! Pr1nted, tamam.

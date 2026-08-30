@@ -41,6 +41,14 @@ public:
         float oilB = 5, goldB = 15, rubberB = 10, gemB = 12, metalB = 8; // industry boosts
         int industryLevel = 0;        // 0-10
         float industryIncome = 10.0f; // preserved for export
+        // PRESERVED, NOT COMPUTED. buildResourcesJson() re-emits every
+        // province from this struct; these were absent, so the writer filled
+        // in zeros -- which destroyed resource and population income on every
+        // map that passed through the editor, including every generated world
+        // on its way to self-play.
+        float resourceIncome = 0.0f;
+        float popIncome = 0.0f;
+        float popModifier = 1.0f;
         int fortification = 0;        // 0-5
         int portLevel = 0;            // 0-3, 0 = none
         long long population = 1000;

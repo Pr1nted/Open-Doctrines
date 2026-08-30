@@ -1,0 +1,94 @@
+// Překlad - diplomacie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomacie. Celá se vejde do jednoho seznamu a ten seznam patří §**zemi**§ -
+takže se k němu dostanete kliknutím na něčí půdu.
+
+Počkám u každého kroku. Nic tu není rychlé.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Nejdřív pohled na §**vztahy**§. Vybarvuje mapu podle toho, kdo s kým válčí, kdo
+je ve spojenectví a kdo komu dal záruku.
+---
+@Signals Officer
+Podívejte se na něj, než cokoli začnete. Polovina válek, které se tu prohrají,
+byla proti třem zemím místo jedné - a všechny tři byly na této mapě před první
+ranou.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Teď klikněte na provincii patřící §**Verricku**§, za vodou.
+
+Ne Kestrel: s těmi už válčíme, a země, se kterou válčíte, nabízí přesně jednu
+věc. K té se ještě dostaneme - a dokud nevyberete někoho, s kým jsme v míru,
+bude tato stránka prostě čekat dál.
+---
+@Signals Officer
+Jejich panelu narostl seznam. Co v něm je, závisí zcela na tom, čím už jste
+jeden druhému: nikdy nevybíráte ze všech možností, jen z těch, které váš
+současný vztah dovoluje.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Nejmírnější v něm je §**pakt o neútočení**§: slib, že nezaútočíte, a nic víc.
+
+Požádejte o něj. Zeptat se nic nestojí.
+---
+@Signals Officer
+Podáno - a teď se podívejte na seznam. §**Všechno ostatní zšedlo**§ a položka,
+kterou jste právě použil, se změnila na §**Zrušit**§.
+
+Jedna žádost naráz k jedné zemi. To není chyba, na kterou jste narazil, to je
+pravidlo: odpovídají na poslední věc, kterou jste řekl, a dokud neodpoví, je
+vaším jediným tahem vzít ji zpět.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Tak ukončete tah. Žádost odejde, oni odpovědí a seznam se vrátí.
+
+Mohou odmítnout. To je jejich věc, ne vaše chyba.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Zase Verrick. §**Spojenectví**§ je další stupeň - nejen slib neútočit, ale slib
+přidat se.
+
+Požádejte o něj.
+---
+@Signals Officer
+Se spojencem se objeví ještě jedna položka: §**Výzva do zbraně**§, která je
+vtáhne do války, kterou už vedete.
+
+I to mohou odmítnout. Spojenec, který odmítne dvakrát, je spojenec na papíře a
+má asi takovou cenu.
+---
+@Signals Officer
+Dvě, které jste nepoužil: §**záruka**§ je ta jednostranná - slíbíte bránit
+někoho, kdo vám neslíbil nic. Malé země je sbírají, velké je rozdávají, aby si
+koupily klid.
+
+A §**obchod**§ je zboží za peníze každý tah, dokud někdo nevypoví. Je to jediná
+položka, která obohatí oba, a právě proto se na ni zapomíná.
+---
+@Signals Officer
+Jakmile je pakt podepsán, sledujte, co ze seznamu zmizí: §**Vyhlásit válku
+mizí**§. Musíte nejdřív pakt porušit, veřejně, tam, kde vás u toho všichni vidí.
+
+K tomu pakt slouží. Není to štít, je to svědek.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+A ve §**válce**§ se celý seznam smrskne na jednu položku: §**Požádat o
+příměří**§. Vrátí se s podmínkami: kdo přestane a kdo si co ponechá.
+
+Přijmou, když prohrávají, a odmítnou, když ne. Sebevětší žádání nezmění, které
+z toho platí.
+---
+@Signals Officer
+Kestrel je na této mapě červeně, a tohle je seznam, který by vám ukázali oni.
+---
+@Signals Officer
+To je diplomacie. Ještě něco?

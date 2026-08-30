@@ -46,6 +46,19 @@ static constexpr const char* ACTION_NAMES[ACTION_COUNT] = {
     "Ship Engage Order",
 };
 
+// Stable script-facing ids for the same actions.
+//
+// ACTION_NAMES above is what a player reads in settings; it is prose, it may
+// be translated, and it changes when somebody rewords a label. A tutorial
+// that says "press {key=army_move}" needs a handle that does NOT move, so
+// these are it: lowercase, and part of the .oddlg format.
+static constexpr const char* ACTION_IDS[ACTION_COUNT] = {
+    "next_province", "prev_province", "zoom_in", "zoom_out", "zoom_to_province",
+    "box_select", "army_move",
+    "tab_1", "tab_2", "tab_3", "tab_4", "tab_5", "tab_6", "tab_7", "tab_8",
+    "artillery_wheel", "ship_move", "ship_wheel", "ship_engage",
+};
+
 // Categories for grouping in settings
 static constexpr const char* ACTION_CATEGORIES[ACTION_COUNT] = {
     "Navigation",   // ACTION_NEXT_PROVINCE

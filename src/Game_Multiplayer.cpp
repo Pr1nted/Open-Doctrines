@@ -125,8 +125,16 @@ void drawButton(const MpButton& b, const char* label, int fontSize,
                                : base;
     DrawRectangleRounded(b.rect, 0.15f, 8, bg);
     DrawRectangleRoundedLines(b.rect, 0.15f, 8, enabled ? border : Color{70, 70, 80, 180});
-    const int tw = MeasureText(label, fontSize);
-    DrawText(label, (int)(b.rect.x + (b.rect.width - tw) / 2),
+    const char* shown = T(label);
+    // THE LABEL IS TRANSLATED HERE, not at the hundred call sites.
+    //
+    // Every button on this screen comes through this function, so this is the
+    // one place that has to know about the language -- the same reasoning that
+    // put the shadowed DrawText in i18n/Text.h rather than editing 970 draw
+    // sites. A caller passing a literal gets it translated for free; the
+    // extractor is told about this function so those literals reach en.json.
+    const int tw = MeasureText(shown, fontSize);
+    DrawText(shown, (int)(b.rect.x + (b.rect.width - tw) / 2),
              (int)(b.rect.y + (b.rect.height - fontSize) / 2), fontSize,
              enabled ? (b.hovered ? WHITE : LIGHTGRAY) : Color{110, 110, 120, 255});
 
@@ -955,13 +963,13 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     const int listW = 560;
     int y = 140;
 
-    DrawText("Your servers", centerX - listW / 2, y, 20, Color{170, 180, 200, 255});
+    DrawText(T("Your servers"), centerX - listW / 2, y, 20, Color{170, 180, 200, 255});
     y += 32;
 
     const auto& entries = m_serverBook ? m_serverBook->entries()
                                        : *(new std::vector<ServerEntry>());
     if (entries.empty()) {
-        DrawText("No servers yet. Join one by code, or host your own.",
+        DrawText(T("No servers yet. Join one by code, or host your own."),
                  centerX - listW / 2, y, 17, Color{130, 135, 150, 255});
         y += 40;
     } else {
@@ -1080,7 +1088,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     const int fieldW = 460, fieldH = 46;
     int y = 120;
 
-    DrawText("Server address", centerX - fieldW / 2, y, 16, Color{160, 170, 190, 255});
+    DrawText(T("Server address"), centerX - fieldW / 2, y, 16, Color{160, 170, 190, 255});
     y += 22;
     const Rectangle addr{(float)(centerX - fieldW / 2), (float)y, (float)fieldW, (float)fieldH};
     drawField(addr.x, addr.y, addr.width, addr.height, m_mpAddressField,
@@ -1088,7 +1096,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     if (click && CheckCollisionPointRec(mouse, addr)) m_mpFocus = 0;
     y += fieldH + 16;
 
-    DrawText("Invite code", centerX - fieldW / 2, y, 16, Color{160, 170, 190, 255});
+    DrawText(T("Invite code"), centerX - fieldW / 2, y, 16, Color{160, 170, 190, 255});
     y += 22;
     const Rectangle code{(float)(centerX - fieldW / 2), (float)y, (float)fieldW, (float)fieldH};
     drawField(code.x, code.y, code.width, code.height, m_mpCodeField,
@@ -1112,7 +1120,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     DrawRectangleRoundedLines(box, 0.08f, 8, Color{170, 140, 90, 200});
 
     int ty = y + 2;
-    DrawText("The host will see your IP address", centerX - fieldW / 2, ty, 18,
+    DrawText(T("The host will see your IP address"), centerX - fieldW / 2, ty, 18,
              Color{235, 200, 140, 255});
     ty += 26;
     drawWrapped(warnText, centerX - fieldW / 2, ty, fieldW, 15,
@@ -1125,7 +1133,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
                          m_mpIpWarningAccepted ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
     DrawRectangleRoundedLines(ack.rect, 0.2f, 6, Color{150, 160, 175, 200});
     if (m_mpIpWarningAccepted) DrawText("x", (int)ack.rect.x + 9, (int)ack.rect.y + 4, 18, WHITE);
-    DrawText("I understand", (int)ack.rect.x + 36, (int)ack.rect.y + 5, 16,
+    DrawText(T("I understand"), (int)ack.rect.x + 36, (int)ack.rect.y + 5, 16,
              Color{200, 205, 215, 255});
     if (click && ack.hovered) m_mpIpWarningAccepted = !m_mpIpWarningAccepted;
 
@@ -1187,7 +1195,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         }
 
         if (m_mpResume) {
-            DrawText("Saved game", centerX - fieldW / 2, y, 15,
+            DrawText(T("Saved game"), centerX - fieldW / 2, y, 15,
                      Color{160, 170, 190, 255});
             y += 19;
             if (m_mpSavePaths.empty()) {
@@ -1315,7 +1323,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
             // list, and rewrote m_mpMapId every frame while resuming. A saved
             // campaign carries its own map; there is nothing here to choose.
             if (m_mapEntries.empty()) loadMapEntries();
-            DrawText("Map", centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
+            DrawText(T("Map"), centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
             y += 19;
             if (m_mapEntries.empty()) {
                 y = drawWrapped("No maps are installed.", centerX - fieldW / 2, y,
@@ -1361,7 +1369,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                 }
 
                 if (total == 0) {
-                    DrawText("Nothing matches that.", (int)lb.x + 10, (int)lb.y + 10, 14,
+                    DrawText(T("Nothing matches that."), (int)lb.x + 10, (int)lb.y + 10, 14,
                              Color{150, 140, 130, 255});
                 }
                 for (int i = 0; i < visible && m_mpMapScroll + i < total; i++) {
@@ -1404,7 +1412,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         }
         y += 8;
 
-        DrawText("Game name", centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
+        DrawText(T("Game name"), centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
         y += 19;
         const Rectangle name{(float)(centerX - fieldW / 2), (float)y, (float)fieldW, (float)fieldH};
         drawField(name.x, name.y, name.width, name.height, m_mpNameField, "My game",
@@ -1412,8 +1420,9 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         if (click && CheckCollisionPointRec(mouse, name)) m_mpFocus = 2;
         y += fieldH + 12;
 
-        DrawText("Port", centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
-        DrawText("Who can reach it", centerX - fieldW / 2 + 150, y, 15,
+        DrawText(T("Port|the network port the host listens on"), centerX - fieldW / 2, y, 15,
+                 Color{160, 170, 190, 255});
+        DrawText(T("Who can reach it"), centerX - fieldW / 2 + 150, y, 15,
                  Color{160, 170, 190, 255});
         y += 19;
         const Rectangle port{(float)(centerX - fieldW / 2), (float)y, 130.0f, (float)fieldH};
@@ -1443,7 +1452,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                              m_mpListed ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
         DrawRectangleRoundedLines(listed.rect, 0.2f, 6, Color{150, 160, 175, 200});
         if (m_mpListed) DrawText("x", (int)listed.rect.x + 8, (int)listed.rect.y + 3, 17, WHITE);
-        DrawText("List publicly", (int)listed.rect.x + 32, (int)listed.rect.y + 4, 15,
+        DrawText(T("List publicly"), (int)listed.rect.x + 32, (int)listed.rect.y + 4, 15,
                  Color{200, 205, 215, 255});
         if (click && listed.hovered) m_mpListed = !m_mpListed;
         y += 46;
@@ -1467,7 +1476,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
             DrawRectangleRoundedLines(use.rect, 0.2f, 6, Color{150, 160, 175, 200});
             if (m_mpUseTunnel)
                 DrawText("x", (int)use.rect.x + 8, (int)use.rect.y + 3, 17, WHITE);
-            DrawText("Open a tunnel so people outside can reach me",
+            DrawText(T("Open a tunnel so people outside can reach me"),
                      (int)use.rect.x + 32, (int)use.rect.y + 4, 15,
                      Color{200, 205, 215, 255});
             if (click && use.hovered) m_mpUseTunnel = !m_mpUseTunnel;
@@ -1570,7 +1579,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                              m_mpAnonymous ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
         DrawRectangleRoundedLines(anon.rect, 0.2f, 6, Color{150, 160, 175, 200});
         if (m_mpAnonymous) DrawText("x", (int)anon.rect.x + 8, (int)anon.rect.y + 3, 17, WHITE);
-        DrawText("Host without showing my name", (int)anon.rect.x + 32,
+        DrawText(T("Host without showing my name"), (int)anon.rect.x + 32,
                  (int)anon.rect.y + 4, 15, Color{200, 205, 215, 255});
         if (click && anon.hovered) m_mpAnonymous = !m_mpAnonymous;
         y += 28;
@@ -1584,14 +1593,14 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                              m_mpDedicated ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
         DrawRectangleRoundedLines(ded.rect, 0.2f, 6, Color{150, 160, 175, 200});
         if (m_mpDedicated) DrawText("x", (int)ded.rect.x + 8, (int)ded.rect.y + 3, 17, WHITE);
-        DrawText("Host only -- I am not playing", (int)ded.rect.x + 32,
+        DrawText(T("Host only -- I am not playing"), (int)ded.rect.x + 32,
                  (int)ded.rect.y + 4, 15, Color{200, 205, 215, 255});
         if (click && ded.hovered) m_mpDedicated = !m_mpDedicated;
         y += 30;
 
     } else {
         // ---- turns, and where they are stored -----------------------------
-        DrawText("Seconds per turn", centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
+        DrawText(T("Seconds per turn"), centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});
         y += 19;
         const Rectangle turn{(float)(centerX - fieldW / 2), (float)y, 150.0f, (float)fieldH};
         drawField(turn.x, turn.y, turn.width, turn.height, m_mpTurnField,
@@ -1619,7 +1628,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                 centerX - fieldW / 2, y, fieldW, 13, Color{130, 138, 152, 255}) + 10;
 
         // Where turns live between sessions.
-        DrawText("Where turns are stored", centerX - fieldW / 2, y, 15,
+        DrawText(T("Where turns are stored"), centerX - fieldW / 2, y, 15,
                  Color{160, 170, 190, 255});
         y += 19;
         const TurnStoreKind kind = mpStoreKind();
@@ -1737,7 +1746,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                 y += 24;
             }
         } else {
-            DrawText("Opening the game...", centerX - MeasureText("Opening the game...", 18) / 2,
+            DrawText(T("Opening the game..."), centerX - MeasureText(T("Opening the game..."), 18) / 2,
                      y, 18, Color{170, 180, 200, 255});
             y += 30;
         }
@@ -1843,7 +1852,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                                                  : std::vector<NetPeer>{};
 
     if (roster.empty()) {
-        DrawText("Nobody else here yet.", centerX - MeasureText("Nobody else here yet.", 17) / 2,
+        DrawText(T("Nobody else here yet."), centerX - MeasureText(T("Nobody else here yet."), 17) / 2,
                  y + 10, 17, Color{130, 135, 150, 255});
         y += 44;
     } else {
@@ -1966,7 +1975,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         // a taken country only to be refused is a picker that looks broken.
         std::string mine = "not chosen yet";
         for (const auto& c : choices) if (c.first == myCountry) mine = c.second;
-        const std::string label = "Your country:  " + mine;
+        const std::string label = T("Your country:  ") + mine;
         DrawText(label.c_str(), centerX - panelW / 2, y, 16,
                  myCountry ? Color{170, 210, 180, 255} : Color{200, 180, 140, 255});
         y += 24;
@@ -2004,7 +2013,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         // only the catalogue -- it never loaded the map -- so the list is the
         // honest option there rather than a map it cannot draw.
         if (hosting && !m_mpPickingCountry) {
-            DrawText("or click the map, either side of this panel", (int)(centerX - panelW / 2) + 212,
+            DrawText(T("or click the map, either side of this panel"), (int)(centerX - panelW / 2) + 212,
                      y + 9, 14, Color{140, 150, 165, 255});
         }
         y += 40;
@@ -2090,14 +2099,14 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
     // is a different thing entirely.
     if (hosting && m_netHost && lobby) {
         const int sx = centerX - panelW / 2;
-        DrawText("Settings", sx, y, 15, Color{160, 170, 190, 255});
+        DrawText(T("Settings"), sx, y, 15, Color{160, 170, 190, 255});
         y += 20;
 
         const bool inLobby = lobby->state() == NetSessionState::Lobby;
 
         // Turn length, as a box rather than a cycle: on a live campaign the
         // useful values are hours and days, which no sane list would enumerate.
-        DrawText("Turn seconds (0 = no limit)", sx, y + 8, 14,
+        DrawText(T("Turn seconds (0 = no limit)"), sx, y + 8, 14,
                  Color{175, 182, 196, 255});
         const Rectangle tf{(float)(sx + 230), (float)y, 90.0f, 30.0f};
         drawField(tf.x, tf.y, tf.width, tf.height, m_mpTurnField, "0", m_mpFocus == 4);
@@ -3135,6 +3144,26 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
     m_mpWaitingForTurn = false;
 
     // The orders just resolved; they are not pending any more.
+    //
+    // ── AND A VOYAGE STILL ENDS HERE, WHICH IS THE ONE PLACE IT SHOULD NOT ──
+    //
+    // A ship move order now carries a route and survives the turn, so locally a
+    // single click sails a fleet across an ocean over as many turns as it
+    // takes. A remote player gets the routing -- the host plans and follows the
+    // path when it ingests the order, so the fleet rounds coasts instead of
+    // grinding at them -- but not the persistence: this line drops the order,
+    // so they must re-click each turn exactly as they do today. No regression,
+    // and the gap is deliberate rather than overlooked.
+    //
+    // Keeping the order across a turn instead is not safe as things stand.
+    // Orders name a hull by INDEX into m_ships, and applyTurnDelta above has
+    // just replaced m_ships wholesale from the host -- so an order held over
+    // would be pointing into a list that has been renumbered underneath it,
+    // which is the same class of bug forgetShipOrders exists to prevent
+    // locally. The two honest fixes are a stable per-hull id, or the host
+    // returning the surviving orders in the turn delta (a wire-format change,
+    // and SaveManager::packTurn is versioned). Either is a change to the
+    // protocol and belongs with one, not smuggled in here.
     m_pendingMoveOrders.clear();
     m_pendingDisbandOrders.clear();
     m_pendingArtilleryOrders.clear();
@@ -3249,7 +3278,7 @@ void Game::mpBeginReachTest() {
         return;
     }
     m_mpReach = MpReach::Testing;
-    m_mpReachNote = "Checking from outside...";
+    m_mpReachNote = T("Checking from outside...");
     m_mpReachTimer = 0.0f;
 }
 
@@ -3263,17 +3292,15 @@ void Game::mpUpdateReachTest() {
         // The handshake completed, which means a stranger's connection would
         // have too. Dropped immediately: this was a question, not a player.
         m_mpReach = MpReach::Reachable;
-        m_mpReachNote = "Reachable from outside. Anyone with the address and code "
-                        "can join.";
+        m_mpReachNote = T("Reachable from outside. Anyone with the address and code can join.");
     } else if (s == WsState::Closed) {
         m_mpReach = MpReach::Unreachable;
         m_mpReachNote = m_mpReachProbe->error().empty()
-            ? "The published address did not answer. The tunnel may still be "
-              "starting; try again in a moment."
+            ? T("The published address did not answer. The tunnel may still be starting; try again in a moment.")
             : m_mpReachProbe->error();
     } else if (m_mpReachTimer > 20.0f) {
         m_mpReach = MpReach::Unreachable;
-        m_mpReachNote = "No answer from the published address within 20 seconds.";
+        m_mpReachNote = T("No answer from the published address within 20 seconds.");
     } else {
         return;   // still trying
     }
@@ -3331,7 +3358,7 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
         clock = "No timer -- waiting for everyone";
     }
     const bool noTimer = clock.rfind("No timer", 0) == 0;
-    DrawText("This turn", x + 10, top + 8, 15, Color{200, 210, 225, 255});
+    DrawText(T("This turn"), x + 10, top + 8, 15, Color{200, 210, 225, 255});
     DrawText(clock.c_str(), x + 10, top + 26, 13,
              noTimer ? Color{195, 180, 135, 255} : Color{150, 190, 205, 255});
 
@@ -3343,7 +3370,7 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
         const Country* c = m_countries.getCountry((int)p->countryId);
         std::string label = p->name.empty() ? std::string("someone") : p->name;
         if (c) label += "  (" + c->name + ")";
-        if ((int)label.size() > 30) label = label.substr(0, 29) + "...";
+        if (odText::charCount(label) > 30) label = odText::firstChars(label, 29) + "...";
         DrawText(label.c_str(), x + 10, ry + 3, 13,
                  in ? Color{150, 200, 165, 255} : Color{200, 200, 210, 255});
 
@@ -3390,8 +3417,11 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
                                                : Color{52, 44, 30, 225});
         DrawRectangleRoundedLines(go, 0.15f, 6, Color{170, 140, 90, 190});
         const char* t = "Resolve now, without the rest";
-        DrawText(t, (int)go.x + ((int)go.width - MeasureText(t, 12)) / 2,
-                 (int)go.y + 6, 12, Color{225, 205, 165, 255});
+        odText::fitAudit(t, (int)go.width - 8, 12, "mp resolve-now button");
+        int mfs_mp_resolve_now_button = 12;
+        const std::string mfit_mp_resolve_now_button = odText::fitToWidth(t, (int)go.width - 8, mfs_mp_resolve_now_button, 9);
+        DrawText(mfit_mp_resolve_now_button.c_str(), (int)go.x + ((int)go.width - MeasureText(mfit_mp_resolve_now_button.c_str(), mfs_mp_resolve_now_button)) / 2,
+                 (int)go.y + 6, mfs_mp_resolve_now_button, Color{225, 205, 165, 255});
         if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_paused)
             mpForceResolve();
     }
@@ -3423,7 +3453,7 @@ void Game::drawMpHostConsole(int x, int top) {
                               Color{75, 88, 110, 200});
 
     int y = top + 12;
-    DrawText("Your server", x + 14, y, 19, Color{205, 218, 235, 255});
+    DrawText(T("Your server"), x + 14, y, 19, Color{205, 218, 235, 255});
     y += 26;
 
     // ---- what this server is ------------------------------------------------
@@ -3447,7 +3477,7 @@ void Game::drawMpHostConsole(int x, int top) {
         where = "this computer only, port " + std::to_string(m_netHost->listenPort());
         whereColor = Color{200, 185, 140, 255};
     }
-    if (where.size() > 34) where = where.substr(0, 33) + "...";
+    if (odText::charCount(where) > 34) where = odText::firstChars(where, 33) + "...";
     line("Reachable at", where, whereColor);
 
     line("Turn", std::to_string(m_turnNumber), Color{190, 200, 215, 255});
@@ -3488,7 +3518,7 @@ void Game::drawMpHostConsole(int x, int top) {
         const Country* c = m_countries.getCountry((int)p.countryId);
         std::string name = p.name.empty() ? std::string("someone") : p.name;
         if (c) name += "  (" + c->name + ")";
-        if (name.size() > 26) name = name.substr(0, 25) + "...";
+        if (odText::charCount(name) > 26) name = odText::firstChars(name, 25) + "...";
         DrawText(name.c_str(), x + 14, y + 4, 13,
                  p.connected ? Color{205, 212, 225, 255} : Color{150, 156, 170, 255});
 
@@ -3604,7 +3634,7 @@ void Game::drawMpHostConsole(int x, int top) {
                 std::string t = text;
                 if (count > 1) t += "  " + std::to_string(index + 1) + "/" +
                                     std::to_string(count);
-                if ((int)t.size() > 20) t = t.substr(0, 19) + "...";
+                if (odText::charCount(t) > 20) t = odText::firstChars(t, 19) + "...";
                 DrawText(t.c_str(), (int)r.x + 8, (int)r.y + 5, 11,
                          Color{195, 205, 220, 255});
                 if (h && pressed && count > 1) index = (index + 1) % count;
@@ -3624,8 +3654,11 @@ void Game::drawMpHostConsole(int x, int top) {
                                                   : Color{32, 50, 38, 226});
             DrawRectangleRoundedLines(sb, 0.15f, 6, Color{110, 170, 130, 195});
             const char* t = "Seat them";
-            DrawText(t, (int)sb.x + ((int)sb.width - MeasureText(t, 12)) / 2,
-                     (int)sb.y + 5, 12, Color{190, 225, 200, 255});
+            odText::fitAudit(t, (int)sb.width - 8, 12, "mp seat button");
+            int mfs_mp_seat_button = 12;
+            const std::string mfit_mp_seat_button = odText::fitToWidth(t, (int)sb.width - 8, mfs_mp_seat_button, 9);
+            DrawText(mfit_mp_seat_button.c_str(), (int)sb.x + ((int)sb.width - MeasureText(mfit_mp_seat_button.c_str(), mfs_mp_seat_button)) / 2,
+                     (int)sb.y + 5, mfs_mp_seat_button, Color{190, 225, 200, 255});
             if (sh && pressed &&
                 m_netHost->lobby().seatSpectator(who->peerId, cid) ==
                     LobbyDenial::None) {
@@ -3648,8 +3681,11 @@ void Game::drawMpHostConsole(int x, int top) {
                                                : Color{54, 46, 32, 228});
         DrawRectangleRoundedLines(go, 0.15f, 6, Color{175, 145, 95, 195});
         const char* t = "Resolve this turn now";
-        DrawText(t, (int)go.x + ((int)go.width - MeasureText(t, 13)) / 2,
-                 (int)go.y + 7, 13, Color{228, 208, 168, 255});
+        odText::fitAudit(t, (int)go.width - 8, 13, "mp resolve-turn button");
+        int mfs_mp_resolve_turn_button = 13;
+        const std::string mfit_mp_resolve_turn_button = odText::fitToWidth(t, (int)go.width - 8, mfs_mp_resolve_turn_button, 9);
+        DrawText(mfit_mp_resolve_turn_button.c_str(), (int)go.x + ((int)go.width - MeasureText(mfit_mp_resolve_turn_button.c_str(), mfs_mp_resolve_turn_button)) / 2,
+                 (int)go.y + 7, mfs_mp_resolve_turn_button, Color{228, 208, 168, 255});
         if (hov && pressed) mpForceResolve();
         y += 32;
 
@@ -3668,8 +3704,11 @@ void Game::drawMpHostConsole(int x, int top) {
         const char* r = m_mpReturnAfterTurn
             ? "Stopping after this turn (press to cancel)"
             : "Everyone to the lobby after this turn";
-        DrawText(r, (int)rb.x + ((int)rb.width - MeasureText(r, 12)) / 2,
-                 (int)rb.y + 6, 12,
+        odText::fitAudit(r, (int)rb.width - 8, 12, "mp return-to-lobby button");
+        int rfs = 12;
+        const std::string rfit = odText::fitToWidth(r, (int)rb.width - 8, rfs, 9);
+        DrawText(rfit.c_str(), (int)rb.x + ((int)rb.width - MeasureText(rfit.c_str(), rfs)) / 2,
+                 (int)rb.y + 6, rfs,
                  m_mpReturnAfterTurn ? Color{190, 220, 245, 255}
                                      : Color{190, 200, 215, 255});
         if (rh && pressed) m_mpReturnAfterTurn = !m_mpReturnAfterTurn;
@@ -4054,7 +4093,7 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
                               0.04f, 8, Color{90, 100, 125, 220});
 
     int cy = y + 18;
-    DrawText("Manual turn exchange", x + 20, cy, 20, Color{225, 220, 210, 255});
+    DrawText(T("Manual turn exchange"), x + 20, cy, 20, Color{225, 220, 210, 255});
     cy += 30;
 
     cy = drawWrapped(
@@ -4094,7 +4133,7 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
         const std::string head = m_mpManualOut.substr(0, m_mpManualOut.find('\n'));
         DrawText(head.c_str(), x + 20, cy, 12, Color{120, 128, 140, 255});
         cy += 20;
-        DrawText(TextFormat("%d characters in the block", (int)m_mpManualOut.size()),
+        DrawText(TextFormat(T("%d characters in the block"), (int)m_mpManualOut.size()),
                  x + 20, cy, 12, Color{120, 128, 140, 255});
         cy += 24;
     }

@@ -1,0 +1,55 @@
+// Překlad. Řádky :: a jména mluvčích jsou identifikátory - nepřekládat.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Haló, kdo je tam?
+---
+@
+...
+---
+@Pr1nted
+Á... Vy jste tu nový... Cože? §**nikdy jste nevedl zemi?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Víte co? Moje chyba...
+---
+@Pr1nted
+:: enter=type speed=42
+Jenže nemám čas dělat ten tutoriál sám, takže vás nechám se svou známou, ano?
+Potřebuju čas, musí přece vznikat aktualizace.
+---
+@Signals Officer
+Haló? Jaký §**Pr1nted**§?
+---
+@Pr1nted
+Ehm... Ahoj Mio, potřeboval bych /malinkatou laskavost,/ provedeš nového hráče?
+---
+@Signals Officer
+</Povzdech/>
+---
+@Pr1nted
+**No tak!** Za co ti platím?
+---
+@Signals Officer
+Tak dobře... Fajn, fajn.
+---
+@Pr1nted
+Výborně! Slečna Mia vám všechno ukáže: jak hra funguje a její základy. A pokud
+základy znáte, ale chcete mluvit o konkrétních věcech, řekněte to teď,
+> Ukažte mi základy -> basics
+> Základy znám, pojďme ke konkrétním věcem -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Dobře, začínáme.
+---
+@Pr1nted
+:: act=tune_out
+Skvělé, snad si budete rozumět! Pr1nted končí.

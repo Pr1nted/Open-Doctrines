@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "raylib.h"
+// T(): both war-goal tables below are sentences the player reads.
+#include "i18n/Locale.h"
 
 // ─── Credits ─────────────────────────────────────────────────
 struct CreditEntry {
@@ -179,11 +181,11 @@ enum WarGoal {
 /** How the declaration reads to everyone else. */
 inline const char* warGoalText(int g) {
     switch (g) {
-        case WAR_GOAL_RECONQUEST: return "to recover land they claim as theirs";
-        case WAR_GOAL_SECURITY:   return "citing the threat on their border";
-        case WAR_GOAL_HUMBLE:     return "to check a power they say has grown too large";
-        case WAR_GOAL_ALLY:       return "in support of an ally";
-        case WAR_GOAL_CONQUEST:   return "openly, for territory";
+        case WAR_GOAL_RECONQUEST: return T("to recover land they claim as theirs");
+        case WAR_GOAL_SECURITY:   return T("citing the threat on their border");
+        case WAR_GOAL_HUMBLE:     return T("to check a power they say has grown too large");
+        case WAR_GOAL_ALLY:       return T("in support of an ally");
+        case WAR_GOAL_CONQUEST:   return T("openly, for territory");
         default:                  return nullptr;   // no reason given
     }
 }
@@ -191,12 +193,12 @@ inline const char* warGoalText(int g) {
 /** The same list in the declaring country's own voice. */
 inline const char* warGoalTextOwn(int g) {
     switch (g) {
-        case WAR_GOAL_RECONQUEST: return "To recover what is ours";
-        case WAR_GOAL_SECURITY:   return "They threaten our border";
-        case WAR_GOAL_HUMBLE:     return "They have grown too large";
-        case WAR_GOAL_ALLY:       return "In support of our ally";
-        case WAR_GOAL_CONQUEST:   return "For territory";
-        default:                  return "State no reason";
+        case WAR_GOAL_RECONQUEST: return T("To recover what is ours");
+        case WAR_GOAL_SECURITY:   return T("They threaten our border");
+        case WAR_GOAL_HUMBLE:     return T("They have grown too large");
+        case WAR_GOAL_ALLY:       return T("In support of our ally");
+        case WAR_GOAL_CONQUEST:   return T("For territory");
+        default:                  return T("State no reason");
     }
 }
 
@@ -335,6 +337,23 @@ struct Policy {
     bool isUniversal = true;  // if false, only for specific country types
     // Incompatibility
     std::vector<std::string> incompatibleWith;
+    /**
+     * The doctrine's continuous effects, keyed by the RESEARCH TREE's own
+     * effect names -- so a doctrine and a research node are the same kind of
+     * thing to Game::getTotalEffect and every caller downstream of it.
+     *
+     * These were generated into policies.json, printed in the doctrine screen's
+     * gains/costs, and read by nothing: the loader did not parse them and
+     * getTotalEffect iterated research nodes alone. Every doctrine in the game
+     * therefore advertised effects it did not apply -- which is the exact
+     * failure tools/gen_policies.py was written to prevent, since it derives
+     * the advertised text FROM these numbers so the claim and the effect cannot
+     * disagree. They could, because only one end was connected.
+     *
+     * Sign convention follows the tree: a COST reduction is stored POSITIVE,
+     * because buildCostMod() and its siblings subtract.
+     */
+    std::unordered_map<std::string, float> levers;
     // Tradeoffs for UI display
     struct Tradeoffs {
         std::vector<std::string> gains;
@@ -389,6 +408,8 @@ struct CountryIncomeSnapshot {
     float minorityCosts = 0;// ethnic policy cost per turn
     float researchCost = 0;// research allocation cost per turn
     float pacificationCost = 0;// pacification budget cost per turn
+    float industryUpkeep = 0;// what the factories cost to run; see industryUpkeep()
+    int   industryLevels = 0;// total levels held, which is what sets the above
     float net = 0;        // gross + resource + pop - expenses = net income
     float total = 0;      // gross + resource + pop (pre-expenses)
 };
@@ -423,6 +444,16 @@ struct ResearchNode {
     float popModPct = 0;
     float resourceModPct = 0;
     float industryCostPct = 0;
+    /**
+     * Cuts the RUNNING cost of industry, as a percentage of the upkeep rate.
+     *
+     * Industry upkeep is the second largest line on most industrial economies'
+     * books and, until this existed, the only one with no counterplay at all:
+     * no doctrine lever, no research node, nothing in the effects system read
+     * it. A tax a player can see and cannot answer reads as a bug even when the
+     * arithmetic is right. See industryUpkeep().
+     */
+    float industryUpkeepPct = 0;
     float passiveIncome = 0;
     float popGrowthPct = 0;
     float migrationRate = 0;
@@ -543,9 +574,43 @@ struct PendingArtilleryOrder {
     std::string ammoType;
 };
 
+/**
+ * A VOYAGE, NOT A STEP.
+ *
+ * This used to be a destination and nothing else, consumed and thrown away by
+ * processNavyMovement in the turn it was given. The resolver walked the
+ * straight line to it, stopped at the last water, and dropped the order -- so a
+ * crossing that had to round a headland was re-planned down the same blocked
+ * chord every turn and never got anywhere. Measured on the shipped scenarios,
+ * 80% of all ship movement in the world went nowhere, and every one of those
+ * stalls was a destination that was reachable by sea and not in a straight
+ * line.
+ *
+ * `route` is the sea path from Game::navRoute -- water waypoints that go round
+ * the coast -- with the destination itself appended as the final leg. The order
+ * survives the turn and the resolver spends one turn's range along the polyline
+ * each time, so one click sails a fleet to the other side of the world over
+ * however many turns that takes.
+ *
+ * EMPTY WHEN THE ORDER IS MADE, filled by the resolver. Every caller -- the
+ * player's click, the AI, a mod, an order off the wire -- writes a destination
+ * and nothing else, exactly as before, and planning happens in the one place
+ * that has to be right about it.
+ */
 struct PendingShipMoveOrder {
     int shipIndex = 0;
     double destLon = 0, destLat = 0;
+    /// Remaining legs. The last is the destination; the rest came from the
+    /// router and are water by construction.
+    std::vector<std::pair<double, double>> route;
+    /// Set once route has been computed, so an unreachable destination is
+    /// planned once and then abandoned rather than re-planned every turn.
+    bool planned = false;
+    /// The port province this voyage is for, when it is for one. Lets the AI
+    /// ask "am I already sailing where I would choose to sail?" and leave a
+    /// voyage in progress alone instead of re-issuing it every turn. -1 for a
+    /// destination somebody simply picked off the map.
+    int destProvince = -1;
 };
 
 struct PendingShipEngageOrder {

@@ -65,6 +65,7 @@ Exit status is 1 if a comparison shows a SIGNIFICANT REGRESSION in ADVANTAGE
 """
 
 import argparse
+import atexit
 import json
 import os
 import random
@@ -133,12 +134,48 @@ def find_binary():
                      ("OpenDoctrines",)):
             p = os.path.join(ROOT, d, *tail)
             if os.path.exists(p):
-                cands.append((os.path.getmtime(p), p))
+                cands.append((os.path.getmtime(p), d, p))
                 break
     if not cands:
         sys.exit("no built binary found. Run: cmake --build build -j")
     cands.sort()
-    return cands[-1][1]
+    _, tree, game = cands[-1]
+
+    # ...AND THE HEADLESS BINARY FROM THAT TREE.
+    #
+    # Every mode of the game binary goes through a window, and InitWindow dies
+    # when the display has slept:
+    #
+    #     WARNING: GLFW: Failed to determine Monitor to center Window
+    #     ABORTED during the noise probe: eval produced no [EVAL] output (-11)
+    #
+    # Measured twice. A probe two hours into an unattended sweep on 2026-08-20,
+    # and again on 2026-08-24 when two of three TRAINING workers died the same
+    # way -- so this is not a quirk of one code path, it is what every windowed
+    # mode does overnight. OpenDoctrinesServer is the same Game::runAIEvaluation
+    # with no renderer linked (src/server/ServerMain.cpp), so the question does
+    # not arise.
+    #
+    # caffeinate would also work and is the wrong answer: it makes an unattended
+    # measurement depend on nobody having changed their power settings, and it
+    # has to be remembered at every call site rather than fixed once here.
+    #
+    # The game binary stays as the fallback for a tree built without the server
+    # target, with a warning, because a bench that refuses to run is worse than
+    # one that runs at some risk -- but the risk must be stated.
+    server = os.path.join(ROOT, tree, "OpenDoctrinesServer")
+    if os.path.exists(server):
+        # A server older than the game binary is the stale-binary trap this
+        # function already exists to prevent, one level down.
+        if os.path.getmtime(server) < os.path.getmtime(game) - 300:
+            print(f"  !! {tree}/OpenDoctrinesServer is OLDER than the game binary.\n"
+                  f"  !! Rebuild it or this measures stale rules:\n"
+                  f"  !!   cmake --build {tree} --target OpenDoctrinesServer")
+        return server
+    print(f"  !! {tree}/OpenDoctrinesServer is not built; falling back to the\n"
+          f"  !! windowed binary, which DIES if the display sleeps mid-run.\n"
+          f"  !!   cmake --build {tree} --target OpenDoctrinesServer")
+    return game
 
 
 # ── Parsing ────────────────────────────────────────────────────────────────
@@ -475,6 +512,23 @@ BLUNDER_GATES = [
     # AI negotiates well.
     ("agreements are possible", "agreements accepted %", "min_abs",     15.0,
      "agreements asked", 10.0),
+    # ...AND THE MIRROR OF IT, which is the half that was missing.
+    #
+    # The check above has only a floor because it was written to catch an AI
+    # that agreed to NOTHING -- every diplomatic answer was an unconditional
+    # reject for months and this is the gate that finally caught it. But a
+    # one-sided check cannot fail in the other direction, and the other
+    # direction is just as broken: a player reported allying with essentially
+    # the whole map as Britain, with the note "the game isnt really fun if you
+    # use diplomacy for anything". Measured at the same time: 97.9% of requests
+    # accepted, sailing through the floor of 15%.
+    #
+    # An opponent that says yes to everything is not a diplomat, it is a
+    # rubber stamp, and it is the same failure as the trade giveaway wearing a
+    # different hat. 85% leaves room for an agreeable AI and still fails a
+    # rubber stamp.
+    ("agreements can be refused", "agreements accepted %", "max_abs",   85.0,
+     "agreements asked", 10.0),
     ("allies get answered",     "calls answered %",   "min_abs",        20.0,
      "calls issued", 5.0),
     ("wars can end",            "ceasefires offered", "frac_of_random", 0.33),
@@ -679,6 +733,28 @@ def main():
     import datetime
     built = datetime.datetime.fromtimestamp(os.path.getmtime(binary)).strftime("%Y-%m-%d %H:%M:%S")
     print(f"binary : {os.path.relpath(binary, ROOT)}  (built {built})")
+
+    # ── SNAPSHOT IT, so a rebuild cannot change the instrument mid-measurement ──
+    #
+    # A run is 24+ invocations over hours. Rebuilding the tree it points at
+    # swaps the binary underneath it, and the runs before and after are then
+    # two different programs averaged into one number -- with nothing in the
+    # output to say so. Measured 2026-08-25: an IDE rebuilt build/ three hours
+    # into a run, after which the twelve trained-model runs had been made with
+    # one AI and the twelve baseline runs would have been made with another that
+    # had a new diplomacy gate in it. The whole run had to be thrown away.
+    #
+    # The copy lives BESIDE the original, not in a temp directory, because the
+    # game resolves its data directory relative to the executable -- a binary
+    # copied to /tmp looks for /tmp/../data and finds nothing.
+    snap = os.path.join(os.path.dirname(binary),
+                        f".bench-snapshot-{os.getpid()}")
+    shutil.copy2(binary, snap)
+    os.chmod(snap, 0o755)
+    atexit.register(lambda: os.path.exists(snap) and os.remove(snap))
+    binary = snap
+    print(f"       : pinned to a private copy for the run "
+          f"(rebuilds cannot affect it)")
     print(f"seeds  : {seeds}")
     print(f"turns  : {args.turns}   maps/seed: {args.maps}   difficulty: {args.difficulty}")
     print(f"limit  : --resource-limit {RESOURCE_LIMIT} (pinned)")

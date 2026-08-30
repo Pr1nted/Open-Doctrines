@@ -1,0 +1,14 @@
+// Překlad - nabídka témat.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Dobře, obrys znáte. Tak co vlastně chcete?
+
+Vyberte si jedno a proberu to pořádně. Zeptejte se znovu, až skončíme.
+> Lodě, přístavy a jak dostat vojsko přes vodu -> script:tut_ships
+> Výzkum a proč se nic započatého nedokončí -> script:tut_research
+> Ekonomika, průmysl a odkud se berou peníze -> script:tut_economy
+> Nároky, nepokoje a ztráta provincií vlastním lidem -> script:tut_unrest
+> Spojenectví, příměří a zbytek diplomacie -> script:tut_diplomacy
+> Nic dalšího, jsem hotov -> script:outro

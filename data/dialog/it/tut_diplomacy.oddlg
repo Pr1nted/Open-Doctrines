@@ -1,0 +1,97 @@
+// Traduzione - la diplomazia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomazia. Sta tutta in un elenco, e l'elenco appartiene a un §**paese**§:
+quindi ci si arriva cliccando la terra di qualcuno.
+
+Aspetterò a ogni passo. Qui niente è veloce.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Prima la vista delle §**relazioni**§. Colora la mappa secondo chi è in guerra
+con chi, chi è alleato e chi ha garantito chi.
+---
+@Signals Officer
+Guardala prima di iniziare qualsiasi cosa. Metà delle guerre perse qui sono
+state contro tre paesi anziché uno, e tutti e tre erano su questa mappa prima
+del primo colpo.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Adesso clicca una provincia di §**Verrick**§, oltre l'acqua.
+
+Non Kestrel: con loro siamo già in guerra, e un paese con cui sei in guerra
+offre esattamente una cosa. Ci arriveremo, e finché non scegli qualcuno con cui
+siamo in pace questa pagina continuerà semplicemente ad aspettare.
+---
+@Signals Officer
+Al loro pannello è cresciuto un elenco. Cosa contiene dipende interamente da
+cosa siete già l'uno per l'altro: non scegli mai fra tutte le opzioni, solo fra
+quelle che il vostro rapporto attuale permette.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+La cosa più blanda è un §**patto di non aggressione**§: la promessa di non
+attaccare, e nulla più.
+
+Chiedilo. Chiedere non costa niente.
+---
+@Signals Officer
+Depositato, e adesso guarda l'elenco. §**Tutto il resto è diventato grigio**§, e
+la voce che hai appena usato è diventata §**Annulla**§.
+
+Una richiesta per volta verso un paese. Non è un difetto in cui sei incappato,
+è la regola: stanno rispondendo all'ultima cosa che hai detto, e finché non lo
+fanno la tua unica mossa è ritirarla.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Quindi termina il turno. La richiesta parte, loro rispondono, e l'elenco torna.
+
+Possono rifiutare. Sono affari loro, non un tuo difetto.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Verrick di nuovo. Un'§**alleanza**§ è il gradino successivo: non solo la
+promessa di non attaccare, ma quella di unirsi.
+
+Chiedine una.
+---
+@Signals Officer
+Con un alleato compare una voce in più: §**Chiamata alle armi**§, che li
+trascina in una guerra che stai già combattendo.
+
+Anche a questo possono rifiutarsi. Un alleato che rifiuta due volte è un
+alleato sulla carta, e vale più o meno altrettanto.
+---
+@Signals Officer
+Le due che non hai usato: una §**garanzia**§ è quella sbilanciata: prometti di
+difendere qualcuno che non ti ha promesso niente. I paesi piccoli le
+collezionano; i grandi le distribuiscono per comprarsi quiete.
+
+E il §**commercio**§ è merce contro denaro ogni turno, finché qualcuno non
+disdice. È l'unica voce che arricchisce entrambi, ed è proprio per questo che
+ci si dimentica che esiste.
+---
+@Signals Officer
+Una volta firmato un patto, guarda cosa lascia l'elenco: §**Dichiara guerra
+sparisce**§. Devi prima rompere il patto, in pubblico, dove tutti ti vedono
+farlo.
+
+A questo serve un patto. Non è uno scudo, è un testimone.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+E in §**guerra**§ l'intero elenco si riduce a una voce: §**Chiedi cessate il
+fuoco**§. Torna con delle condizioni: chi si ferma e chi tiene cosa.
+
+Accettano quando stanno perdendo e rifiutano quando no. Nessuna insistenza
+cambia quale delle due sia vera.
+---
+@Signals Officer
+Kestrel è in rosso su questa mappa, ed è l'elenco che ti mostrerebbero loro.
+---
+@Signals Officer
+Questa è la diplomazia. Altro?

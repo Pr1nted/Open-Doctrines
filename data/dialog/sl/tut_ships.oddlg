@@ -1,0 +1,48 @@
+// Prevod - pomorski prehod.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Torej ladje. Prav tu obtiči večina ljudi, in obtiči vsakič na istem mestu:
+vojska stoji na obali in nič se ne zgodi.
+---
+@Signals Officer
+Vojska sama ne prečka vode in ukaza "naloži na tisto ladjo" ni. To stori
+provinca.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Izberite obalno provinco, ki ima §**pristanišče**§ IN §**može v njej**§.
+Vkrcanje premakne posadko, ki je že tam; prazno pristanišče ne vkrca prav
+ničesar, in od tod izvira večina zmede.
+
+Njena plošča ima §**Vkrcaj vojsko**§ - zastonj, ena poteza. Pritisnite in
+končajte potezo.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Možje so zdaj §**čoln**§ ob obali. Pojdite v pogled na §**mornarico**§ - ladje
+ne sprejemajo ukazov iz nobenega od preostalih sedmih.
+
+§{key=ship_move}§ ga premika, §{key=ship_wheel}§ odpre njegove topove,
+§{key=ship_engage}§ mu naroči, naj se spusti v boj.
+---
+@Signals Officer
+Za izkrcanje: izberite čoln, pritisnite §**Premakni**§ in kliknite na
+§**kopno**§.
+
+Voda ga premika. Kopno ga razloži. En sam gumb naredi oboje, in prav zato ljudje
+plujejo sem in tja ter iščejo drugega.
+---
+@Signals Officer
+Dve stvari, ki vam ju nihče ne pove.
+
+Naložen transport je tarča in potone z možmi na krovu. Izkrcanje v branjeno
+provinco pa pride izčrpano: vzemite prazno obalo zraven in pojdite peš, namesto
+da se izkrcate na utrdbi.
+---
+@Signals Officer
+§**Hallow Rock**§ v ožini ni izbirna. Čoln ima doseg in oddaljeni otok je onkraj
+njega - skala je torej prvo izkrcanje, drugi skok pa gre od tam.
+
+To so ladje. Še kaj?

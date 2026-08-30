@@ -1,0 +1,32 @@
+// 翻訳 - 経済。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+経済です。開いてください。このゲームのほかのすべては、これが生むものをどう使う
+かという議論にすぎません。
+---
+@Signals Officer
+§**工業**§はすでに人がいるところで育ちます。空の州に建てた工場は高価な物置です。
+原料は人口であって、建物ではありません。
+---
+@Signals Officer
+収入は一ターンに一度、そのターンに入ります。手持ち以上に約束すれば、不足は礼儀
+正しく待ってはくれません。練度から差し引かれ、それを知るのは戦場です。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+また外へ。今度は州を一つだけ見てみましょう。
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+うちの州をどれか押してください。州ごとに、何を産み何を抱えているかが出ます。
+資源は掘ったままより加工したほうが高く、だから豊かな州の隣にある工業州は、
+それぞれ単独より価値があります。
+---
+@Signals Officer
+そして政策は買い物ではなく§**継続する請求書**§です。動かしている一つひとつが
+毎ターン差し引かれます。まだ何かの役に立っていようがいまいが、永久に。
+
+以上が経済です。ほかには?

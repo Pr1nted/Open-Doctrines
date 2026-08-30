@@ -1,4 +1,5 @@
 #include "ProvinceMap.h"
+#include "util/LoadLog.h"
 #include "../json.hpp"
 #include <fstream>
 #include <iostream>
@@ -20,7 +21,7 @@ bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath
 
     std::ifstream f(jsonPath);
     if (!f.is_open()) {
-        std::cerr << "Could not open " << jsonPath << std::endl;
+        LoadLog() << "Could not open " << jsonPath << std::endl;
         return false;
     }
 
@@ -45,7 +46,7 @@ bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath
             m_provinces[p.id] = p;
         }
     } catch (std::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
+        LoadLog() << "JSON parse error: " << e.what() << std::endl;
         return false;
     }
 
@@ -81,7 +82,7 @@ bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
             m_provinces[p.id] = p;
         }
     } catch (std::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
+        LoadLog() << "JSON parse error: " << e.what() << std::endl;
         return false;
     }
 

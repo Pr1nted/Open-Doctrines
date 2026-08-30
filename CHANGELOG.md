@@ -40,6 +40,22 @@ somebody to re-sign for work they already gave.
 - Fixed: a way out of the multiplayer screen that is not Escape, Research
   greyed for spectators, and loading a scenario no longer asks a phone for
   1.7 GB.
+- **Smaller, byte for byte the same game.** The download is 58 MB where it was
+  62, and an installed copy is 9.2 MB lighter. The trained AI model is nine
+  megabytes of float weights, and a plain deflate pass barely dents them:
+  consecutive weights share a sign and an exponent byte and share nothing at
+  all in the low mantissa — separate the four byte positions into their own
+  streams first and it is 4.0 MB. The worlds, the flags, the app icon and the
+  screenshots were each letting whatever wrote them pick a PNG scanline filter
+  by a rule meant for photographs; flat art wants no filter, and the province
+  layer alone was paying 18% for the wrong guess. The soundtrack, two thirds
+  of the download, gave up 4.3 MB to OptiVorbis once a two-line bug in
+  stb_vorbis was fixed: it read a zero-size allocation as a failed one, and so
+  refused every optimised file. The zip is now built with zopfli, an ordinary
+  zip found by searching harder for it, and the linker drops the code nothing
+  reaches. Every map, every flag, every screenshot and every sample is exactly
+  what it was: the encoders decode what they are about to write and compare it
+  before it replaces anything.
 - Windows builds in about half the time.
 
 Not yet: the dedicated server has no downloads, and long-form turns are built

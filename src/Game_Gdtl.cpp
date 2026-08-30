@@ -549,7 +549,12 @@ bool offerBrowserDownload(const std::string& path, const std::string& suggestedN
         "var b=new Blob([d],{type:'application/zip'});"
         "var u=URL.createObjectURL(b);var a=document.createElement('a');"
         "a.href=u;a.download='" + quote(suggestedName) + "';document.body.appendChild(a);"
-        "a.click();document.body.removeChild(a);URL.revokeObjectURL(u);";
+        "a.click();document.body.removeChild(a);"
+        // Revoked on a timer, not in this tick. The click only schedules the
+        // download; a browser that has not started reading the blob yet loses
+        // it if the URL goes away underneath, and a world is big enough for
+        // that gap to be real.
+        "setTimeout(function(){URL.revokeObjectURL(u);},60000);";
     emscripten_run_script(js.c_str());
     return true;
 #else

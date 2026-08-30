@@ -1,0 +1,36 @@
+// The tail every route ends on: back to the menu, the two things that are not
+// on the map, and Pr1nted signing off.
+//
+// Reached from the beginner lesson (act=then:outro) and from the topic menu's
+// last option, so it is written once rather than pasted into the end of both.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Up here, then. Two things that are not on any map.
+
+§**Saves.**§ A real world writes itself down as you play and waits in there for
+you. Ours did not -- nothing you just did was kept, which is rather the point
+of a practice island.
+---
+@Signals Officer
+:: point=menu.2
+§**Multiplayer.**§ One machine hosts and everyone else joins it. A turn
+resolves when every player has said they are ready, so a game moves at the
+speed of whoever is slowest.
+
+Play with people who answer their messages.
+---
+@Pr1nted
+Still alive? Good. She is thorough, I will give her that.
+
+Anything else you want gone through, or are we done?
+> Go back down and cover something specific -> world:specifics
+> That is everything, thanks
+---
+@Pr1nted
+:: act=end_tutorial
+Right. Go and lose a few, that is how it goes in.
+
+Pr1nted out.

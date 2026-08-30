@@ -27,3 +27,17 @@
  * nothing else.
  */
 bool odEnsureAsset(const std::string& path);
+
+/**
+ * Forget that `path` could not be downloaded, so the next odEnsureAsset() for
+ * it asks the network again instead of answering from the failure cache.
+ *
+ * That cache exists for callers that ask every frame -- the flag renderer will
+ * retry a country whose art will never arrive until the tab is closed -- and it
+ * is exactly wrong for a scenario. A world is fetched because a player pressed
+ * something; if the connection dropped, the player presses it again, and the
+ * honest answer to the second press is a second request rather than the cached
+ * "no" from the first. So the loader clears its own entry when it reports the
+ * failure. Off the web this does nothing.
+ */
+void odForgetAsset(const std::string& path);

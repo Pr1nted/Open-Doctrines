@@ -233,15 +233,70 @@ either — the menus say the build cannot do it, rather than the build failing.
 ./build/OpenDoctrines path/to/save.odsv     # straight into a save
 ```
 
+### Languages
+
+The game ships in fourteen languages. The picker is a flag beside the gear on
+the main menu, and a tab of its own in Settings; both list every language by its
+own name, with the flag, and carry the warning that everything but English was
+machine-translated.
+
+The English text IS the key — `T("New World")` looks itself up and falls back to
+itself — so a missing translation shows English rather than a blank, and the
+English build has no lookup on its path at all. The pieces:
+
+```bash
+python3 tools/i18n_extract.py          # source -> data/lang/en.json
+python3 tools/i18n_extract.py --check  # fail if the two have drifted
+python3 tools/i18n_sync.py             # carry en.json's keys into every language
+python3 tools/i18n_sync.py --report    # how complete each one is
+python3 tools/i18n_wrap.py <files>     # wrap drawn literals in T()
+python3 tools/i18n_put.py de < batch.json
+```
+
+Two things are worth knowing before adding to it. Text is drawn through
+shadowed `DrawText`/`MeasureText` (`src/i18n/Text.h`, the trick `UiScale.h`
+already uses) because raylib's built-in font is ASCII and the game has ~970
+calls against it; pure-ASCII strings still go straight to raylib untouched. And
+the font atlas is rebuilt per language from exactly the glyphs that language
+uses, which is what makes 日本語 cost 982 glyphs rather than a CJK font.
+
+Place names are not translated but transliterated — the names this game
+generates are invented, so "Brelland" becomes Брелланд, ブレルランド or 巴拉-style
+Han by sound. A real place with a real name goes in `data/lang/<code>.names.json`
+instead, which wins over the transliteration.
+
 Non-interactive modes:
 
 ```bash
 OpenDoctrines --simulate data/STDmaps/1939.odmap 40 "My World"
 OpenDoctrines --export-timelapse save.odsv out.gif 960x480 political
 OpenDoctrines --screenshots docs/img save.odsv
+OpenDoctrines --tutorial-walk
 OpenDoctrines --train-ai
 OpenDoctrines --eval-ai
 ```
+
+`--tutorial-walk` plays every route of the tutorial page by page -- the opening
+conversation, the beginner lesson, the topic menu and each of its five topics,
+and the sign-off -- and reports every page that points at an element nothing
+drew, waits on a condition that never comes true, names a speaker who is not in
+the cast, or offers a choice that opens a script which is not there. It exits
+non-zero if it finds any, so a lesson that has drifted away from the interface
+it describes fails a build rather than a player.
+
+It is mostly a deadlock hunt. For every page that waits, it asks whether the
+control that would satisfy the condition can actually be clicked -- the gate
+allows back exactly one rectangle, and if that is not the one with the button
+in it the player can see what to do and cannot do it -- whether the condition
+needs a turn the button is still locked against, and, for the diplomacy pages,
+whether the entry being waited for is one that relationship's panel even
+offers. It ends by proving the way out: Escape to the pause menu from a gated
+page, and "Stop the tutorial" actually stopping it.
+
+Both of these tools reload a world per step and take minutes end to end.
+`OD_WALK_ONLY=name,name` narrows the walk to particular routes, and
+`OD_SHOT_ONLY=name,name` narrows `--screenshots` to particular screens, which
+is what to use while working on one of them.
 
 `--simulate` plays a scenario with every country AI-driven and leaves a save
 with its full turn history — which is where the timelapses above come from. It

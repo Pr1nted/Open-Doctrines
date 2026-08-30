@@ -1,0 +1,40 @@
+// Tłumaczenie - roszczenia i niepokoje.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Roszczenia i niepokoje. Otwórz panel roszczeń. To jeden temat, cokolwiek mówi
+interfejs.
+---
+@Signals Officer
+§**Roszczenie**§ to różnica między wojną, którą świat toleruje, a wojną, która
+jednoczy wszystkich przeciw tobie. Dochodzisz swego, gdy masz roszczenie;
+bierzesz ziemię, do której nigdy nie rościłeś - i sam jesteś krzywdą.
+---
+@Signals Officer
+Zgłoś roszczenie §**przed**§ wojną, nie po. Roszczenie złożone turę po zajęciu
+prowincji nikogo nie zwiedzie i kosztuje tyle samo.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zamknij.
+---
+@Signals Officer
+§**Niepokoje**§ to jest to, co zabieranie ziemi robi z samą ziemią. Podbite
+prowincje mają o to żal, mniejszości jeszcze większy, a pobór i cenzura kupują
+ci siłę teraz w zamian za niepokoje potem.
+---
+@Signals Officer
+Powyżej pewnego progu prowincja przestaje płacić i zaczyna się organizować.
+Powyżej następnego odchodzi - i odchodzi jako §**kraj**§, z twoim przemysłem,
+twoją ludnością i bardzo określonym zdaniem o tobie.
+
+Dostaniesz ostrzeżenie. Drugiego nie zawsze.
+---
+@Signals Officer
+Lekarstwa są niepopularne albo powolne: obsadź ją garnizonem, wydaj na nią
+pieniądze albo daj jej to, czego chce. Wybierz wcześnie, bo wszystkie trzy
+potrzebują tur.
+
+To są niepokoje. Coś jeszcze?

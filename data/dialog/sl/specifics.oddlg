@@ -1,0 +1,14 @@
+// Prevod - meni tem.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Prav, obris poznate. Kaj torej v resnici želite?
+
+Izberite eno in jo bom predelala kot je treba. Vprašajte znova, ko končamo.
+> Ladje, pristanišča in kako spraviti vojsko čez vodo -> script:tut_ships
+> Raziskave in zakaj se nič začetega ne konča -> script:tut_research
+> Gospodarstvo, industrija in od kod prihaja denar -> script:tut_economy
+> Zahtevki, nemiri in izguba provinc lastnim ljudem -> script:tut_unrest
+> Zavezništva, premirja in preostanek diplomacije -> script:tut_diplomacy
+> Nič drugega, končal sem -> script:outro

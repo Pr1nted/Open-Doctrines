@@ -1,0 +1,97 @@
+// Vertaling - diplomasie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomasie. Dit woon alles in een lys, en die lys behoort aan 'n §**land**§ - jy
+kom dus daarby uit deur op iemand se grond te klik.
+
+Ek wag by elke stap. Niks hier is vinnig nie.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Eers die §**verhoudinge**§-aansig. Dit verf die kaart volgens wie met wie oorlog
+maak, wie verbonde is en wie vir wie gewaarborg het.
+---
+@Signals Officer
+Kyk daarna voordat jy iets begin. Die helfte van die oorloë wat hier verloor word,
+was teen drie lande eerder as een - en al drie was op hierdie kaart voor die eerste
+skoot.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Klik nou 'n provinsie wat aan §**Verrick**§ behoort, oorkant die water.
+
+Nie Kestrel nie: met hulle is ons reeds in oorlog, en 'n land waarmee jy in oorlog
+is, bied presies een ding. Ons kom daarby uit - en totdat jy iemand kies met wie
+ons in vrede is, sal hierdie bladsy eenvoudig aanhou wag.
+---
+@Signals Officer
+Hulle paneel het 'n lys gekry. Wat daarin is, hang heeltemal af van wat julle reeds
+vir mekaar is: jy kies nooit uit elke opsie nie, net uit dié wat julle huidige
+verhouding toelaat.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Die saagste daarin is 'n §**nie-aanvalsverdrag**§: die belofte om nie aan te val
+nie, en niks meer nie.
+
+Vra daarvoor. Dit kos niks om te vra nie.
+---
+@Signals Officer
+Ingedien - en kyk nou na die lys. §**Alles anders het grys geword**§, en die
+inskrywing wat jy pas gebruik het, het in §**Kanselleer**§ verander.
+
+Een versoek op 'n slag aan een land. Dit is nie 'n fout waarop jy afgekom het nie,
+dit is die reël: hulle antwoord op die laaste ding wat jy gesê het, en tot dan is
+jou enigste skuif om dit terug te trek.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Beëindig dus die beurt. Die versoek gaan uit, hulle antwoord, en die lys kom terug.
+
+Hulle mag weier. Dis hulle saak en nie 'n fout by jou nie.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Verrick weer. 'n §**Bondgenootskap**§ is die volgende trap - nie bloot die belofte
+om nie aan te val nie, maar die belofte om saam te veg.
+
+Vra vir een.
+---
+@Signals Officer
+Met 'n bondgenoot verskyn nog een inskrywing: §**Roep tot die wapen**§, wat hulle
+in 'n oorlog sleep wat jy reeds voer.
+
+Hulle kan dit ook weier. 'n Bondgenoot wat twee keer weier, is 'n bondgenoot op
+papier, en omtrent soveel werd.
+---
+@Signals Officer
+Die twee wat jy nie gebruik het nie: 'n §**waarborg**§ is die eensydige een - jy
+belowe om iemand te verdedig wat jou niks belowe het nie. Klein lande versamel
+hulle; groot lande deel hulle uit om stilte te koop.
+
+En §**handel**§ is goedere vir geld elke beurt, tot iemand kanselleer. Dit is die
+enigste inskrywing wat julle albei ryker maak, en juis daarom vergeet mens dat dit
+daar is.
+---
+@Signals Officer
+Sodra 'n verdrag geteken is, kyk wat die lys verlaat: §**Verklaar oorlog
+verdwyn**§. Jy moet eers die verdrag verbreek, in die openbaar, waar almal jou dit
+sien doen.
+
+Daarvoor is 'n verdrag. Dit is nie 'n skild nie, dit is 'n getuie.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+En in §**oorlog**§ vou die hele lys inmekaar tot een inskrywing: §**Versoek
+skietstaking**§. Dit kom terug met voorwaardes: wie ophou, en wie wat hou.
+
+Hulle aanvaar wanneer hulle verloor en weier wanneer nie. Geen hoeveelheid vra
+verander watter van die twee waar is nie.
+---
+@Signals Officer
+Kestrel is rooi op hierdie kaart, en dit is die lys wat hulle jou sou wys.
+---
+@Signals Officer
+Dit is diplomasie. Iets anders?

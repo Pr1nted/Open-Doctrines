@@ -1,0 +1,32 @@
+// Traduction - la fin commune à tous les parcours.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+En haut, donc. Deux choses qui ne figurent sur aucune carte.
+
+§**Les sauvegardes.**§ Un vrai monde s'écrit tout seul pendant que vous jouez
+et vous y attend. Le nôtre non : rien de ce que vous venez de faire n'a été
+conservé, ce qui est précisément l'intérêt d'une île d'entraînement.
+---
+@Signals Officer
+:: point=menu.2
+§**Le multijoueur.**§ Une machine héberge et les autres la rejoignent. Un tour
+se résout quand tous les joueurs se sont déclarés prêts, donc la partie avance
+au rythme du plus lent.
+
+Jouez avec des gens qui répondent à leurs messages.
+---
+@Pr1nted
+Toujours vivant ? Bien. Elle est méthodique, je lui accorde ça.
+
+Vous voulez qu'on revoie autre chose, ou c'est bon ?
+> Redescendre et traiter un point précis -> world:specifics
+> C'est tout, merci
+---
+@Pr1nted
+:: act=end_tutorial
+Très bien. Allez en perdre quelques-unes, c'est comme ça que ça rentre.
+
+Pr1nted, terminé.

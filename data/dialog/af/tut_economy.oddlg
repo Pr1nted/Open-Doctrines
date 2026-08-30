@@ -1,0 +1,33 @@
+// Vertaling - die ekonomie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Die ekonomie - maak dit oop. Alles anders in hierdie spel is 'n argument oor hoe
+om te bestee wat dit voortbring.
+---
+@Signals Officer
+§**Nywerheid**§ groei waar mense reeds is. 'n Fabriek in 'n leë provinsie is 'n
+duur skuur: die grondstof is die bevolking, nie die gebou nie.
+---
+@Signals Officer
+Inkomste kom een keer per beurt, in die beurt. Verbind jou tot meer as wat jy het
+en die tekort wag nie beleefd nie: dit kom uit gereedheid, en jy hoor daarvan in
+'n geveg.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Weer uit, en kom ons kyk eerder na 'n enkele provinsie.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klik een van ons s'n. Per provinsie wys die paneel wat dit voortbring en wat dit
+hou. Hulpbronne is meer werd verwerk as uitgegrawe, so 'n nywerheidsprovinsie
+langs 'n ryk een is meer werd as enigeen op sy eie.
+---
+@Signals Officer
+En beleide is 'n §**staande rekening**§, nie 'n aankoop nie. Elkeen wat jy voer
+word elke beurt afgetrek, vir altyd, of dit nog iets doen of nie.
+
+Dit is die ekonomie. Iets anders?

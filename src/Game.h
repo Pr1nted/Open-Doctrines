@@ -1,9 +1,17 @@
 #pragma once
 #include "GameStructs.h"
+#include "util/LoadLog.h"
+#include "comms/Transmission.h"
+#include "dialog/DialogBox.h"
 #include "server/ServerRuntime.h"
 #include "Gamepad.h"
 #include "Touch.h"
 #include "UiScale.h"
+// The interface in another language, and the two raylib calls that draw it.
+// After UiScale.h and before anything that draws: both headers shadow raylib
+// functions and the order they do it in is the order they are applied.
+#include "i18n/Locale.h"
+#include "i18n/Text.h"
 #include "map/LandSeaMap.h"
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
@@ -17,6 +25,7 @@
 #include "MapEditor.h"
 #include "raymath.h"
 #include <deque>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -121,6 +130,12 @@ public:
      */
     friend struct OrderValidationTest;
 
+    /**
+     * The doctrine-rules test. A friend only so it can stand a world up: the
+     * rules it checks are public, but loading a map without a window is not.
+     */
+    friend struct PolicyRules;
+
     Game();
     ~Game();
 
@@ -130,6 +145,32 @@ public:
 
     // Public wrapper for loading a save file from command line
     void loadSaveAndStart(const std::string& savePath);
+
+    /**
+     * Straight into the tutorial, as the menu's "?" button does it.
+     *
+     * Public because the command line is the other way in: --tutorial. The
+     * button is otherwise the only caller, which makes the one thing worth
+     * checking -- that a tutorial world leaves no save behind -- reachable
+     * only by hand.
+     */
+    void startTutorial();
+
+    /**
+     * Offer a piece of the interface as something the tutorial may point at.
+     *
+     * Called by whatever draws the element, every frame, with the rectangle
+     * it just used. The register is cleared each frame for the same reason it
+     * is filled there: the only code that knows where a button ended up is
+     * the code that put it there, and a cached rectangle is a rectangle that
+     * is wrong the first time the window is resized.
+     *
+     * Names are what scripts write, so they are part of the data format:
+     * "tab.economy", "button.end_turn". Renaming one silently breaks a
+     * script, so unresolved names are reported rather than ignored -- see
+     * drawTutorialPointer.
+     */
+    void offerUiTarget(const std::string& name, Rectangle r);
 
     /**
      * Cap this run at `budget` (0..1) of the machine, without persisting it.
@@ -289,6 +330,35 @@ public:
                          const std::string& opponentModel = std::string(),
                          bool scenarios = false);
 
+    /**
+     * The seat to play for an absolute benchmark run, as "map:ISO" -- e.g.
+     * "1939:USA". See m_benchSeatIso.
+     */
+    /**
+     * Start a PERSON on a benchmark seat: same map, same country and the same
+     * frozen scripted opposition the model faces. See startBenchSeat.
+     */
+    void startBenchSeat(const std::string& spec, int untilTurn);
+
+    /**
+     * Play a benchmark seat BY HAND, one turn per call. See the definition.
+     *
+     * Stateless on purpose: it loads the save, applies the choices, resolves a
+     * turn and exits, so a caller with no session of its own can play a whole
+     * seat by invoking it repeatedly. `doList` is "e:1,w:2" -- module letter,
+     * action index, from the menu the previous call printed.
+     */
+    bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
+                       unsigned int seed, int untilTurn);
+    /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
+    void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
+    void setBenchSeat(const std::string& spec) {
+        const size_t colon = spec.find(':');
+        if (colon == std::string::npos) { m_benchSeatIso = spec; return; }
+        m_benchSeatMap = spec.substr(0, colon);
+        m_benchSeatIso = spec.substr(colon + 1);
+    }
+
     // Unattended self-play on a REAL scenario (`--simulate`). Loads a shipped
     // .odmap through the ordinary menu pipeline, creates the .odsv the menu
     // would have created, plays `turns` turns with every country AI-driven,
@@ -300,6 +370,9 @@ public:
     // test needs one command that proves a build can load a map, resolve turns
     // and write a save without a human driving it. Training cannot serve
     // either -- it generates its own maps and deliberately never writes a save.
+    /// Measure a batch of strings per language; see --measure-text.
+    bool measureTextJobs(const std::string& inPath, const std::string& outPath);
+
     bool runHeadlessSimulation(const std::string& mapPath, int turns,
                                const std::string& worldName);
 
@@ -313,10 +386,43 @@ public:
     // still be the game.
     void beginScreenshotTour(const std::string& outDir, const std::string& savePath);
 
+    /**
+     * --tutorial-walk: play every route of the tutorial, page by page, and
+     * report every page that points at nothing, waits on a condition that
+     * never comes true, or offers a choice that opens a script which is not
+     * there. See Game_TutorialWalk.cpp. Needs a window: the pointer check asks
+     * whether the game DREW the thing, which only a real frame can answer.
+     */
+    void beginTutorialWalk();
+    /// How many problems the walk found. Non-zero fails the run.
+    int tutorialWalkProblems() const { return (int)m_walkProblems.size(); }
+
 private:
     // Advances the tour by one frame. Returns false when there is nothing left
     // to shoot, which is the signal for run() to exit.
     bool tickScreenshotTour();
+    void applyLanguageForShot(const char* code);
+    /// Advances the walk by one frame. False when every route has been walked.
+    bool tickTutorialWalk();
+    /// Drives the game into the state a page's `until=` is waiting for.
+    void walkSatisfy(const std::string& cond);
+    void walkTakeProvince(int pid);
+    void walkSelect(int pid);
+    int  walkProvinceOf(const std::string& iso) const;
+    std::string walkDiploTarget() const;
+    bool walkAtWarWith(const std::string& iso) const;
+    void walkProblem(const std::string& what);
+    /// Acts on a choice the moment it is made. See Game_Comms.cpp.
+    bool consumePickedChoice();
+    void walkPointerVerdict();
+    void walkCheckPage(const dlg::Page& page);
+    void walkCheckReachable(const dlg::Page& page);
+    /// Every option on every menu, taken for real. False when it is finished.
+    bool tickBranchDrill();
+    /// The last-resort exit, exercised end to end. False when it is finished.
+    bool tickEscapeDrill();
+    void walkDismissPopup();
+    bool walkScriptExists(const std::string& name) const;
     enum ScreenState {
         SCREEN_SPLASH,         // startup "Pr1nted presents" fade, shown before the main menu
         SCREEN_MENU,
@@ -390,7 +496,7 @@ private:
      * flickered, and they were back where they started. That is reported as
      * "scenarios do not load", and it is indistinguishable from a broken
      * scenario list, a corrupt download or a missing data folder -- which need
-     * completely different fixes. The reasons were written to std::cerr, which
+     * completely different fixes. The reasons were written to LoadLog(), which
      * on a Windows GUI build goes nowhere at all.
      *
      * Cleared when a load starts, drawn on the menu while it is set.
@@ -1342,6 +1448,7 @@ public:
     int m_screenW = 1600;
     int m_screenH = 900;
     float m_dpiScale = 1.0f;
+    float m_uiScaleBase = 1.0f;         // what the PLATFORM insists on, before the player's factor
     bool m_running = false;
     std::string m_dataDir;
 
@@ -1598,9 +1705,328 @@ public:
     Font m_gameFont{};        // Fallback font for non-ASCII characters (Unifont)
     Font m_defaultFont{};     // Cached default raylib font
 
+    // ── the communication window ──
+    // A speaker over a video link, coloured entirely from the player's accent
+    // (see src/comms/Transmission.h). Opened lazily on first use: it needs a
+    // GL context for its buffer and its filter, so it cannot be built in the
+    // constructor. update() renders into its own target and therefore runs in
+    // Game::update(), never inside a BeginDrawing block.
+    /**
+     * The link holds TWO people, not one.
+     *
+     * A conversation between Pr1nted and Mia was one window swapping between
+     * them, which reads as two separate calls rather than as the two of them
+     * talking to each other -- and the player loses track of who just said
+     * what. Both stay on screen; whoever is speaking is lit, the other sits
+     * there listening on a quieter signal.
+     *
+     * A speaker takes a free slot, keeps it while they are in the
+     * conversation, and gives it up on act=tune_out. One speaker uses one
+     * slot and looks exactly as it did before.
+     */
+    comms::Transmission m_comms;
+    comms::Transmission m_comms2;
+    std::string m_commsSlot[2];      ///< who is in each slot, empty if free
+    int m_commsActive = 0;           ///< the slot that is talking
+    /// Where each window is actually drawn, eased toward commsBounds(slot).
+    Rectangle m_commsRect[2]{};
+    bool m_commsRectOn[2]{false, false};
+    comms::Transmission& commsAt(int slot) { return slot ? m_comms2 : m_comms; }
+    const comms::Transmission& commsAt(int slot) const { return slot ? m_comms2 : m_comms; }
+    /// Where slot `i` is drawn. One on the link gets the whole stage; two
+    /// share it side by side.
+    Rectangle commsBounds(int slot) const;
+    int commsSlots() const;          ///< how many are on the link right now
+    void commsHangUp();              ///< the speaker leaves; the listener stays
+    bool m_commsOpen = false;
+    bool m_commsBuilt = false;
+    void toggleComms();
+    Rectangle commsBounds() const;
+    void updateComms(float dt);
+    void drawComms();
+
+    // ── the tutorial ──
+    // A scripted conversation: the words in the textbox, the speaker in the
+    // communication window. `m_tutorialPending` is set by the menu and read
+    // once the world it asked for is actually on screen -- the same shape as
+    // m_quickStartPending, because it rides on the same loader.
+    dlg::Box m_dialog;
+    bool m_dialogOpen = false;
+    bool m_tutorialPending = false;
+
+    /**
+     * The tutorial's world is not the player's.
+     *
+     * It exists to be practised on and thrown away, so it must never appear
+     * in Load World and must never be written to disk. That is one flag and
+     * two consequences: no save file is created at load, and trySaveGame
+     * refuses rather than quietly writing an "AutoSave" the player did not
+     * ask for and will not recognise a week later.
+     */
+    bool m_tutorialMode = false;
+    /// The opening conversation is running on the menu; the world loads when
+    /// it ends. Separate from m_tutorialPending, which arms the LESSON.
+    bool m_introRunning = false;
+    /// Where the "Stop the tutorial" button was drawn, so the click handler
+    /// can find it. Zeroed on any frame that does not draw it.
+    Rectangle m_tutorialStopRect{0, 0, 0, 0};
+    void stopTutorial();
+    /// What the player picked in the intro ("basics" / "specifics"), kept so
+    /// the lesson can open differently for someone who said they know this.
+    std::string m_tutorialTrack;
+    /**
+     * A script to open when the current one ends.
+     *
+     * How the specialised tutorials come back. Each topic is its own .oddlg
+     * -- there is no jump instruction in the format, and adding one to give
+     * four topics a menu would be a branch table nobody else needs -- so a
+     * topic simply runs to its end and this brings the menu back up.
+     */
+    std::string m_dialogReturnTo;
+    std::string m_dialogScript;   ///< the .oddlg currently open, by name
+    void startTutorialWorld();
+    /**
+     * The country Quick Start must hand the player, by ISO code.
+     *
+     * The tutorial names its country in the script -- Ashford, repeatedly --
+     * so it cannot let a heuristic choose. pickQuickStartCountry falls back to
+     * "largest by province count" on an unknown map, and the moment the map
+     * was rebuilt with Verrick holding more ground than Ashford, the tutorial
+     * put the player in charge of the country the lesson tells them to invade.
+     *
+     * Empty for an ordinary Quick Start, which should keep choosing.
+     */
+    std::string m_forcedStartIso;
+
+    // Where each named piece of the interface was drawn, and on which frame.
+    //
+    // Stamped rather than cleared: offerUiTarget is called from drawing code,
+    // so a "clear at the start of the frame" has to sit at exactly the right
+    // point in the draw order and quietly breaks when a panel moves. Entries
+    // simply go stale, and a panel that stopped drawing itself stops being
+    // pointable a frame later without anybody having to remember to say so.
+    struct UiTarget { Rectangle rect; uint64_t frame; };
+    std::unordered_map<std::string, UiTarget> m_uiTargets;
+    uint64_t m_uiFrame = 0;
+    /// Names a script asked for that nothing offered, warned about once each.
+    std::set<std::string> m_uiTargetsMissing;
+    float m_pointerT = 0.0f;      ///< the pointer's own animation clock
+
+    /// The element the current page points at, if the game drew it this frame.
+    bool tutorialFocus(Rectangle& out, bool& round) const;
+    void drawTutorialPointer();
+    /**
+     * True when the tutorial is holding the player's hands.
+     *
+     * While a gated page is up, every click outside the ring and outside the
+     * textbox is swallowed. A tutorial that says "press End Turn" and then
+     * lets the player press anything at all spends most of its life
+     * recovering from wherever they went instead.
+     */
+    bool tutorialBlocksInput(Vector2 mouse) const;
+    /// True while a gated page is up at all, regardless of where the mouse is.
+    bool tutorialGateActive() const;
+    /**
+     * May the player end the turn right now?
+     *
+     * False while a gated page is up that is not pointing at the button. Half
+     * the lesson is "give the orders, THEN end the turn", and a player who
+     * ends it early resolves a turn the script has not described yet -- the
+     * armies move, the AI answers, and Mia is still explaining what a
+     * province is.
+     */
+    bool tutorialAllowsEndTurn() const;
+    /**
+     * Does the gate hold the MAP still, as well as the interface?
+     *
+     * Not always. Some pages point at the province panel -- recruiting,
+     * declaring war -- and that panel is empty until the player clicks a
+     * province. Freezing the map for those makes the page impossible to
+     * satisfy: it says "select one of ours" and then refuses the click.
+     */
+    bool tutorialGateHoldsMap() const;
+    /**
+     * Has the lesson introduced the Process Turn button yet?
+     *
+     * Until it has, the button is dead and drawn dead. A turn resolved before
+     * the tutorial has explained what a turn IS moves every army, answers
+     * with the AI and changes the board underneath a script that is still on
+     * "this is a province" -- and the player has no way of knowing they did
+     * anything wrong.
+     *
+     * Set by act=unlock_turn, and immediately for someone who told Pr1nted
+     * they already know the basics: they never see the page that unlocks it,
+     * and locking them out of the game would be an odd reward for saying so.
+     */
+    bool m_tutorialTurnUnlocked = false;
+    /// Answer a page's `until`. Unknown conditions are reported and treated
+    /// as already met, so a typo stalls the tutorial visibly once rather than
+    /// wedging the player on a page forever.
+    bool tutorialConditionMet(const std::string& cond);
+    /// Perform a page's `act`, once, when the page arrives.
+    void tutorialAct(const std::string& act);
+    int  m_dialogPageTurn = 0;    ///< the turn the current page arrived on
+    int  m_dialogPage = -1;
+    void beginDialogue(const std::string& script);
+    void endDialogue();
+    void updateDialogue(float dt);
+    void drawDialogue();
+    Rectangle dialogueBounds() const;
+    void commsSpeaker(const std::string& speaker);
+    /// What the speaker feels on this page: from its pose if it names one,
+    /// otherwise read off the line itself.
+    float emotionFor(const dlg::Page& page) const;
+    // The cast: speaker name -> how they look. Read once from
+    // data/comms/cast.json, so adding a character is a data change.
+    void loadCommsCast();
+    std::map<std::string, comms::Profile> m_cast;
+    std::map<std::string, std::string> m_castVoice;   // speaker -> sfx name
+    // How the plate reads: name, role, short tag. Keyed by the script's
+    // formal name, which is an id and does not move.
+    struct CastLabel { std::string display, role, tag; };
+    std::map<std::string, CastLabel> m_castLabel;
+    bool m_castLoaded = false;
+
+    // The speaker's blip while the typewriter runs. Rate limited: one per
+    // couple of letters, or a line of dialogue becomes a buzz.
+    std::string m_speakerVoice = "narrator";
+    float m_voiceCooldown = 0.0f;
+    int   m_voiceLetters = 0;
+    int   m_lastRevealed = 0;
+    // What the window is currently showing, so the link only drops out when
+    // one of them actually changes.
+    std::string m_commsShowing;
+    std::string m_commsPose;
+
     // Draw text with per-character font selection:
     // default raylib font for ASCII (32-126), m_gameFont for non-ASCII
     void drawHybridText(int x, int y, int fontSize, const char* text, Color color);
+    /// Switch language, rebuild the atlas and remember the choice.
+    bool applyLanguage(const std::string& code);
+
+    // ─── The language picker (Game_Language.cpp) ───
+    /// The national flag beside a language, rendered once and kept.
+    Texture2D languageFlag(const char* iso);
+    void unloadLanguageFlags();
+    Rectangle languagePickerBounds() const;
+    /// The picker's Back button; touch devices have no Escape key.
+    Rectangle languageBackButton() const;
+    Rectangle settingsLanguageArea() const;
+    /// The list itself, drawn into whatever area the caller owns.
+    void drawLanguageList(Rectangle area, bool withHeading);
+    bool updateLanguageList(Rectangle area, bool withHeading);
+    void drawLanguageDisclaimer(Rectangle area);
+    /// The main menu's modal version of the same list.
+    void drawLanguagePicker();
+    void updateLanguagePicker();
+    std::unordered_map<std::string, Texture2D> m_langFlags;
+    bool m_languageOpen = false;   ///< the menu overlay is up
+    /// Rebuild the text atlas for the active language. See Game.cpp.
+    void reloadFonts();
+
+    /// Push m_config.uiScale into odUi and re-read the logical canvas.
+    ///
+    /// The player's factor MULTIPLIES the platform's own minimum rather than
+    /// replacing it, so a phone that needs 1.2x to be legible still gets it.
+    /// m_screenW/H come from the SHADOWED GetScreenWidth, which reports the
+    /// logical size, so they have to be re-read after the scale moves or every
+    /// panel lays itself out against the old canvas.
+    void applyUiScale();
+
+    /// Build the resource / claims overlay the first time one is actually
+    /// wanted. Each is a map-sized buffer and a map-sized texture -- 256 MB
+    /// the pair at 8192x4096 -- and neither is needed until its view is
+    /// opened. Building them during the load is what put an iPhone over its
+    /// budget. Cheap and idempotent once built.
+    void ensureResourceTexture();
+    void ensureClaimsTexture();
+    void ensurePopulationTexture();
+    void ensureProvincePixels();
+
+    /// The canvas is too narrow to spell things out.
+    ///
+    /// A phone held upright reports about 400 logical points across. The HUD
+    /// was laid out against 1600: eight view tabs with words under them, a
+    /// 360-point country panel and a 100-point sidebar, which on 400 points
+    /// leaves the panel running underneath the sidebar and the tab labels
+    /// smeared into one another. Below this width the same controls are drawn
+    /// as icons alone and the panel is clamped, which is the difference
+    /// between cramped and unusable. 700 is where the eight labels stop
+    /// fitting; there is nothing else magic about it.
+    bool compactHud() const { return m_screenW < 700; }
+
+    /// How tall the row of view tabs along the bottom is.
+    ///
+    /// Seven places worked this out for themselves and all seven wrote 80.
+    /// The moment the bar became shorter on a narrow screen, the date, the
+    /// Process Turn button and two panel heights were all still reserving
+    /// space for the old one -- so the button sat on top of the tabs it was
+    /// supposed to sit above. One number, read by everyone who needs it.
+    int bottomBarH() const { return compactHud() ? 44 : 80; }
+
+    /// The top of the bottom-left stub row -- Process Turn, or Ready in a
+    /// network game. The left-hand panels have to stop above it.
+    ///
+    /// They did not, and the arithmetic guaranteed it. drawCountryPanel() ran
+    /// to m_screenH - bottomBarH() - 16; this row's bottom is
+    /// m_screenH - bottomBarH() - 22. So on any window short enough that the
+    /// panel was not capped at its 700 maximum, the panel covered the button
+    /// entirely -- and not merely drew over it, because the panel hands its
+    /// rect to the renderer as a hit-test region, so the clicks went to the
+    /// panel and the button did nothing.
+    ///
+    /// A desktop window is tall enough for the 700 cap to hide it. A phone
+    /// never is: 699 points tall, so the panel ran to the bottom every game.
+    int bottomLeftStubTop() const {
+        return m_screenH - bottomBarH() - 16 - 36 - 6;
+    }
+
+    /// Whether that row is on screen at all. The panels reserve space for it
+    /// only when it is, so a screen without it keeps the height it had.
+    bool bottomLeftStubVisible() const {
+        return (!m_mapDate.empty() || m_playerCountryId == SPC_CID) &&
+               m_turnState == TURN_NORMAL;
+    }
+
+    /// How far down a left-hand panel may run, given all of the above.
+    int leftPanelBottom() const {
+        const int barLimit = m_screenH - bottomBarH() - 16;
+        return bottomLeftStubVisible() ? std::min(barLimit, bottomLeftStubTop() - 8)
+                                       : barLimit;
+    }
+
+    /// Why the control under the cursor is not going to do anything.
+    ///
+    /// A greyed button that gives no reason makes the player think the game is
+    /// broken. The diplomacy panel disables EVERY act the moment one request
+    /// is pending, and the only explanation anywhere was a page in the
+    /// tutorial -- "one request at a time to one country, that is not a bug
+    /// you stepped on, it is a rule" -- which a player who skipped the
+    /// tutorial never sees, and one who did has long forgotten.
+    ///
+    /// Set during the frame by whatever the cursor is over; drawn last so it
+    /// sits above the panels, and cleared as it is drawn.
+    std::string m_uiHint;
+    void drawUiHint();
+
+    // ─── FIND A COUNTRY ───────────────────────────────────────────────────
+    //
+    // Two hundred and fifty-two countries on a world map and no way to reach
+    // one except by recognising its shape and panning to it. The doctrine and
+    // keybind screens already have search boxes; the map, which needs it most,
+    // had none.
+    //
+    // Ctrl+F or "/" rather than a rebindable action: the keybind rows are
+    // addressed by index in several tables and a new action moves all of them.
+    // Worth revisiting when that table is reworked.
+    bool m_findOpen = false;
+    std::string m_findQuery;
+    int m_findIndex = 0;                  // which match is highlighted
+    std::vector<int> m_findMatches;       // country ids, best first
+    void updateCountryFinder();
+    void drawCountryFinder();
+    void rebuildFindMatches();
+    int  largestProvinceOf(int countryId) const;
     static float glyphAdvance(Font font, int glyphIndex, int fontSize);
     Texture2D m_iconPopulation{};
     Texture2D m_iconIndustry{};
@@ -1677,6 +2103,19 @@ public:
     std::unordered_map<int, std::vector<CountryIncomeSnapshot>> m_incomeHistory;
     std::string m_mapDate;
     std::unordered_map<int, long long> m_provincePopulations;
+    /**
+     * Men a province can still be asked for: its population less whatever is
+     * already on order there.
+     *
+     * Recruiting DEDUCTS population when the order resolves, so a province is
+     * a finite pool that refills only through the population growth on ethnic
+     * policy options (see popGrowthPerTurn). The subtraction of pending orders
+     * is what stops one turn's worth of decisions from spending the same
+     * people several times over -- with the per-module action cap lifted, a
+     * country could otherwise place eight orders in a turn against a pool that
+     * none of them had reduced yet, and raise 160% of a province.
+     */
+    long long availableManpower(int provinceId) const;
     std::unordered_map<int, Vector2> m_provinceCompass;
     std::unordered_map<int, std::vector<MinorityGroup>> m_provinceMinorities;
     std::unordered_map<std::string, Color> m_minorityColors;
@@ -1733,7 +2172,15 @@ public:
     std::unordered_map<int, int> m_conqueredProvincePrevOwner; // previous owner of conquered province (for ongoing war debuff)
     std::vector<long long> m_provincePopArray;
     // Per-pixel lookups for fast population texture updates
-    std::vector<int> m_pixelCountryArray;
+    // uint16, NOT int. One entry per map pixel -- 33.6 million of them at
+    // 8192x4096 -- so the width of this is 128 MB against 64 MB. Country ids
+    // are bounded by BLC_CID = 65535, which is exactly the top of the range,
+    // and REBEL_CID_MIN is 60000, so every id a pixel can hold fits.
+    //
+    // Callers still read it into int and compare against int; the only place
+    // the narrowing matters is the write, and every writer is assigning an id
+    // that came from the same bounded set.
+    std::vector<uint16_t> m_pixelCountryArray;
     std::vector<std::vector<int>> m_countryPixels;
     std::unordered_map<int, std::vector<int>> m_provincePixels;
     std::vector<Color> m_populationPixelBuffer;
@@ -1767,6 +2214,23 @@ public:
     // Naval routing diagnostics: how many ship moves were stopped by land
     // before covering any meaningful distance. See processNavyMovement.
     long long m_navMoves = 0, m_navBlocked = 0;
+    // OF THE BLOCKED ONES, HOW MANY WERE ORDERED ONTO DRY LAND IN THE FIRST
+    // PLACE. "Stopped dead by land" has two quite different causes -- a route
+    // that had to round a headland and could not, and a destination that was
+    // never at sea -- and only the second is the order's fault. The AI aims at
+    // enemy PORT PROVINCE CENTRES, which are land pixels, so this separates
+    // "the router is weak" from "the target was never reachable by anything".
+    long long m_navDestOnLand = 0;
+    // ...and how many were at sea but not in THIS ship's sea. The third case
+    // is the honest one: water, same body, and the straight line between still
+    // clips a headland, which is the router's job rather than the order's.
+    long long m_navDestOtherSea = 0;
+    // Landing orders the resolver threw away because the hull was not close
+    // enough to the province CENTRE. The AI's own landing test measures to the
+    // water beside the harbour, so the two can disagree about the same hull --
+    // and when they do, an invasion that the AI believes it launched simply
+    // never happens. Counted so the amphibious funnel has the missing stage.
+    long long m_navLandingsOutOfRange = 0;
     long long m_navEngagements = 0, m_navSinkings = 0;
     long long m_navTransportsSunk = 0, m_navCrewDrowned = 0;
     void generateRelationsTexture(int countryId, int prevCountryId);
@@ -1876,6 +2340,16 @@ public:
     int m_selectedPolicyIdx = -1;
     int m_policiesEnactedThisTurn = 0;
     std::unordered_set<std::string> m_openFolders; // expanded folder names in Available tab
+    /**
+     * The doctrine search box: what has been typed, and whether it has focus.
+     *
+     * Forty-five doctrines in five collapsible folders is more than a player
+     * will scroll through to find the one they half-remember the name of.
+     * Matching runs over the name, the description and the folder, so "upkeep"
+     * finds the doctrines that touch it even though none is called that.
+     */
+    std::string m_policySearch;
+    bool m_policySearchFocus = false;
     int m_analysisHotspotScroll = 0;
     int m_analysisMinorityScroll = 0;
     int m_analysisHotspotCount = 0;
@@ -1922,6 +2396,11 @@ public:
      * every refusal, including the many that were really about the treasury.
      */
     std::string policyBlockReason(int countryId, const Policy& p) const;
+    /// True when either doctrine names the other. Incompatibility is a property
+    /// of the pair, so declaring it on one side is enough; see the definition.
+    bool policiesConflict(const std::string& a, const std::string& b) const;
+    /// Display names of every doctrine that conflicts with @p p, both directions.
+    std::vector<std::string> conflictingPolicyNames(const Policy& p) const;
     void enactPolicy(int countryId, const std::string& policyId, int targetProvince = -1, const std::string& targetMinority = "");
     void cancelPolicy(int activePolicyIndex);
     void applyPolicyEffects(int countryId);
@@ -2145,11 +2624,42 @@ private:
 
     // ─── Screenshot tour state (--screenshots) ───
     bool m_shotTour = false;
+    // Token from the startup integrity seal; see odseal / Game::init.
+    unsigned long long m_localeSeal = 0;
     std::string m_shotDir;               // where the PNGs land
     std::string m_shotSave;              // save loaded for the in-game shots
+    std::string m_shotBaseLang;          // the language the tour runs in
     int m_shotIndex = 0;                 // which shot in the list
     int m_shotFrame = 0;                 // frames spent settling on it
     int m_shotProvince = 0;              // the province the panel shots describe
+    int m_shotForeignProvince = 0;       // one somebody else owns, for the diplomacy shots
+
+    // ─── Tutorial route walk state (--tutorial-walk) ───
+    bool m_walk = false;
+    int  m_walkRoute = 0;                // which route in the list
+    bool m_walkOpened = false;           // its script is open and being walked
+    int  m_walkPage = -1;                // page being walked, -1 between routes
+    int  m_walkFrames = 0;               // frames spent on it
+    bool m_walkSatisfied = false;        // its condition has been driven once
+    bool m_walkPointerSeen = false;      // the thing it points at was drawn
+    std::string m_walkPointerName;       // ...which thing, for the report
+    bool m_walkPointerTrap = false;      // ...on a page that also gates and waits
+    bool m_walkJumped = false;           // a choice sent us to another script
+    std::string m_walkExpect;            // ...and this is the one it named
+    bool m_walkMapDirty = false;         // ownership moved; the picture is stale
+    int  m_walkPages = 0;
+    int  m_walkDrill = 0;                // phase of the escape-hatch drill
+    struct BranchCase { int route; int page; int option; };
+    std::vector<BranchCase> m_walkBranches;
+    int  m_walkBranch = 0;
+    int  m_walkBranchPhase = 0;
+    std::string m_walkBranchKey, m_walkBranchLabel, m_walkBranchFrom, m_walkBranchExpect;
+    std::string m_walkBranchNote;        // one log line per case, built as it goes
+    bool m_walkBranchEnds = false;       // the opened script signs off rather than returning
+    std::vector<std::string> m_walkProblems;
+    /// One synthetic click, consumed by updateDialogue. The walk turns pages
+    /// with this because raylib has no way to inject a real one.
+    bool m_dialogAdvance = false;
 
     bool m_inHistory = false;
     std::string m_historySavePath;       // save being browsed
@@ -2323,6 +2833,36 @@ private:
     // Set from OD_EVAL_MODEL: evaluate this exact file rather than the shared
     // one, so a PBT ranking round can score a worker without disturbing it.
     std::string m_evalModelOverride;
+    /**
+     * THE SEAT, when running the absolute benchmark. See runAIEvaluation.
+     *
+     * An isoA3. Non-empty means: this ONE country is played by the model (or by
+     * a person, in the game's own bench mode) and every other country in the
+     * world is played by the frozen scripted rung. The score is then simply how
+     * much of the world the seat ends up holding -- an absolute number that does
+     * not depend on who it was measured against, which is the whole point.
+     */
+    std::string m_benchSeatIso;
+    /** Which shipped scenario the seat is played on. See m_benchSeatIso. */
+    std::string m_benchSeatMap;
+    /**
+     * Scope the rush to the seat's NEIGHBOURS rather than the whole world.
+     *
+     * See AISystem::s_exploitCids for why: a world where all 52 countries
+     * attack without pause kills everybody equally and ranks nobody.
+     */
+    int m_benchRushNeighbours = 0;   // 0 = off, -1 = all neighbours, N = N largest
+    /**
+     * Turn the benchmark ends on when a PERSON is playing the seat, or 0.
+     *
+     * The model's half of this benchmark stops because the eval loop counted
+     * the turns. A person's half has to stop at the same turn or the two
+     * numbers are not the same measurement, so the game says so and reports the
+     * score itself rather than trusting anybody to stop on time.
+     */
+    int m_benchPlayUntilTurn = 0;
+    /** The score the seat finished on, once it has. Negative until then. */
+    float m_benchScoreShare = -1.0f;
     int m_aiWorkerId = -1, m_aiWorkerCount = 0;
     // Self-play training mode: skips political-texture/label/delta work in
     // processTurn so turns run as fast as the simulation allows.
@@ -2836,6 +3376,21 @@ private:
     void cleanupSunkShips();
     void eliminateDefeatedCountries();
     void processDiplomaticRequests();
+    /**
+     * Walk a stack home when a treaty leaves it standing somewhere it has no
+     * standing to be.
+     *
+     * A ceasefire or a broken alliance can end with one country's army sitting
+     * inside another's borders with neither a war nor an alliance between them
+     * -- a position no order the game accepts can produce, and one nothing else
+     * cleans up, so the stack sits there indefinitely as a garrison nobody
+     * agreed to. This marches it to the nearest province its owner holds, by
+     * the province graph rather than by map distance, because armies walk.
+     *
+     * Rebels are exempt both ways: rebel-held land is a war zone whatever the
+     * relations table says, and a rebel stack inside a country IS the revolt.
+     */
+    void repatriateStrandedArmies();
     void processUpgrades();
     // Refloat a hull that is sitting on land. False if none was found nearby.
     bool nudgeShipToWater(NavyShip& s);
@@ -2859,6 +3414,26 @@ private:
         std::vector<int32_t> component;   // -1 = land
         bool ready() const { return w > 0 && h > 0; }
     };
+    /** One hull has left m_ships: drop every order that named it and shift
+     *  the indices of every order that named a later one. See the definition. */
+    void forgetShipOrders(int removedIdx);
+    /**
+     * WHAT THIS COUNTRY WILL BE EARNING IN `turns` TURNS, given only what it
+     * has ALREADY committed to.
+     *
+     * computeCountryIncome answers for right now, and right now is the wrong
+     * question for any decision that takes more than one turn to pay off. A
+     * factory ordered eight turns ago is not in this turn's income and will be
+     * in the income of the turn it lands; a carrier under construction costs
+     * nothing yet and 25 a turn for ever afterwards. A player reads both off
+     * the build queue without thinking about it. The AI had no way to.
+     *
+     * Deterministic and cheap: it walks the pending queues, not the map, and
+     * asks nothing about what anybody might decide next. Population growth,
+     * conquest, war and every other source of change are deliberately absent --
+     * this is "what have I already bought", not a forecast.
+     */
+    CountryIncomeSnapshot projectIncome(int countryId, int turns) const;
     void buildNavGrid();
     // Nearest navigable cell index to a raster pixel, or -1.
     static int navCellNear(const NavGrid& g, int px, int py);
@@ -2871,6 +3446,31 @@ private:
     // unreachable. The first element is the next place to steer for.
     bool navRoute(double fromLon, double fromLat, double toLon, double toLat,
                   std::vector<std::pair<double, double>>& out) const;
+    /**
+     * WHERE A FLEET ACTUALLY SITS WHEN IT VISITS A HARBOUR.
+     *
+     * A port's province centre is a land pixel -- centres are anchored inside
+     * the province, which is the whole point of them -- so ordering a hull to
+     * one is ordering it ashore. The resolver then clamps the move at the last
+     * water on the line, the hull ends up pressed against the beach, and next
+     * turn the same order is issued down the same blocked line. Measured on
+     * the shipped 1914 map: 38% of all moves that went nowhere had been aimed
+     * at dry land in the first place.
+     *
+     * This answers with the nav grid's own water pixel nearest that province --
+     * a point the router has already proven is at sea and in a real body of
+     * water. False when the province has no navigable water anywhere near it.
+     */
+    bool portApproach(int provinceId, double& lon, double& lat) const;
+    /**
+     * WHICH SEA a province's harbour sits on, as a nav-grid component id, or -1.
+     *
+     * navReachable answers for a PAIR of points. This answers for one province,
+     * so a caller that needs "can any of my harbours reach any of theirs" can
+     * intersect two small sets of body ids instead of running a pairwise test
+     * over every combination of ports on the map.
+     */
+    int seaBodyOfPort(int provinceId) const;
     NavGrid m_nav;
     // How far this hull may move or shoot in one turn, in map pixels, and the
     // same figure in degrees for the lon/lat resolvers. THE one definition:

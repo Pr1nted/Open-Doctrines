@@ -1,0 +1,72 @@
+// The first .oddlg written, and for now the test card for the textbox engine.
+//
+// Everything the markup can do appears somewhere below, so a change that breaks
+// one effect shows up by opening the tutorial rather than by reading the parser.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4 pose=idle at=0.5,0.5 scale=1.0
+
+@Advisor
+Good morning, Minister. I am told you have **never run a country before**.
+
+That is not a problem. It is *almost* the normal case.
+---
+@Advisor
+:: pose=point at=0.32,0.5
+The map is the game. Everything you can do, you do to a province: raise men in
+it, build industry in it, fortify it, or take it from somebody who would rather
+you did not.
+
+Click a province and the panel on the left tells you what it is.
+---
+@Advisor
+Three numbers decide whether you are winning, and only three.
+
+{accent}Industry{/accent} is what you can build with. {accent=70}Manpower{/accent}
+is what you can hold ground with. {accent=140}Unrest{/accent} is the one that
+takes it all away again while you are looking somewhere else.
+---
+@Advisor
+:: enter=type speed=30
+Watch that third one. A province in {color=orange}open insurrection{/color} tells
+you so, and it tells you {u}how many turns you have{/u} before it leaves.
+
+You will get a warning. You will not always get a second one.
+---
+@Signals Officer
+:: anchor=center enter=rise pose=hands_up at=0.5,0.46 scale=1.15
+{shake}INCOMING{/shake}
+
+The enemy fleet has been sighted off the cape. They are between us and the
+convoy, and the convoy is carrying {b}the whole of the Third Army{/b}.
+---
+@Signals Officer
+:: anchor=left enter=type speed=50 pose=point
+A blockade closes a port. Nothing sails out of it and half its trade stops —
+which is what a navy is *for*, in the long stretches between invasions.
+
+Sink the ships sitting on your harbour, or route around them.
+---
+@Cryptographer
+:: enter=type speed=22 pose=think at=0.68,0.5 flip=1
+The intercept is only partly readable, Minister.
+
+"...the offensive begins at {obf}0400 hours on the fourteenth{/obf}, and the
+{obf}second{/obf} corps will {obf}cross at the ford below the mill{/obf}..."
+
+We are working on the rest.
+---
+@Advisor
+:: anchor=center enter=fade pose=shrug at=0.5,0.5 scale=1.0 flip=0
+{rainbow}{b}That is the whole of it.{/b}{/rainbow}
+
+Everything else is detail, and you will pick the detail up by losing to it.
+---
+@Advisor
+:: anchor=left enter=type speed=42
+One last thing, and it is the one nobody finds on their own.
+
+{wave}Boats.{/wave} Armies cross water on transports, and a transport has to be
+somewhere near the coast to load. If your invasion is not sailing, that is
+almost always why.
+
+Good luck, Minister.

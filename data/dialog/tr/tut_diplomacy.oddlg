@@ -1,0 +1,93 @@
+// Çeviri - diplomasi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomasi. Hepsi tek bir listede yaşar ve liste bir §**ülkeye**§ aittir - yani ona
+birinin toprağına tıklayarak ulaşırsınız.
+
+Her adımda bekleyeceğim. Burada hiçbir şey hızlı değildir.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Önce §**ilişkiler**§ görünümü. Haritayı kimin kiminle savaştığına, kimin müttefik
+olduğuna ve kimin kime güvence verdiğine göre boyar.
+---
+@Signals Officer
+Bir şeye girişmeden önce ona bakın. Burada kaybedilen savaşların yarısı bir değil
+üç ülkeye karşıydı - ve üçü de ilk kurşundan önce bu haritadaydı.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Şimdi suyun karşısındaki §**Verrick**§'e ait bir ile tıklayın.
+
+Kestrel değil: onlarla zaten savaştayız ve savaşta olduğunuz bir ülke tam olarak
+tek bir şey sunar. Ona geleceğiz - ve barışta olduğumuz birini seçene kadar bu
+sayfa öylece beklemeye devam edecek.
+---
+@Signals Officer
+Panellerinde bir liste belirdi. İçinde ne olduğu tamamen birbirinize halihazırda ne
+olduğunuza bağlıdır: asla tüm seçenekler arasından seçmezsiniz, yalnızca mevcut
+ilişkinizin izin verdikleri arasından.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+İçindeki en yumuşak şey bir §**saldırmazlık paktı**§: saldırmama sözü, fazlası değil.
+
+Bunu isteyin. Sormak hiçbir şeye mal olmaz.
+---
+@Signals Officer
+Sunuldu - şimdi listeye bakın. §**Diğer her şey griye döndü**§ ve az önce
+kullandığınız satır §**İptal**§ oldu.
+
+Bir ülkeye bir seferde bir istek. Bu denk geldiğiniz bir hata değil, kuralın kendisi:
+söylediğiniz son şeye cevap veriyorlar ve cevaplayana kadar tek hamleniz onu geri
+almak.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+O hâlde turu bitirin. İstek gider, onlar cevaplar ve liste geri gelir.
+
+Reddedebilirler. Bu onların meselesi, sizdeki bir kusur değil.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Yine Verrick. §**İttifak**§ bir üst basamaktır - yalnızca saldırmama sözü değil,
+katılma sözü.
+
+Bir tane isteyin.
+---
+@Signals Officer
+Bir müttefikle bir satır daha belirir: §**Silah çağrısı**§, onları zaten yürüttüğünüz
+bir savaşa sürükler.
+
+Bunu da reddedebilirler. İki kez reddeden bir müttefik kâğıt üstünde müttefiktir ve
+aşağı yukarı o kadar değerlidir.
+---
+@Signals Officer
+Kullanmadığınız ikisi: §**güvence**§ tek taraflı olanıdır - size hiçbir şey söz
+vermemiş birini savunmayı vaat edersiniz. Küçük ülkeler bunları toplar; büyükleri
+sessizlik satın almak için dağıtır.
+
+§**Ticaret**§ ise biri iptal edene kadar her tur mal karşılığı paradır. İkinizi de
+zenginleştiren tek satırdır, ve tam da bu yüzden orada olduğu unutulur.
+---
+@Signals Officer
+Bir pakt imzalandıktan sonra listeden neyin çıktığına bakın: §**Savaş ilan et
+kaybolur**§. Önce paktı bozmanız gerekir, alenen, herkesin sizi gördüğü yerde.
+
+Bir pakt bunun içindir. O bir kalkan değil, bir tanıktır.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+§**Savaşta**§ ise bütün liste tek bir satıra iner: §**Ateşkes iste**§. Şartlarla geri
+döner: kim durur ve kim neyi tutar.
+
+Kaybederken kabul ederler, kaybetmezken reddederler. Ne kadar istenirse istensin
+bunlardan hangisinin doğru olduğu değişmez.
+---
+@Signals Officer
+Kestrel bu haritada kırmızı ve size gösterecekleri liste işte bu.
+---
+@Signals Officer
+Diplomasi budur. Başka bir şey?

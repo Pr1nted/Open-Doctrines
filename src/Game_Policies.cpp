@@ -1,4 +1,6 @@
 #include "Game.h"
+#include "util/LoadLog.h"
+#include "Palette.h"
 #include "PoliticalIdentity.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -16,6 +18,106 @@
 // ═══════════════════════════════════════════════════════════════════
 // ─── Policy System ─────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════
+
+namespace {
+
+// ─── A DOCTRINE'S GAINS AND COSTS, WITH THE NUMBER TAKEN OUT ───────
+//
+// data/policies.json states each effect as one finished English sentence --
+// "Population growth +0.5%/turn", "-5/turn income" -- and the panel drew them
+// as read. Three hundred and eight of them, in English, in the middle of the
+// screen the player spends the most time on, in every language.
+//
+// Translating them one by one is the obvious answer and the wrong one: there
+// are 170 distinct strings but only the twenty-five FORMS below, because the
+// rest of the difference is the number. So the number comes out, the form is
+// translated, and the number goes back where that language puts it -- which is
+// not always where English puts it, and is the entire reason this is a pattern
+// with a placeholder rather than a prefix and a suffix. "-5/turn income" is a
+// number FIRST; "Unrest -1.0%" is a number LAST; both are one entry here.
+//
+// A form the data uses and this table does not list falls back to the raw
+// string, so a new effect reads as English rather than as nothing.
+// tools/check_policies.py fails the build for exactly that case, which is the
+// only thing that keeps this list honest.
+const char* kTradeoffForms[] = {
+    "%s/turn income",
+    "Army attack %s",
+    "Army defence %s",
+    "Economic %s",
+    "Immigration %s",
+    "Indoctrination %s",
+    "Industry cost %s",
+    "Industry upkeep %s",
+    "Manpower %s",
+    "Migration %s",
+    "Minority growth %s/turn",
+    "Pacification budget %s/turn",
+    "Population growth %s/turn",
+    "Population income %s",
+    "Pulls provinces toward the government",
+    "Recruitment cost %s",
+    "Resource income %s",
+    "Ship attack %s",
+    "Ship cost %s",
+    "Ship defence %s",
+    "Ship speed %s",
+    "Social %s",
+    "Treasury %s/turn",
+    "Unrest %s",
+    "Upkeep %s",
+};
+
+/// What a doctrine's compass position is CALLED, as opposed to what the JSON
+/// calls it. The panel drew the id -- lowercase "authoritarian", straight out
+/// of the file -- which reads as a leaked field name and, being a bare
+/// lowercase word, is the one shape tools/i18n_extract.py refuses to collect,
+/// on the grounds that it is usually an id. It usually is. So the id stays an
+/// id and the label is a label, and these five already have translations from
+/// the compass they name.
+const char* categoryLabel(const std::string& id) {
+    if (id == "left")          return T("Left");
+    if (id == "right")         return T("Right");
+    if (id == "authoritarian") return T("Authoritarian");
+    if (id == "libertarian")   return T("Libertarian");
+    if (id == "miscellaneous") return T("Miscellaneous");
+    return T(id);
+}
+
+/// The first run of digits in `s`, with its sign and any trailing percent.
+/// Returns [begin, end); begin == npos when there is no number.
+std::pair<size_t, size_t> numberSpan(const std::string& s) {
+    for (size_t i = 0; i < s.size(); ++i) {
+        size_t j = i;
+        if (s[j] == '+' || s[j] == '-') ++j;
+        if (j >= s.size() || !isdigit((unsigned char)s[j])) continue;
+        while (j < s.size() && isdigit((unsigned char)s[j])) ++j;
+        if (j < s.size() && s[j] == '.') {
+            ++j;
+            while (j < s.size() && isdigit((unsigned char)s[j])) ++j;
+        }
+        if (j < s.size() && s[j] == '%') ++j;
+        return {i, j};
+    }
+    return {std::string::npos, 0};
+}
+
+/// One effect line, in the player's language.
+std::string tradeoffLine(const std::string& raw) {
+    const auto [b, e] = numberSpan(raw);
+    if (b == std::string::npos) return T(raw);
+
+    std::string form = raw.substr(0, b) + "%s" + raw.substr(e);
+    for (const char* known : kTradeoffForms) {
+        if (form != known) continue;
+        // TextFormat, not a hand-rolled splice: the translated form decides
+        // where the number goes, and it may put it first.
+        return TextFormat(T(form), raw.substr(b, e - b).c_str());
+    }
+    return T(raw);
+}
+
+}  // namespace
 
 void Game::initPolicies() {
     m_allPolicies.clear();
@@ -89,6 +191,11 @@ void Game::initPolicies() {
             policy.effect.publicOpinionShift = effects.value("public_opinion_shift", 0.0f);
             policy.effect.targetMinority = effects.value("target_minority", "");
             
+            // The continuous effects. See Policy::levers.
+            if (p.contains("levers") && p["levers"].is_object())
+                for (auto& [k, v] : p["levers"].items())
+                    if (v.is_number()) policy.levers[k] = v.get<float>();
+
             if (p.contains("incompatible_with")) {
                 for (auto& inc : p["incompatible_with"]) {
                     policy.incompatibleWith.push_back(inc.get<std::string>());
@@ -111,9 +218,9 @@ void Game::initPolicies() {
             
             m_allPolicies.push_back(policy);
         }
-        std::cout << "  Loaded " << m_allPolicies.size() << " policies from JSON" << std::endl;
+        LoadLog() << "  Loaded " << m_allPolicies.size() << " policies from JSON" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "Failed to parse policies.json: " << e.what() << std::endl;
+        LoadLog() << "Failed to parse policies.json: " << e.what() << std::endl;
     }
 }
 
@@ -259,10 +366,7 @@ void Game::applyStartingPolicies() {
                 if (apIdx >= (int)m_activePolicies.size()) continue;
                 const auto& ap = m_activePolicies[apIdx];
                 if (ap.turnsRemaining != 0) continue;
-                for (const auto& incId : pit->incompatibleWith) {
-                    if (ap.policyId == incId) { incompatible = true; break; }
-                }
-                if (incompatible) break;
+                if (policiesConflict(pid, ap.policyId)) { incompatible = true; break; }
             }
             if (incompatible) continue;
 
@@ -294,6 +398,39 @@ void Game::applyStartingPolicies() {
     }
 }
  
+// A conflict between two doctrines is a fact about the pair, not about one of
+// them, so it is answered here rather than at each of the three places that
+// used to ask.
+//
+// Every one of them read only `incompatible_with` on the doctrine being
+// adopted. Twelve of the shipped pairs name each other once -- Land Reform
+// names Flat Tax, Flat Tax names nobody -- so the pair's behaviour depended on
+// the order the player picked them in: Flat Tax first refused Land Reform,
+// Land Reform first let Flat Tax through, and the country ended up holding
+// both halves of a contradiction. The map editor already read the pair both
+// ways, so a start position the editor refused to build was reachable in play.
+//
+// Reading it both ways here settles it for the player screen, the AI and mod
+// scripts at once, and means a doctrine added later has to name its conflict
+// only once -- on whichever side it reads better.
+bool Game::policiesConflict(const std::string& a, const std::string& b) const {
+    if (a == b) return false;
+    for (const auto& p : m_allPolicies) {
+        if (p.id != a && p.id != b) continue;
+        const std::string& other = (p.id == a) ? b : a;
+        for (const auto& inc : p.incompatibleWith)
+            if (inc == other) return true;
+    }
+    return false;
+}
+
+std::vector<std::string> Game::conflictingPolicyNames(const Policy& p) const {
+    std::vector<std::string> out;
+    for (const auto& q : m_allPolicies)
+        if (policiesConflict(p.id, q.id)) out.push_back(q.name);
+    return out;
+}
+
 void Game::enactPolicy(int countryId, const std::string& policyId, int targetProvince, const std::string& targetMinority) {
     auto it = std::find_if(m_allPolicies.begin(), m_allPolicies.end(),
         [&](const Policy& p) { return p.id == policyId; });
@@ -881,7 +1018,7 @@ void Game::drawPoliciesTab() {
     // Title
     const Country* c = m_countries.getCountry(m_playerCountryId);
     if (c) {
-        DrawText(TextFormat("%s - Doctrines", c->name.c_str()), centerX - 150, 30, 28, WHITE);
+        DrawText(TextFormat(T("%s - Doctrines"), od::i18n::properName(c->name).c_str()), centerX - 150, 30, 28, WHITE);
     }
 
     // Tabs
@@ -940,11 +1077,11 @@ int xw = MeasureText("X", 20);
         if (!p) continue;
         if (ap.turnsRemaining > 0) {
             if (implementingCount > 0) implementingSummary += ", ";
-            implementingSummary += p->name;
+            implementingSummary += od::i18n::tr(p->name);
             implementingCount++;
         } else if (ap.turnsRemaining == 0 || ap.turnsRemaining < -1) {
             if (activeCount > 0) activeSummary += ", ";
-            activeSummary += p->name;
+            activeSummary += od::i18n::tr(p->name);
             activeCount++;
         }
     }
@@ -956,14 +1093,14 @@ int xw = MeasureText("X", 20);
     {
         std::string statusText;
         if (activeCount > 0)
-            statusText += "Active: " + activeSummary;
+            statusText += TextFormat(T("Active: %s"), activeSummary.c_str());
         if (implementingCount > 0) {
             if (!statusText.empty()) statusText += "  |  ";
-            statusText += "Implementing: " + implementingSummary;
+            statusText += TextFormat(T("Implementing: %s"), implementingSummary.c_str());
         }
         if (!statusText.empty()) statusText += "  |  ";
         int remaining = 3 - m_policiesEnactedThisTurn;
-        statusText += TextFormat("Political actions: %d/3 remaining", remaining);
+        statusText += TextFormat(T("Political actions: %d/3 remaining"), remaining);
         int fSize = 13;
         int w = MeasureText(statusText.c_str(), fSize);
         int h = 18;
@@ -972,25 +1109,99 @@ int xw = MeasureText("X", 20);
         // Dark background for readability
         DrawRectangle(sx, sy, w + 16, h, {0, 0, 0, 160});
         DrawText(statusText.c_str(), sx + 8, sy + 2, fSize,
-            remaining > 0 ? WHITE : RED);
+            remaining > 0 ? WHITE : odPalette::of(odPalette::Role::Bad));
     }
  
     if (m_policyTab == 0) {
         // Available policies with folder grouping
-        DrawText("Available Doctrines", 30, startY - 25, 20, WHITE);
+        DrawText(T("Available Doctrines"), 30, startY - 25, 20, WHITE);
+
+        // ── Search ──
+        // Drawn here rather than in updatePoliciesTab because the filter it
+        // drives has to be applied before the folders are collected below.
+        {
+            const int boxW = 260, boxH = 24;
+            Rectangle box = {(float)(m_screenW - 270 - boxW + 20), (float)(startY - 28),
+                             (float)boxW, (float)boxH};
+            const bool hov = CheckCollisionPointRec(mouse, box);
+            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_policySearchFocus = hov;
+            DrawRectangleRec(box, m_policySearchFocus ? Color{30, 30, 42, 230}
+                                                      : Color{24, 24, 32, 200});
+            DrawRectangleLinesEx(box, 1, m_policySearchFocus ? hexToColor(m_config.accent())
+                                                             : Color{90, 90, 110, 180});
+            if (m_policySearch.empty() && !m_policySearchFocus) {
+                DrawText(T("Search doctrines..."), (int)box.x + 8, (int)box.y + 5, 13,
+                         Color{120, 120, 140, 200});
+            } else {
+                DrawText(m_policySearch.c_str(), (int)box.x + 8, (int)box.y + 5, 13, WHITE);
+                if (m_policySearchFocus && ((int)(GetTime() * 2.0) % 2) == 0)
+                    DrawText("_", (int)box.x + 10 + MeasureText(m_policySearch.c_str(), 13),
+                             (int)box.y + 5, 13, WHITE);
+            }
+            if (!m_policySearch.empty()) {
+                Rectangle clr = {box.x + boxW - 20, box.y + 4, 16, 16};
+                const bool ch = CheckCollisionPointRec(mouse, clr);
+                DrawText("x", (int)clr.x + 5, (int)clr.y, 14,
+                         ch ? WHITE : Color{160, 160, 180, 220});
+                if (ch && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    m_policySearch.clear();
+                    m_policyScroll = 0;
+                }
+            }
+            if (m_policySearchFocus) {
+                int ch;
+                while ((ch = GetCharPressed()) != 0)
+                    if (ch >= 32 && ch < 127 && m_policySearch.size() < 40) {
+                        m_policySearch += (char)ch;
+                        m_policyScroll = 0;
+                    }
+                if (IsKeyPressed(KEY_BACKSPACE) && !m_policySearch.empty()) {
+                    m_policySearch.pop_back();
+                    m_policyScroll = 0;
+                }
+            }
+        }
+
+        // Case-insensitive match over name, description and folder: a player
+        // searching "upkeep" or "navy" is describing what a doctrine DOES, and
+        // few doctrines are named after their effect.
+        auto matches = [&](const Policy& pol) {
+            if (m_policySearch.empty()) return true;
+            std::string needle = m_policySearch;
+            std::transform(needle.begin(), needle.end(), needle.begin(),
+                           [](unsigned char c) { return (char)tolower(c); });
+            auto has = [&](const std::string& hay) {
+                std::string h = hay;
+                std::transform(h.begin(), h.end(), h.begin(),
+                               [](unsigned char c) { return (char)tolower(c); });
+                return h.find(needle) != std::string::npos;
+            };
+            if (has(pol.name) || has(pol.description) || has(pol.folder)) return true;
+            for (const auto& g : pol.tradeoffs.gains) if (has(g)) return true;
+            for (const auto& cst : pol.tradeoffs.costs) if (has(cst)) return true;
+            return false;
+        };
 
         // Collect unique folders in display order
         std::vector<std::string> folderOrder = {"Left", "Right", "Authoritarian", "Libertarian", "Miscellaneous"};
         std::unordered_map<std::string, std::vector<int>> folderPolicies;
         for (size_t i = 0; i < m_allPolicies.size(); ++i) {
+            if (!matches(m_allPolicies[i])) continue;
             std::string f = m_allPolicies[i].folder;
             if (f.empty()) f = "Miscellaneous";
             folderPolicies[f].push_back((int)i);
         }
+        // A search opens every folder it found something in: leaving a match
+        // hidden behind a collapsed header is the same as not finding it.
+        if (!m_policySearch.empty())
+            for (auto& [fn, v] : folderPolicies) m_openFolders.insert(fn);
 
         // Compute total height: folder headers (28 each) + policy rows (150 each) for open folders
         int folderHeaderH = 28;
-        int policyItemH = 150;
+        // Tall enough for four gain/cost lines plus the reason beneath them.
+        // At 150 the columns ran under the conflict line and the two overlapped
+        // -- visible in the doctrine screen as green text crossed out by amber.
+        int policyItemH = 182;
         int totalH = 0;
         for (auto& fname : folderOrder) {
             auto it = folderPolicies.find(fname);
@@ -1006,6 +1217,10 @@ int xw = MeasureText("X", 20);
         Rectangle scrollArea = {20, (float)startY, (float)(m_screenW - 30), (float)listH};
         DrawRectangleRec(scrollArea, {0, 0, 0, 60});
 
+        if (folderPolicies.empty()) {
+            DrawText(TextFormat(T("No doctrine matches \"%s\""), m_policySearch.c_str()),
+                     30, startY + 20, 16, Color{150, 150, 170, 220});
+        }
         BeginScissorMode(20, startY, m_screenW - 40, listH);
         int y = startY - m_policyScroll;
         for (auto& fname : folderOrder) {
@@ -1016,7 +1231,11 @@ int xw = MeasureText("X", 20);
             bool isOpen = m_openFolders.count(fname);
             Rectangle fhRect = {20, (float)y, (float)(m_screenW - 270), (float)folderHeaderH};
             DrawRectangleRec(fhRect, {50, 50, 60, 180});
-            DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶", fname.c_str()), 30, y + 4, 18, hexToColor(m_config.accent()));
+            // The folder name is the compass word the doctrine sits under, and
+            // those five already have translations.
+            DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶",
+                                od::i18n::tr(fname)), 30, y + 4, 18,
+                     hexToColor(m_config.accent()));
             if (CheckCollisionPointRec(mouse, fhRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 if (isOpen) { m_openFolders.erase(fname);  Audio::get().playSfx("panel_close"); }
                 else       { m_openFolders.insert(fname); Audio::get().playSfx("panel_open");  }
@@ -1031,12 +1250,14 @@ int xw = MeasureText("X", 20);
                 bool canEnact = canCountryEnactPolicy(m_playerCountryId, p);
                 Color nameCol = canEnact ? WHITE : Color{100, 100, 120, 200};
                 Color bgCol = (m_selectedPolicyIdx == pi) ? Color{80, 80, 100, 180} : Color{40, 40, 50, 180};
-                Rectangle row = {20, (float)y, (float)(m_screenW - 270), 140};
+                Rectangle row = {20, (float)y, (float)(m_screenW - 270), 172};
                 DrawRectangleRounded(row, 0.1f, 6, bgCol);
                 DrawRectangleRoundedLines(row, 0.1f, 6, canEnact ? Color{100, 150, 100, 150} : Color{80, 80, 100, 100});
 
-                DrawText(p.name.c_str(), 30, y + 4, 20, nameCol);
-                DrawText(p.description.c_str(), 30, y + 28, 13, LIGHTGRAY);
+                // Name and blurb come from data/policies.json and are drawn
+                // as they are read; T() is what puts them through the table.
+                DrawText(T(p.name), 30, y + 4, 20, nameCol);
+                DrawText(T(p.description), 30, y + 28, 13, LIGHTGRAY);
 
                 // Category badge
                 Color catCol = GRAY;
@@ -1045,30 +1266,58 @@ int xw = MeasureText("X", 20);
                 else if (p.category == "authoritarian") catCol = {200, 100, 100, 255};
                 else if (p.category == "libertarian") catCol = {100, 150, 255, 255};
                 else catCol = {180, 180, 180, 255};
-                DrawText(p.category.c_str(), 30, y + 50, 11, catCol);
+                DrawText(categoryLabel(p.category), 30, y + 50, 11, catCol);
 
                 // Duration info for propaganda
                 if (p.propagandaDuration > 0) {
-                    DrawText(TextFormat("Campaign: %d turns", p.propagandaDuration), 130, y + 50, 11, Color{200, 150, 255, 200});
+                    DrawText(TextFormat(T("Campaign: %d turns"), p.propagandaDuration), 130, y + 50, 11, Color{200, 150, 255, 200});
                 }
 
                 // Info: cost, turns, compass shift
-                std::string info = TextFormat("Cost: %d/turn | Setup: %d turn(s) | Shift: E%.0f S%.0f",
+                std::string info = TextFormat(T("Cost: %d/turn | Setup: %d turn(s) | Shift: E%.0f S%.0f"),
                     p.costPerTurn, p.implementationTurns, p.econShift, p.socShift);
                 DrawText(info.c_str(), 30, y + 66, 12, Color{150, 150, 170, 200});
 
-                // Tradeoffs - Gains (green)
-                int tx = 30;
-                for (size_t g = 0; g < p.tradeoffs.gains.size(); ++g) {
-                    DrawText(TextFormat("+ %s", p.tradeoffs.gains[g].c_str()), tx, y + 84, 12, Color{100, 255, 100, 200});
-                    tx += MeasureText(p.tradeoffs.gains[g].c_str(), 12) + 24;
-                }
+                // ── WHAT IT GIVES AND WHAT IT TAKES, in two columns ──
+                //
+                // These were two single lines, each laid out left to right with
+                // no width limit: a doctrine with four gains ran off the panel
+                // and under the Enact button, and the reader had to parse "+ A
+                // + B + C" as a list because nothing separated the items. They
+                // are lists, so they are drawn as lists -- gains down the left,
+                // costs down the right, one per line, headed, so the two can be
+                // compared by eye instead of by reading a sentence.
+                //
+                // Columns are sized off the row rather than fixed, because the
+                // row is m_screenW-270 wide and a hardcoded split puts the
+                // costs off-screen on a narrow window.
+                {
+                    const int colGap = 18;
+                    const int colW = ((int)row.width - 40 - colGap) / 2;
+                    const int gx = 30, cx2 = 30 + colW + colGap;
+                    const int headY = y + 82, listY = y + 96;
+                    const int lineH = 13;
+                    // At most four each: the fifth line would collide with the
+                    // row below, and a doctrine that needs five is telling the
+                    // player too much at browse time anyway. The count says
+                    // what was left out rather than silently truncating.
+                    const size_t MAXL = 4;
 
-                // Tradeoffs - Costs (red)
-                tx = 30;
-                for (size_t g = 0; g < p.tradeoffs.costs.size(); ++g) {
-                    DrawText(TextFormat("- %s", p.tradeoffs.costs[g].c_str()), tx, y + 100, 12, Color{255, 100, 100, 200});
-                    tx += MeasureText(p.tradeoffs.costs[g].c_str(), 12) + 24;
+                    DrawText(T("GAINS"), gx, headY, 10, Color{120, 220, 120, 220});
+                    for (size_t g = 0; g < p.tradeoffs.gains.size() && g < MAXL; ++g)
+                        DrawText(TextFormat("+ %s", tradeoffLine(p.tradeoffs.gains[g]).c_str()),
+                                 gx, listY + (int)g * lineH, 12, Color{140, 245, 140, 235});
+                    if (p.tradeoffs.gains.size() > MAXL)
+                        DrawText(TextFormat(T("+%zu more"), p.tradeoffs.gains.size() - MAXL),
+                                 gx, listY + (int)MAXL * lineH, 11, Color{120, 200, 120, 180});
+
+                    DrawText(T("COSTS"), cx2, headY, 10, Color{230, 130, 130, 220});
+                    for (size_t g = 0; g < p.tradeoffs.costs.size() && g < MAXL; ++g)
+                        DrawText(TextFormat("- %s", tradeoffLine(p.tradeoffs.costs[g]).c_str()),
+                                 cx2, listY + (int)g * lineH, 12, Color{255, 150, 150, 235});
+                    if (p.tradeoffs.costs.size() > MAXL)
+                        DrawText(TextFormat(T("+%zu more"), p.tradeoffs.costs.size() - MAXL),
+                                 cx2, listY + (int)MAXL * lineH, 11, Color{215, 130, 130, 180});
                 }
 
                 // THE REASON, when there is one -- not a list of doctrines that
@@ -1087,18 +1336,21 @@ int xw = MeasureText("X", 20);
                 // information about the future rather than an accusation.
                 const std::string why = policyBlockReason(m_playerCountryId, p);
                 if (!why.empty()) {
-                    DrawText(why.c_str(), 30, y + 116, 10, Color{255, 130, 130, 255});
-                } else if (!p.incompatibleWith.empty()) {
-                    std::string inc = "Cannot be combined with: ";
-                    for (size_t ic = 0; ic < p.incompatibleWith.size(); ++ic) {
-                        if (ic > 0) inc += ", ";
-                        bool named = false;
-                        for (const auto& pol : m_allPolicies) {
-                            if (pol.id == p.incompatibleWith[ic]) { inc += pol.name; named = true; break; }
-                        }
-                        if (!named) inc += p.incompatibleWith[ic];
+                    DrawText(why.c_str(), 30, y + 152, 11, Color{255, 130, 130, 255});
+                } else if (const auto conflicts = conflictingPolicyNames(p); !conflicts.empty()) {
+                    // Both directions, so a doctrine that is only named by its
+                    // opposite still warns the player it cannot be combined.
+                    std::string names;
+                    for (size_t ic = 0; ic < conflicts.size(); ++ic) {
+                        if (ic > 0) names += ", ";
+                        names += od::i18n::tr(conflicts[ic]);
                     }
-                    DrawText(inc.c_str(), 30, y + 116, 10, Color{200, 180, 120, 200});
+                    // The list is built first and formatted once: a sentence
+                    // glued together from a translated prefix and a raw tail
+                    // puts the colon where English puts it in every language.
+                    const std::string inc =
+                        TextFormat(T("Cannot be combined with: %s"), names.c_str());
+                    DrawText(inc.c_str(), 30, y + 152, 11, Color{200, 180, 120, 200});
                 }
 
                 // Enact button
@@ -1107,7 +1359,7 @@ int xw = MeasureText("X", 20);
                 if (canEnact && !enactLimitReached) {
                     bool hover = CheckCollisionPointRec(mouse, enactBtn);
                     DrawRectangleRounded(enactBtn, 0.2f, 6, hover ? Color{100, 180, 100, 255} : Color{80, 150, 80, 255});
-                    DrawText("Enact", (int)(enactBtn.x + enactBtn.width/2 - MeasureText("Enact", 18)/2), y + 22, 18, WHITE);
+                    DrawText(T("Enact"), (int)(enactBtn.x + enactBtn.width/2 - MeasureText(T("Enact"), 18)/2), y + 22, 18, WHITE);
                     if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         enactPolicy(m_playerCountryId, p.id);
                         m_policiesEnactedThisTurn++;
@@ -1137,7 +1389,7 @@ int xw = MeasureText("X", 20);
         }
     } else if (m_policyTab == 1) {
         // Implementing policies
-        DrawText("Implementing Doctrines", 30, startY - 25, 20, WHITE);
+        DrawText(T("Implementing Doctrines"), 30, startY - 25, 20, WHITE);
         int y = startY;
         bool any = false;
         for (size_t i = 0; i < m_activePolicies.size(); ++i) {
@@ -1161,16 +1413,16 @@ int xw = MeasureText("X", 20);
             else if (folder == "Libertarian") fCol = {100, 150, 255, 200};
             DrawText(TextFormat("[%s]", folder.c_str()), m_screenW - 220, y + 4, 12, fCol);
 
-            DrawText(TextFormat("%s (Implementing: %d turns left)", p->name.c_str(), ap.turnsRemaining), 30, y + 4, 18, ORANGE);
-            DrawText(p->description.c_str(), 30, y + 26, 13, LIGHTGRAY);
-            DrawText(TextFormat("Compass shift per turn: E%.1f S%.1f", p->econShift / p->implementationTurns, p->socShift / p->implementationTurns),
+            DrawText(TextFormat(T("%s (Implementing: %d turns left)"), p->name.c_str(), ap.turnsRemaining), 30, y + 4, 18, ORANGE);
+            DrawText(T(p->description), 30, y + 26, 13, LIGHTGRAY);
+            DrawText(TextFormat(T("Compass shift per turn: E%.1f S%.1f"), p->econShift / p->implementationTurns, p->socShift / p->implementationTurns),
                 30, y + 48, 12, Color{150, 150, 170, 200});
  
             // Cancel button
             Rectangle cancelBtn = {(float)(m_screenW - 160), (float)(y + 20), 130, 44};
             bool hover = CheckCollisionPointRec(mouse, cancelBtn);
             DrawRectangleRounded(cancelBtn, 0.2f, 6, hover ? Color{180, 80, 80, 255} : Color{150, 60, 60, 255});
-            DrawText("Cancel", (int)(cancelBtn.x + cancelBtn.width/2 - MeasureText("Cancel", 18)/2), y + 30, 18, WHITE);
+            DrawText(T("Cancel"), (int)(cancelBtn.x + cancelBtn.width/2 - MeasureText(T("Cancel"), 18)/2), y + 30, 18, WHITE);
             if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("back");
                 cancelPolicy((int)i);
@@ -1179,11 +1431,11 @@ int xw = MeasureText("X", 20);
             y += 100;
         }
         if (!any) {
-            DrawText("No policies currently implementing", 30, startY + 20, 16, Color{120, 120, 140, 200});
+            DrawText(T("No policies currently implementing"), 30, startY + 20, 16, Color{120, 120, 140, 200});
         }
     } else if (m_policyTab == 2) {
         // Active policies (permanent + propaganda campaigns)
-        DrawText("Active Doctrines", 30, startY - 25, 20, WHITE);
+        DrawText(T("Active Doctrines"), 30, startY - 25, 20, WHITE);
         int y = startY;
         bool any = false;
         for (size_t i = 0; i < m_activePolicies.size(); ++i) {
@@ -1214,11 +1466,11 @@ int xw = MeasureText("X", 20);
             std::string nameStr = p->name;
             if (isPropaganda) {
                 int remaining = -(ap.turnsRemaining + 1);
-                nameStr += TextFormat(" (%d turn(s) left)", remaining);
+                nameStr += TextFormat(T(" (%d turn(s) left)"), remaining);
             }
             DrawText(nameStr.c_str(), 30, y + 4, 18, isPropaganda ? Color{200, 150, 255, 255} : GREEN);
-            DrawText(p->description.c_str(), 30, y + 26, 13, LIGHTGRAY);
-            DrawText(TextFormat("Cost: %d/turn | Shift/turn: E%.2f S%.2f | Unrest reduction: %.2f%%",
+            DrawText(T(p->description), 30, y + 26, 13, LIGHTGRAY);
+            DrawText(TextFormat(T("Cost: %d/turn | Shift/turn: E%.2f S%.2f | Unrest reduction: %.2f%%"),
                 p->costPerTurn, p->econShift/50.0f, p->socShift/50.0f, p->effect.unrestReduction*100),
                 30, y + 48, 12, Color{150, 180, 150, 200});
  
@@ -1226,7 +1478,7 @@ int xw = MeasureText("X", 20);
             Rectangle removeBtn = {(float)(m_screenW - 160), (float)(y + 20), 130, 44};
             bool hover = CheckCollisionPointRec(mouse, removeBtn);
             DrawRectangleRounded(removeBtn, 0.2f, 6, hover ? Color{100, 100, 180, 255} : Color{80, 80, 150, 255});
-            DrawText("Repeal", (int)(removeBtn.x + removeBtn.width/2 - MeasureText("Repeal", 18)/2), y + 30, 18, WHITE);
+            DrawText(T("Repeal"), (int)(removeBtn.x + removeBtn.width/2 - MeasureText(T("Repeal"), 18)/2), y + 30, 18, WHITE);
             if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 Audio::get().playSfx("toggle_off");
                 cancelPolicy((int)i);  // Mark as completed/removed
@@ -1235,7 +1487,7 @@ int xw = MeasureText("X", 20);
             y += 100;
         }
         if (!any) {
-            DrawText("No active policies", 30, startY + 20, 16, Color{120, 120, 140, 200});
+            DrawText(T("No active policies"), 30, startY + 20, 16, Color{120, 120, 140, 200});
         }
     } else if (m_policyTab == 3) {
         drawAnalysisTab();
@@ -1273,7 +1525,7 @@ void Game::updatePoliciesTab() {
                 if (m_openFolders.count(fname)) {
                     for (auto& p : m_allPolicies) {
                         std::string f = p.folder.empty() ? "Miscellaneous" : p.folder;
-                        if (f == fname) totalH += 150;
+                        if (f == fname) totalH += 182;   // must match policyItemH
                     }
                 }
             }
@@ -1341,10 +1593,10 @@ void Game::drawPoliticalCompass(int x, int y, int size, int countryId, bool show
     DrawLine(cx, y, cx, y + size, {80, 80, 90, 200});
 
     // Labels
-    DrawText("LEFT", x + 4, cy - 10, 10, {180, 180, 180, 200});
-    DrawText("RIGHT", x + size - 40, cy - 10, 10, {180, 180, 180, 200});
-    DrawText("AUTH", cx - 18, y + 4, 10, {180, 180, 180, 200});
-    DrawText("LIB", cx - 14, y + size - 16, 10, {180, 180, 180, 200});
+    DrawText(T("LEFT"), x + 4, cy - 10, 10, {180, 180, 180, 200});
+    DrawText(T("RIGHT"), x + size - 40, cy - 10, 10, {180, 180, 180, 200});
+    DrawText(T("AUTH"), cx - 18, y + 4, 10, {180, 180, 180, 200});
+    DrawText(T("LIB"), cx - 14, y + size - 16, 10, {180, 180, 180, 200});
 
     // Country position (gold circle)
     auto it = m_countryCompass.find(countryId);
@@ -1386,7 +1638,7 @@ void Game::drawAnalysisTab() {
     const Country* c = m_countries.getCountry(m_playerCountryId);
     if (!c) return;
 
-    DrawText(TextFormat("%s — Analysis", c->name.c_str()), 30, 30, 28, WHITE);
+    DrawText(TextFormat(T("%s — Analysis"), od::i18n::properName(c->name).c_str()), 30, 30, 28, WHITE);
     drawPoliticalCompass(m_screenW - 280, 80, 200, m_playerCountryId, true);
 
     float unrest = 0.0f;
@@ -1401,10 +1653,10 @@ void Game::drawAnalysisTab() {
     int bx = m_screenW - 270, by = 300;
     int barW = 180, barH = 16;
     DrawRectangle(bx, by, barW, barH, {50, 30, 30, 200});
-    Color unrestCol = unrest < 20 ? GREEN : (unrest < 40 ? ORANGE : RED);
+    Color unrestCol = unrest < 20 ? odPalette::of(odPalette::Role::Good) : (unrest < 40 ? odPalette::of(odPalette::Role::Warning) : odPalette::of(odPalette::Role::Bad));
     DrawRectangle(bx, by, (int)(std::min(unrest, 100.0f) / 100.0f * barW), barH, unrestCol);
     DrawRectangleLines(bx, by, barW, barH, {100, 100, 120, 255});
-    DrawText(TextFormat("Unrest: %.1f%%", unrest), bx, by - 20, 14, unrestCol);
+    DrawText(TextFormat(T("Unrest: %.1f%%"), unrest), bx, by - 20, 14, unrestCol);
 
     int leftX = 30;
     int panelW = (m_screenW - 300) - leftX;
@@ -1460,7 +1712,7 @@ void Game::drawAnalysisTab() {
     m_analysisHotspotCount = (int)hotspots.size();
 
     // ── Draw Hotspots ──
-    DrawText("Political Hotspots", leftX, hotTitleY, 20, ORANGE);
+    DrawText(T("Political Hotspots"), leftX, hotTitleY, 20, ORANGE);
 
     int hotRowH = 22, hotHeaderH = hotRowH + 2;
     int hotTotal = (int)hotspots.size() * hotRowH + hotHeaderH;
@@ -1473,30 +1725,30 @@ void Game::drawAnalysisTab() {
     {
         int dy = hotStartY - m_analysisHotspotScroll;
         if (hotspots.empty()) {
-            DrawText("No significant hotspots detected", leftX + 10, dy, 14, Color{120, 140, 120, 200});
+            DrawText(T("No significant hotspots detected"), leftX + 10, dy, 14, Color{120, 140, 120, 200});
         } else {
-            DrawText("Province", leftX + cProv, dy, 11, LIGHTGRAY);
-            DrawText("Rebel%", leftX + cReb, dy, 11, LIGHTGRAY);
-            DrawText("Type", leftX + cType, dy, 11, LIGHTGRAY);
+            DrawText(T("Province"), leftX + cProv, dy, 11, LIGHTGRAY);
+            DrawText(T("Rebel%"), leftX + cReb, dy, 11, LIGHTGRAY);
+            DrawText(T("Type"), leftX + cType, dy, 11, LIGHTGRAY);
             dy += hotRowH;
 
             for (auto& hs : hotspots) {
                 std::string typeStr;
                 Color typeCol;
-                if (hs.isEthnic && hs.isPolitical)     { typeStr = "Eth+Pol"; typeCol = Color{200,100,255,255}; }
+                if (hs.isEthnic && hs.isPolitical)     { typeStr = T("Eth+Pol"); typeCol = Color{200,100,255,255}; }
                 else if (hs.isEthnic)                    { typeStr = "Ethnic";  typeCol = Color{100,200,255,255}; }
-                else if (hs.isPolitical)                 { typeStr = "Pol";     typeCol = Color{255,200,100,255}; }
-                else                                     { typeStr = "Econ";    typeCol = Color{180,180,180,255}; }
+                else if (hs.isPolitical)                 { typeStr = T("Pol");     typeCol = Color{255,200,100,255}; }
+                else                                     { typeStr = T("Econ");    typeCol = Color{180,180,180,255}; }
 
-                Color rc = hs.rebelChance > 30 ? RED : (hs.rebelChance > 15 ? ORANGE : Color{220, 220, 100, 255});
+                Color rc = hs.rebelChance > 30 ? odPalette::of(odPalette::Role::Bad) : (hs.rebelChance > 15 ? odPalette::of(odPalette::Role::Warning) : Color{220, 220, 100, 255});
                 DrawText(hs.name.c_str(), leftX + cProv, dy, 12, WHITE);
                 DrawText(TextFormat("%.0f%%", hs.rebelChance), leftX + cReb, dy, 12, rc);
                 DrawText(typeStr.c_str(), leftX + cType, dy, 12, typeCol);
 
                 Rectangle goRect = {(float)(leftX + cGo), (float)(dy), (float)btnW, (float)(hotRowH - 2)};
                 DrawRectangleRec(goRect, Color{60, 70, 90, 200});
-                int goW = MeasureText("Go", 12);
-                DrawText("Go", (int)(goRect.x + (btnW - goW) / 2), (int)(goRect.y + 3), 12, WHITE);
+                int goW = MeasureText(T("Go"), 12);
+                DrawText(T("Go"), (int)(goRect.x + (btnW - goW) / 2), (int)(goRect.y + 3), 12, WHITE);
                 m_analysisGoToButtons.push_back({hs.pid, goRect});
 
                 dy += hotRowH;
@@ -1506,7 +1758,7 @@ void Game::drawAnalysisTab() {
     EndScissorMode();
 
     // ── Minority Analysis ──
-    DrawText("Minority Analysis", leftX, minTitleY, 20, Color{100, 200, 255, 255});
+    DrawText(T("Minority Analysis"), leftX, minTitleY, 20, Color{100, 200, 255, 255});
 
     struct MinAn { std::string name; float totalPct; long long pop; Color color; };
     std::unordered_map<std::string, MinAn> minMap;
@@ -1551,18 +1803,24 @@ void Game::drawAnalysisTab() {
     {
         int dy = minStartY - m_analysisMinorityScroll;
         if (minorities.empty()) {
-            DrawText("No minority data available", leftX + 10, dy, 14, Color{120, 120, 140, 200});
+            DrawText(T("No minority data available"), leftX + 10, dy, 14, Color{120, 120, 140, 200});
         } else {
-            DrawText("Minority", leftX + mcN, dy, 11, LIGHTGRAY);
-            DrawText("Population", leftX + mcP, dy, 11, LIGHTGRAY);
-            DrawText("Alignment", leftX + mcA, dy, 11, LIGHTGRAY);
-            DrawText("Verdict", leftX + mcV, dy, 11, LIGHTGRAY);
+            DrawText(T("Minority"), leftX + mcN, dy, 11, LIGHTGRAY);
+            DrawText(T("Population"), leftX + mcP, dy, 11, LIGHTGRAY);
+            DrawText(T("Alignment"), leftX + mcA, dy, 11, LIGHTGRAY);
+            DrawText(T("Verdict"), leftX + mcV, dy, 11, LIGHTGRAY);
             dy += minRowH;
 
             for (auto& ma : minorities) {
                 // Line 1: name + population + alignment + verdict
                 DrawRectangle(leftX + mcN - 10, dy + 3, 8, 8, ma.color);
-                DrawText(ma.name.c_str(), leftX + mcN, dy + 1, 13, WHITE);
+                // AN ETHNONYM IS A PROPER NOUN, so it goes through
+                // properName like a country's name -- which means the ones
+                // with a settled exonym come from <code>.names.json and the
+                // long tail is transcribed phonetically rather than left in
+                // English. See docs/i18n.md.
+                DrawText(od::i18n::properName(ma.name).c_str(),
+                         leftX + mcN, dy + 1, 13, WHITE);
                 char ps[32];
                 if (ma.pop > 1000000) snprintf(ps, sizeof(ps), "%.1fM", ma.pop / 1000000.0f);
                 else if (ma.pop > 1000) snprintf(ps, sizeof(ps), "%.1fK", ma.pop / 1000.0f);
@@ -1573,32 +1831,32 @@ void Game::drawAnalysisTab() {
                 float trend = getMinorityAlignmentTrend(m_playerCountryId, ma.name);
                 float drift = align - 50.0f;   // the same number, relative to neutral
 
-                Color ac = align < 30 ? RED : (align < 60 ? ORANGE : GREEN);
+                Color ac = align < 30 ? odPalette::of(odPalette::Role::Bad) : (align < 60 ? odPalette::of(odPalette::Role::Warning) : odPalette::of(odPalette::Role::Good));
                 DrawText(TextFormat("%.0f%%", align), leftX + mcA, dy + 1, 13, ac);
 
                 const char* vd;
                 Color vc;
-                if (align < 25)      { vd = "Hostile";  vc = RED; }
+                if (align < 25)      { vd = "Hostile";  vc = odPalette::of(odPalette::Role::Bad); }
                 else if (align < 50) { vd = "Unhappy";  vc = ORANGE; }
                 else if (align < 75) { vd = "Neutral";  vc = LIGHTGRAY; }
-                else                 { vd = "Loyal";    vc = GREEN; }
+                else                 { vd = "Loyal";    vc = odPalette::of(odPalette::Role::Good); }
                 DrawText(vd, leftX + mcV, dy + 1, 13, vc);
 
                 // Line 2: modifiers (indented, smaller font)
                 int modX = leftX + mcN + 10;
                 if (drift < -0.01f) {
-                    DrawText(TextFormat("Drift: %.0f", drift), modX, dy + 18, 10, Color{255, 140, 140, 200});
-                    modX += MeasureText(TextFormat("Drift: %.0f", drift), 10) + 16;
+                    DrawText(TextFormat(T("Drift: %.0f"), drift), modX, dy + 18, 10, Color{255, 140, 140, 200});
+                    modX += MeasureText(TextFormat(T("Drift: %.0f"), drift), 10) + 16;
                 } else if (drift > 0.01f) {
-                    DrawText(TextFormat("Drift: +%.0f", drift), modX, dy + 18, 10, Color{140, 255, 140, 200});
-                    modX += MeasureText(TextFormat("Drift: +%.0f", drift), 10) + 16;
+                    DrawText(TextFormat(T("Drift: +%.0f"), drift), modX, dy + 18, 10, Color{140, 255, 140, 200});
+                    modX += MeasureText(TextFormat(T("Drift: +%.0f"), drift), 10) + 16;
                 }
                 if (trend > 0.01f) {
-                    DrawText(TextFormat("Trend: +%.1f%%/t", trend), modX, dy + 18, 10, Color{100, 255, 100, 200});
-                    modX += MeasureText(TextFormat("Trend: +%.1f%%/t", trend), 10) + 16;
+                    DrawText(TextFormat(T("Trend: +%.1f%%/t"), trend), modX, dy + 18, 10, Color{100, 255, 100, 200});
+                    modX += MeasureText(TextFormat(T("Trend: +%.1f%%/t"), trend), 10) + 16;
                 } else if (trend < -0.01f) {
-                    DrawText(TextFormat("Trend: %.1f%%/t", trend), modX, dy + 18, 10, Color{255, 100, 100, 200});
-                    modX += MeasureText(TextFormat("Trend: %.1f%%/t", trend), 10) + 16;
+                    DrawText(TextFormat(T("Trend: %.1f%%/t"), trend), modX, dy + 18, 10, Color{255, 100, 100, 200});
+                    modX += MeasureText(TextFormat(T("Trend: %.1f%%/t"), trend), 10) + 16;
                 }
                 // The standing war penalty, taken from the rule that applies it
                 // rather than recomputed here.
@@ -1616,8 +1874,8 @@ void Game::drawAnalysisTab() {
                     const float standing = minorityDriftPerTurn(m_playerCountryId, ma.name)
                                          - getMinorityPolicyRate(m_playerCountryId, ma.name);
                     if (standing < -0.01f) {
-                        const char* s = TextFormat("%.0f/t occupied ground", standing);
-                        DrawText(s, modX, dy + 18, 10, RED);
+                        const char* s = TextFormat(T("%.0f/t occupied ground"), standing);
+                        DrawText(s, modX, dy + 18, 10, odPalette::of(odPalette::Role::Bad));
                         modX += MeasureText(s, 10) + 16;
                     }
                 }
@@ -1640,7 +1898,7 @@ void Game::drawAnalysisTab() {
         float maxAllocFrac = (cs.total > 0) ? maxAffordPac / cs.total : 0;
         if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
         if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
-        DrawText("Pacification Budget:", slX, slY - 20, 13, WHITE);
+        DrawText(T("Pacification Budget:"), slX, slY - 20, 13, WHITE);
         DrawRectangle(slX, slY, slW, slH, {40, 40, 50, 200});
         int maxFill = (int)(slW * maxAllocFrac);
         if (maxFill > 0) DrawRectangle(slX, slY, maxFill, slH, {40, 50, 60, 150});
@@ -1649,7 +1907,7 @@ void Game::drawAnalysisTab() {
         if (fillPac > 0) DrawRectangle(slX, slY, fillPac, slH, {80, 180, 220, 200});
         DrawText(TextFormat("%d%%", (int)(m_pacificationAllocation * 100)), slX + slW + 6, slY + 2, 12, WHITE);
         float pacPct = m_pacificationAllocation * 50.0f;
-        DrawText(TextFormat("Suppression: %.1f%%", pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
+        DrawText(TextFormat(T("Suppression: %.1f%%"), pacPct), slX, slY + slH + 4, 11, LIGHTGRAY);
         {
             const Rectangle pacBar = {(float)slX, (float)slY, (float)slW, (float)slH};
             float t = m_pacificationAllocation;
@@ -1663,7 +1921,7 @@ void Game::drawEthnicTab() {
     int leftX = 30, panelW = m_screenW - 60;
 
     const Country* c = m_countries.getCountry(m_playerCountryId);
-    DrawText(c ? TextFormat("%s — Ethnic Management", c->name.c_str()) : "Ethnic Management",
+    DrawText(c ? TextFormat(T("%s — Ethnic Management"), od::i18n::properName(c->name).c_str()) : T("Ethnic Management"),
         leftX, 30, 28, WHITE);
 
     struct EthEntry { std::string name; float totalPct; long long pop; Color color; };
@@ -1705,7 +1963,7 @@ void Game::drawEthnicTab() {
             auto& e = entries[ei];
             bool isSel = ((int)ei == m_selectedEthnicity);
             float align = getMinorityAlignment(m_playerCountryId, e.name);
-            Color ac = align < 30 ? RED : (align < 60 ? ORANGE : GREEN);
+            Color ac = align < 30 ? odPalette::of(odPalette::Role::Bad) : (align < 60 ? odPalette::of(odPalette::Role::Warning) : odPalette::of(odPalette::Role::Good));
 
             DrawRectangle(leftX, dy, panelW, rowH, isSel ? Color{60, 60, 80, 200} : Color{30, 30, 40, 180});
             DrawRectangle(leftX, dy, 6, rowH, e.color);
@@ -1715,7 +1973,7 @@ void Game::drawEthnicTab() {
             else if (e.pop > 1000) snprintf(ps, sizeof(ps), "Pop: %.1fK", e.pop / 1000.0f);
             else snprintf(ps, sizeof(ps), "Pop: %lld", e.pop);
             DrawText(ps, leftX + 200, dy + 3, 12, LIGHTGRAY);
-            DrawText(TextFormat("Alignment: %.0f%%", align), leftX + 380, dy + 3, 12, ac);
+            DrawText(TextFormat(T("Alignment: %.0f%%"), align), leftX + 380, dy + 3, 12, ac);
             DrawText(isSel ? "▲" : "▼", leftX + panelW - 30, dy + 2, 14, LIGHTGRAY);
 
             dy += rowH;
@@ -1946,11 +2204,15 @@ void Game::updatePoliticalIdentities() {
             printf("[IDENTITY] %s: flag restyled (%s), name unchanged\n",
                    c.name.c_str(), politid::quadrantName(next.quadrant));
         } else if (cid == m_playerCountryId) {
-            addNotification("Your government's course has remade the country: " +
-                            before + " is now " + c.name,
+            addNotification(TextFormat(T("Your government's course has remade the country: %s is now %s"),
+                                       before.c_str(), c.name.c_str()),
                             hexToColor(m_config.accent()), 8.0f);
         } else if (m_playerCountryId > 0) {
-            addNotification(before + " has become " + c.name,
+            // Both names through properName: the sentence was translated and
+            // the two countries in it were not.
+            addNotification(TextFormat(T("%s has become %s"),
+                                       od::i18n::properName(before).c_str(),
+                                       od::i18n::properName(c.name).c_str()),
                             Color{170, 180, 210, 255}, 6.0f);
         }
         printf("[IDENTITY] cid=%d %s -> %s (%s, econ=%.0f soc=%.0f)\n",

@@ -88,6 +88,12 @@ bool Config::load(const std::string& path) {
     screenH = findInt(json, "screenH", 900);
     fullscreen = findBool(json, "fullscreen", false);
     showActualFlags = findBool(json, "showActualFlags", true);
+    language = findConfigString(json, "language", "en");
+    uiScale = findFloat(json, "uiScale", 1.0f);
+    colourBlindMode = findInt(json, "colourBlindMode", 0);
+    if (colourBlindMode < 0 || colourBlindMode > 3) colourBlindMode = 0;
+    if (uiScale < 0.75f) uiScale = 0.75f;
+    if (uiScale > 2.0f) uiScale = 2.0f;
     debugMode = findBool(json, "debugMode", false);
     showFps = findBool(json, "showFps", true);
     showZoom = findBool(json, "showZoom", false);
@@ -180,6 +186,9 @@ bool Config::save(const std::string& path) {
     file << "  \"screenH\": " << screenH << ",\n";
     file << "  \"fullscreen\": " << (fullscreen ? "true" : "false") << ",\n";
     file << "  \"showActualFlags\": " << (showActualFlags ? "true" : "false") << ",\n";
+    file << "  \"language\": \"" << language << "\",\n";
+    file << "  \"uiScale\": " << uiScale << ",\n";
+    file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
     file << "  \"debugMode\": " << (debugMode ? "true" : "false") << ",\n";
     file << "  \"showFps\": " << (showFps ? "true" : "false") << ",\n";
     file << "  \"showZoom\": " << (showZoom ? "true" : "false") << ",\n";

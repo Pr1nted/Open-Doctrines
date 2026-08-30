@@ -1,0 +1,31 @@
+// Specialised: research.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Research. Open it -- the complaint is always the same -- nothing you start ever seems to
+finish -- and it is not a bug, it is the point.
+---
+@Signals Officer
+Everything here is measured in turns you have not played yet. A thing you
+start now lands long after you have forgotten wanting it, which means the only
+bad time to start is later.
+---
+@Signals Officer
+It draws from the same money the army does. A country that researches
+everything fields nothing, and a country that fields everything is still
+fighting last decade's war in twenty turns' time.
+
+Pick a lane. Do not pick all of them.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Close it again -- the §**x**§ in the corner.
+---
+@Signals Officer
+Finished work does not apply itself retroactively. New equipment reaches new
+formations first, so the turn something completes is the turn to look at what
+you are building, not the turn to relax.
+
+That is research. Anything else?

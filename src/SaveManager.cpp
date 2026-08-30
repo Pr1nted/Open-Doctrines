@@ -256,12 +256,20 @@ bool SaveManager::unpackTurn(const uint8_t* data, size_t size, TurnDelta& out) {
 // ─── Read entire file into memory ────────────────────────
 
 static std::vector<uint8_t> readFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    // stdio, NOT std::ifstream. Saves are written during the map load, which
+    // yields to the browser through Asyncify; coming back in, constructing a
+    // basic_filebuf traps the module with a bare "null function" and the world
+    // never finishes loading. See src/util/LoadLog.h for the same reasoning.
+    std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return {};
-    std::streamsize sz = f.tellg();
-    f.seekg(0);
+    std::fseek(f, 0, SEEK_END);
+    const long sz = std::ftell(f);
+    if (sz < 0) { std::fclose(f); return {}; }
+    std::fseek(f, 0, SEEK_SET);
     std::vector<uint8_t> data((size_t)sz);
-    if (!f.read((char*)data.data(), sz)) return {};
+    const size_t got = sz ? std::fread(data.data(), 1, (size_t)sz, f) : 0;
+    std::fclose(f);
+    if (got != (size_t)sz) return {};
     return data;
 }
 

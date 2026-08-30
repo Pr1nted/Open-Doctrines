@@ -1,0 +1,56 @@
+// Preklad. Riadky :: a mená hovoriacich sú identifikátory - neprekladať.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Haló, kto je tam?
+---
+@
+...
+---
+@Pr1nted
+Ó... Vy ste tu nový... Čože? §**nikdy ste neviedli krajinu?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Viete čo? Moja chyba...
+---
+@Pr1nted
+:: enter=type speed=42
+Lenže nemám čas robiť ten návod sám, takže vás nechám so svojou známou, dobre?
+Potrebujem čas, veď musia vznikať aktualizácie.
+---
+@Signals Officer
+Haló? Aký §**Pr1nted**§?
+---
+@Pr1nted
+Ehm... Ahoj Mia, potreboval by som /malilinkú láskavosť,/ prevedieš nového
+hráča?
+---
+@Signals Officer
+</Povzdych/>
+---
+@Pr1nted
+**No tak!** Za čo ti platím?
+---
+@Signals Officer
+Tak dobre... Fajn, fajn.
+---
+@Pr1nted
+Výborne! Slečna Mia vám všetko ukáže: ako hra funguje a jej základy. A ak
+základy poznáte, ale chcete hovoriť o konkrétnych veciach, povedzte to teraz,
+> Ukážte mi základy -> basics
+> Základy poznám, poďme ku konkrétnym veciam -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Dobre, začíname.
+---
+@Pr1nted
+:: act=tune_out
+Skvelé, snáď si budete rozumieť! Pr1nted končí.

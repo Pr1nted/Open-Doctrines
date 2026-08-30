@@ -1,0 +1,47 @@
+// Tłumaczenie - przeprawa morska.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+No to okręty. To na tym zatrzymuje się większość, i zatrzymuje się za każdym
+razem w tym samym miejscu: wojsko stoi na brzegu i nic się nie dzieje.
+---
+@Signals Officer
+Armia nie przepływa wody sama i nie ma rozkazu "załaduj na tamten okręt".
+Robi to prowincja.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Wybierz nadmorską prowincję, która ma §**port**§ ORAZ §**stojących w niej
+ludzi**§. Zaokrętowanie przenosi garnizon, który już tam jest; pusty port nie
+zaokrętuje nikogo, i stąd bierze się większość zamieszania.
+
+Jej panel ma §**Zaokrętuj armię**§ - za darmo, jedna tura. Naciśnij i zakończ
+turę.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Ludzie są teraz §**łodzią**§ przy brzegu. Przejdź do widoku §**floty**§ -
+okręty nie przyjmują rozkazów z żadnego z pozostałych siedmiu.
+
+§{key=ship_move}§ ją porusza, §{key=ship_wheel}§ otwiera jej działa,
+§{key=ship_engage}§ każe jej podjąć walkę.
+---
+@Signals Officer
+Aby wysadzić desant: wybierz łódź, naciśnij §**Ruch**§ i kliknij na §**ląd**§.
+
+Woda ją przesuwa. Ląd ją rozładowuje. Jeden przycisk robi jedno i drugie, i
+dlatego ludzie pływają tam i z powrotem, szukając tego drugiego.
+---
+@Signals Officer
+Dwie rzeczy, o których nikt nie mówi.
+
+Załadowany transport to cel i tonie z ludźmi na pokładzie. A desant do bronionej
+prowincji przybywa zmęczony: zajmij puste wybrzeże obok i idź pieszo, zamiast
+lądować na forcie.
+---
+@Signals Officer
+§**Hallow Rock**§ w cieśninie nie jest opcjonalna. Łódź ma zasięg, a dalsza
+wyspa jest poza nim, więc skała to pierwszy desant, a drugi skok idzie stamtąd.
+
+To są okręty. Coś jeszcze?

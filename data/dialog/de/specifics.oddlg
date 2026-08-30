@@ -1,0 +1,15 @@
+// Übersetzung - das Themenmenü.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Gut, die Form kennen Sie. Was wollen Sie also wirklich?
+
+Wählen Sie eines, ich gehe es richtig durch. Fragen Sie wieder, wenn wir fertig
+sind.
+> Schiffe, Häfen und wie ein Heer über Wasser kommt -> script:tut_ships
+> Forschung, und warum nichts Begonnenes fertig wird -> script:tut_research
+> Wirtschaft, Industrie und woher das Geld kommt -> script:tut_economy
+> Ansprüche, Unruhe und der Verlust von Provinzen an das eigene Volk -> script:tut_unrest
+> Bündnisse, Waffenstillstände und der Rest der Diplomatie -> script:tut_diplomacy
+> Nichts weiter, ich bin fertig -> script:outro

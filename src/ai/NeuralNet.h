@@ -48,6 +48,9 @@ public:
     // first with the same input — the update uses the cached activations.
     // Softmax is applied internally to the cached logits.
     void policyGradientUpdate(int action, float advantage, float lr);
+    /** Immediate cross-entropy step toward `target`. Call forward() first.
+     *  The batched equivalent is accumulateCrossEntropyInto. */
+    void crossEntropyUpdate(int target, float lr, const std::vector<uint8_t>* validMask = nullptr);
 
     // ── Batched policy gradient ──
     //
@@ -122,9 +125,72 @@ public:
      * that another was better -- which is the failure mode this project has
      * already met twice, as 0.00 declarations per thousand country-turns.
      */
+    /**
+     * `validMask`, when given, restricts the policy to the actions that were
+     * legal when the sample was taken. The behaviour policy is a softmax over
+     * MASKED logits (see AISystem::pickAction), so an update that softmaxes the
+     * raw logits is measuring a ratio against a distribution that was never on
+     * the table -- and, worse, the entropy bonus then spends itself pushing
+     * probability mass onto actions the mask will delete anyway, which is how
+     * a policy can collapse over its VALID actions while its raw entropy still
+     * looks healthy. Null keeps the old behaviour for heads with no mask.
+     */
+    /**
+     * `mixScale`/`mixFloor` describe the BEHAVIOUR policy the sample was drawn
+     * from: p_behaviour = mixScale * p_policy + mixFloor. Training acts through
+     * an epsilon-mixture, so for an action the policy has abandoned the two
+     * differ enormously -- and a ratio of p_policy over p_behaviour then scales
+     * that sample's gradient down by exactly the factor by which exploration
+     * over-sampled it. Measured 2026-08-24: "declare war" carried the HIGHEST
+     * advantage of any war action (+0.17 against recruit's +0.02) over 735
+     * samples a map, and the policy still played it twice in 3,597 offers,
+     * because its ratio sat at ~0.025 and shrank every step it did take.
+     *
+     * Measuring the ratio on the mixture at BOTH ends puts it back at ~1 for an
+     * unchanged policy, which is what PPO's trust region assumes. The gradient
+     * direction is unchanged -- still the plain policy gradient on the softmax
+     * -- only its magnitude stops being crushed for rare actions. Defaults
+     * reproduce the old behaviour exactly for heads with no exploration.
+     */
+    /**
+     * SUPERVISED cross-entropy toward one target action -- behavioural cloning.
+     *
+     * Loss is -log p(target) over the MASKED softmax, so the gradient arriving
+     * on the logits is (p - onehot). No advantage, no ratio, no clip: this is
+     * not a policy-gradient step and must not be confused for one. It exists so
+     * a head can be taught by the scripted player before it is turned loose on
+     * a reward -- AlphaGo's first stage, and the reason it worked.
+     *
+     * `validMask` matters as much here as in the PPO path: cloning a teacher
+     * whose choice was made over legal actions, against a softmax that includes
+     * illegal ones, spends most of the gradient pushing mass off actions the
+     * mask deletes anyway.
+     */
+    void accumulateCrossEntropyInto(Scratch& s, int target, float weight,
+                                    const std::vector<uint8_t>* validMask = nullptr) const;
+
+    /**
+     * What one PPO sample did, so a caller can watch the policy's health
+     * rather than infer it afterwards from a benchmark.
+     *
+     * Everything here is already computed inside the update; reporting it
+     * costs a few stores. The entropy is the quantity that says a head is
+     * collapsing WHILE it collapses -- by the time a bench prints
+     * "shape war:hold 100%" the run is over and the model is ruined.
+     */
+    struct PPOStats {
+        float entropy = 0.0f;  ///< H of the masked policy here, in nats
+        float kl      = 0.0f;  ///< KL(behaviour || policy), Schulman's k3
+        int   support = 0;     ///< legal actions, so entropy has a ceiling
+        bool  clipped = false;
+    };
+
     void accumulatePPOInto(Scratch& s, int action, float advantage,
                            float oldLogProb, float clipEps,
-                           float entropyCoef) const;
+                           float entropyCoef,
+                           const std::vector<uint8_t>* validMask = nullptr,
+                           float mixScale = 1.0f, float mixFloor = 0.0f,
+                           PPOStats* out = nullptr) const;
     /** log pi(a|s) at temperature 1 for the logits currently in `s`. */
     static float logProbOf(const std::vector<float>& logits, int action);
     /**

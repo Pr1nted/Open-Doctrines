@@ -914,7 +914,7 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             if (ppIt != m_game->m_provincePixels.end()) {
                 for (int idx : ppIt->second) {
                     if (idx >= 0 && idx < (int)m_game->m_pixelCountryArray.size())
-                        m_game->m_pixelCountryArray[idx] = newCid;
+                        m_game->m_pixelCountryArray[idx] = (uint16_t)newCid;
                 }
             }
             return true;

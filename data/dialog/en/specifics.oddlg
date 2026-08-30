@@ -1,0 +1,18 @@
+// The topic menu, for a player who told Pr1nted they already know the basics.
+//
+// Each option opens its own script and comes back here when it ends -- see
+// the "script:" convention in Game_Comms.cpp. There is no jump instruction in
+// .oddlg and this is why there does not need to be one.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Right, you know the shape of it. So what do you actually want?
+
+Pick one and I will go properly into it. Ask again when you are done.
+> Ships, ports and getting an army across water -> script:tut_ships
+> Research, and why nothing you start finishes -> script:tut_research
+> The economy, industry and where money comes from -> script:tut_economy
+> Claims, unrest and losing provinces to your own people -> script:tut_unrest
+> Alliances, ceasefires and the rest of diplomacy -> script:tut_diplomacy
+> Nothing else, I am done -> script:outro

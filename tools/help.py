@@ -38,9 +38,22 @@ GROUPS = [
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
         "gen_server_raylib_stubs.py",
+        # Serves the web build and collects the phone's console over the
+        # network, because Safari's inspector needs a cable and the failure
+        # being chased kills the tab it would be printed in.
+        "devlog_server.py",
     ]),
     ("Training the AI", [
+        # Re-deflates the shipped model container with zopfli. Same format,
+        # same weights, ~115 KB smaller; miniz inflates it unchanged.
+        "shrink_model.py",
         "train.sh", "train_parallel.py", "ai_benchmark.sh", "ai_bench.py",
+        # The A/B ruler. --eval-ai's ADVANTAGE line is a ratio and explodes
+        # when the control cohort is nearly wiped out; this reads land share
+        # over several fixed worlds instead, and refuses to call a difference
+        # real when it sits inside the spread.
+        "ai_ab.py",
+        "od_bench.py",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
@@ -60,6 +73,36 @@ GROUPS = [
         "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
         "rebuild_map_preview.py", "check_map_integrity.py",
         "odmap_pack.py", "shrink_maps.py",
+        # How both the .odmap archives and the release zip are deflated: an
+        # ordinary zip, found by searching much harder for it.
+        "zopfli_zip.py",
+        # The same lossless re-encode for the images that are NOT inside an
+        # archive: the downloaded flags, the app icon, the map thumbnails.
+        "shrink_pngs.py",
+        "make_tutorial_map.py",
+        # Province geometry repair, applied to the archives that already ship
+        # rather than only to maps generated from here on.
+        "fix_map_geometry.py",
+        # A .odmap carries its own copy of the data files a map needs, and the
+        # archive's copy wins over data/ -- so a data fix is not shipped until
+        # it has been written into every archive too.
+        "update_odmap_member.py",
+    ]),
+    ("Doctrine data", [
+        # policies.json is generated, and its advertised numbers are derived
+        # from the effects the resolver actually reads -- gen_policies.py
+        # authors it, check_policies.py is the gate that keeps the two one fact
+        # rather than two that agree today.
+        "gen_policies.py", "check_policies.py",
+    ]),
+    ("Translating the game", [
+        "i18n_extract.py", "i18n_sync.py", "i18n_put.py", "i18n_wrap.py",
+        "i18n_merge.py", "i18n_quality.py", "i18n_fit.py",
+        # Dialogue rather than UI strings, but the job is the same one: check a
+        # translation against the English it came from. A .oddlg is prose
+        # wrapped around machinery -- page breaks, :: directives, choice keys --
+        # and the machinery has to survive translation intact.
+        "dialog_check.py",
     ]),
     ("Licensing and provenance", [
         "gen_notices.py", "audit_flag_licenses.py", "check_data_licences.py",
@@ -78,6 +121,20 @@ GROUPS = [
         "sync_map_symbols.py",
         "generate_icons.py", "generate_web_favicon.py", "make_watermark.py",
         "subset_font.py", "optimize_flag_svgs.py",
+        # The lossless re-encode for the audio: the same packets in fuller
+        # Ogg pages, and OptiVorbis over the bitstream.
+        "shrink_audio.py",
+        # Which OptiVorbis needs: raylib's stb_vorbis rejects a codebook with no
+        # entries, and the shipped audio has them. CMakeLists applies this to
+        # the raylib it builds, and fails the build if it cannot.
+        "patch_raylib_vorbis.py",
+        # The relations view says who is at war and who is allied with hue
+        # alone, so whether those four can be told apart without normal colour
+        # vision is a measurement rather than a claim.
+        "check_palette.py",
+    ]),
+    ("The communication window", [
+        "kra_export.py", "comms_signal.py", "comms_derive.py", "make_voices.py",
     ]),
 ]
 

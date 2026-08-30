@@ -10,6 +10,10 @@
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
+#include "util/LoadLog.h"
+// The editor draws its own hints and labels, and they are translated too. It
+// does not include Game.h, which is where everything else picks this up.
+#include "i18n/Locale.h"
 #include "TextInput.h"
 #include "ProceduralGenerator.h"
 #include "util/PngWrite.h"
@@ -36,6 +40,21 @@
 // a dependency of this translation unit and does the same job portably.
 #include <fstream>
 #include <filesystem>
+
+// THE EDITOR DREW ITS TRANSLATED LABELS IN A FONT WITH NO GLYPHS FOR THEM.
+//
+// drawButton already puts every label through T(), and every one of them is in
+// the language files -- and the whole screen came out as rows of boxes. The
+// translation was never the missing part: this file includes MapEditor.h
+// rather than Game.h, and Game.h is where the rest of the game picks up the
+// shadowed DrawText that draws non-ASCII out of the atlas. So the labels were
+// translated and then handed to raylib's built-in font, which is ASCII and
+// nothing else.
+//
+// LAST IN THE BLOCK, ON PURPOSE. The header ends with `#define DrawText ...`,
+// so anything included after it has its own DrawText DECLARATION rewritten --
+// raylib.h above being exactly that case.
+#include "i18n/Text.h"
 
 namespace fs = std::filesystem;
 
@@ -162,8 +181,16 @@ bool MapEditor::drawButtonCol(const char* label, Rectangle rect, Color accent, b
 
     DrawRectangleRounded(rect, 0.12f, 8, bg);
     DrawRectangleRoundedLines(rect, 0.12f, 8, border);
-    int tw = MeasureText(label, fontSize);
-    DrawText(label, (int)(rect.x + rect.width/2 - tw/2), (int)(rect.y + rect.height/2 - fontSize/2), fontSize, textCol);
+    const char* shown = T(label);
+    // THE LABEL IS TRANSLATED HERE, not at the hundred call sites.
+    //
+    // Every button on this screen comes through this function, so this is the
+    // one place that has to know about the language -- the same reasoning that
+    // put the shadowed DrawText in i18n/Text.h rather than editing 970 draw
+    // sites. A caller passing a literal gets it translated for free; the
+    // extractor is told about this function so those literals reach en.json.
+    int tw = MeasureText(shown, fontSize);
+    DrawText(shown, (int)(rect.x + rect.width/2 - tw/2), (int)(rect.y + rect.height/2 - fontSize/2), fontSize, textCol);
 
     const int id = (int)rect.x * 73856093 ^ (int)rect.y * 19349663 ^ (int)rect.width * 83492791;
     if (hover && m_lastHoverBtn != id) {
@@ -189,8 +216,8 @@ void MapEditor::drawStartupDialog() {
     ClearBackground(Color{15, 15, 20, 255});
     float cx = m_screenW / 2.0f, cy = m_screenH / 2.0f - 80.0f;
 
-    int titleW = MeasureText("Map Editor", 40);
-    DrawText("Map Editor", cx - titleW/2, cy - 70, 40, ACCENT);
+    int titleW = MeasureText(T("Map Editor"), 40);
+    DrawText(T("Map Editor"), cx - titleW/2, cy - 70, 40, ACCENT);
 
     const char* labels[] = {"Open Existing Project", "Create New Project"};
     Rectangle btns[] = { {cx-160, cy, 320, 44}, {cx-160, cy+54, 320, 44} };
@@ -224,8 +251,8 @@ void MapEditor::drawStartupDialog() {
     if (fileDialog::available()) {
         Rectangle importBtn = {cx-160, nextY, 320, 44};
         if (drawButton("Import Map File...", importBtn, false, 20)) promptImportFromFile();
-        int hintW = MeasureText(".odmap or .uodmap from anywhere on this computer", 12);
-        DrawText(".odmap or .uodmap from anywhere on this computer",
+        int hintW = MeasureText(T(".odmap or .uodmap from anywhere on this computer"), 12);
+        DrawText(T(".odmap or .uodmap from anywhere on this computer"),
                  (int)(cx - hintW / 2), (int)nextY + 48, 12, GRAY);
         nextY += 74;
     }
@@ -248,15 +275,15 @@ void MapEditor::drawStartupDialog() {
 void MapEditor::drawOpenDialog() {
     ClearBackground(Color{15, 15, 20, 255});
     float cx = m_screenW / 2.0f, cy = m_screenH / 2.0f - 120.0f;
-    DrawText("Open Project", cx - 80, cy - 40, 28, WHITE);
+    DrawText(T("Open Project"), cx - 80, cy - 40, 28, WHITE);
 
     Rectangle listRect = {cx-200, cy, 400, 260};
     DrawRectangleRounded(listRect, 0.05f, 4, Color{30,30,35,255});
     DrawRectangleRoundedLines(listRect, 0.05f, 4, Color{80,80,90,255});
 
     if (m_projFiles.empty()) {
-        DrawText("No .uodmap files found", cx-100, cy+120, 16, GRAY);
-        DrawText("in data/projects/", cx-70, cy+142, 14, GRAY);
+        DrawText(T("No .uodmap files found"), cx-100, cy+120, 16, GRAY);
+        DrawText(T("in data/projects/"), cx-70, cy+142, 14, GRAY);
     } else {
         int itemH = 28;
         for (int i = 0; i < 9 && (i + m_projScroll) < (int)m_projFiles.size(); i++) {
@@ -300,7 +327,7 @@ void MapEditor::drawOpenDialog() {
         if (m_projChoice >= 0 && m_projChoice < (int)m_projFiles.size()) {
             std::string path = m_dataDir + "projects/" + m_projFiles[m_projChoice];
             if (!loadProject(path)) {
-                m_warningMsg = "Failed to load " + m_projFiles[m_projChoice];
+                m_warningMsg = T("Failed to load ") + m_projFiles[m_projChoice];
                 m_warningTimer = 3.0f;
             }
         }
@@ -315,8 +342,8 @@ void MapEditor::drawOpenDialog() {
 void MapEditor::drawCreateDialog() {
     ClearBackground(Color{15, 15, 20, 255});
     float cx = m_screenW / 2.0f, cy = m_screenH / 2.0f - 100.0f;
-    int titleW = MeasureText("Create New Map", 32);
-    DrawText("Create New Map", cx - titleW/2, cy - 60, 32, ACCENT);
+    int titleW = MeasureText(T("Create New Map"), 32);
+    DrawText(T("Create New Map"), cx - titleW/2, cy - 60, 32, ACCENT);
 
     const char* labels[] = {"Blank Canvas", "Generate Procedurally", "Based on Existing Map"};
     Rectangle btns[3];
@@ -397,7 +424,7 @@ void MapEditor::scanImportableMaps() {
                     listed = true;
                 }
             } catch (std::exception& e) {
-                std::cerr << "Map editor: maps_index.json — " << e.what() << std::endl;
+                LoadLog() << "Map editor: maps_index.json — " << e.what() << std::endl;
             }
         }
         // No index, or an unusable one: read the archives themselves, which is
@@ -440,8 +467,8 @@ void MapEditor::scanImportableMaps() {
 void MapEditor::drawImportDialog() {
     ClearBackground(Color{15, 15, 20, 255});
     float cx = m_screenW / 2.0f, cy = m_screenH / 2.0f - 160.0f;
-    DrawText("Based on Existing Map", cx - 130, cy - 40, 26, ACCENT);
-    DrawText("Loads that map's terrain, provinces and countries as a starting point.", cx - 240, cy - 8, 12, GRAY);
+    DrawText(T("Based on Existing Map"), cx - 130, cy - 40, 26, ACCENT);
+    DrawText(T("Loads that map's terrain, provinces and countries as a starting point."), cx - 240, cy - 8, 12, GRAY);
 
     if (!m_importScanned) scanImportableMaps();
 
@@ -450,7 +477,7 @@ void MapEditor::drawImportDialog() {
     DrawRectangleRoundedLines(listRect, 0.05f, 4, Color{80,80,90,255});
 
     if (m_importEntries.empty()) {
-        DrawText("No maps found in STDmaps/ or custom_maps/", (int)listRect.x + 16, (int)listRect.y + 16, 14, GRAY);
+        DrawText(T("No maps found in STDmaps/ or custom_maps/"), (int)listRect.x + 16, (int)listRect.y + 16, 14, GRAY);
     } else {
         const int itemH = 26;
         int visible = (int)listRect.height / itemH;
@@ -641,7 +668,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
     m_editCountries.clear();
     bool countriesOk = m_editCountries.loadFromJson(countryJson);
     if (!countriesOk || m_editCountries.getAll().empty())
-        std::cout << "  WARNING: countries.json failed to parse or was empty\n";
+        LoadLog() << "  WARNING: countries.json failed to parse or was empty\n";
     m_provinceJson = provJson;
     m_countryJson = countryJson;
 
@@ -710,7 +737,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 for (auto& u : units)
                     troops.push_back(ArmyUnit{u.value("country_id", ownerCid), u.value("count", 0)});
             }
-        } catch (...) { std::cout << "  Bad armies.json in imported map\n"; }
+        } catch (...) { LoadLog() << "  Bad armies.json in imported map\n"; }
     };
     parseIsoKeyedArmies();
     try {
@@ -720,7 +747,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
             for (auto& [pidStr, info] : j.items())
                 m_provinceData[std::stoi(pidStr)].portLevel = info.value("level", 1);
         }
-    } catch (...) { std::cout << "  Bad ports.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad ports.json in imported map\n"; }
     try {
         std::string pc = getStr("political_compass.json");
         if (!pc.empty()) {
@@ -736,7 +763,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 d.compassSocial = -comp.value("auth", 0.0f);
             }
         }
-    } catch (...) { std::cout << "  Bad political_compass.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad political_compass.json in imported map\n"; }
 
     m_editorShips.clear();
     try {
@@ -754,7 +781,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 m_editorShips.push_back(s);
             }
         }
-    } catch (...) { std::cout << "  Bad ships.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad ships.json in imported map\n"; }
 
     m_editorRelations.clear();
     try {
@@ -781,7 +808,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 }
             }
         }
-    } catch (...) { std::cout << "  Bad relations.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad relations.json in imported map\n"; }
 
     m_countryPolicies.clear();
     m_ethnicityPolicies.clear();
@@ -813,7 +840,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 for (auto& v : *arr) m_editorClaims[it2->second].insert(v.get<int>());
             }
         }
-    } catch (...) { std::cout << "  Bad claims.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad claims.json in imported map\n"; }
     try {
         std::string pol = getStr("policies.json");
         if (!pol.empty()) {
@@ -849,7 +876,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
                 }
             }
         }
-    } catch (...) { std::cout << "  Bad policies.json in imported map\n"; }
+    } catch (...) { LoadLog() << "  Bad policies.json in imported map\n"; }
 
     drawMiniLoadingScreen(0.8f, "Building political map...");
     rebuildProvinceCounts();
@@ -860,7 +887,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
     m_hlDirty = true;
     m_dirty = true; // this is a starting point, not a saved project yet
     drawMiniLoadingScreen(1.0f, "Ready");
-    std::cout << "  Imported existing map from " << path << "\n";
+    LoadLog() << "  Imported existing map from " << path << "\n";
     return true;
 }
 
@@ -1774,7 +1801,7 @@ void MapEditor::finalizeLandStroke() {
                 }
                 m_provincePixelCounts[pid] = (int)comp.size();
                 m_provinceData[pid].population = std::max(100LL, (long long)comp.size() * 12);
-                std::cout << "  New island province #" << pid << " (" << comp.size() << " px)\n";
+                LoadLog() << "  New island province #" << pid << " (" << comp.size() << " px)\n";
             }
             ux0 = std::min(ux0, cx0); uy0 = std::min(uy0, cy0);
             ux1 = std::max(ux1, cx1); uy1 = std::max(uy1, cy1);
@@ -1810,7 +1837,7 @@ bool MapEditor::garbageCollectProvinces() {
         m_provinceData.erase(id);
         m_provincePixelCounts.erase(id);
     }
-    std::cout << "  Removed " << dead.size() << " empty province(s)\n";
+    LoadLog() << "  Removed " << dead.size() << " empty province(s)\n";
     return true;
 }
 
@@ -1893,7 +1920,7 @@ void MapEditor::initEmptyProvinceLayer() {
     m_hasProvinces = true;
     m_hlDirty = true;
     trackChange();
-    std::cout << "  Started an empty province layer\n";
+    LoadLog() << "  Started an empty province layer\n";
 }
 
 void MapEditor::createNewProvince() {
@@ -2648,18 +2675,18 @@ void MapEditor::generateProvincesCountries() {
         computePoliticalGradient(); // match the in-game border-glow rendering
         m_polGradientDirty = false; m_polGradientFullDirty = false; // supersedes any pending partial refresh
 
-        std::cout << "  Province data loaded into editor\n";
+        LoadLog() << "  Province data loaded into editor\n";
     }
 
     m_dirty = true;
-    std::cout << "  Generated " << (m_hasProvinces ? "OK" : "FAILED") << "\n";
+    LoadLog() << "  Generated " << (m_hasProvinces ? "OK" : "FAILED") << "\n";
 }
 
 void MapEditor::generateGameData() {
     // Already generated alongside provinces in generateProvincesCountries().
     m_hasGameData = !m_populationJson.empty();
     m_dirty = true;
-    std::cout << "  Game data confirmed\n";
+    LoadLog() << "  Game data confirmed\n";
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2675,7 +2702,7 @@ void MapEditor::parseGeneratedGameData() {
             for (auto& [pidStr, val] : pj.items())
                 m_provinceData[std::stoi(pidStr)].population = val.get<long long>();
         }
-    } catch (...) { std::cout << "  Failed to parse population.json\n"; }
+    } catch (...) { LoadLog() << "  Failed to parse population.json\n"; }
     // resources.json (generator schema: conditional resource keys, industry, fortification)
     try {
         if (!m_resourcesJson.empty()) {
@@ -2695,11 +2722,14 @@ void MapEditor::parseGeneratedGameData() {
                 if (res.contains("industry")) {
                     d.industryLevel = res["industry"].value("level", 0);
                     d.industryIncome = res["industry"].value("income", 10.0f);
+                    d.resourceIncome = res["industry"].value("resourceIncome", 0.0f);
+                    d.popIncome = res["industry"].value("popIncome", 0.0f);
+                    d.popModifier = res["industry"].value("popModifier", 1.0f);
                 }
                 d.fortification = res.value("fortification", 0);
             }
         }
-    } catch (...) { std::cout << "  Failed to parse resources.json\n"; }
+    } catch (...) { LoadLog() << "  Failed to parse resources.json\n"; }
     // minority_colors.json: { "name": [r,g,b] } -> the ethnicity name registry
     m_ethnicColors.clear();
     try {
@@ -2711,7 +2741,7 @@ void MapEditor::parseGeneratedGameData() {
                                         (uint8_t)rgb[2].get<int>(), 255};
             }
         }
-    } catch (...) { std::cout << "  Failed to parse minority_colors.json\n"; }
+    } catch (...) { LoadLog() << "  Failed to parse minority_colors.json\n"; }
     // minorities.json: { "pid": [{"n":name,"p":percent}, ...] }
     try {
         if (!m_minoritiesJson.empty()) {
@@ -2723,7 +2753,7 @@ void MapEditor::parseGeneratedGameData() {
                     d.ethnicGroups.push_back({e.value("n", "Unknown"), e.value("p", 0.0f)});
             }
         }
-    } catch (...) { std::cout << "  Failed to parse minorities.json\n"; }
+    } catch (...) { LoadLog() << "  Failed to parse minorities.json\n"; }
 }
 
 std::string MapEditor::buildResourcesJson() const {
@@ -2742,9 +2772,10 @@ std::string MapEditor::buildResourcesJson() const {
             {"level", d.industryLevel},
             {"income", d.industryIncome},
             {"specialization", ""},
-            {"resourceIncome", 0.0f},
-            {"popIncome", 0.0f},
-            {"popModifier", 1.0f}
+            // Carried through from whatever produced the map; see EditorProvinceData.
+            {"resourceIncome", d.resourceIncome},
+            {"popIncome", d.popIncome},
+            {"popModifier", d.popModifier}
         };
         e["fortification"] = d.fortification;
         rj[std::to_string(pid)] = e;
@@ -3048,7 +3079,7 @@ std::string MapEditor::generateAndExportHeadless(const GeneratorParams& p, const
 
 std::string MapEditor::exportODMap(const std::string& destPath) {
     if (!m_hasProvinces) {
-        std::cout << "  No provinces to export. Generate provinces first.\n";
+        LoadLog() << "  No provinces to export. Generate provinces first.\n";
         return {};
     }
     std::string odmPath = destPath;
@@ -3201,7 +3232,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
                                      ? nullptr
                                      : stbi_load(m_thumbnailPath.c_str(), &sw, &sh, &sc, 4);
         if (!srcData && !m_thumbnailPath.empty())
-            std::cout << "  Custom thumbnail unreadable, falling back to auto-generated\n";
+            LoadLog() << "  Custom thumbnail unreadable, falling back to auto-generated\n";
         const unsigned char* src = srcData;
         if (!src && !m_politicalPixels.empty()) {
             src = (const unsigned char*)m_politicalPixels.data();
@@ -3221,7 +3252,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     // Package into .odmap
     mz_zip_archive zip{};
     if (!mz_zip_writer_init_file(&zip, odmPath.c_str(), 0)) {
-        std::cout << "  Failed to create .odmap: " << odmPath << "\n";
+        LoadLog() << "  Failed to create .odmap: " << odmPath << "\n";
         fs::remove_all(tmpDir);
         return {};
     }
@@ -3229,7 +3260,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     auto addFile = [&](const std::string& name) {
         std::string full = tmpDir + name;
         std::ifstream f(full, std::ios::binary | std::ios::ate);
-        if (!f) { std::cout << "  Skipping " << name << "\n"; return; }
+        if (!f) { LoadLog() << "  Skipping " << name << "\n"; return; }
         std::streamsize sz = f.tellg();
         f.seekg(0);
         std::vector<uint8_t> buf(sz);
@@ -3262,9 +3293,9 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     // Exporting with no policy data is almost always a mistake rather than an
     // intent, and it used to fail silently — say so in the log.
     if (startingPoliciesJson.empty())
-        std::cout << "  NOTE: no country starting policies to export\n";
+        LoadLog() << "  NOTE: no country starting policies to export\n";
     if (startingMinorityPoliciesJson.empty())
-        std::cout << "  NOTE: no ethnic-relations settings to export\n";
+        LoadLog() << "  NOTE: no ethnic-relations settings to export\n";
     addFile("metadata.json");
     addFile("thumb.png");
     // Embed custom flag SVGs
@@ -3287,7 +3318,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     mz_zip_writer_end(&zip);
     fs::remove_all(tmpDir);
 
-    std::cout << "  Exported .odmap to: " << odmPath << "\n";
+    LoadLog() << "  Exported .odmap to: " << odmPath << "\n";
     return odmPath;
 }
 
@@ -3396,7 +3427,7 @@ bool MapEditor::saveProject() {
     if (!mz_zip_writer_init_file(&zip, path.c_str(), 0)) {
         m_saveStatus = "Save failed!";
         m_saveStatusTimer = 3.0f;
-        std::cout << "  Failed to create " << path << "\n";
+        LoadLog() << "  Failed to create " << path << "\n";
         return false;
     }
     for (auto& [n, buf] : entries) {
@@ -3411,7 +3442,7 @@ bool MapEditor::saveProject() {
     m_dirty = false;
     m_saveStatus = "Saved " + name + ".uodmap";
     m_saveStatusTimer = 3.0f;
-    std::cout << "  Saved project to " << path << "\n";
+    LoadLog() << "  Saved project to " << path << "\n";
     return true;
 }
 
@@ -3537,7 +3568,7 @@ bool MapEditor::loadProject(const std::string& path) {
                     for (auto& [pidStr, info] : j.items())
                         m_provinceData[std::stoi(pidStr)].portLevel = info.value("level", 1);
                 }
-            } catch (...) { std::cout << "  Bad ports.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad ports.json in project\n"; }
             try {
                 std::string armies = getStr("armies.json");
                 if (!armies.empty()) {
@@ -3549,7 +3580,7 @@ bool MapEditor::loadProject(const std::string& path) {
                             troops.push_back(ArmyUnit{u.value("country_id", 0), u.value("count", 0)});
                     }
                 }
-            } catch (...) { std::cout << "  Bad armies.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad armies.json in project\n"; }
             try {
                 std::string ships = getStr("ships.json");
                 if (!ships.empty()) {
@@ -3565,7 +3596,7 @@ bool MapEditor::loadProject(const std::string& path) {
                         m_editorShips.push_back(s);
                     }
                 }
-            } catch (...) { std::cout << "  Bad ships.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad ships.json in project\n"; }
             try {
                 std::string rels = getStr("relations.json");
                 if (!rels.empty()) {
@@ -3592,7 +3623,7 @@ bool MapEditor::loadProject(const std::string& path) {
                         }
                     }
                 }
-            } catch (...) { std::cout << "  Bad relations.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad relations.json in project\n"; }
             m_editorClaims.clear();
             try {
                 std::string cj = getStr("claims.json");
@@ -3611,7 +3642,7 @@ bool MapEditor::loadProject(const std::string& path) {
                         for (auto& v : *arr) m_editorClaims[ci->second].insert(v.get<int>());
                     }
                 }
-            } catch (...) { std::cout << "  Bad claims.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad claims.json in project\n"; }
             try {
                 std::string pc = getStr("political_compass.json");
                 if (!pc.empty()) {
@@ -3623,7 +3654,7 @@ bool MapEditor::loadProject(const std::string& path) {
                         d.compassSocial = -comp.value("auth", 0.0f);
                     }
                 }
-            } catch (...) { std::cout << "  Bad political_compass.json in project\n"; }
+            } catch (...) { LoadLog() << "  Bad political_compass.json in project\n"; }
         }
         if (pp.data) UnloadImage(pp);
     }
@@ -3678,7 +3709,7 @@ bool MapEditor::loadProject(const std::string& path) {
                 m_genParams.provinceDensity = g.value("provinceDensity", m_genParams.provinceDensity);
             }
         }
-    } catch (...) { std::cout << "  Bad editor.json in project\n"; }
+    } catch (...) { LoadLog() << "  Bad editor.json in project\n"; }
 
     drawMiniLoadingScreen(0.7f, "Rebuilding map state...");
     rebuildFromPixelState();
@@ -3690,7 +3721,7 @@ bool MapEditor::loadProject(const std::string& path) {
     m_dirty = false;
     m_projectState = PROJ_EDITING;
     drawMiniLoadingScreen(1.0f, "Ready");
-    std::cout << "  Loaded project from " << path << "\n";
+    LoadLog() << "  Loaded project from " << path << "\n";
     return true;
 }
 
@@ -3905,7 +3936,7 @@ void MapEditor::drawPickerOverlay() {
     DrawText(m_pickerQuery.c_str(), (int)searchRect.x + 8, (int)searchRect.y + 5, 14, WHITE);
     DrawText("|", (int)(searchRect.x + 8 + MeasureText(m_pickerQuery.c_str(), 14)), (int)searchRect.y + 5, 14, ACCENT);
     if (m_pickerQuery.empty())
-        DrawText("Type to search...", (int)searchRect.x + 8, (int)searchRect.y + 5, 14, GRAY);
+        DrawText(T("Type to search..."), (int)searchRect.x + 8, (int)searchRect.y + 5, 14, GRAY);
 
     int key = GetCharPressed();
     while (key > 0) {
@@ -3956,7 +3987,7 @@ void MapEditor::drawPickerOverlay() {
 
     DrawRectangle((int)listRect.x, (int)listRect.y, (int)listRect.width, (int)listRect.height, Color{18, 18, 25, 255});
     if (labels.empty()) {
-        DrawText("No matches", (int)listRect.x + 10, (int)listRect.y + 10, 13, GRAY);
+        DrawText(T("No matches"), (int)listRect.x + 10, (int)listRect.y + 10, 13, GRAY);
     }
     for (int i = m_pickerScroll; i < (int)labels.size() && i < m_pickerScroll + visRows; ++i) {
         int ry = listY + (i - m_pickerScroll) * rowH;
@@ -4013,9 +4044,9 @@ void MapEditor::drawExitDialog() {
     DrawRectangleRounded(box, 0.05f, 6, Color{25, 25, 32, 255});
     DrawRectangleRoundedLines(box, 0.05f, 6, ACCENT);
 
-    DrawText("Unsaved changes", x + 20, y + 16, 20, WHITE);
-    DrawText("Save your project before returning", x + 20, y + 44, 13, LIGHTGRAY);
-    DrawText("to the map menu?", x + 20, y + 60, 13, LIGHTGRAY);
+    DrawText(T("Unsaved changes"), x + 20, y + 16, 20, WHITE);
+    DrawText(T("Save your project before returning"), x + 20, y + 44, 13, LIGHTGRAY);
+    DrawText(T("to the map menu?"), x + 20, y + 60, 13, LIGHTGRAY);
 
     Rectangle saveBtn    = {(float)(x + 20), (float)(y + 92), (float)(w - 40), 28};
     Rectangle discardBtn = {(float)(x + 20), (float)(y + 126), (float)((w - 48) / 2), 26};
@@ -4036,7 +4067,7 @@ void MapEditor::drawExitDialog() {
     if (drawButton("Cancel", cancelBtn, false, 12)) {
         m_exitDialogOpen = false;
     }
-    DrawText("ESC = cancel", x + 20, y + 160, 10, GRAY);
+    DrawText(T("ESC = cancel"), x + 20, y + 160, 10, GRAY);
 }
 
 void MapEditor::screenToCanvas(int sx, int sy, int& cx, int& cy) const {
@@ -4447,8 +4478,8 @@ void MapEditor::drawToolbar() {
     bool menuHov = CheckCollisionPointRec(GetMousePosition(), menuBtn);
     DrawRectangleRounded(menuBtn, 0.15f, 6, menuHov ? Color{60,50,30,220} : Color{45,40,30,180});
     DrawRectangleRoundedLines(menuBtn, 0.15f, 6, menuHov ? Color{230,180,80,255} : Color{160,140,90,200});
-    int mtw = MeasureText("Menu", 13);
-    DrawText("Menu", (int)(menuBtn.x + menuBtn.width/2 - mtw/2), (int)(menuBtn.y + 8), 13, menuHov ? Color{230,180,80,255} : LIGHTGRAY);
+    int mtw = MeasureText(T("Menu"), 13);
+    DrawText(T("Menu"), (int)(menuBtn.x + menuBtn.width/2 - mtw/2), (int)(menuBtn.y + 8), 13, menuHov ? Color{230,180,80,255} : LIGHTGRAY);
     if (m_dirty) DrawCircle((int)(menuBtn.x + menuBtn.width - 6), (int)menuBtn.y + 4, 3, Color{230, 140, 60, 255});
 
     // Settings — same shape as Menu but neutral, so it does not compete with
@@ -4457,11 +4488,11 @@ void MapEditor::drawToolbar() {
     bool setHov = CheckCollisionPointRec(GetMousePosition(), setBtn);
     DrawRectangleRounded(setBtn, 0.15f, 6, setHov ? Color{45,45,55,220} : Color{35,35,42,180});
     DrawRectangleRoundedLines(setBtn, 0.15f, 6, setHov ? Color{200,200,215,255} : Color{110,110,125,200});
-    int stw = MeasureText("Settings", 13);
-    DrawText("Settings", (int)(setBtn.x + setBtn.width/2 - stw/2), (int)(setBtn.y + 8), 13,
+    int stw = MeasureText(T("Settings"), 13);
+    DrawText(T("Settings"), (int)(setBtn.x + setBtn.width/2 - stw/2), (int)(setBtn.y + 8), 13,
              setHov ? WHITE : LIGHTGRAY);
 
-    DrawText(TextFormat("Zoom: %.2fx", m_renderer ? m_renderer->getZoom() : 1.0f), m_screenW - 120, 16, 12, WHITE);
+    DrawText(TextFormat(T("Zoom: %.2fx"), m_renderer ? m_renderer->getZoom() : 1.0f), m_screenW - 120, 16, 12, WHITE);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -4597,7 +4628,7 @@ void MapEditor::drawBottomBar() {
 
     const char* names[] = {"Brush","Rect","Fill","Erase"};
     int startX = 60, gap = 5, btnW = 70;
-    DrawText("Tools", 10, by + 18, 14, LIGHTGRAY);
+    DrawText(T("Tools"), 10, by + 18, 14, LIGHTGRAY);
     for (int i = 0; i < 4; i++) {
         Rectangle r = {(float)(startX + i*(btnW+gap)), (float)(by + 10), (float)btnW, 30};
         bool sel = (m_tool == i);
@@ -4611,7 +4642,7 @@ void MapEditor::drawBottomBar() {
         DrawText(names[i], (int)(r.x + r.width/2 - tw/2), (int)(r.y + 9), 13, sel ? ACCENT : (hov ? WHITE : LIGHTGRAY));
     }
 
-    DrawText("Size", startX + 4*75 + gap + 50, by+18, 13, LIGHTGRAY);
+    DrawText(T("Size"), startX + 4*75 + gap + 50, by+18, 13, LIGHTGRAY);
     Rectangle slider = {(float)(startX + 4*75 + gap + 80), (float)(by + 17), 120, 14};
     DrawRectangleRounded(slider, 0.3f, 4, Color{50,50,60,255});
     Rectangle fill = {slider.x, slider.y, slider.width * m_brushSize / BRUSH_MAX, slider.height};
@@ -4670,11 +4701,11 @@ void MapEditor::drawSidePanel() {
 void MapEditor::updateLandmassPanel() {}
 void MapEditor::drawLandmassPanel() {
     int px = m_screenW - m_panelW + 12, y = m_toolbarH + 16;
-    DrawText("Landmass Editor", px, y, 18, ACCENT); y += 35;
-    DrawText("Use brush tools below.", px, y, 13, LIGHTGRAY); y += 20;
-    DrawText("Left-drag to paint,", px, y, 13, GRAY); y += 16;
-    DrawText("right-drag to pan.", px, y, 13, GRAY); y += 16;
-    DrawText("Scroll to zoom.", px, y, 13, GRAY);
+    DrawText(T("Landmass Editor"), px, y, 18, ACCENT); y += 35;
+    DrawText(T("Use brush tools below."), px, y, 13, LIGHTGRAY); y += 20;
+    DrawText(T("Left-drag to paint,"), px, y, 13, GRAY); y += 16;
+    DrawText(T("right-drag to pan."), px, y, 13, GRAY); y += 16;
+    DrawText(T("Scroll to zoom."), px, y, 13, GRAY);
 }
 
 // ── Generator Panel (update & draw use identical y layout) ───────
@@ -4815,10 +4846,10 @@ void MapEditor::drawGeneratorPanel() {
     int px = m_screenW - m_panelW + 12;
     const int LBL = 13;
 
-    DrawText("Map Generator", px, m_toolbarH + 16, 18, ACCENT);
+    DrawText(T("Map Generator"), px, m_toolbarH + 16, 18, ACCENT);
 
     // Seed label above the input box
-    DrawText("Seed", px, m_toolbarH + 56, LBL, LIGHTGRAY);
+    DrawText(T("Seed"), px, m_toolbarH + 56, LBL, LIGHTGRAY);
     Rectangle seedRect = {(float)px, (float)(m_toolbarH + 70), 172, 26};
     DrawRectangleRounded(seedRect, 0.08f, 4, m_editingSeed ? Color{35,35,50,255} : Color{28,28,35,255});
     DrawRectangleRoundedLines(seedRect, 0.08f, 4, m_editingSeed ? ACCENT : Color{60,60,70,255});
@@ -4830,10 +4861,10 @@ void MapEditor::drawGeneratorPanel() {
     bool rndHov = CheckCollisionPointRec(GetMousePosition(), rndBtn);
     DrawRectangleRounded(rndBtn, 0.08f, 4, rndHov ? Color{40,40,55,255} : Color{30,30,40,255});
     DrawRectangleRoundedLines(rndBtn, 0.08f, 4, Color{80,80,90,255});
-    DrawText("RND", px + 185, (int)rndBtn.y + 6, 12, rndHov ? ACCENT : LIGHTGRAY);
+    DrawText(T("RND"), px + 185, (int)rndBtn.y + 6, 12, rndHov ? ACCENT : LIGHTGRAY);
 
     // Coverage label + slider
-    DrawText("Land Coverage:", px, m_toolbarH + 110, LBL, LIGHTGRAY);
+    DrawText(T("Land Coverage:"), px, m_toolbarH + 110, LBL, LIGHTGRAY);
     Rectangle cov = {(float)px, (float)(m_toolbarH + 128), 200, 12};
     DrawRectangleRounded(cov, 0.3f, 4, Color{50,50,60,255});
     Rectangle cfill = {cov.x, cov.y, cov.width * m_genParams.landCoverage, cov.height};
@@ -4841,14 +4872,14 @@ void MapEditor::drawGeneratorPanel() {
     DrawText(TextFormat("%.0f%%", m_genParams.landCoverage*100), px+210, m_toolbarH + 127, LBL, WHITE);
 
     // Continents label + ±
-    DrawText("Landmass centers:", px, m_toolbarH + 163, LBL, LIGHTGRAY);
+    DrawText(T("Landmass centers:"), px, m_toolbarH + 163, LBL, LIGHTGRAY);
     DrawText(TextFormat("%d", m_genParams.numContinents), px+140, m_toolbarH + 163, 14, WHITE);
     Rectangle cmin = {(float)px, (float)(m_toolbarH + 181), 28, 24}, cplu = {(float)(px+170), (float)(m_toolbarH + 181), 28, 24};
     DrawText("-", (int)cmin.x+9, (int)cmin.y+2, 16, WHITE);
     DrawText("+", (int)cplu.x+9, (int)cplu.y+2, 16, WHITE);
 
     // Jaggedness label + slider
-    DrawText("Jaggedness:", px, m_toolbarH + 215, LBL, LIGHTGRAY);
+    DrawText(T("Jaggedness:"), px, m_toolbarH + 215, LBL, LIGHTGRAY);
     Rectangle jag = {(float)px, (float)(m_toolbarH + 233), 200, 12};
     DrawRectangleRounded(jag, 0.3f, 4, Color{50,50,60,255});
     Rectangle jfill = {jag.x, jag.y, jag.width * m_genParams.jaggedness, jag.height};
@@ -4856,7 +4887,7 @@ void MapEditor::drawGeneratorPanel() {
     DrawText(TextFormat("%.0f", m_genParams.jaggedness), px+210, m_toolbarH + 232, LBL, WHITE);
 
     // Countries slider + editable number
-    DrawText("Countries:", px, m_toolbarH + 255, LBL, LIGHTGRAY);
+    DrawText(T("Countries:"), px, m_toolbarH + 255, LBL, LIGHTGRAY);
     Rectangle cntSlider = {(float)px, (float)(m_toolbarH + 270), 200, 12};
     DrawRectangleRounded(cntSlider, 0.3f, 4, Color{50,50,60,255});
     float cntPct = (m_genParams.numCountries - 1) / 299.0f;
@@ -4872,7 +4903,7 @@ void MapEditor::drawGeneratorPanel() {
     if (m_editingCountryCount) DrawText("|", (int)(cntText.x + 6 + MeasureText(cntStr, 12)), (int)cntText.y + 3, 12, ACCENT);
 
     // Province size slider
-    DrawText("Province Size:", px, m_toolbarH + 295, LBL, LIGHTGRAY);
+    DrawText(T("Province Size:"), px, m_toolbarH + 295, LBL, LIGHTGRAY);
     Rectangle provSize = {(float)px, (float)(m_toolbarH + 315), 200, 12};
     DrawRectangleRounded(provSize, 0.3f, 4, Color{50,50,60,255});
     {
@@ -4918,7 +4949,7 @@ void MapEditor::drawProvincePanel() {
     int listW = m_panelW - 24;
     bool inputOk = !anyModalOpen();
     Vector2 mouse = GetMousePosition();
-    DrawText("Province Editor", px, y, 18, ACCENT); y += 26;
+    DrawText(T("Province Editor"), px, y, 18, ACCENT); y += 26;
 
     // ── Tools: Select picks a province, Paint grows the selected one ──
     {
@@ -4929,9 +4960,9 @@ void MapEditor::drawProvincePanel() {
         if (drawButton("Paint", paintBtn, m_provTool == 1, 12) && inputOk) m_provTool = 1;
         y += 28;
         if (m_provTool == 1)
-            DrawText("Drag on land to grow the province", px, y, 10, Color{140,160,140,220});
+            DrawText(T("Drag on land to grow the province"), px, y, 10, Color{140,160,140,220});
         else
-            DrawText("Click the map to pick a province", px, y, 10, GRAY);
+            DrawText(T("Click the map to pick a province"), px, y, 10, GRAY);
         y += 16;
         Rectangle newBtn = {(float)px, (float)y, (float)listW, 24};
         if (drawButton("+ New Province (paint it in)", newBtn, false, 12) && inputOk)
@@ -4939,9 +4970,9 @@ void MapEditor::drawProvincePanel() {
         y += 28;
         if (!m_hasProvinces) {
             // Blank project: make it obvious you don't have to run the generator
-            DrawText("No provinces yet — this starts one", px, y, 10, Color{140,160,140,220});
+            DrawText(T("No provinces yet — this starts one"), px, y, 10, Color{140,160,140,220});
             y += 13;
-            DrawText("on a blank map. Paint land first.", px, y, 10, Color{140,160,140,220});
+            DrawText(T("on a blank map. Paint land first."), px, y, 10, Color{140,160,140,220});
             y += 15;
         }
 
@@ -4958,7 +4989,7 @@ void MapEditor::drawProvincePanel() {
             DrawText("industry", px, y, 9, Color{255, 170, 40, 255});
             DrawText("fort", px + 60, y, 9, Color{230, 60, 60, 255});
             DrawText("port", px + 95, y, 9, Color{40, 160, 255, 255});
-            DrawText("(re-toggle to refresh)", px + 130, y, 9, GRAY);
+            DrawText(T("(re-toggle to refresh)"), px + 130, y, 9, GRAY);
             y += 14;
         }
 
@@ -4973,15 +5004,15 @@ void MapEditor::drawProvincePanel() {
     }
 
     if (m_selectedProvince < 0) {
-        DrawText("No province selected.", px, y, 13, GRAY); y += 22;
-        DrawText("Click one on the map, then use", px, y, 12, GRAY); y += 15;
-        DrawText("Paint to reshape it, or edit its", px, y, 12, GRAY); y += 15;
-        DrawText("resources and troops below.", px, y, 12, GRAY);
+        DrawText(T("No province selected."), px, y, 13, GRAY); y += 22;
+        DrawText(T("Click one on the map, then use"), px, y, 12, GRAY); y += 15;
+        DrawText(T("Paint to reshape it, or edit its"), px, y, 12, GRAY); y += 15;
+        DrawText(T("resources and troops below."), px, y, 12, GRAY);
         return;
     }
     Province* prov = m_editProvinces.getProvinceById(m_selectedProvince);
     if (!prov) {
-        DrawText("Province not found.", px, y, 13, GRAY);
+        DrawText(T("Province not found."), px, y, 13, GRAY);
         return;
     }
     EditorProvinceData& d = m_provinceData[m_selectedProvince];
@@ -4989,7 +5020,7 @@ void MapEditor::drawProvincePanel() {
     // Header (fixed above the scroll region)
     const Country* owner = m_editCountries.getCountry(prov->countryId);
     DrawText(TextFormat("#%d  %s", prov->id, prov->name.c_str()), px, y, 13, WHITE); y += 16;
-    DrawText(TextFormat("Owner: %s", owner ? owner->name.c_str() : "(none)"), px, y, 11, LIGHTGRAY); y += 16;
+    DrawText(TextFormat(T("Owner: %s"), owner ? owner->name.c_str() : "(none)"), px, y, 11, LIGHTGRAY); y += 16;
     {
         Rectangle delBtn = {(float)px, (float)y, (float)listW, 24};
         if (drawButton("Delete Province (merge into neighbor)", delBtn, false, 11) && inputOk)
@@ -5037,7 +5068,7 @@ void MapEditor::drawProvincePanel() {
         cy += 26;
     };
 
-    DrawText("Resources (amount 0-100):", px, cy, 12, LIGHTGRAY); cy += 16;
+    DrawText(T("Resources (amount 0-100):"), px, cy, 12, LIGHTGRAY); cy += 16;
     slider("Oil", d.oil);
     slider("Gold", d.gold);
     slider("Rubber", d.rubber);
@@ -5045,7 +5076,7 @@ void MapEditor::drawProvincePanel() {
     slider("Metal", d.metal);
     cy += 4;
 
-    DrawText("Buildings:", px, cy, 12, LIGHTGRAY); cy += 16;
+    DrawText(T("Buildings:"), px, cy, 12, LIGHTGRAY); cy += 16;
     stepper("Industry (0-10)", d.industryLevel, 0, 10);
     stepper("Fortification (0-5)", d.fortification, 0, 5);
     stepper("Port (0-3)", d.portLevel, 0, 3);
@@ -5055,7 +5086,7 @@ void MapEditor::drawProvincePanel() {
 
     // Population: a typed numeric field
     {
-        DrawText("Population:", px, cy, 12, LIGHTGRAY); cy += 16;
+        DrawText(T("Population:"), px, cy, 12, LIGHTGRAY); cy += 16;
         if (m_provPopEditing && m_provPopEditPid != m_selectedProvince) m_provPopEditing = false;
         Rectangle popRect = {(float)px, (float)cy, (float)listW, 22};
         bool hov = inputOk && inView && CheckCollisionPointRec(mouse, popRect);
@@ -5095,7 +5126,7 @@ void MapEditor::drawProvincePanel() {
     }
 
     // ── Political compass (province-level) ──
-    DrawText("Political Compass:", px, cy, 12, LIGHTGRAY); cy += 16;
+    DrawText(T("Political Compass:"), px, cy, 12, LIGHTGRAY); cy += 16;
     auto compassSlider = [&](const char* label, const char* lo, const char* hi, float& v) {
         DrawText(label, px, cy, 10, DARKGRAY);
         Rectangle sl = {(float)px, (float)(cy + 12), (float)(listW - 44), 10};
@@ -5121,7 +5152,7 @@ void MapEditor::drawProvincePanel() {
     cy += 4;
 
     // ── Ethnic groups ──
-    DrawText("Ethnic Groups:", px, cy, 12, LIGHTGRAY);
+    DrawText(T("Ethnic Groups:"), px, cy, 12, LIGHTGRAY);
     float ethSum = 0; for (auto& [n, p] : d.ethnicGroups) ethSum += p;
     DrawText(TextFormat("%.0f%%", ethSum), px + listW - 40, cy, 11, fabsf(ethSum - 100.0f) < 1.0f ? Color{140,200,140,255} : Color{220,160,90,255});
     cy += 16;
@@ -5224,7 +5255,7 @@ void MapEditor::drawProvincePanel() {
     cy += 4;
 
     // ── Troops ──
-    DrawText("Troops:", px, cy, 12, LIGHTGRAY); cy += 16;
+    DrawText(T("Troops:"), px, cy, 12, LIGHTGRAY); cy += 16;
     auto& all = m_editCountries.getAll();
     std::vector<int> cids;
     for (auto& [cid, c] : all) if (cid < 65533) cids.push_back(cid);
@@ -5271,7 +5302,7 @@ void MapEditor::drawProvincePanel() {
         trackChange();
     }
     cy += 30;
-    DrawText("Shift = +/-10k per click", px, cy, 10, GRAY);
+    DrawText(T("Shift = +/-10k per click"), px, cy, 10, GRAY);
     cy += 18;
 
     EndScissorMode();
@@ -5498,12 +5529,12 @@ void MapEditor::updateCountryPanel() {
 
 void MapEditor::drawCountryPanel() {
     int px = m_screenW - m_panelW + 12, y = m_toolbarH + 16;
-    DrawText("Country Editor", px, y, 18, ACCENT); y += 30;
+    DrawText(T("Country Editor"), px, y, 18, ACCENT); y += 30;
 
     auto& all = m_editCountries.getAll();
     if (all.empty()) {
-        DrawText("No countries loaded.", px, y, 14, GRAY); y += 18;
-        DrawText("Generate a world first.", px, y, 14, GRAY);
+        DrawText(T("No countries loaded."), px, y, 14, GRAY); y += 18;
+        DrawText(T("Generate a world first."), px, y, 14, GRAY);
         return;
     }
 
@@ -5518,7 +5549,7 @@ void MapEditor::drawCountryPanel() {
     int itemH = 18;
     int visible = LIST_HEIGHT / itemH;
 
-    DrawText(TextFormat("Countries: %zu", all.size()), px, LIST_START - 14, 12, LIGHTGRAY);
+    DrawText(TextFormat(T("Countries: %zu"), all.size()), px, LIST_START - 14, 12, LIGHTGRAY);
 
     // Scrollbar
     float totalH = (float)cids.size() * itemH;
@@ -5569,7 +5600,7 @@ void MapEditor::drawCountryPanel() {
         DrawLine(px, editY - 3, px + listW, editY - 3, Color{60,60,70,255});
 
         // Name
-        DrawText("Name:", px, editY, 12, LIGHTGRAY); editY += 16;
+        DrawText(T("Name:"), px, editY, 12, LIGHTGRAY); editY += 16;
         Rectangle nameRect = {(float)px, (float)editY, (float)listW, 24};
         bool nameHov = CheckCollisionPointRec(GetMousePosition(), nameRect);
         Color nameBg = m_editingCountryName ? Color{35,35,50,255} : (nameHov ? Color{30,30,40,255} : Color{25,25,35,255});
@@ -5611,13 +5642,13 @@ void MapEditor::drawCountryPanel() {
             DrawTexturePro(m_flagPreviewTex, {0,0,240,120},
                 {flagRect.x+(flagRect.width-fw)/2, flagRect.y+(flagRect.height-fh)/2, fw, fh}, {0,0}, 0, WHITE);
         } else {
-            DrawText("No flag", (int)flagRect.x + 30, (int)flagRect.y + 22, 12, GRAY);
+            DrawText(T("No flag"), (int)flagRect.x + 30, (int)flagRect.y + 22, 12, GRAY);
         }
-        DrawText("Drop .svg to set your own flag", (int)(px + flagRect.width + 6), (int)editY + 2, 10, GRAY);
+        DrawText(T("Drop .svg to set your own flag"), (int)(px + flagRect.width + 6), (int)editY + 2, 10, GRAY);
 
         // Color swatch + ID
         DrawRectangle(px + (int)flagRect.width + 6, (int)editY + 20, 20, 14, c.color);
-        DrawText(TextFormat("ID: %d", m_selectedCountry), px + (int)flagRect.width + 30, (int)editY + 20, 11, DARKGRAY);
+        DrawText(TextFormat(T("ID: %d"), m_selectedCountry), px + (int)flagRect.width + 30, (int)editY + 20, 11, DARKGRAY);
 
         // Buttons (if space allows)
         editY += (int)flagRect.height + 10;
@@ -5638,7 +5669,7 @@ void MapEditor::drawCountryPanel() {
                    brushBtn, m_countryBrushActive, 11);
         editY += 24;
         if (m_countryBrushActive) {
-            DrawText("Drag over provinces to give them to this country", px, editY, 9, GRAY);
+            DrawText(T("Drag over provinces to give them to this country"), px, editY, 9, GRAY);
             editY += 16;
         }
         editY += 4;
@@ -5650,7 +5681,7 @@ void MapEditor::drawCountryPanel() {
             auto ci = m_editorClaims.find(m_selectedCountry);
             if (ci != m_editorClaims.end()) claimCount = (int)ci->second.size();
         }
-        drawButton(m_claimsBrushActive ? TextFormat("Claims Brush: ON (%d)", claimCount)
+        drawButton(m_claimsBrushActive ? TextFormat(T("Claims Brush: ON (%d)"), claimCount)
                                        : TextFormat("Claims Brush: OFF (%d)", claimCount),
                    claimBtn, m_claimsBrushActive, 11);
         editY += 24;
@@ -5661,7 +5692,7 @@ void MapEditor::drawCountryPanel() {
             drawButton("Claim", addBtn, !m_claimsBrushErase, 11);
             drawButton("Unclaim", eraseBtn, m_claimsBrushErase, 11);
             editY += 24;
-            DrawText("Drag over provinces to mark claims", px, editY, 9, GRAY);
+            DrawText(T("Drag over provinces to mark claims"), px, editY, 9, GRAY);
             editY += 14;
         }
         editY += 4;
@@ -5677,12 +5708,12 @@ void MapEditor::drawCountryPanel() {
         editY += 30;
         Rectangle regenBtn = {(float)px, (float)editY, (float)listW, 22};
         if (specialTerritory) {
-            DrawText("This territory keeps its fixed flag", px, editY + 5, 11, GRAY);
+            DrawText(T("This territory keeps its fixed flag"), px, editY + 5, 11, GRAY);
         } else {
             drawButton("Regenerate Flag", regenBtn, false, 11);
         }
         editY += 26;
-        DrawText("Country color:", px, editY, 11, LIGHTGRAY);
+        DrawText(T("Country color:"), px, editY, 11, LIGHTGRAY);
         editY += 14;
         {
             const char* chLabels[3] = {"R", "G", "B"};
@@ -5704,10 +5735,10 @@ void MapEditor::drawCountryPanel() {
         // ── Compass sliders ──
         editY += 6;
         if (editY + 120 < maxEditY) {
-            DrawText("Compass Options:", px, editY, 12, LIGHTGRAY); editY += 16;
+            DrawText(T("Compass Options:"), px, editY, 12, LIGHTGRAY); editY += 16;
             int sliderW = listW - 10;
             // Economic
-            DrawText("Economic:", px, editY, 11, DARKGRAY);
+            DrawText(T("Economic:"), px, editY, 11, DARKGRAY);
             float econPct = (c.compassEconomic + 100.0f) / 200.0f;
             econPct = std::max(0.0f, std::min(1.0f, econPct));
             Rectangle econSlide = {(float)px, (float)(editY + 14), (float)sliderW, 10};
@@ -5715,12 +5746,12 @@ void MapEditor::drawCountryPanel() {
             Rectangle econFill = {econSlide.x + 2, econSlide.y + 2, (econSlide.width - 4) * econPct, econSlide.height - 4};
             if (econFill.width > 2) DrawRectangleRounded(econFill, 0.3f, 4, ACCENT);
             DrawText(TextFormat("%+.0f", c.compassEconomic), (int)(px + sliderW + 6), (int)editY + 12, 11, WHITE);
-            DrawText("Left", px + 2, editY + 26, 9, GRAY);
-            DrawText("Right", (int)(px + sliderW - 30), editY + 26, 9, GRAY);
+            DrawText(T("Left"), px + 2, editY + 26, 9, GRAY);
+            DrawText(T("Right"), (int)(px + sliderW - 30), editY + 26, 9, GRAY);
             editY += 42;
 
             // Social
-            DrawText("Social:", px, editY, 11, DARKGRAY);
+            DrawText(T("Social:"), px, editY, 11, DARKGRAY);
             float socPct = (c.compassSocial + 100.0f) / 200.0f;
             socPct = std::max(0.0f, std::min(1.0f, socPct));
             Rectangle socSlide = {(float)px, (float)(editY + 14), (float)sliderW, 10};
@@ -5728,8 +5759,8 @@ void MapEditor::drawCountryPanel() {
             Rectangle socFill = {socSlide.x + 2, socSlide.y + 2, (socSlide.width - 4) * socPct, socSlide.height - 4};
             if (socFill.width > 2) DrawRectangleRounded(socFill, 0.3f, 4, ACCENT);
             DrawText(TextFormat("%+.0f", c.compassSocial), (int)(px + sliderW + 6), (int)editY + 12, 11, WHITE);
-            DrawText("Auth", px + 2, editY + 26, 9, GRAY);
-            DrawText("Lib", (int)(px + sliderW - 20), editY + 26, 9, GRAY);
+            DrawText(T("Auth"), px + 2, editY + 26, 9, GRAY);
+            DrawText(T("Lib"), (int)(px + sliderW - 20), editY + 26, 9, GRAY);
             editY += 42;
 
             // ── Research & policy summary + set-mode buttons ──
@@ -5741,11 +5772,11 @@ void MapEditor::drawCountryPanel() {
             drawButton("Set Policies", docBtn, false, 12);
             editY += 34;
             int polCount = (int)m_countryPolicies.count(m_selectedCountry) ? (int)m_countryPolicies[m_selectedCountry].size() : 0;
-            const char* docStr = polCount == 0 ? "Policies: (none)" : TextFormat("Policies: %d selected", polCount);
+            const char* docStr = polCount == 0 ? "Policies: (none)" : TextFormat(T("Policies: %d selected"), polCount);
             DrawText(docStr, px, editY, 11, polCount == 0 ? GRAY : LIGHTGRAY); editY += 15;
             const char* resStr = c.research.empty()
                 ? "Research: (auto-unlocked)"
-                : TextFormat("Research: %d techs set", (int)c.research.size());
+                : TextFormat(T("Research: %d techs set"), (int)c.research.size());
             DrawText(resStr, px, editY, 11, c.research.empty() ? GRAY : LIGHTGRAY);
         }
     }
@@ -5914,9 +5945,9 @@ void MapEditor::drawEthnicRelationsScreen(const std::string& iso, const std::str
 
     int barY = m_screenH - bottomH;
     DrawRectangle(0, barY, m_screenW, bottomH, {10, 10, 15, 220});
-    DrawText(TextFormat("Government relations toward %s (as %s)", ethnicity.c_str(), iso.empty() ? "?" : iso.c_str()),
+    DrawText(TextFormat(T("Government relations toward %s (as %s)"), ethnicity.c_str(), iso.empty() ? "?" : iso.c_str()),
              16, barY + 12, 13, Color{160, 160, 180, 220});
-    DrawText("Pick one option per category — mirrors the in-game Ethnic tab.",
+    DrawText(T("Pick one option per category — mirrors the in-game Ethnic tab."),
              16, barY + 26, 10, Color{140, 140, 160, 200});
 }
 
@@ -5947,8 +5978,8 @@ void MapEditor::drawCountryEthnicListOverlay() {
         m_countryEthnicListOpen = false;
         return;
     }
-    DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
-    DrawText(TextFormat("%s — Ethnic Relations", c->name.c_str()), 16, 16, 20, ACCENT);
+    DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
+    DrawText(TextFormat(T("%s — Ethnic Relations"), c->name.c_str()), 16, 16, 20, ACCENT);
 
     auto names = minoritiesOfCountry(m_countryEthnicListCid);
     // Aggregate each minority's total pct across the country's provinces
@@ -5975,7 +6006,7 @@ void MapEditor::drawCountryEthnicListOverlay() {
     BeginScissorMode(listX, listY, listW, viewH);
     int cy = listY - m_countryEthnicListScroll;
     if (names.empty()) {
-        DrawText("No minorities recorded for this country yet.", listX, cy, 14, GRAY);
+        DrawText(T("No minorities recorded for this country yet."), listX, cy, 14, GRAY);
     }
     for (auto& name : names) {
         Rectangle row = {(float)listX, (float)cy, (float)listW, (float)(rowH - 4)};
@@ -5983,8 +6014,8 @@ void MapEditor::drawCountryEthnicListOverlay() {
         Color swatch = m_ethnicColors.count(name) ? m_ethnicColors[name] : Color{150,150,150,255};
         DrawRectangleRounded(row, 0.08f, 4, hov ? Color{34,34,46,255} : Color{24,24,32,255});
         DrawRectangle((int)row.x + 8, (int)row.y + 9, 12, 12, swatch);
-        DrawText(name.c_str(), (int)row.x + 28, (int)row.y + 6, 15, hov ? ACCENT : WHITE);
-        DrawText(TextFormat("%.0f%% of country pop.", pctByName[name]), (int)row.x + listW - 180, (int)row.y + 8, 12, LIGHTGRAY);
+        DrawText(od::i18n::properName(name).c_str(), (int)row.x + 28, (int)row.y + 6, 15, hov ? ACCENT : WHITE);
+        DrawText(TextFormat(T("%.0f%% of country pop."), pctByName[name]), (int)row.x + listW - 180, (int)row.y + 8, 12, LIGHTGRAY);
         if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             // This list *is* the ethnic-relations screen, so open straight on
             // that tab (tab 1) rather than dropping the user into starting
@@ -6002,7 +6033,7 @@ void MapEditor::loadEditorPolicies() {
     m_editorPoliciesLoaded = true;
     m_editorPolicies.clear();
     std::ifstream f(m_dataDir + "policies.json");
-    if (!f) { std::cout << "  policies.json not found — policy screen will be empty\n"; return; }
+    if (!f) { LoadLog() << "  policies.json not found — policy screen will be empty\n"; return; }
     try {
         nlohmann::json j; f >> j;
         for (auto& p : j["policies"]) {
@@ -6030,9 +6061,9 @@ void MapEditor::loadEditorPolicies() {
             }
             m_editorPolicies.push_back(policy);
         }
-        std::cout << "  Loaded " << m_editorPolicies.size() << " policies for the editor\n";
+        LoadLog() << "  Loaded " << m_editorPolicies.size() << " policies for the editor\n";
     } catch (const std::exception& e) {
-        std::cout << "  Failed to parse policies.json: " << e.what() << "\n";
+        LoadLog() << "  Failed to parse policies.json: " << e.what() << "\n";
     }
 }
 
@@ -6199,14 +6230,15 @@ void MapEditor::drawSetModeOverlay() {
             bool backHov = CheckCollisionPointRec(emouse, backBtn);
             DrawRectangleRounded(backBtn, 0.15f, 6, backHov ? Color{60,60,80,220} : Color{35,35,48,200});
             DrawRectangleRoundedLines(backBtn, 0.15f, 6, ACCENT);
-            DrawText("< Back", 30, 50, 14, ACCENT);
+            DrawText(T("< Back"), 30, 50, 14, ACCENT);
             if (backHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 closeSetModeEthnicity();
                 return;
             }
             headerX = 116;
         }
-        DrawText(TextFormat("%s (ethnicity)", m_setModeEthnicity.c_str()), headerX, 48, 16, ACCENT);
+        DrawText(TextFormat(T("%s (ethnicity)"),
+                            od::i18n::properName(m_setModeEthnicity).c_str()), headerX, 48, 16, ACCENT);
 
         // Tabs: starting policies vs. the in-game-parity ethnic relations screen
         static const char* ethTabNames[] = {"Starting Policies", "Ethnic Relations"};
@@ -6272,14 +6304,14 @@ void MapEditor::drawSetModeOverlay() {
         m_setModeOpen = false;
         return;
     }
-    DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
+    DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     // ── Header: country + hint ──
     if (m_setModePolicyMode) {
-        DrawText(TextFormat("SET POLICIES — %s", c.name.c_str()), 16, 16, 20, ACCENT);
+        DrawText(TextFormat(T("SET POLICIES — %s"), c.name.c_str()), 16, 16, 20, ACCENT);
     } else {
-        DrawText(TextFormat("SET RESEARCH — %s", c.name.c_str()), 16, 48, 16, ACCENT);
-        DrawText("Click a node to toggle it as pre-researched (deps auto-set)", 16, 68, 12, Color{160, 160, 180, 200});
+        DrawText(TextFormat(T("SET RESEARCH — %s"), c.name.c_str()), 16, 48, 16, ACCENT);
+        DrawText(T("Click a node to toggle it as pre-researched (deps auto-set)"), 16, 68, 12, Color{160, 160, 180, 200});
     }
 
     // ── Tabs: 4 research categories (research view only) ──
@@ -6358,7 +6390,7 @@ void MapEditor::drawSetModeOverlay() {
     }
 
     if (catIndices.empty())
-        DrawText("No research trees in this category", m_screenW / 2 - 100, m_screenH / 2, 14, LIGHTGRAY);
+        DrawText(T("No research trees in this category"), m_screenW / 2 - 100, m_screenH / 2, 14, LIGHTGRAY);
 
     // ── Subcategory labels ──
     std::string lastSubcat;
@@ -6427,9 +6459,9 @@ void MapEditor::drawSetModeOverlay() {
         DrawText(node.name.c_str(), nx + nodeW / 2 - textW / 2, ny + 4, fs, WHITE);
         int infoFs = (int)(8 * m_setModeZoom); if (infoFs < 6) infoFs = 6; if (infoFs > 14) infoFs = 14;
         if (node.researched)
-            DrawText("SET", nx + 4, ny + nodeH - infoFs - 6, infoFs, {100, 200, 100, 200});
+            DrawText(T("SET"), nx + 4, ny + nodeH - infoFs - 6, infoFs, {100, 200, 100, 200});
         else
-            DrawText(TextFormat("%d RP", node.cost), nx + 4, ny + nodeH - infoFs - 6, infoFs, {160, 160, 160, 200});
+            DrawText(TextFormat(T("%d RP"), node.cost), nx + 4, ny + nodeH - infoFs - 6, infoFs, {160, 160, 160, 200});
     }
 
     // ── Hover tooltip ──
@@ -6459,8 +6491,8 @@ void MapEditor::drawSetModeOverlay() {
     DrawRectangle(0, barY, m_screenW, 36, {10, 10, 15, 220});
     int setCount = 0;
     for (auto& n : m_setModeNodes) if (n.researched) setCount++;
-    DrawText(TextFormat("%d techs pre-researched", setCount), 16, barY + 10, 14, ACCENT);
-    DrawText("Note: infrastructure techs may also auto-unlock in game from built industry/forts/ports",
+    DrawText(TextFormat(T("%d techs pre-researched"), setCount), 16, barY + 10, 14, ACCENT);
+    DrawText(T("Note: infrastructure techs may also auto-unlock in game from built industry/forts/ports"),
              240, barY + 12, 11, Color{140, 140, 160, 200});
 }
 
@@ -6484,7 +6516,7 @@ void MapEditor::drawPolicyScreenFor(std::vector<std::string>& selected, const st
     const int viewH = m_screenH - listY - bottomH - 8;
 
     if (m_editorPolicies.empty()) {
-        DrawText("No policies.json found — place one in data/policies.json", listX, listY + 40, 16, GRAY);
+        DrawText(T("No policies.json found — place one in data/policies.json"), listX, listY + 40, 16, GRAY);
         return;
     }
 
@@ -6526,7 +6558,7 @@ void MapEditor::drawPolicyScreenFor(std::vector<std::string>& selected, const st
             if (isSel) DrawRectangleRounded({box.x+3,box.y+3,10,10}, 0.3f, 4, ACCENT);
             DrawText(p->name.c_str(), (int)row.x + 32, (int)row.y + 6, 15, WHITE);
             DrawText(p->description.c_str(), (int)row.x + 32, (int)row.y + 24, 11, Color{190,190,200,255});
-            DrawText(TextFormat("Cost: %d/turn   Shift: econ %+.0f soc %+.0f",
+            DrawText(TextFormat(T("Cost: %d/turn   Shift: econ %+.0f soc %+.0f"),
                                 p->costPerTurn, p->econShift, p->socShift),
                      (int)row.x + 32, (int)row.y + 42, 10, Color{160,160,175,255});
             if (!p->incompatibleWith.empty()) {
@@ -6548,13 +6580,13 @@ void MapEditor::drawPolicyScreenFor(std::vector<std::string>& selected, const st
 
     int barY = m_screenH - bottomH;
     DrawRectangle(0, barY, m_screenW, bottomH, {10, 10, 15, 220});
-    DrawText("Click a policy to toggle it as a starting policy for this country.",
+    DrawText(T("Click a policy to toggle it as a starting policy for this country."),
              16, barY + 12, 13, Color{160, 160, 180, 220});
-    DrawText("Selecting a conflicting policy clears the ones it's incompatible with.",
+    DrawText(T("Selecting a conflicting policy clears the ones it's incompatible with."),
              16, barY + 26, 10, Color{140, 140, 160, 200});
     // Counter lives down here rather than up top: the header row is shared
     // with the ethnicity tab bar, which it used to overlap.
-    const char* cnt = TextFormat("%d selected", (int)selected.size());
+    const char* cnt = TextFormat(T("%d selected"), (int)selected.size());
     DrawText(cnt, m_screenW - MeasureText(cnt, 14) - 20, barY + 13, 14, LIGHTGRAY);
 }
 
@@ -6689,17 +6721,17 @@ void MapEditor::drawRelationsPanel() {
     int px = m_screenW - m_panelW + 12;
     int listW = m_panelW - 24;
     int y = m_toolbarH + 16;
-    DrawText("Relations Editor", px, y, 18, ACCENT); y += 24;
+    DrawText(T("Relations Editor"), px, y, 18, ACCENT); y += 24;
 
     auto& all = m_editCountries.getAll();
     if (all.empty()) {
-        DrawText("Generate a world first.", px, y, 14, GRAY);
+        DrawText(T("Generate a world first."), px, y, 14, GRAY);
         return;
     }
     bool inputOk = !anyModalOpen();
 
-    DrawText("Click two countries on the map,", px, y, 11, Color{150,180,150,220}); y += 13;
-    DrawText("or pick them from the lists below.", px, y, 11, Color{150,180,150,220}); y += 15;
+    DrawText(T("Click two countries on the map,"), px, y, 11, Color{150,180,150,220}); y += 13;
+    DrawText(T("or pick them from the lists below."), px, y, 11, Color{150,180,150,220}); y += 15;
     DrawRectangle(px, y + 2, 8, 8, Color{255, 205, 60, 255});
     DrawText("A", px + 12, y, 11, Color{255, 205, 60, 255});
     DrawRectangle(px + 32, y + 2, 8, 8, Color{80, 220, 255, 255});
@@ -6715,20 +6747,20 @@ void MapEditor::drawRelationsPanel() {
     int panelH = m_screenH - m_toolbarH - m_bottomH;
     int rows = std::max(4, (panelH - 330) / (2 * 18));
 
-    DrawText("Country A:", px, y, 12, LIGHTGRAY); y += 15;
+    DrawText(T("Country A:"), px, y, 12, LIGHTGRAY); y += 15;
     int clickedA = drawCountryList(px, y, listW, rows, m_relScrollA, m_relCountryA);
     if (inputOk && clickedA >= 0) { m_relCountryA = clickedA; if (m_relCountryB == clickedA) m_relCountryB = -1; }
     y += rows * 18 + 8;
-    DrawText("Country B:", px, y, 12, LIGHTGRAY); y += 15;
+    DrawText(T("Country B:"), px, y, 12, LIGHTGRAY); y += 15;
     int clickedB = drawCountryList(px, y, listW, rows, m_relScrollB, m_relCountryB);
     if (inputOk && clickedB >= 0 && clickedB != m_relCountryA) m_relCountryB = clickedB;
     y += rows * 18 + 12;
 
     if (m_relCountryA < 0 || m_relCountryB < 0 || m_relCountryA == m_relCountryB
         || !all.count(m_relCountryA) || !all.count(m_relCountryB)) {
-        DrawText("Select two different countries", px, y, 12, GRAY); y += 15;
-        DrawText("(click the map or a list) to edit", px, y, 12, GRAY); y += 15;
-        DrawText("their relation.", px, y, 12, GRAY);
+        DrawText(T("Select two different countries"), px, y, 12, GRAY); y += 15;
+        DrawText(T("(click the map or a list) to edit"), px, y, 12, GRAY); y += 15;
+        DrawText(T("their relation."), px, y, 12, GRAY);
         return;
     }
 
@@ -6771,7 +6803,7 @@ void MapEditor::drawRelationsPanel() {
         }
         y += 30;
     }
-    DrawText("Selecting one clears the others.", px, y + 4, 11, GRAY);
+    DrawText(T("Selecting one clears the others."), px, y + 4, 11, GRAY);
 }
 
 // ── Navy Panel ─────────────────────────────────────────────────
@@ -6781,11 +6813,11 @@ void MapEditor::drawNavyPanel() {
     int px = m_screenW - m_panelW + 12;
     int listW = m_panelW - 24;
     int y = m_toolbarH + 16;
-    DrawText("Navy Editor", px, y, 18, ACCENT); y += 26;
+    DrawText(T("Navy Editor"), px, y, 18, ACCENT); y += 26;
 
     auto& all = m_editCountries.getAll();
     if (all.empty()) {
-        DrawText("Generate a world first.", px, y, 14, GRAY);
+        DrawText(T("Generate a world first."), px, y, 14, GRAY);
         return;
     }
     bool inputOk = !anyModalOpen();
@@ -6795,7 +6827,7 @@ void MapEditor::drawNavyPanel() {
     // an explicit focus flag (click-to-focus, click-away/Escape to unfocus) —
     // otherwise it would drain GetCharPressed() every frame and steal input
     // from the health/troops fields below it.
-    DrawText("Country:", px, y, 12, LIGHTGRAY); y += 15;
+    DrawText(T("Country:"), px, y, 12, LIGHTGRAY); y += 15;
     Rectangle searchRect = {(float)px, (float)y, (float)listW, 22};
     Vector2 navyMouse = GetMousePosition();
     bool searchHov = inputOk && CheckCollisionPointRec(navyMouse, searchRect);
@@ -6840,7 +6872,7 @@ void MapEditor::drawNavyPanel() {
             m_selectedShip = -1;
         y += 30;
     } else {
-        DrawText("Ship type:", px, y, 12, LIGHTGRAY); y += 15;
+        DrawText(T("Ship type:"), px, y, 12, LIGHTGRAY); y += 15;
         static const char* types[] = {"boat", "destroyer", "carrier"};
         static const char* typeLabels[] = {"Boat (triangle)", "Destroyer (square)", "Carrier (circle)"};
         for (int t = 0; t < 3; ++t) {
@@ -6854,7 +6886,7 @@ void MapEditor::drawNavyPanel() {
         // Defaults applied to the next ship placed
         drawHealthBar(px, y, listW, "New ship health:", m_navyDefaultHealth, inputOk);
         if (m_navyType == "boat") {
-            DrawText("New boat troops:", px, y, 11, LIGHTGRAY); y += 15;
+            DrawText(T("New boat troops:"), px, y, 11, LIGHTGRAY); y += 15;
             Rectangle troopsRect = {(float)px, (float)y, (float)listW, 22};
             drawIntField(troopsRect, m_navyDefaultTroops, 0, 100000, m_navyDefTroopsEditing, m_navyDefTroopsText, inputOk);
             if (m_navyDefTroopsEditing) m_navySearchFocused = false;
@@ -6863,11 +6895,11 @@ void MapEditor::drawNavyPanel() {
         y += 4;
 
         if (m_navyCountry < 0) {
-            DrawText("Pick a country, then click", px, y, 12, GRAY); y += 15;
-            DrawText("open sea to place a ship.", px, y, 12, GRAY);
+            DrawText(T("Pick a country, then click"), px, y, 12, GRAY); y += 15;
+            DrawText(T("open sea to place a ship."), px, y, 12, GRAY);
         } else {
-            DrawText("Click open sea to place.", px, y, 12, GRAY); y += 15;
-            DrawText("Click a ship to select it.", px, y, 12, GRAY);
+            DrawText(T("Click open sea to place."), px, y, 12, GRAY); y += 15;
+            DrawText(T("Click a ship to select it."), px, y, 12, GRAY);
         }
         y += 22;
     }
@@ -6876,16 +6908,16 @@ void MapEditor::drawNavyPanel() {
     if (hasSelectedShip) {
         NavyShip& s = m_editorShips[m_selectedShip];
         const Country* sc = m_editCountries.getCountry(s.countryId);
-        DrawText("Selected ship:", px, y, 12, LIGHTGRAY); y += 15;
+        DrawText(T("Selected ship:"), px, y, 12, LIGHTGRAY); y += 15;
         DrawText(TextFormat("%s — %s", s.type.c_str(), sc ? sc->name.c_str() : "?"), px, y, 12, WHITE); y += 15;
-        DrawText(TextFormat("lat %.1f  lon %.1f  (drag to move)", s.lat, s.lon), px, y, 11, LIGHTGRAY); y += 20;
+        DrawText(TextFormat(T("lat %.1f  lon %.1f  (drag to move)"), s.lat, s.lon), px, y, 11, LIGHTGRAY); y += 20;
 
         if (m_navyShipTroopsEditingIdx != m_selectedShip) m_navyShipTroopsEditing = false;
 
         if (drawHealthBar(px, y, listW, "Health:", s.health, inputOk)) trackChange();
 
         if (s.type == "boat") {
-            DrawText("Troops:", px, y, 11, LIGHTGRAY); y += 15;
+            DrawText(T("Troops:"), px, y, 11, LIGHTGRAY); y += 15;
             Rectangle shTroopsRect = {(float)px, (float)y, (float)listW, 22};
             long long tv = s.crew;
             m_navyShipTroopsEditingIdx = m_selectedShip;
@@ -6901,7 +6933,7 @@ void MapEditor::drawNavyPanel() {
         if (m_navyCountry >= 0 && m_navyCountry != s.countryId) {
             Rectangle ownBtn = {(float)px, (float)y, (float)listW, 26};
             const Country* nc = m_editCountries.getCountry(m_navyCountry);
-            if (drawButton(TextFormat("Give to %s", nc ? nc->name.c_str() : "?"), ownBtn, false, 12) && inputOk) {
+            if (drawButton(TextFormat(T("Give to %s"), nc ? nc->name.c_str() : "?"), ownBtn, false, 12) && inputOk) {
                 s.countryId = m_navyCountry;
                 trackChange();
             }
@@ -6914,7 +6946,7 @@ void MapEditor::drawNavyPanel() {
             trackChange();
         }
     } else {
-        DrawText(TextFormat("Ships on map: %d", (int)m_editorShips.size()), px, y, 12, LIGHTGRAY);
+        DrawText(TextFormat(T("Ships on map: %d"), (int)m_editorShips.size()), px, y, 12, LIGHTGRAY);
     }
 }
 
@@ -6926,7 +6958,7 @@ void MapEditor::drawScriptPanel() {
     int listW = m_panelW - 24;
     bool inputOk = !anyModalOpen();
     Vector2 mouse = GetMousePosition();
-    DrawText("Map Scripts", px, y, 18, ACCENT); y += 26;
+    DrawText(T("Map Scripts"), px, y, 18, ACCENT); y += 26;
 
     // ── New script / library ──
     int half = (listW - 8) / 2;
@@ -6959,7 +6991,7 @@ void MapEditor::drawScriptPanel() {
     // ── Project script list (double-click opens the editor) ──
     std::vector<std::string> names;
     for (auto& [n, c] : m_scripts) names.push_back(n);
-    DrawText(TextFormat("Project scripts (%d):", (int)names.size()), px, y, 12, LIGHTGRAY); y += 15;
+    DrawText(TextFormat(T("Project scripts (%d):"), (int)names.size()), px, y, 12, LIGHTGRAY); y += 15;
     const int itemH = 20;
     int rows = 10;
     Rectangle listRect = {(float)px, (float)y, (float)listW, (float)(rows * itemH)};
@@ -6989,7 +7021,7 @@ void MapEditor::drawScriptPanel() {
         }
     }
     y += rows * itemH + 4;
-    DrawText("Double-click a script to edit it", px, y, 10, GRAY); y += 16;
+    DrawText(T("Double-click a script to edit it"), px, y, 10, GRAY); y += 16;
 
     // ── Edit / Rename / Delete selected ──
     if (m_scriptSel >= 0 && m_scriptSel < (int)names.size()) {
@@ -7052,7 +7084,7 @@ void MapEditor::drawScriptPanel() {
                 m_scriptRenaming = false;
             }
             y += 26;
-            DrawText("Enter to confirm, ESC to cancel", px, y, 10, GRAY);
+            DrawText(T("Enter to confirm, ESC to cancel"), px, y, 10, GRAY);
             y += 14;
         }
         y += 4;
@@ -7075,7 +7107,7 @@ void MapEditor::drawScriptPanel() {
     if (drawButton("rescan", rfBtn, false, 10) && inputOk) m_diskScriptsScanned = false;
     y += 15;
     if (m_diskScripts.empty()) {
-        DrawText("(none found)", px + 4, y, 11, GRAY); y += 16;
+        DrawText(T("(none found)"), px + 4, y, 11, GRAY); y += 16;
     } else {
         int drows = std::min(6, (int)m_diskScripts.size());
         Rectangle dRect = {(float)px, (float)y, (float)listW, (float)(drows * itemH)};
@@ -7106,12 +7138,12 @@ void MapEditor::drawScriptPanel() {
             }
         }
         y += drows * itemH + 4;
-        DrawText("Double-click to import into project", px, y, 10, GRAY); y += 14;
+        DrawText(T("Double-click to import into project"), px, y, 10, GRAY); y += 14;
     }
     y += 6;
-    DrawText("[entry] scripts auto-run in game;", px, y, 10, GRAY); y += 13;
-    DrawText("[lib] files run only via include.", px, y, 10, GRAY); y += 13;
-    DrawText("See docs/scripting.md for the language.", px, y, 10, GRAY);
+    DrawText(T("[entry] scripts auto-run in game; [lib] files run only via include."),
+             px, y, 10, GRAY); y += 26;
+    DrawText(T("See docs/scripting.md for the language."), px, y, 10, GRAY);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -7598,7 +7630,7 @@ void MapEditor::drawScriptEditorOverlay() {
     }
     DrawText(TextFormat("%s  %s", m_scriptEdName.c_str(), entry ? "[entry]" : "[library]"),
              16, 14, 20, ACCENT);
-    DrawText("Ctrl/Cmd+S save · ESC save & close · Tab completes hint · Shift+arrows/drag select · Ctrl+C/X/V/A",
+    DrawText(T("Ctrl/Cmd+S save · ESC save & close · Tab completes hint · Shift+arrows/drag select · Ctrl+C/X/V/A"),
              16, 40, 12, Color{150, 150, 170, 220});
     if (!m_scriptEdErrors.empty()) {
         std::string errMsg = std::to_string(m_scriptEdErrors.size()) + " error" +
@@ -7618,7 +7650,7 @@ void MapEditor::drawScriptEditorOverlay() {
     bool docsHov = CheckCollisionPointRec(mouse, docsBtn);
     DrawRectangleRounded(docsBtn, 0.2f, 6, docsHov ? Color{60, 60, 90, 220} : Color{45, 45, 60, 180});
     DrawRectangleRoundedLines(docsBtn, 0.2f, 6, docsHov ? ACCENT : Color{130, 130, 160, 200});
-    DrawText("? Docs", (int)docsBtn.x + 12, (int)docsBtn.y + 10, 15, docsHov ? ACCENT : LIGHTGRAY);
+    DrawText(T("? Docs"), (int)docsBtn.x + 12, (int)docsBtn.y + 10, 15, docsHov ? ACCENT : LIGHTGRAY);
     if (docsHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         m_scriptDocsOpen = true;
         // Jump straight to the doc entry for the keyword under the cursor, if any
@@ -7876,10 +7908,10 @@ void MapEditor::drawScriptEditorOverlay() {
             hx += MeasureText(label.c_str(), 13) + 22;
             if (hx > m_screenW - 160) break;
         }
-        DrawText("Tab", m_screenW - 60, hy + 9, 12, GRAY);
+        DrawText(T("Tab"), m_screenW - 60, hy + 9, 12, GRAY);
         DrawText(m_scriptEdHintDoc.c_str(), 20, hy + 34, 12, {160, 200, 160, 255});
     } else {
-        DrawText("Type to see completions — keywords, country./province./var./array./list. refs, waitUntil, include ...",
+        DrawText(T("Type to see completions — keywords, country./province./var./array./list. refs, waitUntil, include ..."),
                  20, hy + 20, 12, GRAY);
     }
 }
@@ -7953,7 +7985,7 @@ void MapEditor::drawScriptDocsOverlay() {
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 225});
     const int nDocs = (int)(sizeof(SCRIPT_DOCS) / sizeof(SCRIPT_DOCS[0]));
 
-    DrawText("Scripting Documentation", 16, 14, 22, ACCENT);
+    DrawText(T("Scripting Documentation"), 16, 14, 22, ACCENT);
     Rectangle closeBtn = {(float)(m_screenW - 44), 8, 36, 36};
     bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
     DrawRectangleRounded(closeBtn, 0.2f, 6, {60, 60, 70, 180});
@@ -8042,7 +8074,7 @@ void MapEditor::drawScriptDocsOverlay() {
         }
         EndScissorMode();
     }
-    DrawText("Up/Down to browse topics, ESC to close", bodyX, m_screenH - 24, 11, GRAY);
+    DrawText(T("Up/Down to browse topics, ESC to close"), bodyX, m_screenH - 24, 11, GRAY);
 }
 
 // ── Metadata Panel ─────────────────────────────────────────────
@@ -8070,7 +8102,7 @@ void MapEditor::updateMetadataPanel() {}
 void MapEditor::drawMetadataPanel() {
     int px = m_screenW - m_panelW + 12, y = m_toolbarH + 16;
     int listW = m_panelW - 24;
-    DrawText("Map Metadata", px, y, 18, ACCENT); y += 30;
+    DrawText(T("Map Metadata"), px, y, 18, ACCENT); y += 30;
 
     bool inputOk = !anyModalOpen();
     Vector2 mouse = GetMousePosition();
@@ -8125,7 +8157,7 @@ void MapEditor::drawMetadataPanel() {
     drawField(1);
 
     // ── Start date: month picker + year field + AD/BC toggle ──
-    DrawText("Start date:", px, y, 12, LIGHTGRAY); y += 16;
+    DrawText(T("Start date:"), px, y, 12, LIGHTGRAY); y += 16;
     {
         int monthW = 110, yearW = 70, eraW = 42, gap = 6;
         Rectangle monthBtn = {(float)px, (float)y, (float)monthW, 24};
@@ -8214,12 +8246,12 @@ void MapEditor::drawMetadataPanel() {
             y += rowH * 12;
         }
         y += 8;
-        DrawText(TextFormat("Resolves to: %s", m_mapDate.c_str()), px, y, 10, GRAY);
+        DrawText(TextFormat(T("Resolves to: %s"), m_mapDate.c_str()), px, y, 10, GRAY);
         y += 16;
     }
 
     // ── Thumbnail: shown in the map browser; optional, auto-generated if unset ──
-    DrawText("Thumbnail:", px, y, 12, LIGHTGRAY); y += 16;
+    DrawText(T("Thumbnail:"), px, y, 12, LIGHTGRAY); y += 16;
     {
         // Preview box uses the exact export aspect so what you see is what ships
         float previewW = (float)std::min(listW, THUMB_W * 2);
@@ -8240,7 +8272,7 @@ void MapEditor::drawMetadataPanel() {
                                {0, 0, (float)m_thumbnailTex.width, (float)m_thumbnailTex.height},
                                {box.x + 2, box.y + 2, box.width - 4, box.height - 4}, {0, 0}, 0, WHITE);
             } else {
-                DrawText("Could not read image", (int)box.x + 8, (int)(box.y + box.height/2 - 6), 11, Color{220,140,140,255});
+                DrawText(T("Could not read image"), (int)box.x + 8, (int)(box.y + box.height/2 - 6), 11, Color{220,140,140,255});
             }
         } else {
             const char* t1 = "Auto-generated from the map";
@@ -8249,9 +8281,9 @@ void MapEditor::drawMetadataPanel() {
         }
         y += (int)previewH + 6;
 
-        DrawText(TextFormat("Drop an image here — %dx%d PNG", THUMB_W, THUMB_H), px, y, 10, Color{150,170,150,220});
+        DrawText(TextFormat(T("Drop an image here — %dx%d PNG"), THUMB_W, THUMB_H), px, y, 10, Color{150,170,150,220});
         y += 12;
-        DrawText("Other sizes/formats are rescaled to fit.", px, y, 10, GRAY);
+        DrawText(T("Other sizes/formats are rescaled to fit."), px, y, 10, GRAY);
         y += 16;
 
         if (!m_thumbnailPath.empty()) {
@@ -8267,7 +8299,7 @@ void MapEditor::drawMetadataPanel() {
     }
 
     // ── License: pick a preset or define a custom one ──
-    DrawText("License:", px, y, 12, LIGHTGRAY); y += 16;
+    DrawText(T("License:"), px, y, 12, LIGHTGRAY); y += 16;
     static const char* presets[] = {"CC-BY-4.0", "CC-BY-SA-4.0", "CC0-1.0",
                                     "MIT", "GPL-3.0", "All Rights Reserved"};
     for (const char* p : presets) {
@@ -8293,7 +8325,7 @@ void MapEditor::drawMetadataPanel() {
     if (m_licenseCustom) {
         drawField(3); // custom license name
 
-        DrawText(TextFormat("License text (%d chars):", (int)m_licenseText.size()), px, y, 11, LIGHTGRAY); y += 14;
+        DrawText(TextFormat(T("License text (%d chars):"), (int)m_licenseText.size()), px, y, 11, LIGHTGRAY); y += 14;
         Rectangle ta = {(float)px, (float)y, (float)listW, 84};
         bool taHov = inputOk && CheckCollisionPointRec(mouse, ta);
         Color bg = m_licenseTextFocus ? Color{35,35,50,255} : (taHov ? Color{30,30,40,255} : Color{25,25,35,255});
@@ -8357,7 +8389,7 @@ void MapEditor::drawMetadataPanel() {
             }
         }
         y += 88;
-        DrawText("Type or paste (Cmd/Ctrl+V). Enter = newline", px, y, 9, GRAY);
+        DrawText(T("Type or paste (Cmd/Ctrl+V). Enter = newline"), px, y, 9, GRAY);
         y += 16;
     }
 
@@ -8403,8 +8435,8 @@ void MapEditor::drawMetadataPanel() {
         DrawText(m_warningMsg.c_str(), px, y, 12, Color{255, 120, 120, 255});
         y += 18;
     }
-    DrawText("Saved as .uodmap in data/projects/", px, y, 10, GRAY); y += 13;
-    DrawText("Export .odmap (Generator tab) to play.", px, y, 10, GRAY); y += 13;
+    DrawText(T("Saved as .uodmap in data/projects/"), px, y, 10, GRAY); y += 13;
+    DrawText(T("Export .odmap (Generator tab) to play."), px, y, 10, GRAY); y += 13;
     if (fileDialog::available())
-        DrawText("Or drop an .odmap/.uodmap on this window.", px, y, 10, GRAY);
+        DrawText(T("Or drop an .odmap/.uodmap on this window."), px, y, 10, GRAY);
 }

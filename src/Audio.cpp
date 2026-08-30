@@ -1,4 +1,5 @@
 #include "Audio.h"
+#include "util/LoadLog.h"
 
 #include <algorithm>
 #include <chrono>
@@ -49,7 +50,7 @@ void onMusicFailed(const char* file) {
     // Not fatal: a track whose bytes will not arrive is one track. Clearing the
     // slot lets the picker choose a different one, and it will, because
     // startTrack failing leaves m_needPick set.
-    std::cerr << "  Music download failed: " << (file ? file : "?") << std::endl;
+    LoadLog() << "  Music download failed: " << (file ? file : "?") << std::endl;
     if (!g_fetching.empty()) g_unavailable.insert(g_fetching);
     g_fetching.clear();
 }
@@ -321,7 +322,7 @@ void Audio::init(const std::string& dataDir) {
     if (!IsAudioDeviceReady()) {
         // Not an error worth interrupting anyone over. A machine with no output
         // device is a machine that plays this game silently.
-        std::cout << "  Audio device unavailable — running silent" << std::endl;
+        LoadLog() << "  Audio device unavailable — running silent" << std::endl;
         return;
     }
     m_available = true;
@@ -334,7 +335,7 @@ void Audio::init(const std::string& dataDir) {
 
     loadSfxDir(m_dataDir + "audio/sfx");
     indexMusic(m_dataDir + "audio/music");
-    std::cout << "  Audio ready (" << m_sfx_map.size() << " sound"
+    LoadLog() << "  Audio ready (" << m_sfx_map.size() << " sound"
               << (m_sfx_map.size() == 1 ? "" : "s") << ", "
               << m_tracks.size() << " track"
               << (m_tracks.size() == 1 ? "" : "s") << ")" << std::endl;
@@ -388,7 +389,7 @@ void Audio::loadSfxDir(const std::string& dir) {
 
         Sound s = LoadSound(path);
         if (s.frameCount == 0) {
-            std::cerr << "  Sound failed to load: " << path << std::endl;
+            LoadLog() << "  Sound failed to load: " << path << std::endl;
             continue;
         }
         SfxTake take;
@@ -470,7 +471,7 @@ void Audio::readSidecar(const std::string& musicPath, TrackMeta& out) const {
     } catch (const std::exception& e) {
         // A malformed sidecar must not cost us the track. It plays with neutral
         // mood, and the reason is on the console rather than silently guessed.
-        std::cerr << "  Bad track sidecar " << path << ": " << e.what() << std::endl;
+        LoadLog() << "  Bad track sidecar " << path << ": " << e.what() << std::endl;
     }
 }
 
@@ -601,7 +602,7 @@ bool Audio::startTrack(int trackIdx, bool crossfade) {
     Track next;
     next.music = LoadMusicStream(meta.path.c_str());
     if (next.music.frameCount == 0) {
-        std::cerr << "  Music failed to load: " << meta.path << std::endl;
+        LoadLog() << "  Music failed to load: " << meta.path << std::endl;
         return false;
     }
     next.name = meta.title;

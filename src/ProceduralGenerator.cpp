@@ -1,4 +1,5 @@
 #include "ProceduralGenerator.h"
+#include "util/LoadLog.h"
 #include "json.hpp"
 #include <algorithm>
 #include <cmath>
@@ -196,7 +197,7 @@ ProceduralOutput generateProcedural(
         }
     }
     if (components.empty()) return out;
-    std::cout << "  Found " << components.size() << " land components\n";
+    LoadLog() << "  Found " << components.size() << " land components\n";
 
     // Sort components by size descending
     std::sort(components.begin(), components.end(),
@@ -463,7 +464,7 @@ ProceduralOutput generateProcedural(
                 if (bestCid > 0)
                     for (int p : pix) countryOfPixel[p] = bestCid;
             }
-            std::cout << "  Assigned " << unassigned.size() << " orphan pixels to nearest country\n";
+            LoadLog() << "  Assigned " << unassigned.size() << " orphan pixels to nearest country\n";
         }
     }
 
@@ -477,7 +478,7 @@ ProceduralOutput generateProcedural(
             countryPixels[cid].push_back(i);
         }
     }
-    std::cout << "  Created " << countryIds.size() << " countries\n";
+    LoadLog() << "  Created " << countryIds.size() << " countries\n";
 
     // ── Step 3: Generate provinces via flood fill within each country ──
     out.provincePixels.resize(w * h, Color{0,0,0,0});
@@ -969,6 +970,18 @@ ProceduralOutput generateProcedural(
     std::map<int, int> provIndustry;        // shared with Step 11 (armies)
     {
         nlohmann::json resJson;
+
+        // A COUNTRY'S AREA, AND EACH PROVINCE'S SHARE OF IT -- needed for
+        // popIncome, which is a big-province bonus rather than a headcount.
+        std::map<int, int> provPixels, provOwner, countryPixels;
+        for (int i = 0; i < w * h; ++i) {
+            const int pid = colorToId(out.provincePixels[i]);
+            if (pid == 0) continue;
+            provPixels[pid]++;
+            if (!provOwner.count(pid)) provOwner[pid] = countryOfPixel[i];
+            countryPixels[countryOfPixel[i]]++;
+        }
+
         for (int i = 0; i < w * h; ++i) {
             int pid = colorToId(out.provincePixels[i]);
             if (pid == 0) continue;
@@ -986,18 +999,48 @@ ProceduralOutput generateProcedural(
             float goldN = fbmNoise((float)x * 0.002f, (float)y * 0.002f, seed + 1300);
             float rubberN = fbmNoise((float)x * 0.003f, (float)y * 0.003f, seed + 1400);
 
+            const int aOil    = (oilN    > 0.65f) ? (int)((oilN    - 0.65f) * 200) : 0;
+            const int aMetal  = (metalN  > 0.60f) ? (int)((metalN  - 0.60f) * 200) : 0;
+            const int aGold   = (goldN   > 0.70f) ? (int)((goldN   - 0.70f) * 100) : 0;
+            const int aRubber = (rubberN > 0.65f) ? (int)((rubberN - 0.65f) * 150) : 0;
+
+            // TWO OF THE THREE INCOME STREAMS USED TO BE HARDCODED ZERO HERE.
+            //
+            // Only the shipped scenarios carry resourceIncome and popIncome
+            // (from tools/overlay_real_data.py), and nothing but the scenario
+            // loader ever wrote those fields -- so every generated world had
+            // industry income and nothing else. Self-play trains on generated
+            // worlds and --eval-ai measures on them: measured 2026-08-20 with
+            // the money ledger, both streams were 0.0000 on every country-turn
+            // while 1939 has resource income on 852 provinces. The AI was being
+            // trained and benchmarked in an economy the game does not ship.
+            //
+            // These are overlay_real_data.py's formulas, rounded to one decimal
+            // as the authored data is, so generated worlds have the same KIND of
+            // economy as authored ones:
+            //   resourceIncome = 5% of the weighted deposits
+            //   popIncome      = income x province share of its country x 0.5
+            const float deposits = aOil * 0.5f + aGold * 0.5f +
+                                   aRubber * 0.3f + aMetal * 0.5f;
+            const float resourceIncome = std::round(deposits * 0.05f * 10.0f) / 10.0f;
+            const int ownerPixels = countryPixels.count(provOwner[pid])
+                                  ? countryPixels[provOwner[pid]] : 0;
+            const float areaShare = ownerPixels > 0
+                                  ? (float)provPixels[pid] / (float)ownerPixels : 0.0f;
+            const float popIncome = std::round(income * areaShare * 0.5f * 10.0f) / 10.0f;
+
             nlohmann::json entry;
             entry["industry"] = {
                 {"level", indLevel},
                 {"income", income},
-                {"resourceIncome", 0.0f},
-                {"popIncome", 0.0f}
+                {"resourceIncome", resourceIncome},
+                {"popIncome", popIncome}
             };
 
-            if (oilN > 0.65f) entry["oil"] = {{"a", (int)((oilN - 0.65f) * 200)}, {"b", 5}};
-            if (metalN > 0.6f) entry["metal"] = {{"a", (int)((metalN - 0.6f) * 200)}, {"b", 8}};
-            if (goldN > 0.7f) entry["gold"] = {{"a", (int)((goldN - 0.7f) * 100)}, {"b", 15}};
-            if (rubberN > 0.65f) entry["rubber"] = {{"a", (int)((rubberN - 0.65f) * 150)}, {"b", 10}};
+            if (aOil)    entry["oil"]    = {{"a", aOil},    {"b", 5}};
+            if (aMetal)  entry["metal"]  = {{"a", aMetal},  {"b", 8}};
+            if (aGold)   entry["gold"]   = {{"a", aGold},   {"b", 15}};
+            if (aRubber) entry["rubber"] = {{"a", aRubber}, {"b", 10}};
 
             resJson[std::to_string(pid)] = entry;
         }

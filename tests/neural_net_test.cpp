@@ -64,6 +64,179 @@ static void checkInputGrad() {
     ok(worst < TOL, "input gradient matches finite differences", worst);
 }
 
+// ── 1b. Cross-entropy (behavioural cloning) ──────────────
+// The claim is that accumulateCrossEntropyInto puts (p - onehot) on the logits,
+// i.e. the exact derivative of -log p(target). Asserted against finite
+// differences of that loss rather than trusted: a sign slip here trains the
+// policy AWAY from the teacher and still looks like it is learning.
+static void checkCrossEntropyGrad() {
+    NeuralNet net({5, 6, 4}, 11);
+    std::vector<float> x = {0.4f, -0.3f, 0.2f, 0.9f, -0.5f};
+    const int target = 2;
+    // Masked: action 3 is illegal, so it must receive no probability and the
+    // loss must be computed over the remaining three.
+    std::vector<uint8_t> mask = {1, 1, 1, 0};
+
+    auto loss = [&](const std::vector<float>& xx) {
+        std::vector<float> lg = net.forward(xx);
+        for (size_t i = 0; i < lg.size(); ++i) if (!mask[i]) lg[i] = -1e9f;
+        std::vector<float> p;
+        NeuralNet::softmax(lg, 1.0f, p);
+        return -std::log(std::max(1e-12f, p[(size_t)target]));
+    };
+
+    NeuralNet::Scratch s;
+    net.initScratch(s);
+    net.forwardInto(s, x);
+    net.accumulateCrossEntropyInto(s, target, 1.0f, &mask);
+    const std::vector<float> g = NeuralNet::inputGrad(s);
+
+    double worst = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        std::vector<float> xp = x, xm = x;
+        xp[i] += EPS; xm[i] -= EPS;
+        worst = std::max(worst, std::fabs((loss(xp) - loss(xm)) / (2.0 * EPS) - g[i]));
+    }
+    ok(worst < TOL, "cross-entropy gradient matches finite differences", worst);
+
+    // ...and it must point TOWARD the teacher: one descent step on the output
+    // layer has to raise the target's probability, not lower it.
+    auto probOfTarget = [&]() {
+        std::vector<float> lg = net.forward(x);
+        for (size_t i = 0; i < lg.size(); ++i) if (!mask[i]) lg[i] = -1e9f;
+        std::vector<float> p; NeuralNet::softmax(lg, 1.0f, p);
+        return p[(size_t)target];
+    };
+    const float before = probOfTarget();
+    for (int step = 0; step < 40; ++step) {
+        net.forward(x);
+        net.crossEntropyUpdate(target, 0.05f, &mask);
+    }
+    const float after = probOfTarget();
+    ok(after > before, "a cloning step raises the teacher's action", after - before);
+}
+
+// ── 1b. The collapse guard ───────────────────────────────
+//
+// A head CAN be driven onto one action, and the guard CAN pull it back off.
+//
+// The first half is not hypothetical. A training run collapsed the war head to
+// `hold` 100.00% with every other action at exactly 0.00%, while PPO_ENTROPY
+// was 0.01 throughout and its comment claimed that was "enough that a
+// distribution cannot collapse to a point". It was not.
+//
+// The guard that replaced that claim rests on a fact about two gradients, and
+// this is where the fact is checked rather than asserted:
+//
+//   entropy bonus:  coef * p_i * (log p_i + H).  As p -> 1 both log p and H go
+//                   to zero, so its force VANISHES exactly at saturation. It
+//                   can slow a collapse; it cannot reverse one.
+//   uniform pull:   (p_i - 1/k).  At saturation that is (1 - 1/k) for the
+//                   dominant action -- its LARGEST value. It does not vanish.
+//
+// So the test drives a head into the corner, confirms the entropy bonus cannot
+// get it out, and then requires the pull to. Both halves matter: without the
+// first, a passing second half would not show the guard was needed.
+static void checkEntropyGuard() {
+    // The guard's own constants (AISystem: ENTROPY_FLOOR_FRAC,
+    // ENTROPY_GUARD_TARGET_MUL, ENTROPY_COEF_MAX, UNIFORM_PULL_K). Restated
+    // rather than included: AISystem.h drags the whole game into a gradient
+    // test. If they drift apart this test still tests the mechanism, which is
+    // what it is for -- the values themselves are exercised by a real run.
+    const float BASE_ENTROPY = 0.01f;
+    const float MAX_ENTROPY  = 0.15f;
+    const float FLOOR_FRAC   = 0.20f;
+    const float TARGET_MUL   = 1.5f;
+    const float PULL_K       = 1.0f;
+    const int   K            = 4;      // legal actions
+
+    const float ceiling = std::log((float)K);
+    const float floorH  = FLOOR_FRAC * ceiling;
+    const float target  = floorH * TARGET_MUL;
+    const std::vector<float> x = {0.5f, -0.2f, 0.7f, 0.1f};
+    const std::vector<uint8_t> mask(K, 1);
+
+    NeuralNet net({4, 8, (int)K}, 7);
+    NeuralNet::Scratch s;
+    net.initScratch(s);
+
+    auto entropyNow = [&]() {
+        std::vector<float> p;
+        NeuralNet::softmax(net.forward(x), 1.0f, p);
+        float H = 0.0f;
+        for (float q : p) if (q > 1e-8f) H -= q * std::log(q);
+        return H;
+    };
+
+    // One batch under a relentless advantage on action 0 -- the shape of a
+    // module with one profitable answer, which is what the war head met.
+    // `guard` selects how hard the guard is allowed to push back.
+    NeuralNet::PPOStats st;
+    auto step = [&](float entropyCoef, float pullK) {
+        std::vector<float> p;
+        NeuralNet::softmax(net.forward(x), 1.0f, p);
+        const float lp = std::log(std::max(1e-8f, p[0]));
+        net.forwardInto(s, x);
+        net.accumulatePPOInto(s, 0, 1.0f, lp, 0.2f, entropyCoef, &mask,
+                              1.0f, 0.0f, &st);
+        if (pullK > 0.0f) {
+            float H = 0.0f;
+            for (float q : p) if (q > 1e-8f) H -= q * std::log(q);
+            const float deficit = std::clamp((target - H) / target, 0.0f, 1.0f);
+            if (deficit > 0.0f)
+                for (int a = 0; a < K; ++a)
+                    net.accumulateCrossEntropyInto(s, a, pullK * deficit / (float)K, &mask);
+        }
+        // accumulate* writes into the SCRATCH; flushBatch drains the NET. The
+        // merge between them is what connects the two, and leaving it out is
+        // how the Q head once trained for zero updates -- see runLearningWork.
+        net.mergeScratch(s);
+        net.flushBatch(0.05f);
+    };
+
+    // ── it collapses, at the entropy coefficient that was supposed to stop it ──
+    for (int i = 0; i < 4000; ++i) step(BASE_ENTROPY, 0.0f);
+    const float collapsed = entropyNow();
+    ok(collapsed < floorH,
+       "the entropy bonus does not prevent a head collapsing", collapsed);
+    ok(st.support == K, "PPO stats report the legal support", st.support);
+    ok(std::fabs(st.entropy - collapsed) < 0.05,
+       "PPO stats report the entropy the head actually has",
+       std::fabs(st.entropy - collapsed));
+    ok(st.kl >= 0.0f, "the KL estimator is never negative", st.kl);
+
+    // ── and more entropy does not get it out again ──
+    for (int i = 0; i < 4000; ++i) step(MAX_ENTROPY, 0.0f);
+    const float entropyOnly = entropyNow();
+    ok(entropyOnly < floorH,
+       "...and the largest entropy bonus cannot climb back out either",
+       entropyOnly);
+
+    // ── the pull does, against the same advantage that put it there ──
+    for (int i = 0; i < 4000; ++i) step(MAX_ENTROPY, PULL_K);
+    const float recovered = entropyNow();
+    ok(recovered > floorH,
+       "the uniform pull restores a collapsed head above its floor",
+       recovered - floorH);
+
+    // ── and it is INERT on a healthy head: a deficit of zero adds nothing ──
+    NeuralNet fresh({4, 8, (int)K}, 7);
+    std::vector<float> before = fresh.forward(x);
+    NeuralNet::Scratch fs;
+    fresh.initScratch(fs);
+    fresh.forwardInto(fs, x);
+    {
+        std::vector<float> p;
+        NeuralNet::softmax(before, 1.0f, p);
+        float H = 0.0f;
+        for (float q : p) if (q > 1e-8f) H -= q * std::log(q);
+        const float deficit = std::clamp((target - H) / target, 0.0f, 1.0f);
+        ok(deficit == 0.0f,
+           "a fresh head is above the guard's target, so the guard is inert",
+           H - target);
+    }
+}
+
 // ── 2. Trunk -> head chaining ────────────────────────────
 // The trunk's output layer is a HIDDEN layer of the nets it replaced, so it is
 // squashed (setTanhOutput). If that derivative is dropped on the way back the
@@ -184,6 +357,8 @@ static void checkInputWidening() {
 int main() {
     printf("neural net gradients\n\n");
     checkInputGrad();
+    checkCrossEntropyGrad();
+    checkEntropyGuard();
     checkTrunkChaining();
     checkAttention();
     checkInputWidening();

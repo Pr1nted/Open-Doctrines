@@ -37,17 +37,28 @@ OUT = os.path.join(ROOT, "src", "server", "ServerRaylibStubs.cpp")
 
 # Where raylib.h is, in preference order. FetchContent puts one under each
 # build directory; any of them will do, they are the same pinned release.
+#
+# A SYSTEM raylib counts too. This used to look only under build/, which meant
+# the check failed outright on a machine that builds against Homebrew's raylib
+# (CMakeLists prefers a system copy and never fetches one) or that simply keeps
+# its build tree somewhere else. A generator that cannot find its input has to
+# say so, but it should look everywhere the build itself would first.
 CANDIDATES = [
-    os.path.join(ROOT, "build", d, "_deps", "raylib-src", "src", "raylib.h")
+    os.path.join(ROOT, b, d, "_deps", "raylib-src", "src", "raylib.h")
+    for b in ("build", "cmake-build-debug", "build-release", "build-web", "build-android")
     for d in ("macos", "linux", "windows", "emscripten", "")
-] + [os.path.join(ROOT, "build", "_deps", "raylib-src", "src", "raylib.h")]
+] + [
+    "/opt/homebrew/include/raylib.h",
+    "/usr/local/include/raylib.h",
+    "/usr/include/raylib.h",
+]
 
 
 def find_header():
     for p in CANDIDATES:
         if os.path.exists(p):
             return p
-    sys.exit("no raylib.h found -- configure a build directory first")
+    sys.exit("no raylib.h found -- configure a build directory, or install raylib")
 
 
 def declarations(header_text):

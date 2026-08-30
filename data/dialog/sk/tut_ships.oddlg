@@ -1,0 +1,46 @@
+// Preklad - námorná preprava.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Tak lode. Na tomto väčšina ľudí uviazne, a uviazne zakaždým na tom istom mieste:
+vojsko stojí na pobreží a nič sa nedeje.
+---
+@Signals Officer
+Armáda vodu sama neprekročí a rozkaz "naložiť na tamtú loď" neexistuje. Robí to
+provincia.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Vyberte pobrežnú provinciu, ktorá má §**prístav**§ A §**ľudí, čo v nej stoja**§.
+Nalodenie presunie posádku, ktorá tam už je; prázdny prístav nenaloďuje vôbec
+nič, a odtiaľ pramení väčšina zmätku.
+
+Jej panel má §**Naloďiť vojsko**§ - zadarmo, jeden ťah. Stlačte a ukončite ťah.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Tí ľudia sú teraz §**čln**§ pri pobreží. Prejdite do pohľadu na §**loďstvo**§ -
+lode neprijímajú rozkazy zo žiadneho zo zvyšných siedmich.
+
+§{key=ship_move}§ ním pohybuje, §{key=ship_wheel}§ otvára jeho delá,
+§{key=ship_engage}§ mu hovorí, nech sa pustí do boja.
+---
+@Signals Officer
+Na vylodenie: vyberte čln, stlačte §**Pohyb**§ a kliknite na §**pevninu**§.
+
+Voda ním pohybuje. Pevnina ho vykladá. Jedno tlačidlo robí oboje, a preto ľudia
+plávajú sem a tam a hľadajú to druhé.
+---
+@Signals Officer
+Dve veci, ktoré vám nikto nepovie.
+
+Naložený transport je cieľ a potápa sa aj s ľuďmi na palube. A vylodenie do
+bránenej provincie príde vyčerpané: vezmite prázdne pobrežie vedľa a choďte
+pešo, namiesto vyloďovania na pevnosti.
+---
+@Signals Officer
+§**Hallow Rock**§ v úžine nie je nepovinná. Čln má dosah a vzdialený ostrov je
+za ním - skala je teda prvé vylodenie a druhý skok ide odtiaľ.
+
+To sú lode. Ešte niečo?

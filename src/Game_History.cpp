@@ -9,6 +9,7 @@
 // baseline and applying every delta up to it.
 
 #include "Game.h"
+#include "util/LoadLog.h"
 #include "TextInput.h"
 #include "TimelapseMark.h"
 #include "Audio.h"
@@ -89,7 +90,7 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
                 base.ships.push_back({e.value("lat", 0.0), e.value("lon", 0.0),
                                       e.value("country_id", 0)});
         }
-    } catch (...) { std::cerr << "  History: bad baseline map data" << std::endl; }
+    } catch (...) { LoadLog() << "  History: bad baseline map data" << std::endl; }
     out.push_back(base);
 
     // Apply each turn's delta on top of the previous snapshot.
@@ -500,7 +501,7 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
                             int subFrames, const std::string& destPath, std::string& outMsg) {
     std::vector<TurnSnapshot> snaps;
     if (!buildTurnSnapshots(savePath, snaps) || snaps.size() < 2) {
-        outMsg = "Need at least 2 turns to export";
+        outMsg = T("Need at least 2 turns to export");
         return false;
     }
 
@@ -533,7 +534,7 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
 
     GifEncoder gif;
     if (!gif.begin(writePath, outW, outH, 8)) {
-        outMsg = "Could not create GIF at that path";
+        outMsg = T("Could not create GIF at that path");
         return false;
     }
 
@@ -571,7 +572,7 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
 
     int n = gif.frameCount();
     bool ok = gif.end();
-    if (!ok) { outMsg = "GIF export failed"; return false; }
+    if (!ok) { outMsg = T("GIF export failed"); return false; }
 
 #ifdef __EMSCRIPTEN__
     // Read the encoded file back and trigger a browser download so it lands on
@@ -587,12 +588,12 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
             "a.href=u;a.download='" + fname + "';document.body.appendChild(a);"
             "a.click();document.body.removeChild(a);URL.revokeObjectURL(u);";
         emscripten_run_script(js.c_str());
-        outMsg = "Downloaded " + fname + " (" + std::to_string(n) + " frames)";
+        outMsg = T("Downloaded ") + fname + " (" + std::to_string(n) + " frames)";
     }
 #else
-    outMsg = "Saved " + std::to_string(n) + " frames to " + writePath;
+    outMsg = T("Saved ") + std::to_string(n) + " frames to " + writePath;
 #endif
-    std::cout << "  Timelapse: " << outMsg << std::endl;
+    LoadLog() << "  Timelapse: " << outMsg << std::endl;
     return true;
 }
 
@@ -682,7 +683,7 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
     // A save with no player country still needs the selection screen first.
     if (m_playerCountryId > 0) m_currentScreen = SCREEN_PLAYING;
     m_historyStatus = "Reverted to turn " + std::to_string(turn);
-    std::cout << "  " << m_historyStatus << std::endl;
+    LoadLog() << "  " << m_historyStatus << std::endl;
     return true;
 }
 
@@ -785,7 +786,7 @@ void Game::drawHistoryScreen() {
 
     const char* title = "Turn History";
     DrawText(title, cx - MeasureText(title, 32) / 2, 22, 32, accent);
-    DrawText("ESC to close", m_screenW - 130, 28, 13, Color{120, 120, 140, 160});
+    DrawText(T("ESC to close"), m_screenW - 130, 28, 13, Color{120, 120, 140, 160});
 
     int n = (int)m_historySnaps.size();
 
@@ -795,7 +796,7 @@ void Game::drawHistoryScreen() {
     int visible = std::max(1, (m_screenH - listY - 70) / rowH);
     m_historyScroll = std::clamp(m_historyScroll, 0, std::max(0, n - visible));
 
-    DrawText("Turns", listX, listY - 20, 15, LIGHTGRAY);
+    DrawText(T("Turns"), listX, listY - 20, 15, LIGHTGRAY);
     DrawRectangle(listX, listY, listW, visible * rowH, {16, 16, 22, 255});
     for (int i = m_historyScroll; i < n && i < m_historyScroll + visible; ++i) {
         auto& s = m_historySnaps[i];
@@ -809,13 +810,13 @@ void Game::drawHistoryScreen() {
             m_historyIndex = i;
             m_historyConfirmRevert = false;
         }
-        DrawText(s.turn == 0 ? "Turn 0 (start)" : TextFormat("Turn %d", s.turn),
+        DrawText(s.turn == 0 ? "Turn 0 (start)" : TextFormat(T("Turn %d"), s.turn),
                  listX + 10, y + 4, 14, sel ? accent : WHITE);
         std::unordered_map<int, int> seen;
         for (auto& [pid, cid] : s.owner) if (cid > 0 && cid < SPC_CID) seen[cid]++;
         DrawText(TextFormat("%d", (int)seen.size()), listX + listW - 90, y + 5, 12, LIGHTGRAY);
         if (!s.hasState && s.turn > 0)
-            DrawText("view only", listX + listW - 66, y + 5, 11, Color{170, 140, 90, 255});
+            DrawText(T("view only"), listX + listW - 66, y + 5, 11, Color{170, 140, 90, 255});
     }
 
     // ── Map preview (right/top) ──
@@ -828,18 +829,18 @@ void Game::drawHistoryScreen() {
                        {(float)px, (float)py, (float)previewW, (float)previewH}, {0, 0}, 0, WHITE);
     } else {
         DrawRectangle(px, py, previewW, previewH, {20, 20, 28, 255});
-        DrawText("No preview", px + previewW / 2 - 40, py + previewH / 2, 14, GRAY);
+        DrawText(T("No preview"), px + previewW / 2 - 40, py + previewH / 2, 14, GRAY);
     }
     DrawRectangleLines(px, py, previewW, previewH, {60, 60, 75, 255});
     if (n > 0 && m_historyIndex < n) {
         auto& s = m_historySnaps[m_historyIndex];
-        DrawText(s.turn == 0 ? "Start of game" : TextFormat("Turn %d", s.turn),
+        DrawText(s.turn == 0 ? "Start of game" : TextFormat(T("Turn %d"), s.turn),
                  px + 6, py + 4, 16, accent);
     }
     py += previewH + 8;
 
     // View toggle buttons
-    DrawText("View:", px, py + 4, 14, LIGHTGRAY);
+    DrawText(T("View:"), px, py + 4, 14, LIGHTGRAY);
     int vbx = px + 50;
     for (int v = 0; v < 3; ++v) {
         Rectangle r = {(float)vbx, (float)py, 100, 24};
@@ -854,7 +855,7 @@ void Game::drawHistoryScreen() {
     py += 34;
 
     // ── Export controls ──
-    DrawText("GIF resolution:", px, py, 14, LIGHTGRAY);
+    DrawText(T("GIF resolution:"), px, py, 14, LIGHTGRAY);
     int rbx = px + 130;
     for (int i = 0; i < HIST_RES_COUNT; ++i) {
         Rectangle r = {(float)rbx, (float)py - 4, 150, 24};
@@ -871,7 +872,7 @@ void Game::drawHistoryScreen() {
     }
     py += 30;
 
-    DrawText(TextFormat("Smoothing: %d frames/turn", m_historySubFrames), px, py, 13, LIGHTGRAY);
+    DrawText(TextFormat(T("Smoothing: %d frames/turn"), m_historySubFrames), px, py, 13, LIGHTGRAY);
     {
         Rectangle minus = {(float)(px + 210), (float)py - 4, 24, 20};
         Rectangle plus  = {(float)(px + 238), (float)py - 4, 24, 20};
@@ -888,7 +889,7 @@ void Game::drawHistoryScreen() {
     py += 30;
 
     // Destination path field
-    DrawText("Save GIF to:", px, py, 13, LIGHTGRAY); py += 18;
+    DrawText(T("Save GIF to:"), px, py, 13, LIGHTGRAY); py += 18;
     {
         Rectangle field = {(float)px, (float)py, (float)std::min(previewW, 560), 26};
         bool hov = CheckCollisionPointRec(mouse, field);
@@ -929,7 +930,7 @@ void Game::drawHistoryScreen() {
     int revertTurn = (n > 0 && m_historyIndex < n) ? m_historySnaps[m_historyIndex].turn : 0;
     const char* revertLabel = !canRevert ? "Revert (no snapshot for this turn)"
                             : m_historyConfirmRevert ? "Click again to confirm revert"
-                            : TextFormat("Revert to turn %d", revertTurn);
+                            : TextFormat(T("Revert to turn %d"), revertTurn);
     if (button(revertLabel, py, std::min(previewW, 560), canRevert, Color{220,140,70,255})) {
         if (!m_historyConfirmRevert) {
             m_historyConfirmRevert = true;
@@ -951,7 +952,7 @@ void Game::drawHistoryScreen() {
         bool hov = CheckCollisionPointRec(mouse, r);
         DrawRectangleRounded(r, 0.15f, 6, hov ? Color{50,50,64,255} : Color{30,30,40,255});
         DrawRectangleRoundedLines(r, 0.15f, 6, Color{90,90,110,255});
-        DrawText("Back to save selection", (int)(r.x + r.width/2 - MeasureText("Back to save selection", 14)/2), (int)r.y + 10, 14, WHITE);
+        DrawText(T("Back to save selection"), (int)(r.x + r.width/2 - MeasureText(T("Back to save selection"), 14)/2), (int)r.y + 10, 14, WHITE);
         if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             m_inHistory = false;
             m_currentScreen = SCREEN_FILE_BROWSER;
@@ -964,7 +965,7 @@ void Game::drawHistoryScreen() {
         bool hov = CheckCollisionPointRec(mouse, r);
         DrawRectangleRounded(r, 0.15f, 6, hov ? Color{50,50,64,255} : Color{30,30,40,255});
         DrawRectangleRoundedLines(r, 0.15f, 6, Color{90,90,110,255});
-        DrawText("Close", (int)(r.x + r.width/2 - MeasureText("Close", 14)/2), (int)r.y + 10, 14, WHITE);
+        DrawText(T("Close"), (int)(r.x + r.width/2 - MeasureText(T("Close"), 14)/2), (int)r.y + 10, 14, WHITE);
         if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_inHistory = false;
     }
     py += 44;

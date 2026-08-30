@@ -1,0 +1,299 @@
+// Překlad - Miina lekce. :: , mluvčí a {key=...} jsou identifikátory.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Tak. Ashford. Sedm provincií, jeden soused, kterému se už nelíbíme, a ostrov,
+na který nedojdeme pěšky.
+
+Dost malé na to, aby se na tom dalo učit. To je celý důvod, proč jsme tady.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klikněte na kteroukoli provincii a tento panel vám řekne, co je zač: kdo ji
+vlastní, kdo v ní žije, co vyrábí a jak blízko mají k tomu, aby se kvůli tomu
+bouřili.
+
+Všechno, co v této hře děláte, děláte provincii.
+---
+@Signals Officer
+:: point=view.population
+Pruh dole není osm tlačítek. Je to osm způsobů, jak se dívat na TUTÉŽ mapu, a
+budete mezi nimi přepínat celou hru.
+
+Tenhle vybarvuje každou provincii podle toho, kolik lidí v ní žije.
+---
+@Signals Officer
+:: point=view.industry
+Průmysl. Kde jsou továrny, a tedy odkud přicházejí peníze a vybavení.
+
+Obyvatelstvo a průmysl dohromady vám řeknou, které provincie stojí za zabrání a
+které jsou jen půda.
+---
+@Signals Officer
+:: point=view.defence
+Obrana ukazuje pevnosti. Tmavá znamená, že se někdo zakopal, a útok do tmavé
+půdy stojí mnohem víc, než čísla naznačují.
+---
+@Signals Officer
+:: point=view.relations
+Vztahy: kdo s kým válčí a kdo komu ručí. Zkontrolujte to, než něco začnete -
+polovina válek, které se tu prohrají, byla se třemi zeměmi, ne s jednou.
+---
+@Signals Officer
+:: point=view.army
+Armáda. Všechny posádky na mapě naráz, vaše i jejich.
+
+V tomhle pohledu je dobré být, když přesouváte lidi, protože jen on ukazuje, co
+na ně čeká.
+---
+@Signals Officer
+:: point=view.navy
+Loďstvo dělá totéž pro lodě a odtud nakládáte transporty.
+
+Suroviny a Názvy zemí jsou poslední dva a dělají, co říkají.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Nejdřív §**ekonomika**§, protože z ní se platí všechno ostatní.
+
+Otevřete ji.
+---
+@Signals Officer
+Průmysl je to, čím stavíte, a roste tam, kde už obyvatelstvo je. Postavte
+továrnu do prázdna a koupil jste si velmi drahou kůlnu.
+
+Příjem přichází jednou za tah. Utraťte ho dřív, než ho máte, a schodek se
+strhne z připravenosti.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Teď ji zase zavřete - stejné tlačítko. Panel zakrývá mapu a já vám tam venku
+nemůžu nic ukázat, dokud jste tady uvnitř.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Dál §**výzkum**§. Otevřete ho.
+---
+@Signals Officer
+Nic, co tady začnete, se v tomto tahu nedokončí, a většina se dokončí dlouho
+poté, co zapomenete, že jste to chtěl.
+
+A přesně proto se vyplatí začínat brzy.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Zase ven.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Jděte dovnitř.
+---
+@Signals Officer
+Politiky stojí údržbu, ne jednorázovou částku - jsou to trvalé výdaje a
+posouvají to, kde země politicky stojí.
+
+Odvod naplní řady. Vytvoří také lidi, kteří v těch řadách být nechtěli, a to je
+číslo, které je třeba sledovat.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+A ven.
+---
+@Signals Officer
+To číslo jsou §**nepokoje**§.
+
+Provincie s vysokými nepokoji přestane platit a začne se organizovat. Ignorujte
+to dost dlouho a odejde - se svým průmyslem, svým obyvatelstvem a svým názorem
+na vás.
+
+Dostanete varování. Druhé ne vždycky.
+---
+@Signals Officer
+:: point=view.relations
+Ještě jedna věc před panely: válka nemusí skončit tím, že někdo zemře.
+
+Nabídky §**příměří**§ a §**obchodu**§ přicházejí jako okno s podmínkami: kdo
+přestane bojovat, kdo se čeho vzdá. Čtěte podmínky. Přijměte a válka skončí za
+těch podmínek, ne za pěkných.
+---
+@Signals Officer
+I vy můžete jednu otevřít, z pohledu na vztahy: vyberte zemi, se kterou válčíte,
+a zeptejte se. Řeknou ano, když prohrávají, a ne, když ne, a v tom spočívá
+většina diplomacie této hry.
+
+§**Obchodní dohoda**§ má stejný tvar bez války: zboží za peníze, každý tah,
+dokud někdo nevypoví.
+---
+@Signals Officer
+A nikdo vám během této lekce ani jedno nenabídne. Zakázala jsem jim to.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Poslední panel. §**Nároky**§ jsou způsob, jak se válka stane oprávněnou.
+---
+@Signals Officer
+Uplatněte nárok, který máte, a svět pokrčí rameny. Vezměte půdu, na kterou jste
+si nikdy nedělal nárok, a všichni, kdo o vás byli nerozhodnutí, nerozhodnutí
+být přestanou.
+
+Podejte nárok PŘED válkou. Podaný potom nikoho neoklame.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zavřete to a pojďme něco z toho použít.
+---
+@Signals Officer
+Teď armáda.
+
+Vyberte provincii, kterou vlastníte, podržte §{key=army_move}§ a klikněte tam,
+kam mají lidé jít. Jen sousední provincie - armáda jde pěšky, neteleportuje se.
+---
+@Signals Officer
+Dělostřelectvo je na §{key=artillery_wheel}§. Podržte a otevře se kolo: od
+minometů po věci, které bych radši nedávala na papír.
+
+Lodě mají svoje: §{key=ship_move}§ k pohybu, §{key=ship_wheel}§ pro jejich děla,
+§{key=ship_engage}§ k zahájení boje.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ani armády se neberou odnikud. §**Naverbujete je**§, provincii po provincii, z
+lidí, kteří tam žijí.
+
+Vyberte některou naši a podívejte se na panel.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Je tam posuvník a tlačítko §**Naverbovat**§. Posuvník je to, kolik z toho, co
+provincie může postrádat, si tento tah berete - nejvýš asi pětinu jejího
+obyvatelstva, méně tam, kde jsou lidé nespokojení.
+
+Stojí to peníze a lidé dorazí příští tah. Objednejte teď nějaké.
+---
+@Signals Officer
+Provincie, ze které jste odvedl lidi, je provincie, do které může kdokoli
+vejít, a ta, ze které jste odvedl obyvatelstvo, je chudší navždy. Verbování je
+utrácení, ne vyrábění.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Než kohokoli pohnete: §**nic se nestane, dokud neukončíte tah.**§
+
+Možná jste si všiml, že bylo dosud zašedlé. To jsem byla já.
+
+Vy dáváte rozkazy. Ty tam leží. Stisknete tohle a pak se stanou všechny naráz -
+a proto se celé tažení může rozhodnout v jediném tahu, když byly rozkazy dobré.
+---
+@Signals Officer
+Kestrel drží východní konec našeho ostrova, už s námi válčí a mají čtyřicet osm
+tisíc lidí.
+
+My máme sedm set dvacet tisíc.
+---
+@Signals Officer
+:: until=destroyed:KES
+Tak to udělejte v §**jednom tahu**§. Nařiďte zabrat každou jejich provincii -
+všechny čtyři, jednu po druhé, než cokoli ukončíte - a pak stiskněte Zpracovat
+tah a dívejte se, jak se to celé vyhodnotí.
+
+To je rytmus této hry. Všechno ostatní je detail.
+---
+@Signals Officer
+:: act=rebellion
+... Máte problém doma.
+
+Nepokoje v provinciích, které jste právě zabral, překročily mez. Prohlásily se
+za samostatné a neptají se.
+---
+@Signals Officer
+:: until=rebels:none
+To jsem měla na mysli. Povstání je teď země - má provincie, lidi a hranici s
+vámi.
+
+Potlačte ho stejně, jako potlačujete cokoli jiného. Nebude to tak snadné jako
+Kestrel.
+---
+@Signals Officer
+Zbývá Verrick, za vodou.
+
+Žádná pozemní cesta. Žádné pochodování tam armádu nedostane, a právě tady
+většina lidí uvázne.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+A §**neválčíme s nimi**§. Kestrel k nám přišel už nepřátelský; Verrick neudělal
+nic, a v zemi, se kterou jste v míru, se vylodit nemůžete.
+
+Takže vyhlásíme. Jakýkoli pohled kromě Obyvatelstva a klikněte na jednu z
+jejich provincií.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Panel jejich provincie vypisuje, co s nimi smíme udělat, a §**Vyhlásit válku**§
+je mezi tím. Nad tím je §**válečný cíl**§ - to, oč vám podle vašich slov jde.
+Klikáním se přepíná.
+
+Cíl není ozdoba: podle něj vás soudí zbytek světa a o něm se bude později
+dohadovat příměří.
+---
+@Signals Officer
+Vyhlaste ji - a pak §**ukončete tah**§. Vyhlášení je rozkaz jako každý jiný:
+podává se teď a stane se, až se tah vyhodnotí. Na mapě se nezmění nic, dokud
+nestisknete tlačítko.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Tady je celá přeprava ve čtyřech krocích. Vyberte jednu z našich pobřežních
+provincií - takovou s §**přístavem**§ a lidmi v ní.
+---
+@Signals Officer
+:: point=panel.province
+Musí v ní §**stát lidé**§. Nalodění nepřivolá armádu odnikud - posadí na člun
+posádku, která tam už je, takže přístav s prázdnou provincií nenalodí nic.
+
+Napochodujte tam nejdřív někoho, pokud je třeba.
+---
+@Signals Officer
+:: point=panel.province
+Pak v panelu té provincie: §**Nalodit vojsko**§. Zdarma, jeden tah.
+
+Stiskněte a ukončete tah. Posádka opustí provincii a stane se §**člunem**§ u
+pobřeží, který je nese jako svou osádku.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Teď přejděte do pohledu na §**loďstvo**§. Z mapy obyvatelstva lodi rozkaz dát
+nemůžete - člun na ní není.
+---
+@Signals Officer
+Vyberte člun. Stiskněte §**Pohyb**§ a pak - tohle nikdo neuhodne - klikněte na
+§**pevninu**§.
+
+Voda jím pohybuje. Pobřeží §**tam vysadí lidi**§. To je vylodění; zvláštní
+tlačítko na to není.
+---
+@Signals Officer
+:: until=destroyed:VER
+Takže: lidé v přístavní provincii, nalodit, ukončit tah, pohled na loďstvo,
+pohnout člunem, kliknout na pevninu.
+
+A jděte §**přes Hallow Rock**§. To není zkratka, to je trasa: člun donese jen
+tak daleko a pobřeží Verricku je na jeden zátah za tím. Vylodte se na skále,
+ukončete tah a pak zdolejte druhou polovinu.
+
+A držte člun dál od jejich torpédoborce. Naložený se potopí se všemi na palubě.
+---
+@Signals Officer
+:: point=tab.claims
+A nárokujte si půdu dřív, než ji zaberete, ne potom. Teď už víte proč.
+---
+@Signals Officer
+To je všechno. Ekonomika, výzkum, politika, nepokoje, nároky, armády, lodě.
+
+Všechno ostatní je detail a detail se naučíte tím, že s ním prohrajete.
+---
+@Signals Officer
+:: act=then:outro
+A to je ten ostrov. Pojďte se mnou nahoru do nabídky - poslední dvě věci tady
+dole nejsou.

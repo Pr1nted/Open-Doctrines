@@ -1,0 +1,32 @@
+// Traducción - el cierre común de todas las rutas.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Arriba, entonces. Dos cosas que no están en ningún mapa.
+
+§**Las partidas guardadas.**§ Un mundo de verdad se va anotando mientras
+juegas y te espera ahí. El nuestro no: nada de lo que acabas de hacer se ha
+conservado, que es justo el sentido de una isla de prácticas.
+---
+@Signals Officer
+:: point=menu.2
+§**Multijugador.**§ Una máquina hace de anfitriona y las demás se unen. Un
+turno se resuelve cuando todos los jugadores se declaran listos, así que la
+partida avanza al ritmo del más lento.
+
+Juega con gente que conteste a los mensajes.
+---
+@Pr1nted
+¿Sigues vivo? Bien. Es concienzuda, eso hay que reconocérselo.
+
+¿Quieres que veamos algo más, o hemos terminado?
+> Volver abajo y tratar algo concreto -> world:specifics
+> Eso es todo, gracias
+---
+@Pr1nted
+:: act=end_tutorial
+Muy bien. Ve a perder unas cuantas, así es como se aprende.
+
+Pr1nted, corto.

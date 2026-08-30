@@ -73,6 +73,71 @@
 </div></div>
 
 <script>
+// ─── ?devlog=1 : SEND THE CONSOLE TO THE SERVER, LINE BY LINE ──────────────
+//
+// Safari's Web Inspector needs a cable, and the failure we are chasing kills
+// the tab -- so anything printed on the page dies with the page. Each line is
+// beaconed to the dev server as it is written, which means the last line
+// before the tab is killed has already arrived on the other machine.
+//
+// Off unless the URL asks for it, so a shipped build behaves exactly as it
+// did. sendBeacon because it survives the page going away, with fetch as the
+// fallback for browsers that will not beacon to a plain http origin.
+(function () {
+  if (new URLSearchParams(location.search).get('devlog') !== '1') return;
+  var url = '/log';
+  var send = function (line) {
+    try {
+      var blob = new Blob([line + '\n'], { type: 'text/plain' });
+      if (!(navigator.sendBeacon && navigator.sendBeacon(url, blob))) {
+        fetch(url, { method: 'POST', body: line + '\n', keepalive: true });
+      }
+    } catch (e) { /* logging must never be the thing that breaks the page */ }
+  };
+  ['log', 'warn', 'error'].forEach(function (k) {
+    var orig = console[k].bind(console);
+    console[k] = function () {
+      var msg = Array.prototype.map.call(arguments, String).join(' ');
+      send((k === 'log' ? '' : '[' + k + '] ') + msg);
+      orig.apply(null, arguments);
+    };
+  });
+  window.addEventListener('error', function (e) {
+    send('[uncaught] ' + (e.message || e) + ' @ ' + (e.filename || '?') + ':' + (e.lineno || 0));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    send('[rejection] ' + (r && r.message ? r.message : r));
+    // The stack is the whole point: "null function" says nothing about WHICH
+    // function, and the wasm frames name the C++ symbol that made the call.
+    if (r && r.stack) String(r.stack).split('\n').slice(0, 24).forEach(function (l) {
+      if (l.trim()) send('[stack] ' + l.trim());
+    });
+  });
+  window.addEventListener('error', function (e) {
+    if (e.error && e.error.stack) String(e.error.stack).split('\n').slice(0, 24)
+      .forEach(function (l) { if (l.trim()) send('[stack] ' + l.trim()); });
+  });
+  // A last word on the way out. iOS fires pagehide when it discards the tab,
+  // which is the closest thing to a death notice we get.
+  window.addEventListener('pagehide', function () { send('[pagehide] tab going away'); });
+  // A badge, because the failure mode of this whole arrangement is opening
+  // the page without the flag and not knowing. Safari autocompletes the URL
+  // you visited last, which is exactly how that happens.
+  try {
+    var b = document.createElement('div');
+    b.textContent = 'devlog on';
+    b.style.cssText = 'position:fixed;left:6px;top:6px;z-index:99999;' +
+      'font:11px -apple-system,sans-serif;background:#0a4;color:#fff;' +
+      'padding:3px 7px;border-radius:4px;opacity:.85;pointer-events:none';
+    var add = function () { document.body && document.body.appendChild(b); };
+    if (document.body) add(); else window.addEventListener('DOMContentLoaded', add);
+  } catch (e) {}
+  send('[devlog] attached — ' + navigator.userAgent);
+  send('[devlog] screen ' + screen.width + 'x' + screen.height +
+       ' dpr ' + window.devicePixelRatio +
+       ' mem ' + (navigator.deviceMemory || '?') + 'GB');
+})();
 document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
 function odFail(why, detail) {

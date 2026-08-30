@@ -151,6 +151,25 @@ void NeuralNet::policyGradientUpdate(int action, float advantage, float lr) {
     backprop(g, lr);
 }
 
+void NeuralNet::crossEntropyUpdate(int target, float lr,
+                                   const std::vector<uint8_t>* validMask) {
+    if (!valid() || target < 0 || target >= outputSize()) return;
+    const std::vector<float>& logits = m_acts.back();
+    std::vector<float> probs;
+    if (validMask && !validMask->empty()) {
+        std::vector<float> ml(logits);
+        for (size_t i = 0; i < ml.size(); ++i)
+            if (i >= validMask->size() || !(*validMask)[i]) ml[i] = -1e9f;
+        softmax(ml, 1.0f, probs);
+    } else {
+        softmax(logits, 1.0f, probs);
+    }
+    std::vector<float> g(probs.size());
+    for (size_t i = 0; i < probs.size(); ++i)
+        g[i] = probs[i] - (i == (size_t)target ? 1.0f : 0.0f);
+    backprop(g, lr);
+}
+
 // ─── Batched gradient accumulation ───────────────────────
 
 void NeuralNet::backpropAccumulate(const std::vector<float>& outputGrad) {
@@ -323,26 +342,75 @@ float NeuralNet::logProbOf(const std::vector<float>& logits, int action) {
     return std::log(std::max(1e-8f, probs[(size_t)action]));
 }
 
+void NeuralNet::accumulateCrossEntropyInto(Scratch& s, int target, float weight,
+                                           const std::vector<uint8_t>* validMask) const {
+    if (!valid() || target < 0 || target >= outputSize() ||
+        s.gw.size() != m_layers.size()) return;
+    const std::vector<float>& logits = s.acts.back();
+    std::vector<float> probs;
+    if (validMask && !validMask->empty()) {
+        std::vector<float> ml(logits);
+        for (size_t i = 0; i < ml.size(); ++i)
+            if (i >= validMask->size() || !(*validMask)[i]) ml[i] = -1e9f;
+        softmax(ml, 1.0f, probs);
+    } else {
+        softmax(logits, 1.0f, probs);
+    }
+    // d(-log p_target)/dz_i = p_i - [i == target]
+    std::vector<float> g(probs.size(), 0.0f);
+    for (size_t i = 0; i < probs.size(); ++i)
+        g[i] = weight * (probs[i] - (i == (size_t)target ? 1.0f : 0.0f));
+
+    std::vector<const float*> w; std::vector<std::pair<int,int>> d;
+    for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
+    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
+}
+
 void NeuralNet::accumulatePPOInto(Scratch& s, int action, float advantage,
                                   float oldLogProb, float clipEps,
-                                  float entropyCoef) const {
+                                  float entropyCoef,
+                                  const std::vector<uint8_t>* validMask,
+                                  float mixScale, float mixFloor,
+                                  PPOStats* out) const {
     if (!valid() || action < 0 || action >= outputSize() || s.gw.size() != m_layers.size()) return;
     const std::vector<float>& logits = s.acts.back();
     std::vector<float> probs;
-    softmax(logits, 1.0f, probs);
+    if (validMask && !validMask->empty()) {
+        // The same support the decision was made over. See the header note.
+        std::vector<float> ml(logits);
+        for (size_t i = 0; i < ml.size(); ++i)
+            if (i >= validMask->size() || !(*validMask)[i]) ml[i] = -1e9f;
+        softmax(ml, 1.0f, probs);
+    } else {
+        softmax(logits, 1.0f, probs);
+    }
 
     const float p = std::max(1e-8f, probs[(size_t)action]);
+    // The behaviour probability THIS policy would now produce, under the same
+    // mixture the sample was drawn from. See the header note.
+    const float pBeh = std::max(1e-8f, mixScale * p + mixFloor);
     // Clamped before exp: a stale sample can put this ratio far enough out that
     // exp() overflows to inf, and one inf in a gradient poisons every weight it
     // touches -- permanently, because the model is then saved to disk.
-    const float ratio = std::exp(std::clamp(std::log(p) - oldLogProb, -20.0f, 20.0f));
+    const float ratio = std::exp(std::clamp(std::log(pBeh) - oldLogProb, -20.0f, 20.0f));
 
     // Beyond the clip, in the direction the advantage is pushing, the objective
     // is FLAT: no gradient at all. That flatness is the mechanism, not a
     // rounding of it -- it is what makes a too-large step worth nothing and so
     // stops the update taking it.
+    // DUAL CLIP. Standard PPO bounds how far an update may CHASE an advantage
+    // but not how hard it may punish one: with a negative advantage and a ratio
+    // above 1 the surrogate is unclipped, so a single stale sample whose ratio
+    // has drifted to e^20 can carry a gradient five orders of magnitude larger
+    // than its neighbours -- enough to stomp a rare action's probability to the
+    // floor in one batch. Rare actions are exactly where ratios drift most,
+    // which is how "declare war" and "ceasefire" kept arriving at 0% or 100%
+    // depending on which sign got lucky first. Beyond DUAL_CLIP the objective
+    // goes flat, the same mechanism the ordinary clip already uses.
+    static constexpr float DUAL_CLIP = 4.0f;
     const bool clipped = (advantage > 0.0f && ratio > 1.0f + clipEps) ||
-                         (advantage < 0.0f && ratio < 1.0f - clipEps);
+                         (advantage < 0.0f && ratio < 1.0f - clipEps) ||
+                         (advantage < 0.0f && ratio > DUAL_CLIP);
 
     std::vector<float> g(probs.size(), 0.0f);
     if (!clipped) {
@@ -352,17 +420,39 @@ void NeuralNet::accumulatePPOInto(Scratch& s, int action, float advantage,
             g[i] = advantage * ratio * (probs[i] - (i == (size_t)action ? 1.0f : 0.0f));
     }
 
+    // Computed unconditionally, not just when the bonus is on: this is the
+    // number the caller's collapse guard reads, and a guard that only sees the
+    // policy while the bonus is already running cannot tell it to start.
+    float H = 0.0f;
+    for (float q : probs) if (q > 1e-8f) H -= q * std::log(q);
+
     if (entropyCoef > 0.0f) {
         // Loss carries -entropyCoef * H, so the gradient carries
         // +entropyCoef * p_i * (log p_i + H). Added even when the surrogate is
         // clipped: exploration should not switch off just because this
         // particular sample's step was too big.
-        float H = 0.0f;
-        for (float q : probs) if (q > 1e-8f) H -= q * std::log(q);
         for (size_t i = 0; i < probs.size(); ++i) {
             const float q = std::max(1e-8f, probs[i]);
             g[i] += entropyCoef * q * (std::log(q) + H);
         }
+    }
+
+    if (out) {
+        out->entropy = H;
+        out->clipped = clipped;
+        // Schulman's k3: (r - 1) - log r. Unbiased, and unlike -log r it is
+        // never negative, so a mean over a batch cannot cancel itself to zero
+        // while individual samples are far out.
+        const float lr_ = std::clamp(std::log(pBeh) - oldLogProb, -20.0f, 20.0f);
+        out->kl = (ratio - 1.0f) - lr_;
+        int sup = 0;
+        if (validMask && !validMask->empty()) {
+            for (size_t i = 0; i < probs.size(); ++i)
+                if (i < validMask->size() && (*validMask)[i]) ++sup;
+        } else {
+            sup = (int)probs.size();
+        }
+        out->support = sup;
     }
 
     std::vector<const float*> w; std::vector<std::pair<int,int>> d;

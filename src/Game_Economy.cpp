@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Palette.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
 #include "raymath.h"
@@ -7,6 +8,7 @@
 #include <algorithm>
 #include <string>
 #include <cstdio>
+#include "BuildCosts.h"
 
 // === specializationBoostPct / provinceResourceIncome ===
 //
@@ -49,6 +51,66 @@ const char* Game::bestSpecializationFor(int pid) const {
     return best < 0 ? nullptr : SPEC_RESOURCES[best];
 }
 
+// === projectIncome ===
+//
+// See the declaration. Today's snapshot, walked forward over the build queues.
+//
+// EVERYTHING ELSE IS HELD STILL ON PURPOSE. A projection that guessed at
+// conquest, population growth or what the neighbours will do would be a
+// forecast, and a wrong one; this answers the narrower question a player
+// answers by glancing at their build queue -- "of what I have already paid
+// for, what has arrived by then, and what is it costing me?" That is the only
+// part of the future this game is arithmetic about, and it is the part every
+// multi-turn purchase decision actually turns on.
+CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
+    CountryIncomeSnapshot cs = computeCountryIncome(countryId);
+    if (turns <= 0) return cs;
+    // What today costs, kept so the deltas below are added once each rather
+    // than re-derived from a second lookup of the same snapshot.
+    const float navyNow = cs.navyExpenses;
+
+    auto ownedByUs = [&](int pid) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        return p && p->countryId == countryId;
+    };
+
+    for (const PendingUpgrade& pu : m_pendingUpgrades) {
+        if (pu.turnsRemaining > turns || !ownedByUs(pu.provinceId)) continue;
+        if (pu.type != "industry") continue;      // forts and ports earn nothing
+        // processUpgrades sets income = level * 2, so the gain is the
+        // difference from whatever the province earns today. Read from the same
+        // place rather than assumed, or the two drift the first time the
+        // formula changes.
+        auto it = m_provinceIndustry.find(pu.provinceId);
+        const float now = (it != m_provinceIndustry.end()) ? it->second.income : 0.0f;
+        const int   lvl = (it != m_provinceIndustry.end()) ? it->second.level : 0;
+        cs.gross += std::max(0.0f, (float)pu.targetLevel * 2.0f - now);
+        cs.industryLevels += std::max(0, pu.targetLevel - lvl);
+    }
+
+    // A hull under construction is free until it floats and then costs its
+    // berth every turn for ever. This is the half of a ship's price that
+    // nothing used to look at -- see the note in execEconomy's ship case.
+    for (const PendingShipBuild& sb : m_pendingShipBuilds) {
+        if (sb.turnsRemaining > turns || !ownedByUs(sb.provinceId)) continue;
+        cs.navyExpenses += (sb.type == "carrier") ? 25.0f : 10.0f;
+    }
+
+    // The factories' own running cost grows with how many levels are held, so
+    // a projection that added the income and not the upkeep would make every
+    // build look better than it is. Recomputed from the projected totals
+    // through the same function the live snapshot uses.
+    const float upkeepNow = cs.industryUpkeep;
+    cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
+                                       getTotalEffect("industryUpkeepPct", countryId));
+    cs.expenses += (cs.industryUpkeep - upkeepNow);
+
+    cs.expenses += (cs.navyExpenses - navyNow);
+    cs.total = cs.gross + cs.resource + cs.pop;
+    cs.net   = cs.total - cs.expenses;
+    return cs;
+}
+
 CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     auto cacheIt = m_countryIncomeCache.find(countryId);
     if (cacheIt != m_countryIncomeCache.end()) return cacheIt->second;
@@ -61,6 +123,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         auto ind = m_provinceIndustry.find(pid);
         if (ind != m_provinceIndustry.end()) {
             cs.gross += ind->second.income;
+            cs.industryLevels += ind->second.level;
             cs.resource += provinceResourceIncome(pid);
             cs.pop += ind->second.popIncome;
         }
@@ -108,7 +171,13 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         }
     }
     cs.total = cs.gross + cs.resource + cs.pop;
-    float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts;
+    // Factories cost money to run, and more of them cost disproportionately
+    // more. See industryUpkeep() for why this is a running cost rather than a
+    // higher price.
+    cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
+                                       getTotalEffect("industryUpkeepPct", countryId));
+    float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
+                         cs.minorityCosts + cs.industryUpkeep;
     float affordable = std::max(0.0f, cs.total - baseExpenses);
     // Allocations are per-country: only the player pays the research slider
     // Each country pays for ITS OWN allocations: the player's come from the
@@ -139,7 +208,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
 
 void Game::refreshIncomeCache() {
     m_countryIncomeCache.clear();
-    struct IncomeAccum { float gross = 0, res = 0, pop = 0; };
+    struct IncomeAccum { float gross = 0, res = 0, pop = 0; int levels = 0; };
     std::unordered_map<int, IncomeAccum> incAcc;
     for (auto& [pid, p] : m_provinces.getAllProvinces()) {
         if (p.countryId <= 0) continue;
@@ -147,6 +216,7 @@ void Game::refreshIncomeCache() {
         if (ind == m_provinceIndustry.end()) continue;
         auto& a = incAcc[p.countryId];
         a.gross += ind->second.income;
+        a.levels += ind->second.level;
         a.res += provinceResourceIncome(pid);
         a.pop += ind->second.popIncome;
     }
@@ -174,6 +244,9 @@ void Game::refreshIncomeCache() {
         cs.resource = a.res;
         cs.pop = a.pop;
         cs.total = a.gross + a.res + a.pop;
+        cs.industryLevels = a.levels;
+        cs.industryUpkeep = industryUpkeep(a.levels, a.gross,
+                                           getTotalEffect("industryUpkeepPct", cid));
         { auto it = armyUpkeep.find(cid); if (it != armyUpkeep.end()) cs.armyExpenses = it->second; }
         { auto it = navyUpkeep.find(cid); if (it != navyUpkeep.end()) cs.navyExpenses = it->second; }
         auto pIt = m_countryActivePolicyIndices.find(cid);
@@ -202,7 +275,13 @@ void Game::refreshIncomeCache() {
                 }
             }
         }
-        float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts;
+        // industryUpkeep included HERE TOO. This is the bulk path every AI
+        // country's income comes from and the one above is the player's; a cost
+        // added to one and not the other is the two of them playing different
+        // games, which is the mistake the header of BuildCosts.h exists to
+        // record.
+        float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
+                             cs.minorityCosts + cs.industryUpkeep;
         float affordable = std::max(0.0f, cs.total - baseExpenses);
         float rAlloc = m_researchAllocation;
         float pAlloc = m_pacificationAllocation;
@@ -353,7 +432,7 @@ void Game::drawEconomy() {
     int xw = MeasureText("X", 20);
     DrawText("X", (int)(closeBtn.x + closeBtn.width/2 - xw/2), 12, 20, closeCol);
 
-    DrawText("ESC to close", m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
+    DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     int startY = tabY + 70;
     if (m_economyTab == 0) {
@@ -378,7 +457,7 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 
     auto getName = [&](int cid) -> std::string {
         const Country* c = m_countries.getCountry(cid);
-        return c ? c->name : "CID" + std::to_string(cid);
+        return c ? od::i18n::properName(c->name) : "CID" + std::to_string(cid);
     };
 
     auto buildData = [&](const std::vector<CountryEcon>& src, std::function<float(const CountryEcon&)> extract) {
@@ -427,9 +506,11 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 
     auto drawGraph = [&](int x, int y, int w, int h, const std::vector<CountryEcon>& data,
                           const std::string& title, std::function<float(const CountryEcon&)> extract) {
-        DrawText(title.c_str(), x, y, 16, WHITE);
+        // Translated here rather than at the three call sites, the same way
+        // drawButton does it: this is the one place the heading is drawn.
+        DrawText(T(title), x, y, 16, WHITE);
         y += 22;
-        if (data.empty()) { DrawText("No data", x + 5, y + 5, 12, LIGHTGRAY); return; }
+        if (data.empty()) { DrawText(T("No data"), x + 5, y + 5, 12, LIGHTGRAY); return; }
         int barArea = w - 14;
         int barGap = 3;
         int barCnt = (int)data.size();
@@ -457,7 +538,7 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
             int bh = (int)(fabsf(v) * scale);
             if (bh < 1 && v != 0) bh = 1;
             int by = (v >= 0) ? (y + h - 22 - bh) : (y + h - 22);
-            Color barCol = (v >= 0) ? data[i].color : RED;
+            Color barCol = (v >= 0) ? data[i].color : odPalette::of(odPalette::Role::Bad);
             DrawRectangle(bx, by, barW, bh, barCol);
         }
 
@@ -466,7 +547,24 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
         for (int i = 0; i < labelCnt; ++i) {
             int bx = x + 6 + barGap + i * (barW + barGap);
             std::string name = getName(data[i].cid);
-            if (name.length() > 5) name = name.substr(0, 5) + ".";
+            // AS MANY CHARACTERS AS FIT THE BAR, not a fixed five.
+            //
+            // Five was five bytes, which was five Latin letters and one and
+            // two thirds of a Japanese one -- so the label was cut mid-
+            // character and drew as "南?". Counting CHARACTERS fixes the
+            // mojibake and leaves the other half of the problem: five kanji
+            // are about three times as wide as five letters at this size, and
+            // the labels ran into each other. Measuring is the only rule that
+            // holds for twenty languages at once.
+            const int slot = barW + barGap;
+            if (odText::measureText(name.c_str(), 8) > slot) {
+                int n = odText::charCount(name);
+                while (n > 1) {
+                    const std::string cut = odText::firstChars(name, --n) + ".";
+                    if (odText::measureText(cut.c_str(), 8) <= slot) { name = cut; break; }
+                    if (n == 1) name = cut;
+                }
+            }
             DrawText(name.c_str(), bx, y + h - 20, 8, LIGHTGRAY);
             float v = extract(data[i]);
             if (v != 0) {
@@ -498,7 +596,7 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
         if (scrollVar < 0) scrollVar = 0;
 
         DrawRectangle(x, y, w, h, {20, 20, 30, 180});
-        DrawText(title, x + 6, y + 3, 14, WHITE);
+        DrawText(T(title), x + 6, y + 3, 14, WHITE);
         DrawLine(x, y + headerH, x + w, y + headerH, {60, 60, 80, 150});
 
         int clipY = y + headerH + 2;
@@ -526,7 +624,8 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 
     auto formatGrossLine = [&](const CountryEcon& e) -> const char* {
         const Country* c = m_countries.getCountry(e.cid);
-        std::string name = c ? c->name : "CID" + std::to_string(e.cid);
+        std::string name = c ? od::i18n::properName(c->name)
+                             : "CID" + std::to_string(e.cid);
         static char buf[128];
         float v = e.gross;
         if (fabsf(v) < 0.5f) v = 0;
@@ -536,7 +635,8 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 
     auto formatNetLine = [&](const CountryEcon& e) -> const char* {
         const Country* c = m_countries.getCountry(e.cid);
-        std::string name = c ? c->name : "CID" + std::to_string(e.cid);
+        std::string name = c ? od::i18n::properName(c->name)
+                             : "CID" + std::to_string(e.cid);
         static char buf[128];
         float v = e.net;
         if (fabsf(v) < 0.5f) v = 0;
@@ -546,7 +646,8 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 
     auto formatExpLine = [&](const CountryEcon& e) -> const char* {
         const Country* c = m_countries.getCountry(e.cid);
-        std::string name = c ? c->name : "CID" + std::to_string(e.cid);
+        std::string name = c ? od::i18n::properName(c->name)
+                             : "CID" + std::to_string(e.cid);
         static char buf[128];
         float v = e.expenses;
         if (fabsf(v) < 0.5f) v = 0;
@@ -578,7 +679,7 @@ void Game::drawEconomyGlobal(int centerX, int startY) {
 void Game::drawEconomyLocal(int centerX, int startY) {
     int cid = m_playerCountryId;
     if (cid <= 0 || cid == SPC_CID) {
-        DrawText("Select a country to view local economy", centerX - 200, startY + 40, 18, LIGHTGRAY);
+        DrawText(T("Select a country to view local economy"), centerX - 200, startY + 40, 18, LIGHTGRAY);
         return;
     }
     const Country* c = m_countries.getCountry(cid);
@@ -588,7 +689,8 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     int pieStartY = startY + 30;
 
     int lx = std::max(20, centerX - 340);
-    DrawText(TextFormat("%s - Economic Breakdown", c->name.c_str()), lx, startY, 20, WHITE);
+    DrawText(TextFormat(T("%s - Economic Breakdown"),
+                        od::i18n::properName(c->name).c_str()), lx, startY, 20, WHITE);
     startY += 30;
 
     int valX = lx + 260;
@@ -601,6 +703,17 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     startY += 6;
     startY = drawBreakdownRow(lx, startY, valX, "Gross Income", TextFormat("%.1f", cs.total), WHITE, false);
     startY += 4;
+    // Shown with the percentage, and shown even at zero, because an upkeep the
+    // player cannot see is a tax they conclude is a bug. The number they need
+    // in order to decide whether the next factory is worth building is the RATE
+    // it is charged at, not the total.
+    if (cs.industryLevels > 0) {
+        const float pct = cs.gross > 0.0f ? (cs.industryUpkeep / cs.gross) * 100.0f : 0.0f;
+        startY = drawBreakdownRow(lx, startY, valX,
+                                  TextFormat(T("Industry Upkeep (%.0f%% of %d lvl)"), pct, cs.industryLevels),
+                                  TextFormat("-%.1f", cs.industryUpkeep),
+                                  Color{255, 210, 160, 255}, false);
+    }
     startY = drawBreakdownRow(lx, startY, valX, "Army Cost", TextFormat("-%.1f", cs.armyExpenses), Color{255, 180, 180, 255}, false);
     if (cs.navyExpenses > 0) {
         startY = drawBreakdownRow(lx, startY, valX, "Navy Cost", TextFormat("-%.1f", cs.navyExpenses), Color{255, 180, 255, 255}, false);
@@ -620,7 +733,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     DrawRectangle(lx, startY, 320, 1, {100, 100, 120, 150});
     startY += 6;
     { float netv = (fabsf(cs.net) < 0.05f) ? 0 : cs.net;
-    startY = drawBreakdownRow(lx, startY, valX, "Net Income", TextFormat("%.1f", netv), netv >= 0 ? hexToColor(m_config.accent()) : RED, false); }
+    startY = drawBreakdownRow(lx, startY, valX, "Net Income", TextFormat("%.1f", netv), netv >= 0 ? hexToColor(m_config.accent()) : odPalette::of(odPalette::Role::Bad), false); }
     startY += 10;
 
     auto histIt = m_incomeHistory.find(cid);
@@ -631,7 +744,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
         int gx = lx;
         int gy = startY;
 
-        DrawText("Income Over Recent Turns", gx, gy, 16, WHITE);
+        DrawText(T("Income Over Recent Turns"), gx, gy, 16, WHITE);
         gy += 20;
 
         float maxV = 0;
@@ -661,26 +774,26 @@ void Game::drawEconomyLocal(int centerX, int startY) {
         }
         drawLine(totalV, hexToColor(m_config.accent()));
         drawLine(grossV, SKYBLUE);
-        drawLine(resV, GREEN);
+        drawLine(resV, odPalette::of(odPalette::Role::Good));
         drawLine(popV, ORANGE);
-        drawLine(netV, RED);
+        drawLine(netV, odPalette::of(odPalette::Role::Bad));
 
         int legX = gx + graphW + 20;
         int legY = gy;
         auto drawLegend = [&](const char* label, Color col) {
             DrawRectangle(legX, legY, 10, 10, col);
-            DrawText(label, legX + 14, legY, 12, LIGHTGRAY);
+            DrawText(T(label), legX + 14, legY, 12, LIGHTGRAY);
             legY += 16;
         };
-        drawLegend("Total", hexToColor(m_config.accent()));
-        drawLegend("Industry", SKYBLUE);
-        drawLegend("Resource", GREEN);
-        drawLegend("Population", ORANGE);
-        drawLegend("Net", RED);
+        drawLegend(T("Total"), hexToColor(m_config.accent()));
+        drawLegend(T("Industry"), SKYBLUE);
+        drawLegend(T("Resource"), odPalette::of(odPalette::Role::Good));
+        drawLegend(T("Population"), ORANGE);
+        drawLegend(T("Net"), odPalette::of(odPalette::Role::Bad));
 
         startY = gy + graphH + 10;
     } else {
-        DrawText("(No historical data yet — play more turns)", lx, startY, 12, Color{120, 120, 140, 200});
+        DrawText(T("(No historical data yet — play more turns)"), lx, startY, 12, Color{120, 120, 140, 200});
         startY += 22;
     }
 
@@ -688,17 +801,27 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     int pieY = pieStartY;
     float expTotal = cs.expenses;
     if (expTotal > 0) {
-        DrawText("Expense Composition", pieX - 50, pieY, 16, WHITE);
+        DrawText(T("Expense Composition"), pieX - 50, pieY, 16, WHITE);
         pieY += 24;
 
         struct Slice { float val; Color col; const char* label; };
         Slice slices[] = {
-            {cs.armyExpenses, Color{200, 80, 80, 255}, "Army"},
-            {cs.navyExpenses, Color{120, 80, 180, 255}, "Navy"},
-            {cs.policyCosts, Color{80, 120, 200, 255}, "Doctrines"},
-            {cs.minorityCosts, Color{200, 140, 80, 255}, "Minority"},
-            {cs.researchCost, Color{80, 200, 80, 255}, "Research"},
-            {cs.pacificationCost, Color{80, 180, 220, 255}, "Pacification"},
+            // INDUSTRY UPKEEP BELONGS HERE, and its absence was not a missing
+            // label -- it was a missing wedge. `expTotal` is cs.expenses, which
+            // INCLUDES the upkeep, so every other slice was divided by a
+            // denominator carrying a cost that got no arc: the percentages did
+            // not sum to 100 and the pie had a hole exactly the size of the
+            // upkeep. Reported from a 67-level France, where the four listed
+            // slices came to 79.2% and the 20.8% missing was the -69.7 sitting
+            // in the table directly beside the chart. It is also, for most
+            // industrial countries, the second largest thing they pay.
+            {cs.industryUpkeep, Color{230, 170, 110, 255}, T("Industry upkeep")},
+            {cs.armyExpenses, Color{200, 80, 80, 255}, T("Army")},
+            {cs.navyExpenses, Color{120, 80, 180, 255}, T("Navy")},
+            {cs.policyCosts, Color{80, 120, 200, 255}, T("Doctrines")},
+            {cs.minorityCosts, Color{200, 140, 80, 255}, T("Minority")},
+            {cs.researchCost, Color{80, 200, 80, 255}, T("Research")},
+            {cs.pacificationCost, Color{80, 180, 220, 255}, T("Pacification")},
         };
 
         int radius = 55;
@@ -727,14 +850,14 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     pieY = pieY + (expTotal > 0 ? 100 : 40);
     float incTotal = cs.total;
     if (incTotal > 0) {
-        DrawText("Income Composition", pieX - 50, pieY, 16, WHITE);
+        DrawText(T("Income Composition"), pieX - 50, pieY, 16, WHITE);
         pieY += 24;
 
         struct Slice { float val; Color col; const char* label; };
         Slice slices[] = {
-            {cs.gross, SKYBLUE, "Industry"},
-            {cs.resource, GREEN, "Resource"},
-            {cs.pop, ORANGE, "Population"},
+            {cs.gross, SKYBLUE, T("Industry")},
+            {cs.resource, odPalette::of(odPalette::Role::Good), T("Resource")},
+            {cs.pop, ORANGE, T("Population")},
         };
 
         int radius = 55;
@@ -763,7 +886,10 @@ void Game::drawEconomyLocal(int centerX, int startY) {
 
 int Game::drawBreakdownRow(int x, int y, int valX, const char* label, const char* value, Color col, bool highlight) {
     if (highlight) DrawRectangle(x - 4, y, 400, 22, {255, 255, 255, 12});
-    DrawText(label, x, y, 16, col);
+    // The label is a heading ("Gross Income"); the value is a number the
+    // caller has already formatted, so only the label is translated here.
+    // Same one-place rule as the button helpers -- see Game_Multiplayer.cpp.
+    DrawText(T(label), x, y, 16, col);
     DrawText(value, valX, y, 16, col);
     return y + 22;
 }

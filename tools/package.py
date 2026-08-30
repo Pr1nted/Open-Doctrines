@@ -22,13 +22,16 @@ is visible in the build log.
 
 import argparse
 import os
+import platform
 import shutil
+import subprocess
 import sys
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import release as rel   # reuse the one allowlist, do not restate it
 import odver
+from zopfli_zip import available as zopfli_available, zopfli_deflate
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -38,6 +41,66 @@ def human(n):
         if n < 1024 or unit == "GB":
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1024.0
+
+
+def strip_symbols(path):
+    """Drop the debug symbol table from a copied binary. Returns (before, after).
+
+    A release build carries a symbol table nobody downloading it can use: it is
+    a megabyte of function names for a binary that is not code-signed and whose
+    crashes are not collected. Stripping is not a compression trick and it is
+    not lossy in any sense the player can observe -- the machine code, and so
+    the behaviour, is byte for byte what it was. What is lost is the ability to
+    symbolicate a crash log after the fact, which is why the developer's own
+    build is untouched and only the packaged copy is stripped.
+
+    Silent about anything it cannot do. MSVC keeps symbols in a separate .pdb
+    that was never in the zip anyway, so there is nothing to strip on Windows
+    and no `strip` to do it with; that is not a packaging failure.
+    """
+    exe = path
+    if os.path.isdir(path):                       # macOS .app bundle
+        macos = os.path.join(path, "Contents", "MacOS")
+        names = sorted(os.listdir(macos)) if os.path.isdir(macos) else []
+        if not names:
+            return 0, 0
+        exe = os.path.join(macos, names[0])
+    if not os.path.isfile(exe):
+        return 0, 0
+    before = os.path.getsize(exe)
+    # -S drops debug symbols, -x the non-global ones. Deliberately NOT a full
+    # strip: the dynamic symbol table has to survive or the loader cannot bind.
+    cmd = ["strip", "-S", "-x", exe] if platform.system() == "Darwin" else \
+          ["strip", "--strip-unneeded", exe]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except (OSError, subprocess.CalledProcessError):
+        return 0, 0
+    return before, os.path.getsize(exe)
+
+
+def verify_zip(zpath, base):
+    """Every member is byte-for-byte the file it came from. '' when all is well.
+
+    Not optional politeness. Substituting the compressor is exactly the kind of
+    change that can produce an archive which looks right, reports the right
+    sizes, and holds something else -- so the archive is opened again and read
+    back against the tree it was made from.
+    """
+    with zipfile.ZipFile(zpath) as z:
+        broken = z.testzip()
+        if broken:
+            return f"CRC failure in {broken}"
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+            src = os.path.join(base, info.filename)
+            if not os.path.isfile(src):
+                return f"{info.filename} is in the zip but not on disk"
+            with open(src, "rb") as f:
+                if f.read() != z.read(info.filename):
+                    return f"{info.filename} differs from the file it came from"
+    return ""
 
 
 def tree_size(path):
@@ -59,6 +122,8 @@ def main():
                     help="the built game (a file, or a .app bundle on macOS)")
     ap.add_argument("--out", required=True, help="output directory")
     ap.add_argument("--zip", action="store_true", help="also produce <out>.zip")
+    ap.add_argument("--no-strip", action="store_true",
+                    help="keep the packaged binary's debug symbols")
     args = ap.parse_args()
 
     version = odver.read()
@@ -94,7 +159,12 @@ def main():
     else:
         shutil.copy2(args.binary, dst_bin)
         os.chmod(dst_bin, 0o755)
-    print(f"  binary   {base}  ({human(tree_size(dst_bin))})")
+    stripped = ""
+    if not args.no_strip:
+        was, now = strip_symbols(dst_bin)
+        if now and now < was:
+            stripped = f", stripped {human(was - now)} of symbols"
+    print(f"  binary   {base}  ({human(tree_size(dst_bin))}{stripped})")
 
     # --- how to start it, in the folder they are already looking at ---
     #
@@ -223,12 +293,20 @@ def main():
 
     if args.zip:
         zpath = out + ".zip"
-        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-            for dirpath, _, files in os.walk(out):
-                for f in files:
-                    fp = os.path.join(dirpath, f)
-                    z.write(fp, os.path.relpath(fp, os.path.dirname(out)))
-        print(f"  {zpath}  ({human(os.path.getsize(zpath))})")
+        if not zopfli_available():
+            print("  note: zopfli is not installed, the zip will be ~1 MB larger.\n"
+                  "        python3 -m pip install zopfli", file=sys.stderr)
+        with zopfli_deflate():
+            with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+                for dirpath, _, files in os.walk(out):
+                    for f in files:
+                        fp = os.path.join(dirpath, f)
+                        z.write(fp, os.path.relpath(fp, os.path.dirname(out)))
+        bad = verify_zip(zpath, os.path.dirname(out))
+        if bad:
+            print(f"FAILED: {zpath} does not match what went into it: {bad}", file=sys.stderr)
+            return 1
+        print(f"  {zpath}  ({human(os.path.getsize(zpath))}, contents verified)")
 
     return 0
 

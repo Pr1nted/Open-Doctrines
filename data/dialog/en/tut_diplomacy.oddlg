@@ -1,0 +1,115 @@
+// Specialised: alliances, ceasefires and the rest of the diplomacy panel.
+//
+// TWO RULES CONSTRAIN EVERY WAITING PAGE HERE, and both were learned by
+// writing pages that could not be satisfied.
+//
+// 1. Wait only on what the PLAYER can do. Never on the alliance existing --
+//    that is the other country's decision, and in the tutorial that country
+//    is a hand-written turtle entitled to say no. A page waiting on somebody
+//    else's answer hangs forever with no way out.
+//
+// 2. Only ONE request may be pending toward a given country at a time: the
+//    panel greys every other entry while one is in flight (anyDiploPending in
+//    Game_Render.cpp, which is per target). So a lesson cannot ask for four
+//    requests in a row -- it asks for one, has the player end the turn, and
+//    asks for the next.
+//
+// The country used throughout is Verrick, because Kestrel is at war with us
+// from the first turn and a country you are at war with offers exactly one
+// entry: Request Ceasefire.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomacy. All of it lives in one list, and the list belongs to a
+§**country**§ -- so you reach it by clicking somebody's ground.
+
+I will wait at each step. Nothing here is fast.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+First, the §**relations**§ view. It paints the map by who is at war with whom,
+who is allied, and who has guaranteed whom.
+---
+@Signals Officer
+Look at it before you start anything. Half the wars people lose here were
+against three countries rather than one -- and all three were on this map
+before the first shot.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Now click a province belonging to §**Verrick**§, across the water.
+
+Not Kestrel: we are already at war with them, and a country you are at war
+with offers exactly one thing. We will come to that one -- and until you pick
+somebody we are at peace with, this page will simply keep waiting.
+---
+@Signals Officer
+Their panel has grown a list. What is in it depends entirely on what the two
+of you already are to each other -- you never choose from every option, only
+from the ones your current relationship allows.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+The mildest thing on it is a §**non-aggression pact**§: a promise not to
+attack, and nothing more.
+
+Ask for one. It costs nothing to ask.
+---
+@Signals Officer
+Filed -- and now look at the list. §**Everything else has gone grey**§, and the
+entry you just used has turned into §**Cancel**§.
+
+One request at a time to one country. That is not a bug you have hit, it is
+the rule: they are answering the last thing you said, and until they do your
+only move is to take it back.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+So end the turn. The request goes out, they answer, and the list comes back.
+
+They may refuse. That is their business and not a fault in you.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Verrick again. An §**alliance**§ is the next step up -- not merely a promise
+not to attack, but a promise to join in.
+
+Ask for one.
+---
+@Signals Officer
+With an ally, one more entry appears: §**Call to Arms**§, which drags them
+into a war you are already fighting.
+
+They can refuse that too. An ally who refuses twice is an ally on paper, and
+worth about as much.
+---
+@Signals Officer
+The two you have not used: a §**guarantee**§ is the lopsided one -- you
+promise to defend somebody who has promised you nothing. Small countries
+collect them; large ones hand them out to buy quiet.
+
+And §**trade**§ is goods for money every turn, until somebody cancels. It is
+the only entry that makes both of you richer, which is why it is the one
+people forget is there.
+---
+@Signals Officer
+Once a pact is signed, watch what leaves the list: §**Declare War
+disappears**§. You have to break the pact first, in public, where everyone
+sees you do it.
+
+That is what a pact is for. It is not a shield, it is a witness.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+And at §**war**§ the whole list collapses to one entry: §**Request
+Ceasefire**§. It comes back carrying terms -- who stops, and who keeps what.
+
+They accept when they are losing and refuse when they are not. No amount of
+asking changes which of those is true.
+---
+@Signals Officer
+Kestrel is in red on this map, and that is the list they would show you.
+---
+@Signals Officer
+That is diplomacy. Anything else?

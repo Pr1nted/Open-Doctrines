@@ -1,0 +1,39 @@
+// Çeviri - talepler ve huzursuzluk.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Talepler ve huzursuzluk. Talep panelini açın. Arayüz ne derse desin, bunlar tek
+bir konudur.
+---
+@Signals Officer
+Bir §**talep**§, dünyanın hoş gördüğü bir savaşla herkesi size karşı birleştiren
+bir savaş arasındaki farktır. Elinizdekini öne sürerseniz bir haksızlığı
+giderirsiniz; hiç talep etmediğiniz toprağı alırsanız haksızlık sizsiniz.
+---
+@Signals Officer
+Talebi savaştan §**önce**§ sunun, sonra değil. İli aldıktan bir tur sonra sunulan
+talep kimseyi kandırmaz ve aynı fiyata gelir.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Kapatın.
+---
+@Signals Officer
+§**Huzursuzluk**§, toprak almanın toprağa yaptığıdır. Fethedilen iller buna içerler,
+azınlıklar daha da çok, askere alma ve sansür ise size şimdi güç satın alıp
+karşılığında sonra huzursuzluk getirir.
+---
+@Signals Officer
+Bir eşiği aşınca il ödemeyi bırakır ve örgütlenmeye başlar. Bir sonrakini aşınca
+ayrılır - ve bir §**ülke**§ olarak ayrılır: sizin sanayinizle, sizin nüfusunuzla ve
+sizin hakkınızda çok belirli bir görüşle.
+
+Bir uyarı alırsınız. İkincisini her zaman almazsınız.
+---
+@Signals Officer
+Çareler ya sevilmez ya yavaştır: garnizon koyun, oraya harcayın ya da istediğini
+verin. Erken seçin, çünkü üçü de işe yaramak için tur ister.
+
+Huzursuzluk budur. Başka bir şey?

@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
         DrawText(config.sessionName.c_str(), 16, 12, 20, ACCENT);
         const std::string state = !running ? "stopped"
                                  : game.serverRunning() ? "running" : "starting";
-        DrawText(TextFormat("%s   ·   map %s   ·   port %d",
+        DrawText(TextFormat(T("%s   ·   map %s   ·   port %d"),
                             state.c_str(), config.map.c_str(), (int)config.port),
                  16, 40, 14, DIM);
         DrawText(addressLine(game, config).c_str(), 16, 60, 12, DIM);

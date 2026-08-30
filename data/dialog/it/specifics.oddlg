@@ -1,0 +1,14 @@
+// Traduzione - il menu degli argomenti.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Bene, la forma la conosci. Allora cosa vuoi davvero?
+
+Scegline uno e lo tratterò per bene. Richiedi quando abbiamo finito.
+> Navi, porti e far attraversare l'acqua a un esercito -> script:tut_ships
+> La ricerca, e perché niente di ciò che inizi si conclude -> script:tut_research
+> L'economia, l'industria e da dove arrivano i soldi -> script:tut_economy
+> Rivendicazioni, malcontento e perdere province a favore della propria gente -> script:tut_unrest
+> Alleanze, cessate il fuoco e il resto della diplomazia -> script:tut_diplomacy
+> Nient'altro, ho finito -> script:outro

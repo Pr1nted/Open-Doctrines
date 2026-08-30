@@ -1,0 +1,28 @@
+// 翻译 - 研究。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+研究。打开它——抱怨永远是同一句——开了头的东西好像从来不完成——这不是毛病，
+这就是要点。
+---
+@Signals Officer
+这里的一切都以你还没打过的回合来衡量。你现在开始的东西，会在你早忘了自己想要它
+之后很久才落地，也就是说，开始的唯一坏时机是以后。
+---
+@Signals Officer
+它跟军队从同一笔钱里取。什么都研究的国家什么都摆不出来，什么都摆出来的国家，二十
+回合后还在打上个十年的仗。
+
+挑一条路。别全挑。
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+再关上——角上那个§**x**§。
+---
+@Signals Officer
+完成的成果不会追溯生效。新装备先到新编成，所以某样东西完成的那个回合，是去看看你
+在造什么的回合，不是松口气的回合。
+
+这就是研究。还有别的吗?

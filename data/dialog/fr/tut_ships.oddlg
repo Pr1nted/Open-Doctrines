@@ -1,0 +1,49 @@
+// Traduction - la traversée navale.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Les navires, donc. C'est là que la plupart des gens bloquent, et toujours au
+même endroit : l'armée est sur la côte et il ne se passe rien.
+---
+@Signals Officer
+Une armée ne traverse pas l'eau toute seule, et l'ordre « charger sur ce
+navire » n'existe pas. C'est la province qui le fait.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Sélectionnez une province côtière qui a un §**port**§ ET des §**hommes
+dedans**§. L'embarquement déplace la garnison déjà présente ; un port vide
+n'embarque rien du tout, et c'est de là que vient l'essentiel de la confusion.
+
+Son panneau propose §**Embarquer l'armée**§ : gratuit, un tour. Appuyez et
+terminez le tour.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Les hommes sont maintenant un §**bateau**§ au large. Passez à la vue
+§**marine**§ : les navires ne prennent d'ordres depuis aucune des sept autres.
+
+§{key=ship_move}§ le déplace, §{key=ship_wheel}§ ouvre ses canons,
+§{key=ship_engage}§ lui dit d'engager le combat.
+---
+@Signals Officer
+Pour débarquer : sélectionnez le bateau, appuyez sur §**Déplacer**§ et cliquez
+sur la §**terre**§.
+
+L'eau le déplace. La terre le décharge. Un seul bouton fait les deux, et c'est
+pour ça que les gens font des allers-retours en cherchant l'autre.
+---
+@Signals Officer
+Deux choses que personne ne dit.
+
+Un transport chargé est une cible, et il coule avec les hommes à bord. Et un
+débarquement dans une province défendue arrive épuisé : prenez la côte vide
+d'à côté et marchez, plutôt que de débarquer sur le fort.
+---
+@Signals Officer
+§**Hallow Rock**§, dans le détroit, n'est pas facultatif. Un bateau a un rayon
+d'action, et l'île lointaine est au-delà : le rocher est donc le premier
+débarquement, et le second saut part de là.
+
+Voilà les navires. Autre chose ?

@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest NeuralNetTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest NeuralNetTest ModelBlobTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -120,6 +120,7 @@ run "png writer"       "$bin/PngWriteTest" "$build/pngtest"
 # check is about who is talking; this is the only one about what they are
 # allowed to say, and it is the check a modified client goes at first.
 run "order validation" "$bin/OrderValidationTest" "$root/data/"
+run "doctrine rules"   "$bin/PolicyRulesTest" "$root/data/"
 
 # The dedicated server, started for real: config round-trip, data directory,
 # map resolution, a whole world load, and the console. It is a second binary
@@ -131,7 +132,24 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
     && run "dedicated server starts" "$root/tests/server_smoke_test.sh" "$build" \
     || note_fail "dedicated server build"
 run "neural net gradients" "$bin/NeuralNetTest"
+# The model container, against the shipped model when it is there: the file
+# is the only copy of every hour of training, so "it round-trips" is checked
+# on the real bytes and not only on synthetic ones.
+run "ai model container" "$bin/ModelBlobTest" "$root/data/ai/model.bin"
 run "odsv turn delta"  "$bin/SaveDeltaTest"
+# The dialogue markup and its line breaker, then the character rig: loading
+# the shipped test character, skinning it, blending poses, and the blink
+# clock. The rig test reads data/characters/test, so it runs from the root.
+run "dialogue markup"  "$bin/DialogTest"
+run "languages"        "$bin/LocaleTest" "$root/data/"
+# The keys are generated from the source, so they go stale the moment a string
+# is added to a menu. Cheap to notice here; invisible until a translator asks
+# why half the screen is missing from their file.
+run "translatable strings" python3 "$root/tools/i18n_extract.py" --check
+# Specifiers that do not match the English are undefined behaviour at runtime,
+# and a Latin letter inside a Cyrillic word is invisible by eye. Both are
+# cheap to check and neither is catchable by reading.
+run "translation lint"     python3 "$root/tools/i18n_sync.py" --lint
 
 step "the same seed plays the same game"
 "$root/tests/determinism_check.sh" "$build" || fail=1
@@ -185,6 +203,11 @@ check "wiki vs abi.json" $PY "$root/tools/gen_wiki.py" --check
 # regenerated. Attribution that drifts is a licence breach, not a typo.
 # Regenerate with: python3 tools/gen_notices.py
 check "third-party notices vs provenance.json" $PY "$root/tools/gen_notices.py" --check
+
+# Doctrines. data/policies.json is generated, and every .odmap carries its own
+# copy which WINS over data/ -- so the file in the repository and the file the
+# game loads are two different files, and were.
+check "doctrine data" $PY "$root/tools/check_policies.py"
 
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh

@@ -1,4 +1,5 @@
 #include "WebAssets.h"
+#include "util/LoadLog.h"
 
 #include <iostream>
 #include <unordered_set>
@@ -8,6 +9,23 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
+
+#ifdef __EMSCRIPTEN__
+// Function-local rather than a file-scope object so the set is built on first
+// use; this file is linked into the map tools as well as the game.
+static std::unordered_set<std::string>& unavailable() {
+    static std::unordered_set<std::string> s;
+    return s;
+}
+#endif
+
+void odForgetAsset(const std::string& path) {
+#ifdef __EMSCRIPTEN__
+    unavailable().erase(path);
+#else
+    (void)path;
+#endif
+}
 
 bool odEnsureAsset(const std::string& path) {
     if (path.empty()) return false;
@@ -22,8 +40,10 @@ bool odEnsureAsset(const std::string& path) {
     // flag renderer retrying a country whose art will never arrive -- turns one
     // 404 into one request per frame, forever. Audio.cpp learned this the hard
     // way with streamed music; the note there is worth reading.
-    static std::unordered_set<std::string> s_unavailable;
-    if (s_unavailable.count(path)) return false;
+    //
+    // A caller that knows its request was worth retrying clears its own entry;
+    // see odForgetAsset().
+    if (unavailable().count(path)) return false;
 
     // The deployed copy mirrors the VFS layout exactly, so the URL is the VFS
     // path minus its leading slash and neither side has to translate. See the
@@ -45,8 +65,8 @@ bool odEnsureAsset(const std::string& path) {
     emscripten_wget(url.c_str(), path.c_str());
 
     if (FileExists(path.c_str())) return true;
-    s_unavailable.insert(path);
-    std::cerr << "[web] could not download " << url << std::endl;
+    unavailable().insert(path);
+    LoadLog() << "[web] could not download " << url << std::endl;
     return false;
 #endif
 }

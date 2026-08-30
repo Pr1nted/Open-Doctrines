@@ -1,0 +1,32 @@
+// 번역 - 경제.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+경제입니다 — 열어 보세요. 이 게임의 나머지 전부는 이것이 만들어 내는 것을 어떻게
+쓸지에 대한 논쟁입니다.
+---
+@Signals Officer
+§**공업**§은 이미 사람이 있는 곳에서 자랍니다. 빈 주에 세운 공장은 비싼 헛간입니다.
+원료는 인구이지 건물이 아닙니다.
+---
+@Signals Officer
+수입은 턴당 한 번, 그 턴에 들어옵니다. 가진 것보다 많이 약속하면 부족분은 예의 있게
+기다려 주지 않습니다. 전비 태세에서 빠져나가고, 당신은 전투 중에 그 사실을 알게 됩니다.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+다시 나와서, 대신 주 하나를 봅시다.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+우리 주 중 하나를 누르세요. 주마다 무엇을 생산하고 무엇을 지녔는지 패널이 보여 줍니다.
+자원은 캐낸 것보다 가공한 쪽이 값이 더 나가므로, 부유한 주 옆의 공업 주는 각각 따로일
+때보다 값이 큽니다.
+---
+@Signals Officer
+그리고 정책은 구매가 아니라 §**계속 나가는 청구서**§입니다. 운영 중인 정책 하나하나가
+매 턴 차감됩니다. 아직 무언가를 하고 있든 아니든, 영원히.
+
+이것이 경제입니다. 더 있습니까?

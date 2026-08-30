@@ -1,0 +1,14 @@
+// Tłumaczenie - menu tematów.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Dobrze, ogólny zarys znasz. To czego właściwie chcesz?
+
+Wybierz jedno, a omówię to porządnie. Spytaj znowu, gdy skończymy.
+> Okręty, porty i przerzut wojska przez wodę -> script:tut_ships
+> Badania i dlaczego nic zaczętego się nie kończy -> script:tut_research
+> Gospodarka, przemysł i skąd biorą się pieniądze -> script:tut_economy
+> Roszczenia, niepokoje i utrata prowincji na rzecz własnych ludzi -> script:tut_unrest
+> Sojusze, rozejmy i reszta dyplomacji -> script:tut_diplomacy
+> Nic więcej, skończyłem -> script:outro

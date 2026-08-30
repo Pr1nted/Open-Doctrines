@@ -1,0 +1,32 @@
+// Vertaling - die gemeenskaplike slot van alle roetes.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Op dan. Twee dinge wat op geen kaart staan nie.
+
+§**Stoorlêers.**§ 'n Regte wêreld skryf homself neer terwyl jy speel en wag daar
+vir jou. Ons s'n nie: niks van wat jy nou net gedoen het, is behou nie, en dit is
+juis die punt van 'n oefeneiland.
+---
+@Signals Officer
+:: point=menu.2
+§**Veelspeler.**§ Een masjien is gasheer en al die ander sluit aan. 'n Beurt word
+afgehandel wanneer elke speler gereed gemeld het, so 'n spel beweeg teen die spoed
+van die stadigste.
+
+Speel met mense wat hul boodskappe antwoord.
+---
+@Pr1nted
+Nog lewendig? Goed. Sy is deeglik, dit gee ek haar.
+
+Wil jy nog iets deurgaan, of is ons klaar?
+> Gaan terug af en dek iets bepaalds -> world:specifics
+> Dis alles, dankie
+---
+@Pr1nted
+:: act=end_tutorial
+Goed. Gaan verloor 'n paar, so gaan dit in.
+
+Pr1nted, uit.

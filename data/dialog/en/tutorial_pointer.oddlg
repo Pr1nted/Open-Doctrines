@@ -1,0 +1,39 @@
+// A test card for the pointer and the input gate, the way en/tutorial.oddlg
+// is one for the markup. Every shape and both gate states appear here, so a
+// change that breaks one shows up by opening this rather than by reading the
+// drawing code.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1
+That one. §**The economy**§ is where the money comes from, and while I am
+pointing at it, it is the only thing that opens.
+---
+@Signals Officer
+:: point=tab.research round=1
+Research is next door. A ring rather than a box, because sometimes the thing
+worth looking at is not a rectangle.
+---
+@Signals Officer
+:: point=label.treasury round=1
+Small things can be ringed too -- the balance, the date, a single view tab.
+---
+@Signals Officer
+:: point=view.army
+The bottom bar is eight views of the same map. This one is the army.
+---
+@Signals Officer
+:: point=panel.country
+And whole panels, when the point is the panel rather than a control in it.
+---
+@Signals Officer
+A deliberate mistake follows: the next page points at a name nothing offers,
+and the log says so with the list of what it could have meant.
+---
+@Signals Officer
+:: point=tab.ecnomy
+Nothing is ringed, because "tab.ecnomy" is not a thing.
+---
+@Signals Officer
+And now nothing is ringed, and the map is yours again.

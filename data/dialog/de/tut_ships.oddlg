@@ -1,0 +1,48 @@
+// Übersetzung - die Überfahrt.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Also, Schiffe. Daran scheitern die meisten, und sie scheitern jedes Mal an
+derselben Stelle: das Heer steht an der Küste und nichts passiert.
+---
+@Signals Officer
+Ein Heer überquert Wasser nicht von selbst, und einen Befehl "auf jenes Schiff
+verladen" gibt es nicht. Das macht die Provinz.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Wählen Sie eine Küstenprovinz mit einem §**Hafen**§ UND §**Männern darin**§.
+Das Einschiffen bewegt die Besatzung, die schon da ist; ein leerer Hafen
+schifft gar nichts ein, und genau da beginnt die meiste Verwirrung.
+
+Ihr Feld hat §**Heer einschiffen**§ - kostenlos, eine Runde. Drücken Sie es und
+beenden Sie die Runde.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Die Männer sind jetzt ein §**Boot**§ vor der Küste. Gehen Sie in die
+§**Marine**§-Ansicht - Schiffe nehmen aus keiner der anderen sieben Befehle an.
+
+§{key=ship_move}§ bewegt es, §{key=ship_wheel}§ öffnet seine Geschütze,
+§{key=ship_engage}§ heißt es, einen Kampf zu suchen.
+---
+@Signals Officer
+Zum Anlanden: Boot wählen, §**Bewegen**§ drücken und auf §**Land**§ klicken.
+
+Wasser bewegt es. Land lädt es aus. Ein Knopf macht beides, und deshalb segeln
+Leute hin und her und suchen den zweiten.
+---
+@Signals Officer
+Zwei Dinge, die einem niemand sagt.
+
+Ein beladener Transporter ist ein Ziel, und er sinkt mit den Männern an Bord.
+Und eine Landung in einer verteidigten Provinz kommt erschöpft an - nehmen Sie
+die leere Küste nebenan und marschieren Sie, statt auf dem Fort zu landen.
+---
+@Signals Officer
+§**Hallow Rock**§ in der Meerenge ist nicht optional. Ein Boot hat Reichweite,
+und die ferne Insel liegt darüber hinaus - der Fels ist also die erste Landung,
+und der zweite Sprung geht von dort.
+
+Das sind die Schiffe. Sonst noch etwas?

@@ -1,0 +1,33 @@
+// Prevod - gospodarstvo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Gospodarstvo - odprite ga. Vse drugo v tej igri je prepir o tem, kako porabiti
+to, kar ustvari.
+---
+@Signals Officer
+§**Industrija**§ raste tam, kjer ljudje že so. Tovarna v prazni provinci je
+draga lopa: surovina je prebivalstvo, ne stavba.
+---
+@Signals Officer
+Prihodek pride enkrat na potezo, v potezi. Zavežite se k več, kot imate, in
+primanjkljaj ne bo vljudno počakal: odbije se od pripravljenosti, izveste pa v
+bitki.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Spet ven, pa poglejmo raje eno samo provinco.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kliknite eno od naših. Za vsako provinco plošča kaže, kaj proizvaja in kaj ima.
+Viri so predelani vredni več kot izkopani, zato je industrijska provinca ob
+bogati vredna več kot vsaka zase.
+---
+@Signals Officer
+Politike pa so §**stalni račun**§, ne nakup. Vsaka, ki jo vodite, se odšteje
+vsako potezo, za vedno, ne glede na to, ali še kaj prinaša.
+
+To je gospodarstvo. Še kaj?

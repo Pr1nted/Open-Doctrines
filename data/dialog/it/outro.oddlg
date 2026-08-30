@@ -1,0 +1,32 @@
+// Traduzione - la chiusura comune a tutti i percorsi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Su, allora. Due cose che non stanno su nessuna mappa.
+
+§**I salvataggi.**§ Un mondo vero si annota da sé mentre giochi e ti aspetta lì
+dentro. Il nostro no: niente di quello che hai appena fatto è stato conservato,
+ed è proprio questo il senso di un'isola di addestramento.
+---
+@Signals Officer
+:: point=menu.2
+§**Multigiocatore.**§ Una macchina ospita e tutte le altre si uniscono. Un turno
+si risolve quando ogni giocatore si è dichiarato pronto, quindi la partita
+procede alla velocità del più lento.
+
+Gioca con gente che risponde ai messaggi.
+---
+@Pr1nted
+Ancora vivo? Bene. È scrupolosa, questo glielo riconosco.
+
+Vuoi che vediamo altro, o abbiamo finito?
+> Torniamo giù e trattiamo qualcosa di preciso -> world:specifics
+> È tutto, grazie
+---
+@Pr1nted
+:: act=end_tutorial
+Bene. Vai a perderne qualcuna, è così che entra.
+
+Pr1nted, chiudo.

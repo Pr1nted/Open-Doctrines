@@ -1,0 +1,14 @@
+// 翻译 - 话题菜单。
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+好，大致的样子你清楚了。那你到底想要什么?
+
+选一个，我给你好好讲讲。讲完了再问。
+> 船只、港口，以及怎么把军队送过海 -> script:tut_ships
+> 研究，以及为什么开了头的东西都不见完成 -> script:tut_research
+> 经济、工业，以及钱从哪来 -> script:tut_economy
+> 宣称、动荡，以及把省份丢给自己的国民 -> script:tut_unrest
+> 同盟、停火，以及外交的其余部分 -> script:tut_diplomacy
+> 没别的了，我讲完了 -> script:outro

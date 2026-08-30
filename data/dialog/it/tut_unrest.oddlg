@@ -1,0 +1,40 @@
+// Traduzione - rivendicazioni e malcontento.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Rivendicazioni e malcontento. Apri il pannello delle rivendicazioni. Sono un
+unico argomento, checché ne dica l'interfaccia.
+---
+@Signals Officer
+Una §**rivendicazione**§ è la differenza fra una guerra che il mondo tollera e
+una che unisce tutti contro di te. Fanne valere una che possiedi e stai
+saldando un torto; prendi terra che non hai mai rivendicato e il torto sei tu.
+---
+@Signals Officer
+Deposita la rivendicazione §**prima**§ della guerra, non dopo. Una
+rivendicazione depositata il turno dopo aver preso la provincia non inganna
+nessuno e costa uguale.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Chiudilo.
+---
+@Signals Officer
+Il §**malcontento**§ è ciò che prendere terra fa alla terra. Le province
+conquistate se ne risentono, le minoranze ancora di più, e coscrizione e
+censura ti comprano forza adesso in cambio di malcontento dopo.
+---
+@Signals Officer
+Superata una soglia una provincia smette di pagare e comincia a organizzarsi.
+Superata la successiva se ne va, e se ne va come §**paese**§, con la tua
+industria, la tua popolazione e un'opinione molto precisa su di te.
+
+Ricevi un avvertimento. Non sempre ne ricevi un secondo.
+---
+@Signals Officer
+I rimedi sono impopolari o lenti: presidiarla, spenderci sopra, o darle ciò che
+vuole. Scegli presto, perché tutti e tre impiegano turni a funzionare.
+
+Questo è il malcontento. Altro?

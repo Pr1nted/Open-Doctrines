@@ -21,14 +21,18 @@
 #include <windows.h>
 #endif
 
+#include "i18n/Locale.h"
+
 using json = nlohmann::json;
 
 const char* modStateName(ModState s) {
+    // Words on the mod list, so they go through the table. T() at the return
+    // rather than at the call: this is the one place the four are written.
     switch (s) {
-        case ModState::Disabled:      return "Disabled";
-        case ModState::Active:        return "Active";
-        case ModState::PendingReload: return "Needs reload";
-        case ModState::Failed:        return "Failed";
+        case ModState::Disabled:      return T("Disabled");
+        case ModState::Active:        return T("Active");
+        case ModState::PendingReload: return T("Needs reload");
+        case ModState::Failed:        return T("Failed");
     }
     return "?";
 }
