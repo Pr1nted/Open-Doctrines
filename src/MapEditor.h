@@ -1,4 +1,5 @@
 #pragma once
+#include "script/Blocks.h"
 #include "GameStructs.h"
 #include "map/LandSeaMap.h"
 #include "map/ProvinceMap.h"
@@ -361,14 +362,18 @@ private:
 
     // ── Generic searchable picker overlay (ethnicities / country allegiance) ──
     bool m_pickerOpen = false;
-    int m_pickerMode = 0;              // 0 = ethnicity picker, 1 = country picker
+    int m_pickerMode = 0;              // 0 = ethnicity, 1 = country, 2 = merge target
     std::string m_pickerQuery;
     int m_pickerScroll = 0;
     int m_pickerProvId = -1;
     int m_pickerSlot = -1;             // ethnic-group index, or troop-unit index; -1 = add new (ethnicity mode)
     std::vector<std::string> m_pickerEthnicityPool; // cached from m_minorityColorsJson when opened
+    // Merge mode: the neighbours the selected province could be absorbed into,
+    // as (province id, shared border pixels), most border first.
+    std::vector<std::pair<int, int>> m_pickerMergeCandidates;
     void openEthnicityPicker(int provId, int slotIdx); // slotIdx<0 adds a new group
     void openCountryPicker(int provId, int troopIdx);
+    void openMergePicker(int provId, std::vector<std::pair<int, int>> candidates);
     void drawPickerOverlay();
     std::vector<std::string> ethnicityNamePool() const; // parses m_minorityColorsJson keys
     bool m_provStrokeActive = false;   // shape-paint stroke in progress
@@ -448,7 +453,8 @@ private:
     void removeProvinceEntry(int pid);       // drop from JSON + maps + editor data
     int  createProvinceEntry(int countryId); // register a fresh province, returns its id
     void createNewProvince();                // UI action: new province, ready to paint
-    void deleteSelectedProvince();           // merge pixels into best neighbor
+    void deleteSelectedProvince();           // asks which neighbour to merge into
+    void mergeProvinceInto(int pid, int target); // absorbs pid's pixels into target
     bool garbageCollectProvinces();          // drop zero-pixel provinces (count-based)
 
     // ── Country appearance ──
@@ -501,6 +507,41 @@ private:
     int m_scriptDocsScroll = 0;
     int m_scriptDocsBodyScroll = 0;
     void drawScriptDocsOverlay();
+
+    // ── Block editor (the Scripts tab's second view) ──
+    //
+    // The document is the truth while this view is open; the text buffer is
+    // regenerated from it on every switch back, so the two can never drift.
+    // A block is addressed by a PATH -- the index of each body entered on the
+    // way down, then the index within it -- because a pointer into a nested
+    // vector does not survive the reordering this view exists to do.
+    bool m_blocksMode = false;
+    odscript::Doc m_blockDoc;
+    std::vector<int> m_blockSel;         // path to the selected block, empty = none
+    std::vector<int> m_blockDragPath;    // path being dragged, empty = not dragging
+    bool m_blockDragArmed = false;       // mouse down on a block, not yet a drag
+    Vector2 m_blockDragStart{0, 0};
+    std::vector<int> m_blockDropPath;    // where a drop would land
+    int m_blockScroll = 0;
+    bool m_blockHeadEditing = false;
+    std::string m_blockHeadBuf;
+    bool m_blockPaletteOpen = false;
+
+    void blocksFromText();               // m_scriptEdLines -> m_blockDoc
+    void blocksToText();                 // m_blockDoc -> m_scriptEdLines
+    void drawBlockEditor(int x, int y, int w, int h);
+    // Flattened render/hit list, rebuilt each frame.
+    struct BlockRow { std::vector<int> path; int depth = 0; const odscript::Block* b = nullptr;
+                      std::string label; bool isArm = false; bool isTerm = false;
+                      // An empty body renders one of these: without it a loop
+                      // with nothing in it has no row to hover, and so can
+                      // never be filled by dragging or by the palette.
+                      bool isSlot = false; };
+    void flattenBlocks(const odscript::BlockList& bl, std::vector<int>& path,
+                       int depth, std::vector<BlockRow>& out) const;
+    odscript::Block* blockAt(const std::vector<int>& path);
+    bool removeBlockAt(const std::vector<int>& path, odscript::Block& out);
+    bool insertBlockAt(const std::vector<int>& path, odscript::Block&& b);
 
     // Lint pass: line indices (within m_scriptEdLines) with an error, and the message
     std::unordered_map<int, std::string> m_scriptEdErrors;

@@ -881,8 +881,12 @@ set(GAME_SOURCES
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
+    src/MapEditorBlocks.cpp
     src/ProceduralGenerator.cpp
     src/ScriptEngine.cpp
+    src/script/Expr.cpp
+    src/script/Blocks.cpp
+    src/script/ScriptValue.cpp
     src/Audio.cpp
     src/Config.cpp
     src/Gamepad.cpp
@@ -2198,6 +2202,16 @@ target_include_directories(SvgRenderDiff PRIVATE src src/renderer tools/map_gene
 # Separate target rather than a case in NeuralNetTest, because that one is kept
 # free of miniz on purpose. This needs it, and nothing else -- no raylib, no
 # game, no map -- so it runs anywhere the model file needs checking.
+# The map-script expression language. Links only Expr.cpp and ScriptValue.cpp
+# -- not ScriptEngine.cpp, and so not Game.h or raylib. That is the point of
+# the split: `2 + 3 * 4` is testable without a window.
+add_executable(ScriptExprTest EXCLUDE_FROM_ALL
+    tests/script_expr_test.cpp
+    src/script/Expr.cpp
+    src/script/Blocks.cpp
+    src/script/ScriptValue.cpp)
+target_include_directories(ScriptExprTest PRIVATE src)
+
 add_executable(ModelBlobTest EXCLUDE_FROM_ALL
     tests/model_blob_test.cpp
     src/ai/ModelBlob.cpp

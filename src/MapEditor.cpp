@@ -1320,12 +1320,23 @@ void MapEditor::removeProvinceEntry(int pid) {
     if (m_selectedProvince == pid) m_selectedProvince = -1;
 }
 
+// ── WHICH NEIGHBOUR TO MERGE INTO IS THE MAP-MAKER'S CHOICE ──
+//
+// This used to count shared border pixels, take the winner, and say nothing.
+// The longest border is a good guess and it is still the one offered first,
+// but it is only a guess: a province carved out of a coastline usually borders
+// the sea province most, and a corridor drawn between two countries borders
+// the one it was never meant to join. Both cases silently ate the province
+// into the wrong neighbour, and the only way back was undo.
+//
+// So the votes are all kept now and offered as a list. One candidate merges
+// without asking -- there is no choice to make -- and none is still an error.
 void MapEditor::deleteSelectedProvince() {
     if (m_selectedProvince < 0 || !m_hasProvinces || m_provincePixels.empty()) return;
     int pid = m_selectedProvince;
 
-    // Collect the province's pixels and vote for the adjacent province that
-    // shares the longest border — its pixels merge into that neighbor.
+    // Collect the province's pixels and count the border shared with each
+    // adjacent province.
     std::map<int, int> votes;
     std::vector<int> pixels;
     for (int y = 0; y < MAP_H; ++y) {
@@ -1355,10 +1366,33 @@ void MapEditor::deleteSelectedProvince() {
         m_warningTimer = 2.5f;
         return;
     }
-    int best = 0, bestV = -1;
-    for (auto& [np, v] : votes) if (v > bestV) { bestV = v; best = np; }
-    Province* bp = m_editProvinces.getProvinceById(best);
+    // Most shared border first: that is the old automatic choice, still the
+    // sensible default, now the top row rather than the only outcome.
+    std::vector<std::pair<int, int>> candidates(votes.begin(), votes.end());
+    std::sort(candidates.begin(), candidates.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    if (candidates.size() == 1) { mergeProvinceInto(pid, candidates[0].first); return; }
+    openMergePicker(pid, std::move(candidates));
+}
+
+// The merge itself, once a target is known -- either because there was only
+// one candidate or because the picker was answered. Re-scans for the pixels
+// rather than carrying them across the modal: the map-maker can paint while
+// the picker is open, and a stale pixel list would recolour ground that has
+// since moved.
+void MapEditor::mergeProvinceInto(int pid, int target) {
+    if (pid < 0 || target <= 0 || pid == target) return;
+    if (!m_hasProvinces || m_provincePixels.empty()) return;
+    Province* bp = m_editProvinces.getProvinceById(target);
     if (!bp) return;
+
+    std::vector<int> pixels;
+    for (int i = 0; i < (int)m_provincePixels.size(); ++i) {
+        const Color& c = m_provincePixels[i];
+        if (Province::colorToId(c.r, c.g, c.b) == pid) pixels.push_back(i);
+    }
+
     Color bc = {bp->r, bp->g, bp->b, 255};
     Color ownerCol = {140, 140, 140, 255};
     if (const Country* oc = m_editCountries.getCountry(bp->countryId)) ownerCol = oc->color;
@@ -1366,12 +1400,12 @@ void MapEditor::deleteSelectedProvince() {
         m_provincePixels[i] = bc;
         m_politicalPixels[i] = ownerCol;
     }
-    m_provincePixelCounts[best] += (int)pixels.size(); // absorbed pixels
+    m_provincePixelCounts[target] += (int)pixels.size(); // absorbed pixels
     removeProvinceEntry(pid);
-    m_selectedProvince = best;
+    m_selectedProvince = target;
     commitProvincePixels();
     m_hlDirty = true;
-    markPoliticalDirtyFull(); // already a full-map scan above; deletion can be large/scattered
+    markPoliticalDirtyFull(); // deletion can be large/scattered
 }
 
 void MapEditor::rebuildProvinceCounts() {
@@ -3912,6 +3946,16 @@ void MapEditor::openCountryPicker(int provId, int troopIdx) {
     m_pickerScroll = 0;
 }
 
+void MapEditor::openMergePicker(int provId, std::vector<std::pair<int, int>> candidates) {
+    m_pickerOpen = true;
+    m_pickerMode = 2;
+    m_pickerProvId = provId;
+    m_pickerSlot = -1;
+    m_pickerQuery.clear();
+    m_pickerScroll = 0;
+    m_pickerMergeCandidates = std::move(candidates);
+}
+
 void MapEditor::drawPickerOverlay() {
     if (!m_pickerOpen) return;
     Vector2 mouse = GetMousePosition();
@@ -3922,7 +3966,9 @@ void MapEditor::drawPickerOverlay() {
     DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.04f, 6, Color{24, 24, 32, 255});
     DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.04f, 6, ACCENT);
 
-    const char* title = m_pickerMode == 0 ? "Select Ethnicity" : "Select Allegiance";
+    const char* title = m_pickerMode == 0 ? "Select Ethnicity"
+                      : m_pickerMode == 1 ? "Select Allegiance"
+                                          : "Merge Into Which Province?";
     DrawText(title, x + 16, y + 14, 18, ACCENT);
     Rectangle closeBtn = {(float)(x + w - 34), (float)(y + 10), 24, 24};
     bool closeHov = CheckCollisionPointRec(mouse, closeBtn);
@@ -3951,7 +3997,7 @@ void MapEditor::drawPickerOverlay() {
     // Build the filtered option list: (display label, payload)
     // payload = ethnicity name (mode 0) or country id as string (mode 1, via parallel vector)
     std::vector<std::string> labels;
-    std::vector<int> cidForRow; // only used in mode 1
+    std::vector<int> cidForRow; // country id (mode 1) or target province id (mode 2)
     std::string qLower = m_pickerQuery;
     for (auto& c : qLower) c = (char)tolower(c);
     auto containsCI = [&](const std::string& hay) {
@@ -3966,7 +4012,7 @@ void MapEditor::drawPickerOverlay() {
             if (qLower.empty() || containsCI(name)) labels.push_back(name);
             if (!qLower.empty()) { std::string ln = name; for (auto& c : ln) c = (char)tolower(c); if (ln == qLower) exactMatch = true; }
         }
-    } else {
+    } else if (m_pickerMode == 1) {
         auto& all = m_editCountries.getAll();
         std::vector<int> cids;
         for (auto& [cid, c] : all) if (cid < 65533) cids.push_back(cid);
@@ -3974,6 +4020,23 @@ void MapEditor::drawPickerOverlay() {
         for (int cid : cids) {
             const Country& c = all[cid];
             if (qLower.empty() || containsCI(c.name)) { labels.push_back(c.name); cidForRow.push_back(cid); }
+        }
+    } else {
+        // Already ordered by shared border, so the first row is the neighbour
+        // the old automatic merge would have picked. The border length is
+        // shown because it is the reason the order is what it is.
+        for (const auto& [np, shared] : m_pickerMergeCandidates) {
+            const Province* p = m_editProvinces.getProvinceById(np);
+            std::string name = p ? p->name : std::string("(unnamed)");
+            std::string owner;
+            if (p) {
+                const Country* oc = m_editCountries.getCountry(p->countryId);
+                owner = oc ? oc->name : std::string("no owner");
+            }
+            std::string label = "#" + std::to_string(np) + "  " + name;
+            if (!owner.empty()) label += "  -- " + owner;
+            label += "   (" + std::to_string(shared) + " px border)";
+            if (qLower.empty() || containsCI(label)) { labels.push_back(label); cidForRow.push_back(np); }
         }
     }
 
@@ -3996,6 +4059,14 @@ void MapEditor::drawPickerOverlay() {
         if (hov) DrawRectangle((int)row.x, (int)row.y, (int)row.width, (int)row.height, Color{255,255,255,12});
         DrawText(labels[i].c_str(), (int)row.x + 8, ry + 5, 13, hov ? ACCENT : WHITE);
         if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (m_pickerMode == 2) {
+                // mergeProvinceInto commits and tracks the change itself.
+                const int target = cidForRow[i];
+                m_pickerOpen = false;
+                m_pickerMergeCandidates.clear();
+                mergeProvinceInto(m_pickerProvId, target);
+                return;
+            }
             if (m_pickerMode == 0) {
                 EditorProvinceData& d = m_provinceData[m_pickerProvId];
                 if (m_pickerSlot < 0) d.ethnicGroups.push_back({labels[i], 10.0f});
@@ -5023,7 +5094,7 @@ void MapEditor::drawProvincePanel() {
     DrawText(TextFormat(T("Owner: %s"), owner ? owner->name.c_str() : "(none)"), px, y, 11, LIGHTGRAY); y += 16;
     {
         Rectangle delBtn = {(float)px, (float)y, (float)listW, 24};
-        if (drawButton("Delete Province (merge into neighbor)", delBtn, false, 11) && inputOk)
+        if (drawButton("Delete Province (merge into...)", delBtn, false, 11) && inputOk)
             deleteSelectedProvince();
         y += 30;
     }
@@ -7313,9 +7384,13 @@ static bool isWordChar(char c) {
 }
 
 static bool isScriptKeyword(const std::string& t) {
-    static const char* kws[] = {"set","if","else","endif","foreach","in","next","while","endwhile",
+    static const char* kws[] = {"set","if","else","elseif","unless","endif","foreach","in","next",
+                                "while","endwhile","for","to","repeat","break","continue","print",
                                 "waitUntil","include","array","list","create","push","remove",
-                                "pushfront","pushback","popfront","popback","true","false"};
+                                "pushfront","pushback","popfront","popback","true","false",
+                                // expression functions, so they highlight too
+                                "min","max","abs","round","floor","ceil","clamp","len",
+                                "and","or","not"};
     for (const char* k : kws) if (t == k) return true;
     return false;
 }
@@ -7441,17 +7516,26 @@ void MapEditor::lintScriptEditor() {
         if (tokens.empty()) continue;
         const std::string& kw = tokens[0];
 
-        if (kw == "if" || kw == "foreach" || kw == "while") {
+        if (kw == "if" || kw == "unless" || kw == "foreach" || kw == "while" ||
+            kw == "for" || kw == "repeat") {
             stack.push_back({kw, i});
         } else if (kw == "endif" || kw == "next" || kw == "endwhile") {
-            const char* want = kw == "endif" ? "if" : (kw == "next" ? "foreach" : "while");
-            if (stack.empty() || stack.back().kw != want) {
+            // `next` closes foreach, for AND repeat; `endif` closes if and
+            // unless. Version 2 added three openers and the lint knew none of
+            // them, so a valid script came up red -- six errors on the demo.
+            const std::string top = stack.empty() ? "" : stack.back().kw;
+            bool matches;
+            if (kw == "endif")        matches = (top == "if" || top == "unless");
+            else if (kw == "next")    matches = (top == "foreach" || top == "for" || top == "repeat");
+            else                      matches = (top == "while");
+            const char* want = kw == "endif" ? "if" : (kw == "next" ? "foreach/for/repeat" : "while");
+            if (!matches) {
                 m_scriptEdErrors[i] = std::string("'") + kw + "' without a matching '" + want + "'";
             } else {
                 stack.pop_back();
             }
-        } else if (kw == "else") {
-            if (stack.empty() || stack.back().kw != "if")
+        } else if (kw == "else" || kw == "elseif") {
+            if (stack.empty() || (stack.back().kw != "if" && stack.back().kw != "unless"))
                 m_scriptEdErrors[i] = "'else' outside an if block";
         } else if (kw.rfind("waitUntil", 0) == 0 &&
                    (kw.size() == 9 || line[9] == ' ' || line[9] == '\t' || line[9] == '(')) {
@@ -7646,6 +7730,39 @@ void MapEditor::drawScriptEditorOverlay() {
         m_scriptEdOpen = false;
         return;
     }
+    // ── Text / Blocks ──
+    //
+    // The two views never edit at the same time: switching regenerates the
+    // other side from this one. Safe only because the round trip is exact --
+    // see src/script/Blocks.cpp.
+    Rectangle modeBtn = {(float)(m_screenW - 232), 8, 92, 36};
+    bool modeHov = CheckCollisionPointRec(mouse, modeBtn);
+    DrawRectangleRounded(modeBtn, 0.2f, 6, m_blocksMode ? Color{70, 60, 100, 230}
+                                                        : (modeHov ? Color{60, 60, 90, 220} : Color{45, 45, 60, 180}));
+    DrawRectangleRoundedLines(modeBtn, 0.2f, 6, modeHov || m_blocksMode ? ACCENT : Color{130, 130, 160, 200});
+    DrawText(m_blocksMode ? T("Text view") : T("Blocks"),
+             (int)modeBtn.x + 12, (int)modeBtn.y + 10, 15, modeHov || m_blocksMode ? ACCENT : LIGHTGRAY);
+    if (modeHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (m_blocksMode) { blocksToText(); m_blocksMode = false; }
+        else { blocksFromText(); m_blocksMode = true; }
+        Audio::get().playSfx(m_blocksMode ? "toggle_on" : "toggle_off", 0.6f);
+    }
+
+    if (m_blocksMode) {
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            blocksToText();
+            m_blocksMode = false;
+            saveScriptEditor();
+            m_scriptEdOpen = false;
+            return;
+        }
+        const bool ctrlB = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                           IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+        if (ctrlB && IsKeyPressed(KEY_S)) { blocksToText(); saveScriptEditor(); }
+        drawBlockEditor(16, areaY - 8, m_screenW - 32, m_screenH - areaY - 8);
+        return;
+    }
+
     Rectangle docsBtn = {(float)(m_screenW - 130), 8, 78, 36};
     bool docsHov = CheckCollisionPointRec(mouse, docsBtn);
     DrawRectangleRounded(docsBtn, 0.2f, 6, docsHov ? Color{60, 60, 90, 220} : Color{45, 45, 60, 180});
