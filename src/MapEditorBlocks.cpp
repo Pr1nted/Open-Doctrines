@@ -9,6 +9,7 @@
 #include "MapEditor.h"
 
 #include "Audio.h"
+#include "ScriptEngine.h"
 #include "TextInput.h"
 #include "script/Blocks.h"
 
@@ -57,6 +58,34 @@ const Template kPalette[] = {
     {"wait until",      "waitUntil map.turn >= 10",          nullptr},
     {"include",         "include \"library\"",               nullptr},
 };
+
+// The engine version a document declares, from its header line. Absent means
+// the current one -- a script with no header is a library, and libraries take
+// the version of whatever includes them.
+int declaredVersion(const odscript::Doc& d) {
+    for (const std::string& l : d.header) {
+        if (l.compare(0, 14, "#OD/MapEngine/") != 0) continue;
+        int v = ScriptEngine::ENGINE_VERSION;
+        sscanf(l.c_str() + 14, "%d", &v);
+        return v;
+    }
+    return ScriptEngine::ENGINE_VERSION;
+}
+
+void setDeclaredVersion(odscript::Doc& d, int v) {
+    const std::string want = "#OD/MapEngine/" + std::to_string(v);
+    for (std::string& l : d.header)
+        if (l.compare(0, 14, "#OD/MapEngine/") == 0) { l = want; return; }
+    d.header.insert(d.header.begin(), want);   // no header yet: give it one
+}
+
+// The first word, for the version check.
+std::string headWord(const std::string& head) {
+    const size_t a = head.find_first_not_of(" \t");
+    if (a == std::string::npos) return "";
+    const size_t b = head.find_first_of(" \t", a);
+    return head.substr(a, b == std::string::npos ? std::string::npos : b - a);
+}
 
 bool pathLess(const std::vector<int>& a, const std::vector<int>& b) {
     for (size_t i = 0; i < a.size() && i < b.size(); ++i)
@@ -176,6 +205,7 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
 
     std::vector<BlockRow> rows;
     { std::vector<int> path; flattenBlocks(m_blockDoc.blocks, path, 0, rows); }
+    const int docVersion = declaredVersion(m_blockDoc);
 
     const int rowH = 26, pad = 10;
     const int listH = h - 84;                    // room for the bottom bar
@@ -214,9 +244,16 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
 
         const bool selected = (r.path == m_blockSel);
         const bool dragging = (!m_blockDragPath.empty() && r.path == m_blockDragPath);
+        // A block the declared version will refuse is shown as refused, here,
+        // rather than at load. Dropping the version on a script that uses the
+        // new statements is otherwise a silent break.
+        const bool tooNew = (docVersion < 2 &&
+                             ScriptEngine::isVersion2StatementPublic(headWord(r.b->head)));
         Color c = blockColor(r.b->kind);
+        if (tooNew) c = Color{92, 52, 52, 255};
         if (dragging) c = ColorAlpha(c, 0.45f);
         DrawRectangleRounded(rect, 0.25f, 4, c);
+        if (tooNew) DrawRectangleRoundedLines(rect, 0.25f, 4, Color{235, 120, 120, 255});
         if (selected) DrawRectangleRoundedLines(rect, 0.25f, 4, kAccent);
         else if (hov)  DrawRectangleRoundedLines(rect, 0.25f, 4, Color{255, 255, 255, 60});
 
@@ -392,7 +429,37 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
         Audio::get().playSfx(m_blockPaletteOpen ? "panel_open" : "panel_close", 0.45f);
     }
 
-    DrawText(TextFormat("%d blocks", (int)rows.size()), x + 14, barY + 46, 12, Color{120, 120, 140, 255});
+    // ── Engine version ──
+    {
+        int refused = 0;
+        for (const BlockRow& r : rows)
+            if (!r.isArm && !r.isTerm && !r.isSlot && r.b &&
+                ScriptEngine::isVersion2StatementPublic(headWord(r.b->head))) ++refused;
+
+        DrawText(T("Engine"), x + 14, barY + 46, 12, Color{120, 120, 140, 255});
+        int vx = x + 70;
+        for (int v = ScriptEngine::MIN_ENGINE_VERSION; v <= ScriptEngine::ENGINE_VERSION; ++v) {
+            const Rectangle vb = {(float)vx, (float)(barY + 42), 34, 20};
+            const bool on = (docVersion == v);
+            const bool vhov = CheckCollisionPointRec(mouse, vb);
+            DrawRectangleRounded(vb, 0.3f, 4, on ? Color{70, 60, 100, 255}
+                                                 : (vhov ? Color{50, 50, 64, 255} : Color{34, 34, 44, 255}));
+            DrawRectangleRoundedLines(vb, 0.3f, 4, on ? kAccent : Color{70, 70, 90, 255});
+            DrawText(TextFormat("%d", v), (int)vb.x + 13, (int)vb.y + 3, 13, on ? kAccent : LIGHTGRAY);
+            if (vhov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !on) {
+                setDeclaredVersion(m_blockDoc, v);
+                Audio::get().playSfx(v >= ScriptEngine::ENGINE_VERSION ? "toggle_on" : "toggle_off", 0.6f);
+                trackChange();
+            }
+            vx += 40;
+        }
+        if (docVersion < 2 && refused > 0)
+            DrawText(TextFormat(T("%d block(s) need version 2"), refused),
+                     vx + 8, barY + 46, 12, Color{235, 120, 120, 255});
+        else
+            DrawText(TextFormat("%d blocks", (int)rows.size()), vx + 8, barY + 46, 12,
+                     Color{120, 120, 140, 255});
+    }
 
     // ── Palette ──
     if (m_blockPaletteOpen) {
