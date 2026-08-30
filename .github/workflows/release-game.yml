@@ -137,6 +137,8 @@ jobs:
           echo "--- linked binary: $bin ---"
           if [ -f "$bin" ]; then
             echo "opendoctrines-net in binary : $(LC_ALL=C grep -c "opendoctrines-net" "$bin" 2>/dev/null || echo 0)"
+            echo "FULL url in binary          : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$bin" 2>/dev/null || echo 0)"
+            echo "FULL url in object          : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$obj" 2>/dev/null || echo 0)"
             # And after the strip packaging applies, which is the only thing
             # that touches the binary between here and the artifact.
             cp "$bin" /tmp/probe.bin
