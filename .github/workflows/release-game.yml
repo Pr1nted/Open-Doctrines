@@ -146,24 +146,14 @@ jobs:
           # executable's are not. macOS (BSD grep) found the string and Linux
           # did not, on binaries built from the same command line, and the
           # difference was the locale rather than the build.
-          # THROUGH `strings`, not by grepping the binary directly.
+          # LC_ALL=C, because GNU grep in a UTF-8 locale can decline to match
+          # inside a binary whose bytes are not valid UTF-8.
           #
-          # `grep -a` on an ELF missed a URL that was demonstrably in it: the
-          # same binary answered 1 for "workers.dev" and 0 for the full
-          # address. Extracting the printable runs first and matching those
-          # with -F (the URL has dots and slashes; it is a literal, not a
-          # pattern) is the check the artifact deserves -- and it says the
-          # same thing on every platform's grep.
-          # -print0 and a NUL-delimited read: one of the packaged files is
-          # called "READ ME FIRST.txt", and word splitting would look for two
-          # files that do not exist.
-          found=""
-          while IFS= read -r -d "" f; do
-            if LC_ALL=C strings -a "$f" 2>/dev/null | grep -qF "$issuer"; then
-              found="$f"
-              break
-            fi
-          done < <(find "dist/${{ matrix.artifact }}" -type f -print0)
+          # NOT through `strings`. That was tried, to be tidier, and it made
+          # the check worse: it stopped finding the URL on macOS, where the
+          # raw grep had been finding it correctly. The plain grep is the one
+          # with evidence behind it.
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
           if [ -z "$found" ]; then
             # SAY WHAT WAS ACTUALLY THERE. "not found" alone sent an
             # investigation through the shell, the locale and the strip step
