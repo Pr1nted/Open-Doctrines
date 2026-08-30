@@ -1,6 +1,5 @@
 #include "Game.h"
 #include "util/LoadLog.h"
-#include <sys/resource.h>
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
 #include <emscripten/heap.h>
