@@ -43,6 +43,8 @@ const Template kPalette[] = {
     {"set value",       "set var.name 0",                    nullptr},
     {"set expression",  "set var.name = 1 + 1",              nullptr},
     {"add to",          "set var.name += 1",                 nullptr},
+    {"count up",        "var.name++",                        nullptr},
+    {"count down",      "var.name--",                        nullptr},
     {"print",           "print \"message\"",                 nullptr},
     {"if",              "if var.name == 1",                  "endif"},
     {"unless",          "unless var.name == 1",              "endif"},

@@ -193,6 +193,36 @@ int main() {
         check(!bad.error.empty(), "an unclosed if is reported: " + bad.error);
     }
 
+    printf("\n  -- C-style shorthands --\n");
+    {
+        auto norm = [](const std::string& in) { return odscript::normaliseAssignment(in); };
+        auto same = [&](const std::string& in, const std::string& want) {
+            check(norm(in) == want, "\"" + in + "\"  ->  \"" + norm(in) + "\"");
+        };
+        same("var.i++",              "set var.i += 1");
+        same("++var.i",              "set var.i += 1");   // no expression value, so same thing
+        same("var.i--",              "set var.i -= 1");
+        same("--var.i",              "set var.i -= 1");
+        same("country.USA.treasury++", "set country.USA.treasury += 1");
+        same("  var.i++  ",          "set var.i += 1");   // indented
+        same("var.gold += 100",      "set var.gold += 100");
+        same("var.gold = 5 + 5",     "set var.gold = 5 + 5");
+        same("province.42.population /= 2", "set province.42.population /= 2");
+
+        // Left alone: these are not assignments and must reach the normal
+        // dispatch, or a condition would be rewritten into a statement.
+        for (const char* untouched : {"set var.i += 1", "if var.i == 2", "print var.i",
+                                      "foreach province in country.USA", "next",
+                                      "waitUntil map.turn >= 10", "var.i == 2"}) {
+            check(norm(untouched) == untouched,
+                  std::string("\"") + untouched + "\" is left alone");
+        }
+
+        // And the editor agrees they are assignments, so they draw as such.
+        check(odscript::classify("var.i++") == odscript::Block::SET,
+              "the block editor classifies x++ as an assignment");
+    }
+
     printf("\n  -- moving blocks around (what the editor's drag does) --\n");
     {
         const std::string src =

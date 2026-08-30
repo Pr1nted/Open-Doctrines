@@ -35,8 +35,9 @@ somebody to re-sign for work they already gave.
 - **Map scripting, version 2.** Conditions are real expressions now —
   arithmetic, `and`/`or`, parentheses, `min`/`max`/`clamp` — where before a
   condition was one comparison and nothing else. New: `elseif`, `unless`,
-  `for i = 1 to N`, `repeat N`, `break`, `continue`, `print`, and
-  `set x = ...` with `+=`. Version 1 scripts run unchanged. Fixed: an `if`
+  `for i = 1 to N`, `repeat N`, `break`, `continue`, `print`, and assignment
+  the C way — `x++`, `x--`, `x += 1`, with `set` optional. Version 1 scripts
+  run unchanged. Fixed: an `if`
   with an `else` ran both halves.
 - **Scripts can be edited as blocks.** A Text/Blocks toggle in the map
   editor's script IDE: drag statements around, add them from a palette, and

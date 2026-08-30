@@ -2,6 +2,7 @@
 #include "script/Expr.h"
 #include "Game.h"
 #include "GameInternals.h"
+#include <cctype>
 #include <cstring>
 #include <sstream>
 #include <algorithm>
@@ -221,6 +222,26 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         std::string line = lines[lineIdx];
         auto tokens = tokenize(line);
         if (tokens.empty()) { lineIdx++; continue; }
+
+        // ── C-STYLE SHORTHANDS, NORMALISED TO `set` ──
+        //
+        // `var.i++`, `++var.i`, `var.i--`, `--var.i`, and a bare assignment
+        // like `var.gold += 100` or `country.USA.treasury = 5000` with no
+        // leading `set`. Each is rewritten into the `set` form and then runs
+        // through exactly one implementation, so the shorthand cannot drift
+        // from the statement it stands for.
+        //
+        // Unambiguous because a statement here always begins with a keyword;
+        // a line starting with a reference was previously "Unknown command".
+        // Nothing that used to work changes meaning.
+        {
+            const std::string t = odscript::normaliseAssignment(line);
+            if (!t.empty() && t != line) {
+                line = t;
+                tokens = tokenize(line);
+                if (tokens.empty()) { lineIdx++; continue; }
+            }
+        }
 
         // Check for block-ending keywords
         std::string kw = tokens[0];
@@ -719,6 +740,7 @@ void ScriptEngine::execCollectionStmt(const std::vector<std::string>& tokens, co
     }
     addError(scriptName, lineNum, "list: unknown op '" + op + "' (create/pushfront/pushback/popfront/popback)");
 }
+
 
 ScriptValue ScriptEngine::evalExpr(const std::string& expr,
                                     const std::unordered_map<std::string, ScriptValue>& localVars) {

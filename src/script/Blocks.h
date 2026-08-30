@@ -65,6 +65,12 @@ Doc parseScript(const std::string& text);
 // Blocks -> text. `indent` spaces per nesting level.
 std::string unparseScript(const Doc& doc, int indent = 4);
 
+// `x++`, `++x`, `x--`, `--x` and a bare `x += 1` become the `set` form they
+// stand for; anything else comes back unchanged. Shared by the engine (which
+// runs the result) and the editor (which classifies and highlights it), so
+// the shorthand cannot mean one thing to one and something else to the other.
+std::string normaliseAssignment(const std::string& raw);
+
 // The statement kind of a line, exposed for the editor's palette.
 Block::Kind classify(const std::string& line);
 

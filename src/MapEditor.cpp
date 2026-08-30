@@ -7514,6 +7514,13 @@ void MapEditor::lintScriptEditor() {
 
         auto tokens = tokenizeStatic(line);
         if (tokens.empty()) continue;
+        // A shorthand (`x++`, `x += 1`) is linted as the `set` it stands for,
+        // using the same normaliser the engine runs -- otherwise the editor
+        // would red-flag a line the game accepts.
+        {
+            const std::string norm = odscript::normaliseAssignment(line);
+            if (norm != line) { line = norm; tokens = tokenizeStatic(line); if (tokens.empty()) continue; }
+        }
         const std::string& kw = tokens[0];
 
         if (kw == "if" || kw == "unless" || kw == "foreach" || kw == "while" ||

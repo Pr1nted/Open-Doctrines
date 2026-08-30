@@ -1,6 +1,7 @@
 #include "Blocks.h"
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace odscript {
 namespace {
@@ -116,9 +117,71 @@ void emit(const BlockList& bl, std::string& out, int depth, int indent) {
 
 }  // namespace
 
+// Rewrites the C-style shorthands into their `set` equivalent. Returns the
+// line unchanged when it is not one of them.
+//
+// Deliberately conservative: the left side must look like a reference (a name
+// with dots, no spaces, no operators) or the line is left alone for the normal
+// keyword dispatch to reject. `++x` and `x++` mean the same thing here --
+// there is no expression to take a value from, so the distinction C draws does
+// not exist.
+std::string normaliseAssignment(const std::string& raw) {
+    std::string line = raw;
+    size_t a = line.find_first_not_of(" \t");
+    if (a == std::string::npos) return raw;
+    line = line.substr(a);
+    while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r'))
+        line.pop_back();
+    if (line.empty()) return raw;
+
+    auto looksLikeRef = [](const std::string& r) {
+        if (r.empty()) return false;
+        if (!(std::isalpha((unsigned char)r[0]) || r[0] == '_')) return false;
+        for (char c : r)
+            if (!(std::isalnum((unsigned char)c) || c == '_' || c == '.')) return false;
+        return true;
+    };
+
+    // ++ref / --ref
+    if (line.size() > 2 && (line.compare(0, 2, "++") == 0 || line.compare(0, 2, "--") == 0)) {
+        const std::string ref = line.substr(2);
+        if (looksLikeRef(ref))
+            return "set " + ref + (line[0] == '+' ? " += 1" : " -= 1");
+        return raw;
+    }
+    // ref++ / ref--
+    if (line.size() > 2 && (line.compare(line.size() - 2, 2, "++") == 0 ||
+                            line.compare(line.size() - 2, 2, "--") == 0)) {
+        const std::string ref = line.substr(0, line.size() - 2);
+        if (looksLikeRef(ref))
+            return "set " + ref + (line[line.size() - 2] == '+' ? " += 1" : " -= 1");
+        return raw;
+    }
+
+    // ref = expr, ref += expr, and the rest -- `set` made optional.
+    const size_t sp = line.find_first_of(" \t=+-*/");
+    if (sp == std::string::npos || sp == 0) return raw;
+    const std::string head = line.substr(0, sp);
+    if (!looksLikeRef(head)) return raw;
+    size_t o = line.find_first_not_of(" \t", sp);
+    if (o == std::string::npos) return raw;
+    static const char* kOps[] = {"+=", "-=", "*=", "/=", "="};
+    for (const char* op : kOps) {
+        const size_t len = strlen(op);
+        if (line.compare(o, len, op) != 0) continue;
+        // `==` is a comparison, not an assignment; it belongs to a condition.
+        if (op[0] == '=' && line.compare(o, 2, "==") == 0) return raw;
+        return "set " + head + " " + line.substr(o);
+    }
+    return raw;
+}
+
 Block::Kind classify(const std::string& line) {
     const std::string w = firstWord(line);
     if (w == "set") return Block::SET;
+    // `x++` and `x += 1` are assignments however they are spelled; without
+    // this the block editor would draw them grey as unrecognised statements.
+    if (normaliseAssignment(line) != line) return Block::SET;
     if (w == "print") return Block::PRINT;
     if (w == "include") return Block::INCLUDE;
     if (w == "waitUntil") return Block::WAIT;

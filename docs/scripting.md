@@ -288,6 +288,24 @@ set country.USA.treasury += 500
 set var.round += 1
 ```
 
+### Shorthand
+
+`set` is optional when the line starts with a reference, and counting up or
+down has the C spelling:
+
+```
+var.round++              # same as: set var.round += 1
+var.round--
+++var.round              # identical -- there is no expression to take a
+                         # value from, so prefix and postfix mean the same
+country.USA.treasury += 500
+province.42.population /= 2
+var.gold = 5 + 5
+```
+
+A line beginning with a keyword is never touched by this, so nothing that
+worked before changes meaning.
+
 ## More ways to say it
 
 ```
