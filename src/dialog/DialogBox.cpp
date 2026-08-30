@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>   // strlen: libc++ pulls it in transitively, libstdc++ does not
 #include <fstream>
 #include <sstream>
 

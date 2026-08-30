@@ -265,6 +265,15 @@ if(OD_ENABLE_SHAPING)
         if(TARGET harfbuzz)
             set(OD_SHAPING_FOUND TRUE)
             set(OD_HARFBUZZ_TARGET harfbuzz)
+            # A fetched dependency is not ours to keep warning-clean. HarfBuzz
+            # 10.1.0 trips -Wunused-template inside its own headers under
+            # emscripten's clang, and with -Werror in force that fails the web
+            # build on code we do not own and cannot patch here.
+            if(MSVC)
+                target_compile_options(harfbuzz PRIVATE /w)
+            else()
+                target_compile_options(harfbuzz PRIVATE -w)
+            endif()
         endif()
     endif()
 endif()
