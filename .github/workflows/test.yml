@@ -419,6 +419,10 @@ jobs:
       - uses: mymindstorm/setup-emsdk@v14
         with: { version: latest }
 
+      # Without fontTools the unifont subset cannot be built, and the page
+      # ships the whole 11 MB font instead of a 147 KB one.
+      - run: python3 -m pip install --quiet fonttools
+
       - name: Build
         run: |
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release

@@ -1466,6 +1466,21 @@ if(EMSCRIPTEN)
         message(WARNING "Web: no Python3, so unifont.ttf ships whole (~11 MB).")
     endif()
 
+    # ── THE FALLBACK HAS TO STAGE IT TOO ──
+    #
+    # Everything above stages unifont-full.ttf only when the SUBSET succeeded,
+    # but the copy next to the page below is unconditional -- so a machine
+    # without fontTools failed the build outright on a file that was never
+    # written, after printing "The page still works". It did not: CI went red
+    # here with "Error copying file ... unifont-full.ttf". Staging the whole
+    # font under that name costs a duplicate in the degraded path and keeps the
+    # build working, which is the trade the warning already claimed to make.
+    if(NOT EXISTS "${OD_WEB_DATA}/fonts/unifont-full.ttf")
+        file(COPY "${od_font_src}" DESTINATION "${OD_WEB_CACHE}/staged-fallback")
+        file(RENAME "${OD_WEB_CACHE}/staged-fallback/unifont.ttf"
+                    "${OD_WEB_DATA}/fonts/unifont-full.ttf")
+    endif()
+
     # The menu background, pulled out of the modern-day scenario at build time.
     #
     # initMenuBackground() wants one image, land_sea.png, and its last resort is
