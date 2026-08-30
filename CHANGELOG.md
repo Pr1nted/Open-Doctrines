@@ -17,6 +17,36 @@ says those are yours, and the CLA says it again. Every commit in the repository
 predates this, which is the only moment such a thing can arrive without asking
 somebody to re-sign for work they already gave.
 
+## game 1.1.0a
+
+- **Twenty-one languages** — interface, country names and dialogue. Arabic,
+  Hindi and Urdu are properly shaped, not drawn letter by letter.
+- **Advisors and officers speak to you**, drawn in your country's own colours.
+- **A tutorial**, with a map built for it.
+- **The AI holds its ground when attacked.** Recruits come out of a province's
+  population, its action cap is gone (requests are limited instead),
+  coalitions no longer form on the hardest difficulty, and it fortifies a
+  threatened border. Where the last build was reduced to almost nothing in a
+  world that attacks without pause, this one keeps its starting share — rules
+  and trained model both changed, so that is the two together.
+- **A score you can measure yourself against.** `tools/od_bench.py` plays six
+  fixed seats; 100 means a seat kept its ground. The AI scores 107: strong in
+  a peaceful world (Sweden, France 200), weak in a hostile one (China 8).
+- **Map scripting, version 2.** Conditions are real expressions now —
+  arithmetic, `and`/`or`, parentheses, `min`/`max`/`clamp` — where before a
+  condition was one comparison and nothing else. New: `elseif`, `unless`,
+  `for i = 1 to N`, `repeat N`, `break`, `continue`, `print`, and
+  `set x = ...` with `+=`. Version 1 scripts run unchanged. Fixed: an `if`
+  with an `else` ran both halves.
+- **Scripts can be edited as blocks.** A Text/Blocks toggle in the map
+  editor's script IDE: drag statements around, add them from a palette, and
+  switch back. The two views are the same file — a script that goes to blocks
+  and back is byte for byte what it was.
+- **Greater Diplomacy 5 translation.** Exporting a map in the browser no
+  longer loses large worlds: the download link was being released in the same
+  tick it was clicked, before the browser had finished reading it.
+- Stability and assorted bug fixes.
+
 ## game 1.0.8a
 
 - **Trade deals.** "Propose Trade" sits in the peacetime diplomacy list:
