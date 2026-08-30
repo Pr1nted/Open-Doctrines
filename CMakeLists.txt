@@ -71,6 +71,17 @@ message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+    # ── THE SOURCES ARE UTF-8, AND MSVC HAS TO BE TOLD ──
+    #
+    # Without this MSVC reads them in the machine's ANSI codepage, so every
+    # non-ASCII literal is silently mangled -- and the game has them: the
+    # dialogue markup uses "§" to toggle the accent colour, written straight
+    # into src/dialog/DialogScript.cpp. The Windows build parsed it as two
+    # bytes of something else and the accent never applied, which the dialogue
+    # tests caught the first time a Windows runner got far enough to run them
+    # (it had been timing out before). gcc and clang already assume UTF-8.
+    add_compile_options(/utf-8)
+
     # Compile a project's source files in parallel.
     #
     # Without this a Windows build is effectively SERIAL, and not because the
