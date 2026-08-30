@@ -154,16 +154,16 @@ jobs:
           # with -F (the URL has dots and slashes; it is a literal, not a
           # pattern) is the check the artifact deserves -- and it says the
           # same thing on every platform's grep.
+          # -print0 and a NUL-delimited read: one of the packaged files is
+          # called "READ ME FIRST.txt", and word splitting would look for two
+          # files that do not exist.
           found=""
-          while IFS= read -r f; do
-            [ -f "$f" ] || continue
+          while IFS= read -r -d "" f; do
             if LC_ALL=C strings -a "$f" 2>/dev/null | grep -qF "$issuer"; then
               found="$f"
               break
             fi
-          done <<EOF
-$(find "dist/${{ matrix.artifact }}" -type f)
-EOF
+          done < <(find "dist/${{ matrix.artifact }}" -type f -print0)
           if [ -z "$found" ]; then
             # SAY WHAT WAS ACTUALLY THERE. "not found" alone sent an
             # investigation through the shell, the locale and the strip step
