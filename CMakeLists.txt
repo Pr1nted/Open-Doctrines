@@ -675,6 +675,11 @@ set(OD_ACCOUNT_ISSUER "" CACHE STRING
     "Account service URL baked into the build (empty = no sign-in offered)")
 message(STATUS "Account service: ${OD_ACCOUNT_ISSUER}")
 
+# Into a generated header rather than a -D; see src/AccountIssuer.h.in for
+# what went wrong when it was a define.
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/AccountIssuer.h.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/generated/AccountIssuer.h" @ONLY)
+
 set(OD_NET_BACKEND "none")
 if(OD_ENABLE_NET)
     if(EMSCRIPTEN)
@@ -1098,7 +1103,7 @@ elseif(WIN32)
     endif()
     target_sources(OpenDoctrines PRIVATE "${CMAKE_SOURCE_DIR}/data/Icon/resources.rc")
 endif()
-target_include_directories(OpenDoctrines PRIVATE src tools/map_generator)
+target_include_directories(OpenDoctrines PRIVATE src tools/map_generator ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # Both system raylib (via find_package) and FetchContent create a target named raylib
 target_link_libraries(OpenDoctrines raylib)
 if(WIN32)
@@ -1141,7 +1146,7 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     add_executable(OpenDoctrinesServer ${SERVER_SOURCES})
     target_link_libraries(OpenDoctrinesServer odseal)
     target_compile_definitions(OpenDoctrinesServer PRIVATE OD_SERVER=1)
-    target_include_directories(OpenDoctrinesServer PRIVATE src tools/map_generator)
+    target_include_directories(OpenDoctrinesServer PRIVATE src tools/map_generator ${CMAKE_CURRENT_BINARY_DIR}/generated)
     # raylib's headers without raylib. Taken from the target's own interface so
     # this works whether raylib was found system-wide or fetched.
     target_include_directories(OpenDoctrinesServer PRIVATE
@@ -1192,7 +1197,7 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     add_executable(OpenDoctrinesServerUI EXCLUDE_FROM_ALL ${SERVER_UI_SOURCES})
     target_compile_definitions(OpenDoctrinesServerUI PRIVATE
                                OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
-    target_include_directories(OpenDoctrinesServerUI PRIVATE src tools/map_generator)
+    target_include_directories(OpenDoctrinesServerUI PRIVATE src tools/map_generator ${CMAKE_CURRENT_BINARY_DIR}/generated)
     target_link_libraries(OpenDoctrinesServerUI raylib)
     # Built from GAME_SOURCES; see the note at that list.
     target_link_libraries(OpenDoctrinesServerUI odseal)
@@ -1221,11 +1226,9 @@ elseif(OD_NET_BACKEND STREQUAL "browser")
     target_compile_definitions(OpenDoctrines PRIVATE OD_ENABLE_NET=1)
 endif()
 
-# Quoted through to the compiler so Config.cpp can use it as a string literal.
-# Always defined, so the source needs no #ifdef and an unset build simply gets
-# "" -- which is exactly the "offer no sign-in" behaviour it had before.
-target_compile_definitions(OpenDoctrines PRIVATE
-                           OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+# The account service is NOT passed as a define. It reaches the compiler as
+# generated/AccountIssuer.h instead: as a -D the value crossed a Makefile and
+# a shell, and on Linux arrived four characters short. See src/AccountIssuer.h.in.
 
 if(OD_P2P_DEFS)
     target_link_libraries(OpenDoctrines ${OD_P2P_LIBS})
