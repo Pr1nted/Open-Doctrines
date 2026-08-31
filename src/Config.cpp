@@ -20,8 +20,18 @@
 #define OD_ACCOUNT_ISSUER_BAKED ""
 #endif
 
+// AN EXTERNAL SYMBOL, not a bare literal.
+//
+// A plain string literal lives in a mergeable section, and on Linux this one
+// did not survive intact into the object: the binary held
+// "https://opendoctrines-net.opendoctrines.workers" -- four characters short
+// -- while macOS and Windows were correct. Whatever does that to a mergeable
+// literal cannot do it to a named array with external linkage: it is a symbol
+// the linker must keep whole and may not fold into its neighbours.
+extern "C" const char od_account_issuer[] = OD_ACCOUNT_ISSUER_BAKED;
+
 const std::string& bakedAccountIssuer() {
-    static const std::string kIssuer = OD_ACCOUNT_ISSUER_BAKED;
+    static const std::string kIssuer = od_account_issuer;
     return kIssuer;
 }
 
