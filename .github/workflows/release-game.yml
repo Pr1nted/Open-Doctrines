@@ -115,38 +115,6 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --target OpenDoctrines -j 4
 
-      # WHICH STAGE LOSES IT.
-      #
-      # The Linux artifact has no account-service URL in it while CMake reports
-      # the right one, so the loss is between the flags and the binary. This
-      # says where: the generated define, then the object Config.cpp compiles
-      # to, then the executable the linker produces.
-      - name: Where the account service went
-        shell: bash
-        run: |
-          echo "--- generated define ---"
-          grep -ho "OD_ACCOUNT_ISSUER=[^ ]*" build/CMakeFiles/OpenDoctrines.dir/flags.make | head -2 || echo "(not in flags.make)"
-          obj=$(find build -name "Config.cpp.o" | head -1)
-          echo "--- object: ${obj:-<none>} ---"
-          if [ -n "$obj" ]; then
-            echo "opendoctrines-net in object : $(LC_ALL=C grep -c "opendoctrines-net" "$obj" 2>/dev/null || echo 0)"
-          fi
-          bin=build/OpenDoctrines
-          [ -f "build/Release/OpenDoctrines.exe" ] && bin=build/Release/OpenDoctrines.exe
-          [ -d "build/OpenDoctrines.app" ] && bin=build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines
-          echo "--- linked binary: $bin ---"
-          if [ -f "$bin" ]; then
-            echo "opendoctrines-net in binary : $(LC_ALL=C grep -c "opendoctrines-net" "$bin" 2>/dev/null || echo 0)"
-            echo "FULL url in binary          : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$bin" 2>/dev/null || echo 0)"
-            echo "FULL url in object          : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$obj" 2>/dev/null || echo 0)"
-            # And after the strip packaging applies, which is the only thing
-            # that touches the binary between here and the artifact.
-            cp "$bin" /tmp/probe.bin
-            if [ "$RUNNER_OS" = "macOS" ]; then strip -S -x /tmp/probe.bin || true
-            else strip --strip-unneeded /tmp/probe.bin || true; fi
-            echo "opendoctrines-net after strip: $(LC_ALL=C grep -c "opendoctrines-net" /tmp/probe.bin 2>/dev/null || echo 0)"
-          fi
-
       - name: Package (clean)
         shell: bash
         run: |
@@ -168,34 +136,6 @@ jobs:
       # leaves the machine. The URL is a plain string literal in the binary --
       # bakedAccountIssuer() returns it -- so its absence means the define did
       # not reach this build.
-      # The same three questions, asked of the PACKAGED copy this time. The
-      # built binary answers yes to all of them and the artifact is said to
-      # answer no, so one of these two files is not what it is assumed to be.
-      - name: What the packaged binary actually holds
-        shell: bash
-        run: |
-          d="dist/${{ matrix.artifact }}"
-          b=$(find "$d" -maxdepth 3 -type f -name "OpenDoctrines*" ! -name "*.txt" | head -1)
-          echo "packaged binary: ${b:-<none>}"
-          [ -n "$b" ] || exit 0
-          ls -l "$b"
-          echo "opendoctrines-net : $(LC_ALL=C grep -c "opendoctrines-net" "$b" 2>/dev/null || echo 0)"
-          echo "full URL          : $(LC_ALL=C grep -c "https://opendoctrines-net.opendoctrines.workers.dev" "$b" 2>/dev/null || echo 0)"
-          echo "-F full URL       : $(LC_ALL=C grep -cF "https://opendoctrines-net.opendoctrines.workers.dev" "$b" 2>/dev/null || echo 0)"
-          src=build/OpenDoctrines
-          [ -d "build/OpenDoctrines.app" ] && src=build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines
-          [ -f "$src" ] && { echo "built binary size : $(stat -c%s "$src" 2>/dev/null || stat -f%z "$src")"; }
-          # The bytes themselves. Every question so far has been answered by a
-          # match count, and the counts disagree with each other -- so read the
-          # actual neighbourhood of the string instead of asking about it.
-          off=$(LC_ALL=C grep -aob "opendoctrines-net" "$b" 2>/dev/null | head -1 | cut -d: -f1)
-          echo "first offset: ${off:-<none>}"
-          if [ -n "$off" ]; then
-            start=$(( off > 60 ? off - 60 : 0 ))
-            dd if="$b" bs=1 skip="$start" count=200 2>/dev/null | tr -c "[:print:]" "." || true
-            echo ""
-          fi
-
       - name: The packaged copy carries the account service
         shell: bash
         run: |
