@@ -2104,9 +2104,15 @@ void Game::run() {
         if (!m_popupQueue.empty()) {
             BeginDrawing();
             ClearBackground(BLACK);
-            // Don't call drawInner() when a popup is active — it would process
-            // clicks behind the popup (province selection, button presses, etc.).
-            // The popup covers the screen with its own dim overlay anyway.
+            // Still NOT drawInner(): it draws and takes clicks in one pass, so
+            // the world behind would answer presses meant for the popup. The
+            // captured frame gives the same picture and cannot be clicked.
+            if (m_popupBackdrop.id != 0) {
+                DrawTexturePro(m_popupBackdrop,
+                               {0, 0, (float)m_popupBackdrop.width, -(float)m_popupBackdrop.height},
+                               {0, 0, (float)m_screenW, (float)m_screenH},
+                               {0, 0}, 0.0f, WHITE);
+            }
             drawPopup();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -2116,6 +2122,11 @@ void Game::run() {
             // coming. See Game_TutorialWalk.cpp.
             if (m_walk) walkDismissPopup();
             continue;
+        }
+        // The queue is empty: the picture has done its job.
+        if (m_popupBackdrop.id != 0) {
+            UnloadTexture(m_popupBackdrop);
+            m_popupBackdrop = Texture2D{};
         }
         
 #ifdef __EMSCRIPTEN__
@@ -2771,6 +2782,7 @@ void Game::endFrame() {
     // sent.
     mpDrawManualExchange(m_screenW, m_screenH);
     drawPadCursor();
+
     EndDrawing();
 
 #ifdef __EMSCRIPTEN__

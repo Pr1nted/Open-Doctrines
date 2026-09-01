@@ -3464,6 +3464,27 @@ void Game::drawInner() {
                 // never submitted and the turn waits on itself forever.
                 if (mpAmReady()) mpUnready(); else mpHostReady();
             } else {
+                // The world, as it stands before the turn wipes it.
+                //
+                // ClearBackground(BLACK) below erases what this frame has
+                // already drawn -- the map went down earlier in drawInner --
+                // and the map only comes back on the NEXT frame. If the turn
+                // raises a popup, that next frame belongs to the popup branch,
+                // which draws on black, so the player is left looking at a
+                // dialog floating on nothing and reports the game as frozen.
+                // Captured here, while the map is still on screen and this
+                // frame is still bound.
+                if (m_popupBackdrop.id != 0) {
+                    UnloadTexture(m_popupBackdrop);
+                    m_popupBackdrop = Texture2D{};
+                }
+                {
+                    Image shot = LoadImageFromScreen();
+                    if (shot.data) {
+                        m_popupBackdrop = LoadTextureFromImage(shot);
+                        UnloadImage(shot);
+                    }
+                }
                 showLoadingScreen();
                 setLoadingProgress(0.0f, "Processing turn...");
                 EndDrawing();

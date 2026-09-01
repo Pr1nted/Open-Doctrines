@@ -3457,6 +3457,16 @@ void Game::processArmyMovement(int countryId) {
         if (uIt->count <= 0) srcArmies.erase(uIt);
         if (srcArmies.empty()) m_provinceArmies.erase(mo.fromProvince);
 
+        // Not into a country we are at peace with. Checked before the troops
+        // leave, so a refused order neither moves them nor loses them: the
+        // order is dropped and the garrison stays where it was.
+        if (!mayEnterProvince(countryId, mo.toProvince)) {
+            uIt->count += (int)toMove;      // put them back
+            sent -= toMove;
+            m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+            continue;
+        }
+
         // One assault, resolved the same way whether the troops walked or
         // landed. See resolveAssault: it fights the WHOLE garrison rather than
         // the first stack it finds, and places the survivors itself.
@@ -5347,6 +5357,30 @@ bool Game::mayTakeProvince(int cid, int pid) const {
     // had no such manners.
     if (owner == UNC_CID) return true;
     return atWarCids(cid, owner);
+}
+
+// === mayEnterProvince ===
+//
+// Whether an army may set foot in a province at all, as opposed to whether it
+// may KEEP it (mayTakeProvince). The two came apart with visible results: a
+// move into a neutral country found no defenders, could not take the ground
+// because there was no war, and then put the troops there anyway -- so the
+// United States kept a garrison inside Mexico while Mexico still owned it, at
+// peace, and the province panel dutifully reported both.
+//
+// The entry rule used to live in the player's move validator and nowhere
+// else, which is the same shape of bug as every other rule written in the UI:
+// it binds the human and nothing else. The AI, a mod calling the move API and
+// a modified multiplayer client all walked straight through it. It lives here
+// now, where the move is actually carried out.
+bool Game::mayEnterProvince(int cid, int pid) const {
+    const Province* p = m_provinces.getProvinceById(pid);
+    if (!p || cid <= 0) return false;
+    const int owner = p->countryId;
+    if (owner <= 0 || owner == cid) return true;      // ours, or nobody's
+    if (owner == UNC_CID || owner == BLC_CID) return true;   // unclaimed ground
+    if (alliedCids(cid, owner)) return true;          // staging on allied soil
+    return atWarCids(cid, owner);                     // otherwise it takes a war
 }
 
 // === captureProvince ===

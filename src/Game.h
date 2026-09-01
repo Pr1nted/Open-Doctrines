@@ -3369,6 +3369,19 @@ private:
     // generated world can be built around a premise that revolts contradict,
     // and the tutorial already suppresses them the same way -- this gives a
     // mapmaker the switch the tutorial has.
+    // The last world frame, kept while a popup is up.
+    //
+    // The popup branch in run() cannot call drawInner(): that function draws
+    // AND takes clicks, so the world behind would answer presses meant for the
+    // popup. It therefore cleared to black and drew only the popup -- and the
+    // popup is a small dialog, not a full-screen overlay, so what the player
+    // actually got was a black screen with a box on it. That reads as a
+    // crash, and was reported as the game freezing on Process Turn.
+    //
+    // So the frame BEFORE the popup is captured once and blitted behind it:
+    // the world is visible, and it is a picture, so it cannot take a click.
+    Texture2D m_popupBackdrop{};
+
     bool m_scriptRebellionsOff = false;
 
     int m_turnNumber = 0;
@@ -3544,6 +3557,8 @@ private:
     // a mod or a modified multiplayer client could annex a neutral by walking
     // into it.
     bool mayTakeProvince(int cid, int pid) const;
+    /// Whether an army may enter at all -- see the note on the definition.
+    bool mayEnterProvince(int cid, int pid) const;
     // Add troops to a province, merging into that country's stack if it
     // already has one. Two stacks with the same owner in one province is a
     // state the movement code cannot read: it moves a percentage of the FIRST
