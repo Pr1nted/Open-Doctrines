@@ -1,5 +1,17 @@
 # Changelog
 
+## game 1.1.1a
+
+- **Processing a turn no longer blacks out the screen.** The world stays
+  visible behind the popup while the turn resolves.
+- **Armies stay out of countries at peace.** The rule the land march obeys now
+  covers amphibious landings too, which were the way round it.
+- **The AI stops spending itself into revolt.** It was placating its minorities
+  without limit — a bill nothing ever scaled down — until it went bankrupt, cut
+  every settlement at once, and faced the rebellions that followed. Two fifths
+  fewer bankruptcies, a quarter fewer breakaway states, and it plays
+  measurably better for it.
+
 ## Licence
 
 Nothing to install: this changed in the repository, between releases, and
