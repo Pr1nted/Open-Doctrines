@@ -1698,6 +1698,14 @@ if(OD_MODS_BACKEND STREQUAL "wamr")
     target_compile_definitions(OdmodCheck PRIVATE OD_MODS_WAMR=1)
 endif()
 
+# --- symbol-fill: how much of its canvas does a symbol SVG cover? ---
+# Header-only nanosvg, so it needs nothing but src/renderer. Not installed:
+# it is a content check for tools/normalize_symbols.py and
+# tools/download_symbols.py, not something a player has any use for.
+add_executable(SymbolFill tools/symbol_fill.cpp)
+set_target_properties(SymbolFill PROPERTIES OUTPUT_NAME symbol-fill)
+target_include_directories(SymbolFill PRIVATE src/renderer)
+
 # --- Install rules ---
 #
 # THE LAYOUT IS NOT A FREE CHOICE
