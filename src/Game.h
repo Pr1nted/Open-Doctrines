@@ -3256,6 +3256,21 @@ private:
     // Cached computeCountryIncome (recomputed when player country changes)
     mutable int m_lastIncomeCountryId = -1;
     mutable CountryIncomeSnapshot m_cachedIncome;
+public:
+    /**
+     * DROP THE INCOME SNAPSHOT, because something just changed what it
+     * measures. The cache above was written for the HUD, where one country's
+     * finances are drawn per frame and the only thing that invalidates them is
+     * the player switching country -- which is why the sole invalidation in the
+     * game was in map loading. The AI then began asking the same question per
+     * country per ACTION, and a module now gets several actions in one turn, so
+     * every affordability check after the first was answered against the world
+     * as it stood before any of them: a country could sign for eight recurring
+     * bills while being told eight times that it could afford the first.
+     * See AISystem::runModule.
+     */
+    void invalidateIncomeCache() const { m_lastIncomeCountryId = -1; }
+private:
 
     // ─── Ceasefire / Peace negotiation state ───
     bool m_inCeasefireScreen = false;

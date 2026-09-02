@@ -2574,8 +2574,58 @@ void AISystem::takeTurn(int cid) {
         // See Experience::ExtraAction::features.
         std::vector<float> curFeat;
         std::vector<float> curEmb;
-        const int budget = actionsPerModule(cid);
+        // ── POLITICS IS RATIONED, AND THE OTHER THREE ARE NOT ──
+        //
+        // Measured 2026-09-02 on 1914 over 25 deterministic turns, by
+        // throttling one module at a time back to three actions and watching
+        // the bankruptcy cascade: politics is the whole of it. Capping it
+        // alone takes bankruptcy events 74 -> 45, the countries that go broke
+        // 32 -> 24, rebel states 133 -> 109, and stops the engine's rebellion
+        // ceiling being tripped at all. Capping ECONOMY makes it worse
+        // (74 -> 83), war and navy are noise.
+        //
+        // What lives here is `conciliate a minority`, executed 3,158 times in
+        // those 25 turns -- more than any other action in the game, more than
+        // research fund-up at 1,937, six times every economy purchase put
+        // together -- against `repress`, the step that gives the money back,
+        // executed ZERO times. Every step moves a group to a dearer option and
+        // adds its costPerTurn for ever, and the minority bill is 9.9 of a
+        // gross of 41.7 per country-turn, second only to research. Unlike
+        // research, NOTHING scales it down when it stops being affordable:
+        // computeCountryIncome clamps the research and pacification sliders to
+        // what is left, while this is charged in full, drives net income
+        // negative, and hands the shortfall to enforceAusterity -- whose third
+        // act is to revoke those same settlements, which is what the unrest
+        // spike and the rebellion are made of.
+        //
+        // Rationing rather than gating, and that distinction is measured. An
+        // affordability test on conciliation is a POVERTY TRAP with an extra
+        // failure mode: the country that most needs to placate its minorities
+        // is the one that cannot pay, so denying it merely converts a money
+        // problem into an unrest one -- 0.40 of gross as the threshold gave 83
+        // events and 140 rebel states, worse than doing nothing. A per-country
+        // QUOTA is no better and for the same reason: three steps a turn makes
+        // very nearly the same number of conciliations as this cap (1,044
+        // against 1,064) and yields 197 rebel states against 109, because a
+        // flat quota starves the country in trouble while a calm one spends
+        // its allowance. Only the module cap allocates by need, because the
+        // head is still the thing choosing -- it just has to choose between
+        // conciliating and everything else politics can do.
+        //
+        // This does not restore the throttle that was removed. The other three
+        // modules keep the wide budget and the competence that came with it;
+        // and politics was already the one module with a rate limit in it, see
+        // AI_REQUESTS_PER_TURN.
+        const int budget = (mod == MOD_POLITICS) ? ACTIONS_PER_MODULE_PER_TURN
+                                                 : actionsPerModule(cid);
         for (int k = 0; k < budget; ++k) {
+            // The previous pick spent money, laid down a hull or signed a
+            // settlement, and computeCountryIncome would otherwise answer this
+            // one out of a cache written for the HUD. Measured on 1914: without
+            // this, a country asked eight times whether it could afford a
+            // recurring bill and was told eight times that it could afford the
+            // FIRST one. See Game::invalidateIncomeCache.
+            m_g->invalidateIncomeCache();
             if (k > 0) {
                 buildFeatures(cid, curFeat);
                 curEmb = m_leagueThisCountry ? m_leagueTrunk.forward(curFeat)
