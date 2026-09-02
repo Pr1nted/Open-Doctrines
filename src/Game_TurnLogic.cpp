@@ -3035,6 +3035,19 @@ void Game::processShipDisembarks(int countryId) {
                 continue;
             }
         }
+        // The same rule the land march obeys. Checked BEFORE the crew leaves
+        // the ship: this path resolves through resolveAssault exactly as a
+        // march does, so without it a landing was the way round the entry
+        // rule -- troops put ashore in a country at peace, unable to take the
+        // ground and left standing on it. The two paths drifted once before;
+        // see the note just below.
+        if (!mayEnterProvince(countryId, pid)) {
+            if (m_config.aiDebug)
+                printf("[LANDING] cid=%d prov %d is not at war with us, order dropped\n",
+                       countryId, pid);
+            m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
+            continue;
+        }
         int crew = ship.crew * 100; // Scale to army internal units (100x)
         ship.crew = 0;
         if (crew <= 0) { m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i); continue; }
