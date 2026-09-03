@@ -167,6 +167,8 @@ set(OD_WEB_INITIAL_MEMORY "512MB" CACHE STRING
     "Emscripten INITIAL_MEMORY. 512MB suits a desktop tab; 64MB is what a phone will grant.")
 set(OD_WEB_ASYNCIFY_STACK "1048576" CACHE STRING
     "Emscripten ASYNCIFY_STACK_SIZE. Overflow aborts the module with a bare wasm trap.")
+set(OD_WEB_STACK_SIZE "4194304" CACHE STRING
+    "Emscripten STACK_SIZE. The default is 64 KB and a turn does not fit in it.")
 set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     "Emscripten MAXIMUM_MEMORY. 2GB or less for iOS Safari, which may refuse to reserve more.")
 
@@ -1606,6 +1608,20 @@ if(EMSCRIPTEN)
         #
         # A megabyte, because the cost is a megabyte and the failure is total.
         "-sASYNCIFY_STACK_SIZE=${OD_WEB_ASYNCIFY_STACK}"
+        # THE CALL STACK, which is a different stack from the Asyncify one above
+        # and was never set at all.
+        #
+        # Emscripten's default is 64 KB -- it was 5 MB until 3.1.27 changed it,
+        # and a build that never named the setting silently inherited the new
+        # figure. Processing a turn does not fit in 64 KB: pressing Process Turn
+        # in a browser overwrote the stack cookie and the module aborted with
+        # "Stack overflow!", which the page reports as the game having stopped.
+        # Every scenario, every country, spectator included, on the first turn.
+        #
+        # Four megabytes, which is what the desktop gets by default and still a
+        # rounding error beside INITIAL_MEMORY. odmod-check already asked for a
+        # megabyte of its own for the same reason; the game asked for nothing.
+        "-sSTACK_SIZE=${OD_WEB_STACK_SIZE}"
         # The Gearbox ABI has i64 returns (fuel_budget, province_population).
         # Without BigInt they cannot cross the JS boundary that the browser mod
         # backend goes through.

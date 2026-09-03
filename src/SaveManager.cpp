@@ -344,34 +344,61 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     std::vector<uint8_t> zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
-    // Extract map.odmap from original archive
-    std::vector<uint8_t> odmData;
-    {
-        mz_zip_archive tmpZip{};
-        if (!mz_zip_reader_init_mem(&tmpZip, zipData.data(), zipData.size(), 0))
-            return false;
-        int idx = mz_zip_reader_locate_file(&tmpZip, "map.odmap", nullptr, 0);
-        if (idx < 0) { mz_zip_reader_end(&tmpZip); return false; }
-        size_t odmSz = 0;
-        void* odm = mz_zip_reader_extract_to_heap(&tmpZip, idx, &odmSz, 0);
-        if (odm) { odmData.assign((uint8_t*)odm, (uint8_t*)odm + odmSz); free(odm); }
-        mz_zip_reader_end(&tmpZip);
+    // THE SAVE IS REWRITTEN WHOLE EVERY TURN, so what it costs to carry the
+    // old contents across IS what Process Turn costs.
+    //
+    // It used to cost everything. Each carried entry was inflated to the heap
+    // and deflated again at MZ_BEST_COMPRESSION -- and the archive holds two
+    // files per turn played, one of them the full state snapshot, which is
+    // ~700 KB by turn 200. So turn N re-compressed N snapshots, and the bill
+    // grew with every turn: 8.7 seconds of it at turn 220 on this machine,
+    // and roughly twice that by turn 400.
+    //
+    // Nothing is drawn or polled for the whole of it -- the last frame goes up
+    // at "Saving turn data..." and the next one after the save is finished --
+    // so the window stops answering the window server and the player gets a
+    // beachball, or "Not Responding" on Windows. That is the freeze on Process
+    // Turn, and it is invisible to the [TURN] timing line above, which stops
+    // measuring before the save begins.
+    //
+    // The bytes were already compressed. mz_zip_writer_add_from_zip_reader
+    // copies them across as they stand, so the per-turn cost is now the I/O
+    // and nothing else, and it no longer grows with the length of the game.
+    mz_zip_archive srcZip{};
+    if (!mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0))
+        return false;
+    // A save without a map is not a save; refuse it rather than write a
+    // half-formed archive over it. (Located, not extracted: the point of this
+    // pass is that map.odmap is never unpacked.)
+    if (mz_zip_reader_locate_file(&srcZip, "map.odmap", nullptr, 0) < 0) {
+        mz_zip_reader_end(&srcZip);
+        return false;
     }
-    if (odmData.empty()) return false;
 
-    // Re-read metadata
+    // Re-read metadata (from the file as it still stands -- see the temp path
+    // below, which is why this is safe).
     SaveMetadata meta = readMetadata(odsvPath);
 
-    // Build new archive
+    // WRITTEN BESIDE THE SAVE, THEN MOVED OVER IT.
+    //
+    // mz_zip_writer_init_file truncates its target, so writing straight to
+    // odsvPath left the player's only copy destroyed for the length of the
+    // rewrite. During a rewrite that took eight seconds and looked like a
+    // hang, force-quitting -- which is what one does to a hung game -- ate the
+    // save. The rename at the end is atomic on every platform the game ships
+    // on, so the file on disk is either last turn's save or this turn's.
+    const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive newZip{};
-    if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
+    if (!mz_zip_writer_init_file(&newZip, tmpPath.c_str(), 0)) {
+        mz_zip_reader_end(&srcZip);
         return false;
-
-    // Stored, not deflated: map.odmap is itself a zip of already-compressed
-    // PNGs, so max-level deflate burns hundreds of ms per call and saves
-    // essentially nothing. This runs on every save rewrite, so it dominated
-    // turn time.
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
+    }
+    auto fail = [&]() {
+        mz_zip_writer_end(&newZip);
+        mz_zip_reader_end(&srcZip);
+        std::remove(tmpPath.c_str());
+        return false;
+    };
 
     meta.turnCount++;
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
@@ -415,36 +442,29 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     idx += "]}\n";
     mz_zip_writer_add_mem(&newZip, "index.json", idx.data(), idx.size(), MZ_BEST_COMPRESSION);
 
-    // Carry over previous turn files, plus anything else already in the
-    // archive (rebellion/*.svg and friends). map.odmap / metadata.json /
-    // index.json are regenerated above, so they're skipped here.
-    // state.json is skipped when we're writing a fresh one below; entries
-    // supplied via extraFiles are skipped too, since those override.
+    // Carry over map.odmap, the previous turn files, and anything else already
+    // in the archive (rebellion/*.svg and friends), byte for byte.
+    // metadata.json / index.json are regenerated above, so they're skipped
+    // here. state.json is skipped when we're writing a fresh one below;
+    // entries supplied via extraFiles are skipped too, since those override.
     {
-        mz_zip_archive srcZip{};
-        if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
-            int fc = (int)mz_zip_reader_get_num_files(&srcZip);
-            for (int i = 0; i < fc; ++i) {
-                mz_zip_archive_file_stat st{};
-                if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
-                if (strcmp(st.m_filename, "map.odmap") == 0 ||
-                    strcmp(st.m_filename, "metadata.json") == 0 ||
-                    strcmp(st.m_filename, "index.json") == 0) continue;
-                if (stateJson && strcmp(st.m_filename, "state.json") == 0) continue;
-                bool overridden = false;
-                if (extraFiles)
-                    for (auto& [n, c] : *extraFiles)
-                        if (n == st.m_filename) { overridden = true; break; }
-                if (overridden) continue;
+        const int fc = (int)mz_zip_reader_get_num_files(&srcZip);
+        for (int i = 0; i < fc; ++i) {
+            mz_zip_archive_file_stat st{};
+            if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
+            if (strcmp(st.m_filename, "metadata.json") == 0 ||
+                strcmp(st.m_filename, "index.json") == 0) continue;
+            if (stateJson && strcmp(st.m_filename, "state.json") == 0) continue;
+            bool overridden = false;
+            if (extraFiles)
+                for (auto& [n, c] : *extraFiles)
+                    if (n == st.m_filename) { overridden = true; break; }
+            if (overridden) continue;
 
-                size_t sz = 0;
-                void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                if (d) {
-                    mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                    free(d);
-                }
-            }
-            mz_zip_reader_end(&srcZip);
+            // Compressed bytes straight across: no inflate, no deflate. This
+            // is the whole of the fix -- see the note at the top.
+            if (!mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i))
+                return fail();
         }
     }
 
@@ -471,8 +491,21 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         for (auto& [name, content] : *extraFiles)
             mz_zip_writer_add_mem(&newZip, name.c_str(), content.data(), content.size(), MZ_BEST_COMPRESSION);
 
-    mz_zip_writer_finalize_archive(&newZip);
+    if (!mz_zip_writer_finalize_archive(&newZip)) return fail();
     mz_zip_writer_end(&newZip);
+    mz_zip_reader_end(&srcZip);
+
+    // Only now does the save on disk change. std::rename replaces the target
+    // atomically on POSIX; on Windows MSVC's rename fails if the target
+    // exists, so the old file goes first and the small window that opens is
+    // still far shorter than the whole rewrite it replaces.
+#ifdef _WIN32
+    std::remove(odsvPath.c_str());
+#endif
+    if (std::rename(tmpPath.c_str(), odsvPath.c_str()) != 0) {
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     return true;
 }
 
@@ -577,12 +610,11 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
                 if (strcmp(st.m_filename, "map.odmap") == 0 ||
                     strcmp(st.m_filename, "metadata.json") == 0 ||
                     strcmp(st.m_filename, "index.json") == 0) continue;
-                size_t sz = 0;
-                void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                if (d) {
-                    mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                    free(d);
-                }
+                // Verbatim, for the reason given in appendTurn: inflating and
+                // re-deflating every turn file in the archive is seconds of
+                // work on a long save, and it buys nothing -- the bytes are
+                // already compressed.
+                mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i);
             }
             mz_zip_reader_end(&srcZip);
         }
@@ -876,12 +908,8 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
                 if (strstr(st.m_filename, "turns/") == st.m_filename ||
                     strcmp(st.m_filename, "state.json") == 0 ||
                     strcmp(st.m_filename, "index.json") == 0) {
-                    size_t sz = 0;
-                    void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                    if (d) {
-                        mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                        free(d);
-                    }
+                    // Verbatim -- see appendTurn.
+                    mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i);
                 }
             }
             mz_zip_reader_end(&srcZip);
@@ -1013,12 +1041,10 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
                 mz_zip_archive_file_stat st{};
                 if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
                 if (strstr(st.m_filename, "turns/") == st.m_filename) {
-                    size_t sz = 0;
-                    void* d = mz_zip_reader_extract_to_heap(&srcZip, i, &sz, 0);
-                    if (d) {
-                        mz_zip_writer_add_mem(&newZip, st.m_filename, d, sz, MZ_BEST_COMPRESSION);
-                        free(d);
-                    }
+                    // Verbatim -- see appendTurn. This is the whole turn
+                    // history, two files per turn played, so it is the one
+                    // that made saving a long game take seconds.
+                    mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i);
                 }
             }
             mz_zip_reader_end(&srcZip);

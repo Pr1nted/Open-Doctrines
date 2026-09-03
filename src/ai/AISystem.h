@@ -1573,6 +1573,19 @@ public:
      */
     static constexpr float  AI_TRADE_RUIN_PROV_SHARE   = 0.34f;
     static constexpr float  AI_TRADE_RUIN_CASH_SHARE   = 0.60f;
+    /**
+     * What a peacetime trade may cost, net, before it is refused outright.
+     *
+     * In the same gold both halves of a deal are priced in, and set to what
+     * the cheapest province is worth (TRADE_PRICE_PROV_MIN): the AI will not
+     * hand over a province's value and get nothing back. Deals inside this
+     * band still go to the diplomacy head -- a near-even trade is a judgement,
+     * not a blunder.
+     *
+     * Only trades. A CEASEFIRE that cedes ground can be worth signing when the
+     * war is going badly, and deciding that is exactly what the head is for.
+     */
+    static constexpr float  AI_TRADE_NET_FLOOR         = 120.0f;
 
     AISystem(Game* game, const std::string& modelPath);
     ~AISystem();

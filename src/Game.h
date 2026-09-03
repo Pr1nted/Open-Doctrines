@@ -1593,6 +1593,10 @@ public:
     double m_perfLastWall = 0.0;   // wall clock at the last sample
     double m_perfLastCpu  = 0.0;   // process CPU seconds at the last sample
     float  m_lastTurnMs = 0.0f;
+    // How long the archive rewrite took, separately from the rest of the
+    // turn. It is the phase that grows with the length of the game, so it
+    // is the one worth being able to see on its own.
+    float  m_lastSaveMs = 0.0f;
     // Rolling window the CPU-share throttle measures against. Short enough to
     // react within a couple of seconds of a slider move, long enough that a
     // single expensive turn does not swing it.
@@ -2035,6 +2039,10 @@ public:
     int m_findIndex = 0;                  // which match is highlighted
     std::vector<int> m_findMatches;       // country ids, best first
     void updateCountryFinder();
+    /// The finder's panel, and its Back button. One definition, so the button
+    /// that is drawn and the button that is clicked cannot drift apart.
+    void findGeometry(int& x, int& y, int& w, int& h) const;
+    Rectangle findBackRect() const;
     void drawCountryFinder();
     void rebuildFindMatches();
     int  largestProvinceOf(int countryId) const;

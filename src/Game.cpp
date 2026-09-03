@@ -1760,8 +1760,44 @@ void Game::rebuildFindMatches() {
     if (m_findIndex >= (int)m_findMatches.size()) m_findIndex = 0;
 }
 
+void Game::findGeometry(int& x, int& y, int& w, int& h) const {
+    const int rows = std::min((int)m_findMatches.size(), 8);
+    w = 460;
+    h = 92 + rows * 26;
+    x = (m_screenW - w) / 2;
+    y = (m_screenH - h) / 3;
+}
+
+Rectangle Game::findBackRect() const {
+    int x, y, w, h;
+    findGeometry(x, y, w, h);
+    return {(float)(x + w - 16 - 64), (float)(y + 10), 64.0f, 24.0f};
+}
+
 void Game::updateCountryFinder() {
     if (IsKeyPressed(KEY_ESCAPE)) { m_findOpen = false; return; }
+
+    // A WAY OUT THAT IS NOT A KEY.
+    //
+    // Escape was the only one, and this screen swallows everything else:
+    // update() returns here while it is open, so nothing else in the game gets
+    // a frame. On a touch screen or a browser tab that is not a shortcut
+    // nobody found, it is a dead end with no way back to the map.
+    //
+    // Clicking the dim area outside the panel closes it too, which is what a
+    // player tries first and what every other overlay in the game already
+    // allows.
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        const Vector2 m = getMouse();
+        int x, y, w, h;
+        findGeometry(x, y, w, h);
+        const Rectangle panel = {(float)x, (float)y, (float)w, (float)h};
+        if (CheckCollisionPointRec(m, findBackRect()) ||
+            !CheckCollisionPointRec(m, panel)) {
+            m_findOpen = false;
+            return;
+        }
+    }
 
     int ch;
     while ((ch = GetCharPressed()) != 0) {
@@ -1801,9 +1837,9 @@ void Game::updateCountryFinder() {
 
 void Game::drawCountryFinder() {
     if (!m_findOpen) return;
-    const int w = 460, rows = std::min((int)m_findMatches.size(), 8);
-    const int h = 92 + rows * 26;
-    const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 3;
+    const int rows = std::min((int)m_findMatches.size(), 8);
+    int x, y, w, h;
+    findGeometry(x, y, w, h);
 
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 120});
     DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.04f, 8,
@@ -1812,6 +1848,20 @@ void Game::drawCountryFinder() {
                               hexToColor(m_config.accent()));
 
     DrawText(T("Find country"), x + 16, y + 14, 16, hexToColor(m_config.accent()));
+
+    // Back, beside the title. See updateCountryFinder for why it exists.
+    {
+        const Rectangle back = findBackRect();
+        const bool hov = CheckCollisionPointRec(getMouse(), back);
+        DrawRectangleRounded(back, 0.25f, 6,
+                             hov ? Color{70, 70, 96, 255} : Color{40, 40, 56, 230});
+        DrawRectangleRoundedLines(back, 0.25f, 6,
+                                  hov ? Color{120, 120, 150, 255} : Color{80, 80, 105, 200});
+        const char* lbl = T("Back");
+        const int lw = MeasureText(lbl, 14);
+        DrawText(lbl, (int)(back.x + (back.width - lw) / 2), (int)back.y + 5, 14,
+                 hov ? WHITE : Color{200, 200, 215, 255});
+    }
 
     Rectangle box = {(float)(x + 16), (float)(y + 40), (float)(w - 32), 26};
     DrawRectangleRec(box, Color{30, 30, 42, 230});
@@ -2108,8 +2158,14 @@ void Game::run() {
             // the world behind would answer presses meant for the popup. The
             // captured frame gives the same picture and cannot be clicked.
             if (m_popupBackdrop.id != 0) {
+                // POSITIVE height. LoadImageFromScreen() already returns the
+                // frame the right way up -- raylib's rlReadScreenPixels flips
+                // the bottom-up rows glReadPixels hands it. The negative
+                // source height here flipped it a SECOND time, so the world
+                // drawn behind every popup was upside down. (A negative height
+                // is what a RenderTexture needs; a screen grab is not one.)
                 DrawTexturePro(m_popupBackdrop,
-                               {0, 0, (float)m_popupBackdrop.width, -(float)m_popupBackdrop.height},
+                               {0, 0, (float)m_popupBackdrop.width, (float)m_popupBackdrop.height},
                                {0, 0, (float)m_screenW, (float)m_screenH},
                                {0, 0}, 0.0f, WHITE);
             }
@@ -3170,6 +3226,7 @@ void Game::drawResourcePanel() {
     const float share = m_perfHistory.empty() ? 0.0f : m_perfHistory.back().cpuShare;
     std::string live = TextFormat(T("now %.0f%% of a core"), share * 100.0f);
     if (m_lastTurnMs > 0.0f) live += TextFormat(T("   turn %.0f ms"), m_lastTurnMs);
+    if (m_lastSaveMs > 0.0f) live += TextFormat(T("   save %.0f ms"), m_lastSaveMs);
     DrawText(live.c_str(), (int)g.x, ly + 18, 12, Color{200, 205, 215, 225});
 }
 

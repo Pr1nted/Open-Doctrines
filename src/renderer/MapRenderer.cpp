@@ -14,6 +14,8 @@
 #include "raymath.h"
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 #include <cstring>
 #include <utility>
 
@@ -444,9 +446,34 @@ void MapRenderer::buildProvinceData(
 
     int stride = m_mapW * 4;
 
-    // Accumulators for centers
-    std::unordered_map<int, long long> sx, sy, cnt;
-    std::unordered_map<int, int> minX, maxX, minY, maxY;
+    // ── ACCUMULATORS INDEXED BY PROVINCE ID, NOT HASHED BY IT ──
+    //
+    // This loop visits every pixel of the province image -- 33.5 million of
+    // them on an 8192x4096 map -- and it used to do a dozen unordered_map
+    // operations at each one: a count() to test the id, three [] to add to the
+    // sums, and up to eight more for the bounding box. Four hundred million
+    // hash lookups to compute what is, in the end, a sum and a rectangle per
+    // province.
+    //
+    // Natively that is a few seconds. In wasm, where the hashing has none of
+    // the native optimisations behind it, it is the thirty seconds the browser
+    // build spent frozen at "82%" -- the bar reads 82% because the frame this
+    // work belongs to cannot be presented until it returns.
+    //
+    // Province ids are dense and bounded (m_provinceCountryLookup is already a
+    // vector indexed by them), so a flat array is the right shape: one bounds
+    // check and one indexed read where there were twelve hash lookups.
+    int maxPid = 0;
+    for (const auto& kv : all) maxPid = std::max(maxPid, kv.first);
+    const size_t nPid = (size_t)maxPid + 1;
+
+    std::vector<uint8_t>   known(nPid, 0);
+    for (const auto& kv : all)
+        if (kv.first > 0) known[(size_t)kv.first] = 1;
+
+    std::vector<long long> sx(nPid, 0), sy(nPid, 0), cnt(nPid, 0);
+    std::vector<int32_t>   minX(nPid, INT32_MAX), maxX(nPid, INT32_MIN);
+    std::vector<int32_t>   minY(nPid, INT32_MAX), maxY(nPid, INT32_MIN);
 
     for (int y = 0; y < m_mapH; ++y) {
         Audio::get().pump();          // as in computeBorderTexture above
@@ -457,14 +484,15 @@ void MapRenderer::buildProvinceData(
             int pid = Province::colorToId(r, g, b);
 
             // Accumulate center/bbox data
-            if (pid > 0 && all.count(pid)) {
-                sx[pid] += x;
-                sy[pid] += y;
-                cnt[pid]++;
-                if (!minX.count(pid) || x < minX[pid]) minX[pid] = x;
-                if (!maxX.count(pid) || x > maxX[pid]) maxX[pid] = x;
-                if (!minY.count(pid) || y < minY[pid]) minY[pid] = y;
-                if (!maxY.count(pid) || y > maxY[pid]) maxY[pid] = y;
+            if (pid > 0 && (size_t)pid < nPid && known[(size_t)pid]) {
+                const size_t k = (size_t)pid;
+                sx[k] += x;
+                sy[k] += y;
+                cnt[k]++;
+                if (x < minX[k]) minX[k] = x;
+                if (x > maxX[k]) maxX[k] = x;
+                if (y < minY[k]) minY[k] = y;
+                if (y > maxY[k]) maxY[k] = y;
             }
 
             // Build glow map
@@ -496,17 +524,17 @@ void MapRenderer::buildProvinceData(
 
     // Compute centers and radii from accumulated data
     for (auto& kv : all) {
-        int id = kv.first;
-        auto cit = cnt.find(id);
-        if (cit != cnt.end() && cit->second > 0) {
-            centers_out[id] = {
-                (float)sx[id] / cit->second,
-                (float)sy[id] / cit->second
-            };
-            float w = (float)(maxX[id] - minX[id]);
-            float h = (float)(maxY[id] - minY[id]);
-            radii_out[id] = std::max(w, h) * 0.5f;
-        }
+        const int id = kv.first;
+        if (id <= 0 || (size_t)id >= nPid) continue;
+        const size_t k = (size_t)id;
+        if (cnt[k] <= 0) continue;
+        centers_out[id] = {
+            (float)sx[k] / (float)cnt[k],
+            (float)sy[k] / (float)cnt[k]
+        };
+        const float w = (float)(maxX[k] - minX[k]);
+        const float h = (float)(maxY[k] - minY[k]);
+        radii_out[id] = std::max(w, h) * 0.5f;
     }
 }
 
