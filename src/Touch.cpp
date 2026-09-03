@@ -18,6 +18,11 @@ bool  s_active = false;
 bool  s_present = false;
 Vector2 s_cursor = {0, 0};
 
+// Where the real mouse was last frame, so a mouse that MOVES can take the
+// cursor back off touch. See the note in update().
+Vector2 s_prevMouse = {0, 0};
+bool    s_prevMouseKnown = false;
+
 int   s_prevCount = 0;
 Vector2 s_prevP0 = {0, 0};
 float s_prevPinch = 0.0f;
@@ -44,11 +49,35 @@ void update(float dt, int screenW, int screenH) {
     s_lPressed = s_lReleased = s_rPressed = s_rReleased = false;
     s_wheel = 0.0f;
 
+    const Vector2 mouseNow = GetMousePosition();
     const int n = GetTouchPointCount();
     if (n > 0) {
         s_present = true;
         s_active = true;
+    } else if (s_active && s_prevMouseKnown &&
+               (mouseNow.x != s_prevMouse.x || mouseNow.y != s_prevMouse.y)) {
+        // ── THE MOUSE TAKES IT BACK ──
+        //
+        // Nothing here ever did. s_active latched true on the first touch
+        // point of the session and stayed true for the rest of it, and
+        // suppressesMouse() is the same flag -- so from that moment every shim
+        // IGNORED the real mouse and getMouse() answered with this cursor,
+        // parked wherever the last finger left it. Every click in the game
+        // then hit-tested at that spot instead of the pointer: buttons stop
+        // responding, the map stops answering, and what the player sees is a
+        // game that has stopped working. It is the behaviour the header
+        // promises ("On desktop this arbitrates with the mouse exactly as
+        // odPad does") and the only half that was never written; odPad gives
+        // control back on the same condition, in Gamepad.cpp.
+        //
+        // Only while no finger is down: on Android raylib synthesises the
+        // mouse FROM touch point zero, so during a gesture the mouse
+        // "moves" with the finger and testing it there would hand control
+        // back on every drag.
+        s_active = false;
     }
+    s_prevMouse = mouseNow;
+    s_prevMouseKnown = true;
 
     // ── Two fingers: pinch to zoom ──
     if (n >= 2) {

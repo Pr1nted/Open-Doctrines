@@ -100,8 +100,23 @@ Texture2D Game::getThumbTexture(const std::string& path) {
 }
 
 Texture2D Game::getThumbTextureFromODM(const std::string& odmPath) {
+    // A MISS IS AN ANSWER, and it has to be allowed to count as one.
+    //
+    // The entry is written below whether or not a thumbnail was found -- but
+    // this read used to require `id > 0` before trusting it, so a map with no
+    // thumb.png inside (or, on the web, one whose .odmap has not been fetched
+    // yet) was never actually cached. Both call sites are per-frame draws, so
+    // every such map re-read its ENTIRE .odmap off disk and re-parsed the zip
+    // sixty times a second: on the six standard maps that is roughly 4 MB of
+    // file I/O per frame on the map browser. On the web the open fails instead,
+    // and raylib logs a warning for each one, which is thousands of console
+    // lines a second -- and console output in a browser is not cheap.
+    //
+    // clearThumbCache() already skips id == 0 when unloading, so a remembered
+    // miss costs nothing and loadMapEntries() clears the lot when the list is
+    // rebuilt.
     auto it = m_thumbCache.find(odmPath);
-    if (it != m_thumbCache.end() && it->second.id > 0)
+    if (it != m_thumbCache.end())
         return it->second;
 
     Texture2D tex{0};

@@ -202,6 +202,31 @@ void Game::updateLoading() {
         logHeapAt(loadPhaseName((int)m_loadingPhase));
     }
 
+    // WHAT THE LOADING SCREEN IS ACTUALLY DOING WHEN IT STOPS.
+    //
+    // The bar is stepped one phase per frame, so a phase that takes seconds
+    // takes them with no frame presented and the percentage frozen at whatever
+    // the LAST completed phase left on screen -- which is why the reported
+    // stall is at "82%" while the work belongs to the phase after it. Only the
+    // heap was ever reported here, so how long each phase took was the one
+    // thing the log could not say.
+    //
+    // Anything past a tenth of a second says so now. That is a stutter on a
+    // desktop and a visible freeze in a browser, where this loop is the
+    // browser's main thread and nothing repaints until the phase returns.
+    struct PhaseTimer {
+        const char* name;
+        std::chrono::steady_clock::time_point t0;
+        ~PhaseTimer() {
+            const double ms = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - t0).count();
+            if (ms >= 100.0) {
+                printf("[LOAD] %-28s %7.0f ms\n", name, ms);
+                fflush(stdout);
+            }
+        }
+    } phaseTimer{loadPhaseName((int)m_loadingPhase), std::chrono::steady_clock::now()};
+
     switch (m_loadingPhase) {
         case LOAD_ODM_SAVE: {
             setLoadingProgress(0.03f, "Extracting map from save...");

@@ -6768,7 +6768,7 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                 // never available. Fires only when BOTH hold -- a ruinous share
                 // is leaving AND the deal is net negative -- so paying the going
                 // rate for a third of a country still gets a real answer.
-                if (action == "propose_trade") {
+                {
                     const CountryStat& st = m_stats[targetCid];
                     const double provShare = st.provinces > 0
                         ? (double)t.theirProvs.size() / (double)st.provinces : 0.0;
@@ -6776,15 +6776,54 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                         ? (double)t.theirMoney / (double)tc->treasury : 0.0;
                     const bool ruinous = provShare >= AI_TRADE_RUIN_PROV_SHARE ||
                                          cashShare >= AI_TRADE_RUIN_CASH_SHARE;
-                    if (ruinous && (netProv + netMoney) < 0.0f) {
+                    const float net = netProv + netMoney;
+
+                    // ── NOBODY VOLUNTEERS TO BE DISMANTLED ──
+                    // Now for a CEASEFIRE as well as a trade. It was written
+                    // for trades alone, and a ceasefire carries the same terms
+                    // through the same struct -- so the one offer a country is
+                    // under most pressure to sign was the one with no floor
+                    // under it at all.
+                    if (ruinous && net < 0.0f) {
+                        trueReason = REFUSE_NO_INTEREST;
+                        logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
+                                    TextFormat("REFUSE %s from %s "
+                                               "(ruinous: %.0f%% of provinces, "
+                                               "%.0f%% of treasury, net %.0f)",
+                                               action.c_str(), sourceIso.c_str(),
+                                               provShare * 100.0, cashShare * 100.0,
+                                               (double)net));
+                        return refuse(REFUSE_NO_INTEREST);
+                    }
+
+                    // ── AND A BAD BARGAIN IS STILL A BAD BARGAIN ──
+                    //
+                    // The gate above only ever fired when a ruinous share was
+                    // leaving AND the deal was negative, so handing over a
+                    // third of a country for nothing passed it and went to the
+                    // head -- which took 95.3% of everything it was offered
+                    // (measured over two 3,400-trade runs; see the pricing note
+                    // above). That is the "they give you land for nothing"
+                    // report, and no amount of pricing fixes it while the
+                    // answer is a judgement call on an input the head has
+                    // barely been trained on.
+                    //
+                    // A peacetime trade has no coercion in it: there is no
+                    // reason to accept one that loses you a province's worth
+                    // and returns nothing. Refused here, in the resolver, so
+                    // the rule binds whatever the head thinks -- and left to
+                    // the head inside the band, where it is a real judgement.
+                    //
+                    // Deliberately NOT applied to a ceasefire: signing away
+                    // ground to end a war you are losing is a good deal that
+                    // prices as a bad one.
+                    if (action == "propose_trade" && net < -AI_TRADE_NET_FLOOR) {
                         trueReason = REFUSE_NO_INTEREST;
                         logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
                                     TextFormat("REFUSE propose_trade from %s "
-                                               "(ruinous: %.0f%% of provinces, "
-                                               "%.0f%% of treasury, net %.0f)",
-                                               sourceIso.c_str(), provShare * 100.0,
-                                               cashShare * 100.0,
-                                               (double)(netProv + netMoney)));
+                                               "(net %.0f, below floor %.0f)",
+                                               sourceIso.c_str(), (double)net,
+                                               (double)-AI_TRADE_NET_FLOOR));
                         return refuse(REFUSE_NO_INTEREST);
                     }
                 }

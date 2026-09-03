@@ -2392,6 +2392,12 @@ void Game::drawSettingsFromMenu() {
 // ────────────────────────────────────────────────────────────────────────────
 // updateSettingsFromMenu
 // ────────────────────────────────────────────────────────────────────────────
+// The UI scale ladder, in steps a player can tell apart. At file scope because
+// two different paths step through it -- the arrow keys and the mouse -- and a
+// second copy would be free to drift from this one.
+static float UI_SCALE_VALS[] = {0.75f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f};
+static const int   UI_SCALE_STEPS  = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCALE_VALS[0]));
+
 void Game::updateSettingsFromMenu() {
     if (isMouseOverConsole()) return;
     // ESC to go back to main menu
@@ -2709,8 +2715,7 @@ void Game::updateSettingsFromMenu() {
         return;
     }
     if (m_settingsIndex == 8 && m_settingsTab == 0 && (left || right)) {
-        static float UI_SCALE_VALS[] = {0.75f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f};
-        const int n = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCALE_VALS[0]));
+        const int n = UI_SCALE_STEPS;
         int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, n);
         idx = (idx + (right ? 1 : -1) + n) % n;
         m_config.uiScale = UI_SCALE_VALS[idx];
@@ -2928,6 +2933,27 @@ void Game::updateSettingsFromMenu() {
             PollInputEvents();
             m_screenW = GetScreenWidth();
             m_screenH = GetScreenHeight();
+        } else if (m_settingsTab == 0 && m_settingsIndex == 8) {
+            // UI SCALE AND COLOUR BLINDNESS, ON A CLICK.
+            //
+            // Both rows were adjustable with LEFT/RIGHT and nothing else. A
+            // click set `activate` and then fell through every branch here
+            // without matching one, so clicking them did exactly nothing --
+            // and an arrow-key-only control is not discoverable with a mouse
+            // and unreachable on a touch screen. Clicking now steps to the
+            // next value, which is what the resolution row above already does.
+            int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, UI_SCALE_STEPS);
+            idx = (idx + 1) % UI_SCALE_STEPS;
+            m_config.uiScale = UI_SCALE_VALS[idx];
+            applyUiScale();
+            Audio::get().playSfx("slider_tick", 0.08f);
+            m_config.save(m_configPath);
+        } else if (m_settingsTab == 0 && m_settingsIndex == 9) {
+            m_config.colourBlindMode = (m_config.colourBlindMode + 1) % COLOURBLIND_COUNT;
+            odPalette::setMode(m_config.colourBlindMode);
+            generatePoliticalTexture();
+            Audio::get().playSfx("slider_tick", 0.08f);
+            m_config.save(m_configPath);
         } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
             m_rebindingAction = items[m_settingsIndex].actionId;
             m_waitingForKey = true;

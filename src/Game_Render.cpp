@@ -2274,6 +2274,59 @@ void Game::drawSidebarButtons() {
             rebuildFindMatches();
         }
     }
+
+    // ─── SETTINGS ─────────────────────────────────────────────────────────
+    //
+    // BELOW the tabs and shaped like Find country, for the same reason: it is
+    // an ACTION, not a panel that stays open, so it does not belong among
+    // things that hold an "active" state.
+    //
+    // Settings were reachable in game only by pressing Escape and then picking
+    // them out of the pause menu. That is a keystroke nobody is told about, and
+    // on a touch screen it is not reachable at all -- the same discoverability
+    // hole the finder had, and the reason a player cannot find the UI scale
+    // slider that would make the rest of the interface legible to them.
+    {
+        const int setH = 46;
+        const int setY = startY + totalH + 10;
+        Rectangle sr = {(float)startX, (float)setY, (float)btnSize, (float)setH};
+        offerUiTarget("btn.settings", sr);
+        const bool shov = !m_paused && CheckCollisionPointRec(getMouse(), sr);
+        DrawRectangleRounded(sr, 0.25f, 8,
+                             shov ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180});
+        DrawRectangleRoundedLines(sr, 0.25f, 8,
+                                  shov ? Color{140, 140, 170, 200} : Color{80, 80, 100, 150});
+
+        // A gear from primitives, as the magnifier above is: a ring, a hub and
+        // six teeth. One more PNG in the atlas is not worth a shape this plain.
+        const Color sc = shov ? WHITE : LIGHTGRAY;
+        const float gx = sr.x + btnSize / 2.0f, gy = sr.y + 14.0f;
+        DrawCircleLines((int)gx, (int)gy, 6.0f, sc);
+        DrawCircleLines((int)gx, (int)gy, 2.0f, sc);
+        for (int t = 0; t < 6; ++t) {
+            const float a = (float)t * (PI / 3.0f);
+            const float ca = cosf(a), sa = sinf(a);
+            DrawLineEx({gx + ca * 6.0f, gy + sa * 6.0f},
+                       {gx + ca * 9.0f, gy + sa * 9.0f}, 2.0f, sc);
+        }
+
+        int sfs = 12;
+        const std::string slabel = odText::fitToWidth(T("Settings"), btnSize - 8, sfs, 9);
+        DrawText(slabel.c_str(),
+                 (int)sr.x + (btnSize - MeasureText(slabel.c_str(), sfs)) / 2,
+                 (int)(sr.y + setH - sfs - 4), sfs, sc);
+
+        if (shov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            Audio::get().playSfx("click_heavy");
+            // Straight to the settings, not to the pause menu that contains
+            // them: m_paused is what gives the screen over to that menu, and
+            // m_inSettings is which page of it is showing.
+            m_paused = true;
+            m_inSettings = true;
+            m_settingsIndex = 0;
+            m_settingsScroll = 0;
+        }
+    }
 }
 
 void Game::draw() {

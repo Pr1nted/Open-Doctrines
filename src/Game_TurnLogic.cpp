@@ -610,7 +610,19 @@ void Game::processTurn() {
          // otherwise their provinces reload as ownerless limbo.
          { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
         std::string stateJson = saveStateJson();
+        // TIMED, and reported below with the rest.
+        //
+        // The [TURN] line used to stop measuring before this point, so the one
+        // phase that grew with the length of the game was the one phase nobody
+        // could see -- and it grew until the window stopped answering and the
+        // game was reported as freezing on Process Turn. Whatever the save
+        // costs, it says so now.
+        const auto ts0 = std::chrono::steady_clock::now();
         SaveManager::appendTurn(m_currentSavePath, delta, &stateJson, &rebelFiles);
+        m_lastSaveMs = (float)(std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - ts0).count() * 1000.0);
+        if (m_config.aiDebug)
+            printf("[TURN] save=%.0fms (%s)\n", m_lastSaveMs, m_currentSavePath.c_str());
         m_turnCount++;
     }
     drawFrame(0.90f, "Cleaning up...");
@@ -3447,6 +3459,26 @@ void Game::processArmyMovement(int countryId) {
                 continue;
             }
         }
+        // Not into a country we are at peace with. BESIDE THE ADJACENCY CHECK,
+        // not below the deduction, because both answer the same question --
+        // whether this order may be carried out at all -- and the answer has to
+        // arrive before anything is spent on it.
+        //
+        // It was below. By then the troops had been taken off the source stack,
+        // that stack erased if it emptied, and its province erased from
+        // m_provinceArmies if IT emptied -- and the refusal path then wrote the
+        // men back through `uIt`, an iterator both of those erases had already
+        // invalidated. A write through a dangling iterator into a freed vector:
+        // it corrupts whatever now occupies the memory, so what it does depends
+        // on the allocator rather than on the game, and "the turn hangs" is one
+        // of the things it can do.
+        //
+        // Refused here, nothing has been taken from anybody: the order is
+        // dropped and the garrison stays exactly where it was.
+        if (!mayEnterProvince(countryId, mo.toProvince)) {
+            m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+            continue;
+        }
         // How many soldiers this share is, in whole men.
         //
         // Integer arithmetic throughout: a garrison is an int and these run to
@@ -3469,16 +3501,6 @@ void Game::processArmyMovement(int countryId) {
         uIt->count -= (int)toMove;
         if (uIt->count <= 0) srcArmies.erase(uIt);
         if (srcArmies.empty()) m_provinceArmies.erase(mo.fromProvince);
-
-        // Not into a country we are at peace with. Checked before the troops
-        // leave, so a refused order neither moves them nor loses them: the
-        // order is dropped and the garrison stays where it was.
-        if (!mayEnterProvince(countryId, mo.toProvince)) {
-            uIt->count += (int)toMove;      // put them back
-            sent -= toMove;
-            m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
-            continue;
-        }
 
         // One assault, resolved the same way whether the troops walked or
         // landed. See resolveAssault: it fights the WHOLE garrison rather than
@@ -5317,6 +5339,24 @@ bool Game::alliedCids(int a, int b) const {
 // === transferCountryPixels ===
 void Game::transferCountryPixels(int pid, int newOwner, int oldOwner) {
     if (m_countryPixels.empty()) return;
+    // m_provincePixels IS BUILT ON DEMAND, AND THIS IS ONE OF THE DEMANDS.
+    //
+    // Without this the lookup below missed and the function returned having
+    // done nothing at all -- no m_pixelCountryArray update, no move between
+    // the two countries' pixel lists. Those lists are what the political,
+    // relations, population and claims overlays paint from, so every province
+    // taken by force kept being drawn in its FORMER owner's colour: the
+    // Relations view showing someone else's province as yours, indefinitely.
+    //
+    // It only ever worked by accident. ensureProvincePixels() is called by the
+    // Claims view, so a player who had opened Claims before conquering
+    // anything got correct overlays and a player who had not did not, which is
+    // why this looks intermittent.
+    //
+    // Skipped while training: that path returns below without touching the
+    // lists anyway, and building the index there would cost memory nothing
+    // reads.
+    if (!m_aiTraining) ensureProvincePixels();
     auto ppIt = m_provincePixels.find(pid);
     if (ppIt == m_provincePixels.end()) return;
     const auto& provincePixels = ppIt->second;

@@ -1,5 +1,22 @@
 # Changelog
 
+## game 1.1.2a
+
+- **The browser version no longer dies when you process a turn.** It was
+  overflowing the WebAssembly stack on the very first turn — every scenario,
+  every country, spectator included.
+- **Turns stop getting slower the longer you play.** The save was rewritten and
+  recompressed whole every turn: 4.5 seconds a turn by turn 150, now under one
+  and flat. Quitting mid-save can no longer destroy the save either.
+- **The map tells the truth again.** Conquered provinces change colour, the
+  world behind a dialog is the right way up, and the mouse keeps working after
+  you touch the screen.
+- **Things you can reach.** Settings has a button in the sidebar, the country
+  finder has a way out, and UI Scale and colour-blind mode answer a click
+  instead of only the arrow keys.
+- **The AI stops signing away its country** for a trade that returns nothing. A
+  ceasefire may still cede ground — ending a losing war is worth paying for.
+
 ## game 1.1.1a
 
 - **Processing a turn no longer blacks out the screen.** The world stays
