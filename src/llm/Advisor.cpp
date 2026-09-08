@@ -661,6 +661,27 @@ const LeanWord kLeanWords[] = {
     {"repression",  2,10}, {"pacification",2, 2},
 };
 
+/**
+ * Words that name a REFLEX rather than a sampled action.
+ *
+ * Checked FIRST, because several overlap the sampled vocabulary and the reflex
+ * is the more consequential reading: "fewer forts" almost certainly means stop
+ * building them, which is fortifyReflex, and not a nudge on an economy action
+ * the policy takes 57% of the time anyway.
+ */
+struct ReflexWord { const char* word; const char* reflex; };
+const ReflexWord kReflexWords[] = {
+    {"garrison",     "garrison"},
+    {"fort",         "fortify"},   {"fortif",     "fortify"},
+    {"redeploy",     "redeploy"},  {"redeployment","redeploy"},
+    {"disband",      "manpower"},  {"manpower",   "manpower"},
+    {"austerity",    "austerity"}, {"cuts",       "austerity"},
+    {"siege",        "siege"},
+    {"campaign",     "campaign"},  {"offensive",  "campaign"},
+    {"pacification", "pacification"},
+    {"withdraw",     "withdraw"},  {"retreat",    "withdraw"},
+};
+
 }  // namespace
 
 Lean parseLean(const std::string& phrase) {
@@ -680,6 +701,14 @@ Lean parseLean(const std::string& phrase) {
                               "prioritize", "focus on", "build up"})
             if (lower.find(w) != std::string::npos) { out.direction = 1.0f; break; }
     if (out.direction == 0.0f) return out;   // a subject with no direction is not a lean
+
+    // Reflexes first: see the note on kReflexWords.
+    for (const ReflexWord& rw : kReflexWords) {
+        if (lower.find(rw.word) == std::string::npos) continue;
+        out.reflex = rw.reflex;
+        out.ok = true;
+        return out;
+    }
 
     for (const LeanWord& lw : kLeanWords) {
         if (lower.find(lw.word) == std::string::npos) continue;

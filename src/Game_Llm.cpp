@@ -1431,6 +1431,11 @@ void Game::pumpLlmServer() {
 void Game::applyLlmLean(int cid, const std::string& phrase) {
     const llm::Lean lean = llm::parseLean(phrase);
     if (!lean.ok) return;
+    if (lean.reflex) {
+        float& r = m_llmReflexLean[cid][lean.reflex];
+        r = std::clamp(r + 0.34f * lean.direction, -1.0f, 1.0f);
+        return;
+    }
     const long long key = ((long long)cid << 20) |
                           ((long long)lean.module << 8) | (long long)lean.action;
     float& v = m_llmIntent[key];
@@ -1445,4 +1450,64 @@ float Game::llmIntentFor(int cid, int module, int action) const {
                           ((long long)module << 8) | (long long)action;
     auto it = m_llmIntent.find(key);
     return it == m_llmIntent.end() ? 0.0f : it->second;
+}
+
+bool Game::llmSuppressesReflex(int cid, const char* reflex) const {
+    if (!llmConfigured() || !reflex) return false;
+    auto byCountry = m_llmReflexLean.find(cid);
+    if (byCountry == m_llmReflexLean.end()) return false;
+
+    auto it = byCountry->second.find(reflex);
+    if (it == byCountry->second.end() || it->second > kLlmSuppressAt) return false;
+
+    // ── THE CAP, COUNTED OVER THE WHOLE COUNTRY ──
+    //
+    // Without it an advisor could be talked out of garrisoning, fortifying,
+    // campaigning and disbanding one at a time, each individually reasonable,
+    // and the country would stop defending itself by increments with no single
+    // decision anybody could point at. Ablation says those four are worth
+    // roughly 13.5, 6.4, 12.0 and a negative respectively -- so the whole set
+    // is most of a country's play.
+    //
+    // ── WHICH TWO, WHEN MORE THAN TWO ARE ASKED FOR ──
+    //
+    // The first version sorted by NAME, which is stable and fails badly:
+    // alphabetically the first two are austerity and campaign, so an advisor
+    // that asks for everything would deterministically get the campaign
+    // suppression -- 12 points of world by ablation, the second most expensive
+    // thing on the list. Stability was the only property I had reasoned about.
+    //
+    // Ordered by measured cost instead, cheapest first. Just as stable, and it
+    // fails safe: when the cap binds it binds on what costs least, and the
+    // expensive reflexes are the ones that survive being argued with.
+    //
+    // The figures are single-rule ablations against a hold-out control and are
+    // PROVISIONAL -- combinations in this game have measured superadditive
+    // (two research rules worth +10.1 and +13.9 alone came to +36.0 together),
+    // so a pair of these may cost more than the sum. The order is what is being
+    // measured now; the cap is what makes being wrong about it survivable.
+    static const std::pair<const char*, float> kReflexCost[] = {
+        {"austerity",    2.5f}, {"manpower", 2.5f}, {"redeploy",  5.6f},
+        {"pacification", 6.0f}, {"withdraw", 6.0f}, {"peace",     6.0f},
+        {"siege",        6.0f}, {"fortify",  6.4f}, {"campaign", 12.0f},
+        {"garrison",    13.5f},
+    };
+    auto costOf = [](const std::string& n) {
+        for (const auto& [name, c] : kReflexCost) if (n == name) return c;
+        return 99.0f;                       // unknown: treat as expensive, keep it
+    };
+
+    std::vector<const std::string*> asked;
+    for (const auto& [name, value] : byCountry->second)
+        if (value <= kLlmSuppressAt) asked.push_back(&name);
+    std::sort(asked.begin(), asked.end(),
+              [&](const std::string* a, const std::string* b) {
+                  const float ca = costOf(*a), cb = costOf(*b);
+                  if (ca != cb) return ca < cb;
+                  return *a < *b;           // ties by name, so the set is stable
+              });
+
+    for (int i = 0; i < (int)asked.size() && i < kLlmMaxSuppressed; ++i)
+        if (*asked[i] == reflex) return true;
+    return false;
 }

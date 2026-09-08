@@ -216,6 +216,17 @@ struct Lean {
     int   module = 0;      ///< 0 war, 1 economy, 2 politics
     int   action = 0;      ///< index within that module's action space
     float direction = 0;   ///< +1 toward, -1 away
+    /**
+     * The reflex this leans on, or null when it leans a sampled action.
+     *
+     * TWO KINDS OF DECISION NEED TWO KINDS OF LEAN. A sampled action is chosen
+     * from a distribution, so a preference is a thumb on the scale. A reflex is
+     * a RULE that runs or does not -- garrisoning, fortifying, disbanding,
+     * campaigning -- and there is no distribution to weight. The only thing a
+     * preference can mean there is "do not do that this turn", which is a much
+     * blunter instrument and is deliberately harder to trigger.
+     */
+    const char* reflex = nullptr;
 };
 Lean parseLean(const std::string& phrase);
 

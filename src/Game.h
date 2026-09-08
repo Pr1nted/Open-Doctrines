@@ -5143,6 +5143,9 @@ private:
      */
     std::unordered_map<long long, float> m_llmIntent;
 
+    /// Leans against a named reflex, keyed by country then reflex name.
+    std::unordered_map<int, std::unordered_map<std::string, float>> m_llmReflexLean;
+
 public:
     /**
      * How warmly `me` regards `them` after their correspondence: [-1, 1].
@@ -5159,6 +5162,26 @@ public:
      * the measured AI.
      */
     float llmIntentFor(int cid, int module, int action) const;
+    /**
+     * Whether this country's advisor has asked, firmly, that a reflex not run.
+     *
+     * A REFLEX IS A RULE, NOT A CHOICE, so a preference cannot be a thumb on a
+     * scale -- the only thing it can mean is "not this turn". That is far
+     * blunter than the nudge on a sampled action, and three of these are worth
+     * 6 to 14 points of the world by ablation, so it is deliberately hard to
+     * reach and deliberately capped:
+     *
+     *   - it takes TWO consistent asks, not one; and
+     *   - at most kLlmMaxSuppressed run at once, so a country cannot be talked
+     *     out of its whole defence one reflex at a time.
+     *
+     * Always false without the module.
+     */
+    bool llmSuppressesReflex(int cid, const char* reflex) const;
+    /// The ceiling on how much of the AI an advisor may switch off at once.
+    static constexpr int kLlmMaxSuppressed = 2;
+    /// Two consistent asks. One is a remark; two is a policy.
+    static constexpr float kLlmSuppressAt = -0.67f;
 private:
     void applyLlmLean(int cid, const std::string& phrase);
 public:

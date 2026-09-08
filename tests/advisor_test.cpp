@@ -306,6 +306,30 @@ int main() {
         const Lean both = parseLean("no more war");
         ok(both.ok && both.direction < 0, "\"no more war\" leans away, not toward");
 
+        // ── REFLEXES ARE A DIFFERENT KIND OF LEAN ──
+        //
+        // A sampled action gets a nudge; a rule can only be run or not. These
+        // must resolve to the reflex, not to a sampled action that happens to
+        // share a word -- "fewer forts" means stop building them, not a small
+        // weight on an economy action.
+        const Lean forts = parseLean("fewer forts");
+        ok(forts.ok && forts.reflex != nullptr, "\"fewer forts\" names a reflex");
+        ok(std::string(forts.reflex ? forts.reflex : "") == "fortify",
+           "and it is the fortify one");
+        ok(forts.direction < 0, "leaning away from it");
+
+        ok(std::string(parseLean("stop disbanding troops").reflex ?: "") == "manpower",
+           "disbanding is the manpower reflex");
+        ok(std::string(parseLean("less campaigning").reflex ?: "") == "campaign",
+           "campaigning is its own");
+        ok(std::string(parseLean("fewer garrisons").reflex ?: "") == "garrison",
+           "and so is garrisoning");
+
+        // A sampled-action lean must NOT come back as a reflex.
+        ok(parseLean("more industry").reflex == nullptr,
+           "industry is a sampled action, not a reflex");
+        ok(parseLean("fewer alliances").reflex == nullptr, "and so are alliances");
+
         // Half a lean is not a lean.
         ok(!parseLean("industry").ok, "a subject with no direction is refused");
         ok(!parseLean("more").ok, "and a direction with no subject is too");
