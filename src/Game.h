@@ -5089,7 +5089,9 @@ private:
     std::vector<std::string> m_llmModels;
     double m_llmProbeAt = 0.0;       ///< next status probe
     double m_llmNextStartAt = 0.0;   ///< backoff, so a failing start is not respawned every tick
-    void askAdvisor(int fromCountry, int toCountry);
+    /// Ask one advisor to answer. `groupId` non-zero means answer a room, in
+    /// which case `toCountry` is unused -- the reply goes to every member.
+    void askAdvisor(int fromCountry, int toCountry, int groupId = 0);
     void runAdvisors();
     std::string llmRelativeStrength(int fromCountry, int toCountry) const;
     /// Fill in what a foreign ministry would plausibly know, in words.

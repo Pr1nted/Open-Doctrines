@@ -36,6 +36,8 @@ namespace {
 struct Answer {
     int from = 0;
     int to = 0;
+    /// The room it belongs in, or 0 for an ordinary reply.
+    int groupId = 0;
     std::string body;
     /// How the exchange left `from` disposed toward `to`: -1, 0 or +1.
     /// Carried home with the letter rather than written from the worker,
@@ -179,24 +181,60 @@ void Game::rebuildLlmCountries() {
  * the endpoint, and the already-translated language name. It returns a string
  * and touches nothing else.
  */
-void Game::askAdvisor(int fromCountry, int toCountry) {
+void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     const mail::Box* box = mailboxIfAny(fromCountry);
     if (!box) return;
-    const mail::Thread* thread = box->thread(toCountry);
+    const mail::Group* room = groupId ? mailGroup(groupId) : nullptr;
+    if (groupId && (!room || !room->has(fromCountry))) return;  // removed since
+    const mail::Thread* thread = room ? box->groupThreadIfAny(groupId)
+                                      : box->thread(toCountry);
     if (!thread) return;
 
     llm::Persona persona;
     if (const Country* c = m_countries.getCountry(fromCountry)) persona.countryName = c->name;
-    if (const Country* c = m_countries.getCountry(toCountry)) persona.correspondent = c->name;
-    persona.toAnotherAdvisor = (toCountry != m_playerCountryId) && mailIsBot(toCountry);
+    if (room) {
+        // ── ANSWERING A ROOM ──
+        //
+        // The correspondent is the room, and it is described by WHO IS IN IT.
+        // A model told only "you are writing to The Entente" writes to a name;
+        // told who is listening, it writes to an audience -- which is the
+        // difference between a group chat and a noticeboard.
+        persona.correspondent = room->name;
+        std::string others;
+        for (int mem : room->members) {
+            if (mem == fromCountry) continue;
+            if (const Country* c = m_countries.getCountry(mem))
+                others += (others.empty() ? "" : ", ") + c->name;
+        }
+        if (!others.empty())
+            persona.standing = "Everyone in this room reads what you write: " + others;
+        // Everybody hears it, so it is never a private word to one machine.
+        persona.toAnotherAdvisor = false;
+    } else {
+        if (const Country* c = m_countries.getCountry(toCountry)) persona.correspondent = c->name;
+        persona.toAnotherAdvisor = (toCountry != m_playerCountryId) && mailIsBot(toCountry);
+    }
     if (persona.countryName.empty() || persona.correspondent.empty()) return;
 
+    // In a room there is no single "them" to be at war with, so the situation
+    // is described against whoever spoke last -- the country actually being
+    // answered. Nothing here is private to that pair; it is the same public
+    // standing every member could work out for themselves.
+    int about = toCountry;
+    if (room) {
+        about = 0;
+        for (const mail::Message& m : thread->messages) {
+            if (m.status == mail::Status::Delivered && m.fromCountry != fromCountry)
+                about = m.fromCountry;
+        }
+        if (about == 0) return;                       // nothing to answer
+    }
     llm::Situation situation;
     situation.turn = m_turnNumber;
     situation.date = m_mapDate;
-    situation.atWar = modAtWar(fromCountry, toCountry);
-    situation.relativeStrength = llmRelativeStrength(fromCountry, toCountry);
-    describeSituation(fromCountry, toCountry, situation);
+    situation.atWar = modAtWar(fromCountry, about);
+    situation.relativeStrength = llmRelativeStrength(fromCountry, about);
+    describeSituation(fromCountry, about, situation);
 
     // Resolved HERE, on the game thread. See rule 3 at the top of this file.
     // The ENGLISH name of the active language, because that is what the
@@ -206,8 +244,20 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
 
     // Not const: the worker appends the model's tool calls and their answers to
     // it as the conversation goes round.
+    // Names resolved on the game thread and captured, because the worker must
+    // not touch m_countries -- rule 1 at the top of this file.
+    std::map<int, std::string> names;
+    for (const mail::Message& m : thread->messages) {
+        if (names.count(m.fromCountry)) continue;
+        if (const Country* c = m_countries.getCountry(m.fromCountry))
+            names[m.fromCountry] = c->name;
+    }
+    auto nameOf = [names](int cid) -> std::string {
+        auto it = names.find(cid);
+        return it == names.end() ? std::string() : it->second;
+    };
     auto turns = llm::buildConversation(thread->messages, fromCountry, persona,
-                                        situation, languageName);
+                                        situation, languageName, 24, nameOf);
 
     std::string url = m_config.llmEndpoint;
     while (!url.empty() && url.back() == '/') url.pop_back();
@@ -275,7 +325,7 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
         std::lock_guard<std::mutex> g(g_lock);
         ++g_inFlight;
     }
-    std::thread([fromCountry, toCountry, url, key, me, model, turns, lookups,
+    std::thread([fromCountry, toCountry, groupId, url, key, me, model, turns, lookups,
                  timeout = 45000]() mutable {
         std::string reply;
         int disposition = 0;
@@ -307,7 +357,18 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
                                           : std::vector<llm::ToolCall>{};
             if (calls.empty()) {
                 reply = llm::tidyReply(llm::replyFromResponse(res.body), me);
-                break;
+                // NOTHING LEFT AFTER TIDYING means the model answered with
+                // machinery rather than a letter -- "No specific function call
+                // is requested to answer this prompt" was one, posted to a
+                // player as Israel's reply. It happens when tools are on the
+                // table and the model narrates its decision not to use one.
+                //
+                // So: go round again rather than give up. The last round
+                // withdraws the tools entirely, which removes the thing it was
+                // narrating about, and a country that still says nothing after
+                // that is a country that chose not to write.
+                if (!reply.empty() || !offerTools) break;
+                continue;
             }
 
             // The model's own turn has to go back with the answers, or the
@@ -359,7 +420,7 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
         // model that failed to answer should look like a country that chose not
         // to write, which is a thing countries do.
         if (!reply.empty())
-            g_answers.push_back(Answer{fromCountry, toCountry, reply, disposition});
+            g_answers.push_back(Answer{fromCountry, toCountry, groupId, reply, disposition});
     }).detach();
 }
 
@@ -385,8 +446,15 @@ void Game::runAdvisors() {
     for (const Answer& a : ready) {
         std::string name;
         if (const Country* c = m_countries.getCountry(a.from)) name = c->name;
-        mailbox(a.from).write(a.from, a.to, a.body, m_turnNumber,
-                              mail::Author::Bot, name);
+        if (a.groupId != 0) {
+            const mail::Group* g = mailGroup(a.groupId);
+            if (!g || !g->has(a.from)) continue;   // removed while it was thinking
+            mailbox(a.from).writeToGroup(a.from, a.groupId, a.body, m_turnNumber,
+                                         mail::Author::Bot, name);
+        } else {
+            mailbox(a.from).write(a.from, a.to, a.body, m_turnNumber,
+                                  mail::Author::Bot, name);
+        }
 
         // ── The only place a letter reaches the rest of the game ──
         //
@@ -395,7 +463,12 @@ void Game::runAdvisors() {
         // which is the point: a player who has genuinely talked a country
         // round should get the whole of the (small) effect, and a player who
         // sends thirty should not get more than that.
-        if (a.disposition != 0) {
+        // Only for a two-party correspondence. A room has several counterparts
+        // and one number cannot say which of them the advisor warmed to --
+        // filing it against a room id would mean nothing, and filing it against
+        // whoever spoke last would let a third party earn somebody else's
+        // goodwill by speaking into the same room.
+        if (a.groupId == 0 && a.disposition != 0) {
             float& d = m_llmDisposition[((long long)a.from << 20) | (long long)a.to];
             d = llm::foldDisposition(d, a.disposition);
         }
@@ -423,7 +496,30 @@ void Game::runAdvisors() {
             }
             if (!last || last->fromCountry == cid) continue;
 
-            askAdvisor(cid, t->otherCountry);
+            // ── ADVISORS DO NOT TALK AMONG THEMSELVES FOR EVER ──
+            //
+            // Every advisor answers whatever it did not write itself, so in a
+            // room with three of them each turn produces three letters, each
+            // of which is something the other two must answer next turn. Left
+            // alone that is a conversation that never ends and that no person
+            // is in -- and the player who opened the room to ask one question
+            // comes back to forty letters.
+            //
+            // So machines may answer each other TWICE after a person speaks,
+            // which is enough for a real exchange -- a proposal, a counter,
+            // a reply -- and then the room waits for somebody to say something.
+            // A person writing again resets it, because the count is of what
+            // has happened since the last human letter.
+            int botsSinceHuman = 0;
+            for (auto it = t->messages.rbegin(); it != t->messages.rend(); ++it) {
+                if (it->status != mail::Status::Delivered) continue;
+                if (it->author != mail::Author::Bot) break;
+                ++botsSinceHuman;
+            }
+            if (botsSinceHuman >= 2) continue;
+
+            if (t->groupId != 0) askAdvisor(cid, 0, t->groupId);
+            else                 askAdvisor(cid, t->otherCountry);
             ++asked;
         }
     }

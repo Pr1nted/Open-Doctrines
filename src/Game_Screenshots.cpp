@@ -1088,6 +1088,11 @@ bool Game::tickScreenshotTour() {
             mailbox(m_playerCountryId).writeToGroup(m_playerCountryId, gid,
                 "Shall we settle the Balkan question together?", m_turnNumber);
             mailbox(m_playerCountryId).deliver(m_turnNumber);
+            // Delivered into the members' boxes the way a turn would. NOT
+            // runAdvisors(): that opens network requests, and a screenshot tour
+            // that waits on a language model is a tour that hangs on a machine
+            // with no runner.
+            deliverMail();
             openMail();
             m_mailGroupThread = gid;
             m_mailThread = 0;

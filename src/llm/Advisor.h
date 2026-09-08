@@ -38,6 +38,7 @@
 // game ships no model and no inference code, which is what makes "works on any
 // platform" true rather than aspirational. See llm/Runner.h.
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -126,10 +127,19 @@ std::string systemPrompt(const Persona& persona, const Situation& situation,
  * letters from `me` become "assistant" turns and everything else becomes
  * "user". Getting that backwards produces a model that argues with itself.
  */
+/**
+ * `nameOf` turns a country id into the name to attribute a letter to.
+ *
+ * A two-party correspondence has one possible sender and the persona already
+ * names them. A ROOM has several, and a model that cannot tell which of four
+ * countries said a thing cannot answer any of them -- it reads as one voice
+ * contradicting itself. Empty resolver falls back to the correspondent.
+ */
 std::vector<Turn> buildConversation(const std::vector<mail::Message>& thread, int me,
                                     const Persona& persona, const Situation& situation,
                                     const std::string& languageName,
-                                    size_t maxLetters = 24);
+                                    size_t maxLetters = 24,
+                                    const std::function<std::string(int)>& nameOf = {});
 
 /**
  * Trim a model's reply into something that can be a letter.
