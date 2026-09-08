@@ -994,9 +994,9 @@ void Game::refreshIncomeCache() {
     for (auto& ship : m_ships) {
         if (ship.countryId <= 0) continue;
         float& n = navyUpkeep[ship.countryId];
-        if (ship.type == "carrier") n += 25;
-        else if (ship.type == "destroyer") n += 10;
-        n += (ship.crew / 10000.0f) * 0.2f;
+        if (ship.type == "carrier") n += SHIP_UPKEEP_CARRIER;
+        else if (ship.type == "destroyer") n += SHIP_UPKEEP_DESTROYER;
+        n += (ship.crew / 10000.0f) * SHIP_UPKEEP_PER_10K_CREW;
     }
 
     const auto& allProvs = m_provinces.getAllProvinces();
@@ -1035,7 +1035,17 @@ void Game::refreshIncomeCache() {
                 cs.armyExpenses = it->second *
                     maintenanceCostMod(getTotalEffect("maintenanceCostPct", cid));
         }
-        { auto it = navyUpkeep.find(cid); if (it != navyUpkeep.end()) cs.navyExpenses = it->second; }
+        {
+            // THE SAME MODIFIER THE ARMY GETS. It was applied to armyExpenses
+            // and not here, so every maintenance-reducing doctrine and research
+            // node in the game quietly did nothing for a fleet -- a player who
+            // invested in maintenance saw their infantry get cheaper and their
+            // navy not move at all.
+            auto it = navyUpkeep.find(cid);
+            if (it != navyUpkeep.end())
+                cs.navyExpenses = it->second *
+                    maintenanceCostMod(getTotalEffect("maintenanceCostPct", cid));
+        }
         auto pIt = m_countryActivePolicyIndices.find(cid);
         if (pIt != m_countryActivePolicyIndices.end()) {
             for (int apIdx : pIt->second) {

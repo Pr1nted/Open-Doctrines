@@ -209,6 +209,38 @@ inline constexpr int FORT_MAX_LEVEL = (int)(sizeof(FORT_COST) / sizeof(FORT_COST
 inline constexpr int PORT_MAX_LEVEL = 3;
 
 /** A new port, or the next level of one, and how long it takes. */
+/**
+ * WHAT A HULL COSTS TO KEEP AT SEA, PER TURN.
+ *
+ * These were 25 and 10, written inline in the income loop, and they made the
+ * navy unaffordable in a way nothing in the game said out loud. Measured on
+ * the 1914 map at turn 60, across 42 countries:
+ *
+ *     navy    9.0% of gross income on average, 47.7% for the worst country
+ *     army    0.43% on average
+ *
+ * One carrier at 25 a turn cost the upkeep of TWENTY-FIVE MILLION SOLDIERS,
+ * because army upkeep is 0.01 per ten thousand men. That is not a fleet being
+ * expensive, it is a unit of account that never got compared with the other
+ * one.
+ *
+ * The consequence was measured from the other end by the AI session: no
+ * trained model buys a ship or a port on any seat -- 0 of 6,020 ship offers
+ * across a full game -- and a reflex that forces the purchases costs 40.6
+ * points of the map at 400 turns, because the drain compounds every turn. Both
+ * halves agree, which is what makes this a price and not a policy defect: the
+ * models are playing correctly and the navy is priced above what it returns.
+ *
+ * At roughly a sixth of the old figures the mean falls to about 1.4% of gross,
+ * a little above the army -- a fleet should cost more than infantry -- and a
+ * naval power's fleet stays the largest line in its budget without being half
+ * of it. The carrier:destroyer ratio is held at about 2.7:1, so the CHOICE
+ * between hulls is unchanged and only the scale moves.
+ */
+inline constexpr float SHIP_UPKEEP_CARRIER      = 4.0f;
+inline constexpr float SHIP_UPKEEP_DESTROYER    = 1.5f;
+inline constexpr float SHIP_UPKEEP_PER_10K_CREW = 0.2f;   ///< unchanged
+
 inline constexpr float PORT_COST_PER_LEVEL = 60.0f;
 inline constexpr int   PORT_TURNS = 3;
 
