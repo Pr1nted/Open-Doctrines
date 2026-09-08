@@ -228,6 +228,10 @@ const Shot SHOTS[] = {
     // language model" checkbox was toggled, so a player who pulled a model --
     // never touching that box again -- got no button at all.
     {"mail-button",   60, true},
+    // THE SEQUENCE THAT BROKE IT: open the setup from the settings menu, close
+    // it, then press Mail. The setup flag used to survive the Close and the
+    // post opened on the runner installer.
+    {"mail-after-setup", 60, true},
     {"mail-report",   60, true},
     // The developer queue, with one report opened for a decision.
     {"dev-reports",   40, false},
@@ -1038,6 +1042,17 @@ bool Game::tickScreenshotTour() {
             m_feedbackAttach = true;
             m_feedbackPreview = (name == "feedback-diag");
             m_feedbackPreviewScroll = 0;
+        } else if (name == "mail-after-setup") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_config.llmEnabled  = true;
+            m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
+            m_config.llmModel    = "llama3.1:8b";
+            m_config.mailPolicy  = (int)mail::Policy::Everyone;
+            m_llmAvailable = true;
+            mailbox(m_playerCountryId);          // a box to land in
+            openLlmSetup();                      // 1. the setup, from settings
+            closeMail();                         // 2. Close
+            openMail();                          // 3. press Mail
         } else if (name == "mail-button") {
             // Exactly the state a player is in after pulling a model: enabled,
             // a real endpoint, a real model name, and the checkbox untouched

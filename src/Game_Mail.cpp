@@ -132,6 +132,20 @@ void Game::openMail() {
         return;
     }
     m_mailOpen = true;
+    // ── THE POST, NEVER THE SETUP ──
+    //
+    // m_mailSettingsOpen used to survive here. Opening the setup from the
+    // settings menu set it, Close cleared only m_mailOpen, and the flag was
+    // still standing the next time somebody pressed Mail -- so the post opened
+    // on the runner installer. It was invisible while Mail had its own Settings
+    // button, because that button toggled the flag back off; removing the
+    // button removed the only way to clear it.
+    //
+    // openMail establishes its whole state rather than inheriting whatever was
+    // left over, which is the property that makes it not matter what ran before.
+    m_mailSettingsOpen = false;
+    m_mailSetupOnly = false;
+    m_mailLlmField = -1;
     m_mailThread = 0;
     m_mailPicking = false;
     m_mailDraft.clear();
@@ -143,6 +157,12 @@ void Game::openMail() {
 
 void Game::closeMail() {
     m_mailOpen = false;
+    // Cleared on the way out as well as on the way in. Belt and braces on
+    // purpose: this is the flag that decides WHICH SCREEN Mail is, and leaving
+    // it set behind a closed window is how it came to be wrong.
+    m_mailSettingsOpen = false;
+    m_mailSetupOnly = false;
+    m_mailLlmField = -1;
     m_mailComposeFocus = false;
     Audio::get().playSfx("panel_close");
 }
