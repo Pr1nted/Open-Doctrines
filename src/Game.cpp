@@ -2346,6 +2346,12 @@ void Game::run() {
             continue;
         }
 
+        // Whether there is anybody to write to can change without the Mail
+        // screen being open at all -- a model finishes pulling, a runner is
+        // started, an endpoint is typed. Reconciled here, before anything
+        // draws, because the sidebar button is the thing that has to notice.
+        refreshLlmAvailability();
+
         if (m_mailOpen && !m_feedbackOpen) {
             m_screenW = GetScreenWidth();
             m_screenH = GetScreenHeight();

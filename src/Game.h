@@ -5075,6 +5075,10 @@ private:
 
     bool llmConfigured() const;
     void rebuildLlmCountries();
+    /// Recompute m_llmAvailable when the configuration has moved. Per frame.
+    void refreshLlmAvailability();
+    /// Fingerprint of the fields refreshLlmAvailability watches.
+    std::string m_llmConfigSeen;
     void askAdvisor(int fromCountry, int toCountry);
     void runAdvisors();
     std::string llmRelativeStrength(int fromCountry, int toCountry) const;

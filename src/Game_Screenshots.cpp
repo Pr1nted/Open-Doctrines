@@ -223,6 +223,11 @@ const Shot SHOTS[] = {
     // button anywhere on screen. This is the state the feature was unreachable
     // in, so it is the state worth photographing.
     {"llm-setup",     60, true},
+    // The SIDEBAR with a model configured, which is where the Mail button has
+    // to appear. It did not: availability was recomputed only when the "use a
+    // language model" checkbox was toggled, so a player who pulled a model --
+    // never touching that box again -- got no button at all.
+    {"mail-button",   60, true},
     {"mail-report",   60, true},
     // The developer queue, with one report opened for a decision.
     {"dev-reports",   40, false},
@@ -1033,6 +1038,15 @@ bool Game::tickScreenshotTour() {
             m_feedbackAttach = true;
             m_feedbackPreview = (name == "feedback-diag");
             m_feedbackPreviewScroll = 0;
+        } else if (name == "mail-button") {
+            // Exactly the state a player is in after pulling a model: enabled,
+            // a real endpoint, a real model name, and the checkbox untouched
+            // since. No panel is opened -- the sidebar is the subject.
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_config.llmEnabled  = true;
+            m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
+            m_config.llmModel    = "llama3.1:8b";
+            m_config.mailPolicy  = (int)mail::Policy::Everyone;
         } else if (name == "llm-setup") {
             // DELIBERATELY LEAVES m_llmAvailable false and llmEnabled off.
             // Going through openLlmSetup() is the whole point: openMail()

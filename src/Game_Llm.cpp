@@ -121,6 +121,33 @@ bool Game::llmConfigured() const {
  * Rebels are excluded because they are a mechanic rather than a state -- a
  * peasant revolt with a foreign ministry is a joke the game does not need.
  */
+/**
+ * Keep m_llmAvailable in step with the configuration, every frame, cheaply.
+ *
+ * rebuildLlmCountries used to be called from ONE place -- the "use a language
+ * model" checkbox. Every other way of becoming configured left it stale: a
+ * model finishing its pull, a runner being started, an endpoint typed into the
+ * field, an install filling the endpoint in. So a player could set the whole
+ * thing up correctly, watch the pane say "Model ready", and never see the Mail
+ * button, because the only code that could have made it appear had run once,
+ * before any of it was true.
+ *
+ * The rebuild itself is a few hundred set inserts, so this compares a
+ * fingerprint of the three fields that decide the answer and rebuilds only when
+ * one of them actually moves.
+ */
+void Game::refreshLlmAvailability() {
+    std::string seen = (m_config.llmEnabled ? "1" : "0");
+    seen += "\x1f" + m_config.llmEndpoint;
+    seen += "\x1f" + m_config.llmModel;
+    // The player's own country is excluded from the correspondents, so a change
+    // of seat changes the answer too.
+    seen += "\x1f" + std::to_string(m_playerCountryId);
+    if (seen == m_llmConfigSeen) return;
+    m_llmConfigSeen = seen;
+    rebuildLlmCountries();
+}
+
 void Game::rebuildLlmCountries() {
     m_llmCountries.clear();
     if (!llmConfigured()) { m_llmAvailable = false; return; }

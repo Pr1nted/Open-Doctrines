@@ -2801,6 +2801,19 @@ void Game::drawSidebarButtons() {
     int totalH = 4 * btnSize + 3 * btnSpacing;
     int startY = (m_screenH - totalH) / 2;
 
+    // ── ROOM FOR MAIL, RESERVED BEFORE THE TABS ARE DRAWN ──
+    //
+    // Mail is a full-size button like Politics and Economy, and it sits above
+    // Find country -- so on a short screen the column runs off the top. The
+    // whole stack is nudged down by exactly what is missing, and ONLY when the
+    // button is present: a game with no correspondents keeps the layout it has
+    // always had, to the pixel.
+    if (mailAvailable()) {
+        const int findTop = startY - 46 - 10;              // Find country's top
+        const int mailTop = findTop - btnSpacing - btnSize;
+        if (mailTop < 12) startY += (12 - mailTop);
+    }
+
     struct SBtn { Texture2D tex; const char* label; int id; bool disabled; };
     // T() here rather than at the draw: this is a struct table, and the
     // extractor only reads plain `const char*[]` tables (see i18n_extract.py
@@ -2965,8 +2978,11 @@ void Game::drawSidebarButtons() {
     // thing -- an action that opens a window, not a tab that stays lit.
     if (mailAvailable()) {
         const Color accent = hexToColor(m_config.accent());
-        const int mailH = 46;
-        const int mailY = startY - 46 - 10 - mailH - 8;
+        // The same square as the tabs below it. It was 46 tall, matching Find
+        // country, which put the one button that opens a correspondence in the
+        // visual class of a utility rather than of Politics and Economy.
+        const int mailH = btnSize;
+        const int mailY = startY - 46 - 10 - btnSpacing - mailH;
         Rectangle mr = {(float)startX, (float)mailY, (float)btnSize, (float)mailH};
         offerUiTarget("btn.mail", mr);
         const bool mhov = !m_paused && CheckCollisionPointRec(getMouse(), mr);
@@ -2986,18 +3002,22 @@ void Game::drawSidebarButtons() {
 
         // An envelope from primitives, like the magnifier above: a flap over a
         // body, which reads at this size and costs no atlas space.
+        // Drawn at the tab icons' size and sitting where they sit, so the
+        // column reads as one set of controls rather than two.
         const Color mc = mhov ? WHITE : LIGHTGRAY;
-        const float ex = mr.x + btnSize / 2.0f - 9.0f, ey = mr.y + 8.0f;
-        DrawRectangleLinesEx({ex, ey, 18, 12}, 1.4f, mc);
-        DrawLineEx({ex, ey}, {ex + 9.0f, ey + 7.0f}, 1.4f, mc);
-        DrawLineEx({ex + 18.0f, ey}, {ex + 9.0f, ey + 7.0f}, 1.4f, mc);
+        const float ew = 40.0f, eh = 27.0f;
+        const float ex = mr.x + (btnSize - ew) / 2.0f;
+        const float ey = mr.y + (mailH - 18 - eh) / 2.0f;
+        DrawRectangleLinesEx({ex, ey, ew, eh}, 2.0f, mc);
+        DrawLineEx({ex, ey}, {ex + ew / 2.0f, ey + eh * 0.6f}, 2.0f, mc);
+        DrawLineEx({ex + ew, ey}, {ex + ew / 2.0f, ey + eh * 0.6f}, 2.0f, mc);
 
-        int mfs = 12;
+        int mfs = 13;
         const std::string mlabel = odText::fitToWidth(T("Mail"), btnSize - 8, mfs, 9);
         DrawText(mlabel.c_str(),
                  (int)mr.x + (btnSize - MeasureText(mlabel.c_str(), mfs)) / 2,
-                 (int)(mr.y + mailH - mfs - 4), mfs, unread ? accent : mc);
-        if (unread) DrawCircle((int)(mr.x + mr.width - 10), (int)(mr.y + 10), 4.0f,
+                 (int)(mr.y + mailH - 18), mfs, unread ? accent : mc);
+        if (unread) DrawCircle((int)(mr.x + mr.width - 12), (int)(mr.y + 12), 4.5f,
                                ColorAlpha(accent, pulse));
 
         if (mhov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
