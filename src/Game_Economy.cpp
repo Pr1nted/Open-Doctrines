@@ -993,10 +993,7 @@ void Game::refreshIncomeCache() {
         if (b.attackerCid > 0) armyUpkeep[b.attackerCid] += (b.attackers() / 10000.0f) * 0.01f;
     for (auto& ship : m_ships) {
         if (ship.countryId <= 0) continue;
-        float& n = navyUpkeep[ship.countryId];
-        if (ship.type == "carrier") n += SHIP_UPKEEP_CARRIER;
-        else if (ship.type == "destroyer") n += SHIP_UPKEEP_DESTROYER;
-        n += (ship.crew / 10000.0f) * SHIP_UPKEEP_PER_10K_CREW;
+        navyUpkeep[ship.countryId] += shipUpkeep(ship.type, ship.crew);
     }
 
     const auto& allProvs = m_provinces.getAllProvinces();

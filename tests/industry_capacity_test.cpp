@@ -177,6 +177,38 @@ int main() {
         ok(rowWeight[0] > 0.0f, "no row weighs zero or less");
     }
 
+    section("what a hull costs to keep");
+    {
+        // The AI carried its own copy of these numbers in two places and was
+        // left behind when they were repriced -- believing a scrapped carrier
+        // closed a 25-point hole when it closed a 4-point one. shipUpkeep is
+        // the single place it is worked out; these pin what it answers.
+        ok(shipUpkeep("carrier", 0) == SHIP_UPKEEP_CARRIER, "a carrier costs its constant");
+        ok(shipUpkeep("destroyer", 0) == SHIP_UPKEEP_DESTROYER, "and a destroyer its own");
+        ok(shipUpkeep("carrier", 0) > shipUpkeep("destroyer", 0),
+           "a carrier is dearer than a destroyer");
+        ok(shipUpkeep("boat", 0) == 0.0f, "an empty transport is free to keep");
+        ok(shipUpkeep("nonsense", 0) == 0.0f, "and an unknown hull costs nothing");
+        ok(shipUpkeep("boat", 10000) > 0.0f, "a crewed transport is not free");
+
+        // THE ORDERING THAT KEEPS THE AI HONEST. Scrapping is worth doing at
+        // all only while a hull costs more than the men on it; if that ever
+        // inverts, the austerity loop scraps warships to save nothing.
+        ok(shipUpkeep("destroyer", 0) > shipUpkeep("boat", 10000),
+           "a warship costs more than a transport's crew");
+
+        // Bit-identity with the accumulation this replaced. The old loop added
+        // the hull and the crew as two separate `+=`, and float addition is not
+        // associative -- so this is only a pure refactor because one of the two
+        // terms is always exactly zero. The loader enforces that: every hull
+        // that is not a "boat" has its crew set to 0.
+        ok(shipUpkeep("carrier", 0) == 0.0f + SHIP_UPKEEP_CARRIER + 0.0f,
+           "a warship's crew term is exactly zero, so the order cannot matter");
+        const float crewOnly = (7500 / 10000.0f) * SHIP_UPKEEP_PER_10K_CREW;
+        ok(shipUpkeep("boat", 7500) == 0.0f + crewOnly,
+           "and a transport's hull term is exactly zero");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }

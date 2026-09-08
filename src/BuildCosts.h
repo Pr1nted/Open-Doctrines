@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 /**
  * WHAT A PROVINCE CAN PHYSICALLY SUPPORT, and why the cap is not a constant.
@@ -240,6 +241,29 @@ inline constexpr int PORT_MAX_LEVEL = 3;
 inline constexpr float SHIP_UPKEEP_CARRIER      = 4.0f;
 inline constexpr float SHIP_UPKEEP_DESTROYER    = 1.5f;
 inline constexpr float SHIP_UPKEEP_PER_10K_CREW = 0.2f;   ///< unchanged
+
+/**
+ * What one hull costs its owner per turn. THE ONLY PLACE THIS IS WORKED OUT.
+ *
+ * It exists because it did not, and the cost of that was found the hard way:
+ * the AI's two scrap-a-warship sites each carried their own `carrier ? 25 :
+ * destroyer ? 10 : 0`, re-derived rather than read. Repricing the constants
+ * above left both copies behind, and they were WRONG rather than merely stale
+ * -- the AI's austerity loop stops cutting once `treasury + net + scrapSaving
+ * >= 0`, so it believed scrapping a carrier closed a 25-point hole when it
+ * closed a 4-point one, and would have stopped cutting while still insolvent.
+ *
+ * A re-derived rule is a silent second copy, and it stays silent until
+ * somebody changes the original. Call this; do not read the constants.
+ */
+inline float shipUpkeep(const std::string& type, int crew) {
+    float n = 0.0f;
+    if (type == "carrier")        n = SHIP_UPKEEP_CARRIER;
+    else if (type == "destroyer") n = SHIP_UPKEEP_DESTROYER;
+    // Transports are free to keep and are the reason this takes crew at all:
+    // the hull costs nothing and the men aboard are the whole of the bill.
+    return n + (crew / 10000.0f) * SHIP_UPKEEP_PER_10K_CREW;
+}
 
 inline constexpr float PORT_COST_PER_LEVEL = 60.0f;
 inline constexpr int   PORT_TURNS = 3;
