@@ -20,6 +20,30 @@
 #include <cstdint>
 #include <string>
 
+struct addrinfo;
+
+namespace odnet {
+
+/**
+ * Connect to the first address in `list` that answers, within `timeoutMs` TOTAL.
+ *
+ * Split out of TlsSocket::open so it can be tested. open() resolves a name and
+ * then calls this, which meant the address walk was only reachable through DNS
+ * -- and the only multi-address name available to a test is "localhost", whose
+ * addresses REFUSE instantly. That proved the walk happened and proved nothing
+ * about how the budget divides between addresses that time out.
+ *
+ * Given the list directly, a test can use RFC5737 TEST-NET addresses, which are
+ * guaranteed unroutable and blackhole rather than refuse: two of them with
+ * timeoutMs 3000 must take about 3000ms, not 6000.
+ *
+ * Returns a connected, blocking socket, or -1 with `error` set.
+ */
+int connectAny(const addrinfo* list, int timeoutMs, const std::string& hostForError,
+               std::string& error);
+
+}  // namespace odnet
+
 class TlsSocket {
 public:
     TlsSocket();

@@ -164,9 +164,19 @@ int connectWithin(const std::string& host, const std::string& port, int timeoutM
         error = "could not look up " + host;
         return -1;
     }
+    const int fd = odnet::connectAny(list, timeoutMs, host, error);
+    freeaddrinfo(list);
+    return fd;
+}
 
+}  // namespace
+
+namespace odnet {
+
+int connectAny(const addrinfo* list, int timeoutMs, const std::string& hostForError,
+               std::string& error) {
     int count = 0;
-    for (addrinfo* a = list; a; a = a->ai_next) ++count;
+    for (const addrinfo* a = list; a; a = a->ai_next) ++count;
 
     const auto started = std::chrono::steady_clock::now();
     auto remainingMs = [&]() {
@@ -177,7 +187,7 @@ int connectWithin(const std::string& host, const std::string& port, int timeoutM
 
     int fd = -1;
     int left = count;
-    for (addrinfo* a = list; a && fd < 0; a = a->ai_next, --left) {
+    for (const addrinfo* a = list; a && fd < 0; a = a->ai_next, --left) {
         const int remaining = remainingMs();
         if (remaining <= 0) break;
         // A share each, so one dead address cannot spend the lot -- but never
@@ -226,12 +236,11 @@ int connectWithin(const std::string& host, const std::string& port, int timeoutM
         fd = s;
     }
 
-    freeaddrinfo(list);
-    if (fd < 0) error = "could not reach " + host + " in time";
+    if (fd < 0) error = "could not reach " + hostForError + " in time";
     return fd;
 }
 
-}  // namespace
+}  // namespace odnet
 
 bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
                      std::string& error, int connectTimeoutMs) {
