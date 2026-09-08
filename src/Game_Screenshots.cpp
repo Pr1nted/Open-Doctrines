@@ -110,6 +110,9 @@ const Shot SHOTS[] = {
     // The country profile, opened on the player's own country so the published
     // figures are togglable and the flag strip has something in it.
     {"country-profile", 25, true},
+    // A FOREIGN country's profile, with mail on: the one that carries "Write
+    // to them". The shot above is the player's own, where it must not appear.
+    {"profile-mail",  25, true},
     {"world-map-ja",  45, true},
     {"province",      20, true},
     // The army view: the garrison list, whose stacks are sharing the ground,
@@ -232,6 +235,12 @@ const Shot SHOTS[] = {
     // it, then press Mail. The setup flag used to survive the Close and the
     // post opened on the runner installer.
     {"mail-after-setup", 60, true},
+    // The picker with its filter, and the caret sitting where the text ends.
+    {"mail-pick",     60, true},
+    // A room with three countries in it, opened by its owner: the member strip
+    // and the remove controls only they can see.
+    {"mail-group",    60, true},
+    {"mail-caret",    60, true},
     {"mail-report",   60, true},
     // The developer queue, with one report opened for a decision.
     {"dev-reports",   40, false},
@@ -551,6 +560,22 @@ bool Game::tickScreenshotTour() {
             applyLanguageForShot(name == "world-map-uk" ? "uk" : "ja");
             m_activeViewTab = 8;   // Country Names: the view these labels are for
             if (m_renderer) m_renderer->setSelectedProvince(0);
+        } else if (name == "profile-mail") {
+            m_config.llmEnabled  = true;
+            m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
+            m_config.llmModel    = "llama3.1:8b";
+            m_config.mailPolicy  = (int)mail::Policy::Everyone;
+            m_llmAvailable = true;
+            m_mailOpen = false;
+            m_inCountryProfile = true;
+            m_profileScroll = 0;
+            m_profileCountryId = 0;
+            for (const auto& [cid2, c2] : m_countries.getAll()) {
+                (void)c2;
+                if (cid2 > 0 && cid2 != m_playerCountryId && cid2 < REBEL_CID_MIN) {
+                    m_profileCountryId = cid2; break;
+                }
+            }
         } else if (name == "country-profile") {
             m_inCountryProfile = true;
             m_profileCountryId = m_playerCountryId;
@@ -1042,6 +1067,61 @@ bool Game::tickScreenshotTour() {
             m_feedbackAttach = true;
             m_feedbackPreview = (name == "feedback-diag");
             m_feedbackPreviewScroll = 0;
+        } else if (name == "mail-group") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_config.llmEnabled  = true;
+            m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
+            m_config.llmModel    = "llama3.1:8b";
+            m_config.mailPolicy  = (int)mail::Policy::Everyone;
+            m_llmAvailable = true;
+            m_mail.clear();
+            m_mailGroups.clear();
+            std::vector<int> picks;
+            for (const auto& [cid2, c2] : m_countries.getAll()) {
+                (void)c2;
+                if (cid2 > 0 && cid2 != m_playerCountryId && cid2 < REBEL_CID_MIN) {
+                    picks.push_back(cid2);
+                    if (picks.size() >= 3) break;
+                }
+            }
+            const int gid = createMailGroup(m_playerCountryId, "The Entente", picks);
+            mailbox(m_playerCountryId).writeToGroup(m_playerCountryId, gid,
+                "Shall we settle the Balkan question together?", m_turnNumber);
+            mailbox(m_playerCountryId).deliver(m_turnNumber);
+            openMail();
+            m_mailGroupThread = gid;
+            m_mailThread = 0;
+        } else if (name == "mail-pick" || name == "mail-caret") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_config.llmEnabled  = true;
+            m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
+            m_config.llmModel    = "llama3.1:8b";
+            m_config.mailPolicy  = (int)mail::Policy::Everyone;
+            m_llmAvailable = true;
+            m_mail.clear();
+            mailbox(m_playerCountryId);
+            openMail();
+            if (name == "mail-pick") {
+                m_mailPicking = true;
+                m_mailPickerQuery = "ge";      // a filter with something to show
+            } else {
+                // The caret must sit at the END of the typed line, not at the
+                // start of the line below it.
+                m_mailPicking = false;
+                m_mailThread = 0;
+                for (const auto& [cid, c] : m_countries.getAll()) {
+                    (void)c;
+                    if (cid > 0 && cid != m_playerCountryId && cid < REBEL_CID_MIN) {
+                        m_mailThread = cid; break;
+                    }
+                }
+                // A SHORT pending letter: the case where the footer and the
+                // edit/discard controls used to be drawn on top of each other.
+                mailbox(m_playerCountryId).write(m_playerCountryId, m_mailThread,
+                                                 "hello???", m_turnNumber);
+                m_mailDraft.clear();
+                m_mailComposeFocus = true;
+            }
         } else if (name == "mail-after-setup") {
             m_inResearch = m_inEconomy = m_inPolitics = false;
             m_config.llmEnabled  = true;

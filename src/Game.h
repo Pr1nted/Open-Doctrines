@@ -5262,6 +5262,22 @@ private:
 
     /// Send everything pending, everywhere. Called once as the turn resolves.
     int deliverMail();
+    /**
+     * The rooms this game has. Held on the Game rather than in a Box, because
+     * a room is shared: every member's box holds its own copy of the LETTERS,
+     * and there must be exactly one copy of the MEMBERSHIP or two players can
+     * disagree about who is in the conversation.
+     */
+    std::vector<mail::Group> m_mailGroups;
+    int m_nextMailGroupId = 1;
+    const mail::Group* mailGroup(int id) const;
+    mail::Group* mailGroupMut(int id);
+    /// Make a room owned by `owner` with `members` in it. Returns its id.
+    int createMailGroup(int owner, const std::string& name, const std::vector<int>& members);
+    /// Remove somebody. False when the rules say `who` may not.
+    bool removeFromMailGroup(int groupId, int who, int whom);
+    /// Leave one yourself. An owner who leaves orphans the room, never kills it.
+    bool leaveMailGroup(int groupId, int who);
 
     void openMail();
     /// Open Mail straight into the module setup, bypassing mailAvailable().
@@ -5284,6 +5300,15 @@ private:
     /// with no correspondents yet. Decides where leaving the pane goes.
     bool m_mailSetupOnly = false;
     int  m_mailSettingsScroll = 0;
+    /// The "write to..." filter. A hundred and ninety countries is a list
+    /// nobody scrolls; it is a list you search.
+    std::string m_mailPickerQuery;
+    /// The room whose thread is open, or 0 when the open thread is a
+    /// correspondence with m_mailThread. Exactly one of the two is set.
+    int  m_mailGroupThread = 0;
+    /// Picking members for a room rather than one country to write to.
+    bool m_mailPickingGroup = false;
+    std::vector<int> m_mailGroupPicks;
     /// Which runner field is being typed into: 0 endpoint, 1 model,
     /// 2 API key, -1 none.
     int  m_mailLlmField = -1;

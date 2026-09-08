@@ -276,6 +276,69 @@ int main() {
         ok(std::string(botTag()) == "bot", "the tag a machine's letter carries");
     }
 
+    section("a room with more than two countries in it");
+    {
+        // Local ids; this test has no world, which is the point of Mail being
+        // free of Game.
+        const int FRA = 1, GBR = 2, RUS = 3, GER = 4;
+        mail::Group g;
+        g.id = 7; g.name = "The Entente"; g.owner = FRA;
+        g.members = {FRA, GBR, RUS};
+
+        ok(g.has(FRA) && g.has(GBR) && g.has(RUS), "everybody added is in it");
+        ok(!g.has(GER), "and nobody else is");
+
+        // The whole of the authority, written as tests because it is the part
+        // players will argue about.
+        ok(g.mayRemove(FRA, GBR), "the owner may remove a member");
+        ok(!g.mayRemove(GBR, RUS), "a member may not remove another member");
+        ok(!g.mayRemove(GBR, FRA), "and certainly not the owner");
+        ok(!g.mayRemove(FRA, FRA), "the owner does not remove THEMSELVES -- that is leaving");
+        ok(!g.mayRemove(FRA, GER), "and nobody can be removed who was never in it");
+
+        // An owner who leaves must not leave their authority behind, or the
+        // room keeps a ruler who is no longer in it.
+        mail::Group orphan = g;
+        orphan.owner = 0;
+        ok(!orphan.mayRemove(FRA, GBR), "an owner who left cannot still remove people");
+        ok(!orphan.mayRemove(GBR, RUS), "and nobody inherits the power");
+    }
+
+    section("what a room delivers, and to whom");
+    {
+        const int FRA = 1, GBR = 2, RUS = 3;
+        mail::Box fra, gbr, rus;
+        const int gid = 7;
+        ok(fra.writeToGroup(FRA, gid, "Shall we all agree terms?", 3) != 0,
+           "a letter can be written into a room");
+        ok(fra.writeToGroup(FRA, gid, "", 3) == 0, "an empty one still cannot");
+        ok(fra.writeToGroup(FRA, 0, "no room", 3) == 0, "and neither can one with no room");
+
+        const mail::Thread* t = fra.groupThreadIfAny(gid);
+        ok(t != nullptr && t->messages.size() == 1, "it lands in the room's own thread");
+        ok(t->groupId == gid && t->otherCountry == 0,
+           "which is a room thread, not a correspondence with country 0");
+        ok(t->pendingCount() == 1, "and it is still on the desk");
+
+        // A room letter reaches every member, each keeping their own copy.
+        fra.deliver(4);
+        const mail::Message* sent = fra.groupThreadIfAny(gid)->delivered().front();
+        gbr.groupThread(gid).messages.push_back(*sent);
+        rus.groupThread(gid).messages.push_back(*sent);
+        ok(gbr.groupThreadIfAny(gid) && gbr.groupThreadIfAny(gid)->messages.size() == 1,
+           "a member receives it");
+        ok(rus.groupThreadIfAny(gid) && rus.groupThreadIfAny(gid)->messages.size() == 1,
+           "and so does every other member");
+
+        // REMOVAL DOES NOT UNSAY ANYTHING.
+        mail::Group g;
+        g.id = gid; g.owner = FRA; g.members = {FRA, GBR, RUS};
+        g.members.pop_back();                            // Russia removed
+        ok(!g.has(RUS), "a removed member is out of the room");
+        ok(rus.groupThreadIfAny(gid)->messages.size() == 1,
+           "but keeps the letters they already received");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

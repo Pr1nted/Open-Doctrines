@@ -52,7 +52,10 @@ enum class Author : uint8_t {
 struct Message {
     int         id = 0;
     int         fromCountry = 0;
+    /// The recipient of an ordinary letter. 0 when this went to a group.
     int         toCountry = 0;
+    /// The room it was written in, or 0. Never both this and toCountry.
+    int         groupId = 0;
     std::string body;
     int         writtenTurn = 0;
     /// The turn it lands. Always writtenTurn + 1: a letter takes a turn.
@@ -165,8 +168,46 @@ Refusal check(const std::string& body, const Rules& rules, bool toIsBot, Lock to
  * writes to Russia, and a language model answering as Britain must not see the
  * Russian thread. See the context isolation in the LLM module.
  */
+/**
+ * A conversation with more than two countries in it.
+ *
+ * WHO MAY REMOVE WHOM. The country that made the room may remove anybody from
+ * it; nobody else may remove anybody. That is the whole of the authority, and
+ * it is deliberately small -- a room where any member can eject any other is a
+ * room that ends in an ejection war, and one where nobody can is a room that
+ * cannot be rescued from whoever wandered in.
+ *
+ * ANYBODY MAY LEAVE, including the owner. An owner who leaves does not take
+ * the room with them: the letters already in it belong to everybody who
+ * received them, and deleting a conversation out from under four other players
+ * because the fifth got bored is not a power worth having. The room simply has
+ * no owner afterwards, and nobody can be removed from it again.
+ *
+ * WHAT REMOVAL IS NOT. It does not erase what somebody already read. A letter
+ * delivered is a letter delivered; removal stops the NEXT one. Anything else
+ * would mean a player could unsay something by ejecting the person they said
+ * it to.
+ */
+struct Group {
+    int id = 0;
+    std::string name;
+    /// The country that created it. 0 once they have left: see above.
+    int owner = 0;
+    /// Everyone who receives what is written here, including the owner.
+    std::vector<int> members;
+
+    bool has(int country) const;
+    /// True if `who` is allowed to remove `whom`. Only the owner, never
+    /// themselves through this path -- leaving is its own thing.
+    bool mayRemove(int who, int whom) const;
+};
+
 struct Thread {
+    /// The other country, for a two-party correspondence. 0 for a group.
     int otherCountry = 0;
+    /// The room this thread belongs to, or 0 for an ordinary letter. A thread
+    /// has one or the other and never both.
+    int groupId = 0;
     std::vector<Message> messages;
 
     /// Letters still on the desk, which are the ones that may be changed.
@@ -183,6 +224,14 @@ public:
     /// Write a letter. Returns its id, or 0 if the rules refused it.
     int write(int fromCountry, int toCountry, const std::string& body, int turn,
               Author author = Author::Human, const std::string& authorName = "");
+
+    /// Write into a room. Same rules; the recipient is everybody in it.
+    int writeToGroup(int fromCountry, int groupId, const std::string& body, int turn,
+                     Author author = Author::Human, const std::string& authorName = "");
+
+    /// The room thread, made if this box has not seen it before.
+    Thread& groupThread(int groupId);
+    const Thread* groupThreadIfAny(int groupId) const;
 
     /// Change a letter that has not gone yet. False if it has.
     bool edit(int id, const std::string& body);

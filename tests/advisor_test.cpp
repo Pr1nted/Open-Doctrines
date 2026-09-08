@@ -241,6 +241,35 @@ int main() {
                      "Prussia") == "We accept.",
            "several stacked calls are all removed");
 
+        // THE FORM OBSERVED IN A REAL LETTER, at the END of four paragraphs
+        // and under a name the model invented, so the tool-name rule is blind
+        // to it and a front-only strip never reaches it.
+        ok(tidyReply("We will consider it.\n"
+                     "Disposition toward State of Ukraine: Unchanged - the notion "
+                     "of joining forces does open opportunities.", "Germany")
+               == "We will consider it.",
+           "a disposition written out at the end of a letter is removed");
+        // Observed on a second model, with a prefix, so an anchored match missed it.
+        ok(tidyReply("We are unmoved.\nMy current disposition toward Russia: Slightly wary.",
+                     "Germany") == "We are unmoved.",
+           "and one with words in front of it");
+        // Prose that merely uses the word, with no label-and-value shape.
+        const std::string prose = "Our disposition toward you is friendly enough for now.";
+        ok(tidyReply(prose, "Germany") == prose,
+           "but the word in an ordinary sentence is not a leak");
+        ok(tidyReply("Disposition toward France: warmer", "Germany").empty(),
+           "and one that is the whole reply leaves no letter");
+        ok(tidyReply("Line one.\nnote_disposition(cooler)\nLine two.", "Germany")
+               == "Line one.\nLine two.",
+           "a leak in the MIDDLE goes too, and the letter closes over it");
+
+        // Reached a player verbatim, as the whole of a letter from Israel.
+        ok(tidyReply("No specific function call is requested to answer this prompt.",
+                     "Israel").empty(),
+           "a model narrating its own plumbing is not a letter");
+        ok(tidyReply("We accept.\nNo tool call is needed here.", "Israel") == "We accept.",
+           "and the narration goes while the letter stays");
+
         // THE LINE THIS MUST NOT CROSS. A letter may legitimately begin with
         // the words a tool is named after; stripping on the name alone would
         // silently eat the first sentence of a perfectly good letter.

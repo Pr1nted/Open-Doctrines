@@ -242,7 +242,7 @@ Turn toolResultTurn(const ToolCall& call, const std::string& answer);
 
 /// The request body with tools offered. Otherwise identical to chatRequestBody.
 std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
-                                     const std::string& model, int maxTokens = 400);
+                                     const std::string& model, int maxTokens = 220);
 
 /**
  * How many times a letter may go round the ask-and-answer loop.
@@ -288,7 +288,7 @@ bool isLocal(const std::string& baseUrl);
 
 /// The JSON body for a chat completion. Separated out so it can be tested.
 std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& model,
-                            int maxTokens = 400);
+                            int maxTokens = 220);
 
 /**
  * Pull the reply out of a chat completion response.

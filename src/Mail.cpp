@@ -230,4 +230,59 @@ void Box::clear() {
     m_nextId = 1;
 }
 
+
+// ─────────────────────────────────────────────────────────── group rooms ────
+
+bool Group::has(int country) const {
+    for (int m : members) if (m == country) return true;
+    return false;
+}
+
+bool Group::mayRemove(int who, int whom) const {
+    // Nobody may remove anybody once the owner has gone: see the note on
+    // Group. An unowned room is not a room anybody has authority over.
+    if (owner == 0) return false;
+    if (who != owner) return false;
+    // Removing yourself is LEAVING, and goes through the other path. Allowing
+    // it here would let an owner "remove" themselves and leave the room with an
+    // owner id pointing at somebody who is not in it.
+    if (whom == who) return false;
+    return has(whom);
+}
+
+Thread& Box::groupThread(int groupId) {
+    for (Thread& t : m_threads)
+        if (t.groupId == groupId) return t;
+    m_threads.push_back(Thread{});
+    m_threads.back().groupId = groupId;
+    return m_threads.back();
+}
+
+const Thread* Box::groupThreadIfAny(int groupId) const {
+    for (const Thread& t : m_threads)
+        if (t.groupId == groupId) return &t;
+    return nullptr;
+}
+
+int Box::writeToGroup(int fromCountry, int groupId, const std::string& body, int turn,
+                      Author author, const std::string& authorName) {
+    if (groupId <= 0) return 0;
+    std::string trimmed = body;
+    if (trimmed.size() > kMaxBody) trimmed.resize(kMaxBody);
+    if (trimmed.empty()) return 0;
+
+    Message m;
+    m.id = m_nextId++;
+    m.fromCountry = fromCountry;
+    m.toCountry = 0;             // a room has no single recipient
+    m.groupId = groupId;
+    m.body = trimmed;
+    m.writtenTurn = turn;
+    m.status = Status::Pending;
+    m.author = author;
+    m.authorName = authorName;
+    groupThread(groupId).messages.push_back(m);
+    return m.id;
+}
+
 }  // namespace mail

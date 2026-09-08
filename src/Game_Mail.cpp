@@ -17,6 +17,52 @@
 
 // ────────────────────────────────────────────────────────────── the box ────
 
+namespace {
+
+/// Append one code point as UTF-8. The letters are written in twenty-one
+/// languages, so a text field that assumes one byte per character is a text
+/// field half the players cannot type their own name into.
+void utf8Append(std::string& out, int cp) {
+    const unsigned c = (unsigned)cp;
+    if (c < 0x80) { out += (char)c; }
+    else if (c < 0x800) {
+        out += (char)(0xC0 | (c >> 6));
+        out += (char)(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+        out += (char)(0xE0 | (c >> 12));
+        out += (char)(0x80 | ((c >> 6) & 0x3F));
+        out += (char)(0x80 | (c & 0x3F));
+    } else {
+        out += (char)(0xF0 | (c >> 18));
+        out += (char)(0x80 | ((c >> 12) & 0x3F));
+        out += (char)(0x80 | ((c >> 6) & 0x3F));
+        out += (char)(0x80 | (c & 0x3F));
+    }
+}
+
+/// Erase one CHARACTER, continuation bytes and all -- not one byte, which
+/// would leave a half-written character behind and draw as a replacement box.
+void utf8PopBack(std::string& out) {
+    if (out.empty()) return;
+    size_t i = out.size() - 1;
+    while (i > 0 && (unsigned char)out[i] >= 0x80 && (unsigned char)out[i] < 0xC0) --i;
+    out.erase(i);
+}
+
+/// Case-insensitive substring, ASCII-folded. Enough for a name filter: the
+/// non-Latin scripts this game ships in have no case to fold, and a Ukrainian
+/// player typing Ukrainian matches exactly.
+bool nameContains(const std::string& hay, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto lower = [](std::string v) {
+        for (char& c : v) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+        return v;
+    };
+    return lower(hay).find(lower(needle)) != std::string::npos;
+}
+
+}  // namespace
+
 const mail::Box* Game::mailboxIfAny(int countryId) const {
     auto it = m_mail.find(countryId);
     return it == m_mail.end() ? nullptr : &it->second;
@@ -64,6 +110,59 @@ mail::Lock Game::mailLockOf(int countryId) const {
  * walked, a bot replying on receipt would land its answer in the same tick and
  * the whole "a letter takes a turn" property would quietly stop holding.
  */
+const mail::Group* Game::mailGroup(int id) const {
+    for (const mail::Group& g : m_mailGroups) if (g.id == id) return &g;
+    return nullptr;
+}
+mail::Group* Game::mailGroupMut(int id) {
+    for (mail::Group& g : m_mailGroups) if (g.id == id) return &g;
+    return nullptr;
+}
+
+int Game::createMailGroup(int owner, const std::string& name,
+                          const std::vector<int>& members) {
+    mail::Group g;
+    g.id = m_nextMailGroupId++;
+    g.name = name.empty() ? std::string(T("Group")) : name;
+    g.owner = owner;
+    g.members.push_back(owner);
+    for (int m : members) {
+        if (m == owner || g.has(m)) continue;
+        // The same door the picker respects: a country nobody may write to
+        // cannot be dragged into a room to get around that.
+        if (mail::mayWrite(mailRules(), mailIsBot(m), mailLockOf(m)) != mail::Refusal::None)
+            continue;
+        g.members.push_back(m);
+    }
+    m_mailGroups.push_back(g);
+    return g.id;
+}
+
+bool Game::removeFromMailGroup(int groupId, int who, int whom) {
+    mail::Group* g = mailGroupMut(groupId);
+    if (!g || !g->mayRemove(who, whom)) return false;
+    for (size_t i = 0; i < g->members.size(); ++i) {
+        if (g->members[i] != whom) continue;
+        g->members.erase(g->members.begin() + (long)i);
+        return true;
+    }
+    return false;
+}
+
+bool Game::leaveMailGroup(int groupId, int who) {
+    mail::Group* g = mailGroupMut(groupId);
+    if (!g || !g->has(who)) return false;
+    for (size_t i = 0; i < g->members.size(); ++i) {
+        if (g->members[i] != who) continue;
+        g->members.erase(g->members.begin() + (long)i);
+        break;
+    }
+    // An owner who leaves does NOT take the room with them -- see the note on
+    // mail::Group. It simply stops having anybody who can remove people.
+    if (g->owner == who) g->owner = 0;
+    return true;
+}
+
 int Game::deliverMail() {
     // Pass one: everything pending becomes history, in its own box.
     std::vector<mail::Message> moving;
@@ -73,9 +172,27 @@ int Game::deliverMail() {
         for (const mail::Message* m : box.arrivedOn(m_turnNumber)) moving.push_back(*m);
     }
 
-    // Pass two: each lands in the box of whoever it was addressed to.
+    // Pass two: each lands in the box of whoever it was addressed to. A room
+    // letter has no single recipient, so it lands in the box of every member
+    // EXCEPT the writer, who already has it in their own copy of the thread.
     int arrivedForPlayer = 0;
     for (const mail::Message& m : moving) {
+        if (m.groupId != 0) {
+            const mail::Group* g = mailGroup(m.groupId);
+            if (!g) continue;                    // the room was disbanded mid-turn
+            for (int member : g->members) {
+                if (member == m.fromCountry) continue;
+                // The recipient still has the last word, one member at a time:
+                // somebody who has shut their door does not receive a letter
+                // because it was addressed to a room rather than to them.
+                if (mailLockOf(member) == mail::Lock::Nobody) continue;
+                if (mailLockOf(member) == mail::Lock::BotsOnly &&
+                    m.author != mail::Author::Bot) continue;
+                mailbox(member).groupThread(m.groupId).messages.push_back(m);
+                if (member == m_playerCountryId) ++arrivedForPlayer;
+            }
+            continue;
+        }
         if (m.fromCountry == m.toCountry) continue;
         mailbox(m.toCountry).receive(m);
         if (m.toCountry == m_playerCountryId) ++arrivedForPlayer;
@@ -174,9 +291,17 @@ void Game::closeMail() {
  * the behaviour a person expects from something that has not been sent yet.
  */
 bool Game::mailSendDraft() {
-    if (m_mailThread == 0) return false;
+    if (m_mailThread == 0 && m_mailGroupThread == 0) return false;
+
+    // In a room the door checked is YOUR OWN, not a recipient's: the letter
+    // goes to several countries and each of their doors is checked again at
+    // delivery, one member at a time. Checking one member here would let one
+    // shut door block a letter to everybody else.
+    const bool toGroup = (m_mailGroupThread != 0);
     const mail::Refusal why = mail::check(
-        m_mailDraft, mailRules(), mailIsBot(m_mailThread), mailLockOf(m_mailThread),
+        m_mailDraft, mailRules(),
+        toGroup ? false : mailIsBot(m_mailThread),
+        toGroup ? mail::Lock::Open : mailLockOf(m_mailThread),
         m_config.mailBlacklist);
     if (why != mail::Refusal::None) {
         m_mailNotice = T(mail::refusalText(why));
@@ -192,8 +317,22 @@ bool Game::mailSendDraft() {
     } else {
         std::string me;
         if (const Country* c = m_countries.getCountry(m_playerCountryId)) me = c->name;
-        box.write(m_playerCountryId, m_mailThread, m_mailDraft, m_turnNumber,
-                  mail::Author::Human, me);
+        if (toGroup) {
+            // Still a member? Being removed between opening the room and
+            // pressing send is a real sequence, not a hypothetical.
+            const mail::Group* g = mailGroup(m_mailGroupThread);
+            if (!g || !g->has(m_playerCountryId)) {
+                m_mailNotice = T("You are no longer in that group.");
+                m_mailNoticeUntil = GetTime() + 6.0;
+                Audio::get().playSfx("deny");
+                return false;
+            }
+            box.writeToGroup(m_playerCountryId, m_mailGroupThread, m_mailDraft,
+                             m_turnNumber, mail::Author::Human, me);
+        } else {
+            box.write(m_playerCountryId, m_mailThread, m_mailDraft, m_turnNumber,
+                      mail::Author::Human, me);
+        }
     }
     m_mailDraft.clear();
     Audio::get().playSfx("confirm");
@@ -214,6 +353,30 @@ namespace {
 struct Ink {
     Color bubble, text, edge;
 };
+
+/**
+ * The correspondent's flag, drawn small, where a chat app puts a face.
+ *
+ * A list of country NAMES is a list; a list of flags is a conversation. Falls
+ * back to nothing rather than to a placeholder -- a missing texture is a
+ * rebel or a country mid-load, and a grey box in its place says less than the
+ * name already beside it.
+ */
+void drawFlagChip(const std::unordered_map<int, Texture2D>& flags, int cid,
+                  float px, float py, float ph) {
+    auto it = flags.find(cid);
+    if (it == flags.end() || it->second.id <= 0) return;
+    const float pw = ph * 1.6f;
+    DrawTexturePro(it->second,
+                   {0, 0, (float)it->second.width, (float)it->second.height},
+                   {px, py, pw, ph}, {0, 0}, 0.0f, WHITE);
+    DrawRectangleLinesEx({px, py, pw, ph}, 1, Color{70, 74, 92, 190});
+}
+
+/// Letters are prose and are read, not glanced at; 13px in a dark bubble is
+/// the size at which people stop reading them.
+constexpr int kLetterFs = 15;
+constexpr int kFootFs   = 12;
 
 Ink inkFor(const mail::Message& m, bool mine, Color accent) {
     if (mine && m.status == mail::Status::Pending) {
@@ -310,22 +473,55 @@ void Game::drawMail() {
 
     // ── Picking somebody to write to ──
     if (m_mailPicking) {
-        DrawText(T("Write to..."), x + 24, y + 56, 14, Color{170, 176, 196, 255});
-        const Rectangle list = {(float)(x + 24), (float)(y + 82), (float)(w - 48), (float)(h - 150)};
+        DrawText(m_mailPickingGroup ? T("Who is in the group?") : T("Write to..."),
+                 x + 24, y + 56, 14, Color{170, 176, 196, 255});
+
+        // ── The filter ──
+        //
+        // Always focused: there is nothing else on this screen to type into,
+        // so a box you must click first is a box that looks broken the first
+        // time somebody types a country's name at it and nothing happens.
+        const Rectangle box = {(float)(x + 24), (float)(y + 78), (float)(w - 48), 26};
+        DrawRectangleRec(box, Color{15, 17, 23, 255});
+        DrawRectangleLinesEx(box, 1, accent);
+        if (m_mailPickerQuery.empty()) {
+            DrawText(T("Type to find a country"), (int)box.x + 8, (int)box.y + 7, 12,
+                     Color{92, 94, 108, 255});
+        } else {
+            DrawText(m_mailPickerQuery.c_str(), (int)box.x + 8, (int)box.y + 7, 12,
+                     Color{215, 220, 238, 255});
+        }
+        if ((int)(GetTime() * 2) % 2) {
+            DrawRectangle((int)box.x + 8 + MeasureText(m_mailPickerQuery.c_str(), 12),
+                          (int)box.y + 6, 2, 14, WHITE);
+        }
+
+        const Rectangle list = {(float)(x + 24), (float)(y + 112), (float)(w - 48), (float)(h - 180)};
         BeginScissorMode((int)list.x, (int)list.y, (int)list.width, (int)list.height);
         int ry = (int)list.y - m_mailPickerScroll;
         for (const auto& [cid, country] : m_countries.getAll()) {
             if (cid == m_playerCountryId) continue;
             const bool isBot = mailIsBot(cid);
             if (mail::mayWrite(mailRules(), isBot, mailLockOf(cid)) != mail::Refusal::None) continue;
+            if (!nameContains(country.name, m_mailPickerQuery)) continue;
 
             const Rectangle row = {list.x, (float)ry, list.width, 34};
             const bool rh = CheckCollisionPointRec(mouse, row) &&
                             CheckCollisionPointRec(mouse, list);
             if (ry > list.y - 40 && ry < list.y + list.height) {
                 DrawRectangleRec(row, rh ? Color{34, 38, 50, 230} : Color{20, 22, 30, 180});
-                DrawText(country.name.c_str(), (int)row.x + 12, (int)row.y + 9, 14,
-                         rh ? WHITE : Color{200, 206, 226, 255});
+                drawFlagChip(m_countryFlags, cid, row.x + 10, row.y + 8, 18.0f);
+                const bool picked =
+                    m_mailPickingGroup &&
+                    std::find(m_mailGroupPicks.begin(), m_mailGroupPicks.end(), cid) !=
+                        m_mailGroupPicks.end();
+                if (picked) {
+                    DrawRectangleRounded({row.x + row.width - 26, row.y + 9, 16, 16},
+                                         0.3f, 6, Color{60, 120, 80, 240});
+                    DrawText("x", (int)(row.x + row.width - 21), (int)row.y + 11, 13, WHITE);
+                }
+                DrawText(country.name.c_str(), (int)row.x + 50, (int)row.y + 9, 14,
+                         (rh || picked) ? WHITE : Color{200, 206, 226, 255});
                 if (isBot) {
                     const int tw = MeasureText(T(mail::botTag()), 11);
                     DrawRectangleRounded({row.x + row.width - tw - 30, row.y + 9, (float)tw + 14, 17},
@@ -335,11 +531,20 @@ void Game::drawMail() {
                 }
             }
             if (rh && click) {
-                m_mailThread = cid;
-                m_mailPicking = false;
-                m_mailDraft.clear();
-                m_mailEditing = 0;
-                m_mailComposeFocus = true;
+                if (m_mailPickingGroup) {
+                    // Tick and untick, because choosing five countries is a
+                    // sequence of small decisions and any of them can be wrong.
+                    auto at = std::find(m_mailGroupPicks.begin(), m_mailGroupPicks.end(), cid);
+                    if (at == m_mailGroupPicks.end()) m_mailGroupPicks.push_back(cid);
+                    else m_mailGroupPicks.erase(at);
+                } else {
+                    m_mailThread = cid;
+                    m_mailGroupThread = 0;
+                    m_mailPicking = false;
+                    m_mailDraft.clear();
+                    m_mailEditing = 0;
+                    m_mailComposeFocus = true;
+                }
                 Audio::get().playSfx("click_light", 0.1f);
             }
             ry += 36;
@@ -358,18 +563,81 @@ void Game::drawMail() {
         DrawRectangleRounded(back, 0.2f, 6, bh ? Color{44, 48, 66, 240} : Color{28, 30, 42, 220});
         DrawRectangleRoundedLines(back, 0.2f, 6, Color{90, 96, 130, 200});
         DrawText(T("Back"), (int)back.x + 14, (int)back.y + 9, 13, WHITE);
-        if (bh && click) { m_mailPicking = false; Audio::get().playSfx("back"); }
+        if (bh && click) {
+            m_mailPicking = false;
+            m_mailPickingGroup = false;
+            m_mailGroupPicks.clear();
+            Audio::get().playSfx("back");
+        }
+
+        if (m_mailPickingGroup) {
+            const bool enough = m_mailGroupPicks.size() >= 2;   // three, with you
+            const char* lbl = enough
+                ? TextFormat(T("Create with %d"), (int)m_mailGroupPicks.size())
+                : T("Pick at least two");
+            const int cw = MeasureText(lbl, 13) + 28;
+            const Rectangle cr = {(float)(x + w - 24 - cw), back.y, (float)cw, 32};
+            const bool ch = CheckCollisionPointRec(mouse, cr) && enough;
+            DrawRectangleRounded(cr, 0.2f, 6, !enough ? Color{26, 28, 36, 200}
+                                            : (ch ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235}));
+            DrawRectangleRoundedLines(cr, 0.2f, 6,
+                                      enough ? Color{110, 180, 130, 220} : Color{60, 64, 84, 180});
+            DrawText(lbl, (int)cr.x + 14, (int)cr.y + 9, 13,
+                     enough ? WHITE : Color{120, 124, 142, 255});
+            // TWO OTHERS, NOT ONE. A "group" of you and one other country is a
+            // correspondence, and it already exists one screen back.
+            if (ch && click) {
+                std::string nm;
+                for (size_t i = 0; i < m_mailGroupPicks.size() && i < 2; ++i) {
+                    if (const Country* c = m_countries.getCountry(m_mailGroupPicks[i]))
+                        nm += (nm.empty() ? "" : ", ") + c->name;
+                }
+                if (m_mailGroupPicks.size() > 2)
+                    nm += TextFormat(T(" and %d more"), (int)m_mailGroupPicks.size() - 2);
+                const int gid = createMailGroup(m_playerCountryId, nm, m_mailGroupPicks);
+                m_mailPicking = false;
+                m_mailPickingGroup = false;
+                m_mailGroupPicks.clear();
+                m_mailGroupThread = gid;
+                m_mailThread = 0;
+                m_mailDraft.clear();
+                m_mailComposeFocus = true;
+                Audio::get().playSfx("panel_open");
+            }
+        }
         return;
     }
 
     // ── The list of correspondents ──
-    if (m_mailThread == 0) {
+    if (m_mailThread == 0 && m_mailGroupThread == 0) {
+        {
+            const int gw = MeasureText(T("New group"), 13) + 24;
+            const Rectangle gb = {(float)(x + w - 104 - 150 - gw - 8), (float)(y + 18),
+                                  (float)gw, 28};
+            const bool gh2 = CheckCollisionPointRec(mouse, gb);
+            DrawRectangleRounded(gb, 0.2f, 6, gh2 ? Color{44, 48, 66, 240} : Color{28, 30, 42, 225});
+            DrawRectangleRoundedLines(gb, 0.2f, 6, Color{90, 96, 130, 200});
+            DrawText(T("New group"), (int)gb.x + 12, (int)gb.y + 7, 13,
+                     gh2 ? WHITE : Color{200, 206, 226, 255});
+            if (gh2 && click) {
+                m_mailPicking = true;
+                m_mailPickingGroup = true;
+                m_mailGroupPicks.clear();
+                m_mailPickerScroll = 0;
+                m_mailPickerQuery.clear();
+                Audio::get().playSfx("click_light", 0.1f);
+            }
+        }
         const Rectangle newBtn = {(float)(x + w - 104 - 150), (float)(y + 18), 140, 28};
         const bool nh = CheckCollisionPointRec(mouse, newBtn);
         DrawRectangleRounded(newBtn, 0.2f, 6, nh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235});
         DrawRectangleRoundedLines(newBtn, 0.2f, 6, Color{110, 180, 130, 220});
         DrawText(T("New letter"), (int)newBtn.x + 12, (int)newBtn.y + 7, 13, WHITE);
-        if (nh && click) { m_mailPicking = true; m_mailPickerScroll = 0; }
+        if (nh && click) {
+            m_mailPicking = true;
+            m_mailPickerScroll = 0;
+            m_mailPickerQuery.clear();   // never inherit the last search
+        }
 
         const auto threads = box.threads();
         if (threads.empty()) {
@@ -387,16 +655,42 @@ void Game::drawMail() {
                             CheckCollisionPointRec(mouse, list);
             if (ry > list.y - 60 && ry < list.y + list.height) {
                 DrawRectangleRec(row, rh ? Color{34, 38, 50, 235} : Color{20, 22, 30, 190});
-                DrawText(nameOf(t->otherCountry).c_str(), (int)row.x + 12, (int)row.y + 8, 15,
+                std::string title;
+                if (t->groupId != 0) {
+                    const mail::Group* g = mailGroup(t->groupId);
+                    title = g ? g->name : std::string(T("Group"));
+                    // A room's members ARE its picture. Up to three flags,
+                    // because past that they stop being recognisable and start
+                    // being a texture.
+                    float fx = row.x + 10;
+                    int shown = 0;
+                    if (g) for (int mem : g->members) {
+                        if (mem == m_playerCountryId || shown >= 3) continue;
+                        drawFlagChip(m_countryFlags, mem, fx, row.y + 14, 24.0f);
+                        fx += 42; ++shown;
+                    }
+                    if (g && (int)g->members.size() - 1 > shown)
+                        DrawText(TextFormat("+%d", (int)g->members.size() - 1 - shown),
+                                 (int)fx, (int)row.y + 20, 12, Color{150, 156, 176, 255});
+                } else {
+                    title = nameOf(t->otherCountry);
+                    drawFlagChip(m_countryFlags, t->otherCountry,
+                                 row.x + 10, row.y + 14, 24.0f);
+                }
+                const int titleX = (t->groupId != 0) ? (int)row.x + 148 : (int)row.x + 58;
+                DrawText(title.c_str(), titleX, (int)row.y + 8, 15,
                          rh ? WHITE : Color{206, 212, 232, 255});
 
                 // The last thing said, and whether anything is still waiting.
                 if (!t->messages.empty()) {
                     const mail::Message& last = t->messages.back();
                     int fs = 12;
-                    std::string line = odText::fitToWidth(last.body, (int)row.width - 200, fs, 10);
-                    DrawText(line.c_str(), (int)row.x + 12, (int)row.y + 29, fs,
-                             Color{140, 146, 166, 255});
+                    std::string line = odText::fitToWidth(last.body, (int)row.width - 250, fs, 10);
+                    // Was 140,146,166 -- a grey on a near-black row. The
+                    // preview is the only thing telling you which letter this
+                    // is, so it has to be legible, not decorative.
+                    DrawText(line.c_str(), titleX, (int)row.y + 29, fs,
+                             Color{172, 178, 200, 255});
                 }
                 const size_t waiting = t->pendingCount();
                 if (waiting > 0) {
@@ -413,6 +707,7 @@ void Game::drawMail() {
             }
             if (rh && click) {
                 m_mailThread = t->otherCountry;
+                m_mailGroupThread = t->groupId;
                 m_mailScroll = 0;
                 m_mailDraft.clear();
                 m_mailEditing = 0;
@@ -446,9 +741,11 @@ void Game::drawMail() {
  */
 void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click, Color accent) {
     const int other = m_mailThread;
-    const bool isBot = mailIsBot(other);
+    const mail::Group* group = m_mailGroupThread ? mailGroup(m_mailGroupThread) : nullptr;
+    const bool isBot = group ? false : mailIsBot(other);
     std::string them = T("Unknown");
-    if (const Country* c = m_countries.getCountry(other)) them = c->name;
+    if (group) them = group->name;
+    else if (const Country* c = m_countries.getCountry(other)) them = c->name;
 
     // Header: who, and a way back.
     const Rectangle back = {(float)(x + 24), (float)(y + 54), 90, 26};
@@ -458,25 +755,81 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
     DrawText(T("Back"), (int)back.x + 12, (int)back.y + 6, 12, WHITE);
     if (bh && click) {
         m_mailThread = 0;
+        m_mailGroupThread = 0;
         m_mailDraft.clear();
         m_mailEditing = 0;
         Audio::get().playSfx("back");
         return;
     }
-    DrawText(them.c_str(), x + 126, y + 56, 17, WHITE);
+    if (!group) drawFlagChip(m_countryFlags, m_mailThread, (float)(x + 126), (float)(y + 54), 20.0f);
+    DrawText(them.c_str(), x + 126 + (group ? 0 : 40), y + 56, 17, WHITE);
+
+    // ── WHO IS IN THE ROOM, AND THE ONE PERSON WHO CAN CHANGE THAT ──
+    //
+    // Shown to everybody, because a conversation whose membership is hidden is
+    // one where you cannot know who heard you. The remove control appears only
+    // for the owner, and only against somebody they may actually remove -- so
+    // a member never sees a button that would refuse them.
+    if (group) {
+        int mx = x + 126;
+        const int my = y + 78;
+        for (int mem : group->members) {
+            if (mem == m_playerCountryId) continue;
+            std::string nm;
+            if (const Country* c = m_countries.getCountry(mem)) nm = c->name;
+            const int nw = MeasureText(nm.c_str(), 11);
+            const bool canRemove = group->mayRemove(m_playerCountryId, mem);
+            const int chipW = 26 + nw + (canRemove ? 16 : 0);
+            if (mx + chipW > x + w - 120) break;      // one row; the rest are in the list
+            DrawRectangleRounded({(float)mx, (float)my, (float)chipW, 20}, 0.4f, 6,
+                                 Color{28, 30, 42, 230});
+            drawFlagChip(m_countryFlags, mem, (float)mx + 3, (float)my + 4, 12.0f);
+            DrawText(nm.c_str(), mx + 23, my + 5, 11, Color{196, 202, 222, 255});
+            if (canRemove) {
+                const Rectangle xr = {(float)(mx + chipW - 15), (float)my + 3, 13, 13};
+                const bool xh = CheckCollisionPointRec(mouse, xr);
+                DrawText("x", (int)xr.x + 3, (int)xr.y, 12,
+                         xh ? Color{240, 150, 150, 255} : Color{130, 118, 118, 255});
+                if (xh && click) {
+                    removeFromMailGroup(m_mailGroupThread, m_playerCountryId, mem);
+                    Audio::get().playSfx("click_light", 0.1f);
+                    return;                  // membership changed under the draw
+                }
+            }
+            mx += chipW + 6;
+        }
+        // Leaving is everybody's, including the owner's.
+        const int lw = MeasureText(T("Leave"), 11) + 18;
+        const Rectangle lr = {(float)(x + w - 120), (float)my, (float)lw, 20};
+        const bool lh = CheckCollisionPointRec(mouse, lr);
+        DrawRectangleRounded(lr, 0.4f, 6, lh ? Color{62, 38, 40, 240} : Color{30, 26, 28, 220});
+        DrawText(T("Leave"), (int)lr.x + 9, (int)lr.y + 5, 11,
+                 lh ? Color{240, 180, 180, 255} : Color{180, 160, 160, 255});
+        if (lh && click) {
+            leaveMailGroup(m_mailGroupThread, m_playerCountryId);
+            m_mailGroupThread = 0;
+            m_mailThread = 0;
+            Audio::get().playSfx("back");
+            return;
+        }
+    }
     if (isBot) {
         const int nw = MeasureText(them.c_str(), 17);
-        DrawRectangleRounded({(float)(x + 134 + nw), (float)(y + 57), 44, 18}, 0.4f, 6,
+        DrawRectangleRounded({(float)(x + 174 + nw), (float)(y + 57), 44, 18}, 0.4f, 6,
                              Color{60, 48, 78, 235});
-        DrawText(T(mail::botTag()), x + 142 + nw, y + 60, 11, Color{206, 186, 232, 255});
+        DrawText(T(mail::botTag()), x + 182 + nw, y + 60, 11, Color{206, 186, 232, 255});
     }
 
     const mail::Box& box = mailbox(m_playerCountryId);
-    const mail::Thread* t = box.thread(other);
+    const mail::Thread* t = group ? box.groupThreadIfAny(m_mailGroupThread)
+                                  : box.thread(other);
 
     const int composeH = 106;
-    const Rectangle view = {(float)(x + 24), (float)(y + 90), (float)(w - 48),
-                            (float)(h - 90 - composeH - 34)};
+    // A room spends a row on its members, so the letters start below it. Same
+    // panel, one strip taller -- the chips were drawn over the view's top edge.
+    const int viewTop = group ? 114 : 90;
+    const Rectangle view = {(float)(x + 24), (float)(y + viewTop), (float)(w - 48),
+                            (float)(h - viewTop - composeH - 34)};
     DrawRectangleRec(view, Color{11, 12, 17, 255});
     DrawRectangleLinesEx(view, 1, Color{50, 54, 72, 180});
 
@@ -497,16 +850,37 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
                     const bool end = (i == m.body.size());
                     if (!end && m.body[i] != '\n') {
                         line += m.body[i];
-                        if (MeasureText(line.c_str(), 13) < bubbleMax - 20) continue;
+                        if (MeasureText(line.c_str(), kLetterFs) < bubbleMax - 20) continue;
                     }
                     lines.push_back(line);
                     line.clear();
                 }
             }
             int widest = 0;
-            for (const std::string& l : lines) widest = std::max(widest, MeasureText(l.c_str(), 13));
-            const int bw = std::min(bubbleMax, widest + 24);
-            const int bh2 = (int)lines.size() * 17 + 28;
+            for (const std::string& l : lines) widest = std::max(widest, MeasureText(l.c_str(), kLetterFs));
+
+            // ── WIDE ENOUGH FOR ITS OWN FOOTER, NOT JUST ITS TEXT ──
+            //
+            // The footer is drawn from the left of the bubble and the controls
+            // are right-aligned inside it, so a SHORT message made them
+            // collide: "hello???" produced a bubble in which "not sent yet",
+            // "edit" and "discard" were printed on top of one another.
+            //
+            // So the floor is what the bottom row needs, worked out before the
+            // width is chosen rather than hoped for afterwards.
+            std::string footPreview = TextFormat(T("turn %d"), m.deliverTurn);
+            if (m.status == mail::Status::Pending) footPreview = T("not sent yet");
+            if (m.author == mail::Author::Bot) footPreview += std::string(" · ") + T(mail::botTag());
+            if (!mine && !m.authorName.empty()) footPreview += " · " + m.authorName;
+            int controls = 0;
+            if (mine && m.status == mail::Status::Pending)
+                controls = MeasureText(T("edit"), 10) + MeasureText(T("discard"), 10) + 26;
+            else if (!mine)
+                controls = MeasureText(T("report"), 10) + 14;
+            const int footFloor = MeasureText(footPreview.c_str(), kFootFs) + controls + 34;
+
+            const int bw = std::min(bubbleMax, std::max(widest + 24, footFloor));
+            const int bh2 = (int)lines.size() * (kLetterFs + 5) + 30;
             const int bx = mine ? (int)(view.x + view.width - bw - 12) : (int)view.x + 12;
 
             if (ly + bh2 > view.y - 20 && ly < view.y + view.height) {
@@ -516,8 +890,8 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
                                           ink.edge);
                 int ty = ly + 8;
                 for (const std::string& l : lines) {
-                    DrawText(l.c_str(), bx + 12, ty, 13, ink.text);
-                    ty += 17;
+                    DrawText(l.c_str(), bx + 12, ty, kLetterFs, ink.text);
+                    ty += (kLetterFs + 5);
                 }
                 // The footer says what a reader needs: when, and from a machine
                 // or a person. The bot tag rides on every single one.
@@ -534,10 +908,13 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
                 // and nearly invisible on the purple of a machine's -- and the
                 // bot tag lives in this line, which is the one piece of it that
                 // must never be hard to read.
-                Color footCol = Color{120, 126, 146, 255};
-                if (m.status == mail::Status::Pending) footCol = Color{226, 196, 128, 255};
-                else if (m.author == mail::Author::Bot) footCol = Color{178, 158, 208, 255};
-                DrawText(foot.c_str(), bx + 12, ly + bh2 - 16, 10, footCol);
+                // READABLE AGAINST ITS OWN BUBBLE. This was 10px in a grey a
+                // shade off the background it sits on, which on a dark bubble
+                // is not small text, it is invisible text.
+                Color footCol = Color{170, 176, 198, 255};
+                if (m.status == mail::Status::Pending) footCol = Color{240, 210, 140, 255};
+                else if (m.author == mail::Author::Bot) footCol = Color{198, 180, 226, 255};
+                DrawText(foot.c_str(), bx + 12, ly + bh2 - 18, kFootFs, footCol);
 
                 // Reporting is offered only on letters somebody else wrote, and
                 // only where there is somewhere to send it. Deliberately quiet:
@@ -614,11 +991,24 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
     } else {
         int ty = (int)field.y + 6;
         std::string line;
+        // WHERE THE CARET GOES, CAPTURED WHILE THE LAST LINE STILL EXISTS.
+        //
+        // It used to be worked out after the loop, from `line` and `ty` -- but
+        // the loop's final pass draws the last line, advances ty and CLEARS
+        // line. So the caret was measured against an empty string at the y of
+        // the row below: it sat at the left margin, one line under the text,
+        // which is exactly where it should not be.
+        int caretX = (int)field.x + 8;
+        int caretY = ty;
         for (size_t i = 0; i <= m_mailDraft.size(); ++i) {
             const bool end = (i == m_mailDraft.size());
             if (!end && m_mailDraft[i] != '\n') {
                 line += m_mailDraft[i];
                 if (MeasureText(line.c_str(), 13) < field.width - 20) continue;
+            }
+            if (end) {
+                caretX = (int)field.x + 8 + MeasureText(line.c_str(), 13);
+                caretY = ty;
             }
             if (ty + 16 < field.y + field.height)
                 DrawText(line.c_str(), (int)field.x + 8, ty, 13, WHITE);
@@ -626,8 +1016,8 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
             line.clear();
         }
         if (m_mailComposeFocus && (int)(GetTime() * 2) % 2)
-            DrawRectangle((int)field.x + 8 + MeasureText(line.c_str(), 13),
-                          std::min(ty, (int)(field.y + field.height - 18)), 2, 14, WHITE);
+            DrawRectangle(caretX, std::min(caretY, (int)(field.y + field.height - 18)),
+                          2, 14, WHITE);
     }
 
     const Rectangle send = {(float)(x + w - 24 - 118), field.y, 118, field.height};
@@ -709,40 +1099,38 @@ void Game::updateMail() {
         else closeMail();
         return;
     }
-    if (m_mailPicking || m_mailThread == 0) return;
+    // ── Typing into the country filter ──
+    if (m_mailPicking) {
+        int k = GetCharPressed();
+        while (k > 0) {
+            if (k >= 32 && m_mailPickerQuery.size() + 4 <= 64) {
+                utf8Append(m_mailPickerQuery, k);
+                m_mailPickerScroll = 0;   // a new filter starts at the top
+            }
+            k = GetCharPressed();
+        }
+        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
+            !m_mailPickerQuery.empty()) {
+            utf8PopBack(m_mailPickerQuery);
+            m_mailPickerScroll = 0;
+        }
+        return;
+    }
+    if (m_mailThread == 0) return;
     if (!m_mailComposeFocus) return;
 
     int key = GetCharPressed();
     while (key > 0) {
         // Same UTF-8 handling as the report form, and for the same reason: a
         // letter written in Ukrainian is a letter.
-        if (key >= 32 && m_mailDraft.size() + 4 <= mail::kMaxBody) {
-            unsigned cp = (unsigned)key;
-            if (cp < 0x80) { m_mailDraft += (char)cp; }
-            else if (cp < 0x800) {
-                m_mailDraft += (char)(0xC0 | (cp >> 6));
-                m_mailDraft += (char)(0x80 | (cp & 0x3F));
-            } else if (cp < 0x10000) {
-                m_mailDraft += (char)(0xE0 | (cp >> 12));
-                m_mailDraft += (char)(0x80 | ((cp >> 6) & 0x3F));
-                m_mailDraft += (char)(0x80 | (cp & 0x3F));
-            } else {
-                m_mailDraft += (char)(0xF0 | (cp >> 18));
-                m_mailDraft += (char)(0x80 | ((cp >> 12) & 0x3F));
-                m_mailDraft += (char)(0x80 | ((cp >> 6) & 0x3F));
-                m_mailDraft += (char)(0x80 | (cp & 0x3F));
-            }
-        }
+        if (key >= 32 && m_mailDraft.size() + 4 <= mail::kMaxBody)
+            utf8Append(m_mailDraft, key);
         key = GetCharPressed();
     }
 
     if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
         if (!m_mailDraft.empty()) {
-            // One CHARACTER, continuation bytes and all.
-            size_t i = m_mailDraft.size() - 1;
-            while (i > 0 && (unsigned char)m_mailDraft[i] >= 0x80 &&
-                   (unsigned char)m_mailDraft[i] < 0xC0) --i;
-            m_mailDraft.erase(i);
+            utf8PopBack(m_mailDraft);
             Audio::get().playSfx("key_type", 0.12f);
         }
     }
