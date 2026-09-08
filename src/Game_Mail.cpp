@@ -957,6 +957,11 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
             // cannot be pulled either -- the pull talks to the runner.
             else if (!running)                   next = "Next: press Start it.";
             else if (!haveModel)                 next = "Next: pull a model below.";
+            // Answering, a model named, and that model not among the ones it
+            // has. Sending them to "Test the runner" here is sending them to
+            // watch it fail: the refusal is the runner saying it does not have
+            // that model, which the screen can see and they cannot.
+            else if (!llmModelPresent())         next = "Next: pull that model below -- the runner does not have it yet.";
             else if (!m_llmAvailable)            next = "Next: press Test the runner.";
             else { next = "Ready. Countries will answer their own mail.";
                    tone = Color{120, 190, 140, 255}; }
@@ -1148,7 +1153,20 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
                     DrawText(TextFormat("%s  ·  %s", mo.note, mo.licence),
                              (int)row.x + 8, (int)row.y + 19, 10, Color{120, 126, 146, 255});
 
-                    const char* action = chosen ? T("in use") : T("Pull");
+                    // "in use" ONLY when the runner actually has it. It used
+                    // to mean "this row's name matches the Model field", which
+                    // marked a model that had never downloaded -- the exact
+                    // state a failed pull leaves behind, and the reason the
+                    // screen looked configured while every letter was refused.
+                    bool pulled = false;
+                    for (const std::string& have : m_llmModels) {
+                        const size_t colon = have.find(':');
+                        if (have == mo.name ||
+                            (colon != std::string::npos &&
+                             have.compare(0, colon, mo.name) == 0)) { pulled = true; break; }
+                    }
+                    const char* action = (chosen && pulled) ? T("in use")
+                                       : (pulled ? T("pulled") : T("Pull"));
                     const int aw = MeasureText(action, 11) + 16;
                     const Rectangle b = {row.x + row.width - aw - 8, row.y + 6,
                                          (float)aw, 21};

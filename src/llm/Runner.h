@@ -165,6 +165,26 @@ bool serverAlive(long long pid);
 /** The endpoint startServer will answer on. */
 std::string localEndpoint();
 
+/**
+ * What the runner at `endpoint` is actually doing right now.
+ *
+ * `alive` is whether ANYTHING answers there -- not whether this game started
+ * it. That distinction was the bug: "running" was decided from a pid this
+ * process had spawned, so a runner started by an earlier session, by the
+ * player, or by a system service read as "not running", and pressing Start it
+ * launched a second one that could not bind the port and exited at once. The
+ * button appeared to do nothing because it did nothing that could work.
+ *
+ * `models` is what has actually been pulled, which is the other half of the
+ * same confusion: the model list marked a row "in use" because it matched the
+ * configured NAME, with nothing downloaded behind it.
+ */
+struct Status {
+    bool alive = false;
+    std::vector<std::string> models;
+};
+Status probeStatus(const std::string& endpoint);
+
 /** How far a pull has got, read from the file it is streaming into. */
 struct PullProgress {
     long long completed = 0;

@@ -47,6 +47,12 @@ std::mutex g_lock;
 std::vector<Answer> g_answers;
 int g_inFlight = 0;
 
+/// The local runner's state, refreshed on a timer by a worker. See pumpLlmServer.
+std::mutex g_statusLock;
+llm::Status g_status;
+bool g_statusProbing = false;
+bool g_statusFresh = false;
+
 /// Whether the release host answered, from a one-shot probe. See probeLlmNetwork.
 std::mutex g_netLock;
 int  g_netState = 0;          // 0 unknown, 1 online, 2 offline
@@ -152,25 +158,6 @@ void Game::refreshLlmAvailability() {
     m_llmConfigSeen = seen;
     rebuildLlmCountries();
 
-    // ── START THE RUNNER WE INSTALLED, ONCE, WHEN THE GAME COMES BACK ──
-    //
-    // Otherwise every session begins with a correspondence system that is
-    // configured, enabled, shows a Mail button, and answers nothing until the
-    // player remembers to open the settings and press Start it. The runner is
-    // ours: we installed it into the game's own folder, we stop it on quit, and
-    // it binds to loopback -- so starting it is restoring the state the player
-    // already chose, not taking a new liberty.
-    //
-    // Only when they asked for it (llmEnabled), only for a runner in OUR
-    // folder, and only for a local endpoint -- somebody pointing at a remote
-    // API has nothing here to start. Once per session: if they press Stop it,
-    // it stays stopped.
-    if (!m_llmAutoStartTried && m_config.llmEnabled &&
-        llm::isLocal(m_config.llmEndpoint) && llm::installed(m_dataDir) &&
-        !llmServerRunning()) {
-        m_llmAutoStartTried = true;
-        m_llmServerPid = llm::startServer(m_dataDir);
-    }
 }
 
 void Game::rebuildLlmCountries() {
@@ -1136,12 +1123,16 @@ float Game::llmDispositionToward(int me, int them) const {
     return it == m_llmDisposition.end() ? 0.0f : it->second;
 }
 
-bool Game::llmServerRunning() const {
-    return m_llmServerPid != 0 && llm::serverAlive(m_llmServerPid);
-}
-
 void Game::startLlmServer() {
-    if (llmServerRunning()) return;
+    // Something already answering is a runner, whoever started it. Spawning
+    // another only produces a process that cannot bind the port and exits --
+    // which is what made this button look broken.
+    if (llmServerRunning()) {
+        m_llmTestOk = true;
+        m_llmTestResult = T("It is already running.");
+        return;
+    }
+    m_llmNextStartAt = GetTime() + 15.0;   // do not let the timer race this
     m_llmServerPid = llm::startServer(m_dataDir);
     if (m_llmServerPid == 0) {
         m_llmTestOk = false;
@@ -1160,9 +1151,28 @@ void Game::startLlmServer() {
 }
 
 void Game::stopLlmServer() {
-    if (m_llmServerPid == 0) return;
+    if (m_llmServerPid == 0) {
+        // "Running" now means the endpoint answers, whoever started it -- so
+        // this button appears for a runner an earlier session left up, or one
+        // the player runs themselves. We only know the pid of one we spawned.
+        //
+        // SAYING SO RATHER THAN KILLING IT. A process this game did not start
+        // is not this game's to end: it may be serving something else entirely,
+        // and there is no way from here to tell a stale game runner from the
+        // player's own. Doing nothing silently was the alternative, and that is
+        // the same fault as the Start button that appeared to do nothing.
+        if (m_llmAlive) {
+            m_llmTestOk = false;
+            m_llmTestResult = T("This game did not start that runner, so it will not "
+                                "stop it. Close it where it was started.");
+        }
+        return;
+    }
     llm::stopServer(m_llmServerPid);
     m_llmServerPid = 0;
+    m_llmAlive = false;
+    m_llmProbeAt = 0.0;                 // re-probe at once rather than in 3s
+    m_llmNextStartAt = GetTime() + 15.0;  // and do not immediately restart it
     m_llmTestOk = false;
     m_llmTestResult = T("Stopped.");
 }
@@ -1187,4 +1197,78 @@ void Game::probeLlmNetwork() {
 int Game::llmNetworkState() const {
     std::lock_guard<std::mutex> g(g_netLock);
     return g_netState;
+}
+
+// ─────────────────────────────────────────── keeping the runner running ────
+
+bool Game::llmServerRunning() const { return m_llmAlive; }
+
+bool Game::llmModelPresent() const {
+    if (m_config.llmModel.empty()) return false;
+    for (const std::string& m : m_llmModels) {
+        if (m == m_config.llmModel) return true;
+        // Ollama reports "llama3.1:8b"; a player may have typed "llama3.1",
+        // which ollama itself resolves to the :latest tag. Treat the bare name
+        // as matching so the screen does not say "not pulled" about a model
+        // that will answer perfectly well.
+        const size_t colon = m.find(':');
+        if (colon != std::string::npos && m.compare(0, colon, m_config.llmModel) == 0)
+            return true;
+    }
+    return false;
+}
+
+/**
+ * Ask the runner what it is doing, and start it if it is not doing anything.
+ *
+ * WHY THIS IS A TIMER AND NOT A ONE-SHOT. The first version started the runner
+ * once per session and decided "running" from the pid it had spawned. Both
+ * halves were wrong: a runner started by an earlier session answers perfectly
+ * well and read as stopped, and a runner that died mid-game stayed dead until
+ * the player noticed. The runner should be up whenever the game is up, so this
+ * checks, and restarts when it is not.
+ *
+ * The backoff matters. Without it, a runner that cannot start -- a port held by
+ * something else, a broken install -- would be respawned every time this ran,
+ * which is a process every few seconds for as long as the game is open.
+ */
+void Game::pumpLlmServer() {
+    {
+        std::lock_guard<std::mutex> g(g_statusLock);
+        if (g_statusFresh) {
+            g_statusFresh = false;
+            m_llmAlive = g_status.alive;
+            m_llmModels = g_status.models;
+        }
+    }
+
+    const double now = GetTime();
+    if (!m_config.llmEnabled || m_config.llmEndpoint.empty()) { m_llmAlive = false; return; }
+
+    if (now >= m_llmProbeAt) {
+        m_llmProbeAt = now + 3.0;
+        bool go = false;
+        {
+            std::lock_guard<std::mutex> g(g_statusLock);
+            if (!g_statusProbing) { g_statusProbing = true; go = true; }
+        }
+        if (go) {
+            const std::string endpoint = m_config.llmEndpoint;
+            std::thread([endpoint]() {
+                const llm::Status st = llm::probeStatus(endpoint);
+                std::lock_guard<std::mutex> g(g_statusLock);
+                g_status = st;
+                g_statusFresh = true;
+                g_statusProbing = false;
+            }).detach();
+        }
+    }
+
+    // Only a runner in OUR folder, on a LOCAL endpoint, and only when the
+    // player asked for advisors. A remote API has nothing here to start, and a
+    // runner somebody else is managing is not ours to respawn.
+    if (m_llmAlive || !llm::isLocal(m_config.llmEndpoint)) return;
+    if (!llm::installed(m_dataDir) || now < m_llmNextStartAt) return;
+    m_llmNextStartAt = now + 15.0;
+    m_llmServerPid = llm::startServer(m_dataDir);
 }

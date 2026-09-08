@@ -421,6 +421,34 @@ long long startServer(const std::string& dataDir) {
 bool stopServer(long long pid) { return odproc::stopDetached(pid); }
 bool serverAlive(long long pid) { return odproc::detachedAlive(pid); }
 
+Status probeStatus(const std::string& endpoint) {
+    Status out;
+    if (endpoint.empty()) return out;
+    HttpRequest req;
+    req.url = apiRootOf(endpoint) + "/api/tags";
+    req.maxResponseBytes = 512 * 1024;
+    // Short: this runs on a timer while the game plays, and a runner on
+    // loopback either answers at once or is not there.
+    req.timeoutMs = 3000;
+    req.allowInsecure = true;
+    const HttpResponse res = httpRequest(req);
+    if (!res.ok()) return out;
+    out.alive = true;
+
+    // Names only, and parsed by hand rather than with a JSON library because
+    // that is what the rest of this file does. "name":"gemma3:4b"
+    const std::string key = "\"name\":\"";
+    size_t at = 0;
+    while ((at = res.body.find(key, at)) != std::string::npos) {
+        at += key.size();
+        const size_t end = res.body.find('"', at);
+        if (end == std::string::npos) break;
+        out.models.push_back(res.body.substr(at, end - at));
+        at = end;
+    }
+    return out;
+}
+
 PullProgress pullProgress(const std::string& streamFile) {
     PullProgress out;
     const std::string text = readFile(streamFile);

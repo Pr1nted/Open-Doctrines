@@ -2351,6 +2351,9 @@ void Game::run() {
         // started, an endpoint is typed. Reconciled here, before anything
         // draws, because the sidebar button is the thing that has to notice.
         refreshLlmAvailability();
+        // Keeps the runner up for as long as the game is. Self-throttled to a
+        // probe every 3s and a restart attempt at most every 15s.
+        pumpLlmServer();
 
         if (m_mailOpen && !m_feedbackOpen) {
             m_screenW = GetScreenWidth();

@@ -5083,8 +5083,12 @@ private:
     int  llmNetworkState() const;
     /// Fingerprint of the fields refreshLlmAvailability watches.
     std::string m_llmConfigSeen;
-    /// One auto-start per session. A player who presses Stop it stays stopped.
-    bool m_llmAutoStartTried = false;
+    /// Whether the endpoint answers -- ANY runner, not only one we started.
+    bool m_llmAlive = false;
+    /// What the runner says it has pulled. Empty when it is not answering.
+    std::vector<std::string> m_llmModels;
+    double m_llmProbeAt = 0.0;       ///< next status probe
+    double m_llmNextStartAt = 0.0;   ///< backoff, so a failing start is not respawned every tick
     void askAdvisor(int fromCountry, int toCountry);
     void runAdvisors();
     std::string llmRelativeStrength(int fromCountry, int toCountry) const;
@@ -5266,6 +5270,10 @@ private:
     void startLlmServer();
     void stopLlmServer();
     bool llmServerRunning() const;
+    /// Whether the configured model is one the runner actually has.
+    bool llmModelPresent() const;
+    /// Probe the runner and restart it if it is not up. Per frame; self-throttling.
+    void pumpLlmServer();
     void closeMailSettings();
     void closeMail();
     void drawMail();
