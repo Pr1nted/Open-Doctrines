@@ -975,6 +975,7 @@
  "No flag": "Sin bandera",
  "No garrison": "Sin guarnición",
  "No implementing doctrine matches \"%s\"": "Ninguna doctrina en aplicación coincide con \"%s\"",
+ "No internet connection was found. Installing a runner and ": "",
  "No letters yet. Start one with \"New letter\".": "",
  "No maps found in STDmaps/ or custom_maps/": "No se encontraron mapas en STDmaps/ ni en custom_maps/",
  "No matches": "Sin coincidencias",

@@ -222,7 +222,7 @@ const Shot SHOTS[] = {
     // Experimental > AI Correspondents, with nothing configured and no Mail
     // button anywhere on screen. This is the state the feature was unreachable
     // in, so it is the state worth photographing.
-    {"llm-setup",     60, true},
+    {"llm-setup",    120, true},
     // The SIDEBAR with a model configured, which is where the Mail button has
     // to appear. It did not: availability was recomputed only when the "use a
     // language model" checkbox was toggled, so a player who pulled a model --

@@ -5077,8 +5077,14 @@ private:
     void rebuildLlmCountries();
     /// Recompute m_llmAvailable when the configuration has moved. Per frame.
     void refreshLlmAvailability();
+    /// Ask once, off the game thread, whether the release host answers.
+    void probeLlmNetwork();
+    /// 0 not yet known, 1 online, 2 offline.
+    int  llmNetworkState() const;
     /// Fingerprint of the fields refreshLlmAvailability watches.
     std::string m_llmConfigSeen;
+    /// One auto-start per session. A player who presses Stop it stays stopped.
+    bool m_llmAutoStartTried = false;
     void askAdvisor(int fromCountry, int toCountry);
     void runAdvisors();
     std::string llmRelativeStrength(int fromCountry, int toCountry) const;

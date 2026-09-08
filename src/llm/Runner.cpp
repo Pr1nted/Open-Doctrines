@@ -127,6 +127,49 @@ std::string describeDownload() {
            "for it before anything is run.";
 }
 
+/**
+ * Is this machine online at all?
+ *
+ * Asked only to CHOOSE THE MESSAGE, never to gate the attempt: a probe that
+ * decides whether to try would turn its own false negative -- a proxy, a
+ * captive portal, a blocked HEAD -- into a refusal to install on a machine
+ * that is perfectly able to. So the download runs regardless, and this only
+ * decides whether the failure is reported as "no internet" or as "try again".
+ *
+ * Deliberately short: this runs after something has already failed, and a
+ * player waiting on a verdict should not wait another half minute for it.
+ */
+/// Where to throw a response away, per platform.
+const char* nullDevice() {
+#if defined(_WIN32)
+    return "NUL";
+#else
+    return "/dev/null";
+#endif
+}
+
+bool reachable() {
+    // CURL, NOT httpRequest, and the difference is the whole point of this
+    // function. HttpRequest::timeoutMs bounds the READ loop -- it starts
+    // counting once there is a connection to read from -- so a host that
+    // blackholes packets waits out the operating system's own connect timeout,
+    // about 75 seconds on macOS, whatever the field says. A "is there internet"
+    // probe that can take a minute and a quarter to say no is not a probe.
+    //
+    // (That is a live limitation of net/HttpClient for every caller, not just
+    // this one. Not changed here: it is the shared transport behind accounts
+    // and multiplayer, and it deserves its own look rather than a drive-by
+    // edit from a feature branch.)
+    return odproc::runCurl({
+        "-fsS",
+        "--proto",           "=https",
+        "--connect-timeout", "3",
+        "--max-time",        "4",
+        "-o",                nullDevice(),
+        kReleaseApi,
+    });
+}
+
 Install fetch(const std::string& dataDir, const ProgressFn& progress) {
     Install out;
     const PlatformAsset asset = platformAsset();
@@ -145,8 +188,14 @@ Install fetch(const std::string& dataDir, const ProgressFn& progress) {
     req.timeoutMs = 30000;
     const HttpResponse res = httpRequest(req);
     if (!res.ok()) {
-        out.error = res.error.empty() ? "Could not reach Ollama's release list."
-                                      : res.error;
+        // Said as a connection problem when it is one. "Could not reach
+        // Ollama's release list" reads like the service is down, and the
+        // commonest cause by far is that this machine is not online.
+        out.error = reachable()
+            ? (res.error.empty() ? "Could not reach Ollama's release list. "
+                                   "It may be temporarily unavailable."
+                                 : res.error)
+            : "No internet connection. Installing the runner needs one.";
         return out;
     }
 
@@ -172,10 +221,31 @@ Install fetch(const std::string& dataDir, const ProgressFn& progress) {
         // out in TunnelInstall.cpp: a release URL redirects to a CDN, so
         // redirects must be followed but ONLY over https, and a URL that came
         // from a reply must never be interpolated into a command line.
+        // ── WHY THERE ARE THREE TIMEOUTS AND NOT ONE ──
+        //
+        // --max-time alone was 1800, and that is the ONLY one that used to
+        // exist: on a connection that could not reach the CDN at all, the
+        // button said "Installing..." for half an hour and then failed. From
+        // the player's side that is indistinguishable from a hang, and there is
+        // no cancel.
+        //
+        //   --connect-timeout  a route that goes nowhere fails in 20s, not 30
+        //                      minutes. Broken IPv6 with no working fallback is
+        //                      the common case and it presents as a stall.
+        //   --speed-time/limit a transfer that STARTS and then dies is not
+        //                      covered by connect-timeout at all -- it is a
+        //                      live socket delivering nothing. Under 2 KB/s for
+        //                      60s is a dead download, not a slow one; the
+        //                      asset is 160 MB, so a link genuinely that slow
+        //                      would need seven hours anyway.
+        //   --max-time         still the backstop for the pathological case.
         const std::vector<std::string> args = {
             "-fsSL",
             "--proto",        "=https",
             "--proto-redir",  "=https",
+            "--connect-timeout", "20",
+            "--speed-time",   "60",
+            "--speed-limit",  "2048",
             "--max-time",     "1800",
             "--max-filesize", std::to_string(asset.maxBytes),
             "-o",             staged.string(),
@@ -183,7 +253,10 @@ Install fetch(const std::string& dataDir, const ProgressFn& progress) {
         };
         if (!odproc::runCurl(args)) {
             fs::remove(staged, ec);
-            out.error = "The download did not complete. Check your connection and try again.";
+            out.error = reachable()
+                ? "The download did not complete. It may have been interrupted -- try again."
+                : "No internet connection. The runner is a 160 MB download and "
+                  "cannot be installed offline.";
             return out;
         }
     }
@@ -306,6 +379,13 @@ bool pullModel(const std::string& apiBase, const std::string& model,
         // Loopback by default, so http is expected here -- but if somebody has
         // pointed this at a remote Ollama, redirects must still not downgrade.
         "--proto-redir", "=https,http",
+        // This one talks to the LOCAL runner, so a connect failure means the
+        // runner is not up -- worth failing in seconds rather than 90 minutes.
+        // No --speed-limit here: the stream is progress lines, not the weights,
+        // and it is legitimately silent for long stretches while a layer
+        // downloads. Ollama's own error text is what names a network failure,
+        // and it is surfaced verbatim.
+        "--connect-timeout", "10",
         "--max-time",    "5400",          // a 5 GB pull on a slow line
         "-H",            "content-type: application/json",
         "-d",            body,

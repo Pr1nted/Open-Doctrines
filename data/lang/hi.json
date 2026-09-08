@@ -975,6 +975,7 @@
  "No flag": "कोई ध्वज नहीं",
  "No garrison": "कोई चौकी नहीं",
  "No implementing doctrine matches \"%s\"": "\"%s\" से मेल खाता कोई क्रियान्वित हो रहा सिद्धांत नहीं",
+ "No internet connection was found. Installing a runner and ": "",
  "No letters yet. Start one with \"New letter\".": "",
  "No maps found in STDmaps/ or custom_maps/": "STDmaps/ या custom_maps/ में कोई मानचित्र नहीं मिला",
  "No matches": "कोई मेल नहीं",

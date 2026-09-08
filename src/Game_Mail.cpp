@@ -101,6 +101,7 @@ void Game::openLlmSetup() {
     m_mailSettingsOpen = true;
     m_mailSetupOnly = true;
     m_mailSettingsScroll = 0;
+    probeLlmNetwork();
     m_mailLlmField = -1;
     m_mailThread = 0;
     m_mailPicking = false;
@@ -907,6 +908,23 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         {
             const bool have    = llm::installed(m_dataDir);
             const bool running = llmServerRunning();
+
+            // SAID BEFORE THEY PRESS ANYTHING. Installing is a 160 MB download
+            // and pulling a model is gigabytes; offline, both end in a wait and
+            // then a failure. The probe is one request when the pane opens, on
+            // a worker, and it only ever adds a warning -- the buttons stay
+            // live, because a probe that could not reach the host is not proof
+            // the download cannot.
+            if (llmNetworkState() == 2) {
+                int fs = 11;
+                const std::string warn = odText::fitToWidth(
+                    T("No internet connection was found. Installing a runner and "
+                      "pulling a model both need one; everything else here works "
+                      "offline."),
+                    w - 74, fs, 9);
+                DrawText(warn.c_str(), x + 50, cy, fs, Color{200, 150, 110, 255});
+                cy += fs + 10;
+            }
 
             // A RUNNER IN THE GAME'S OWN FOLDER IMPLIES ITS OWN ADDRESS. There
             // is exactly one place it can be reached, this is the code that put

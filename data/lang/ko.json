@@ -975,6 +975,7 @@
  "No flag": "국기 없음",
  "No garrison": "수비대 없음",
  "No implementing doctrine matches \"%s\"": "\"%s\"에 해당하는 도입 중 교리가 없습니다",
+ "No internet connection was found. Installing a runner and ": "",
  "No letters yet. Start one with \"New letter\".": "",
  "No maps found in STDmaps/ or custom_maps/": "STDmaps/ 또는 custom_maps/에서 지도를 찾을 수 없습니다",
  "No matches": "일치 항목 없음",

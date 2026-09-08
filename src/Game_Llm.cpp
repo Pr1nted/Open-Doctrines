@@ -47,6 +47,11 @@ std::mutex g_lock;
 std::vector<Answer> g_answers;
 int g_inFlight = 0;
 
+/// Whether the release host answered, from a one-shot probe. See probeLlmNetwork.
+std::mutex g_netLock;
+int  g_netState = 0;          // 0 unknown, 1 online, 2 offline
+bool g_netProbing = false;
+
 /// The runner test's outcome, waiting to be collected by the game thread.
 std::string g_testResult;
 bool g_testOk = false;
@@ -146,6 +151,26 @@ void Game::refreshLlmAvailability() {
     if (seen == m_llmConfigSeen) return;
     m_llmConfigSeen = seen;
     rebuildLlmCountries();
+
+    // ── START THE RUNNER WE INSTALLED, ONCE, WHEN THE GAME COMES BACK ──
+    //
+    // Otherwise every session begins with a correspondence system that is
+    // configured, enabled, shows a Mail button, and answers nothing until the
+    // player remembers to open the settings and press Start it. The runner is
+    // ours: we installed it into the game's own folder, we stop it on quit, and
+    // it binds to loopback -- so starting it is restoring the state the player
+    // already chose, not taking a new liberty.
+    //
+    // Only when they asked for it (llmEnabled), only for a runner in OUR
+    // folder, and only for a local endpoint -- somebody pointing at a remote
+    // API has nothing here to start. Once per session: if they press Stop it,
+    // it stays stopped.
+    if (!m_llmAutoStartTried && m_config.llmEnabled &&
+        llm::isLocal(m_config.llmEndpoint) && llm::installed(m_dataDir) &&
+        !llmServerRunning()) {
+        m_llmAutoStartTried = true;
+        m_llmServerPid = llm::startServer(m_dataDir);
+    }
 }
 
 void Game::rebuildLlmCountries() {
@@ -1140,4 +1165,26 @@ void Game::stopLlmServer() {
     m_llmServerPid = 0;
     m_llmTestOk = false;
     m_llmTestResult = T("Stopped.");
+}
+
+void Game::probeLlmNetwork() {
+    {
+        std::lock_guard<std::mutex> g(g_netLock);
+        // Once per session unless it came back offline: a player who plugs the
+        // cable in and reopens the pane should get a fresh answer, and one who
+        // is online does not need asking again.
+        if (g_netProbing || g_netState == 1) return;
+        g_netProbing = true;
+    }
+    std::thread([]() {
+        const bool ok = llm::reachable();
+        std::lock_guard<std::mutex> g(g_netLock);
+        g_netState = ok ? 1 : 2;
+        g_netProbing = false;
+    }).detach();
+}
+
+int Game::llmNetworkState() const {
+    std::lock_guard<std::mutex> g(g_netLock);
+    return g_netState;
 }

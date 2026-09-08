@@ -80,6 +80,9 @@ bool canInstall();
 /** The one line to run where we do not offer to do it. */
 const char* manualInstructions();
 
+/// Whether the release host answers. Used to word a failure, never to gate one.
+bool reachable();
+
 /** What the player is told BEFORE anything is fetched: what, and from where. */
 std::string describeDownload();
 

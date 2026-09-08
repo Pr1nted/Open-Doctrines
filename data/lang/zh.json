@@ -975,6 +975,7 @@
  "No flag": "没有旗帜",
  "No garrison": "没有驻军",
  "No implementing doctrine matches \"%s\"": "没有与“%s”相符的推行中主义",
+ "No internet connection was found. Installing a runner and ": "",
  "No letters yet. Start one with \"New letter\".": "",
  "No maps found in STDmaps/ or custom_maps/": "在 STDmaps/ 或 custom_maps/ 中未找到地图",
  "No matches": "没有匹配项",

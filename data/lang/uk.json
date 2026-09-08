@@ -975,6 +975,7 @@
  "No flag": "Немає прапора",
  "No garrison": "Немає гарнізону",
  "No implementing doctrine matches \"%s\"": "Жодна доктрина у впровадженні не відповідає \"%s\"",
+ "No internet connection was found. Installing a runner and ": "",
  "No letters yet. Start one with \"New letter\".": "",
  "No maps found in STDmaps/ or custom_maps/": "У STDmaps/ або custom_maps/ карт не знайдено",
  "No matches": "Немає збігів",
