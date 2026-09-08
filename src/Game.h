@@ -5218,8 +5218,32 @@ public:
      * Always false without the module.
      */
     bool llmSuppressesReflex(int cid, const char* reflex) const;
-    /// The ceiling on how much of the AI an advisor may switch off at once.
-    static constexpr int kLlmMaxSuppressed = 2;
+    /**
+     * THE CEILING ON HOW MUCH OF THE AI AN ADVISOR MAY SWITCH OFF AT ONCE: one.
+     *
+     * It was two, chosen because two felt cautious. Measured on hold-out set C,
+     * 400 turns, against a control of 238 / 52.53%:
+     *
+     *     -garrison alone      -2.43 land
+     *     -campaign alone      -9.37
+     *     sum of parts        -11.80
+     *     BOTH together       -19.13     62% worse than additive
+     *
+     * The per-seat shape is the argument, not the total. USA GAINED 5.4 from
+     * losing garrison and 5.5 from losing campaign, and lost everything when it
+     * lost both. CHN lost 1.1 and 3.0 separately and 11.4 together. Two
+     * suppressions each individually harmless composed into a collapse, and no
+     * single-rule measurement could have predicted it -- these reflexes are not
+     * independent contributors, they are ALTERNATIVES. Garrison holds a
+     * threatened border; campaign takes ground back. Lose one and the other
+     * compensates. Lose both and nothing defensive is left, because the
+     * policy's own attack action is gated on opportunism rather than survival.
+     *
+     * So one. And RAISING THIS NUMBER REQUIRES ITS OWN PAIR MEASUREMENT, not
+     * an inference from the cost table below: cheapest-first would select
+     * austerity + redeploy, a pair nobody has measured together.
+     */
+    static constexpr int kLlmMaxSuppressed = 1;
     /// Two consistent asks. One is a remark; two is a policy.
     static constexpr float kLlmSuppressAt = -0.67f;
 private:
