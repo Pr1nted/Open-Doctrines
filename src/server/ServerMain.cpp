@@ -298,19 +298,6 @@ int main(int argc, char** argv) {
     //
     //   OpenDoctrinesServer --bench-agent 1939:NOR:hood /tmp/od.fifo [--until N] [--seed S]
     for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--probe-trade") == 0) {
-            if (i + 1 >= argc) { fprintf(stderr, "--probe-trade needs a seat\n"); return 2; }
-            AISystem::s_readOnlyModel = true;
-            unsigned int seed = 20260801u;
-            std::string dataDir;
-            for (int k = 1; k < argc - 1; ++k) {
-                if (strcmp(argv[k], "--seed") == 0) seed = (unsigned int)strtoul(argv[k + 1], nullptr, 10);
-                else if (strcmp(argv[k], "--data") == 0) dataDir = argv[k + 1];
-            }
-            Game game;
-            if (!game.srvResolveDataDir(dataDir)) { fprintf(stderr, "no data directory -- pass --data <dir>\n"); return 2; }
-            return game.runTradeProbe(argv[i + 1], seed) ? 0 : 1;
-        }
         if (strcmp(argv[i], "--bench-agent") != 0) continue;
         if (i + 2 >= argc) {
             fprintf(stderr, "--bench-agent needs a seat and a command FIFO\n");

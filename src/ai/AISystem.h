@@ -1546,6 +1546,53 @@ public:
      */
     static constexpr float  AI_LLM_DISPOSITION          = 0.25f;
     /**
+     * HOW HARD AN ADVISOR MAY LEAN ON A SAMPLED ACTION.
+     *
+     * Added to a logit that is then sampled at the RUNG'S temperature, which
+     * is not 1.0 and is not the same for every player:
+     *
+     *     easy   T=1.60   0.25 multiplies the odds by 1.17
+     *     normal T=0.90                                1.32
+     *     hard   T=0.35                                2.04
+     *     insane T=0.30                                2.30
+     *
+     * So the same constant is a whisper on easy and a real thumb on insane.
+     * That is a property of the difficulty design rather than of this term,
+     * and it degrades in the right direction: the rungs that lean hardest on
+     * the policy are the ones where advice counts for most.
+     *
+     * At every rung it stays a lean. Overturning a 10-to-1 preference needs
+     * ln(10) x T -- 0.69 even on insane -- so it moves contested decisions and
+     * argues with the policy without overruling it. That is the property that
+     * makes it safe to hand to a language model.
+     *
+     * SIZED AGAINST THE TEMPERATURE AND NOT AGAINST WHICH ACTIONS ARE
+     * CONTESTED, because the second is a property of the MODEL and moves
+     * without any code change. Measured on two candidate models: research
+     * funding down was taken 0 of 114,650 times by one and 103,619 of 273,252
+     * -- 37.9% -- by the other. One had no contested war action at all; the
+     * other was dominated by two. So the surface this term can actually reach
+     * changes when data/ai/model.bin changes, with no version bump and nothing
+     * in the code to say so. A player who swaps the model will find the
+     * advisor's influence has moved, and that is expected rather than a fault.
+     *
+     * The temperature table above is a property of the GAME and holds whatever
+     * model is loaded, which is why the constant is sized against it.
+     *
+     * Zero without the module: llmIntentFor checks that itself.
+     */
+    static constexpr float  AI_LLM_INTENT               = 0.25f;
+    /**
+     * The thumb on WHICH doctrine, inside enactablePolicy's scoring loop.
+     *
+     * That score is dominated by ideological distance, which spans about 0..8
+     * (two compass axes, each -4..4). At 1.0 a named doctrine still loses to
+     * one two compass-units closer to the country's own politics; much above
+     * 2.0 and a country enacts things its compass rejects, which reads as the
+     * AI acting out of character rather than as advice being taken.
+     */
+    static constexpr float  AI_LLM_DOCTRINE             = 1.0f;
+    /**
      * WHAT A REFUSED OVERTURE COSTS THE COUNTRY THAT MADE IT.
      *
      * The politics reward pays +1.0 x tanh(pacts/3) for agreements HELD and

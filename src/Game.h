@@ -369,12 +369,6 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
-    /** Constructs trade offers a neighbour could make to one AI country and
-     *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
-     *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
-     *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
-     *  and PROBE_OK / PROBE_FAIL. */
-    bool runTradeProbe(const std::string& seatSpec, unsigned int seed);
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -5239,9 +5233,18 @@ public:
      * compensates. Lose both and nothing defensive is left, because the
      * policy's own attack action is gated on opportunism rather than survival.
      *
-     * So one. And RAISING THIS NUMBER REQUIRES ITS OWN PAIR MEASUREMENT, not
-     * an inference from the cost table below: cheapest-first would select
-     * austerity + redeploy, a pair nobody has measured together.
+     * The triple settled it from the other side. Adding fortify to that pair
+     * cost only 1.43 more, against 16.70 for the second suppression -- twelve
+     * times less. The third is nearly free because by then the country has no
+     * defensive behaviour left and does not miss its forts. So the cliff is
+     * between one and two, and a cap of 2 would have sat exactly on it.
+     *
+     * AND THE DANGER IS NOT "TWO EXPENSIVE RULES", IT IS TWO THAT SUBSTITUTE
+     * FOR EACH OTHER. garrison measured -2.43 on that set -- the CHEAPEST of
+     * the three -- and is half of the worst pair. Any cheapest-first ordering
+     * picks it happily. Nothing in a single-rule table encodes which rules
+     * cover for which, so raising this number needs its own pair measurement
+     * and cannot be inferred from the costs below.
      */
     static constexpr int kLlmMaxSuppressed = 1;
     /// Two consistent asks. One is a remark; two is a policy.

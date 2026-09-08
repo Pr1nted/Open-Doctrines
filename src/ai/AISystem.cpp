@@ -602,6 +602,12 @@ const Policy* AISystem::enactablePolicy(int cid) const {
                         std::fabs(c->compassSocial / 25.0f - p.socShift);
         float score = -d;
         if (inc.total > 1.0f) score -= 3.0f * (p.costPerTurn / inc.total);
+        // A doctrine the advisor asked for, scored INSIDE the loop and after
+        // both gates above -- so one the country may not legally enact, or
+        // cannot afford, is never reached and naming it does nothing. As an
+        // early return this would be the war-bar mistake in another function.
+        if (!p.id.empty() && p.id == m_g->llmPreferredDoctrine(cid))
+            score += AI_LLM_DOCTRINE;
         if (score > bestScore) { bestScore = score; best = &p; }
     }
     slot.policy = best;
@@ -2494,6 +2500,24 @@ void AISystem::takeTurn(int cid) {
             any = true;
         }
 
+        // ── What this country's own advisor has asked for ──
+        //
+        // The optional language-model module, and exactly 0.0f without it --
+        // llmIntentFor checks the module itself rather than trusting callers,
+        // so a game with no advisor takes no branch a game without one would
+        // not also take. See AI_LLM_INTENT for what 0.25 buys at this
+        // temperature: it leans a close call and cannot move a settled one.
+        //
+        // SCOPE: this reaches actions the policy SAMPLES. The reflexes below
+        // never consult the net, and are leaned separately by suppression --
+        // see llmSuppressesReflex, which is capped at one.
+        for (int i = 0; i < nActs; ++i) {
+            const float want = m_g->llmIntentFor(cid, m, i);
+            if (want == 0.0f) continue;
+            qbias[i] += AI_LLM_INTENT * want;
+            any = true;
+        }
+
         // ── The critic's opinion ──
         // A frozen opponent is exactly the policy it was checkpointed as.
         // Letting the CURRENT critic re-rank its actions would make it a
@@ -2850,14 +2874,14 @@ void AISystem::takeTurn(int cid) {
     // Defence runs before the sampled war action, unconditionally. See the
     // note on garrisonReflex: holding a threatened border is not a choice the
     // policy should be gambling on once every eight turns.
-    garrisonReflex(cid);
-    fortifyReflex(cid);
+    if (!m_g->llmSuppressesReflex(cid, "garrison")) garrisonReflex(cid);
+    if (!m_g->llmSuppressesReflex(cid, "fortify")) fortifyReflex(cid);
     // Peacetime housekeeping, same reasoning: neither of these is a gamble.
-    redeployReflex(cid);
+    if (!m_g->llmSuppressesReflex(cid, "redeploy")) redeployReflex(cid);
     // Solvency before manpower: austerity cuts things that come back, the
     // manpower reflex cuts men who do not.
-    austerityReflex(cid);
-    manpowerReflex(cid);
+    if (!m_g->llmSuppressesReflex(cid, "austerity")) austerityReflex(cid);
+    if (!m_g->llmSuppressesReflex(cid, "manpower")) manpowerReflex(cid);
     // Finish any crossing already under way. Runs BEFORE the navy action is
     // sampled so that action sees the move orders it has already issued.
     amphibiousReflex(cid);
@@ -3580,6 +3604,41 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         }
     }
     if (target >= 0) {
+        // ── THE ADVISOR'S NAMED TARGET, WHEN IT IS ADMISSIBLE ──
+        //
+        // Chosen HERE rather than as a weight inside chooseWarTarget, and the
+        // reason is a measurement rather than a preference: that function fills
+        // scores[] and then returns -1 whenever difficulty().useLearnedAim is
+        // false, which it is on easy AND normal. A term added there would have
+        // been computed and discarded on the two rungs most players use --
+        // recorded, inert, and looking like advice that sometimes does nothing.
+        //
+        // It also removes a temperature dependence nobody would expect: the
+        // sampling temperature runs 1.60 on easy to 0.30 on insane, so one
+        // constant would have been a 1.17x nudge for one player and 2.30x for
+        // another.
+        //
+        // BOUNDED BY WHAT IS ALREADY ADMISSIBLE. cands holds only neighbours
+        // that cleared the power bars above; naming somebody the country cannot
+        // beat finds nothing here and changes nothing. The advisor picks among
+        // the wars its generals would already accept -- it cannot start one
+        // they would refuse.
+        const int pressed = m_g->llmPressTarget(cid);
+        if (pressed > 0) {
+            for (size_t i = 0; i < cands.size(); ++i) {
+                if (cands[i].cid != pressed) continue;
+                // Tell the aiming head what was picked, exactly as the rule
+                // path below does, so a head that is still learning has a
+                // label rather than a gap.
+                if (!m_pendingTargetCand.empty() && i < m_pendingTargetCand.size())
+                    m_pendingTargetChosen = (int)i;
+                out.cid = cands[i].cid;
+                out.claimed = cands[i].claimed;
+                out.naval = false;
+                out.napBlocked = cands[i].napBlocked;
+                return true;
+            }
+        }
         const int pick = learnedChoice ? chooseWarTarget(cid, cands) : -1;
         if (pick >= 0 && pick < (int)cands.size()) {
             out.cid = cands[pick].cid;
