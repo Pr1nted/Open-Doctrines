@@ -1622,6 +1622,27 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         if (click && ded.hovered) m_mpDedicated = !m_mpDedicated;
         y += 30;
 
+        // ── Mail and advisors, for the host who decides them ──
+        //
+        // The same pane the settings menu opens. Here because who may write on
+        // a server, and whether countries answer their own post, are the
+        // host's calls and are made while setting the server up -- not found
+        // later inside the post itself, which is where they used to live.
+        {
+            const int bw = MeasureText(T("Mail and AI correspondents"), 14) + 28;
+            const Rectangle b{(float)(centerX - bw / 2), (float)y, (float)bw, 28};
+            const bool hov = CheckCollisionPointRec(mouse, b);
+            DrawRectangleRounded(b, 0.2f, 6, hov ? Color{44, 48, 62, 240} : Color{26, 28, 38, 225});
+            DrawRectangleRoundedLines(b, 0.2f, 6, Color{90, 96, 118, 200});
+            DrawText(T("Mail and AI correspondents"), (int)b.x + 14, (int)b.y + 7, 14,
+                     Color{200, 205, 225, 255});
+            if (click && hov) {
+                openLlmSetup();
+                Audio::get().playSfx("panel_open");
+            }
+            y += 36;
+        }
+
     } else {
         // ---- turns, and where they are stored -----------------------------
         DrawText(T("Seconds per turn"), centerX - fieldW / 2, y, 15, Color{160, 170, 190, 255});

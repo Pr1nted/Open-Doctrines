@@ -1041,12 +1041,18 @@ bool Game::tickScreenshotTour() {
         } else if (name == "mail-button") {
             // Exactly the state a player is in after pulling a model: enabled,
             // a real endpoint, a real model name, and the checkbox untouched
-            // since. No panel is opened -- the sidebar is the subject.
+            // since. The SIDEBAR is the subject, so every panel must be shut --
+            // an earlier shot leaves Mail open, and this one then photographed
+            // that instead, byte-identical to the shot before it.
+            m_mailOpen = false;
+            m_mailSettingsOpen = false;
+            m_hostReportsOpen = false;
             m_inResearch = m_inEconomy = m_inPolitics = false;
             m_config.llmEnabled  = true;
             m_config.llmEndpoint = "http://127.0.0.1:11434/v1";
             m_config.llmModel    = "llama3.1:8b";
             m_config.mailPolicy  = (int)mail::Policy::Everyone;
+            m_config.llmModel    = "llama3.1:8b";
         } else if (name == "llm-setup") {
             // DELIBERATELY LEAVES m_llmAvailable false and llmEnabled off.
             // Going through openLlmSetup() is the whole point: openMail()

@@ -116,8 +116,12 @@ void Game::openLlmSetup() {
 void Game::closeMailSettings() {
     m_mailSettingsOpen = false;
     m_mailLlmField = -1;
-    if (m_mailSetupOnly && !mailAvailable()) closeMail();
-    else m_mailSetupOnly = false;
+    // ALWAYS out, now that setup is its own destination rather than a tab of
+    // the post. It used to drop into the mailbox when the setup had worked,
+    // which made sense when the two shared a screen and is a non-sequitur when
+    // you arrived from the settings menu.
+    m_mailSetupOnly = false;
+    closeMail();
 }
 
 void Game::openMail() {
@@ -244,24 +248,23 @@ void Game::drawMail() {
     DrawText(T("Close"), (int)close.x + 14, (int)close.y + 7, 13, Color{200, 205, 225, 255});
     if (ch && click) { closeMail(); return; }
 
-    // Settings, and -- for a host -- the complaints their players have sent.
+    // ── NO SETTINGS BUTTON HERE ──
+    //
+    // Mail is the correspondence and nothing else. Setting the module up is a
+    // thing done once, and it sat on the same screen as the letters -- so
+    // opening the post to read a letter put a runner installer, a model list
+    // and a host policy in front of somebody who wanted to answer Russia.
+    //
+    // The setup lives in Settings > Experimental > AI Correspondents, and in
+    // the host menu for the parts a host decides. Reachable from here only for
+    // a HOST, and only the reports -- which are about the letters, so they
+    // belong with them.
     {
-        const Rectangle gear = {(float)(x + w - 104 - 96), (float)(y + 18), 88, 28};
-        const bool gh = CheckCollisionPointRec(mouse, gear);
-        DrawRectangleRounded(gear, 0.2f, 6, gh ? Color{44, 46, 60, 240} : Color{26, 28, 38, 220});
-        DrawRectangleRoundedLines(gear, 0.2f, 6, Color{80, 84, 104, 200});
-        DrawText(T("Settings"), (int)gear.x + 10, (int)gear.y + 7, 12,
-                 m_mailSettingsOpen ? accent : Color{200, 205, 225, 255});
-        if (gh && click) {
-            if (m_mailSettingsOpen) closeMailSettings();
-            else { m_mailSettingsOpen = true; m_mailSettingsScroll = 0; }
-            Audio::get().playSfx("click_light", 0.1f);
-        }
         if (m_netHost) {
             const int n = (int)m_hostReports.size();
             const char* label = n ? TextFormat(T("Reports (%d)"), n) : T("Reports");
             const int bw = MeasureText(label, 12) + 20;
-            const Rectangle rb = {(float)(gear.x - bw - 8), (float)(y + 18), (float)bw, 28};
+            const Rectangle rb = {(float)(x + w - 104 - bw - 8), (float)(y + 18), (float)bw, 28};
             const bool rh = CheckCollisionPointRec(mouse, rb);
             DrawRectangleRounded(rb, 0.2f, 6, rh ? Color{60, 44, 44, 240} : Color{30, 24, 26, 220});
             DrawRectangleRoundedLines(rb, 0.2f, 6,

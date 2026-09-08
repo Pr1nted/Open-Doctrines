@@ -2809,9 +2809,9 @@ void Game::drawSidebarButtons() {
     // button is present: a game with no correspondents keeps the layout it has
     // always had, to the pixel.
     if (mailAvailable()) {
-        const int findTop = startY - 46 - 10;              // Find country's top
-        const int mailTop = findTop - btnSpacing - btnSize;
-        if (mailTop < 12) startY += (12 - mailTop);
+        const int mailTop = startY - 10 - btnSize;         // Mail, above the tabs
+        const int findTop = mailTop - btnSpacing - 46;     // and Find above Mail
+        if (findTop < 12) startY += (12 - findTop);
     }
 
     struct SBtn { Texture2D tex; const char* label; int id; bool disabled; };
@@ -2937,7 +2937,11 @@ void Game::drawSidebarButtons() {
         // count...". The full width is what a translation needs -- German says
         // "Land suchen", Ukrainian "Знайти країну".
         const int findH = 46;
-        const int findY = startY - findH - 10;
+        // Find country sits above Mail when Mail is there, and directly above
+        // the tabs when it is not. The order is Find, then Mail, then the tabs.
+        const int findY = mailAvailable()
+                        ? startY - 10 - btnSize - btnSpacing - findH
+                        : startY - findH - 10;
         Rectangle fr = {(float)startX, (float)findY, (float)btnSize, (float)findH};
         offerUiTarget("btn.find", fr);
         const bool fhov = !m_paused && CheckCollisionPointRec(getMouse(), fr);
@@ -2982,7 +2986,7 @@ void Game::drawSidebarButtons() {
         // country, which put the one button that opens a correspondence in the
         // visual class of a utility rather than of Politics and Economy.
         const int mailH = btnSize;
-        const int mailY = startY - 46 - 10 - btnSpacing - mailH;
+        const int mailY = startY - 10 - mailH;
         Rectangle mr = {(float)startX, (float)mailY, (float)btnSize, (float)mailH};
         offerUiTarget("btn.mail", mr);
         const bool mhov = !m_paused && CheckCollisionPointRec(getMouse(), mr);
