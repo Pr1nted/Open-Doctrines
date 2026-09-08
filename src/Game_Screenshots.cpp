@@ -1040,6 +1040,9 @@ bool Game::tickScreenshotTour() {
             m_config.llmEnabled = true;
             m_config.llmEndpoint.clear();
             m_config.llmModel.clear();
+            // Players-only in a single-player game: the combination that
+            // produces no Mail button at all and used to say nothing about it.
+            m_config.mailPolicy = (int)mail::Policy::PlayersOnly;
             openLlmSetup();
         } else if (name == "mail" || name == "mail-list" ||
                    name == "mail-settings" || name == "mail-report") {

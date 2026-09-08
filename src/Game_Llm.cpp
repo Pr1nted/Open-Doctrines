@@ -470,7 +470,18 @@ void Game::pumpLlmTest() {
     g_testFresh = false;
     m_llmTestResult = g_testResult;
     m_llmTestOk = g_testOk;
-    if (g_installDone) { g_installDone = false; m_llmInstalling = false; }
+    if (g_installDone) {
+        g_installDone = false;
+        m_llmInstalling = false;
+        // Point at what was just installed. The placeholder said port 8080,
+        // which is llama.cpp's; Ollama serves 11434 -- so a player who typed
+        // the greyed-out hint got a runner that never answered, and nothing on
+        // the screen said which of the two numbers was wrong.
+        if (m_llmTestOk && m_config.llmEndpoint.empty()) {
+            m_config.llmEndpoint = llm::localEndpoint();
+            m_config.save(m_configPath);
+        }
+    }
 }
 
 /**
@@ -1071,4 +1082,35 @@ float Game::llmDispositionToward(int me, int them) const {
     if (!llmConfigured()) return 0.0f;
     auto it = m_llmDisposition.find(((long long)me << 20) | (long long)them);
     return it == m_llmDisposition.end() ? 0.0f : it->second;
+}
+
+bool Game::llmServerRunning() const {
+    return m_llmServerPid != 0 && llm::serverAlive(m_llmServerPid);
+}
+
+void Game::startLlmServer() {
+    if (llmServerRunning()) return;
+    m_llmServerPid = llm::startServer(m_dataDir);
+    if (m_llmServerPid == 0) {
+        m_llmTestOk = false;
+        m_llmTestResult = T("Could not start it.");
+        return;
+    }
+    if (m_config.llmEndpoint.empty()) {
+        m_config.llmEndpoint = llm::localEndpoint();
+        m_config.save(m_configPath);
+    }
+    // Not "started" -- STARTING. It takes a moment to bind, and a Test pressed
+    // immediately after would say nothing answered, which is the exact wrong
+    // thing to tell somebody whose runner is fine.
+    m_llmTestOk = true;
+    m_llmTestResult = T("Starting it. Give it a moment, then press Test the runner.");
+}
+
+void Game::stopLlmServer() {
+    if (m_llmServerPid == 0) return;
+    llm::stopServer(m_llmServerPid);
+    m_llmServerPid = 0;
+    m_llmTestOk = false;
+    m_llmTestResult = T("Stopped.");
 }

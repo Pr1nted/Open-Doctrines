@@ -137,6 +137,31 @@ const Model* offeredModels(int* count);
 bool pullModel(const std::string& apiBase, const std::string& model,
                const std::string& streamFile);
 
+/**
+ * Start the installed runner, and stop it again.
+ *
+ * WHY THE GAME HAS TO BE ABLE TO DO THIS. Installing put a binary in the game's
+ * folder and then told the player "start it, then press Test the runner" -- and
+ * gave them nothing to start it WITH. On a machine where ollama is not on the
+ * PATH (which is the whole point of installing it here) that instruction cannot
+ * be followed except from a terminal, so a player who did everything the screen
+ * asked ended at "Nothing answered there."
+ *
+ * Bound to the loopback address it is going to be talked to on, and never to
+ * 0.0.0.0: this is a local runner for one player's game, and putting an
+ * unauthenticated model server on the network is not something a strategy game
+ * should do on somebody's behalf.
+ *
+ * The pid is the caller's to keep and to stop. Left running, it would outlive
+ * the game as a process the player never started and cannot see.
+ */
+long long startServer(const std::string& dataDir);
+bool stopServer(long long pid);
+bool serverAlive(long long pid);
+
+/** The endpoint startServer will answer on. */
+std::string localEndpoint();
+
 /** How far a pull has got, read from the file it is streaming into. */
 struct PullProgress {
     long long completed = 0;

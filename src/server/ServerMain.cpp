@@ -25,6 +25,7 @@
 
 #include <algorithm>   // std::clamp, for --vs-exploit
 #include <csignal>
+#include <cstdlib>
 #include <cstdio>
 #include <cstdlib>    // atoi, for the seat-bench flags
 #include <cstring>
@@ -82,7 +83,7 @@ void usage() {
         "  --vs-random | --vs-model <p> | --vs-script | --scenarios   what to measure against\n"
         "  --merge-ai <out> <in...>  fold worker models into one\n"
         "\n"
-        "  --llm-status      whether an advisor runner is installed here, and where\n"
+        "  --llm-status      whether an advisor runner is installed here, and where\n  --llm-serve       run the installed runner in the foreground\n"
         "  --llm-install     download and verify the pinned runner into <data>/llm\n"
         "  --llm-uninstall   remove it again, leaving nothing behind\n"
         "  --llm-pull <model>  fetch weights through a running Ollama, e.g. gemma3:4b\n"
@@ -108,6 +109,46 @@ void usage() {
  * the two.
  */
 int llmCommand(const std::string& what, const std::string& dataDir) {
+    // A dedicated server has the same gap the game had: it could install a
+    // runner and had no way to start one. This runs it in the FOREGROUND
+    // rather than detaching, because a server is already supervised -- by
+    // systemd, by a container, by the shell that launched it -- and a process
+    // that daemonises itself out from under its supervisor is the thing those
+    // supervisors are for.
+    if (what == "serve") {
+        if (!llm::installed(dataDir)) {
+            fprintf(stderr, "no runner installed -- run --llm-install first\n");
+            return 2;
+        }
+        const long long pid = llm::startServer(dataDir);
+        if (pid == 0) { fprintf(stderr, "could not start it\n"); return 1; }
+        printf("runner started, pid %lld, on %s\n", pid, llm::localEndpoint().c_str());
+        printf("Ctrl-C to stop.\n");
+        fflush(stdout);
+
+        // THE RUNNER IS IN ITS OWN SESSION, so it does NOT die with us. That is
+        // deliberate -- it keeps a terminal's Ctrl-C from killing the game's
+        // runner out from under it -- but it means killing this wrapper leaves
+        // ollama running and holding the port, which is exactly the orphan this
+        // command exists to avoid. Verified by doing it: a plain SIGTERM to the
+        // wrapper left the child alive.
+        static long long s_child = 0;
+        s_child = pid;
+        auto bye = [](int) {
+            if (s_child) llm::stopServer(s_child);
+            s_child = 0;
+            std::_Exit(0);
+        };
+        std::signal(SIGINT, bye);
+        std::signal(SIGTERM, bye);
+        std::signal(SIGHUP, bye);
+
+        while (llm::serverAlive(pid)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        }
+        printf("runner exited.\n");
+        return 0;
+    }
     if (what == "status") {
         printf("advisor runner\n");
         printf("  directory : %s\n", llm::installDir(dataDir).c_str());
@@ -203,7 +244,8 @@ int main(int argc, char** argv) {
             printf("Done.\n");
             return 0;
         }
-        if (arg != "--llm-status" && arg != "--llm-install" && arg != "--llm-uninstall") continue;
+        if (arg != "--llm-status" && arg != "--llm-install" &&
+            arg != "--llm-uninstall" && arg != "--llm-serve") continue;
         std::string dataDir = "data";
         for (int k = 1; k + 1 < argc; ++k)
             if (std::string(argv[k]) == "--data") dataDir = argv[k + 1];
@@ -256,6 +298,19 @@ int main(int argc, char** argv) {
     //
     //   OpenDoctrinesServer --bench-agent 1939:NOR:hood /tmp/od.fifo [--until N] [--seed S]
     for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--probe-trade") == 0) {
+            if (i + 1 >= argc) { fprintf(stderr, "--probe-trade needs a seat\n"); return 2; }
+            AISystem::s_readOnlyModel = true;
+            unsigned int seed = 20260801u;
+            std::string dataDir;
+            for (int k = 1; k < argc - 1; ++k) {
+                if (strcmp(argv[k], "--seed") == 0) seed = (unsigned int)strtoul(argv[k + 1], nullptr, 10);
+                else if (strcmp(argv[k], "--data") == 0) dataDir = argv[k + 1];
+            }
+            Game game;
+            if (!game.srvResolveDataDir(dataDir)) { fprintf(stderr, "no data directory -- pass --data <dir>\n"); return 2; }
+            return game.runTradeProbe(argv[i + 1], seed) ? 0 : 1;
+        }
         if (strcmp(argv[i], "--bench-agent") != 0) continue;
         if (i + 2 >= argc) {
             fprintf(stderr, "--bench-agent needs a seat and a command FIFO\n");

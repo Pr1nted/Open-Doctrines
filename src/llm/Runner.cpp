@@ -315,6 +315,32 @@ bool pullModel(const std::string& apiBase, const std::string& model,
     return odproc::runCurl(args);
 }
 
+std::string localEndpoint() { return "http://127.0.0.1:11434/v1"; }
+
+long long startServer(const std::string& dataDir) {
+    const std::string exe = installedPath(dataDir);
+    if (exe.empty()) return 0;
+    // OLLAMA_HOST is how ollama is told where to listen; loopback only.
+#if defined(_WIN32)
+    _putenv_s("OLLAMA_HOST", "127.0.0.1:11434");
+#else
+    setenv("OLLAMA_HOST", "127.0.0.1:11434", 1);
+#endif
+    // And its models go in the game's own folder, so "Remove it" really does
+    // leave nothing behind -- otherwise a pulled model sits in the player's
+    // home directory forever and the game never mentions it.
+    const std::string models = installDir(dataDir) + "/models";
+#if defined(_WIN32)
+    _putenv_s("OLLAMA_MODELS", models.c_str());
+#else
+    setenv("OLLAMA_MODELS", models.c_str(), 1);
+#endif
+    return odproc::startDetached(exe, {"serve"});
+}
+
+bool stopServer(long long pid) { return odproc::stopDetached(pid); }
+bool serverAlive(long long pid) { return odproc::detachedAlive(pid); }
+
 PullProgress pullProgress(const std::string& streamFile) {
     PullProgress out;
     const std::string text = readFile(streamFile);

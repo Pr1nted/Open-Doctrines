@@ -41,4 +41,25 @@ bool runCurl(const std::vector<std::string>& args,
 bool runTool(const std::string& program,
              const std::vector<std::string>& args);
 
+/**
+ * Start a program and DO NOT wait for it. Returns its pid, or 0.
+ *
+ * For a server rather than a tool: `ollama serve` never exits, so runTool waits
+ * for it forever. The child is put in its own session, so it is not killed by a
+ * signal sent to the game's process group and does not take the game down with
+ * it if it dies.
+ *
+ * The caller owns the pid and is responsible for stopping it -- see
+ * stopDetached. A server left running after the game exits is a process the
+ * player did not ask for and cannot see.
+ */
+long long startDetached(const std::string& program,
+                        const std::vector<std::string>& args);
+
+/// Stop a process started by startDetached. False if it was not running.
+bool stopDetached(long long pid);
+
+/// Whether that pid is still alive.
+bool detachedAlive(long long pid);
+
 }  // namespace odproc

@@ -4,6 +4,9 @@
 #include <chrono>
 #include <filesystem>
 #include <thread>
+#if !defined(_WIN32)
+#include <csignal>
+#endif
 
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
@@ -134,6 +137,85 @@ bool runCurl(const std::vector<std::string>& args, long long expectedSize,
 
 bool runTool(const std::string& program, const std::vector<std::string>& args) {
     return runProgram(program, args, 0, nullptr, std::string());
+}
+
+long long startDetached(const std::string& program,
+                        const std::vector<std::string>& args) {
+#if defined(_WIN32)
+    std::string cmd = quoteArg(program);
+    for (const auto& a : args) cmd += " " + quoteArg(a);
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+        return 0;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return (long long)pi.dwProcessId;
+#else
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        // Its own session, so Ctrl-C in the terminal the game was launched from
+        // does not also kill the runner, and so the runner cannot pull the game
+        // down with it.
+        setsid();
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        std::vector<char*> argv;
+        argv.push_back(const_cast<char*>(program.c_str()));
+        for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execvp(program.c_str(), argv.data());
+        _exit(127);
+    }
+    return (long long)pid;
+#endif
+}
+
+bool stopDetached(long long pid) {
+    if (pid <= 0) return false;
+#if defined(_WIN32)
+    HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, (DWORD)pid);
+    if (!h) return false;
+    const bool ok = TerminateProcess(h, 0) != 0;
+    CloseHandle(h);
+    return ok;
+#else
+    if (kill((pid_t)pid, SIGTERM) != 0) return false;
+    // Reaped so it does not sit as a zombie for as long as the game runs.
+    for (int i = 0; i < 40; ++i) {
+        if (waitpid((pid_t)pid, nullptr, WNOHANG) == (pid_t)pid) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    kill((pid_t)pid, SIGKILL);
+    waitpid((pid_t)pid, nullptr, WNOHANG);
+    return true;
+#endif
+}
+
+bool detachedAlive(long long pid) {
+    if (pid <= 0) return false;
+#if defined(_WIN32)
+    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)pid);
+    if (!h) return false;
+    const bool alive = WaitForSingleObject(h, 0) == WAIT_TIMEOUT;
+    CloseHandle(h);
+    return alive;
+#else
+    // Reap first: a dead child we started is a zombie until waited for, and a
+    // zombie answers kill(0) as though it were alive.
+    if (waitpid((pid_t)pid, nullptr, WNOHANG) == (pid_t)pid) return false;
+    return kill((pid_t)pid, 0) == 0;
+#endif
 }
 
 }  // namespace odproc

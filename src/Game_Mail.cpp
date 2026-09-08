@@ -850,10 +850,28 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         amHost ? "Advisor options need the language-model module loaded."
                : "Only the host can change this.");
     {
-        const std::vector<bool> live = {amHost, amHost, amHost && m_llmAvailable,
-                                        amHost && m_llmAvailable};
+        // ALL FOUR SELECTABLE, INCLUDING THE ADVISOR ONES WITHOUT A MODEL.
+        //
+        // The advisor choices used to be greyed until a model was answering,
+        // which is a trap rather than a safeguard: a player who picked "Players
+        // only" could not pick their way back to an advisor policy without
+        // already having what the policy is for. A setting is an INTENT, and it
+        // is allowed to describe a game the player is still setting up -- the
+        // line above says what is still missing.
+        const std::vector<bool> live = {amHost, amHost, amHost, amHost};
         const int picked = choices({"Nobody", "Players only", "Advisors only", "Everyone"},
                                    m_config.mailPolicy, live);
+        // The one combination that silently produces no Mail button at all.
+        if (m_config.mailPolicy == (int)mail::Policy::PlayersOnly &&
+            m_netHost == nullptr && m_netSession == nullptr) {
+            int fs = 11;
+            const std::string warn = odText::fitToWidth(
+                T("In a single-player game this means no mail at all. Choose "
+                  "Advisors only or Everyone to write to countries."),
+                w - 74, fs, 9);
+            DrawText(warn.c_str(), x + 24, cy, fs, Color{190, 160, 110, 255});
+            cy += fs + 8;
+        }
         if (picked >= 0 && amHost) {
             m_config.mailPolicy = picked;
             m_config.save(m_configPath);
@@ -876,6 +894,46 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
     // config.json: a feature whose only configuration is a text file somebody
     // has to find is a feature almost nobody turns on.
     if (m_config.llmEnabled) {
+        // ── WHAT TO DO NEXT, IN ONE SENTENCE ──
+        //
+        // This pane used to be a wall of controls in no particular order: three
+        // text fields, a Test button, an installer and a model list, all shown
+        // at once and all equally prominent. A player could install a runner,
+        // never start it, and be told only "Nothing answered there."
+        //
+        // So the state is worked out and named. The steps are still all
+        // visible -- hiding them would make the screen feel like it was
+        // deciding for you -- but exactly one is called out as the next thing.
+        {
+            const bool have    = llm::installed(m_dataDir);
+            const bool running = llmServerRunning();
+            const bool haveModel = !m_config.llmModel.empty();
+            // A REMOTE SERVICE SKIPS THE MIDDLE. Somebody who has typed their
+            // own endpoint is not installing or starting anything, and telling
+            // them to press Start it would be advice for a different setup.
+            const bool remote = !m_config.llmEndpoint.empty() &&
+                                !llm::isLocal(m_config.llmEndpoint);
+            const char* next;
+            Color tone{150, 156, 176, 255};
+            if (remote && !haveModel)            next = "Next: name the model this service expects.";
+            else if (remote && !m_llmAvailable)  next = "Next: press Test the runner.";
+            else if (remote) { next = "Ready. Countries will answer their own mail.";
+                               tone = Color{120, 190, 140, 255}; }
+            else if (!have && llm::canInstall()) next = "Next: install the runner below.";
+            else if (!have)                      next = "Next: install Ollama yourself, then set Runner below.";
+            // Checked BEFORE the model, and without asking whether the endpoint
+            // looks local: an installed-but-stopped runner is the state this
+            // whole screen was failing at, and while it is stopped a model
+            // cannot be pulled either -- the pull talks to the runner.
+            else if (!running)                   next = "Next: press Start it.";
+            else if (!haveModel)                 next = "Next: pull a model below.";
+            else if (!m_llmAvailable)            next = "Next: press Test the runner.";
+            else { next = "Ready. Countries will answer their own mail.";
+                   tone = Color{120, 190, 140, 255}; }
+            DrawText(T(next), x + 50, cy, 12, tone);
+            cy += 22;
+        }
+
         auto field = [&](const char* label, std::string& value, int which,
                          const char* placeholder, bool secret) {
             DrawText(T(label), x + 50, cy, 11, Color{130, 136, 156, 255});
@@ -898,7 +956,7 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
             if (hov && click) m_mailLlmField = which;
             cy += 26;
         };
-        field("Runner", m_config.llmEndpoint, 0, "http://127.0.0.1:8080/v1", false);
+        field("Runner", m_config.llmEndpoint, 0, "http://127.0.0.1:11434/v1", false);
         field("Model",  m_config.llmModel,    1, "local-model", false);
         // Only meaningful for a remote endpoint -- a local runner needs none,
         // and the game refuses to send one there. See Game_Llm.cpp.
@@ -977,6 +1035,29 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
                 bx += 178;
             }
             if (have) {
+                // THE BUTTON THAT WAS MISSING. Installing ended with "start it,
+                // then press Test the runner" and gave nothing to start it
+                // with -- and the whole point of installing here rather than
+                // system-wide is that ollama is NOT on the player's PATH, so
+                // the instruction could not be followed except from a terminal.
+                const bool running = llmServerRunning();
+                const Rectangle sb = {(float)bx, (float)cy, 110, 26};
+                const bool sh = CheckCollisionPointRec(mouse, sb);
+                DrawRectangleRounded(sb, 0.2f, 6,
+                    running ? (sh ? Color{74, 60, 40, 245} : Color{34, 30, 24, 225})
+                            : (sh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235}));
+                DrawRectangleRoundedLines(sb, 0.2f, 6,
+                    running ? Color{170, 140, 90, 210} : Color{110, 180, 130, 220});
+                DrawText(running ? T("Stop it") : T("Start it"),
+                         (int)sb.x + 10, (int)sb.y + 7, 12, WHITE);
+                if (sh && click) { running ? stopLlmServer() : startLlmServer(); }
+                bx += 118;
+
+                DrawText(running ? T("running") : T("not running"),
+                         bx, (int)cy + 8, 11,
+                         running ? Color{120, 190, 140, 255} : Color{140, 130, 110, 255});
+                bx += MeasureText(running ? T("running") : T("not running"), 11) + 16;
+
                 const Rectangle b = {(float)bx, (float)cy, 110, 26};
                 const bool bh = CheckCollisionPointRec(mouse, b);
                 DrawRectangleRounded(b, 0.2f, 6, bh ? Color{74, 44, 44, 245} : Color{30, 26, 28, 220});
@@ -984,6 +1065,7 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
                 DrawText(T("Remove it"), (int)b.x + 10, (int)b.y + 7, 12,
                          bh ? Color{240, 190, 190, 255} : Color{200, 176, 176, 255});
                 if (bh && click) {
+                    stopLlmServer();   // before the binary goes, not after
                     m_llmTestOk = llm::uninstall(m_dataDir);
                     m_llmTestResult = m_llmTestOk ? T("Removed.") : T("Could not remove it.");
                 }

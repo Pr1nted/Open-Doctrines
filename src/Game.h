@@ -5252,6 +5252,10 @@ private:
     void openMail();
     /// Open Mail straight into the module setup, bypassing mailAvailable().
     void openLlmSetup();
+    /// Start / stop the runner this game installed. See m_llmServerPid.
+    void startLlmServer();
+    void stopLlmServer();
+    bool llmServerRunning() const;
     void closeMailSettings();
     void closeMail();
     void drawMail();
@@ -5271,6 +5275,15 @@ private:
     void testLlmRunner();
     void pumpLlmTest();
     bool m_llmInstalling = false;
+    /**
+     * The runner we started, if we started it. 0 when we did not.
+     *
+     * Only ever a process THIS GAME launched. A runner the player was already
+     * running is theirs, and stopping it on our way out would kill something we
+     * did not start -- so the Stop button and the shutdown hook both apply to
+     * this pid alone.
+     */
+    long long m_llmServerPid = 0;
     /// Fetch Ollama in the background. See llm/Runner.h for the checks.
     void installLlmRunner();
 

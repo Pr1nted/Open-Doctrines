@@ -1729,6 +1729,13 @@ void Game::shutdown() {
     // terminates the process, which would turn a clean quit into a crash.
     mpShutdown();
 
+    // A model runner WE started goes with us. It is a detached server in its
+    // own session, so nothing else would ever stop it: quitting the game would
+    // leave a process the player never launched, holding a port and a couple of
+    // gigabytes, with nothing on screen that mentions it. A runner the player
+    // was already running is theirs and is untouched -- see m_llmServerPid.
+    stopLlmServer();
+
     // Save the AI model on quit (unloadGameData also does this on world exit)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
     UnloadTexture(m_politicalTex);
