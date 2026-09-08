@@ -296,6 +296,14 @@ void Game::beginScreenshotTour(const std::string& outDir, const std::string& sav
     // It also made the OD_I18N_FIT sweep useless: five languages were asked
     // for and the same one answered.
     m_shotBaseLang = od::i18n::language();
+    // Tells Config::save to refuse for the rest of this process. The tour
+    // mutates the live config for each shot, and a save from anywhere would
+    // make those permanent -- see the note in Config::save.
+#if defined(_WIN32)
+    _putenv_s("OD_SHOT_TOUR", "1");
+#else
+    setenv("OD_SHOT_TOUR", "1", 1);
+#endif
     m_shotDir   = outDir;
     m_shotSave  = savePath;
     m_shotIndex = 0;
@@ -1038,8 +1046,10 @@ bool Game::tickScreenshotTour() {
             // photograph the one screen that does NOT answer "where do I
             // install it".
             m_config.llmEnabled = true;
-            m_config.llmEndpoint.clear();
-            m_config.llmModel.clear();
+            // NOT cleared here any more. The endpoint and model come from the
+            // real loaded config, so this shot also proves the legacy-default
+            // migration and the install-implies-address fill, rather than
+            // photographing a state the harness manufactured.
             // Players-only in a single-player game: the combination that
             // produces no Mail button at all and used to say nothing about it.
             m_config.mailPolicy = (int)mail::Policy::PlayersOnly;

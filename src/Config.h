@@ -242,8 +242,23 @@ struct Config {
     // sent to a NON-local endpoint the player typed themselves -- see
     // Game_Llm.cpp, which refuses to attach it otherwise.
     bool        llmEnabled = false;
-    std::string llmEndpoint = "http://127.0.0.1:8080/v1";
-    std::string llmModel = "local-model";
+    /**
+     * EMPTY UNTIL SET, and that is load-bearing rather than tidy.
+     *
+     * These shipped as "http://127.0.0.1:8080/v1" and "local-model", which are
+     * not placeholders -- they are stored values, and every piece of code that
+     * asks "has the player configured this yet?" asks whether they are empty.
+     * So: the endpoint was never auto-filled after an install because it was
+     * never empty; the "pull a model" step was skipped because a model name was
+     * already present; and llmConfigured() returned true, so the game believed
+     * it had a working advisor while pointing at a port nothing listens on --
+     * 8080 is llama.cpp's, and the runner this game installs serves 11434.
+     *
+     * The field hints in the mail settings show what to type. A hint belongs in
+     * the placeholder, where it cannot be mistaken for an answer.
+     */
+    std::string llmEndpoint;
+    std::string llmModel;
     std::string llmApiKey;
 
     /**

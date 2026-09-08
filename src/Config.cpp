@@ -1,4 +1,5 @@
 #include "Config.h"
+#include <cstdlib>
 #include "util/WebPersist.h"
 #include <algorithm>
 #include <fstream>
@@ -198,8 +199,22 @@ bool Config::load(const std::string& path) {
     agePromptOn       = findBool(json, "agePromptOn", false);
     ageAnswer         = (int)findFloat(json, "ageAnswer", 0.0f);
     llmEnabled        = findBool(json, "llmEnabled", false);
-    llmEndpoint       = findConfigString(json, "llmEndpoint", "http://127.0.0.1:8080/v1");
-    llmModel          = findConfigString(json, "llmModel", "local-model");
+    llmEndpoint       = findConfigString(json, "llmEndpoint", "");
+    llmModel          = findConfigString(json, "llmModel", "");
+    // ── Retire the old shipped defaults ──
+    //
+    // Anyone who never touched these has the pair below written into their
+    // config, because it used to be written on every save. Treated as unset, so
+    // they get the install flow instead of a permanently broken endpoint.
+    //
+    // BOTH, together, or not at all. Port 8080 is a real address for somebody
+    // running llama.cpp by hand, so the endpoint alone is not evidence of
+    // anything -- but nobody chooses to call their model "local-model", and the
+    // pair can only have come from the defaults.
+    if (llmEndpoint == "http://127.0.0.1:8080/v1" && llmModel == "local-model") {
+        llmEndpoint.clear();
+        llmModel.clear();
+    }
     llmApiKey         = findConfigString(json, "llmApiKey", "");
 
     // An EMPTY value in the file means "nobody ever set one", not "this build
@@ -239,6 +254,17 @@ bool Config::load(const std::string& path) {
 }
 
 bool Config::save(const std::string& path) {
+    // ── THE SCREENSHOT TOUR MUST NOT REWRITE THE PLAYER'S SETTINGS ──
+    //
+    // The tour sets whatever each shot needs -- a mail policy, a language, a
+    // panel -- directly on the live config, and any save triggered while it
+    // runs makes those permanent. It did: a shot that wanted "Players only"
+    // left a real config on "Players only", because an unrelated auto-fill
+    // saved on the same frame.
+    //
+    // Guarded here rather than at each call site, because the tour touches
+    // dozens of fields and the next save added anywhere would reintroduce it.
+    if (std::getenv("OD_SHOT_TOUR")) return true;
     // Settings are player state, and on the web they live in a filesystem that
     // dies with the tab. Marked here rather than at the nineteen call sites
     // that save the config -- this is the one place all of them go through.

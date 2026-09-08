@@ -907,6 +907,18 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         {
             const bool have    = llm::installed(m_dataDir);
             const bool running = llmServerRunning();
+
+            // A RUNNER IN THE GAME'S OWN FOLDER IMPLIES ITS OWN ADDRESS. There
+            // is exactly one place it can be reached, this is the code that put
+            // it there, and making the player type that back in is asking them
+            // to supply a fact the game already knows. Set once, when it is
+            // missing, from every path into this pane rather than only after an
+            // install -- a runner installed by an earlier version, or by
+            // --llm-install on the command line, arrives here with nothing set.
+            if (have && m_config.llmEndpoint.empty()) {
+                m_config.llmEndpoint = llm::localEndpoint();
+                m_config.save(m_configPath);
+            }
             const bool haveModel = !m_config.llmModel.empty();
             // A REMOTE SERVICE SKIPS THE MIDDLE. Somebody who has typed their
             // own endpoint is not installing or starting anything, and telling
@@ -957,7 +969,10 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
             cy += 26;
         };
         field("Runner", m_config.llmEndpoint, 0, "http://127.0.0.1:11434/v1", false);
-        field("Model",  m_config.llmModel,    1, "local-model", false);
+        // NOT "local-model". That was the old default, it is not a model any
+        // runner has, and offering it back as a hint invites the player to
+        // type in the exact string that made this screen fail.
+        field("Model",  m_config.llmModel,    1, "pull one below, or type a model name", false);
         // Only meaningful for a remote endpoint -- a local runner needs none,
         // and the game refuses to send one there. See Game_Llm.cpp.
         if (!llm::isLocal(m_config.llmEndpoint)) {
