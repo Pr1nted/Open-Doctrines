@@ -63,7 +63,11 @@ int main() {
 
     printf("AI advisor\n");
 
-    const Persona britain{"Britain", "France", "", false};
+    Persona britain;
+    britain.countryName = "Britain";
+    britain.correspondent = "France";
+    britain.standing = "";
+    britain.toAnotherAdvisor = false;
     const Situation calm{12, "March 1914", false, "comparable"};
 
     section("what the instruction says");
@@ -278,6 +282,58 @@ int main() {
            "but a sentence that merely starts like a tool name is untouched");
         const std::string real2 = "Standing with you against Austria is not free.";
         ok(tidyReply(real2, "Prussia") == real2, "and so is this one");
+    }
+
+    section("leaning the government toward something");
+    {
+        // THE THING THIS TEST EXISTS FOR: a phrase that resolves to nothing
+        // produces no lean, no error, and no sign the preference was dropped.
+        // Silent no-ops are this project's most repeated failure.
+        const Lean more = parseLean("more industry");
+        ok(more.ok && more.direction > 0, "\"more industry\" is a lean toward");
+        const Lean less = parseLean("less war");
+        ok(less.ok && less.direction < 0, "\"less war\" is a lean away");
+        ok(less.module == 0 && more.module == 1, "and they land in different modules");
+
+        // The words a model actually writes, rather than the internal names.
+        ok(parseLean("we should build up our factories").ok, "factories means industry");
+        ok(parseLean("fewer alliances").ok, "fewer means away");
+        ok(parseLean("prioritise research").ok, "prioritise means toward");
+        ok(parseLean("stop the fighting").ok, "and stop means away");
+
+        // NEGATIVE BEATS POSITIVE when a phrase carries both, because the
+        // restraint is the safer reading of an ambiguous preference.
+        const Lean both = parseLean("no more war");
+        ok(both.ok && both.direction < 0, "\"no more war\" leans away, not toward");
+
+        // Half a lean is not a lean.
+        ok(!parseLean("industry").ok, "a subject with no direction is refused");
+        ok(!parseLean("more").ok, "and a direction with no subject is too");
+        ok(!parseLean("").ok, "and nothing at all");
+        ok(!parseLean("more schnitzel").ok, "and a subject the game does not have");
+    }
+
+    section("a country with an aim of its own");
+    {
+        Persona hungry = britain;
+        hungry.goal = "Take the Low Countries before France does.";
+        const std::string with = systemPrompt(hungry, calm, "English");
+        ok(with.find("Take the Low Countries") != std::string::npos,
+           "the goal it set for itself is in the instruction");
+        ok(with.find("WHAT YOU ARE TRYING TO DO") != std::string::npos,
+           "under a heading that says it is the point");
+        ok(with.find("set_goal") != std::string::npos,
+           "and it is told it may revise it");
+
+        // WITHOUT one, it must be asked to decide -- not left with nothing to
+        // want, which is the state in which a model agrees with whoever wrote.
+        const std::string without = systemPrompt(britain, calm, "English");
+        ok(without.find("You have not decided yet") != std::string::npos,
+           "a country with no aim is told to pick one first");
+
+        // The instruction that stops it being pleasant for its own sake.
+        ok(with.find("NOT here to be helpful or agreeable") != std::string::npos,
+           "and it is told the other side is a rival, not a colleague");
     }
 
     section("what it may look up for itself");

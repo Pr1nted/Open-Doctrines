@@ -55,6 +55,38 @@ std::string systemPrompt(const Persona& persona, const Situation& situation,
     p << "- Never claim to be a human being. If asked what you are, say plainly\n"
          "  that you are an artificial correspondent.\n";
 
+    // ── YOU ARE NOT HERE TO BE AGREEABLE ──
+    //
+    // The failure this addresses is not dishonesty, it is COMPLIANCE. Told it
+    // may lie, a model still says yes to whatever the last letter proposed,
+    // because agreeing is what an assistant does and nothing had told it it
+    // wanted anything else. "Of course, the idea has merit" to a proposal of
+    // alliance, from a country with no reason to want one.
+    //
+    // A character needs something to want before refusing means anything. So
+    // the country keeps an aim of ITS OWN, written by itself and carried
+    // between turns, and every letter is measured against that rather than
+    // against being pleasant.
+    p << "- You are NOT here to be helpful or agreeable. The country writing to\n"
+         "  you is a rival, not a colleague, and their proposal is what THEY\n"
+         "  want. Say no when no serves you better, and say it without\n"
+         "  softening it into a yes.\n";
+    p << "- Agreement is something they must be worth. Ask what you get.\n";
+
+    if (!persona.goal.empty()) {
+        p << "\nWHAT YOU ARE TRYING TO DO\n"
+             "- " << persona.goal << "\n"
+             "- That is your own aim, decided by you. Judge every proposal by\n"
+             "  whether it serves that, not by whether it sounds reasonable.\n"
+             "- Revise it with set_goal when the map or the correspondence has\n"
+             "  genuinely changed what you should want. Not every turn.\n";
+    } else {
+        p << "\nWHAT YOU ARE TRYING TO DO\n"
+             "- You have not decided yet. Decide now, from the situation below,\n"
+             "  and record it with set_goal before you write. One sentence: what\n"
+             "  " << persona.countryName << " wants out of this world.\n";
+    }
+
     if (persona.toAnotherAdvisor) {
         p << "- Your correspondent is another artificial minister, not a person.\n";
     }
@@ -566,6 +598,17 @@ constexpr Tool kTools[] = {
      nullptr, nullptr},
 
     // ── The one that records rather than answers. See Tool::records. ──
+    {"set_goal",
+     "Record what your country is trying to achieve, in one sentence, in your "
+     "own words. Yours to decide and yours to revise; nobody else sets it and "
+     "nobody else reads it. Everything you write should serve it.",
+     "goal", "One sentence. What this country wants out of this world.", true},
+    {"intend",
+     "Lean your government toward or away from something: \"more industry\", "
+     "\"less war\", \"fewer alliances\", \"more recruitment\". This is a "
+     "preference, not an order -- your ministries still decide, and a lean "
+     "against what the country plainly needs will simply lose to it.",
+     "lean", "A direction and a subject, e.g. \"more industry\" or \"less war\".", true},
     {"note_disposition",
      "Record how this exchange has left you disposed toward the country you "
      "are writing to, before you write your reply. Use \"warmer\" if you are "
@@ -581,6 +624,71 @@ std::string jsonEscape(const std::string& in);
 const Tool* tools(int* count) {
     if (count) *count = (int)(sizeof(kTools) / sizeof(kTools[0]));
     return kTools;
+}
+
+namespace {
+
+/**
+ * The action vocabulary an advisor may lean on, in the words it would use.
+ *
+ * SEVERAL WORDS PER ACTION ON PURPOSE. A model asked for a preference writes
+ * "war", "fighting", "attacks" and "aggression" for the same thing, and a
+ * table that accepts only the internal name accepts almost nothing -- which
+ * would present as an advisor whose stated preferences are quietly ignored.
+ *
+ * SCOPE: these are the actions the POLICY SAMPLES. Garrisoning, fortifying,
+ * disbanding and campaigning run as reflexes that never consult the net, so no
+ * lean can reach them however it is phrased.
+ */
+struct LeanWord { const char* word; int module; int action; };
+const LeanWord kLeanWords[] = {
+    {"war",         0, 4}, {"fighting",    0, 4}, {"aggression",  0, 4},
+    {"attack",      0, 3}, {"offensive",   0, 3},
+    {"recruit",     0, 1}, {"troops",      0, 1}, {"army",        0, 1},
+    {"soldiers",    0, 1}, {"manpower",    0, 1},
+    {"reinforce",   0, 2}, {"defence",     0, 2}, {"defense",     0, 2},
+    {"artillery",   0, 5}, {"ceasefire",   0, 6}, {"peace",       0, 6},
+
+    {"industry",    1, 1}, {"factories",   1, 1}, {"building",    1, 1},
+    {"fort",        1, 2},
+    {"port",        1, 3}, {"navy",        1, 5}, {"ship",        1, 5},
+    {"research",    1, 7}, {"science",     1, 7}, {"saving",      1, 0},
+
+    {"doctrine",    2, 1}, {"reform",      2, 1},
+    {"alliance",    2, 5}, {"pact",        2, 6}, {"nap",         2, 6},
+    {"guarantee",   2, 7}, {"trade",       2,11},
+    {"calming",     2, 8}, {"conciliation",2, 9}, {"minorit",     2, 9},
+    {"repression",  2,10}, {"pacification",2, 2},
+};
+
+}  // namespace
+
+Lean parseLean(const std::string& phrase) {
+    Lean out;
+    std::string lower;
+    for (char c : phrase) lower += (char)std::tolower((unsigned char)c);
+
+    // NEGATIVE FIRST. "much more" contains "more" and nothing else; "no more
+    // war" contains both and means the negative. Checking away-from first
+    // means a phrase carrying both reads as the restraint, which is the safer
+    // way to be wrong about somebody's preference.
+    for (const char* w : {"less", "fewer", "reduce", "stop", "avoid", "away from",
+                          "no more", "cut"})
+        if (lower.find(w) != std::string::npos) { out.direction = -1.0f; break; }
+    if (out.direction == 0.0f)
+        for (const char* w : {"more", "increase", "expand", "toward", "prioritise",
+                              "prioritize", "focus on", "build up"})
+            if (lower.find(w) != std::string::npos) { out.direction = 1.0f; break; }
+    if (out.direction == 0.0f) return out;   // a subject with no direction is not a lean
+
+    for (const LeanWord& lw : kLeanWords) {
+        if (lower.find(lw.word) == std::string::npos) continue;
+        out.module = lw.module;
+        out.action = lw.action;
+        out.ok = true;
+        return out;                          // one lean, one subject
+    }
+    return out;                              // a direction with no subject is not one either
 }
 
 float foldDisposition(float current, int stance) {

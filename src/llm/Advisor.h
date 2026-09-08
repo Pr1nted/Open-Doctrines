@@ -61,6 +61,18 @@ struct Turn {
 struct Persona {
     std::string countryName;      ///< the country the model writes AS
     std::string correspondent;    ///< who it is writing TO
+    /**
+     * What this country is trying to achieve, IN ITS OWN WORDS.
+     *
+     * Written by the advisor itself through the set_goal tool and kept
+     * between turns, not handed down by the game. That is the point: a
+     * correspondent with no aim of its own has nothing to want, and a
+     * character with nothing to want agrees with whoever wrote last --
+     * which is exactly how these read before it existed.
+     *
+     * Empty until it has decided on one, and it is asked to.
+     */
+    std::string goal;
     /// Free text a scenario may set: "recently humiliated at the conference".
     /// Empty by default -- flavour a mapmaker can add, not a requirement.
     std::string standing;
@@ -189,6 +201,23 @@ std::string tidyReply(std::string text, const std::string& countryName);
 // "412,000 men", because the second is a save file and the first is a letter.
 //   * BOUNDED. A fixed number of rounds per letter, because a model that can
 //     ask questions is a model that can ask them forever.
+
+/**
+ * What a lean phrase resolves to, or nothing.
+ *
+ * PURE, AND HERE RATHER THAN IN THE GAME, because it is the piece most likely
+ * to fail silently: a phrase that resolves to no action produces no lean, no
+ * error and no sign that the advisor's preference was discarded. This project
+ * has three separate cases today of a term that never reached a decision, and
+ * every one of them looked like working code.
+ */
+struct Lean {
+    bool  ok = false;
+    int   module = 0;      ///< 0 war, 1 economy, 2 politics
+    int   action = 0;      ///< index within that module's action space
+    float direction = 0;   ///< +1 toward, -1 away
+};
+Lean parseLean(const std::string& phrase);
 
 /// One tool the model may call, and what it is for.
 struct Tool {

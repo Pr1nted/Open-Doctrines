@@ -5119,6 +5119,30 @@ private:
      */
     std::unordered_map<long long, float> m_llmDisposition;
 
+    /**
+     * What each advisor has decided its country is trying to achieve.
+     *
+     * WRITTEN BY THE COUNTRY, NOT BY THE GAME. A correspondent handed its aims
+     * has no aims; one that decided them has something to refuse for. This is
+     * the whole of the difference between a country that says "of course, the
+     * idea has merit" to every proposal and one that asks what it gets.
+     */
+    std::unordered_map<int, std::string> m_llmGoal;
+
+    /**
+     * How each advisor wants its government to lean, per action.
+     *
+     * Keyed (country << 20 | globalActionIndex); the value is [-1, 1]. Read as
+     * a bounded thumb on the scale where the policy chooses -- it never picks
+     * an action, it makes one likelier. See AISystem's qbias.
+     *
+     * SCOPE, STATED HERE BECAUSE IT IS EASY TO ASSUME OTHERWISE: this reaches
+     * the actions the policy SAMPLES. A large part of what the AI does runs
+     * through reflexes that never consult the net at all -- garrisoning,
+     * fortifying, disbanding, campaigning -- and a lean has no effect on those.
+     */
+    std::unordered_map<long long, float> m_llmIntent;
+
 public:
     /**
      * How warmly `me` regards `them` after their correspondence: [-1, 1].
@@ -5127,6 +5151,17 @@ public:
      * identical to one played without a language model installed.
      */
     float llmDispositionToward(int me, int them) const;
+    /**
+     * How strongly this country's advisor wants one action, in [-1, 1].
+     *
+     * ALWAYS 0.0 WITHOUT THE MODULE, checked here rather than at the call site,
+     * for the same reason llmDispositionToward does it: every caller is inside
+     * the measured AI.
+     */
+    float llmIntentFor(int cid, int module, int action) const;
+private:
+    void applyLlmLean(int cid, const std::string& phrase);
+public:
 private:
 
     // ─── Reporting a letter, and reviewing what was reported ───

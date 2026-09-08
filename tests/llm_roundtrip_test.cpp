@@ -35,7 +35,11 @@ int main(int argc, char** argv) {
     m.body = "Your fleet worries us. What are your intentions?";
     thread.push_back(m);
 
-    const llm::Persona persona{"Britain", "France", "", false};
+    llm::Persona persona;
+    persona.countryName = "Britain";
+    persona.correspondent = "France";
+    persona.standing = "";
+    persona.toAnotherAdvisor = false;
     const llm::Situation situation{12, "March 1914", false, "comparable to you"};
     const auto turns = llm::buildConversation(thread, 1, persona, situation, "Ukrainian");
     const std::string body = llm::chatRequestBody(turns, model);

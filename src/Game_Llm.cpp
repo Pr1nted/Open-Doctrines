@@ -39,6 +39,10 @@ struct Answer {
     /// The room it belongs in, or 0 for an ordinary reply.
     int groupId = 0;
     std::string body;
+    /// A goal the advisor set for itself this turn, or empty.
+    std::string goal;
+    /// Leans it asked for: the raw phrase, resolved on the game thread.
+    std::vector<std::string> leans;
     /// How the exchange left `from` disposed toward `to`: -1, 0 or +1.
     /// Carried home with the letter rather than written from the worker,
     /// for the same reason the letter is: the worker touches no game state.
@@ -214,6 +218,10 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         if (const Country* c = m_countries.getCountry(toCountry)) persona.correspondent = c->name;
         persona.toAnotherAdvisor = (toCountry != m_playerCountryId) && mailIsBot(toCountry);
     }
+    {
+        auto g = m_llmGoal.find(fromCountry);
+        if (g != m_llmGoal.end()) persona.goal = g->second;
+    }
     if (persona.countryName.empty() || persona.correspondent.empty()) return;
 
     // In a room there is no single "them" to be at war with, so the situation
@@ -329,6 +337,8 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
                  timeout = 45000]() mutable {
         std::string reply;
         int disposition = 0;
+        std::string goal;
+        std::vector<std::string> leans;
 
         // ── Ask, answer, ask again -- but only so many times ──
         //
@@ -382,6 +392,25 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
                 // The recording tool is answered here, not from the table:
                 // there is nothing to look up, and what it says has to travel
                 // back with the letter.
+                // Recorded on the worker and carried home, exactly like the
+                // disposition: the worker cannot touch game state, and these
+                // are the country's own words rather than a lookup.
+                if (call.name == "set_goal") {
+                    if (!call.argument.empty()) {
+                        goal = call.argument;
+                        if (goal.size() > 240) goal.resize(240);
+                    }
+                    turns.push_back(llm::toolResultTurn(call, "Noted."));
+                    continue;
+                }
+                if (call.name == "intend") {
+                    // A cap, because a model asked for a preference can supply
+                    // twenty, and twenty leans is not a preference.
+                    if (!call.argument.empty() && leans.size() < 4)
+                        leans.push_back(call.argument);
+                    turns.push_back(llm::toolResultTurn(call, "Noted."));
+                    continue;
+                }
                 if (call.name == "note_disposition") {
                     std::string v = call.argument;
                     std::transform(v.begin(), v.end(), v.begin(),
@@ -420,7 +449,17 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         // model that failed to answer should look like a country that chose not
         // to write, which is a thing countries do.
         if (!reply.empty())
-            g_answers.push_back(Answer{fromCountry, toCountry, groupId, reply, disposition});
+        {
+            Answer a;
+            a.from = fromCountry;
+            a.to = toCountry;
+            a.groupId = groupId;
+            a.body = reply;
+            a.goal = goal;
+            a.leans = leans;
+            a.disposition = disposition;
+            g_answers.push_back(std::move(a));
+        }
     }).detach();
 }
 
@@ -463,6 +502,11 @@ void Game::runAdvisors() {
         // which is the point: a player who has genuinely talked a country
         // round should get the whole of the (small) effect, and a player who
         // sends thirty should not get more than that.
+        // A goal it set for itself. Kept until IT changes it -- the game never
+        // writes one and never clears one.
+        if (!a.goal.empty()) m_llmGoal[a.from] = a.goal;
+        for (const std::string& lean : a.leans) applyLlmLean(a.from, lean);
+
         // Only for a two-party correspondence. A room has several counterparts
         // and one number cannot say which of them the advisor warmed to --
         // filing it against a room id would mean nothing, and filing it against
@@ -1367,4 +1411,38 @@ void Game::pumpLlmServer() {
     if (!llm::installed(m_dataDir) || now < m_llmNextStartAt) return;
     m_llmNextStartAt = now + 15.0;
     m_llmServerPid = llm::startServer(m_dataDir);
+}
+
+// ────────────────────────────────────────────────── what a lean resolves to ────
+
+/**
+ * The action vocabulary an advisor may lean on, in the words it would use.
+ *
+ * These are the actions the POLICY SAMPLES, which is a smaller set than "what
+ * the AI does": garrisoning, fortifying, disbanding and campaigning run as
+ * reflexes that never consult the net, so no lean reaches them. Said plainly
+ * here because the gap is invisible from the outside -- an advisor can ask for
+ * fewer forts all game and nothing will happen.
+ *
+ * Several words map to one action on purpose. A model asked for a preference
+ * writes "war", "fighting", "attacks" and "aggression" for the same thing, and
+ * a table that only accepts the internal name accepts almost nothing.
+ */
+void Game::applyLlmLean(int cid, const std::string& phrase) {
+    const llm::Lean lean = llm::parseLean(phrase);
+    if (!lean.ok) return;
+    const long long key = ((long long)cid << 20) |
+                          ((long long)lean.module << 8) | (long long)lean.action;
+    float& v = m_llmIntent[key];
+    // Accumulated and clamped, exactly like the disposition: asking twice is
+    // emphasis, asking twenty times is not twenty times the emphasis.
+    v = std::clamp(v + 0.34f * lean.direction, -1.0f, 1.0f);
+}
+
+float Game::llmIntentFor(int cid, int module, int action) const {
+    if (!llmConfigured()) return 0.0f;
+    const long long key = ((long long)cid << 20) |
+                          ((long long)module << 8) | (long long)action;
+    auto it = m_llmIntent.find(key);
+    return it == m_llmIntent.end() ? 0.0f : it->second;
 }
