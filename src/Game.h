@@ -369,12 +369,6 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
-    /** Constructs trade offers a neighbour could make to one AI country and
-     *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
-     *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
-     *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
-     *  and PROBE_OK / PROBE_FAIL. */
-    bool runTradeProbe(const std::string& seatSpec, unsigned int seed);
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -5083,8 +5077,35 @@ private:
     /// Answer one thing an advisor asked to look up. Words only.
     std::string answerAdvisorTool(int me, const std::string& tool,
                                   const std::string& argument) const;
+    /**
+     * What `iso` claims but does not hold, and who holds it, in words.
+     *
+     * `mine` only changes the voice -- "you claim" against "they claim" -- so
+     * that our_claims and claims_of cannot drift apart in what they actually
+     * count. Both are public knowledge: a claim is a thing a country declares.
+     */
+    std::string llmDescribeClaims(const std::string& iso, int me, bool mine) const;
     /// Province counts as of last turn, for "has this been going well".
     std::unordered_map<int, int> m_llmLastHoldings;
+    /**
+     * How each advisor has been left disposed toward each correspondent.
+     *
+     * Keyed (from << 20 | to) and DIRECTIONAL: Britain warming to France says
+     * nothing about France's view of Britain, and one shared number would let
+     * a player talk a country round by writing to it in its own voice.
+     * Range [-1, 1]; see llmDispositionToward for what reads it.
+     */
+    std::unordered_map<long long, float> m_llmDisposition;
+
+public:
+    /**
+     * How warmly `me` regards `them` after their correspondence: [-1, 1].
+     *
+     * ALWAYS 0.0 WITHOUT THE MODULE, which is what keeps every benched game
+     * identical to one played without a language model installed.
+     */
+    float llmDispositionToward(int me, int them) const;
+private:
 
     // ─── Reporting a letter, and reviewing what was reported ───
     bool m_reportOpen = false;

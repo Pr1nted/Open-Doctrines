@@ -1518,6 +1518,34 @@ public:
      */
     static constexpr float  AI_GUARANTEE_RELUCTANCE     = 0.45f;
     /**
+     * WHAT TALKING TO A COUNTRY IS WORTH, WHEN A LANGUAGE MODEL ANSWERS.
+     *
+     * Zero for every game that does not have the optional advisor module
+     * loaded -- Game::llmDispositionToward returns 0.0f flat when it is off,
+     * so every benched game is byte-identical to one played without it. This
+     * knob only decides how much a correspondence is worth when there IS one.
+     *
+     * DELIBERATELY SMALLER THAN EVERY STRUCTURAL PRESSURE IT SITS BESIDE.
+     * Saturated it is 0.25: below AI_CALL_RELUCTANCE, below half of
+     * AI_NAP_WILLINGNESS, far below COALITION_WEIGHT. So a country being
+     * ganged up on, or at its pact cap, or asked into a war it cannot afford,
+     * still refuses a correspondent it likes. That ordering is the design --
+     * persuasion should move a decision that was close and should never talk a
+     * country out of its own survival -- and it is asserted as an ordering in
+     * tests/llm_influence_test.cpp rather than benched, because the ordering IS
+     * the claim. It was first set to 0.35, which is exactly
+     * AI_CALL_RELUCTANCE: a saturated correspondence would have cancelled that
+     * reluctance outright. The assertion is what caught it.
+     *
+     * It is applied to every request kind, for the same reason the coalition
+     * pressure is -- the claim is that the relationship changed, not that one
+     * particular pact did. Note that call_to_arms is gated to a refusal before
+     * the net is ever consulted in most states, so this reaches that kind only
+     * when the country could actually have said yes. See the gates in
+     * decideDiplomacy for why relaxing them was tried and was worse.
+     */
+    static constexpr float  AI_LLM_DISPOSITION          = 0.25f;
+    /**
      * WHAT A REFUSED OVERTURE COSTS THE COUNTRY THAT MADE IT.
      *
      * The politics reward pays +1.0 x tanh(pacts/3) for agreements HELD and
@@ -4385,6 +4413,18 @@ private:
     /** The tier in force, or the top one while self-play is learning. */
     const DifficultyProfile& difficulty() const;
 public:
+    /**
+     * The stance this AI is playing toward a country: the same value
+     * stanceOf returns, exposed for the mod ABI.
+     *
+     * -1 for a country it does not play or has not given a stance to; the wire
+     * turns that into GEARBOX_INVALID. See Game::modCountryStance.
+     */
+    int modStanceOf(int cid) const {
+        auto it = m_stance.find(cid);
+        return it == m_stance.end() ? -1 : it->second.first;
+    }
+
     /**
      * Gradient updates behind one module's policy head.
      *

@@ -27,6 +27,7 @@
 #include <map>
 #include <system_error>
 #include <mutex>
+#include <set>
 #include <thread>
 
 namespace {
@@ -36,6 +37,10 @@ struct Answer {
     int from = 0;
     int to = 0;
     std::string body;
+    /// How the exchange left `from` disposed toward `to`: -1, 0 or +1.
+    /// Carried home with the letter rather than written from the worker,
+    /// for the same reason the letter is: the worker touches no game state.
+    int disposition = 0;
 };
 
 std::mutex g_lock;
@@ -58,6 +63,36 @@ bool g_installDone = false;
  * that instantly -- so the model is told "stronger" and never "412,000 men".
  * Province count is the crudest possible proxy and that is the point.
  */
+/**
+ * "Britain, France and Russia" -- an English list, capped.
+ *
+ * Capped because a country bordering fifteen others produces a sentence no
+ * reader finishes and no small model reads to the end of. The overflow is
+ * counted rather than dropped silently, so "and four others" still tells the
+ * model there is more map than it was shown.
+ */
+static std::string joinNames(const std::vector<std::string>& names, size_t cap) {
+    if (names.empty()) return "";
+    const size_t shown = std::min(names.size(), cap);
+    std::string out;
+    for (size_t i = 0; i < shown; ++i) {
+        if (i > 0) out += (i + 1 == shown && names.size() <= cap) ? " and " : ", ";
+        out += names[i];
+    }
+    if (names.size() > cap)
+        out += " and " + std::to_string(names.size() - cap) + " others";
+    return out;
+}
+
+/// A share of the army as a soldier would say it, never as a count.
+static std::string llmForceShare(long long part, long long total) {
+    const double f = total > 0 ? (double)part / (double)total : 0.0;
+    if (f > 0.50) return "The bulk of your army";
+    if (f > 0.25) return "A large part of your army";
+    if (f > 0.10) return "A lesser force";
+    return "Little more than a garrison";
+}
+
 std::string Game::llmRelativeStrength(int fromCountry, int toCountry) const {
     int mine = 0, theirs = 0;
     for (const auto& [pid, pr] : m_provinces.getAllProvinces()) {
@@ -166,6 +201,17 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
     {
         int toolCount = 0;
         const llm::Tool* toolList = llm::tools(&toolCount);
+
+        // The ones that name a country are answered for each country this
+        // correspondence could plausibly be about. The ones that ask about our
+        // own country are answered once, under an empty argument -- keying
+        // those per country would compute the same sweep of our own provinces
+        // once for every neighbour on the board.
+        for (int t = 0; t < toolCount; ++t) {
+            if (toolList[t].argName) continue;
+            lookups[std::string(toolList[t].name) + "\x1f"] =
+                answerAdvisorTool(fromCountry, toolList[t].name, "");
+        }
         for (const auto& [cid, c] : m_countries.getAll()) {
             if (cid <= 0 || cid == fromCountry || cid >= REBEL_CID_MIN) continue;
             // Only countries this correspondence could plausibly mention: the
@@ -174,6 +220,12 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
                                   modAtWar(cid, toCountry);
             if (!relevant) continue;
             for (int t = 0; t < toolCount; ++t) {
+                // `records` tools answer nothing and are handled by the worker.
+                // Without this the recording tool would be "answered" here for
+                // every country on the board, each time with the fall-through
+                // "that is not something you can find out" -- which is both
+                // wasted work and a wrong answer sitting in the table.
+                if (!toolList[t].argName || toolList[t].records) continue;
                 lookups[std::string(toolList[t].name) + "\x1f" + c.name] =
                     answerAdvisorTool(fromCountry, toolList[t].name, c.name);
             }
@@ -187,6 +239,7 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
     std::thread([fromCountry, toCountry, url, key, me, model, turns, lookups,
                  timeout = 45000]() mutable {
         std::string reply;
+        int disposition = 0;
 
         // ── Ask, answer, ask again -- but only so many times ──
         //
@@ -226,7 +279,34 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
             turns.push_back(asked);
 
             for (const llm::ToolCall& call : calls) {
+                // The recording tool is answered here, not from the table:
+                // there is nothing to look up, and what it says has to travel
+                // back with the letter.
+                if (call.name == "note_disposition") {
+                    std::string v = call.argument;
+                    std::transform(v.begin(), v.end(), v.begin(),
+                                   [](unsigned char c) { return (char)std::tolower(c); });
+                    // Matched loosely: models write "warmer", "Warmer.", and
+                    // "much warmer" for the same intent, and an exact-match
+                    // check would silently record every one of them as no
+                    // change at all -- a feature that looks wired up and is
+                    // not.
+                    if (v.find("warm") != std::string::npos)      disposition = +1;
+                    else if (v.find("cool") != std::string::npos ||
+                             v.find("cold") != std::string::npos) disposition = -1;
+                    else                                          disposition = 0;
+                    turns.push_back(llm::toolResultTurn(call, "Noted."));
+                    continue;
+                }
                 auto it = lookups.find(call.name + "\x1f" + call.argument);
+                // A model asked for our own army will often pass an argument
+                // anyway -- its own country's name, or the correspondent's --
+                // because every other tool it has takes one. Answering that
+                // with "there is no such country" would be a lie about a
+                // question we can answer perfectly well, so an argument to an
+                // argument-free tool is simply ignored.
+                if (it == lookups.end() && !call.argument.empty())
+                    it = lookups.find(call.name + "\x1f");
                 turns.push_back(llm::toolResultTurn(
                     call, it == lookups.end()
                               ? "There is no country by that name in this world."
@@ -239,7 +319,8 @@ void Game::askAdvisor(int fromCountry, int toCountry) {
         // An empty reply is dropped rather than written as an empty letter: a
         // model that failed to answer should look like a country that chose not
         // to write, which is a thing countries do.
-        if (!reply.empty()) g_answers.push_back(Answer{fromCountry, toCountry, reply});
+        if (!reply.empty())
+            g_answers.push_back(Answer{fromCountry, toCountry, reply, disposition});
     }).detach();
 }
 
@@ -267,6 +348,18 @@ void Game::runAdvisors() {
         if (const Country* c = m_countries.getCountry(a.from)) name = c->name;
         mailbox(a.from).write(a.from, a.to, a.body, m_turnNumber,
                               mail::Author::Bot, name);
+
+        // ── The only place a letter reaches the rest of the game ──
+        //
+        // Accumulated and clamped, so one warm letter is a nudge and a
+        // correspondence is a position. Three consistent letters saturate it,
+        // which is the point: a player who has genuinely talked a country
+        // round should get the whole of the (small) effect, and a player who
+        // sends thirty should not get more than that.
+        if (a.disposition != 0) {
+            float& d = m_llmDisposition[((long long)a.from << 20) | (long long)a.to];
+            d = llm::foldDisposition(d, a.disposition);
+        }
     }
 
     // Then: ask for the next round. Bounded, because a hundred countries each
@@ -642,6 +735,22 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
     std::string name;
     if (const Country* c = m_countries.getCountry(them)) name = c->name;
 
+    // A tool that names a country cannot be answered without one. The
+    // precompute only ever passes names that resolve, but a model may call a
+    // tool with a country that is not in this world, or -- commoner -- omit the
+    // argument altogether. Both arrive here as `them == 0`, and without this
+    // the answers below would talk about a country called "".
+    {
+        int toolCount = 0;
+        const llm::Tool* list = llm::tools(&toolCount);
+        for (int i = 0; i < toolCount; ++i) {
+            if (tool != list[i].name) continue;
+            if (list[i].argName && them <= 0)
+                return "There is no country by that name in this world.";
+            break;
+        }
+    }
+
     if (tool == "standing_with") {
         llm::Situation s;
         s.atWar = modAtWar(me, them);
@@ -670,5 +779,296 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
         return s.historyWithThem.empty() ? "You have not written to them."
                                          : (s.historyWithThem + ".");
     }
+
+    // ─────────────────────────────────────── what we know about ourselves ────
+    //
+    // From here down the answers may name PLACES. A minister knows his own
+    // frontier, his own districts and what his own government has enacted, and
+    // pretending otherwise made the letters vaguer than the fiction requires.
+    // The numbers rule still holds: shares are rendered as "the bulk of" and
+    // "little more than a garrison", never as a count of men.
+
+    if (tool == "our_territory") {
+        const std::vector<int>& mine = provincesOf(me);
+        int held = 0, world = 0, ports = 0;
+        for (const auto& [pid, pr] : m_provinces.getAllProvinces()) {
+            (void)pid;
+            if (pr.countryId > 0 && pr.countryId < REBEL_CID_MIN) ++world;
+        }
+        std::set<std::string> neighbours;
+        for (int pid : mine) {
+            const Province* pr = m_provinces.getProvinceById(pid);
+            if (!pr || pr->countryId != me) continue;   // stale: see provincesOf
+            ++held;
+            if (m_provincePorts.count(pid)) ++ports;
+            auto nb = m_provinceNeighbors.find(pid);
+            if (nb == m_provinceNeighbors.end()) continue;
+            for (int npid : nb->second) {
+                const Province* np = m_provinces.getProvinceById(npid);
+                if (!np || np->countryId == me || np->countryId <= 0) continue;
+                if (np->countryId >= REBEL_CID_MIN) continue;
+                if (const Country* nc = m_countries.getCountry(np->countryId))
+                    neighbours.insert(nc->name);
+            }
+        }
+        if (held == 0) return "Your country holds no land at all.";
+        const double share = world > 0 ? (double)held / (double)world : 0.0;
+        std::string out = "Yours is ";
+        if (share > 0.18)      out += "one of the great powers of this world";
+        else if (share > 0.08) out += "a large country";
+        else if (share > 0.03) out += "a country of middling size";
+        else                   out += "a small country";
+        out += ". ";
+        out += ports > 0 ? "You have ports on the sea. "
+                         : "You have no ports on the sea. ";
+        if (neighbours.empty()) {
+            out += "You border no one.";
+        } else {
+            out += "You border ";
+            out += joinNames(std::vector<std::string>(neighbours.begin(),
+                                                      neighbours.end()), 8);
+            out += ".";
+        }
+        return out;
+    }
+
+    if (tool == "our_forces") {
+        // Every man is attributed to the frontier he stands on -- that is, to
+        // each foreign country whose land his province touches. A province deep
+        // inside the country touches none and counts as the interior.
+        //
+        // A province on a corner between two neighbours is counted toward BOTH,
+        // which is deliberate: those men do face both, and splitting them would
+        // invent a precision about intent that the map does not carry. It means
+        // the shares can sum past the whole, so they are compared against the
+        // total army rather than against each other.
+        long long total = 0;
+        std::map<std::string, long long> facing;
+        long long interior = 0;
+        std::set<std::string> kinds;
+        for (int pid : provincesOf(me)) {
+            const Province* pr = m_provinces.getProvinceById(pid);
+            if (!pr || pr->countryId != me) continue;
+            auto ar = m_provinceArmies.find(pid);
+            if (ar == m_provinceArmies.end()) continue;
+            long long here = 0;
+            for (const ArmyUnit& u : ar->second) {
+                if (u.countryId != me || u.count <= 0) continue;
+                here += u.count;
+                kinds.insert(troopCost(u.type).name);
+            }
+            if (here <= 0) continue;
+            total += here;
+            bool frontier = false;
+            auto nb = m_provinceNeighbors.find(pid);
+            if (nb != m_provinceNeighbors.end()) {
+                std::set<std::string> touched;
+                for (int npid : nb->second) {
+                    const Province* np = m_provinces.getProvinceById(npid);
+                    if (!np || np->countryId == me || np->countryId <= 0) continue;
+                    if (np->countryId >= REBEL_CID_MIN) continue;
+                    if (const Country* nc = m_countries.getCountry(np->countryId))
+                        touched.insert(nc->name);
+                }
+                for (const std::string& n : touched) { facing[n] += here; frontier = true; }
+            }
+            if (!frontier) interior += here;
+        }
+        if (total <= 0) return "You have no army in the field.";
+
+        std::vector<std::pair<std::string, long long>> ranked(facing.begin(), facing.end());
+        std::sort(ranked.begin(), ranked.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+
+        std::string out;
+        for (size_t i = 0; i < ranked.size() && i < 4; ++i) {
+            out += llmForceShare(ranked[i].second, total) + " faces " + ranked[i].first + ". ";
+        }
+        if (interior > 0)
+            out += llmForceShare(interior, total) + " is held back in the interior. ";
+        if (!kinds.empty()) {
+            out += "You have ";
+            out += joinNames(std::vector<std::string>(kinds.begin(), kinds.end()), 4);
+            out += " under arms.";
+        }
+        return out;
+    }
+
+    if (tool == "our_doctrines") {
+        std::vector<std::string> active, coming;
+        auto idx = m_countryActivePolicyIndices.find(me);
+        if (idx != m_countryActivePolicyIndices.end()) {
+            for (int i : idx->second) {
+                if (i < 0 || i >= (int)m_activePolicies.size()) continue;
+                const ActivePolicy& ap = m_activePolicies[i];
+                if (ap.turnsRemaining < 0) continue;   // cancelled
+                std::string label = ap.policyId;
+                for (const Policy& def : m_allPolicies)
+                    if (def.id == ap.policyId) { label = def.name; break; }
+                (ap.turnsRemaining > 0 ? coming : active).push_back(label);
+            }
+        }
+        if (active.empty() && coming.empty())
+            return "Your government runs no doctrines at present.";
+        std::string out;
+        if (!active.empty()) out += "Your government runs " + joinNames(active, 8) + ". ";
+        if (!coming.empty()) out += "You are still bringing in " + joinNames(coming, 6) + ".";
+        return out;
+    }
+
+    if (tool == "our_districts") {
+        auto it = m_districts.find(me);
+        if (it == m_districts.end() || it->second.empty())
+            return "Your country is governed as one piece, undivided.";
+        std::string out;
+        for (const District& d : it->second) {
+            if (d.provinces.empty()) continue;
+            double sum = 0.0;
+            int counted = 0;
+            for (int pid : d.provinces) {
+                const Province* pr = m_provinces.getProvinceById(pid);
+                if (!pr || pr->countryId != me) continue;
+                sum += getProvinceRebellionChance(pid);
+                ++counted;
+            }
+            if (counted == 0) continue;
+            const double risk = sum / (double)counted;
+            out += d.name + " is ";
+            if (risk > 0.20)      out += "close to open revolt";
+            else if (risk > 0.10) out += "restless";
+            else if (risk > 0.03) out += "uneasy but holding";
+            else                  out += "quiet";
+            out += ". ";
+        }
+        return out.empty() ? "Your country is governed as one piece, undivided." : out;
+    }
+
+    if (tool == "our_claims") {
+        const Country* self = m_countries.getCountry(me);
+        if (!self) return "You claim nothing beyond what you hold.";
+        return llmDescribeClaims(self->isoA3, me, /*mine=*/true);
+    }
+
+    if (tool == "incoming_requests") {
+        const Country* self = m_countries.getCountry(me);
+        if (!self) return "Nothing is waiting on your answer.";
+        std::vector<std::string> lines;
+        for (const PendingDiplomaticAction& da : m_pendingDiplomaticActions) {
+            if (da.targetIso != self->isoA3) continue;
+            const int src = cidForIso(da.sourceIso);
+            const Country* sc = m_countries.getCountry(src);
+            if (!sc) continue;
+            const std::string who = sc->name;
+            if (da.action == "request_alliance")      lines.push_back(who + " has proposed an alliance");
+            else if (da.action == "request_nap")      lines.push_back(who + " has proposed a non-aggression pact");
+            else if (da.action == "request_guarantee")lines.push_back(who + " has asked you to guarantee them");
+            else if (da.action == "call_to_arms") {
+                const Country* subj = m_countries.getCountry(cidForIso(da.subjectIso));
+                lines.push_back(who + " has called on you to join their war" +
+                                (subj ? " against " + subj->name : ""));
+            }
+            else if (da.action == "propose_trade")    lines.push_back(who + " has offered you a trade");
+            else if (da.action == "break_alliance")   lines.push_back(who + " is leaving your alliance");
+            else if (da.action == "break_nap")        lines.push_back(who + " is tearing up your pact");
+            else if (da.action == "break_guarantee")  lines.push_back(who + " is withdrawing their guarantee");
+            else if (da.action == "declare_war")      lines.push_back(who + " is declaring war on you");
+        }
+        if (lines.empty()) return "Nothing is waiting on your answer.";
+        std::string out;
+        for (const std::string& l : lines) out += l + ". ";
+        return out;
+    }
+
+    if (tool == "claims_of") {
+        if (them <= 0) return "There is no country by that name in this world.";
+        const Country* other = m_countries.getCountry(them);
+        if (!other) return "There is no country by that name in this world.";
+        return llmDescribeClaims(other->isoA3, me, /*mine=*/false);
+    }
+
+    if (tool == "profile_of") {
+        if (them <= 0) return "There is no country by that name in this world.";
+        std::string out = name + " is ";
+        auto comp = m_countryCompass.find(them);
+        if (comp != m_countryCompass.end()) {
+            const float e = comp->second.economic, so = comp->second.social;
+            std::string econ = e < -33 ? "of the left" : (e > 33 ? "of the right" : "of the centre");
+            std::string soc  = so < -33 ? "and rules with a hard hand"
+                                        : (so > 33 ? "and rules loosely" : "and rules evenly");
+            out += "governed " + econ + " " + soc + ". ";
+        } else {
+            out += "governed in a manner you cannot judge. ";
+        }
+        const std::string rel = llmRelativeStrength(me, them);
+        if (!rel.empty()) out += "Their position is " + rel + ". ";
+
+        llm::Situation s;
+        s.atWar = modAtWar(me, them);
+        describeSituation(me, them, s);
+        out += s.theirWars.empty() ? "They are at war with no one. "
+                                   : (s.theirWars + ". ");
+        if (!s.pact.empty())        out += "You have " + s.pact + " with them. ";
+        else if (s.atWar)           out += "You are at war with them. ";
+        else                        out += "You have no treaty with them. ";
+        if (!s.proximity.empty())   out += s.proximity + ".";
+        return out;
+    }
+
     return "That is not something you can find out.";
+}
+
+std::string Game::llmDescribeClaims(const std::string& iso, int me, bool mine) const {
+    auto it = m_claims.find(iso);
+    if (it == m_claims.end() || it->second.empty())
+        return mine ? "You claim nothing beyond what you hold."
+                    : "They claim nothing beyond what they hold.";
+
+    // Grouped by WHO HOLDS THE LAND rather than listed province by province.
+    // A claim on nine provinces of one neighbour is one grievance, and reading
+    // it out as nine place names buries that under a gazetteer.
+    std::map<std::string, int> byHolder;
+    int onUs = 0, unheld = 0;
+    for (int pid : it->second) {
+        const Province* pr = m_provinces.getProvinceById(pid);
+        if (!pr) continue;
+        if (pr->countryId == me && !mine) { ++onUs; continue; }
+        if (pr->countryId <= 0 || pr->countryId >= REBEL_CID_MIN) { ++unheld; continue; }
+        const Country* holder = m_countries.getCountry(pr->countryId);
+        if (!holder) { ++unheld; continue; }
+        if (holder->isoA3 == iso) continue;   // already theirs; not a claim outstanding
+        byHolder[holder->name] += 1;
+    }
+    if (byHolder.empty() && onUs == 0 && unheld == 0)
+        return mine ? "You claim nothing you do not already hold."
+                    : "They claim nothing they do not already hold.";
+
+    const std::string subject = mine ? "You claim " : "They claim ";
+    std::string out;
+    if (onUs > 0) {
+        // Said first and said plainly. A claim on our own land is the single
+        // most consequential thing in this answer and must not arrive as the
+        // third clause of a list.
+        out += "They claim land of yours";
+        out += onUs > 3 ? " -- a great deal of it. " : ". ";
+    }
+    std::vector<std::string> parts;
+    for (const auto& [holder, count] : byHolder) {
+        std::string much = count > 5 ? "a great deal of " : (count > 2 ? "several provinces of " : "land of ");
+        parts.push_back(much + holder);
+    }
+    if (!parts.empty()) out += subject + joinNames(parts, 5) + ". ";
+    if (unheld > 0)
+        out += mine ? "You also claim land no country holds." : "They also claim land no country holds.";
+    return out;
+}
+
+float Game::llmDispositionToward(int me, int them) const {
+    // OFF IS EXACTLY ZERO, AND IT IS CHECKED HERE RATHER THAN AT THE CALL SITE.
+    // Every caller of this is inside the measured AI, and a caller that forgot
+    // the check would make the benched game depend on whether a player happens
+    // to have installed a language model -- which would be the single worst
+    // thing this module could do.
+    if (!llmConfigured()) return 0.0f;
+    auto it = m_llmDisposition.find(((long long)me << 20) | (long long)them);
+    return it == m_llmDisposition.end() ? 0.0f : it->second;
 }

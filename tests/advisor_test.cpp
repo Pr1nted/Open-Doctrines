@@ -15,6 +15,7 @@
 #include "Runner.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,23 @@ static mail::Message letter(int from, int to, const std::string& body,
 }
 
 int main() {
+    // Dump the real schema for the manual round-trip against a live model.
+    // Hand-copying it into a script is how a demo ends up proving that a
+    // hand-written JSON blob works while the shipped one does not.
+    if (getenv("OD_DUMP_TOOLS")) { printf("%s\n", toolsJson().c_str()); return 0; }
+    if (getenv("OD_DUMP_PROMPT")) {
+        Persona pe; pe.countryName = "Prussia"; pe.correspondent = "Russia";
+        Situation si; si.turn = 41; si.date = "March 1871";
+        si.relativeStrength = "somewhat stronger than you";
+        si.proximity = "you share a border";
+        si.pact = "no treaty";
+        si.theirWars = "they are at war with Austria";
+        si.ourFortunes = "you have been gaining ground";
+        si.historyWithThem = "you have written to each other a few times, coolly";
+        printf("%s\n", systemPrompt(pe, si, "English").c_str());
+        return 0;
+    }
+
     printf("AI advisor\n");
 
     const Persona britain{"Britain", "France", "", false};
@@ -207,20 +225,61 @@ int main() {
            "and so does a null content");
     }
 
+    section("a tool call that leaked into the letter");
+    {
+        // Observed, not imagined: qwen2.5:3b answered a letter with exactly
+        // this and nothing else. Unstripped it posts to the player as the
+        // country's own words.
+        ok(tidyReply("Note disposition: warmer", "Prussia").empty(),
+           "a reply that is only a written-out tool call becomes no letter");
+        ok(tidyReply("note_disposition(warmer)", "Prussia").empty(),
+           "in the parenthesised form too");
+        ok(tidyReply("our_forces()\nWe shall not move against you.", "Prussia")
+               == "We shall not move against you.",
+           "and a leaked call above a real letter leaves the letter");
+        ok(tidyReply("incoming_requests: none\nstanding_with: Russia\nWe accept.",
+                     "Prussia") == "We accept.",
+           "several stacked calls are all removed");
+
+        // THE LINE THIS MUST NOT CROSS. A letter may legitimately begin with
+        // the words a tool is named after; stripping on the name alone would
+        // silently eat the first sentence of a perfectly good letter.
+        const std::string real = "Our forces will remain where they stand.";
+        ok(tidyReply(real, "Prussia") == real,
+           "but a sentence that merely starts like a tool name is untouched");
+        const std::string real2 = "Standing with you against Austria is not free.";
+        ok(tidyReply(real2, "Prussia") == real2, "and so is this one");
+    }
+
     section("what it may look up for itself");
     {
         int n = 0;
         const Tool* list = tools(&n);
         ok(n > 0 && list != nullptr, "some tools are offered");
 
-        // The rule that keeps a tool from being a back door into the save file.
-        bool allSingleArg = true, allDescribed = true;
+        // The rule that keeps a tool from being a back door into the save file:
+        // at most one argument, and it must be described. Some take none at all
+        // -- the ones that ask about our own country have nothing to name.
+        bool atMostOneArg = true, allDescribed = true, argsDescribed = true;
+        int withArg = 0, withoutArg = 0;
         for (int i = 0; i < n; ++i) {
-            if (!list[i].argName || !*list[i].argName) allSingleArg = false;
             if (!list[i].description || !*list[i].description) allDescribed = false;
+            if (list[i].argName && *list[i].argName) {
+                ++withArg;
+                if (!list[i].argDescription || !*list[i].argDescription) argsDescribed = false;
+            } else {
+                ++withoutArg;
+                // A half-declared tool -- no name but a description, or an
+                // empty string rather than null -- is the shape that reaches
+                // toolsJson and emits `"":{...}`, which a model then fills in.
+                if (list[i].argName != nullptr) atMostOneArg = false;
+            }
         }
-        ok(allSingleArg, "each takes exactly one named argument");
-        ok(allDescribed, "and each says what it is for");
+        ok(allDescribed, "each says what it is for");
+        ok(argsDescribed, "and each argument that exists is described");
+        ok(atMostOneArg, "an argument-free tool declares a null name, not an empty one");
+        ok(withArg > 0 && withoutArg > 0,
+           "both kinds are offered: about them, and about ourselves");
 
         const std::string j = toolsJson();
         ok(j.rfind("[", 0) == 0, "they serialise as a JSON array");
@@ -228,6 +287,36 @@ int main() {
            "in the shape a chat API expects");
         ok(j.find("standing_with") != std::string::npos, "naming each tool");
         ok(j.find('\n') == std::string::npos, "with no raw control byte in it");
+
+        // Every tool must reach the JSON, or a tool the game can answer is one
+        // the model is never told about -- invisible, and untestable from the
+        // outside because a model simply never calls it.
+        bool everyToolNamed = true;
+        for (int i = 0; i < n; ++i)
+            if (j.find(std::string("\"name\":\"") + list[i].name + "\"") == std::string::npos)
+                everyToolNamed = false;
+        ok(everyToolNamed, "and every one of them, not just the first");
+
+        // THE ARGUMENT-FREE SCHEMA. A function whose properties object holds a
+        // nameless entry is the failure this guards: runners accept it, and the
+        // model then invents a value to put in it -- which arrives as a lookup
+        // for a country called "" and comes back "there is no such country".
+        ok(j.find("\"\":{") == std::string::npos,
+           "no tool advertises a nameless argument");
+        ok(j.find("\"properties\":{},\"required\":[]") != std::string::npos,
+           "a tool that takes nothing says so with an empty schema");
+        // Balanced braces is a cheap stand-in for "this parses": the builder is
+        // hand-rolled string concatenation and a missing brace is exactly what
+        // a branch on argName gets wrong.
+        int depth = 0; bool balanced = true, inStr = false;
+        for (size_t i = 0; i < j.size(); ++i) {
+            const char c = j[i];
+            if (inStr) { if (c == '\\') ++i; else if (c == '"') inStr = false; continue; }
+            if (c == '"') inStr = true;
+            else if (c == '{' || c == '[') ++depth;
+            else if (c == '}' || c == ']') { if (--depth < 0) balanced = false; }
+        }
+        ok(balanced && depth == 0 && !inStr, "and the whole array is balanced");
 
         const std::vector<Turn> turns = {{"system", "be a minister"}, {"user", "well?"}};
         const std::string withTools = chatRequestBodyWithTools(turns, "m");

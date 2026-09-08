@@ -6687,6 +6687,28 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         if (bias.empty()) bias.assign(DIPLO_ACTIONS, 0.0f);
         bias[1] -= COALITION_WEIGHT * coalitionPressure();
     }
+
+    // ── AND WHETHER THEY HAVE BEEN TALKING TO US ──
+    //
+    // The one place the optional language-model module reaches a decision.
+    // Without it this is exactly 0.0f -- llmDispositionToward checks the
+    // module itself rather than trusting callers -- so it adds a term worth
+    // nothing and takes no branch that a game without the module would not
+    // also take. That inertness is asserted, not assumed: see
+    // tests/llm_influence_test.cpp.
+    //
+    // What it buys is that writing to a country MATTERS. An advisor that
+    // conducts a warm correspondence and then answers every request exactly as
+    // it would have anyway is a chat window bolted to a strategy game, and a
+    // player works that out inside two turns.
+    if (srcCid >= 0) {
+        const float warmth = m_g->llmDispositionToward(targetCid, srcCid);
+        if (warmth != 0.0f) {
+            if (bias.empty()) bias.assign(DIPLO_ACTIONS, 0.0f);
+            bias[1] += AI_LLM_DISPOSITION * warmth;
+        }
+    }
+
     // ...and a call to arms AGAINST them is the one worth answering. This is
     // the half that turns a cold shoulder into a coalition: the leader's
     // enemies find allies, so a war against it is a war on several fronts.

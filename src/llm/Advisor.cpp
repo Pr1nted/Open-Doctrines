@@ -64,8 +64,28 @@ std::string systemPrompt(const Persona& persona, const Situation& situation,
     // and a player can tell instantly. Everything above is the kind of thing a
     // foreign ministry would actually know: who is fighting whom, whether there
     // is a treaty, whether the war has been going well.
-    p << "- You know only what has been said in this correspondence and the\n"
-         "  broad situation above. You do not have access to their orders.\n";
+    p << "- You do not have access to their orders or their private letters.\n";
+
+    // ── AND SAY THAT IT MAY GO AND LOOK ──
+    //
+    // This section exists because the prompt and the tool schema used to
+    // disagree. The line above once read "you know only what has been said in
+    // this correspondence and the broad situation above", which was true when
+    // it was written and became a straightforward instruction NOT to use the
+    // twelve tools the same request offers. A model that believes the prompt
+    // over the schema is behaving correctly; the contradiction was ours.
+    p << "\nBEFORE YOU WRITE\n"
+         "- You may look things up first, and you should. Ask about your own\n"
+         "  army, your own claims, what is waiting on your answer, or about\n"
+         "  the country you are writing to.\n"
+         "- What you are told back is what your ministry knows. Treat it as\n"
+         "  fact, and do not invent figures it did not give you.\n"
+         "- Looking something up does not oblige you to admit it.\n"
+         "- Then record how this exchange has left you disposed toward them,\n"
+         "  warmer or cooler or unchanged, and only then write the letter.\n"
+         "  Be honest in that record even if the letter you write is not:\n"
+         "  it is your own judgement, and nobody else ever sees it.\n";
+
     p << "\nWrite as somebody who knows all of that and is deciding how much of\n"
          "it to admit.\n";
     return p.str();
@@ -103,6 +123,52 @@ std::string tidyReply(std::string text, const std::string& countryName) {
         s = s.substr(a, b - a + 1);
     };
     trim(text);
+
+    // ── A TOOL CALL THAT LEAKED INTO THE PROSE ──
+    //
+    // Small models do not always call a tool; sometimes they WRITE it. A real
+    // reply came back as the single line "Note disposition: warmer", which is
+    // not a letter at all -- and, unstripped, would have been posted to the
+    // player as one, in a country's own voice, exposing the machinery.
+    //
+    // Stripped line by line from the front, for every tool rather than the one
+    // that was caught: they all leak the same way, and a guard written for the
+    // single observed case is a guard that is already out of date.
+    //
+    // What is left may be nothing, and nothing is the right answer: an empty
+    // reply is dropped, and a country that did not write is a thing players
+    // already understand.
+    {
+        int toolCount = 0;
+        const Tool* list = tools(&toolCount);
+        bool stripped = true;
+        while (stripped && !text.empty()) {
+            stripped = false;
+            const size_t eol = text.find('\n');
+            std::string line = text.substr(0, eol);
+            std::string lower;
+            for (char c : line) lower += (char)std::tolower((unsigned char)c);
+            for (int i = 0; i < toolCount && !stripped; ++i) {
+                // Underscores are often written as spaces when a model is
+                // narrating a call rather than making one.
+                std::string spaced = list[i].name;
+                std::replace(spaced.begin(), spaced.end(), '_', ' ');
+                for (const std::string& form : {std::string(list[i].name), spaced}) {
+                    if (lower.compare(0, form.size(), form) != 0) continue;
+                    // Only when what follows marks it as a call rather than a
+                    // sentence that happens to begin with the same words.
+                    const size_t after = lower.find_first_not_of(" \t", form.size());
+                    if (after == std::string::npos ||
+                        lower[after] == ':' || lower[after] == '(' || lower[after] == '=') {
+                        text = (eol == std::string::npos) ? "" : text.substr(eol + 1);
+                        trim(text);
+                        stripped = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     // Models routinely answer a "write a letter" instruction with the letter in
     // quotation marks, which then appears inside the bubble as if the country
@@ -303,6 +369,8 @@ std::string readJsonString(const std::string& s, size_t at, size_t* end = nullpt
 namespace {
 
 constexpr Tool kTools[] = {
+    // ── About somebody else. Coarse, because a ministry's picture of a
+    //    foreign country IS coarse -- see the asymmetry note in Advisor.h.
     {"standing_with",
      "How your country currently stands with another: whether you are at war, "
      "what treaty you have, and whether you share a border.",
@@ -319,6 +387,48 @@ constexpr Tool kTools[] = {
      "What you and a country have written to each other so far, in general "
      "terms: how much, and how it has gone.",
      "country", "The country's name."},
+    {"claims_of",
+     "What land a country claims but does not hold, including anything it "
+     "claims from you. Claims are declared publicly, so this is known.",
+     "country", "The country's name."},
+    {"profile_of",
+     "A rounded picture of a country: how it is governed, how large and how "
+     "wealthy it is, and who it is fighting.",
+     "country", "The country's name."},
+
+    // ── About your own country. You may be specific about PLACES here --
+    //    a minister knows their own map -- but never about numbers.
+    {"our_territory",
+     "The shape of your own country: how large it is, whether it reaches the "
+     "sea, and which countries you border.",
+     nullptr, nullptr},
+    {"our_forces",
+     "Where your own army stands: which frontiers are held in strength, which "
+     "are thin, and what kind of troops they are.",
+     nullptr, nullptr},
+    {"our_doctrines",
+     "The doctrines your government is running, and any it is still bringing "
+     "in.",
+     nullptr, nullptr},
+    {"our_districts",
+     "How your country is divided for government, and where it is quiet or "
+     "restless.",
+     nullptr, nullptr},
+    {"our_claims",
+     "The land your own country claims but does not hold, and who holds it.",
+     nullptr, nullptr},
+    {"incoming_requests",
+     "What other countries have asked of you and is still waiting on your "
+     "answer.",
+     nullptr, nullptr},
+
+    // ── The one that records rather than answers. See Tool::records. ──
+    {"note_disposition",
+     "Record how this exchange has left you disposed toward the country you "
+     "are writing to, before you write your reply. Use \"warmer\" if you are "
+     "now more inclined to come to terms with them, \"cooler\" if less, or "
+     "\"unchanged\". This is your own judgement and nobody else sees it.",
+     "disposition", "One of: warmer, cooler, unchanged.", true},
 };
 
 std::string jsonEscape(const std::string& in);
@@ -328,6 +438,12 @@ std::string jsonEscape(const std::string& in);
 const Tool* tools(int* count) {
     if (count) *count = (int)(sizeof(kTools) / sizeof(kTools[0]));
     return kTools;
+}
+
+float foldDisposition(float current, int stance) {
+    if (stance == 0) return current;
+    const float next = current + kDispositionStep * (stance > 0 ? 1.0f : -1.0f);
+    return next < -1.0f ? -1.0f : (next > 1.0f ? 1.0f : next);
 }
 
 std::string toolsJson() {
@@ -340,10 +456,18 @@ std::string toolsJson() {
         j << "{\"type\":\"function\",\"function\":{"
           << "\"name\":\"" << list[i].name << "\","
           << "\"description\":\"" << jsonEscape(list[i].description) << "\","
-          << "\"parameters\":{\"type\":\"object\",\"properties\":{"
-          << "\"" << list[i].argName << "\":{\"type\":\"string\",\"description\":\""
-          << jsonEscape(list[i].argDescription) << "\"}},"
-          << "\"required\":[\"" << list[i].argName << "\"]}}}";
+          << "\"parameters\":{\"type\":\"object\",\"properties\":{";
+        // A tool that takes nothing still needs a parameters object -- an
+        // empty one. Runners reject a function whose schema is missing, and a
+        // model handed `"properties":{"":{...}}` invents an argument to fill
+        // it, which then arrives as a lookup for a country called "".
+        if (list[i].argName) {
+            j << "\"" << list[i].argName << "\":{\"type\":\"string\",\"description\":\""
+              << jsonEscape(list[i].argDescription) << "\"}";
+        }
+        j << "},\"required\":[";
+        if (list[i].argName) j << "\"" << list[i].argName << "\"";
+        j << "]}}}";
     }
     j << "]";
     return j.str();

@@ -163,6 +163,20 @@ std::string tidyReply(std::string text, const std::string& countryName);
 //   * ONLY WHAT A MINISTRY WOULD KNOW. Who is at war, who has signed what, who
 //     borders whom. Never another country's orders, never another
 //     correspondence.
+//
+// AND ONE ASYMMETRY, WHICH IS THE POINT OF HALF OF THESE.
+//
+// What a country knows about ITSELF and what it knows about its neighbours are
+// not the same thing, and flattening them makes both wrong. A foreign minister
+// cannot tell you where the Russian army is massed; he can absolutely tell you
+// where his own is, because he signed the order. So the `our_*` tools name
+// PLACES -- which frontier is held, which district is restless, which province
+// is claimed -- while the tools about somebody else stay at "considerably
+// stronger than you".
+//
+// The numbers rule does not bend for either. A minister knows his own army in
+// detail and still says "the bulk of it stands on the Prussian border", never
+// "412,000 men", because the second is a save file and the first is a letter.
 //   * BOUNDED. A fixed number of rounds per letter, because a model that can
 //     ask questions is a model that can ask them forever.
 
@@ -170,9 +184,36 @@ std::string tidyReply(std::string text, const std::string& countryName);
 struct Tool {
     const char* name;
     const char* description;
-    /// The single argument every one of these takes, or null for none.
+    /**
+     * The single argument this one takes, or null when it takes none.
+     *
+     * The `our_*` tools ask about the country the model IS, so there is
+     * nothing to name -- and a null here has to be handled in toolsJson,
+     * because a function advertised with a malformed empty schema gets an
+     * argument invented to fill it.
+     */
     const char* argName;
     const char* argDescription;
+    /**
+     * True for the one tool that does not answer a question but records one.
+     *
+     * THIS IS THE EXCEPTION TO "READ ONLY", AND IT IS A NARROW ONE. Every
+     * other tool here reads the world and changes nothing. This one changes
+     * nothing about the world either -- it records how the correspondence left
+     * THIS COUNTRY FEELING ABOUT THIS CORRESPONDENT, which is a fact about the
+     * advisor's own mind and about nothing else.
+     *
+     * It matters because without it the module is decorative: the letters read
+     * well and no decision anywhere is different for having been written. What
+     * this feeds is a bounded thumb on the scale in the diplomacy the existing
+     * AI already does -- see Game::llmDispositionToward. It cannot move an
+     * army, cannot sign anything, and cannot overrule a refusal the AI would
+     * have made on the merits.
+     *
+     * Answers from a recording tool are not precomputed, because there is
+     * nothing to look up: the worker handles it and carries the result home.
+     */
+    bool records = false;
 };
 
 /// The tools offered. Fixed, small, and read-only.
@@ -211,6 +252,25 @@ std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
  * somebody's turn on it.
  */
 constexpr int kMaxToolRounds = 3;
+
+/**
+ * How far one letter may move a standing disposition.
+ *
+ * Three consistent letters saturate it. That is the whole design: a player who
+ * has genuinely argued a country round gets all of the (small) effect, and a
+ * player who sends thirty identical letters gets no more than the player who
+ * sent three. Persuasion, not attrition.
+ */
+constexpr float kDispositionStep = 0.34f;
+
+/**
+ * Fold one letter's stance into the standing disposition. Pure.
+ *
+ * `stance` is -1, 0 or +1. The result is always within [-1, 1] however many
+ * times it is applied, which is the property the bias in decideDiplomacy
+ * depends on to stay bounded -- see AISystem::AI_LLM_DISPOSITION.
+ */
+float foldDisposition(float current, int stance);
 
 /// Where a runner lives and how to talk to it.
 struct Endpoint {

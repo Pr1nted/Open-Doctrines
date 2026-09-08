@@ -2358,6 +2358,13 @@ target_compile_definitions(AdvisorTest PRIVATE OD_ENABLE_NET=1)
 target_link_libraries(AdvisorTest PRIVATE
                       MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
 target_include_directories(MailRulesTest PRIVATE src)
+
+# Only Advisor.cpp: the ordering assertions read constexpr members of AISystem,
+# which need no definition, so this stays a fast pure-logic test rather than
+# dragging the AI (and the whole game behind it) into the link.
+add_executable(LlmInfluenceTest EXCLUDE_FROM_ALL tests/llm_influence_test.cpp
+               src/llm/Advisor.cpp src/Mail.cpp)
+target_include_directories(LlmInfluenceTest PRIVATE src src/llm)
 add_executable(ResearchGroupsTest EXCLUDE_FROM_ALL tests/research_groups_test.cpp)
 add_executable(TroopTypesTest EXCLUDE_FROM_ALL tests/troop_types_test.cpp)
 target_include_directories(TroopTypesTest PRIVATE src)
