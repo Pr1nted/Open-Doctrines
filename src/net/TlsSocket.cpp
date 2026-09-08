@@ -9,8 +9,26 @@
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <string>
+#include <vector>
+
+// For the connect below. mbedtls_net_connect has no timeout of its own, so the
+// socket calls have to be made here.
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <netdb.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -96,8 +114,127 @@ bool TlsSocket::random(uint8_t* out, size_t n) {
     return mbedtls_ctr_drbg_random(&m_impl->drbg, out, n) == 0;
 }
 
+namespace {
+
+#if defined(_WIN32)
+inline void closeFd(int fd) { closesocket((SOCKET)fd); }
+inline bool setNonBlocking(int fd, bool on) {
+    u_long v = on ? 1 : 0;
+    return ioctlsocket((SOCKET)fd, FIONBIO, &v) == 0;
+}
+inline bool connectInProgress() { return WSAGetLastError() == WSAEWOULDBLOCK; }
+#else
+inline void closeFd(int fd) { ::close(fd); }
+inline bool setNonBlocking(int fd, bool on) {
+    const int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) return false;
+    return fcntl(fd, F_SETFL, on ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK)) == 0;
+}
+inline bool connectInProgress() { return errno == EINPROGRESS; }
+#endif
+
+/**
+ * Connect within a deadline, trying each address the name resolves to.
+ *
+ * WHY THIS EXISTS. mbedtls_net_connect is a blocking connect with no timeout,
+ * so an address that silently drops packets is bounded only by the operating
+ * system -- about 75 seconds on macOS. Every caller of HttpClient inherited
+ * that: a request could sit for over a minute with a timeoutMs of 3000 set,
+ * because that field only ever bounded the READ, which cannot start until a
+ * connection exists.
+ *
+ * AND WHY IT WALKS THE LIST RATHER THAN TAKING THE FIRST. getaddrinfo commonly
+ * returns IPv6 first, and a host with a broken IPv6 route is the ordinary case
+ * this was reported from -- the address exists, nothing answers, and the whole
+ * budget is spent there while a working IPv4 address sits second in the list.
+ * So each address gets a share of the remaining time and the next one is tried
+ * when it expires. Not full Happy Eyeballs -- attempts are sequential, not
+ * overlapped -- but it is the part that matters here.
+ */
+int connectWithin(const std::string& host, const std::string& port, int timeoutMs,
+                  std::string& error) {
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    addrinfo* list = nullptr;
+    const int gai = getaddrinfo(host.c_str(), port.c_str(), &hints, &list);
+    if (gai != 0 || !list) {
+        error = "could not look up " + host;
+        return -1;
+    }
+
+    int count = 0;
+    for (addrinfo* a = list; a; a = a->ai_next) ++count;
+
+    const auto started = std::chrono::steady_clock::now();
+    auto remainingMs = [&]() {
+        const auto gone = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - started).count();
+        return (int)((long long)timeoutMs - gone);
+    };
+
+    int fd = -1;
+    int left = count;
+    for (addrinfo* a = list; a && fd < 0; a = a->ai_next, --left) {
+        const int remaining = remainingMs();
+        if (remaining <= 0) break;
+        // A share each, so one dead address cannot spend the lot -- but never
+        // so small that a slow-but-working address is given no chance.
+        int budget = left > 0 ? remaining / left : remaining;
+        if (budget < 1200) budget = std::min(remaining, 1200);
+
+        const int s = (int)socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        if (s < 0) continue;
+        if (!setNonBlocking(s, true)) { closeFd(s); continue; }
+
+        int rc = ::connect(s, a->ai_addr, (int)a->ai_addrlen);
+        if (rc != 0 && !connectInProgress()) { closeFd(s); continue; }
+
+        if (rc != 0) {
+#if defined(_WIN32)
+            fd_set wr, ex;
+            FD_ZERO(&wr); FD_SET((SOCKET)s, &wr);
+            FD_ZERO(&ex); FD_SET((SOCKET)s, &ex);
+            timeval tv{budget / 1000, (budget % 1000) * 1000};
+            const int ready = select(0, nullptr, &wr, &ex, &tv);
+            const bool writable = ready > 0 && FD_ISSET((SOCKET)s, &wr);
+#else
+            pollfd pfd{};
+            pfd.fd = s;
+            pfd.events = POLLOUT;
+            const int ready = poll(&pfd, 1, budget);
+            const bool writable = ready > 0 && (pfd.revents & POLLOUT) != 0;
+#endif
+            if (!writable) { closeFd(s); continue; }   // timed out, or refused
+
+            // POLLOUT only says the attempt FINISHED. Whether it succeeded is
+            // in SO_ERROR, and skipping this check is how a refused connection
+            // is mistaken for a live one.
+            int soerr = 0;
+            socklen_t len = sizeof(soerr);
+            if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&soerr, &len) != 0 || soerr != 0) {
+                closeFd(s);
+                continue;
+            }
+        }
+
+        // Back to blocking: mbedtls_net_recv and mbedtls_net_recv_timeout both
+        // expect it, and the WebSocket's read timeout is built on the latter.
+        if (!setNonBlocking(s, false)) { closeFd(s); continue; }
+        fd = s;
+    }
+
+    freeaddrinfo(list);
+    if (fd < 0) error = "could not reach " + host + " in time";
+    return fd;
+}
+
+}  // namespace
+
 bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
-                     std::string& error) {
+                     std::string& error, int connectTimeoutMs) {
     m_secure = secure;
     if (!m_impl->drbgReady) {
         error = "the system random number generator is unavailable";
@@ -105,11 +242,22 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     }
 
     const std::string portText = std::to_string(port);
-    int rc = mbedtls_net_connect(&m_impl->net, host.c_str(), portText.c_str(),
+    int rc = 0;
+    if (connectTimeoutMs > 0) {
+        const int fd = connectWithin(host, portText, connectTimeoutMs, error);
+        if (fd < 0) return false;
+        m_impl->net.fd = fd;
+    } else {
+        // 0 keeps mbedtls's own blocking connect, bounded only by the operating
+        // system. Left reachable on purpose rather than removed: it is the
+        // behaviour every caller had before, and a way back to it is worth
+        // having if the connect above is ever suspected.
+        rc = mbedtls_net_connect(&m_impl->net, host.c_str(), portText.c_str(),
                                  MBEDTLS_NET_PROTO_TCP);
-    if (rc != 0) {
-        error = "could not reach " + host + ": " + mbedError(rc);
-        return false;
+        if (rc != 0) {
+            error = "could not reach " + host + ": " + mbedError(rc);
+            return false;
+        }
     }
     m_impl->netReady = true;
 

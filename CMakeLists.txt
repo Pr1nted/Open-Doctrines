@@ -2359,6 +2359,21 @@ target_link_libraries(AdvisorTest PRIVATE
                       MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
 target_include_directories(MailRulesTest PRIVATE src)
 
+# Needs the internet, so NOT in run_all.sh. Run by hand after touching connect.
+add_executable(NetLiveCheck EXCLUDE_FROM_ALL tests/net_live_check.cpp
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(NetLiveCheck PRIVATE src)
+target_compile_definitions(NetLiveCheck PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(NetLiveCheck PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+
+add_executable(NetConnectTimeoutTest EXCLUDE_FROM_ALL
+               tests/net_connect_timeout_test.cpp
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(NetConnectTimeoutTest PRIVATE src)
+target_compile_definitions(NetConnectTimeoutTest PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(NetConnectTimeoutTest PRIVATE
+                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+
 # Only Advisor.cpp: the ordering assertions read constexpr members of AISystem,
 # which need no definition, so this stays a fast pure-logic test rather than
 # dragging the AI (and the whole game behind it) into the link.

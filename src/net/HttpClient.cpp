@@ -291,6 +291,7 @@ std::string refuseUnsafeRequest(const HttpRequest& request, const NetUrl& url) {
 #if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
 
 #include "TlsSocket.h"
+#include <algorithm>
 
 #include <chrono>
 
@@ -316,7 +317,19 @@ HttpResponse httpRequest(const HttpRequest& request) {
 
     TlsSocket sock;
     std::string err;
-    if (!sock.open(url.host, url.port, url.secure, err)) return failure(err);
+    // ── THE CONNECT IS NOW INSIDE timeoutMs, WHICH IS WHAT CALLERS ASSUMED ──
+    //
+    // It never was: the deadline below covers the read loop, and the read loop
+    // starts once there is a connection. So a request with timeoutMs of 3000
+    // could block for the operating system's connect timeout -- around 75
+    // seconds -- before the first byte of that budget was spent. It surfaced as
+    // a "no internet" probe that took a minute and a quarter to answer.
+    //
+    // Capped at 15s, because a TCP handshake that has not completed in fifteen
+    // seconds is not going to, and floored at 3s so a caller asking for a very
+    // short total does not fail on a merely slow link.
+    const int connectMs = std::clamp(request.timeoutMs, 3000, 15000);
+    if (!sock.open(url.host, url.port, url.secure, err, connectMs)) return failure(err);
 
     const bool defaultPort = (url.secure && url.port == 443) ||
                              (!url.secure && url.port == 80);

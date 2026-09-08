@@ -31,7 +31,20 @@ public:
     // Blocking. `secure` false skips TLS entirely and is only reachable from
     // callers that have already decided plaintext is acceptable -- in practice
     // `wrangler dev` on localhost and nothing else.
-    bool open(const std::string& host, uint16_t port, bool secure, std::string& error);
+    /**
+     * Connect, giving up after `connectTimeoutMs` rather than after the
+     * operating system's own patience -- about 75 seconds on macOS.
+     *
+     * This used to have no timeout at all, and that was invisible from the
+     * outside: HttpRequest::timeoutMs bounds the read loop, which cannot begin
+     * until there is a connection, so a caller asking for 3 seconds could wait
+     * for over a minute against a host that drops packets. A broken IPv6 route
+     * is the everyday way that happens.
+     *
+     * 0 restores the old unbounded behaviour, for anyone who needs it back.
+     */
+    bool open(const std::string& host, uint16_t port, bool secure, std::string& error,
+              int connectTimeoutMs = 15000);
 
     enum : int { kRetry = -2, kClosed = 0, kError = -1 };
 
