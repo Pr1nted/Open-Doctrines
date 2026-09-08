@@ -369,6 +369,12 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
+    /** Constructs trade offers a neighbour could make to one AI country and
+     *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
+     *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
+     *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
+     *  and PROBE_OK / PROBE_FAIL. */
+    bool runTradeProbe(const std::string& seatSpec, unsigned int seed);
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -5244,11 +5250,18 @@ private:
     int deliverMail();
 
     void openMail();
+    /// Open Mail straight into the module setup, bypassing mailAvailable().
+    void openLlmSetup();
+    void closeMailSettings();
     void closeMail();
     void drawMail();
     void updateMail();
     void drawMailNotice();
     bool m_mailSettingsOpen = false;
+    /// Mail was opened purely to set the module up, from the settings menu,
+    /// with no correspondents yet. Decides where leaving the pane goes.
+    bool m_mailSetupOnly = false;
+    int  m_mailSettingsScroll = 0;
     /// Which runner field is being typed into: 0 endpoint, 1 model,
     /// 2 API key, -1 none.
     int  m_mailLlmField = -1;

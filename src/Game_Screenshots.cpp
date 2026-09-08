@@ -218,6 +218,11 @@ const Shot SHOTS[] = {
     {"mail-list",     60, true},
     // The mail settings, and the dialog for reporting a letter.
     {"mail-settings", 60, true},
+    // The setup screen as a player with NO module actually reaches it: through
+    // Experimental > AI Correspondents, with nothing configured and no Mail
+    // button anywhere on screen. This is the state the feature was unreachable
+    // in, so it is the state worth photographing.
+    {"llm-setup",     60, true},
     {"mail-report",   60, true},
     // The developer queue, with one report opened for a decision.
     {"dev-reports",   40, false},
@@ -1020,6 +1025,22 @@ bool Game::tickScreenshotTour() {
             m_feedbackAttach = true;
             m_feedbackPreview = (name == "feedback-diag");
             m_feedbackPreviewScroll = 0;
+        } else if (name == "llm-setup") {
+            // DELIBERATELY LEAVES m_llmAvailable false and llmEnabled off.
+            // Going through openLlmSetup() is the whole point: openMail()
+            // refuses in this state, and an earlier version of this row called
+            // it and silently rendered nothing.
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_mail.clear();
+            // Ticked, but nothing installed and no endpoint: the state a player
+            // is in the moment they go looking for the installer. The install
+            // button lives behind this checkbox, so an unticked shot would
+            // photograph the one screen that does NOT answer "where do I
+            // install it".
+            m_config.llmEnabled = true;
+            m_config.llmEndpoint.clear();
+            m_config.llmModel.clear();
+            openLlmSetup();
         } else if (name == "mail" || name == "mail-list" ||
                    name == "mail-settings" || name == "mail-report") {
             m_inResearch = m_inEconomy = m_inPolitics = false;

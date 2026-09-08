@@ -314,9 +314,15 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // a second game out of worlds built for this one, and what survives the
     // crossing depends on the map. Every use of it warns first.
     {"GDTL", false, -1},
+    // The language-model correspondents, and -- the point of putting it HERE
+    // -- the only route to installing the runner. It used to live behind the
+    // Mail button, which appears only once a runner is already configured, so
+    // a player with no module had no way in at all. A setup screen reachable
+    // only after setup is finished is not a setup screen.
+    {"AI Correspondents", false, -1},
     {"Back", false, -1},
 };
-const int EXPERIMENTAL_COUNT = 3;
+const int EXPERIMENTAL_COUNT = 4;
 
 // THE LANGUAGE TAB HAS NO ROWS.
 //

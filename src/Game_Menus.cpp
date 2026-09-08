@@ -2959,6 +2959,14 @@ void Game::updateSettingsFromMenu() {
                 m_menuFeedback = T("On — experimental. Worlds can be translated to Greater Diplomacy 5 maps");
                 m_menuFeedbackTimer = 4.0f;
             }
+        } else if (strcmp(s.label, "AI Correspondents") == 0) {
+            // Opens the mail settings panel, which is where the runner is
+            // installed, the endpoint set and a model pulled. Reached from
+            // here BECAUSE it cannot be reached from Mail until it has already
+            // been set up -- Mail's own button is hidden until a correspondent
+            // exists, and the module is what creates one.
+            openLlmSetup();
+            m_inSettings = false;
         } else if (strcmp(s.label, "AI Difficulty") == 0) {
             m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
         } else if (strcmp(s.label, "Accent Color") == 0) {

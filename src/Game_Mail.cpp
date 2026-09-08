@@ -87,6 +87,38 @@ int Game::deliverMail() {
 
 // ───────────────────────────────────────────────────────────── the form ────
 
+void Game::openLlmSetup() {
+    // THE ONE ENTRY THAT DOES NOT CHECK mailAvailable(). Everything else about
+    // Mail is gated on there being somebody to write to; this is the screen
+    // that CREATES somebody to write to, so gating it the same way made the
+    // installer reachable only once the install had already happened.
+    //
+    // Opens straight into settings and, on the way out, decides where to go by
+    // asking whether the setup worked: a player who has just installed a
+    // runner and pulled a model lands in their new mailbox, and one who
+    // changed their mind is put back where they were.
+    m_mailOpen = true;
+    m_mailSettingsOpen = true;
+    m_mailSetupOnly = true;
+    m_mailSettingsScroll = 0;
+    m_mailLlmField = -1;
+    m_mailThread = 0;
+    m_mailPicking = false;
+    m_mailDraft.clear();
+    m_mailEditing = 0;
+    m_mailScroll = m_mailListScroll = m_mailPickerScroll = 0;
+    m_mailComposeFocus = false;
+    Audio::get().playSfx("panel_open");
+}
+
+/// Leaving the settings pane: back to the mailbox if there is one, else out.
+void Game::closeMailSettings() {
+    m_mailSettingsOpen = false;
+    m_mailLlmField = -1;
+    if (m_mailSetupOnly && !mailAvailable()) closeMail();
+    else m_mailSetupOnly = false;
+}
+
 void Game::openMail() {
     if (!mailAvailable()) {
         m_mailNotice = T("Mail is not available in this game.");
@@ -220,7 +252,8 @@ void Game::drawMail() {
         DrawText(T("Settings"), (int)gear.x + 10, (int)gear.y + 7, 12,
                  m_mailSettingsOpen ? accent : Color{200, 205, 225, 255});
         if (gh && click) {
-            m_mailSettingsOpen = !m_mailSettingsOpen;
+            if (m_mailSettingsOpen) closeMailSettings();
+            else { m_mailSettingsOpen = true; m_mailSettingsScroll = 0; }
             Audio::get().playSfx("click_light", 0.1f);
         }
         if (m_netHost) {
@@ -646,7 +679,7 @@ void Game::updateMail() {
         // Step back one view at a time rather than closing outright: losing a
         // half-written letter to a stray Escape is the kind of thing that stops
         // people writing long ones.
-        if (m_mailSettingsOpen) { m_mailSettingsOpen = false; m_mailLlmField = -1; return; }
+        if (m_mailSettingsOpen) { closeMailSettings(); return; }
         if (m_mailPicking) m_mailPicking = false;
         else if (m_mailThread != 0) { m_mailThread = 0; m_mailDraft.clear(); m_mailEditing = 0; }
         else closeMail();
@@ -728,7 +761,18 @@ void Game::updateMail() {
 void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool click,
                             Color accent) {
     DrawText(T("Mail settings"), x + 24, y + 56, 15, accent);
-    int cy = y + 84;
+
+    // ── SCROLLED AND CLIPPED ──
+    //
+    // This pane had neither, and grew past the bottom of its own panel once the
+    // runner installer and the model list were added to it: the last rows drew
+    // over the map and the sidebar, outside the frame they belong to. The age
+    // prompt -- which a host has to be able to reach -- was among the rows that
+    // fell off.
+    const int topY = y + 76;
+    const int botY = y + h - 16;
+    BeginScissorMode(x, topY, w, botY - topY);
+    int cy = y + 84 - m_mailSettingsScroll;
 
     auto row = [&](const char* label, const char* help) {
         DrawText(T(label), x + 24, cy, 13, Color{206, 212, 232, 255});
@@ -1046,5 +1090,34 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
               "a handful of words you never want to see, not moderation."),
             w - 48, fs, 9);
         DrawText(note.c_str(), x + 24, cy, fs, Color{124, 130, 150, 255});
+        cy += fs + 6;
+    }
+
+    EndScissorMode();
+
+    // Measured from where the content actually ended rather than from a
+    // constant, because how tall this pane is depends on what is installed:
+    // the model list and the install button are only drawn some of the time.
+    const int contentBottom = cy + m_mailSettingsScroll;
+    const int maxScroll = std::max(0, contentBottom - botY + 24);
+    const Rectangle pane = {(float)x, (float)topY, (float)w, (float)(botY - topY)};
+    if (CheckCollisionPointRec(mouse, pane)) {
+        const float wheel = GetMouseWheelMove();
+        if (wheel != 0.0f)
+            m_mailSettingsScroll = std::clamp(m_mailSettingsScroll - (int)(wheel * 40),
+                                              0, maxScroll);
+    }
+    // Clamped every frame, not only on the wheel: ticking the language-model
+    // box removes a screenful of rows, and a scroll left over from the taller
+    // layout would otherwise strand the pane below its own content.
+    m_mailSettingsScroll = std::clamp(m_mailSettingsScroll, 0, maxScroll);
+
+    if (maxScroll > 0) {
+        const float frac = (float)(botY - topY) / (float)(contentBottom - topY + 24);
+        const float barH = std::max(24.0f, (botY - topY) * frac);
+        const float t = (float)m_mailSettingsScroll / (float)maxScroll;
+        const float barY = topY + t * ((botY - topY) - barH);
+        DrawRectangleRounded({(float)(x + w - 10), barY, 4, barH}, 1.0f, 4,
+                             Color{90, 95, 115, 200});
     }
 }
