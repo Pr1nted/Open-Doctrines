@@ -471,6 +471,20 @@ void Game::processTurn() {
     // Country AI: created lazily on the first processed turn so map load stays
     // instant; the model persists across saves in the game data directory.
     if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
+    // ── "AI LEARNING: OFF" MUST ALSO MEAN "DO NOT WRITE THE MODEL" ──
+    //
+    // aiLearning gates the learning itself -- AISystem::endTurn returns early
+    // without it -- but it did NOT gate saving. saveModel() is called from the
+    // destructor and from a timer every SAVE_INTERVAL_SECONDS with only
+    // s_readOnlyModel to stop it, and the game binary set that nowhere. So a
+    // player with learning switched off still had data/ai/model.bin rewritten
+    // on every quit: nothing learned, and the trained model overwritten anyway
+    // by whatever the session happened to hold.
+    //
+    // Set every turn rather than once at construction, because the setting is
+    // a toggle in Experimental and a player may turn it off mid-game -- which
+    // is exactly when they mean it.
+    AISystem::s_readOnlyModel = !m_config.aiLearning;
     m_ai->beginTurn();
     drawFrame(0.02f, "Processing countries...");
     // Process per-country actions in batches with loading frames
