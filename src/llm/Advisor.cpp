@@ -609,6 +609,18 @@ constexpr Tool kTools[] = {
      "preference, not an order -- your ministries still decide, and a lean "
      "against what the country plainly needs will simply lose to it.",
      "lean", "A direction and a subject, e.g. \"more industry\" or \"less war\".", true},
+    {"press",
+     "Name the country you want your government to press: the one your armies "
+     "should be looking at when they already have a choice. You are naming a "
+     "DIRECTION, not an order. Your generals decide whether to attack at all, "
+     "where, and with what, and naming somebody they cannot beat changes "
+     "nothing -- they will not start a war they are losing because you asked.",
+     "country", "The country's name, or \"nobody\" to stop pressing anyone.", true},
+    {"prefer_doctrine",
+     "Name a doctrine you want brought in when your government next enacts "
+     "one. It still has to be affordable and allowed; naming it does not "
+     "enact it, and an unaffordable one is simply passed over.",
+     "doctrine", "The doctrine's name, as it appears in your own doctrines.", true},
     {"note_disposition",
      "Record how this exchange has left you disposed toward the country you "
      "are writing to, before you write your reply. Use \"warmer\" if you are "

@@ -5146,6 +5146,46 @@ private:
     /// Leans against a named reflex, keyed by country then reflex name.
     std::unordered_map<int, std::unordered_map<std::string, float>> m_llmReflexLean;
 
+    /**
+     * SCOPED INTENT: what an advisor has named, rather than what it has leaned.
+     *
+     * A lean says "more attacks"; this says "attack THEM". The difference is
+     * the whole design: the advisor names a subject and the AI keeps every
+     * tactical decision -- which province, which army, whether the assault is
+     * winnable at all. A model that cannot compute a combat margin should not
+     * be choosing where to attack, and here it does not.
+     *
+     * m_llmPress LEANS THE CHOICE AMONG TARGETS THAT ALREADY CLEAR THE BAR.
+     * It must never be read as a claim, and the reason is worth the space
+     * because the wrong version looks obviously right:
+     *
+     *   AI_WAR_BAR_CLAIMED    0.85     "reconquest: unchanged"
+     *   AI_WAR_BAR_UNCLAIMED  2.00
+     *
+     * attackCandidates picks the bar with `claimed ? ... : ...`, and the gate
+     * is `mySide < theirSide * bar + 200`. Against a defender of strength 1000
+     * that is 2,200 unclaimed and 1,050 claimed -- below parity. The low bar is
+     * deliberate for taking back YOUR OWN land, a war you are already in the
+     * middle of. Treating a pressed country as claimed would hand that
+     * reconquest exemption to any country a language model names, and let it
+     * start wars it is LOSING. The power check would still run; the number it
+     * checks against would drop by a factor of 2.35.
+     *
+     * So: the set of admissible targets is the AI's, unchanged, and this only
+     * orders that set. If the model names somebody the AI cannot beat, nothing
+     * happens -- which is the correct behaviour and the one a player can be
+     * told about.
+     */
+    std::unordered_map<int, int> m_llmPress;          ///< country -> country it presses
+    std::unordered_map<int, std::string> m_llmDoctrine;  ///< country -> doctrine it wants next
+
+public:
+    /// The country `cid` has been told to press, or 0. Zero without the module.
+    int  llmPressTarget(int cid) const;
+    /// A doctrine id its advisor asked for, or empty. Empty without the module.
+    std::string llmPreferredDoctrine(int cid) const;
+private:
+
 public:
     /**
      * How warmly `me` regards `them` after their correspondence: [-1, 1].
@@ -5184,6 +5224,8 @@ public:
     static constexpr float kLlmSuppressAt = -0.67f;
 private:
     void applyLlmLean(int cid, const std::string& phrase);
+    void applyLlmPress(int cid, const std::string& name);
+    void applyLlmDoctrine(int cid, const std::string& name);
 public:
 private:
 

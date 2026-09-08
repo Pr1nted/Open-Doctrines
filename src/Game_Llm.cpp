@@ -43,6 +43,10 @@ struct Answer {
     std::string goal;
     /// Leans it asked for: the raw phrase, resolved on the game thread.
     std::vector<std::string> leans;
+    /// A country it wants pressed, and a doctrine it wants next. Raw text,
+    /// resolved to ids on the game thread -- the worker knows no country names.
+    std::string press;
+    std::string doctrine;
     /// How the exchange left `from` disposed toward `to`: -1, 0 or +1.
     /// Carried home with the letter rather than written from the worker,
     /// for the same reason the letter is: the worker touches no game state.
@@ -339,6 +343,7 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         int disposition = 0;
         std::string goal;
         std::vector<std::string> leans;
+        std::string press, doctrine;
 
         // ── Ask, answer, ask again -- but only so many times ──
         //
@@ -411,6 +416,16 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
                     turns.push_back(llm::toolResultTurn(call, "Noted."));
                     continue;
                 }
+                if (call.name == "press") {
+                    press = call.argument;
+                    turns.push_back(llm::toolResultTurn(call, "Noted."));
+                    continue;
+                }
+                if (call.name == "prefer_doctrine") {
+                    doctrine = call.argument;
+                    turns.push_back(llm::toolResultTurn(call, "Noted."));
+                    continue;
+                }
                 if (call.name == "note_disposition") {
                     std::string v = call.argument;
                     std::transform(v.begin(), v.end(), v.begin(),
@@ -457,6 +472,8 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
             a.body = reply;
             a.goal = goal;
             a.leans = leans;
+            a.press = press;
+            a.doctrine = doctrine;
             a.disposition = disposition;
             g_answers.push_back(std::move(a));
         }
@@ -506,6 +523,8 @@ void Game::runAdvisors() {
         // writes one and never clears one.
         if (!a.goal.empty()) m_llmGoal[a.from] = a.goal;
         for (const std::string& lean : a.leans) applyLlmLean(a.from, lean);
+        if (!a.press.empty())    applyLlmPress(a.from, a.press);
+        if (!a.doctrine.empty()) applyLlmDoctrine(a.from, a.doctrine);
 
         // Only for a two-party correspondence. A room has several counterparts
         // and one number cannot say which of them the advisor warmed to --
@@ -1510,4 +1529,50 @@ bool Game::llmSuppressesReflex(int cid, const char* reflex) const {
     for (int i = 0; i < (int)asked.size() && i < kLlmMaxSuppressed; ++i)
         if (*asked[i] == reflex) return true;
     return false;
+}
+
+void Game::applyLlmPress(int cid, const std::string& name) {
+    std::string want;
+    for (char c : name) want += (char)std::tolower((unsigned char)c);
+    // An explicit stand-down, because "press nobody" has to be sayable or the
+    // only way to stop is to name somebody else.
+    for (const char* off : {"nobody", "no one", "none", "stop"})
+        if (want.find(off) != std::string::npos) { m_llmPress.erase(cid); return; }
+
+    for (const auto& [other, c] : m_countries.getAll()) {
+        if (other <= 0 || other == cid || other >= REBEL_CID_MIN) continue;
+        std::string have;
+        for (char ch : c.name) have += (char)std::tolower((unsigned char)ch);
+        if (have != want) continue;
+        m_llmPress[cid] = other;
+        return;
+    }
+    // A name that resolves to nothing changes nothing. Deliberately silent:
+    // the advisor is not owed an error, and the alternative -- pressing
+    // somebody it did not name -- is worse than pressing nobody.
+}
+
+void Game::applyLlmDoctrine(int cid, const std::string& name) {
+    std::string want;
+    for (char c : name) want += (char)std::tolower((unsigned char)c);
+    for (const Policy& p : m_allPolicies) {
+        std::string have;
+        for (char ch : p.name) have += (char)std::tolower((unsigned char)ch);
+        if (have.find(want) == std::string::npos && want.find(have) == std::string::npos)
+            continue;
+        m_llmDoctrine[cid] = p.id;
+        return;
+    }
+}
+
+int Game::llmPressTarget(int cid) const {
+    if (!llmConfigured()) return 0;
+    auto it = m_llmPress.find(cid);
+    return it == m_llmPress.end() ? 0 : it->second;
+}
+
+std::string Game::llmPreferredDoctrine(int cid) const {
+    if (!llmConfigured()) return std::string();
+    auto it = m_llmDoctrine.find(cid);
+    return it == m_llmDoctrine.end() ? std::string() : it->second;
 }
