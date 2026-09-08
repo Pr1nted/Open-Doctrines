@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -121,6 +121,53 @@ run "png writer"       "$bin/PngWriteTest" "$build/pngtest"
 # allowed to say, and it is the check a modified client goes at first.
 run "order validation" "$bin/OrderValidationTest" "$root/data/"
 run "doctrine rules"   "$bin/PolicyRulesTest" "$root/data/"
+# Where a factory may stand: the capacity rule's shape, its pinned constants,
+# and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
+run "industry capacity" "$bin/IndustryCapacityTest"
+# The goods recipes: can every country feed itself, and do the strategic goods
+# stay strategic. Pure arithmetic over the recipe table, no data dir.
+run "goods recipes"  "$bin/GoodsRecipeTest"
+# Which ground a country may release: contiguity, majorities, and the rule that
+# a nation cannot release its own people. Pure arithmetic, no data dir.
+run "release rules"  "$bin/ReleaseRulesTest"
+# Splitting a garrison: shares must sum to the garrison, and a lone 50% order
+# must still leave half. Pure arithmetic, no data dir.
+run "army split"     "$bin/ArmySplitTest"
+run "ship routes"    "$bin/ShipRouteTest"
+# What the men behind the frontage are worth: numbers must matter, and a
+# fortified pass must still stop numbers. Pure arithmetic, no data dir.
+run "combat depth"   "$bin/CombatDepthTest"
+# Standing battles: men in a fight are still on the payroll, and withdrawing
+# neither creates nor destroys soldiers. Pure arithmetic, no data dir.
+run "battle rules"   "$bin/BattleRulesTest"
+# Supply: distance costs, and a fleet offshore is the difference between a
+# beachhead and an encirclement. Pure arithmetic, no data dir.
+run "supply rules"   "$bin/SupplyRulesTest"
+# Troop types on the wire: a line-infantry world writes byte-identical saves,
+# and an older build reads a mixed army at the right strength.
+run "troop types"    "$bin/TroopTypesTest"
+run "research groups" "$bin/ResearchGroupsTest"
+run "districts"      "$bin/DistrictRulesTest"
+run "country profile" "$bin/CountryProfileTest"
+run "feedback client" "$bin/FeedbackClientTest"
+run "mail rules" "$bin/MailRulesTest"
+run "ai advisor" "$bin/AdvisorTest"
+run "tool download gate" "$bin/ToolReleaseTest"
+
+# The one thing the advisor's unit tests cannot cover: that the body we build is
+# accepted over a real socket and what comes back becomes a letter. Run against
+# a stand-in runner, so it needs no model, no GPU and no download.
+if command -v python3 >/dev/null 2>&1; then
+    step "llm round trip"
+    python3 "$root/tests/llm_stub.py" 8791 >/dev/null 2>&1 &
+    stub_pid=$!
+    sleep 1
+    if "$bin/LlmRoundTripTest" http://127.0.0.1:8791/v1; then :; else fail=1; fi
+    kill "$stub_pid" 2>/dev/null
+    wait "$stub_pid" 2>/dev/null
+else
+    echo "skip: python3 is not installed, so the stand-in runner cannot start"
+fi
 
 # The dedicated server, started for real: config round-trip, data directory,
 # map resolution, a whole world load, and the console. It is a second binary

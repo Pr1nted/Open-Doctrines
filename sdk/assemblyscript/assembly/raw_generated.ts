@@ -980,3 +980,190 @@ export declare function _updateCount(): i64;
 // `()i`
 @external("gearbox:neural", "model_loaded")
 export declare function _modelLoaded(): u32;
+
+// How many districts this country is divided into. Districts are built on
+// demand, so asking is what creates the default one for a country that has
+// never been divided.
+// `(i)i`
+@external("gearbox:politics.read", "country_district_count")
+export declare function _countryDistrictCount(country: u32): u32;
+
+// The district's name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(iiii)i`
+@external("gearbox:politics.read", "country_district_name")
+export declare function _countryDistrictName(country: u32, index: u32, buf: usize, cap: u32): u32;
+
+// This district's claim on the country's pacification budget, in percent.
+// The shares of a country's districts sum to 100.
+// `(ii)i`
+@external("gearbox:politics.read", "country_district_share")
+export declare function _countryDistrictShare(country: u32, index: u32): u32;
+
+// How many provinces this district holds.
+// `(ii)i`
+@external("gearbox:politics.read", "country_district_province_count")
+export declare function _countryDistrictProvinceCount(country: u32, index: u32): u32;
+
+// Province `n` of this district, or GEARBOX_INVALID if there is no such
+// one.
+// `(iii)i`
+@external("gearbox:politics.read", "country_district_province")
+export declare function _countryDistrictProvince(country: u32, index: u32, n: u32): u32;
+
+// How many regional laws this district runs.
+// `(ii)i`
+@external("gearbox:politics.read", "country_district_law_count")
+export declare function _countryDistrictLawCount(country: u32, index: u32): u32;
+
+// The stable id of regional law `n` in this district. Two-call sizing:
+// call with cap 0 to learn the length, allocate, call again. Returns the
+// full length either way; the copy is truncated to cap.
+// `(iiiii)i`
+@external("gearbox:politics.read", "country_district_law")
+export declare function _countryDistrictLaw(country: u32, index: u32, n: u32, buf: usize, cap: u32): u32;
+
+// How many regional laws exist to choose from.
+// `()i`
+@external("gearbox:politics.read", "district_law_count")
+export declare function _districtLawCount(): u32;
+
+// The stable id of regional law `index`. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:politics.read", "district_law_id")
+export declare function _districtLawId(index: u32, buf: usize, cap: u32): u32;
+
+// The display name of regional law `index`, untranslated. Two-call sizing:
+// call with cap 0 to learn the length, allocate, call again. Returns the
+// full length either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:politics.read", "district_law_name")
+export declare function _districtLawName(index: u32, buf: usize, cap: u32): u32;
+
+// Whether this country publishes that figure in its profile: 1 if it does,
+// 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
+// a decision with a consequence -- migrants read it -- rather than a
+// display setting.
+// `(ii)i`
+@external("gearbox:politics.read", "country_discloses")
+export declare function _countryDiscloses(country: u32, field: u32): u32;
+
+// Set this district's claim on the pacification budget. The other
+// districts are rebalanced so the shares still sum to 100, exactly as
+// dragging the slider does. Returns 1 on success.
+// `(iii)i`
+@external("gearbox:politics.write", "set_country_district_share")
+export declare function _setCountryDistrictShare(country: u32, index: u32, percent: u32): u32;
+
+// Pass or repeal a regional law in this district. Returns 1 on success, 0
+// for an unknown law or district.
+// `(iiiii)i`
+@external("gearbox:politics.write", "set_country_district_law")
+export declare function _setCountryDistrictLaw(country: u32, index: u32, law: usize, law_len: u32, on: u32): u32;
+
+// Publish or withhold one of the figures in this country's profile.
+// Returns 1 on success.
+// `(iii)i`
+@external("gearbox:politics.write", "set_country_disclosure")
+export declare function _setCountryDisclosure(country: u32, field: u32, on: u32): u32;
+
+// How many kinds of soldier exist.
+// `()i`
+@external("gearbox:military.read", "troop_type_count")
+export declare function _troopTypeCount(): u32;
+
+// The stable id of troop type `index` -- line, militia, assault, mech.
+// Never translated. Two-call sizing: call with cap 0 to learn the length,
+// allocate, call again. Returns the full length either way; the copy is
+// truncated to cap.
+// `(iii)i`
+@external("gearbox:military.read", "troop_type_id")
+export declare function _troopTypeId(index: u32, buf: usize, cap: u32): u32;
+
+// How many soldiers of that kind this country has, everywhere. 0 for a
+// troop type that does not exist.
+// `(iii)I`
+@external("gearbox:military.read", "country_army_of_type")
+export declare function _countryArmyOfType(country: u32, troop_type: usize, troop_type_len: u32): i64;
+
+// How many soldiers of that kind this country has standing in that
+// province.
+// `(iiii)I`
+@external("gearbox:military.read", "province_troops_of_type")
+export declare function _provinceTroopsOfType(province: u32, country: u32, troop_type: usize, troop_type_len: u32): i64;
+
+// How many research programmes this country may run at once, 1 to 3. This
+// is the effective number, including any override a script or a mod has
+// set.
+// `(i)i`
+@external("gearbox:research.read", "country_research_groups")
+export declare function _countryResearchGroups(country: u32): u32;
+
+// Force how many research programmes a country may run, 1 to 3, or 0 to
+// hand the decision back to its economy. Outranks the economic gate in
+// both directions and is saved with the game. Returns 1 on success.
+// `(ii)i`
+@external("gearbox:research.write", "set_country_research_groups")
+export declare function _setCountryResearchGroups(country: u32, groups: u32): u32;
+
+// What this country spent last turn, in total. The same figure its profile
+// publishes and the economy screen draws.
+// `(i)F`
+@external("gearbox:economy.read", "country_expenses")
+export declare function _countryExpenses(country: u32): f64;
+
+// What the whole country is worth: every industry level, fort, port and
+// division at what it cost to raise. A stock, where the income figures are
+// flows.
+// `(i)F`
+@external("gearbox:economy.read", "country_national_value")
+export declare function _countryNationalValue(country: u32): f64;
+
+// How many people live in this country.
+// `(i)I`
+@external("gearbox:economy.read", "country_population")
+export declare function _countryPopulation(country: u32): i64;
+
+// The AI's own version, e.g. "ParrotZero 8.4.0" -- ARCH.RULES.PATCH, and
+// independent of the game's version. ARCH is the network shape and action
+// space, RULES is behaviour a benchmark can see, PATCH cannot move a
+// number. A mod that reads the feature vector should check ARCH before
+// trusting its layout, and anything comparing measurements across builds
+// should record RULES. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(ii)i`
+@external("gearbox:neural", "ai_version")
+export declare function _aiVersion(buf: usize, cap: u32): u32;
+
+// The AI's ARCH number on its own, which is also the model file's format
+// byte. The feature count and the action sets are only stable within one
+// ARCH; a bump means old weights are refused on purpose.
+// `()i`
+@external("gearbox:neural", "ai_arch")
+export declare function _aiArch(): u32;
+
+// The posture the AI has chosen for this country -- 0 expand, 1
+// consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none
+// (a country the AI does not play, or one that has not been given a stance
+// yet). Held for several turns at a time rather than chosen fresh each
+// turn.
+// `(i)i`
+@external("gearbox:neural", "country_stance")
+export declare function _countryStance(country: u32): u32;
+
+// The stance's name: "expand", "consolidate", "defend", "develop". Never
+// translated, and stable within an ARCH. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+@external("gearbox:neural", "stance_name")
+export declare function _stanceName(index: u32, buf: usize, cap: u32): u32;
+
+// How many stances there are to choose between.
+// `()i`
+@external("gearbox:neural", "stance_count")
+export declare function _stanceCount(): u32;

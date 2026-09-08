@@ -25,6 +25,71 @@
 
 namespace {
 
+// ─── ORDER PREVIEWS, IN THE PLAYER'S PALETTE ───────────────────────────
+//
+// Every "can I give this order" preview -- the army move drag, the artillery
+// aim, the ship's attack, voyage, landing and bombard -- answers with the
+// colour of a line and nothing else. There is no icon, no label, no dash: the
+// hue IS the answer.
+//
+// Those hues were written as raylib GREEN and RED, or as literals a shade off
+// them, so odPalette never saw them and the Colourblind Colours setting had no
+// effect on the one overlay that needed it most. Measured with
+// tools/check_palette.py, where 20 is the floor for "obviously different":
+//
+//                          deuteranopia  protanopia  tritanopia
+//   army move drag, before      8.4          19.0        59.0
+//   artillery aim, before       9.6          19.5        40.6
+//   ship attack, before         6.5          23.9        66.2
+//   routed (Good vs Bad)       49.4          47.1        37.6
+//
+// Bombard keeps its purple for the valid side rather than taking Good: purple
+// is what tells a bombard preview apart from an attack preview, and measured
+// against each mode's war colour it clears the floor anyway (42.5 at worst).
+// The landing's yellow did NOT clear it -- 19.6 and 19.4 -- so that one gives
+// up its hue and takes Good like the rest.
+//
+// Alpha stays the caller's: these draw over the map at various weights.
+Color previewCol(odPalette::Role r, unsigned char alpha) {
+    Color c = odPalette::of(r);
+    c.a = alpha;
+    return c;
+}
+
+// ─── AND A CHANNEL THAT IS NOT COLOUR AT ALL ───────────────────────────
+//
+// Routing the previews through the palette only helps a player who has FOUND
+// Settings > Display > Colourblind Colours. The default is Off, Off is the
+// ordinary green-and-red, and green-and-red is 8.5 apart under deuteranopia --
+// so by default the answer is still carried by a hue one man in twelve cannot
+// read, and he has no reason to suspect a setting exists.
+//
+// A dash is legible to everyone, in every mode, with nothing switched on: a
+// REJECTED order is drawn broken, an accepted one solid. Colour still carries
+// it too, for everyone who can see colour; this is a second channel, not a
+// replacement for the first.
+//
+// `valid` is the ORDER's validity, not "is there a target". A preview with
+// nothing under the cursor yet is neither accepted nor rejected and stays
+// solid, in its own quiet colour -- dashing it would cry wolf on every sweep
+// of the mouse across the map.
+void drawOrderLine(Vector2 a, Vector2 b, float thick, Color col, bool valid) {
+    if (valid) { DrawLineEx(a, b, thick, col); return; }
+    const float dx = b.x - a.x, dy = b.y - a.y;
+    const float len = sqrtf(dx * dx + dy * dy);
+    if (len < 1.0f) return;
+    // Screen-space, so the dash stays the same size however far the map is
+    // zoomed out -- a dash that scaled with the world would vanish exactly
+    // when the line is longest and the reading matters most.
+    const float dash = 9.0f, gap = 6.0f;
+    const float ux = dx / len, uy = dy / len;
+    for (float t = 0.0f; t < len; t += dash + gap) {
+        const float e = std::min(t + dash, len);
+        DrawLineEx({a.x + ux * t, a.y + uy * t},
+                   {a.x + ux * e, a.y + uy * e}, thick, col);
+    }
+}
+
 // ─── THE DATE, IN THE PLAYER'S LANGUAGE ────────────────────────────────
 //
 // m_mapDate is a STORED string -- "August 1940 AD" -- written into the save
@@ -719,6 +784,28 @@ void Game::drawCountryPanel() {
     int provY = claimBottomY ? claimBottomY + 6 : nameY + nameSize + 8;
     DrawText(TextFormat(T("%d provinces"), m_cachedProvCount), panelX + pad, provY, 18, LIGHTGRAY);
 
+    // ── THE COUNTRY BEHIND THE PROVINCE ──
+    //
+    // Offered on ANY province, not only your own: the profile is the thing you
+    // read about somebody else before deciding what to do about them, and a
+    // country you cannot look up is a country you can only fight.
+    if (cid > 0 && cid != UNC_CID && cid != BLC_CID) {
+        Rectangle prof = {(float)(panelX + pad + 150), (float)provY - 2, 150.0f, 22.0f};
+        const bool ph = !m_paused && CheckCollisionPointRec(getMouse(), prof);
+        DrawRectangleRounded(prof, 0.25f, 5, ph ? Color{40, 46, 62, 225} : Color{24, 27, 36, 205});
+        DrawRectangleRoundedLines(prof, 0.25f, 5, ph ? hexToColor(m_config.accent())
+                                                     : Color{62, 66, 86, 175});
+        const char* pl = T("Country profile");
+        DrawText(pl, (int)(prof.x + (prof.width - MeasureText(pl, 12)) / 2), (int)prof.y + 5, 12,
+                 ph ? WHITE : Color{170, 176, 196, 255});
+        if (ph && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            m_profileCountryId = cid;
+            m_inCountryProfile = true;
+            m_profileScroll = 0;
+            Audio::get().playSfx("click_heavy");
+        }
+    }
+
     // ─── Country statistics (shown in general view and industry view) ─────
     if (m_activeViewTab == 0 || m_activeViewTab == 2) {
         int statsY = provY + 24;
@@ -961,10 +1048,55 @@ void Game::drawCountryPanel() {
             int rY = panelY + 200;
             int rX = panelX + pad;
             const auto& ind = indIt->second;
-            DrawText(TextFormat(T("Level %s"), ROMAN_NUMERALS[ind.level]),
-                     rX, rY, 16, WHITE);
+            // THE CEILING IS SHOWN BESIDE THE LEVEL, ALWAYS.
+            //
+            // A build button that greys out for a reason the panel never states
+            // is indistinguishable from a broken button. Industry upkeep was
+            // called out in this codebase for exactly that -- "a tax a player
+            // can see and cannot answer reads as a bug even when the arithmetic
+            // is right" -- and a capacity cap is the same shape: the player
+            // needs to know the province is full, not guess it. Same line
+            // rather than a new one, so nothing below has to move.
+            {
+                const int cap = provinceIndustryCapacity(selPid);
+                // Both CLAMPED before they index ROMAN_NUMERALS[11]. `level`
+                // arrives unvalidated from resources.json and from save deltas
+                // -- the note further down this file records it printing genuine
+                // garbage out of these fixed tables once already -- and this
+                // block adds three more reads of it.
+                const int capIdx = std::clamp(cap, 0, IND_MAX_LEVEL);
+                const int lvlIdx = std::clamp(ind.level, 0, IND_MAX_LEVEL);
+                if (ind.level > cap)
+                    // Grandfathered: built before the capacity rule, and kept.
+                    // Said plainly, because a player who reads "max III" under a
+                    // level V factory will otherwise report it as a bug.
+                    DrawText(TextFormat(T("Level %s  (above this land's %s -- kept)"),
+                                        ROMAN_NUMERALS[lvlIdx], ROMAN_NUMERALS[capIdx]),
+                             rX, rY, 16, Color{230, 200, 140, 255});
+                else if (ind.level >= cap)
+                    DrawText(TextFormat(T("Level %s  (this land is full)"),
+                                        ROMAN_NUMERALS[lvlIdx]),
+                             rX, rY, 16, Color{230, 200, 140, 255});
+                else
+                    DrawText(TextFormat(T("Level %s of %s"),
+                                        ROMAN_NUMERALS[lvlIdx], ROMAN_NUMERALS[capIdx]),
+                             rX, rY, 16, WHITE);
+            }
             DrawText(TextFormat(T("Income: %.1f/turn"), ind.income),
                      rX, rY + 20, 14, YELLOW);
+            // What this province's factories are making, in a goods world.
+            // Drawn to the RIGHT of the income line rather than on a new one,
+            // because every offset below this is fixed and a new row would push
+            // the specialisation and resource lines off the panel.
+            if (m_goodsEconomy && ind.level > 0) {
+                const int outIdx = ind.output;
+                const bool directed = (outIdx >= 0 && outIdx < GOOD_COUNT);
+                DrawText(directed ? TextFormat(T("Making: %s"), goodName(outIdx))
+                                  : T("Making: nothing"),
+                         rX + 150, rY + 20, 14,
+                         directed ? Color{170, 220, 170, 255}
+                                  : Color{255, 210, 160, 255});
+            }
             // The specialised figure, because that is the one being banked --
             // see provinceResourceIncome. The base is shown beside it when a
             // specialization is moving it, so the bonus line below has
@@ -1024,25 +1156,103 @@ void Game::drawCountryPanel() {
         }
     }
 
-    // ─── Army info (when in army view) ─────
+    // ─── WHO IS STANDING HERE ───────────────────────────────────────────────
+    //
+    // This replaced a flat, unbounded list of "<country>: N soldiers" lines --
+    // one per stack, drawn straight down the panel with nothing to stop it
+    // running off the bottom, and no way to say WHAT the soldiers were now that
+    // they have kinds.
+    //
+    // Ours broken down by type, then everybody else's by country, scrollable
+    // when there are more than fit. Clicking one of our rows aims the next
+    // order at that kind alone; clicking "All our troops" aims it at the whole
+    // garrison. That is the entirety of "command them by type and by province
+    // as a whole" -- one filter with two settings, and no second way to give an
+    // order.
     if (m_activeViewTab == 5) {
         auto armyIt = m_provinceArmies.find(selPid);
-        int rY = panelY + 200;
-        int rX = panelX + pad;
+        const int rX = panelX + pad;
+        const int rY = panelY + 200;
         DrawText(T("Garrison"), rX, rY, 18, WHITE);
-        if (armyIt != m_provinceArmies.end() && !armyIt->second.empty()) {
-            int lineY = rY + 24;
-            for (auto& unit : armyIt->second) {
-                const Country* c = m_countries.getCountry(unit.countryId);
-                const std::string cnameS = c ? od::i18n::properName(c->name)
-                                             : std::string(T("Unknown"));
-                const char* cname = cnameS.c_str();
-                DrawText(TextFormat(T("%s: %s soldiers"), cname, formatTroops(unit.count).c_str()),
-                         rX, lineY, 14, LIGHTGRAY);
-                lineY += 18;
+
+        m_armyRowHits.clear();
+        struct Row { std::string label; long long men; Color col; int type; bool ours; };
+        std::vector<Row> rows;
+        long long mine = 0;
+        if (armyIt != m_provinceArmies.end()) {
+            long long byType[TROOP_TYPE_COUNT] = {};
+            std::map<int, long long> others;
+            for (const auto& u : armyIt->second) {
+                if (u.count <= 0) continue;
+                if (u.countryId == m_playerCountryId) { byType[(int)u.type] += u.count; mine += u.count; }
+                else others[u.countryId] += u.count;
             }
-        } else {
-            DrawText(T("No garrison"), rX, rY + 24, 14, LIGHTGRAY);
+            if (mine > 0)
+                rows.push_back({T("All our troops"), mine, Color{225, 225, 240, 255}, -1, true});
+            for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) {
+                if (byType[t] <= 0) continue;
+                rows.push_back({std::string("  ") + T(TROOP_TYPES[t].name), byType[t],
+                                Color{190, 205, 235, 255}, t, true});
+            }
+            // Somebody else's, and it is worth saying whose: an allied stack on
+            // your ground is the difference between a province you can hold and
+            // one you cannot.
+            for (const auto& [ocid, n] : others) {
+                const Country* oc = m_countries.getCountry(ocid);
+                Color c = oc ? oc->color : Color{170, 170, 170, 255};
+                c = Color{(unsigned char)std::min(255, 90 + c.r * 2 / 3),
+                          (unsigned char)std::min(255, 90 + c.g * 2 / 3),
+                          (unsigned char)std::min(255, 90 + c.b * 2 / 3), 255};
+                rows.push_back({oc ? od::i18n::properName(oc->name) : std::string(T("Unknown")),
+                                n, c, -1, false});
+            }
+        }
+
+        const int rowH = 18;
+        // Sized to what is in it, capped where the buttons begin. A box of empty
+        // space is a worse readout than the lines it replaced.
+        const int listY = rY + 24;
+        const int btnTop = panelY + panelH - 56 - 3 * (28 + 4) - 8 - 30;
+        const int listH = std::clamp((int)rows.size() * rowH + 8, 26,
+                                     std::max(26, btnTop - listY));
+        Rectangle listR = {(float)rX, (float)listY, (float)(panelW - pad * 2), (float)listH};
+        DrawRectangleRounded(listR, 0.06f, 6, Color{18, 20, 28, 190});
+        DrawRectangleRoundedLines(listR, 0.06f, 6, Color{60, 64, 82, 160});
+
+        const int visible = std::max(1, (listH - 8) / rowH);
+        const int maxScroll = std::max(0, (int)rows.size() - visible);
+        if (CheckCollisionPointRec(getMouse(), listR)) m_armyListScroll -= GetMouseWheelMove();
+        m_armyListScroll = std::clamp(m_armyListScroll, 0.0f, (float)maxScroll);
+        const int first = (int)m_armyListScroll;
+
+        if (rows.empty())
+            DrawText(T("No garrison"), rX + 6, listY + 5, 13, Color{130, 130, 150, 255});
+        for (int r = first; r < (int)rows.size() && (r - first) < visible; ++r) {
+            const Row& row = rows[r];
+            const int ry = listY + 4 + (r - first) * rowH;
+            Rectangle rr = {listR.x + 3, (float)ry, listR.width - 6, (float)(rowH - 2)};
+            const bool selected = row.ours && m_armyTypeFilter == row.type;
+            if (selected) DrawRectangleRounded(rr, 0.3f, 4, Color{60, 70, 40, 200});
+            else if (row.ours && CheckCollisionPointRec(getMouse(), rr))
+                DrawRectangleRounded(rr, 0.3f, 4, Color{40, 44, 60, 160});
+            DrawText(row.label.c_str(), (int)rr.x + 6, ry + 1, 12, row.col);
+            const std::string n = formatTroops(row.men);
+            DrawText(n.c_str(), (int)(rr.x + rr.width - 6 - MeasureText(n.c_str(), 12)),
+                     ry + 1, 12, row.col);
+            if (row.ours && CheckCollisionPointRec(getMouse(), rr) &&
+                IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                m_armyTypeFilter = (m_armyTypeFilter == row.type) ? -1 : row.type;
+                Audio::get().playSfx("click_soft");
+            }
+            m_armyRowHits.push_back({rr, row.type});
+        }
+        if (maxScroll > 0) {
+            const float frac = (float)visible / (float)rows.size();
+            const float thumbH = std::max(12.0f, listR.height * frac);
+            const float t = m_armyListScroll / (float)maxScroll;
+            DrawRectangleRounded({listR.x + listR.width - 5,
+                                  listR.y + t * (listR.height - thumbH), 3, thumbH},
+                                 1.0f, 4, Color{110, 120, 150, 200});
         }
     }
 
@@ -1193,6 +1403,17 @@ void Game::drawCountryPanel() {
                 acts.push_back({T("Break Alliance"), "break_alliance", anyDiploPending && !hasPending("break_alliance")});
                 acts.push_back({T("Mutual Guarantee"), "add_guarantee", anyDiploPending && !hasPending("add_guarantee")});
             } else if (hasGuar) {
+                // A GUARANTOR CAN BE CALLED TOO, and this is the only way a
+                // guarantee signed after the war began is worth anything: they
+                // chain inside declareWar and nowhere else, so one won on turn
+                // three of a war you are losing does nothing for that war for
+                // ever. requestAllyJoinWar() re-checks eligibility and says why
+                // if it refuses, so this is offered whenever the pact exists
+                // rather than restating the rules here -- a limit written in
+                // this panel would bind the player and nobody else, which is
+                // the mistake that made the one-war-a-turn cap invisible to the
+                // AI for so long.
+                acts.push_back({T("Call to Arms"), "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
                 acts.push_back({T("Break Guarantee"), "break_guarantee", anyDiploPending && !hasPending("break_guarantee")});
                 acts.push_back({T("Request Alliance"), "request_alliance", anyDiploPending && !hasPending("request_alliance")});
             } else if (hasWar) {
@@ -1304,6 +1525,35 @@ void Game::drawCountryPanel() {
                 bool disabled = ab.disabled;
                 const char* whyDisabled = ab.disabled
                     ? T("One request at a time to each country.") : nullptr;
+                // ONE DECLARATION A TURN, AND THE BUTTON HAS TO SAY SO.
+                //
+                // queueDiplomaticAction refuses a second declaration while one
+                // is in flight -- hasPendingDeclaration is scoped to the SOURCE
+                // country, not to the pair -- and this panel did not know it.
+                // The button stayed enabled, the click was accepted, the queue
+                // silently returned false, and the player got a click sound and
+                // nothing else: no pending marker, no "Cancel Declare War", no
+                // reason. Reported as "I cannot declare war on rebellion
+                // countries", because a rebellion spawns several countries at
+                // once and is where you are most likely to want two
+                // declarations in one turn -- but it was never about rebels.
+                //
+                // The RULE lives in queueDiplomaticAction. This asks it the
+                // same question rather than restating it: a limit written here
+                // would bind the player and nobody else, which is how the
+                // original one-a-turn cap came to bind the panel while the AI
+                // and the multiplayer host queued whatever they liked.
+                if (ab.action == "declare_war" && !pending) {
+                    const int used  = countPendingDeclarations(playerC->isoA3);
+                    const int limit = warDeclarationLimit(m_playerCountryId);
+                    if (used >= limit) {
+                        disabled = true;
+                        whyDisabled = limit <= 1
+                            ? T("You can only declare one war a turn. Cancel the other first.")
+                            : TextFormat(T("You can declare %d wars a turn, and have used them. "
+                                           "Cancel one first."), limit);
+                    }
+                }
                 // Disable cancel for ceasefire requests while awaiting review
                 if (ab.action == "request_ceasefire" && pending) {
                     disabled = true;
@@ -1345,6 +1595,10 @@ void Game::drawCountryPanel() {
                         m_ceasefireOurDropClaims.clear();
                         m_ceasefireTheirDropClaims.clear();
                         m_ceasefireSelectMode = 0;
+                        m_ceasefireOurReleaseTag.clear();
+                        m_ceasefireOurReleaseProvs.clear();
+                        m_ceasefireTheirReleaseTag.clear();
+                        m_ceasefireTheirReleaseProvs.clear();
                         m_ceasefireOverlayDirty = true;
                         m_tradeMode = (ab.action == "propose_trade");
                         m_inCeasefireScreen = true;
@@ -1369,7 +1623,23 @@ void Game::drawCountryPanel() {
                         // something in flight, so this queues; it goes through
                         // queueDiplomaticAction so the panel is enforcing the
                         // same rule rather than its own copy of it.
-                        queueDiplomaticAction(std::move(pda));
+                        //
+                        // AND THE ANSWER IS READ. Discarding this bool is what
+                        // made a refused declaration indistinguishable from a
+                        // successful one: the queue said no, the panel carried
+                        // on, and the player was left clicking a button that
+                        // did nothing. Any rule this call enforces that the
+                        // buttons above have not anticipated now says so out
+                        // loud rather than failing in silence.
+                        const std::string act = pda.action;
+                        if (!queueDiplomaticAction(std::move(pda))) {
+                            addNotification(
+                                act == "declare_war"
+                                    ? T("You already have a war declaration this turn.")
+                                    : T("You are already in talks with them this turn."),
+                                Color{220, 170, 90, 255}, 5.0f);
+                            Audio::get().playSfx("deny");
+                        }
                     }
                 }
                 col++;
@@ -1387,6 +1657,19 @@ void Game::drawCountryPanel() {
         int maxIndLevel = getResearchedIndustryLevel();
         bool atResearchCap = (indLevel >= maxIndLevel);
         bool atHardCap = (indLevel >= 10);
+        // THE THIRD CAP, and the reason it is stated here as well as in
+        // upgradeQuote(). This button does NOT go through queueUpgrade -- it
+        // pushes onto m_pendingUpgrades itself, a few lines down -- so a rule
+        // written only in the quote would bind the bulk brush and the network
+        // and leave the province panel's own button free of it. That is the
+        // exact shape of the bug this codebase already paid for once with the
+        // build-cost tables.
+        //
+        // `>=` on the level being built, and never a clamp on indLevel: a
+        // grandfathered province sits above its capacity legally and keeps
+        // every factory it has. See industryCapacity() in BuildCosts.h.
+        const int indCapacity = provinceIndustryCapacity(selPid);
+        bool atCapacityCap = (indLevel >= indCapacity);
 
         // Check if upgrade is pending
         bool upgradePending = false;
@@ -1419,13 +1702,22 @@ void Game::drawCountryPanel() {
         int btnStartY = panelY + panelH - 56 - 2 * (btnH + btnGap) - 8;
 
         // Upgrade / locked / max level button
-        bool upgDisabled = !isOwnProv || upgradePending || atHardCap;
+        bool upgDisabled = !isOwnProv || upgradePending || atHardCap || atCapacityCap;
         const char* upgLabel;
         Color upgBg, upgBd;
         if (atHardCap) {
             upgLabel = T("Max level (10)");
             upgDisabled = true;
             upgBg = Color{30, 30, 20, 200}; upgBd = Color{80, 80, 50, 150};
+        } else if (atCapacityCap) {
+            // Named, not just greyed. The player is owed the reason and the
+            // number -- this is the province that will never be an industrial
+            // heartland, and knowing that is a decision they can act on
+            // (specialise it, settle it, or leave it alone) rather than a
+            // button that mysteriously does nothing.
+            upgLabel = TextFormat(T("This land supports level %d"), indCapacity);
+            upgDisabled = true;
+            upgBg = Color{40, 32, 20, 200}; upgBd = Color{120, 95, 55, 160};
         } else if (atResearchCap && maxIndLevel < 10) {
             upgLabel = T("Upgrade locked, research next industry");
             upgDisabled = true;
@@ -1441,7 +1733,7 @@ void Game::drawCountryPanel() {
             upgLabel = TextFormat(T("Upgrade to level %d ($%.0f, 0/%dt)"), nextLv, upgradeCost, turnsToBuild);
             upgBg = Color{20, 60, 30, 220}; upgBd = Color{60, 180, 80, 200};
         }
-        if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH, upgLabel, upgDisabled, upgBg, upgBd) && !upgDisabled && !atHardCap && !atResearchCap && canAfford && !upgradePending) {
+        if (drawActBtn(panelX + pad, btnStartY, btnW * 2 + btnGap, btnH, upgLabel, upgDisabled, upgBg, upgBd) && !upgDisabled && !atHardCap && !atCapacityCap && !atResearchCap && canAfford && !upgradePending) {
             treasury -= upgradeCost;
             m_pendingUpgrades.push_back({selPid, "industry", nextLv, turnsToBuild});
             Audio::get().playSfx("build_industry", 0.04f);
@@ -1473,6 +1765,175 @@ void Game::drawCountryPanel() {
         if (drawActBtn(panelX + pad, specBtnY, btnW * 2 + btnGap, btnH, specLabel, !canSpec, specBg, specBd) && canSpec) {
             if (m_specDropdownProvince == selPid) m_specDropdownProvince = -1;
             else { m_specDropdownProvince = selPid; m_specDropdownHover = 0; }
+        }
+
+        // ── DIRECTING A FACTORY, WHICH IS THE PLANNED ECONOMY IN ONE BUTTON ──
+        //
+        // Only in a goods world, and only for a government that has room to
+        // direct anything: how many factories a country may take charge of is
+        // its position on the economic compass, so a free market shows this
+        // button greyed with the reason on it and a command economy can direct
+        // everything it owns. See Game::directableFactories.
+        //
+        // A CYCLE RATHER THAN A DROPDOWN. There are four goods and the panel is
+        // already carrying two dropdowns; a click that advances to the next
+        // good, and past the last one back to "let the economy decide", says
+        // everything a menu would and cannot be left hanging open over the map.
+        //
+        // The RULE is not here. setProvinceOutput refuses a direction the
+        // country has no capacity for, and this button only decides what to
+        // ask for -- so the AI and the multiplayer host obey the same limit
+        // without this file being involved.
+        // ── LET A REGION GO ──
+        //
+        // Offered on a province that is part of a releasable region: a
+        // contiguous run where one DISAFFECTED people holds a majority. See
+        // ReleaseRules.h -- a content people is never offered, which is what
+        // stops a country shedding its own core, and it means repression makes
+        // a region releasable while conciliation removes the need.
+        //
+        // The button names the people and the size, because those are the two
+        // facts the decision turns on: who is leaving and how much of the
+        // country goes with them.
+        if (isOwnProv) {
+            const auto regions = releasableRegions(m_playerCountryId);
+            const ReleaseCandidate* here = nullptr;
+            for (const auto& r : regions)
+                if (std::find(r.provinces.begin(), r.provinces.end(), selPid) != r.provinces.end()) {
+                    here = &r; break;
+                }
+            if (here) {
+                const int relBtnY = specBtnY + btnH + btnGap +
+                                    ((m_goodsEconomy && indLevel > 0) ? (btnH + btnGap) : 0);
+
+                // ── CHOOSING THE GROUND ──
+                //
+                // The button used to hand over the whole region the moment it
+                // was pressed. What a settlement contains is a judgement -- how
+                // much goes, which city stays -- so pressing it now opens the
+                // choice instead of finishing it. The map is not hooked for
+                // this: the province panel already knows what is selected, so
+                // picking is done by selecting a province and saying yes or no
+                // to it, which needs no new input path and works identically
+                // on a phone.
+                if (m_releasePickMode == 1) {
+                    const bool inPool = std::find(m_releasePickPool.begin(),
+                                                  m_releasePickPool.end(), selPid)
+                                        != m_releasePickPool.end();
+                    auto chosenIt = std::find(m_releasePickProvs.begin(),
+                                              m_releasePickProvs.end(), selPid);
+                    const bool chosen = chosenIt != m_releasePickProvs.end();
+                    int y = relBtnY;
+                    if (inPool &&
+                        drawActBtn(panelX + pad, y, btnW * 2 + btnGap, btnH,
+                                   chosen ? T("Keep this province")
+                                          : T("Give this province"),
+                                   false,
+                                   chosen ? Color{60, 35, 30, 220} : Color{30, 55, 35, 220},
+                                   chosen ? Color{180, 90, 70, 200} : Color{90, 180, 110, 200})) {
+                        if (chosen) m_releasePickProvs.erase(chosenIt);
+                        else {
+                            m_releasePickProvs.push_back(selPid);
+                            std::sort(m_releasePickProvs.begin(), m_releasePickProvs.end());
+                        }
+                        Audio::get().playSfx("click_soft");
+                    }
+                    if (inPool) y += btnH + btnGap;
+
+                    // WHY IT CANNOT BE DONE, RATHER THAN A DEAD BUTTON. The two
+                    // ways to get this wrong -- too small, or in two pieces --
+                    // are both easy to reach by clicking and impossible to
+                    // diagnose from a greyed control.
+                    std::string whyNot;
+                    const bool ok = releaseSubsetOk(m_playerCountryId,
+                                                    m_releasePickProvs, whyNot);
+                    if (drawActBtn(panelX + pad, y, btnW, btnH,
+                                   TextFormat(T("Release (%d)"),
+                                              (int)m_releasePickProvs.size()),
+                                   !ok, Color{50, 30, 55, 220}, Color{150, 90, 170, 200})
+                        && ok) {
+                        ReleaseCandidate chosenRegion;
+                        chosenRegion.minority = m_releasePickTag;
+                        chosenRegion.provinces = m_releasePickProvs;
+                        for (int pid : chosenRegion.provinces) {
+                            auto pp = m_provincePopulations.find(pid);
+                            if (pp != m_provincePopulations.end())
+                                chosenRegion.population += pp->second;
+                        }
+                        const int newCid = releaseNation(m_playerCountryId, chosenRegion);
+                        m_releasePickMode = 0;
+                        m_releasePickProvs.clear();
+                        m_releasePickPool.clear();
+                        if (newCid > 0) {
+                            const Country* nc = m_countries.getCountry(newCid);
+                            addNotification(
+                                TextFormat(T("%s is independent, and under our guarantee."),
+                                           nc ? od::i18n::properName(nc->name).c_str()
+                                              : od::i18n::properName(chosenRegion.minority).c_str()),
+                                Color{200, 160, 230, 255}, 8.0f);
+                            Audio::get().playSfx("build_industry", 0.04f);
+                        }
+                    }
+                    if (drawActBtn(panelX + pad + btnW + btnGap, y, btnW, btnH,
+                                   T("Cancel"), false,
+                                   Color{40, 40, 48, 220}, Color{110, 114, 132, 200})) {
+                        m_releasePickMode = 0;
+                        m_releasePickProvs.clear();
+                        m_releasePickPool.clear();
+                    }
+                    if (!ok && !whyNot.empty())
+                        DrawText(whyNot.c_str(), panelX + pad, y + btnH + 4, 11,
+                                 Color{210, 150, 130, 255});
+                } else if (drawActBtn(panelX + pad, relBtnY, btnW * 2 + btnGap, btnH,
+                               TextFormat(T("Release %s (%d provinces)"),
+                                          od::i18n::properName(here->minority).c_str(),
+                                          (int)here->provinces.size()),
+                               false, Color{50, 30, 55, 220}, Color{150, 90, 170, 200})) {
+                    // Opens the choice pre-filled with the whole region, so
+                    // pressing it twice is the behaviour it always had.
+                    m_releasePickMode = 1;
+                    m_releasePickTag = here->minority;
+                    m_releasePickPool = here->provinces;
+                    m_releasePickProvs = here->provinces;
+                    Audio::get().playSfx("click_soft");
+                }
+            }
+        }
+
+        if (m_goodsEconomy && indLevel > 0 && isOwnProv) {
+            const int directable = directableFactories(m_playerCountryId);
+            const int directedNow = directedFactories(m_playerCountryId);
+            const bool thisDirected = (indIt != m_provinceIndustry.end()) && indIt->second.directed;
+            const int outNow = (indIt != m_provinceIndustry.end()) ? indIt->second.output : -1;
+            // Room to take charge of one MORE, or this one is already ours to
+            // re-point. Matches the rule in setProvinceOutput exactly.
+            const bool hasRoom = thisDirected || directedNow < directable;
+
+            const char* prodLabel;
+            if (directable <= 0)
+                prodLabel = T("Free market: capitalists choose");
+            else if (!hasRoom)
+                prodLabel = TextFormat(T("Directing %d of %d factories"), directedNow, directable);
+            else if (!thisDirected)
+                prodLabel = TextFormat(T("Direct this factory (%d/%d used)"),
+                                       directedNow, directable);
+            else
+                prodLabel = TextFormat(T("Making %s -- click to change"),
+                                       (outNow >= 0 && outNow < GOOD_COUNT) ? goodName(outNow)
+                                                                            : T("nothing"));
+
+            const Color prodBg = hasRoom ? Color{25, 45, 40, 220} : Color{20, 20, 25, 200};
+            const Color prodBd = hasRoom ? Color{70, 150, 120, 200} : Color{40, 40, 50, 150};
+            const int prodBtnY = specBtnY + btnH + btnGap;
+            if (drawActBtn(panelX + pad, prodBtnY, btnW * 2 + btnGap, btnH,
+                           prodLabel, !hasRoom, prodBg, prodBd) && hasRoom) {
+                // Undirected -> first good -> ... -> last good -> undirected.
+                // Handing it back is a real choice and has to be reachable, or
+                // a country could never return a factory to the economy.
+                const int next = (!thisDirected) ? 0
+                               : (outNow + 1 >= GOOD_COUNT ? -1 : outNow + 1);
+                setProvinceOutput(selPid, next, m_playerCountryId);
+            }
         }
 
         // Draw specialization dropdown if open
@@ -1588,7 +2049,12 @@ void Game::drawCountryPanel() {
     }
 
     // ─── Army Action Buttons (own province, army view) ─────
-    if (cid == m_playerCountryId && m_activeViewTab == 5) {
+    //
+    // Not while reading orders. Every one of these gives an order, and the
+    // phase does not take orders -- so they go, rather than sitting there
+    // greyed. The garrison LIST above stays: it is information about the
+    // board, which is exactly what the phase is for.
+    if (cid == m_playerCountryId && m_activeViewTab == 5 && m_turnState == TURN_NORMAL) {
         Province* pInfo = m_provinces.getProvinceById(selPid);
         bool isOwnProv = (selPid > 0 && pInfo && pInfo->countryId == m_playerCountryId);
         auto armyIt = m_provinceArmies.find(selPid);
@@ -1605,10 +2071,16 @@ void Game::drawCountryPanel() {
         int btnW = (panelW - pad * 2 - 4) / 2;
         int btnStartY = panelY + panelH - 56 - 3 * (btnH + btnGap) - 8;
 
-        // Recruit button
+        // ── ONE ORDER PER KIND, NOT ONE PER PROVINCE ──
+        //
+        // This asked only "is anything already being raised here", so queueing
+        // militia locked the province and the other three kinds could not be
+        // ordered at all that turn. A province raises an ARMY, and an army is
+        // made of more than one thing; the question is whether THIS KIND is
+        // already on order.
         bool hasPendingRecruit = false;
         for (auto& pr : m_pendingRecruitments)
-            if (pr.provinceId == selPid) hasPendingRecruit = true;
+            if (pr.provinceId == selPid && pr.type == m_recruitType) hasPendingRecruit = true;
 
         long long maxRecruit = provPop / 5;  // 20% of population per turn max
         // Apply research modifiers (increases conscription cap)
@@ -1620,40 +2092,163 @@ void Game::drawCountryPanel() {
         maxRecruit = (long long)(maxRecruit * unrestFactor);
         if (maxRecruit < 0) maxRecruit = 0;
 
-        int recruitCount = (int)(maxRecruit * m_armyRecruitPct / 100);
+        // ─── WHICH KIND THIS LEVY IS ───────────────────────────────────────
+        //
+        // Only the kinds this country has actually researched, from
+        // unlockedTroopTypes -- one reader, so the panel cannot offer something
+        // the resolver would refuse. A country with only line infantry sees no
+        // picker at all, which is every country in every existing save and is
+        // why this row is invisible until somebody researches a formation.
+        {
+            const auto kinds = unlockedTroopTypes(m_playerCountryId);
+            if (std::find(kinds.begin(), kinds.end(), m_recruitType) == kinds.end())
+                m_recruitType = TROOP_LINE;      // lost the tech, or a new game
+            if (kinds.size() > 1) {
+                const int ky = btnStartY - 46;
+                const int kw = (panelW - pad * 2 - (int)(kinds.size() - 1) * 3) / (int)kinds.size();
+                for (size_t k = 0; k < kinds.size(); ++k) {
+                    const TroopType t = kinds[k];
+                    Rectangle kr = {(float)(panelX + pad + (int)k * (kw + 3)), (float)ky,
+                                    (float)kw, 20.0f};
+                    const bool on = (m_recruitType == t);
+                    const bool kh = !m_paused && CheckCollisionPointRec(getMouse(), kr);
+                    DrawRectangleRounded(kr, 0.3f, 4,
+                        on ? Color{60, 70, 40, 220} : kh ? Color{44, 48, 62, 200}
+                                                         : Color{24, 26, 34, 190});
+                    DrawRectangleRoundedLines(kr, 0.3f, 4,
+                        on ? Color{200, 160, 50, 200} : Color{70, 74, 92, 150});
+                    // The short id, not the full name: four names do not fit
+                    // across a panel and "Mechanised" truncated to "Mech..." is
+                    // worse than the word the table already calls it.
+                    // fitToWidth takes the font size BY REFERENCE and shrinks
+                    // it to make the name fit, so it needs a variable: four
+                    // names across one panel is exactly the case it exists for.
+                    int kfs = 11;
+                    const std::string kl = odText::fitToWidth(T(TROOP_TYPES[(int)t].name),
+                                                              kw - 6, kfs, 8);
+                    DrawText(kl.c_str(), (int)(kr.x + (kw - MeasureText(kl.c_str(), kfs)) / 2),
+                             ky + 4 + (11 - kfs) / 2, kfs,
+                             on ? WHITE : Color{175, 185, 205, 255});
+                    // ── A KIND ALREADY ON ORDER IS MARKED ──
+                    //
+                    // Each kind now keeps its own slider and its own order, so
+                    // the panel shows one kind at a time while up to four are
+                    // queued. Without a mark on the tab, the three you are not
+                    // looking at are invisible -- you would find out what this
+                    // province is actually raising when the turn resolved.
+                    for (const auto& pr : m_pendingRecruitments)
+                        if (pr.provinceId == selPid && pr.type == t && pr.count > 0) {
+                            DrawCircle((int)(kr.x + kw - 6), (int)(kr.y + 5), 3.0f,
+                                       Color{225, 190, 70, 235});
+                            break;
+                        }
+                    if (kh) {
+                        // What choosing it costs, in the terms that differ.
+                        const TroopCost& tc = TROOP_TYPES[(int)t];
+                        m_uiHint = TextFormat(T("%s: %.2gx men, %.2gx cost, %.2gx frontage"),
+                                              T(tc.name), tc.manpower, tc.money, tc.frontage);
+                        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                            m_recruitType = t;
+                            Audio::get().playSfx("click_soft");
+                        }
+                    }
+                }
+            }
+        }
+
+        // CLAMPED BEFORE THE CAST. maxRecruit is a long long off a province's
+        // population; recruitCount is an int, and a populous province at 50%
+        // overflowed it -- the button read "Recruit -9903449 ($0)", which is
+        // the sort of thing that is obvious in a screenshot and invisible in a
+        // test. Photographed on a phone canvas in the tour's orders-portrait.
+        // A BETTER SOLDIER COSTS MORE PEOPLE, so the same population raises
+        // fewer of him: the cap is in PEOPLE and the count is in SOLDIERS. See
+        // PendingRecruitment::type -- 120,000 people are 120,000 line infantry
+        // or 30,000 mechanised.
+        const double perMan = (double)troopCost(m_recruitType).manpower;
+
+        // ── THE KINDS CONTEND FOR ONE POOL ──
+        //
+        // There is one population in this province and every kind draws from
+        // it, so what is already queued for the OTHER kinds is already spent.
+        // Without this each kind saw the whole pool and four sliders at 100%
+        // promised four times the province's manpower -- and the resolver, which
+        // does its own subtraction, would have taken it or refused it, either
+        // way disagreeing with the panel that offered it.
+        long long spentOnOthers = 0;
+        for (const auto& pr : m_pendingRecruitments)
+            if (pr.provinceId == selPid && pr.type != m_recruitType)
+                spentOnOthers += (long long)(pr.count * troopCost(pr.type).manpower);
+        const long long poolLeft = std::max(0LL, maxRecruit - spentOnOthers);
+
+        const long long wantRecruit =
+            (long long)((double)(poolLeft * recruitPct() / 100) / std::max(0.01, perMan));
+        int recruitCount = (int)std::clamp<long long>(wantRecruit, 0, INT32_MAX);
         // Cost: $1 per 10k soldiers, research cost modifier applies
         // "armyCostPct" is not a real effect name, so this always returned 0 and
         // recruit prices ignored research entirely. The actual effect is
         // conscriptionCostPct, and it's a cost REDUCTION, so it subtracts.
-        float costMod = conscriptionCostMod(getTotalEffect("conscriptionCostPct"));
-        float recruitCost = (recruitCount / 10000.0f) * costMod;
-        if (recruitCost < 1.0f && recruitCount > 0) recruitCost = 1.0f;
+        // Kept for the slider arithmetic below, which prices candidate recruit
+        // counts as it searches for the largest affordable one.
+        const float costMod = conscriptionCostMod(getTotalEffect("conscriptionCostPct"));
+        // Both currencies, from one call, so the button, the AI and the
+        // multiplayer host cannot price a recruit differently. See
+        // Game::recruitPrice -- it carries the same conscriptionCostMod the
+        // slider uses, so the two cannot disagree about the money half.
+        const WarPrice recruitPr = recruitPrice(recruitCount, m_playerCountryId, m_recruitType);
+        const float recruitCost = recruitPr.money;
         auto cs = computeCountryIncome(m_playerCountryId);
         double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
-        bool canRecruit = isOwnProv && recruitCount > 0 && !hasPendingRecruit && treasury >= recruitCost;
+        const bool haveMunitions =
+            !m_goodsEconomy ||
+            m_countryStockpiles[m_playerCountryId].goods[GOOD_MUNITIONS] >= recruitPr.munitions;
+        bool canRecruit = isOwnProv && recruitCount > 0 && !hasPendingRecruit &&
+                          treasury >= recruitCost && haveMunitions;
 
         // Recruit button with slider
         int sliderY = btnStartY - 22;
         int sliderW = btnW * 2 + btnGap - 60;
         int slX = panelX + pad;
         int slY = sliderY + 2;
+        // ── THE CEILING, AND WHY IT MOVES WHEN THE KIND DOES ──
+        //
+        // The slider is one control over a manpower pool, so its PERCENTAGE is
+        // shared across kinds -- but the number of soldiers that percentage
+        // buys is not, and never was: the cap is counted in PEOPLE and a
+        // mechanised soldier costs four of them. The same province that raises
+        // 120k line infantry raises 30k mechanised.
+        //
+        // That was true and completely invisible. The button read "Recruit
+        // 2.5k" whichever kind was selected, so the one number that tells a
+        // player the trade they are making -- fewer, better men -- was
+        // something they could only find by switching kinds and watching a
+        // figure they had no reason to be watching. So the ceiling is drawn.
+        const long long capForKind =
+            (long long)((double)poolLeft / std::max(0.01, perMan));
         DrawText("R:", slX, sliderY, 11, LIGHTGRAY);
         slX += 18;
         sliderW -= 18;
         DrawRectangle(slX, slY, sliderW, 14, {30, 30, 40, 200});
-        int fill = sliderW * m_armyRecruitPct / 100;
+        int fill = sliderW * recruitPct() / 100;
         if (fill > 0) DrawRectangle(slX, slY, fill, 14, {40, 80, 40, 200});
         DrawRectangleLines(slX, slY, sliderW, 14, {60, 60, 80, 200});
-        DrawText(TextFormat("%d%%", m_armyRecruitPct), slX + sliderW + 3, slY, 9, WHITE);
+        // formatTroops, NOT formatBalance. Garrison counts are stored a hundred
+        // to the soldier (see formatTroops), and the Recruit button below
+        // already divides by that -- so printing the raw cap here read "82% of
+        // 1.08m" beside a button offering 8.9k men. The arithmetic was right
+        // and the label was lying about it, which is worse than no label.
+        DrawText(TextFormat("%d%% of %s", recruitPct(),
+                            formatTroops(capForKind).c_str()),
+                 slX + sliderW + 3, slY, 9, WHITE);
         Vector2 mse = getMouse();
         Rectangle slRec = {(float)slX, (float)slY, (float)sliderW, 14.0f};
         bool sliderChanged = false;
         m_armySliderActive = !m_paused && CheckCollisionPointRec(mse, slRec) && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
         if (m_armySliderActive) {
-            int oldPct = m_armyRecruitPct;
-            m_armyRecruitPct = (int)((mse.x - slX) / sliderW * 100);
-            if (m_armyRecruitPct < 0) m_armyRecruitPct = 0;
-            if (m_armyRecruitPct > 100) m_armyRecruitPct = 100;
+            int oldPct = recruitPct();
+            recruitPct() = (int)((mse.x - slX) / sliderW * 100);
+            if (recruitPct() < 0) recruitPct() = 0;
+            if (recruitPct() > 100) recruitPct() = 100;
             // If pending order exists, cap by remaining treasury (one stable clamp)
             if (hasPendingRecruit) {
                 long long oldCount = 0;
@@ -1662,15 +2257,15 @@ void Game::drawCountryPanel() {
                 float oldCost = (oldCount / 10000.0f) * costMod;
                 if (oldCost < 1.0f && oldCount > 0) oldCost = 1.0f;
                 float maxCost = oldCost + treasury;
-                int tryPct = m_armyRecruitPct;
+                int tryPct = recruitPct();
                 for (int p = tryPct; p >= 0; --p) {
-                    int c = (int)(maxRecruit * p / 100);
+                    int c = (int)(poolLeft * p / 100);
                     float cost = (c / 10000.0f) * costMod;
                     if (cost < 1.0f && c > 0) cost = 1.0f;
-                    if (cost <= maxCost) { m_armyRecruitPct = p; break; }
+                    if (cost <= maxCost) { recruitPct() = p; break; }
                 }
             }
-            if (m_armyRecruitPct != oldPct) sliderChanged = true;
+            if (recruitPct() != oldPct) sliderChanged = true;
         }
 
         int recruitBtnY = btnStartY;
@@ -1678,7 +2273,7 @@ void Game::drawCountryPanel() {
             // Update existing order in real-time when slider changes
             for (size_t pri = 0; pri < m_pendingRecruitments.size(); ++pri) {
                 auto& pr = m_pendingRecruitments[pri];
-                if (pr.provinceId != selPid) continue;
+                if (pr.provinceId != selPid || pr.type != m_recruitType) continue;
                 int newCount = recruitCount;
                 int oldCount = pr.count;
                 if (sliderChanged && newCount != oldCount) {
@@ -1690,7 +2285,7 @@ void Game::drawCountryPanel() {
                     if (newCost > maxNewCost) {
                         newCost = maxNewCost;
                         newCount = (int)(newCost / costMod * 10000);
-                        if (newCount > maxRecruit) newCount = maxRecruit;
+                        if (newCount > poolLeft) newCount = poolLeft;
                         if (newCount < 1) newCount = 0;
                     }
                     treasury += oldCost - newCost;
@@ -1702,7 +2297,8 @@ void Game::drawCountryPanel() {
                 Color cBg = Color{80, 30, 20, 220};
                 Color cBd = Color{180, 80, 50, 200};
 if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
-                TextFormat(T("Cancel (%s, $%.0f)"), formatTroops(pr.count).c_str(), currentCost),
+                TextFormat(T("Cancel %s (%s, $%.0f)"), T(troopCost(pr.type).name),
+                           formatTroops(pr.count).c_str(), currentCost),
                 false, cBg, cBd)) {
                     treasury += currentCost;
                     m_pendingRecruitments.erase(m_pendingRecruitments.begin() + pri);
@@ -1713,10 +2309,19 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color rBg = canRecruit ? Color{20, 60, 30, 220} : Color{20, 20, 25, 200};
             Color rBd = canRecruit ? Color{60, 180, 80, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
-                TextFormat(T("Recruit %s ($%.0f)"), formatPop(recruitCount / 100).c_str(), recruitCost),
+                // The munitions half is named on the button when there is one,
+                // so a player refused for want of shells is told which shortage
+                // refused them rather than left staring at a greyed control.
+                m_goodsEconomy && recruitPr.munitions > 0.005f
+                    ? TextFormat(T("Recruit %s ($%.0f, %.1f mun)"),
+                                 formatPop(recruitCount / 100).c_str(), recruitCost,
+                                 recruitPr.munitions)
+                    : TextFormat(T("Recruit %s ($%.0f)"),
+                                 formatPop(recruitCount / 100).c_str(), recruitCost),
                 !canRecruit, rBg, rBd) && canRecruit) {
                 treasury -= recruitCost;
-                m_pendingRecruitments.push_back({selPid, recruitCount, 1});
+                payWarMaterials(m_playerCountryId, recruitPr);
+                m_pendingRecruitments.push_back({selPid, recruitCount, 1, m_recruitType});
             }
         }
 
@@ -1741,9 +2346,43 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
             Color dBd = canDisband ? Color{180, 60, 60, 200} : Color{40, 40, 50, 150};
             if (drawActBtn(panelX + pad, disbandBtnY, btnW, btnH,
                 "Disband All", !canDisband, dBg, dBd) && canDisband) {
+                traceDisband("PUSH-panel", selPid, 0, m_playerCountryId);
                 m_pendingDisbandOrders.push_back({selPid, 0});
             }
         }
+        // ─── A FIGHT THAT DID NOT FINISH ───
+        //
+        // The two verbs a war was missing. A battle standing in this province
+        // is men who are neither here nor at home, and until this panel said so
+        // there was no way for a player to know they existed, let alone get
+        // them back. Reinforcing needs no button -- an ordinary move order into
+        // the province joins the fight -- so the only control is the way OUT,
+        // which is the half that was never possible at all.
+        if (const Battle* pb = battleAt(selPid, m_playerCountryId)) {
+            const int bY = disbandBtnY + btnH + btnGap;
+            const bool losing = pb->lastDefPower > pb->lastAtkPower;
+            DrawText(TextFormat(T("Battle: %s of ours, round %d"),
+                                formatPop(pb->attackers() / 100).c_str(), pb->rounds),
+                     panelX + pad, bY - 16, 13,
+                     losing ? Color{230, 140, 140, 255} : Color{180, 220, 180, 255});
+            // Which way it is going, in the resolver's own terms rather than a
+            // troop count -- the count does not include the frontage, the fort,
+            // supply, depth or either side's research, and those are what
+            // decided the round.
+            if (pb->rounds > 0)
+                DrawText(TextFormat(T("Last round: we lost %s, they lost %s"),
+                                    formatPop(pb->lastAtkLosses / 100).c_str(),
+                                    formatPop(pb->lastDefLosses / 100).c_str()),
+                         panelX + pad, bY + btnH + 2, 12, Color{170, 170, 190, 255});
+            const bool pendingOut = hasPendingWithdraw(selPid);
+            Color wBg = pendingOut ? Color{80, 60, 20, 220} : Color{70, 40, 20, 220};
+            Color wBd = pendingOut ? Color{180, 140, 50, 200} : Color{190, 120, 60, 200};
+            if (drawActBtn(panelX + pad, bY, btnW * 2 + btnGap, btnH,
+                           pendingOut ? T("Cancel Withdrawal") : T("Withdraw From Battle"),
+                           false, wBg, wBd))
+                queueWithdraw(selPid);
+        }
+
         // ─── Move Army ───
         //
         // The action this whole tab is named after, and until now the only one
@@ -1796,15 +2435,13 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     TextFormat(T("Cancel Orders (%d)"), orderCount), false,
                     Color{60, 30, 20, 220}, Color{180, 80, 40, 200})) {
                     cancelArmyMovesFrom(selPid);
-                    static const struct { const char* id; float cost; } ARTY_CANCEL_COST[] = {
-                        {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
-                        {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
-                    };
+                    // Sixth copy of the same table, found while consolidating
+                    // the other five. Refunds now read ARTY_COSTS like the
+                    // charge does; see BuildCosts.h.
                     double& ctreasury = m_countries.getAll()[m_playerCountryId].treasury;
                     for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                         if (it->fromProvince == selPid) {
-                            for (int ci = 0; ARTY_CANCEL_COST[ci].id; ++ci)
-                                if (it->ammoType == ARTY_CANCEL_COST[ci].id) ctreasury += ARTY_CANCEL_COST[ci].cost;
+                            refundArtilleryOrder(m_playerCountryId, it->ammoType, ctreasury);
                             it = m_pendingArtilleryOrders.erase(it);
                         } else ++it;
                     }
@@ -1814,21 +2451,28 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
     }
 
     // ─── Artillery Action Buttons (own province, army view) ─────
-    if (selPid > 0 && cid == m_playerCountryId && m_activeViewTab == 5) {
+    // Also an order, so also not while reading orders -- see the army action
+    // buttons above.
+    if (selPid > 0 && cid == m_playerCountryId && m_activeViewTab == 5 &&
+        m_turnState == TURN_NORMAL) {
         Province* pInfo = m_provinces.getProvinceById(selPid);
         bool isOwnProv = (selPid > 0 && pInfo && pInfo->countryId == m_playerCountryId);
 
         if (isOwnProv) {
-            struct ArtyInfo { const char* id; const char* name; float troopKill; float popKill; float fortDmg; int indDmg; float fortChance; float cost; Color col; int tris; };
+            // The panel's own columns are what it DRAWS -- name, colour, the
+            // damage figures it lists. The PRICE is not one of them any more:
+            // it comes from ARTY_COSTS in BuildCosts.h, so the number shown on
+            // the button and the number taken from the treasury cannot differ.
+            struct ArtyInfo { const char* id; const char* name; float troopKill; float popKill; float fortDmg; int indDmg; float fortChance; Color col; int tris; };
             static const ArtyInfo ALL_ARTY[] = {
-                {"mortar","Mortar",5,0,0,0,0,5.0f,GREEN,1},
-                {"light","Light Arty",10,0,0,0,0,10.0f,YELLOW,2},
-                {"heavy","Heavy Arty",20,5,0,0,0,20.0f,ORANGE,2},
-                {"napalm","Napalm",25,15,0,0,0,30.0f,RED,3},
-                {"carpet","Carpet Bomb",15,10,0,0,50,25.0f,BLUE,3},
-                {"chemical","Chemical",50,30,0,0,0,40.0f,BROWN,4},
-                {"nuclear","Nuclear",75,0,2,3,0,80.0f,GRAY,4},
-                {"biological","Biological",80,95,0,0,0,60.0f,PURPLE,4}
+                {"mortar","Mortar",5,0,0,0,0,GREEN,1},
+                {"light","Light Arty",10,0,0,0,0,YELLOW,2},
+                {"heavy","Heavy Arty",20,5,0,0,0,ORANGE,2},
+                {"napalm","Napalm",25,15,0,0,0,RED,3},
+                {"carpet","Carpet Bomb",15,10,0,0,50,BLUE,3},
+                {"chemical","Chemical",50,30,0,0,0,BROWN,4},
+                {"nuclear","Nuclear",75,0,2,3,0,GRAY,4},
+                {"biological","Biological",80,95,0,0,0,PURPLE,4}
             };
             auto getNodeId = [](const char* tid) -> std::string {
                 if (strcmp(tid,"mortar")==0) return "arty1";
@@ -1864,7 +2508,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                         if (it->fromProvince == selPid) {
                             for (auto& art : ALL_ARTY) {
-                                if (art.id == it->ammoType) { treasury += art.cost; break; }
+                                if (art.id == it->ammoType) { refundArtilleryOrder(m_playerCountryId, it->ammoType, treasury); break; }
                             }
                             it = m_pendingArtilleryOrders.erase(it);
                         } else ++it;
@@ -1899,7 +2543,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                     DrawRectangleLines(ddX, iy, ddW, ddH, Color{60, 60, 90, 200});
                     DrawRectangle(ddX + 3, iy + 4, 14, 14, art.col);
                     DrawText(art.name, ddX + 22, iy + 3, 12, WHITE);
-                    std::string effect = TextFormat(T("$%.0f %d%% troops"), art.cost, (int)art.troopKill);
+                    std::string effect = artilleryPriceLabel(art.id, (int)art.troopKill);
                     if (art.popKill > 0) effect += TextFormat(T(" %d%% pop"), (int)art.popKill);
                     if (art.fortDmg > 0) effect += TextFormat(T(" fort-%d"), (int)art.fortDmg);
                     if (art.indDmg > 0) effect += TextFormat(T(" ind-%d"), art.indDmg);
@@ -1932,7 +2576,8 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 } else {
                     for (auto& art : ALL_ARTY) {
                         if (art.id == m_artillerySelectedType) {
-                            DrawText(TextFormat(T("Firing %s PID %d ($%.0f)"), art.name, m_artilleryTargetPid, art.cost),
+                            DrawText(TextFormat(T("Firing %s PID %d (%s)"), art.name, m_artilleryTargetPid,
+                                                artilleryPriceLabel(art.id, -1).c_str()),
                                      panelX + pad, artBtnY + btnH + 2, 11, GREEN);
                             break;
                         }
@@ -1953,7 +2598,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                         for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                             if (it->fromProvince == selPid) {
                                 for (auto& art : ALL_ARTY) {
-                                    if (art.id == it->ammoType) { ctreasury += art.cost; break; }
+                                    if (art.id == it->ammoType) { refundArtilleryOrder(m_playerCountryId, it->ammoType, ctreasury); break; }
                                 }
                                 it = m_pendingArtilleryOrders.erase(it);
                             } else ++it;
@@ -2173,8 +2818,43 @@ void Game::drawSidebarButtons() {
     };
     static constexpr int BTN_COUNT = 4;
 
+    // ── THE MIDDLE STATE IS A VIEW, NOT A PANEL ──
+    //
+    // Asked for explicitly: in this view "the side buttons apart from search,
+    // settings and claims should not exist". Politics, Economy and Research are
+    // all places you go to CHANGE something, and this view is for reading what
+    // already happened -- so they are not greyed out here, they are gone.
+    //
+    // CLAIMS IS ONE OF THESE FOUR BUTTONS AND STAYS. It was named in the
+    // request and it belongs: a claim is a fact about the board, which is
+    // exactly what this view is for. The first version of this hid all four,
+    // because the Claims button sitting in the sidebar rather than beside the
+    // search was not noticed.
+    //
+    // The FIND button below is also deliberately outside this: it is the search
+    // the request keeps, it lives in this function rather than with the
+    // settings, and skipping the whole function would have taken it too.
+    //
+    // The survivors are packed from the top rather than left in their own
+    // slots, so the column has no holes in it.
+    // THE PHASE STEPS THESE ASIDE. THE TOGGLE DOES NOT.
+    //
+    // They are different things and were wrongly treated as one. The phase is a
+    // beat in the turn where no order can be given, so a column of order-giving
+    // tabs would be dead controls. The toggle is a LENS held over ordinary play
+    // -- you are still playing, you are just also looking at what happened, and
+    // taking your tabs away for it is the interface deciding you did not mean
+    // to keep playing.
+    const bool readingOrders = (m_turnState == TURN_VIEWING_ORDERS);
+    int order[BTN_COUNT];
+    int shownTabs = 0;
     for (int i = 0; i < BTN_COUNT; ++i) {
-        int y = startY + i * (btnSize + btnSpacing);
+        if (readingOrders && btns[i].id != 3) continue;   // 3 = Claims
+        order[shownTabs++] = i;
+    }
+    for (int slot = 0; slot < shownTabs; ++slot) {
+        const int i = order[slot];
+        int y = startY + slot * (btnSize + btnSpacing);
         Rectangle r = {(float)startX, (float)y, (float)btnSize, (float)btnSize};
         // Offer it to the tutorial by a stable name. The label is what the
         // player reads and may be translated; the id is what the script
@@ -2275,6 +2955,58 @@ void Game::drawSidebarButtons() {
         }
     }
 
+    // ─── MAIL ─────────────────────────────────────────────────────────────
+    //
+    // ONLY WHEN THERE IS SOMEBODY TO WRITE TO. mailAvailable() is false in a
+    // single-player game with no language-model module, and the button is then
+    // absent rather than greyed: a greyed control invites you to work out how
+    // to enable it, and there is nothing to enable in a game that simply has no
+    // correspondents. Shaped like Find country because it is the same kind of
+    // thing -- an action that opens a window, not a tab that stays lit.
+    if (mailAvailable()) {
+        const Color accent = hexToColor(m_config.accent());
+        const int mailH = 46;
+        const int mailY = startY - 46 - 10 - mailH - 8;
+        Rectangle mr = {(float)startX, (float)mailY, (float)btnSize, (float)mailH};
+        offerUiTarget("btn.mail", mr);
+        const bool mhov = !m_paused && CheckCollisionPointRec(getMouse(), mr);
+
+        // Anything that arrived on the turn just resolved gets a mark. It
+        // clears when the box is opened, not on a timer: post that went unread
+        // because you were looking at the map is exactly what a mark is for.
+        const bool unread = m_mailArrived > 0;
+        const float pulse = unread ? (0.55f + 0.45f * sinf((float)GetTime() * 3.0f)) : 0.0f;
+
+        DrawRectangleRounded(mr, 0.25f, 8,
+                             mhov ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180});
+        DrawRectangleRoundedLines(mr, 0.25f, 8,
+                                  unread ? ColorAlpha(accent, pulse)
+                                         : (mhov ? Color{140, 140, 170, 200}
+                                                 : Color{80, 80, 100, 150}));
+
+        // An envelope from primitives, like the magnifier above: a flap over a
+        // body, which reads at this size and costs no atlas space.
+        const Color mc = mhov ? WHITE : LIGHTGRAY;
+        const float ex = mr.x + btnSize / 2.0f - 9.0f, ey = mr.y + 8.0f;
+        DrawRectangleLinesEx({ex, ey, 18, 12}, 1.4f, mc);
+        DrawLineEx({ex, ey}, {ex + 9.0f, ey + 7.0f}, 1.4f, mc);
+        DrawLineEx({ex + 18.0f, ey}, {ex + 9.0f, ey + 7.0f}, 1.4f, mc);
+
+        int mfs = 12;
+        const std::string mlabel = odText::fitToWidth(T("Mail"), btnSize - 8, mfs, 9);
+        DrawText(mlabel.c_str(),
+                 (int)mr.x + (btnSize - MeasureText(mlabel.c_str(), mfs)) / 2,
+                 (int)(mr.y + mailH - mfs - 4), mfs, unread ? accent : mc);
+        if (unread) DrawCircle((int)(mr.x + mr.width - 10), (int)(mr.y + 10), 4.0f,
+                               ColorAlpha(accent, pulse));
+
+        if (mhov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            Audio::get().playSfx("click_heavy");
+            m_mailArrived = 0;
+            openMail();
+        }
+    }
+
     // ─── SETTINGS ─────────────────────────────────────────────────────────
     //
     // BELOW the tabs and shaped like Find country, for the same reason: it is
@@ -2288,7 +3020,12 @@ void Game::drawSidebarButtons() {
     // slider that would make the rest of the interface legible to them.
     {
         const int setH = 46;
-        const int setY = startY + totalH + 10;
+        // Follow whatever the column actually drew. In the middle state that is
+        // Claims alone, so Settings sits under one button rather than under the
+        // hole where four used to be.
+        const int shownH = shownTabs > 0
+            ? shownTabs * btnSize + (shownTabs - 1) * btnSpacing : 0;
+        const int setY = startY + shownH + 10;
         Rectangle sr = {(float)startX, (float)setY, (float)btnSize, (float)setH};
         offerUiTarget("btn.settings", sr);
         const bool shov = !m_paused && CheckCollisionPointRec(getMouse(), sr);
@@ -2337,6 +3074,10 @@ void Game::draw() {
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
     if (m_renderer) m_renderer->resize(m_screenW, m_screenH);
+    // BEFORE THE FRAME OPENS. Catching the land up is seconds of work and it
+    // puts a loading screen up while it runs; doing that from inside drawInner
+    // would nest BeginDrawing inside the frame draw() has already started.
+    if (m_currentScreen == SCREEN_PLAYING) flushMapRepaint();
     BeginDrawing();
     ClearBackground(BLACK);
     // Guard: if not in playing state, skip game rendering to avoid accessing freed data
@@ -2348,6 +3089,7 @@ void Game::draw() {
     drawInner();
     endFrame();
 }
+
 
 void Game::drawInner() {
     // Rendering body for SCREEN_PLAYING. Called by draw() (which wraps
@@ -2532,6 +3274,23 @@ void Game::drawInner() {
             DrawText(ftxt, (int)(cx - tw / 2), (int)(cy - fs / 2), fs, WHITE);
         }
     }
+    // ─── EVERYBODY'S ORDERS FROM THE TURN THAT JUST RESOLVED ───────────────
+    //
+    // Drawn for EVERY view, which is the point of it being a toggle rather than
+    // a ninth view tab: a player looking at the industry map should be able to
+    // ask what everyone did without leaving it.
+    //
+    // It was inside `if (m_activeViewTab == 6)` -- placed next to the ship
+    // route overlay it shares its geometry helpers with -- so the Orders view
+    // drew in the NAVY VIEW AND NOWHERE ELSE. Nothing failed; the toggle simply
+    // did nothing in seven views out of eight. Caught by photographing it in
+    // the army view and seeing an empty map, which is not a thing any test here
+    // would have asked.
+    //
+    // Before the army markers so our own pending orders read on top of what the
+    // world already did.
+    drawMiddleStateOverlay();
+
     // ─── Army tab: soldier icons + troop counts ─────
     //
     // DRAWN IN TWO PASSES, AND THAT IS THE WHOLE POINT OF THE SHAPE OF THIS
@@ -2556,6 +3315,19 @@ void Game::drawInner() {
             float sx, topY, botY, bodyW, headR;
             Color accent;
             long long total;
+            /// What the garrison is made of, and whether it is worth saying.
+            long long byType[TROOP_TYPE_COUNT];
+            bool mixed;
+        };
+        // ONE SWATCH PER KIND, and it lives here rather than in TROOP_TYPES
+        // because it is a display decision: the table in BuildCosts.h is read by
+        // the resolver and the AI, neither of which has any business knowing
+        // what colour a militia is. Ordered as TroopType is.
+        static const Color kTypeSwatch[TROOP_TYPE_COUNT] = {
+            Color{210, 210, 220, 255},   // line      -- plain
+            Color{150, 190, 140, 255},   // militia   -- green, cheap and local
+            Color{225, 150, 90,  255},   // assault   -- orange, the sharp end
+            Color{130, 175, 230, 255},   // mechanised-- steel blue
         };
         static std::vector<ArmyMarker> markers;   // reused; this runs every frame
         markers.clear();
@@ -2577,9 +3349,12 @@ void Game::drawInner() {
                     break;
                 }
             }
-            // Compute troop count for scaling
+            // Compute troop count for scaling, and what it is made of.
             long long totalCount = 0;
-            for (auto& u : units) totalCount += u.count;
+            long long byType[TROOP_TYPE_COUNT] = {};
+            for (auto& u : units) { totalCount += u.count; byType[(int)u.type] += u.count; }
+            int kinds = 0;
+            for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) if (byType[t] > 0) ++kinds;
             long long displayCount = totalCount / 100;
             // Base icon size scales with zoom and troop count
             float soldierSize = std::max(8.0f * cam.zoom, 4.0f);
@@ -2589,8 +3364,10 @@ void Game::drawInner() {
             if (soldierSize > maxSize) soldierSize = maxSize;
             float bodyW = soldierSize * 1.3f;
             float h = soldierSize * 1.3f;
-            markers.push_back(ArmyMarker{pid, sx, sy - h * 0.5f, sy + h * 0.5f,
-                                         bodyW, bodyW * 0.28f, accent, totalCount});
+            ArmyMarker mk{pid, sx, sy - h * 0.5f, sy + h * 0.5f,
+                          bodyW, bodyW * 0.28f, accent, totalCount, {}, kinds > 1};
+            for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) mk.byType[t] = byType[t];
+            markers.push_back(mk);
         }
 
         // ── pass 1: every shape, one texture ──
@@ -2623,6 +3400,33 @@ void Game::drawInner() {
                               {m.sx + m.bodyW / 2, m.topY}, WHITE);
             DrawCircleV({m.sx, m.topY - m.headR * 0.3f}, m.headR, WHITE);
             DrawCircleLinesV({m.sx, m.topY - m.headR * 0.3f}, m.headR, Color{0, 0, 0, 120});
+
+            // ── WHAT IT IS MADE OF ──
+            //
+            // A stacked bar under the feet, one segment per kind, in
+            // proportion. Drawn ONLY where a province actually holds more than
+            // one kind: a bar that is always a single flat colour is not
+            // information, it is clutter on every marker on the map. So this is
+            // invisible in a world that has only line infantry, and appears
+            // exactly where there is something to say -- which is also why it
+            // could not be checked by looking at today's world, only by
+            // reasoning about it.
+            //
+            // In pass ONE with the other shapes: putting it in the label pass
+            // would flip the texture per marker and undo the batching this loop
+            // is shaped around.
+            if (m.mixed && m.total > 0) {
+                const float barH = std::max(2.0f, 3.0f * cam.zoom);
+                const float barY = m.botY + 2.0f;
+                float x = m.sx - m.bodyW / 2;
+                DrawRectangleRec({x - 1, barY - 1, m.bodyW + 2, barH + 2}, Color{0, 0, 0, 140});
+                for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) {
+                    if (m.byType[t] <= 0) continue;
+                    const float w = m.bodyW * (float)((double)m.byType[t] / (double)m.total);
+                    DrawRectangleRec({x, barY, w, barH}, kTypeSwatch[t]);
+                    x += w;
+                }
+            }
         }
 
         // ── pass 2: every label, one texture ──
@@ -2635,7 +3439,19 @@ void Game::drawInner() {
             // "Disbanding..." text for pending disband orders
             for (auto& pd : m_pendingDisbandOrders) {
                 if (pd.provinceId != m.pid || !provinceIsPlayers(pd.provinceId)) continue;
-                const char* dtext = "Disbanding...";
+                // WHAT WILL ACTUALLY GO, not just that something will.
+                //
+                // A count of 0 is the sentinel for "everything here when the
+                // turn resolves" -- deliberately, so a garrison that grows
+                // still goes -- which means troops moved into a marked province
+                // are destroyed with it. That is defensible and it is a trap:
+                // the player sees "Disbanding..." and no number, moves an army
+                // in, and loses it. Naming the figure makes the consequence
+                // visible at the moment they can still change their mind.
+                const std::string dstr = pd.count > 0
+                    ? std::string(T("Disbanding ")) + formatTroops(pd.count)
+                    : std::string(T("Disbanding ")) + formatTroops(m.total);
+                const char* dtext = dstr.c_str();
                 int dfs = (int)(10 * cam.zoom);
                 if (dfs < 8) dfs = 8;
                 int dtw = MeasureText(dtext, dfs);
@@ -2905,28 +3721,27 @@ void Game::drawInner() {
                     m_shipActionMode = 0; m_shipActionShipIdx = -1;
                 } else if (m_shipActionMode == 3 && m_shipActionHoverProvince > 0 && m_shipActionValidDest && !m_shipBombardAmmo.empty()) {
                     // Bombard: create bombard order with selected ammo, deduct cost
-                    static const struct { const char* id; float cost; } ARTY_COST[] = {
-                        {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
-                        {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
-                    };
-                    auto getArtyCost = [&](const std::string& tid) -> float {
-                        for (int i = 0; ARTY_COST[i].id; ++i)
-                            if (tid == ARTY_COST[i].id) return ARTY_COST[i].cost;
-                        return 0;
-                    };
-                    float cost = getArtyCost(m_shipBombardAmmo);
+                    // See ARTY_COSTS in BuildCosts.h -- one table for the panel,
+                    // the guns, the ships, the refunds and the AI. A naval
+                    // bombardment is the same shell as a land one and is priced
+                    // by the same call, materials included.
+                    const WarPrice price = artilleryPrice(m_shipBombardAmmo, m_playerCountryId);
                     double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
-                    if (treasury >= cost) {
+                    const bool haveMaterials =
+                        !m_goodsEconomy ||
+                        (m_countryStockpiles[m_playerCountryId].goods[GOOD_FUEL] >= price.fuel &&
+                         m_countryStockpiles[m_playerCountryId].goods[GOOD_MUNITIONS] >= price.munitions);
+                    if (treasury >= price.money && haveMaterials) {
                         auto& vec = m_pendingShipBombardOrders;
+                        payWarMaterials(m_playerCountryId, price);
                         // Refund old orders for this ship before replacing
                         for (auto it = vec.begin(); it != vec.end(); ) {
                             if (it->shipIndex == m_shipActionShipIdx) {
-                                float oldCost = getArtyCost(it->ammoType);
-                                treasury += oldCost;
+                                refundArtilleryOrder(m_playerCountryId, it->ammoType, treasury);
                                 it = vec.erase(it);
                             } else ++it;
                         }
-                        treasury -= cost;
+                        treasury -= price.money;
                         vec.push_back({m_shipActionShipIdx, m_shipActionHoverProvince, m_shipBombardAmmo});
                     }
                     m_shipActionMode = 0; m_shipActionShipIdx = -1;
@@ -2948,15 +3763,15 @@ void Game::drawInner() {
         int shipWheelKey = m_config.keybinds[ACTION_SHIP_WHEEL];
         auto cancelShipOrders = [&](int shipIdx) {
             // Refund bombard orders before erasing
-            static const struct { const char* id; float cost; } CANCEL_ARTY_COST[] = {
-                {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
-                {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
-            };
+            // A REFUND MUST READ THE SAME TABLE AS THE CHARGE, which is why
+            // this one mattered most of the five copies: had it ever drifted
+            // above the others, cancelling an order would have paid back more
+            // than it cost and the treasury would have been a money printer.
+            // See ARTY_COSTS in BuildCosts.h.
             for (auto it = m_pendingShipBombardOrders.begin(); it != m_pendingShipBombardOrders.end(); ) {
                 if (it->shipIndex == shipIdx) {
                     float refundAmt = 0;
-                    for (int ci = 0; CANCEL_ARTY_COST[ci].id; ++ci)
-                        if (it->ammoType == CANCEL_ARTY_COST[ci].id) { refundAmt = CANCEL_ARTY_COST[ci].cost; break; }
+                    refundAmt = artyMoneyCost(it->ammoType.c_str());
                     if (refundAmt > 0)
                         m_countries.getAll()[m_playerCountryId].treasury += refundAmt;
                     it = m_pendingShipBombardOrders.erase(it);
@@ -3264,9 +4079,9 @@ void Game::drawInner() {
                                 bool inRange = (dist <= maxRange);
                                 bool relOk = canDisembark(prov->countryId);
                                 validDest = inRange && relOk;
-                                if (!inRange) lineCol = RED;
-                                else if (!relOk) lineCol = RED;
-                                else lineCol = YELLOW;
+                                if (!inRange) lineCol = previewCol(odPalette::Role::Bad, 255);
+                                else if (!relOk) lineCol = previewCol(odPalette::Role::Bad, 255);
+                                else lineCol = previewCol(odPalette::Role::Good, 255);
                             }
                         }
                     } else if (!m_landSea.isLand(px, py)) {
@@ -3288,7 +4103,8 @@ void Game::drawInner() {
                         float lon, lat;
                         m_landSea.pixelToLonLat(px, py, lon, lat);
                         validDest = navReachable(srcShip.lon, srcShip.lat, lon, lat);
-                        lineCol = validDest ? GREEN : RED;
+                        lineCol = previewCol(validDest ? odPalette::Role::Good
+                                                     : odPalette::Role::Bad, 255);
 
                         // ── The route, and how long it takes ──
                         // Previewing what the resolver will do, from the same
@@ -3296,18 +4112,39 @@ void Game::drawInner() {
                         // and what happens cannot disagree.
                         if (validDest) {
                             std::vector<std::pair<double,double>> way;
-                            navRoute(srcShip.lon, srcShip.lat, lon, lat, way);
+                            // THE ANSWER IS READ. Discarding it drew a route
+                            // that did not exist: navRoute clears `way` and
+                            // returns false when it cannot find a path, so the
+                            // destination appended below became the ONLY
+                            // waypoint and the preview drew one straight green
+                            // line from the hull to the target -- across
+                            // whatever land lay between. That is the line in
+                            // the bug report cutting over Florida.
+                            //
+                            // navReachable said yes and navRoute said no, which
+                            // can happen: navReachable answers true when there
+                            // is no nav grid at all ("do not block anything"),
+                            // and navRoute answers false. A map without a grid
+                            // therefore previewed every voyage as a straight
+                            // line. Now an unroutable destination is drawn as
+                            // unreachable, which is what it is.
+                            if (!navRoute(srcShip.lon, srcShip.lat, lon, lat, way))
+                                lineCol = previewCol(odPalette::Role::Bad, 255);
                             way.emplace_back((double)lon, (double)lat);
                             double total = 0.0;
                             double cl = srcShip.lon, ct = srcShip.lat;
                             Vector2 prev = sp;
                             for (auto& [wl, wt] : way) {
-                                total += std::hypot(wl - cl, wt - ct);
+                                // Wrapped, like the resolver: an Aleutian leg
+                                // measured 359 degrees and reported twenty
+                                // turns for a one-turn hop.
+                                total += seaDistanceDeg(cl, ct, wl, wt);
                                 cl = wl; ct = wt;
                                 int wx, wy;
                                 m_landSea.lonLatToPixel((float)wl, (float)wt, wx, wy);
                                 Vector2 cur = worldToScreen({(float)wx, (float)wy});
-                                DrawLineEx(prev, cur, 2.0f, ColorAlpha(GREEN, 0.55f));
+                                DrawLineEx(prev, cur, 2.0f,
+                                           previewCol(odPalette::Role::Good, 140));
                                 prev = cur;
                             }
                             const double per = shipMaxRangeDeg(srcShip);
@@ -3349,7 +4186,8 @@ void Game::drawInner() {
                     }
                     validDest = atWar;
                 }
-                lineCol = validDest ? GREEN : RED;
+                lineCol = previewCol(validDest ? odPalette::Role::Good
+                                               : odPalette::Role::Bad, 255);
             } else if (m_shipActionMode == 3 && m_shipActionHoverProvince > 0 && !m_shipBombardAmmo.empty()) {
                 // Bombard: line to province, only own or enemy provinces
                 auto cit = m_provinceCenters.find(m_shipActionHoverProvince);
@@ -3377,13 +4215,14 @@ void Game::drawInner() {
                         }
                     }
                     validDest = inRange && canBomb;
-                    lineCol = validDest ? PURPLE : RED;
+                    lineCol = validDest ? PURPLE : previewCol(odPalette::Role::Bad, 255);
                     hoverScr = worldToScreen(cit->second);
                 }
             }
 
             if (hoverScr.x != 0 || hoverScr.y != 0) {
-                DrawLineEx(sp, hoverScr, 2.0f, ColorAlpha(lineCol, 180.0f/255.0f));
+                drawOrderLine(sp, hoverScr, 2.0f,
+                              ColorAlpha(lineCol, 180.0f/255.0f), validDest);
                 DrawCircle((int)hoverScr.x, (int)hoverScr.y, 6, ColorAlpha(lineCol, 200.0f/255.0f));
             } else {
                 DrawLineEx(sp, mouse, 1.0f, Color{100,100,150,80});
@@ -3391,18 +4230,13 @@ void Game::drawInner() {
             m_shipActionValidDest = validDest;
         }
 
-        // Draw pending ship move order indicators
+        // Where our ships are going, and how they will get there. See
+        // Game::drawShipRoutePath -- this was a straight line to the
+        // destination, which is the one path a ship never sails.
         for (auto& mo : m_pendingShipMoveOrders) {
             if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) continue;
             if (!shipIsPlayers(mo.shipIndex)) continue;
-            auto& ship = m_ships[mo.shipIndex];
-            int sx, sy, dx, dy;
-            m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
-            m_landSea.lonLatToPixel((float)mo.destLon, (float)mo.destLat, dx, dy);
-            Vector2 sp2 = worldToScreen({(float)sx, (float)sy});
-            Vector2 dp = worldToScreen({(float)dx, (float)dy});
-            DrawLineEx(sp2, dp, 1.5f, ColorAlpha(SKYBLUE, 160.0f/255.0f));
-            DrawCircle((int)dp.x, (int)dp.y, 4, ColorAlpha(SKYBLUE, 200.0f/255.0f));
+            drawShipRoutePath(mo, SKYBLUE, 0.75f);
         }
         // Draw pending engage order indicators
         for (auto& eo : m_pendingShipEngageOrders) {
@@ -3560,31 +4394,16 @@ void Game::drawInner() {
             if (!show || !provinceIsPlayers(pu.provinceId)) continue;
             auto cit = m_provinceCenters.find(pu.provinceId);
             if (cit == m_provinceCenters.end()) continue;
-            Vector2 sp = worldToScreen(cit->second);
-            float cx = sp.x + sz * 2.0f;
-            float cy = sp.y - sz * 1.5f;
-            DrawCircle((int)(cx + 1), (int)(cy + 1), sz + 1, Color{0, 0, 0, 160});
-            DrawCircle((int)cx, (int)cy, sz, Color{30, 200, 30, 255});
-            DrawCircleLines((int)cx, (int)cy, sz, WHITE);
-            int lw = (int)(sz * 0.55f);
-            int t = std::max((int)(sz * 0.18f), 1);
-            DrawRectangle((int)(cx - lw / 2), (int)(cy - t / 2), lw, t, WHITE);
-            DrawRectangle((int)(cx - t / 2), (int)(cy - lw / 2), t, lw, WHITE);
+            drawActionCue(worldToScreen(cit->second), ActionCue::Upgrade, sz,
+                          Color{30, 200, 30, 255}, cam.zoom);
         }
         // Orange gear for specialization (industry tab only)
         for (auto& ps : m_pendingSpecializations) {
             if (m_activeViewTab != 2) continue;
             auto cit = m_provinceCenters.find(ps.provinceId);
             if (cit == m_provinceCenters.end()) continue;
-            Vector2 sp = worldToScreen(cit->second);
-            float cx = sp.x + sz * 2.0f;
-            float cy = sp.y + sz * 1.5f;
-            DrawCircle((int)(cx + 1), (int)(cy + 1), sz + 1, Color{0, 0, 0, 160});
-            DrawCircle((int)cx, (int)cy, sz, Color{255, 180, 0, 255});
-            DrawCircleLines((int)cx, (int)cy, sz, WHITE);
-            int fs = (int)(8 * cam.zoom);
-            int tw = MeasureText("S", fs);
-            DrawText("S", (int)(cx - tw / 2), (int)(cy - fs / 2), fs, WHITE);
+            drawActionCue(worldToScreen(cit->second), ActionCue::Specialise, sz,
+                          Color{255, 180, 0, 255}, cam.zoom);
         }
         // (disband X drawn on army icon in the army drawing section)
         // Green + for recruitment (army tab only) — positioned above the army icon
@@ -3593,17 +4412,33 @@ void Game::drawInner() {
             if (!provinceIsPlayers(pr.provinceId)) continue;
             auto cit = m_provinceCenters.find(pr.provinceId);
             if (cit == m_provinceCenters.end()) continue;
-            Vector2 sp = worldToScreen(cit->second);
-            float cx = sp.x + sz * 2.0f;
-            float cy = sp.y - sz * 2.5f;
-            DrawCircle((int)(cx + 1), (int)(cy + 1), sz + 1, Color{0, 0, 0, 160});
-            DrawCircle((int)cx, (int)cy, sz, Color{30, 200, 30, 255});
-            DrawCircleLines((int)cx, (int)cy, sz, WHITE);
-            int lw = (int)(sz * 0.55f);
-            int t = std::max((int)(sz * 0.18f), 1);
-            DrawRectangle((int)(cx - lw / 2), (int)(cy - t / 2), lw, t, WHITE);
-            DrawRectangle((int)(cx - t / 2), (int)(cy - lw / 2), t, lw, WHITE);
+            drawActionCue(worldToScreen(cit->second), ActionCue::Recruit, sz,
+                          Color{30, 200, 30, 255}, cam.zoom);
         }
+        // ── THE GROUND A FREED NATION WOULD GET ──
+        //
+        // Marked on the map while it is being chosen, because the choice is
+        // about SHAPE -- which provinces, in one piece -- and a list of numbers
+        // in a panel cannot show a shape. Filled for what is being given,
+        // hollow for what is on offer and being kept.
+        if (m_releasePickMode != 0) {
+            for (int pid : m_releasePickPool) {
+                auto cit = m_provinceCenters.find(pid);
+                if (cit == m_provinceCenters.end()) continue;
+                const Vector2 sp = worldToScreen(cit->second);
+                if (sp.x < -40 || sp.y < -40 || sp.x > m_screenW + 40 || sp.y > m_screenH + 40)
+                    continue;
+                const bool taken = std::find(m_releasePickProvs.begin(),
+                                             m_releasePickProvs.end(), pid)
+                                   != m_releasePickProvs.end();
+                const float r = std::max(5.0f * cam.zoom, 4.0f);
+                DrawCircle((int)sp.x, (int)sp.y, r + 1.5f, Color{0, 0, 0, 150});
+                if (taken) DrawCircle((int)sp.x, (int)sp.y, r, Color{190, 150, 230, 245});
+                else       DrawCircleLines((int)sp.x, (int)sp.y, r, Color{150, 130, 175, 220});
+                DrawCircleLines((int)sp.x, (int)sp.y, r, Color{245, 240, 250, 200});
+            }
+        }
+
         // ─── Ship building indicator (navy view only) ───
         if (m_activeViewTab == 6) {
             for (auto& sb : m_pendingShipBuilds) {
@@ -3611,17 +4446,10 @@ void Game::drawInner() {
                 auto cit = m_provinceCenters.find(sb.provinceId);
                 if (cit == m_provinceCenters.end()) continue;
                 Vector2 sp = worldToScreen(cit->second);
-                // Position lower-right of province center to avoid overlapping port upgrade + (top-right)
-                float cx = sp.x + sz * 2.0f;
-                float cy = sp.y + sz * 1.5f;
-                // Gear icon for construction
-                DrawCircle((int)(cx + 1), (int)(cy + 1), sz + 1, Color{0, 0, 0, 160});
-                DrawCircle((int)cx, (int)cy, sz, Color{180, 180, 60, 255});
-                DrawCircleLines((int)cx, (int)cy, sz, WHITE);
-                int fs2 = (int)(8 * cam.zoom);
-                if (fs2 < 7) fs2 = 7;
-                int tw2 = MeasureText("B", fs2);
-                DrawText("B", (int)(cx - tw2 / 2), (int)(cy - fs2 / 2), fs2, WHITE);
+                // Lower-right of the province centre, clear of the port
+                // upgrade's plus at top-right. See Game::drawActionCue.
+                drawActionCue(sp, ActionCue::ShipBuild, sz,
+                              Color{180, 180, 60, 255}, cam.zoom);
                 // Draw semi-transparent ship silhouette at adjacent water pixel
                 int waterPx = -1;
                 auto ppIt = m_provincePixels.find(sb.provinceId);
@@ -3938,9 +4766,12 @@ void Game::drawInner() {
                         if (dstIt2 != m_provinceCenters.end()) {
                             Vector2 hov = worldToScreen(dstIt2->second);
                             float hr = std::max(10.0f * cam.zoom, 6.0f);
-                            Color lineCol = m_armyMoveDragValidDest ? Color{100, 255, 100, 200} : Color{255, 80, 80, 200};
+                            Color lineCol = previewCol(m_armyMoveDragValidDest
+                                                       ? odPalette::Role::Good
+                                                       : odPalette::Role::Bad, 200);
                             DrawCircleLines((int)hov.x, (int)hov.y, hr, lineCol);
-                            DrawLineEx(src, hov, arrowSz * 0.6f, lineCol);
+                            drawOrderLine(src, hov, arrowSz * 0.6f, lineCol,
+                                          m_armyMoveDragValidDest);
                         }
                     } else {
                         DrawLineEx(src, mse, arrowSz * 0.5f, Color{100, 200, 255, 120});
@@ -4101,15 +4932,22 @@ void Game::drawInner() {
                                 cursor = worldToScreen(dstHov->second);
                                 float hr = std::max(10.0f * cam.zoom, 6.0f);
                                 DrawCircleLines((int)cursor.x, (int)cursor.y, hr,
-                                    canShoot ? Color{255, 200, 50, 220} : Color{255, 60, 60, 180});
+                                    previewCol(canShoot ? odPalette::Role::Good
+                                                        : odPalette::Role::Bad,
+                                               canShoot ? 220 : 180));
                             }
-                            lineCol = canShoot ? Color{255, 200, 50, 200} : Color{255, 60, 60, 160};
+                            lineCol = previewCol(canShoot ? odPalette::Role::Good
+                                                          : odPalette::Role::Bad,
+                                                 canShoot ? 200 : 160);
                         } else {
                             lineCol = Color{100, 100, 160, 80};
                         }
                     }
                     // Always draw line from source to cursor position
-                    DrawLineEx(src, cursor, arrowSz * 0.6f, lineCol);
+                    // isNb, not canShoot: with nothing under the cursor there
+                    // is no order to reject, so that line stays solid.
+                    drawOrderLine(src, cursor, arrowSz * 0.6f, lineCol,
+                                  !isNb || canShoot);
                     // Draw hint text near the cursor
                     const char* hint = "Click neighboring province to fire artillery";
                     int hf = 12;
@@ -4290,6 +5128,10 @@ void Game::drawInner() {
         }
     }
 
+    // The phase draws over everything the map put down, and before the panels,
+    // so its banner is not buried under a tab column that is not there.
+    drawViewingOrdersPhase();
+
     drawBottomPanel();
     // In the same toolbar row as the resource picker and the navy filters,
     // drawn after the bar so it sits above it rather than under.
@@ -4301,7 +5143,11 @@ void Game::drawInner() {
     // ─── Bottom-left stub buttons (only when not processing turn) ───
     if ((!m_mapDate.empty() || m_playerCountryId == SPC_CID) && m_turnState == TURN_NORMAL) {
         int sbBtnW = 180, sbBtnH = 36, sbGap = 8;
-        int sbX = 12, sbY = m_screenH - bottomBarH() - 16 - sbBtnH - 6;
+        // bottomLeftStubTop(), not the same arithmetic written out again: it is
+        // what the left-hand panels reserve space against, and it now accounts
+        // for the Orders strip below. Recomputing it here is how this row ended
+        // up underneath the panel that was supposed to stop above it.
+        int sbX = 12, sbY = bottomLeftStubTop();
         Vector2 sm = getMouse();
         // Process Turn stub
         Rectangle ptRect = {(float)sbX, (float)sbY, (float)sbBtnW, (float)sbBtnH};
@@ -4327,6 +5173,74 @@ void Game::drawInner() {
         DrawText(ptLabel, sbX+(sbBtnW-ptw)/2, sbY+10, 16,
                  ptAllowed ? WHITE : Color{120, 130, 124, 220});
 
+        // ─── AN OPTION OF PROCESSING A TURN ───────────────────────────────
+        //
+        // The Orders view shows what every country DID on the turn that just
+        // resolved -- so it is a thing you ask about a processed turn, not a
+        // tool like the search or the tabs. It lived in the sidebar column,
+        // where it read as unrelated to the button whose output it describes.
+        //
+        // Same width as Process Turn so the two read as one control; shorter,
+        // dimmer and hung directly off its bottom edge so it reads as the
+        // subordinate half rather than a second button of equal weight.
+        {
+            const int stripH = ordersStripH();
+            Rectangle orRect = {(float)sbX, (float)(sbY + sbBtnH + 4),
+                                (float)sbBtnW, (float)stripH};
+            offerUiTarget("button.orders", orRect);
+            // Nothing to show until a turn has actually resolved. Greyed with a
+            // reason rather than silently doing nothing, which is the rule the
+            // rest of this file follows.
+            // ── IT IS A SETTING ABOUT THE NEXT TURN, NOT A LENS ON THIS ONE ──
+            //
+            // This used to paint every order in the world onto the live map
+            // while you were still giving orders, which is both unreadable --
+            // a labelled box on every province on Earth -- and the wrong beat:
+            // orders belong in the pause AFTER a turn, where there is nothing
+            // else competing for the map. So the tick now means "stop and show
+            // me what happened", and it is the same setting the phase's own
+            // "Skip this from now on" writes. One fact, two places to change it.
+            //
+            // And because it describes the NEXT turn rather than the last one,
+            // it is live from the first turn, before any orders exist.
+            const bool haveOrders = true;
+            const bool showPhase = !m_config.skipViewingOrders;
+            const bool orHov = !m_paused && CheckCollisionPointRec(sm, orRect);
+            const Color accent = hexToColor(m_config.accent());
+
+            DrawRectangleRounded(orRect, 0.25f, 6,
+                !haveOrders ? Color{26, 30, 28, 190}
+                : showPhase ? ColorAlpha(accent, orHov ? 0.34f : 0.24f)
+                : orHov ? Color{38, 52, 44, 210} : Color{26, 40, 33, 200});
+            DrawRectangleRoundedLines(orRect, 0.25f, 6,
+                !haveOrders ? Color{55, 62, 58, 130}
+                : showPhase ? accent : Color{60, 110, 80, 150});
+
+            // A tick box, because this is an option rather than a destination.
+            const float boxS = stripH * 0.5f;
+            Rectangle box = {orRect.x + 7, orRect.y + (stripH - boxS) / 2, boxS, boxS};
+            DrawRectangleRoundedLines(box, 0.2f, 4,
+                haveOrders ? (showPhase ? accent : Color{120, 150, 130, 200})
+                           : Color{70, 78, 74, 150});
+            if (showPhase)
+                DrawRectangleRounded({box.x + 2, box.y + 2, box.width - 4, box.height - 4},
+                                     0.2f, 4, accent);
+
+            const int ofs = compactHud() ? 12 : 12;
+            const char* olabel = T("Show orders");
+            DrawText(olabel, (int)(box.x + boxS + 7), (int)(orRect.y + (stripH - ofs) / 2 + 1),
+                     ofs, !haveOrders ? Color{110, 118, 114, 200}
+                          : showPhase ? WHITE : Color{190, 210, 198, 255});
+
+            if (orHov)
+                m_uiHint = T("Pause after each turn to see what every country did");
+            if (orHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("click_heavy");
+                m_config.skipViewingOrders = !m_config.skipViewingOrders;
+                m_config.save(m_configPath);
+            }
+        }
+
         // ─── who the turn is waiting on, and for how long ───
         //
         // In a network game the single most useful thing on screen is why the
@@ -4348,6 +5262,9 @@ void Game::drawInner() {
             drawEconomy();
         }
     }
+    // OVER the panels and under the pause menu: it is opened from the province
+    // panel and has to cover it, but pausing has to cover everything.
+    if (m_inCountryProfile) { updateCountryProfile(); drawCountryProfile(); }
     if (m_paused) drawPauseMenu();
     // Turn history sits above the pause menu it was opened from
     if (m_inHistory) drawHistoryScreen();
@@ -4454,7 +5371,18 @@ bool Game::upgradeQuote(int provinceId, const char* type,
         const int next = level + 1;
         if (next < 0 || next > IND_MAX_LEVEL) return false;            // hard cap
         if (level >= getResearchedIndustryLevel(cid)) return false;    // research cap
+        // What the ground itself will carry. Compared against the level being
+        // BUILT, never used to clamp the level already there: a save may hold a
+        // province above its own capacity and that is legal, so this refuses
+        // the next factory and leaves the existing ones standing. See
+        // industryCapacity() in BuildCosts.h.
+        if (next > provinceIndustryCapacity(provinceId)) return false; // capacity cap
         cost = (float)IND_COST[next] * costMod;
+        // The money HALF of the price. A planned economy pays for a factory in
+        // machinery instead; see industryMachineryCost and queueUpgrade. Only
+        // in a goods world -- with the production economy off there is no
+        // machinery to pay with, so the price stays entirely monetary.
+        if (m_goodsEconomy) cost *= (1.0f - plannedShare(cid) * PLANNED_MATERIAL_SHARE);
         nextLevel = next;
         turns = IND_TURNS[next];
         return true;
@@ -4496,7 +5424,31 @@ bool Game::queueUpgrade(int provinceId, const char* type, int countryId) {
     auto it = m_countries.getAll().find(cid);
     if (it == m_countries.getAll().end()) return false;
     double& treasury = it->second.treasury;
+
+    // ── A PLANNED ECONOMY BUILDS WITH MATERIALS, NOT MONEY ──
+    //
+    // "Upgrading factory/production in a planned economy would require
+    // materials instead of money." The two are not alternatives bolted
+    // together: the money price is already scaled DOWN by how planned the
+    // country is (see upgradeQuote), and this is the other half of the same
+    // price. A pure market pays entirely in cash, a pure plan entirely in
+    // machinery, and the middle pays part of each.
+    //
+    // Charged HERE, beside the treasury deduction, because a build must not be
+    // half-paid: if the machinery is missing the whole purchase is refused and
+    // nothing is taken. That is the same rule the treasury check below has
+    // always had, applied to the second currency.
+    const float machinery = industryMachineryCost(provinceId, type, cid);
+    CountryStockpile* pool = nullptr;
+    if (machinery > 0.0f) {
+        auto sp = m_countryStockpiles.find(cid);
+        if (sp == m_countryStockpiles.end()) return false;
+        if (sp->second.goods[GOOD_MACHINERY] < machinery) return false;
+        pool = &sp->second;
+    }
+
     if (treasury < cost) return false;
+    if (pool) pool->goods[GOOD_MACHINERY] -= machinery;
     treasury -= cost;
     // next and turns come from the quote above, never from a caller. That is
     // the whole point: this is the only place a build is created, so it is the
@@ -4504,6 +5456,28 @@ bool Game::queueUpgrade(int provinceId, const char* type, int countryId) {
     // takes -- including for a build that arrived over the network.
     m_pendingUpgrades.push_back({provinceId, type, next, turns});
     return true;
+}
+
+// === industryMachineryCost ===
+//
+// What a build costs in MACHINERY, as against money. Zero in a world with no
+// production economy, and zero for a pure free market -- a capitalist buys the
+// plant with cash. See queueUpgrade for why the two halves are charged
+// together or not at all.
+//
+// Priced off the same IND_COST table as the money half, so the two cannot drift
+// and a change to build prices moves both. Forts and ports are not included:
+// they are not factories, and a state that directs its industry is not thereby
+// directing its masonry.
+float Game::industryMachineryCost(int provinceId, const char* type, int countryId) const {
+    if (!m_goodsEconomy || !type || strcmp(type, "industry") != 0) return 0.0f;
+    const int cid = (countryId < 0) ? m_playerCountryId : countryId;
+    const float planned = plannedShare(cid);
+    if (planned <= 0.0f) return 0.0f;
+    auto it = m_provinceIndustry.find(provinceId);
+    const int level = (it != m_provinceIndustry.end()) ? it->second.level : 0;
+    const int next = std::clamp(level + 1, 0, IND_MAX_LEVEL);
+    return (float)IND_COST[next] * planned * PLANNED_MATERIAL_SHARE * MACHINERY_PER_COST;
 }
 
 // === specializationQuote / queueSpecialization ===
@@ -4715,6 +5689,14 @@ void Game::updateBulkPaint() {
 // arrangement would have been three more chances to get it wrong, so both
 // sides now read the row from here.
 void Game::buildToolbarRow(std::vector<ToolbarButton>& out) const {
+    // NOTHING ON THIS ROW IS AN ORDER YOU MAY GIVE WHILE READING ORDERS. Its
+    // click handler already refused anything but TURN_NORMAL; the DRAW did not,
+    // so "Disband all" went on being painted through the phase -- straight over
+    // the Continue button, which is the only live control on that screen. A
+    // control that is drawn and dead is worse than one that is absent, and this
+    // is the second time today that a rule written on one side of a
+    // draw/handle pair was missing from the other.
+    if (m_turnState != TURN_NORMAL) return;
     out.clear();
     if (m_playerCountryId == SPC_CID) return;       // a spectator buys nothing
     if (m_mapDate.empty()) return;
@@ -5022,4 +6004,601 @@ void Game::drawBulkConfirmPanel() {
     const int noTw = MeasureText(T("Clear"), 14);
     DrawText(T("Clear"), cx + (bw - noTw) / 2, byy + (bh - 14) / 2, 14,
              noHover ? WHITE : LIGHTGRAY);
+}
+
+// ─── Ship routes, for looking at ────────────────────────────────────────────
+//
+// See the declarations in Game.h for why this exists. In one line: the overlay
+// used to promise a straight line, the router sails around land, and the gap
+// between those two things got reported as broken pathfinding.
+
+const std::vector<std::pair<double, double>>* Game::shipDisplayRoute(
+    const PendingShipMoveOrder& mo, bool& reachable) {
+    // The resolver has planned it: that IS the route, and it shortens as the
+    // voyage proceeds because the mover erases legs it has completed.
+    if (mo.planned) {
+        reachable = !mo.route.empty();
+        return &mo.route;
+    }
+    if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) {
+        reachable = false;
+        return nullptr;
+    }
+    const NavyShip& ship = m_ships[mo.shipIndex];
+
+    // Recompute only when the question changed. A hull that has not moved and
+    // an order that still names the same place get the answer already on hand.
+    auto& pv = m_shipRoutePreview[mo.shipIndex];
+    const bool sameQuestion =
+        pv.destLon == mo.destLon && pv.destLat == mo.destLat &&
+        pv.fromLon == ship.lon && pv.fromLat == ship.lat && !pv.route.empty();
+    if (!sameQuestion) {
+        pv.fromLon = ship.lon;  pv.fromLat = ship.lat;
+        pv.destLon = mo.destLon; pv.destLat = mo.destLat;
+        pv.route.clear();
+        pv.reachable = navRoute(ship.lon, ship.lat, mo.destLon, mo.destLat, pv.route);
+        // navRoute returns the waypoints only; the destination itself is the
+        // last leg, exactly as processShipMovement appends it.
+        if (pv.reachable &&
+            (pv.route.empty() || pv.route.back().first != mo.destLon ||
+             pv.route.back().second != mo.destLat))
+            pv.route.emplace_back(mo.destLon, mo.destLat);
+        // Unreachable still gets a line drawn to it, in a colour that says so:
+        // "I cannot get there" is the single most useful thing this overlay can
+        // tell a player, and hiding it was most of the confusion.
+        if (!pv.reachable) {
+            pv.route.clear();
+            pv.route.emplace_back(mo.destLon, mo.destLat);
+        }
+    }
+    reachable = pv.reachable;
+    return &pv.route;
+}
+
+void Game::drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float alpha) {
+    if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) return;
+    const NavyShip& ship = m_ships[mo.shipIndex];
+    bool reachable = false;
+    const std::vector<std::pair<double, double>>* route = shipDisplayRoute(mo, reachable);
+    if (!route || route->empty()) return;
+
+    const int mw = m_landSea.getWidth();
+    if (mw <= 0) return;
+    const double pxPerDeg = (double)mw / 360.0;
+
+    // ── ONE CONTINUOUS POLYLINE, NOT A STRING OF INDEPENDENT POINTS ──
+    //
+    // worldToScreen picks the map copy nearest the camera FOR EACH POINT, which
+    // is right for a province marker and wrong for a line: a voyage crossing
+    // the antimeridian would have its two halves land on opposite copies and
+    // draw as a stripe straight across the world. So the x coordinate is
+    // accumulated with lonDelta -- the same wrapped delta the mover uses -- and
+    // is allowed to run outside the map, and the camera offset is taken ONCE
+    // from the hull and applied to every point after it.
+    std::vector<Vector2> pts;
+    std::vector<double> segDeg;          // each segment's length in degrees
+    pts.reserve(route->size() + 1);
+    segDeg.reserve(route->size());
+
+    int sx0, sy0;
+    m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx0, sy0);
+    double cx = (double)sx0;
+    pts.push_back({(float)cx, (float)sy0});
+    double prevLon = ship.lon, prevLat = ship.lat;
+    for (const auto& wp : *route) {
+        const double dLon = lonDelta(prevLon, wp.first);
+        const double dLat = wp.second - prevLat;
+        int tx, ty;
+        m_landSea.lonLatToPixel((float)wp.first, (float)wp.second, tx, ty);
+        cx += dLon * pxPerDeg;
+        pts.push_back({(float)cx, (float)ty});
+        segDeg.push_back(std::sqrt(dLon * dLon + dLat * dLat));
+        prevLon = wp.first;
+        prevLat = wp.second;
+    }
+    if (pts.size() < 2) return;
+
+    const Camera2D& cam = m_renderer->getCamera();
+    Vector2 anchor = pts[0];
+    while (anchor.x - cam.target.x >  mw * 0.5f) anchor.x -= mw;
+    while (anchor.x - cam.target.x < -mw * 0.5f) anchor.x += mw;
+    const float shift = anchor.x - pts[0].x;
+    auto toScr = [&](Vector2 w) {
+        return GetWorldToScreen2D({w.x + shift, w.y}, cam);
+    };
+
+    // How far this turn's range actually reaches along the route. THE POINT OF
+    // THE WHOLE OVERLAY: a destination six turns away and one reachable now
+    // looked identical before, and the difference is the entire decision.
+    double budget = reachable ? shipMaxRangeDeg(ship) : 0.0;
+
+    const Color solid = ColorAlpha(col, alpha);
+    const Color faint = ColorAlpha(col, alpha * 0.35f);
+    const Color blocked = ColorAlpha(Color{200, 70, 70, 255}, alpha);
+
+    Vector2 turnEnd = pts[0];
+    bool turnEndFound = false;
+
+    for (size_t i = 0; i + 1 < pts.size(); ++i) {
+        const Vector2 a = toScr(pts[i]), b = toScr(pts[i + 1]);
+        if (!reachable) { DrawLineEx(a, b, 1.5f, blocked); continue; }
+        const double len = segDeg[i];
+        if (budget <= 1e-9) {
+            DrawLineEx(a, b, 1.5f, faint);                 // later turns
+        } else if (budget >= len) {
+            DrawLineEx(a, b, 2.5f, solid);                 // sailed this turn
+            budget -= len;
+            turnEnd = pts[i + 1];
+        } else {
+            // The range runs out inside this leg: split it, so the marker sits
+            // where the hull will actually stop rather than at a waypoint.
+            const float f = (float)(budget / std::max(1e-9, len));
+            const Vector2 mid = {pts[i].x + (pts[i + 1].x - pts[i].x) * f,
+                                 pts[i].y + (pts[i + 1].y - pts[i].y) * f};
+            DrawLineEx(a, toScr(mid), 2.5f, solid);
+            DrawLineEx(toScr(mid), b, 1.5f, faint);
+            turnEnd = mid;
+            turnEndFound = true;
+            budget = 0.0;
+        }
+    }
+
+    // Where the hull ends this turn, and where it is going. Drawn only when the
+    // voyage does not finish this turn -- otherwise the two markers sit on top
+    // of each other and say nothing.
+    const Vector2 dest = toScr(pts.back());
+    if (!reachable) {
+        // An X, because "there is no sea route to here" is not a lesser version
+        // of a destination, it is a different answer.
+        const float r = 5.0f;
+        DrawLineEx({dest.x - r, dest.y - r}, {dest.x + r, dest.y + r}, 2.0f, blocked);
+        DrawLineEx({dest.x - r, dest.y + r}, {dest.x + r, dest.y - r}, 2.0f, blocked);
+        return;
+    }
+    if (turnEndFound || budget <= 1e-9) {
+        const Vector2 te = toScr(turnEnd);
+        DrawCircle((int)te.x, (int)te.y, 4, solid);
+        DrawRing(dest, 5, 7, 0, 360, 14, faint);
+    } else {
+        DrawCircle((int)dest.x, (int)dest.y, 4, solid);
+    }
+}
+
+// ─── The middle state ───────────────────────────────────────────────────────
+//
+// See m_turnOrderLog in Game.h. In one line: this draws the turn that just
+// resolved, because the turn that has NOT resolved does not exist yet -- the
+// other countries have not thought.
+
+int Game::actionCueTab(ActionCue kind, const std::string& detail) {
+    switch (kind) {
+        case ActionCue::Recruit:    return 5;                    // army
+        case ActionCue::ShipBuild:  return 6;                    // navy
+        case ActionCue::Specialise: return 2;                    // industry
+        case ActionCue::Upgrade:
+            if (detail == "fortification") return 3;             // defence
+            if (detail == "port")          return 6;             // navy
+            return 2;                                            // industry
+    }
+    return 2;
+}
+
+void Game::drawActionCue(Vector2 sp, ActionCue kind, float sz, Color tint,
+                         float zoom) const {
+    // The offsets are the ones the local-player marks have always used, so a
+    // province carrying two different orders still shows them side by side
+    // rather than one on top of the other.
+    float cx = sp.x + sz * 2.0f, cy = sp.y;
+    switch (kind) {
+        case ActionCue::Upgrade:    cy -= sz * 1.5f; break;
+        case ActionCue::Specialise: cy += sz * 1.5f; break;
+        case ActionCue::Recruit:    cy -= sz * 2.5f; break;
+        case ActionCue::ShipBuild:  cy += sz * 1.5f; break;
+    }
+    DrawCircle((int)(cx + 1), (int)(cy + 1), sz + 1, Color{0, 0, 0, 160});
+    DrawCircle((int)cx, (int)cy, sz, tint);
+    DrawCircleLines((int)cx, (int)cy, sz, WHITE);
+    if (kind == ActionCue::Upgrade || kind == ActionCue::Recruit) {
+        const int lw = (int)(sz * 0.55f);
+        const int t = std::max((int)(sz * 0.18f), 1);
+        DrawRectangle((int)(cx - lw / 2), (int)(cy - t / 2), lw, t, WHITE);
+        DrawRectangle((int)(cx - t / 2), (int)(cy - lw / 2), t, lw, WHITE);
+    } else {
+        int fs = (int)(8 * zoom);
+        if (fs < 7) fs = 7;
+        const char* g = (kind == ActionCue::Specialise) ? "S" : "B";
+        DrawText(g, (int)(cx - MeasureText(g, fs) / 2), (int)(cy - fs / 2), fs, WHITE);
+    }
+}
+
+void Game::drawMiddleStateOverlay() {
+    // THE PHASE, AND ONLY THE PHASE. Drawn over live play this was a labelled
+    // box on every province in the world, on top of the troop counts already
+    // there. See the "Show orders" tick.
+    if (m_turnState != TURN_VIEWING_ORDERS) return;
+    if (m_turnOrderLog.empty()) return;
+
+    const Camera2D& cam = m_renderer->getCamera();
+    const int mw = m_landSea.getWidth();
+
+    // ── HOW MUCH DETAIL THE MAP CAN ACTUALLY CARRY AT THIS ZOOM ──
+    //
+    // Every country's recruitment and construction, drawn on the whole world at
+    // once, is a labelled box on every province on Earth -- photographed, it is
+    // a solid mat of text with the map invisible underneath and the troop
+    // counts already there fighting it for the same pixels. The information is
+    // worth having and the world view is simply not where it fits.
+    //
+    // So the standing orders appear when you look at a region, and the marches
+    // -- far fewer, and the thing you actually scan a world map for -- are
+    // always drawn. Nothing is hidden that cannot be reached by zooming, and
+    // the banner says so when anything is held back.
+    const float zoomRatio = m_renderer->getMinZoom() > 0.0f
+                          ? m_renderer->getZoom() / m_renderer->getMinZoom() : 1.0f;
+    // The threshold is bypassable so the cue drawing can be photographed at
+    // world zoom, where it is deliberately suppressed. Verification only.
+    static const bool allZoom = getenv("OD_ORDERS_ALLZOOM") != nullptr;
+    const bool showStanding = allZoom || zoomRatio >= 3.0f;
+    const bool showLabels   = zoomRatio >= 1.8f;
+    m_ordersHiddenByZoom = 0;
+    int cuesDrawn = 0;
+
+    auto worldToScreen = [&](Vector2 wp) -> Vector2 {
+        while (wp.x - cam.target.x >  mw * 0.5f) wp.x -= mw;
+        while (wp.x - cam.target.x < -mw * 0.5f) wp.x += mw;
+        return GetWorldToScreen2D(wp, cam);
+    };
+
+    auto colourOf = [&](int cid) -> Color {
+        const Country* c = m_countries.getCountry(cid);
+        Color base = c ? c->color : Color{200, 200, 200, 255};
+        // Lifted away from the map underneath it: a country's orders drawn in
+        // exactly its own fill colour vanish into its own territory, which is
+        // where most of them are.
+        auto lift = [](unsigned char v) {
+            return (unsigned char)std::min(255, 90 + (int)v * 2 / 3);
+        };
+        return Color{lift(base.r), lift(base.g), lift(base.b), 255};
+    };
+
+    // An arrow between two province centres, used for both artillery and army
+    // movement. They are told apart by the head, not by the colour: the colour
+    // is already saying whose order it is.
+    auto arrow = [&](int fromPid, int toPid, Color col, bool barbed,
+                     const char* label = nullptr) {
+        auto a = m_provinceCenters.find(fromPid);
+        auto b = m_provinceCenters.find(toPid);
+        if (a == m_provinceCenters.end() || b == m_provinceCenters.end()) return;
+        // Take the wrap offset from the SOURCE and apply it to the
+        // destination, so an order across the antimeridian is a short arrow
+        // rather than a line across the world. Same reasoning as
+        // drawShipRoutePath.
+        Vector2 wa = a->second, wb = b->second;
+        Vector2 sa = worldToScreen(wa);
+        float dx = wb.x - wa.x;
+        while (dx >  mw * 0.5f) dx -= mw;
+        while (dx < -mw * 0.5f) dx += mw;
+        Vector2 sb = GetWorldToScreen2D({wa.x + dx, wb.y}, cam);
+        sb.x += sa.x - GetWorldToScreen2D(wa, cam).x;
+
+        // AN ARMY MOVE IS DRAWN AS AN ARMY MOVE. A shell's flight is a thin
+        // line because nothing travels along it that you could meet; a march
+        // is the army-view arrow, weighted and filled, because that is the
+        // shape this game already uses for men on a road and a second visual
+        // language for the same event is one the player has to learn twice.
+        const float bodyW = barbed ? 2.0f : 4.0f;
+        DrawLineEx(sa, sb, bodyW + 2.0f, ColorAlpha(BLACK, 0.35f));   // read over terrain
+        DrawLineEx(sa, sb, bodyW, ColorAlpha(col, 0.9f));
+        const float ang = atan2f(sb.y - sa.y, sb.x - sa.x);
+        const float hl = barbed ? 11.0f : 15.0f;
+        const float spread = barbed ? 0.45f : 0.5f;
+        const Vector2 h1 = {sb.x - hl * cosf(ang - spread), sb.y - hl * sinf(ang - spread)};
+        const Vector2 h2 = {sb.x - hl * cosf(ang + spread), sb.y - hl * sinf(ang + spread)};
+        if (barbed) {
+            DrawLineEx(sb, h1, 2.0f, ColorAlpha(col, 0.85f));
+            DrawLineEx(sb, h2, 2.0f, ColorAlpha(col, 0.85f));
+            DrawCircle((int)sb.x, (int)sb.y, 3, ColorAlpha(col, 0.9f));
+        } else {
+            DrawTriangle(sb, h2, h1, ColorAlpha(col, 0.95f));   // solid head
+        }
+
+        // ── THE SHARE, ON THE ARROW ──
+        //
+        // The number belongs on the arrow and not on a knob beside it. The
+        // knob in the army view is a HANDLE -- it is there to be dragged --
+        // and a handle drawn on an order that has already resolved is a
+        // control that does nothing, which is worse than no control at all.
+        // Here the same number is just a fact about the march.
+        if (label && *label) {
+            const int lf = 11;
+            const int lw = MeasureText(label, lf);
+            const Vector2 mid = {(sa.x + sb.x) * 0.5f, (sa.y + sb.y) * 0.5f};
+            DrawRectangleRounded({mid.x - lw * 0.5f - 4, mid.y - 8, (float)lw + 8, 16},
+                                 0.45f, 6, Color{12, 14, 20, 210});
+            DrawText(label, (int)(mid.x - lw * 0.5f), (int)(mid.y - 5), lf,
+                     Color{235, 232, 220, 255});
+        }
+    };
+
+    // A standing order that does not move: raising men, or putting up a
+    // building. Drawn on the province rather than between two, because that is
+    // where it happens -- with the SAME glyph the local player's own pending
+    // orders wear, in the same view, so there is one visual language and not
+    // two. See Game::drawActionCue.
+    // THEY STACK. A province that is raising men AND putting up a factory has
+    // two of these, and a country at war has them in every province it owns,
+    // so drawn at the province centre they land on top of each other and both
+    // become unreadable -- which is the failure mode this whole view exists to
+    // avoid. `slot` is how many are already on this province.
+    auto standing = [&](int pid, Color col, const char* glyph, const char* label, int slot) {
+        auto it = m_provinceCenters.find(pid);
+        if (it == m_provinceCenters.end()) return;
+        Vector2 sp = worldToScreen(it->second);
+        sp.y += slot * 17.0f;
+        if (sp.x < -80 || sp.y < -40 || sp.x > m_screenW + 80 || sp.y > m_screenH + 40) return;
+        const int lf = 11;
+        const std::string txt = std::string(glyph) + " " + (label ? label : "");
+        const int lw = MeasureText(txt.c_str(), lf);
+        DrawRectangleRounded({sp.x - lw * 0.5f - 5, sp.y - 8, (float)lw + 10, 16},
+                             0.45f, 6, Color{12, 14, 20, 225});
+        DrawRectangleRoundedLines({sp.x - lw * 0.5f - 5, sp.y - 8, (float)lw + 10, 16},
+                                  0.45f, 6, ColorAlpha(col, 0.75f));
+        DrawText(txt.c_str(), (int)(sp.x - lw * 0.5f), (int)(sp.y - 5), lf,
+                 Color{232, 228, 215, 255});
+    };
+    std::unordered_map<int, int> standingSlot;
+
+    for (const auto& m : m_turnOrderLog) {
+        const Color col = colourOf(m.countryId);
+        switch (m.kind) {
+            case TurnOrderMark::Kind::Artillery:
+                // Guns are the army's, so they are read where the army is.
+                if (m_activeViewTab != 5) break;
+                // Barbed head and a burst at the target: a shell lands, it does
+                // not arrive.
+                arrow(m.fromProvince, m.toProvince, col, true);
+                break;
+            case TurnOrderMark::Kind::NavalBombard: {
+                // A hull's shell belongs with the hulls.
+                if (m_activeViewTab != 6) break;
+                // FROM WHERE THE HULL WAS, not from a province. `arrow` takes
+                // two province ids and a carrier standing off a coast has none;
+                // this is the same barbed line drawn from a lon/lat instead.
+                auto b = m_provinceCenters.find(m.toProvince);
+                if (b == m_provinceCenters.end()) break;
+                int sx2, sy2;
+                m_landSea.lonLatToPixel((float)m.fromLon, (float)m.fromLat, sx2, sy2);
+                const Vector2 sa = worldToScreen({(float)sx2, (float)sy2});
+                const Vector2 sb = worldToScreen(b->second);
+                if ((sa.x < -200 && sb.x < -200) || (sa.x > m_screenW + 200 && sb.x > m_screenW + 200))
+                    break;
+                DrawLineEx(sa, sb, 4.0f, ColorAlpha(BLACK, 0.30f));
+                DrawLineEx(sa, sb, 2.0f, ColorAlpha(col, 0.85f));
+                const float ang = atan2f(sb.y - sa.y, sb.x - sa.x);
+                const Vector2 h1 = {sb.x - 11.0f * cosf(ang - 0.45f), sb.y - 11.0f * sinf(ang - 0.45f)};
+                const Vector2 h2 = {sb.x - 11.0f * cosf(ang + 0.45f), sb.y - 11.0f * sinf(ang + 0.45f)};
+                DrawLineEx(sb, h1, 2.0f, ColorAlpha(col, 0.85f));
+                DrawLineEx(sb, h2, 2.0f, ColorAlpha(col, 0.85f));
+                DrawCircle((int)sb.x, (int)sb.y, 3, ColorAlpha(col, 0.9f));
+                // A small mark at the firing end, so a shell from the sea is
+                // told apart from one from a battery inland.
+                DrawCircleLines((int)sa.x, (int)sa.y, 4, ColorAlpha(col, 0.9f));
+                if (showLabels && !m.detail.empty()) {
+                    const char* t = T(m.detail.c_str());
+                    const int lf = 10, lw = MeasureText(t, lf);
+                    const Vector2 mid = {(sa.x + sb.x) * 0.5f, (sa.y + sb.y) * 0.5f};
+                    DrawRectangleRounded({mid.x - lw * 0.5f - 4, mid.y - 8, (float)lw + 8, 15},
+                                         0.45f, 6, Color{12, 14, 20, 205});
+                    DrawText(t, (int)(mid.x - lw * 0.5f), (int)(mid.y - 5), lf,
+                             Color{235, 232, 220, 255});
+                }
+                break;
+            }
+            case TurnOrderMark::Kind::ArmyMove:
+                // ── IN ITS OWN VIEW, LIKE EVERY OTHER MARK ──
+                //
+                // Marches were drawn over the industry map, the population map
+                // and the resource map alike, which is the same fault the
+                // standing cues already avoid: the industry map is not also an
+                // army map. Army Navigation is where troops are read.
+                if (m_activeViewTab != 5) break;
+                arrow(m.fromProvince, m.toProvince, col, false,
+                      showLabels ? m.detail.c_str() : nullptr);
+                break;
+            case TurnOrderMark::Kind::Recruit:
+            case TurnOrderMark::Kind::Build: {
+                const ActionCue kind =
+                    m.kind == TurnOrderMark::Kind::Recruit ? ActionCue::Recruit
+                    : (m.detail == "destroyer" || m.detail == "carrier")
+                        ? ActionCue::ShipBuild : ActionCue::Upgrade;
+                // IN ITS OWN VIEW, like every other cue on this map. The
+                // industry map is not also an army map, and a phase that
+                // ignored that would put four kinds of order on one canvas --
+                // which is the clutter this replaced.
+                if (m_activeViewTab != actionCueTab(kind, m.detail)) break;
+                auto cit = m_provinceCenters.find(m.fromProvince);
+                if (cit == m_provinceCenters.end()) break;
+                const Vector2 sp = worldToScreen(cit->second);
+                if (sp.x < -60 || sp.y < -40 ||
+                    sp.x > m_screenW + 60 || sp.y > m_screenH + 40) break;
+                if (!showStanding) { ++m_ordersHiddenByZoom; break; }
+                // The country's own colour, so whose order it is stays legible
+                // when four countries are building along one border.
+                drawActionCue(sp, kind, std::max(6.0f * cam.zoom, 4.0f), col, cam.zoom);
+                ++cuesDrawn;
+                (void)standingSlot;
+                break;
+            }
+            case TurnOrderMark::Kind::ShipVoyage: {
+                // Voyages are read on the navy map.
+                if (m_activeViewTab != 6) break;
+                // ── WHAT HAPPENED, NOT WHAT IS PLANNED ──
+                //
+                // Our own voyages draw in full: it is our plan and we may look
+                // at it. ANOTHER COUNTRY'S draws only as far as the hull
+                // actually got this turn, with no marker on where it is bound.
+                //
+                // A foreign fleet six turns out from a landing would otherwise
+                // announce that landing five turns early, every turn, to
+                // everybody -- which is not a middle state of the game, it is
+                // reading the other side's orders. See TurnOrderMark::
+                // turnRangeDeg.
+                const bool ours = (m.countryId == m_playerCountryId);
+                double budget = ours ? 1e18 : std::max(0.0, m.turnRangeDeg);
+                bool truncated = false;
+
+                // The recorded route, from where the hull was when it was given
+                // the order. Drawn from the record rather than from the live
+                // order because the hull has since moved along it.
+                std::vector<Vector2> pts;
+                const double pxPerDeg = (double)mw / 360.0;
+                int sx, sy;
+                m_landSea.lonLatToPixel((float)m.fromLon, (float)m.fromLat, sx, sy);
+                double cx = (double)sx;
+                pts.push_back({(float)cx, (float)sy});
+                double prevLon = m.fromLon;
+                auto addLeg = [&](double lon, double lat) {
+                    const double d = lonDelta(prevLon, lon);
+                    int tx, ty;
+                    m_landSea.lonLatToPixel((float)lon, (float)lat, tx, ty);
+                    cx += d * pxPerDeg;
+                    pts.push_back({(float)cx, (float)ty});
+                    prevLon = lon;
+                };
+                // Walk the legs spending the budget: ours is effectively
+                // unlimited, a foreigner's stops where the hull stopped.
+                double prevLat2 = m.fromLat;
+                for (const auto& wp : m.route) {
+                    const double dLon = lonDelta(prevLon, wp.first);
+                    const double dLat = wp.second - prevLat2;
+                    const double legLen = std::sqrt(dLon * dLon + dLat * dLat);
+                    if (legLen > budget) {
+                        const double f = (legLen > 1e-9) ? budget / legLen : 0.0;
+                        addLeg(wrapLon(prevLon + dLon * f), prevLat2 + dLat * f);
+                        truncated = true;
+                        break;
+                    }
+                    budget -= legLen;
+                    addLeg(wp.first, wp.second);
+                    prevLat2 = wp.second;
+                }
+                if (m.route.empty() && ours) addLeg(m.destLon, m.destLat);
+                if (pts.size() < 2) break;
+
+                Vector2 anchor = pts[0];
+                while (anchor.x - cam.target.x >  mw * 0.5f) anchor.x -= mw;
+                while (anchor.x - cam.target.x < -mw * 0.5f) anchor.x += mw;
+                const float shift = anchor.x - pts[0].x;
+                for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                    const Vector2 p1 = GetWorldToScreen2D({pts[i].x + shift, pts[i].y}, cam);
+                    const Vector2 p2 = GetWorldToScreen2D({pts[i+1].x + shift, pts[i+1].y}, cam);
+                    DrawLineEx(p1, p2, 1.8f, ColorAlpha(col, 0.7f));
+                }
+                const Vector2 end = GetWorldToScreen2D({pts.back().x + shift, pts.back().y}, cam);
+                // A ring means "this is where it is going", so only draw one
+                // when that is true. A truncated foreign track ends where the
+                // hull IS, and ringing it would be a lie in the player's favour.
+                if (!truncated) DrawRing(end, 4, 6, 0, 360, 12, ColorAlpha(col, 0.85f));
+                else            DrawCircleV(end, 2.5f, ColorAlpha(col, 0.9f));
+                break;
+            }
+        }
+    }
+    if (getenv("OD_ORDERS_ALLZOOM"))
+        printf("[ORDERCUE] tab %d  marks %zu  cues drawn %d  hidden %d\n",
+               m_activeViewTab, m_turnOrderLog.size(), cuesDrawn, m_ordersHiddenByZoom);
+
+}
+
+
+// === drawViewingOrdersPhase ===
+//
+// The middle of the game: a banner saying what you are looking at, and one
+// button to leave. See Game::TurnState -- everything else that could take an
+// order has already refused, because it asks for TURN_NORMAL.
+void Game::drawViewingOrdersPhase() {
+    if (m_turnState != TURN_VIEWING_ORDERS) return;
+
+    // ── THE BANNER ──
+    //
+    // Named, and centred at the top where a title goes. A screen that changes
+    // what every control does without saying so is a screen that reads as a
+    // bug; GD4 puts "Viewing Moves" across the top for the same reason.
+    const char* title = T("Viewing Orders");
+    const int fs = compactHud() ? 22 : 30;
+    const int tw = MeasureText(title, fs);
+    const int bw = tw + 48, bh = fs + 20;
+    const int bx = (m_screenW - bw) / 2, by = compactHud() ? 8 : 16;
+    DrawRectangleRounded({(float)bx, (float)by, (float)bw, (float)bh}, 0.2f, 8,
+                         Color{18, 20, 28, 225});
+    DrawRectangleRoundedLines({(float)bx, (float)by, (float)bw, (float)bh}, 0.2f, 8,
+                              hexToColor(m_config.accent()));
+    DrawText(title, bx + 24, by + 10, fs, Color{235, 230, 210, 255});
+
+    // ON ITS OWN GROUND. The map under this is a wall of troop counts, and
+    // 13px grey text over it is not readable -- which for the one line that
+    // says what you are looking at is the whole job undone.
+    std::string sub = TextFormat(T("%d order(s) from the turn just resolved"),
+                                 (int)m_turnOrderLog.size());
+    // EVERY KIND NOW BELONGS TO A VIEW, so most of the log is elsewhere at any
+    // moment. Saying which view carries what is the difference between a filter
+    // and a fault.
+    sub += (m_activeViewTab == 5) ? T("  -  marches and guns")
+         : (m_activeViewTab == 6) ? T("  -  voyages and naval guns")
+         : (m_activeViewTab == 2) ? T("  -  industry")
+         : (m_activeViewTab == 3) ? T("  -  fortification")
+                                  : T("  -  switch view for army or navy orders");
+    // NOT SILENTLY. Something withheld without saying so is indistinguishable
+    // from something broken, and this view exists to be believed.
+    if (m_ordersHiddenByZoom > 0)
+        sub += TextFormat(T("  -  zoom in for %d more"), m_ordersHiddenByZoom);
+    const int sfs = compactHud() ? 11 : 13;
+    const int sw = MeasureText(sub.c_str(), sfs);
+    const int sx = (m_screenW - sw) / 2, sy = by + bh + 6;
+    DrawRectangleRounded({(float)(sx - 10), (float)(sy - 3), (float)(sw + 20), (float)(sfs + 8)},
+                         0.4f, 6, Color{14, 16, 22, 210});
+    DrawText(sub.c_str(), sx, sy, sfs, Color{190, 195, 215, 255});
+
+    // ── THE WAY OUT ──
+    //
+    // Where Process Turn was, because it is the same place in the loop and the
+    // hand is already there. Wide and unmissable: it is the only live control
+    // on the screen, and a player who cannot find it is stuck.
+    // Where Process Turn sits, because it is the same beat in the loop and the
+    // hand is already there. The centre of the screen is not free: the toolbar
+    // row and the date live along the bottom, and a button placed between them
+    // lands on whichever one the view happens to be showing.
+    const int bwid = 220, bhei = 40;
+    Rectangle go = {12.0f, (float)(m_screenH - bottomBarH() - 16 - bhei - 6),
+                    (float)bwid, (float)bhei};
+    offerUiTarget("button.continue_turn", go);
+    const bool hov = !m_paused && CheckCollisionPointRec(getMouse(), go);
+    DrawRectangleRounded(go, 0.2f, 8, hov ? Color{40, 100, 60, 235} : Color{28, 66, 43, 225});
+    DrawRectangleRoundedLines(go, 0.2f, 8, Color{80, 170, 110, 210});
+    const char* cont = T("Continue");
+    DrawText(cont, (int)(go.x + (bwid - MeasureText(cont, 18)) / 2), (int)(go.y + 11), 18, WHITE);
+
+    // And a way to stop being shown it, offered where it is being shown --
+    // a setting a player only wants to change at the moment it annoys them.
+    const std::string skipL = T("Skip this from now on");
+    const int skfs = 12;
+    // ABOVE the button, not below it: below is the bottom bar, and text drawn
+    // there is text nobody can read.
+    Rectangle sk = {go.x, go.y - 22, (float)bwid, 20};
+    const bool skHov = !m_paused && CheckCollisionPointRec(getMouse(), sk);
+    DrawText(skipL.c_str(), (int)(sk.x + (bwid - MeasureText(skipL.c_str(), skfs)) / 2),
+             (int)(sk.y + 4), skfs,
+             skHov ? Color{225, 200, 150, 255} : Color{140, 145, 165, 255});
+
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (hov) {
+            Audio::get().playSfx("click_heavy");
+            m_turnState = TURN_NORMAL;
+        } else if (skHov) {
+            Audio::get().playSfx("click_heavy");
+            m_config.skipViewingOrders = true;
+            m_config.save(m_configPath);
+            m_turnState = TURN_NORMAL;
+        }
+    }
 }

@@ -1,0 +1,1193 @@
+{
+  "$comment": [
+    "The Gearbox 1.1 ABI surface, frozen. NOT a copy of abi.json -- only the",
+    "three things a COMPILED mod depends on: the import name, its wire",
+    "signature, and the capability that gates it. Docs and parameter names may",
+    "be reworded freely; those cannot break a .wasm that already exists.",
+    "",
+    "Written when 1.2 added districts, publication, the army by kind and the",
+    "research lock. Everything listed here existed before that and must keep",
+    "working: within major version 1 a symbol may be added but never renamed,",
+    "re-signed, or re-gated."
+  ],
+  "gearbox": "1.1",
+  "modules": [
+    "Assets",
+    "Audio",
+    "Core",
+    "Diplomacy",
+    "Economy.Read",
+    "Economy.Write",
+    "GameProcess",
+    "GameState.Read",
+    "GameState.Write",
+    "Map",
+    "MapEditor",
+    "Military.Read",
+    "Military.Write",
+    "Net",
+    "Neural",
+    "Politics.Read",
+    "Politics.Write",
+    "Research.Read",
+    "Research.Write",
+    "Storage",
+    "UI",
+    "WasiStub"
+  ],
+  "imports": [
+    {
+      "module": "gearbox:assets",
+      "name": "read",
+      "signature": "(iiii)i",
+      "capability": "Assets"
+    },
+    {
+      "module": "gearbox:assets",
+      "name": "size",
+      "signature": "(ii)i",
+      "capability": "Assets"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "is_playing",
+      "signature": "(i)i",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "play",
+      "signature": "(iif)i",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "set_volume",
+      "signature": "(if)",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:audio",
+      "name": "stop",
+      "signature": "(i)",
+      "capability": "Audio"
+    },
+    {
+      "module": "gearbox:core",
+      "name": "abort",
+      "signature": "(ii)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "env",
+      "signature": "(i)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "fuel_budget",
+      "signature": "()I",
+      "capability": null
+    },
+    {
+      "module": "gearbox:core",
+      "name": "log",
+      "signature": "(iii)",
+      "capability": null
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "allied",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "at_war",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "guaranteed",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "non_aggression",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:diplomacy",
+      "name": "propose_war",
+      "signature": "(ii)i",
+      "capability": "Diplomacy"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_army_upkeep",
+      "signature": "(i)F",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_income_gross",
+      "signature": "(i)F",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_income_net",
+      "signature": "(i)F",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_is_bankrupt",
+      "signature": "(i)i",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_navy_upkeep",
+      "signature": "(i)F",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_industry_level",
+      "signature": "(i)i",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_industry_specialization",
+      "signature": "(iii)i",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "province_resource",
+      "signature": "(iii)F",
+      "capability": "Economy.Read"
+    },
+    {
+      "module": "gearbox:economy.write",
+      "name": "set_province_industry_level",
+      "signature": "(ii)i",
+      "capability": "Economy.Write"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_at",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_count",
+      "signature": "()i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_name",
+      "signature": "(iii)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_province_count",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_treasury",
+      "signature": "(i)F",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_owner",
+      "signature": "(i)i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_population",
+      "signature": "(i)I",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "turn_number",
+      "signature": "()i",
+      "capability": "GameState.Read"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "add_country_treasury",
+      "signature": "(iF)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_country_treasury",
+      "signature": "(iF)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_owner",
+      "signature": "(ii)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:gamestate.write",
+      "name": "set_province_population",
+      "signature": "(iI)i",
+      "capability": "GameState.Write"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "height",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "point_is_land",
+      "signature": "(FF)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_at",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_x",
+      "signature": "(i)F",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_center_y",
+      "signature": "(i)F",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_count",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_is_coastal",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_is_land",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_name",
+      "signature": "(iii)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_at",
+      "signature": "(ii)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "province_neighbor_count",
+      "signature": "(i)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "sea_route_exists",
+      "signature": "(FFFF)i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:map",
+      "name": "width",
+      "signature": "()i",
+      "capability": "Map"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_active",
+      "signature": "()i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_map_name",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_at",
+      "signature": "(i)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_compass_econ",
+      "signature": "(i)F",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_compass_social",
+      "signature": "(i)F",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_count",
+      "signature": "()i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_fortification",
+      "signature": "(i)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_industry_level",
+      "signature": "(i)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_population",
+      "signature": "(i)I",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_port_level",
+      "signature": "(i)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_province_resource",
+      "signature": "(iii)F",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_author",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_license",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_map_name",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_compass",
+      "signature": "(iFF)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_fortification",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_industry_level",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_population",
+      "signature": "(iI)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_port_level",
+      "signature": "(ii)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:mapeditor",
+      "name": "editor_set_province_resource",
+      "signature": "(iiiF)i",
+      "capability": "MapEditor"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_count",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_owner",
+      "signature": "(ii)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "army_stack_size",
+      "signature": "(ii)I",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "country_army",
+      "signature": "(i)I",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "province_fortification",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "province_port_level",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_at",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_count",
+      "signature": "()i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_crew",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_exists",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_health",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_lat",
+      "signature": "(i)F",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_lon",
+      "signature": "(i)F",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_owner",
+      "signature": "(i)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_range",
+      "signature": "(i)F",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "ship_type",
+      "signature": "(iii)i",
+      "capability": "Military.Read"
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_army_move",
+      "signature": "(iii)i",
+      "capability": "Military.Write"
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_bombard",
+      "signature": "(iiii)i",
+      "capability": "Military.Write"
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_engage",
+      "signature": "(ii)i",
+      "capability": "Military.Write"
+    },
+    {
+      "module": "gearbox:military.write",
+      "name": "order_ship_move",
+      "signature": "(iFF)i",
+      "capability": "Military.Write"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "is_host",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "max_message_bytes",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_at",
+      "signature": "(i)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_count",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "peer_name",
+      "signature": "(iii)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "recv",
+      "signature": "(iii)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "self_peer",
+      "signature": "()i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:net",
+      "name": "send",
+      "signature": "(iii)i",
+      "capability": "Net"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "action_count",
+      "signature": "(i)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "action_name",
+      "signature": "(iiii)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "country_is_ai",
+      "signature": "(i)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "feature_count",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "features",
+      "signature": "(iii)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "model_loaded",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "module_count",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "module_name",
+      "signature": "(iii)i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_count",
+      "signature": "()i",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "reward_mean",
+      "signature": "(i)F",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "update_count",
+      "signature": "()I",
+      "capability": "Neural"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_compass_econ",
+      "signature": "(i)F",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_compass_social",
+      "signature": "(i)F",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_has_policy",
+      "signature": "(iii)i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_count",
+      "signature": "()i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_id",
+      "signature": "(iii)i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "policy_name",
+      "signature": "(iii)i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_count",
+      "signature": "(i)i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_name",
+      "signature": "(iiii)i",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_minority_share",
+      "signature": "(ii)F",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "province_unrest",
+      "signature": "(i)F",
+      "capability": "Politics.Read"
+    },
+    {
+      "module": "gearbox:politics.write",
+      "name": "set_country_policy",
+      "signature": "(iiii)i",
+      "capability": "Politics.Write"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "country_funding",
+      "signature": "(i)F",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "country_has_researched",
+      "signature": "(iii)i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_category",
+      "signature": "(iii)i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_cost",
+      "signature": "(i)i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_count",
+      "signature": "()i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_id",
+      "signature": "(iii)i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "node_name",
+      "signature": "(iii)i",
+      "capability": "Research.Read"
+    },
+    {
+      "module": "gearbox:research.write",
+      "name": "set_country_funding",
+      "signature": "(iF)i",
+      "capability": "Research.Write"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "get",
+      "signature": "(iiii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "remove",
+      "signature": "(ii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:storage",
+      "name": "set",
+      "signature": "(iiii)i",
+      "capability": "Storage"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "button",
+      "signature": "(iiiiiii)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_circle",
+      "signature": "(iiiFi)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_image",
+      "signature": "(iiiiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_line",
+      "signature": "(iiiiiFi)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_rect",
+      "signature": "(iiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_text",
+      "signature": "(iiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "draw_text_sized",
+      "signature": "(iiiiiii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "measure_text",
+      "signature": "(iii)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_inside",
+      "signature": "(i)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_x",
+      "signature": "(i)F",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "mouse_y",
+      "signature": "(i)F",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_height",
+      "signature": "(i)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_register",
+      "signature": "(iiii)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_set_visible",
+      "signature": "(ii)",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "panel_width",
+      "signature": "(i)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "set_theme_accent",
+      "signature": "(i)i",
+      "capability": "UI"
+    },
+    {
+      "module": "gearbox:ui",
+      "name": "theme_accent",
+      "signature": "()i",
+      "capability": "UI"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "args_sizes_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_res_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "clock_time_get",
+      "signature": "(iIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "environ_sizes_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_advise",
+      "signature": "(iIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_allocate",
+      "signature": "(iII)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_close",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_datasync",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_set_flags",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_size",
+      "signature": "(iI)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_filestat_set_times",
+      "signature": "(iIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pread",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_dir_name",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_prestat_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_pwrite",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_read",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_readdir",
+      "signature": "(iiiIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_renumber",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "signature": "(iIii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_sync",
+      "signature": "(i)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_tell",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_create_directory",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_get",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_filestat_set_times",
+      "signature": "(iiiiIIi)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_link",
+      "signature": "(iiiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_open",
+      "signature": "(iiiiiIIii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_readlink",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_remove_directory",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_rename",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_symlink",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "path_unlink_file",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "poll_oneoff",
+      "signature": "(iiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "proc_exit",
+      "signature": "(i)",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "random_get",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sched_yield",
+      "signature": "()i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_accept",
+      "signature": "(iii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_recv",
+      "signature": "(iiiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_send",
+      "signature": "(iiiii)i",
+      "capability": "WasiStub"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "sock_shutdown",
+      "signature": "(ii)i",
+      "capability": "WasiStub"
+    }
+  ],
+  "exports": [
+    "mod_draw_panel",
+    "mod_load",
+    "mod_post_turn",
+    "mod_pre_turn",
+    "mod_unload"
+  ]
+}

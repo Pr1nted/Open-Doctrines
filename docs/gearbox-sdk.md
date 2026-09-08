@@ -169,6 +169,18 @@ absent — so **a mod must tolerate being granted less than it asked for**.
 | `Map` | Province geometry, adjacency | Low | **works** |
 | `Diplomacy` | Read relations, propose war | High | **works** |
 | `Storage` | Persistent KV, namespaced to your id | Low | **works** |
+| `Audio` | Play and stop your own mod's sounds | Low | **works** |
+| `Net` | Messages between copies of YOUR OWN mod | Medium | **works** |
+| `Military.Read` | Ships, armies **by kind**, forts, ports | Low | **works** |
+| `Military.Write` | Queue army and ship orders | High | **works** |
+| `Research.Read` | The tree, what is researched, **how many programmes a country runs** | Low | **works** |
+| `Research.Write` | Set funding, **force the number of research programmes** | High | **works** |
+| `Politics.Read` | Compass, policies, unrest, minorities, **districts, what a country publishes** | Low | **works** |
+| `Politics.Write` | Enact policies, **set district budgets and regional law, publish or withhold figures** | High | **works** |
+| `Economy.Read` | Income, **expenses, what a country is worth, its population**, industry, resources | Low | **works** |
+| `Economy.Write` | Set province industry level | High | **works** |
+| `MapEditor` | The open map editor project; inert outside the editor | Medium | **works** |
+| `WasiStub` | Minimal WASI shim so an interpreter-in-a-mod can boot | Low | **works** |
 
 Every module in this table is implemented. If a future one is not, requesting
 it means your mod is **refused at load**: the import does not exist, so it
@@ -280,6 +292,95 @@ python3 tools/wasm_imports.py mymod.odmod
 
 A stray import is the failure mode in every language, and it is the one thing
 you cannot discover by reading your own source.
+
+## 5b. What 1.2 added
+
+Gearbox 1.2 is additive: every 1.0 and 1.1 mod links and runs unchanged, and
+`sdk/compat/abi-1.0.json` and `abi-1.1.json` freeze those surfaces so a build
+that broke one would fail the suite. What is new is the game the game has
+become since 1.1 — districts, what a country publishes about itself, the army
+broken down by kind, and the research lock.
+
+**Districts** are slices of a country governed as a unit. Each takes a share of
+the pacification budget and can run regional law of its own:
+
+```c
+uint32_t n = gearbox_country_district_count(cid);
+for (uint32_t i = 0; i < n; ++i) {
+    char name[64];
+    gearbox_country_district_name(cid, i, name, sizeof name);
+    gearbox_log(GEARBOX_INFO, "%s: %d%% of the budget, %u provinces",
+                name,
+                gearbox_country_district_share(cid, i),
+                gearbox_country_district_province_count(cid, i));
+}
+```
+
+Asking a country for its districts is what BUILDS them: they are made on demand,
+the way the Districts tab makes them when it is first opened. A country nobody
+has divided answers with one district holding everything, never with nothing.
+
+Writing goes through the game's own path, so the invariant the resolver depends
+on — the shares of a country's districts sum to 100 — cannot be broken by a mod:
+
+```c
+gearbox_set_country_district_share(cid, 0, 70);   // the rest rebalance
+gearbox_set_country_district_law(cid, 0, "curfew", 1);
+```
+
+**What a country publishes** is a decision with a consequence rather than a
+display setting: migrants read a country's published figures, and good ones
+draw people to it. Four fields, in the `disclosure_field` enum — expenses,
+doctrines, treasury, district laws:
+
+```c
+if (gearbox_country_discloses(cid, GEARBOX_DISCLOSURE_TREASURY))
+    /* it publishes its books; what it holds is public */;
+gearbox_set_country_disclosure(my_cid, GEARBOX_DISCLOSURE_EXPENSES, 1);
+```
+
+**The army by kind.** `country_army` still answers with everyone; the new calls
+break it down by the troop type ids, which are stable and never translated:
+
+```c
+int64_t militia = gearbox_country_army_of_type(cid, "militia");
+int64_t here    = gearbox_province_troops_of_type(pid, cid, "mech");
+```
+
+**The research lock** forces how many programmes a country may run, in either
+direction, outranking its economy — `0` hands the decision back:
+
+```c
+gearbox_set_country_research_groups(cid, 1);   // held to one, however rich
+gearbox_set_country_research_groups(cid, 0);   // its economy decides again
+```
+
+**And the books**: `country_expenses`, `country_national_value` (a stock, where
+the income figures are flows) and `country_population`.
+
+**The AI module learned to introduce itself.** `Neural` was observe-only and
+stays that way, but a mod reading the feature vector had no way to ask whose
+vector it is — and that vector's layout is only stable within one ARCH:
+
+```c
+char v[32];
+gearbox_ai_version(v, sizeof v);      /* "ParrotZero 8.4.0" */
+if (gearbox_ai_arch() != 8) return;   /* the layout you compiled against is gone */
+```
+
+ARCH is the network shape and the action space, and it is the model file's
+format byte, so a bump means old weights are refused on purpose. RULES moves
+whenever behaviour a benchmark can see changes — record it beside any number you
+measure, or a comparison across builds is comparing two different games.
+
+`country_stance` reports what the AI has decided it is doing with a country —
+expand, consolidate, defend or develop — which is the one piece of its reasoning
+that is a summary rather than a number. It is held for several turns rather than
+chosen fresh each one, and `GEARBOX_INVALID` means the AI holds no stance for
+that country (usually because it does not play it).
+
+If you target 1.2, check `gearbox_env().gearbox_minor >= 2` before calling any
+of it — on an older host those imports are simply absent.
 
 ## 6. Manifest reference
 

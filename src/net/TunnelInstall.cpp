@@ -7,6 +7,7 @@
 #include "HttpClient.h"
 #include "util/Sha256.h"
 #include "util/RunCurl.h"
+#include "ToolRelease.h"
 
 #include <atomic>
 #include <cstdio>
@@ -158,52 +159,22 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
             return;
         }
 
-        // Scoped to the entry whose name matches this platform, so the digest
-        // and the URL are read from the SAME asset rather than the first of
-        // each that happens to appear.
-        const std::string body = res.body;
-        const std::string needle = std::string("\"name\":\"") + asset.name + "\"";
-        const size_t at = body.find(needle);
-        if (at == std::string::npos) {
-            impl->set(TunnelInstallStatus::Phase::Failed,
-                      std::string("Cloudflare's current release has no ") + asset.name +
-                          ". Installing it by hand still works.");
+        // Every check that decides whether a download may happen at all now
+        // lives in odtool::chooseAsset -- matched by name so the digest and the
+        // URL come from the SAME asset, a well-formed sha256 required, the host
+        // pinned, the size bounded. It was written here and is shared with the
+        // language-model runner's installer, so there is one audited copy of
+        // the rules rather than two that drift. See net/ToolRelease.h, and
+        // tests/tool_release_test.cpp, which this code never had.
+        const odtool::Recipe recipe{asset.name, kAllowedAssetHost, kMaxAssetBytes};
+        const odtool::Choice choice = odtool::chooseAsset(res.body, recipe, "Cloudflare's");
+        if (!choice.ok()) {
+            impl->set(TunnelInstallStatus::Phase::Failed, choice.refusal);
             impl->running.store(false);
             return;
         }
-        const size_t end = body.find("browser_download_url", at);
-        const std::string scope = body.substr(at, end == std::string::npos
-                                                  ? 2048 : end - at + 256);
-
-        const std::string digest = httpJsonString(scope, "digest", 128);
-        const long long size = httpJsonNumber(scope, "size", 0);
-        const std::string url = httpJsonString(scope, "browser_download_url", 512);
-
-        // The digest is what makes this safe; without one there is nothing to
-        // check the bytes against and the download must not happen at all.
-        if (digest.rfind("sha256:", 0) != 0 || digest.size() != 71) {
-            impl->set(TunnelInstallStatus::Phase::Failed,
-                      "Cloudflare's release did not come with a checksum, so this "
-                      "download cannot be verified and will not be run. Install "
-                      "cloudflared by hand instead.");
-            impl->running.store(false);
-            return;
-        }
-        // And the URL must be on the one host this is allowed to fetch from,
-        // no matter what the reply said.
-        if (url.rfind(kAllowedAssetHost, 0) != 0) {
-            impl->set(TunnelInstallStatus::Phase::Failed,
-                      "That release points somewhere unexpected, so nothing was "
-                      "downloaded.");
-            impl->running.store(false);
-            return;
-        }
-        if (size <= 0 || size > kMaxAssetBytes) {
-            impl->set(TunnelInstallStatus::Phase::Failed,
-                      "That release is an unexpected size, so nothing was downloaded.");
-            impl->running.store(false);
-            return;
-        }
+        const std::string url = choice.url;
+        const long long size = choice.size;
 
         // 2. Fetch it.
         std::error_code ec;
@@ -264,8 +235,7 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
         impl->set(TunnelInstallStatus::Phase::Verifying,
                   "Checking what was downloaded...", 100);
         const std::string actual = sha256Hex(payload);
-        const std::string expected = digest.substr(7);
-        if (actual != expected) {
+        if (actual != choice.sha256) {
             // Deleted, not kept "just in case". Something that failed its
             // checksum is the one thing that must never end up somewhere it
             // could later be executed.

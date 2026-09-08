@@ -599,14 +599,14 @@ void Game::drawMainMenu() {
     // the widest one is what has to fit.
     {
         int widest = 0;
-        for (int i = 0; i < MAIN_MENU_COUNT; ++i)
+        for (int i = 0; i < MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1); ++i)
             widest = std::max(widest, MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize));
         // 16 is the floor. Below that the list stops being a menu and starts
         // being a paragraph, and the answer is to turn the phone sideways.
         while (fontSize > 16 && widest > m_screenW - 32) {
             fontSize -= 2;
             widest = 0;
-            for (int i = 0; i < MAIN_MENU_COUNT; ++i)
+            for (int i = 0; i < MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1); ++i)
                 widest = std::max(widest, MeasureText(T(MAIN_MENU_ITEMS[i]), fontSize));
         }
         // The row height follows the type, or a 16pt list keeps 50pt gaps and
@@ -646,7 +646,8 @@ void Game::drawMainMenu() {
     // So the header is laid out in the room the buttons leave, and gives that
     // room up in the order it can most afford to: position first, then title
     // size, then the subtitle, then the rule.
-    const int startY = m_screenH / 2 - (MAIN_MENU_COUNT * itemH) / 2 + 30;
+    const int shown = MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1);
+    const int startY = m_screenH / 2 - (shown * itemH) / 2 + 30;
     const int headerAvail = startY - 16;        // 16px of air above item one
 
     int titleSize = 60;
@@ -675,7 +676,7 @@ void Game::drawMainMenu() {
                            fade({0, 0, 0, 200}), {0, 0, 0, 0});
     // Dark gradient behind buttons (center area)
     int btnStartY = startY - 20;
-    int btnEndY = btnStartY + MAIN_MENU_COUNT * itemH + 40;
+    int btnEndY = btnStartY + (MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1)) * itemH + 40;
     DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, fade({0, 0, 0, 180}), {0, 0, 0, 0});
     DrawRectangleGradientV(0, btnStartY, m_screenW, btnEndY - btnStartY, {0, 0, 0, 0}, fade({0, 0, 0, 180}));
     // Solid dark strip for readability
@@ -700,7 +701,9 @@ void Game::drawMainMenu() {
     }
 
     // Buttons
-    int count = MAIN_MENU_COUNT;
+    // The last row is the developer queue; without the badge it is simply
+    // not counted, which hides it without renumbering anything above it.
+    const int count = MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1);
 
     Vector2 mouse = getMouse();
     int hovered = -1;
@@ -1289,7 +1292,9 @@ void Game::updateMainMenu() {
 #endif
     if (m_odStatePrompt != ODP_NONE) { updateOdStatePrompt(); return; }
 
-    int count = MAIN_MENU_COUNT;
+    // The last row is the developer queue; without the badge it is simply
+    // not counted, which hides it without renumbering anything above it.
+    const int count = MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1);
 
     if (m_menuFeedbackTimer > 0) {
         m_menuFeedbackTimer -= GetFrameTime();
@@ -1383,6 +1388,9 @@ void Game::updateMainMenu() {
                 break;
             case 5: // Community
                 m_currentScreen = SCREEN_COMMUNITY;
+                break;
+            case 10: // Reports -- only reachable with the developer badge
+                openDevReports();
                 break;
             case 6: // Account
                 openAccountMenu();
@@ -2013,7 +2021,7 @@ void Game::updateCountrySelect() {
                 if (!m_currentSavePath.empty()) {
                     SaveManager::updatePlayerCountry(m_currentSavePath, SPC_CID);
                 }
-                m_dpiScale = GetWindowScaleDPI().x;
+                m_dpiScale = pointerScale();
                 m_screenW = GetScreenWidth();
                 m_screenH = GetScreenHeight();
                 if (m_renderer) {
@@ -2155,7 +2163,7 @@ void Game::commitPlayerCountry(int countryId) {
     if (!m_currentSavePath.empty()) {
         SaveManager::updatePlayerCountry(m_currentSavePath, m_playerCountryId);
     }
-    m_dpiScale = GetWindowScaleDPI().x;
+    m_dpiScale = pointerScale();
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
     if (m_renderer) {
@@ -2312,6 +2320,19 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
                                     : "on the scripted rung")
               << std::endl;
     startNewGameWithName(m_dataDir + file, "Bench " + mapName + " " + iso);
+    // ...AND SET THE SEAT AGAIN, BECAUSE startNewGameWithName CLEARS IT.
+    //
+    // That function clears m_forcedStartIso on its first line -- deliberately,
+    // since it is "the one door every new world comes through" and a stale
+    // forced country would leak from a tutorial into a real game. The seat was
+    // therefore assigned before the door and wiped by it, so --bench-agent has
+    // always seated the map's DEFAULT country rather than the one asked for.
+    //
+    // It went unnoticed because the only seat anyone had played by hand is
+    // 1914:FRA:rush, and FRA is 1914's default -- the bug and the intent agreed
+    // by luck. Any other seat played the wrong country and reported its score
+    // under the requested seat's name.
+    m_forcedStartIso = iso;
 }
 
 void Game::startQuickStart() {
@@ -2397,6 +2418,47 @@ void Game::drawSettingsFromMenu() {
 // second copy would be free to drift from this one.
 static float UI_SCALE_VALS[] = {0.75f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f};
 static const int   UI_SCALE_STEPS  = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCALE_VALS[0]));
+
+bool Game::stepDisplayValueRow(int index, int dir) {
+    if (m_settingsTab != 0) return false;
+    const int step = (dir >= 0) ? 1 : -1;
+    if (index == 8) {
+        int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, UI_SCALE_STEPS);
+        idx = (idx + step + UI_SCALE_STEPS) % UI_SCALE_STEPS;
+        m_config.uiScale = UI_SCALE_VALS[idx];
+        applyUiScale();
+    } else if (index == 9) {
+        m_config.colourBlindMode =
+            (m_config.colourBlindMode + step + COLOURBLIND_COUNT) % COLOURBLIND_COUNT;
+        odPalette::setMode(m_config.colourBlindMode);
+        // The political map bakes the relation colours into a texture, so the
+        // new palette is invisible until it is rebuilt. Only when a world is
+        // up: with no map loaded the renderer is null, and this function ends
+        // by dereferencing it -- the same crash Game_History.cpp records
+        // hitting from the other direction.
+        if (m_renderer) generatePoliticalTexture();
+    } else {
+        return false;
+    }
+    Audio::get().playSfx("slider_tick", 0.08f);
+    m_config.save(m_configPath);
+    return true;
+}
+
+bool Game::resetDisplayValueRow(int index) {
+    if (m_settingsTab != 0) return false;
+    if (index == 8) {
+        m_config.uiScale = 1.0f;
+        applyUiScale();
+    } else if (index == 9) {
+        m_config.colourBlindMode = 0;
+        odPalette::setMode(0);
+        if (m_renderer) generatePoliticalTexture();
+    } else {
+        return false;
+    }
+    return true;
+}
 
 void Game::updateSettingsFromMenu() {
     if (isMouseOverConsole()) return;
@@ -2609,10 +2671,9 @@ void Game::updateSettingsFromMenu() {
     // tab, and on a volume row it has to adjust.
     bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count &&
                    (items[m_settingsIndex].isValue || isVolumeSetting(m_settingsTab, m_settingsIndex));
-    bool onFps = (m_settingsTab == 0 && m_settingsIndex == 5);
-    bool onResolution = (m_settingsTab == 0 && m_settingsIndex == 4);
+    bool adjustsRow = settingUsesArrows(m_settingsTab, m_settingsIndex);
 
-    if (left && !onValue && !onFps && !onResolution) {
+    if (left && !adjustsRow) {
         int newTab = m_settingsTab;
         do {
             newTab = (newTab + TAB_COUNT - 1) % TAB_COUNT;
@@ -2623,7 +2684,7 @@ void Game::updateSettingsFromMenu() {
         m_keybindFilter.clear();
         m_keybindFilterActive = false;
     }
-    if (right && !onValue && !onFps && !onResolution) {
+    if (right && !adjustsRow) {
         int newTab = m_settingsTab;
         do {
             newTab = (newTab + 1) % TAB_COUNT;
@@ -2706,21 +2767,8 @@ void Game::updateSettingsFromMenu() {
     // UI Scale, in steps a player can tell apart. Applied as it changes rather
     // than on leaving the screen, because the thing being adjusted is the size
     // of the row doing the adjusting.
-    if (m_settingsIndex == 9 && m_settingsTab == 0 && (left || right)) {
-        m_config.colourBlindMode =
-            (m_config.colourBlindMode + (right ? 1 : COLOURBLIND_COUNT - 1)) % COLOURBLIND_COUNT;
-        odPalette::setMode(m_config.colourBlindMode);
-        generatePoliticalTexture();
-        m_config.save(m_configPath);
-        return;
-    }
-    if (m_settingsIndex == 8 && m_settingsTab == 0 && (left || right)) {
-        const int n = UI_SCALE_STEPS;
-        int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, n);
-        idx = (idx + (right ? 1 : -1) + n) % n;
-        m_config.uiScale = UI_SCALE_VALS[idx];
-        applyUiScale();
-        m_config.save(m_configPath);
+    if ((left || right) && m_settingsTab == 0 &&
+        stepDisplayValueRow(m_settingsIndex, right ? 1 : -1)) {
         return;
     }
     if (m_settingsIndex == 7 && m_settingsTab == 0 && (left || right)) {
@@ -2757,8 +2805,7 @@ void Game::updateSettingsFromMenu() {
             } else if (m_settingsTab == 0 && m_settingsIndex == 1) { m_config.showActualFlags = true; }
             else if (m_settingsTab == 0 && m_settingsIndex == 2) { m_config.debugMode = false; }
             else if (m_settingsTab == 0 && m_settingsIndex == 3) { m_config.maxZoom = 5.0f; }
-            else if (m_settingsTab == 0 && m_settingsIndex == 8) { m_config.uiScale = 1.0f; applyUiScale(); }
-            else if (m_settingsTab == 0 && m_settingsIndex == 9) { m_config.colourBlindMode = 0; odPalette::setMode(0); generatePoliticalTexture(); }
+            else if (m_settingsTab == 0 && resetDisplayValueRow(m_settingsIndex)) { /* rows 8-9 */ }
             else if (m_settingsTab == 0 && m_settingsIndex == 4) { m_config.screenW = 1920; m_config.screenH = 1080; forceWindowResize(1920, 1080); }
             else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
             else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
@@ -2933,7 +2980,7 @@ void Game::updateSettingsFromMenu() {
             PollInputEvents();
             m_screenW = GetScreenWidth();
             m_screenH = GetScreenHeight();
-        } else if (m_settingsTab == 0 && m_settingsIndex == 8) {
+        } else if (m_settingsTab == 0 && stepDisplayValueRow(m_settingsIndex, +1)) {
             // UI SCALE AND COLOUR BLINDNESS, ON A CLICK.
             //
             // Both rows were adjustable with LEFT/RIGHT and nothing else. A
@@ -2942,18 +2989,6 @@ void Game::updateSettingsFromMenu() {
             // and an arrow-key-only control is not discoverable with a mouse
             // and unreachable on a touch screen. Clicking now steps to the
             // next value, which is what the resolution row above already does.
-            int idx = nearestIndex(m_config.uiScale, UI_SCALE_VALS, UI_SCALE_STEPS);
-            idx = (idx + 1) % UI_SCALE_STEPS;
-            m_config.uiScale = UI_SCALE_VALS[idx];
-            applyUiScale();
-            Audio::get().playSfx("slider_tick", 0.08f);
-            m_config.save(m_configPath);
-        } else if (m_settingsTab == 0 && m_settingsIndex == 9) {
-            m_config.colourBlindMode = (m_config.colourBlindMode + 1) % COLOURBLIND_COUNT;
-            odPalette::setMode(m_config.colourBlindMode);
-            generatePoliticalTexture();
-            Audio::get().playSfx("slider_tick", 0.08f);
-            m_config.save(m_configPath);
         } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
             m_rebindingAction = items[m_settingsIndex].actionId;
             m_waitingForKey = true;

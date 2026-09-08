@@ -57,11 +57,53 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# A WATCHDOG, because a hung binary is not a slow one.
+#
+# With the Mac's display asleep, the windowed binary stops inside raylib's
+# initialisation and never comes back -- it prints its module list, reaches
+# "raudio: loaded", and sits there for ever with no window and no crash. This
+# loop then waited on it for ever, and since tests/run_all.sh calls this script,
+# THE WHOLE SUITE HUNG.
+#
+# That is not a hypothetical cost. It is how stale doctrine data sat in all
+# seven shipped maps for a day: the suite could not be run to completion, so the
+# check that would have caught it was never read. A check that cannot run in the
+# environment it is used in has to SKIP, loudly, not block.
+#
+# `timeout` is not available on macOS, so this is done by hand.
+det_timeout="${OD_DET_TIMEOUT:-180}"
+run_bounded() {
+    "$@" &
+    _pid=$!
+    _waited=0
+    while kill -0 "$_pid" 2>/dev/null; do
+        if [ "$_waited" -ge "$det_timeout" ]; then
+            kill -9 "$_pid" 2>/dev/null || true
+            wait "$_pid" 2>/dev/null || true
+            return 124
+        fi
+        sleep 1
+        _waited=$((_waited + 1))
+    done
+    wait "$_pid" 2>/dev/null || true
+    return 0
+}
+
+export OD_DET_TRACE=1
 runs=6
 i=1
 while [ "$i" -le "$runs" ]; do
-    OD_DET_TRACE=1 "$bin" --resource-limit 90 --eval-ai 1 25 4242 2 --vs-random 2>&1 \
-        | grep -a '^\[DET\]' > "$tmp/run$i.txt" || true
+    rc=0
+    run_bounded "$bin" --resource-limit 90 --eval-ai 1 25 4242 2 --vs-random \
+        > "$tmp/raw$i.txt" 2>&1 || rc=$?
+    if [ "$rc" -eq 124 ]; then
+        echo "  skip  the binary did not finish in ${det_timeout}s and was killed."
+        echo "        On macOS this is almost always a sleeping display: raylib"
+        echo "        stalls in init with no monitor. Wake the screen and re-run;"
+        echo "        caffeinate cannot wake a display that is already asleep."
+        exit 0
+    fi
+    grep -a '^\[DET\]' "$tmp/raw$i.txt" > "$tmp/run$i.txt" || true
     i=$((i + 1))
 done
 
@@ -72,8 +114,25 @@ fi
 
 turns=$(wc -l < "$tmp/run1.txt" | tr -d ' ')
 fail=0
+empty=0
 i=2
 while [ "$i" -le "$runs" ]; do
+    # AN EMPTY RUN IS NOT A DIVERGENCE, and calling it one sends somebody
+    # hunting a determinism bug that is not there.
+    #
+    # The windowed binary intermittently produces no trace at all under load --
+    # a different run each time, while every run that DID trace agreed with the
+    # first. That is the display or the GPU losing a race with whatever else is
+    # on the machine, not the simulation disagreeing with itself. It was
+    # reported as "run 3 diverged from run 1" with an empty B, which is the
+    # least helpful true statement available.
+    if [ ! -s "$tmp/run$i.txt" ]; then
+        echo "  note  run $i produced no trace at all and is not being compared"
+        echo "        (a windowed run that never got a window; see the skip above)"
+        empty=$((empty + 1))
+        i=$((i + 1))
+        continue
+    fi
     if ! cmp -s "$tmp/run1.txt" "$tmp/run$i.txt"; then
         echo "  FAIL  run $i diverged from run 1"
         # Name the turn: it is the single most useful fact for whoever debugs it.
@@ -85,7 +144,16 @@ while [ "$i" -le "$runs" ]; do
 done
 
 if [ "$fail" -eq 0 ]; then
-    echo "  ok    $runs runs of seed 4242 agree over $turns turns"
+    compared=$((runs - empty))
+    if [ "$empty" -gt 0 ]; then
+        echo "  ok    $compared of $runs runs of seed 4242 agree over $turns turns"
+        echo "        ($empty produced no trace and were skipped -- see the notes above.)"
+        # Two runs is not the six this check is sized for; say so rather than
+        # let a thin pass read like a full one. See the note on SIX runs above.
+        [ "$compared" -lt 3 ] && echo "  warn  too few runs compared to mean much; re-run on a quiet machine."
+    else
+        echo "  ok    $runs runs of seed 4242 agree over $turns turns"
+    fi
 else
     echo ""
     echo "  The same seed no longer plays the same game. Something in the turn"

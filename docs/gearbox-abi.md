@@ -2,7 +2,7 @@
      Source: sdk/abi.json   Generator: tools/gen_abi_docs.py
      Regenerate with: python3 tools/gen_abi_docs.py -->
 
-# Gearbox ABI Reference — v1.1
+# Gearbox ABI Reference — v1.2
 
 The complete wire contract between a mod and the host. Every SDK under
 `sdk/` is a transcription of this; if an SDK disagrees with this page, the
@@ -33,20 +33,20 @@ memory after a call returns, and you must not keep one of the host's.
 | `Assets` | `gearbox:assets` | Read your own data/ directory | yes | implemented |
 | `GameProcess` | — | Turn lifecycle hooks. Grants exports, not imports. | yes | implemented |
 | `GameState.Write` | `gearbox:gamestate.write` | Mutate the world. Implies GameState.Read. | yes | implemented |
-| `Neural` | `gearbox:neural` | Observe AI features and rewards (observe-only: no import writes to the model) | yes | implemented |
+| `Neural` | `gearbox:neural` | Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model) | yes | implemented |
 | `Map` | `gearbox:map` | Province geometry and adjacency | yes | implemented |
 | `Diplomacy` | `gearbox:diplomacy` | Read and propose diplomatic actions | yes | implemented |
 | `Storage` | `gearbox:storage` | Persistent key-value store namespaced to your mod id | yes | implemented |
 | `Audio` | `gearbox:audio` | Play and stop sounds from your own mod's assets | yes | implemented |
 | `Net` | `gearbox:net` | Send and receive messages between copies of YOUR OWN mod | yes | implemented |
 | `WasiStub` | `wasi_snapshot_preview1` | Minimal WASI shim so an interpreter-in-a-mod can boot. NOT a WASI implementation: no filesystem, deterministic randomness, no wall clock. | yes | implemented |
-| `Military.Read` | `gearbox:military.read` | Read ships, armies, fortifications and ports | yes | implemented |
+| `Military.Read` | `gearbox:military.read` | Read ships, armies by kind, fortifications and ports | yes | implemented |
 | `Military.Write` | `gearbox:military.write` | Queue army and ship orders through the turn resolver | yes | implemented |
-| `Research.Read` | `gearbox:research.read` | Read the technology tree and what each country has researched | yes | implemented |
-| `Research.Write` | `gearbox:research.write` | Set research funding | yes | implemented |
-| `Politics.Read` | `gearbox:politics.read` | Read the political compass, policies, unrest and minorities | yes | implemented |
-| `Politics.Write` | `gearbox:politics.write` | Enact and cancel policies through the game's own path | yes | implemented |
-| `Economy.Read` | `gearbox:economy.read` | Read income, upkeep, industry and resources | yes | implemented |
+| `Research.Read` | `gearbox:research.read` | Read the technology tree, what each country has researched, and how many programmes it may run | yes | implemented |
+| `Research.Write` | `gearbox:research.write` | Set research funding, and force how many research programmes a country may run | yes | implemented |
+| `Politics.Read` | `gearbox:politics.read` | Read the political compass, policies, unrest, minorities, districts and what a country publishes | yes | implemented |
+| `Politics.Write` | `gearbox:politics.write` | Enact and cancel policies, set district budgets and regional law, publish or withhold figures | yes | implemented |
+| `Economy.Read` | `gearbox:economy.read` | Read income, expenses, what a country is worth, its population, industry and resources | yes | implemented |
 | `Economy.Write` | `gearbox:economy.write` | Set province industry level | yes | implemented |
 | `MapEditor` | `gearbox:mapeditor` | Read and write the open map editor project; inert outside the editor | yes | implemented |
 
@@ -1962,6 +1962,71 @@ Gradient updates the loaded model has been through -- roughly, how much training
 
 Whether an AI model is loaded at all. False in a game with no AI players.
 
+#### `ai_version`
+
+```wat
+(import "gearbox:neural" "ai_version" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The AI's own version, e.g. "ParrotZero 8.4.0" -- ARCH.RULES.PATCH, and independent of the game's version. ARCH is the network shape and action space, RULES is behaviour a benchmark can see, PATCH cannot move a number. A mod that reads the feature vector should check ARCH before trusting its layout, and anything comparing measurements across builds should record RULES. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `ai_arch`
+
+```wat
+(import "gearbox:neural" "ai_arch" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+The AI's ARCH number on its own, which is also the model file's format byte. The feature count and the action sets are only stable within one ARCH; a bump means old weights are refused on purpose.
+
+#### `country_stance`
+
+```wat
+(import "gearbox:neural" "country_stance" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+The posture the AI has chosen for this country -- 0 expand, 1 consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none (a country the AI does not play, or one that has not been given a stance yet). Held for several turns at a time rather than chosen fresh each turn.
+
+#### `stance_name`
+
+```wat
+(import "gearbox:neural" "stance_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stance's name: "expand", "consolidate", "defend", "develop". Never translated, and stable within an ARCH. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `stance_count`
+
+```wat
+(import "gearbox:neural" "stance_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many stances there are to choose between.
+
 ### `gearbox:military.read`
 
 Requires the **Military.Read** capability.
@@ -2190,6 +2255,65 @@ Fortification level, 0..5. Multiplies the defender's strength.
 
 Port level, 0..3. 0 means no port, so no embarking and no ship repair.
 
+#### `troop_type_count`
+
+```wat
+(import "gearbox:military.read" "troop_type_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many kinds of soldier exist.
+
+#### `troop_type_id`
+
+```wat
+(import "gearbox:military.read" "troop_type_id" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stable id of troop type `index` -- line, militia, assault, mech. Never translated. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_army_of_type`
+
+```wat
+(import "gearbox:military.read" "country_army_of_type" (func $x (param i32 i32 i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `troop_type` | `i32` | pointer into your linear memory |
+| `troop_type_len` | `i32` | byte length |
+
+**Returns** `i64`.
+
+How many soldiers of that kind this country has, everywhere. 0 for a troop type that does not exist.
+
+#### `province_troops_of_type`
+
+```wat
+(import "gearbox:military.read" "province_troops_of_type" (func $x (param i32 i32 i32 i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+| `country` | `i32` | — |
+| `troop_type` | `i32` | pointer into your linear memory |
+| `troop_type_len` | `i32` | byte length |
+
+**Returns** `i64`.
+
+How many soldiers of that kind this country has standing in that province.
+
 ### `gearbox:military.write`
 
 Requires the **Military.Write** capability.
@@ -2364,6 +2488,20 @@ Whether a country has completed a technology. Takes the id from node_id, not the
 
 Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That is how the game stores it and how its own economy screen presents it.
 
+#### `country_research_groups`
+
+```wat
+(import "gearbox:research.read" "country_research_groups" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many research programmes this country may run at once, 1 to 3. This is the effective number, including any override a script or a mod has set.
+
 ### `gearbox:research.write`
 
 Requires the **Research.Write** capability.
@@ -2382,6 +2520,21 @@ Requires the **Research.Write** capability.
 **Returns** `i32` — 0 or 1.
 
 Set research funding as a share of income. Clamped to 0..1; a value in 'points per turn' is not a quantity this game has.
+
+#### `set_country_research_groups`
+
+```wat
+(import "gearbox:research.write" "set_country_research_groups" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `groups` | `i32` | — |
+
+**Returns** `i32`.
+
+Force how many research programmes a country may run, 1 to 3, or 0 to hand the decision back to its economy. Outranks the economic gate in both directions and is saved with the game. Returns 1 on success.
 
 ### `gearbox:politics.read`
 
@@ -2533,6 +2686,173 @@ The minority's name. Two-call sizing: call with cap 0 to learn the length, alloc
 
 That minority's share of the province's population, 0..1.
 
+#### `country_district_count`
+
+```wat
+(import "gearbox:politics.read" "country_district_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many districts this country is divided into. Districts are built on demand, so asking is what creates the default one for a country that has never been divided.
+
+#### `country_district_name`
+
+```wat
+(import "gearbox:politics.read" "country_district_name" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The district's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_district_share`
+
+```wat
+(import "gearbox:politics.read" "country_district_share" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+This district's claim on the country's pacification budget, in percent. The shares of a country's districts sum to 100.
+
+#### `country_district_province_count`
+
+```wat
+(import "gearbox:politics.read" "country_district_province_count" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+How many provinces this district holds.
+
+#### `country_district_province`
+
+```wat
+(import "gearbox:politics.read" "country_district_province" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `n` | `i32` | — |
+
+**Returns** `i32`.
+
+Province `n` of this district, or GEARBOX_INVALID if there is no such one.
+
+#### `country_district_law_count`
+
+```wat
+(import "gearbox:politics.read" "country_district_law_count" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+How many regional laws this district runs.
+
+#### `country_district_law`
+
+```wat
+(import "gearbox:politics.read" "country_district_law" (func $x (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `n` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stable id of regional law `n` in this district. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `district_law_count`
+
+```wat
+(import "gearbox:politics.read" "district_law_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many regional laws exist to choose from.
+
+#### `district_law_id`
+
+```wat
+(import "gearbox:politics.read" "district_law_id" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The stable id of regional law `index`. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `district_law_name`
+
+```wat
+(import "gearbox:politics.read" "district_law_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The display name of regional law `index`, untranslated. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_discloses`
+
+```wat
+(import "gearbox:politics.read" "country_discloses" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `field` | `i32` | see [disclosure_field](#enums) |
+
+**Returns** `i32`.
+
+Whether this country publishes that figure in its profile: 1 if it does, 0 if it keeps it to itself. See the disclosure_field enum. Publishing is a decision with a consequence -- migrants read it -- rather than a display setting.
+
 ### `gearbox:politics.write`
 
 Requires the **Politics.Write** capability.
@@ -2553,6 +2873,56 @@ Requires the **Politics.Write** capability.
 **Returns** `i32` — 0 or 1.
 
 Enact or cancel a policy. GOES THROUGH THE GAME'S OWN enactPolicy, so the cost, the prerequisites and the per-turn enactment cap all still apply -- a country cannot end up running policies it could never have afforded. Returns 1 if the policy is already in the requested state.
+
+#### `set_country_district_share`
+
+```wat
+(import "gearbox:politics.write" "set_country_district_share" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `percent` | `i32` | — |
+
+**Returns** `i32`.
+
+Set this district's claim on the pacification budget. The other districts are rebalanced so the shares still sum to 100, exactly as dragging the slider does. Returns 1 on success.
+
+#### `set_country_district_law`
+
+```wat
+(import "gearbox:politics.write" "set_country_district_law" (func $x (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `law` | `i32` | pointer into your linear memory |
+| `law_len` | `i32` | byte length |
+| `on` | `i32` | — |
+
+**Returns** `i32`.
+
+Pass or repeal a regional law in this district. Returns 1 on success, 0 for an unknown law or district.
+
+#### `set_country_disclosure`
+
+```wat
+(import "gearbox:politics.write" "set_country_disclosure" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `field` | `i32` | see [disclosure_field](#enums) |
+| `on` | `i32` | — |
+
+**Returns** `i32`.
+
+Publish or withhold one of the figures in this country's profile. Returns 1 on success.
 
 ### `gearbox:economy.read`
 
@@ -2673,6 +3043,48 @@ What this province's industry specialises in, or an empty string for none. Two-c
 **Returns** `f64`.
 
 How much of a resource a province holds, 0..100. `which` is one of "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+
+#### `country_expenses`
+
+```wat
+(import "gearbox:economy.read" "country_expenses" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What this country spent last turn, in total. The same figure its profile publishes and the economy screen draws.
+
+#### `country_national_value`
+
+```wat
+(import "gearbox:economy.read" "country_national_value" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What the whole country is worth: every industry level, fort, port and division at what it cost to raise. A stock, where the income figures are flows.
+
+#### `country_population`
+
+```wat
+(import "gearbox:economy.read" "country_population" (func $x (param i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i64`.
+
+How many people live in this country.
 
 ### `gearbox:economy.write`
 
@@ -3083,11 +3495,15 @@ struct is safe against a newer host that has appended fields.
 
 **`net_role`** — `STANDALONE` = 0, `CLIENT` = 1, `SERVER` = 2, `HOST_PLAYER` = 3
 
+**`disclosure_field`** — `EXPENSES` = 0, `DOCTRINES` = 1, `TREASURY` = 2, `DISTRICT_LAWS` = 3
+
+**`ai_stance`** — `EXPAND` = 0, `CONSOLIDATE` = 1, `DEFEND` = 2, `DEVELOP` = 3
+
 ## Constants
 
 - `GEARBOX_INVALID` = `0xFFFFFFFF`
 - `GEARBOX_MAJOR` = `1`
-- `GEARBOX_MINOR` = `1`
+- `GEARBOX_MINOR` = `2`
 
 ## Writing a binding for a language we do not ship
 

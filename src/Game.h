@@ -1,5 +1,6 @@
 #pragma once
 #include "GameStructs.h"
+#include "ReleaseRules.h"
 #include "util/LoadLog.h"
 #include "comms/Transmission.h"
 #include "dialog/DialogBox.h"
@@ -16,6 +17,9 @@
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
 #include "renderer/MapRenderer.h"
+#include "Feedback.h"
+#include "Mail.h"
+#include "llm/Advisor.h"
 #include "Config.h"
 #include "Audio.h"
 #include "net/TurnSeal.h"
@@ -116,6 +120,21 @@ public:
     // This is the tuning knob for how fast the world (and, through
     // maxRecruit = pop/5, every army) grows.
     static constexpr float BASE_POP_GROWTH_PCT = 0.25f;
+    /**
+     * People per unit of cos(latitude)-weighted province area, as a ceiling.
+     *
+     * The world's population ran away -- 2.1 billion at load to 110 billion by
+     * turn 120 -- because growth compounded against a taper aimed at a flat
+     * MAX_PROVINCE_POP that nothing could ever approach. See
+     * provinceCarryingCapacity(). Sized so the 1939 map tends toward roughly
+     * four times its starting population: 6.1 million area units at 1,400 is a
+     * ceiling near 8.5 billion.
+     */
+    static constexpr float POP_PER_AREA = 1400.0f;
+    /** What the ground under a province will hold. See POP_PER_AREA. */
+    long long provinceCarryingCapacity(int pid) const;
+    /** Share-weighted ethnic-policy population effect for one province, %/turn. */
+    float ethnicGrowthPctFor(int countryId, int provinceId) const;
 
     friend class ScriptEngine;
     friend class AISystem;
@@ -350,6 +369,12 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
+    /** Constructs trade offers a neighbour could make to one AI country and
+     *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
+     *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
+     *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
+     *  and PROBE_OK / PROBE_FAIL. */
+    bool runTradeProbe(const std::string& seatSpec, unsigned int seed);
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -692,7 +717,12 @@ private:
     TurnStoreKind mpStoreKind() const;
     void mpStartHosting();
     /** Data directory probe for headless modes. See Game_Server.cpp. */
+    /** Data directory probe without a window. Public because the headless
+     *  bench-agent door in ServerMain needs it before runBenchAgent, exactly
+     *  as runHeadlessAI does. */
+public:
     bool srvResolveDataDir(const std::string& override);
+private:
     void mpOpenHost();
 
     // --- the lobby -> game bridge ---
@@ -1172,6 +1202,11 @@ public:
     bool        modNeuralCountryIsAI(int cid) const;
     long long   modNeuralUpdateCount() const;
     bool        modNeuralModelLoaded() const;
+    std::string modAiVersion() const;
+    int         modAiArch() const;
+    int         modCountryStance(int cid) const;
+    std::string modStanceName(int index) const;
+    int         modStanceCount() const;
     int         modProvinceMinorityCount(int pid) const;
     std::string modProvinceMinorityName(int pid, int index) const;
     double      modProvinceMinorityShare(int pid, int index) const;
@@ -1184,6 +1219,32 @@ public:
     std::string modProvinceIndustrySpecialization(int pid) const;
     double      modProvinceResource(int pid, const std::string& which) const;
     bool        modSetProvinceIndustryLevel(int pid, int level);
+    // ── ABI 1.2: districts, publication, the books, the army by kind ──
+    /// Bounds-checked district lookup shared by the ABI 1.2 readers.
+    const District* modDistrictAt(int cid, int index);
+    int         modCountryDistrictCount(int cid);
+    std::string modCountryDistrictName(int cid, int index);
+    int         modCountryDistrictShare(int cid, int index);
+    int         modCountryDistrictProvinceCount(int cid, int index);
+    int         modCountryDistrictProvince(int cid, int index, int n);
+    int         modCountryDistrictLawCount(int cid, int index);
+    std::string modCountryDistrictLaw(int cid, int index, int n);
+    int         modDistrictLawCount() const;
+    std::string modDistrictLawId(int index) const;
+    std::string modDistrictLawName(int index) const;
+    bool        modCountryDiscloses(int cid, int field) const;
+    bool        modSetCountryDistrictShare(int cid, int index, int pct);
+    bool        modSetCountryDistrictLaw(int cid, int index, const std::string& lawId, bool on);
+    bool        modSetCountryDisclosure(int cid, int field, bool on);
+    double      modCountryExpenses(int cid) const;
+    double      modCountryNationalValue(int cid) const;
+    long long   modCountryPopulation(int cid) const;
+    int         modTroopTypeCount() const;
+    std::string modTroopTypeId(int index) const;
+    long long   modCountryArmyOfType(int cid, const std::string& type) const;
+    long long   modProvinceTroopsOfType(int pid, int cid, const std::string& type) const;
+    int         modCountryResearchGroups(int cid) const;
+    bool        modSetCountryResearchGroups(int cid, int groups);
     bool        modProvinceIsCoastal(int pid) const;
     bool        modSeaRouteExists(double lon1, double lat1, double lon2, double lat2) const;
     bool        modPointIsLand(double lon, double lat) const;
@@ -1447,6 +1508,42 @@ public:
     Texture2D m_politicalTex{};
     int m_screenW = 1600;
     int m_screenH = 900;
+    /**
+     * How many DRAWING units there are per unit the pointer reports.
+     *
+     * NOT the display's content scale, which is what this used to be set from
+     * and what makes it wrong the moment high-DPI rendering is switched on. On
+     * macOS the cursor arrives in the same logical space the game draws in --
+     * raylib's GLFW backend skips its own mouse scaling there on purpose, with
+     * the comment "system should manage window/input scaling" -- so the ratio
+     * is one, and it is one whether the framebuffer is 1x or 2x. Reading the
+     * content scale instead would return 2.0 on a Retina panel and put every
+     * click twice as far from whatever it was over.
+     *
+     * Elsewhere the old reading is kept exactly as it was, so no platform this
+     * was tuned against changes behaviour.
+     */
+    static float pointerScale() {
+        // HIGH-DPI ON MEANS RAYLIB HAS ALREADY DONE THIS, on every platform.
+        // Off Apple it calls SetMouseScale(screen/framebuffer) itself when the
+        // flag is set (rcore_desktop_glfw.c), so the cursor arrives in logical
+        // units; on Apple the system never took it out of them. Multiplying by
+        // the content scale on top of either is a SECOND correction, and on a
+        // 150% Windows display that puts every click half a screen from what it
+        // was over. This is the case the machine here cannot test -- it reports
+        // a scale of 1.00 -- so it is reasoned from raylib's source and written
+        // down rather than left to be discovered on somebody's monitor.
+        if (IsWindowState(FLAG_WINDOW_HIGHDPI)) return 1.0f;
+#if defined(__APPLE__)
+        // And with the flag off it is still one here: macOS hands back logical
+        // coordinates whatever the framebuffer is doing.
+        return 1.0f;
+#else
+        // Unchanged from before the flag existed, so no platform that was
+        // tuned against the old behaviour moves.
+        return GetWindowScaleDPI().x;
+#endif
+    }
     float m_dpiScale = 1.0f;
     float m_uiScaleBase = 1.0f;         // what the PLATFORM insists on, before the player's factor
     bool m_running = false;
@@ -1561,6 +1658,22 @@ public:
      * AND "activate" the row under it.
      */
     bool updateVolumeSliders(int startY, int itemH, int centerX, int effScroll);
+    /**
+     * Steps a Display row that cycles a list of values, in whichever settings
+     * screen asked.
+     *
+     * There are two settings screens -- the main menu's and the one behind the
+     * pause menu -- and they each grew their own copy of the row handling. The
+     * in-game copy stopped at row 7, so UI Scale and Colourblind Colours drew
+     * their values, took the click, and did nothing with it: a player could
+     * only change them from the main menu, and only by mouse. Rows added here
+     * work in both screens or in neither.
+     *
+     * `dir` is +1 or -1. Returns true when the row was handled.
+     */
+    bool stepDisplayValueRow(int index, int dir);
+    /** Puts a row handled by stepDisplayValueRow back to its default. */
+    bool resetDisplayValueRow(int index);
     /** Draws one volume row's bar. Called from the settings item-draw loop. */
     void drawVolumeSlider(int index, int y, int centerX, bool selected);
     /** Nudges a volume row by delta and applies it. Used by LEFT/RIGHT and R. */
@@ -1992,8 +2105,29 @@ public:
     ///
     /// A desktop window is tall enough for the 700 cap to hide it. A phone
     /// never is: 699 points tall, so the panel ran to the bottom every game.
+    /// The Orders toggle that sits directly under Process Turn.
+    ///
+    /// It belongs to that button rather than to the sidebar: what it shows is
+    /// the turn that just resolved, so it is an option ABOUT processing a turn,
+    /// and it read as an unrelated tool while it lived in the tab column.
+    ///
+    /// Shorter than the button it hangs off, on purpose -- same width so the
+    /// two read as one control, less height so it reads as the subordinate
+    /// half. A little taller on a phone, where 22px is under the comfortable
+    /// touch target and the extra four pixels cost nothing.
+    int ordersStripH() const { return compactHud() ? 28 : 22; }
+    /// Whether it is drawn at all: only alongside the button it belongs to.
+    bool ordersStripVisible() const { return bottomLeftStubVisible(); }
+
     int bottomLeftStubTop() const {
-        return m_screenH - bottomBarH() - 16 - 36 - 6;
+        // The strip hangs BELOW Process Turn, so the group starts higher by
+        // exactly its height. The bottom of the group is unchanged, which is
+        // what keeps it clear of the view-tab bar on every screen size -- and
+        // why this arithmetic lives here rather than in the four places that
+        // would otherwise each have to know about the strip. See the note
+        // above about seven places all writing 80.
+        return m_screenH - bottomBarH() - 16 - 36 - 6 -
+               (ordersStripVisible() ? ordersStripH() + 4 : 0);
     }
 
     /// Whether that row is on screen at all. The panels reserve space for it
@@ -2079,6 +2213,21 @@ public:
     std::string m_economyFeedback;
     float m_economyFeedbackTimer = 0;
     CountryIncomeSnapshot computeCountryIncome(int countryId) const;
+    /**
+     * What a country's outgoings are made of, as wedges.
+     *
+     * ONE TABLE, TWO CHARTS. The economy screen has drawn this pie since
+     * before country profiles existed, and the profile publishes the same
+     * breakdown to anyone who looks -- so the slices, their colours and their
+     * labels come from here rather than being written twice and drifting.
+     * That has already cost this chart once: industry upkeep was in the
+     * denominator and had no wedge, so the percentages did not sum to 100.
+     */
+    struct ExpenseSlice { float value; Color col; std::string label; };
+    static std::vector<ExpenseSlice> expenseSlices(const CountryIncomeSnapshot& s);
+    /** See CountryIncomeSnapshot::nationalValue. Priced from the build tables. */
+    float countryNationalValue(int countryId) const;
+    long long countryPopulation(int countryId) const;
     void refreshIncomeCache();
 
     // ── WHAT SPECIALISING A PROVINCE IS WORTH ───────────────────────
@@ -2105,6 +2254,293 @@ public:
      * would actually earn -- nullptr when it has no deposits worth naming.
      */
     const char* bestSpecializationFor(int pid) const;
+
+    // ── WHERE A FACTORY MAY STAND, AND WHAT IT EARNS THERE ──────────
+    //
+    // See industryCapacity() in BuildCosts.h for the rule and the calibration.
+    // These two are the only ways the rest of the game is allowed to ask; the
+    // AI, the province panel, the turn resolver and the multiplayer host all
+    // come through here, so none of them can drift into playing a different
+    // game about where industry is worth building.
+    /**
+     * The highest industry level this province could support, 1..IND_MAX_LEVEL.
+     *
+     * NOT a statement about what is built there. A save may legally hold a
+     * province above its capacity -- see the grandfathering note in
+     * BuildCosts.h -- so callers must compare rather than clamp.
+     */
+    int provinceIndustryCapacity(int pid) const;
+    /**
+     * What a province with `level` industry earns per turn, given what the
+     * province is.
+     *
+     * Replaces a flat `level * 2`, which paid an empty rock what it paid the
+     * Ruhr. Monotonic in level by construction: building a level must never
+     * LOSE a player money, or the economy grows a wall they hit and stop
+     * playing at rather than a slope they keep climbing.
+     */
+    float provinceIndustryIncome(int pid, int level) const;
+    /**
+     * The three capacity totals the AI bench reads, summed over a country's
+     * provinces. `overcap` counts grandfathered provinces -- built above their
+     * own capacity -- which is a population worth being able to see rather
+     * than discovering later as a mystery.
+     */
+    void countryIndustryCapacity(int countryId, int& used, int& total,
+                                 int& overcap) const;
+
+    // ── THE PRODUCTION ECONOMY ──────────────────────────────────────
+    //
+    // See GameStructs.h for what a good is and why there are four. This is the
+    // machinery: deposits are extracted into a national pool, factories convert
+    // the pool into goods, the population eats the consumer good, and how well
+    // it is fed is felt as unrest and as growth.
+    //
+    // BEHIND A FLAG, and that is not timidity. Everything priced in this game
+    // was tuned against an economy where industry emitted money, so switching
+    // the denomination changes every cost at once. The flag keeps the old
+    // economy playable AND benchable while the new one is measured beside it,
+    // which is the only way to tell "the AI got worse" from "the game changed".
+    // It comes out once military costs move too.
+    bool m_goodsEconomy = false;
+    /**
+     * The share of each turn's surplus raw materials sold automatically, 0-100.
+     *
+     * ONE DIAL INSTEAD OF TWO MODES. The question was whether deposits should
+     * produce materials only (money coming from tax and trade) or materials
+     * plus an auto-sold surplus. Both, and every point between: 100 sells
+     * everything and reproduces roughly today's economy, 0 sells nothing and
+     * makes trade the only way to turn ore into money, and the interesting
+     * settings are in the middle.
+     *
+     * Saved with the world, so a campaign keeps the economy it was started
+     * under. OD_AUTOSELL_PCT overrides it for the bench, which needs to sweep
+     * this rather than author a world per value.
+     *
+     * DEFAULTS TO 100 -- a migration choice, not a balance judgment. A default
+     * that quietly bankrupts a running campaign on update is a bug report.
+     */
+    int m_autoSellPct = 100;
+
+    std::unordered_map<int, CountryStockpile> m_countryStockpiles;
+    /** Last turn's production, per country. Rebuilt each turn, never accrued. */
+    std::unordered_map<int, CountryProduction> m_countryProduction;
+
+    /** What one province's factories make per turn at full input supply. */
+    float provinceGoodOutput(int pid) const;
+    /** Consumer goods a country's population wants per turn. */
+    float countryGoodsDemand(int countryId, int good) const;
+    /**
+     * Extract, produce, feed, sell. One country, one turn, in that order.
+     *
+     * ORDER IS THE WHOLE THING. Extraction before production, because a factory
+     * may eat what was dug this turn; production before consumption, because
+     * the population eats what was made; consumption before the sale, because a
+     * country must not sell the bread it needed. Any other order is a different
+     * economy, and a subtly wrong one.
+     */
+    void processProduction(int countryId);
+    /**
+     * Consumer supply over consumer demand, 0..1+. 1 means fed.
+     *
+     * Read by getProvinceRebellionChance and by population growth, and by
+     * nothing else. See the note there: two visible consequences, and no third
+     * hidden multiplier, because an economy with one of those stops being
+     * explainable to the person playing it.
+     */
+    float livingStandards(int countryId) const;
+    /** Assign a province's factories to a good. -1 clears. Rules, not UI. */
+    bool setProvinceOutput(int pid, int good, int countryId = -1);
+
+    // ── WHO RUNS THE ECONOMY, AND HOW MUCH OF IT ────────────────────
+    //
+    // The answer is the economic compass, not a separate setting, and that is
+    // the point: it makes the compass COST something instead of being a place
+    // doctrines push you for their own reasons. Moving left buys control and
+    // costs liquidity; moving right buys liquidity and costs control.
+    //
+    // It also means the AI needs no new action to participate. A government's
+    // economic system is a consequence of the doctrines it runs, and the
+    // politics head already enacts doctrines -- so an AI that nationalises is
+    // one that chose Left doctrines, which it can already do. Nothing here
+    // widens the policy net.
+    /**
+     * How far left this country's economy sits, 0 (pure market) to 1 (planned).
+     *
+     * Straight off the compass economic axis, which runs -100 (left) to +100
+     * (right): -100 gives 1.0, dead centre 0.5, +100 gives 0.0.
+     */
+    float plannedShare(int countryId) const;
+    /**
+     * How many of a country's factories its government may direct by hand.
+     *
+     * `plannedShare` of the provinces that have any industry at all. A planned
+     * economy directs everything; a free market directs nothing and its
+     * capitalists allocate; the middle is Kaiserin's "mix system (where you
+     * control certain factories, not all of them)", and it is continuous rather
+     * than three buttons.
+     */
+    int directableFactories(int countryId) const;
+    /** How many are directed right now. Pair it with directableFactories(). */
+    int directedFactories(int countryId) const;
+    /**
+     * The share of surplus raw sold automatically, for THIS country.
+     *
+     * m_autoSellPct is the world's setting; a government's economic system
+     * moves it. A planned economy directs materials rather than selling them
+     * and must find its money in trade; a market sells its surplus as a matter
+     * of course. That is exactly the difference described to us -- "if you're
+     * doing a planned economy, money could be used for trade deals or selling
+     * your extra resources... if it's a free market economy, then you get most
+     * of your money from taxes" -- expressed as one number moving.
+     */
+    int autoSellPctFor(int countryId) const;
+    /**
+     * How much of a build's price a fully planned economy pays in materials
+     * rather than cash, and how much machinery a unit of that price is.
+     *
+     * Not 1.0: even a command economy pays wages and buys abroad, and a price
+     * that vanished entirely into materials would make money meaningless to the
+     * left half of the compass rather than merely scarcer -- which is not what
+     * was asked for. Money stays in the game.
+     */
+    static constexpr float PLANNED_MATERIAL_SHARE = 0.7f;
+    static constexpr float MACHINERY_PER_COST     = 0.05f;
+    /** The machinery half of a build's price. See PLANNED_MATERIAL_SHARE. */
+    float industryMachineryCost(int provinceId, const char* type,
+                                int countryId = -1) const;
+
+    // ── WHAT A WAR COSTS IN THINGS ──────────────────────────────────
+    //
+    // See the tables in BuildCosts.h. Every one of these is money-only when the
+    // goods economy is off, so a money-economy game is priced exactly as it was.
+    //
+    // DOCTRINES ARE THE EXCHANGE RATE, and they reuse the levers that already
+    // exist rather than inventing effect names: conscriptionCostPct scales what
+    // it costs to ARM (recruits' munitions, shells), maintenanceCostPct scales
+    // what it costs to RUN (an army's fuel). So all seventeen mobilisation
+    // doctrines gained a second dimension without a line of new plumbing, and a
+    // player who reads "recruitment cost -30%" now sees it in both currencies.
+    struct WarPrice {
+        float money = 0.0f;
+        float fuel = 0.0f;
+        float munitions = 0.0f;
+    };
+    /** What one artillery order costs this country, in all three currencies. */
+    WarPrice artilleryPrice(const std::string& ammoType, int countryId = -1) const;
+    /** What raising `count` men costs this country. */
+    /**
+     * What raising `count` soldiers of one kind costs, in every currency.
+     *
+     * The type multiplies money and munitions; it multiplies the POPULATION
+     * draw separately, in processRecruitments. Defaulted so every existing
+     * caller keeps pricing line infantry, which is all any of them could raise.
+     */
+    WarPrice recruitPrice(int count, int countryId = -1,
+                          TroopType type = TROOP_LINE) const;
+    /**
+     * Which kinds this country may raise.
+     *
+     * Line infantry always; everything else needs its research node, found by
+     * the node's `troopType` exactly as an ammunition is found by
+     * `artilleryType`. One reader, so the panel, the AI and the multiplayer
+     * host cannot disagree about what a country is allowed to build.
+     */
+    std::vector<TroopType> unlockedTroopTypes(int countryId) const;
+    bool troopTypeUnlocked(int countryId, TroopType t) const;
+    /**
+     * Take the materials for a war price, or take nothing at all.
+     *
+     * ALL OR NOTHING, like queueUpgrade's machinery: a half-paid order is worse
+     * than a refused one, and the refusal has to happen before the treasury is
+     * touched so a caller cannot leave a country charged for a shell it never
+     * got. Money is NOT taken here -- callers own their own treasuries and
+     * several of them hold a reference already.
+     */
+    bool payWarMaterials(int countryId, const WarPrice& p);
+    /** Could this country pay the materials? Asks without spending. */
+    bool canAffordWarMaterials(int countryId, const WarPrice& p) const;
+    /** Give them back. Used by every cancel path. */
+    void refundWarMaterials(int countryId, const WarPrice& p);
+    /** Refund one artillery order's money and materials together. */
+    void refundArtilleryOrder(int countryId, const std::string& ammoType,
+                              double& treasury);
+    /**
+     * "$20" or "$20 4mun 1fuel", plus an optional "N% troops" tail.
+     *
+     * One function so the button, the dropdown row and the firing line cannot
+     * describe the same shell differently. `troopKillPct` below zero omits the
+     * tail.
+     */
+    std::string artilleryPriceLabel(const char* ammoType, int troopKillPct) const;
+    /** Reads OD_GOODS / OD_AUTOSELL_PCT and clears the pools. Once per world. */
+    void applyEconomyEnvironment();
+
+    // ── EVERY NEW WORLD IS ITS OWN WORLD ────────────────────────────
+    //
+    // The turn RNG was a file-static seeded to 1337 and reseeded only by the
+    // training and evaluation paths, so EVERY new game a player started ran the
+    // identical stream: the same rebellions in the same provinces on the same
+    // turns, the same generated names, the same coin flips. A player noticed --
+    // "that's the exact same flag generated for the AI Yugoslavia in my world".
+    // Determinism is a property the simulation must have; starting from the
+    // same number every time is not that property, it is the absence of a seed.
+    //
+    // THE AI BENCH IS UNAFFECTED, and that is why this is safe to change.
+    // --eval-ai and --train-ai never call startNewGame; they drive the async
+    // loader directly and seed the stream themselves from their own seed
+    // argument. Only the paths a PERSON starts a world through choose one at
+    // random, and OD_WORLD_SEED pins even those -- which is what a player
+    // reporting a reproducible bug will need.
+    unsigned int m_worldSeed = 0;
+
+    /**
+     * This world has just been made, and nothing has happened in it yet.
+     *
+     * A saved game restores its own politics; a NEW one is entitled to differ
+     * from the last new one, which is what the world seed is for. Set when the
+     * seed is chosen and cleared the moment it has been spent, so loading a
+     * save later in the same session cannot be jittered a second time.
+     */
+    bool m_freshWorld = false;
+    /**
+     * How far a fresh world may move a country's politics, on the -100..100
+     * compass the map ships.
+     *
+     * WHY THIS AND NOT A NEW MAP. The starting position IS the map file --
+     * the same countries, the same borders, the same flags every time -- and
+     * the seed only ever reached the turn RNG, so two new games differed in
+     * what HAPPENED and not in what they started as. Reported as "the saves are
+     * still deterministic, observed especially by the flags", and the flags are
+     * exactly the tell: a flag is drawn from a country's identity, an identity
+     * is classified from this compass, so a compass that never moves is a flag
+     * that never changes.
+     *
+     * Bounded on purpose. 18 of 200 is enough to carry a country that sits near
+     * a threshold across it -- which is where the interesting ones sit -- and
+     * small enough that a map's design still describes the world it made. A
+     * free-for-all would not be a new game of the same scenario, it would be a
+     * different scenario.
+     */
+    static constexpr float FRESH_WORLD_COMPASS_JITTER = 18.0f;
+    void jitterStartingPolitics();    /**
+     * Pick this world's seed and start its stream.
+     *
+     * Order: an explicit OD_WORLD_SEED wins, then a seed a caller has already
+     * set on m_worldSeed (the headless simulator pins one so its timings stay
+     * comparable), then genuine entropy.
+     */
+    void chooseWorldSeed();
+    /**
+     * Directs every factory nobody has directed. See the note on the definition:
+     * a deterministic resolver rule, not a neural decision, and the reason the
+     * goods economy is playable the turn it is switched on.
+     */
+    void autoAssignOutputs(int countryId, const CountryStockpile& pool);
+    /** Units of `good` the pool could make. Asks without spending. */
+    float recipeFeasible(const CountryStockpile& pool, int good) const;
+    /** Takes the materials for `units` of `good`, substitutables largest-first. */
+    void consumeRecipe(CountryStockpile& pool, int good, float units) const;
     /**
      * What specialising this province would cost, and in what.
      *
@@ -2145,6 +2581,29 @@ public:
     int m_pendingCountryId = 0;
     std::unordered_map<int, float> m_countryBalances;
     std::vector<int> m_provinceCountryLookup;
+
+    /**
+     * How much GROUND each province actually covers, indexed by province id.
+     *
+     * Cos(latitude)-weighted raster area, not a pixel count. The maps are
+     * equirectangular: 8192 px spans 360 degrees of longitude and 4096 spans
+     * 180 of latitude, so a pixel at 70N covers about a third of the ground a
+     * pixel at the equator does. Counting pixels would hand every arctic
+     * province a third again more land than it has, and industryCapacity()
+     * reads this as land.
+     *
+     * Filled in buildPopulationLookups' existing full-map pass -- it already
+     * walks every pixel to build m_pixelCountryArray, so this costs one add per
+     * pixel and one float per province rather than a second traversal. Unlike
+     * m_provincePixels (one int per map PIXEL, 128 MB, built lazily) this is one
+     * float per PROVINCE, so it is a few kilobytes and can simply always exist.
+     */
+    std::vector<float> m_provinceAreaArray;
+    /** Ground covered by a province, 0 when the map has not been walked yet. */
+    float provinceArea(int pid) const {
+        return (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
+                   ? m_provinceAreaArray[pid] : 0.0f;
+    }
 
     // ─── Province ownership index ────────────────────────────────────────
     //
@@ -2250,6 +2709,15 @@ public:
     // and when they do, an invasion that the AI believes it launched simply
     // never happens. Counted so the amphibious funnel has the missing stage.
     long long m_navLandingsOutOfRange = 0;
+    /// Embarkation outcomes (see processEmbarkations): orders dropped for want
+    /// of a boat or water, orders under one crew, and units actually loaded.
+    long long m_navEmbarkNoBoat = 0;
+    long long m_navEmbarkTooSmall = 0;
+    long long m_navMenEmbarked = 0;
+    long long m_navEmbarkWrongSea = 0;      // hull within 50 px but on another sea
+    long long m_navGridLandDisagree = 0;    // nav cell reported as land: grid/raster mismatch
+    long long m_navBoatMovesArrived = 0;    // loaded-boat move orders that reached their waypoint list end
+    long long m_navBoatMovesStuck = 0;      // loaded-boat move orders erased for making no progress
     long long m_navEngagements = 0, m_navSinkings = 0;
     long long m_navTransportsSunk = 0, m_navCrewDrowned = 0;
     void generateRelationsTexture(int countryId, int prevCountryId);
@@ -2306,6 +2774,9 @@ public:
 
     // ─── Claims system ────────────────────────────
     std::unordered_map<std::string, std::vector<int>> m_claims;  // claimer ISO -> claimed province IDs
+    /// Districts drawn in the map editor, by owner ISO. Read once, when a
+    /// country first needs districts -- see ensureDefaultDistrict().
+    std::unordered_map<std::string, std::vector<District>> m_authoredDistricts;
     std::unordered_map<int, std::vector<std::string>> m_claimsByProvince;  // province ID -> list of claimant ISOs
     bool m_showClaims = false;
     int m_lastClaimsCountryId = -1;
@@ -2367,6 +2838,10 @@ public:
      * Matching runs over the name, the description and the folder, so "upkeep"
      * finds the doctrines that touch it even though none is called that.
      */
+    /** The doctrine search box, drawn on Available, Implementing and Active. */
+    void drawPolicySearchBox(Vector2 mouse, int startY);
+    /** Does this doctrine match the current search? Name, text and tradeoffs. */
+    bool policyMatchesSearch(const Policy& pol) const;
     std::string m_policySearch;
     bool m_policySearchFocus = false;
     int m_analysisHotspotScroll = 0;
@@ -2513,19 +2988,413 @@ public:
     float m_researchAllocation = 0.25f;
     float m_pacificationAllocation = 0.0f;
     int m_researchHoveredNode = -1;
-    int m_researchActiveNode = -1;  // node being researched (-1 = none)
+    /**
+     * A research group: one project, its share of the budget, and whether it
+     * walks its branch on its own.
+     *
+     * A country used to have exactly one project, so every technology in the
+     * game queued behind every other one. Groups make research a question of
+     * ALLOCATION rather than of order -- which is the interesting question, and
+     * the one an industrialised country actually faces.
+     */
+    struct ResearchGroup {
+        int  activeNode  = -1;     ///< index into m_researchNodes, -1 = idle
+        int  sharePct    = 50;     ///< its claim on the turn's points
+        bool autoAdvance = false;  ///< follow the branch until a real choice
+        int  lastNode    = -1;     ///< what it finished, so it knows where it is
+    };
+    static constexpr int RESEARCH_GROUPS_MAX = 3;
+    // Recomputed ONCE A TURN. Both the unlock and the panel that explains it
+    // ask per frame, and answering honestly means a pass over every province of
+    // every country -- O(countries x provinces) sixty times a second.
+    mutable int m_rgroupCacheTurn = -1;
+    mutable std::unordered_map<int, float> m_rgroupPerMillion;
+    mutable std::unordered_map<int, float> m_rgroupGross;
+    mutable float m_rgroupMedian = 0.0f;
+    mutable float m_rgroupMedianGross = 0.0f;
+    void rebuildResearchCapacity() const;
+
+    /**
+     * The research groups an AI country runs beyond its first.
+     *
+     * GROUP 1 IS m_countryResearchActive, and is not repeated here: it is the
+     * node the policy net armed, the one its mask and its features read. This
+     * holds the others, which the net never chooses and never sees.
+     *
+     * That division is the whole design. Teaching the net to run three
+     * programmes means changing what its research actions MEAN -- mask bits
+     * 9-11 are gated on the country being idle -- and this file already records
+     * what that costs: the research-focus fix is correct, measured, and still
+     * OFF by default because re-aiming those bits cost every frozen model
+     * (265->220, 238->189). So the net keeps deciding exactly what it decided
+     * before, and the extra groups fill themselves.
+     */
+    struct ExtraResearchSlot { int activeNode = -1; int invested = 0; };
+    std::unordered_map<int, std::array<ExtraResearchSlot, RESEARCH_GROUPS_MAX - 1>>
+        m_countryResearchExtra;
+    ResearchGroup m_researchGroups[RESEARCH_GROUPS_MAX];
+    int m_researchGroupSel = 0;    ///< the group the tree assigns a click to
+
+    /**
+     * How many groups this country can run: 1, 2 or 3.
+     *
+     * ON INCOME PER HEAD, NOT ON SIZE. A second laboratory is not something a
+     * country affords by being large -- it is something it affords by having
+     * surplus per person, which is what an industrial society has and a big
+     * agrarian one does not. Measured on the 1939 map at turn 40, gross income
+     * per million people: China 0.37, the British Empire 1.49, the USSR 1.50,
+     * the USA 5.09, France 6.86, Finland 21.5, Switzerland 64.1. The spread is
+     * two orders of magnitude and it separates exactly the way the theme wants.
+     *
+     * ONE IS ALWAYS AVAILABLE. A country that can research at all can research
+     * something; the ratio only ever adds.
+     */
+    int researchGroupsUnlocked(int countryId) const;
+    /** The ratio the unlock is decided on, exposed so the panel can show it. */
+    float researchIncomePerMillion(int countryId) const;
+    /** What the middle country of the world manages, this turn. */
+    float researchMedianPerMillion() const;
+    float researchMedianGross() const;
+    float researchGross(int countryId) const;
+
+    /**
+     * HOW BIG THE ECONOMY IS, GATED BY HOW POOR THE PEOPLE ARE.
+     *
+     * Both halves are measured as multiples of the WORLD MEDIAN rather than in
+     * absolute figures, and that part is not negotiable: absolute thresholds
+     * were tried first, calibrated cleanly against 1939 and 1914, and then read
+     * 0.0 for every country on a save whose provinces carry populations three
+     * orders of magnitude larger. A mod or a procedural generator may scale
+     * population and money however it likes, so a constant here would silently
+     * hand every country in such a world one group forever while explaining the
+     * shortfall in units that world does not use.
+     *
+     * WHAT DECIDES IT IS SIZE. Purely per-head was tried and was wrong, and the
+     * case that proves it is the British Empire: on income per head it sits at
+     * 0.86x the median and earned ONE group, below Switzerland's three. That is
+     * a measure of how developed a country is, and a research programme is not
+     * bought with development -- it is bought with the absolute size of an
+     * industrial base. On the 1939 map, gross income against the median of
+     * 34.3: the USA 30.3x, France 27.2x, the British Empire 19.9x, the USSR
+     * 11.9x, Germany 6.2x. The great powers are unmistakable on this axis and
+     * invisible on the other one.
+     *
+     * AND PER HEAD IS THE GATE, which is where it belongs and what it was
+     * always described as: "if the income compared to amount of people is way
+     * too low, we still have only one science group." China has the fifth
+     * largest economy on the map at 5.3x the median and 0.21x the median per
+     * head -- an enormous economy spread so thin it supports one programme. The
+     * gate catches exactly that, and leaves Britain (0.86x) and the USSR
+     * (0.87x) alone.
+     */
+    /**
+     * THE SHARES SUM TO 100 ACROSS THE UNLOCKED GROUPS. Always, for everybody.
+     *
+     * A budget whose parts do not add to the whole is not a budget, and the
+     * three sliders were each independently 0-100: two groups could both be
+     * set to 90% and the panel would show a country spending 180% of its
+     * research. Nothing was actually overspent -- the points were normalised
+     * before they were paid out -- which is worse, not better, because the
+     * numbers on screen then meant nothing and quietly disagreed with what the
+     * game did.
+     *
+     * Moving one share pushes the difference onto the others in proportion to
+     * what they already hold, so the group being dragged does what it is told
+     * and the rest keep their relative standing.
+     */
+    void normaliseResearchShares(int changed);
+
+    static constexpr float RGROUP2_GROSS_MULT   = 2.0f;
+    static constexpr float RGROUP3_GROSS_MULT   = 5.0f;
+    static constexpr float RGROUP_POVERTY_MULT  = 0.5f;
+    /** Points per turn this group gets, after the shares are normalised. */
+    int researchGroupPoints(int groupIndex, int totalPoints) const;
+    /**
+     * The one node this group could advance to with no judgement call.
+     *
+     * Returns -1 when there is a decision to make (more than one node is open
+     * on the branch) or nothing left (the branch is finished). Both mean the
+     * same thing to an auto-advancing group: stop, and let the player look.
+     */
+    int researchAutoNext(int groupIndex, int countryId) const;
     int m_researchPoints = 0;
-    int m_researchTab = 0; // 0=Buildings, 1=Army, 2=Population, 3=Misc
+    int m_researchTab = 0; // index into catKeys[] in Game_Research.cpp
     float m_researchSliderHold = 0; // timer for slider hold
     void initResearchTrees();
     void drawResearchTab();
     void updateResearch(int countryId);
     bool hasResearched(const std::string& nodeId, int countryId = -1) const;
     void addResearchPoints(int countryId);
+    void dumpResearchCapacity();
     
     // ─── Rebellion System ─────────────────────────
     int m_nextRebelCid = 60000;
     std::unordered_map<int, float> m_countryPacification;
+
+    // ─── Districts ──────────────────────────────────────────────────────────
+    /**
+     * How each country divides itself up. Empty means undivided, which is the
+     * state every existing save is in and the state this game has always been
+     * in -- see pacificationFactor for why that costs nothing.
+     */
+    std::unordered_map<int, std::vector<District>> m_districts;
+
+    /**
+     * What multiplies a country's pacification for one province.
+     *
+     * ONE for an undivided country, and one for a district whose share of the
+     * budget matches its share of the ground. That is the property that makes
+     * this feature additive rather than a rebalance: a player who never opens
+     * the Districts tab plays the game they were playing, and the AI that never
+     * draws a district is unaffected.
+     */
+    float pacificationFactor(int countryId, int provinceId) const;
+
+    /// Which district a province is in, or -1. Linear; districts are few.
+    int districtIndexOf(int countryId, int provinceId) const;
+    /// The whole country in one district, which is what an undivided one means.
+    void ensureDefaultDistrict(int countryId);
+    /// Repaint the district colours for one country into the shared overlay
+    /// texture. Country-scoped rather than world-scoped -- see the definition.
+    /// How much smaller the district overlay is than the political map it sits
+    /// on. It is drawn into a panel a few hundred pixels wide; full resolution
+    /// bought detail nothing could see and cost 134 MB a repaint.
+    static constexpr int DISTRICT_OVERLAY_DIV = 2;
+    void rebuildDistrictOverlay(int cid, int texW, int texH);
+    /**
+     * A name for a district, taken from the ground it holds.
+     *
+     * "District 2" tells a player nothing and is the same on every map. A
+     * district is a PLACE, so it is named after the largest province in it,
+     * with a word for what kind of place -- and which word is a property of the
+     * MAP rather than of the game, so a world of oblasts is not also a world of
+     * counties. The choice is deterministic in the map's own name, so the same
+     * world always uses the same vocabulary and a generated world gets one of
+     * its own.
+     */
+    /// The place a district is named after: its majority people's, else the
+    /// country's own. English and RNG-free -- see the definition.
+    std::string districtPlaceName(int countryId, const std::vector<int>& provinces) const;
+    std::string suggestDistrictName(int countryId, const std::vector<int>& provinces,
+                                    bool forceDirection = false) const;
+    /// What to draw for a district: the player's own words if they typed
+    /// any, else the canonical name rendered into the current language.
+    std::string districtDisplayName(const District& d) const;
+    /**
+     * The same name, made unique among that country's districts.
+     *
+     * Two districts called "Mongol County" is what happens without this, and it
+     * happened immediately: a people spread across both halves of a country
+     * lends its name to both, and so does "Central" when a country is round.
+     * `skipIndex` is the district being renamed, which must not collide with
+     * itself.
+     */
+    std::string uniqueDistrictName(int countryId, const std::string& base,
+                                   int skipIndex,
+                                   const std::vector<int>& provinces = {}) const;
+    /// The word this map uses for a region. See suggestDistrictName.
+    const char* districtWordForMap() const;
+    /// How much of a district one people must hold before it lends its name.
+    static constexpr double DISTRICT_NAME_MAJORITY = 55.0;
+    /**
+     * Every province a country owns sits in exactly one of its districts.
+     *
+     * Called after ground changes hands, because a conquest that left provinces
+     * in nobody's district would police them with nobody's budget -- and a
+     * district still holding ground its country has lost would spend on it.
+     */
+    void reconcileDistricts(int countryId);
+    /// The shares always add to 100, like the research groups. See normaliseResearchShares.
+    void normaliseDistrictShares(int countryId, int changed);
+    /// Every district the same share, to the point rather than to the province.
+    void splitDistrictSharesEqually(int countryId);
+    /// Shares proportional to the ground each district holds, which makes
+    /// every pacification factor 1.0. See the definition.
+    void splitDistrictSharesBySize(int countryId);
+    /**
+     * An AI country's own districts, drawn as a reflex rather than by the net.
+     * See the definition for why that division is deliberate.
+     */
+    void updateAIDistricts(int countryId);
+
+    /**
+     * Whether a doctrine is the kind of thing a DISTRICT can run.
+     *
+     * Most are not, and saying so is the honest version of this feature. A
+     * compass shift, an immigration rate or a minority growth rate is a fact
+     * about a country, and "half the country is 20 points more authoritarian
+     * than the other half" is not a state this game models. What a district
+     * genuinely governs is the ground and the people standing on it, so the
+     * doctrines it may run are the ones whose effect is already per-province:
+     * the ones that reduce unrest.
+     */
+    /// Regional law, loaded once from data/district_laws.json. See DistrictLaw.
+    std::vector<DistrictLaw> m_districtLaws;
+    void loadDistrictLaws();
+    const DistrictLaw* districtLawById(const std::string& id) const {
+        for (const auto& l : m_districtLaws) if (l.id == id) return &l;
+        return nullptr;
+    }
+    /// The laws in force where this province is, summed. Zero when undivided.
+    struct DistrictLawEffect { float unrestPct = 0, incomePct = 0, growthPct = 0; };
+    DistrictLawEffect districtLawsAt(int countryId, int provinceId) const;
+
+    /**
+     * A doctrine's unrest reduction, IN THE UNITS THE REBELLION SUM USES.
+     *
+     * `unrest_reduction` is stored as a fraction -- Secret Police is 0.05 --
+     * and every display multiplies it by 100 to advertise "5%". The resolver
+     * did not: it subtracted 0.05 from a figure that has to clear a floor of
+     * 6.0 to matter, so every "reduces unrest" doctrine in the game did
+     * NOTHING. A hundredfold unit mismatch, diagnosed in
+     * docs/review-response-2026-08.md, recorded there as fixed, and still in
+     * the tree -- the field that document says it renamed does not exist.
+     *
+     * One function so the resolver and the label cannot drift apart again.
+     */
+    static float policyUnrestPct(const Policy& p) {
+        // OD_UNREST_UNIT_OLD restores the mismatch, so the measurement that
+        // justifies this can be repeated rather than believed. Bench, same
+        // binary and same model in both arms: 72 -> 121, survival 49 -> 87.
+        if (getenv("OD_UNREST_UNIT_OLD")) return p.effect.unrestReduction;
+        return p.effect.unrestReduction * 100.0f;
+    }
+    /**
+     * What a country pays per turn for the regional laws its districts run.
+     *
+     * PER PROVINCE, so a law costs what it costs to administer: the same law
+     * over twice the ground is twice the money. That is also what keeps a
+     * district from being a way to buy a national effect cheaply.
+     */
+    float districtPolicyCost(int countryId) const;
+    /// Small countries stay undivided, which is identical to having no districts.
+    static constexpr int AI_DISTRICT_MIN_PROVINCES = 8;
+    /// Redrawn this often, staggered by country id.
+    static constexpr int AI_DISTRICT_REVIEW_TURNS = 5;
+    /// How much trouble in its worst province before an AI pays to police it.
+    static constexpr float AI_PACIFY_RISK_BAR = 12.0f;
+    /// And the most of its income it will ever put into that.
+    /// The share of GROSS income an AI country in real trouble will find for
+    /// suppression even with nothing spare. See updateAIDistricts.
+    /// The most of its gross income an AI country will commit to regional law.
+    /// A share rather than a sum: an AI treasury is near zero as a matter of
+    /// course, so a rule gated on cash in hand is a rule that never fires --
+    /// this is priced the way upkeep is priced.
+    static constexpr float AI_DLAW_MAX_SHARE = 0.03f;
+    /// The average rebellion chance in a district at which an AI government
+    /// reaches for regional law. Well under the pacification bar beside it,
+    /// which measurement showed sat above the entire distribution.
+    static constexpr float AI_DLAW_RISK_BAR = 1.5f;
+    static constexpr float AI_PACIFY_FLOOR = 0.05f;
+    static constexpr float AI_PACIFY_MAX = 0.12f;
+
+    void drawDistrictsTab();
+
+    // ─── Country profile ────────────────────────────────────────────────────
+    /**
+     * What a country chooses to publish about itself.
+     *
+     * A profile shows the things anybody can see -- how big it is, how long it
+     * has existed, what it flies -- and then whatever this country has decided
+     * to open its books about. Publishing is a DECISION with a consequence: a
+     * country whose published figures look good attracts people to it, and one
+     * that publishes bad figures advertises them. That is the whole reason the
+     * fields are optional rather than simply absent.
+     */
+    enum DisclosureBit : unsigned {
+        DISCLOSE_EXPENSES  = 1u << 0,   ///< what it spends money on
+        DISCLOSE_DOCTRINES = 1u << 1,   ///< which doctrines are in force
+        DISCLOSE_TREASURY  = 1u << 2,   ///< what it held at the start of last turn
+        /**
+         * The regional laws each of its districts runs.
+         *
+         * THAT a country is divided is public: borders are visible and so are
+         * the districts drawn on them, and the profile shows the division and
+         * the budget split without asking. HOW each district is governed is
+         * not -- a curfew in one province and a tax holiday in another is the
+         * kind of thing a government says out loud or does not.
+         */
+        DISCLOSE_DISTRICT_LAWS = 1u << 3,
+    };
+    std::unordered_map<int, unsigned> m_countryDisclosure;
+    /// What it held when the previous turn began, which is what it may publish.
+    std::unordered_map<int, double> m_treasuryLastTurn;
+    bool discloses(int cid, unsigned bit) const {
+        auto it = m_countryDisclosure.find(cid);
+        return it != m_countryDisclosure.end() && (it->second & bit) != 0;
+    }
+    /**
+     * How much a country's published figures pull people toward it, 0 upward.
+     *
+     * Nothing published, nothing gained -- and a country that publishes a
+     * deficit or an empty treasury gets nothing either, because the pull comes
+     * from the FIGURES rather than from the act. Read by the migration pass.
+     */
+    float disclosureAppeal(int cid) const;
+    /// The same reckoning, for a hypothetical set of published fields. The AI
+    /// asks THIS rather than re-deriving "are my figures good" -- one reader.
+    float disclosureAppealFor(int cid, unsigned bits) const;
+    /// An AI country decides what to publish: a field goes out if it flatters.
+    void updateAIDisclosure(int countryId);
+    /// An AI country passes regional law in the district that needs it.
+    void updateAIDistrictLaws(int countryId);
+    /**
+     * A script's override of how many research programmes a country may run.
+     *
+     * 0 (or absent) means the economy decides, which is the normal rule. A
+     * scenario that wants the Manhattan Project to be a thing only one country
+     * can do, or wants a backward power held to a single programme however
+     * rich it gets, says so here -- see `set country.ISO.research_groups`.
+     */
+    std::unordered_map<int, int> m_scriptResearchGroups;
+    /// How often an AI country reconsiders. Publishing is a standing posture,
+    /// not a monthly announcement, so it does not flip with every wobble.
+    static constexpr int AI_DISCLOSURE_REVIEW_TURNS = 6;
+    /// What each published field can be worth. They sum to DISCLOSURE_APPEAL_MAX,
+    /// so no single field saturates the pull on its own. See the definition.
+    static constexpr float DISCLOSE_EXPENSES_MAX  = 0.07f;
+    static constexpr float DISCLOSE_DOCTRINES_MAX = 0.05f;
+    static constexpr float DISCLOSE_TREASURY_MAX  = 0.05f;
+    static constexpr float DISCLOSE_DISTRICTS_MAX = 0.03f;
+    /// The share of income above which spending reads as a garrison, not a home.
+    static constexpr float HARD_SPEND_BAR = 0.35f;
+    /// The most that publishing can ever add to a country's pull. See the definition.
+    static constexpr float DISCLOSURE_APPEAL_MAX = 0.20f;
+
+    bool m_inCountryProfile = false;
+    int  m_profileCountryId = 0;
+    int  m_profileScroll = 0;
+    int  m_profileContentH = 0;   ///< page height, for clamping the scroll
+    /// District rows a PROFILE shows before summarising. The Districts tab
+    /// is where the whole list belongs.
+    static constexpr size_t PROFILE_DISTRICT_ROWS = 6;
+    void drawCountryProfile();
+    /**
+     * The flags of the profile's flag history, rendered once.
+     *
+     * m_countryFlags holds ONE texture per country -- the flag it flies now --
+     * and nothing keeps the ones it used to fly. Rendering a FlagPattern is an
+     * image composite and a texture upload, which is not a thing to do per
+     * frame for a strip of six, so they are built when the profile opens and
+     * dropped when it closes.
+     */
+    std::vector<Texture2D> m_profileFlagTex;
+    int m_profileFlagCid = -1;
+    void releaseProfileFlags();
+    void updateCountryProfile();
+    /// "4 years, 2 months", or nothing at all for a country the map began with.
+    std::string countryAgeText(int cid) const;
+    int  m_districtSel = 0;        ///< which district the map assigns clicks to
+    bool m_districtPaint = false;  ///< dragging across the map to assign
+    /// Pan/zoom of the districts map, in the same shape the claims map uses.
+    float m_districtMapZoom = 1.0f;
+    float m_districtMapSrcX = 0.0f, m_districtMapSrcY = 0.0f;
+    bool  m_districtMapDragging = false;
+    Vector2 m_districtMapDragFrom{0, 0};
+    std::vector<Color> m_districtOverlayBuf;
+    bool m_districtOverlayDirty = true;
+    int  m_districtOverlayCid = -1;   ///< which country the overlay holds
+    Texture2D m_districtOverlayTex{};   ///< full-map, painted by district
 
     // ─── War weariness ────────────────────────────
     //
@@ -2564,17 +3433,50 @@ public:
     std::string diploDisplayName(const std::string& iso) const;
 
     /**
-     * Asks one ALLY to join a war this country is already fighting.
+     * Asks one ally OR GUARANTOR to join a war this country is already
+     * fighting.
      *
      * issueCallsToArms() only fires for a defender, at the instant war is
      * declared on them. Nothing could ask afterwards, and nothing could ask at
-     * all for a war you started -- so an alliance was only ever worth anything
-     * to whoever was attacked. This is the deliberate version: pick an ally,
-     * pick the enemy, and let them decide.
+     * all for a war you started -- so a pact was only ever worth anything to
+     * whoever was attacked, and only on the turn they were attacked. This is
+     * the deliberate version: pick a friend, pick the enemy, and let them
+     * decide.
+     *
+     * TWO THINGS IT DID NOT COVER, both found from a trace of a small country
+     * being overrun with nobody coming.
+     *
+     * A GUARANTEE SIGNED AFTER THE WAR STARTED WAS DEAD PAPER. Guarantees chain
+     * inside declareWar and nowhere else, so a country that wins a guarantee on
+     * turn three of a war it is losing gets exactly nothing from it, for ever.
+     * A guarantor can now be called like an ally -- ASKED, not compelled. It is
+     * deliberately the weaker form: compelling on signature would make signing
+     * a guarantee for a country already at war a hidden declaration of war on
+     * everyone fighting it, and the scripted AI accepts pact requests from
+     * anyone with fewer than four pacts, which would have dragged half the map
+     * into wars it never chose.
+     *
+     * AND ONLY THE PLAYER COULD ASK. This was hard-wired to m_playerCountryId,
+     * so wartime diplomacy existed for exactly one country in the game. It
+     * takes a caller now, which is what lets the AI use it at all.
      *
      * Returns false (and explains why) when the ask is not available.
      */
+    bool requestAllyJoinWar(int callerCid, const std::string& allyIso, std::string& outWhy);
+    /** The player's own ask. */
     bool requestAllyJoinWar(const std::string& allyIso, std::string& outWhy);
+    /**
+     * Everyone this country could usefully call right now.
+     *
+     * Allies and guarantors who are not already fighting the enemy, are not the
+     * enemy, and are not on cooldown. Exists so an AI reflex picks from a list
+     * the RULE produced rather than re-deriving eligibility from m_relations --
+     * a re-derived rule is a second copy that drifts, and this codebase has
+     * paid for that lesson repeatedly.
+     *
+     * Empty when there is no war on, nobody to ask, or nothing to ask for.
+     */
+    std::vector<std::string> callableFriends(int countryId) const;
     // ── Turn history / timelapse (Game_History.cpp) ──
     // Reconstructed purely from the .odsv, so browsing never mutates the
     // running game.
@@ -2832,15 +3734,595 @@ private:
      * country can always get out of, not a spiral it cannot escape.
      */
     static constexpr float BANKRUPTCY_UNREST_PCT = 20.0f;
+    /**
+     * How many consecutive bankrupt turns before the full charge above applies.
+     *
+     * THE CHARGE RAMPS, because the first turn of insolvency and the twentieth
+     * are not the same thing. On turn one the wages are late; by turn three they
+     * are missing. Charging both identically was modelling neither.
+     *
+     * The case that settled it, traced on the AI side with OD_UNREST_TRACE: a
+     * stable four-province Norway had every term of its rebellion chance at
+     * essentially zero on every turn of a campaign -- and then one bankrupt turn
+     * put all four provinces at 15.2% at once, which rolled the three
+     * secessions that ended the country. That bankruptcy was a cash shock, not
+     * mismanagement: an invader took the industrial provinces inside the same
+     * turn resolution that bankrupted the treasury (income 33 -> 9.5 between the
+     * orders and the ledger), so no government, human or otherwise, could have
+     * cut spending in time. A rule that fractures a stable state for something
+     * it could not have seen is punishing the dice rather than the play.
+     *
+     * Chronic bankruptcy is untouched: at three turns and beyond the charge is
+     * exactly what it always was. What this removes is only the one-turn
+     * execution.
+     *
+     * Three, and not more, because it has to line up with the rest of the
+     * insolvency ladder rather than form a second one: turns 1-2 are a warning a
+     * government can still act on, turn 3 is the full unrest charge, and turn 5
+     * (RELEASE_BANKRUPT_STREAK) is when regions start going. One counter,
+     * m_bankruptStreak, drives both.
+     */
+    static constexpr int BANKRUPT_UNREST_FULL_STREAK = 3;
+    /**
+     * The bankruptcy unrest this country suffers right now, ramp applied.
+     *
+     * ONE HOME, because the panel, the AI's own model of the rule and the
+     * resolver all have to agree about it; this codebase has been bitten
+     * repeatedly by a rule with two copies.
+     */
+    float bankruptcyUnrestFor(int countryId) const;
+    /**
+     * Unrest from an unfed population, at a total shortage. Scaled by how short.
+     *
+     * DELIBERATELY BELOW BANKRUPTCY. Going broke should stay the worst thing a
+     * government can do to itself short of losing a war -- see the note above --
+     * and a shortage is recoverable by building the right factories, which is a
+     * decision rather than a collapse. Twelve points against a pacification
+     * budget that tops out at fifty is a serious problem a competent government
+     * can answer, which is what this is meant to be.
+     *
+     * Zero in any world where the goods economy is off, because the term is not
+     * added at all. See getProvinceRebellionChance.
+     */
+    static constexpr float SHORTAGE_UNREST_PCT = 6.0f;
+
+    // ── HOW MANY MEN CAN FIGHT AT ONCE ──────────────────────────────
+    //
+    // A province's frontage. Numbers stop being decisive past this point, and
+    // that is the whole of the change: `attack > defence` compared TOTALS and
+    // nothing else, so the dominant strategy was to gather one enormous stack
+    // and walk it anywhere. A player put the general complaint as "combat is
+    // too shallow and turn based"; this is the half of it that can be answered
+    // without the sub-province manoeuvre they themselves said would mean
+    // rewriting the rules.
+    //
+    // GROUND SETS IT, so the measure is the province's cos(latitude)-weighted
+    // area -- the same one industry capacity and population growth read,
+    // already computed at load, no new state. A wide province lets more of an
+    // army bear; a narrow one is a pass, and a pass is where a small army has
+    // always been able to hold a large one.
+    //
+    // FORTS NARROW IT, which is a second and sharper use for fortification than
+    // the flat defence multiplier it already gives: a fort does not merely make
+    // defenders tougher, it stops the attacker bringing his numbers.
+    //
+    // SIZED AGAINST WHAT ARMIES ACTUALLY ARE. Provinces hold 30k-90k men on
+    // average over a run, so a median province's frontage of about 60,000 binds
+    // on a big concentration and leaves an ordinary attack untouched. A rule
+    // that bound on every assault would not be combat width, it would be a
+    // global cap on army size.
+    //
+    // MEASURED: it binds on 20.3% of assaults over a 120-turn run -- one in
+    // five, which is what "sometimes decisive, usually not" should look like.
+    //
+    // ITS EFFECT ON WORLD OUTCOMES IS NOT SEPARABLE. A three-seed A/B of width
+    // on against width off gave survival 41.5/34.0/43.4 against 39.6/35.8/37.7
+    // and largest power 20.6/18.7/25.9 against 20.1/21.3/21.4 -- mixed in sign
+    // on both. So it was landed on CORRECTNESS: numbers ceasing to be decisive
+    // past a frontage is right whatever the aggregate does.
+    //
+    // BUT IT IS A LARGE EFFECT ON PLAY, and the first measurement simply asked
+    // the wrong question. Survival and concentration describe a whole world
+    // grinding along; the AI seat bench asks how well a PARTICULAR country is
+    // played, and there width is decisive. On the v9 gate the model of record
+    // posted 229 -- the highest number this project has produced -- with the
+    // defensive champion gaining 49 and the attacking model losing 21. Width is
+    // what did that: it makes defending a narrow province worth doing.
+    //
+    // Worth keeping both readings. A change can be invisible in the aggregate
+    // and enormous in the decisions, and measuring only the aggregate would
+    // have retired this rule as pointless.
+    static constexpr float COMBAT_WIDTH_PER_AREA = 25.0f;    ///< men per unit of area
+    static constexpr float COMBAT_WIDTH_MIN      = 20000.0f; ///< even a pass fits some
+    static constexpr float COMBAT_WIDTH_FORT_PCT = 12.0f;    ///< narrowing per fort level
+    /** Men either side can bring to bear in one assault on this province. */
+    long long combatWidth(int provinceId) const;
+
+    // ─── STANDING BATTLES: reinforce and withdraw ──────────────────────────
+    //
+    // See `struct Battle` in GameStructs.h for what one is and why the
+    // attackers are held there rather than in the province.
+    std::vector<Battle> m_battles;
+
+    /**
+     * ── CAMPAIGNS: A DECISION THAT OWNS MORE THAN ONE TURN ──
+     *
+     * See docs/ai/CAMPAIGNS.md. A campaign is a commitment with a target, a
+     * staging province, a budget and a deadline. It exists because the AI's
+     * credit horizon is twelve turns and every action it could take resolved
+     * inside one, so a plan could not be expressed and therefore could not be
+     * rewarded. Held by the game rather than the AI so a save carries it and
+     * so the panel can show the player what an enemy is committed to.
+     *
+     * Inert unless something opens one: with m_campaigns empty every code
+     * path is what it was.
+     */
+    struct Campaign {
+        int countryId = 0;
+        /** WHO the campaign is against. A province was the wrong grain: 84 of
+         *  89 province campaigns closed on the turn they opened, because an
+         *  adjacent province the AI can beat falls to the ordinary attack in
+         *  one turn (97% of assaults are walk-ins). A war aim -- finish this
+         *  country -- is the thing that takes many turns and therefore the
+         *  thing a plan can be about. */
+        int targetCountry = 0;
+        int targetProvince = -1;   ///< the current objective within that country
+        int stagingProvince = -1;
+        int startedTurn = 0;
+        int deadlineTurns = 0;
+        long long committedMen = 0;   ///< the budget at the moment it opened
+        int provincesTaken = 0;       ///< measured, so the reward can see it
+        int roundsFought = 0;
+    };
+    std::vector<Campaign> m_campaigns;
+    /** Turns before a campaign may be closed for having spent its force.
+     *  On the opening turn the staging garrison has just marched, so a
+     *  working campaign and a dead one look identical. */
+    static constexpr int CAMPAIGN_GRACE_TURNS = 4;
+
+    /// The campaign this country is running against this province, or null.
+    const Campaign* campaignAt(int countryId, int targetProvince) const;
+    /// The campaign this country is running against that country, or null.
+    const Campaign* campaignAgainst(int countryId, int enemyCid) const;
+    /// Any campaign this country has open, or null. One at a time, for now.
+    const Campaign* campaignOf(int countryId) const;
+    /// Open one. Refuses a second for the same country.
+    bool openCampaign(const Campaign& c);
+    /// Abandon one: the only campaign decision anybody makes after opening.
+    bool closeCampaign(int countryId, const char* why);
+    /// Success, deadline, or the force spent: resolver rules, not a decision.
+    void processCampaigns();
+
+    /** A player or an AI asking to pull its men out of a battle. */
+    std::vector<int> m_pendingWithdraws;   ///< province ids
+
+    /**
+     * Every man this country is paying for: garrisons AND men committed to
+     * battles.
+     *
+     * ONE READER, because there are four callers -- fuel demand, the munitions
+     * reserve, per-country upkeep and the one-pass upkeep table -- and all four
+     * used to walk m_provinceArmies directly. The moment battles began holding
+     * men off the map, every one of those quietly stopped charging for them:
+     * an army parked in a standing battle would have eaten no fuel, drawn no
+     * munitions and cost no upkeep, which is not an oversight a player would
+     * fail to notice twice. A war has to be paid for while it is being fought.
+     */
+    long long countryTroops(int countryId) const;
+    /** Just the men in battles, for callers that already have the garrisons. */
+    long long battleTroops(int countryId) const;
+
+    /** The battle this country is fighting in this province, or nullptr. */
+    Battle* battleAt(int provinceId, int attackerCid);
+    const Battle* battleAt(int provinceId, int attackerCid) const;
+    /** Any battle in this province, whoever is fighting it. For the panel. */
+    const Battle* anyBattleAt(int provinceId) const;
+    /**
+     * The comparison every fight makes, in one place.
+     *
+     * A fresh assault and a battle round weigh exactly the same things --
+     * frontage, fort, depth, supply, both sides' research -- and the only way
+     * to be sure they agree is for there to be one of it. This codebase has
+     * been bitten enough times by a rule with two homes.
+     */
+    struct AssaultPowers {
+        long long width = 0;
+        long long engagedAtk = 0;
+        long long reserveAtk = 0;
+        long long defTroops = 0;
+        /**
+         * The share of each side actually on the line.
+         *
+         * Was a men-to-width ratio; it is a FRONTAGE ratio now, because a man
+         * takes as much of the line as his kind does. Identical for an all-line
+         * force, whose frontage need is exactly its headcount.
+         */
+        double atkEngagedFrac = 1.0;
+        double defShare = 1.0;
+        double atkMod = 1.0;
+        double atkDepth = 1.0;
+        double atkSupply = 1.0;
+        double atkPower = 0.0;
+        double defPower = 0.0;
+    };
+    AssaultPowers weighAssault(int attackerCid, int pid, const ForceComposition& attackers,
+                               bool fromTheSea) const;
+
+    /** Fight one round of every standing battle this country is attacking in. */
+    void processBattles(int countryId);
+    /** Pull a battle's men back to where they came from. */
+    void withdrawFromBattle(int provinceId, int attackerCid);
+    /**
+     * Queue a withdrawal, or cancel one already queued.
+     *
+     * Deferred to the turn like every other order rather than taken
+     * immediately, so a player can change their mind and so a multiplayer
+     * client cannot act between turns.
+     */
+    void queueWithdraw(int provinceId);
+    bool hasPendingWithdraw(int provinceId) const;
+
+    /**
+     * How many rounds a battle may run before it is called off for the
+     * attacker automatically.
+     *
+     * A SAFETY RAIL, NOT A RULE THE PLAYER SHOULD MEET. Without it a battle
+     * whose attacker never withdraws and never quite loses can stand for the
+     * length of a campaign, and an AI with no withdraw reflex would do exactly
+     * that -- feeding a province until it has no army. Set well beyond any
+     * fight worth having: if this fires, something upstream is not deciding.
+     */
+    static constexpr int BATTLE_MAX_ROUNDS = 12;
+    /** Counters, for the same reason [WIDTH] and [SUPPLY] have them. */
+    long long m_battlesStarted = 0;
+    long long m_battleRounds = 0;
+    long long m_battlesWon = 0;
+    long long m_battlesLost = 0;
+    long long m_battlesWithdrawn = 0;
+    long long m_battlesReinforced = 0;
+    /** Country-turns where an ally or guarantor could have been called. */
+    long long m_callableFriendTurns = 0;
+    /**
+     * Soldiers raised, by kind.
+     *
+     * The question a troop-type system lives or dies on is whether anybody
+     * actually picks anything but the default. An impression is not an answer,
+     * so this is counted and printed beside the other rule counters -- and the
+     * first thing it will show is that the AI raises line infantry and nothing
+     * else, because its recruit action has no kind on it yet. That is a
+     * finding, not a failure: it says exactly where the next piece of work is.
+     */
+    long long m_recruitedByType[TROOP_TYPE_COUNT] = {};
+
+    // ── DEPTH: WHAT THE MEN BEHIND THE FRONTAGE ARE WORTH ──
+    //
+    // Width alone made army size IRRELEVANT, which is not what it was for.
+    // Measured on a real invasion (province 824, Sweden into Norway, the AI
+    // session's [BATTLE] trace):
+    //
+    //   attackers 174,800 / 119,537 / 87,293  -> atkPower 35,631 every time
+    //   defenders  93,048 /  84,909 / 66,067  -> defPower 37,769 every time
+    //
+    // Both sides capped at the frontage, so the comparison collapsed to the
+    // modifiers alone and returned THE IDENTICAL ANSWER EVERY TURN until one
+    // stack happened to fall below the frontage. 174,800 men accomplished
+    // exactly what 40,000 would, and 93,048 defended exactly as well as 35,632.
+    // Nobody would design that, and a player bringing an overwhelming army and
+    // seeing nothing change is the least believable thing the game does.
+    //
+    // THE REPAIR: men beyond the frontage are the RESERVE. They cannot widen
+    // the fight -- that is the whole point of a frontage -- but they can be
+    // rotated into it as the men in front fall, so a deeper stack fights at
+    // greater effect for longer. It is an abstraction of a multi-round fight
+    // into the single comparison this resolver makes, and it is stated as one
+    // rather than dressed up: see the roadmap's Phase 8 for the multi-turn
+    // version that would not need it.
+    //
+    // Logarithmic and capped, deliberately. Doubling a stack that already fills
+    // the frontage is worth something; doubling it again is worth less; and no
+    // amount of men turns a narrow fortified pass into open ground, which is
+    // the property width exists to protect.
+    //
+    // THE CAP IS THE SENSITIVE PARAMETER AND 1.5 IS NOT A GUESS. Four settings,
+    // three seeds each, one binary, 60 turns, difficulty 2, scenarios
+    // (survival per seed 4242 / 777 / 31337):
+    //
+    //   depth off        67.9  69.8  64.2
+    //   0.25 per, cap 2  67.9  67.9  66.0   and rebellions 94.4 on 4242
+    //   0.20 per, cap 3  60.4  67.9  62.3
+    //   0.20 per, cap 2  60.4  67.9  62.3
+    //   0.20 per, cap 1.5  77.4  69.8  69.8  <- and rebellions below `off` 3/3
+    //
+    // Caps of 2 and 3 are WORSE THAN NO DEPTH AT ALL on every seed, and they
+    // behave identically to each other, which says the region between them
+    // almost never binds. What they do is let a stack many times the frontage
+    // multiply its power and steamroll narrow ground -- exactly the thing width
+    // was built to stop. 1.5 keeps that, and is the only setting that beats the
+    // baseline on both instruments.
+    //
+    // THE HONEST COST: at 0.20 per doubling the cap is reached at 5.7x the
+    // frontage, so above that men stop helping again and two stacks that both
+    // hugely overfill the ground still tie on modifiers. That is the original
+    // bug, surviving in a corner. It is accepted rather than hidden, for two
+    // reasons: real fights on the shipped maps run at two to six times the
+    // frontage, so the live range is the range where depth works; and "beyond
+    // six times what the ground can hold, more men stop mattering" is a
+    // defensible statement about frontage, where "men never mattered at any
+    // ratio" was not. Raising the cap to fix the corner costs 9-17 points of
+    // survival, measured above, and is not worth it.
+    static constexpr float DEPTH_PER_DOUBLING = 0.20f;
+    static constexpr float DEPTH_MAX          = 1.5f;
+    /**
+     * The multiplier a stack of `troops` earns on a frontage of `width`.
+     *
+     * One for anything at or below the frontage, so a fight neither side can
+     * fill behaves exactly as it did. Applied to BOTH sides: depth helps a
+     * defender for the same reason it helps an attacker.
+     */
+    static float depthFactor(long long troops, long long width);
+
+    // ── SUPPLY: WHAT A STACK IS WORTH FAR FROM HOME ──
+    //
+    // Nothing in the resolver knew how far an attacker was from its own
+    // country. A stack twenty provinces deep fought exactly as well as one
+    // defending its capital, so depth of penetration cost nothing, overextension
+    // was not a thing that could happen, and defence in depth had no reason to
+    // exist beyond stacking forts.
+    //
+    // Supply is measured in HOPS over the province adjacency graph, from the
+    // nearest source, walking only ground the country or its allies hold. The
+    // sources are its ports and its largest industrial province -- the map data
+    // has no capital field, and the biggest factory town is the closest honest
+    // stand-in for where an army is supplied from.
+    //
+    // AND THE POINT OF IT IS THE LAST CASE. A province with no land route at
+    // all to a source is CUT OFF and fights badly. That is what makes manoeuvre
+    // matter at province scale without a single sub-province mechanic: severing
+    // a corridor becomes a real operation with a real payoff, and holding one
+    // becomes worth doing. Matt's constraint was that provinces are too big for
+    // tactical manoeuvre; this is operational manoeuvre, which they are exactly
+    // the right size for.
+    // TWO FREE HOPS, AND THE NUMBER IS A FIRING RATE, NOT A TASTE.
+    //
+    // Built at four, where it fired but did not bite: only 3-4.5% of sides
+    // weighed were supplied below full and 1.4-1.9% were cut off, because most
+    // fighting happens within four hops of a port on maps this shape. Survival
+    // moved +1.9 / 0 / -1.9 across three seeds, which is what "it never fires"
+    // and "it fires and cancels out" BOTH look like -- the [SUPPLY] counters
+    // exist precisely because the aggregate cannot separate those two.
+    //
+    // At two hops it bites 20% of the time with 2-3% cut off, which is the same
+    // order as the frontage's 25% bind rate -- and the frontage is the rule this
+    // project has already learned is invisible in the aggregate and decisive in
+    // the seat bench. Survival stays roughly flat either way (0 / -3.7 / +1.9),
+    // so the aggregate is not the instrument that should choose this; the firing
+    // rate is, and the AI seat gate settles whether it is good.
+    static constexpr int   SUPPLY_FREE_HOPS = 2;      ///< near home costs nothing
+    static constexpr float SUPPLY_FALLOFF   = 0.08f;  ///< per hop beyond that
+    static constexpr float SUPPLY_MIN       = 0.55f;  ///< however long the march
+    static constexpr float SUPPLY_CUTOFF    = 0.45f;  ///< no land route at all
+    /**
+     * A landing supplies itself from the sea.
+     *
+     * AN AMPHIBIOUS ASSAULT IS NOT AN ENCIRCLEMENT, and the hop walk cannot
+     * tell them apart: it looks for a land route home, a landing has none by
+     * definition, and every landing on the planet would therefore fight at the
+     * cut-off penalty. That is not what cutting a corridor is supposed to mean,
+     * and it would have quietly repriced the amphibious doctrine -- which was
+     * measured against a resolver where landings had no supply term at all.
+     *
+     * Below 1.0 because a beachhead is genuinely harder to sustain than a fight
+     * at home, and well above SUPPLY_CUTOFF because a fleet standing offshore
+     * is a supply line, where an encircled stack has none.
+     */
+    static constexpr float SUPPLY_BEACHHEAD = 0.85f;
+    /**
+     * Whether a friendly hull is close enough to supply this province by sea.
+     *
+     * ONE RULE, NOT TWO: the radius is `shipMaxRangePx` -- the same distance a
+     * hull may put men ashore over. A fleet that could land here can supply
+     * here, and there is no second constant to tune or to drift away from the
+     * landing rule.
+     *
+     * This replaces a flat beachhead constant. The constant asserted that a
+     * landing is supplied; this ASKS, so a beachhead whose fleet has been sunk
+     * or has sailed away loses its supply and fights cut off, which is what
+     * being stranded on a hostile shore should mean. Allied hulls count: a
+     * landing supported by an ally's navy is supported.
+     *
+     * Answered lazily and cached with the country's land map, because only
+     * contested provinces ever ask -- about 500 in a 60-turn world against
+     * ~4,000 provinces and every hull afloat, which is the difference between
+     * a cheap question and a scan nobody would ship.
+     */
+    bool seaSupplied(int countryId, int provinceId) const;
+    /** Provinces already answered for, per country, per turn. */
+    mutable std::unordered_map<int, std::unordered_map<int, bool>> m_seaSupplyCache;
+    /**
+     * Hops from `countryId`'s nearest supply source to `provinceId`, or -1 when
+     * there is no route through ground it or its allies hold.
+     *
+     * Answers for ground the country does NOT hold as well -- an attacker is
+     * supplied to the province it is attacking through its own territory, so
+     * the answer there is one more than the best of its own neighbours.
+     */
+    int supplyHops(int countryId, int provinceId) const;
+    /** What that distance does to a stack's fighting power. */
+    float supplyFactor(int countryId, int provinceId) const;
+    /**
+     * Per-country hop maps, rebuilt lazily and thrown away when the ground
+     * moves. A breadth-first walk per country per turn is cheap; one per
+     * assault would not be, and there are tens of thousands of assaults in a
+     * long game.
+     */
+    mutable std::unordered_map<int, std::unordered_map<int, int>> m_supplyCache;
+    /** Forget what we knew about these countries' supply. */
+    void invalidateSupply(int cidA, int cidB = 0);
+    /**
+     * How often the frontage actually BOUND, against how many assaults there
+     * were.
+     *
+     * A rule that never fires is indistinguishable from no rule, and a
+     * three-seed A/B of width on against width off came back mixed in sign on
+     * both survival and concentration -- not separable. That is exactly the
+     * result you get from a cap that is set too generously to reach, and the
+     * only way to tell that apart from "it binds and does not matter" is to
+     * count. See the note on COMBAT_WIDTH_PER_AREA.
+     */
+    long long m_assaultsTotal = 0;
+    long long m_assaultsWidthBound = 0;
+    long long m_assaultsContested = 0;   ///< somebody was actually defending
+    long long m_assaultsRepulsed = 0;    ///< ...and threw us back
+    /**
+     * How often supply actually BIT, and how often it cut somebody off.
+     *
+     * Same reasoning as the width counters above, and the same history behind
+     * it: attrition was built, shipped inert, and only found by measuring that
+     * an eval was byte-identical with it on and off. A supply rule that never
+     * reaches a penalty is indistinguishable from no supply rule, and the
+     * aggregate cannot tell the difference -- supply moved survival by +1.9, 0
+     * and -1.9 across three seeds on its first measurement, which is exactly
+     * what "it never fires" looks like AND exactly what "it fires and roughly
+     * cancels out" looks like. Counting is the only thing that separates them.
+     */
+    mutable long long m_supplyChecks = 0;      ///< sides weighed for supply
+    mutable long long m_supplyPenalised = 0;   ///< ...of which supplied below full
+    mutable long long m_supplyCutOff = 0;      ///< ...of which had no route home
+    mutable long long m_supplySeaSupplied = 0; ///< ...saved by a hull offshore
+    /**
+     * Of those, how many were a DEFENDER cut off inside its own country.
+     *
+     * The distinction matters and was not obvious. Supply was built to make an
+     * attacker weaker the deeper it pushes; but a country being carved up has
+     * its remaining ground fragmented, and a defender whose province has been
+     * severed from its own ports and industry is cut off TOO -- fighting at the
+     * same penalty, at home, on its own soil. That is a death spiral: lose
+     * ground, get cut off, fight worse, lose more ground. If most cut-offs are
+     * defenders, the rule is punishing the invaded rather than the overextended,
+     * which is the opposite of what it is for.
+     */
+    mutable long long m_supplyCutOffDefender = 0;
+    mutable long long m_supplyPenalisedDefender = 0;   ///< defenders docked at all
+    mutable long long m_supplyDefChecks = 0;           ///< defenders weighed
+
+    // ── ATTRITION ON FOREIGN STACKS WAS BUILT HERE, MEASURED, AND REMOVED ──
+    //
+    // The plan for this phase paired combat width with a slow bleed on armies
+    // standing on someone else's ground -- the "enemy troops on my territory
+    // that never took the province" report, and the thing that would stop width
+    // producing stalemates instead of fronts.
+    //
+    // IT NEVER FIRED ONCE. Built at 1.5% a turn and measured against itself at
+    // 0%, a 120-turn eval produced BYTE-IDENTICAL output on every figure --
+    // survival, concentration, unrest, readiness. In a deterministic simulation
+    // that is proof of absence, not weak evidence: a single man lost anywhere
+    // would have moved the trajectory.
+    //
+    // The reason is that the problem had already been solved. An assault that
+    // carries leaves the attacker holding the province, so his men are on their
+    // OWN soil the moment the fight ends; an assault that is repulsed is
+    // destroyed, or now falls back to the province it came from. The game has
+    // essentially no persistent foreign stacks any more -- the eval's own
+    // trespass line reads 0 of 2 -- so there was nothing left to bleed.
+    //
+    // Removed rather than shipped inert. A mechanic that cannot be observed to
+    // do anything is worse than no mechanic: it is a thing the next person
+    // reads, believes, and reasons from. If foreign stacks ever return -- a
+    // supply system, or occupation without annexation -- this is the note that
+    // says what to build and what to check first.
     /** Countries whose treasury emptied this turn. Cleared when solvent. */
     std::unordered_set<int> m_bankruptCountries;
+    /**
+     * Consecutive turns each country has been unable to pay for itself.
+     *
+     * ONE BAD TURN IS NOT THE FAILURE THIS MEASURES. The bankruptcy cascade
+     * clears almost any single shortfall by disbanding troops -- men are cheap
+     * to shed and there are millions of them -- so "still short after the
+     * cascade" fires essentially never, and a last rung gated on it would be
+     * dead code. Measured: 46 bankruptcies in a 120-turn run, none of them
+     * still short at the end of the cascade.
+     *
+     * What actually kills a country is being broke turn after turn: it cuts
+     * everything, the cuts raise unrest, the unrest costs provinces, and the
+     * smaller country is broker still. That is the spiral the AI's worst seat
+     * dies in on every ruler, and a streak is what sees it.
+     */
+    std::unordered_map<int, int> m_bankruptStreak;
+    /** Turns of continuous insolvency before a country will shed a region. */
+    static constexpr int RELEASE_BANKRUPT_STREAK = 5;
     bool isBankrupt(int cid) const { return m_bankruptCountries.count(cid) > 0; }
     static constexpr float WAR_WEARINESS_MAX = 20.0f;
     // ~45 turns to work off a single call at full strength. Long enough that a
     // second call while the first is still hurting is a genuinely bad idea.
     static constexpr float WAR_WEARINESS_DECAY = 0.15f;
     static constexpr int REBEL_CID_MIN = 60000;
-    void createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds);
+    /**
+     * Build a new country out of some of `parentCid`'s provinces.
+     *
+     * `peaceful` is the difference between a rebellion and a RELEASE. Both
+     * events create exactly the same thing -- a named, flagged country with its
+     * own compass averaged over the ground it takes -- and differ only in how
+     * they end: a revolt begins at war and is announced to the player as a
+     * disaster, a release begins at peace under the releaser's guarantee and is
+     * something the player chose.
+     *
+     * One function rather than two because everything hard here is shared: the
+     * name that must not collide, the ISO, the flag, the ownership transfer,
+     * reindexProvinceOwner, and the pixel-list surgery whose naive version cost
+     * 40% of a turn. A second copy would be the ninth two-homed thing in this
+     * codebase.
+     */
+    void createRebelCountry(int rebelCid, int parentCid,
+                            const std::vector<int>& provinceIds,
+                            bool peaceful = false);
+
+    // ── RELEASING A NATION ──────────────────────────────────────────
+    //
+    // See src/ReleaseRules.h for the rule itself, which is pure and tested
+    // without a game. These two are the adapter and the act.
+    /**
+     * Regions this country could let go of, best first.
+     *
+     * Reads the province minorities and each group's alignment with this
+     * government, so a people content to be governed by you is never offered.
+     * Recomputed on demand rather than cached: it changes with every ethnic
+     * policy, every conquest and every drift of alignment, and a stale list
+     * would offer the player ground that is no longer theirs to give.
+     */
+    std::vector<ReleaseCandidate> releasableRegions(int countryId) const;
+    /**
+     * Let one go. Returns the new country's id, or -1 if the region is no
+     * longer releasable.
+     *
+     * RE-CHECKED HERE rather than trusted from the caller: the panel's list can
+     * be a frame old, the multiplayer host takes this from a client that may
+     * say anything, and the bankruptcy cascade calls it several steps after it
+     * chose. Everything downstream assumes the provinces are still ours.
+     */
+    int releaseNation(int countryId, const ReleaseCandidate& region);
+
+    /**
+     * WHICH GROUND A FREED NATION ACTUALLY GETS.
+     *
+     * releasableRegions computes the largest run a disaffected people holds,
+     * and releasing used to take all of it or nothing. What a settlement
+     * actually contains is a judgement -- how much is being given up, which
+     * city stays -- and it is the judgement the player was not allowed to make.
+     *
+     * A subset is legal when it is CONTIGUOUS and still large enough. Both are
+     * checked here rather than trusted from the panel, because the same subset
+     * arrives from a treaty agreed several turns earlier and from a multiplayer
+     * client that may say anything.
+     */
+    bool releaseSubsetOk(int ownerCid, const std::vector<int>& provs,
+                         std::string& whyNot) const;
+
+    /// Choosing the ground for a release: the people, and what they are offered.
+    std::string m_releasePickTag;
+    std::vector<int> m_releasePickProvs;    ///< currently chosen, ascending
+    std::vector<int> m_releasePickPool;     ///< what may be chosen from
+    /// 0 = not picking, 1 = for our own release, 2 = a term in an offer.
+    int m_releasePickMode = 0;
     void processRebellions(int countryId);
 
     // ── Country AI (neural-net RL, see src/ai/) ──
@@ -2953,6 +4435,28 @@ private:
                              const std::string& targetIso) const;
     /** Has `sourceIso` already declared a war this turn that has yet to land? */
     bool hasPendingDeclaration(const std::string& sourceIso) const;
+    /** How many declarations this country already has in flight this turn. */
+    int countPendingDeclarations(const std::string& sourceIso) const;
+    /**
+     * How many wars this country may declare in one turn.
+     *
+     * ONE BY DEFAULT, and doctrine is the only thing that raises it. The
+     * per-turn cap and the per-PAIR cap are different rules that were doing
+     * their work through the same boolean: `hasPendingDeclaration` is scoped to
+     * the SOURCE, so it refused a second declaration against a different
+     * country, while the rationale written beside it -- a country queueing the
+     * same war three times over, and an alliance answered in the same pass as
+     * the declaration that follows it -- is entirely about ONE PAIR, and is
+     * already handled by hasPendingDiplomacy on the line above it. The pair
+     * rule is load-bearing and stays exactly as it was; only the count is a
+     * doctrine's to change.
+     *
+     * A LEVER, not a special case, so it reaches the AI, the multiplayer host
+     * and the panel through getTotalEffect like every other doctrine effect.
+     */
+    int warDeclarationLimit(int countryId) const;
+    /** Wars per turn without a doctrine saying otherwise. */
+    static constexpr int WAR_DECLARATIONS_BASE = 1;
     /**
      * Queue one diplomatic action, or refuse it.
      *
@@ -3019,7 +4523,32 @@ private:
     // next person to keep the two in step by hand. Everything on the row now
     // asks these instead.
     int toolbarRowH() const { return 20 + 6 * 2; }
-    int toolbarRowY() const { return (m_screenH - 80 - 16) - toolbarRowH() - 4; }
+    /**
+     * Where that row sits, clear of the bottom bar AND of the Process Turn
+     * button.
+     *
+     * TWO BUGS LIVED IN THE OLD ONE LINE, and both only showed on a narrow
+     * screen. It wrote `m_screenH - 80 - 16`, hard-coding the bottom bar at 80
+     * -- which is the eighth instance of exactly what bottomBarH()'s own
+     * comment was written about, and on a phone the bar is 44, so the row sat
+     * 36px too high.
+     *
+     * And its x is anchored to the RIGHT-aligned bottom bar, so as the screen
+     * narrows the row slides left until it is on top of the bottom-left stub
+     * column. On a 402pt phone `toolbarRowX()` is 24 and Process Turn is at 12:
+     * the army view's "Disband all" button was drawn straight through it.
+     * Photographed, not deduced -- see the screenshot tour's orders-portrait.
+     *
+     * So: the real bar height, and when the row would land on the stub column,
+     * it steps up above it instead.
+     */
+    int toolbarRowY() const {
+        int y = (m_screenH - bottomBarH() - 16) - toolbarRowH() - 4;
+        const bool overStub = bottomLeftStubVisible() &&
+                              toolbarRowX() < 12 + 180 + 8;
+        if (overStub) y = std::min(y, bottomLeftStubTop() - toolbarRowH() - 8);
+        return y;
+    }
     /** First free x on the row: after the navy filters when the view has them. */
     int toolbarRowX() const {
         const int mainBarW = std::min(880, m_screenW - 32);
@@ -3170,12 +4699,24 @@ private:
     void processShipDisembarks(int countryId);
     void processRecruitments(int countryId);
     void processDisbandOrders(int countryId);
+    void traceDisband(const char* origin, int pid, int count, int countryId) const;
     void processEmbarkations(int countryId);
     void processScrapShips(int countryId);
 
     // UI state for action buttons
     int m_diplomaticActionScroll = 0;
-    int m_armyRecruitPct = 50;  // slider for what % of max to recruit
+    /**
+     * The recruit slider, ONE PER KIND.
+     *
+     * It was a single number shared by every kind, so choosing militia and then
+     * looking at mechanised showed the militia percentage against a mechanised
+     * ceiling four times smaller, and moving it moved both. A province cannot
+     * raise "50%" -- it raises 50% of a pool, for one kind, and the other kinds
+     * are still owed their own answer.
+     */
+    int m_armyRecruitPct[TROOP_TYPE_COUNT] = {50, 50, 50, 50};
+    /** Its own slider is the one for the kind currently selected. */
+    int& recruitPct() { return m_armyRecruitPct[(int)m_recruitType]; }
     int m_armySplitPct = 50;    // slider for split percentage
     int m_specDropdownProvince = -1; // province id with open specialization dropdown
     int m_specDropdownHover = 0;
@@ -3204,6 +4745,37 @@ private:
      * wipe that province's orders; the panel has a button that says so.
      */
     int m_armyMovePickFrom = -1;
+
+    // ─── WHO IS ACTUALLY STANDING HERE ─────────────────────────────────────
+    //
+    // The army view showed a single number and three buttons. It could not say
+    // what the garrison was made of, whose allied stacks were sharing the
+    // ground, or -- once soldiers have kinds -- which of yours an order would
+    // move. A list is not a nicety here; it is the only way the rest of the
+    // feature is usable.
+    float m_armyListScroll = 0.0f;      ///< pixels, clamped to the content
+    /**
+     * Which kind the next order applies to, or -1 for the whole garrison.
+     *
+     * "Command them both by type and by province as a whole" is exactly this
+     * one filter: -1 is the province, a type is the type. It rides on the move
+     * order rather than being read at execution time, so an order given for the
+     * militia still moves militia if the player changes the selection before
+     * pressing the turn button.
+     */
+    int m_armyTypeFilter = -1;
+    /**
+     * Which kind the recruit button raises.
+     *
+     * Separate from m_armyTypeFilter, which aims MOVE orders at troops that
+     * already exist. Recruiting and commanding are different questions and
+     * sharing one selection would mean picking the militia row to move them
+     * also silently changed what the next levy was made of.
+     */
+    TroopType m_recruitType = TROOP_LINE;
+    /** Rows the army list drew last frame, for hit-testing clicks. */
+    struct ArmyRowHit { Rectangle rect; int type; };
+    std::vector<ArmyRowHit> m_armyRowHits;
 
     /** Whether two provinces share a border, per the adjacency graph. */
     bool provincesAdjacent(int a, int b) const;
@@ -3307,6 +4879,18 @@ private:
     int m_ceasefireTheirMoney = 0;      // money we demand
     std::vector<int> m_ceasefireOurProvs;   // province IDs we cede
     std::vector<int> m_ceasefireTheirProvs; // province IDs they cede
+    /**
+     * A nation freed as part of the deal, chosen province by province.
+     *
+     * The TAG is fixed by the first province picked -- it names which
+     * releasable region is being carved -- and cleared when the last one is
+     * taken back. That is what stops a settlement made of two different
+     * peoples' land being sent as one country.
+     */
+    std::string m_ceasefireOurReleaseTag;
+    std::vector<int> m_ceasefireOurReleaseProvs;
+    std::string m_ceasefireTheirReleaseTag;
+    std::vector<int> m_ceasefireTheirReleaseProvs;
     std::vector<int> m_ceasefireOurDropClaims;  // claims we drop (province IDs)
     std::vector<int> m_ceasefireTheirDropClaims; // claims they drop (province IDs)
     // Inline map state for ceasefire screen
@@ -3314,7 +4898,7 @@ private:
     float m_ceasefireMapZoom = 1.0f;
     bool m_ceasefireMapDragging = false;
     int m_ceasefireMapDragPrevX = 0, m_ceasefireMapDragPrevY = 0;
-    int m_ceasefireSelectMode = 0; // 0=idle, 1=selecting our provinces to cede, 2=selecting claims to drop, 3=selecting their provinces to demand, 4=selecting claims they drop
+    int m_ceasefireSelectMode = 0; // 0=idle, 1=cede ours, 2=drop our claim, 3=demand theirs, 4=demand they drop a claim, 5=free a nation from ours, 6=demand they free one
 
     // Cached overlay buffer for ceasefire screen (rebuilt only when dirty)
     std::vector<Color> m_ceasefireOverlayBuf;
@@ -3384,10 +4968,62 @@ private:
     Vector2 m_popupTermsMapDragPrev{0, 0};
     void updateCeasefireScreen();
 
-    // ─── Turn processing state ───
+    // ─── WHAT PART OF THE TURN WE ARE IN ────────────────────────────────────
+    //
+    // ONE VARIABLE DECIDES FOR EVERYBODY, which is the whole point of the
+    // refactor that added the second value. Thirteen places already asked
+    // `m_turnState == TURN_NORMAL` before deciding whether a control was live;
+    // the enum simply had nothing else to be, so it decided nothing. Giving it
+    // a second state turns every one of those into a phase check for free --
+    // no button had to learn about the new phase, they had all already been
+    // written to ask.
+    //
+    // This is the shape Greater Diplomacy 4 uses, read from its project: a
+    // single `Screen Type` that every sprite compares against, so a phase is
+    // entered by setting one string rather than by hiding controls one at a
+    // time. The failure mode of the alternative is visible in this very file's
+    // history -- a cap written in the diplomacy panel bound the player and not
+    // the AI, and a limit written in the renderer bound the mouse and not the
+    // game.
     enum TurnState {
-        TURN_NORMAL,        // Playing normally
+        TURN_NORMAL,          ///< playing: orders may be given
+        /**
+         * The turn has resolved and the map is showing what everybody did.
+         *
+         * A BEAT IN THE LOOP, not a lens: it is entered automatically when a
+         * turn finishes and left by a deliberate press, the way GD4's
+         * "Watching AI Moves" is. Nothing takes orders while it is up -- which
+         * costs no code, because the thirteen callers above already refuse
+         * anything that is not TURN_NORMAL.
+         */
+        TURN_VIEWING_ORDERS,
     } m_turnState = TURN_NORMAL;
+    /** Whether the phase is skipped, remembered between sessions. */
+    bool skipViewingOrders() const { return m_config.skipViewingOrders; }
+
+    /**
+     * The political map owes the screen a repaint, and has not been given one.
+     *
+     * THE LAND MUST NOT MOVE WHILE THE ORDERS ARE BEING READ. The phase shows
+     * what everyone did to bring the new turn about, so a border that has
+     * already snapped to its new owner is showing the answer beside the
+     * question. Nothing needs to be snapshotted to prevent that: the map on
+     * screen is a texture, and it only changes when something re-uploads it.
+     * So the turn stops asking for the upload and leaves a note instead, and
+     * the note is honoured on the first frame after the phase ends.
+     *
+     * It also collapses a real duplication. Both the end of processTurn and
+     * every applyCeasefireTerms used to regenerate the whole 8192x4096 buffer
+     * outright, so a turn with four ceasefires paid for five full-raster
+     * passes to show one final picture. Now it pays for one.
+     */
+    bool m_politicalRepaintPending = false;
+    /** Same note, for the country labels: they are placed from the borders. */
+    bool m_labelRepaintPending = false;
+    /** Honour both, unless the orders are still being read. */
+    void flushMapRepaint();
+    /** Draw the phase's banner and its one button; true if it consumed a click. */
+    void drawViewingOrdersPhase();
     // Turned off by a map script with `set rules.rebellions false`. A
     // generated world can be built around a premise that revolts contradict,
     // and the tutorial already suppresses them the same way -- this gives a
@@ -3415,6 +5051,266 @@ private:
     float m_scriptErrorTimer = 0.0f;
     void runMapScripts();
     void drawScriptErrors();
+
+    // ─── Mail ───
+    //
+    // One box per country, each holding both sides of every correspondence it
+    // is part of. Per country rather than one global log because that is what
+    // makes isolation structural: handing a language model "Britain's box" is
+    // the whole of what Britain can see, with no filter to forget.
+    std::unordered_map<int, mail::Box> m_mail;
+
+    // ─── The language-model module, if one is loaded ───
+    //
+    // False until the module exists and answers. Every bot path reads this, so
+    // an absent module makes them dead rather than broken: no Mail button
+    // claiming advisors, no country listed that can never reply.
+    bool m_llmAvailable = false;
+    /// Which countries it speaks for. Empty with the module loaded means "every
+    /// country not held by a person", which is the ordinary single-player case.
+    std::set<int> m_llmCountries;
+    /// Each country's own door, for countries that are not the player. In
+    /// multiplayer this is filled from the roster; a bot's is always Open.
+    std::unordered_map<int, mail::Lock> m_mailLocks;
+
+    bool llmConfigured() const;
+    void rebuildLlmCountries();
+    void askAdvisor(int fromCountry, int toCountry);
+    void runAdvisors();
+    std::string llmRelativeStrength(int fromCountry, int toCountry) const;
+    /// Fill in what a foreign ministry would plausibly know, in words.
+    void describeSituation(int me, int them, llm::Situation& out) const;
+    /// Answer one thing an advisor asked to look up. Words only.
+    std::string answerAdvisorTool(int me, const std::string& tool,
+                                  const std::string& argument) const;
+    /// Province counts as of last turn, for "has this been going well".
+    std::unordered_map<int, int> m_llmLastHoldings;
+
+    // ─── Reporting a letter, and reviewing what was reported ───
+    bool m_reportOpen = false;
+    int  m_reportMessageId = 0;
+    int  m_reportCountry = 0;
+    int  m_reportReason = 0;
+    std::string m_reportNote;
+    bool m_reportWithContext = true;
+    bool m_reportNoteFocus = false;
+
+    static const char* reportReasonId(int index);
+    static const char* reportReasonLabel(int index);
+    void openReportDialog(int messageId, int aboutCountry);
+    void closeReportDialog();
+    void sendReportToIssuer();
+    void sendReportToHost();
+    static const std::string& moderationResult();
+    std::string mpPsidForCountry(int countryId) const;
+    std::string mpServerLabel() const;
+    bool canReportToIssuer(int countryId) const;
+
+    /// One complaint a player sent to this host. Held for the host to read.
+    struct HostReport {
+        uint16_t fromPeer = 0;
+        uint16_t aboutPeer = 0;
+        std::string reason;
+        std::string note;
+        std::string message;
+        int  atTurn = 0;
+        bool dealtWith = false;
+    };
+    std::vector<HostReport> m_hostReports;
+    bool m_hostReportUnread = false;
+    bool m_hostReportsOpen = false;
+    int  m_hostReportScroll = 0;
+    void drawHostReports();
+    void updateHostReports();
+    /// Names the host has removed. Advisory: a host's own record, kept so a
+    /// rejoining name is recognisable, not an enforcement mechanism.
+    std::set<std::string> m_hostBanned;
+
+    // ─── The account service's review queue, for a developer-badged account ───
+    struct DevReport {
+        std::string id, reporter, accused, reason, note, message, server;
+        std::string status, outcome;
+        std::vector<std::string> context;
+        long long at = 0;
+    };
+    std::vector<DevReport> m_devReports;
+    bool   m_devReportsOpen = false;
+    int    m_devReportScroll = 0;
+    int    m_devReportSelected = -1;
+    double m_devReportRefetch = 0.0;
+
+    /// How long a timeout lasts, chosen on the screen. Index into
+    /// kTimeoutChoices; a week is the default because it is the common answer,
+    /// not the only one.
+    int m_devTimeoutChoice = 2;
+    /// What the moderator typed. The single source of truth for the length;
+    /// a chip fills it in rather than being a second setting beside it.
+    std::string m_devTimeoutText = "7d";
+    bool m_devTimeoutFocus = false;
+    /// Which list is showing. Solved reports move out of the way rather than
+    /// being deleted -- a decided report is the record of a decision, and the
+    /// history is most of what makes the next one easier to judge.
+    enum class ReportTab { Open = 0, Solved, Lookup };
+    ReportTab m_devTab = ReportTab::Open;
+
+    /// The person being looked up, as typed: a nickname or an account id.
+    std::string m_devLookupText;
+    bool        m_devLookupFocus = false;
+    bool        m_devLookupPending = false;
+    struct DevProfile {
+        std::string id, nickname, banReason;
+        long long created = 0, bannedUntil = 0, bannedAt = 0;
+        int  linkedCount = 0;
+        bool banned = false;
+        bool valid = false;
+        std::vector<std::string> badges;
+        std::vector<DevReport> against, filed;
+    };
+    DevProfile m_devProfile;
+    void lookUpAccount();
+    void actOnAccount(const char* action, double days);
+    void parseProfile();
+    void drawLookupTab(int x, int y, int w, int h, Vector2 mouse, bool click, Color accent);
+
+    static double parseTimeoutDays(const std::string& text);
+    static std::string describeTimeout(double days);
+    struct TimeoutChoice { const char* label; int days; };
+    static const TimeoutChoice kTimeoutChoices[];
+    static const int kTimeoutChoiceCount;
+
+    /// Whether this account carries the developer badge. A CONVENIENCE for
+    /// hiding the menu entry -- the service checks it on every request, and is
+    /// the thing that actually decides.
+    bool isDeveloper() const;
+    void openDevReports();
+    void closeDevReports();
+    void fetchDevReports();
+    void parseDevReports();
+    void decideDevReport(const std::string& id, const char* action, double days);
+    void drawDevReports();
+    void updateDevReports();
+    void drawReportDialog();
+    void updateReportDialog();
+
+    bool  m_mailOpen = false;
+    int   m_mailThread = 0;        ///< which correspondent is open, 0 = the list
+    std::string m_mailDraft;       ///< what is being typed now
+    int   m_mailEditing = 0;       ///< id of the pending letter being rewritten
+    int   m_mailScroll = 0;
+    int   m_mailListScroll = 0;
+    bool  m_mailComposeFocus = false;
+    int   m_mailPickerScroll = 0;
+    bool  m_mailPicking = false;   ///< choosing who to start a letter to
+    std::string m_mailNotice;      ///< why the last attempt was refused
+    double m_mailNoticeUntil = 0.0;
+    /// Letters that arrived on the turn just resolved, for the notice.
+    int   m_mailArrived = 0;
+
+    /// The box for a country, created on first use.
+    mail::Box& mailbox(int countryId) { return m_mail[countryId]; }
+    const mail::Box* mailboxIfAny(int countryId) const;
+
+    /// What the host permits, and whether anyone could answer.
+    mail::Rules mailRules() const;
+    /// Whether the Mail button should exist at all.
+    bool mailAvailable() const { return mail::available(mailRules()); }
+    /// Whether this country is played by a language model rather than a person.
+    bool mailIsBot(int countryId) const;
+    /// That country's own door setting.
+    mail::Lock mailLockOf(int countryId) const;
+
+    /// Send everything pending, everywhere. Called once as the turn resolves.
+    int deliverMail();
+
+    void openMail();
+    void closeMail();
+    void drawMail();
+    void updateMail();
+    void drawMailNotice();
+    bool m_mailSettingsOpen = false;
+    /// Which runner field is being typed into: 0 endpoint, 1 model,
+    /// 2 API key, -1 none.
+    int  m_mailLlmField = -1;
+    std::string m_llmTestResult;
+    bool m_llmTestOk = false;
+    /// Ask the configured runner whether it is there and knows the model.
+    void testLlmRunner();
+    void pumpLlmTest();
+    bool m_llmInstalling = false;
+    /// Fetch Ollama in the background. See llm/Runner.h for the checks.
+    void installLlmRunner();
+
+    // ─── Pulling the weights ───
+    bool m_llmPulling = false;
+    std::string m_llmPullModel;
+    std::string m_llmPullStatus;
+    float m_llmPullFraction = 0.0f;
+    void pullLlmModel(const std::string& model);
+    void pumpLlmPull();
+    void drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool click,
+                          Color accent);
+    void drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
+                        Color accent);
+    bool mailSendDraft();
+
+    // ─── Reporting a problem, sending an idea, rating the game ───
+    //
+    // One form serves all three. It draws over everything, including the map
+    // editor, and updateFeedbackForm() takes the keyboard while it is open --
+    // see src/Feedback.h for what is sent and what is not.
+    bool               m_feedbackOpen = false;
+    feedback::Kind     m_feedbackKind = feedback::Kind::Bug;
+    feedback::Category m_feedbackCategory = feedback::Category::UI;
+    std::string        m_feedbackTitle;
+    std::string        m_feedbackBody;
+    int                m_feedbackField = 0;      ///< 0 title, 1 description
+    bool               m_feedbackAttach = true;  ///< send the diagnostics block
+    /// The reporter asked not to be named in what gets published.
+    bool               m_feedbackAnonymous = false;
+    bool               m_feedbackPreview = false;///< showing that block in full
+    int                m_feedbackPreviewScroll = 0;
+    /// Built when the form opens and sent verbatim. Not rebuilt at send time:
+    /// what leaves the machine has to be exactly what the player was shown.
+    std::string        m_feedbackDiag;
+    double             m_feedbackSentAt = 0.0;
+    /// The click that opened the form is not a click inside it. Without
+    /// this, the pause menu's Report item and the form's Title field --
+    /// both in the middle of the screen -- are hit by one press.
+    bool               m_feedbackSwallowClick = false;
+    /// Why a report cannot be sent right now, said before the player types it.
+    std::string        m_feedbackNotice;
+    double             m_feedbackNoticeUntil = 0.0;
+
+    /// Asked once, in the corner, after long enough to have an opinion. See
+    /// maybeOfferRating(); `ratingAsked` in the config makes "not now" mean
+    /// never.
+    bool  m_ratingPromptOpen = false;
+    float m_playedSeconds = 0.0f;   ///< the part of a minute not yet counted
+
+    /// The frame the form opened on, kept so the player can still see what they
+    /// are reporting. Same trick as m_popupBackdrop, and for the same reason:
+    /// the world behind is a picture, so it cannot take a click meant for the
+    /// form.
+    Texture2D m_feedbackBackdrop{};
+    /// Whether the capture has been attempted for this opening. The grace frame
+    /// below must happen at most once: if LoadImageFromScreen ever fails, an
+    /// untried flag would leave the form permanently non-modal.
+    bool      m_feedbackBackdropTried = false;
+
+    std::string feedbackDiagnostics() const;
+    void openFeedbackForm(feedback::Kind kind, feedback::Category category);
+    void closeFeedbackForm();
+    void submitFeedbackForm();
+    void drawFeedbackForm();
+    void drawFeedbackNotice();
+    void updateFeedbackForm();
+    void drawRatingPrompt();
+    bool updateRatingPrompt();
+    Rectangle ratingPromptRect() const;
+    Rectangle ratingRateRect() const;
+    Rectangle ratingWrongRect() const;
+    Rectangle ratingDismissRect() const;
+    void maybeOfferRating(float dt);
 
     // ─── Map Editor ───
     MapEditor* m_mapEditor = nullptr;
@@ -3465,11 +5361,191 @@ private:
         std::vector<uint8_t> navigable;   // 1 = has water
         std::vector<int32_t> px, py;      // a real water pixel inside the cell
         std::vector<int32_t> component;   // -1 = land
+
+        /**
+         * Which of the 8 neighbours this cell can actually be SAILED to.
+         *
+         * Bit (dy+1)*3 + (dx+1). A cell is navigable if it holds any water,
+         * and its remembered pixel can sit anywhere in it -- so two adjacent
+         * navigable cells on opposite shores of a peninsula were joined by an
+         * edge whose straight line goes overland. That is how Russian hulls
+         * came to cross Crimea: both cells hold Black Sea water, the Black Sea
+         * is one body, so every check passed and the leg between them was
+         * never looked at.
+         *
+         * This is the same mistake the component pass above documents, one
+         * level down: connectivity was made honest, adjacency was not.
+         */
+        std::vector<uint16_t> link;
+        bool linked(size_t i, int dx, int dy) const {
+            return (link[i] >> ((dy + 1) * 3 + (dx + 1))) & 1u;
+        }
         bool ready() const { return w > 0 && h > 0; }
     };
     /** One hull has left m_ships: drop every order that named it and shift
      *  the indices of every order that named a later one. See the definition. */
     void forgetShipOrders(int removedIdx);
+
+    // ─── Ship routes, for looking at ────────────────────────────────────────
+    //
+    // DISPLAY ONLY. Nothing in here is ever read by processShipMovement, and it
+    // must stay that way: the resolver plans its own route and is the only
+    // authority on where a hull goes. This exists because the overlay used to
+    // draw a STRAIGHT LINE from the hull to its destination -- the one path a
+    // ship never sails, since the router goes around land -- so a player
+    // watching a boat leave that line had no way to tell a working voyage from
+    // a broken one.
+
+    /**
+     * A route computed for the overlay, for an order the resolver has not
+     * planned yet.
+     *
+     * An order is queued with a destination and an EMPTY route; the route is
+     * filled in when the turn resolves. So between issuing an order and
+     * pressing the turn button -- exactly when a player most wants to see where
+     * the boat is going -- there is nothing to draw. This fills that gap and is
+     * thrown away the moment the real route exists.
+     *
+     * Cached on what it was computed FOR, so a route is planned once per order
+     * rather than once per frame; navRoute is a BFS over the coarse nav grid,
+     * which is cheap enough once and not cheap enough sixty times a second.
+     */
+    struct ShipRoutePreview {
+        double fromLon = 0, fromLat = 0, destLon = 0, destLat = 0;
+        std::vector<std::pair<double, double>> route;
+        bool reachable = false;
+    };
+    std::unordered_map<int, ShipRoutePreview> m_shipRoutePreview;
+
+    /**
+     * The legs this order will sail, real if the resolver has planned it and
+     * previewed if it has not. `reachable` is false when the router cannot get
+     * there at all, which the overlay draws differently rather than hiding.
+     */
+    const std::vector<std::pair<double, double>>* shipDisplayRoute(
+        const PendingShipMoveOrder& mo, bool& reachable);
+
+    /**
+     * Draw one voyage: the route it will actually walk, with the part this
+     * turn's range reaches drawn solid and the rest of the voyage faint.
+     *
+     * Takes a colour so the middle-state overlay can draw other countries'
+     * voyages in their own colours with the same code.
+     */
+    void drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float alpha);
+
+    // ─── The middle state: what every country ordered this turn ─────────────
+    //
+    // WHY THIS IS A RECORD AND NOT A LIVE PEEK. The obvious reading of "show
+    // me what the other countries are doing" is an overlay on the live map of
+    // everyone's pending orders. That cannot be built, because those orders do
+    // not exist yet: an AI country thinks inside processCountryTurn, and
+    // processArtilleryOrders erases each shot as it fires it. While the player
+    // is looking at the map between turns, the order queues hold the player's
+    // own orders and nothing else.
+    //
+    // So the orders are recorded as they are about to resolve, and the view
+    // shows the turn that just happened. That is the only implementable
+    // version -- and it is also the only one that is safe in multiplayer,
+    // since it reveals only what the results of the turn already reveal. A
+    // live overlay of enemy intentions would decide games.
+
+    struct TurnOrderMark {
+        // WHAT A COUNTRY DID THIS TURN, not only where it went. A middle
+        // state that shows movement and nothing else says what the armies did
+        // and stays silent on what produced them; the build-up IS the news in
+        // most turns of this game.
+        // NavalBombard is separate from Artillery because it starts at a
+        // HULL, not a province: a carrier standing off a coast has no province
+        // centre to draw from, and giving it one would put the shell's flight
+        // over whichever province the ship happened to be nearest.
+        enum class Kind : uint8_t { Artillery, ArmyMove, ShipVoyage, Recruit, Build,
+                                    NavalBombard };
+        Kind kind = Kind::ArmyMove;
+        int countryId = 0;
+        int fromProvince = -1;
+        int toProvince = -1;
+        /// Where the hull was when it was given the order, and where it was
+        /// sent. Recorded rather than looked up later: by the time this is
+        /// drawn the ship has already moved.
+        double fromLon = 0, fromLat = 0, destLon = 0, destLat = 0;
+        std::vector<std::pair<double, double>> route;
+        /**
+         * How far this hull can sail in one turn, in degrees.
+         *
+         * Recorded so the overlay can show ANOTHER country's ship only as far
+         * as it actually got. Where a foreign fleet is ultimately headed is a
+         * PLAN, not an observation: a fleet six turns out from a landing would
+         * announce that landing five turns early, every turn, to everybody.
+         * A turn's worth of steaming reveals a direction, which is what
+         * watching a fleet actually tells you.
+         */
+        double turnRangeDeg = 0.0;
+        std::string detail;      ///< ammo type, the share of the garrison, or what is being built
+    };
+    std::vector<TurnOrderMark> m_turnOrderLog;
+    /// Standing orders the current zoom cannot legibly carry; named in the banner.
+    int m_ordersHiddenByZoom = 0;
+    int m_turnOrderLogTurn = -1;   ///< which turn m_turnOrderLog describes
+
+    // m_showMiddleState is gone. It was a second answer to a question
+    // Config::skipViewingOrders already answered -- "does this player want to
+    // see the orders" -- and the two could disagree: the tick could be off
+    // while the phase still ran, or on while it did not. One fact, one home.
+
+    /**
+     * Copy this country's queued orders into m_turnOrderLog.
+     *
+     * Called from processCountryTurn after the country has decided and before
+     * anything it decided has been consumed, which is the only moment when a
+     * country's whole turn is on the table at once.
+     */
+    void recordTurnOrders(int countryId);
+
+    /** Draw the recorded turn: every country's orders, in their own colours. */
+    /**
+     * The glyphs a province wears when something is being done to it.
+     *
+     * These already existed, drawn one-off in four places for the LOCAL
+     * player: a green plus for an industry, fort or port going up, an orange
+     * S for a specialisation, a green plus above the stack for a levy, a
+     * yellow B for a hull on the slipway. Each appears only in the view its
+     * subject belongs to, so the industry map is not also an army map.
+     *
+     * The orders phase needs exactly the same marks for exactly the same
+     * facts, about everybody -- so rather than invent a second visual language
+     * for it (which it had: a labelled text box on every province, which at
+     * world zoom covered the map), the drawing moved here and both callers use
+     * it. A player who has learnt what a green plus means has learnt it once.
+     */
+    enum class ActionCue { Upgrade, Specialise, Recruit, ShipBuild };
+    void drawActionCue(Vector2 provinceScreenPos, ActionCue kind, float sz,
+                       Color tint, float zoom) const;
+    /// Which view tab a cue belongs in, so nothing is drawn where it does not fit.
+    static int actionCueTab(ActionCue kind, const std::string& detail);
+
+    void drawMiddleStateOverlay();
+
+    /**
+     * m_turnOrderLog on and off the wire, for multiplayer.
+     *
+     * The host records the log as it resolves the turn (it is the only machine
+     * that runs every country); a client applies whatever it is sent. The
+     * format is private to these two functions -- the protocol layer carries it
+     * as an opaque blob, exactly as it carries a player's orders.
+     *
+     * FAIL-CLOSED AND CONSEQUENCE-FREE. A payload that does not parse leaves
+     * the log untouched and returns false: the worst outcome is a turn with no
+     * overlay, because nothing else in the game reads this.
+     *
+     * It is NOT in saveStateJson, deliberately. The log is a few hundred
+     * entries a turn with a route attached to every voyage, and state.json is
+     * rewritten into the archive on every single turn -- that write is what
+     * caused the 1.1.2a freeze, and this would have been several times the size
+     * of the thing that caused it, for a display overlay.
+     */
+    std::vector<uint8_t> mpSerializeTurnOrders() const;
+    bool mpApplyTurnOrders(const std::vector<uint8_t>& payload, int turnNumber);
     /**
      * WHAT THIS COUNTRY WILL BE EARNING IN `turns` TURNS, given only what it
      * has ALREADY committed to.
@@ -3497,6 +5573,44 @@ private:
     bool navLineClear(double lon1, double lat1, double lon2, double lat2) const;
     // Waypoints from->to, in lon/lat, each guaranteed to be water. Empty if
     // unreachable. The first element is the next place to steer for.
+    // ── LONGITUDE WRAPS; THE MAP DOES NOT END AT 180 ────────────────
+    //
+    // Every sea distance in this file was `to - from` on raw longitude. That is
+    // right everywhere except across the antimeridian, where a one-degree hop
+    // from 179.5E to 179.5W reads as 359 DEGREES -- and the direction vector
+    // built from it points the long way round the world. A hull near the
+    // Aleutians therefore measured a short leg as most of a planet, burned its
+    // whole turn's range sailing the wrong way, and was reported as "stuck".
+    //
+    // navRoute's BFS already wraps (`if (nx < 0) nx += m_nav.w`), so the ROUTE
+    // was correct and only the movement along it was not -- which is why the
+    // symptom looked like bad pathfinding rather than bad arithmetic.
+    //
+    // NO cos(latitude) TERM, DELIBERATELY. These maps are equirectangular with
+    // w = 2h, so one degree of longitude and one of latitude are the same
+    // number of map pixels, and a hull's range is defined in pixels
+    // (shipMaxRangePx). Degrees are therefore already proportional to map
+    // distance, and "correcting" them would make range mean something different
+    // at every latitude from the circle the player is shown.
+    /** Shortest signed longitude difference from `a` to `b`, in [-180, 180]. */
+    static double lonDelta(double a, double b) {
+        double d = b - a;
+        while (d >  180.0) d -= 360.0;
+        while (d < -180.0) d += 360.0;
+        return d;
+    }
+    /** Longitude folded back into [-180, 180) after a move that crossed. */
+    static double wrapLon(double lon) {
+        while (lon >= 180.0) lon -= 360.0;
+        while (lon < -180.0) lon += 360.0;
+        return lon;
+    }
+    /** Map-space distance in degrees, honest across the antimeridian. */
+    static double seaDistanceDeg(double lon1, double lat1, double lon2, double lat2) {
+        const double dLon = lonDelta(lon1, lon2), dLat = lat2 - lat1;
+        return std::sqrt(dLon * dLon + dLat * dLat);
+    }
+
     bool navRoute(double fromLon, double fromLat, double toLon, double toLat,
                   std::vector<std::pair<double, double>>& out) const;
     /**
@@ -3569,7 +5683,31 @@ private:
     // One function now, so an assault is the same event however the troops
     // arrived. `survivors` comes back with what is left of the attacking
     // force, already placed on the ground it ended up holding.
-    bool resolveAssault(int attackerCid, int pid, int attackers, int& survivors);
+    // `fallbackPid` is where men who never got into the fight go when the
+    // assault is repulsed -- the province they marched from. Combat width means
+    // a large force commits only part of itself, and annihilating the reserve
+    // of a failed attack would turn every repulse into a national catastrophe.
+    //
+    // IT DEFAULTS TO -1, MEANING NOWHERE, AND THE AMPHIBIOUS PATH PASSES
+    // NOTHING. A failed landing still drowns exactly as it did: there is no
+    // ground behind it to fall back to, and that is the rule the amphibious
+    // doctrine was measured against.
+    /**
+     * Fight for a province.
+     *
+     * `attackers` is a COMPOSITION, not a headcount: once soldiers have kinds,
+     * both sides of the comparison need to know what they are made of, and it
+     * has to be both -- typed defence against untyped attack would quietly give
+     * one half of every fight the good numbers.
+     *
+     * `survivors` comes back as the composition that is left, so the men who
+     * walk into a captured province are the same kinds that took it.
+     */
+    bool resolveAssault(int attackerCid, int pid, const ForceComposition& attackers,
+                        ForceComposition& survivors, int fallbackPid = -1);
+    /** The old headcount form: raises line infantry, for callers that have no kinds. */
+    bool resolveAssault(int attackerCid, int pid, int attackers, int& survivors,
+                        int fallbackPid = -1);
     // Ownership plus every book that follows from it: conquest counters, the
     // pixel and index maps, minority drift, the loser's new claim and the
     // winner's spent one.
@@ -3586,7 +5724,14 @@ private:
     // already has one. Two stacks with the same owner in one province is a
     // state the movement code cannot read: it moves a percentage of the FIRST
     // one and leaves the other standing.
-    void addTroopsTo(int pid, int cid, int count);
+    /**
+     * Put soldiers in a province, merging with what is already there.
+     *
+     * Merges on (country, TYPE) -- see the definition. The default keeps every
+     * existing caller correct: they were all adding line infantry, because
+     * until now that is the only kind there was.
+     */
+    void addTroopsTo(int pid, int cid, int count, TroopType type = TROOP_LINE);
     // Province transfers between REAL countries (rebels excluded), counted for
     // the trainer's stagnation detector. Rebel churn is deliberately not
     // counted: a province flipping between a rebel and its parent every turn

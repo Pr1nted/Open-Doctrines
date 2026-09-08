@@ -84,6 +84,17 @@ struct ProvinceDelta {
     bool resourceIncomeChanged = false; float newResourceIncome = 0.0f;
     bool popIncomeChanged = false;   float newPopIncome = 0.0f;
     bool popModifierChanged = false; float newPopModifier = 1.0f;
+    /**
+     * The good this province's factories are directed to make; see
+     * ProvinceIndustry::output. Bit 8 of the province mask, which was free --
+     * the mask is a uint16 and only eight bits were spoken for.
+     *
+     * Stored as a SIGNED byte because -1 (undirected) is a real value and the
+     * commonest one. A save written before this existed simply has the bit
+     * clear, so every province in it loads undirected, which is exactly what
+     * those saves meant.
+     */
+    bool outputChanged = false;      int newOutput = -1;
 };
 
 struct ShipDelta {
@@ -97,7 +108,16 @@ struct ShipDelta {
 
 struct ArmyDelta {
     int provinceId = 0;
-    struct Unit { int countryId = 0; int count = 0; };
+    /**
+     * `type` indexes TROOP_TYPES (BuildCosts.h); 0 is line infantry.
+     *
+     * NOT PACKED BESIDE countryId AND count, deliberately -- see packTurn. The
+     * army block is fixed-width and sits in the middle of the stream with no
+     * version field, so a byte added here would shift everything after it and
+     * break every save ever written and every client on an older build. The
+     * types ride in the TRAILER instead, exactly as the wide populations do.
+     */
+    struct Unit { int countryId = 0; int count = 0; uint8_t type = 0; };
     std::vector<Unit> units;
 };
 
@@ -110,6 +130,14 @@ struct TurnDelta {
     float researchAllocation = 0.25f;
     float pacificationAllocation = 0.0f;
     int researchActiveNode = -1;
+    /**
+     * Groups 2 and 3, in the trailer. Group 1 stays in researchActiveNode
+     * above, so a save written by this build still loads into a build that has
+     * never heard of groups -- as a country running one programme, which is
+     * exactly what it was before groups existed.
+     */
+    struct ResearchGroupDelta { int activeNode = -1, lastNode = -1, sharePct = 50; bool autoAdvance = false; };
+    ResearchGroupDelta researchGroups[3];
     int researchPoints = 0;
 };
 

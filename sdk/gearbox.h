@@ -124,6 +124,24 @@ typedef enum {
     GEARBOX_NET_HOST_PLAYER = 3    /* authoritative, and playing             */
 } gearbox_net_role;
 
+/* ---------------------------------------------------------------------------
+ * WHAT A COUNTRY PUBLISHES ABOUT ITSELF  (Gearbox 1.2)
+ *
+ * A country's profile shows its age, population, income, expenses, compass,
+ * flags and districts to anybody who opens it. These four figures are the
+ * country's own to publish or withhold -- and publishing is not a display
+ * setting: migrants read what a country publishes, and good figures draw people
+ * to it. A country with bad figures is better off saying nothing.
+ *
+ * Mirrors the `disclosure_field` enum in sdk/abi.json.
+ * ------------------------------------------------------------------------- */
+typedef enum {
+    GEARBOX_DISCLOSURE_EXPENSES      = 0,  /* what its money is spent on      */
+    GEARBOX_DISCLOSURE_DOCTRINES     = 1,  /* which doctrines are in force    */
+    GEARBOX_DISCLOSURE_TREASURY      = 2,  /* what it held last turn          */
+    GEARBOX_DISCLOSURE_DISTRICT_LAWS = 3   /* how its districts are governed  */
+} gearbox_disclosure_field;
+
 /* True wherever there is a local player to draw for -- which includes
  * singleplayer and a host who is also playing. Use this to decide whether to
  * put up UI. */

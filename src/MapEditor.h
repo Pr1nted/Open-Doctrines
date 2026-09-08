@@ -62,6 +62,18 @@ public:
     MapEditor();
     ~MapEditor();
 
+    /**
+     * The player's accent colour, which the editor uses for every highlight.
+     *
+     * It was a gold constant, so the one screen in the game that ignored the
+     * accent setting was the one people spend hours in. Static because the two
+     * translation units that draw the editor both need it and neither has a
+     * Config; Game pushes the current value in every frame, so a change in
+     * Settings is visible without reopening anything.
+     */
+    static Color s_accent;
+    static void setAccent(Color c) { s_accent = c; }
+
     void init(int screenW, int screenH, const std::string& dataDir);
     void resize(int screenW, int screenH);
     void update(float dt);
@@ -72,6 +84,10 @@ public:
     void trackChange() { m_dirty = true; }
     bool isInProjectDialog() const { return m_projectState != PROJ_EDITING; }
     bool consumeExitRequest() { bool v = m_wantsExit; m_wantsExit = false; return v; }
+    /// A mapmaker hitting a bug in the editor should not have to leave it to
+    /// say so. Game owns the report form and draws it over the editor, the same
+    /// arrangement Settings already has.
+    bool consumeFeedbackRequest() { bool v = m_wantsFeedback; m_wantsFeedback = false; return v; }
     // The toolbar's Settings button. Game owns the settings screen, so the
     // editor only raises the request and lets it decide what to draw.
     bool consumeSettingsRequest() { bool v = m_wantsSettings; m_wantsSettings = false; return v; }
@@ -119,6 +135,18 @@ public:
     void modSetLicense(const std::string& l) { m_license = l; m_dirty = true; }
     std::string modAuthor() const  { return m_author; }
     std::string modLicense() const { return m_license; }
+
+    /**
+     * Screenshot fixture only: open a map and arm the Districts tools on the
+     * largest country, with its ground already cut in two.
+     *
+     * The tour is the only thing that looks at this panel with real content in
+     * it, and every layout fault this project has shipped -- overlapping pie
+     * charts, an invisible overlay, a card off the bottom of the screen -- was
+     * found in a screenshot rather than in a test. Returns false if the map
+     * will not load, in which case the shot is skipped rather than faked.
+     */
+    bool shotSeedDistricts(const std::string& mapPath);
 
     // Headless generate-and-export for AI self-play training: runs the full
     // generation chain (landmass -> provinces/countries -> game data) and
@@ -341,6 +369,7 @@ private:
 
     // Exit request (consumed by Game::updateMapEditor)
     bool m_wantsExit = false;
+    bool m_wantsFeedback = false;
     bool m_wantsSettings = false;
 
     // ── Relations editor ──
@@ -446,6 +475,72 @@ private:
     void rebuildClaimsOverlay();             // repaint the whole overlay for m_selectedCountry
     void paintClaimsProvince(int pid, bool claimed, int& bx0, int& by0, int& bx1, int& by1);
     std::string buildClaimsJson() const;
+
+    // ── District painting (Countries tab) ──
+    //
+    // The same kind of thing as claims -- per-country sets of provinces -- but
+    // the sets partition the country instead of overlapping it, and each one
+    // carries a name, a colour and a claim on the pacification budget. Exported
+    // as districts.json, which Game::ensureDefaultDistrict() installs verbatim
+    // for the country that owns it.
+    struct EditorDistrict {
+        std::string name;
+        unsigned char r = 120, g = 140, b = 200;
+        int sharePct = 0;                    ///< 0 = "split it evenly with the rest"
+        std::set<int> provinces;
+        std::vector<std::string> laws;       ///< regional law ids, see data/district_laws.json
+    };
+    std::map<int, std::vector<EditorDistrict>> m_editorDistricts;
+    bool m_districtBrushActive = false;      ///< paint mode: assigns provinces to a district
+    bool m_districtStrokeActive = false;   ///< drag in progress
+    bool m_districtBrushErase = false;       ///< true: strokes take ground out of every district
+    /// How many district rows the panel shows before it stops listing them.
+    static constexpr size_t DISTRICT_ROWS_MAX = 8;
+    int  m_selectedDistrict = 0;             ///< index into the selected country's list
+    std::unordered_set<int> m_districtBrushTouched;
+    int  m_districtOverlayCid = -2;          ///< country the overlay was last built for
+    void applyDistrictBrush(int cx, int cy);
+    void rebuildDistrictOverlay();
+    void addDistrict(int cid);
+    void removeDistrict(int cid, int index);
+    std::string buildDistrictsJson() const;
+    void loadDistrictsJson(const std::string& json);
+    bool m_editingDistrictName = false;
+    std::string m_districtNameText;
+    /**
+     * Where every control in the Districts section sits.
+     *
+     * The other sections of this panel are laid out twice -- once in
+     * updateCountryPanel() to hit-test and once in drawCountryPanel() to
+     * render -- and each carries a comment warning that the two must advance
+     * editY by exactly the same amount or every hitbox below drifts from what
+     * is drawn. This section is laid out ONCE and both passes ask for the
+     * answer, so it cannot drift.
+     */
+    struct DistrictSectionRects {
+        Rectangle toggle{}, paint{}, erase{}, add{}, name{}, share{};
+        std::vector<Rectangle> rows;   ///< one per district, in list order
+        std::vector<Rectangle> dels;   ///< the delete button on each row
+        int endY = 0;                  ///< editY after the section
+    };
+    DistrictSectionRects districtSectionRects(int px, int listW, int editY) const;
+
+    /**
+     * Where the bottom bar's controls sit, for both passes.
+     *
+     * Laid out from the width of the labels rather than from fixed offsets:
+     * "Tools" is 33px in English and "Інструменти" is 96, so a bar built on
+     * constants had the first button printed through the label in half the
+     * languages the game ships.
+     */
+    struct BottomBarRects {
+        Rectangle tools[4]{};
+        Rectangle slider{}, land{}, sea{}, mode{};
+        int toolsLabelX = 0, sizeLabelX = 0;
+    };
+    BottomBarRects bottomBarRects() const;
+    /// Which district holds a province, or -1. A province sits in at most one.
+    int districtOfProvince(int cid, int pid) const;
     void commitProvincePixels();             // full push: pixels -> province map + textures
     void liveUpdateRegion(int minX, int minY, int maxX, int maxY); // patch textures mid-stroke
     void localAssignNewLand(int x0, int y0, int x1, int y1); // live: new land joins nearby provinces
@@ -526,6 +621,7 @@ private:
     bool m_blockHeadEditing = false;
     std::string m_blockHeadBuf;
     bool m_blockPaletteOpen = false;
+    int  m_blockPaletteScroll = 0;   ///< first palette row shown; the list scrolls
 
     void blocksFromText();               // m_scriptEdLines -> m_blockDoc
     void blocksToText();                 // m_blockDoc -> m_scriptEdLines

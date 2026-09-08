@@ -1,0 +1,59 @@
+// OpenDoctrines dedicated server.
+// Every setting, its meaning and when it may be changed, is listed by
+// the `config` command in the server console. Comments are allowed here.
+{
+    // what the server calls itself in the browser (lobby only)
+    "name": "OpenDoctrines dedicated server",
+    // message shown to each player once, on joining (anytime)
+    "motd": "",
+    // host without publishing an account name (needs restart)
+    "anonymous": false,
+    // appear in the public server directory (needs restart)
+    "listed": false,
+    // shipped map id (1914, 1939, map) or a path to a .odmap (lobby only)
+    "map": "map",
+    // resume this .odsv instead of starting a new world (lobby only)
+    "load-save": "",
+    // name given to the world this server creates (lobby only)
+    "world-name": "Dedicated",
+    // seats in the lobby (lobby only)
+    "max-players": 8,
+    // rule turn length; 0 is long-form with no countdown (lobby only)
+    "turn-seconds": 0,
+    // who picks countries (lobby only)
+    "assignment": "players",
+    // what happens to someone arriving mid-game (lobby only)
+    "late-join": "spectate",
+    // who plays a country whose orders did not arrive (lobby only)
+    "absent": "ai",
+    // TCP port to listen on (needs restart)
+    "port": 27015,
+    // listen on every interface rather than loopback only (needs restart)
+    "bind-all": false,
+    // off, auto, cloudflared or localhost.run (needs restart)
+    "tunnel": "auto",
+    // comma-separated mod ids every client must have (lobby only)
+    "mods": "",
+    // start once this many hold a country; 0 off (anytime)
+    "auto.start-at-players": 0,
+    // start this long after the first arrival; 0 off (anytime)
+    "auto.start-after-seconds": 0,
+    // never auto-start below this many (anytime)
+    "auto.start-min-players": 2,
+    // advance the turn on this schedule; 0 off (anytime)
+    "auto.advance-every-seconds": 0,
+    // end the game at this turn; 0 never (anytime)
+    "auto.end-at-turn": 0,
+    // end the game after this long; 0 never (anytime)
+    "auto.end-after-hours": 0,
+    // end when the last player leaves (anytime)
+    "auto.end-when-empty": false,
+    // open a new lobby when a game ends (anytime)
+    "auto.return-to-lobby": true,
+    // save the world every N turns; 0 only at the end (anytime)
+    "auto.autosave-every-turns": 1,
+    // where maps, mods and saves live; empty finds it beside the binary (needs restart)
+    "data-dir": "",
+    // how much the console prints (anytime)
+    "log-level": "info"
+}

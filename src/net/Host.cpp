@@ -807,6 +807,17 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             broadcast(NetMsg::ChatFrom, c.encode());
             return;
         }
+        case NetMsg::PlayerReport: {
+            NetPlayerReport r;
+            if (!NetPlayerReport::decode(payload, payloadSize, r)) return;
+            r.fromPeerId = peerId;        // attribution is ours, not theirs
+            // Raised to the host's own client and NOWHERE else. Not broadcast,
+            // and in particular not sent to the person being reported: a report
+            // that announces itself is a report nobody files.
+            NetHostEvent e{NetHostEvent::Kind::PlayerReport, peerId, r.reason, {}, r};
+            push(std::move(e));
+            return;
+        }
         default:
             return;
     }
@@ -907,6 +918,14 @@ void NetHost::broadcastDelta(uint32_t turnNumber, const std::vector<uint8_t>& pa
     w.turnNumber = turnNumber;
     w.payload = payload;
     m_impl->broadcast(NetMsg::Delta, w.encode());
+}
+
+void NetHost::broadcastTurnOrders(uint32_t turnNumber,
+                                 const std::vector<uint8_t>& payload) {
+    NetTurnOrders t;
+    t.turnNumber = turnNumber;
+    t.payload = payload;
+    m_impl->broadcast(NetMsg::TurnOrders, t.encode());
 }
 
 void NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,

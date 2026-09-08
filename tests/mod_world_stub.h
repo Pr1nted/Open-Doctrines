@@ -134,4 +134,37 @@ struct StubWorld : ModGameAccess {
     uint32_t neuralFeatures(uint32_t, float*, uint32_t) override { return 0; }
     uint32_t neuralRewardCount() override { return 0; }
     double neuralRewardMean(uint32_t) override { return 0.0; }
+
+    // ── ABI 1.2 ──
+    // Answering "nothing" rather than pretending: these exist so the stub is
+    // concrete, and the tests that care about districts, publication or the
+    // army by kind use the real Game.
+    uint32_t countryDistrictCount(uint32_t) override { return 0; }
+    std::string countryDistrictName(uint32_t, uint32_t) override { return {}; }
+    int32_t countryDistrictShare(uint32_t, uint32_t) override { return 0; }
+    uint32_t countryDistrictProvinceCount(uint32_t, uint32_t) override { return 0; }
+    uint32_t countryDistrictProvince(uint32_t, uint32_t, uint32_t) override { return 0xFFFFFFFFu; }
+    uint32_t countryDistrictLawCount(uint32_t, uint32_t) override { return 0; }
+    std::string countryDistrictLaw(uint32_t, uint32_t, uint32_t) override { return {}; }
+    uint32_t districtLawCount() override { return 0; }
+    std::string districtLawId(uint32_t) override { return {}; }
+    std::string districtLawName(uint32_t) override { return {}; }
+    bool countryDiscloses(uint32_t, uint32_t) override { return false; }
+    bool setCountryDistrictShare(uint32_t, uint32_t, int32_t) override { return false; }
+    bool setCountryDistrictLaw(uint32_t, uint32_t, const std::string&, bool) override { return false; }
+    bool setCountryDisclosure(uint32_t, uint32_t, bool) override { return false; }
+    double countryExpenses(uint32_t) override { return 0.0; }
+    double countryNationalValue(uint32_t) override { return 0.0; }
+    int64_t countryPopulation(uint32_t) override { return 0; }
+    uint32_t troopTypeCount() override { return 0; }
+    std::string troopTypeId(uint32_t) override { return {}; }
+    int64_t countryArmyOfType(uint32_t, const std::string&) override { return 0; }
+    int64_t provinceTroopsOfType(uint32_t, uint32_t, const std::string&) override { return 0; }
+    std::string aiVersion() override { return {}; }
+    int32_t aiArch() override { return 0; }
+    int32_t countryStance(uint32_t) override { return -1; }
+    std::string stanceName(uint32_t) override { return {}; }
+    uint32_t stanceCount() override { return 0; }
+    uint32_t countryResearchGroups(uint32_t) override { return 1; }
+    bool setCountryResearchGroups(uint32_t, int32_t) override { return false; }
 };

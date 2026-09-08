@@ -1,0 +1,653 @@
+// The report form, the rating prompt, and the diagnostics the game offers to
+// attach.
+//
+// THE FORM IS DELIBERATELY SHORT. Two fields, a row of categories and one tick
+// box. Every field added to a bug report is a field a player can be wrong
+// about, and the thing that actually makes a report useful -- the version, the
+// platform, the turn, the mods -- the game already knows and should never ask
+// for.
+//
+// It opens over whatever is behind it, including the map editor, and it takes
+// the keyboard while it is open. A form that loses what you typed because a
+// hotkey fired underneath is worse than no form.
+
+#include "Game.h"
+#include "GameInternals.h"
+#include "Feedback.h"
+#include "Audio.h"
+#include "i18n/Locale.h"
+#include "i18n/Text.h"
+#include "ai/AIVersion.h"
+#include "mods/ModManager.h"
+#include "net/AccountClient.h"
+
+#include <algorithm>
+#include <cmath>
+#include <sstream>
+
+std::string Game::feedbackDiagnostics() const {
+    std::ostringstream o;
+    o << "OpenDoctrines " << GAME_VERSION << "  (" << feedback::platform() << ")\n";
+    o << "AI: " << ai::versionString() << "\n";
+    o << "Window: " << m_screenW << "x" << m_screenH << " @ " << GetFPS() << " fps\n";
+    o << "Language: " << od::i18n::language() << "\n";
+    o << "Accent: " << m_config.accent() << ", UI scale " << m_config.uiScale << "\n";
+
+    // The world, when there is one. A report sent from the menu has no turn
+    // number, and printing "turn 0" would be a claim rather than an absence.
+    if (m_currentScreen == SCREEN_PLAYING || m_turnNumber > 0) {
+        o << "\nWorld\n";
+        o << "  turn " << m_turnNumber
+          << ", date " << (m_mapDate.empty() ? "-" : m_mapDate) << "\n";
+        o << "  " << m_countries.getAll().size() << " countries, "
+          << m_provinces.getAllProvinces().size() << " provinces\n";
+        if (const Country* c = m_countries.getCountry(m_playerCountryId)) {
+            o << "  playing " << c->name << " (" << c->isoA3 << "), treasury "
+              << (long long)c->treasury << "\n";
+        }
+        o << "  difficulty " << m_config.aiDifficulty
+          << ", multiplayer " << (m_netSession ? "yes" : "no") << "\n";
+        if (!m_currentSavePath.empty()) {
+            // The FILENAME, not the path: which save is useful, where it lives
+            // is a directory that has the player's name in it.
+            const size_t slash = m_currentSavePath.find_last_of("/\\");
+            o << "  save: "
+              << (slash == std::string::npos ? m_currentSavePath
+                                             : m_currentSavePath.substr(slash + 1)) << "\n";
+        }
+    }
+
+    // "It broke after I installed something" is the commonest report there is,
+    // and this list answers it before anybody has to ask.
+    {
+        const auto& mods = ModManager::get().mods();
+        o << "\nMods (" << mods.size() << ")\n";
+        size_t shown = 0;
+        for (const auto& m : mods) {
+            if (shown++ >= 24) { o << "  ... and " << (mods.size() - 24) << " more\n"; break; }
+            o << "  " << m.id << " " << m.manifest.version
+              << (m.enabled ? " [on]" : " [off]") << "\n";
+        }
+        if (mods.empty()) o << "  (none)\n";
+    }
+
+    // What the map's own scripts complained about. A scripting report with the
+    // engine's own error in it is most of the way to fixed.
+    if (!m_scriptErrors.empty()) {
+        o << "\nScript errors (" << m_scriptErrors.size() << ")\n";
+        size_t shown = 0;
+        for (const auto& e : m_scriptErrors) {
+            if (shown++ >= 10) break;
+            o << "  " << e.scriptName << ":" << e.lineNum << "  " << e.message << "\n";
+        }
+    }
+
+    return feedback::scrubPersonalPaths(o.str());
+}
+
+void Game::openFeedbackForm(feedback::Kind kind, feedback::Category category) {
+    std::string why;
+    if (!feedback::canSend(m_config, why)) {
+        m_feedbackNotice = why;          // said BEFORE they type, not after
+        m_feedbackNoticeUntil = GetTime() + 6.0;
+        Audio::get().playSfx("deny");
+        return;
+    }
+    m_feedbackOpen = true;
+    m_feedbackKind = kind;
+    m_feedbackCategory = category;
+    m_feedbackTitle.clear();
+    m_feedbackBody.clear();
+    m_feedbackField = 0;
+    m_feedbackAttach = (kind == feedback::Kind::Bug);   // a bug wants them; a wish does not
+    m_feedbackPreview = false;
+    m_feedbackSwallowClick = true;
+    m_feedbackDiag = feedbackDiagnostics();
+    feedback::clearMessage();
+    Audio::get().playSfx("panel_open");
+}
+
+void Game::closeFeedbackForm() {
+    m_feedbackOpen = false;
+    m_feedbackPreview = false;
+    Audio::get().playSfx("panel_close");
+}
+
+void Game::submitFeedbackForm() {
+    feedback::Report r;
+    r.kind = m_feedbackKind;
+    r.category = m_feedbackCategory;
+    r.title = m_feedbackTitle;
+    r.body = m_feedbackBody;
+    r.anonymous = m_feedbackAnonymous;
+    // Exactly the text that was on screen. Rebuilding it here would mean
+    // sending something the player never saw.
+    if (m_feedbackAttach) r.diagnostics = m_feedbackDiag;
+
+    if (feedback::send(r, m_config, m_configPath, GAME_VERSION)) {
+        m_config.save(m_configPath);     // the install id and the day's count
+        Audio::get().playSfx("confirm");
+        return;
+    }
+
+    // Refused, and the player is looking at a report they have just written. A
+    // Send that does nothing is the worst possible answer here: say which limit
+    // it hit, on the form, above the button they pressed. (The cooldown is the
+    // usual one -- a failed send is still counted, so a retry waits.)
+    std::string why;
+    feedback::canSend(m_config, why);
+    m_feedbackNotice = why.empty() ? std::string(T("Could not send. Please try again shortly."))
+                                   : why;
+    m_feedbackNoticeUntil = GetTime() + 8.0;
+    Audio::get().playSfx("deny");
+}
+
+// ─────────────────────────────────────────────────────────────── the form ────
+
+// Why a report could not be sent, said where the player is.
+//
+// Drawn from endFrame() AFTER the form, not inside it: it is raised both when
+// the form refuses to open (no form to draw it in) and when Send is refused
+// (the form's own dim overlay is over the bottom of the screen). One place that
+// works in both cases beats two that each work in one.
+void Game::drawFeedbackNotice() {
+    if (m_feedbackNotice.empty()) return;
+    if (GetTime() > m_feedbackNoticeUntil) { m_feedbackNotice.clear(); return; }
+
+    const int tw = MeasureText(m_feedbackNotice.c_str(), 14);
+    const int bw = std::min(tw + 32, m_screenW - 40);
+    const int bx = (m_screenW - bw) / 2, by = m_screenH - 120;
+    DrawRectangleRounded({(float)bx, (float)by, (float)bw, 40}, 0.3f, 8, Color{40, 26, 28, 245});
+    DrawRectangleRoundedLines({(float)bx, (float)by, (float)bw, 40}, 0.3f, 8,
+                              Color{170, 110, 110, 230});
+    int fs = 14;
+    const std::string fit = odText::fitToWidth(m_feedbackNotice, bw - 24, fs, 10);
+    DrawText(fit.c_str(), bx + 16, by + 20 - fs / 2, fs, Color{235, 195, 195, 255});
+}
+
+void Game::drawFeedbackForm() {
+    if (!m_feedbackOpen) return;
+
+    const Vector2 mouse = getMouse();
+    const bool click = IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_feedbackSwallowClick;
+    const Color accent = hexToColor(m_config.accent());
+
+    DrawRectangle(0, 0, m_screenW, m_screenH, Color{6, 7, 11, 232});
+
+    const int w = std::min(760, m_screenW - 80);
+    const int h = std::min(560, m_screenH - 80);
+    const int x = (m_screenW - w) / 2, y = (m_screenH - h) / 2;
+    DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.02f, 8,
+                         Color{16, 18, 24, 250});
+    DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.02f, 8,
+                              Color{70, 74, 96, 220});
+
+    const bool bug = m_feedbackKind == feedback::Kind::Bug;
+    DrawText(bug ? T("Report a problem") : T("Send a suggestion"), x + 24, y + 20, 24, accent);
+
+    // ── The diagnostics preview takes the whole panel while it is open ──
+    //
+    // Shown in full, scrollable, before anything is sent. A summary would defeat
+    // the point: the promise is that the player can read exactly what leaves
+    // their machine, and a promise about a summary is not that promise.
+    if (m_feedbackPreview) {
+        DrawText(T("This is everything that would be attached:"), x + 24, y + 56, 13,
+                 Color{170, 176, 196, 255});
+        const Rectangle box = {(float)(x + 24), (float)(y + 78), (float)(w - 48), (float)(h - 150)};
+        DrawRectangleRec(box, Color{10, 11, 16, 255});
+        DrawRectangleLinesEx(box, 1, Color{60, 64, 84, 200});
+        BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
+        int ly = (int)box.y + 8 - m_feedbackPreviewScroll;
+        std::istringstream lines(m_feedbackDiag);
+        std::string line;
+        while (std::getline(lines, line)) {
+            if (ly > box.y - 14 && ly < box.y + box.height)
+                DrawText(line.c_str(), (int)box.x + 10, ly, 12, Color{190, 196, 216, 255});
+            ly += 15;
+        }
+        EndScissorMode();
+        if (CheckCollisionPointRec(mouse, box)) {
+            const float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f) {
+                const int maxScroll = std::max(0, ly - (int)box.y - (int)box.height + 20 +
+                                                    m_feedbackPreviewScroll);
+                m_feedbackPreviewScroll =
+                    std::clamp(m_feedbackPreviewScroll - (int)(wheel * 45), 0, maxScroll);
+            }
+        }
+        const Rectangle back = {(float)(x + 24), (float)(y + h - 56), 160, 34};
+        const bool bh = CheckCollisionPointRec(mouse, back);
+        DrawRectangleRounded(back, 0.2f, 6, bh ? Color{44, 48, 66, 240} : Color{28, 30, 42, 220});
+        DrawRectangleRoundedLines(back, 0.2f, 6, Color{90, 96, 130, 200});
+        DrawText(T("Back to the report"), (int)back.x + 12, (int)back.y + 10, 13, WHITE);
+        if (bh && click) { m_feedbackPreview = false; Audio::get().playSfx("back"); }
+        return;
+    }
+
+    int cy = y + 56;
+
+    // ── What kind of thing is it ──
+    {
+        const char* kinds[2] = {T("Something is broken"), T("An idea")};
+        for (int k = 0; k < 2; ++k) {
+            const Rectangle r = {(float)(x + 24 + k * 190), (float)cy, 180, 28};
+            const bool on = ((int)m_feedbackKind == k);
+            const bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRounded(r, 0.25f, 6, on ? Color{40, 60, 48, 245}
+                                                 : (hov ? Color{34, 36, 48, 235} : Color{22, 24, 32, 220}));
+            DrawRectangleRoundedLines(r, 0.25f, 6, on ? accent : Color{70, 74, 96, 180});
+            int fs = 13;
+            const std::string fit = odText::fitToWidth(kinds[k], (int)r.width - 16, fs, 10);
+            DrawText(fit.c_str(), (int)r.x + 10, (int)r.y + 7, fs, on ? WHITE : Color{170, 176, 196, 255});
+            if (hov && click && !on) {
+                m_feedbackKind = (feedback::Kind)k;
+                m_feedbackAttach = (m_feedbackKind == feedback::Kind::Bug);
+                Audio::get().playSfx("click_light", 0.1f);
+            }
+        }
+        cy += 40;
+    }
+
+    // ── Which part of the game ──
+    DrawText(T("Which part of the game?"), x + 24, cy, 12, Color{150, 156, 176, 255});
+    cy += 18;
+    {
+        int cx = x + 24;
+        for (int i = 0; i < (int)feedback::Category::Count; ++i) {
+            const auto cat = (feedback::Category)i;
+            const char* label = T(feedback::categoryLabel(cat));
+            const int cw = MeasureText(label, 12) + 20;
+            if (cx + cw > x + w - 24) { cx = x + 24; cy += 28; }
+            const Rectangle r = {(float)cx, (float)cy, (float)cw, 24};
+            const bool on = (m_feedbackCategory == cat);
+            const bool hov = CheckCollisionPointRec(mouse, r);
+            // Security is coloured apart, because picking it changes where the
+            // report goes and the player should be able to see that it is not
+            // an ordinary chip.
+            const Color onCol = (cat == feedback::Category::Security)
+                              ? Color{70, 40, 44, 245} : Color{40, 52, 64, 245};
+            DrawRectangleRounded(r, 0.3f, 6, on ? onCol
+                                               : (hov ? Color{32, 34, 44, 230} : Color{20, 22, 30, 210}));
+            DrawRectangleRoundedLines(r, 0.3f, 6,
+                on ? (cat == feedback::Category::Security ? Color{210, 110, 110, 230} : accent)
+                   : Color{62, 66, 86, 170});
+            DrawText(label, cx + 10, (int)r.y + 6, 12, on ? WHITE : Color{160, 166, 186, 255});
+            if (hov && click) { m_feedbackCategory = cat; Audio::get().playSfx("click_light", 0.1f); }
+            cx += cw + 8;
+        }
+        cy += 34;
+    }
+
+    if (m_feedbackCategory == feedback::Category::Security) {
+        DrawText(T("Security reports go to a private advisory, never a public issue."),
+                 x + 24, cy, 12, Color{220, 160, 160, 235});
+        cy += 20;
+    }
+
+    // ── Title and description ──
+    auto field = [&](const char* label, std::string& text, int index, int height,
+                     const char* hint) {
+        DrawText(label, x + 24, cy, 12, Color{150, 156, 176, 255});
+        cy += 16;
+        const Rectangle box = {(float)(x + 24), (float)cy, (float)(w - 48), (float)height};
+        const bool active = (m_feedbackField == index);
+        const bool hov = CheckCollisionPointRec(mouse, box);
+        DrawRectangleRec(box, active ? Color{22, 25, 34, 255} : Color{15, 17, 23, 255});
+        DrawRectangleLinesEx(box, 1, active ? accent : Color{60, 64, 84, 200});
+        if (hov && click) m_feedbackField = index;
+
+        if (text.empty() && !active) {
+            DrawText(hint, (int)box.x + 8, (int)box.y + 7, 12, Color{96, 100, 118, 255});
+        } else {
+            // Wrapped by hand: the description is the one field where a player
+            // writes more than fits on a line, and a box that scrolls sideways
+            // hides what they already wrote.
+            int ly = (int)box.y + 6;
+            std::string line;
+            for (size_t i = 0; i <= text.size(); ++i) {
+                const bool end = (i == text.size());
+                if (!end && text[i] != '\n') {
+                    line += text[i];
+                    if (MeasureText(line.c_str(), 13) < box.width - 20) continue;
+                }
+                if (ly + 16 < box.y + box.height)
+                    DrawText(line.c_str(), (int)box.x + 8, ly, 13, WHITE);
+                ly += 16;
+                line.clear();
+            }
+            if (active && (int)(GetTime() * 2) % 2)
+                DrawRectangle((int)box.x + 8 + MeasureText(line.c_str(), 13),
+                              std::min(ly, (int)(box.y + box.height - 18)), 2, 14, WHITE);
+        }
+        cy += height + 12;
+    };
+
+    field(T("Title"), m_feedbackTitle, 0, 28,
+          bug ? T("What went wrong, in a few words") : T("Your idea, in a few words"));
+    // Everything left between here and the buttons. The description is the only
+    // field whose value grows with the room it is given, so it gets the room:
+    // a fixed height left a hand's width of nothing above Send.
+    // The rows below it, in order: the byline tickbox (26), the diagnostics
+    // tickbox (26), the status line (20), and the gap above the buttons (12).
+    // Every row added here has to be subtracted here too, or the field grows
+    // into the buttons.
+    const int bodyH = std::max(90, (y + h - 52) - cy - 16 - 26 - 26 - 20 - 12);
+    field(T("What happened, and what did you expect?"), m_feedbackBody, 1, bodyH,
+          T("The more precisely you can say what you did, the sooner it is fixed."));
+
+    // ── Who this is from, and where it is going ──
+    //
+    // Said on the form, next to the tickbox that changes it, rather than in a
+    // policy nobody opens. A person about to describe something they did wrong
+    // in a game deserves to know it is about to appear on a public tracker with
+    // their name on it BEFORE they write it, not after.
+    {
+        const std::string nick = AccountClient::get().account().nickname;
+        const bool sec = (m_feedbackCategory == feedback::Category::Security);
+
+        const Rectangle box = {(float)(x + 24), (float)cy, 18, 18};
+        const bool hov = CheckCollisionPointRec(mouse, {box.x, box.y, 260, 20});
+        DrawRectangleRec(box, m_feedbackAnonymous ? Color{40, 70, 50, 255} : Color{18, 20, 28, 255});
+        DrawRectangleLinesEx(box, 1, m_feedbackAnonymous ? accent : Color{80, 84, 104, 200});
+        if (m_feedbackAnonymous) DrawText("x", (int)box.x + 5, (int)box.y + 2, 14, WHITE);
+        DrawText(T("Do not show my name"), (int)box.x + 26, (int)box.y + 3, 13,
+                 hov ? WHITE : Color{180, 186, 206, 255});
+        if (hov && click) {
+            m_feedbackAnonymous = !m_feedbackAnonymous;
+            Audio::get().playSfx("click_light", 0.1f);
+        }
+
+        // The consequence of that tick, spelled out either way.
+        std::string where;
+        if (sec) {
+            where = T("Private. This one is never posted publicly.");
+        } else if (m_feedbackAnonymous) {
+            where = bug ? T("Posted publicly, as Anonymous.")
+                        : T("Posted to the community channel, as Anonymous.");
+        } else {
+            where = (bug ? T("Posted publicly, signed ") : T("Posted to the community channel, signed "))
+                  + (nick.empty() ? std::string(T("with your nickname")) : nick);
+        }
+        int fs = 12;
+        const std::string fit = odText::fitToWidth(where, w - 48 - 300, fs, 10);
+        DrawText(fit.c_str(), x + w - 24 - MeasureText(fit.c_str(), fs), (int)box.y + 4, fs,
+                 sec ? Color{220, 160, 160, 235} : Color{150, 170, 200, 235});
+        cy += 26;
+    }
+
+    // ── Diagnostics ──
+    {
+        const Rectangle box = {(float)(x + 24), (float)cy, 18, 18};
+        const bool hov = CheckCollisionPointRec(mouse, {box.x, box.y, (float)(w - 48), 20});
+        DrawRectangleRec(box, m_feedbackAttach ? Color{40, 70, 50, 255} : Color{18, 20, 28, 255});
+        DrawRectangleLinesEx(box, 1, m_feedbackAttach ? accent : Color{80, 84, 104, 200});
+        if (m_feedbackAttach) DrawText("x", (int)box.x + 5, (int)box.y + 2, 14, WHITE);
+        DrawText(T("Attach what the game knows about itself"), (int)box.x + 26, (int)box.y + 3, 13,
+                 hov ? WHITE : Color{180, 186, 206, 255});
+        if (hov && click) { m_feedbackAttach = !m_feedbackAttach; Audio::get().playSfx("click_light", 0.1f); }
+
+        const int lw = MeasureText(T("see exactly what"), 12);
+        const Rectangle see = {(float)(x + w - 24 - lw - 8), (float)cy, (float)(lw + 8), 20};
+        const bool sh = CheckCollisionPointRec(mouse, see);
+        DrawText(T("see exactly what"), (int)see.x + 4, (int)see.y + 3, 12,
+                 sh ? accent : Color{130, 150, 190, 235});
+        if (sh && click) { m_feedbackPreview = true; m_feedbackPreviewScroll = 0; }
+        cy += 26;
+    }
+
+    // ── Send, cancel, and whatever the service last said ──
+    {
+        const auto st = feedback::status();
+        const std::string& msg = feedback::message();
+        if (!msg.empty()) {
+            DrawText(msg.c_str(), x + 24, cy, 12,
+                     st == feedback::Status::Failed ? Color{230, 140, 140, 255}
+                                                    : Color{150, 210, 165, 255});
+        }
+        cy += 20;
+
+        const bool sending = (st == feedback::Status::Sending);
+        const bool enough = m_feedbackBody.size() >= 8;
+        const Rectangle send = {(float)(x + 24), (float)(y + h - 52), 170, 34};
+        const Rectangle cancel = {(float)(x + 204), (float)(y + h - 52), 120, 34};
+        const bool sh = CheckCollisionPointRec(mouse, send) && enough && !sending;
+        const bool ch = CheckCollisionPointRec(mouse, cancel);
+
+        DrawRectangleRounded(send, 0.2f, 6, !enough ? Color{24, 26, 34, 200}
+                                                    : (sh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235}));
+        DrawRectangleRoundedLines(send, 0.2f, 6, enough ? Color{110, 180, 130, 220} : Color{60, 64, 84, 180});
+        const char* sendLabel = sending ? T("Sending...") : T("Send");
+        DrawText(sendLabel, (int)send.x + 14, (int)send.y + 10, 14,
+                 enough ? WHITE : Color{110, 114, 132, 255});
+        if (!enough) {
+            DrawText(T("Say a little more first"), (int)send.x + 180, (int)send.y + 11, 12,
+                     Color{120, 124, 142, 255});
+        }
+
+        DrawRectangleRounded(cancel, 0.2f, 6, ch ? Color{44, 46, 60, 240} : Color{26, 28, 38, 220});
+        DrawRectangleRoundedLines(cancel, 0.2f, 6, Color{80, 84, 104, 200});
+        DrawText(T("Close"), (int)cancel.x + 14, (int)cancel.y + 10, 14, Color{200, 205, 225, 255});
+
+        if (sh && click) submitFeedbackForm();
+        if (ch && click) closeFeedbackForm();
+        // Sent, and the player has read the thank-you: close for them.
+        if (st == feedback::Status::Sent && GetTime() - m_feedbackSentAt > 2.0 &&
+            m_feedbackSentAt > 0) {
+            closeFeedbackForm();
+            feedback::clearMessage();
+            m_feedbackSentAt = 0;
+        }
+        if (st == feedback::Status::Sent && m_feedbackSentAt == 0) m_feedbackSentAt = GetTime();
+    }
+}
+
+// ── Typing into the form ──
+//
+// This does NOT use odTextEditKeys, which the rest of the game's fields use.
+// That helper is built for a hostname or a filename: ASCII only, no newlines,
+// and it deletes one BYTE at a time. All three are wrong here. A bug report is
+// prose, often pasted out of a log, often not in English -- and backspacing a
+// byte off a Cyrillic or Japanese character leaves a broken sequence on screen
+// rather than deleting the letter.
+
+namespace {
+
+/// Append a codepoint as UTF-8. raylib's CodepointToUTF8 is stubbed out in the
+/// headless server build, so this does not go through it.
+void appendUtf8(std::string& out, unsigned int cp) {
+    if (cp < 0x80) { out += (char)cp; }
+    else if (cp < 0x800) {
+        out += (char)(0xC0 | (cp >> 6));
+        out += (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += (char)(0xE0 | (cp >> 12));
+        out += (char)(0x80 | ((cp >> 6) & 0x3F));
+        out += (char)(0x80 | (cp & 0x3F));
+    } else {
+        out += (char)(0xF0 | (cp >> 18));
+        out += (char)(0x80 | ((cp >> 12) & 0x3F));
+        out += (char)(0x80 | ((cp >> 6) & 0x3F));
+        out += (char)(0x80 | (cp & 0x3F));
+    }
+}
+
+/// Delete one CHARACTER: the trailing byte plus any continuation bytes under
+/// it, so one press removes one thing the player can see.
+void popUtf8(std::string& text) {
+    if (text.empty()) return;
+    size_t i = text.size() - 1;
+    while (i > 0 && (unsigned char)text[i] >= 0x80 && (unsigned char)text[i] < 0xC0) --i;
+    text.erase(i);
+}
+
+}  // namespace
+
+void Game::updateFeedbackForm() {
+    if (!m_feedbackOpen) return;
+    feedback::pump();
+    m_feedbackSwallowClick = false;   // a whole frame has passed
+
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        if (m_feedbackPreview) m_feedbackPreview = false;
+        else closeFeedbackForm();
+        return;
+    }
+    if (m_feedbackPreview) return;
+
+    if (IsKeyPressed(KEY_TAB)) m_feedbackField = (m_feedbackField + 1) % 2;
+
+    std::string& text = (m_feedbackField == 0) ? m_feedbackTitle : m_feedbackBody;
+    // The service's own caps, so a report is never clipped after it is written.
+    const size_t cap = (m_feedbackField == 0) ? 140u : 4000u;
+
+    int key = GetCharPressed();
+    while (key > 0) {
+        if (key >= 32 && text.size() + 4 <= cap) appendUtf8(text, (unsigned)key);
+        key = GetCharPressed();
+    }
+
+    if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE) ||
+        IsKeyPressed(KEY_DELETE)    || IsKeyPressedRepeat(KEY_DELETE)) {
+        if (!text.empty()) { popUtf8(text); Audio::get().playSfx("key_type", 0.12f); }
+    }
+
+    // Enter breaks a line in the description and does nothing in the title,
+    // which is one line by definition.
+    if (m_feedbackField == 1 && IsKeyPressed(KEY_ENTER) && text.size() < cap) text += '\n';
+
+    // Paste keeps newlines and every byte of what was copied. Somebody pasting
+    // a stack trace or a script error is handing over the most useful thing in
+    // the report, and the field should not be the thing that mangles it.
+    const bool paste = (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                        IsKeyDown(KEY_LEFT_SUPER)   || IsKeyDown(KEY_RIGHT_SUPER)) &&
+                       IsKeyPressed(KEY_V);
+    if (paste) {
+        if (const char* clip = GetClipboardText()) {
+            for (const char* q = clip; *q && text.size() < cap; ++q) {
+                const unsigned char c = (unsigned char)*q;
+                if (c == '\r') continue;
+                if (c == '\n' && m_feedbackField == 0) break;   // a title is one line
+                if (c < 32 && c != '\n' && c != '\t') continue; // the Worker strips these anyway
+                text += *q;
+            }
+            Audio::get().playSfx("key_type", 0.12f);
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────── the rating prompt ────
+//
+// Shown once, in the corner, after enough play that the answer means something,
+// and never again whether or not it is answered. A prompt that returns is a
+// prompt that gets a worse answer each time.
+
+void Game::drawRatingPrompt() {
+    if (!m_ratingPromptOpen) return;
+
+    const Vector2 mouse = getMouse();
+    const Color accent = hexToColor(m_config.accent());
+    const Rectangle box = ratingPromptRect();
+
+    DrawRectangleRounded(box, 0.08f, 8, Color{18, 20, 27, 245});
+    DrawRectangleRoundedLines(box, 0.08f, 8, Color{70, 74, 96, 220});
+    const int x = (int)box.x, y = (int)box.y;
+
+    DrawText(T("Enjoying OpenDoctrines?"), x + 16, y + 14, 15, accent);
+    DrawText(T("A rating helps other people find it."), x + 16, y + 34, 12,
+             Color{160, 166, 186, 255});
+
+    const Rectangle rate = ratingRateRect();
+    const Rectangle wrong = ratingWrongRect();
+    const bool rh = CheckCollisionPointRec(mouse, rate);
+    const bool wh = CheckCollisionPointRec(mouse, wrong);
+
+    DrawRectangleRounded(rate, 0.2f, 6, rh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235});
+    DrawRectangleRoundedLines(rate, 0.2f, 6, Color{110, 180, 130, 220});
+    DrawText(T("Rate on itch.io"), (int)rate.x + 12, (int)rate.y + 9, 13, WHITE);
+
+    DrawRectangleRounded(wrong, 0.2f, 6, wh ? Color{60, 46, 46, 240} : Color{34, 28, 30, 220});
+    DrawRectangleRoundedLines(wrong, 0.2f, 6, Color{140, 100, 100, 200});
+    DrawText(T("Something's wrong"), (int)wrong.x + 12, (int)wrong.y + 9, 13,
+             Color{225, 190, 190, 255});
+
+    const bool nh = CheckCollisionPointRec(mouse, ratingDismissRect());
+    DrawText(T("Not now"), (int)box.x + (int)box.width - 76, (int)box.y + 96, 12,
+             nh ? WHITE : Color{130, 134, 152, 255});
+}
+
+Rectangle Game::ratingPromptRect() const {
+    return {(float)(m_screenW - 360 - 24), (float)(m_screenH - 128 - 24), 360, 128};
+}
+Rectangle Game::ratingRateRect() const {
+    const Rectangle b = ratingPromptRect();
+    return {b.x + 16, b.y + 58, 150, 32};
+}
+Rectangle Game::ratingWrongRect() const {
+    const Rectangle b = ratingPromptRect();
+    return {b.x + 176, b.y + 58, 168, 32};
+}
+Rectangle Game::ratingDismissRect() const {
+    const Rectangle b = ratingPromptRect();
+    return {b.x + b.width - 84, b.y + 92, 72, 22};
+}
+
+/**
+ * The prompt's input, run from update() so a click on it is not ALSO a click on
+ * the map underneath.
+ *
+ * Why itch.io rather than five stars in the corner: a number only the
+ * maintainer sees does nothing for anybody. A rating on the page is public, and
+ * it is what somebody deciding whether to try the game actually reads. It also
+ * removed the one path into the report service that needed no account.
+ *
+ * "Something's wrong" is the half worth keeping from the old star widget. A
+ * player who is unhappy is about to say so somewhere; a bug report is a better
+ * destination for that than a one-star review, for them and for the game.
+ *
+ * @return true when the pointer is over the prompt.
+ */
+bool Game::updateRatingPrompt() {
+    if (!m_ratingPromptOpen) return false;
+    const Vector2 mouse = getMouse();
+    if (!CheckCollisionPointRec(mouse, ratingPromptRect())) return false;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+
+    auto answered = [&] {
+        m_config.ratingAsked = true;
+        m_config.save(m_configPath);
+        m_ratingPromptOpen = false;
+    };
+
+    if (CheckCollisionPointRec(mouse, ratingRateRect())) {
+        m_config.ratingGiven = true;
+        answered();
+        OpenURL(feedback::ratingUrl());
+        Audio::get().playSfx("confirm");
+    } else if (CheckCollisionPointRec(mouse, ratingWrongRect())) {
+        answered();
+        openFeedbackForm(feedback::Kind::Bug, feedback::Category::Other);
+    } else if (CheckCollisionPointRec(mouse, ratingDismissRect())) {
+        // "Not now" means never. Asking again is how a prompt becomes nagging,
+        // and the second answer is always worse than the first.
+        answered();
+        Audio::get().playSfx("back");
+    }
+    return true;
+}
+
+void Game::maybeOfferRating(float dt) {
+    if (m_config.ratingAsked || m_config.ratingGiven || m_ratingPromptOpen) return;
+    if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
+
+    m_playedSeconds += dt;
+    if (m_playedSeconds >= 60.0f) {
+        m_config.minutesPlayed += (int)(m_playedSeconds / 60.0f);
+        m_playedSeconds = std::fmod(m_playedSeconds, 60.0f);
+        m_config.save(m_configPath);   // so the count survives a crash, not only a quit
+    }
+    // Long enough to have an opinion, and between turns rather than during one:
+    // nobody wants to be asked how they feel while their army is moving.
+    if (m_config.minutesPlayed >= 45 && m_turnState == TURN_NORMAL) {
+        m_ratingPromptOpen = true;
+    }
+}

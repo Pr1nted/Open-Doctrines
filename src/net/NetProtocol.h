@@ -64,6 +64,7 @@ enum class NetMsg : uint16_t {
      * mod that wrote them.
      */
     ModMsg       = 10,
+    PlayerReport = 11,  // "this player wrote something you should see"
 
     // ---- server -> client -------------------------------------------------
     Welcome  = 64,
@@ -81,6 +82,20 @@ enum class NetMsg : uint16_t {
     Countries    = 76,  // the catalogue a lobby picks from
     Signal       = 77,  // WebRTC offer/answer/candidate, both directions
     ModMsgFrom   = 78,  // a mod message, attributed by the server
+
+    /**
+     * What every country ordered on the turn that just resolved.
+     *
+     * For the middle-state view, which is a picture of the turn that HAPPENED
+     * -- see Game::m_turnOrderLog for why it cannot be a picture of the turn
+     * that has not. Display only: nothing a client does with this changes its
+     * world, so a client that drops it is merely a client without the overlay.
+     *
+     * Additive. A build that predates it falls through Session's `default:`
+     * and ignores it, which is why this is a new id rather than a wider Delta:
+     * widening Delta would have changed a payload older clients already parse.
+     */
+    TurnOrders   = 80,
 
     /**
      * Long-form: where this game's turns live, and the key to seal orders with.
@@ -389,6 +404,21 @@ struct NetOrdersMsg {
     static bool decode(const uint8_t* data, size_t size, NetOrdersMsg& out);
 };
 
+/**
+ * The middle-state overlay's data for one turn.
+ *
+ * Shaped exactly like NetWorld, and for the same reason: the payload is opaque
+ * to this layer and is written and read by the one place that knows what the
+ * orders mean. See Game::mpSerializeTurnOrders.
+ */
+struct NetTurnOrders {
+    uint32_t             turnNumber = 0;
+    std::vector<uint8_t> payload;
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetTurnOrders& out);
+};
+
 struct NetTurnBegin {
     uint32_t turnNumber = 0;
     uint32_t deadlineMs = 0;         // 0 = no deadline (long-form play)
@@ -560,4 +590,27 @@ struct NetChat {
 
     std::vector<uint8_t> encode() const;
     static bool decode(const uint8_t* data, size_t size, NetChat& out);
+};
+
+/**
+ * One player telling the host about another.
+ *
+ * Goes to the HOST and no further. It is not broadcast, it is not forwarded to
+ * the account service, and the accused is never told -- a report that announces
+ * itself is a report nobody files. The host's client decides what to do with
+ * it; all this does is carry it.
+ *
+ * `aboutPeer` rather than a name: names are chosen by the player being reported
+ * and two of them can be identical, which is exactly the situation where you
+ * least want the host acting on the wrong one.
+ */
+struct NetPlayerReport {
+    uint16_t    fromPeerId = 0;      // ignored on the way up; set by the server
+    uint16_t    aboutPeer = 0;
+    std::string reason;              // a stable id: "harassment", "spam", ...
+    std::string note;                // what the reporter wrote, may be empty
+    std::string message;             // the message complained about
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetPlayerReport& out);
 };

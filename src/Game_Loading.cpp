@@ -112,6 +112,12 @@ void Game::hideLoadingScreen() {
 }
 
 void Game::startLoading(const std::string& odmPath) {
+    // EVERY WORLD COMES THROUGH HERE, which is the point. It was on
+    // startNewGame first, and the headless evaluator does not call that -- it
+    // drives the async loader directly -- so OD_GOODS was read in the one path
+    // a player uses and none of the paths the bench uses. A world setting that
+    // the thing measuring it cannot set is not a setting.
+    applyEconomyEnvironment();
     showLoadingScreen();
     m_loadingPhase = LOAD_ODM;
     m_loadingOdmPath = odmPath;
@@ -124,6 +130,9 @@ void Game::startLoading(const std::string& odmPath) {
 }
 
 void Game::startLoadingSave(const std::string& savePath) {
+    // A save carries its own economy once the field is persisted; until then
+    // this at least gives a loaded world the same rules a new one gets.
+    applyEconomyEnvironment();
     showLoadingScreen();
     m_loadingPhase = LOAD_ODM_SAVE;
     m_loadingSavePath = savePath;
@@ -370,7 +379,7 @@ void Game::updateLoading() {
             m_renderer = new MapRenderer(m_screenW, m_screenH,
                                          m_landSea.getWidth(), m_landSea.getHeight());
             if (m_renderer) {
-                m_renderer->setDpiScale(GetWindowScaleDPI().x);
+                m_renderer->setDpiScale(pointerScale());
                 m_renderer->computeBorderTexture(m_provinces.getImage());
                 m_renderer->setPoliticalTexture(m_politicalTex);
                 m_renderer->setFallbackFont(m_gameFont);
@@ -596,6 +605,15 @@ void Game::updateLoading() {
             LoadLog() << "  Loaded " << m_provinces.getAllProvinces().size() << " provinces, "
                       << m_countries.size() << " countries, "
                       << m_playableCountryIds.size() << " playable" << std::endl;
+
+            // ── THE WORLD IS BUILT; IF IT IS A NEW ONE, IT MAY DIFFER ──
+            //
+            // Here because this is where the ASYNC door finishes, and that is
+            // the door every new world from the menu and from the dedicated
+            // server comes through. The synchronous startNewGame has its own
+            // call; the flag is one-shot, so whichever arrives first spends it
+            // and the other does nothing.
+            jitterStartingPolitics();
 
             setLoadingProgress(1.0f, "Select your country!");
             m_loadingPhase = LOAD_DONE;
@@ -899,6 +917,7 @@ void Game::buildPopulationLookups() {
     maxPid = std::max(maxPid, 65534);
     m_provinceCountryLookup.assign(maxPid + 1, 0);
     m_provincePopArray.assign(maxPid + 1, 0);
+    m_provinceAreaArray.assign(maxPid + 1, 0.0f);
     m_provinceConquestTurn.clear();
     m_conqueredProvincePrevOwner.clear();
     for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
@@ -948,16 +967,43 @@ void Game::buildPopulationLookups() {
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
     logHeapAt("  pop: +countryPixels(empty)");
 
+    // ── TRUE AREA, ONE ROW-WEIGHT AT A TIME ──
+    //
+    // The map is equirectangular, so every pixel in a row covers the same
+    // ground and rows differ by cos(latitude). Precomputed per row -- 4096
+    // cosines rather than 33 million -- and the row advances on a compare
+    // rather than an `i / w` division per pixel, because this loop runs once
+    // per world load on phones as well as desktops.
+    //
+    // Filled HERE and not in rebuildOwnershipPixels, which walks the same
+    // raster after a save or a host moves provinces between owners: a province
+    // covers the same ground whoever holds it, so area is a property of the map
+    // and is computed once with the map. See m_provinceAreaArray.
+    std::vector<float> rowWeight((size_t)std::max(0, h), 0.0f);
+    for (int y = 0; y < h; ++y) {
+        const double lat = 90.0 - ((double)y + 0.5) * (180.0 / (double)h);
+        rowWeight[(size_t)y] = (float)std::cos(lat * 3.14159265358979323846 / 180.0);
+    }
+    int areaRow = 0, areaRowEnd = w;
+    float areaRowW = (h > 0) ? rowWeight[0] : 0.0f;
+
     for (int i = 0; i < totalPixels; ++i) {
         // Once a raster row's worth. Same reason as the scans in MapRenderer:
         // this is a full-map pass and nothing refills the music while it runs.
         if ((i & 8191) == 0) Audio::get().pump();
+        if (i >= areaRowEnd && areaRow + 1 < h) {
+            ++areaRow;
+            areaRowEnd += w;
+            areaRowW = rowWeight[(size_t)areaRow];
+        }
         Color src = srcPixels[i];
         int pid = Province::colorToId(src.r, src.g, src.b);
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
         m_pixelCountryArray[i] = (uint16_t)cid;
+        if (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
+            m_provinceAreaArray[pid] += areaRowW;
 
         if (pid == 0 || cid == 0) {
             m_politicalPixelBuffer[i] = Color{10, 15, 40, 255};
@@ -1953,7 +1999,7 @@ bool Game::loadFromODM(const std::string& odmPath) {
                             "minorities.json", "minority_colors.json", "starting_policies.json",
                             "country_compass.json", "starting_minority_policies.json", "thumb.png",
                             "resources.json", "relations.json", "claims.json", "ports.json",
-                            "armies.json", "ships.json", "policies.json"};
+                            "armies.json", "ships.json", "policies.json", "districts.json"};
     int found = 0;
     int neededCount = sizeof(needed) / sizeof(needed[0]);
 
@@ -2139,8 +2185,13 @@ bool Game::loadFromODM(const std::string& odmPath) {
                 auto meta = nlohmann::json::parse(metaStr);
                 if (meta.contains("map_date") && meta["map_date"].is_string())
                     m_mapDate = meta["map_date"].get<std::string>();
+                // ONLY EVER TURNS IT ON. The archive was already scanned for
+                // scripts/ entries above, and metadata is a claim about the
+                // archive rather than the archive itself: a map whose metadata
+                // was written before its scripts were added would otherwise
+                // carry scripts that silently never run.
                 if (meta.contains("has_scripts") && meta["has_scripts"].is_boolean())
-                    m_loadedMapHasScripts = meta["has_scripts"].get<bool>();
+                    m_loadedMapHasScripts = m_loadedMapHasScripts || meta["has_scripts"].get<bool>();
             } catch (...) {}
             break;
         }
@@ -2390,6 +2441,9 @@ void Game::unloadGameData() {
     m_provinceResources.clear();
     m_claimsByProvince.clear();
     m_ships.clear();
+    m_shipRoutePreview.clear();   // display cache; belongs to the world going away
+    m_battles.clear();            // unfinished fights belong to the old world
+    m_pendingWithdraws.clear();
     m_relations.clear();
     // Reputation is world state like any other: a new or loaded world must not
     // inherit who lied to whom in the last one.
@@ -2615,6 +2669,55 @@ bool Game::loadGameDataStep2() {
         }
     }
 
+    // ── Districts an author drew in the map editor ──
+    //
+    // Kept by ISO rather than resolved to a country id here, for the same
+    // reason claims are: a country's id is a property of THIS session, and the
+    // districts have to survive until ensureDefaultDistrict() asks for them.
+    // A country with nothing authored still gets the single default district,
+    // so this is additive -- an old map behaves exactly as it did.
+    {
+        std::string json = loadJson("districts.json");
+        if (!json.empty()) {
+            try {
+                auto j = nlohmann::json::parse(json);
+                int total = 0;
+                for (auto& [iso, arr] : j.items()) {
+                    if (!arr.is_array()) continue;
+                    std::vector<District> ds;
+                    for (auto& e : arr) {
+                        District d;
+                        d.id = (int)ds.size() + 1;
+                        d.name = e.value("name", "");
+                        // A mapmaker's name is theirs, in the language they
+                        // wrote it. Never re-rendered.
+                        d.customName = !d.name.empty();
+                        if (e.contains("color") && e["color"].is_array() && e["color"].size() >= 3) {
+                            d.r = (unsigned char)e["color"][0].get<int>();
+                            d.g = (unsigned char)e["color"][1].get<int>();
+                            d.b = (unsigned char)e["color"][2].get<int>();
+                        }
+                        d.sharePct = e.value("share", 0);
+                        if (e.contains("provinces"))
+                            for (auto& v : e["provinces"]) d.provinces.push_back(v.get<int>());
+                        std::sort(d.provinces.begin(), d.provinces.end());
+                        if (e.contains("laws"))
+                            for (auto& v : e["laws"]) d.policies.push_back(v.get<std::string>());
+                        if (d.provinces.empty()) continue;   // a district is its ground
+                        ds.push_back(std::move(d));
+                    }
+                    if (ds.empty()) continue;
+                    m_authoredDistricts[iso] = std::move(ds);
+                    total += (int)m_authoredDistricts[iso].size();
+                }
+                LoadLog() << "  Loaded " << total << " authored district(s) for "
+                          << m_authoredDistricts.size() << " countries" << std::endl;
+            } catch (...) {
+                LoadLog() << "  Failed to parse districts.json" << std::endl;
+            }
+        }
+    }
+
     // Load port data
     {
         std::string json = loadJson("ports.json");
@@ -2703,15 +2806,33 @@ bool Game::loadGameDataStep2() {
                     LoadLog() << "  Refloated " << beached
                               << " ship(s) that loaded on land" << std::endl;
                 LoadLog() << "  Loaded " << m_ships.size() << " ships" << std::endl;
-                // Ocean topology, built once now that the raster is in memory.
-                // See Game::NavGrid -- the navy plans on this instead of
-                // steering at a straight line and stopping at the first coast.
-                buildNavGrid();
             } catch (...) {
                 LoadLog() << "  Failed to parse ships.json" << std::endl;
             }
         }
     }
+
+    // ── OCEAN TOPOLOGY, FOR EVERY WORLD AND NOT JUST THE ONES WITH FLEETS ──
+    //
+    // See Game::NavGrid: the navy plans on this instead of steering in a
+    // straight line and stopping at the first coast, and portApproach,
+    // seaBodyOfPort and navReachable all answer out of it.
+    //
+    // It used to be built INSIDE the ships.json block above -- and inside that
+    // block's `try`. So a map with no ships.json got no nav grid at all, and so
+    // did a map whose ships.json failed to parse. The generator only writes
+    // ships.json for a map that has ships (MapEditor.cpp), which means
+    // GENERATED TRAINING WORLDS HAD NO OCEAN TOPOLOGY: portApproach returned
+    // false for every port, seaBodyOfPort returned -1, navReachable fell back
+    // to "no grid, block nothing", and every embarkation in training was a
+    // no-op. The navy was not weak in training, it was absent.
+    //
+    // It needs the land/sea raster and nothing else, and that has been in
+    // memory since well above here, so it belongs at this level rather than
+    // behind somebody else's optional file. Costs one flood fill per world on
+    // maps that previously skipped it -- which are exactly the maps that were
+    // silently sailing without it.
+    buildNavGrid();
 
     // Initialize policy system
     initPolicies();
@@ -2811,7 +2932,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
 
     m_renderer = new MapRenderer(m_screenW, m_screenH,
                                  m_landSea.getWidth(), m_landSea.getHeight());
-    m_renderer->setDpiScale(GetWindowScaleDPI().x);
+    m_renderer->setDpiScale(pointerScale());
     m_renderer->computeBorderTexture(m_provinces.getImage());
     m_renderer->setPoliticalTexture(m_politicalTex);
     m_renderer->setFallbackFont(m_gameFont);
@@ -3025,6 +3146,8 @@ bool Game::loadSaveFile(const std::string& savePath) {
             if (pd.resourceIncomeChanged) m_provinceIndustry[pid].resourceIncome = pd.newResourceIncome;
             if (pd.popIncomeChanged)      m_provinceIndustry[pid].popIncome = pd.newPopIncome;
             if (pd.popModifierChanged)    m_provinceIndustry[pid].popModifier = pd.newPopModifier;
+        if (pd.outputChanged)         m_provinceIndustry[pid].output = pd.newOutput;
+            if (pd.outputChanged)         m_provinceIndustry[pid].output = pd.newOutput;
         }
         // Apply ship changes
         for (auto& sd : delta.ships) {
@@ -3042,7 +3165,12 @@ bool Game::loadSaveFile(const std::string& savePath) {
             } else {
                 std::vector<ArmyUnit> units;
                 for (auto& u : ad.units) {
-                    units.push_back({u.countryId, u.count});
+                    // A save written before troop types has type 0 on every
+                    // unit, which IS line infantry -- so an old campaign loads
+                    // as an army of the only kind of soldier it ever had.
+                    units.push_back({u.countryId, u.count,
+                                     (u.type < (uint8_t)TROOP_TYPE_COUNT)
+                                         ? (TroopType)u.type : TROOP_LINE});
                 }
                 m_provinceArmies[ad.provinceId] = std::move(units);
             }
@@ -3085,6 +3213,7 @@ void Game::applyTurnDelta(const TurnDelta& delta) {
         if (pd.resourceIncomeChanged) m_provinceIndustry[pid].resourceIncome = pd.newResourceIncome;
         if (pd.popIncomeChanged)      m_provinceIndustry[pid].popIncome = pd.newPopIncome;
         if (pd.popModifierChanged)    m_provinceIndustry[pid].popModifier = pd.newPopModifier;
+        if (pd.outputChanged)         m_provinceIndustry[pid].output = pd.newOutput;
     }
     // Ship changes
     for (auto& sd : delta.ships) {
@@ -3103,7 +3232,9 @@ void Game::applyTurnDelta(const TurnDelta& delta) {
         } else {
             std::vector<ArmyUnit> units;
             for (auto& u : ad.units) {
-                units.push_back({u.countryId, u.count});
+                units.push_back({u.countryId, u.count,
+                                 (u.type < (uint8_t)TROOP_TYPE_COUNT)
+                                     ? (TroopType)u.type : TROOP_LINE});
             }
             m_provinceArmies[ad.provinceId] = std::move(units);
         }
@@ -3111,7 +3242,14 @@ void Game::applyTurnDelta(const TurnDelta& delta) {
     // Research/pacification state (recorded per-turn in .dat)
     m_researchAllocation = delta.researchAllocation;
     m_pacificationAllocation = delta.pacificationAllocation;
-    m_researchActiveNode = delta.researchActiveNode;
+    m_researchGroups[0].activeNode = delta.researchActiveNode;
+    for (int g = 0; g < 3; ++g) {
+        m_researchGroups[g].lastNode    = delta.researchGroups[g].lastNode;
+        m_researchGroups[g].sharePct    = delta.researchGroups[g].sharePct;
+        m_researchGroups[g].autoAdvance = delta.researchGroups[g].autoAdvance;
+        // Group 1's project is researchActiveNode, above: one home, one reader.
+        if (g > 0) m_researchGroups[g].activeNode = delta.researchGroups[g].activeNode;
+    }
     m_researchPoints = delta.researchPoints;
 }
 
@@ -3222,8 +3360,53 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     return true;
 }
 
+// ── THE GOODS ECONOMY IS A PROPERTY OF THE WORLD ──
+//
+// Read once here rather than per turn, so a world plays under one economy for
+// its whole life. The environment is the only way in for now -- there is no
+// world-creation UI for it yet -- which is exactly what the bench needs: it can
+// sweep OD_AUTOSELL_PCT over a run without authoring a world per value.
+//
+// OFF BY DEFAULT, and the default is load-bearing: every price in this game was
+// tuned against an economy where industry emitted money, so a world that opts
+// in is a world being measured, not the one a player gets by accident.
+void Game::applyEconomyEnvironment() {
+    m_goodsEconomy = false;
+    if (const char* e = std::getenv("OD_GOODS")) m_goodsEconomy = (*e && *e != '0');
+    if (const char* e = std::getenv("OD_AUTOSELL_PCT")) {
+        // Clamped rather than rejected: a sweep script that emits 120 should
+        // measure "everything sells" rather than silently fall back to the
+        // default and report it as a data point.
+        m_autoSellPct = std::clamp(atoi(e), 0, 100);
+    }
+    m_countryStockpiles.clear();
+    m_countryProduction.clear();
+}
+
+void Game::chooseWorldSeed() {
+    unsigned int seed = m_worldSeed;
+    if (const char* e = std::getenv("OD_WORLD_SEED")) {
+        const unsigned long v = strtoul(e, nullptr, 10);
+        if (v != 0) seed = (unsigned int)v;
+    }
+    if (seed == 0) {
+        // Genuine entropy, once, at the moment a world is made. random_device
+        // rather than the clock: two worlds started in the same second are two
+        // different worlds, and on some builds time() has one-second
+        // resolution.
+        std::random_device rd;
+        seed = (unsigned int)rd();
+        if (seed == 0) seed = 1337u;   // vanishingly unlikely; never seed on 0
+    }
+    m_worldSeed = seed;
+    m_freshWorld = true;      // spent by jitterStartingPolitics
+    seedSimRng(seed);
+    LoadLog() << "  World seed: " << seed << std::endl;
+}
+
 void Game::startNewGame(const std::string& mapName) {
     unloadGameData();
+    chooseWorldSeed();
     // Clear all game state
     m_provincePopulations.clear();
     m_provinceCompass.clear();
@@ -3232,6 +3415,9 @@ void Game::startNewGame(const std::string& mapName) {
     m_provinceIndustry.clear();
     m_provinceArmies.clear();
     m_ships.clear();
+    m_shipRoutePreview.clear();   // display cache; belongs to the world going away
+    m_battles.clear();            // unfinished fights belong to the old world
+    m_pendingWithdraws.clear();
     m_provincePorts.clear();
     m_claims.clear();
     m_claimsByProvince.clear();
@@ -3307,6 +3493,13 @@ void Game::startNewGame(const std::string& mapName) {
             LoadLog() << "Auto-created save: " << m_currentSavePath << std::endl;
         }
 
+        // The map has said what every country is, and this world is new, so it
+        // is allowed to differ from the last new one. Here rather than beside
+        // the compass parser: there are TWO of those, one for loose files and
+        // one for the json inside an .odmap, and the call went in the branch a
+        // shipped map never takes -- so it did nothing and said nothing.
+        jitterStartingPolitics();
+
         m_currentScreen = SCREEN_PLAYING;
     } else {
         LoadLog() << "Failed to load map: " << mapName << std::endl;
@@ -3323,6 +3516,9 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     AISystem::s_tutorialAI = false;
     m_forcedStartIso.clear();
     unloadGameData();
+    // The second door into a new world -- this is not a wrapper around
+    // startNewGame, it is a parallel copy -- so the seed is chosen here too.
+    chooseWorldSeed();
     // Clear all game state
     m_provincePopulations.clear();
     m_provinceCompass.clear();
@@ -3331,6 +3527,9 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_provinceIndustry.clear();
     m_provinceArmies.clear();
     m_ships.clear();
+    m_shipRoutePreview.clear();   // display cache; belongs to the world going away
+    m_battles.clear();            // unfinished fights belong to the old world
+    m_pendingWithdraws.clear();
     m_provincePorts.clear();
     m_claims.clear();
     m_claimsByProvince.clear();
@@ -3399,6 +3598,10 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_ceasefireMapSrcX = 0; m_ceasefireMapSrcY = 0;
     m_ceasefireMapZoom = 1.0f;
     m_ceasefireSelectMode = 0;
+    m_ceasefireOurReleaseTag.clear();
+    m_ceasefireOurReleaseProvs.clear();
+    m_ceasefireTheirReleaseTag.clear();
+    m_ceasefireTheirReleaseProvs.clear();
     m_ceasefireMapDragging = false;
     m_ceasefireMapDragPrevX = 0;
     m_ceasefireMapDragPrevY = 0;
@@ -3419,7 +3622,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_artilleryDragHoverPid = -1;
     m_artilleryDragValidDest = false;
     m_researchAllocation = 0.25f;
-    m_researchActiveNode = -1;
+    for (auto& g : m_researchGroups) g = ResearchGroup{};
     m_researchPoints = 0;
     m_researchHoveredNode = -1;
     m_researchTab = 0;
@@ -3459,6 +3662,9 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_provinceIndustry.clear();
     m_provinceArmies.clear();
     m_ships.clear();
+    m_shipRoutePreview.clear();   // display cache; belongs to the world going away
+    m_battles.clear();            // unfinished fights belong to the old world
+    m_pendingWithdraws.clear();
     m_provincePorts.clear();
     m_claims.clear();
     m_claimsByProvince.clear();

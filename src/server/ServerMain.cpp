@@ -20,9 +20,13 @@
 
 #include "../Game.h"
 #include "../ai/AISystem.h"   // mergeModelFiles; see --merge-ai below
+#include "../llm/Runner.h"    // the advisor runner; see --llm-install
+#include <filesystem>
 
+#include <algorithm>   // std::clamp, for --vs-exploit
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>    // atoi, for the seat-bench flags
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -77,6 +81,15 @@ void usage() {
         "  --worker <id> --workers <n>   one process of a parallel pool\n"
         "  --vs-random | --vs-model <p> | --vs-script | --scenarios   what to measure against\n"
         "  --merge-ai <out> <in...>  fold worker models into one\n"
+        "\n"
+        "  --llm-status      whether an advisor runner is installed here, and where\n"
+        "  --llm-install     download and verify the pinned runner into <data>/llm\n"
+        "  --llm-uninstall   remove it again, leaving nothing behind\n"
+        "  --llm-pull <model>  fetch weights through a running Ollama, e.g. gemma3:4b\n"
+        "                    A dedicated server needs the module too: advisors are\n"
+        "                    the host's to provide, so a headless box hosting a game\n"
+        "                    with \"advisors only\" has to be able to install one.\n"
+        "\n"
         "  --write-config    write a commented default config file and exit\n"
         "  --help            this text\n"
         "\n"
@@ -85,7 +98,118 @@ void usage() {
 
 }  // namespace
 
+/**
+ * The advisor runner, from a headless box.
+ *
+ * A dedicated server has no settings screen, so these three flags are how a
+ * host installs, checks and removes it. The same code as the game's own module
+ * -- same pinned version, same hash check, same directory -- because a server
+ * that installed something the game would refuse would be the more dangerous of
+ * the two.
+ */
+int llmCommand(const std::string& what, const std::string& dataDir) {
+    if (what == "status") {
+        printf("advisor runner\n");
+        printf("  directory : %s\n", llm::installDir(dataDir).c_str());
+        printf("  installed : %s\n", llm::installed(dataDir) ? "yes" : "no");
+        if (!llm::installedPath(dataDir).empty()) {
+            printf("  binary    : %s\n", llm::installedPath(dataDir).c_str());
+        }
+        if (llm::canInstall()) {
+            printf("  available : yes -- run --llm-install\n");
+            printf("  source    : %s\n", llm::describeDownload().c_str());
+        } else {
+            printf("  available : not through this game on this platform.\n");
+            printf("              %s\n", llm::manualInstructions());
+        }
+        return 0;
+    }
+
+    if (what == "uninstall") {
+        const bool gone = llm::uninstall(dataDir);
+        printf(gone ? "removed %s\n" : "could NOT remove %s\n",
+               llm::installDir(dataDir).c_str());
+        return gone ? 0 : 1;
+    }
+
+    if (what == "install") {
+        if (!llm::canInstall()) {
+            fprintf(stderr, "This game does not install a runner on this platform.\n%s\n",
+                    llm::manualInstructions());
+            return 2;
+        }
+        if (llm::installed(dataDir)) {
+            printf("already installed at %s\n", llm::installedPath(dataDir).c_str());
+            return 0;
+        }
+        // Said out loud before anything is fetched, on a server too: a headless
+        // box downloading an executable without saying so is worse, not better,
+        // because nobody is watching it.
+        printf("This will download and run third-party software:\n");
+        printf("  %s\n", llm::describeDownload().c_str());
+        printf("  into %s\n", llm::installDir(dataDir).c_str());
+        printf("Proceed? [y/N]: ");
+        fflush(stdout);
+        char answer[8] = {0};
+        if (!fgets(answer, sizeof answer, stdin) ||
+            (answer[0] != 'y' && answer[0] != 'Y')) {
+            printf("Nothing was downloaded.\n");
+            return 1;
+        }
+        const llm::Install result = llm::fetch(dataDir, [](const char* step) {
+            printf("  %s\n", step);
+            fflush(stdout);
+        });
+        if (!result.ok()) {
+            fprintf(stderr, "%s\n", result.error.c_str());
+            return 3;
+        }
+        printf("Installed: %s\n", result.path.c_str());
+        printf("Start it and pull a model, e.g.:\n");
+        printf("  %s serve &\n", result.path.c_str());
+        printf("  %s pull gemma3:4b\n", result.path.c_str());
+        return 0;
+    }
+    return 2;
+}
+
 int main(int argc, char** argv) {
+    // ── The advisor-runner flags, first ──
+    //
+    // Before any of the heavy paths below: installing or removing a runner
+    // should not require a map to load, and --llm-status on a broken data
+    // directory should still answer.
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--llm-pull") {
+            if (i + 1 >= argc) { fprintf(stderr, "--llm-pull needs a model name\n"); return 2; }
+            std::string dataDir = "data";
+            std::string api = "http://127.0.0.1:11434";
+            for (int k = 1; k + 1 < argc; ++k) {
+                if (std::string(argv[k]) == "--data") dataDir = argv[k + 1];
+                if (std::string(argv[k]) == "--llm-endpoint") api = llm::apiRootOf(argv[k + 1]);
+            }
+            const std::string stream = dataDir + "/llm-pull.ndjson";
+            printf("Pulling %s through %s ...\n", argv[i + 1], api.c_str());
+            const bool ok = llm::pullModel(api, argv[i + 1], stream);
+            const llm::PullProgress p = llm::pullProgress(stream);
+            std::error_code ec;
+            std::filesystem::remove(stream, ec);
+            if (!ok || !p.error.empty()) {
+                fprintf(stderr, "%s\n", p.error.empty()
+                        ? "Ollama did not accept that. Is it running?" : p.error.c_str());
+                return 3;
+            }
+            printf("Done.\n");
+            return 0;
+        }
+        if (arg != "--llm-status" && arg != "--llm-install" && arg != "--llm-uninstall") continue;
+        std::string dataDir = "data";
+        for (int k = 1; k + 1 < argc; ++k)
+            if (std::string(argv[k]) == "--data") dataDir = argv[k + 1];
+        return llmCommand(arg.substr(6), dataDir);
+    }
+
     // Every raylib entry point in this binary is a no-op except the ones the
     // simulation reads data through, and nothing seeds the C RNG that combat
     // rolls come from. See ServerRaylib.cpp.
@@ -121,6 +245,56 @@ int main(int argc, char** argv) {
         return AISystem::mergeModelFiles(argv[i + 1], inputs) ? 0 : 1;
     }
 
+    // ── A BENCH SEAT PLAYED BY HAND, HEADLESS ──
+    //
+    // `--bench-agent` existed only in main.cpp, which calls init() and therefore
+    // opens a window and needs OpenGL. That put the one FAIR human-vs-AI
+    // instrument this project has behind a renderer: the agent gets the same
+    // action menu the policy gets and the same executor runs the choice, so a
+    // difference in result is a difference in JUDGEMENT. Same argument as
+    // --bench-seat, which moved here earlier for the same reason.
+    //
+    //   OpenDoctrinesServer --bench-agent 1939:NOR:hood /tmp/od.fifo [--until N] [--seed S]
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--probe-trade") == 0) {
+            if (i + 1 >= argc) { fprintf(stderr, "--probe-trade needs a seat\n"); return 2; }
+            AISystem::s_readOnlyModel = true;
+            unsigned int seed = 20260801u;
+            std::string dataDir;
+            for (int k = 1; k < argc - 1; ++k) {
+                if (strcmp(argv[k], "--seed") == 0) seed = (unsigned int)strtoul(argv[k + 1], nullptr, 10);
+                else if (strcmp(argv[k], "--data") == 0) dataDir = argv[k + 1];
+            }
+            Game game;
+            if (!game.srvResolveDataDir(dataDir)) { fprintf(stderr, "no data directory -- pass --data <dir>\n"); return 2; }
+            return game.runTradeProbe(argv[i + 1], seed) ? 0 : 1;
+        }
+        if (strcmp(argv[i], "--bench-agent") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--bench-agent needs a seat and a command FIFO\n");
+            return 2;
+        }
+        AISystem::s_readOnlyModel = true;      // a hand-played seat must never
+                                               // write over the trained model
+        const std::string seat = argv[i + 1];
+        const std::string fifo = argv[i + 2];
+        int until = 120;
+        unsigned int seed = 20260801u;         // the seat bench's first seed
+        std::string dataDir;
+        for (int k = 1; k < argc - 1; ++k) {
+            if (strcmp(argv[k], "--until") == 0) until = atoi(argv[k + 1]);
+            else if (strcmp(argv[k], "--seed") == 0)
+                seed = (unsigned int)strtoul(argv[k + 1], nullptr, 10);
+            else if (strcmp(argv[k], "--data") == 0) dataDir = argv[k + 1];
+        }
+        Game game;
+        if (!game.srvResolveDataDir(dataDir)) {
+            fprintf(stderr, "no data directory -- pass --data <dir>\n");
+            return 2;
+        }
+        return game.runBenchAgent(seat, fifo, seed, until) ? 0 : 1;
+    }
+
     {
         auto numAfter = [&](int i, int n) -> const char* {
             // Positional arguments only, and only while they look like numbers,
@@ -136,6 +310,9 @@ int main(int argc, char** argv) {
 
             Game::HeadlessAIOptions o;
             o.train = train;
+            // Seat-bench state, applied to the Game once it exists. See below.
+            std::string benchSeat;
+            int rushNeighbours = 0;
             const char* a1 = numAfter(i, 0);
             const char* a2 = numAfter(i, 1);
             const char* a3 = numAfter(i, 2);
@@ -170,8 +347,42 @@ int main(int argc, char** argv) {
                     AISystem::s_scriptedControl = true;
                     AISystem::s_scriptDuel = true;
                 }
+                // ── THE SEAT BENCH, in the binary that does not open a window ──
+                //
+                // These three were parsed only by main.cpp, so tools/od_bench.py
+                // had to drive the GAME binary -- which means an OpenGL window
+                // per seat, eighteen of them per rating, popping up in front of
+                // whoever is using the machine, and a renderer's worth of
+                // textures resident the whole time. Nothing in a bench run
+                // draws anything. Parsed here they are exactly the same three
+                // switches: a seat, who rushes, and which exploit they play.
+                //
+                // Identical semantics to main.cpp on purpose, including the
+                // clamp on the variant, because the bench's whole claim is that
+                // a score taken today compares with one taken last month. Two
+                // parsers that drift make that false silently.
+                else if (f == "--bench-seat" && k + 1 < argc) {
+                    benchSeat = argv[k + 1];
+                    AISystem::s_scriptedControl = true;
+                }
+                else if (f == "--rush-neighbours") {
+                    rushNeighbours = 1;
+                    if (k + 1 < argc && strcmp(argv[k + 1], "all") == 0) rushNeighbours = -1;
+                    else if (k + 1 < argc && argv[k + 1][0] >= '0' && argv[k + 1][0] <= '9')
+                        rushNeighbours = atoi(argv[k + 1]);
+                }
+                else if (f == "--vs-exploit" && k + 1 < argc) {
+                    AISystem::s_scriptedControl = true;
+                    AISystem::s_exploitVariant =
+                        std::clamp(atoi(argv[k + 1]), 2,
+                                   (int)AISystem::SCRIPT_VARIANT_COUNT - 1);
+                }
             }
             Game game;
+            // After construction, because these are members rather than
+            // statics. setBenchSeat parses the "map:ISO" spec itself.
+            if (!benchSeat.empty()) game.setBenchSeat(benchSeat);
+            if (rushNeighbours != 0) game.setBenchRushNeighbours(rushNeighbours);
             return game.runHeadlessAI(o);
         }
     }

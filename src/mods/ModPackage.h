@@ -152,12 +152,15 @@ struct ModLimits {
 // "1.0", which meant bumping the host and forgetting abi.json still passed --
 // exactly the drift that test exists to catch.
 //
-// MINOR IS APPEND-ONLY. 1.1 added modules and functions and renamed nothing, so
-// a mod declaring "gearbox": "1.0" resolves every import it knows about and
-// runs unchanged. A mod declaring a NEWER minor than the host still loads, with
-// a warning; whatever it wanted from that minor simply is not there.
+// MINOR IS APPEND-ONLY. 1.1 added modules and functions and renamed nothing,
+// and 1.2 added districts, what a country publishes about itself, the army by
+// kind and the research lock -- so a mod declaring "gearbox": "1.0" resolves
+// every import it knows about and runs unchanged. A mod declaring a NEWER minor
+// than the host still loads, with a warning; whatever it wanted from that minor
+// simply is not there. sdk/compat/abi-1.0.json and abi-1.1.json freeze the two
+// earlier surfaces and tools/check_abi_compat.py holds this to it.
 inline constexpr int kHostGearboxMajor = 1;
-inline constexpr int kHostGearboxMinor = 1;
+inline constexpr int kHostGearboxMinor = 2;
 
 struct ModManifest {
     int schema = 0;

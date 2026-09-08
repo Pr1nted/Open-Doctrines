@@ -883,6 +883,16 @@ set(GAME_SOURCES
     src/Game_Mods.cpp
     src/Game_Multiplayer.cpp
     src/Game_Policies.cpp
+    src/Feedback.cpp
+    src/Game_Feedback.cpp
+    src/Game_Mail.cpp
+    src/Game_Llm.cpp
+    src/Game_Moderation.cpp
+    src/Game_DevReports.cpp
+    src/Mail.cpp
+    src/llm/Advisor.cpp
+    src/llm/Runner.cpp
+    src/net/ToolRelease.cpp
     src/Game_Render.cpp
     src/Game_Research.cpp
     src/Game_TurnLogic.cpp
@@ -2302,6 +2312,86 @@ target_include_directories(DialogTest PRIVATE src)
 # sharing a script with them still pass. See docs/odseal.md.
 add_executable(OdsealTest EXCLUDE_FROM_ALL tests/odseal_test.cpp)
 target_link_libraries(OdsealTest odseal)
+
+# --- Where a factory may stand ---
+# industryCapacity() is a header-only rule read by the province panel, the AI,
+# the turn resolver and the multiplayer host, and its constants are a balance
+# change to every shipped map at once. Header-only, so this links NOTHING: no
+# window, no map, no game. See tests/industry_capacity_test.cpp.
+add_executable(IndustryCapacityTest EXCLUDE_FROM_ALL tests/industry_capacity_test.cpp)
+target_include_directories(IndustryCapacityTest PRIVATE src)
+
+# --- Dividing a garrison ---
+# The shares a set of move orders takes out of one province have to add up to
+# the province. They did not: each order rounded down on its own, so an odd
+# garrison split in two stranded a man. Pure integer arithmetic, links nothing.
+# See tests/army_split_test.cpp.
+add_executable(DistrictRulesTest EXCLUDE_FROM_ALL tests/district_rules_test.cpp)
+add_executable(CountryProfileTest EXCLUDE_FROM_ALL tests/country_profile_test.cpp)
+add_executable(FeedbackClientTest EXCLUDE_FROM_ALL tests/feedback_client_test.cpp)
+add_executable(MailRulesTest EXCLUDE_FROM_ALL tests/mail_rules_test.cpp src/Mail.cpp)
+add_executable(ToolReleaseTest EXCLUDE_FROM_ALL tests/tool_release_test.cpp
+               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp
+               src/net/NetUrl.cpp)
+target_include_directories(ToolReleaseTest PRIVATE src src/net)
+target_compile_definitions(ToolReleaseTest PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(ToolReleaseTest PRIVATE
+                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+
+add_executable(LlmRoundTripTest EXCLUDE_FROM_ALL tests/llm_roundtrip_test.cpp
+               src/llm/Advisor.cpp src/Mail.cpp
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(LlmRoundTripTest PRIVATE src src/llm)
+target_compile_definitions(LlmRoundTripTest PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(LlmRoundTripTest PRIVATE
+                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+
+add_executable(AdvisorTest EXCLUDE_FROM_ALL tests/advisor_test.cpp
+               src/llm/Advisor.cpp src/llm/Runner.cpp src/Mail.cpp
+               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp
+               src/net/NetUrl.cpp src/util/RunCurl.cpp)
+target_include_directories(AdvisorTest PRIVATE src src/llm)
+target_compile_definitions(AdvisorTest PRIVATE OD_ENABLE_NET=1)
+# The whole of mbedTLS, not just mbedcrypto: TlsSocket needs mbedtls_net_*,
+# which lives in mbedtls proper. Linking only the crypto half compiled fine and
+# failed at the link, which is how this was missed the first time.
+target_link_libraries(AdvisorTest PRIVATE
+                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+target_include_directories(MailRulesTest PRIVATE src)
+add_executable(ResearchGroupsTest EXCLUDE_FROM_ALL tests/research_groups_test.cpp)
+add_executable(TroopTypesTest EXCLUDE_FROM_ALL tests/troop_types_test.cpp)
+target_include_directories(TroopTypesTest PRIVATE src)
+
+add_executable(SupplyRulesTest EXCLUDE_FROM_ALL tests/supply_rules_test.cpp)
+target_include_directories(SupplyRulesTest PRIVATE src)
+
+add_executable(BattleRulesTest EXCLUDE_FROM_ALL tests/battle_rules_test.cpp)
+target_include_directories(BattleRulesTest PRIVATE src)
+
+add_executable(CombatDepthTest EXCLUDE_FROM_ALL tests/combat_depth_test.cpp)
+target_include_directories(CombatDepthTest PRIVATE src)
+
+add_executable(ShipRouteTest EXCLUDE_FROM_ALL tests/ship_route_test.cpp)
+target_include_directories(ShipRouteTest PRIVATE src)
+
+add_executable(ArmySplitTest EXCLUDE_FROM_ALL tests/army_split_test.cpp)
+
+# --- What a country may let go of ---
+# findReleasableRegions decides what the release panel offers and what the
+# bankruptcy cascade sheds. Pure -- provinces in, regions out -- so it links
+# nothing: no window, no map, no game. See tests/release_rules_test.cpp.
+add_executable(ReleaseRulesTest EXCLUDE_FROM_ALL tests/release_rules_test.cpp)
+target_include_directories(ReleaseRulesTest PRIVATE src)
+
+# --- Can everybody eat? ---
+# The goods recipe table, and the invariant its first version broke: a country
+# holding any one raw material must be able to feed its people. Twenty-seven of
+# sixty-four countries could not, and it was invisible in the source. Needs
+# raylib's headers only because GameStructs.h includes them; links nothing.
+# See tests/goods_recipe_test.cpp.
+add_executable(GoodsRecipeTest EXCLUDE_FROM_ALL tests/goods_recipe_test.cpp)
+target_include_directories(GoodsRecipeTest PRIVATE src
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
 add_executable(LocaleTest EXCLUDE_FROM_ALL
     tests/locale_test.cpp

@@ -33,6 +33,11 @@ each other.
 garrisons, ports and navies. Eight map modes: population, industry, defence,
 relations, army navigation, navy, resources, country names.
 
+Industry is bounded by the ground it stands on: each province states the level
+it can support, set by its population, how densely that population lives, its
+land area and its mineral wealth. Building an industrial power means holding
+places worth industrialising, not buying the same factory everywhere.
+
 ![Province panel](docs/img/province.png)
 
 **Research.** A tech tree over fortification, industry, ports and more, funded

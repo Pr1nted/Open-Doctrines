@@ -1,7 +1,13 @@
 #include "Game.h"
+#include "GameInternals.h"
+#include "MapEditor.h"
 
 void Game::drawMapEditor() {
-    if (m_mapEditor) m_mapEditor->draw();
+    if (!m_mapEditor) return;
+    // Every frame, because Settings can change it while the editor is open and
+    // the editor has no Config of its own to ask.
+    MapEditor::setAccent(hexToColor(m_config.accent()));
+    m_mapEditor->draw();
 }
 
 void Game::updateMapEditor() {
@@ -18,6 +24,11 @@ void Game::updateMapEditor() {
         // overlays/dialogs first and can show an unsaved-changes prompt).
         if (m_mapEditor->consumeExitRequest()) {
             m_currentScreen = SCREEN_MENU;
+        }
+        // The editor's Report button. Defaults to the Data category, which is
+        // what a map bug almost always is; the player can change it.
+        if (m_mapEditor->consumeFeedbackRequest()) {
+            openFeedbackForm(feedback::Kind::Bug, feedback::Category::Data);
         }
     }
 }

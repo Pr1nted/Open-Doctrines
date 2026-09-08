@@ -34,5 +34,42 @@ You get a warning. You do not always get a second one.
 @Signals Officer
 The cures are unpopular or slow: garrison it, spend on it, or give it what it
 wants. Choose early, because all three take turns to work.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Spending on it is where most of it goes to waste. Open Politics, then
+§**Districts**§.
 
+---
+@Signals Officer
+The budget used to fall on the whole country at once -- the same weight on a
+quiet county as on the one that is arming. So cut the country up. A
+§**district**§ is a piece of it you govern as a unit: paint provinces into it,
+give it a colour, give it a §**share**§. The shares always add to one hundred,
+because there is only one budget.
+
+---
+@Signals Officer
+What matters is the share of the §**money**§ against the share of the
+§**ground**§. A district holding a tenth of the country on a tenth of the
+budget is policed exactly as it was before -- so dividing changes nothing until
+you make the shares uneven.
+
+---
+@Signals Officer
+Draw a small district around the trouble, hand it a quarter of the money, and
+it is policed several times harder; the panel tells you the figure. Everywhere
+else pays for it, and that is the decision. There is a button to split evenly:
+a sensible place to start and rarely the place to stay.
+
+A district also passes its own §**regional law**§: a curfew, a tax
+holiday, whose language the courts use. Small, local, and each one a trade.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Close it.
+
+---
+@Signals Officer
 That is unrest. Anything else?

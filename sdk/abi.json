@@ -22,7 +22,7 @@
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one."
   ],
-  "gearbox": "1.1",
+  "gearbox": "1.2",
   "schema": 1,
   "modules": [
     {
@@ -72,7 +72,7 @@
       "import": "gearbox:neural",
       "revocable": true,
       "implemented": true,
-      "grants": "Observe AI features and rewards (observe-only: no import writes to the model)"
+      "grants": "Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model)"
     },
     {
       "name": "Map",
@@ -126,7 +126,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Read ships, armies, fortifications and ports"
+      "grants": "Read ships, armies by kind, fortifications and ports"
     },
     {
       "name": "Military.Write",
@@ -142,7 +142,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Read the technology tree and what each country has researched"
+      "grants": "Read the technology tree, what each country has researched, and how many programmes it may run"
     },
     {
       "name": "Research.Write",
@@ -150,7 +150,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Set research funding"
+      "grants": "Set research funding, and force how many research programmes a country may run"
     },
     {
       "name": "Politics.Read",
@@ -158,7 +158,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Read the political compass, policies, unrest and minorities"
+      "grants": "Read the political compass, policies, unrest, minorities, districts and what a country publishes"
     },
     {
       "name": "Politics.Write",
@@ -166,7 +166,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Enact and cancel policies through the game's own path"
+      "grants": "Enact and cancel policies, set district budgets and regional law, publish or withhold figures"
     },
     {
       "name": "Economy.Read",
@@ -174,7 +174,7 @@
       "revocable": true,
       "implemented": true,
       "since": "1.1",
-      "grants": "Read income, upkeep, industry and resources"
+      "grants": "Read income, expenses, what a country is worth, its population, industry and resources"
     },
     {
       "name": "Economy.Write",
@@ -4553,6 +4553,663 @@
         "role": "bool"
       },
       "doc": "Whether an AI model is loaded at all. False in a game with no AI players."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_count",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many districts this country is divided into. Districts are built on demand, so asking is what creates the default one for a country that has never been divided."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_name",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The district's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_share",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "This district's claim on the country's pacification budget, in percent. The shares of a country's districts sum to 100."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_province_count",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many provinces this district holds."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_province",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "n",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "id:province"
+      },
+      "doc": "Province `n` of this district, or GEARBOX_INVALID if there is no such one."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_law_count",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many regional laws this district runs."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_district_law",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "n",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stable id of regional law `n` in this district. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "district_law_count",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many regional laws exist to choose from."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "district_law_id",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stable id of regional law `index`. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "district_law_name",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The display name of regional law `index`, untranslated. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_discloses",
+      "capability": "Politics.Read",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "field",
+          "type": "i32",
+          "role": "enum:disclosure_field"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Whether this country publishes that figure in its profile: 1 if it does, 0 if it keeps it to itself. See the disclosure_field enum. Publishing is a decision with a consequence -- migrants read it -- rather than a display setting."
+    },
+    {
+      "module": "gearbox:politics.write",
+      "name": "set_country_district_share",
+      "capability": "Politics.Write",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "percent",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Set this district's claim on the pacification budget. The other districts are rebalanced so the shares still sum to 100, exactly as dragging the slider does. Returns 1 on success."
+    },
+    {
+      "module": "gearbox:politics.write",
+      "name": "set_country_district_law",
+      "capability": "Politics.Write",
+      "since": "1.2",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "law",
+          "type": "i32",
+          "role": "ptr"
+        },
+        {
+          "name": "law_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "on",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Pass or repeal a regional law in this district. Returns 1 on success, 0 for an unknown law or district."
+    },
+    {
+      "module": "gearbox:politics.write",
+      "name": "set_country_disclosure",
+      "capability": "Politics.Write",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "field",
+          "type": "i32",
+          "role": "enum:disclosure_field"
+        },
+        {
+          "name": "on",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Publish or withhold one of the figures in this country's profile. Returns 1 on success."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "troop_type_count",
+      "capability": "Military.Read",
+      "since": "1.2",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many kinds of soldier exist."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "troop_type_id",
+      "capability": "Military.Read",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stable id of troop type `index` -- line, militia, assault, mech. Never translated. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "country_army_of_type",
+      "capability": "Military.Read",
+      "since": "1.2",
+      "signature": "(iii)I",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "troop_type",
+          "type": "i32",
+          "role": "ptr"
+        },
+        {
+          "name": "troop_type_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "How many soldiers of that kind this country has, everywhere. 0 for a troop type that does not exist."
+    },
+    {
+      "module": "gearbox:military.read",
+      "name": "province_troops_of_type",
+      "capability": "Military.Read",
+      "since": "1.2",
+      "signature": "(iiii)I",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "id:province"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "troop_type",
+          "type": "i32",
+          "role": "ptr"
+        },
+        {
+          "name": "troop_type_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "How many soldiers of that kind this country has standing in that province."
+    },
+    {
+      "module": "gearbox:research.read",
+      "name": "country_research_groups",
+      "capability": "Research.Read",
+      "since": "1.2",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many research programmes this country may run at once, 1 to 3. This is the effective number, including any override a script or a mod has set."
+    },
+    {
+      "module": "gearbox:research.write",
+      "name": "set_country_research_groups",
+      "capability": "Research.Write",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "groups",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Force how many research programmes a country may run, 1 to 3, or 0 to hand the decision back to its economy. Outranks the economic gate in both directions and is saved with the game. Returns 1 on success."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_expenses",
+      "capability": "Economy.Read",
+      "since": "1.2",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "What this country spent last turn, in total. The same figure its profile publishes and the economy screen draws."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_national_value",
+      "capability": "Economy.Read",
+      "since": "1.2",
+      "signature": "(i)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "What the whole country is worth: every industry level, fort, port and division at what it cost to raise. A stock, where the income figures are flows."
+    },
+    {
+      "module": "gearbox:economy.read",
+      "name": "country_population",
+      "capability": "Economy.Read",
+      "since": "1.2",
+      "signature": "(i)I",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i64"
+      },
+      "doc": "How many people live in this country."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "ai_version",
+      "capability": "Neural",
+      "since": "1.2",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The AI's own version, e.g. \"ParrotZero 8.4.0\" -- ARCH.RULES.PATCH, and independent of the game's version. ARCH is the network shape and action space, RULES is behaviour a benchmark can see, PATCH cannot move a number. A mod that reads the feature vector should check ARCH before trusting its layout, and anything comparing measurements across builds should record RULES. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "ai_arch",
+      "capability": "Neural",
+      "since": "1.2",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The AI's ARCH number on its own, which is also the model file's format byte. The feature count and the action sets are only stable within one ARCH; a bump means old weights are refused on purpose."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "country_stance",
+      "capability": "Neural",
+      "since": "1.2",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The posture the AI has chosen for this country -- 0 expand, 1 consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none (a country the AI does not play, or one that has not been given a stance yet). Held for several turns at a time rather than chosen fresh each turn."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "stance_name",
+      "capability": "Neural",
+      "since": "1.2",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The stance's name: \"expand\", \"consolidate\", \"defend\", \"develop\". Never translated, and stable within an ARCH. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:neural",
+      "name": "stance_count",
+      "capability": "Neural",
+      "since": "1.2",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many stances there are to choose between."
     }
   ],
   "exports": [
@@ -4646,12 +5303,24 @@
       "CLIENT": 1,
       "SERVER": 2,
       "HOST_PLAYER": 3
+    },
+    "disclosure_field": {
+      "EXPENSES": 0,
+      "DOCTRINES": 1,
+      "TREASURY": 2,
+      "DISTRICT_LAWS": 3
+    },
+    "ai_stance": {
+      "EXPAND": 0,
+      "CONSOLIDATE": 1,
+      "DEFEND": 2,
+      "DEVELOP": 3
     }
   },
   "constants": {
     "GEARBOX_INVALID": "0xFFFFFFFF",
     "GEARBOX_MAJOR": 1,
-    "GEARBOX_MINOR": 1
+    "GEARBOX_MINOR": 2
   },
   "env_struct": {
     "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",

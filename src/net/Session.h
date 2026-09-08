@@ -58,6 +58,12 @@ struct NetSessionEvent {
         TurnBegan,
         Snapshot,        // full world, for a joiner
         Delta,           // one turn's changes
+        /**
+         * What every country ordered on the turn that just resolved, for the
+         * middle-state overlay. Display only -- dropping it costs the overlay
+         * and nothing else. See NetMsg::TurnOrders.
+         */
+        TurnOrders,
         Notice,          // "AI played X because ..."
         Chat,
         /**
@@ -179,6 +185,15 @@ public:
     /** "Not ready after all" -- retracts this turn's submission. */
     void withdrawOrders(uint32_t turnNumber);
     void sendChat(const std::string& text);
+
+    /**
+     * Tell the host about another player.
+     *
+     * Goes to the host and no further: not broadcast, not forwarded, and the
+     * accused is not told. See NetPlayerReport.
+     */
+    void sendPlayerReport(uint16_t aboutPeer, const std::string& reason,
+                          const std::string& note, const std::string& message);
 
     /** Send a mod's message. `toPeer` below zero means everyone else. */
     void sendModMessage(const std::string& modId, int32_t toPeer,

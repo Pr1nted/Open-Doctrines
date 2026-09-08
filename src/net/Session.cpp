@@ -562,6 +562,15 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
             push(std::move(e));
             return;
         }
+        case NetMsg::TurnOrders: {
+            NetTurnOrders to;
+            if (!NetTurnOrders::decode(body, size, to)) return;
+            NetSessionEvent e{NetSessionEvent::Kind::TurnOrders};
+            e.turnNumber = to.turnNumber;
+            e.payload = std::move(to.payload);
+            push(std::move(e));
+            return;
+        }
         case NetMsg::Countries: {
             NetCountryList list;
             if (!NetCountryList::decode(body, size, list)) return;
@@ -687,6 +696,18 @@ void NetSession::sendChat(const std::string& text) {
     c.text = text.size() > NetLimits::kChat ? text.substr(0, NetLimits::kChat) : text;
     m_impl->socket.send(netEncodeFrame(NetMsg::Chat, c.encode()));
 }
+
+void NetSession::sendPlayerReport(uint16_t aboutPeer, const std::string& reason,
+                                  const std::string& note, const std::string& message) {
+    if (!m_impl) return;
+    NetPlayerReport r;
+    r.aboutPeer = aboutPeer;
+    r.reason = reason;
+    r.note = note;
+    r.message = message;
+    m_impl->socket.send(netEncodeFrame(NetMsg::PlayerReport, r.encode()));
+}
+
 
 void NetSession::sendReady() {
     if (!joined(phase())) return;

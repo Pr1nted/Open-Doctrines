@@ -749,6 +749,10 @@ const char* tr(const char* english) {
 
 const char* tr(const std::string& english) { return tr(english.c_str()); }
 
+bool knownName(const std::string& name) {
+    return !name.empty() && g_names.find(name) != g_names.end();
+}
+
 const std::string& properName(const std::string& name) {
     auto cached = g_nameCache.find(name);
     if (cached != g_nameCache.end()) return cached->second;

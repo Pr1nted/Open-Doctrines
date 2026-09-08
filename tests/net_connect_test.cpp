@@ -61,6 +61,8 @@ bool pumpUntil(NetHost* host, NetSession* session, F done, int ms = 15000) {
 
 /** Drain events so queues do not grow, remembering what was seen. */
 struct Seen {
+    /// The last complaint a player sent the host. See NetPlayerReport.
+    NetPlayerReport report;
     bool welcomed = false;
     bool countries = false;
     bool rejected = false;
@@ -79,6 +81,7 @@ void drain(NetHost* host, NetSession* session, Seen& seen) {
         while (host->nextEvent(e)) {
             if (e.kind == NetHostEvent::Kind::PeerJoined) seen.peerJoined = true;
             if (e.kind == NetHostEvent::Kind::Failed) seen.hostError = e.text;
+            if (e.kind == NetHostEvent::Kind::PlayerReport) seen.report = e.report;
         }
     }
     if (session) {
@@ -350,6 +353,57 @@ int testJoin(const std::string& issuer) {
         }, 600);
         check("an oversized mod message is not sent at all",
               !host.nextModMessage(leaked));
+    }
+
+    // ── Reporting another player to the host ──
+    //
+    // The whole point of this message is that it reaches the HOST and stops
+    // there: it is not broadcast, and in particular the person being reported
+    // is never told. Both halves are checked.
+    {
+        // Encode/decode on its own first, so a failure below points at the
+        // transport rather than at the message.
+        {
+            NetPlayerReport probe;
+            probe.fromPeerId = 7; probe.aboutPeer = 4242;
+            probe.reason = "harassment"; probe.note = "n"; probe.message = "m";
+            const auto bytes = probe.encode();
+            NetPlayerReport back;
+            const bool rt = NetPlayerReport::decode(bytes.data(), bytes.size(), back);
+            check("the report message encodes and decodes", rt);
+            check("keeping every field",
+                  rt && back.aboutPeer == 4242 && back.reason == "harassment" &&
+                  back.note == "n" && back.message == "m");
+        }
+
+        seen.report = NetPlayerReport{};
+        session.sendPlayerReport(4242, "harassment", "would not stop",
+                                 "you are worthless and should quit");
+        const bool arrived = pumpUntil(&host, &session, [&] {
+            drain(&host, &session, seen);
+            return !seen.report.message.empty();
+        }, 6000);
+        check("a report reaches the host", arrived);
+        check("with the message complained about",
+              seen.report.message == "you are worthless and should quit");
+        check("and who it is about", seen.report.aboutPeer == 4242);
+        check("and why", seen.report.reason == "harassment");
+        // Attribution is the SERVER's, never the sender's claim.
+        check("attributed to the sender by the server, not by the sender",
+              seen.report.fromPeerId == w.peerId);
+
+        // Nothing came back down the wire to the client. A report that echoes
+        // to everyone is one nobody would ever file.
+        bool echoed = false;
+        NetModMsg stray;
+        for (int i = 0; i < 30; ++i) {
+            drain(&host, &session, seen);
+            if (session.nextModMessage(stray)) echoed = true;
+            host.update();
+            session.update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        check("and is not echoed back to anybody", !echoed);
     }
 
     // And leaving has to be noticed, or a disconnected player holds a seat

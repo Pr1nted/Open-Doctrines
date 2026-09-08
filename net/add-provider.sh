@@ -24,8 +24,8 @@ die()  { printf '\033[31mError: %s\033[0m\n' "$1" >&2; exit 1; }
 
 PROVIDER="${1:-}"
 case "$PROVIDER" in
-    google|discord|github) ;;
-    *) die "usage: ./add-provider.sh google|discord|github" ;;
+    google|discord|github|itch) ;;
+    *) die "usage: ./add-provider.sh google|discord|github|itch" ;;
 esac
 UPPER="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]')"
 
@@ -41,8 +41,39 @@ info "  $ISSUER/auth/callback/$PROVIDER"
 echo
 info "And the scopes must stay as src/auth/providers.ts sets them:"
 info "  google: openid only   discord: identify only   github: none"
+info "  itch:   profile:me only"
 info "Widening them would collect data PRIVACY.md says we do not have."
 echo
+
+# itch.io has NO CLIENT SECRET. It offers only the implicit flow, so there is
+# nothing to exchange a code at and nothing to authenticate the exchange with.
+# Asking for one and storing an empty string would look like a misconfiguration
+# later; not asking says what is true.
+if [ "$PROVIDER" = "itch" ]; then
+    info "itch.io is implicit-flow only: there is no client secret to set."
+    info "It can be LINKED to an existing account but cannot create one --"
+    info "its profile carries no creation date, so it cannot be age-gated."
+    echo
+    read -r -p "  ${UPPER}_CLIENT_ID: " CID
+    CID="$(printf '%s' "$CID" | tr -d '[:space:]')"
+    [ -n "$CID" ] || die "no client id given"
+    printf '%s' "$CID" | wrangler secret put "${UPPER}_CLIENT_ID" >/dev/null 2>&1 \
+        || die "could not set the client id"
+    info "Uploaded (${#CID} chars)."
+    printf '  Waiting for the service to offer it'
+    for _ in $(seq 1 20); do
+        if curl -s -m 8 "$ISSUER/" 2>/dev/null | grep -q '"id":"itch"'; then
+            echo; bold "  itch.io is live."
+            info "It appears under Account as a provider to link."
+            exit 0
+        fi
+        printf '.'
+        sleep 5
+    done
+    echo
+    warn "Set, but the service is not offering itch yet. Check the client id."
+    exit 1
+fi
 
 read -r -p "  ${UPPER}_CLIENT_ID: " CID
 read -r -s -p "  ${UPPER}_CLIENT_SECRET: " CSEC; echo

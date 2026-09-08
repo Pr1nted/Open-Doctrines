@@ -24,7 +24,10 @@ export async function authorizeUrl(
     const url = new URL(provider.authorizeUrl);
     url.searchParams.set("client_id", creds.id);
     url.searchParams.set("redirect_uri", redirectUri(env, claims.provider));
-    url.searchParams.set("response_type", "code");
+    // "token" for the implicit flow, which is all itch.io offers. It changes
+    // where the credential arrives -- the fragment rather than the query -- and
+    // therefore which callback can read it. See authCallback.
+    url.searchParams.set("response_type", provider.flow === "implicit" ? "token" : "code");
     url.searchParams.set("state", state);
     if (provider.scope) url.searchParams.set("scope", provider.scope);
     if (provider.pkce) {
@@ -39,6 +42,24 @@ export async function authorizeUrl(
 }
 
 interface TokenResponse { access_token?: string; error?: string }
+
+/**
+ * Check an access token that arrived by the implicit flow, by asking the
+ * provider who it belongs to.
+ *
+ * THIS IS WHAT MAKES THE WEAKER FLOW SAFE ENOUGH. We are handed a bearer token
+ * by a browser and have no way to know where it came from -- so we do not
+ * believe it. We spend it against the provider's own API and use the identity
+ * the provider returns. A forged or altered token buys nothing, because itch.io
+ * is the one deciding whose it is.
+ */
+export async function identityFromImplicitToken(
+    provider: ProviderId, accessToken: string,
+): Promise<ResolvedIdentity | null> {
+    if (PROVIDERS[provider].flow !== "implicit") return null;
+    if (!accessToken || accessToken.length > 4096) return null;
+    return fetchIdentity(provider, accessToken);
+}
 
 export async function exchangeCode(
     env: Env, provider: ProviderId, code: string, rid: string,

@@ -28,7 +28,9 @@
 #include <vector>
 
 /** A provider the player can sign in with. */
-enum class AuthProvider { Google, Discord, GitHub };
+// itch.io is last because it is the odd one: it can be LINKED to an account
+// but never create one, and the service says so per provider (isLinkOnly).
+enum class AuthProvider { Google, Discord, GitHub, Itch };
 
 const char* authProviderId(AuthProvider p);     // "google"
 const char* authProviderLabel(AuthProvider p);  // "Google"

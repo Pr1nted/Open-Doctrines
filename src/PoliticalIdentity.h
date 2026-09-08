@@ -165,6 +165,18 @@ FlagPattern applyFlag(const FlagPattern& originalFlag, const PoliticalIdentity& 
  */
 std::string geographicCoreOf(const std::string& name);
 
+/**
+ * The PLACE a demonym names, for the irregulars no suffix rule can reach:
+ * "French" -> "France", "Ukrainian" -> "Ukraine". Empty when the word is
+ * regular, which means the caller's own rules are fine and should run.
+ *
+ * Here rather than beside its first caller because it has two: the breakaway
+ * namer, which turns an ethnicity into a state, and district naming, which
+ * turns one into a region. Two copies of this table would drift the first time
+ * somebody added a people to one of them.
+ */
+std::string properPlaceName(const std::string& word);
+
 /** For notifications: "communist", "nationalist", ... */
 const char* quadrantName(IdeologyQuadrant q);
 

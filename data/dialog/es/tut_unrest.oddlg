@@ -36,5 +36,41 @@ Recibes un aviso. No siempre recibes un segundo.
 @Signals Officer
 Los remedios son impopulares o lentos: guarnécela, gasta en ella o dale lo que
 quiere. Elige pronto, porque los tres tardan turnos en surtir efecto.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+El dinero que se gasta ahí se desperdicia en su mayor parte. Abre Política y
+luego §**Distritos**§.
 
+---
+@Signals Officer
+El presupuesto caía sobre todo el país a la vez -- el mismo peso sobre una
+comarca tranquila que sobre la que se está armando. Así que divide el país. Un
+§**distrito**§ es un trozo que gobiernas como una unidad: pinta provincias en
+él, dale un color y una §**parte**§. Las partes siempre suman cien, porque solo
+hay un presupuesto.
+
+---
+@Signals Officer
+Lo que cuenta es la parte del §**dinero**§ frente a la parte del §**terreno**§.
+Un distrito con una décima del país y una décima del presupuesto se vigila
+igual que antes: dividir no cambia nada mientras las partes sean parejas.
+
+---
+@Signals Officer
+Traza un distrito pequeño alrededor del problema, dale un cuarto del dinero y
+se vigila varias veces más fuerte; el panel te da la cifra. Todo lo demás lo
+paga, y esa es la decisión. Hay un botón para repartir por igual: un comienzo
+sensato y rara vez donde conviene quedarse.
+
+Un distrito también dicta su propia §**ley regional**§: un toque de queda, una
+tregua fiscal, la lengua de los tribunales. Pequeña, local, y cada una un trato.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Ciérralo.
+
+---
+@Signals Officer
 Eso es el descontento. ¿Algo más?

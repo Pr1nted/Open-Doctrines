@@ -1254,6 +1254,104 @@ uint32_t pol_country_has_policy(ExecEnv e, uint32_t c, uint32_t pPtr, uint32_t p
     if (!mi->readString(pPtr, pLen, id)) return 0;
     return g_modGame->countryHasPolicy(c, id) ? 1u : 0u;
 }
+// ── ABI 1.2: districts, publication, the books, the army by kind ─────────────
+uint32_t neu_ai_version(ExecEnv e, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_NEURAL, 0) return retStr(mi, g_modGame->aiVersion(), buf, cap);
+}
+uint32_t neu_ai_arch(ExecEnv e) {
+    MOD_GUARD(MODULE_NEURAL, 0) return (uint32_t)g_modGame->aiArch();
+}
+uint32_t neu_country_stance(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_NEURAL, 0xFFFFFFFFu)
+    const int32_t st = g_modGame->countryStance(c);
+    return st < 0 ? 0xFFFFFFFFu : (uint32_t)st;   // GEARBOX_INVALID for "none"
+}
+uint32_t neu_stance_name(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_NEURAL, 0) return retStr(mi, g_modGame->stanceName(i), buf, cap);
+}
+uint32_t neu_stance_count(ExecEnv e) {
+    MOD_GUARD(MODULE_NEURAL, 0) return g_modGame->stanceCount();
+}
+uint32_t pol_country_district_count(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryDistrictCount(c);
+}
+uint32_t pol_country_district_name(ExecEnv e, uint32_t c, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->countryDistrictName(c, i), buf, cap);
+}
+int32_t pol_country_district_share(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryDistrictShare(c, i);
+}
+uint32_t pol_country_district_province_count(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryDistrictProvinceCount(c, i);
+}
+uint32_t pol_country_district_province(ExecEnv e, uint32_t c, uint32_t i, uint32_t n) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0xFFFFFFFFu) return g_modGame->countryDistrictProvince(c, i, n);
+}
+uint32_t pol_country_district_law_count(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryDistrictLawCount(c, i);
+}
+uint32_t pol_country_district_law(ExecEnv e, uint32_t c, uint32_t i, uint32_t n, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->countryDistrictLaw(c, i, n), buf, cap);
+}
+uint32_t pol_district_law_count(ExecEnv e) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->districtLawCount();
+}
+uint32_t pol_district_law_id(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->districtLawId(i), buf, cap);
+}
+uint32_t pol_district_law_name(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->districtLawName(i), buf, cap);
+}
+uint32_t pol_country_discloses(ExecEnv e, uint32_t c, uint32_t f) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryDiscloses(c, f) ? 1u : 0u;
+}
+uint32_t polw_set_country_district_share(ExecEnv e, uint32_t c, uint32_t i, int32_t pct) {
+    MOD_GUARD(MODULE_POLITICS_WRITE, 0) return g_modGame->setCountryDistrictShare(c, i, pct) ? 1u : 0u;
+}
+uint32_t polw_set_country_district_law(ExecEnv e, uint32_t c, uint32_t i,
+                                       uint32_t lawPtr, uint32_t lawLen, uint32_t on) {
+    MOD_GUARD(MODULE_POLITICS_WRITE, 0)
+    std::string id;
+    if (!mi->readString(lawPtr, lawLen, id)) return 0;
+    return g_modGame->setCountryDistrictLaw(c, i, id, on != 0) ? 1u : 0u;
+}
+uint32_t polw_set_country_disclosure(ExecEnv e, uint32_t c, uint32_t f, uint32_t on) {
+    MOD_GUARD(MODULE_POLITICS_WRITE, 0) return g_modGame->setCountryDisclosure(c, f, on != 0) ? 1u : 0u;
+}
+uint32_t mil_troop_type_count(ExecEnv e) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->troopTypeCount();
+}
+uint32_t mil_troop_type_id(ExecEnv e, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return retStr(mi, g_modGame->troopTypeId(i), buf, cap);
+}
+int64_t mil_country_army_of_type(ExecEnv e, uint32_t c, uint32_t tPtr, uint32_t tLen) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0)
+    std::string t;
+    if (!mi->readString(tPtr, tLen, t)) return 0;
+    return g_modGame->countryArmyOfType(c, t);
+}
+int64_t mil_province_troops_of_type(ExecEnv e, uint32_t p, uint32_t c, uint32_t tPtr, uint32_t tLen) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0)
+    std::string t;
+    if (!mi->readString(tPtr, tLen, t)) return 0;
+    return g_modGame->provinceTroopsOfType(p, c, t);
+}
+uint32_t res_country_research_groups(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_RESEARCH_READ, 0) return g_modGame->countryResearchGroups(c);
+}
+uint32_t resw_set_country_research_groups(ExecEnv e, uint32_t c, int32_t g) {
+    MOD_GUARD(MODULE_RESEARCH_WRITE, 0) return g_modGame->setCountryResearchGroups(c, g) ? 1u : 0u;
+}
+double eco_country_expenses(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryExpenses(c);
+}
+double eco_country_national_value(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryNationalValue(c);
+}
+int64_t eco_country_population(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryPopulation(c);
+}
+
 uint32_t pol_province_minority_count(ExecEnv e, uint32_t p) {
     MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->provinceMinorityCount(p);
 }
@@ -1572,6 +1670,10 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:military.read", "country_army",           "(i)I",    (void*)mil_country_army,           MODULE_MILITARY_READ},
     {"gearbox:military.read", "province_fortification",  "(i)i",   (void*)mil_province_fortification, MODULE_MILITARY_READ},
     {"gearbox:military.read", "province_port_level",     "(i)i",   (void*)mil_province_port_level,    MODULE_MILITARY_READ},
+    {"gearbox:military.read", "troop_type_count",        "()i",    (void*)mil_troop_type_count,       MODULE_MILITARY_READ},
+    {"gearbox:military.read", "troop_type_id",           "(iii)i", (void*)mil_troop_type_id,          MODULE_MILITARY_READ},
+    {"gearbox:military.read", "country_army_of_type",    "(iii)I", (void*)mil_country_army_of_type,   MODULE_MILITARY_READ},
+    {"gearbox:military.read", "province_troops_of_type", "(iiii)I",(void*)mil_province_troops_of_type,MODULE_MILITARY_READ},
 
     {"gearbox:military.write", "order_army_move",    "(iii)i",  (void*)milw_order_army_move,    MODULE_MILITARY_WRITE},
     {"gearbox:military.write", "order_ship_move",    "(iFF)i",  (void*)milw_order_ship_move,    MODULE_MILITARY_WRITE},
@@ -1586,7 +1688,10 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:research.read", "country_has_researched","(iii)i", (void*)res_country_has_researched,MODULE_RESEARCH_READ},
     {"gearbox:research.read", "country_funding",      "(i)F",    (void*)res_country_funding,      MODULE_RESEARCH_READ},
 
+    {"gearbox:research.read", "country_research_groups","(i)i",   (void*)res_country_research_groups, MODULE_RESEARCH_READ},
+
     {"gearbox:research.write", "set_country_funding", "(iF)i",   (void*)resw_set_country_funding, MODULE_RESEARCH_WRITE},
+    {"gearbox:research.write", "set_country_research_groups", "(ii)i", (void*)resw_set_country_research_groups, MODULE_RESEARCH_WRITE},
 
     {"gearbox:politics.read", "country_compass_econ",   "(i)F",    (void*)pol_country_compass_econ,   MODULE_POLITICS_READ},
     {"gearbox:politics.read", "country_compass_social", "(i)F",    (void*)pol_country_compass_social, MODULE_POLITICS_READ},
@@ -1599,7 +1704,22 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:politics.read", "province_minority_name", "(iiii)i", (void*)pol_province_minority_name, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_share","(ii)F",   (void*)pol_province_minority_share,MODULE_POLITICS_READ},
 
+    {"gearbox:politics.read", "country_district_count",         "(i)i",     (void*)pol_country_district_count,          MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_name",          "(iiii)i",  (void*)pol_country_district_name,           MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_share",         "(ii)i",    (void*)pol_country_district_share,          MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_province_count","(ii)i",    (void*)pol_country_district_province_count, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_province",      "(iii)i",   (void*)pol_country_district_province,       MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_law_count",     "(ii)i",    (void*)pol_country_district_law_count,      MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_district_law",           "(iiiii)i", (void*)pol_country_district_law,            MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "district_law_count",             "()i",      (void*)pol_district_law_count,              MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "district_law_id",                "(iii)i",   (void*)pol_district_law_id,                 MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "district_law_name",              "(iii)i",   (void*)pol_district_law_name,               MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_discloses",              "(ii)i",    (void*)pol_country_discloses,               MODULE_POLITICS_READ},
+
     {"gearbox:politics.write", "set_country_policy", "(iiii)i", (void*)polw_set_country_policy, MODULE_POLITICS_WRITE},
+    {"gearbox:politics.write", "set_country_district_share", "(iii)i",   (void*)polw_set_country_district_share, MODULE_POLITICS_WRITE},
+    {"gearbox:politics.write", "set_country_district_law",   "(iiiii)i", (void*)polw_set_country_district_law,   MODULE_POLITICS_WRITE},
+    {"gearbox:politics.write", "set_country_disclosure",     "(iii)i",   (void*)polw_set_country_disclosure,     MODULE_POLITICS_WRITE},
 
     {"gearbox:economy.read", "country_income_gross",  "(i)F",   (void*)eco_country_income_gross,  MODULE_ECONOMY_READ},
     {"gearbox:economy.read", "country_income_net",    "(i)F",   (void*)eco_country_income_net,    MODULE_ECONOMY_READ},
@@ -1609,6 +1729,9 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:economy.read", "province_industry_level","(i)i",  (void*)eco_province_industry_level,MODULE_ECONOMY_READ},
     {"gearbox:economy.read", "province_industry_specialization","(iii)i",(void*)eco_province_industry_specialization,MODULE_ECONOMY_READ},
     {"gearbox:economy.read", "province_resource",     "(iii)F", (void*)eco_province_resource,     MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_expenses",       "(i)F",   (void*)eco_country_expenses,       MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_national_value", "(i)F",   (void*)eco_country_national_value, MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_population",     "(i)I",   (void*)eco_country_population,     MODULE_ECONOMY_READ},
 
     {"gearbox:economy.write", "set_province_industry_level", "(ii)i", (void*)ecow_set_province_industry_level, MODULE_ECONOMY_WRITE},
 
@@ -1648,6 +1771,11 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:neural", "country_is_ai", "(i)i",     (void*)neural_country_is_ai, MODULE_NEURAL},
     {"gearbox:neural", "update_count",  "()I",      (void*)neural_update_count,  MODULE_NEURAL},
     {"gearbox:neural", "model_loaded",  "()i",      (void*)neural_model_loaded,  MODULE_NEURAL},
+    {"gearbox:neural", "ai_version",     "(ii)i",  (void*)neu_ai_version,     MODULE_NEURAL},
+    {"gearbox:neural", "ai_arch",        "()i",    (void*)neu_ai_arch,        MODULE_NEURAL},
+    {"gearbox:neural", "country_stance", "(i)i",   (void*)neu_country_stance, MODULE_NEURAL},
+    {"gearbox:neural", "stance_name",    "(iii)i", (void*)neu_stance_name,    MODULE_NEURAL},
+    {"gearbox:neural", "stance_count",   "()i",    (void*)neu_stance_count,   MODULE_NEURAL},
 
     // Not a gearbox: namespace -- these must carry the names the interpreters
     // actually import. Gated on WasiStub like any other capability.

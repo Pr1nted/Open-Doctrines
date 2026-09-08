@@ -225,6 +225,17 @@ def data_strings():
                 v = entry.get(field)
                 if v:
                     out.setdefault(v, []).append("data/policies.json")
+    # Regional law: its own file, and its names and descriptions are drawn on
+    # the Districts tab exactly the way a doctrine's are drawn on the Politics
+    # one, so they are translated the same way.
+    laws = os.path.join(ROOT, "data", "district_laws.json")
+    if os.path.exists(laws):
+        d = json.load(open(laws, encoding="utf-8"))
+        for entry in d.get("laws", []):
+            for field in ("name", "description"):
+                v = entry.get(field)
+                if v:
+                    out.setdefault(v, []).append("data/district_laws.json")
     # THE CREDITS ROLL, which is a text file the menu draws line by line.
     #
     # Only the HEADINGS. A credits file is mostly proper names -- people, song

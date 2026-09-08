@@ -94,6 +94,51 @@ civil — there is a profanity filter, and it is not a substitute for judgement.
 You keep whatever rights you have in what you write; you give us permission to
 show it to other players, which is the whole point of typing it.
 
+## What other players say
+
+**We do not moderate what players write to each other, and we are not
+responsible for it.** Mail and chat travel between your game and the server you
+are on. We never see them, we do not store them, and we cannot read them. What
+another person writes to you is theirs, and the responsibility for it is theirs.
+
+If somebody behaves badly you have two separate routes, and they do different
+things:
+
+- **Report it to the server owner.** They can remove that person from their
+  game. They cannot touch the person's account. Most problems belong here.
+- **Report it to us.** We can ban or time out the *account*, everywhere. We
+  cannot do anything about a particular server. Use this for behaviour serious
+  enough to be a problem beyond one game.
+
+Reporting to us means sending us the message, which we keep for 90 days so it
+can be judged — see the privacy policy. We look at reports and decide; we do not
+promise a timescale, an outcome, or an explanation, and we may decide a report
+needs no action.
+
+**Bans are ours to decide.** We may ban or suspend an account for conduct
+towards other players, and we may do so without a report if we see it ourselves.
+If your account is banned you may say so to us; there is no formal appeal.
+
+## AI advisors, and what they say
+
+If you load the language-model module, some countries write to you as
+correspondents. **They are machines, they are labelled as machines in every
+message, and they are allowed to lie to you** — deceit is part of diplomacy and
+that is the point of them.
+
+Nothing an advisor writes is advice, a statement of fact, or anything we assert.
+It is generated text in a game about lying to each other. The model you run is
+one you chose and installed, we do not supply it, and we are not responsible for
+what it produces.
+
+## If you are a host
+
+Running a game makes you responsible for what happens in it. You choose whether
+mail is on and who may use it, you can maintain a list of words your server will
+not carry, and you can remove people. If you enable the age prompt, note what it
+is: a local, self-declared question, and **not** a verified age check — see the
+in-game text, which says so plainly.
+
 ## Availability, and the honest bit
 
 This is a **free service run by a small project on a free hosting tier**. It may
@@ -109,7 +154,8 @@ new players could not get a ticket to join.
 
 To the extent the law allows, the account service is provided **as is**, without
 warranty. We are not liable for lost game progress, for what happens on somebody
-else's server, or for anything arising from your use of the service.
+else's server, **for what other players say or do**, for what a language model
+you installed produces, or for anything arising from your use of the service.
 
 Nothing here limits liability that cannot lawfully be limited — including for
 death or personal injury caused by negligence, or for fraud. If you are a

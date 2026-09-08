@@ -35,7 +35,7 @@ LEVER_TEXT = {
     "industryUpkeepPct":   ("Industry upkeep {sign}{v:.0f}%", "cost"),
     "conscriptionCostPct": ("Recruitment cost {sign}{v:.0f}%", "cost"),
     "navyCostPct":         ("Ship cost {sign}{v:.0f}%", "cost"),
-    "maintenanceCostPct":  ("Upkeep {sign}{v:.0f}%", "cost"),
+    "maintenanceCostPct":  ("Army upkeep {sign}{v:.0f}%", "cost"),
     "conscriptionPct":     ("Manpower {sign}{v:.0f}%", True),
     "armyAtkPct":          ("Army attack {sign}{v:.0f}%", True),
     "armyDefPct":          ("Army defence {sign}{v:.0f}%", True),
@@ -48,6 +48,9 @@ LEVER_TEXT = {
     "migrationRate":       ("Migration {sign}{v:.0f}%", True),
     "indoctrinationPct":   ("Indoctrination {sign}{v:.0f}%", True),
     "passiveIncome":       ("Treasury {sign}{v:.0f}/turn", True),
+    # A COUNT, not a percentage: how many separate wars this country may
+    # declare in one turn. See Game::warDeclarationLimit.
+    "warDeclarations":     ("War declarations {sign}{v:.0f}/turn", True),
 }
 
 
@@ -157,7 +160,7 @@ P = [
          compass_shift={"economic": -20, "social": -20}, requirements=R(),
          unrest=-0.03,
          levers={"conscriptionCostPct": 25, "armyAtkPct": 10, "navyCostPct": 15,
-                 "industryCostPct": -20, "popGrowthPct": -1.0},
+                 "industryCostPct": -20, "popGrowthPct": -1.0, "maintenanceCostPct": -20},
          incompatible_with=["consumer_economy"]),
 
     # ── Right ─────────────────────────────────────────────────────────────
@@ -184,7 +187,7 @@ P = [
          compass_shift={"economic": 15, "social": 15}, requirements=R(),
          unrest=0.04,
          levers={"popModPct": 12, "popGrowthPct": 1.5, "conscriptionPct": -20,
-                 "armyAtkPct": -5},
+                 "armyAtkPct": -5, "maintenanceCostPct": -8},
          incompatible_with=["total_war_economy"]),
     dict(id="free_trade", name="Free Trade", category="right",
          description="Open the ports. Wealth arrives by sea, and so does everything else.",
@@ -213,8 +216,15 @@ P = [
          cost_per_turn=6, implementation_turns=3,
          compass_shift={"economic": 5, "social": -15}, requirements=R(),
          unrest=-0.01, minority_growth=-0.01,
-         levers={"conscriptionPct": 30, "conscriptionCostPct": 15, "popGrowthPct": -0.5},
+         levers={"conscriptionPct": 30, "conscriptionCostPct": 15, "popGrowthPct": -0.5, "maintenanceCostPct": -10},
          incompatible_with=["professional_army"]),
+    dict(id="war_on_several_fronts", name="War on Several Fronts", category="authoritarian",
+         description="Plan for three enemies, not one. The staff work is enormous and so is the bill.",
+         cost_per_turn=16, implementation_turns=6,
+         compass_shift={"economic": 5, "social": -20}, requirements=R(maxs=20),
+         unrest=-0.02,
+         levers={"warDeclarations": 2, "maintenanceCostPct": -20, "armyDefPct": -8},
+         incompatible_with=["demobilisation", "consumer_economy"]),
     dict(id="secret_police", name="Secret Police", category="authoritarian",
          description="They know before you do. Nothing organises twice.",
          cost_per_turn=12, implementation_turns=3,
@@ -234,7 +244,7 @@ P = [
          compass_shift={"economic": -5, "social": -18}, requirements=R(),
          unrest=-0.04,
          levers={"conscriptionPct": 45, "armyDefPct": 8, "popGrowthPct": -1.5,
-                 "popModPct": -10},
+                 "popModPct": -10, "conscriptionCostPct": 30, "maintenanceCostPct": -25},
          incompatible_with=["professional_army", "consumer_economy"]),
 
     # ── Libertarian ───────────────────────────────────────────────────────
@@ -263,7 +273,7 @@ P = [
          cost_per_turn=5, implementation_turns=4,
          compass_shift={"economic": 0, "social": 10}, requirements=R(),
          minority_growth=0.01, unrest=0.02,
-         levers={"industryCostPct": 12, "armyDefPct": 6, "conscriptionPct": -12}),
+         levers={"industryCostPct": 12, "armyDefPct": 6, "conscriptionPct": -12, "maintenanceCostPct": 8}),
     dict(id="general_amnesty", name="General Amnesty", category="libertarian",
          description="Let them come home. The prisons empty and so does the grievance.",
          cost_per_turn=7, implementation_turns=2,
@@ -275,7 +285,7 @@ P = [
          cost_per_turn=10, implementation_turns=4,
          compass_shift={"economic": 8, "social": 10}, requirements=R(),
          levers={"armyAtkPct": 18, "armyDefPct": 12, "conscriptionPct": -25,
-                 "conscriptionCostPct": -20},
+                 "conscriptionCostPct": -20, "maintenanceCostPct": -15},
          incompatible_with=["conscription", "mass_mobilisation"]),
 
     # ── Naval and colonial ────────────────────────────────────────────────
@@ -291,7 +301,7 @@ P = [
          cost_per_turn=10, implementation_turns=4,
          compass_shift={"economic": -5, "social": -10}, requirements=R(),
          levers={"armyAtkPct": 12, "armyDefPct": 12, "conscriptionCostPct": 15,
-                 "navyCostPct": -20, "navySpeedPct": -10},
+                 "navyCostPct": -20, "navySpeedPct": -10, "maintenanceCostPct": -12},
          incompatible_with=["naval_supremacy"]),
     dict(id="colonial_office", name="Colonial Office", category="right",
          description="Govern the empire from one desk. Efficient, and resented.",
@@ -384,7 +394,7 @@ P = [
          cost_per_turn=8, implementation_turns=4,
          compass_shift={"economic": -5, "social": -5}, requirements=R(),
          levers={"armyAtkPct": 12, "armyDefPct": 10, "conscriptionCostPct": 10,
-                 "navyAtkPct": -10, "navySpeedPct": -8},
+                 "navyAtkPct": -10, "navySpeedPct": -8, "maintenanceCostPct": -10},
          incompatible_with=["naval_supremacy_doctrine"]),
     dict(id="merchant_marine", name="Merchant Marine Act", category="right",
          description="Subsidise the hulls that carry cargo. They carry troops too, when asked.",
@@ -400,7 +410,7 @@ P = [
          compass_shift={"economic": -20, "social": -15}, requirements=R(),
          unrest=-0.06,
          levers={"conscriptionPct": 25, "industryCostPct": 15, "armyAtkPct": 10,
-                 "popGrowthPct": -1.5, "migrationRate": -20},
+                 "popGrowthPct": -1.5, "migrationRate": -20, "conscriptionCostPct": 20, "maintenanceCostPct": -18},
          incompatible_with=["consumer_goods_priority", "demobilisation"]),
     dict(id="consumer_goods_priority", name="Consumer Goods Priority", category="right",
          description="Butter, not guns. The country is content and slow to anger.",
@@ -408,7 +418,7 @@ P = [
          compass_shift={"economic": 15, "social": 10}, requirements=R(mine=-20),
          unrest=0.06, immigration=0.15,
          levers={"popGrowthPct": 1.2, "popModPct": 15, "conscriptionPct": -20,
-                 "armyAtkPct": -5},
+                 "armyAtkPct": -5, "maintenanceCostPct": -10},
          incompatible_with=["war_economy_total"]),
     dict(id="demobilisation", name="Demobilisation", category="miscellaneous",
          description="Send them home. The barracks empty and the fields fill.",
@@ -416,14 +426,14 @@ P = [
          compass_shift={"economic": 0, "social": 8}, requirements=R(),
          unrest=0.04,
          levers={"maintenanceCostPct": 25, "popGrowthPct": 1.0, "conscriptionPct": -25,
-                 "armyDefPct": -10},
+                 "armyDefPct": -10, "conscriptionCostPct": -15},
          incompatible_with=["war_economy_total", "conscription"]),
     dict(id="veterans_settlement", name="Veterans' Settlement", category="miscellaneous",
          description="Land for those who served. Loyal country, and the ledger notices.",
          cost_per_turn=8, implementation_turns=4,
          compass_shift={"economic": -5, "social": 0}, requirements=R(),
          unrest=0.05, opinion=-0.3,
-         levers={"popGrowthPct": 0.8, "conscriptionPct": 8, "indoctrinationPct": 6}),
+         levers={"popGrowthPct": 0.8, "conscriptionPct": 8, "indoctrinationPct": 6, "maintenanceCostPct": 10}),
 
     # ── The state and its people ──────────────────────────────────────────
     dict(id="universal_healthcare", name="Universal Healthcare", category="left",
@@ -438,7 +448,7 @@ P = [
          compass_shift={"economic": 18, "social": -5}, requirements=R(mine=-20),
          unrest=-0.08,
          levers={"maintenanceCostPct": 20, "industryUpkeepPct": 15, "passiveIncome": 8,
-                 "popGrowthPct": -1.0},
+                 "popGrowthPct": -1.0, "conscriptionCostPct": -10},
          incompatible_with=["universal_healthcare", "full_employment"]),
     dict(id="civil_service_reform", name="Civil Service Reform", category="miscellaneous",
          description="Examinations, not connections. Slow to bed in, and then it simply works.",
@@ -451,7 +461,7 @@ P = [
          cost_per_turn=12, implementation_turns=1,
          compass_shift={"economic": 0, "social": -25}, requirements=R(maxs=20),
          unrest=-0.15, opinion=-0.4, minority_growth=-0.02,
-         levers={"armyDefPct": 10, "popGrowthPct": -1.0, "migrationRate": -25},
+         levers={"armyDefPct": 10, "popGrowthPct": -1.0, "migrationRate": -25, "maintenanceCostPct": -8},
          incompatible_with=["general_amnesty", "free_press"]),
 ]
 

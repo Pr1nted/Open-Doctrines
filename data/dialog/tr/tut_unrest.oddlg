@@ -35,5 +35,39 @@ Bir uyarı alırsınız. İkincisini her zaman almazsınız.
 @Signals Officer
 Çareler ya sevilmez ya yavaştır: garnizon koyun, oraya harcayın ya da istediğini
 verin. Erken seçin, çünkü üçü de işe yaramak için tur ister.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Buraya harcanan paranın çoğu boşa gider. Siyaset'i açın, sonra §**Bölgeler**§.
 
+---
+@Signals Officer
+Bütçe şimdiye dek tüm ülkeye birden düşüyordu -- sessiz bir ile de silahlanana
+da aynı ağırlık. O halde ülkeyi bölün. §**Bölge**§, tek parça gibi yönettiğiniz
+bir kısmıdır: içine eyaletler boyayın, bir renk ve bir §**pay**§ verin. Paylar
+her zaman yüz eder, çünkü bütçe tektir.
+
+---
+@Signals Officer
+Önemli olan §**para**§ payına karşı §**toprak**§ payıdır. Ülkenin onda birini
+ve bütçenin onda birini tutan bir bölge tam eskisi gibi denetlenir -- paylar eşit
+kaldıkça bölmek hiçbir şeyi değiştirmez.
+
+---
+@Signals Officer
+Sorunun çevresine küçük bir bölge çizin, ona paranın dörtte birini verin ve kat
+kat sıkı denetlenir; panel size sayıyı söyler. Bedelini geri kalan her yer öder
+ve karar tam olarak budur. Eşit bölüştüren bir düğme var: makul bir başlangıç,
+nadiren kalınacak yer.
+
+Bir bölge kendi §**yerel hukukunu**§ da çıkarır: sokağa çıkma yasağı, vergi
+tatili, mahkemelerin dili. Küçük, yerel ve her biri bir takas.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Kapatın.
+
+---
+@Signals Officer
 Huzursuzluk budur. Başka bir şey?

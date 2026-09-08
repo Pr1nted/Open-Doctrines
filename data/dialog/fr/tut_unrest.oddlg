@@ -39,5 +39,42 @@ Vous recevez un avertissement. Pas toujours un second.
 Les remèdes sont impopulaires ou lents : y mettre une garnison, y dépenser, ou
 lui donner ce qu'elle veut. Choisissez tôt, car les trois mettent des tours à
 agir.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+L'argent qu'on y met est en grande partie gaspillé. Ouvrez Politique, puis
+§**Districts**§.
 
+---
+@Signals Officer
+Le budget tombait jusqu'ici sur tout le pays d'un coup -- le même poids sur un
+comté tranquille que sur celui qui s'arme. Découpez donc le pays. Un
+§**district**§ en est un morceau que vous gouvernez comme une unité : peignez-y
+des provinces, donnez-lui une couleur et une §**part**§. Les parts font
+toujours cent, car il n'y a qu'un budget.
+
+---
+@Signals Officer
+Ce qui compte, c'est la part de l'§**argent**§ contre la part du §**terrain**§.
+Un district tenant un dixième du pays sur un dixième du budget est tenu
+exactement comme avant : découper ne change rien tant que les parts restent
+égales.
+
+---
+@Signals Officer
+Tracez un petit district autour du trouble, donnez-lui un quart de l'argent, et
+il est tenu plusieurs fois plus fermement ; le panneau vous donne le chiffre.
+Tout le reste le paie, et c'est là la décision. Un bouton répartit à parts
+égales : un début raisonnable, rarement un endroit où rester.
+
+Un district édicte aussi son propre §**droit régional**§ : un couvre-feu, une
+trêve fiscale, la langue des tribunaux. Petit, local, et chacun un échange.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Fermez-le.
+
+---
+@Signals Officer
 Voilà les troubles. Autre chose ?

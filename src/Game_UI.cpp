@@ -1,4 +1,5 @@
 #include "Game.h"
+#include <set>
 #include "PoliticalIdentity.h"
 #include "TextInput.h"
 #include "Audio.h"
@@ -193,18 +194,42 @@ void Game::drawPopup() {
                 ty += 20;
             };
 
+            // A RELEASE IS NOT A CESSION AND MUST NOT READ AS ONE. Ground
+            // named here leaves the country that holds it and arrives at a new
+            // one -- so it is listed under neither "gives you" nor a plain
+            // demand, and it says whose land it was and who is being made out
+            // of it. Agreeing to be dismantled without seeing it said is the
+            // one outcome this panel exists to prevent.
+            auto releaseRow = [&](const std::string& tag, const std::vector<int>& provs) {
+                if (tag.empty() || provs.empty()) return std::string();
+                return std::string(TextFormat(T("%s, on %d province(s)"),
+                                              od::i18n::properName(tag).c_str(),
+                                              (int)provs.size()));
+            };
+
             section(TextFormat(T("%s gives you"), them.c_str()), Color{120, 210, 140, 255});
             row("Money",           gold(popup.terms.ourMoney));
             row("Provinces",       listOf(popup.terms.ourProvs));
             row("Claims dropped",  listOf(popup.terms.ourDropClaims));
+            {
+                const std::string r = releaseRow(popup.terms.ourReleaseTag,
+                                                 popup.terms.ourReleaseProvs);
+                if (!r.empty()) row("They set free", r);
+            }
             ty += 10;
             section(TextFormat(T("%s asks from you"), them.c_str()), Color{225, 130, 120, 255});
             row("Money",           gold(popup.terms.theirMoney));
             row("Provinces",       listOf(popup.terms.theirProvs));
             row("Claims to drop",  listOf(popup.terms.theirDropClaims));
+            {
+                const std::string r = releaseRow(popup.terms.theirReleaseTag,
+                                                 popup.terms.theirReleaseProvs);
+                if (!r.empty()) row("You set free", r);
+            }
 
             if (popup.terms.ourProvs.empty() && popup.terms.theirProvs.empty() &&
                 popup.terms.ourMoney == 0 && popup.terms.theirMoney == 0 &&
+                popup.terms.ourReleaseProvs.empty() && popup.terms.theirReleaseProvs.empty() &&
                 popup.terms.ourDropClaims.empty() && popup.terms.theirDropClaims.empty()) {
                 ty += 8;
                 DrawText(T("A white peace: nothing changes hands."), tx, ty, 14, accent);
@@ -520,6 +545,12 @@ void Game::drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long
     for (int pid : terms.theirProvs)      marks.push_back({pid, Color{225, 130, 120, 255}, -1});
     for (int pid : terms.ourDropClaims)   marks.push_back({pid, Color{225, 190, 110, 255},  1});
     for (int pid : terms.theirDropClaims) marks.push_back({pid, Color{225, 190, 110, 255}, -1});
+    // Ground leaving for a NEW country, which is neither side gaining it -- so
+    // it gets its own colour rather than borrowing the cede/demand pair. A
+    // player looking at this map has to be able to see the difference between
+    // "you lose this to me" and "you lose this to them".
+    for (int pid : terms.ourReleaseProvs)   marks.push_back({pid, Color{190, 150, 230, 255},  1});
+    for (int pid : terms.theirReleaseProvs) marks.push_back({pid, Color{190, 150, 230, 255}, -1});
     if (marks.empty()) return;
 
     // One raster pass per offer. Everything below the rebuild reads the cache.
@@ -654,6 +685,8 @@ void Game::drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long
     if (!terms.theirProvs.empty()) keys.push_back({Color{225, 130, 120, 255}, "you cede"});
     if (!terms.ourDropClaims.empty() || !terms.theirDropClaims.empty())
         keys.push_back({Color{225, 190, 110, 255}, "claim dropped"});
+    if (!terms.ourReleaseProvs.empty() || !terms.theirReleaseProvs.empty())
+        keys.push_back({Color{190, 150, 230, 255}, "set free"});
     int lw = 0;
     for (auto& k : keys) lw += 24 + MeasureText(k.t, 11);
     if (lw > 0) {
@@ -920,6 +953,11 @@ void Game::drawCeasefireScreen() {
         paintStripes(m_ceasefireOurDropClaims, Color{220, 40, 40, 210}, 0);
         // Demand they drop their claim: purple stripes (they give up a claim)
         paintStripes(m_ceasefireTheirDropClaims, Color{180, 50, 200, 210}, 5);
+        // Freed into a new country: violet, and the SAME colour whichever side
+        // gives it up, because what happens to the ground is the same thing.
+        // The lean tells the two apart, which is what lean is for.
+        paintStripes(m_ceasefireOurReleaseProvs,   Color{150, 110, 210, 215}, 0);
+        paintStripes(m_ceasefireTheirReleaseProvs, Color{190, 150, 230, 215}, 5);
     }
 
     // Upload overlay texture (re-create or update)
@@ -982,6 +1020,11 @@ void Game::drawCeasefireScreen() {
     drawModeBtn(2, "Drop Our Claim",    Color{220, 40, 40, 230});
     drawModeBtn(3, "Demand Their Province", Color{220, 140, 30, 230});
     drawModeBtn(4, "Demand They Drop Claim", Color{180, 50, 200, 230});
+    // A settlement that creates a country rather than moving a border. Offered
+    // on both sides for the same reason every other term is: the thing you can
+    // do to yourself is the thing somebody can ask of you.
+    drawModeBtn(5, "Free a Nation From Ours", Color{150, 110, 210, 230});
+    drawModeBtn(6, "Demand They Free a Nation", Color{190, 150, 230, 230});
 
     curY += 2;
     auto modeLabel = [](int m) -> const char* {
@@ -990,6 +1033,8 @@ void Game::drawCeasefireScreen() {
             case 2: return "Drop Our Claim (red)";
             case 3: return "Demand Their Province (orange)";
             case 4: return "Demand They Drop Claim (purple)";
+            case 5: return "Free a Nation From Ours (violet)";
+            case 6: return "Demand They Free a Nation (violet)";
             default: return "Idle";
         }
     };
@@ -1058,6 +1103,31 @@ void Game::drawCeasefireScreen() {
     DrawText(TextFormat(T("Demand: %d province(s)"), (int)m_ceasefireTheirProvs.size()), sbX + 8, curY, 11, Color{255, 180, 80, 255}); curY += 16;
     DrawText(TextFormat(T("Drop our claims: %d"), (int)m_ceasefireOurDropClaims.size()), sbX + 8, curY, 11, Color{255, 100, 100, 255}); curY += 16;
     DrawText(TextFormat(T("They drop claims: %d"), (int)m_ceasefireTheirDropClaims.size()), sbX + 8, curY, 11, Color{220, 130, 220, 255}); curY += 16;
+    // ── AND WHETHER WHAT IS PICKED IS ACTUALLY A NATION ──
+    //
+    // Said here, while it can still be fixed. A release that is too small or
+    // in two pieces is dropped from the offer when it is sent, and a term
+    // that vanishes silently between composing and sending is worse than one
+    // that was never offered.
+    auto releaseLine = [&](const char* label, const std::string& tag,
+                           const std::vector<int>& provs, int owner, Color col) {
+        if (tag.empty() && provs.empty()) return;
+        std::string why;
+        const bool ok = releaseSubsetOk(owner, provs, why);
+        DrawText(TextFormat(T("%s: %s, %d province(s)"), label,
+                            od::i18n::properName(tag).c_str(), (int)provs.size()),
+                 sbX + 8, curY, 11, col); curY += 14;
+        if (!ok) {
+            DrawText(why.c_str(), sbX + 16, curY, 10, Color{225, 150, 130, 255});
+            curY += 14;
+        }
+    };
+    const Country* tgtForRel = m_countries.getCountryByCode(m_ceasefireTargetIso);
+    releaseLine(T("We free"), m_ceasefireOurReleaseTag, m_ceasefireOurReleaseProvs,
+                m_playerCountryId, Color{170, 140, 225, 255});
+    if (tgtForRel)
+        releaseLine(T("They free"), m_ceasefireTheirReleaseTag, m_ceasefireTheirReleaseProvs,
+                    tgtForRel->id, Color{200, 170, 240, 255});
 
     if (!lockedPids.empty()) {
         DrawText(TextFormat(T("Locked by other offers: %d"), (int)lockedPids.size()), sbX + 8, curY, 11, Color{120, 120, 120, 255}); curY += 16;
@@ -1216,12 +1286,20 @@ void Game::updateCeasefireScreen() {
     Rectangle m2r = modeBtnHit();
     Rectangle m3r = modeBtnHit();
     Rectangle m4r = modeBtnHit();
+    // TWO LAYOUTS, ONE ORDER. This block re-walks the sidebar to find where the
+    // buttons ARE, while drawCeasefireScreen walks it to put them there -- the
+    // comment above says so, and a button added to one and not the other is
+    // drawn and dead, which this file has produced before. Both lists end here.
+    Rectangle m5r = modeBtnHit();
+    Rectangle m6r = modeBtnHit();
     bool click = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
     if (click) {
         if (CheckCollisionPointRec(mouse, m1r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 1) ? 0 : 1;
         else if (CheckCollisionPointRec(mouse, m2r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 2) ? 0 : 2;
         else if (CheckCollisionPointRec(mouse, m3r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 3) ? 0 : 3;
         else if (CheckCollisionPointRec(mouse, m4r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 4) ? 0 : 4;
+        else if (CheckCollisionPointRec(mouse, m5r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 5) ? 0 : 5;
+        else if (CheckCollisionPointRec(mouse, m6r)) m_ceasefireSelectMode = (m_ceasefireSelectMode == 6) ? 0 : 6;
     }
 
     // Skip past money sliders + summary (consume clicks on slider areas)
@@ -1283,6 +1361,23 @@ void Game::updateCeasefireScreen() {
         terms.theirProvs = m_ceasefireTheirProvs;
         terms.ourDropClaims = m_ceasefireOurDropClaims;
         terms.theirDropClaims = m_ceasefireTheirDropClaims;
+        // Only if it is actually a nation. A half-picked release -- one
+        // province, or a set the player left in two pieces -- is dropped from
+        // the offer rather than sent to fail at resolution, where the other
+        // side would have agreed to something that could never happen.
+        {
+            std::string why;
+            if (!m_ceasefireOurReleaseTag.empty() &&
+                releaseSubsetOk(m_playerCountryId, m_ceasefireOurReleaseProvs, why)) {
+                terms.ourReleaseTag = m_ceasefireOurReleaseTag;
+                terms.ourReleaseProvs = m_ceasefireOurReleaseProvs;
+            }
+            if (!m_ceasefireTheirReleaseTag.empty() &&
+                releaseSubsetOk(targetC->id, m_ceasefireTheirReleaseProvs, why)) {
+                terms.theirReleaseTag = m_ceasefireTheirReleaseTag;
+                terms.theirReleaseProvs = m_ceasefireTheirReleaseProvs;
+            }
+        }
         std::string key = playerC->isoA3 + "|" + targetC->isoA3;
         m_pendingCeasefireTerms[key] = terms;
         printf("[%s] Offer sent: %s -> %s (offer=$%d demand=$%d)\n",
@@ -1352,6 +1447,37 @@ void Game::updateCeasefireScreen() {
                 if (it != m_claims.end() && std::find(it->second.begin(), it->second.end(), pid) != it->second.end()) {
                     toggle(m_ceasefireTheirDropClaims, pid); m_ceasefireOverlayDirty = true;
                 }
+                break;
+            }
+            case 5: case 6: {
+                // ── THE PEOPLE ARE DECIDED BY THE FIRST PROVINCE ──
+                //
+                // Only ground a releasable region already covers may be picked,
+                // and once one is taken every later pick must come from the
+                // SAME region. Without that a player could assemble a country
+                // out of two different peoples' land, which is not a nation
+                // anyone asked to be freed -- and releaseNation would refuse it
+                // at resolution, after both sides had agreed to it.
+                const int owner = (m_ceasefireSelectMode == 5) ? m_playerCountryId
+                                                               : targetC->id;
+                if (pp->countryId != owner) break;
+                std::string& tag = (m_ceasefireSelectMode == 5)
+                    ? m_ceasefireOurReleaseTag : m_ceasefireTheirReleaseTag;
+                std::vector<int>& picked = (m_ceasefireSelectMode == 5)
+                    ? m_ceasefireOurReleaseProvs : m_ceasefireTheirReleaseProvs;
+
+                const auto regions = releasableRegions(owner);
+                const ReleaseCandidate* home = nullptr;
+                for (const auto& r : regions) {
+                    if (!tag.empty() && r.minority != tag) continue;
+                    if (std::find(r.provinces.begin(), r.provinces.end(), pid)
+                        != r.provinces.end()) { home = &r; break; }
+                }
+                if (!home) break;
+                toggle(picked, pid);
+                if (picked.empty()) tag.clear();
+                else { tag = home->minority; std::sort(picked.begin(), picked.end()); }
+                m_ceasefireOverlayDirty = true;
                 break;
             }
             default: break;
@@ -1533,6 +1659,60 @@ std::string Game::saveStateJson() {
         j["pacification"][std::to_string(cid)] = val;
     }
 
+    // ── WHAT EACH COUNTRY PUBLISHES ABOUT ITSELF ──
+    //
+    // A decision with a consequence -- published figures pull migrants -- so it
+    // has to survive a reload the way any other standing choice does. Countries
+    // that publish nothing write nothing.
+    for (const auto& [cid, bits] : m_countryDisclosure)
+        if (bits) j["disclosure"][std::to_string(cid)] = bits;
+    // A research lock a scenario script imposed. Saved because the script that
+    // set it may have been a one-shot at turn zero, and a lock that quietly
+    // lifts on reload is a scenario that plays differently the second time.
+    for (const auto& [cid, n] : m_scriptResearchGroups)
+        if (n > 0) j["scriptResearchGroups"][std::to_string(cid)] = n;
+    // When a country began, and what it has flown. Only for countries that
+    // have an answer: a map-start country keeps -1 and an unrestyled one has
+    // no history, and neither writes anything.
+    for (const auto& [cid, c] : m_countries.getAll()) {
+        if (c.foundedTurn >= 0) j["foundedTurn"][std::to_string(cid)] = c.foundedTurn;
+        if (!c.flagHistory.empty()) {
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& era : c.flagHistory) arr.push_back(era.turn);
+            j["flagEras"][std::to_string(cid)] = arr;
+        }
+    }
+    for (const auto& [cid, t] : m_treasuryLastTurn)
+        j["treasuryLastTurn"][std::to_string(cid)] = t;
+
+    // ── DISTRICTS ──
+    //
+    // A country that has never been divided writes NOTHING, so a save from
+    // before districts existed and a save from a game that never opened the tab
+    // are the same file they always were. Written per country, because an AI
+    // that draws districts has to keep them across a reload the same way the
+    // player does.
+    for (const auto& [cid, list] : m_districts) {
+        if (list.empty()) continue;
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& d : list) {
+            nlohmann::json e;
+            e["id"] = d.id;
+            e["name"] = d.name;
+            // Whether that name is the player's words or the game's. A custom
+            // name is drawn verbatim; a generated one is re-rendered into
+            // whatever language is loaded, so the two must not be confused
+            // across a save.
+            if (d.customName) e["custom_name"] = true;
+            e["r"] = (int)d.r; e["g"] = (int)d.g; e["b"] = (int)d.b;
+            e["share"] = d.sharePct;
+            e["provinces"] = d.provinces;
+            if (!d.policies.empty()) e["policies"] = d.policies;
+            arr.push_back(e);
+        }
+        j["districts"][std::to_string(cid)] = arr;
+    }
+
     // War weariness. Without this a save/load wipes the entire cost of every
     // alliance the country has honoured, which is the only thing making that
     // decision a decision.
@@ -1610,6 +1790,105 @@ std::string Game::saveStateJson() {
     // Turn number
     j["turnNumber"] = m_turnNumber;
 
+    // ── The post ──
+    //
+    // Saved flat rather than as nested boxes: a letter carries both ends, so
+    // one array reconstructs every box. Pending letters are saved too -- a
+    // letter you were still deciding about is exactly the thing you would be
+    // most annoyed to lose to a save and reload.
+    for (const auto& [owner, box] : m_mail) {
+        for (const mail::Thread* t : box.threads()) {
+            for (const mail::Message& m : t->messages) {
+                // Once each. The sender's copy is the canonical one; the
+                // recipient's is rebuilt on load, so writing both would double
+                // every delivered letter the way the doctrine bug did.
+                if (m.fromCountry != owner) continue;
+                nlohmann::json e;
+                e["id"] = m.id;
+                e["from"] = m.fromCountry;
+                e["to"] = m.toCountry;
+                e["body"] = m.body;
+                e["written"] = m.writtenTurn;
+                e["deliver"] = m.deliverTurn;
+                e["status"] = (int)m.status;
+                e["author"] = (int)m.author;
+                e["by"] = m.authorName;
+                j["mail"].push_back(e);
+            }
+        }
+    }
+
+    // ── THE WORLD'S OWN LUCK ──
+    //
+    // The seed identifies the world (a player reporting a bug can hand it over
+    // and it can be replayed with OD_WORLD_SEED); the STREAM STATE is what makes
+    // a reloaded save continue the game that was saved rather than rewinding
+    // its luck to turn zero. Both, because they answer different questions.
+    j["worldSeed"] = m_worldSeed;
+
+    // ── UNFINISHED FIGHTS ──
+    //
+    // A battle holds men who are neither in a province nor at home, so a save
+    // that forgot them would DELETE an army -- the attacker's committed force
+    // simply ceases to exist on reload. That makes this state, not a cache.
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& b : m_battles) {
+            nlohmann::json e;
+            e["p"]  = b.provinceId;
+            e["c"]  = b.attackerCid;
+            // The composition, not just the count: a battle holds men who are
+            // neither in a province nor at home, so a save that flattened them
+            // to a number would turn a mixed force into line infantry on
+            // reload. "n" stays for older readers and for the eye.
+            e["n"]  = b.attackers();
+            {
+                nlohmann::json kinds = nlohmann::json::array();
+                for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) kinds.push_back(b.men.men[t]);
+                e["k"] = kinds;
+            }
+            e["f"]  = b.fromProvince;
+            e["r"]  = b.rounds;
+            e["ap"] = b.lastAtkPower;
+            e["dp"] = b.lastDefPower;
+            e["od"] = b.openingDefPower;
+            e["ta"] = b.totalAtkLosses;
+            e["td"] = b.totalDefLosses;
+            arr.push_back(e);
+        }
+        j["battles"] = arr;
+        j["withdraws"] = m_pendingWithdraws;
+    }
+    j["simRng"] = simRngState();
+
+    // ── THE PRODUCTION ECONOMY ──
+    //
+    // The world's own rules first: a campaign keeps the economy it was started
+    // under, so a save that was never a goods world does not become one because
+    // the person loading it has OD_GOODS set in their shell.
+    //
+    // Written UNCONDITIONALLY, including when the goods economy is off, so that
+    // "this world does not use goods" is a recorded fact rather than the
+    // absence of one. See loadStateJson: an older save has no key at all and
+    // falls back to the environment, which is the only sensible reading for a
+    // save written before any of this existed.
+    j["goodsEconomy"] = m_goodsEconomy;
+    j["autoSellPct"]  = m_autoSellPct;
+    // Stockpiles are national and therefore have no province to ride on -- the
+    // per-province `output` goes through the turn delta like every other
+    // province field, but a country's materials need somewhere of their own.
+    //
+    // Keyed by the STABLE lowercase names, not by array index: a save must not
+    // silently reinterpret its own contents if a good is ever inserted in the
+    // middle of the enum. See goodKey() / rawName().
+    if (m_goodsEconomy) {
+        for (const auto& [cid, sp] : m_countryStockpiles) {
+            auto& node = j["stockpiles"][std::to_string(cid)];
+            for (int r = 0; r < RAW_COUNT; ++r) node["raw"][rawKey(r)] = sp.raw[r];
+            for (int g = 0; g < GOOD_COUNT; ++g) node["goods"][goodKey(g)] = sp.goods[g];
+        }
+    }
+
     return j.dump();
 }
 
@@ -1670,6 +1949,7 @@ void Game::loadStateJson(const std::string& json) {
             PendingDisbandOrder d;
             d.provinceId = entry["provinceId"];
             d.count = entry.value("count", 0);
+            traceDisband("PUSH-loadState", d.provinceId, d.count, m_playerCountryId);
             m_pendingDisbandOrders.push_back(d);
         }
     }
@@ -1778,8 +2058,43 @@ void Game::loadStateJson(const std::string& json) {
         }
     }
 
-    // Active policies
+    // ── ACTIVE POLICIES REPLACE, THEY DO NOT JOIN ──
+    //
+    // The load sequence is unloadGameData -> map load -> loadStateJson, and the
+    // map load runs applyStartingPolicies(), so both containers are ALREADY
+    // FULL by the time a save is read. Appending gave every continued game two
+    // of each doctrine: doubled upkeep, and every "reduces unrest" doctrine
+    // counted twice, for the player and for every AI country. The only clear
+    // lives in unloadGameData, which runs before the map load rather than
+    // between it and the save.
+    //
+    // Cleared INSIDE the guard on purpose. A save that carries the key holds
+    // the whole truth about what is in force and should replace the map's
+    // starting set; a save written before this key existed carries nothing, and
+    // wiping the starting policies for it would strip every doctrine off an old
+    // game instead of doubling them.
     if (j.contains("activePolicies")) {
+        m_activePolicies.clear();
+        m_countryActivePolicyIndices.clear();
+        // ── AND SAVES WRITTEN WHILE IT WAS BROKEN ARE REPAIRED ON THE WAY IN ──
+        //
+        // Clearing stops NEW doubling; it cannot undo a save whose list was
+        // serialised from an already-doubled one -- and such a save now looks
+        // authoritative, because carrying the key is exactly the signal that it
+        // holds the whole truth. Worse, the old bug compounded: each load added
+        // the map's starting set to whatever the save held, so a game loaded and
+        // saved seven times carried seven copies. MEASURED across the 1,301
+        // saves in data/saves: 48 of them already carry duplicates, the worst at
+        // x7 with 572 policy entries where 529 are distinct.
+        //
+        // The key is the WHOLE tuple, not the policy id. The same doctrine can
+        // legitimately be active twice against different targets -- an ethnic
+        // policy applied to two minorities is two rows that differ only in
+        // targetMinority -- so collapsing by id would silently repeal one of
+        // them. Two rows identical in all four fields are the same fact stated
+        // twice, and there is no state in which that is meaningful.
+        std::set<std::tuple<int, std::string, int, std::string>> seen;
+        int dropped = 0;
         for (auto& entry : j["activePolicies"]) {
             ActivePolicy ap;
             ap.policyId = entry["policyId"].get<std::string>();
@@ -1787,9 +2102,14 @@ void Game::loadStateJson(const std::string& json) {
             ap.turnsRemaining = entry.value("turnsRemaining", 0);
             ap.targetProvince = entry.value("targetProvince", -1);
             ap.targetMinority = entry.value("targetMinority", "");
+            if (!seen.emplace(ap.countryId, ap.policyId, ap.targetProvince,
+                              ap.targetMinority).second) { ++dropped; continue; }
             m_activePolicies.push_back(ap);
             m_countryActivePolicyIndices[ap.countryId].push_back((int)m_activePolicies.size() - 1);
         }
+        if (dropped > 0)
+            printf("[LOAD] repaired %d duplicate active doctrine(s) from an older save\n",
+                   dropped);
     }
 
     // Research
@@ -1906,6 +2226,116 @@ void Game::loadStateJson(const std::string& json) {
         }
     }
 
+    if (j.contains("foundedTurn"))
+        for (auto& [key, val] : j["foundedTurn"].items())
+            if (Country* c = m_countries.getCountry(std::stoi(key)))
+                c->foundedTurn = val.get<int>();
+
+    m_scriptResearchGroups.clear();
+    if (j.contains("scriptResearchGroups"))
+        for (auto& [key, val] : j["scriptResearchGroups"].items())
+            m_scriptResearchGroups[std::stoi(key)] = val.get<int>();
+    m_countryDisclosure.clear();
+    if (j.contains("disclosure"))
+        for (auto& [key, val] : j["disclosure"].items())
+            m_countryDisclosure[std::stoi(key)] = val.get<unsigned>();
+    m_treasuryLastTurn.clear();
+    if (j.contains("treasuryLastTurn"))
+        for (auto& [key, val] : j["treasuryLastTurn"].items())
+            m_treasuryLastTurn[std::stoi(key)] = val.get<double>();
+
+    // Districts. Absent for every save that predates them, which loads as an
+    // undivided country -- exactly what it was.
+    m_districts.clear();
+    if (j.contains("districts")) {
+        for (auto& [key, arr] : j["districts"].items()) {
+            std::vector<District> list;
+            for (auto& e : arr) {
+                District d;
+                d.id       = e.value("id", (int)list.size() + 1);
+                d.name     = e.value("name", std::string());
+                d.customName = e.value("custom_name", false);
+                d.r        = (unsigned char)e.value("r", 120);
+                d.g        = (unsigned char)e.value("g", 140);
+                d.b        = (unsigned char)e.value("b", 200);
+                d.sharePct = e.value("share", 0);
+                if (e.contains("provinces")) d.provinces = e["provinces"].get<std::vector<int>>();
+                if (e.contains("policies"))  d.policies  = e["policies"].get<std::vector<std::string>>();
+                list.push_back(std::move(d));
+            }
+            if (!list.empty()) m_districts[std::stoi(key)] = std::move(list);
+        }
+        // The ground may have moved while the file sat on disk -- a save edited
+        // by hand, or a map whose provinces changed under it.
+        for (auto& [cid, list] : m_districts) reconcileDistricts(cid);
+    }
+
+    // ── THE PRODUCTION ECONOMY (see saveStateJson) ──
+    //
+    // THE SAVE WINS OVER THE ENVIRONMENT. startLoadingSave has already read
+    // OD_GOODS into these, which is the right default for a save written before
+    // any of this existed; a save that RECORDS its own answer overrides it here.
+    // A campaign must keep the economy it was started under -- otherwise a
+    // player with OD_GOODS exported in their shell silently converts every old
+    // save they open, and a bench sweeping the variable would rewrite the
+    // worlds it is measuring.
+    if (j.contains("worldSeed")) m_worldSeed = j["worldSeed"].get<unsigned int>();
+    // Unfinished fights (see saveStateJson). Absent from saves written before
+    // battles existed, which load as a world with none -- correct, because such
+    // a save was written by a game where an assault always finished.
+    m_battles.clear();
+    m_pendingWithdraws.clear();
+    if (j.contains("battles") && j["battles"].is_array())
+        for (const auto& e : j["battles"]) {
+            Battle b;
+            b.provinceId   = e.value("p", 0);
+            b.attackerCid  = e.value("c", 0);
+            const long long n = e.value("n", (long long)0);
+            if (e.contains("k") && e["k"].is_array() &&
+                e["k"].size() == (size_t)TROOP_TYPE_COUNT) {
+                for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t)
+                    b.men.men[t] = e["k"][t].get<long long>();
+            } else {
+                // A save written before kinds existed: the men in it were all
+                // line infantry, because that is all there was.
+                b.men.add(TROOP_LINE, n);
+            }
+            b.fromProvince = e.value("f", -1);
+            b.rounds       = e.value("r", 0);
+            b.lastAtkPower = e.value("ap", 0.0);
+            b.lastDefPower = e.value("dp", 0.0);
+            b.openingDefPower = e.value("od", 0.0);
+            b.totalAtkLosses = e.value("ta", (long long)0);
+            b.totalDefLosses = e.value("td", (long long)0);
+            if (b.provinceId > 0 && b.attackerCid > 0 && b.attackers() > 0)
+                m_battles.push_back(b);
+        }
+    if (j.contains("withdraws") && j["withdraws"].is_array())
+        m_pendingWithdraws = j["withdraws"].get<std::vector<int>>();
+    // The state, not the seed: see saveStateJson. A save written before this
+    // existed has neither, and keeps the stream the loader already set up --
+    // which is exactly the old behaviour for old saves.
+    if (j.contains("simRng")) setSimRngState(j["simRng"].get<std::string>());
+
+    if (j.contains("goodsEconomy")) m_goodsEconomy = j["goodsEconomy"].get<bool>();
+    if (j.contains("autoSellPct"))
+        m_autoSellPct = std::clamp(j["autoSellPct"].get<int>(), 0, 100);
+    if (j.contains("stockpiles")) {
+        for (auto& [key, node] : j["stockpiles"].items()) {
+            CountryStockpile sp;
+            // Keyed by name, so a good added in the middle of the enum later
+            // cannot make an old save read its own numbers as another good's.
+            // A key the file does not carry simply stays zero.
+            if (node.contains("raw"))
+                for (int r = 0; r < RAW_COUNT; ++r)
+                    sp.raw[r] = node["raw"].value(rawKey(r), 0.0f);
+            if (node.contains("goods"))
+                for (int g = 0; g < GOOD_COUNT; ++g)
+                    sp.goods[g] = node["goods"].value(goodKey(g), 0.0f);
+            m_countryStockpiles[std::stoi(key)] = sp;
+        }
+    }
+
     // War weariness (see saveStateJson)
     if (j.contains("warWeariness")) {
         for (auto& [key, val] : j["warWeariness"].items()) {
@@ -2009,5 +2439,25 @@ void Game::loadStateJson(const std::string& json) {
     // Turn number
     if (j.contains("turnNumber")) {
         m_turnNumber = j["turnNumber"];
+    if (j.contains("mail")) {
+        m_mail.clear();
+        for (const auto& e : j["mail"]) {
+            mail::Message m;
+            m.id = e.value("id", 0);
+            m.fromCountry = e.value("from", 0);
+            m.toCountry = e.value("to", 0);
+            m.body = e.value("body", std::string());
+            m.writtenTurn = e.value("written", 0);
+            m.deliverTurn = e.value("deliver", 0);
+            m.status = (mail::Status)e.value("status", 0);
+            m.author = (mail::Author)e.value("author", 0);
+            m.authorName = e.value("by", std::string());
+            if (m.fromCountry == m.toCountry) continue;
+            mailbox(m.fromCountry).adopt(m);
+            // The recipient's copy is rebuilt rather than stored, so a save can
+            // never disagree with itself about what was sent.
+            if (m.status == mail::Status::Delivered) mailbox(m.toCountry).receive(m);
+        }
+    }
     }
 }

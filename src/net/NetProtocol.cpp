@@ -18,6 +18,7 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::Reject:    return "Reject";
         case NetMsg::Snapshot:  return "Snapshot";
         case NetMsg::Delta:     return "Delta";
+        case NetMsg::TurnOrders: return "TurnOrders";
         case NetMsg::Roster:    return "Roster";
         case NetMsg::TurnBegin: return "TurnBegin";
         case NetMsg::Kick:      return "Kick";
@@ -32,6 +33,7 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::Countries:    return "Countries";
         case NetMsg::Signal:       return "Signal";
         case NetMsg::Withdraw:     return "Withdraw";
+        case NetMsg::PlayerReport: return "PlayerReport";
         case NetMsg::ModMsg:       return "ModMsg";
         case NetMsg::ModMsgFrom:   return "ModMsgFrom";
         case NetMsg::TurnStoreInfo: return "TurnStoreInfo";
@@ -434,6 +436,20 @@ bool NetWorld::decode(const uint8_t* data, size_t size, NetWorld& out) {
     return r.done();
 }
 
+std::vector<uint8_t> NetTurnOrders::encode() const {
+    NetWriter w;
+    w.u32(turnNumber);
+    w.blob(payload);
+    return w.take();
+}
+
+bool NetTurnOrders::decode(const uint8_t* data, size_t size, NetTurnOrders& out) {
+    NetReader r(data, size);
+    out.turnNumber = r.u32();
+    out.payload    = r.blob(NetLimits::kWorld);
+    return r.done();
+}
+
 std::vector<uint8_t> NetOrdersMsg::encode() const {
     NetWriter w;
     w.u32(turnNumber);
@@ -511,6 +527,28 @@ bool NetChat::decode(const uint8_t* data, size_t size, NetChat& out) {
     NetReader r(data, size);
     out.fromPeerId = r.u16();
     out.text       = r.str(NetLimits::kChat);
+    return r.done();
+}
+
+std::vector<uint8_t> NetPlayerReport::encode() const {
+    NetWriter w;
+    w.u16(fromPeerId);
+    w.u16(aboutPeer);
+    w.str(reason);
+    w.str(note);
+    w.str(message);
+    return w.take();
+}
+
+bool NetPlayerReport::decode(const uint8_t* data, size_t size, NetPlayerReport& out) {
+    NetReader r(data, size);
+    out.fromPeerId = r.u16();
+    out.aboutPeer  = r.u16();
+    // Bounded on the way IN, not trusted from the sender. A report is the one
+    // message a hostile client has an obvious reason to make enormous.
+    out.reason     = r.str(32);
+    out.note       = r.str(NetLimits::kChat);
+    out.message    = r.str(NetLimits::kChat);
     return r.done();
 }
 

@@ -295,6 +295,43 @@ FormWords formFor(const PoliticalIdentity& id) {
 
 }  // namespace
 
+std::string properPlaceName(const std::string& word) {
+    struct Irregular { const char* adjective; const char* place; };
+    static const Irregular IRREGULARS[] = {
+        {"french","France"},      {"dutch","Netherlands"},  {"canadian","Canada"},
+        {"belarusian","Belarus"}, {"polish","Poland"},      {"spanish","Spain"},
+        {"british","Britain"},    {"greek","Greece"},       {"danish","Denmark"},
+        {"swedish","Sweden"},     {"turkish","Turkey"},     {"finnish","Finland"},
+        {"welsh","Wales"},        {"scottish","Scotland"},  {"irish","Ireland"},
+        {"norwegian","Norway"},   {"mexican","Mexico"},     {"brazilian","Brazil"},
+        {"chinese","China"},      {"japanese","Japan"},     {"portuguese","Portugal"},
+        {"maltese","Malta"},      {"thai","Thailand"},      {"swiss","Switzerland"},
+        {"slovak","Slovakia"},    {"czech","Czechia"},      {"icelandic","Iceland"},
+        // The rest of the adjectival country names a scenario actually ships.
+        // "German Empire" and "Soviet Union" core to "German" and "Soviet", and
+        // a breakaway built "West German" out of the first; the Soviet republics
+        // have no country of their own on a 1939 map, so the referent lookup
+        // cannot help and "Ukrainian" became "Ukrainia".
+        {"american","America"},   {"german","Germany"},     {"soviet","Soviet Union"},
+        {"ukrainian","Ukraine"},  {"uzbek","Uzbekistan"},   {"kazakh","Kazakhstan"},
+        {"tajik","Tajikistan"},   {"turkmen","Turkmenistan"},{"kyrgyz","Kyrgyzstan"},
+        // The adjectival cores the SHIPPED maps actually contain. Found by
+        // walking every countries.json for a name of the form "<adjective>
+        // <form>": "Russian Empire" cores to "Russian", and a district or a
+        // breakaway built on that says "Eastern Russian". The referent lookup
+        // cannot rescue these, because the country whose core IS the adjective
+        // is the one being asked about.
+        {"russian","Russia"},     {"italian","Italy"},      {"ethiopian","Ethiopia"},
+        {"mongolian","Mongolia"}, {"syrian","Syria"},       {"dominican","Dominica"},
+        {"ottoman","Anatolia"},   {"azerbaijan","Azerbaijan"},
+    };
+    std::string w = word;
+    std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+    for (const auto& ir : IRREGULARS)
+        if (w == ir.adjective) return std::string(ir.place);
+    return std::string();
+}
+
 std::string geographicCoreOf(const std::string& name) {
     // Falls back to the WHOLE name, not to the extracted fragment, when the
     // fragment does not name anywhere. The breakaway namer builds on this too,

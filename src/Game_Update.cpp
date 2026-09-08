@@ -63,26 +63,36 @@ bool Game::canArmyMoveTo(int fromPid, int toPid) const {
 }
 
 void Game::queueArmyMove(int fromPid, int toPid) {
+    // WHICH KIND, taken from the garrison list's selection at the moment the
+    // order is given -- see m_armyTypeFilter. Read here and stored ON the order
+    // rather than at execution: an order given for the militia stays an order
+    // for the militia even if the player clicks a different row afterwards.
+    const int type = m_armyTypeFilter;
+
     // Giving the same order twice takes it back. That is what makes a
-    // mis-click recoverable without hunting for the order in a list.
+    // mis-click recoverable without hunting for the order in a list. Same
+    // KIND too, so "send the militia there" and "send the armour there" are
+    // two orders rather than one cancelling the other.
     for (auto it = m_pendingMoveOrders.begin(); it != m_pendingMoveOrders.end(); ++it) {
-        if (it->fromProvince == fromPid && it->toProvince == toPid) {
+        if (it->fromProvince == fromPid && it->toProvince == toPid &&
+            it->troopType == type) {
             m_pendingMoveOrders.erase(it);
             return;
         }
     }
 
     // Half of what has not already been promised elsewhere. Percentages from
-    // one province are shares of the same army, so a second order asking for
-    // 50% of the whole would move troops that the first one already took.
+    // one province are shares of the same army -- and of the same KIND, since
+    // that is what the executor takes its share of, so an order for the militia
+    // is not limited by one already given for the line infantry.
     int sumOthers = 0;
     for (const auto& om : m_pendingMoveOrders)
-        if (om.fromProvince == fromPid) sumOthers += om.pct;
+        if (om.fromProvince == fromPid && om.troopType == type) sumOthers += om.pct;
     int maxPct = 100 - sumOthers;
     if (maxPct < 1) maxPct = 1;
     int newPct = std::min(50, maxPct);
 
-    m_pendingMoveOrders.push_back({fromPid, toPid, newPct, m_playerCountryId});
+    m_pendingMoveOrders.push_back({fromPid, toPid, newPct, m_playerCountryId, type});
 }
 
 void Game::cancelArmyMovesFrom(int fromPid) {
@@ -104,7 +114,7 @@ void Game::handlePauseMenu() {
     int hovered = -1;
     for (int i = 0; i < count; ++i) {
         int y = startY + i * itemH;
-        int tw = MeasureText(MENU_ITEMS[i], 30);
+        int tw = MeasureText(T(MENU_ITEMS[i]), 30);
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; break; }
     }
@@ -128,6 +138,12 @@ void Game::handlePauseMenu() {
             trySaveGame();
         }
         else if (m_menuIndex == 3) {
+            // Straight into the form. The pause menu stays up behind it, so
+            // closing the report puts the player back where they were rather
+            // than into a game they did not mean to resume.
+            openFeedbackForm(feedback::Kind::Bug, feedback::Category::Other);
+        }
+        else if (m_menuIndex == 4) {
             if (m_unsavedChanges) {
                 m_showUnsavedWarning = true;
                 m_unsavedChoice = 0;
@@ -141,6 +157,13 @@ void Game::handlePauseMenu() {
 }
 
 void Game::update(float dt) {
+    // The rating prompt, before anything else reads the pointer. It draws in
+    // endFrame(), which is after the map has already taken this frame's clicks,
+    // so consuming the click has to happen here or picking a star also picks a
+    // province.
+    maybeOfferRating(dt);
+    if (updateRatingPrompt()) return;
+
     // Turn history takes all input while open (it draws over the pause menu)
     if (m_inHistory) { updateHistoryScreen(); return; }
 
@@ -1082,15 +1105,10 @@ void Game::update(float dt) {
                 bool _onPanel = (_mpTarget.x >= 0 && _mpTarget.x < 360 &&
                                  _mpTarget.y >= 68 && _mpTarget.y < 68 + std::min(m_screenH - 80 - 16 - 68, 700));
                 if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !m_armyMoveDragActive && !_onPanel) {
-                    static const struct { const char* id; float cost; } ARTY_COST[] = {
-                        {"mortar",5},{"light",10},{"heavy",20},{"napalm",30},
-                        {"carpet",25},{"chemical",40},{"nuclear",80},{"biological",60},{nullptr,0}
-                    };
-                    auto getArtyCost = [&](const std::string& tid) -> float {
-                        for (int i = 0; ARTY_COST[i].id; ++i)
-                            if (tid == ARTY_COST[i].id) return ARTY_COST[i].cost;
-                        return 0;
-                    };
+                    // One table, in BuildCosts.h -- this was a local copy, and
+                    // so were five others. The price is now all three currencies
+                    // (see Game::artilleryPrice), so every charge and every
+                    // refund on this path goes through the same call.
 
                     Vector2 mp = getMouse();
                     int px, py;
@@ -1134,32 +1152,45 @@ void Game::update(float dt) {
                                 m_blockLeftPanTimer = 2;
                             } else {
                             double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
-                            float cost = getArtyCost(m_artillerySelectedType);
+                            const WarPrice price = artilleryPrice(m_artillerySelectedType, m_playerCountryId);
                             // Check if we already have an order for (source, target, type) — toggle it off
                             bool found = false;
                             for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                                 if (it->fromProvince == m_artillerySourceProvince && it->targetProvince == hp->id && it->ammoType == m_artillerySelectedType) {
-                                    treasury += getArtyCost(it->ammoType);
+                                    refundArtilleryOrder(m_playerCountryId, it->ammoType, treasury);
                                     it = m_pendingArtilleryOrders.erase(it);
                                     found = true;
                                 } else ++it;
                             }
                             if (!found) {
-                                if (treasury >= cost) {
+                                // The MATERIALS are checked before anything is
+                                // refunded or spent, because the cancel loop
+                                // below pays money back: refusing after it had
+                                // run would leave the player richer for having
+                                // failed to fire.
+                                const bool haveMaterials =
+                                    m_countryStockpiles[m_playerCountryId].goods[GOOD_FUEL] >= price.fuel &&
+                                    m_countryStockpiles[m_playerCountryId].goods[GOOD_MUNITIONS] >= price.munitions;
+                                if (treasury >= price.money && (!m_goodsEconomy || haveMaterials)) {
                                     // Cancel any other order from this source (different target/type)
                                     for (auto it = m_pendingArtilleryOrders.begin(); it != m_pendingArtilleryOrders.end(); ) {
                                         if (it->fromProvince == m_artillerySourceProvince) {
-                                            treasury += getArtyCost(it->ammoType);
+                                            refundArtilleryOrder(m_playerCountryId, it->ammoType, treasury);
                                             it = m_pendingArtilleryOrders.erase(it);
                                         } else ++it;
                                     }
-                                    treasury -= cost;
+                                    treasury -= price.money;
+                                    payWarMaterials(m_playerCountryId, price);
                                     m_pendingArtilleryOrders.push_back({m_artillerySourceProvince, hp->id, m_artillerySelectedType});
                                     // The shells land turns later; paying for
                                     // them is the only feedback at this end.
                                     Audio::get().playSfx("coin");
+                                } else if (treasury < price.money) {
+                                    printf("[DIAG] Not enough treasury for artillery strike ($%.0f needed, $%.0f available)\n",
+                                           price.money, treasury);
                                 } else {
-                                    printf("[DIAG] Not enough treasury for artillery strike ($%.0f needed, $%.0f available)\n", cost, treasury);
+                                    printf("[DIAG] Not enough materials for artillery strike (%.1f mun, %.1f fuel needed)\n",
+                                           price.munitions, price.fuel);
                                 }
                             }
                             m_artillerySourceProvince = -1;
@@ -1457,7 +1488,7 @@ void Game::update(float dt) {
                 if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
                     { hovered = i; }
             }
-            if (i < count && (items[i].isValue || (m_settingsTab == 0 && i <= 6) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 3) || isVolumeSetting(m_settingsTab, i))) {
+            if (i < count && (items[i].isValue || (m_settingsTab == 0 && i <= 9) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 3) || isVolumeSetting(m_settingsTab, i))) {
                 const char* resetLabel = "R";
                 int rw = MeasureText(resetLabel, smFont);
                 float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (centerX + tw / 2 + 14);
@@ -1478,14 +1509,13 @@ void Game::update(float dt) {
         // this gates is whether LEFT/RIGHT adjusts the row or flips tab.
         bool onValue = m_settingsIndex >= 0 && m_settingsIndex < count &&
                        (items[m_settingsIndex].isValue || isVolumeSetting(m_settingsTab, m_settingsIndex));
-        bool onFps = (m_settingsTab == 0 && m_settingsIndex == 5);
-        bool onResolution = (m_settingsTab == 0 && m_settingsIndex == 4);
-        if (left && !onValue && !onFps && !onResolution) {
+        bool adjustsRow = settingUsesArrows(m_settingsTab, m_settingsIndex);
+        if (left && !adjustsRow) {
             int nt = m_settingsTab;
             do { nt = (nt + TAB_COUNT - 1) % TAB_COUNT; } while (nt == 4 && !m_config.debugMode);
             m_settingsTab = nt; m_settingsIndex = 0; m_settingsScroll = 0; m_keybindFilter.clear(); m_keybindFilterActive = false;
         }
-        if (right && !onValue && !onFps && !onResolution) {
+        if (right && !adjustsRow) {
             int nt = m_settingsTab;
             do { nt = (nt + 1) % TAB_COUNT; } while (nt == 4 && !m_config.debugMode);
             m_settingsTab = nt; m_settingsIndex = 0; m_settingsScroll = 0; m_keybindFilter.clear(); m_keybindFilterActive = false;
@@ -1568,6 +1598,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
                 else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
                 else if (m_settingsTab == 0 && m_settingsIndex == 7) { m_config.aiDifficulty = 1; }
+                else if (m_settingsTab == 0 && resetDisplayValueRow(m_settingsIndex)) { /* rows 8-9 */ }
                 else if (m_settingsTab == 1 && m_settingsIndex == 0) { m_config.flySpeed = 2.0f; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 0) { m_config.showFps = true; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
@@ -1647,6 +1678,15 @@ void Game::update(float dt) {
             m_config.aiDifficulty = (m_config.aiDifficulty + (right ? 1 : -1) + AI_DIFFICULTY_COUNT) % AI_DIFFICULTY_COUNT;
         }
 
+        // UI Scale and Colourblind Colours (LEFT/RIGHT). Shared with the main
+        // menu's settings screen rather than copied into it, which is how the
+        // two came to disagree in the first place.
+        // No early return: unlike the menu screen's own update, this runs
+        // inside Game::update() and the rest of the frame still has to happen.
+        // Nothing below acts on LEFT/RIGHT, so falling through is safe.
+        if (m_settingsTab == 0 && (left || right))
+            stepDisplayValueRow(m_settingsIndex, right ? 1 : -1);
+
         // Activation — resetHovered first so reset buttons overrides item click
         bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
@@ -1670,6 +1710,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 0 && m_settingsIndex == 5) { m_config.fpsTarget = 0; applyFpsTarget(m_config.fpsTarget); }
                 else if (m_settingsTab == 0 && m_settingsIndex == 6) { m_config.accentColor = 0xFFD700; }
                 else if (m_settingsTab == 0 && m_settingsIndex == 7) { m_config.aiDifficulty = 1; }
+                else if (m_settingsTab == 0 && resetDisplayValueRow(m_settingsIndex)) { /* rows 8-9 */ }
                 else if (m_settingsTab == 1 && m_settingsIndex == 0) { m_config.flySpeed = 2.0f; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 0) { m_config.showFps = true; }
                 else if (m_settingsTab == 4 && m_settingsIndex == 1) { m_config.showZoom = false; }
@@ -1772,6 +1813,11 @@ void Game::update(float dt) {
                 m_screenW = GetScreenWidth();
                 m_screenH = GetScreenHeight();
                 m_renderer->resize(m_screenW, m_screenH);
+            } else if (m_settingsTab == 0 && stepDisplayValueRow(m_settingsIndex, +1)) {
+                // UI Scale and Colourblind Colours. This screen drew both rows
+                // and their values but had no branch for either, so a click
+                // landed here and fell straight through to the bottom -- the
+                // rows looked live and were not.
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_rebindingAction = items[m_settingsIndex].actionId;
                 m_waitingForKey = true;

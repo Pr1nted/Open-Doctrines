@@ -226,6 +226,28 @@ struct ModGameAccess {
     virtual std::string provinceMinorityName(uint32_t pid, uint32_t index) = 0;
     virtual double   provinceMinorityShare(uint32_t pid, uint32_t index) = 0;
 
+    // ── Districts, and what a country publishes about itself (ABI 1.2) ───────
+    //
+    // A district is a slice of a country governed as a unit: it takes a share
+    // of the pacification budget and can run regional law of its own. THAT a
+    // country is divided is public; WHAT its districts do is the country's to
+    // publish or withhold, which is what `countryDiscloses` answers.
+    virtual uint32_t countryDistrictCount(uint32_t cid) = 0;
+    virtual std::string countryDistrictName(uint32_t cid, uint32_t index) = 0;
+    virtual int32_t  countryDistrictShare(uint32_t cid, uint32_t index) = 0;
+    virtual uint32_t countryDistrictProvinceCount(uint32_t cid, uint32_t index) = 0;
+    virtual uint32_t countryDistrictProvince(uint32_t cid, uint32_t index, uint32_t n) = 0;
+    virtual uint32_t countryDistrictLawCount(uint32_t cid, uint32_t index) = 0;
+    virtual std::string countryDistrictLaw(uint32_t cid, uint32_t index, uint32_t n) = 0;
+    virtual uint32_t districtLawCount() = 0;
+    virtual std::string districtLawId(uint32_t index) = 0;
+    virtual std::string districtLawName(uint32_t index) = 0;
+    virtual bool     countryDiscloses(uint32_t cid, uint32_t field) = 0;
+    virtual bool     setCountryDistrictShare(uint32_t cid, uint32_t index, int32_t pct) = 0;
+    virtual bool     setCountryDistrictLaw(uint32_t cid, uint32_t index,
+                                           const std::string& lawId, bool on) = 0;
+    virtual bool     setCountryDisclosure(uint32_t cid, uint32_t field, bool on) = 0;
+
     // ── Economy.Read / Write ─────────────────────────────────────────────────
     virtual double   countryIncomeGross(uint32_t cid) = 0;
     virtual double   countryIncomeNet(uint32_t cid) = 0;
@@ -236,6 +258,17 @@ struct ModGameAccess {
     virtual std::string provinceIndustrySpecialization(uint32_t pid) = 0;
     virtual double   provinceResource(uint32_t pid, const std::string& which) = 0;
     virtual bool     setProvinceIndustryLevel(uint32_t pid, int32_t level) = 0;
+
+    // ── The books, and the army by kind (ABI 1.2) ────────────────────────────
+    virtual double   countryExpenses(uint32_t cid) = 0;
+    virtual double   countryNationalValue(uint32_t cid) = 0;
+    virtual int64_t  countryPopulation(uint32_t cid) = 0;
+    virtual uint32_t troopTypeCount() = 0;
+    virtual std::string troopTypeId(uint32_t index) = 0;
+    virtual int64_t  countryArmyOfType(uint32_t cid, const std::string& type) = 0;
+    virtual int64_t  provinceTroopsOfType(uint32_t pid, uint32_t cid, const std::string& type) = 0;
+    virtual uint32_t countryResearchGroups(uint32_t cid) = 0;
+    virtual bool     setCountryResearchGroups(uint32_t cid, int32_t groups) = 0;
 
     // ── Map, beyond the geometry the 1.0 module already exposes ──────────────
     virtual bool     provinceIsCoastal(uint32_t pid) = 0;
@@ -290,6 +323,15 @@ struct ModGameAccess {
     virtual bool     neuralCountryIsAI(uint32_t cid) = 0;
     virtual long long neuralUpdateCount() = 0;
     virtual bool     neuralModelLoaded() = 0;
+    // ── The AI's identity and its posture (ABI 1.2) ──
+    //
+    // Observe-only, like the rest of this module. The version matters to a mod
+    // that reads the feature vector: its layout is only stable within one ARCH.
+    virtual std::string aiVersion() = 0;
+    virtual int32_t  aiArch() = 0;
+    virtual int32_t  countryStance(uint32_t cid) = 0;
+    virtual std::string stanceName(uint32_t index) = 0;
+    virtual uint32_t stanceCount() = 0;
 
     // Neural. Observe only -- there is no write path here by design.
     virtual uint32_t neuralFeatureCount() = 0;

@@ -71,6 +71,7 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
         if (p.resourceIncomeChanged)  mask |= 1 << 5;
         if (p.popIncomeChanged)       mask |= 1 << 6;
         if (p.popModifierChanged)     mask |= 1 << 7;
+        if (p.outputChanged)          mask |= 1 << 8;
         writeU16(buf, mask);
         if (p.ownerChanged)           writeU16(buf, (uint16_t)p.newOwner);
         if (p.populationChanged)      writeU32(buf, popSaturated(p.newPopulation));
@@ -80,6 +81,8 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
         if (p.resourceIncomeChanged)  writeFloat(buf, p.newResourceIncome);
         if (p.popIncomeChanged)       writeFloat(buf, p.newPopIncome);
         if (p.popModifierChanged)     writeFloat(buf, p.newPopModifier);
+        // int8, not uint8: -1 means undirected and is the default.
+        if (p.outputChanged)          buf.push_back((uint8_t)(int8_t)p.newOutput);
     }
 
     // Ship entries
@@ -119,8 +122,42 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
         if (p.populationChanged && popNeedsWideField(p.newPopulation))
             widePops.push_back(&p);
 
+    // ── WHAT THE ARMIES ARE MADE OF ──
+    //
+    // Only provinces holding something other than plain line infantry are
+    // written. A world that has not researched another type writes NOTHING
+    // here, so the save is byte-for-byte what the previous build produced --
+    // which is the acceptance test for introducing types at all.
+    //
+    // In the trailer for the same reason the wide populations are: the army
+    // block above is fixed-width with no version field, and a type byte inside
+    // it would shift every entry after it. Here, a build that has never heard
+    // of troop types stops at the end of the block it knows and still reads the
+    // right totals -- it sees an army of the right size, made of the only kind
+    // of soldier it can imagine.
+    std::vector<const ArmyDelta*> typedArmies;
+    for (auto& a : delta.armies) {
+        for (auto& u : a.units)
+            if (u.type != 0) { typedArmies.push_back(&a); break; }
+    }
+
     uint8_t extraFlags = 0x01;                          // bit 0 = research state
     if (!widePops.empty()) extraFlags |= 0x02;          // bit 1 = wide populations
+    if (!typedArmies.empty()) extraFlags |= 0x04;       // bit 2 = troop types
+    // ONLY WHEN IT SAYS SOMETHING. A country running one programme on the
+    // default share, which is every country in every save that predates groups
+    // and most turns of every one that does not, writes nothing here -- so the
+    // file stays byte-for-byte what the previous build produced. That is the
+    // acceptance test the troop-type trailer set, and it is the right one: a
+    // feature nobody has used must not change a single byte.
+    bool anyGroups = false;
+    for (int g = 1; g < 3; ++g)
+        anyGroups |= (delta.researchGroups[g].activeNode >= 0);
+    for (int g = 0; g < 3; ++g)
+        anyGroups |= delta.researchGroups[g].autoAdvance ||
+                     delta.researchGroups[g].sharePct != 50 ||
+                     delta.researchGroups[g].lastNode >= 0;
+    if (anyGroups) extraFlags |= 0x08;                  // bit 3 = research groups
     buf.push_back(extraFlags);
     writeFloat(buf, delta.researchAllocation);
     writeFloat(buf, delta.pacificationAllocation);
@@ -133,6 +170,33 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
             writeU64(buf, (uint64_t)p->newPopulation);
         }
     }
+    if (!typedArmies.empty()) {
+        writeU16(buf, (uint16_t)typedArmies.size());
+        for (const ArmyDelta* a : typedArmies) {
+            writeU16(buf, (uint16_t)a->provinceId);
+            buf.push_back((uint8_t)a->units.size());
+            for (auto& u : a->units) {
+                writeU16(buf, (uint16_t)u.countryId);
+                buf.push_back(u.type);
+                writeU32(buf, (uint32_t)u.count);
+            }
+        }
+    }
+    // ── RESEARCH GROUPS ──
+    //
+    // Written last so every field before it keeps its offset, and behind its
+    // own flag bit so a save from before groups existed simply does not carry
+    // it. Group 1 is NOT repeated here -- it is researchActiveNode, up in the
+    // fixed part, and duplicating it would be two homes for one fact.
+    if (anyGroups) {
+        for (int g = 0; g < 3; ++g) {
+            writeU16(buf, (uint16_t)(delta.researchGroups[g].activeNode + 1));
+            writeU16(buf, (uint16_t)(delta.researchGroups[g].lastNode + 1));
+            buf.push_back((uint8_t)std::clamp(delta.researchGroups[g].sharePct, 0, 100));
+            buf.push_back(delta.researchGroups[g].autoAdvance ? 1 : 0);
+        }
+    }
+
     buf.push_back(0xFF); // end marker
 
     return buf;
@@ -182,6 +246,7 @@ bool SaveManager::unpackTurn(const uint8_t* data, size_t size, TurnDelta& out) {
         p.resourceIncomeChanged = (mask >> 5) & 1; if (p.resourceIncomeChanged) { if (ptr + 4 > end) return false; p.newResourceIncome = readFloat(ptr); }
         p.popIncomeChanged      = (mask >> 6) & 1; if (p.popIncomeChanged)      { if (ptr + 4 > end) return false; p.newPopIncome = readFloat(ptr); }
         p.popModifierChanged    = (mask >> 7) & 1; if (p.popModifierChanged)    { if (ptr + 4 > end) return false; p.newPopModifier = readFloat(ptr); }
+        p.outputChanged         = (mask >> 8) & 1; if (p.outputChanged)         { if (ptr + 1 > end) return false; p.newOutput = (int)(int8_t)*ptr++; }
     }
 
     out.ships.resize(shipCount);
@@ -246,6 +311,42 @@ bool SaveManager::unpackTurn(const uint8_t* data, size_t size, TurnDelta& out) {
                         p.newPopulation = pop;
                         break;
                     }
+            }
+        }
+        // What the armies are made of. REPLACES that province's unit list,
+        // because the fixed-width block above could only carry one entry per
+        // country and a mixed army needs one per (country, type) -- the totals
+        // up there are the same army seen by a build that cannot tell the
+        // difference. Absent for any world that is all line infantry, and
+        // absent from every save written before types existed, both of which
+        // load as an army of line infantry, correctly.
+        if (trailerIntact && (extraFlags & 4) && ptr + 2 <= end) {
+            uint16_t typedCount = readU16(ptr);
+            for (uint16_t i = 0; i < typedCount; ++i) {
+                if (ptr + 3 > end) return false;
+                const int pid = (int)readU16(ptr);
+                const uint8_t unitCount = *ptr++;
+                std::vector<ArmyDelta::Unit> units;
+                units.reserve(unitCount);
+                for (uint8_t j = 0; j < unitCount; ++j) {
+                    if (ptr + 7 > end) return false;
+                    ArmyDelta::Unit u;
+                    u.countryId = (int)readU16(ptr);
+                    u.type = *ptr++;
+                    u.count = (int)readU32(ptr);
+                    units.push_back(u);
+                }
+                for (auto& a : out.armies)
+                    if (a.provinceId == pid) { a.units = std::move(units); break; }
+            }
+        }
+        if (trailerIntact && (extraFlags & 8)) {
+            for (int g = 0; g < 3; ++g) {
+                if (ptr + 6 > end) return false;   // refused, not half-read
+                out.researchGroups[g].activeNode  = (int)readU16(ptr) - 1;
+                out.researchGroups[g].lastNode    = (int)readU16(ptr) - 1;
+                out.researchGroups[g].sharePct    = (int)*ptr++;
+                out.researchGroups[g].autoAdvance = (*ptr++ != 0);
             }
         }
     }
@@ -768,6 +869,7 @@ size_t SaveManager::estimateDeltaSize(const TurnDelta& delta) {
         if (p.resourceIncomeChanged) s += 4;
         if (p.popIncomeChanged)      s += 4;
         if (p.popModifierChanged)    s += 4;
+        if (p.outputChanged)         s += 1;
     }
     for (auto& s_ : delta.ships) {
         s += 3; // index + mask
@@ -787,6 +889,14 @@ size_t SaveManager::estimateDeltaSize(const TurnDelta& delta) {
     for (auto& p : delta.provinces)
         if (p.populationChanged && popNeedsWideField(p.newPopulation)) wide++;
     if (wide) s += 2 + wide * 10; // count(2) + each: provinceId(2) + population(8)
+    // Research groups, on the same terms: counted only when they are written.
+    bool anyGroups = false;
+    for (int g = 1; g < 3; ++g) anyGroups |= (delta.researchGroups[g].activeNode >= 0);
+    for (int g = 0; g < 3; ++g)
+        anyGroups |= delta.researchGroups[g].autoAdvance ||
+                     delta.researchGroups[g].sharePct != 50 ||
+                     delta.researchGroups[g].lastNode >= 0;
+    if (anyGroups) s += 3 * 6;   // each: activeNode(2) + lastNode(2) + share(1) + auto(1)
     return s;
 }
 

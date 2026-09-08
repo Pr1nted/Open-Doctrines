@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include "ai/AISystem.h"
+#include "ai/AIVersion.h"
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
@@ -178,6 +179,34 @@ private:
     double provinceResource(uint32_t p, const std::string& w) override { return m_game->modProvinceResource((int)p, w); }
     bool setProvinceIndustryLevel(uint32_t p, int32_t l) override { return m_game->modSetProvinceIndustryLevel((int)p, l); }
 
+    // ── ABI 1.2 ──
+    uint32_t countryDistrictCount(uint32_t c) override { return (uint32_t)m_game->modCountryDistrictCount((int)c); }
+    std::string countryDistrictName(uint32_t c, uint32_t i) override { return m_game->modCountryDistrictName((int)c, (int)i); }
+    int32_t countryDistrictShare(uint32_t c, uint32_t i) override { return m_game->modCountryDistrictShare((int)c, (int)i); }
+    uint32_t countryDistrictProvinceCount(uint32_t c, uint32_t i) override { return (uint32_t)m_game->modCountryDistrictProvinceCount((int)c, (int)i); }
+    uint32_t countryDistrictProvince(uint32_t c, uint32_t i, uint32_t n) override {
+        const int pid = m_game->modCountryDistrictProvince((int)c, (int)i, (int)n);
+        return pid < 0 ? 0xFFFFFFFFu : (uint32_t)pid;   // GEARBOX_INVALID
+    }
+    uint32_t countryDistrictLawCount(uint32_t c, uint32_t i) override { return (uint32_t)m_game->modCountryDistrictLawCount((int)c, (int)i); }
+    std::string countryDistrictLaw(uint32_t c, uint32_t i, uint32_t n) override { return m_game->modCountryDistrictLaw((int)c, (int)i, (int)n); }
+    uint32_t districtLawCount() override { return (uint32_t)m_game->modDistrictLawCount(); }
+    std::string districtLawId(uint32_t i) override { return m_game->modDistrictLawId((int)i); }
+    std::string districtLawName(uint32_t i) override { return m_game->modDistrictLawName((int)i); }
+    bool countryDiscloses(uint32_t c, uint32_t f) override { return m_game->modCountryDiscloses((int)c, (int)f); }
+    bool setCountryDistrictShare(uint32_t c, uint32_t i, int32_t pct) override { return m_game->modSetCountryDistrictShare((int)c, (int)i, pct); }
+    bool setCountryDistrictLaw(uint32_t c, uint32_t i, const std::string& law, bool on) override { return m_game->modSetCountryDistrictLaw((int)c, (int)i, law, on); }
+    bool setCountryDisclosure(uint32_t c, uint32_t f, bool on) override { return m_game->modSetCountryDisclosure((int)c, (int)f, on); }
+    double countryExpenses(uint32_t c) override { return m_game->modCountryExpenses((int)c); }
+    double countryNationalValue(uint32_t c) override { return m_game->modCountryNationalValue((int)c); }
+    int64_t countryPopulation(uint32_t c) override { return m_game->modCountryPopulation((int)c); }
+    uint32_t troopTypeCount() override { return (uint32_t)m_game->modTroopTypeCount(); }
+    std::string troopTypeId(uint32_t i) override { return m_game->modTroopTypeId((int)i); }
+    int64_t countryArmyOfType(uint32_t c, const std::string& t) override { return m_game->modCountryArmyOfType((int)c, t); }
+    int64_t provinceTroopsOfType(uint32_t p, uint32_t c, const std::string& t) override { return m_game->modProvinceTroopsOfType((int)p, (int)c, t); }
+    uint32_t countryResearchGroups(uint32_t c) override { return (uint32_t)m_game->modCountryResearchGroups((int)c); }
+    bool setCountryResearchGroups(uint32_t c, int32_t g) override { return m_game->modSetCountryResearchGroups((int)c, g); }
+
     bool provinceIsCoastal(uint32_t p) override { return m_game->modProvinceIsCoastal((int)p); }
     bool seaRouteExists(double a, double b, double c, double d) override { return m_game->modSeaRouteExists(a, b, c, d); }
     bool pointIsLand(double lon, double lat) override { return m_game->modPointIsLand(lon, lat); }
@@ -224,6 +253,11 @@ private:
     bool neuralCountryIsAI(uint32_t c) override { return m_game->modNeuralCountryIsAI((int)c); }
     long long neuralUpdateCount() override { return m_game->modNeuralUpdateCount(); }
     bool neuralModelLoaded() override { return m_game->modNeuralModelLoaded(); }
+    std::string aiVersion() override { return m_game->modAiVersion(); }
+    int32_t aiArch() override { return (int32_t)m_game->modAiArch(); }
+    int32_t countryStance(uint32_t c) override { return (int32_t)m_game->modCountryStance((int)c); }
+    std::string stanceName(uint32_t i) override { return m_game->modStanceName((int)i); }
+    uint32_t stanceCount() override { return (uint32_t)m_game->modStanceCount(); }
 
     uint32_t neuralFeatureCount() override {
         return (uint32_t)m_game->modNeuralFeatureCount();
@@ -897,6 +931,34 @@ long long Game::modNeuralUpdateCount() const {
 }
 
 bool Game::modNeuralModelLoaded() const { return m_ai != nullptr; }
+
+// ── The AI's identity, and what it has decided to be doing ──
+//
+// A mod reading the feature vector needs the ARCH to know whether its
+// assumptions about that vector's layout still hold; a mod comparing anything
+// across builds needs RULES, which moves whenever behaviour a benchmark can see
+// changes. Both come from src/ai/AIVersion.h rather than from a literal here.
+std::string Game::modAiVersion() const { return ai::versionString(); }
+int Game::modAiArch() const { return ai::ARCH; }
+
+// The stance is the AI's own summary of what it is trying to do with a country,
+// held for several turns rather than chosen fresh each one. -1 for a country it
+// does not play or has not given one to; the wire turns that into
+// GEARBOX_INVALID.
+int Game::modCountryStance(int cid) const {
+    if (!m_ai || cid <= 0) return -1;
+    return m_ai->modStanceOf(cid);
+}
+
+std::string Game::modStanceName(int index) const {
+    // Never translated: these are identifiers a mod matches on, and the four of
+    // them are the rows of STANCE_BIAS in the same order.
+    static const char* const kStances[] = {"expand", "consolidate", "defend", "develop"};
+    if (index < 0 || index >= (int)(sizeof(kStances) / sizeof(kStances[0]))) return {};
+    return kStances[index];
+}
+
+int Game::modStanceCount() const { return AISystem::STANCE_COUNT; }
 
 // ------------------------------------------------------- mod speakers ------
 
@@ -2090,6 +2152,190 @@ double Game::modProvinceMinorityShare(int pid, int index) const {
     if (it == m_provinceMinorities.end() || index < 0 || (size_t)index >= it->second.size())
         return 0.0;
     return (double)it->second[index].pct;
+}
+
+// ── ABI 1.2 ─────────────────────────────────────────────────────────────────
+//
+// Districts, what a country publishes, the books, and the army by kind. Every
+// one of these reads the same state the game's own screens read; none of them
+// re-derives anything, which is what keeps a mod's view and the player's view
+// from disagreeing.
+//
+// The district readers are NOT const, because asking a country for its
+// districts is what builds them: they are made on demand, the way the Districts
+// tab makes them when it is first opened. A mod that asks about a country
+// nobody has divided gets the default single district rather than nothing.
+
+int Game::modCountryDistrictCount(int cid) {
+    if (!m_countries.getCountry(cid)) return 0;
+    ensureDefaultDistrict(cid);
+    auto it = m_districts.find(cid);
+    return it == m_districts.end() ? 0 : (int)it->second.size();
+}
+
+const District* Game::modDistrictAt(int cid, int index) {
+    if (!m_countries.getCountry(cid)) return nullptr;
+    ensureDefaultDistrict(cid);
+    auto it = m_districts.find(cid);
+    if (it == m_districts.end() || index < 0 || (size_t)index >= it->second.size()) return nullptr;
+    return &it->second[(size_t)index];
+}
+
+std::string Game::modCountryDistrictName(int cid, int index) {
+    const District* d = modDistrictAt(cid, index);
+    return d ? d->name : std::string();
+}
+
+int Game::modCountryDistrictShare(int cid, int index) {
+    const District* d = modDistrictAt(cid, index);
+    return d ? d->sharePct : 0;
+}
+
+int Game::modCountryDistrictProvinceCount(int cid, int index) {
+    const District* d = modDistrictAt(cid, index);
+    return d ? (int)d->provinces.size() : 0;
+}
+
+int Game::modCountryDistrictProvince(int cid, int index, int n) {
+    const District* d = modDistrictAt(cid, index);
+    if (!d || n < 0 || (size_t)n >= d->provinces.size()) return -1;
+    return d->provinces[(size_t)n];
+}
+
+int Game::modCountryDistrictLawCount(int cid, int index) {
+    const District* d = modDistrictAt(cid, index);
+    return d ? (int)d->policies.size() : 0;
+}
+
+std::string Game::modCountryDistrictLaw(int cid, int index, int n) {
+    const District* d = modDistrictAt(cid, index);
+    if (!d || n < 0 || (size_t)n >= d->policies.size()) return std::string();
+    return d->policies[(size_t)n];
+}
+
+int Game::modDistrictLawCount() const { return (int)m_districtLaws.size(); }
+
+std::string Game::modDistrictLawId(int index) const {
+    if (index < 0 || (size_t)index >= m_districtLaws.size()) return std::string();
+    return m_districtLaws[(size_t)index].id;
+}
+
+std::string Game::modDistrictLawName(int index) const {
+    if (index < 0 || (size_t)index >= m_districtLaws.size()) return std::string();
+    return m_districtLaws[(size_t)index].name;
+}
+
+// The wire uses a small enum rather than the bit values, so a mod never has to
+// know the layout of m_countryDisclosure.
+static unsigned discloseBitOf(int field) {
+    switch (field) {
+        case 0: return Game::DISCLOSE_EXPENSES;
+        case 1: return Game::DISCLOSE_DOCTRINES;
+        case 2: return Game::DISCLOSE_TREASURY;
+        case 3: return Game::DISCLOSE_DISTRICT_LAWS;
+        default: return 0;
+    }
+}
+
+bool Game::modCountryDiscloses(int cid, int field) const {
+    const unsigned bit = discloseBitOf(field);
+    return bit != 0 && discloses(cid, bit);
+}
+
+bool Game::modSetCountryDistrictShare(int cid, int index, int pct) {
+    if (!modDistrictAt(cid, index)) return false;
+    auto& v = m_districts[cid];
+    v[(size_t)index].sharePct = std::clamp(pct, 0, 100);
+    // Through the game's own rebalance, so the shares still sum to 100 -- the
+    // resolver divides by their total and a mod cannot be allowed to break that.
+    normaliseDistrictShares(cid, index);
+    return true;
+}
+
+bool Game::modSetCountryDistrictLaw(int cid, int index, const std::string& lawId, bool on) {
+    if (!modDistrictAt(cid, index)) return false;
+    if (!districtLawById(lawId)) return false;
+    auto& pol = m_districts[cid][(size_t)index].policies;
+    const auto it = std::find(pol.begin(), pol.end(), lawId);
+    if (on && it == pol.end())       pol.push_back(lawId);
+    else if (!on && it != pol.end()) pol.erase(it);
+    return true;
+}
+
+bool Game::modSetCountryDisclosure(int cid, int field, bool on) {
+    if (!m_countries.getCountry(cid)) return false;
+    const unsigned bit = discloseBitOf(field);
+    if (bit == 0) return false;
+    if (on) m_countryDisclosure[cid] |= bit;
+    else    m_countryDisclosure[cid] &= ~bit;
+    return true;
+}
+
+double Game::modCountryExpenses(int cid) const {
+    auto it = m_incomeHistory.find(cid);
+    if (it != m_incomeHistory.end() && !it->second.empty())
+        return (double)it->second.back().expenses;
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)computeCountryIncome(cid).expenses;
+}
+
+double Game::modCountryNationalValue(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)countryNationalValue(cid);
+}
+
+long long Game::modCountryPopulation(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0;
+    return countryPopulation(cid);
+}
+
+int Game::modTroopTypeCount() const { return (int)TROOP_TYPE_COUNT; }
+
+std::string Game::modTroopTypeId(int index) const {
+    if (index < 0 || index >= (int)TROOP_TYPE_COUNT) return std::string();
+    return TROOP_TYPES[index].id;
+}
+
+// -1 for a name that is not a troop type, so "no soldiers of a kind that does
+// not exist" is told apart from "no soldiers".
+static int modTroopTypeIndex(const std::string& id) {
+    for (int i = 0; i < (int)TROOP_TYPE_COUNT; ++i)
+        if (id == TROOP_TYPES[i].id) return i;
+    return -1;
+}
+
+long long Game::modCountryArmyOfType(int cid, const std::string& type) const {
+    const int t = modTroopTypeIndex(type);
+    if (t < 0 || !m_countries.getCountry(cid)) return 0;
+    long long men = 0;
+    for (const auto& [pid, units] : m_provinceArmies)
+        for (const ArmyUnit& u : units)
+            if (u.countryId == cid && (int)u.type == t) men += u.count;
+    return men;
+}
+
+long long Game::modProvinceTroopsOfType(int pid, int cid, const std::string& type) const {
+    const int t = modTroopTypeIndex(type);
+    if (t < 0) return 0;
+    auto it = m_provinceArmies.find(pid);
+    if (it == m_provinceArmies.end()) return 0;
+    long long men = 0;
+    for (const ArmyUnit& u : it->second)
+        if (u.countryId == cid && (int)u.type == t) men += u.count;
+    return men;
+}
+
+int Game::modCountryResearchGroups(int cid) const {
+    if (!m_countries.getCountry(cid)) return 0;
+    return std::clamp(researchGroupsUnlocked(cid), 1, RESEARCH_GROUPS_MAX);
+}
+
+bool Game::modSetCountryResearchGroups(int cid, int groups) {
+    if (!m_countries.getCountry(cid)) return false;
+    if (groups < 0 || groups > RESEARCH_GROUPS_MAX) return false;
+    if (groups == 0) m_scriptResearchGroups.erase(cid);
+    else             m_scriptResearchGroups[cid] = groups;
+    return true;
 }
 
 double Game::modCountryIncomeGross(int cid) const {

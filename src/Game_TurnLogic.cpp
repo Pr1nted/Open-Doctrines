@@ -40,6 +40,34 @@
 static std::mt19937 g_simRng{1337};
 static int simRand() { return (int)(g_simRng() >> 1); }   // non-negative, like rand()
 void seedSimRng(unsigned int seed) { g_simRng.seed(seed); }
+int simRandShared() { return simRand(); }
+
+// ── SAVING THE STREAM, NOT JUST THE SEED ──
+//
+// A world's seed says where its RNG started; it does not say where the RNG has
+// GOT TO, and by turn fifty those are very different things. Restoring only the
+// seed on load would rewind the stream to turn zero, so a reloaded game would
+// diverge from the one that was saved -- which is the same class of complaint
+// as a save that does not reproduce, and would undo the point of seeding at all.
+//
+// mt19937 streams its whole state through the standard operators, so the honest
+// thing is to write that down. It is a few hundred bytes of text in state.json.
+std::string simRngState() {
+    std::ostringstream os;
+    os << g_simRng;
+    return os.str();
+}
+void setSimRngState(const std::string& st) {
+    if (st.empty()) return;
+    // Into a SPARE generator first, and only adopted if it parsed. Reading a
+    // truncated or corrupt state straight into g_simRng half-consumes it and
+    // leaves the world's randomness in whatever state the failure stopped at,
+    // which is neither the saved stream nor a clean one. A save that cannot be
+    // read here keeps the seed it was already given.
+    std::mt19937 parsed;
+    std::istringstream is(st);
+    if (is >> parsed) g_simRng = parsed;
+}
 
 // === isProvinceCoastal ===
 bool Game::isProvinceCoastal(int pid) const {
@@ -357,7 +385,45 @@ const std::vector<int>& Game::provincesOf(int cid) const {
     return it == m_countryProvinces.end() ? none : it->second;
 }
 
+// Counted so a change to the sea graph can be judged on whether it STRANDS
+// HULLS, not on whether the routes it does produce look better. A stricter
+// graph that quietly makes a fifth of all voyages unroutable is a worse game
+// than a loose one that sends them over Crimea.
+long long g_navRouteCalls = 0, g_navRouteFails = 0;
+
 void Game::processTurn() {
+    // ── OD_SEED_KINDS=1: PUT THE OTHER KINDS INTO A WORLD THAT CANNOT RAISE
+    //    THEM YET ──
+    //
+    // A player can pick a troop kind; the AI cannot, because its recruit action
+    // has no kind on it (that is the AI session's half). So a normal eval raises
+    // 100% line infantry and every combat column added in stage 3 goes
+    // unexercised -- which is indistinguishable from a system that does not
+    // work.
+    //
+    // This assigns kinds round-robin to the starting garrisons, once, so the
+    // frontage, attack/defence and fuel columns actually run. It is a
+    // DEVELOPMENT AID, not a game rule: off unless asked for, read once on the
+    // first turn, and it makes no decision any player or AI would make.
+    // Measured with it on: survival 75.5% against 73.6% all-line, 18,077
+    // assaults, 33 battles, supply biting at 19.8% -- so the columns fire and
+    // the game is stable with mixed armies.
+    if (m_turnNumber <= 1 && std::getenv("OD_SEED_KINDS")) {
+        int k = 0;
+        for (auto& [pid, units] : m_provinceArmies)
+            for (auto& u : units)
+                u.type = (TroopType)(1 + (k++ % (int)(TROOP_TYPE_COUNT - 1)));
+    }
+
+    // A new turn: forget every supply route. captureProvince invalidates the
+    // two countries whose ground moved, which covers the common case within a
+    // turn; this covers everything else that quietly changes a route -- a port
+    // finished, an industry level raised, an alliance signed or broken -- none
+    // of which is worth its own invalidation call. One cleared map per turn is
+    // nothing; a stale one is a stack fighting on last month's supply line.
+    m_supplyCache.clear();
+    m_seaSupplyCache.clear();   // and where the fleets were
+
     // Lambda to draw a loading screen frame (no-op if loading screen not active)
     auto drawFrame = [&](float pct, const char* status) {
         // BEFORE the early-out, and that ordering is the whole point.
@@ -482,15 +548,16 @@ void Game::processTurn() {
     drawFrame(0.62f, "Generating political map...");
     // Self-play training never looks at the map: skip the full-raster texture
     // and label passes, they dominate turn time on big maps.
-    if (!m_aiTraining) generatePoliticalTexture();
+    //
+    // ASKED FOR, NOT DONE HERE. The orders phase is decided at the bottom of
+    // this function and has to be able to hold the old borders on screen while
+    // it runs; see m_politicalRepaintPending.
+    if (!m_aiTraining) m_politicalRepaintPending = true;
     // One label rebuild per turn no matter how many rebellions/ceasefires
     // marked them dirty — computeCountryLabels is a full-map raster scan.
     if (m_labelsDirty) {
         m_labelsDirty = false;
-        if (!m_aiTraining) {
-            computeCountryLabels();
-            if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
-        }
+        if (!m_aiTraining) m_labelRepaintPending = true;
     }
     auto t8 = std::chrono::steady_clock::now();
     drawFrame(0.65f, "Syncing population data...");
@@ -521,7 +588,13 @@ void Game::processTurn() {
     delta.turnNumber = turnNum;
     delta.researchAllocation = m_researchAllocation;
     delta.pacificationAllocation = m_pacificationAllocation;
-    delta.researchActiveNode = m_researchActiveNode;
+    delta.researchActiveNode = m_researchGroups[0].activeNode;
+    for (int g = 0; g < 3; ++g) {
+        delta.researchGroups[g].activeNode  = m_researchGroups[g].activeNode;
+        delta.researchGroups[g].lastNode    = m_researchGroups[g].lastNode;
+        delta.researchGroups[g].sharePct    = m_researchGroups[g].sharePct;
+        delta.researchGroups[g].autoAdvance = m_researchGroups[g].autoAdvance;
+    }
     delta.researchPoints = m_researchPoints;
     // Province changes: ownership, population, industry, fortification
     for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
@@ -568,6 +641,9 @@ void Game::processTurn() {
             if (prevResInc != curResInc) { pd.resourceIncomeChanged = true; pd.newResourceIncome = curResInc; changed = true; }
             if (prevPopInc != curPopInc) { pd.popIncomeChanged = true; pd.newPopIncome = curPopInc; changed = true; }
             if (prevPopMod != curPopMod) { pd.popModifierChanged = true; pd.newPopModifier = curPopMod; changed = true; }
+            const int prevOut = hadInd ? prevIndIt->second.output : -1;
+            const int curOut  = hasInd ? curIndIt->second.output  : -1;
+            if (prevOut != curOut) { pd.outputChanged = true; pd.newOutput = curOut; changed = true; }
         }
         if (changed) delta.provinces.push_back(pd);
     }
@@ -587,7 +663,7 @@ void Game::processTurn() {
     for (auto& [pid, units] : m_provinceArmies) {
         ArmyDelta ad;
         ad.provinceId = pid;
-        for (auto& u : units) ad.units.push_back({u.countryId, u.count});
+        for (auto& u : units) ad.units.push_back({u.countryId, u.count, (uint8_t)u.type});
         delta.armies.push_back(ad);
     }
     // Also record provinces where armies were removed
@@ -626,6 +702,12 @@ void Game::processTurn() {
         m_turnCount++;
     }
     drawFrame(0.90f, "Cleaning up...");
+    // WHAT IT HELD WHEN THIS TURN BEGAN, which is the figure a country is
+    // allowed to publish about itself -- never the live number, because a
+    // profile that updated mid-turn would let anyone watch a treasury drain in
+    // real time. Taken before anything this turn spends it.
+    for (const auto& [cid, c] : m_countries.getAll()) m_treasuryLastTurn[cid] = c.treasury;
+
     recordIncomeSnapshot();
     // AI learning step: rewards from the turn's state deltas. Runs while the
     // income cache recordIncomeSnapshot just refreshed is still hot, so the
@@ -655,12 +737,74 @@ void Game::processTurn() {
         }
     }
     m_turnNumber++;
+
+    // ── The post ──
+    //
+    // AFTER the number advances, so a letter written on turn 10 is stamped as
+    // arriving on 11 and the "a letter takes a turn" promise is literally true
+    // in the data rather than only in the interface. Before the scripts tick,
+    // so a map script can read what arrived this turn. See src/Mail.h.
+    deliverMail();
+    // Advisors answer AFTER the post, so they are replying to what actually
+    // arrived. Their replies become ordinary pending letters and leave on the
+    // next turn like everybody else's -- no speed advantage over a person.
+    runAdvisors();
+
     // Resume any map scripts suspended on waitUntil now that turn/date advanced
     if (m_scriptEngine) {
         m_scriptEngine->tick();
         if (!m_scriptEngine->getErrors().empty()) m_scriptErrorTimer = 3.0f;
     }
-    m_turnState = TURN_NORMAL;
+    // ── AND NOW THE MIDDLE OF THE GAME ──
+    //
+    // The turn has resolved and m_turnOrderLog holds what every country did to
+    // bring that about. Entering the phase here rather than offering a button
+    // is the difference between a beat in the loop and a lens: it is the shape
+    // GD4 uses, and it is the moment the information is worth anything.
+    //
+    // Not entered when there is nothing to show, when the player has said they
+    // do not want it, or in any headless run -- a benchmark has nobody to press
+    // continue and would sit in the phase for ever.
+    // EVERY AUTOMATED DRIVER IS EXCLUDED, and the list is the point rather than
+    // an afterthought: a phase that waits for a person is a hang for anything
+    // that has no person. `m_aiTraining` covers --train-ai and --eval-ai,
+    // `m_walk` the tutorial walk, and a screenshot tour is identified by its
+    // output directory. Each of these presses the turn button and nothing
+    // else; none of them would ever press Continue.
+    const bool somebodyIsWatching =
+        !m_aiTraining && !m_walk && m_shotDir.empty() && m_playerCountryId > 0;
+    m_turnState = (somebodyIsWatching && !m_config.skipViewingOrders && !m_turnOrderLog.empty())
+                      ? TURN_VIEWING_ORDERS : TURN_NORMAL;
+
+    if (getenv("OD_RCAP") && (m_turnNumber % 40) == 0) dumpResearchCapacity();
+    if (getenv("OD_ORDERLOG") && (m_turnNumber % 10) == 0) {
+        int byKind[5] = {};
+        for (const auto& m : m_turnOrderLog) byKind[(int)m.kind]++;
+        printf("[ORDERLOG] turn %d: %zu marks  arty %d  move %d  ship %d  recruit %d  build %d\n",
+               m_turnNumber, m_turnOrderLog.size(), byKind[0], byKind[1], byKind[2],
+               byKind[3], byKind[4]);
+    }
+    if (getenv("OD_NAV_STATS") && (m_turnNumber % 20) == 0)
+        printf("[NAVROUTE] turn %d: %lld call(s), %lld unroutable (%.1f%%)\n",
+               m_turnNumber, g_navRouteCalls, g_navRouteFails,
+               g_navRouteCalls ? 100.0 * (double)g_navRouteFails / (double)g_navRouteCalls : 0.0);
+
+    // ── AND THE LAND CATCHES UP NOW, UNLESS THE PHASE NEEDS IT NOT TO ──
+    //
+    // Deferring this to the draw loop was right for the orders phase and wrong
+    // for every other turn: the turn returned in a blink and then the game sat
+    // on a black screen for seconds regenerating the map with nothing drawn.
+    // Reported as two things -- "process turn feels slow" and "a few seconds of
+    // black screen" -- which are the same event seen from either end.
+    //
+    // The loading screen is still up here, so this costs no second screen and
+    // lands exactly where it used to: inside the turn, behind its progress bar.
+    // When the phase IS coming the note is left for Continue to honour, which
+    // is the one case that has to wait.
+    if (m_turnState != TURN_VIEWING_ORDERS) {
+        drawFrame(0.98f, "Generating political map...");
+        flushMapRepaint();
+    }
 
     // GameProcess post-turn hook. This also services a reload that was asked
     // for mid-turn: reloads happen between turns, never inside one.
@@ -745,6 +889,25 @@ void Game::processCountryTurn(int countryId) {
     // snapshot made every completion invisible (and unrewarded, and uncounted).
     if (m_ai && countryId != m_playerCountryId) m_ai->takeTurn(countryId);
     if (countryId != m_playerCountryId) progressCountryResearch(countryId);
+    // THE ONLY MOMENT A COUNTRY'S WHOLE TURN IS ON THE TABLE. It has decided,
+    // and nothing it decided has been consumed yet. See m_turnOrderLog.
+    // Where this country's pacification money goes. A reflex, not a decision
+    // the policy net takes -- see updateAIDistricts.
+    if (!getenv("OD_AI_DISTRICTS_OFF")) updateAIDistricts(countryId);
+    // What it is willing to say about itself, on the same terms the player has.
+    if (!getenv("OD_AI_DISCLOSE_OFF")) updateAIDisclosure(countryId);
+    // And the law its districts run, which is the part of them that works
+    // without a pacification budget. See updateAIDistrictLaws.
+    if (!getenv("OD_AI_DLAW_OFF")) updateAIDistrictLaws(countryId);
+
+    recordTurnOrders(countryId);
+    // How often wartime diplomacy was AVAILABLE, against how often anybody used
+    // it. The gap is the point: the ask existed only for the player and only
+    // through a button, so a rule that could have fired five hundred times in a
+    // world fired three. Same instrument as [WIDTH], [SUPPLY] and [BATTLES] --
+    // an opportunity nobody takes is indistinguishable from a rule that is not
+    // there, and only counting tells them apart.
+    if (!callableFriends(countryId).empty()) ++m_callableFriendTurns;
     auto pt1 = std::chrono::steady_clock::now();
     processArtilleryOrders(countryId);
     auto pt2 = std::chrono::steady_clock::now();
@@ -752,6 +915,14 @@ void Game::processCountryTurn(int countryId) {
     auto pt3 = std::chrono::steady_clock::now();
     processShipDisembarks(countryId);
     auto pt4 = std::chrono::steady_clock::now();
+    // BEFORE this turn's movement, and the order matters. Withdrawals resolve
+    // first (inside this), then every standing battle fights a round, and only
+    // then do new orders arrive -- so a reinforcement joins the fight and is
+    // counted in NEXT turn's round rather than being thrown at the line the
+    // moment it arrives, and a fresh assault still resolves the turn it is
+    // ordered. See Game::processBattles.
+    processBattles(countryId);
+    processCampaigns();   // close what succeeded, timed out or ran dry
     processArmyMovement(countryId);
     auto pt5 = std::chrono::steady_clock::now();
     processNavyMovement(countryId);
@@ -877,6 +1048,16 @@ void Game::rebuildIsoIndex() {
 // remembers, not a thing that ends a relationship; and forgiveness has to be
 // slower than lying, or the cheapest strategy is to lie constantly and wait.
 static constexpr float CRED_HIT_CAUGHT   = 0.35f;  // said something already disprovable
+    /**
+     * A broken TREATY. A non-aggression pact was, until 2026-09-04, free to
+     * break: declareWar cleared it silently and break_nap charged nothing,
+     * while a false STATEMENT about intentions cost CRED_HIT_CAUGHT. So the
+     * game punished lying and not betrayal, and an AI that refused every
+     * pact was playing correctly -- there was nothing to lose by refusing and
+     * nothing to gain by signing. Priced at the caught-lie rate: a signed
+     * treaty is at least as much of a promise as a spoken claim.
+     */
+    static constexpr float CRED_HIT_PACT = CRED_HIT_CAUGHT;
 static constexpr float CRED_HIT_CONDUCT  = 0.25f;  // conduct disproved it later
 static constexpr float CRED_RECOVER      = 0.004f; // per turn, back toward trust
 static constexpr int   CRED_CLAIM_WINDOW = 25;     // turns a claim can be broken in
@@ -1213,55 +1394,11 @@ int Game::allocateRebelCid() {
 // === createRebelCountry ===
 namespace {
 
-/**
- * The country an adjective names, where English refuses to derive it.
- *
- * Two callers need this and neither can compute it. deriveTerritory turns a
- * minority's demonym into a homeland -- "French" into France -- and no suffix
- * rule reaches it: France is not in "French", Netherlands is not in "Dutch",
- * and Canada is not in "Canadian" (every -ian rule yields "Canadia"). A table
- * is the honest tool for an irregular language; another rule fixes Canada and
- * breaks Lithuania, which is the loop this file's comments record losing.
- *
- * The second caller is the parent's own name. geographicCoreOf("French
- * Republic") is "French" -- correct, and correctly ADJECTIVAL, the same way
- * "Slovak Republic" gives "Slovak" -- but a breakaway then built "Republic of
- * Eastern French" out of it, an adjective standing where a place should.
- *
- * Returns empty when the word is regular, which means the caller's own rules
- * are fine and should run.
- */
-std::string properPlaceName(const std::string& word) {
-    struct Irregular { const char* adjective; const char* place; };
-    static const Irregular IRREGULARS[] = {
-        {"french","France"},      {"dutch","Netherlands"},  {"canadian","Canada"},
-        {"belarusian","Belarus"}, {"polish","Poland"},      {"spanish","Spain"},
-        {"british","Britain"},    {"greek","Greece"},       {"danish","Denmark"},
-        {"swedish","Sweden"},     {"turkish","Turkey"},     {"finnish","Finland"},
-        {"welsh","Wales"},        {"scottish","Scotland"},  {"irish","Ireland"},
-        {"norwegian","Norway"},   {"mexican","Mexico"},     {"brazilian","Brazil"},
-        {"chinese","China"},      {"japanese","Japan"},     {"portuguese","Portugal"},
-        {"maltese","Malta"},      {"thai","Thailand"},      {"swiss","Switzerland"},
-        {"slovak","Slovakia"},    {"czech","Czechia"},      {"icelandic","Iceland"},
-        // The rest of the adjectival country names a scenario actually ships.
-        // "German Empire" and "Soviet Union" core to "German" and "Soviet", and
-        // a breakaway built "West German" out of the first; the Soviet republics
-        // have no country of their own on a 1939 map, so the referent lookup
-        // cannot help and "Ukrainian" became "Ukrainia".
-        {"american","America"},   {"german","Germany"},     {"soviet","Soviet Union"},
-        {"ukrainian","Ukraine"},  {"uzbek","Uzbekistan"},   {"kazakh","Kazakhstan"},
-        {"tajik","Tajikistan"},   {"turkmen","Turkmenistan"},{"kyrgyz","Kyrgyzstan"},
-    };
-    std::string w = word;
-    std::transform(w.begin(), w.end(), w.begin(), ::tolower);
-    for (const auto& ir : IRREGULARS)
-        if (w == ir.adjective) return std::string(ir.place);
-    return std::string();
-}
 
 }  // namespace
 
-void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int>& provinceIds) {
+void Game::createRebelCountry(int rebelCid, int parentCid,
+                              const std::vector<int>& provinceIds, bool peaceful) {
     std::string regionName;
     long long totalPop = 0;
     float avgEcon = 0, avgSoc = 0;
@@ -1381,7 +1518,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // "French", which is right for "the French army" and wrong for
         // "Republic of Eastern French" -- and this name is only ever used as
         // the second kind.
-        if (std::string place = properPlaceName(core); !place.empty()) return place;
+        if (std::string place = politid::properPlaceName(core); !place.empty()) return place;
         return core;
     };
 
@@ -1446,7 +1583,7 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         // independent of who is on the map -- which is what makes this work in
         // 1914, where the referent lookup finds no Canada because Canada is
         // still a dominion.
-        if (std::string place = properPlaceName(root); !place.empty()) return place;
+        if (std::string place = politid::properPlaceName(root); !place.empty()) return place;
 
         // Then the map itself: a demonym whose country is already on it.
         //
@@ -2304,6 +2441,10 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     std::string rebelSvg = flagPatternToSvg(flag, 200, 133, &m_odmJsonData);
     m_rebelFlagSvgs[rebelCid] = rebelSvg;
 
+    // WHEN IT BEGAN. Every country that reaches this line is being made now, by
+    // a release or a revolt; the ones on the map at the start keep -1, which is
+    // what lets a profile say "since the start" instead of inventing a date.
+    rebel.foundedTurn = m_turnNumber;
     m_countries.getAll()[rebelCid] = rebel;
     if (!rebel.isoA3.empty()) m_isoToCid[rebel.isoA3] = rebelCid;
     m_countryCompass[rebelCid] = makeCompass(avgEcon, avgSoc);
@@ -2326,15 +2467,30 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
         printf("[REBELLION] Created '%s' (CID=%d, ISO=%s, %zu provinces, %lld pop, econ=%.1f soc=%.1f)\n",
            countryName.c_str(), rebelCid, isoA3.c_str(), provinceIds.size(), totalPop, avgEcon, avgSoc);
 
-    // Declare war (bidirectional)
+    // HOW IT BEGINS IS THE WHOLE DIFFERENCE. A revolt starts at war; a release
+    // starts at peace, guaranteed by the country that let it go. Everything
+    // above this line is identical, which is the reason the two share a
+    // function.
     auto& parentIso = m_countries.getAll()[parentCid].isoA3;
-    m_relations[isoA3][parentIso].war = true;
-    m_relations[parentIso][isoA3].war = true;
-    if (m_config.aiDebug)
-        printf("[REBELLION] War: %s vs %s\n", isoA3.c_str(), parentIso.c_str());
+    if (peaceful) {
+        // The guarantee runs one way, from the releaser to the released: it is
+        // a promise made, not a pact agreed, and the new state owes nothing for
+        // it. That is what makes release buy a friend rather than merely cost
+        // ground.
+        m_relations[parentIso][isoA3].guarantee = true;
+        if (m_config.aiDebug)
+            printf("[RELEASE] %s released by %s, guaranteed\n",
+                   isoA3.c_str(), parentIso.c_str());
+    } else {
+        m_relations[isoA3][parentIso].war = true;
+        m_relations[parentIso][isoA3].war = true;
+        if (m_config.aiDebug)
+            printf("[REBELLION] War: %s vs %s\n", isoA3.c_str(), parentIso.c_str());
+    }
 
-    // Notify player if this affects them
-    if (parentCid == m_playerCountryId) {
+    // Notify player if this affects them. Not on a release: the player asked
+    // for it, and a popup announcing the thing they just clicked is noise.
+    if (!peaceful && parentCid == m_playerCountryId) {
         std::string parentName = m_countries.getAll()[parentCid].name;
         // One sentence with the names in it, and the names put through
         // properName: this was three English fragments glued round two raw
@@ -2353,7 +2509,10 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     for (int pid : provinceIds) {
         Province* pp = m_provinces.getProvinceById(pid);
         if (pp) {
-            if (m_ai) m_ai->noteRevolt(parentCid);
+            // noteRevolt teaches the AI that it LOST ground to unrest. A
+            // release is a decision, not a failure, and counting it as a revolt
+            // would train the policy away from a lever it is meant to use.
+            if (m_ai && !peaceful) m_ai->noteRevolt(parentCid);
             pp->countryId = rebelCid;
             if ((size_t)pid < m_provinceCountryLookup.size())
                 m_provinceCountryLookup[pid] = rebelCid;
@@ -2394,6 +2553,84 @@ void Game::createRebelCountry(int rebelCid, int parentCid, const std::vector<int
     // processTurn) instead of per rebellion — computeCountryLabels does a full
     // 8192x4096 raster scan, so ten rebellions used to mean ten full scans.
     m_labelsDirty = true;
+}
+
+// === releaseSubsetOk ===
+//
+// See the declaration. Contiguity is walked over the CHOSEN set only: a run
+// that is connected through a province the player just excluded is two
+// countries, and a country in two pieces with somebody else's ground between
+// them is not a border anybody drew -- the same sentence releaseNation uses
+// about refusing half a release.
+bool Game::releaseSubsetOk(int ownerCid, const std::vector<int>& provs,
+                           std::string& whyNot) const {
+    if ((int)provs.size() < RELEASE_MIN_PROVINCES) {
+        whyNot = TextFormat(T("A nation needs at least %d provinces"),
+                            (int)RELEASE_MIN_PROVINCES);
+        return false;
+    }
+    for (int pid : provs) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != ownerCid) {
+            whyNot = T("Some of that ground is no longer theirs to give");
+            return false;
+        }
+    }
+    int held = 0;
+    for (const auto& [pid, p] : m_provinces.getAllProvinces())
+        if (p.countryId == ownerCid) ++held;
+    if (held > 0 && (double)provs.size() > (double)held * (double)RELEASE_MAX_SHARE) {
+        whyNot = T("That is too much of the country to give away at once");
+        return false;
+    }
+    // One connected piece, walked over the subset itself.
+    std::vector<int> seen;
+    std::vector<int> stack{provs.front()};
+    seen.push_back(provs.front());
+    while (!stack.empty()) {
+        const int cur = stack.back(); stack.pop_back();
+        for (int pid : provs) {
+            if (std::find(seen.begin(), seen.end(), pid) != seen.end()) continue;
+            if (!provincesAdjacent(cur, pid)) continue;
+            seen.push_back(pid);
+            stack.push_back(pid);
+        }
+    }
+    if (seen.size() != provs.size()) {
+        whyNot = T("A nation has to be in one piece");
+        return false;
+    }
+    return true;
+}
+
+// === releaseNation ===
+//
+// See the declaration, and ReleaseRules.h for what may be released.
+int Game::releaseNation(int countryId, const ReleaseCandidate& region) {
+    if (region.provinces.size() < RELEASE_MIN_PROVINCES) return -1;
+
+    // RE-CHECKED, NOT TRUSTED. The panel's list can be a frame old, the
+    // multiplayer host takes this from a client that may say anything, and the
+    // bankruptcy cascade chooses several steps before it acts. Everything below
+    // assumes these provinces are still ours; if one is not, the whole release
+    // is refused rather than partially carried out, because half a nation is
+    // not a border anybody drew.
+    for (int pid : region.provinces) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != countryId) return -1;
+    }
+    // And it must still be legal at this size -- a country that has shrunk
+    // since the list was built could otherwise release itself out of existence.
+    int held = 0;
+    for (int pid : provincesOf(countryId)) { (void)pid; ++held; }
+    if (held <= 0) return -1;
+    if ((double)region.provinces.size() > (double)held * (double)RELEASE_MAX_SHARE)
+        return -1;
+
+    const int newCid = allocateRebelCid();
+    if (newCid <= 0) return -1;
+    createRebelCountry(newCid, countryId, region.provinces, /*peaceful=*/true);
+    return newCid;
 }
 
 // === processRebellions ===
@@ -2645,9 +2882,30 @@ void Game::processRebellions(int countryId) {
 
 // === processEconomy ===
 void Game::processEconomy(int countryId) {
+    // MATERIALS BEFORE MONEY. The production pass can pay the treasury -- the
+    // auto-sale of surplus raw is income like any other -- so it has to run
+    // before the balance is struck, or a country banks last turn's sale and the
+    // panel disagrees with the ledger by exactly one turn for ever.
+    //
+    // Inert unless the goods economy is switched on for this world; see
+    // Game::m_goodsEconomy.
+    processProduction(countryId);
+
     auto cs = computeCountryIncome(countryId);
     auto& treasury = m_countries.getAll()[countryId].treasury;
     float net = cs.total - cs.expenses;
+    // OD_ECON_TRACE=<cid>: the ledger for one country every turn, so a
+    // bankruptcy can be traced to the expense that caused it rather than
+    // read off the penalty line after the fact.
+    {
+        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        if (traceCid == countryId)
+            fprintf(stderr, "[ECON] turn %d cid=%d provinces=%zu treasury=%.2f net=%.2f income=%.2f (ind %.2f res %.2f pop %.2f)"
+                    " expenses=%.2f (army %.2f navy %.2f policy %.2f minority %.2f research %.2f pacify %.2f industry %.2f)\n",
+                    m_turnNumber, countryId, provincesOf(countryId).size(), treasury, net, cs.total, cs.gross, cs.resource, cs.pop, cs.expenses,
+                    cs.armyExpenses, cs.navyExpenses, cs.policyCosts, cs.minorityCosts, cs.researchCost,
+                    cs.pacificationCost, cs.industryUpkeep);
+    }
     treasury += net;
 
     // Where the money goes, when asked. See src/ai/MoneyLedger.h.
@@ -2667,7 +2925,12 @@ void Game::processEconomy(int countryId) {
     // treasury = 0;` -- the shortfall was deleted and the turn moved on, so a
     // country could keep a fleet and an army it had no income for, for ever.
     // Nothing anywhere else noticed, because nothing else looked.
-    if (treasury >= 0.0) { m_bankruptCountries.erase(countryId); return; }
+    if (treasury >= 0.0) {
+        m_bankruptCountries.erase(countryId);
+        m_bankruptStreak.erase(countryId);   // paid for itself: the clock resets
+        return;
+    }
+    ++m_bankruptStreak[countryId];
     const float shortfall = (float)(-treasury);
     money::add(money::WRITTEN_OFF, -(double)shortfall);
     treasury = 0.0;
@@ -2873,7 +3136,60 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
         remaining -= (float)disbanded / 1000000.0f;
     }
 
-    // ── 6. What is still unpaid becomes unrest ──────────────────────────
+    // ── 6. LET GO OF WHAT CANNOT BE GOVERNED ────────────────────────────
+    //
+    // The last rung, and the only one that is not reversible. Everything above
+    // can be undone by a country that recovers: budgets come back, doctrines
+    // are re-enacted, ships and men are rebuilt. Ground that has been released
+    // is gone, so it is the final thing tried and only while the books are
+    // still short after all of that.
+    //
+    // WHY IT IS HERE AT ALL. A country that bankrupts itself placating
+    // minorities, cuts every settlement at once, and then disintegrates under
+    // the unrest that follows is a known and repeatable failure -- the AI's
+    // worst seat dies exactly that way on every ruler. The cascade could take
+    // its money, its fleet and its army and still leave it holding the
+    // provinces that were bankrupting it. This is the lever that was missing:
+    // shed the region, survive smaller.
+    //
+    // Only ONE per turn. A country in real trouble would otherwise dissolve
+    // itself in a single turn's cascade, which is not a government making a
+    // hard choice, it is a country evaporating.
+    int releasedProvinces = 0;
+    std::string releasedName;
+    // NOT "still short after the cascade" -- that was the first trigger and it
+    // fired zero times in a 120-turn run, because disbanding troops clears
+    // almost any single shortfall. See m_bankruptStreak: what this is for is
+    // the country that cannot pay for itself turn after turn, which is the
+    // spiral rather than the bad year.
+    {
+        auto stIt = m_bankruptStreak.find(countryId);
+        const int streak = (stIt != m_bankruptStreak.end()) ? stIt->second : 0;
+        if (streak >= RELEASE_BANKRUPT_STREAK) {
+        const auto regions = releasableRegions(countryId);
+        if (!regions.empty()) {
+            // releasableRegions returns largest-population first, which is also
+            // the most expensive to keep and the most unrest to be rid of.
+            const int newCid = releaseNation(countryId, regions.front());
+            if (newCid > 0) {
+                releasedProvinces = (int)regions.front().provinces.size();
+                releasedName = regions.front().minority;
+                // The books do not improve this turn -- the province's income
+                // was already counted and the shortfall already owed -- so
+                // `remaining` is deliberately untouched. What changes is next
+                // turn: a smaller country with a smaller bill and less unrest.
+                //
+                // The clock restarts, so a country sheds at most one region per
+                // five broke turns. Without this a long depression would
+                // dissolve a country region by region every turn, which is not
+                // a government making hard choices, it is one evaporating.
+                m_bankruptStreak[countryId] = 0;
+            }
+        }
+        }
+    }
+
+    // ── 7. What is still unpaid becomes unrest ──────────────────────────
     float unrest = 0.0f;
     if (remaining > 0.0f) {
         // Scaled by how deep the hole is relative to what the country earns: a
@@ -2893,14 +3209,24 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
         if (scrapped > 0) msg += " " + std::to_string(scrapped) +
                                  (scrapped == 1 ? " ship scrapped." : " ships scrapped.");
         if (disbanded > 0) msg += " " + formatPop(disbanded / 100) + " troops disbanded.";
+        if (releasedProvinces > 0)
+            msg += " " + od::i18n::properName(releasedName) + " has been granted independence (" +
+                   std::to_string(releasedProvinces) + " provinces).";
         if (unrest > 0.0f) msg += " Unrest is rising.";
         addNotification(msg, Color{235, 110, 110, 255}, 10.0f);
         Audio::get().playSfx("deny");
     }
     printf("[ECONOMY] %d bankrupt: short %.2f, %d doctrine(s) repealed, %d minority cut(s), "
-           "%d ships scrapped, %lld troops disbanded, unrest +%.1f (+%.0f%% rebellion while broke)\n",
-           countryId, shortfall, repealed, minorityCut, scrapped, disbanded, unrest,
-           BANKRUPTCY_UNREST_PCT);
+           "%d ships scrapped, %lld troops disbanded, %d province(s) released, "
+           "unrest +%.1f (+%.1f%% rebellion, streak %d)\n",
+           countryId, shortfall, repealed, minorityCut, scrapped, disbanded,
+           releasedProvinces, unrest, bankruptcyUnrestFor(countryId),
+           // The CHARGED figure and the streak that set it, not the constant:
+           // the charge ramps (see BANKRUPT_UNREST_FULL_STREAK), so printing
+           // BANKRUPTCY_UNREST_PCT here would have reported a number the game
+           // does not apply on the first two turns of any bankruptcy.
+           [&]{ auto i = m_bankruptStreak.find(countryId);
+                return i != m_bankruptStreak.end() ? i->second : 1; }());
 }
 
 // === processShipBombardOrders ===
@@ -3083,6 +3409,10 @@ void Game::processShipDisembarks(int countryId) {
         int shipIdx = do_.shipIndex;
         m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
         if (shipIdx >= 0 && shipIdx < (int)m_ships.size()) {
+            if (std::getenv("OD_BOAT_TRACE"))
+                printf("[BOAT] t%d cid=%d DISEMBARK-ERASE ship=%d owner=%d crew=%d at prov %d (ships %zu -> %zu)\n",
+                       m_turnNumber, countryId, shipIdx, m_ships[shipIdx].countryId, m_ships[shipIdx].crew,
+                       pid, m_ships.size(), m_ships.size() - 1);
             m_ships.erase(m_ships.begin() + shipIdx);
             forgetShipOrders(shipIdx);
         }
@@ -3111,20 +3441,34 @@ void Game::processRecruitments(int countryId) {
             // and the tutorial -- rather than in whichever of them was edited
             // most recently. Clamped, because a province may have shrunk
             // between the order and its arrival.
+            //
+            // AND A BETTER SOLDIER COSTS MORE OF THEM. `count` is soldiers; the
+            // draw on population is count x the type's manpower multiplier, so
+            // ten thousand mechanised take forty thousand people out of the
+            // province and ten thousand militia take six. See PendingRecruitment
+            // and TROOP_TYPES -- line infantry is 1.0, so a world that has only
+            // ever had line infantry is deducted exactly as it always was.
+            const double perMan = (double)troopCost(r.type).manpower;
             auto popIt = m_provincePopulations.find(r.provinceId);
             if (popIt != m_provincePopulations.end()) {
-                const long long taken = std::min<long long>(r.count, popIt->second);
+                const long long want = (long long)std::llround((double)r.count * perMan);
+                const long long taken = std::min<long long>(want, popIt->second);
                 popIt->second = std::max(0LL, popIt->second - taken);
-                r.count = (int)std::min<long long>(r.count, taken);
+                // Short of people: raise as many soldiers as the people cover,
+                // rather than raising the whole order out of nobody.
+                if (taken < want)
+                    r.count = (int)std::min<long long>(
+                        r.count, (long long)((double)taken / std::max(1e-9, perMan)));
             }
             if (r.count <= 0) {
                 m_pendingRecruitments.erase(m_pendingRecruitments.begin() + i);
                 continue;
             }
-            auto& armies = m_provinceArmies[r.provinceId];
-            auto it = std::find_if(armies.begin(), armies.end(), [&](auto& u) { return u.countryId == countryId; });
-            if (it != armies.end()) it->count += r.count;
-            else { ArmyUnit nu; nu.countryId = countryId; nu.count = r.count; armies.push_back(nu); }
+            // addTroopsTo rather than a second copy of the merge: it knows that
+            // a province holds one stack per (country, TYPE), and this loop's
+            // own find_if did not.
+            addTroopsTo(r.provinceId, countryId, r.count, r.type);
+            m_recruitedByType[(int)r.type] += r.count;
             m_pendingRecruitments.erase(m_pendingRecruitments.begin() + i);
         } else ++i;
     }
@@ -3133,8 +3477,11 @@ void Game::processRecruitments(int countryId) {
 long long Game::availableManpower(int provinceId) const {
     auto it = m_provincePopulations.find(provinceId);
     long long pool = it == m_provincePopulations.end() ? 0 : it->second;
+    // What the ORDERS will actually spend, which is soldiers x their kind. An
+    // order for mechanised has already claimed four times its own size.
     for (const auto& r : m_pendingRecruitments)
-        if (r.provinceId == provinceId) pool -= r.count;
+        if (r.provinceId == provinceId)
+            pool -= (long long)std::llround((double)r.count * (double)troopCost(r.type).manpower);
     return std::max(0LL, pool);
 }
 
@@ -3182,7 +3529,7 @@ int Game::disbandAllArmies() {
     }
     // count 0 means "everything here", the same sentinel the panel's button
     // uses -- so a garrison that grows before the turn resolves still goes.
-    for (int pid : targets) m_pendingDisbandOrders.push_back({pid, 0});
+    for (int pid : targets) { traceDisband("PUSH-disbandAll", pid, 0, m_playerCountryId); m_pendingDisbandOrders.push_back({pid, 0}); }
     return (int)targets.size();
 }
 
@@ -3199,12 +3546,176 @@ int Game::cancelAllDisbands() {
     return cancelled;
 }
 
+// OD_DISBAND_TRACE: one line per disband order pushed or resolved, with
+// the turn, the province, the order's count (0 = everything here) and the
+// troops standing there at that moment, so a "Disbanding" remnant can be
+// traced back to the click (or load) that queued it.
+void Game::traceDisband(const char* origin, int pid, int count, int countryId) const {
+    static const bool on = std::getenv("OD_DISBAND_TRACE") != nullptr;
+    if (!on) return;
+    int here = 0;
+    auto aIt = m_provinceArmies.find(pid);
+    if (aIt != m_provinceArmies.end())
+        for (const auto& u : aIt->second) if (countryId <= 0 || u.countryId == countryId) here += u.count;
+    const Province* p = m_provinces.getProvinceById(pid);
+    fprintf(stderr, "[DISBAND] turn %d %s pid=%d owner=%d count=%d troopsHere=%d pending=%zu\n",
+            m_turnNumber, origin, pid, p ? p->countryId : -1, count, here, m_pendingDisbandOrders.size());
+}
+
 // === processDisbandOrders ===
+// === campaigns ===
+//
+// See docs/ai/CAMPAIGNS.md and `struct Campaign` in Game.h. Everything here
+// is a rule rather than a decision, deliberately: the two withdraw
+// experiments on 2026-09-05 measured that a head cannot judge "this is going
+// badly" from one turn's evidence, so opening is the only choice anyone
+// makes and closing is arithmetic.
+
+const Game::Campaign* Game::campaignAt(int countryId, int targetProvince) const {
+    for (const auto& c : m_campaigns)
+        if (c.countryId == countryId && c.targetProvince == targetProvince) return &c;
+    return nullptr;
+}
+
+const Game::Campaign* Game::campaignAgainst(int countryId, int enemyCid) const {
+    for (const auto& c : m_campaigns)
+        if (c.countryId == countryId && c.targetCountry == enemyCid) return &c;
+    return nullptr;
+}
+
+const Game::Campaign* Game::campaignOf(int countryId) const {
+    for (const auto& c : m_campaigns)
+        if (c.countryId == countryId) return &c;
+    return nullptr;
+}
+
+bool Game::openCampaign(const Campaign& c) {
+    if (c.countryId <= 0 || c.targetCountry <= 0 || c.stagingProvince < 0) return false;
+    // TWO AT A TIME since ParrotZero 8.5.0. A great power with forty
+    // frontier provinces can prosecute two wars at once and a small one
+    // cannot; whether the AI benefits from that is a measurement, not an
+    // assumption, so the cap is a knob -- and the measurement came out
+    // for two: N24 253 -> 259, N37 250 -> 266, N43 227 -> 231, floors
+    // flat (41, 31, 36 -> 33). Cap 3 is byte-identical to cap 2 on every
+    // metric, so a third campaign is never wanted; two is the whole gain.
+    // See OD_CAMPAIGN_MAX.
+    {
+        // A SECOND COMMITMENT IS FOR A COUNTRY THAT CAN AFFORD ONE.
+        //
+        // Measured per seat on hold-out worlds: allowing two campaigns and
+        // two wars was worth +176 to the USA seat and -141 to Norway. The
+        // aggressive setting is not wrong, it is size-dependent -- a great
+        // power holds two fronts, a small country holding two has nothing
+        // at home. OD_BIG_PROVINCES (0 = off) gates the second campaign on
+        // owning at least that many provinces.
+        static const int bigProv = std::getenv("OD_BIG_PROVINCES")
+                                 ? atoi(std::getenv("OD_BIG_PROVINCES")) : 0;
+        static const int maxOpen = std::getenv("OD_CAMPAIGN_MAX")
+                                 ? atoi(std::getenv("OD_CAMPAIGN_MAX")) : 1;
+        if (bigProv > 0 && (int)provincesOf(c.countryId).size() < bigProv) {
+            int openNow = 0;
+            for (const auto& x : m_campaigns) if (x.countryId == c.countryId) ++openNow;
+            if (openNow >= 1) return false;
+        }
+        int open = 0;
+        for (const auto& x : m_campaigns) if (x.countryId == c.countryId) ++open;
+        if (open >= std::max(1, maxOpen)) return false;
+        // A second campaign against the same country is not a second war.
+        for (const auto& x : m_campaigns)
+            if (x.countryId == c.countryId && x.targetCountry == c.targetCountry) return false;
+    }
+    m_campaigns.push_back(c);
+    m_campaigns.back().startedTurn = m_turnNumber;
+    if (std::getenv("OD_CAMPAIGN_TRACE"))
+        fprintf(stderr, "[CAMPAIGN] turn %d cid=%d OPEN vs=%d first=%d staging=%d men=%lld deadline=%d\n",
+                m_turnNumber, c.countryId, c.targetCountry, c.targetProvince, c.stagingProvince,
+                c.committedMen, c.deadlineTurns);
+    return true;
+}
+
+bool Game::closeCampaign(int countryId, const char* why) {
+    for (size_t i = 0; i < m_campaigns.size(); ++i) {
+        if (m_campaigns[i].countryId != countryId) continue;
+        if (std::getenv("OD_CAMPAIGN_TRACE"))
+            fprintf(stderr, "[CAMPAIGN] turn %d cid=%d CLOSE vs=%d after %d turns (%s, took %d)\n",
+                    m_turnNumber, countryId, m_campaigns[i].targetCountry,
+                    m_turnNumber - m_campaigns[i].startedTurn, why ? why : "asked",
+                    m_campaigns[i].provincesTaken);
+        m_campaigns.erase(m_campaigns.begin() + i);
+        return true;
+    }
+    return false;
+}
+
+void Game::processCampaigns() {
+    if (m_campaigns.empty()) return;   // inert, and cheap to prove so
+    static const bool trace = std::getenv("OD_CAMPAIGN_TRACE") != nullptr;
+    for (size_t i = 0; i < m_campaigns.size(); ) {
+        Campaign& c = m_campaigns[i];
+        const char* why = nullptr;
+        // The war aim: is there anything of theirs left next to us, and are
+        // we still at war with them?
+        const Country* me = m_countries.getCountry(c.countryId);
+        const Country* them = m_countries.getCountry(c.targetCountry);
+        int reachable = 0;
+        if (me && them) {
+            for (int pid : provincesOf(c.countryId)) {
+                auto nIt = m_provinceNeighbors.find(pid);
+                if (nIt == m_provinceNeighbors.end()) continue;
+                for (int nid : nIt->second) {
+                    const Province* np = m_provinces.getProvinceById(nid);
+                    if (np && np->countryId == c.targetCountry) { ++reachable; break; }
+                }
+                if (reachable) break;
+            }
+        }
+        const Province* cur = m_provinces.getProvinceById(c.targetProvince);
+        // Counted ONCE: the objective is retired when it falls, so the next
+        // turn does not count the same province again (the first version
+        // reported "took 431" for a twelve-turn campaign).
+        if (cur && cur->countryId == c.countryId) { c.provincesTaken++; c.targetProvince = -1; }
+        if (!me || !them) why = "target gone";
+        else if (!hasRelation(me->isoA3, them->isoA3, &CountryRelation::war)) why = "at peace";
+        else if (reachable == 0) why = "BEATEN";
+        else if (m_turnNumber - c.startedTurn >= c.deadlineTurns) why = "deadline";
+        else {
+            // Spent: the staging province can no longer feed it.
+            long long here = 0;
+            auto it = m_provinceArmies.find(c.stagingProvince);
+            if (it != m_provinceArmies.end())
+                for (const auto& u : it->second)
+                    if (u.countryId == c.countryId) here += u.count;
+            const Battle* b = battleAt(c.targetProvince, c.countryId);
+            if (b) c.roundsFought = b->rounds;
+            // NOT on the opening turns: the staging province has just sent
+            // its men at the target, so "the garrison is small" is what a
+            // working campaign looks like on turn one. Give it time to be
+            // refilled by the recruitment and reinforcement it steers.
+            const int age = m_turnNumber - c.startedTurn;
+            if (age >= CAMPAIGN_GRACE_TURNS && !b && here < c.committedMen / 8) why = "spent";
+        }
+        if (why) {
+            if (trace)
+                fprintf(stderr, "[CAMPAIGN] turn %d cid=%d CLOSE vs=%d after %d turns (%s, took %d)\n",
+                        m_turnNumber, c.countryId, c.targetCountry,
+                        m_turnNumber - c.startedTurn, why, c.provincesTaken);
+            m_campaigns.erase(m_campaigns.begin() + i);
+            continue;
+        }
+        ++i;
+    }
+}
+
 void Game::processDisbandOrders(int countryId) {
     for (size_t i = 0; i < m_pendingDisbandOrders.size(); ) {
         auto& d = m_pendingDisbandOrders[i];
         auto pit = m_provinces.getProvinceById(d.provinceId);
-        if (!pit || pit->countryId != countryId) { ++i; continue; }
+        if (!pit || pit->countryId != countryId) {
+            if (pit && countryId == m_playerCountryId)   // a player order outliving its province
+                traceDisband("SKIP-unowned", d.provinceId, d.count, countryId);
+            ++i; continue;
+        }
+        traceDisband("FIRE", d.provinceId, d.count, countryId);
         auto aIt = m_provinceArmies.find(d.provinceId);
         if (aIt != m_provinceArmies.end()) {
             for (auto& u : aIt->second) {
@@ -3222,102 +3733,140 @@ void Game::processDisbandOrders(int countryId) {
 }
 
 // === processEmbarkations ===
+//
+// BOAT FIRST, MEN SECOND. The old order deducted the troops from the
+// garrison and then went looking for something to put them on: a boat
+// within 50 px, else a spawn point found by scanning m_provincePixels for a
+// coastal pixel. That index is built lazily (Game_Loading.cpp, see
+// ensureProvincePixels) and reindexProvinceOwner only builds it outside
+// training -- the note above that gate ("It only ever worked by accident")
+// describes the identical failure for conquest overlays. So in every training
+// and eval run the scan missed, no boat was ever spawned, and each embarkation
+// without a pre-existing boat nearby deleted its troops; for a player it was
+// intermittent in exactly the way the note predicts (fine after opening the
+// Claims view, an army lost before). Measured 2026-09-04: 5,204 embarkations,
+// 52 loaded-boat-turns, 0% landed. Two smaller leaks in the same block: the
+// crew was totalRemoved / 100 in integer division, so under 100 units embarked
+// as nothing, and a missing province centre or water body lost the men too.
+//
+// Now: count the whole crews that can go; find or place the boat -- an
+// existing hull within 50 px, else the nav grid's own water cell by this
+// province (portApproach, which needs no pixel index and is water by
+// construction); and only then deduct exactly crews * 100 units. A failed
+// embarkation is a no-op that leaves the garrison standing, and is counted.
 void Game::processEmbarkations(int countryId) {
     for (size_t i = 0; i < m_pendingEmbarkations.size(); ) {
         auto& e = m_pendingEmbarkations[i];
         auto pit = m_provinces.getProvinceById(e.provinceId);
         if (!pit || pit->countryId != countryId) { ++i; continue; }
         e.turnsRemaining--;
-        if (e.turnsRemaining <= 0) {
-            int totalRemoved = 0;
-            auto aIt = m_provinceArmies.find(e.provinceId);
-            if (aIt != m_provinceArmies.end()) {
-                for (auto& u : aIt->second) {
-                    if (u.countryId == countryId) {
-                        int toRemove = std::min(std::max(0, e.count - totalRemoved), u.count);
-                        u.count -= toRemove;
-                        totalRemoved += toRemove;
-                    }
-                }
-                aIt->second.erase(std::remove_if(aIt->second.begin(), aIt->second.end(),
-                    [](auto& u) { return u.count <= 0; }), aIt->second.end());
-                if (aIt->second.empty()) m_provinceArmies.erase(e.provinceId);
-            }
-            // Assign troops to a boat at this province
-            if (totalRemoved > 0) {
-                auto cit = m_provinceCenters.find(e.provinceId);
-                if (cit != m_provinceCenters.end()) {
-                    float cx = cit->second.x, cy = cit->second.y;
-                    float bestDist = 50.0f * 50.0f;
-                    bool foundBoat = false;
-                    for (auto& ship : m_ships) {
-                        if (ship.countryId != countryId || ship.type != "boat") continue;
-                        int spx, spy;
-                        m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, spx, spy);
-                        float dx = spx - cx, dy = spy - cy;
-                        float d2 = dx*dx + dy*dy;
-                        if (d2 < bestDist) {
-                            ship.crew += totalRemoved / 100;
-                            totalRemoved = 0;
-                            foundBoat = true;
-                            break;
-                        }
-                    }
-                    // No boat nearby — spawn one at the port province's water access
-                    if (!foundBoat) {
-                        int w = m_landSea.getWidth(), h = m_landSea.getHeight();
-                        auto ppIt = m_provincePixels.find(e.provinceId);
-                        if (ppIt != m_provincePixels.end()) {
-                            int dx[4] = {1,-1,0,0}, dy[4] = {0,0,1,-1};
-                            int boatPx = -1;
-                            for (int idx : ppIt->second) {
-                                if (boatPx >= 0) break;
-                                int px = idx % w, py = idx / w;
-                                for (int d = 0; d < 4; ++d) {
-                                    int nx = px + dx[d], ny = py + dy[d];
-                                    if (nx >= 0 && nx < w && ny >= 0 && ny < h && !m_landSea.isLand(nx, ny)) {
-                                        // Check water body is large enough
-                                        std::unordered_set<int> bv;
-                                        std::vector<int> bs = {ny * w + nx};
-                                        bv.insert(ny * w + nx);
-                                        int bc = 0;
-                                        while (!bs.empty() && bc < 200) {
-                                            int bi = bs.back(); bs.pop_back(); bc++;
-                                            int bcy = bi / w, bcx = bi % w;
-                                            for (int bd = 0; bd < 4; ++bd) {
-                                                int bnx = bcx + dx[bd], bny = bcy + dy[bd];
-                                                if (bnx < 0) bnx = w - 1; else if (bnx >= w) bnx = 0;
-                                                if (bny < 0 || bny >= h) continue;
-                                                int bni = bny * w + bnx;
-                                                if (!bv.count(bni) && !m_landSea.isLand(bnx, bny)) {
-                                                    bv.insert(bni); bs.push_back(bni);
-                                                }
-                                            }
-                                        }
-                                        if (bc >= 200) {
-                                            boatPx = ny * w + nx; break;
-                                        }
-                                    }
-                                }
-                            }
-                            if (boatPx >= 0) {
-                                float lon, lat;
-                                m_landSea.pixelToLonLat(boatPx % w, boatPx / w, lon, lat);
-                                NavyShip ns;
-                                ns.lon = lon; ns.lat = lat;
-                                ns.type = "boat"; ns.countryId = countryId;
-                                ns.health = 100; ns.crew = totalRemoved / 100;
-                                m_ships.push_back(ns);
-                                if (m_config.aiDebug)
-                                    printf("[EMBARK] Spawned boat for %lld troops at province %d\n",
-                                       (long long)totalRemoved, e.provinceId);
-                            }
-                        }
-                    }
-                }
-            }
+        if (e.turnsRemaining > 0) { ++i; continue; }
+
+        // 1. Whole crews only; the remainder stays ashore.
+        int avail = 0;
+        auto aIt = m_provinceArmies.find(e.provinceId);
+        if (aIt != m_provinceArmies.end())
+            for (const auto& u : aIt->second)
+                if (u.countryId == countryId) avail += u.count;
+        const int crews = std::min(std::max(0, e.count), avail) / 100;
+        if (crews <= 0) {
+            m_navEmbarkTooSmall++;
             m_pendingEmbarkations.erase(m_pendingEmbarkations.begin() + i);
-        } else ++i;
+            continue;
+        }
+
+        // 2. A boat to put them on, before anything leaves the province.
+        // The harbour's own water: the nav grid's cell by this province. A
+        // landlocked province gets an answer too (navCellNear searches 224 px
+        // in every direction and would happily find a sea beyond a mountain
+        // range), so ask isProvinceCoastal first. Everything below is measured
+        // from this point, not from the province centre.
+        double approachLon = 0.0, approachLat = 0.0;
+        // isProvinceCoastal reads m_provincePixels and answers "no" for every
+        // province while that index is unbuilt -- i.e. in every training and
+        // eval run (the same absent index that stopped boats spawning). A
+        // harbour is coastal by construction, so ask the port table first; the
+        // pixel test stays for the odd non-port coastal province.
+        const bool coastal = (m_provincePorts.count(e.provinceId) > 0 ||
+                              isProvinceCoastal(e.provinceId)) &&
+                             portApproach(e.provinceId, approachLon, approachLat);
+        NavyShip* boat = nullptr;
+        if (coastal) {
+            auto cit = m_provinceCenters.find(e.provinceId);
+            if (cit != m_provinceCenters.end()) {
+                const float cx = cit->second.x, cy = cit->second.y;
+                float bestDist = 50.0f * 50.0f;
+                for (auto& ship : m_ships) {
+                    if (ship.countryId != countryId || ship.type != "boat") continue;
+                    int spx, spy;
+                    m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, spx, spy);
+                    const float dx = spx - cx, dy = spy - cy;
+                    const float d2 = dx * dx + dy * dy;
+                    if (d2 >= bestDist) continue;
+                    // 50 px is less than an isthmus: a hull in the Gulf of Mexico
+                    // is within 50 px of a Pacific-coast province. Same sea body
+                    // as the harbour, or it is not a boat these men can use.
+                    if (!navReachable(ship.lon, ship.lat, approachLon, approachLat)) {
+                        m_navEmbarkWrongSea++;
+                        continue;
+                    }
+                    bestDist = d2; boat = &ship;
+                }
+            }
+        }
+        double spawnLon = approachLon, spawnLat = approachLat;
+        bool canSpawn = false;
+        if (!boat && coastal) {
+            int wx, wy;
+            m_landSea.lonLatToPixel((float)spawnLon, (float)spawnLat, wx, wy);
+            canSpawn = !m_landSea.isLand(wx, wy);
+            // portApproach returns a navigable cell by construction; if this
+            // ever fires the nav grid and the land raster disagree, which is a
+            // different and more interesting bug than a failed embarkation.
+            if (!canSpawn) {
+                m_navGridLandDisagree++;
+                if (m_config.aiDebug)
+                    printf("[EMBARK] cid=%d prov %d: nav grid cell is LAND at (%d,%d) -- grid/raster disagree\n",
+                           countryId, e.provinceId, wx, wy);
+            }
+        }
+        if (!boat && !canSpawn) {
+            m_navEmbarkNoBoat++;
+            if (m_config.aiDebug)
+                printf("[EMBARK] cid=%d prov %d: no boat and no water to spawn one -- order dropped, garrison kept\n",
+                       countryId, e.provinceId);
+            m_pendingEmbarkations.erase(m_pendingEmbarkations.begin() + i);
+            continue;
+        }
+
+        // 3. Only now: exactly crews * 100 units leave the garrison.
+        int toTake = crews * 100, removed = 0;
+        for (auto& u : aIt->second) {
+            if (u.countryId != countryId) continue;
+            const int r = std::min(toTake - removed, u.count);
+            u.count -= r;
+            removed += r;
+            if (removed >= toTake) break;
+        }
+        aIt->second.erase(std::remove_if(aIt->second.begin(), aIt->second.end(),
+            [](auto& u) { return u.count <= 0; }), aIt->second.end());
+        if (aIt->second.empty()) m_provinceArmies.erase(e.provinceId);
+
+        // 4. Aboard.
+        if (boat) {
+            boat->crew += crews;
+        } else {
+            NavyShip ns;
+            ns.lon = spawnLon; ns.lat = spawnLat;
+            ns.type = "boat"; ns.countryId = countryId;
+            ns.health = 100; ns.crew = crews;
+            m_ships.push_back(ns);
+            if (m_config.aiDebug)
+                printf("[EMBARK] Spawned boat for %d troops at province %d\n",
+                       crews * 100, e.provinceId);
+        }
+        m_navMenEmbarked += (long long)crews * 100;
+        m_pendingEmbarkations.erase(m_pendingEmbarkations.begin() + i);
     }
 }
 
@@ -3420,8 +3969,19 @@ void Game::processArmyMovement(int countryId) {
     // snapshot, and the running total is clamped to what is actually there --
     // so orders summing past 100% (nothing stops a mod or the reflexes below
     // from queueing them) share out the army instead of conjuring one.
-    std::unordered_map<int, long long> baseGarrison;   // pid -> troops at turn start
-    std::unordered_map<int, long long> movedOut;       // pid -> troops already sent
+    // KEYED BY PROVINCE **AND KIND**, not by province alone. "50% of the
+    // militia" and "50% of the line infantry" are two orders sharing one
+    // province and two different denominators; on a single per-province key the
+    // second would have taken half of what the first left, which is precisely
+    // the bug the cumulative-share rule below exists to prevent, reintroduced
+    // one level up. Key: province << 4 | (kind + 1), so -1 (the whole garrison)
+    // gets its own slot.
+    auto shareKey = [](int pid, int type) -> long long {
+        return ((long long)pid << 4) | (long long)(type + 1);
+    };
+    std::unordered_map<long long, long long> baseGarrison;  // troops at turn start
+    std::unordered_map<long long, long long> movedOut;      // troops already sent
+    std::unordered_map<long long, int> movedPct;            // share already allocated
 
     // Process move orders: move pct of garrison from source to target
     for (size_t i = 0; i < m_pendingMoveOrders.size(); ) {
@@ -3484,32 +4044,118 @@ void Game::processArmyMovement(int countryId) {
         // Integer arithmetic throughout: a garrison is an int and these run to
         // millions, so `count * pct` in float stops being exact above 2^24 and
         // a 100% order could ask for more men than the province held.
-        auto baseIt = baseGarrison.find(mo.fromProvince);
+        // THE WHOLE GARRISON, ACROSS KINDS. A country holds one stack per
+        // (country, type) in a province now, so "50% of the garrison" is half
+        // of everything it has there -- not half of whichever stack the search
+        // happened to find first, which would have quietly moved only the line
+        // infantry and left the militia standing.
+        // "The whole garrison" or "the militia": mo.troopType is -1 or a kind,
+        // and it decides both what the percentage is a percentage OF and which
+        // stacks the men come out of. An order for a kind the province no
+        // longer holds moves nobody, which is correct -- they died or left.
+        const int wantType = mo.troopType;
+        auto inOrder = [&](const ArmyUnit& u) {
+            return u.countryId == countryId && (wantType < 0 || (int)u.type == wantType);
+        };
+        long long here = 0;
+        for (const auto& u : srcArmies) if (inOrder(u)) here += u.count;
+        if (here <= 0) { m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i); continue; }
+        const long long sk = shareKey(mo.fromProvince, wantType);
+        auto baseIt = baseGarrison.find(sk);
         if (baseIt == baseGarrison.end())
-            baseIt = baseGarrison.emplace(mo.fromProvince, (long long)uIt->count).first;
+            baseIt = baseGarrison.emplace(sk, here).first;
         const long long base = baseIt->second;
-        long long& sent = movedOut[mo.fromProvince];
+        long long& sent = movedOut[sk];
         const int pct = std::clamp(mo.pct, 0, 100);
-        long long toMove = base * pct / 100;
+
+        // ── SHARES OF A GARRISON MUST ADD UP TO THE GARRISON ──
+        //
+        // This was `base * pct / 100` per order, and each order truncated
+        // independently. Divide a garrison in two and both halves round DOWN:
+        // an odd garrison of 100,001 sends 50,000 twice and leaves one man
+        // standing, which the map draws as an army marker reading "<1". Half of
+        // all garrisons are odd, so a player splitting a province in two saw it
+        // about every other time, and reported it as happening consistently.
+        //
+        // The fix is to make the running total exact rather than each share
+        // exact. Each order takes the difference between the cumulative share
+        // up to and including it and the cumulative share before it, so the
+        // truncations telescope: at 100% the sum is floor(base * 100 / 100),
+        // which is the whole garrison, with no remainder to strand.
+        //
+        // Percentages, not men, because the percentages are what the player set
+        // and what the arrows draw -- and a rule about how shares are rounded
+        // has to be expressed in the same terms the player is thinking in.
+        int& cumPct = movedPct[sk];
+        const int nextPct = std::min(100, cumPct + pct);
+        long long toMove = base * nextPct / 100 - base * cumPct / 100;
+        cumPct = nextPct;
+
         if (toMove > base - sent) toMove = base - sent;      // the army is finite
-        if (toMove > (long long)uIt->count) toMove = uIt->count;
+        if (toMove > here) toMove = here;
         // Nothing left to send this turn -- the order stands and tries again
         // next turn, which is what it did before and what a player who queued
         // more than a province holds would expect.
         if (toMove <= 0) { ++i; continue; }
         sent += toMove;
-        uIt->count -= (int)toMove;
-        if (uIt->count <= 0) srcArmies.erase(uIt);
+
+        // Take the share out of every kind in proportion, and remember WHAT
+        // marched: a mixed garrison sends a mixed column.
+        ForceComposition moving;
+        {
+            // THE SHARES TELESCOPE, exactly as they do for the percentages
+            // above and for the same reason -- see the note on cumulative
+            // shares. `count x toMove / here` computed per stack in floating
+            // point loses a man on a large garrison (the product passes 2^53),
+            // and a single soldier's difference cascades through a campaign.
+            // Running the cumulative total in integers makes every share exact
+            // and their sum exactly `toMove`; with one stack it is `toMove`
+            // itself, bit for bit, which is what makes an all-line world
+            // identical to the one before kinds existed.
+            long long seen = 0, allocated = 0;
+            for (auto& u : srcArmies) {
+                if (!inOrder(u) || u.count <= 0) continue;
+                seen += u.count;
+                long long want = toMove * seen / here - allocated;
+                if (want > u.count) want = u.count;
+                if (want < 0) want = 0;
+                u.count   -= (int)want;
+                allocated += want;
+                moving.add(u.type, want);
+            }
+            toMove = moving.total();
+            if (toMove <= 0) { ++i; continue; }
+        }
+        srcArmies.erase(std::remove_if(srcArmies.begin(), srcArmies.end(),
+                                       [](const ArmyUnit& u) { return u.count <= 0; }),
+                        srcArmies.end());
         if (srcArmies.empty()) m_provinceArmies.erase(mo.fromProvince);
+
+        // ── ALREADY FIGHTING HERE? THEN THESE MEN ARE REINFORCEMENTS ──
+        //
+        // Not a second assault. Two assaults on one province in one turn would
+        // each be weighed against the frontage separately, which is a way of
+        // bringing more men to bear than the ground holds -- exactly what the
+        // frontage exists to prevent -- and it is also not what the player
+        // meant. They meant "send more men to that fight".
+        if (Battle* b = battleAt(mo.toProvince, countryId)) {
+            for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) b->men.men[t] += moving.men[t];
+            ++m_battlesReinforced;
+            m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+            continue;
+        }
 
         // One assault, resolved the same way whether the troops walked or
         // landed. See resolveAssault: it fights the WHOLE garrison rather than
         // the first stack it finds, and places the survivors itself.
-        int survivors = 0;
-        const bool took = resolveAssault(countryId, mo.toProvince, (int)toMove, survivors);
+        ForceComposition survivors;
+        // The source province is the fallback: men who never got into the
+        // fight march back to where they came from. See resolveAssault.
+        const bool took = resolveAssault(countryId, mo.toProvince, moving, survivors,
+                                         mo.fromProvince);
         if (m_config.aiDebug && took)
             printf("[BATTLE] cid=%d took prov %d from prov %d with %lld of %lld\n",
-                   countryId, mo.toProvince, mo.fromProvince, (long long)survivors, toMove);
+                   countryId, mo.toProvince, mo.fromProvince, survivors.total(), toMove);
         m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
     }
 }
@@ -3528,6 +4174,11 @@ void Game::processArmyMovement(int countryId) {
 // dangling is an order that silently transfers to whichever hull slid into that
 // slot: a sunk transport's voyage inherited by an unrelated destroyer.
 void Game::forgetShipOrders(int removedIdx) {
+    // The overlay's route cache is keyed by ship index, and every index above
+    // the removed one is about to change meaning. Dropped whole rather than
+    // shifted: it is display state, it costs one BFS per visible order to
+    // rebuild, and a route drawn for the wrong hull is worse than no route.
+    m_shipRoutePreview.clear();
     auto fix = [&](auto& vec, auto refersToRemoved) {
         for (auto it = vec.begin(); it != vec.end(); ) {
             if (refersToRemoved(*it)) { it = vec.erase(it); continue; }
@@ -3582,6 +4233,16 @@ void Game::forgetShipOrders(int removedIdx) {
 // different, because its endpoint was chosen by a person or by the AI rather
 // than by the router, so that one is still walked and clamped at the coast.
 void Game::processNavyMovement(int countryId) {
+    if (std::getenv("OD_BOAT_TRACE") && !m_pendingShipMoveOrders.empty()) {
+        printf("[BOAT] t%d cid=%d ROUTER-ENTER %zu order(s) pending:", m_turnNumber, countryId, m_pendingShipMoveOrders.size());
+        for (const auto& o : m_pendingShipMoveOrders) {
+            const bool ok = o.shipIndex >= 0 && o.shipIndex < (int)m_ships.size();
+            printf(" [ship=%d owner=%d crew=%d planned=%d route=%zu]", o.shipIndex,
+                   ok ? m_ships[o.shipIndex].countryId : -1, ok ? m_ships[o.shipIndex].crew : -1,
+                   o.planned ? 1 : 0, o.route.size());
+        }
+        printf("\n");
+    }
     for (size_t i = 0; i < m_pendingShipMoveOrders.size(); ) {
         auto& mo = m_pendingShipMoveOrders[i];
         if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) { ++i; continue; }
@@ -3604,8 +4265,22 @@ void Game::processNavyMovement(int countryId) {
             mo.planned = true;
             mo.route.clear();
             std::vector<std::pair<double, double>> way;
-            if (navRoute(ship.lon, ship.lat, mo.destLon, mo.destLat, way))
+            const bool routed = navRoute(ship.lon, ship.lat, mo.destLon, mo.destLat, way);
+            if (routed)
                 mo.route = std::move(way);
+            // OD_BOAT_TRACE: which of navRoute's exits fired for a loaded boat
+            // whose reachability test said yes (journal 37c: 158 stuck/80 turns).
+            if (!routed && ship.crew > 0 && std::getenv("OD_BOAT_TRACE")) {
+                int sx, sy, gx, gy;
+                m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
+                m_landSea.lonLatToPixel((float)mo.destLon, (float)mo.destLat, gx, gy);
+                const int a = m_nav.ready() ? navCellNear(m_nav, sx, sy) : -2;
+                const int b = m_nav.ready() ? navCellNear(m_nav, gx, gy) : -2;
+                printf("[BOAT] t%d cid=%d ship=%d NOROUTE grid=%d startCell=%d goalCell=%d sameComponent=%d boatOnLand=%d\n",
+                       m_turnNumber, countryId, mo.shipIndex, m_nav.ready() ? 1 : 0, a, b,
+                       (a >= 0 && b >= 0 && m_nav.component[a] == m_nav.component[b]) ? 1 : 0,
+                       m_landSea.isLand(sx, sy) ? 1 : 0);
+            }
             // The destination itself is always the last leg. navRoute's final
             // waypoint is the water cell NEAREST the destination, which for a
             // port approach is the same point and for a hand-picked one is up
@@ -3641,19 +4316,106 @@ void Game::processNavyMovement(int countryId) {
         while (budget > 1e-9 && !mo.route.empty()) {
             const double legLon = mo.route.front().first;
             const double legLat = mo.route.front().second;
-            const double dLon = legLon - ship.lon, dLat = legLat - ship.lat;
+            // Wrapped: see Game::lonDelta. Both the LENGTH and the DIRECTION
+            // come from this, so an antimeridian leg is now a short hop east
+            // rather than a voyage west around the world.
+            const double dLon = lonDelta(ship.lon, legLon), dLat = legLat - ship.lat;
             const double legDist = std::sqrt(dLon * dLon + dLat * dLat);
             if (legDist < 1e-9) { mo.route.erase(mo.route.begin()); continue; }
 
             const bool finalLeg = (mo.route.size() == 1);
             const double take = std::min(budget, legDist);
             want += take;
+            // A SHORT HOP ONTO THE GRID IS NOT A COASTAL CRAWL. The route's
+            // waypoints are navigable cell centres, but the hull may sit at a
+            // coastal pixel with a spit of land between it and its own cell;
+            // stepped pixel by pixel that leg moves zero, the skip rule burns
+            // its four skips on the next legs, and the order dies as "stuck"
+            // (71 of 100 loaded-boat orders per 80 turns, journal 37f, with
+            // navRoute never failing). A leg no longer than two cells to a
+            // non-final waypoint is taken as a jump, the way a completed
+            // intermediate leg already is; the land test keeps guarding the
+            // long legs and the final approach, where it means something.
+            {
+                // Eight cells, not two: navCellNear searches r = 0..7 cells, so a
+                // hull in water the grid does not cover (a bay narrower than a
+                // cell) can be up to eight cells from the route's first
+                // waypoint, and the straight leg to it crosses the bay's shore.
+                // Every later leg is one cell to the next, so only the grid
+                // entry can be this long (v10 check: stuck legs of 9.5-12.9
+                // cells, hull on water, first step on water).
+                // Sixteen cells and SAILED BY BUDGET, not completed in one turn:
+                // the observed entry legs are 9.5-12.9 cells (13-18 degrees),
+                // longer than a hull's 8.8-degree turn, so a hop that must
+                // finish the leg never fired (v10.1 check identical to v10).
+                // The hull is in real water the grid cannot see and the
+                // waypoint is a navigable cell, so this leg is taken straight
+                // without the coast stop, as far as the budget allows.
+                // ...AND EVERY PLANNED LEG BETWEEN CELLS. The extended trace
+                // (48 of 48 stuck orders): hull on water, route planned, and the
+                // router's own first stride along the leg on LAND -- the straight
+                // line between two navigable cell centres clips a land corner,
+                // which on a 32-px grid is ordinary, and the coast stop treats
+                // it as a wall. A planned leg to a non-final waypoint is sailed
+                // by budget; the pixel-level coast stop keeps the final approach
+                // and unplanned straight-line fallbacks, where it means something.
+                const double hopDeg = 16.0 * 360.0 * (double)m_nav.cell /
+                                      std::max(1.0, (double)m_landSea.getWidth());
+                if (!finalLeg && mo.route.size() > 1 && (mo.planned || legDist <= hopDeg)) {
+                    const double f = take / legDist;
+                    // WRAPPED. This is the one mover that takes its leg on
+                    // trust -- no coast walk, by design, because a planned leg
+                    // between two navigable cells clips land corners that the
+                    // pixel test would read as a wall. That trust is fine for
+                    // the land test and fatal for the arithmetic: with a
+                    // correctly-signed dLon a hull at 179E steps to 182E, which
+                    // is off the map, and every later lookup reads whatever is
+                    // at that coordinate. It measured as eleven hulls "on land"
+                    // in an eval that had never reported one.
+                    double nlon = wrapLon(ship.lon + dLon * f), nlat = ship.lat + dLat * f;
+                    // A TRUSTED LEG MAY BE CROSSED, BUT NOT PARKED ON.
+                    //
+                    // The leg is sailed on trust because the straight line
+                    // between two navigable cells clips land corners that the
+                    // pixel test would read as a wall -- that is the whole
+                    // point of this branch, and crossing such a corner mid-leg
+                    // is fine. ENDING THE TURN on one is not: the hull sits on
+                    // land until it next moves, and every reader of the world
+                    // sees a ship in a field.
+                    //
+                    // It only became reachable once the antimeridian fix let
+                    // hulls actually traverse their legs -- before, a wrapped
+                    // leg measured 359 degrees, f was a rounding error, and the
+                    // hull never left the water it was already in. The eval's
+                    // beached invariant caught it immediately: 0 hulls on land
+                    // in every run before, 19 after.
+                    //
+                    // So the crossing stands and only the RESTING PLACE is
+                    // checked: walk back along the leg to the last water. The
+                    // leg's own start is water, so this always terminates.
+                    if (m_landSea.isLand((float)nlon, (float)nlat)) {
+                        const int BACK = 24;
+                        for (int k = BACK - 1; k >= 0; --k) {
+                            const double bt = f * (double)k / (double)BACK;
+                            const double bl = wrapLon(ship.lon + dLon * bt);
+                            const double ba = ship.lat + dLat * bt;
+                            if (!m_landSea.isLand((float)bl, (float)ba)) {
+                                nlon = bl; nlat = ba; break;
+                            }
+                        }
+                    }
+                    ship.lon = nlon; ship.lat = nlat;
+                    budget -= take;
+                    if (take >= legDist - 1e-9) { mo.route.erase(mo.route.begin()); continue; }
+                    break;                          // partial entry leg ends the turn
+                }
+            }
 
             if (!finalLeg && take >= legDist - 1e-9) {
                 // A whole router leg. Its endpoint is a water pixel the graph
                 // chose, so the hull lands at sea by construction and the
                 // chord between two adjacent cells is the router's business.
-                ship.lon = legLon; ship.lat = legLat;
+                ship.lon = wrapLon(legLon); ship.lat = legLat;
                 budget -= legDist;
                 mo.route.erase(mo.route.begin());
                 continue;
@@ -3667,7 +4429,10 @@ void Game::processNavyMovement(int countryId) {
             double bestLon = ship.lon, bestLat = ship.lat;
             for (int k = 1; k <= STEPS; ++k) {
                 const double t = tEnd * (double)k / (double)STEPS;
-                const double lon = ship.lon + dLon * t;
+                // wrapLon because a wrapped dLon can carry the sample past
+                // 180; isLand is asked about a real point on the map, not a
+                // longitude of 181.
+                const double lon = wrapLon(ship.lon + dLon * t);
                 const double lat = ship.lat + dLat * t;
                 if (!m_landSea.isLand((float)lon, (float)lat)) {
                     bestLon = lon; bestLat = lat;
@@ -3694,14 +4459,14 @@ void Game::processNavyMovement(int countryId) {
             // to step over a local obstruction and not to let a fleet walk its
             // whole route in straight lines across a continent -- and it cannot
             // cheat in any case: every position is still clamped to water.
-            const double moved = std::hypot(bestLon - ship.lon, bestLat - ship.lat);
+            const double moved = seaDistanceDeg(ship.lon, ship.lat, bestLon, bestLat);
             if (moved < legDist * 1e-3 && mo.route.size() > 1 && skips < MAX_SKIPS) {
                 skips++;
                 mo.route.erase(mo.route.begin());
                 continue;                           // same budget, next waypoint
             }
 
-            ship.lon = bestLon; ship.lat = bestLat;
+            ship.lon = wrapLon(bestLon); ship.lat = bestLat;
             if (take >= legDist - 1e-9) mo.route.erase(mo.route.begin());
             budget = 0.0;                           // partial legs end the turn
             break;
@@ -3735,6 +4500,35 @@ void Game::processNavyMovement(int countryId) {
         // which skips ships that already have an order, never reconsiders it.
         const bool arrived = mo.route.empty();
         const bool stuck   = (got < 1e-6);
+        // Loaded boats that never arrive are the "parked out of landing
+        // range" of the amphibious eval line: a stuck order is erased here,
+        // the reflex re-issues it next turn, and it sticks again. Counted so
+        // the pathing failure is visible next to the landing rate.
+        if (ship.crew > 0) { if (stuck) m_navBoatMovesStuck++; else if (arrived) m_navBoatMovesArrived++; }
+        // OD_BOAT_TRACE: anatomy of a stuck loaded boat -- the first leg's
+        // length in cells, the route size, and whether the first step from
+        // the hull is a land pixel (the two-cell hop never fired, journal 37i).
+        if (ship.crew > 0 && stuck && std::getenv("OD_BOAT_TRACE") && !mo.route.empty()) {
+            const double lLon = mo.route.front().first - ship.lon, lLat = mo.route.front().second - ship.lat;
+            const double legDeg = std::sqrt(lLon * lLon + lLat * lLat);
+            const double cellDeg = 360.0 * (double)m_nav.cell / std::max(1.0, (double)m_landSea.getWidth());
+            const double t1 = std::min(1.0, 0.02 / std::max(1e-9, legDeg));
+            const bool firstStepLand = m_landSea.isLand((float)(ship.lon + lLon * t1), (float)(ship.lat + lLat * t1));
+            // Which leg sticks: the router's own first step along it (a
+            // 32nd of the turn's take, the same stride the coast-stop uses),
+            // and whether the hull is within one cell of a grid waypoint --
+            // i.e. whether this is still an entry leg or a leg between cells.
+            const double stride = std::min(1.0, (std::min(shipMaxRangeDeg(ship), legDeg) / std::max(1e-9, legDeg)) / 32.0);
+            const bool routerStepLand = m_landSea.isLand((float)(ship.lon + lLon * stride), (float)(ship.lat + lLat * stride));
+            printf("[BOAT] t%d cid=%d ship=%d STUCK leg=%.2fdeg (%.1f cells) route=%zu firstStepLand=%d routerStepLand=%d hullOnLand=%d planned=%d\n",
+                   m_turnNumber, countryId, mo.shipIndex, legDeg, legDeg / std::max(1e-9, cellDeg), mo.route.size(),
+                   firstStepLand ? 1 : 0, routerStepLand ? 1 : 0,
+                   m_landSea.isLand((float)ship.lon, (float)ship.lat) ? 1 : 0, mo.planned ? 1 : 0);
+        }
+        if (ship.crew > 0 && std::getenv("OD_BOAT_TRACE"))
+            printf("[BOAT] t%d cid=%d ship=%d ROUTER got=%.3f route=%zu arrived=%d stuck=%d at (%.2f,%.2f) dest (%.2f,%.2f)\n",
+                   m_turnNumber, countryId, mo.shipIndex, got, mo.route.size(), arrived ? 1 : 0, stuck ? 1 : 0,
+                   ship.lon, ship.lat, mo.destLon, mo.destLat);
         if (arrived || stuck) m_pendingShipMoveOrders.erase(m_pendingShipMoveOrders.begin() + i);
         else ++i;
     }
@@ -3831,6 +4625,9 @@ void Game::cleanupSunkShips() {
     // Remove all ships with countryId == UNC_CID (sunk/scrapped) and shift pending order indices
     for (int i = (int)m_ships.size() - 1; i >= 0; i--) {
         if (m_ships[i].countryId == UNC_CID) {
+            if (std::getenv("OD_BOAT_TRACE"))
+                printf("[BOAT] t%d SUNK-ERASE ship=%d crew=%d (ships %zu -> %zu)\n",
+                       m_turnNumber, i, m_ships[i].crew, m_ships.size(), m_ships.size() - 1);
             m_ships.erase(m_ships.begin() + i);
             forgetShipOrders(i);
         }
@@ -3896,6 +4693,37 @@ void Game::eliminateDefeatedCountries() {
                 auto colIt = rels.find(c.isoA3);
                 if (colIt != rels.end()) colIt->second = CountryRelation{};
             }
+
+            // ── AND ITS CLAIMS DIE WITH IT ──
+            //
+            // Struck out for exactly the reason the treaties above are: a
+            // state with no territory is not pressing anybody for land, and a
+            // revived country comes back to a clean slate.
+            //
+            // This was done for REBELS and not for map countries, so conquering
+            // a neighbour left its claims on the board for the rest of the
+            // game. Reported by a player who destroyed Mexico and still had a
+            // dozen Mexican claims listed against their provinces.
+            //
+            // IT IS NOT COSMETIC. getProvinceRebellionChance adds claimUnrest
+            // for every foreign claim on a province -- 2 points, or 6 while at
+            // war with the claimant -- and cidForIso still resolves a
+            // conquered country, so every province a dead state had ever
+            // claimed carried permanent unrest from a corpse. The player could
+            // see the claims and had no way at all to answer them: the one
+            // country that could drop them no longer existed.
+            m_claims.erase(c.isoA3);
+            for (auto& [pid, isos] : m_claimsByProvince)
+                isos.erase(std::remove(isos.begin(), isos.end(), c.isoA3), isos.end());
+            // Statements a dead country made, or that were made to it, can no
+            // longer be caught out by anybody's conduct. SpokenClaim names
+            // three parties, so all three are checked.
+            m_openClaims.erase(
+                std::remove_if(m_openClaims.begin(), m_openClaims.end(),
+                    [&](const SpokenClaim& sc) {
+                        return sc.speakerIso == c.isoA3 || sc.hearerIso == c.isoA3 ||
+                               sc.aboutIso == c.isoA3;
+                    }), m_openClaims.end());
             // ...and nothing still queued in their name.
             m_pendingDiplomaticActions.erase(
                 std::remove_if(m_pendingDiplomaticActions.begin(),
@@ -4019,6 +4847,9 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
     if (attackerIso.empty() || defenderIso.empty() || attackerIso == defenderIso) return;
     CountryRelation& fwd = m_relations[attackerIso][defenderIso];
     if (fwd.war) return; // already at war — nothing to do, no double penalties
+    // ── A PACT BROKEN BY A DECLARATION IS A BETRAYAL, AND IT COSTS ──
+    // Before this the flag was simply cleared. See CRED_HIT_PACT.
+    if (fwd.nonAggression) loseCredibility(attackerIso, defenderIso, CRED_HIT_PACT);
     fwd.war = true;
     fwd.alliance = false;
     fwd.nonAggression = false;
@@ -4150,8 +4981,59 @@ std::string Game::diploDisplayName(const std::string& iso) const {
     return iso;
 }
 
+std::vector<std::string> Game::callableFriends(int countryId) const {
+    std::vector<std::string> out;
+    const Country* me = m_countries.getCountry(countryId);
+    if (!me) return out;
+    const std::string myIso = me->isoA3;
+
+    // At war with anybody? There is nothing to call anyone INTO otherwise.
+    std::unordered_set<std::string> enemies;
+    auto myRels = m_relations.find(myIso);
+    if (myRels != m_relations.end())
+        for (const auto& [iso, rel] : myRels->second) if (rel.war) enemies.insert(iso);
+    for (const auto& [iso, targets] : m_relations) {
+        auto it = targets.find(myIso);
+        if (it != targets.end() && it->second.war) enemies.insert(iso);
+    }
+    if (enemies.empty()) return out;
+
+    // Allies and guarantors, from whichever side of the pair recorded the pact.
+    std::set<std::string> friends;
+    if (myRels != m_relations.end())
+        for (const auto& [iso, rel] : myRels->second)
+            if (rel.alliance) friends.insert(iso);
+    for (const auto& [iso, targets] : m_relations) {
+        auto it = targets.find(myIso);
+        if (it == targets.end()) continue;
+        if (it->second.alliance || it->second.guarantee) friends.insert(iso);
+    }
+
+    for (const std::string& iso : friends) {
+        if (iso == myIso || enemies.count(iso)) continue;
+        const int cid = cidForIso(iso);
+        if (cid < 0 || cid >= SPC_CID) continue;
+        // Already in every war of ours? Then there is nothing to ask for.
+        bool anyToJoin = false;
+        for (const std::string& e : enemies)
+            if (e != iso && !hasRelation(iso, e, &CountryRelation::war)) { anyToJoin = true; break; }
+        if (!anyToJoin) continue;
+        const long long key = ((long long)countryId << 24) | (long long)cid;
+        auto cd = m_callToArmsCooldown.find(key);
+        if (cd != m_callToArmsCooldown.end() && m_turnNumber < cd->second) continue;
+        out.push_back(iso);
+    }
+    // Sorted: a list an AI picks from has to replay the same way.
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
-    const Country* me = m_countries.getCountry(m_playerCountryId);
+    return requestAllyJoinWar(m_playerCountryId, allyIso, outWhy);
+}
+
+bool Game::requestAllyJoinWar(int callerCid, const std::string& allyIso, std::string& outWhy) {
+    const Country* me = m_countries.getCountry(callerCid);
     if (!me || allyIso.empty()) { outWhy = "No country selected."; return false; }
     const std::string myIso = me->isoA3;
 
@@ -4160,8 +5042,13 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
     // Either direction: the panel offers the button on a reverse-only alliance
     // (a scenario writing MCK->JPN and nothing back), and refusing here on the
     // same relation the button was drawn from is just a button that lies.
-    if (!hasRelation(myIso, allyIso, &CountryRelation::alliance)) {
-        outWhy = "Only an ally can be called to arms.";
+    // An ally OR a guarantor. A guarantee that was signed after the shooting
+    // started never chains -- declareWar is the only place guarantees fire --
+    // so without this the pact is worth nothing at all in the war it was signed
+    // for, which is the war it was obviously signed for.
+    if (!hasRelation(myIso, allyIso, &CountryRelation::alliance) &&
+        !hasRelation(allyIso, myIso, &CountryRelation::guarantee)) {
+        outWhy = "Only an ally or a guarantor can be called to arms.";
         return false;
     }
 
@@ -4208,7 +5095,7 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
 
     // The same cooldown the automatic calls use, and the same key, so a player
     // ask and a defensive ask cannot both land on one ally in the same breath.
-    const long long key = ((long long)m_playerCountryId << 24) | (long long)allyCid;
+    const long long key = ((long long)callerCid << 24) | (long long)allyCid;
     auto cd = m_callToArmsCooldown.find(key);
     if (cd != m_callToArmsCooldown.end() && m_turnNumber < cd->second) {
         outWhy = "You have already called them recently.";
@@ -4228,14 +5115,18 @@ bool Game::requestAllyJoinWar(const std::string& allyIso, std::string& outWhy) {
         return false;
     }
     m_callToArmsCooldown[key] = m_turnNumber + CALL_TO_ARMS_COOLDOWN_TURNS;
-    if (m_ai) m_ai->noteCallIssued(m_playerCountryId);
+    if (m_ai) m_ai->noteCallIssued(callerCid);
 
-    addNotification(TextFormat(T("You call %s to arms against %s"),
-                               diploDisplayName(allyIso).c_str(),
-                               diploDisplayName(bestEnemy).c_str()),
-                    Color{200, 200, 240, 255}, 7.0f);
-    printf("[WAR] %s calls its ally %s to arms against %s (player)\n",
-           myIso.c_str(), allyIso.c_str(), bestEnemy.c_str());
+    // Only the player is told, and only when it is the player asking: a
+    // notification for somebody else's diplomacy is noise on the human's screen.
+    if (callerCid == m_playerCountryId)
+        addNotification(TextFormat(T("You call %s to arms against %s"),
+                                   diploDisplayName(allyIso).c_str(),
+                                   diploDisplayName(bestEnemy).c_str()),
+                        Color{200, 200, 240, 255}, 7.0f);
+    printf("[WAR] %s calls %s to arms against %s (%s)\n",
+           myIso.c_str(), allyIso.c_str(), bestEnemy.c_str(),
+           callerCid == m_playerCountryId ? "player" : "deliberate");
     outWhy.clear();
     return true;
 }
@@ -4320,6 +5211,23 @@ bool Game::hasPendingDeclaration(const std::string& sourceIso) const {
     return false;
 }
 
+int Game::countPendingDeclarations(const std::string& sourceIso) const {
+    int n = 0;
+    for (const auto& da : m_pendingDiplomaticActions)
+        if (da.sourceIso == sourceIso && da.action == "declare_war") ++n;
+    return n;
+}
+
+int Game::warDeclarationLimit(int countryId) const {
+    if (countryId <= 0) return WAR_DECLARATIONS_BASE;
+    const float extra = getTotalEffect("warDeclarations", countryId);
+    const int limit = WAR_DECLARATIONS_BASE + (int)std::lround(extra);
+    // Never below one: a doctrine that took the last declaration away would
+    // make a country unable to go to war at all, which is not a trade-off, it
+    // is a broken state a player could enact by accident.
+    return std::max(1, limit);
+}
+
 bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
     if (da.sourceIso.empty() || da.targetIso.empty() ||
         da.sourceIso == da.targetIso) return false;
@@ -4332,7 +5240,16 @@ bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
                               da.action == "apply_trade" || da.action == "cancel");
     if (!bookkeeping) {
         if (hasPendingDiplomacy(da.sourceIso, da.targetIso)) return false;
-        if (da.action == "declare_war" && hasPendingDeclaration(da.sourceIso)) return false;
+        if (da.action == "declare_war") {
+            // Against the country's OWN limit, which doctrine may raise. See
+            // Game::warDeclarationLimit for why this is a count and not the
+            // boolean it used to be.
+            int srcCid = 0;
+            for (const auto& [cid, c] : m_countries.getAll())
+                if (c.isoA3 == da.sourceIso) { srcCid = cid; break; }
+            if (countPendingDeclarations(da.sourceIso) >= warDeclarationLimit(srcCid))
+                return false;
+        }
     }
 
     // The pair is checked in ONE direction only. Both sides offering each other
@@ -4446,7 +5363,35 @@ void Game::processDiplomaticRequests() {
     }
 
     for (size_t i = 0; i < m_pendingDiplomaticActions.size(); ) {
-        auto& da = m_pendingDiplomaticActions[i];
+        // A COPY, BECAUSE PROCESSING AN ACTION CAN QUEUE MORE OF THEM.
+        //
+        // This was a reference into the very vector the loop is walking, and
+        // resolving a declaration grows it: declareWar calls issueCallsToArms,
+        // which calls queueDiplomaticAction, which push_backs onto
+        // m_pendingDiplomaticActions. A push_back that reallocates leaves the
+        // reference dangling, and `da` is read afterwards -- the [DIPLO] trace
+        // reads three strings out of it once the action has been applied.
+        //
+        // Reading freed memory is undefined behaviour, and the shape of it is
+        // nasty: it depends on whether the vector happened to have spare
+        // capacity, so it fires on some turns and not others with no pattern a
+        // player could describe. That is worth stating because the game already
+        // has a rule that LOOKS like a workaround for it -- one war declaration
+        // per country per turn -- and the rule does not actually prevent it: a
+        // single declaration with two allies to call queues two actions and can
+        // reallocate just the same.
+        //
+        // THERE IS A SECOND INSTANCE of the same fault a few lines down: the
+        // request-to-player branch ERASES element i and then reads `da` on the
+        // next line to print the trace. Erase destroys or moves that element,
+        // so the reference was dangling there too, on a path that runs whenever
+        // an AI asks the player for anything.
+        //
+        // `da` is read 146 times in this loop and written once -- the
+        // turnsRemaining countdown, which is written back to the queue entry
+        // explicitly below, because the copy is ours and the entry is what
+        // survives to next turn.
+        PendingDiplomaticAction da = m_pendingDiplomaticActions[i];
         // Skip if this action involves the player and is a request — handled via popup instead
         bool isRequestToPlayer = !playerIso.empty() && da.targetIso == playerIso
             && da.sourceIso != playerIso
@@ -4504,6 +5449,16 @@ void Game::processDiplomaticRequests() {
                 if (!terms.theirProvs.empty()) summary += TextFormat(T("  Demands %zu province(s)\n"), terms.theirProvs.size());
                 if (!terms.ourDropClaims.empty()) summary += TextFormat(T("  Drops %zu own claim(s)\n"), terms.ourDropClaims.size());
                 if (!terms.theirDropClaims.empty()) summary += TextFormat(T("  Demands you drop %zu claim(s)\n"), terms.theirDropClaims.size());
+                // Named in the summary line too, not only in the detail panel:
+                // this is the text a player skims before deciding to open it.
+                if (!terms.ourReleaseTag.empty())
+                    summary += TextFormat(T("  Frees %s on %zu province(s)\n"),
+                                          od::i18n::properName(terms.ourReleaseTag).c_str(),
+                                          terms.ourReleaseProvs.size());
+                if (!terms.theirReleaseTag.empty())
+                    summary += TextFormat(T("  Demands you free %s on %zu province(s)\n"),
+                                          od::i18n::properName(terms.theirReleaseTag).c_str(),
+                                          terms.theirReleaseProvs.size());
                 if (summary.back() == '\n') summary.pop_back();
                 pushPopup(PopupType::CEASEFIRE_REQUEST,
                           isTrade ? "Trade Offer" : "Ceasefire Offer", summary,
@@ -4556,7 +5511,10 @@ void Game::processDiplomaticRequests() {
             continue;
         }
 
-        da.turnsRemaining--;
+        // The countdown lives on the QUEUE ENTRY, not on our copy; the copy is
+        // refreshed from it so the rest of the body reads the new value.
+        --m_pendingDiplomaticActions[i].turnsRemaining;
+        da.turnsRemaining = m_pendingDiplomaticActions[i].turnsRemaining;
         if (da.turnsRemaining <= 0) {
             // Requests aimed at an AI country go through its diplomacy net
             // instead of being auto-accepted.
@@ -4742,6 +5700,9 @@ void Game::processDiplomaticRequests() {
                 rt.nonAggression = true;
                 m_relations[da.targetIso][da.sourceIso].nonAggression = true;
             } else if (da.action == "break_nap") {
+                // Breaking it openly costs the same as breaking it by attack:
+                // the promise is the thing being broken either way.
+                if (rt.nonAggression) loseCredibility(da.sourceIso, da.targetIso, CRED_HIT_PACT);
                 rt.nonAggression = false;
                 m_relations[da.targetIso][da.sourceIso].nonAggression = false;
             } else if (da.action == "request_ceasefire") {
@@ -4889,7 +5850,12 @@ void Game::processDiplomaticRequests() {
                                 }
                                 return sum;
                             };
+                            // Same asymmetry the receiver's valuation uses: a
+                            // release costs the country doing it and is worth a
+                            // quarter to the other side. See AISystem.
                             const float srcGain = landGold(tt.theirProvs) - landGold(tt.ourProvs)
+                                                - landGold(tt.ourReleaseProvs)
+                                                + 0.25f * landGold(tt.theirReleaseProvs)
                                                 + (float)tt.theirMoney - (float)tt.ourMoney;
                             const int srcCid = cidForIso(da.sourceIso);
                             if (srcCid >= 0) m_ai->noteTradeOutcome(srcCid,  srcGain);
@@ -5101,6 +6067,14 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
         if ((size_t)pid < m_provinceCountryLookup.size())
             m_provinceCountryLookup[pid] = toCid;
         reindexProvinceOwner(pid, fromCid, toCid);
+        // EVERY PROVINCE A COUNTRY OWNS SITS IN EXACTLY ONE OF ITS DISTRICTS.
+        // Ground that changes hands would otherwise stay in the loser's
+        // district -- policed with their budget, on somebody else's land -- and
+        // arrive in none of the winner's, policed with nobody's. Both sides,
+        // because the invariant is about both. No-ops for an undivided country,
+        // which is most of them.
+        reconcileDistricts(fromCid);
+        reconcileDistricts(toCid);
         // Update per-pixel country array + move countryPixels
         auto ppIt = m_provincePixels.find(pid);
         if (ppIt != m_provincePixels.end()) {
@@ -5181,6 +6155,43 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         }
     }
 
+    // ── NATIONS SET FREE BY THE TREATY ──
+    //
+    // AFTER the cessions above, deliberately: a province that changes hands in
+    // the same settlement belongs to its new owner before anyone asks whether
+    // it can be released, and doing it the other way round would let a country
+    // free ground it is about to hand over anyway.
+    //
+    // releaseNation re-checks everything -- ownership, the minimum size, the
+    // maximum share -- and refuses the whole release rather than carrying out
+    // half of it. That matters more here than on the button it was written
+    // for: these provinces were chosen when the offer was made, and a front
+    // that moved in between is exactly the case its checks exist for. A
+    // refusal leaves the rest of the treaty standing, which is the right
+    // answer: the war still ends, the money still moves, and the nation
+    // that could not be freed simply is not.
+    auto freeNation = [&](int ownerCid, const std::string& tag,
+                          const std::vector<int>& provs, const char* who) {
+        if (tag.empty() || provs.empty() || ownerCid <= 0) return;
+        ReleaseCandidate rc;
+        rc.minority = tag;
+        rc.provinces = provs;
+        std::sort(rc.provinces.begin(), rc.provinces.end());
+        for (int pid : rc.provinces) {
+            auto popIt = m_provincePopulations.find(pid);
+            if (popIt != m_provincePopulations.end()) rc.population += popIt->second;
+        }
+        const int newCid = releaseNation(ownerCid, rc);
+        if (newCid > 0)
+            printf("[CEASEFIRE] %s releases %s on %zu province(s)\n",
+                   who, tag.c_str(), provs.size());
+        else
+            printf("[CEASEFIRE] %s could NOT release %s -- the ground no longer "
+                   "supports it; the rest of the treaty stands\n", who, tag.c_str());
+    };
+    freeNation(srcCid, terms.ourReleaseTag,   terms.ourReleaseProvs,   sourceIso.c_str());
+    freeNation(tgtCid, terms.theirReleaseTag, terms.theirReleaseProvs, targetIso.c_str());
+
     auto dropClaim = [&](const std::string& claimantIso, int pid) {
         revokeClaim(claimantIso, pid);
         printf("[CEASEFIRE] %s dropped claim on province %d\n", claimantIso.c_str(), pid);
@@ -5223,7 +6234,7 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     // exactly one regeneration per turn, on the same !m_aiTraining condition,
     // and it runs after processDiplomaticRequests — so interactive play still
     // sees the new borders on the same turn.
-    if (!m_aiTraining) generatePoliticalTexture();
+    if (!m_aiTraining) m_politicalRepaintPending = true;
 
     // The war is over, so nobody's troops may still be standing on the other's
     // soil. Done last, after every province transfer above, so ownership is
@@ -5386,12 +6397,17 @@ void Game::transferCountryPixels(int pid, int newOwner, int oldOwner) {
 }
 
 // === addTroopsTo ===
-void Game::addTroopsTo(int pid, int cid, int count) {
+void Game::addTroopsTo(int pid, int cid, int count, TroopType type) {
     if (count <= 0 || cid <= 0) return;
     auto& units = m_provinceArmies[pid];
+    // MERGED ON COUNTRY AND TYPE, not country alone. A province holds one entry
+    // per (country, type) now, so a country with militia and mechanised in the
+    // same place has two -- and merging by country would quietly turn one kind
+    // of soldier into another, which is the sort of bug that shows up as a
+    // balance complaint months later rather than as a crash.
     for (auto& u : units)
-        if (u.countryId == cid) { u.count += count; return; }
-    ArmyUnit nu; nu.countryId = cid; nu.count = count;
+        if (u.countryId == cid && u.type == type) { u.count += count; return; }
+    ArmyUnit nu; nu.countryId = cid; nu.count = count; nu.type = type;
     units.push_back(nu);
 }
 
@@ -5438,10 +6454,31 @@ bool Game::mayEnterProvince(int cid, int pid) const {
 
 // === captureProvince ===
 void Game::captureProvince(int newOwner, int pid, bool contested) {
+    // OD_ECON_TRACE=<cid>: every province that country takes or loses, so a
+    // ledger step can be tied to the map event that caused it.
+    {
+        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        if (traceCid >= 0) {
+            const Province* p0 = m_provinces.getProvinceById(pid);
+            const int oldOwner = p0 ? p0->countryId : -1;
+            if (oldOwner == traceCid || newOwner == traceCid)
+                fprintf(stderr, "[CAPTURE] turn %d pid=%d %d -> %d%s\n", m_turnNumber, pid, oldOwner, newOwner,
+                        contested ? " (contested)" : "");
+        }
+    }
     Province* p = m_provinces.getProvinceById(pid);
     if (!p || newOwner <= 0) return;
     const int prevOwner = p->countryId;
     if (prevOwner == newOwner) return;
+
+    // The ground has moved, so both sides' supply routes have. Only these two
+    // countries are forgotten rather than the whole cache: a busy turn takes
+    // hundreds of provinces, and rebuilding every country's map on each one
+    // would cost more than the rule is worth. Everyone else's routes are
+    // unchanged by a province passing between two other countries -- except an
+    // ally supplying ACROSS it, which is a smaller error than a stale answer
+    // for the two countries actually fighting, and it is corrected next turn.
+    invalidateSupply(prevOwner, newOwner);
 
     if (m_ai) m_ai->noteConquest(newOwner, prevOwner, contested);
     noteRealConquest(newOwner, prevOwner);
@@ -5452,6 +6489,28 @@ void Game::captureProvince(int newOwner, int pid, bool contested) {
     if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
         m_provinceCountryLookup[pid] = newOwner;
     reindexProvinceOwner(pid, prevOwner, newOwner);
+
+    // ── AN ORDER DIES WITH THE GROUND IT WAS GIVEN FOR ──
+    //
+    // A disband order names a province and nothing else, and
+    // processDisbandOrders SKIPS one whose province is not currently owned by
+    // the country being processed -- it does not erase it. So an order queued
+    // over a province that was then lost survived indefinitely, and fired on
+    // the NEW garrison if the province was ever retaken, arbitrarily many turns
+    // later: a player recaptures a province and the army that took it disbands
+    // itself for a decision somebody made before the province changed hands
+    // twice.
+    //
+    // Move orders out of the province are dropped for the same reason: they
+    // were an instruction about an army that is no longer there.
+    m_pendingDisbandOrders.erase(
+        std::remove_if(m_pendingDisbandOrders.begin(), m_pendingDisbandOrders.end(),
+            [pid](const PendingDisbandOrder& d) { return d.provinceId == pid; }),
+        m_pendingDisbandOrders.end());
+    m_pendingMoveOrders.erase(
+        std::remove_if(m_pendingMoveOrders.begin(), m_pendingMoveOrders.end(),
+            [pid](const PendingMoveOrder& mo) { return mo.fromProvince == pid; }),
+        m_pendingMoveOrders.end());
     transferCountryPixels(pid, newOwner, prevOwner);
     // Conquered ground: its minorities like the new government rather less.
     auto minIt = m_provinceMinorities.find(pid);
@@ -5466,6 +6525,144 @@ void Game::captureProvince(int newOwner, int pid, bool contested) {
             grantClaim(prevC->isoA3, pid);
     if (const Country* conqueror = m_countries.getCountry(newOwner))
         revokeClaim(conqueror->isoA3, pid);
+}
+
+// === weighAssault ===
+//
+// Everything both a fresh assault and a battle round have to agree about. See
+// Game::AssaultPowers: the point of it existing is that there is one of it.
+Game::AssaultPowers Game::weighAssault(int attackerCid, int pid, const ForceComposition& attackers,
+                                       bool fromTheSea) const {
+    AssaultPowers w;
+    const Province* dst = m_provinces.getProvinceById(pid);
+    if (!dst) return w;
+
+    float fortDef = 0;
+    auto indIt = m_provinceIndustry.find(pid);
+    if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
+    const double fortMul = 1.0 + fortDef / 100.0;
+    w.atkMod = 1.0 + getTotalEffect("armyAtkPct", attackerCid) / 100.0;
+
+    auto armIt = m_provinceArmies.find(pid);
+    static const std::vector<ArmyUnit> kNone;
+    const std::vector<ArmyUnit>& dstArmies = (armIt != m_provinceArmies.end()) ? armIt->second : kNone;
+    auto isHostile = [&](const ArmyUnit& u) {
+        return u.count > 0 && u.countryId > 0 && u.countryId != attackerCid &&
+               !alliedCids(attackerCid, u.countryId);
+    };
+    for (const auto& u : dstArmies) if (isHostile(u)) w.defTroops += u.count;
+
+    w.width = combatWidth(pid);
+
+    // ── HOW MUCH OF EACH SIDE IS ON THE LINE ──
+    //
+    // The frontage is consumed by men WEIGHTED BY THEIR KIND, not by headcount:
+    // mechanised deploy on less of it than militia do. An all-line force needs
+    // exactly its own headcount, so this is the old arithmetic for every world
+    // that has one.
+    // Computed as MEN FIRST and the fraction derived from it, not the other way
+    // round. `min(total, width)` is exact integer arithmetic; `total x
+    // (width/total)` is the same number in algebra and one ulp away from it in
+    // floating point, and a single man's difference in who is on the line
+    // cascades through a whole campaign. For an all-line force perMan is
+    // exactly 1.0 and every line below reduces to what it was.
+    const long long atkTotal = attackers.total();
+    const double atkPerMan =
+        atkTotal > 0 ? attackers.frontageNeeded() / (double)atkTotal : 1.0;
+    const long long atkFits = (long long)((double)w.width / std::max(1e-9, atkPerMan));
+    w.engagedAtk = std::min(atkTotal, atkFits);
+    w.reserveAtk = atkTotal - w.engagedAtk;
+    w.atkEngagedFrac = atkTotal > 0 ? (double)w.engagedAtk / (double)atkTotal : 0.0;
+
+    ForceComposition defComp;
+    for (const auto& u : dstArmies) if (isHostile(u)) defComp.add(u.type, u.count);
+    // Same shape the old rule had, including returning exactly 1.0 when the
+    // defence fits -- so a fight nobody overfills is untouched by any of this.
+    const double defNeed = defComp.frontageNeeded();
+    w.defShare = (defNeed > (double)w.width && defNeed > 0.0)
+                     ? (double)w.width / defNeed : 1.0;
+
+    for (const auto& u : dstArmies) {
+        if (!isHostile(u)) continue;
+        const double defMod = 1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0;
+        const double defSupply = (double)supplyFactor(u.countryId, pid);
+        ++m_supplyDefChecks;
+        if (defSupply < 1.0f - 1e-6) ++m_supplyPenalisedDefender;
+        if (defSupply <= (double)SUPPLY_CUTOFF + 1e-6) ++m_supplyCutOffDefender;
+        // ...and weighted by what kind of soldier he is. TROOP_TYPES[].def is
+        // 1.0 for line infantry, so this is `u.count` for every existing world.
+        const double worth = (double)u.count * (double)troopCost(u.type).def;
+        w.defPower += worth * w.defShare * fortMul * defMod * defSupply;
+    }
+    // Depth is reserves behind the line, so it is measured against how many men
+    // the line HOLDS -- which depends on what they are. For line infantry that
+    // is the width itself, exactly as before.
+    const long long defTotal = defComp.total();
+    const double defPerMan =
+        defTotal > 0 ? defNeed / (double)defTotal : 1.0;
+    const long long defFits = (long long)((double)w.width / std::max(1e-9, defPerMan));
+    w.atkDepth = (double)depthFactor(atkTotal, atkFits);
+    w.defPower *= (double)depthFactor(w.defTroops, defFits);
+    // ONE PATH. A landing used to be handed SUPPLY_BEACHHEAD outright; it now
+    // asks the same question everyone else asks, and gets the beachhead answer
+    // because its own hull is by definition within range. The difference shows
+    // on the turns AFTER the landing, when the fleet may not be.
+    // ── OD_TYPE_INVARIANT=1: THE PROOF THAT THIS CHANGED NOTHING ──
+    //
+    // Recomputes the pre-types arithmetic beside the typed arithmetic and
+    // complains if they ever differ for an ALL-LINE fight, which is every fight
+    // in every world that has not researched another kind.
+    //
+    // A property, not a comparison, and that is the point: the shared tree
+    // moved under a two-run comparison FIVE times in one day, and each time the
+    // honest answer was "that is not your change" arrived at after the fact.
+    // This cannot be wrong about whose change it is. Measured 0 divergences
+    // across three seeds and 60 turns, covering the men on the line, both
+    // sides' share of the frontage, and both powers.
+    //
+    // Kept rather than deleted: when a second kind exists it still proves that
+    // every all-line fight -- which will remain most of them -- is untouched.
+    // The env is read once into a static, so it costs nothing when off.
+    static const bool checkInvariant = std::getenv("OD_TYPE_INVARIANT") != nullptr;
+    if (checkInvariant) {
+        bool allLine = true;
+        for (int t = 1; t < (int)TROOP_TYPE_COUNT; ++t) if (attackers.men[t]) allLine = false;
+        for (const auto& u : dstArmies) if (isHostile(u) && u.type != TROOP_LINE) allLine = false;
+        if (allLine) {
+            const long long oldEngaged = std::min(atkTotal, w.width);
+            const double oldDefShare = (w.defTroops > w.width && w.defTroops > 0)
+                                           ? (double)w.width / (double)w.defTroops : 1.0;
+            double oldDefPower = 0.0;
+            for (const auto& u : dstArmies) {
+                if (!isHostile(u)) continue;
+                const double dm = 1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0;
+                oldDefPower += (double)u.count * oldDefShare * fortMul * dm *
+                               (double)supplyFactor(u.countryId, pid);
+            }
+            oldDefPower *= (double)depthFactor(w.defTroops, w.width);
+            const double oldAtkSupply = (double)supplyFactor(attackerCid, pid);
+            const double oldAtkPower = (double)oldEngaged * w.atkMod *
+                                       (double)depthFactor(atkTotal, w.width) * oldAtkSupply;
+            const double newAtkPower = (double)w.engagedAtk *
+                (atkTotal > 0 ? attackers.weighted(&TroopCost::atk) / (double)atkTotal : 1.0) *
+                w.atkMod * w.atkDepth * oldAtkSupply;
+            if (oldEngaged != w.engagedAtk || oldDefShare != w.defShare ||
+                oldDefPower != w.defPower || oldAtkPower != newAtkPower)
+                fprintf(stderr, "[TYPEINV] engaged %lld/%lld defShare %.17g/%.17g defPower %.17g/%.17g atkPower %.17g/%.17g\n",
+                        oldEngaged, w.engagedAtk, oldDefShare, w.defShare,
+                        oldDefPower, w.defPower, oldAtkPower, newAtkPower);
+        }
+    }
+    (void)fromTheSea;   // the sea-supply question is asked inside supplyFactor
+    w.atkSupply = (double)supplyFactor(attackerCid, pid);
+    // Attack power is the men on the line weighted by their kind, which for an
+    // all-line force is simply the men on the line.
+    // The MEN ON THE LINE times what their kind is worth. For an all-line force
+    // the average weight is exactly 1.0 and this is `engagedAtk`, to the bit.
+    const double atkAvg = atkTotal > 0
+        ? attackers.weighted(&TroopCost::atk) / (double)atkTotal : 1.0;
+    w.atkPower = (double)w.engagedAtk * atkAvg * w.atkMod * w.atkDepth * w.atkSupply;
+    return w;
 }
 
 // === resolveAssault ===
@@ -5500,59 +6697,290 @@ void Game::captureProvince(int newOwner, int pid, bool contested) {
 // for nothing in what holding it cost -- Fortress Doctrine bought a coin flip
 // and no lives. With no research and no fort the two formulas agree exactly,
 // so this is the same game with the missing term restored.
-bool Game::resolveAssault(int attackerCid, int pid, int attackers, int& survivors) {
-    survivors = 0;
+// === supply ===
+//
+// See SUPPLY_FREE_HOPS in Game.h for what this is for. In one line: a stack
+// twenty provinces deep used to fight exactly as well as one at home.
+
+void Game::invalidateSupply(int cidA, int cidB) {
+    if (cidA > 0) { m_supplyCache.erase(cidA); m_seaSupplyCache.erase(cidA); }
+    if (cidB > 0) { m_supplyCache.erase(cidB); m_seaSupplyCache.erase(cidB); }
+}
+
+int Game::supplyHops(int countryId, int provinceId) const {
+    if (countryId <= 0 || provinceId <= 0) return -1;
+
+    auto cached = m_supplyCache.find(countryId);
+    if (cached == m_supplyCache.end()) {
+        // ── BUILD THE MAP ──
+        std::unordered_map<int, int> dist;
+
+        // Ground this country may be supplied ACROSS: its own and its allies'.
+        auto passable = [&](int pid) {
+            const Province* p = m_provinces.getProvinceById(pid);
+            if (!p || p->countryId <= 0) return false;
+            return p->countryId == countryId || alliedCids(countryId, p->countryId);
+        };
+
+        // Sources: every port it holds, and its largest industrial province.
+        // The .odmap has no capital, and the biggest factory town is the
+        // closest honest stand-in for where an army is supplied from.
+        std::vector<int> frontier;
+        int bestInd = -1, bestIndPid = -1;
+        auto ownIt = m_countryProvinces.find(countryId);
+        if (ownIt != m_countryProvinces.end()) {
+            for (int pid : ownIt->second) {
+                auto po = m_provincePorts.find(pid);
+                if (po != m_provincePorts.end() && po->second.level >= 1) {
+                    if (!dist.count(pid)) { dist[pid] = 0; frontier.push_back(pid); }
+                }
+                auto ind = m_provinceIndustry.find(pid);
+                const int lvl = (ind != m_provinceIndustry.end()) ? ind->second.level : 0;
+                if (lvl > bestInd) { bestInd = lvl; bestIndPid = pid; }
+            }
+            // A country with no port still has somewhere its army comes from.
+            // Without this a landlocked country would read as cut off
+            // everywhere, which would be the rule firing hardest on exactly the
+            // countries it has least to say about.
+            if (bestIndPid > 0 && !dist.count(bestIndPid)) {
+                dist[bestIndPid] = 0;
+                frontier.push_back(bestIndPid);
+            }
+        }
+
+        for (size_t head = 0; head < frontier.size(); ++head) {
+            const int pid = frontier[head];
+            const int d = dist[pid];
+            auto nb = m_provinceNeighbors.find(pid);
+            if (nb == m_provinceNeighbors.end()) continue;
+            for (int n : nb->second) {
+                if (dist.count(n)) continue;
+                if (!passable(n)) continue;      // cannot supply across someone else's land
+                dist[n] = d + 1;
+                frontier.push_back(n);
+            }
+        }
+        cached = m_supplyCache.emplace(countryId, std::move(dist)).first;
+    }
+
+    const auto& dist = cached->second;
+    auto it = dist.find(provinceId);
+    if (it != dist.end()) return it->second;
+
+    // Ground we do not hold: an attacker is supplied INTO it from whichever of
+    // its own neighbouring provinces is best supplied, one hop further on.
+    int best = -1;
+    auto nb = m_provinceNeighbors.find(provinceId);
+    if (nb != m_provinceNeighbors.end())
+        for (int n : nb->second) {
+            auto d = dist.find(n);
+            if (d == dist.end()) continue;
+            if (best < 0 || d->second + 1 < best) best = d->second + 1;
+        }
+    return best;   // -1 when nothing of ours touches it
+}
+
+bool Game::seaSupplied(int countryId, int provinceId) const {
+    auto& forCountry = m_seaSupplyCache[countryId];
+    auto memo = forCountry.find(provinceId);
+    if (memo != forCountry.end()) return memo->second;
+
+    bool supplied = false;
+    auto cit = m_provinceCenters.find(provinceId);
+    if (cit != m_provinceCenters.end()) {
+        for (const auto& ship : m_ships) {
+            if (ship.countryId <= 0) continue;
+            if (ship.countryId != countryId && !alliedCids(countryId, ship.countryId)) continue;
+            int sx = 0, sy = 0;
+            m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
+            const float dx = cit->second.x - (float)sx, dy = cit->second.y - (float)sy;
+            if (std::sqrt(dx * dx + dy * dy) <= shipMaxRangePx(ship)) { supplied = true; break; }
+        }
+    }
+    forCountry[provinceId] = supplied;
+    return supplied;
+}
+
+float Game::supplyFactor(int countryId, int provinceId) const {
+    const int hops = supplyHops(countryId, provinceId);
+    ++m_supplyChecks;
+    if (hops < 0) {
+        // No road home. A HULL OFFSHORE IS A SUPPLY LINE -- see seaSupplied.
+        // This is the difference between a landing and an encirclement, which
+        // a walk over land cannot tell apart: both have no route home, and one
+        // of them has a fleet.
+        ++m_supplyPenalised;
+        if (seaSupplied(countryId, provinceId)) { ++m_supplySeaSupplied; return SUPPLY_BEACHHEAD; }
+        ++m_supplyCutOff;
+        return SUPPLY_CUTOFF;
+    }
+    if (hops <= SUPPLY_FREE_HOPS) return 1.0f;
+    ++m_supplyPenalised;
+    const float f = 1.0f - SUPPLY_FALLOFF * (float)(hops - SUPPLY_FREE_HOPS);
+    return std::max(SUPPLY_MIN, f);
+}
+
+// === depthFactor ===
+//
+// See DEPTH_PER_DOUBLING in Game.h for why this exists and why it is a log.
+float Game::depthFactor(long long troops, long long width) {
+    if (width <= 0 || troops <= width) return 1.0f;
+    const double ratio = (double)troops / (double)width;
+    const double doublings = std::log2(ratio);
+    const double f = 1.0 + (double)DEPTH_PER_DOUBLING * doublings;
+    return (float)std::min((double)DEPTH_MAX, f);
+}
+
+// === combatWidth ===
+//
+// See COMBAT_WIDTH_PER_AREA. Ground and fortification, nothing else -- there is
+// no terrain layer on these maps, and inventing one from the land raster would
+// be a guess dressed as a rule.
+long long Game::combatWidth(int provinceId) const {
+    const double area = (double)provinceArea(provinceId);
+    double w = std::max((double)COMBAT_WIDTH_MIN, area * (double)COMBAT_WIDTH_PER_AREA);
+    auto ind = m_provinceIndustry.find(provinceId);
+    if (ind != m_provinceIndustry.end() && ind->second.fortification > 0) {
+        const double narrow = 1.0 - (double)ind->second.fortification *
+                                    (double)COMBAT_WIDTH_FORT_PCT / 100.0;
+        // Floored well above zero: a fort narrows a front, it does not seal a
+        // province against any assault whatsoever.
+        w *= std::max(0.25, narrow);
+    }
+    return (long long)std::max(1.0, w);
+}
+
+bool Game::resolveAssault(int attackerCid, int pid, int attackers, int& survivors,
+                          int fallbackPid) {
+    // The headcount form, kept for callers that have no composition to give --
+    // the amphibious path, which lands whatever the hull carried. It raises
+    // line infantry, which is what every one of them was already doing.
+    ForceComposition c;
+    c.add(TROOP_LINE, attackers);
+    ForceComposition out;
+    const bool took = resolveAssault(attackerCid, pid, c, out, fallbackPid);
+    survivors = (int)std::min(out.total(), (long long)INT32_MAX);
+    return took;
+}
+
+bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& attackers,
+                          ForceComposition& survivorsOut, int fallbackPid) {
+    survivorsOut = ForceComposition{};
+    const long long attackerCount = attackers.total();
+    int survivors = 0;
     Province* dst = m_provinces.getProvinceById(pid);
-    if (!dst || attackerCid <= 0 || attackers <= 0) return false;
+    if (!dst || attackerCid <= 0 || attackerCount <= 0) return false;
 
-    float fortDef = 0;
-    auto indIt = m_provinceIndustry.find(pid);
-    if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
-    const double fortMul = 1.0 + fortDef / 100.0;
-    const double atkMod = 1.0 + getTotalEffect("armyAtkPct", attackerCid) / 100.0;
+    // fallbackPid < 0 IS the amphibious path, by construction -- there is no
+    // ground behind a landing to fall back to, which is the same fact that
+    // makes a failed landing drown.
+    const bool fromTheSea = (fallbackPid < 0);
+    const AssaultPowers w = weighAssault(attackerCid, pid, attackers, fromTheSea);
+    ++m_assaultsTotal;
+    if (w.engagedAtk < attackerCount || w.defTroops > w.width) ++m_assaultsWidthBound;
+    if (w.defTroops > 0) {
+        ++m_assaultsContested;
+        if (w.atkPower <= w.defPower) ++m_assaultsRepulsed;
+    }
 
+    auto& dstArmies = m_provinceArmies[pid];
     auto isHostile = [&](const ArmyUnit& u) {
         return u.count > 0 && u.countryId > 0 && u.countryId != attackerCid &&
                !alliedCids(attackerCid, u.countryId);
     };
-
-    auto& dstArmies = m_provinceArmies[pid];
-    double defPower = 0.0;
-    long long defTroops = 0;
-    for (const auto& u : dstArmies) {
-        if (!isHostile(u)) continue;
-        const double defMod = 1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0;
-        defPower += (double)u.count * fortMul * defMod;
-        defTroops += u.count;
-    }
-
-    const double atkPower = (double)attackers * atkMod;
     const bool mayTake = mayTakeProvince(attackerCid, pid);
     bool captured = false;
 
-    if (defTroops <= 0) {
+    // OD_ECON_TRACE=<cid>: every assault that country makes or receives.
+    {
+        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        if (traceCid >= 0 && (attackerCid == traceCid || dst->countryId == traceCid)) {
+            long long defOwn = 0;
+            for (const auto& u : dstArmies) if (isHostile(u) && u.countryId == dst->countryId) defOwn += u.count;
+            fprintf(stderr, "[BATTLE] turn %d pid=%d owner=%d atk=%d attackers=%d engaged=%lld def=%lld (owner's %lld) width=%lld atkSupply=%.2f defSupply=%.2f atkPower=%.0f defPower=%.0f => %s\n",
+                    m_turnNumber, pid, dst->countryId, attackerCid, attackers, w.engagedAtk, w.defTroops, defOwn, w.width,
+                    w.atkSupply, w.defTroops > 0 ? (double)supplyFactor(dst->countryId, pid) : 1.0,
+                    w.atkPower, w.defPower, w.defTroops <= 0 ? "walk-in" : w.atkPower > w.defPower ? "carried" : "repulsed");
+        }
+    }
+
+    if (w.defTroops <= 0) {
         // Nobody home: the province is taken by walking into it, or simply
         // occupied if it is ours, an ally's, or somebody we are at peace with.
         if (mayTake) { captureProvince(attackerCid, pid, /*contested=*/false); captured = true; }
-        survivors = attackers;
-    } else if (atkPower > defPower) {
+        survivorsOut = attackers;      // nobody home: everyone walks in, unchanged
+        survivors = (int)std::min(attackerCount, (long long)INT32_MAX);
+    } else if (w.atkPower > w.defPower) {
+        // Carried. The whole garrison falls, and the attacker's reserve walks
+        // in behind the men who won it.
         for (auto& u : dstArmies) if (isHostile(u)) u.count = 0;
-        survivors = (int)std::max(0.0, (atkPower - defPower) / atkMod);
+        // BACK INTO MEN, and EVERY multiplier has to come out again or the
+        // fight invents them: atkPower is engaged x atkMod x atkDepth x
+        // atkSupply, so dividing by atkMod alone leaves a survivor count scaled
+        // by the rest, and a deep, well-supplied stack could walk out of a
+        // province with more men than the order sent into it. Divided by all of
+        // them, then clamped to the men who actually marched.
+        const double scale = w.atkMod * std::max(1e-9, w.atkDepth * w.atkSupply);
+        const double throughEngaged = std::max(0.0, (w.atkPower - w.defPower) / scale);
+        const double out = std::min(throughEngaged + (double)w.reserveAtk, (double)attackerCount);
+        survivors = (int)std::min((double)INT32_MAX, out);
+        // WHO survived, not just how many. Losses fall proportionally across
+        // the kinds that were committed, so an army that went in mixed comes
+        // out mixed rather than turning into whichever type the arithmetic
+        // happened to name.
+        survivorsOut = attackers;
+        survivorsOut.removeMen(attackerCount - (long long)out);
         if (mayTake) { captureProvince(attackerCid, pid, /*contested=*/true); captured = true; }
     } else {
-        // REPULSED, AND NOBODY IS LEFT BEHIND. A landing used to leave a tenth
-        // of its crew standing inside the province it had failed to take, with
-        // its ship already deleted -- so they could not leave, nothing attrits
-        // a foreign stack, and they sat on that province for the rest of the
-        // game. An assault that fails is an assault that is destroyed, which
-        // is what the land path always did.
+        // ── REPULSED, AND THE FIGHT IS NOT OVER ──
+        //
+        // The men who reached the line are lost, as they always were, and the
+        // defenders lose in proportion to what the attack was worth. What has
+        // changed is what happens to the RESERVE.
+        //
+        // It used to march home. That made a war a sequence of instants: there
+        // was never a contested province at the end of a turn, so there was
+        // never anything to decide INSIDE a war, only before one. Now it
+        // stands -- see `struct Battle` -- and fights again next turn, and the
+        // way out is a withdrawal somebody has to actually order. Retreat was
+        // free and automatic; it is a decision now, which is the whole feature.
+        //
+        // A FAILED LANDING STILL DROWNS. fromTheSea has no ground to hold and
+        // nowhere to withdraw to, which keeps the rule the amphibious doctrine
+        // was measured against.
         for (auto& u : dstArmies) {
             if (!isHostile(u)) continue;
             const long long killed =
-                (long long)std::llround(atkPower * (double)u.count / defPower);
+                (long long)std::llround(w.atkPower * (double)u.count * w.defShare /
+                                        std::max(1e-9, w.defPower));
             u.count = (int)std::max(0LL, (long long)u.count - killed);
         }
-        if (m_ai) m_ai->noteAssaultRepulsed(attackerCid, attackers);
+        if (w.reserveAtk > 0 && !fromTheSea && fallbackPid > 0 && fallbackPid != pid) {
+            // The men who never reached the line, by kind: the engaged are lost
+            // and the reserve stands. Proportional, for the same reason as
+            // above.
+            ForceComposition reserve = attackers;
+            reserve.removeMen(w.engagedAtk);
+            if (Battle* existing = battleAt(pid, attackerCid)) {
+                for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t)
+                    existing->men.men[t] += reserve.men[t];
+                ++m_battlesReinforced;
+            } else {
+                Battle nb;
+                nb.provinceId = pid;
+                nb.attackerCid = attackerCid;
+                nb.men = reserve;
+                nb.fromProvince = fallbackPid;
+                nb.lastAtkPower = w.atkPower;
+                nb.lastDefPower = w.defPower;
+                nb.openingDefPower = w.defPower;
+                nb.lastAtkLosses = w.engagedAtk;
+                nb.totalAtkLosses = w.engagedAtk;
+                m_battles.push_back(nb);
+                ++m_battlesStarted;
+            }
+        }
+        if (m_ai) m_ai->noteAssaultRepulsed(attackerCid, (int)w.engagedAtk);
     }
 
     if (survivors > 0) addTroopsTo(pid, attackerCid, survivors);
@@ -5565,6 +6993,189 @@ bool Game::resolveAssault(int attackerCid, int pid, int attackers, int& survivor
         if (units.empty()) m_provinceArmies.erase(it);
     }
     return captured;
+}
+
+// === standing battles ===
+//
+// See `struct Battle` in GameStructs.h. In one line: an assault that does not
+// finish now stands in the province instead of marching home, and the way out
+// is a withdrawal somebody has to order.
+
+long long Game::battleTroops(int countryId) const {
+    long long n = 0;
+    for (const auto& b : m_battles) if (b.attackerCid == countryId) n += b.attackers();
+    return n;
+}
+
+long long Game::countryTroops(int countryId) const {
+    long long n = battleTroops(countryId);
+    for (const auto& [pid, units] : m_provinceArmies)
+        for (const auto& u : units)
+            if (u.countryId == countryId) n += u.count;
+    return n;
+}
+
+Battle* Game::battleAt(int provinceId, int attackerCid) {
+    for (auto& b : m_battles)
+        if (b.provinceId == provinceId && b.attackerCid == attackerCid) return &b;
+    return nullptr;
+}
+const Battle* Game::battleAt(int provinceId, int attackerCid) const {
+    for (const auto& b : m_battles)
+        if (b.provinceId == provinceId && b.attackerCid == attackerCid) return &b;
+    return nullptr;
+}
+const Battle* Game::anyBattleAt(int provinceId) const {
+    for (const auto& b : m_battles) if (b.provinceId == provinceId) return &b;
+    return nullptr;
+}
+
+bool Game::hasPendingWithdraw(int provinceId) const {
+    return std::find(m_pendingWithdraws.begin(), m_pendingWithdraws.end(), provinceId)
+           != m_pendingWithdraws.end();
+}
+
+void Game::queueWithdraw(int provinceId) {
+    auto it = std::find(m_pendingWithdraws.begin(), m_pendingWithdraws.end(), provinceId);
+    if (it != m_pendingWithdraws.end()) m_pendingWithdraws.erase(it);   // a second press cancels
+    else m_pendingWithdraws.push_back(provinceId);
+}
+
+void Game::withdrawFromBattle(int provinceId, int attackerCid) {
+    for (size_t i = 0; i < m_battles.size(); ++i) {
+        Battle& b = m_battles[i];
+        if (b.provinceId != provinceId || b.attackerCid != attackerCid) continue;
+        // Home only if we still hold it. A province lost while the battle was
+        // being fought is not somewhere to withdraw to, and men with nowhere to
+        // go are lost -- the same rule a repulsed landing follows.
+        const Province* home = m_provinces.getProvinceById(b.fromProvince);
+        if (b.attackers() > 0 && home && home->countryId == attackerCid)
+            addTroopsTo(b.fromProvince, attackerCid,
+                        (int)std::min(b.attackers(), (long long)INT32_MAX));
+        m_battles.erase(m_battles.begin() + i);
+        ++m_battlesWithdrawn;
+        return;
+    }
+}
+
+void Game::processBattles(int countryId) {
+    // Withdrawals first: a player who ordered one this turn gets out BEFORE the
+    // round is fought, which is what "withdraw" has to mean or the order is
+    // only a way of choosing where the survivors of one more round end up.
+    for (size_t i = 0; i < m_pendingWithdraws.size(); ) {
+        const int pid = m_pendingWithdraws[i];
+        if (battleAt(pid, countryId)) {
+            withdrawFromBattle(pid, countryId);
+            m_pendingWithdraws.erase(m_pendingWithdraws.begin() + i);
+            continue;
+        }
+        ++i;
+    }
+
+    for (size_t i = 0; i < m_battles.size(); ) {
+        Battle& b = m_battles[i];
+        if (b.attackerCid != countryId) { ++i; continue; }
+        const Province* dst = m_provinces.getProvinceById(b.provinceId);
+
+        // Reasons a battle simply ends, before any fighting.
+        const bool gone      = (dst == nullptr);
+        const bool ours      = (dst && dst->countryId == countryId);
+        const bool atPeace   = (dst && !mayEnterProvince(countryId, b.provinceId));
+        const bool exhausted = (b.attackers() <= 0);
+        if (gone || ours || atPeace || exhausted) {
+            // If the ground became ours or friendly while we were fighting for
+            // it -- somebody else took it, or a ceasefire was signed -- the men
+            // are not lost, they are just no longer in a battle.
+            if (!gone && !exhausted && (ours || atPeace))
+                addTroopsTo(ours ? b.provinceId : b.fromProvince, countryId,
+                            (int)std::min(b.attackers(), (long long)INT32_MAX));
+            if (exhausted) ++m_battlesLost;
+            m_battles.erase(m_battles.begin() + i);
+            continue;
+        }
+
+        const AssaultPowers w = weighAssault(countryId, b.provinceId, b.men,
+                                             /*fromTheSea=*/false);
+        ++m_battleRounds;
+        ++b.rounds;
+        b.lastAtkPower = w.atkPower;
+        b.lastDefPower = w.defPower;
+        if (b.openingDefPower <= 0.0) b.openingDefPower = w.defPower;
+
+        auto& dstArmies = m_provinceArmies[b.provinceId];
+        auto isHostile = [&](const ArmyUnit& u) {
+            return u.count > 0 && u.countryId > 0 && u.countryId != countryId &&
+                   !alliedCids(countryId, u.countryId);
+        };
+
+        if (w.defTroops <= 0 || w.atkPower > w.defPower) {
+            // The line broke. Same arithmetic as a carried assault.
+            long long before = w.defTroops;
+            for (auto& u : dstArmies) if (isHostile(u)) u.count = 0;
+            long long survivors = b.attackers();
+            if (w.defTroops > 0) {
+                const double scale = w.atkMod * std::max(1e-9, w.atkDepth * w.atkSupply);
+                const double through = std::max(0.0, (w.atkPower - w.defPower) / scale);
+                survivors = (long long)std::min((double)b.attackers(), through + (double)w.reserveAtk);
+            }
+            b.lastDefLosses = before;
+            b.lastAtkLosses = b.attackers() - survivors;
+            b.totalDefLosses += before;
+            b.totalAtkLosses += b.lastAtkLosses;
+            if (mayTakeProvince(countryId, b.provinceId))
+                captureProvince(countryId, b.provinceId, /*contested=*/true);
+            if (survivors > 0)
+                addTroopsTo(b.provinceId, countryId, (int)std::min(survivors, (long long)INT32_MAX));
+            ++m_battlesWon;
+            m_battles.erase(m_battles.begin() + i);
+        } else {
+            // Another round of grinding. The men on the line are lost and the
+            // defenders lose in proportion, exactly as a repulse costs today --
+            // the casualty model is deliberately unchanged.
+            long long defLost = 0;
+            for (auto& u : dstArmies) {
+                if (!isHostile(u)) continue;
+                const long long killed =
+                    (long long)std::llround(w.atkPower * (double)u.count * w.defShare /
+                                            std::max(1e-9, w.defPower));
+                const int was = u.count;
+                u.count = (int)std::max(0LL, (long long)u.count - killed);
+                defLost += was - u.count;
+            }
+            // The men on the line are lost, spread across the kinds that were
+            // on it -- not taken off whichever type the array happens to list
+            // first.
+            b.men.removeMen(w.engagedAtk);
+            b.lastAtkLosses = w.engagedAtk;
+            b.lastDefLosses = defLost;
+            b.totalAtkLosses += w.engagedAtk;
+            b.totalDefLosses += defLost;
+            if (m_ai) m_ai->noteAssaultRepulsed(countryId, (int)w.engagedAtk);
+
+            // THE SAFETY RAIL, not a rule anybody should meet. See
+            // BATTLE_MAX_ROUNDS: without it a battle that never quite resolves
+            // stands for the length of a campaign, and an attacker with no
+            // withdraw reflex feeds it until it has no army.
+            if (b.attackers() <= 0) {
+                ++m_battlesLost;
+                m_battles.erase(m_battles.begin() + i);
+                continue;
+            }
+            if (b.rounds >= BATTLE_MAX_ROUNDS) {
+                withdrawFromBattle(b.provinceId, countryId);
+                continue;
+            }
+            ++i;
+        }
+        auto ai = m_provinceArmies.find(b.provinceId);
+        if (ai != m_provinceArmies.end()) {
+            auto& units = ai->second;
+            units.erase(std::remove_if(units.begin(), units.end(),
+                                       [](const ArmyUnit& u) { return u.count <= 0; }),
+                        units.end());
+            if (units.empty()) m_provinceArmies.erase(ai);
+        }
+    }
 }
 
 // === shipMaxRangePx / shipMaxRangeDeg ===
@@ -5763,9 +7374,217 @@ void Game::buildNavGrid() {
             }
         }
     }
-    const int label = (int)denseLabel.size();
 
-    printf("  Sea routing: %dx%d cells, %d water body(ies)\n", m_nav.w, m_nav.h, label);
+    // ── WHICH NEIGHBOURS CAN ACTUALLY BE SAILED TO ──
+    //
+    // Everything above decides which cells hold water and which sea each one
+    // belongs to. Neither answers the question a route actually asks: can a
+    // hull get from THIS cell's water to THAT one's? A cell is navigable if it
+    // holds ANY water, and its remembered pixel may sit anywhere inside it, so
+    // two cells straddling a peninsula each hold real Black Sea water, sit in
+    // one body, touch on the grid -- and the leg between them runs overland.
+    // That is the Crimea crossing, and no test in this function saw it.
+    //
+    // So each edge is now walked. Land is tolerated up to STRAIT, the SAME
+    // width the component pass calls a strait: it has to be, or this would
+    // slam shut the Bosphorus and the Dardanelles that the pass above went to
+    // such trouble to open. A neck wider than that is a coast, and a coast is
+    // not an edge. Crimea's waist is about 40 px; Perekop, the isthmus, is 1.
+    // HOW MUCH LAND ONE LEG MAY CROSS -- and why it is not STRAIT.
+    //
+    // STRAIT is measured across a run, straight along a row or column. A leg
+    // hits the same neck at whatever angle the two cell pixels happen to make,
+    // so the very same Bosphorus that is 8 px wide on the raster is 15 px of
+    // land along the diagonal a route wants to sail. Reusing STRAIT here
+    // therefore SEALED THE BLACK SEA: measured, Odessa and the Sea of Azov
+    // dropped into their own body that no hull on Earth could enter.
+    //
+    // Swept 8/12/16/20/24/28/32 on data/STDmaps/map.odmap. 16 is the first
+    // value that puts the Black Sea and the Sea of Azov back in the world
+    // ocean, and it still leaves the Caspian and the Great Lakes in bodies of
+    // their own. Above it nothing further reconnects that should -- the seas
+    // that keep merging from 20 upward are the ones meant to stay apart -- so
+    // 16 is the bottom of the correct plateau rather than a value that merely
+    // works.
+    //
+    // What it buys, on the same map, worst overland run along a real route:
+    //     Odessa->Kerch      53 px -> 11    (it went ACROSS CRIMEA)
+    //     Brest->Kiel        49 px -> 11    (across Jutland)
+    //     Gibraltar->Suez    46 px -> 16
+    //     Naples->Venice     37 px -> 14    (across Italy)
+    //     Athens->Odessa     36 px -> 15
+    const int LEGNECK = getenv("OD_LEGNECK") ? atoi(getenv("OD_LEGNECK")) : 16;
+    m_nav.link.assign(n, 0);
+    auto sailable = [&](int ax, int ay, int bx, int by) {
+        int dx = bx - ax;
+        if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W;   // the seam
+        const int dy = by - ay;
+        const int steps = std::max(std::abs(dx), std::abs(dy));
+        if (steps <= 0) return true;
+        int run = 0;
+        for (int k = 1; k < steps; ++k) {
+            int x = ax + (int)std::lround((double)dx * k / steps);
+            int y = ay + (int)std::lround((double)dy * k / steps);
+            if (x < 0) x += W; else if (x >= W) x -= W;
+            if (y < 0 || y >= H) continue;
+            if (m_landSea.isLand(x, y)) { if (++run > LEGNECK) return false; }
+            else run = 0;
+        }
+        return true;
+    };
+    for (int cy = 0; cy < m_nav.h; ++cy)
+        for (int cx = 0; cx < m_nav.w; ++cx) {
+            const size_t i = (size_t)cy * m_nav.w + cx;
+            if (!m_nav.navigable[i]) continue;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (!dx && !dy) continue;
+                    int nx = cx + dx, ny = cy + dy;
+                    if (ny < 0 || ny >= m_nav.h) continue;
+                    if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
+                    const size_t ni = (size_t)ny * m_nav.w + nx;
+                    if (!m_nav.navigable[ni]) continue;
+                    if (sailable(m_nav.px[i], m_nav.py[i], m_nav.px[ni], m_nav.py[ni]))
+                        m_nav.link[i] |= (uint16_t)(1u << ((dy + 1) * 3 + (dx + 1)));
+                }
+        }
+
+    // ── AND THE SEAS ARE RELABELLED OVER THOSE EDGES ──
+    //
+    // component now has to mean the same thing the router means, or the two
+    // disagree in the one direction that hurts: navReachable says yes, the AI
+    // sends a fleet, navRoute cannot find a path, and the order sticks. The
+    // raster bodies above answer "is this the same water"; a route needs "can
+    // this hull get there", which is the same flood fill run over the edges
+    // that were just measured.
+    std::vector<int32_t> sea((size_t)n, -1);
+    int seas = 0;
+    std::vector<int> stack;
+    for (size_t s0 = 0; s0 < n; ++s0) {
+        if (!m_nav.navigable[s0] || sea[s0] >= 0) continue;
+        sea[s0] = seas;
+        stack.assign(1, (int)s0);
+        while (!stack.empty()) {
+            const int cur = stack.back(); stack.pop_back();
+            const int cx = cur % m_nav.w, cy = cur / m_nav.w;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if ((!dx && !dy) || !m_nav.linked((size_t)cur, dx, dy)) continue;
+                    int nx = cx + dx, ny = cy + dy;
+                    if (ny < 0 || ny >= m_nav.h) continue;
+                    if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
+                    const size_t ni = (size_t)ny * m_nav.w + nx;
+                    if (sea[ni] >= 0) continue;
+                    sea[ni] = seas;
+                    stack.push_back((int)ni);
+                }
+        }
+        ++seas;
+    }
+    // ── AND THE RELABELLING IS NOT APPLIED. MEASURED, NOT REASONED. ──
+    //
+    // The argument for swapping it in was good: component decides navReachable,
+    // so if it says yes where the router says no, the AI sails at a target it
+    // can never arrive at and the order sticks. That is a real failure mode --
+    // it is the one that produced 71 stuck orders once before.
+    //
+    // It just is not this one. With honest edges the router's failure rate is
+    // 0.0% of 747 voyages, so there was nothing for the stricter label to
+    // protect against, and being stricter cost real play. One procedural map,
+    // 60 turns, seed 4242, the three arms:
+    //
+    //     loose edges + raster seas   54 embarks, 20 landings, 37% arrive
+    //     honest edges + raster seas  78 embarks, 45 landings, 58% arrive
+    //     honest edges + link seas    56 embarks, 24 landings, 43% arrive
+    //
+    // The middle row is the fix and the bottom row is the fix plus this, and
+    // this takes half the landings back. It over-fragments: 198 seas against
+    // the raster's 79, most of them pockets a noisy procedural coastline makes
+    // and no hull cares about, and every pocket is a port the AI stops even
+    // TRYING to reach. Kept behind a flag because the reasoning still holds if
+    // the failure rate ever stops being zero.
+    if (getenv("OD_NAVSEAS") && std::string(getenv("OD_NAVSEAS")) == "links")
+        m_nav.component.swap(sea);
+
+    const int label = (int)denseLabel.size();
+    long long edges = 0, cells = 0;
+    for (size_t i = 0; i < n; ++i)
+        if (m_nav.navigable[i]) { ++cells; edges += __builtin_popcount(m_nav.link[i]); }
+    printf("  Sea routing: %dx%d cells, %d raster body(ies), %lld navigable cells, "
+           "%lld sailable edges, %d reachable sea(s)\n",
+           m_nav.w, m_nav.h, label, cells, edges, seas);
+
+    if (getenv("OD_NAV_AUDIT")) {
+        std::vector<long long> size((size_t)seas, 0);
+        for (size_t i = 0; i < n; ++i)
+            if (m_nav.component[i] >= 0) ++size[(size_t)m_nav.component[i]];
+        std::vector<int> ord((size_t)seas);
+        for (int i = 0; i < seas; ++i) ord[(size_t)i] = i;
+        std::sort(ord.begin(), ord.end(),
+                  [&](int a, int b) { return size[(size_t)a] > size[(size_t)b]; });
+        printf("  [NAV] largest seas:");
+        for (int k = 0; k < std::min(6, seas); ++k)
+            printf(" %lld", size[(size_t)ord[(size_t)k]]);
+        long long solo = 0;
+        for (int i = 0; i < seas; ++i) if (size[(size_t)i] <= 2) ++solo;
+        printf("   (%lld seas of <=2 cells)\n", solo);
+        struct Spot { const char* name; double lon, lat; };
+        const Spot spots[] = {
+            {"Atlantic", -30, 40}, {"Pacific", -150, 0}, {"Indian", 75, -10},
+            {"Med", 15, 35}, {"BlackSea", 34, 44}, {"Azov", 36.5, 46},
+            {"Baltic", 19, 57}, {"NorthSea", 3, 56}, {"RedSea", 38, 20},
+            {"Caspian", 51, 42}, {"GreatLakes", -87, 44},
+        };
+        // THE TEST THAT MATTERS: not "is it the same sea" -- both shores of a
+        // peninsula are -- but "what does the route DRAWN AND SAILED actually
+        // cross". Worst overland run along the polyline, in raster pixels.
+        struct Voy { const char* name; double alon, alat, blon, blat; };
+        const Voy voys[] = {
+            {"Odessa->Kerch",     30.7, 46.4,  36.6, 45.3},
+            {"Sevastopol->Azov",  33.4, 44.6,  38.3, 46.8},
+            {"Athens->Odessa",    23.6, 37.4,  30.7, 46.4},
+            {"Gibraltar->Suez",   -5.6, 35.9,  32.6, 29.9},
+            {"Brest->Kiel",       -4.8, 48.3,  10.2, 54.4},
+            {"Naples->Venice",    14.2, 40.6,  12.8, 45.0},
+        };
+        printf("  [NAV] worst overland run along a real route (px):\n");
+        for (const Voy& v : voys) {
+            std::vector<std::pair<double, double>> way;
+            const bool ok = navRoute(v.alon, v.alat, v.blon, v.blat, way);
+            int worst = 0;
+            if (ok) {
+                double plon = v.alon, plat = v.alat;
+                for (auto& wp : way) {
+                    int ax, ay, bx, by;
+                    m_landSea.lonLatToPixel((float)plon, (float)plat, ax, ay);
+                    m_landSea.lonLatToPixel((float)wp.first, (float)wp.second, bx, by);
+                    int dx = bx - ax;
+                    if (dx > W / 2) dx -= W; else if (dx < -W / 2) dx += W;
+                    const int dy = by - ay;
+                    const int steps = std::max(std::abs(dx), std::abs(dy));
+                    int run = 0;
+                    for (int k = 1; k < steps; ++k) {
+                        int x = ax + (int)std::lround((double)dx * k / steps);
+                        int y = ay + (int)std::lround((double)dy * k / steps);
+                        if (x < 0) x += W; else if (x >= W) x -= W;
+                        if (y < 0 || y >= H) continue;
+                        if (m_landSea.isLand(x, y)) worst = std::max(worst, ++run);
+                        else run = 0;
+                    }
+                    plon = wp.first; plat = wp.second;
+                }
+            }
+            printf("        %-18s %s  legs=%zu  worst-land=%d px\n", v.name,
+                   ok ? "routed" : "NO ROUTE", way.size(), worst);
+        }
+        printf("  [NAV] sea id at:");
+        for (const Spot& sp : spots) {
+            int px, py; m_landSea.lonLatToPixel((float)sp.lon, (float)sp.lat, px, py);
+            const int c = navCellNear(m_nav, px, py);
+            printf(" %s=%d", sp.name, c >= 0 ? m_nav.component[(size_t)c] : -1);
+        }
+        printf("\n");
+    }
 }
 
 // Nearest navigable cell to a lon/lat, searching outward. A ship sitting in a
@@ -5832,7 +7651,9 @@ bool Game::navReachable(double lon1, double lat1, double lon2, double lat2) cons
 }
 
 bool Game::navLineClear(double lon1, double lat1, double lon2, double lat2) const {
-    const double dLon = lon2 - lon1, dLat = lat2 - lat1;
+    // Wrapped, or a segment crossing the antimeridian is sampled right around
+    // the far side of the world and reports land that is nowhere near it.
+    const double dLon = Game::lonDelta(lon1, lon2), dLat = lat2 - lat1;
     const double dist = std::sqrt(dLon * dLon + dLat * dLat);
     // DELIBERATELY TOLERANT: about one sample per third of a routing cell.
     //
@@ -5849,22 +7670,27 @@ bool Game::navLineClear(double lon1, double lat1, double lon2, double lat2) cons
     const int steps = std::clamp((int)std::ceil(dist / std::max(1e-6, degPerCell / 3.0)), 2, 512);
     for (int i = 0; i <= steps; ++i) {
         const double t = (double)i / (double)steps;
-        if (m_landSea.isLand((float)(lon1 + dLon * t), (float)(lat1 + dLat * t)))
+        if (m_landSea.isLand((float)Game::wrapLon(lon1 + dLon * t), (float)(lat1 + dLat * t)))
             return false;
     }
     return true;
 }
 
+// Counted so a change to the sea graph can be judged on whether it strands
+// hulls, not on whether the routes it does produce look better. A stricter
+// graph that quietly makes 20% of voyages unroutable is a worse game than a
+// loose one that sends them over Crimea.
 bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
                     std::vector<std::pair<double, double>>& out) const {
+    ++g_navRouteCalls;
     out.clear();
-    if (!m_nav.ready()) return false;
+    if (!m_nav.ready()) { ++g_navRouteFails; return false; }
     int x1, y1, x2, y2;
     m_landSea.lonLatToPixel((float)fromLon, (float)fromLat, x1, y1);
     m_landSea.lonLatToPixel((float)toLon, (float)toLat, x2, y2);
     const int start = navCellNear(m_nav, x1, y1), goal = navCellNear(m_nav, x2, y2);
-    if (start < 0 || goal < 0) return false;
-    if (m_nav.component[start] != m_nav.component[goal]) return false;
+    if (start < 0 || goal < 0) { ++g_navRouteFails; return false; }
+    if (m_nav.component[start] != m_nav.component[goal]) { ++g_navRouteFails; return false; }
     if (start == goal) return true;   // already there; no waypoints needed
 
     // Plain BFS. The grid is small and every hop costs the same, so the extra
@@ -5890,6 +7716,9 @@ bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
         for (int dy = -1; dy <= 1 && !found; ++dy)
             for (int dx = -1; dx <= 1; ++dx) {
                 if (!dx && !dy) continue;
+                // THE EDGE, NOT THE ADJACENCY. Two cells touching on the grid
+                // is not a leg a hull can sail; see buildNavGrid.
+                if (!m_nav.linked((size_t)cur, dx, dy)) continue;
                 int nx = cx + dx, ny = cy + dy;
                 if (ny < 0 || ny >= m_nav.h) continue;
                 if (nx < 0) nx += m_nav.w; else if (nx >= m_nav.w) nx -= m_nav.w;
@@ -5901,7 +7730,7 @@ bool Game::navRoute(double fromLon, double fromLat, double toLon, double toLat,
                 q.push_back((int)ni);
             }
     }
-    if (!found) return false;
+    if (!found) { ++g_navRouteFails; return false; }
 
     std::vector<int> rev;
     for (int c = goal; c >= 0; c = prev[c]) rev.push_back(c);
@@ -5964,8 +7793,23 @@ void Game::processUpgrades() {
             // already been waited out, for the AI and the player alike.
             if (it->type == "industry") {
                 auto& ind = m_provinceIndustry[it->provinceId];
-                ind.level = it->targetLevel;
-                ind.income = it->targetLevel * 2.0f; // Simplified income
+                // RE-CHECKED AT APPLY TIME, NOT ONLY WHEN ORDERED.
+                //
+                // A build takes up to ten turns, and a province can lose the
+                // population that justified it in between -- conquest, a
+                // rebellion, recruitment draining it, a minority policy moving
+                // people out. The gate that let this order be placed answered a
+                // question about a province that no longer exists, so it is
+                // asked again here, against the province as it is now.
+                //
+                // A build that no longer fits is CAPPED, not cancelled: the
+                // money and the turns are already spent, and destroying both
+                // for something the player could not have foreseen reads as the
+                // game cheating. They get the largest factory the province can
+                // now carry, which is at worst the level it already had.
+                const int cap = provinceIndustryCapacity(it->provinceId);
+                ind.level = std::max(ind.level, std::min(it->targetLevel, cap));
+                ind.income = provinceIndustryIncome(it->provinceId, ind.level);
             } else if (it->type == "fortification") {
                 m_provinceIndustry[it->provinceId].fortification = it->targetLevel;
             } else if (it->type == "port") {
@@ -6035,45 +7879,12 @@ void Game::processUpgrades() {
             it = m_pendingShipBuilds.erase(it);
         } else ++it;
     }
-    // Process research accumulation (simplified: add points)
-    if (m_playerCountryId > 0) {
-        auto cs = computeCountryIncome(m_playerCountryId);
-        float allocAmount = cs.researchCost;
-        int rp = 1 + (int)(sqrtf(allocAmount * 0.5f));
-        m_researchPoints += rp;
-        if (m_researchPoints > 10000) m_researchPoints = 10000;
-        // Apply to active research
-        if (m_researchActiveNode >= 0 && m_researchActiveNode < (int)m_researchNodes.size()) {
-            auto& node = m_researchNodes[m_researchActiveNode];
-            if (!hasResearched(node.id, m_playerCountryId) && !node.researched) {
-                int toSpend = std::min(m_researchPoints, node.cost - node.invested);
-                node.invested += toSpend;
-                m_researchPoints -= toSpend;
-                if (node.invested >= node.cost) {
-                    m_countryResearched[m_playerCountryId].insert(node.id);
-                    node.researched = true;
-                    // Clearing m_researchActiveNode is not enough to stop the
-                    // node DRAWING as in-progress: the tree tests node.inProgress
-                    // for that (drawResearchTree), and it is per-node state that
-                    // nothing else resets. Left set, a finished technology kept
-                    // its progress bar at full for the rest of the game and
-                    // never showed DONE. Game::spendResearchPoints() -- the
-                    // other place research can complete -- has always cleared
-                    // both; this path is the one that forgot.
-                    node.inProgress = false;
-                    Audio::get().playSfx("research_complete");
-                    printf("[RESEARCH] %s completed!\n", node.name.c_str());
-                    m_researchActiveNode = -1;
-                    m_researchAlert = true; // highlight the sidebar button until it's opened
-                }
-            } else {
-                // Already researched -- by the other path, or by a load. The
-                // same flag has to come down here too, or the bar survives.
-                node.inProgress = false;
-                m_researchActiveNode = -1;
-            }
-        }
-    }
+    // ONE READER. This was a second, inline copy of the research rule --
+    // Game::addResearchPoints held the other, and being uncalled is the only
+    // reason the two never disagreed. Groups would have had to be implemented
+    // in both, and the dead one would have been the copy that quietly won the
+    // day somebody called it.
+    if (m_playerCountryId > 0) addResearchPoints(m_playerCountryId);
 }
 
 // === processPopulation ===
@@ -6220,6 +8031,18 @@ void Game::processPopulation() {
                 long long dstPop = m_provincePopulations.count(dstPid) ? m_provincePopulations[dstPid] : 0;
                 if (dstPop < 1000) continue;
                 float dstAttr = provinceAttractiveness.count(dstPid) ? provinceAttractiveness[dstPid] : 0;
+                // ── AND WHAT THIS COUNTRY PUBLISHES ABOUT ITSELF ──
+                //
+                // A country that opens its books and has good figures in them
+                // is somewhere people choose to go. Applied to the DESTINATION
+                // and read from the destination's owner, so publishing pulls
+                // people in rather than pushing its own outward. Zero for every
+                // country that publishes nothing, which is all of them until
+                // somebody ticks a box.
+                if ((size_t)dstPid < m_provinceCountryLookup.size()) {
+                    const int dstCid = m_provinceCountryLookup[dstPid];
+                    if (dstCid > 0) dstAttr *= (1.0f + disclosureAppeal(dstCid));
+                }
                 float chainBonus = 0;
                 auto dMit = m_provinceMinorities.find(dstPid);
                 if (dMit != m_provinceMinorities.end()) {
@@ -6486,3 +8309,186 @@ void Game::processPopulation() {
     }
 }
 
+
+// === recordTurnOrders ===
+//
+// See m_turnOrderLog in Game.h for why the middle-state view is a record of the
+// turn that resolved rather than an overlay of orders not yet given.
+// === flushMapRepaint ===
+//
+// ONE PLACE DECIDES WHEN THE LAND CHANGES. Called every frame; does nothing
+// almost every time. While the orders are being read it deliberately does
+// nothing at all, which is what keeps the borders showing the world the orders
+// were given in.
+//
+// ── AND IT PUTS SOMETHING ON SCREEN WHILE IT WORKS ──
+//
+// Regenerating the political map is a pass over 8192x4096 pixels and a BFS for
+// the border gradient; it takes seconds. It used to run inside processTurn,
+// under the loading screen, behind "Generating political map...". Deferring it
+// to the draw loop moved it somewhere nothing is drawn at all -- reported as
+// "a few seconds of black screen, no loading or anything". A long job with a
+// progress bar is a game loading; the same job with nothing on screen is a game
+// that has crashed.
+void Game::flushMapRepaint() {
+    if (m_turnState == TURN_VIEWING_ORDERS) return;
+    if (!m_politicalRepaintPending && !m_labelRepaintPending) return;
+    // Only worth a screen when there is really work to do, and only when
+    // somebody is looking: a headless run has no loading screen to show.
+    // Called from Game::draw BEFORE it opens its frame, so this owns the
+    // screen outright and can put a progress bar up the way the turn does.
+    const bool wasShowing = m_showLoadingScreen;
+    if (!m_aiTraining && !wasShowing && m_renderer && m_shotDir.empty()) {
+        showLoadingScreen();
+        setLoadingProgress(0.9f, "Generating political map...");
+        BeginDrawing();
+        ClearBackground(BLACK);
+        drawLoadingScreen();
+        EndDrawing();
+    }
+    struct Restore {
+        Game* g; bool was;
+        ~Restore() { if (!was) g->hideLoadingScreen(); }
+    } restore{this, wasShowing};
+    if (m_politicalRepaintPending) {
+        m_politicalRepaintPending = false;
+        if (!m_aiTraining) generatePoliticalTexture();
+    }
+    if (m_labelRepaintPending) {
+        m_labelRepaintPending = false;
+        if (!m_aiTraining) {
+            computeCountryLabels();
+            if (m_renderer) m_renderer->setCountryLabels(&m_countryLabels);
+        }
+    }
+}
+
+void Game::recordTurnOrders(int countryId) {
+    // Nothing reads this except the overlay, and training has no overlay. This
+    // is the one kind of thing the `if (m_aiTraining)` gate is actually right
+    // for -- it has bitten this codebase three times when used to skip
+    // something the simulation needed, and this is not that: no rule, no
+    // resolver and no save reads m_turnOrderLog.
+    if (m_aiTraining) return;
+
+    // A new turn replaces the last one wholesale. The log describes ONE turn;
+    // keeping two would draw a country's cancelled plan on top of its real one.
+    if (m_turnOrderLogTurn != m_turnNumber) {
+        m_turnOrderLog.clear();
+        m_turnOrderLogTurn = m_turnNumber;
+    }
+
+    for (const auto& ao : m_pendingArtilleryOrders) {
+        const Province* src = m_provinces.getProvinceById(ao.fromProvince);
+        if (!src || src->countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::Artillery;
+        m.countryId = countryId;
+        m.fromProvince = ao.fromProvince;
+        m.toProvince = ao.targetProvince;
+        m.detail = ao.ammoType;
+        m_turnOrderLog.push_back(std::move(m));
+    }
+
+    for (const auto& mo : m_pendingMoveOrders) {
+        if (mo.countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::ArmyMove;
+        m.countryId = countryId;
+        m.fromProvince = mo.fromProvince;
+        m.toProvince = mo.toProvince;
+        m.detail = std::to_string(mo.pct) + "%";
+        m_turnOrderLog.push_back(std::move(m));
+    }
+
+    // ── WHAT IT IS RAISING AND WHAT IT IS BUILDING ──
+    //
+    // Ownership is by PROVINCE, not by a field on the order: these queues carry
+    // no country id, and the province's owner is the country that paid. That
+    // also makes them self-correcting when a province changes hands mid-queue.
+    for (const auto& r : m_pendingRecruitments) {
+        const Province* p = m_provinces.getProvinceById(r.provinceId);
+        if (!p || p->countryId != countryId || r.count <= 0) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::Recruit;
+        m.countryId = countryId;
+        m.fromProvince = m.toProvince = r.provinceId;
+        m.detail = TextFormat("%s %s", formatBalance((float)r.count).c_str(),
+                              T(troopCost(r.type).name));
+        m_turnOrderLog.push_back(std::move(m));
+    }
+    for (const auto& u : m_pendingUpgrades) {
+        const Province* p = m_provinces.getProvinceById(u.provinceId);
+        if (!p || p->countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::Build;
+        m.countryId = countryId;
+        m.fromProvince = m.toProvince = u.provinceId;
+        m.detail = T(u.type.c_str());
+        m_turnOrderLog.push_back(std::move(m));
+    }
+    for (const auto& b : m_pendingShipBuilds) {
+        const Province* p = m_provinces.getProvinceById(b.provinceId);
+        if (!p || p->countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::Build;
+        m.countryId = countryId;
+        m.fromProvince = m.toProvince = b.provinceId;
+        m.detail = T(b.type.c_str());
+        m_turnOrderLog.push_back(std::move(m));
+    }
+
+    // ── AND WHAT THE FLEET IS SHELLING ──
+    //
+    // A naval bombardment is the same shell as a land one, priced by the same
+    // call -- and it was the one kind of attack the orders view could not show,
+    // so a coast being worked over by a carrier group looked like a quiet turn.
+    for (const auto& bo : m_pendingShipBombardOrders) {
+        if (bo.shipIndex < 0 || bo.shipIndex >= (int)m_ships.size()) continue;
+        const NavyShip& ship = m_ships[bo.shipIndex];
+        if (ship.countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::NavalBombard;
+        m.countryId = countryId;
+        m.fromLon = ship.lon;  m.fromLat = ship.lat;
+        m.fromProvince = -1;
+        m.toProvince = bo.targetProvince;
+        m.detail = bo.ammoType;
+        m_turnOrderLog.push_back(std::move(m));
+    }
+
+    for (const auto& so : m_pendingShipMoveOrders) {
+        if (so.shipIndex < 0 || so.shipIndex >= (int)m_ships.size()) continue;
+        const NavyShip& ship = m_ships[so.shipIndex];
+        if (ship.countryId != countryId) continue;
+        TurnOrderMark m;
+        m.kind = TurnOrderMark::Kind::ShipVoyage;
+        m.countryId = countryId;
+        // Where the hull IS as the order resolves. By the time this is drawn it
+        // has sailed, so looking the position up later would draw the leg it
+        // has already finished.
+        m.fromLon = ship.lon;  m.fromLat = ship.lat;
+        m.destLon = so.destLon; m.destLat = so.destLat;
+        m.turnRangeDeg = shipMaxRangeDeg(ship);   // how far it gets THIS turn
+        m.toProvince = so.destProvince;
+        // ── PLAN IT IF THE RESOLVER HAS NOT YET ──
+        //
+        // An order is queued with a destination and an EMPTY route;
+        // processNavyMovement fills it in, and that runs AFTER this. Measured
+        // on a 12-turn eval, 42% of the voyages recorded here (33 of 78 on one
+        // turn) had no route at all -- so without this the overlay would fall
+        // back to a straight line to the destination for nearly half of them,
+        // which is the exact misleading line this whole feature removed for the
+        // player's own ships.
+        //
+        // One BFS per unrouted voyage per turn, tens of them, and never in
+        // training -- the early return above sees to that.
+        m.route = so.route;
+        if (m.route.empty())
+            navRoute(ship.lon, ship.lat, so.destLon, so.destLat, m.route);
+        if (m.route.empty() ||
+            m.route.back().first != so.destLon || m.route.back().second != so.destLat)
+            m.route.emplace_back(so.destLon, so.destLat);
+        m_turnOrderLog.push_back(std::move(m));
+    }
+}

@@ -145,16 +145,35 @@ void Game::drawClaimsTab() {
     // ─── Tabs ───
     int tabY = 100;
     const char* tabs[] = {"My Claims", "Claims on Me", "Disputed"};
-    int tabSpacing = 140;
     int nTabs = 3;
     int centerX = m_screenW / 2;
-    int tabStartX = centerX - (nTabs * tabSpacing) / 2 + tabSpacing / 2;
+
+    // ── LAID OUT FROM WHAT THEY MEASURE, NOT ON A FIXED PITCH ──
+    //
+    // These sat every 140 px whatever they said. "My Claims" and "Claims on Me"
+    // fit that in English and almost nothing else: in Ukrainian they are
+    // "Мої претензії" and "Претензії до мене", which are wider than the gap, so
+    // the first ran into the second and both became unreadable. Photographed.
+    //
+    // MeasureText is language-aware here -- it is shadowed alongside DrawText
+    // and looks the string up the same way -- so the widths were always
+    // available; only the spacing refused to use them.
+    int tabW[3] = {0, 0, 0};
+    int tabsTotal = 0;
+    const int TAB_GAP = 30;
+    for (int t = 0; t < nTabs; ++t) {
+        tabW[t] = MeasureText(tabs[t], 20);
+        tabsTotal += tabW[t];
+    }
+    tabsTotal += TAB_GAP * (nTabs - 1);
+    int tabPen = centerX - tabsTotal / 2;
 
     for (int t = 0; t < nTabs; ++t) {
-        int tx = tabStartX + t * tabSpacing;
+        int tw = tabW[t];
+        int tx = tabPen + tw / 2;          // centre of this label
+        tabPen += tw + TAB_GAP;
         bool active = (t == m_claimsTab);
         Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
-        int tw = MeasureText(tabs[t], 20);
         DrawText(tabs[t], tx - tw / 2, tabY, 20, tc);
         if (active) DrawRectangle(tx - tw / 2, tabY + 24, tw, 3, hexToColor(m_config.accent()));
         Rectangle tr = {(float)(tx - tw / 2 - 10), (float)(tabY - 5), (float)(tw + 20), 30};

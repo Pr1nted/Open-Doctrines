@@ -74,6 +74,7 @@ const char* authProviderId(AuthProvider p) {
         case AuthProvider::Google:  return "google";
         case AuthProvider::Discord: return "discord";
         case AuthProvider::GitHub:  return "github";
+        case AuthProvider::Itch:    return "itch";
     }
     return "google";
 }
@@ -83,6 +84,7 @@ const char* authProviderLabel(AuthProvider p) {
         case AuthProvider::Google:  return "Google";
         case AuthProvider::Discord: return "Discord";
         case AuthProvider::GitHub:  return "GitHub";
+        case AuthProvider::Itch:    return "itch.io";
     }
     return "Google";
 }
@@ -331,11 +333,18 @@ void AccountClient::Impl::probeInto() {
     // id literals beats a parser for two lines of gain.
     std::vector<AuthProvider> found;
     std::vector<AuthProvider> onlyLink;
-    const std::pair<const char*, AuthProvider> known[] = {
-        {"\"id\":\"google\"",  AuthProvider::Google},
-        {"\"id\":\"discord\"", AuthProvider::Discord},
-        {"\"id\":\"github\"",  AuthProvider::GitHub},
-    };
+    // EVERY provider the enum has, built FROM the enum rather than typed out
+    // again. This list had been written by hand and a fourth provider was added
+    // to the enum, to the id/label switches and to the service without anyone
+    // touching it here -- so the service offered itch.io, the game asked for
+    // the list, and the answer silently came back with three entries. A table
+    // that must be kept in step by hand is a table that eventually is not.
+    struct Known { std::string needle; AuthProvider provider; };
+    std::vector<Known> known;
+    for (int i = 0; i <= (int)AuthProvider::Itch; ++i) {
+        const AuthProvider p = (AuthProvider)i;
+        known.push_back({std::string("\"id\":\"") + authProviderId(p) + "\"", p});
+    }
     for (const auto& [needle, provider] : known) {
         const size_t at = res.body.find(needle);
         if (at == std::string::npos) continue;

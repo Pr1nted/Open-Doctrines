@@ -124,8 +124,11 @@ std::string formatTroops(long long men) {
     return shown > 0 ? formatPop(shown) : "<1";
 }
 
-const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Quit to Menu"};
-const int MENU_COUNT = 4;
+// Report sits above Quit rather than below it: Quit stays last, where every
+// player already expects the way out to be.
+const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Report a problem",
+                            "Quit to Menu"};
+const int MENU_COUNT = 5;
 // .odstate is on every build, not just the web one. The browser is where it is
 // indispensable -- data/ there is an Emscripten MEMFS that dies with the tab --
 // but "put my whole setup on a stick and carry it to another machine" is not a
@@ -135,8 +138,12 @@ const int MENU_COUNT = 4;
 // have to read. Everything below it assumes you already know what the game is;
 // it answers the scenario and country questions itself and starts a turn. See
 // Game::startQuickStart.
-const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate"};
-const int MAIN_MENU_COUNT = 10;
+// "Reports" is LAST and conditional: it exists only for an account carrying the
+// developer badge, and mainMenuCount() simply stops counting before it for
+// everybody else. Last rather than somewhere sensible precisely so hiding it is
+// a subtraction and cannot renumber anything above it.
+const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate", "Reports"};
+const int MAIN_MENU_COUNT = 11;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 
@@ -527,6 +534,20 @@ static const char* padRowValue(const char* label) {
 // HERE, at the moment the row is built.
 static std::string onOff(bool on) {
     return std::string(": ") + od::i18n::tr(on ? "On" : "Off");
+}
+
+bool settingUsesArrows(int tab, int index) {
+    if (tab < 0 || tab >= TAB_COUNT) return false;
+    if (index < 0 || index >= TAB_ITEM_COUNTS[tab]) return false;
+    if (TAB_ITEMS[tab][index].isValue) return true;
+    if (isVolumeSetting(tab, index)) return true;
+    // Display rows 4 through 9 -- resolution, FPS, accent, difficulty, UI
+    // scale, colourblind palette -- all step through a list of values, and
+    // every one of them has a LEFT/RIGHT handler further down the screen's
+    // update. The range is the whole run from the first such row to the last,
+    // so adding one inside it needs nothing here.
+    if (tab == 0 && index >= 4 && index <= 9) return true;
+    return false;
 }
 
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
@@ -983,6 +1004,21 @@ bool Game::init(int screenW, int screenH, const char* title) {
 
     int winFlags = FLAG_WINDOW_RESIZABLE;
     if (m_config.fpsTarget == 0) winFlags |= FLAG_VSYNC_HINT;
+    // ── DRAW AT THE PANEL'S RESOLUTION, NOT THE WINDOW'S ──
+    //
+    // Without this the framebuffer is the window's LOGICAL size and the system
+    // stretches it to the display, so on a 2x panel every pixel of the map, the
+    // interface and the text is drawn once and shown as four. Reported as a
+    // blurry font, and the font was only the part that showed it first.
+    //
+    // COORDINATE-TRANSPARENT ON macOS, which is the reason this is a flag and
+    // not a rewrite. raylib 5.5's SetupViewport has an __APPLE__ branch that
+    // sizes the GL viewport by the content scale while leaving the ortho
+    // projection in logical units, and its GLFW backend deliberately skips its
+    // own mouse and screen scaling there -- "system should manage window/input
+    // scaling". So every draw call and every hit test keeps the numbers it
+    // already uses, and only the resolution they are rasterised at changes.
+    if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
     SetConfigFlags(winFlags);
 #ifdef _WIN32
     // Before InitWindow, because the failure it catches happens inside it and
@@ -990,6 +1026,14 @@ bool Game::init(int screenW, int screenH, const char* title) {
     SetTraceLogCallback(odWindowsGlTraceLog);
 #endif
     InitWindow(m_screenW, m_screenH, title);
+    if (getenv("OD_DPI_PROBE")) {
+        const Vector2 sc = GetWindowScaleDPI();
+        printf("[DPI] highdpi_flag=%d  scale=%.2f,%.2f  screen=%dx%d  render=%dx%d  monitor=%dx%d\n",
+               IsWindowState(FLAG_WINDOW_HIGHDPI) ? 1 : 0,
+               sc.x, sc.y, GetScreenWidth(), GetScreenHeight(),
+               GetRenderWidth(), GetRenderHeight(),
+               GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
+    }
 
 #if defined(PLATFORM_ANDROID)
     // AFTER InitWindow, AND IT MUST BE. raylib does not have an asset manager
@@ -1122,7 +1166,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     SetTraceLogCallback(nullptr);
 #endif
     SetExitKey(0);
-    m_dpiScale = GetWindowScaleDPI().x;
+    m_dpiScale = pointerScale();
 
     // Redirect stdout/stderr to in-game console
     m_consoleBuf = new ConsoleBuf(this);
@@ -1491,13 +1535,49 @@ void Game::reloadFonts() {
     // bad translation: it is the right glyph with its thin strokes deleted by
     // the scaler, and it took a screenshot to see.
     //
-    // The fix is the FILTER, not a bigger atlas. Rasterising at 32 was the
-    // first attempt and it worked -- and it also quadrupled the font texture,
-    // and after a dozen world loads the game wedged inside raylib's image
-    // conversion while loading a map. Bilinear filtering on the 16-pixel atlas
-    // blends the rows instead of dropping them, which is the whole of the
-    // problem, at the memory the game already used.
-    constexpr int kAtlasSize = 16;
+    // The fix WAS the filter, and it stopped being the whole of it. Bilinear
+    // on a 16-pixel atlas does not drop the strokes any more -- it blends them
+    // -- but blending is what "blurry on a big display" means, and that is the
+    // complaint now: at 20 px, and again at whatever the framebuffer scales it
+    // by, every glyph is a 16-pixel bitmap being smeared to fit.
+    //
+    // Rasterising at 32 was tried before and reverted, and the reason it was
+    // reverted is worth keeping: it quadrupled EVERY atlas, and after a dozen
+    // world loads the game wedged inside raylib's image conversion during a map
+    // load. That is a real failure and this must not reproduce it.
+    //
+    // So the size is chosen against a BUDGET rather than set to a constant, and
+    // the budget is the biggest atlas the game already builds. Measured, at 16:
+    //
+    //     de / uk / bg / tr / ar / hi / ur   ~900-1150 glyphs   1024x512   2 MB
+    //     ko                                  1615 glyphs       1024x1024  4 MB
+    //     ja                                  1956 glyphs       2048x1024  8 MB
+    //
+    // A language may have 32-pixel glyphs when they still fit inside that 8 MB
+    // -- so Cyrillic, Latin, Greek, Arabic, Devanagari and Korean all sharpen,
+    // and Japanese and Chinese, whose glyph sets are several times larger, stay
+    // where they are. The guarantee is the point: NO ATLAS IS EVER BIGGER THAN
+    // ONE THIS GAME ALREADY SHIPS, so no machine that can run the game today is
+    // asked for memory it was not already asked for.
+    //
+    // MEASURED, NOT ESTIMATED. The first attempt predicted the packed size as
+    // glyphs x (size + padding)^2 rounded to raylib's next power of two, and it
+    // was wrong in the direction that matters: it cleared Japanese and Korean
+    // for 32 and both came back at 2048x2048 -- 16 MB, twice the budget the
+    // estimate existed to enforce. raylib's packer is simply less dense than
+    // that arithmetic assumes, and modelling somebody else's packer is a thing
+    // that is right until they change it.
+    //
+    // So the atlas is BUILT at 32, its real texture is measured, and if it
+    // exceeds the budget it is thrown away and rebuilt at 16. That costs one
+    // wasted build, at load, only for the languages that fall back -- and it
+    // cannot be wrong about the number it is enforcing, because it is reading
+    // the number rather than predicting it.
+    constexpr int kAtlasBudgetBytes = 8 * 1024 * 1024;
+    auto atlasBytes = [](const Font& f) {
+        return (long long)f.texture.width * f.texture.height * 4;
+    };
+    int kAtlasSize = 32;
 
     // ─── WHICH FILE, AND WHY THERE ARE TWO ────────────────────────────────
     //
@@ -1571,6 +1651,27 @@ void Game::reloadFonts() {
         }
     }
 
+    // ── AND IF 32 COST TOO MUCH, IT IS NOT KEPT ──
+    //
+    // Checked after the fallback to the complete unifont above, because that is
+    // the build whose size actually ships: the subset and the full font pack
+    // differently, and measuring the one that gets thrown away would answer
+    // about the wrong atlas.
+    if (built.texture.id > 0 && kAtlasSize > 16 &&
+        atlasBytes(built) > kAtlasBudgetBytes) {
+        const long long was = atlasBytes(built);
+        Font small = LoadFontEx(fontPath.c_str(), 16,
+                                codepoints.data(), (int)codepoints.size());
+        if (small.texture.id > 0) {
+            UnloadFont(built);
+            built = small;
+            kAtlasSize = 16;
+            LoadLog() << "  Font atlas: 32 px would have cost "
+                      << (was / (1024 * 1024)) << " MB for \""
+                      << od::i18n::language() << "\"; kept 16 px" << std::endl;
+        }
+    }
+
     if (built.texture.id == 0) {
         fontPath = m_dataDir + "fonts/DejaVuSans.ttf";
         if (FileExists(fontPath.c_str()))
@@ -1598,6 +1699,15 @@ void Game::reloadFonts() {
 
     LoadLog() << "  Font atlas: " << built.glyphCount << " glyphs for \""
               << od::i18n::language() << "\"" << std::endl;
+    // The two numbers that decide whether this is sharp and whether it fits.
+    LoadLog() << "  Font atlas: rasterised at " << kAtlasSize << " px, "
+              << built.texture.width << "x" << built.texture.height << " ("
+              << (atlasBytes(built) / (1024 * 1024)) << " MB)" << std::endl;
+    if (getenv("OD_DPI_PROBE"))
+        printf("[FONTATLAS] lang=%s size=%d glyphs=%d texture=%dx%d (%.1f MB rgba)\n",
+               od::i18n::language().c_str(), kAtlasSize, built.glyphCount,
+               built.texture.width, built.texture.height,
+               built.texture.width * built.texture.height * 4.0 / (1024.0 * 1024.0));
 }
 
 void Game::shutdown() {
@@ -2184,6 +2294,86 @@ void Game::run() {
             UnloadTexture(m_popupBackdrop);
             m_popupBackdrop = Texture2D{};
         }
+
+        // The report form takes the frame, exactly as a popup does. Not because
+        // it is urgent -- it is not -- but because it is a text field, and a
+        // keystroke that also reaches the screen underneath is how a player
+        // typing "settlement" ends up somewhere else entirely.
+        // One grace frame before the form becomes modal, when nothing has been
+        // captured yet: the screen behind draws normally and endFrame -- which
+        // takes the picture before it draws the form -- gets the world rather
+        // than the black this branch would otherwise have just cleared to.
+        //
+        // In play this never runs: the form is opened from update(), so the
+        // frame it opens on already draws the screen. It is for the callers
+        // that open it from outside a drawn frame, the screenshot tour being
+        // the one that does.
+        // Mail, on the same terms as the report form and for the same reason:
+        // it is a text field, and a keystroke that also reaches the map is how
+        // a letter mentioning "next" also steps to the next province.
+        if (m_devReportsOpen && !m_feedbackOpen) {
+            m_screenW = GetScreenWidth();
+            m_screenH = GetScreenHeight();
+            updateDevReports();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            if (m_currentScreen == SCREEN_MENU) drawMenuBackground();
+            endFrame();
+            if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            continue;
+        }
+
+        if (m_hostReportsOpen && !m_feedbackOpen) {
+            m_screenW = GetScreenWidth();
+            m_screenH = GetScreenHeight();
+            updateHostReports();
+            if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
+            else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
+            if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            continue;
+        }
+
+        if (m_mailOpen && !m_feedbackOpen) {
+            m_screenW = GetScreenWidth();
+            m_screenH = GetScreenHeight();
+            updateMail();
+            updateReportDialog();
+            if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
+            else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
+            if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            continue;
+        }
+
+        if (m_feedbackOpen && m_feedbackBackdropTried) {
+            // The size FIRST. This branch does not go through draw(), which is
+            // where m_screenW/H are normally re-read -- so without this the
+            // form lays itself out against whatever the window was before it
+            // opened, and stays wrong for as long as it is up.
+            m_screenW = GetScreenWidth();
+            m_screenH = GetScreenHeight();
+            updateFeedbackForm();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            if (m_feedbackBackdrop.id != 0) {
+                DrawTexturePro(m_feedbackBackdrop,
+                               {0, 0, (float)m_feedbackBackdrop.width,
+                                (float)m_feedbackBackdrop.height},
+                               {0, 0, (float)m_screenW, (float)m_screenH},
+                               {0, 0}, 0.0f, WHITE);
+            }
+            endFrame();   // endFrame draws the form itself
+            // The tour photographs this form, and its tick is below the
+            // `continue`. Without this the tour stops dead on that shot.
+            if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            continue;
+        }
+        if (m_feedbackBackdropTried) {
+            if (m_feedbackBackdrop.id != 0) {
+                UnloadTexture(m_feedbackBackdrop);
+                m_feedbackBackdrop = Texture2D{};
+            }
+            m_feedbackBackdropTried = false;
+        }
         
 #ifdef __EMSCRIPTEN__
         // Before IsWindowResized() is consulted, not after: the browser window
@@ -2201,7 +2391,7 @@ void Game::run() {
             m_screenW = GetScreenWidth();
             m_screenH = GetScreenHeight();
             if (m_renderer) m_renderer->resize(m_screenW, m_screenH);
-            m_dpiScale = GetWindowScaleDPI().x;
+            m_dpiScale = pointerScale();
             if (m_renderer) m_renderer->setDpiScale(m_dpiScale);
             if (m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER) {
                 // THE SAME HEIGHT GUARD AS EVERY OTHER SCREEN BELOW, and the
@@ -2684,7 +2874,9 @@ Mood Game::currentMood() {
         // actually committed, so a token allocation is a nudge and a real push
         // is what moves the music -- at the default quarter this barely
         // registers, and near full commitment it takes over.
-        if (m_researchActiveNode >= 0) {
+        bool anyProject = false;
+        for (const auto& g : m_researchGroups) anyProject |= (g.activeNode >= 0);
+        if (anyProject) {
             const float commit = std::clamp(m_researchAllocation, 0.0f, 1.0f);
             m.energy  = std::clamp(m.energy  + 0.35f * commit, 0.0f, 1.0f);
             m.valence = std::clamp(m.valence + 0.45f * commit, -1.0f, 1.0f);
@@ -2837,6 +3029,26 @@ void Game::endFrame() {
     // on the map or in the lobby, and a turn nobody was shown is a turn nobody
     // sent.
     mpDrawManualExchange(m_screenW, m_screenH);
+
+    // The report form, above everything, on every screen -- the menu, the map,
+    // the map editor. Captured BEFORE it draws, so the picture behind it is the
+    // screen the player is reporting rather than the form itself.
+    if (m_feedbackOpen && !m_feedbackBackdropTried) {
+        m_feedbackBackdropTried = true;
+        Image shot = LoadImageFromScreen();
+        if (shot.data) {
+            m_feedbackBackdrop = LoadTextureFromImage(shot);
+            UnloadImage(shot);
+        }
+    }
+    drawDevReports();
+    drawMail();
+    drawMailNotice();
+    drawReportDialog();   // over the mail, since it is opened from it
+    drawHostReports();
+    drawFeedbackForm();
+    drawFeedbackNotice();   // over the form, not under it
+    drawRatingPrompt();
     drawPadCursor();
 
     EndDrawing();
@@ -3441,6 +3653,8 @@ void Game::drawPauseMenu() {
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Fullscreen") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Show Actual Flags") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Debug Mode") == 0 ||
+                strcmp(TAB_ITEMS[m_settingsTab][i].label, "UI Scale") == 0 ||
+                strcmp(TAB_ITEMS[m_settingsTab][i].label, "Colourblind Colours") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "FPS") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Now Playing Toast") == 0 ||
                 strcmp(TAB_ITEMS[m_settingsTab][i].label, "Map Atmosphere") == 0 ||
@@ -3537,6 +3751,8 @@ void Game::drawPauseMenu() {
                 strcmp(items[i].label, "Fullscreen") == 0 ||
                 strcmp(items[i].label, "Show Actual Flags") == 0 ||
                 strcmp(items[i].label, "Debug Mode") == 0 ||
+                strcmp(items[i].label, "UI Scale") == 0 ||
+                strcmp(items[i].label, "Colourblind Colours") == 0 ||
                 strcmp(items[i].label, "Accent Color") == 0 ||
                 strcmp(items[i].label, "Display FPS") == 0 ||
                 strcmp(items[i].label, "Display Zoom") == 0 ||
@@ -3622,7 +3838,7 @@ void Game::drawPauseMenu() {
         int hovered = -1;
         for (int i = 0; i < count; ++i) {
             int y = startY + i * itemH;
-            int tw = MeasureText(MENU_ITEMS[i], fontSize);
+            int tw = MeasureText(T(MENU_ITEMS[i]), fontSize);
             Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
             if (CheckCollisionPointRec(mouse, rect)) { hovered = i; break; }
         }
@@ -3634,10 +3850,10 @@ void Game::drawPauseMenu() {
             Color textColor = isSelected ? hexToColor(m_config.accent()) : (isHovered ? WHITE : LIGHTGRAY);
             Color bgColor = isHovered ? Color{255, 255, 255, 16} : BLANK;
 
-            int tw = MeasureText(MENU_ITEMS[i], fontSize);
+            int tw = MeasureText(T(MENU_ITEMS[i]), fontSize);
             Rectangle rect = { (float)(centerX - tw / 2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) };
             DrawRectangleRounded(rect, 0.1f, 8, bgColor);
-            DrawText(MENU_ITEMS[i], centerX - tw / 2, y, fontSize, textColor);
+            DrawText(T(MENU_ITEMS[i]), centerX - tw / 2, y, fontSize, textColor);
 
             if (isSelected) {
                 int lineW = tw + 20;

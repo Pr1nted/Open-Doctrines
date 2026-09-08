@@ -79,6 +79,18 @@ const char* tr(const std::string& english);
  */
 const std::string& properName(const std::string& name);
 
+/**
+ * Whether the names table actually HAS this name, as opposed to properName
+ * being able to transliterate it.
+ *
+ * The difference matters when the caller is choosing WHAT to name something.
+ * "Britain" transliterates to "Брітаін" -- letters, not a word -- where
+ * "British Empire" is in the table as "Британська імперія". A generated name
+ * has no better option than transliteration; a name picked from several
+ * candidates should prefer one the table knows.
+ */
+bool knownName(const std::string& name);
+
 /// True while the active language has anything machine-translated in it.
 bool machineTranslated();
 

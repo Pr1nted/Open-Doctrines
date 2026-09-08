@@ -735,6 +735,23 @@ void Game::mpDrainEvents() {
                                "play that turn for them.", true);
                     }
                     break;
+                case NetHostEvent::Kind::PlayerReport: {
+                    // Held for the host to read, not acted on automatically.
+                    // A host kicking somebody because a stranger asked is a
+                    // host who can be made to kick anybody.
+                    HostReport hr;
+                    hr.fromPeer = e.report.fromPeerId;
+                    hr.aboutPeer = e.report.aboutPeer;
+                    hr.reason = e.report.reason;
+                    hr.note = e.report.note;
+                    hr.message = e.report.message;
+                    hr.atTurn = m_turnNumber;
+                    if (m_hostReports.size() >= 200) m_hostReports.erase(m_hostReports.begin());
+                    m_hostReports.push_back(std::move(hr));
+                    m_hostReportUnread = true;
+                    Audio::get().playSfx("notify");
+                    break;
+                }
                 case NetHostEvent::Kind::Failed:
                     mpNote(e.text, true);
                     break;
@@ -777,6 +794,13 @@ void Game::mpDrainEvents() {
                     break;
                 case NetSessionEvent::Kind::Delta:
                     mpApplyDelta(e.turnNumber, e.payload);
+                    break;
+                case NetSessionEvent::Kind::TurnOrders:
+                    // Display only. A payload that does not parse leaves the
+                    // last turn's overlay alone rather than half-drawing this
+                    // one, and is worth no message to the player: they did not
+                    // ask for it and nothing about their game changed.
+                    mpApplyTurnOrders(e.payload, (int)e.turnNumber);
                     break;
                 case NetSessionEvent::Kind::TurnBegan:
                     m_mpWaitingForTurn = false;
@@ -2500,16 +2524,30 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
     }
     for (auto& r : m_pendingRecruitments) if (ownsProvince(r.provinceId)) {
         j["pendingRecruitments"].push_back({{"provinceId", r.provinceId}, {"count", r.count},
-                                            {"turnsRemaining", r.turnsRemaining}});
+                                            {"turnsRemaining", r.turnsRemaining},
+                                            {"troopType", (int)r.type}});
     }
     for (auto& m : m_pendingMoveOrders) if (m.countryId == countryId) {
         j["pendingMoveOrders"].push_back({{"fromProvince", m.fromProvince},
                                           {"toProvince", m.toProvince}, {"pct", m.pct},
-                                          {"countryId", m.countryId}});
+                                          {"countryId", m.countryId},
+                                          {"troopType", m.troopType}});
     }
     for (auto& d : m_pendingDisbandOrders) if (ownsProvince(d.provinceId)) {
         j["pendingDisbandOrders"].push_back({{"provinceId", d.provinceId}, {"count", d.count}});
     }
+    // Withdrawals. NOT filtered by ownsProvince, and that is the whole point:
+    // a battle is fought over ground somebody else owns, so the province a
+    // player is withdrawing FROM is by definition not theirs. The host checks
+    // the only thing that matters instead -- that a battle of that country's
+    // actually stands there -- when it applies them.
+    // Sent as OBJECTS, not bare integers: the host's `each` helper skips any
+    // array entry that is not an object, so a plain [12, 34] would have been
+    // dropped in silence at the far end -- an order that vanishes without a
+    // refusal is the worst shape a bug in this layer can take.
+    for (int pid : m_pendingWithdraws)
+        if (battleAt(pid, countryId))
+            j["pendingWithdraws"].push_back({{"provinceId", pid}});
     for (auto& sb : m_pendingShipBuilds) if (ownsProvince(sb.provinceId)) {
         j["pendingShipBuilds"].push_back({{"provinceId", sb.provinceId}, {"type", sb.type},
                                           {"turnsRemaining", sb.turnsRemaining}});
@@ -2669,6 +2707,8 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     dropOwned(m_pendingShipMoveOrders, [&](const auto& o){ return ownsShip(o.shipIndex); });
     dropOwned(m_pendingShipEngageOrders,[&](const auto& o){ return ownsShip(o.shipIndex); });
     dropOwned(m_pendingShipBombardOrders,[&](const auto& o){ return ownsShip(o.shipIndex); });
+    // A withdrawal whose battle has already ended is stale, not hostile.
+    dropOwned(m_pendingWithdraws, [&](int pid){ return battleAt(pid, countryId) != nullptr; });
 
     // A country cannot have more orders of one kind than it has provinces or
     // ships to issue them from, so anything beyond that is padding -- and a
@@ -2739,7 +2779,16 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         if (rejected || !ownsProvince(o.provinceId)) return;
         o.count = (int)intIn(e, "count", 1, kMaxTroops, 0);
         o.turnsRemaining = (int)intIn(e, "turnsRemaining", 1, kMaxTurns, 1);
-        if (rejected || o.count <= 0) return;
+        // WHICH KIND, and the host checks the country actually researched it --
+        // ownership of the province is not authority to raise mechanised
+        // divisions. Bounded first so a hostile value cannot index TROOP_TYPES,
+        // then checked against unlockedTroopTypes, which is the same reader the
+        // panel offers from.
+        const int rawType = (int)intIn(e, "troopType", 0, (int)TROOP_TYPE_COUNT - 1, 0);
+        if (rejected) return;
+        o.type = (TroopType)rawType;
+        if (!troopTypeUnlocked(countryId, o.type)) return;
+        if (o.count <= 0) return;
 
         auto cit = m_countries.getAll().find(countryId);
         if (cit == m_countries.getAll().end()) return;
@@ -2748,11 +2797,13 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         // becomes 1.0. Game_Render.cpp carries a comment about having made
         // exactly that mistake once already; this is the same price the panel
         // charges, which is the whole point of charging it here.
-        float cost = ((float)o.count / 10000.0f) *
-                     conscriptionCostMod(getTotalEffect("conscriptionCostPct", countryId));
-        if (cost < 1.0f) cost = 1.0f;
-        if (cit->second.treasury < cost) return;      // cannot afford it, so it does not happen
-        cit->second.treasury -= cost;
+        // Both currencies, through the same call the panel and the AI use, so a
+        // client cannot raise an army the host would have refused. See
+        // Game::recruitPrice.
+        const WarPrice price = recruitPrice(o.count, countryId, o.type);
+        if (cit->second.treasury < price.money) return;   // cannot afford it, so it does not happen
+        if (!payWarMaterials(countryId, price)) return;   // no shells, no soldiers
+        cit->second.treasury -= price.money;
         m_pendingRecruitments.push_back(o);
     });
 
@@ -2762,6 +2813,9 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         if (rejected || !ownsProvince(o.fromProvince)) return;
         o.toProvince = (int)intIn(e, "toProvince", 1, kMaxProvinceId, 0);
         o.pct = (int)intIn(e, "pct", 0, 100, 50);
+        // -1 (the whole garrison) or a real kind. Bounded like everything else
+        // off the wire: an out-of-range type would index TROOP_TYPES.
+        o.troopType = (int)intIn(e, "troopType", -1, (int)TROOP_TYPE_COUNT - 1, -1);
         if (rejected) return;
         // Re-attributed, never taken from the wire: a client does not get to
         // say which country issued its orders.
@@ -2775,7 +2829,21 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         if (rejected || !ownsProvince(o.provinceId)) return;
         o.count = (int)intIn(e, "count", 0, kMaxTroops, 0);
         if (rejected) return;
+        traceDisband("PUSH-clientOrders", o.provinceId, o.count, countryId);
         m_pendingDisbandOrders.push_back(o);
+    });
+
+    // A withdrawal names ground the client does NOT own -- a battle is fought
+    // over somebody else's province -- so ownsProvince is the wrong check and
+    // would refuse every legitimate order. What the host verifies instead is
+    // the thing that actually authorises it: that a battle belonging to THIS
+    // country stands in that province. A client cannot withdraw somebody else's
+    // army, and cannot invent a battle that is not there.
+    each("pendingWithdraws", [&](const nlohmann::json& e) {
+        const int pid = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
+        if (rejected) return;
+        if (!battleAt(pid, countryId)) return;      // nothing of theirs is fighting there
+        if (!hasPendingWithdraw(pid)) m_pendingWithdraws.push_back(pid);
     });
 
     // A hull costs money and needs a port big enough to lay it down in: $15 and
@@ -3098,6 +3166,14 @@ void Game::mpResolveTurn() {
         std::vector<uint8_t> packed = SaveManager::packTurn(delta);
         if (!packed.empty()) {
             m_netHost->broadcastDelta(turn, packed);
+            // The middle-state overlay's data for the same turn, in its own
+            // message so an older client simply ignores it. Sent after the
+            // delta: it describes the turn the delta just applied, and a client
+            // that has not applied it has nothing to draw the orders on.
+            {
+                std::vector<uint8_t> orders = mpSerializeTurnOrders();
+                if (!orders.empty()) m_netHost->broadcastTurnOrders(turn, orders);
+            }
             // And to the store, for everyone who was not connected to hear it.
             // Long-form only, and the same bytes -- a player who catches up
             // next week applies exactly what the players who were here did.
@@ -3166,6 +3242,7 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
     // protocol and belongs with one, not smuggled in here.
     m_pendingMoveOrders.clear();
     m_pendingDisbandOrders.clear();
+    m_pendingWithdraws.clear();
     m_pendingArtilleryOrders.clear();
     m_pendingShipMoveOrders.clear();
     m_pendingShipEngageOrders.clear();
@@ -4142,4 +4219,114 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
         buttonAt((float)(x + panelW - 140), (float)(y + panelH - 52), 120, 36, mouse);
     drawButton(close, "Close", 15, Color{40, 34, 34, 235}, Color{140, 110, 110, 200});
     if (click && close.hovered) m_mpManualOpen = false;
+}
+
+// ─── The middle state, over the wire ────────────────────────────────────────
+//
+// See Game::mpSerializeTurnOrders in Game.h. The host is the only machine that
+// runs every country's turn, so it is the only one that can record what every
+// country ordered; a client is told.
+
+namespace {
+
+// Little-endian, fixed width, no padding. Written by hand rather than by
+// memcpy-ing the struct: TurnOrderMark holds a std::string and a vector, and a
+// struct with a heap pointer in it is not a wire format.
+void putU8(std::vector<uint8_t>& v, uint8_t x) { v.push_back(x); }
+void putU32(std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back((uint8_t)(x & 0xFF));         v.push_back((uint8_t)((x >> 8) & 0xFF));
+    v.push_back((uint8_t)((x >> 16) & 0xFF)); v.push_back((uint8_t)((x >> 24) & 0xFF));
+}
+void putI32(std::vector<uint8_t>& v, int32_t x) { putU32(v, (uint32_t)x); }
+// Coordinates as fixed-point hundredths of a degree, not doubles: a route is
+// most of this payload, sixteen bytes a waypoint is most of a route, and no
+// overlay needs a hull placed to a millionth of a degree.
+void putCoord(std::vector<uint8_t>& v, double deg) {
+    putI32(v, (int32_t)llround(deg * 100.0));
+}
+
+struct Rd {
+    const uint8_t* p; size_t n; size_t i = 0; bool bad = false;
+    Rd(const uint8_t* d, size_t s) : p(d), n(s) {}
+    uint8_t u8()  { if (i + 1 > n) { bad = true; return 0; } return p[i++]; }
+    uint32_t u32() {
+        if (i + 4 > n) { bad = true; return 0; }
+        uint32_t x = (uint32_t)p[i] | ((uint32_t)p[i+1] << 8) |
+                     ((uint32_t)p[i+2] << 16) | ((uint32_t)p[i+3] << 24);
+        i += 4; return x;
+    }
+    int32_t i32() { return (int32_t)u32(); }
+    double coord() { return (double)i32() / 100.0; }
+};
+
+// What a turn can carry. A hostile or corrupt host must not be able to make a
+// client allocate on the strength of a length field; these are generous against
+// what a real turn produces (a 12-turn eval peaked at 418 marks and 78 voyages)
+// and mean nothing can run away.
+constexpr uint32_t kMaxMarks = 20000;
+constexpr uint32_t kMaxRouteLegs = 4096;
+
+}  // namespace
+
+std::vector<uint8_t> Game::mpSerializeTurnOrders() const {
+    std::vector<uint8_t> v;
+    putU32(v, (uint32_t)m_turnOrderLog.size());
+    for (const auto& m : m_turnOrderLog) {
+        putU8(v, (uint8_t)m.kind);
+        putI32(v, m.countryId);
+        putI32(v, m.fromProvince);
+        putI32(v, m.toProvince);
+        if (m.kind == TurnOrderMark::Kind::ShipVoyage) {
+            putCoord(v, m.fromLon); putCoord(v, m.fromLat);
+            putCoord(v, m.destLon); putCoord(v, m.destLat);
+            const uint32_t legs = (uint32_t)std::min<size_t>(m.route.size(), kMaxRouteLegs);
+            putU32(v, legs);
+            for (uint32_t i = 0; i < legs; ++i) {
+                putCoord(v, m.route[i].first);
+                putCoord(v, m.route[i].second);
+            }
+        }
+        // `detail` is not sent. It is the ammo type or the share of a garrison,
+        // and the overlay draws neither -- an arrow says who and where, which is
+        // what was asked for. Adding it later is additive within this payload.
+    }
+    return v;
+}
+
+bool Game::mpApplyTurnOrders(const std::vector<uint8_t>& payload, int turnNumber) {
+    Rd r(payload.data(), payload.size());
+    const uint32_t count = r.u32();
+    if (r.bad || count > kMaxMarks) return false;
+
+    // Built to the side and swapped in only if the WHOLE payload parsed, so a
+    // truncated message cannot leave half a turn drawn on the map.
+    std::vector<TurnOrderMark> parsed;
+    parsed.reserve(count);
+    for (uint32_t k = 0; k < count; ++k) {
+        TurnOrderMark m;
+        const uint8_t kind = r.u8();
+        if (kind > (uint8_t)TurnOrderMark::Kind::ShipVoyage) return false;
+        m.kind = (TurnOrderMark::Kind)kind;
+        m.countryId    = r.i32();
+        m.fromProvince = r.i32();
+        m.toProvince   = r.i32();
+        if (m.kind == TurnOrderMark::Kind::ShipVoyage) {
+            m.fromLon = r.coord(); m.fromLat = r.coord();
+            m.destLon = r.coord(); m.destLat = r.coord();
+            const uint32_t legs = r.u32();
+            if (r.bad || legs > kMaxRouteLegs) return false;
+            m.route.reserve(legs);
+            for (uint32_t i = 0; i < legs; ++i) {
+                const double lon = r.coord(), lat = r.coord();
+                m.route.emplace_back(lon, lat);
+            }
+        }
+        if (r.bad) return false;
+        parsed.push_back(std::move(m));
+    }
+    if (r.bad || r.i != r.n) return false;   // trailing bytes are a mismatch
+
+    m_turnOrderLog = std::move(parsed);
+    m_turnOrderLogTurn = turnNumber;
+    return true;
 }

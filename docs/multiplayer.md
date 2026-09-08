@@ -106,6 +106,21 @@ Three things already in the codebase carry most of the weight:
 | `Pending*` order structs (`src/GameStructs.h`) | the client → server orders message |
 | The Gearbox capability bitmask (`src/mods/ModPackage.h`) | the client/server mod split, as a mask over the same word the Advanced panel edits |
 
+### Adding a server → client message
+
+`Session.cpp`'s message switch ends in `default: return;` with the comment
+"Unknown, or a server->client message this build predates." A client older than
+a new message therefore ignores it, so a **new id is additive and a widened
+existing payload is not** — widening one changes bytes older clients already
+parse. `NetMsg::TurnOrders` (id 80, the Orders overlay) is the worked example:
+new id, opaque payload written and read only by `Game::mpSerializeTurnOrders` /
+`mpApplyTurnOrders`, fail-closed decode that leaves state untouched on a bad
+payload, and no consequence beyond a missing overlay if it never arrives.
+
+Check the ids before picking one. `TurnOrders` was written as 79 first, which is
+`TurnStoreInfo`; the compiler caught it as a duplicate case, but a message that
+silently collided would not have been fun to find.
+
 ## Layout
 
 ```

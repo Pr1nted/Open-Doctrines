@@ -1,11 +1,27 @@
-// The three identity providers, and the scopes we ask them for.
+// The identity providers, and the scopes we ask them for.
 //
 // THE SCOPES ARE THE POINT. Each one is the narrowest that still yields a
 // stable user id, and no more:
 //
 //   Google   "openid"    gives `sub`. NOT "email", NOT "profile".
 //   Discord  "identify"  gives id + username. NOT "email".
-//   GitHub   ""          no scope at all; /user still returns id + login.
+//   GitHub   ""             no scope at all; /user still returns id + login.
+//   itch.io  "profile:me"   gives the numeric user id. Nothing about games.
+//
+// ITCH.IO IS DIFFERENT IN KIND, NOT JUST IN DETAIL
+//
+// The other three do the authorization-code flow: the browser hands us a code,
+// and we exchange it server-side using a client secret nobody else has. itch.io
+// implements only the IMPLICIT flow -- no token endpoint, no client secret, no
+// PKCE, and the access token comes back in the URL fragment, which browsers
+// never send to a server. So it needs its own path through the callback; see
+// authItchToken in index.ts.
+//
+// What makes it trustworthy anyway is that we never believe the token: the
+// service calls api.itch.io/profile with it and uses what itch.io answers. A
+// forged token gets nothing. What the weaker flow does cost is the assurance
+// that the token reached us by a channel only we could read, which is why itch
+// is LINK-ONLY below.
 //
 // We do not want an email address. We have nothing to send anyone, no password
 // to reset, and no newsletter -- so collecting one would be data we hold, must
@@ -13,7 +29,7 @@
 // The consent screen a player sees is correspondingly short, which is the
 // visible half of the same decision.
 
-export const PROVIDER_IDS = ["google", "discord", "github"] as const;
+export const PROVIDER_IDS = ["google", "discord", "github", "itch"] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
 
 export function isProviderId(v: string): v is ProviderId {
@@ -27,8 +43,18 @@ export interface ProviderConfig {
     tokenUrl: string;
     userUrl: string;
     scope: string;
-    /** Whether the provider supports PKCE (RFC 7636). All three do. */
+    /** Whether the provider supports PKCE (RFC 7636). All but itch.io do. */
     pkce: boolean;
+
+    /**
+     * Which OAuth dance this provider does.
+     *
+     * "code" is the ordinary one: a code arrives on the callback and is
+     * exchanged server-side for a token. "implicit" means the token itself
+     * arrives in the URL fragment and the callback has to be a page that reads
+     * it -- itch.io offers nothing else.
+     */
+    flow: "code" | "implicit";
     /** Pulls the stable, provider-scoped user id out of the userinfo response. */
     subjectOf(user: Record<string, unknown>): string | null;
     /** A name to OFFER as a starting nickname. Never stored on its own. */
@@ -64,6 +90,7 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         userUrl: "https://openidconnect.googleapis.com/v1/userinfo",
         scope: "openid",
         pkce: true,
+        flow: "code",
         subjectOf: (u) => (typeof u.sub === "string" ? u.sub : null),
         // With "openid" alone there is no name to suggest, which is correct:
         // the player picks a nickname rather than being handed their real one.
@@ -89,6 +116,7 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         userUrl: "https://discord.com/api/users/@me",
         scope: "identify",
         pkce: true,
+        flow: "code",
         subjectOf: (u) => (typeof u.id === "string" ? u.id : null),
         suggestedName: (u) => (typeof u.username === "string" ? u.username : null),
         // A Discord id is a snowflake: the top 42 bits are milliseconds since
@@ -110,6 +138,7 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         userUrl: "https://api.github.com/user",
         scope: "",
         pkce: true,
+        flow: "code",
         // GitHub's id is numeric and, unlike the login, never changes hands.
         // Keying on `login` would mean a renamed account silently becoming a
         // different person -- or worse, someone else claiming the freed name.
@@ -122,13 +151,69 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         },
         canCreateAccount: true,
     },
+    itch: {
+        id: "itch",
+        label: "itch.io",
+        authorizeUrl: "https://itch.io/user/oauth",
+        // Empty on purpose: there is no token endpoint. The implicit flow hands
+        // the token straight to the browser, so there is nothing to exchange.
+        tokenUrl: "",
+        userUrl: "https://api.itch.io/profile",
+        // The narrowest scope itch.io offers that yields an id. NOT
+        // profile:games, NOT profile:owned -- we have no business knowing what
+        // somebody has bought.
+        scope: "profile:me",
+        pkce: false,
+        flow: "implicit",
+        // Nested under "user", and the numeric id rather than the username for
+        // the same reason as GitHub: usernames change hands, ids do not.
+        subjectOf: (u) => {
+            const user = u.user as Record<string, unknown> | undefined;
+            return user && typeof user.id === "number" ? String(user.id) : null;
+        },
+        suggestedName: (u) => {
+            const user = u.user as Record<string, unknown> | undefined;
+            if (!user) return null;
+            if (typeof user.display_name === "string" && user.display_name) {
+                return user.display_name;
+            }
+            return typeof user.username === "string" ? user.username : null;
+        },
+        // itch.io's profile carries no creation date, so there is nothing to
+        // age-gate on. That is precisely why canCreateAccount is false.
+        accountCreatedAt: () => null,
+        /**
+         * LINK ONLY, for two reasons that point the same way.
+         *
+         * There is no creation date, so a brand-new throwaway cannot be told
+         * from a decade-old account -- and refusing new accounts at signup is
+         * the only gate this service has. And the implicit flow is the weaker
+         * of the two dances. Requiring an account to exist first means somebody
+         * has already come through a gateable provider, and itch.io becomes a
+         * convenience for people who are already here rather than a way round
+         * the gate.
+         */
+        canCreateAccount: false,
+    },
 };
 
+/**
+ * The credentials for a provider, or null when it is not configured.
+ *
+ * AN IMPLICIT-FLOW PROVIDER HAS NO SECRET, and requiring one would mean itch.io
+ * could never be offered however carefully it was set up -- the operator would
+ * set the client id, see nothing appear, and have no way to tell why. The
+ * secret is required for exactly the providers that spend one.
+ */
 export function clientCredentials(
     env: Record<string, unknown>, provider: ProviderId,
 ): { id: string; secret: string } | null {
     const id = env[`${provider.toUpperCase()}_CLIENT_ID`];
+    if (typeof id !== "string" || !id) return null;
+
+    if (PROVIDERS[provider].flow === "implicit") return { id, secret: "" };
+
     const secret = env[`${provider.toUpperCase()}_CLIENT_SECRET`];
-    if (typeof id !== "string" || typeof secret !== "string" || !id || !secret) return null;
+    if (typeof secret !== "string" || !secret) return null;
     return { id, secret };
 }

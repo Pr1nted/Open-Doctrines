@@ -89,6 +89,40 @@ std::string findConfigString(const std::string& json, const char* key,
     return json.substr(open + 1, close - open - 1);
 }
 
+/**
+ * A JSON array of strings, for the host's forbidden-word list.
+ *
+ * The same hand-rolled shape as the rest of this file: this config is read
+ * before anything that could pull in a JSON library, and a dependency here
+ * would be a dependency on the startup path. Handles the escapes the writer
+ * above emits and nothing more, which is exactly the set it has to handle.
+ */
+std::vector<std::string> findConfigStringList(const std::string& json, const char* key) {
+    std::vector<std::string> out;
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t at = json.find(needle);
+    if (at == std::string::npos) return out;
+    at = json.find('[', at + needle.size());
+    if (at == std::string::npos) return out;
+    const size_t end = json.find(']', at);
+    if (end == std::string::npos) return out;
+
+    for (size_t i = at + 1; i < end; ) {
+        const size_t open = json.find('"', i);
+        if (open == std::string::npos || open > end) break;
+        std::string value;
+        size_t j = open + 1;
+        for (; j < end; ++j) {
+            if (json[j] == '\\' && j + 1 < end) { value += json[j + 1]; ++j; continue; }
+            if (json[j] == '"') break;
+            value += json[j];
+        }
+        if (!value.empty()) out.push_back(value);
+        i = j + 1;
+    }
+    return out;
+}
+
 }  // namespace
 
 bool Config::load(const std::string& path) {
@@ -110,6 +144,8 @@ bool Config::load(const std::string& path) {
     if (colourBlindMode < 0 || colourBlindMode > 3) colourBlindMode = 0;
     if (uiScale < 0.75f) uiScale = 0.75f;
     if (uiScale > 2.0f) uiScale = 2.0f;
+    skipViewingOrders = findBool(json, "skipViewingOrders", false);
+    highDpi = findBool(json, "highDpi", true);
     debugMode = findBool(json, "debugMode", false);
     showFps = findBool(json, "showFps", true);
     showZoom = findBool(json, "showZoom", false);
@@ -149,6 +185,22 @@ bool Config::load(const std::string& path) {
     //
     // A config.json value still wins, so a player can point at their own.
     accountIssuer = findConfigString(json, "accountIssuer", bakedAccountIssuer());
+    feedbackEndpoint  = findConfigString(json, "feedbackEndpoint", bakedAccountIssuer());
+    installId         = findConfigString(json, "installId", "");
+    feedbackCountedOn = findConfigString(json, "feedbackCountedOn", "");
+    feedbackSentToday = (int)findFloat(json, "feedbackSentToday", 0.0f);
+    minutesPlayed     = (int)findFloat(json, "minutesPlayed", 0.0f);
+    ratingAsked       = findBool(json, "ratingAsked", false);
+    ratingGiven       = findBool(json, "ratingGiven", false);
+    mailPolicy        = (int)findFloat(json, "mailPolicy", 3.0f);
+    mailLock          = (int)findFloat(json, "mailLock", 0.0f);
+    mailBlacklist     = findConfigStringList(json, "mailBlacklist");
+    agePromptOn       = findBool(json, "agePromptOn", false);
+    ageAnswer         = (int)findFloat(json, "ageAnswer", 0.0f);
+    llmEnabled        = findBool(json, "llmEnabled", false);
+    llmEndpoint       = findConfigString(json, "llmEndpoint", "http://127.0.0.1:8080/v1");
+    llmModel          = findConfigString(json, "llmModel", "local-model");
+    llmApiKey         = findConfigString(json, "llmApiKey", "");
 
     // An EMPTY value in the file means "nobody ever set one", not "this build
     // has no service". save() writes every field on every settings change, so a
@@ -205,6 +257,8 @@ bool Config::save(const std::string& path) {
     file << "  \"language\": \"" << language << "\",\n";
     file << "  \"uiScale\": " << uiScale << ",\n";
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
+    file << "  \"skipViewingOrders\": " << (skipViewingOrders ? "true" : "false") << ",\n";
+    file << "  \"highDpi\": " << (highDpi ? "true" : "false") << ",\n";
     file << "  \"debugMode\": " << (debugMode ? "true" : "false") << ",\n";
     file << "  \"showFps\": " << (showFps ? "true" : "false") << ",\n";
     file << "  \"showZoom\": " << (showZoom ? "true" : "false") << ",\n";
@@ -226,6 +280,33 @@ bool Config::save(const std::string& path) {
     file << "  \"gameUpdateChecks\": " << (gameUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
     file << "  \"accountIssuer\": \"" << accountIssuer << "\",\n";
+    file << "  \"feedbackEndpoint\": \"" << feedbackEndpoint << "\",\n";
+    file << "  \"installId\": \"" << installId << "\",\n";
+    file << "  \"feedbackSentToday\": " << feedbackSentToday << ",\n";
+    file << "  \"feedbackCountedOn\": \"" << feedbackCountedOn << "\",\n";
+    file << "  \"minutesPlayed\": " << minutesPlayed << ",\n";
+    file << "  \"ratingAsked\": " << (ratingAsked ? "true" : "false") << ",\n";
+    file << "  \"ratingGiven\": " << (ratingGiven ? "true" : "false") << ",\n";
+    file << "  \"mailPolicy\": " << mailPolicy << ",\n";
+    file << "  \"mailLock\": " << mailLock << ",\n";
+    file << "  \"mailBlacklist\": [";
+    for (size_t i = 0; i < mailBlacklist.size(); ++i) {
+        // Escaped, because a host types these and a stray quote would produce a
+        // config file that silently fails to load on the next launch.
+        file << (i ? ", \"" : "\"");
+        for (char c : mailBlacklist[i]) {
+            if (c == '"' || c == '\\') file << '\\';
+            if ((unsigned char)c >= 0x20) file << c;
+        }
+        file << "\"";
+    }
+    file << "],\n";
+    file << "  \"agePromptOn\": " << (agePromptOn ? "true" : "false") << ",\n";
+    file << "  \"ageAnswer\": " << ageAnswer << ",\n";
+    file << "  \"llmEnabled\": " << (llmEnabled ? "true" : "false") << ",\n";
+    file << "  \"llmEndpoint\": \"" << llmEndpoint << "\",\n";
+    file << "  \"llmModel\": \"" << llmModel << "\",\n";
+    file << "  \"llmApiKey\": \"" << llmApiKey << "\",\n";
     file << "  \"serverCredential\": \"" << serverCredential << "\",\n";
     file << "  \"accountAgreed\": " << (accountAgreed ? "true" : "false") << ",\n";
     file << "  \"keybinds\": [";

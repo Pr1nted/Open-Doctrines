@@ -990,4 +990,191 @@ public final class GearboxRaw {
     @Import(module = "gearbox:neural", name = "model_loaded")
     public static native int modelLoaded();
 
+    // How many districts this country is divided into. Districts are built on
+    // demand, so asking is what creates the default one for a country that has
+    // never been divided.
+    // `(i)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_count")
+    public static native int countryDistrictCount(int country);
+
+    // The district's name. Two-call sizing: call with cap 0 to learn the
+    // length, allocate, call again. Returns the full length either way; the
+    // copy is truncated to cap.
+    // `(iiii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_name")
+    public static native int countryDistrictName(int country, int index, int buf, int cap);
+
+    // This district's claim on the country's pacification budget, in percent.
+    // The shares of a country's districts sum to 100.
+    // `(ii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_share")
+    public static native int countryDistrictShare(int country, int index);
+
+    // How many provinces this district holds.
+    // `(ii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_province_count")
+    public static native int countryDistrictProvinceCount(int country, int index);
+
+    // Province `n` of this district, or GEARBOX_INVALID if there is no such
+    // one.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_province")
+    public static native int countryDistrictProvince(int country, int index, int n);
+
+    // How many regional laws this district runs.
+    // `(ii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_law_count")
+    public static native int countryDistrictLawCount(int country, int index);
+
+    // The stable id of regional law `n` in this district. Two-call sizing:
+    // call with cap 0 to learn the length, allocate, call again. Returns the
+    // full length either way; the copy is truncated to cap.
+    // `(iiiii)i`
+    @Import(module = "gearbox:politics.read", name = "country_district_law")
+    public static native int countryDistrictLaw(int country, int index, int n, int buf, int cap);
+
+    // How many regional laws exist to choose from.
+    // `()i`
+    @Import(module = "gearbox:politics.read", name = "district_law_count")
+    public static native int districtLawCount();
+
+    // The stable id of regional law `index`. Two-call sizing: call with cap 0
+    // to learn the length, allocate, call again. Returns the full length
+    // either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "district_law_id")
+    public static native int districtLawId(int index, int buf, int cap);
+
+    // The display name of regional law `index`, untranslated. Two-call sizing:
+    // call with cap 0 to learn the length, allocate, call again. Returns the
+    // full length either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.read", name = "district_law_name")
+    public static native int districtLawName(int index, int buf, int cap);
+
+    // Whether this country publishes that figure in its profile: 1 if it does,
+    // 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
+    // a decision with a consequence -- migrants read it -- rather than a
+    // display setting.
+    // `(ii)i`
+    @Import(module = "gearbox:politics.read", name = "country_discloses")
+    public static native int countryDiscloses(int country, int field);
+
+    // Set this district's claim on the pacification budget. The other
+    // districts are rebalanced so the shares still sum to 100, exactly as
+    // dragging the slider does. Returns 1 on success.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.write", name = "set_country_district_share")
+    public static native int setCountryDistrictShare(int country, int index, int percent);
+
+    // Pass or repeal a regional law in this district. Returns 1 on success, 0
+    // for an unknown law or district.
+    // `(iiiii)i`
+    @Import(module = "gearbox:politics.write", name = "set_country_district_law")
+    public static native int setCountryDistrictLaw(int country, int index, int law, int lawLen, int on);
+
+    // Publish or withhold one of the figures in this country's profile.
+    // Returns 1 on success.
+    // `(iii)i`
+    @Import(module = "gearbox:politics.write", name = "set_country_disclosure")
+    public static native int setCountryDisclosure(int country, int field, int on);
+
+    // How many kinds of soldier exist.
+    // `()i`
+    @Import(module = "gearbox:military.read", name = "troop_type_count")
+    public static native int troopTypeCount();
+
+    // The stable id of troop type `index` -- line, militia, assault, mech.
+    // Never translated. Two-call sizing: call with cap 0 to learn the length,
+    // allocate, call again. Returns the full length either way; the copy is
+    // truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:military.read", name = "troop_type_id")
+    public static native int troopTypeId(int index, int buf, int cap);
+
+    // How many soldiers of that kind this country has, everywhere. 0 for a
+    // troop type that does not exist.
+    // `(iii)I`
+    @Import(module = "gearbox:military.read", name = "country_army_of_type")
+    public static native long countryArmyOfType(int country, int troopType, int troopTypeLen);
+
+    // How many soldiers of that kind this country has standing in that
+    // province.
+    // `(iiii)I`
+    @Import(module = "gearbox:military.read", name = "province_troops_of_type")
+    public static native long provinceTroopsOfType(int province, int country, int troopType, int troopTypeLen);
+
+    // How many research programmes this country may run at once, 1 to 3. This
+    // is the effective number, including any override a script or a mod has
+    // set.
+    // `(i)i`
+    @Import(module = "gearbox:research.read", name = "country_research_groups")
+    public static native int countryResearchGroups(int country);
+
+    // Force how many research programmes a country may run, 1 to 3, or 0 to
+    // hand the decision back to its economy. Outranks the economic gate in
+    // both directions and is saved with the game. Returns 1 on success.
+    // `(ii)i`
+    @Import(module = "gearbox:research.write", name = "set_country_research_groups")
+    public static native int setCountryResearchGroups(int country, int groups);
+
+    // What this country spent last turn, in total. The same figure its profile
+    // publishes and the economy screen draws.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_expenses")
+    public static native double countryExpenses(int country);
+
+    // What the whole country is worth: every industry level, fort, port and
+    // division at what it cost to raise. A stock, where the income figures are
+    // flows.
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_national_value")
+    public static native double countryNationalValue(int country);
+
+    // How many people live in this country.
+    // `(i)I`
+    @Import(module = "gearbox:economy.read", name = "country_population")
+    public static native long countryPopulation(int country);
+
+    // The AI's own version, e.g. "ParrotZero 8.4.0" -- ARCH.RULES.PATCH, and
+    // independent of the game's version. ARCH is the network shape and action
+    // space, RULES is behaviour a benchmark can see, PATCH cannot move a
+    // number. A mod that reads the feature vector should check ARCH before
+    // trusting its layout, and anything comparing measurements across builds
+    // should record RULES. Two-call sizing: call with cap 0 to learn the
+    // length, allocate, call again. Returns the full length either way; the
+    // copy is truncated to cap.
+    // `(ii)i`
+    @Import(module = "gearbox:neural", name = "ai_version")
+    public static native int aiVersion(int buf, int cap);
+
+    // The AI's ARCH number on its own, which is also the model file's format
+    // byte. The feature count and the action sets are only stable within one
+    // ARCH; a bump means old weights are refused on purpose.
+    // `()i`
+    @Import(module = "gearbox:neural", name = "ai_arch")
+    public static native int aiArch();
+
+    // The posture the AI has chosen for this country -- 0 expand, 1
+    // consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none
+    // (a country the AI does not play, or one that has not been given a stance
+    // yet). Held for several turns at a time rather than chosen fresh each
+    // turn.
+    // `(i)i`
+    @Import(module = "gearbox:neural", name = "country_stance")
+    public static native int countryStance(int country);
+
+    // The stance's name: "expand", "consolidate", "defend", "develop". Never
+    // translated, and stable within an ARCH. Two-call sizing: call with cap 0
+    // to learn the length, allocate, call again. Returns the full length
+    // either way; the copy is truncated to cap.
+    // `(iii)i`
+    @Import(module = "gearbox:neural", name = "stance_name")
+    public static native int stanceName(int index, int buf, int cap);
+
+    // How many stances there are to choose between.
+    // `()i`
+    @Import(module = "gearbox:neural", name = "stance_count")
+    public static native int stanceCount();
+
 }

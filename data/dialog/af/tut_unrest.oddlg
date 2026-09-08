@@ -35,5 +35,41 @@ Jy kry 'n waarskuwing. Jy kry nie altyd 'n tweede nie.
 @Signals Officer
 Die middels is ongewild of stadig: sit 'n garnisoen daar, bestee daaraan, of gee
 dit wat dit wil hê. Kies vroeg, want al drie vat beurte om te werk.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Die geld daaraan word grootliks vermors. Maak Politiek oop, dan
+§**Distrikte**§.
 
+---
+@Signals Officer
+Die begroting het tot dusver op die hele land tegelyk geval -- dieselfde gewig
+op 'n stil distrik as op die een wat bewapen. Sny dus die land op. 'n
+§**Distrik**§ is 'n stuk daarvan wat jy as eenheid regeer: verf provinsies
+daarin, gee dit 'n kleur en 'n §**deel**§. Die dele maak altyd honderd, want
+daar is net een begroting.
+
+---
+@Signals Officer
+Wat tel, is die deel van die §**geld**§ teenoor die deel van die §**grond**§.
+'n Distrik met 'n tiende van die land op 'n tiende van die begroting word net
+soos voorheen bewaak -- verdeel verander niks solank die dele gelyk is nie.
+
+---
+@Signals Officer
+Trek 'n klein distrik om die moeilikheid, gee dit 'n kwart van die geld, en dit
+word baie kere strenger bewaak; die paneel gee jou die syfer. Al die ander plekke
+betaal daarvoor, en dít is die besluit. Daar is 'n knoppie om gelykop te verdeel:
+'n verstandige begin en selde die plek om te bly.
+
+'n Distrik maak ook sy eie §**streeksreg**§: 'n aandklokreël, 'n
+belastingverligting, die taal van die howe. Klein, plaaslik, en elkeen 'n ruil.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Maak dit toe.
+
+---
+@Signals Officer
 Dit is onrus. Iets anders?

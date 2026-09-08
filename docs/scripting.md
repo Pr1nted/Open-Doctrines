@@ -6,7 +6,7 @@ Version 1 files still run: everything version 2 ADDS is backward compatible.
 The header is not decoration, though — a file that declares version 1 gets
 version 1's language, and version 2 statements (`for`, `repeat`, `break`,
 `continue`, `print`, `elseif`, `unless`, `label`, `jump`, `spawn`, `stop`,
-`try`) are refused in it, with a message saying to change the header. The map
+`try`, `wait`) are refused in it, with a message saying to change the header. The map
 editor shows the same warning while you type, so a pinned version never
 surprises you at load.
 
@@ -71,7 +71,38 @@ country.ISO.province_count      → (int) number of provinces owned
 country.ISO.at_war_with.OTHER   → (bool) is at war with OTHER country
 country.ISO.allied_with.OTHER   → (bool) has alliance with OTHER
 country.ISO.claims_province.ID  → (bool) claims province number ID
+country.ISO.troops              → (int) every soldier it has, everywhere
+country.ISO.troops.TYPE         → (int) only that kind — line, militia,
+                                  assault, mech (the ids in TROOP_TYPES,
+                                  never translated)
+country.ISO.income              → (float) gross income last turn
+country.ISO.expenses            → (float) what it spent last turn
+country.ISO.national_value      → (float) what the whole country is worth
+country.ISO.population          → (int) everyone living in it
+country.ISO.research_groups     → (int) research programmes it may run —
+                                  WRITABLE, see below
+country.ISO.district_count      → (int) how many districts it is cut into
+country.ISO.district.N.name     → (string) that district's name
+country.ISO.district.N.share    → (int) its share of the pacification budget
+country.ISO.district.N.provinces→ (int) how much ground it holds
 ```
+
+`income` and `expenses` read the same per-turn snapshot the economy screen and
+the country profile draw, so a script and the screen can never disagree. Both
+are 0 before the first turn has been processed.
+
+Asking a country about its districts CREATES them if it has none — the single
+default district, or whatever the map's author drew in the editor. That is the
+same thing opening the Districts tab does.
+
+### Forcing research groups open or shut
+```
+set country.USA.research_groups 3   # three programmes, whatever its economy says
+set country.USA.research_groups 1   # held to one, however rich it gets
+set country.USA.research_groups 0   # back to normal: the economy decides
+```
+The override outranks the economic gate in both directions and is saved with
+the game, so a lock set by a turn-zero script is still there after a reload.
 
 ### Province References
 ```
@@ -80,7 +111,20 @@ province.ID.owner         → (string) ISO code of owning country
 province.ID.name          → (string) province name
 province.ID.industry      → (int) industry level (0-10)
 province.ID.fortification → (int) fortification level (0-5)
+province.ID.troops        → (int) soldiers standing here — WRITABLE
+province.ID.troops.TYPE   → (int) only that kind — WRITABLE
+province.ID.district      → (string) the district governing it, "" if undivided
+province.ID.rebellion_chance → (float) the resolver's own risk figure
 ```
+
+Setting a garrison:
+```
+set province.42.troops.militia 12000   # exactly that many militia
+set province.42.troops 0               # empty it, whatever was standing there
+set province.42.troops 50000           # top it up; the difference is line infantry
+```
+A cut with no type named comes off the largest formations first, so a partial
+reduction lands on the mass rather than wiping out a small specialist one.
 
 ### Map References
 ```
@@ -221,6 +265,23 @@ Rules:
 - A script can contain several `waitUntil`s; they gate stages in order.
 - Global `var.*`, arrays and lists survive across suspensions.
 
+### wait N turns
+The commonest wait there is, said plainly. `wait 5 turns` (or `wait 1 turn`)
+parks the script for that many turns; the count may be any expression.
+
+```
+label patrol
+print "checking in on turn {map.turn}"
+wait 5 turns
+jump patrol
+```
+
+The target turn is worked out when the script parks, not when the line is
+written, which is what makes the loop above wait five turns EVERY time round
+rather than racing past a date that has already gone by. Same rule as
+`waitUntil` about top level: it parks the script, so it cannot sit inside a
+block.
+
 ## Expressions
 
 Anywhere a condition is taken — `if`, `while`, `waitUntil` — and on the right
@@ -343,10 +404,31 @@ foreach province in country.USA
 next
 
 print "turn " + map.turn                # goes to the log
+
+set var.gold to 500 + 100               # `to` reads better than `=`
+print "turn {map.turn}: {country.USA.treasury} in the bank"
+
+foreach district in country.USA         # every district it is cut into
+    if district.share > 50
+        print "{district.name} takes {district.share}% of the budget"
+    endif
+next
 ```
 
 `break` and `continue` act on the innermost loop that encloses them, whether
 that is `foreach`, `while`, `for` or `repeat`.
+
+`set X to <expr>` is the same statement as `set X = <expr>`. It only applies
+when what follows really is an expression, so a literal that happens to start
+with the word — `set map.date to be announced` — is still the string it always
+was.
+
+Inside `print`, anything in `{braces}` is replaced by what it resolves to.
+A brace holding something the engine does not know is left exactly as written,
+so a script printing JSON prints JSON.
+
+`foreach district in country.ISO` binds `district.name`, `district.share`,
+`district.provinces` and `district.index` for the body.
 
 ## Naming a country without knowing its code
 
@@ -507,6 +589,13 @@ that is what the blocks show. Indentation inside `if`, `foreach`, `for`,
 
 Comments and blank lines belong to the line below them, so a script that goes
 to blocks and back keeps them.
+
+The palette in the editor carries a template for everything above, including
+the newer content — troops by kind, income and expenses, what a country is
+worth, districts, the research lock, `wait N turns`, `set … to` and printing
+with `{values}`. Each template is a line the parser already understands, so a
+block dropped from the palette is ordinary script text from the moment it
+lands.
 
 ## Value Types
 

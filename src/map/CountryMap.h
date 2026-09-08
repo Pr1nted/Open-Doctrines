@@ -48,6 +48,29 @@ struct Country {
     int identityQuadrant  = 0;
     int identityIntensity = 0;
     int identityTurn      = -1000;
+
+    /**
+     * The turn this country came into being, or -1 for one the map started with.
+     *
+     * -1 is not turn zero and the difference is the point: a country that was
+     * on the map when the world was made has no founding date this game can
+     * honestly quote, and its profile says so rather than claiming it was
+     * founded the moment somebody pressed New Game.
+     */
+    int foundedTurn = -1;
+
+    /**
+     * Every flag this country has flown, oldest first, with the turn it was
+     * raised.
+     *
+     * `rootFlag` above keeps the ORIGINAL for the purpose of computing the next
+     * restyle from a stable base; it is not a history, it is a reference point,
+     * and it is deliberately written only once. This is the record: a country
+     * that has gone nationalist, then communist, then back has flown three
+     * flags and its profile can show all three.
+     */
+    struct FlagEra { int turn = 0; FlagPattern flag; FlagPattern censored; };
+    std::vector<FlagEra> flagHistory;
 };
 
 class CountryMap {

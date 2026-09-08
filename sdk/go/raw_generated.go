@@ -986,3 +986,190 @@ func rawUpdateCount() int64
 // `()i`
 //go:wasmimport gearbox:neural model_loaded
 func rawModelLoaded() uint32
+
+// How many districts this country is divided into. Districts are built on
+// demand, so asking is what creates the default one for a country that has
+// never been divided.
+// `(i)i`
+//go:wasmimport gearbox:politics.read country_district_count
+func rawCountryDistrictCount(country uint32) uint32
+
+// The district's name. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(iiii)i`
+//go:wasmimport gearbox:politics.read country_district_name
+func rawCountryDistrictName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// This district's claim on the country's pacification budget, in percent.
+// The shares of a country's districts sum to 100.
+// `(ii)i`
+//go:wasmimport gearbox:politics.read country_district_share
+func rawCountryDistrictShare(country uint32, index uint32) uint32
+
+// How many provinces this district holds.
+// `(ii)i`
+//go:wasmimport gearbox:politics.read country_district_province_count
+func rawCountryDistrictProvinceCount(country uint32, index uint32) uint32
+
+// Province `n` of this district, or GEARBOX_INVALID if there is no such
+// one.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read country_district_province
+func rawCountryDistrictProvince(country uint32, index uint32, n uint32) uint32
+
+// How many regional laws this district runs.
+// `(ii)i`
+//go:wasmimport gearbox:politics.read country_district_law_count
+func rawCountryDistrictLawCount(country uint32, index uint32) uint32
+
+// The stable id of regional law `n` in this district. Two-call sizing:
+// call with cap 0 to learn the length, allocate, call again. Returns the
+// full length either way; the copy is truncated to cap.
+// `(iiiii)i`
+//go:wasmimport gearbox:politics.read country_district_law
+func rawCountryDistrictLaw(country uint32, index uint32, n uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How many regional laws exist to choose from.
+// `()i`
+//go:wasmimport gearbox:politics.read district_law_count
+func rawDistrictLawCount() uint32
+
+// The stable id of regional law `index`. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read district_law_id
+func rawDistrictLawId(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// The display name of regional law `index`, untranslated. Two-call sizing:
+// call with cap 0 to learn the length, allocate, call again. Returns the
+// full length either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:politics.read district_law_name
+func rawDistrictLawName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Whether this country publishes that figure in its profile: 1 if it does,
+// 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
+// a decision with a consequence -- migrants read it -- rather than a
+// display setting.
+// `(ii)i`
+//go:wasmimport gearbox:politics.read country_discloses
+func rawCountryDiscloses(country uint32, field uint32) uint32
+
+// Set this district's claim on the pacification budget. The other
+// districts are rebalanced so the shares still sum to 100, exactly as
+// dragging the slider does. Returns 1 on success.
+// `(iii)i`
+//go:wasmimport gearbox:politics.write set_country_district_share
+func rawSetCountryDistrictShare(country uint32, index uint32, percent uint32) uint32
+
+// Pass or repeal a regional law in this district. Returns 1 on success, 0
+// for an unknown law or district.
+// `(iiiii)i`
+//go:wasmimport gearbox:politics.write set_country_district_law
+func rawSetCountryDistrictLaw(country uint32, index uint32, law unsafe.Pointer, law_len uint32, on uint32) uint32
+
+// Publish or withhold one of the figures in this country's profile.
+// Returns 1 on success.
+// `(iii)i`
+//go:wasmimport gearbox:politics.write set_country_disclosure
+func rawSetCountryDisclosure(country uint32, field uint32, on uint32) uint32
+
+// How many kinds of soldier exist.
+// `()i`
+//go:wasmimport gearbox:military.read troop_type_count
+func rawTroopTypeCount() uint32
+
+// The stable id of troop type `index` -- line, militia, assault, mech.
+// Never translated. Two-call sizing: call with cap 0 to learn the length,
+// allocate, call again. Returns the full length either way; the copy is
+// truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:military.read troop_type_id
+func rawTroopTypeId(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How many soldiers of that kind this country has, everywhere. 0 for a
+// troop type that does not exist.
+// `(iii)I`
+//go:wasmimport gearbox:military.read country_army_of_type
+func rawCountryArmyOfType(country uint32, troop_type unsafe.Pointer, troop_type_len uint32) int64
+
+// How many soldiers of that kind this country has standing in that
+// province.
+// `(iiii)I`
+//go:wasmimport gearbox:military.read province_troops_of_type
+func rawProvinceTroopsOfType(province uint32, country uint32, troop_type unsafe.Pointer, troop_type_len uint32) int64
+
+// How many research programmes this country may run at once, 1 to 3. This
+// is the effective number, including any override a script or a mod has
+// set.
+// `(i)i`
+//go:wasmimport gearbox:research.read country_research_groups
+func rawCountryResearchGroups(country uint32) uint32
+
+// Force how many research programmes a country may run, 1 to 3, or 0 to
+// hand the decision back to its economy. Outranks the economic gate in
+// both directions and is saved with the game. Returns 1 on success.
+// `(ii)i`
+//go:wasmimport gearbox:research.write set_country_research_groups
+func rawSetCountryResearchGroups(country uint32, groups uint32) uint32
+
+// What this country spent last turn, in total. The same figure its profile
+// publishes and the economy screen draws.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_expenses
+func rawCountryExpenses(country uint32) float64
+
+// What the whole country is worth: every industry level, fort, port and
+// division at what it cost to raise. A stock, where the income figures are
+// flows.
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_national_value
+func rawCountryNationalValue(country uint32) float64
+
+// How many people live in this country.
+// `(i)I`
+//go:wasmimport gearbox:economy.read country_population
+func rawCountryPopulation(country uint32) int64
+
+// The AI's own version, e.g. "ParrotZero 8.4.0" -- ARCH.RULES.PATCH, and
+// independent of the game's version. ARCH is the network shape and action
+// space, RULES is behaviour a benchmark can see, PATCH cannot move a
+// number. A mod that reads the feature vector should check ARCH before
+// trusting its layout, and anything comparing measurements across builds
+// should record RULES. Two-call sizing: call with cap 0 to learn the
+// length, allocate, call again. Returns the full length either way; the
+// copy is truncated to cap.
+// `(ii)i`
+//go:wasmimport gearbox:neural ai_version
+func rawAiVersion(buf unsafe.Pointer, cap uint32) uint32
+
+// The AI's ARCH number on its own, which is also the model file's format
+// byte. The feature count and the action sets are only stable within one
+// ARCH; a bump means old weights are refused on purpose.
+// `()i`
+//go:wasmimport gearbox:neural ai_arch
+func rawAiArch() uint32
+
+// The posture the AI has chosen for this country -- 0 expand, 1
+// consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none
+// (a country the AI does not play, or one that has not been given a stance
+// yet). Held for several turns at a time rather than chosen fresh each
+// turn.
+// `(i)i`
+//go:wasmimport gearbox:neural country_stance
+func rawCountryStance(country uint32) uint32
+
+// The stance's name: "expand", "consolidate", "defend", "develop". Never
+// translated, and stable within an ARCH. Two-call sizing: call with cap 0
+// to learn the length, allocate, call again. Returns the full length
+// either way; the copy is truncated to cap.
+// `(iii)i`
+//go:wasmimport gearbox:neural stance_name
+func rawStanceName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How many stances there are to choose between.
+// `()i`
+//go:wasmimport gearbox:neural stance_count
+func rawStanceCount() uint32

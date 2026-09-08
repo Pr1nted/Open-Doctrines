@@ -155,6 +155,31 @@ bool ScriptEngine::isWaitLine(const std::string& line) {
            (line.size() == 9 || line[9] == ' ' || line[9] == '\t' || line[9] == '(');
 }
 
+bool ScriptEngine::isWaitTurnsLine(const std::string& line) {
+    if (line.rfind("wait", 0) != 0) return false;
+    if (line.size() < 5 || (line[4] != ' ' && line[4] != '\t')) return false;
+    // "... turns" or "... turn" at the end, which is what separates this from
+    // any other statement that happens to begin with the word.
+    std::string t = line;
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+    const size_t sp = t.find_last_of(" \t");
+    if (sp == std::string::npos) return false;
+    const std::string last = t.substr(sp + 1);
+    return last == "turns" || last == "turn";
+}
+
+std::string ScriptEngine::waitTurnsCount(const std::string& line) {
+    std::string t = line;
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+    const size_t sp = t.find_last_of(" \t");
+    std::string mid = t.substr(4, sp - 4);
+    const size_t s0 = mid.find_first_not_of(" \t");
+    if (s0 == std::string::npos) return "1";
+    mid = mid.substr(s0);
+    while (!mid.empty() && (mid.back() == ' ' || mid.back() == '\t')) mid.pop_back();
+    return mid.empty() ? "1" : mid;
+}
+
 std::string ScriptEngine::waitCondition(const std::string& line) {
     std::string expr = line.substr(9); // past "waitUntil"
     size_t s = expr.find_first_not_of(" \t");
@@ -170,6 +195,34 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
     int pc = startLine;
     long long jumps = 0;
     while (pc < (int)lines.size()) {
+        // ── `wait 5 turns` ──
+        //
+        // Sugar for the commonest waitUntil there is. The TARGET is worked out
+        // when the script parks rather than written into the line, so a script
+        // that loops back over the same `wait` -- label, wait, jump label,
+        // which is how a map writes "every five turns" -- waits five more each
+        // time instead of racing through a date that has already passed.
+        if (isWaitTurnsLine(lines[pc])) {
+            // A version 1 file gets version 1's language, here as everywhere:
+            // this statement never reaches executeBlock, so the gate that
+            // catches the other version 2 keywords cannot see it.
+            if (const int need = statementMinVersion("wait"); m_scriptVersion < need) {
+                addError(name, pc + 1,
+                         "'wait' needs engine version " + std::to_string(need) +
+                         "; this script declares " + std::to_string(m_scriptVersion) +
+                         " (change the header to #OD/MapEngine/" + std::to_string(need) + ")");
+                pc++;
+                continue;
+            }
+            const std::string cnt = waitTurnsCount(lines[pc]);
+            std::unordered_map<std::string, ScriptValue> lv;
+            long long n = evalExpr(cnt, lv).asInt();
+            if (n < 1) n = 1;
+            SuspendedScript sus{name, std::move(lines), pc};
+            sus.waitUntilTurn = m_game->m_turnNumber + (int)n;
+            m_suspended.push_back(std::move(sus));
+            return;
+        }
         if (isWaitLine(lines[pc])) {
             std::string expr = waitCondition(lines[pc]);
             if (expr.empty()) {
@@ -194,10 +247,19 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
             if (!t.empty()) {
                 if (t[0] == "if" || t[0] == "foreach" || t[0] == "while") depth++;
                 else if (t[0] == "endif" || t[0] == "next" || t[0] == "endwhile") depth--;
-                else if (isWaitLine(lines[end])) {
+                else if (isWaitLine(lines[end]) || isWaitTurnsLine(lines[end])) {
+                    // `wait N turns` parks exactly like a waitUntil, so the
+                    // segment has to END here too. Without this the wait fell
+                    // inside the segment, executeBlock met a statement it does
+                    // not know, and the script reported "Unknown command: wait"
+                    // while running straight past the pause.
                     if (depth == 0) break;
-                    addError(name, end + 1, "waitUntil is only allowed at top level (not inside if/foreach/while)");
-                    lines[end] = "# waitUntil ignored (nested)";
+                    // i18n-ignore: a script error names the statement, and a
+                    // statement's spelling is the same in every language.
+                    const char* which = isWaitLine(lines[end]) ? "waitUntil" : "wait N turns";
+                    addError(name, end + 1, std::string(which) +
+                             " is only allowed at top level (not inside if/foreach/while)");
+                    lines[end] = std::string("# ") + which + " ignored (nested)";
                 }
             }
             end++;
@@ -255,6 +317,15 @@ void ScriptEngine::tick() {
     std::vector<SuspendedScript> pending;
     pending.swap(m_suspended);
     for (auto& s : pending) {
+        if (s.waitUntilTurn >= 0) {
+            if (m_game->m_turnNumber >= s.waitUntilTurn) {
+                printf("[SCRIPT] Resuming script: %s\n", s.name.c_str());
+                runLines(s.name, std::move(s.lines), s.resumeLine + 1);
+            } else {
+                m_suspended.push_back(std::move(s));
+            }
+            continue;
+        }
         std::string expr = waitCondition(s.lines[s.resumeLine]);
         std::unordered_map<std::string, ScriptValue> lv;
         if (evalExpr(expr, lv).asBool()) {
@@ -301,11 +372,11 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         // the message, because the alternative -- running it anyway -- means
         // the header is decoration and a map that pins a version still breaks
         // when the engine moves.
-        if (m_scriptVersion < 2 && isVersion2Statement(kw)) {
+        if (const int need = statementMinVersion(kw); m_scriptVersion < need) {
             addError(scriptName, lineIdx + 1,
-                     "'" + kw + "' needs engine version 2; this script declares " +
-                     std::to_string(m_scriptVersion) +
-                     " (change the header to #OD/MapEngine/2)");
+                     "'" + kw + "' needs engine version " + std::to_string(need) +
+                     "; this script declares " + std::to_string(m_scriptVersion) +
+                     " (change the header to #OD/MapEngine/" + std::to_string(need) + ")");
             lineIdx++;
             continue;
         }
@@ -418,8 +489,19 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             bool ok = false; std::string perr;
             ScriptValue v = odscript::evaluate(
                 rest, [&](const std::string& n) { return resolveRef(n, localVars); }, ok, perr);
-            printf("[SCRIPT] %s: %s\n", scriptName.c_str(),
-                   ok ? v.asString().c_str() : rest.c_str());
+            std::string out = ok ? v.asString() : rest;
+            // ── {…} in the result is filled in ──
+            //
+            // `print "turn {map.turn}: {country.USA.treasury}"` instead of five
+            // string concatenations. Done after evaluation so it works on
+            // anything that ends up a string, and a brace with nothing the
+            // engine knows inside it is left exactly as written rather than
+            // becoming an error or an empty hole -- printing "{}" should print
+            // "{}".
+            // A version 1 or 2 file gets its own language here too: a script
+            // pinned to 2 that prints a brace prints the brace.
+            if (m_scriptVersion >= 3) out = interpolate(out, localVars);
+            printf("[SCRIPT] %s: %s\n", scriptName.c_str(), out.c_str());
             lineIdx++;
             continue;
         }
@@ -483,9 +565,11 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         // foreach item in array.NAME / foreach item in list.NAME
         if (kw == "foreach") {
             if (tokens.size() < 4 || tokens[2] != "in" ||
-                (tokens[1] != "province" && tokens[1] != "item" && tokens[1] != "country")) {
+                (tokens[1] != "province" && tokens[1] != "item" &&
+                 tokens[1] != "country" && tokens[1] != "district")) {
                 addError(scriptName, lineIdx + 1,
                          "foreach: expected 'foreach province in country.ISO', "
+                         "'foreach district in country.ISO', "
                          "'foreach country in world', or 'foreach item in array/list.NAME'");
                 lineIdx++; return false;
             }
@@ -551,6 +635,66 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
 
 
             auto& vars = const_cast<std::unordered_map<std::string, ScriptValue>&>(localVars);
+
+            // ── foreach district in country.ISO ──
+            //
+            // Bound the same way the province loop binds its fields, so
+            // `district.name` inside the body is an exact local lookup rather
+            // than a reference the resolver has to take apart.
+            if (tokens[1] == "district") {
+                if (m_scriptVersion < 3) {
+                    addError(scriptName, lineIdx + 1,
+                             "'foreach district' needs engine version 3; this script declares " +
+                             std::to_string(m_scriptVersion) +
+                             " (change the header to #OD/MapEngine/3)");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                if (sourceRef.rfind("country.", 0) != 0) {
+                    addError(scriptName, lineIdx + 1,
+                             "foreach district: expected country.ISO, got " + sourceRef);
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                const std::string diso = sourceRef.substr(8);
+                int dcid = -1;
+                for (auto& [id, c] : m_game->m_countries.getAll())
+                    if (c.isoA3 == diso) { dcid = id; break; }
+                if (dcid < 0) {
+                    addError(scriptName, lineIdx + 1, "foreach district: country " + diso + " not found");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                // ── A COUNTRY HAS DISTRICTS THE MOMENT SOMEBODY ASKS ──
+                //
+                // They are built lazily: the player's when the tab opens, an
+                // AI's on its review turn. A script runs at map load, before
+                // either, so `foreach district in country.AUH` walked an empty
+                // list on turn zero -- including on a map whose own author had
+                // drawn the districts. Asking is what creates them, here as
+                // everywhere else.
+                m_game->ensureDefaultDistrict(dcid);
+                auto dIt = m_game->m_districts.find(dcid);
+                const size_t dn = (dIt == m_game->m_districts.end()) ? 0 : dIt->second.size();
+                for (size_t i = 0; i < dn; ++i) {
+                    const District& d = dIt->second[i];
+                    vars["district"] = ScriptValue::makeStr(d.name);
+                    vars["district.index"] = ScriptValue::makeInt((long long)i);
+                    vars["district.name"] = ScriptValue::makeStr(d.name);
+                    vars["district.share"] = ScriptValue::makeInt(d.sharePct);
+                    vars["district.provinces"] = ScriptValue::makeInt((long long)d.provinces.size());
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                    if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                    if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                    if (!m_jumpLabel.empty() || m_stopped) break;
+                }
+                for (const char* k : {"district", "district.index", "district.name",
+                                      "district.share", "district.provinces"})
+                    vars.erase(k);
+                lineIdx = blockEnd + 1;
+                continue;
+            }
 
             // ── foreach item in array.NAME / list.NAME ──
             if (tokens[1] == "item") {
@@ -619,6 +763,14 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 vars["province.industry"] = ScriptValue::makeInt(indLevel);
                 vars["province.fortification"] = ScriptValue::makeInt(fortLevel);
                 vars["province.owner"] = ScriptValue::makeStr(iso);
+                long long men = 0;
+                auto paIt = m_game->m_provinceArmies.find(pid);
+                if (paIt != m_game->m_provinceArmies.end())
+                    for (const ArmyUnit& u : paIt->second)
+                        if (u.countryId == targetCid) men += u.count;
+                vars["province.troops"] = ScriptValue::makeInt(men);
+                vars["province.district"] = resolveRef("province." + std::to_string(pid) + ".district",
+                                                       localVars);
                 // Execute the block body
                 int subIdx = blockStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
@@ -632,6 +784,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             vars.erase("province.industry");
             vars.erase("province.fortification");
             vars.erase("province.owner");
+            vars.erase("province.troops");
+            vars.erase("province.district");
             lineIdx = blockEnd + 1;
             continue;
         }
@@ -763,6 +917,22 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             // cannot be parsed as arithmetic without turning every hyphenated
             // name into a subtraction. With the marker there is no ambiguity
             // -- old scripts have no `=` and are untouched.
+            // ── `set x to <expr>` reads better than `set x = <expr>` ──
+            //
+            // Rewritten to the `=` form rather than handled separately, so
+            // there is one assignment path. But only when what follows really
+            // is an expression: `set map.date to be announced` is a legal
+            // literal in a shipped map, and "be announced" does not parse, so
+            // it stays the string it always was. The sugar can only ever turn
+            // something that was an error into something that works.
+            if (m_scriptVersion >= 3 && valStr.compare(0, 3, "to ") == 0) {
+                std::string rest = valStr.substr(3);
+                const size_t rs0 = rest.find_first_not_of(" \t");
+                rest = (rs0 == std::string::npos) ? "" : rest.substr(rs0);
+                std::string perr;
+                if (!rest.empty() && odscript::parse(rest, perr)) valStr = "= " + rest;
+            }
+
             bool assignHandled = false;
             {
                 static const char* kAssign[] = {"+=", "-=", "*=", "/=", "="};
@@ -941,14 +1111,16 @@ void ScriptEngine::execCollectionStmt(const std::vector<std::string>& tokens, co
 }
 
 
-bool ScriptEngine::isVersion2StatementPublic(const std::string& kw) { return isVersion2Statement(kw); }
-
-bool ScriptEngine::isVersion2Statement(const std::string& kw) {
-    static const char* kV2[] = {"for", "repeat", "break", "continue", "print", "elseif",
-                                "unless", "label", "jump", "spawn", "stop",
-                                "try", "catch", "endtry", "dialog"};
-    for (const char* k : kV2) if (kw == k) return true;
-    return false;
+int ScriptEngine::statementMinVersion(const std::string& kw) {
+    // i18n-ignore: statement keywords, which are the same word in every language
+    static const char* const kV2[] = {"for", "repeat", "break", "continue", "print", "elseif",
+                                      "unless", "label", "jump", "spawn", "stop",
+                                      "try", "catch", "endtry", "dialog"};
+    // i18n-ignore
+    static const char* const kV3[] = {"wait"};
+    for (const char* k : kV3) if (kw == k) return 3;
+    for (const char* k : kV2) if (kw == k) return 2;
+    return 1;
 }
 
 ScriptValue ScriptEngine::evalExpr(const std::string& expr,
@@ -1032,6 +1204,40 @@ bool ScriptEngine::compareValues(const ScriptValue& lhs, const std::string& op, 
     if (op == ">=") return l >= r;
     if (op == "<=") return l <= r;
     return false;
+}
+
+std::string ScriptEngine::interpolate(const std::string& in,
+                                      const std::unordered_map<std::string, ScriptValue>& localVars) {
+    if (in.find('{') == std::string::npos) return in;
+    std::string out;
+    out.reserve(in.size() + 16);
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (in[i] != '{') { out += in[i]; continue; }
+        const size_t close = in.find('}', i + 1);
+        if (close == std::string::npos) { out += in.substr(i); break; }
+        const std::string inner = in.substr(i + 1, close - i - 1);
+        bool ok = false; std::string err;
+        ScriptValue v = odscript::evaluate(
+            inner, [&](const std::string& n) { return resolveRef(n, localVars); }, ok, err);
+        // Left alone when it is not something the engine can answer, braces
+        // and all: a script printing JSON is not making a mistake.
+        out += ok ? v.asString() : ("{" + inner + "}");
+        i = close;
+    }
+    return out;
+}
+
+// Which entry of TROOP_TYPES an id names, or -1 for a name that is not one.
+//
+// troopTypeFromId() answers TROOP_LINE for anything it does not know, which is
+// right for loading a file (a world of unknown types is a world of line
+// infantry) and wrong for a script: `country.USA.troops.cavalry` on a map with
+// no cavalry would silently report the line infantry instead of saying the
+// type does not exist.
+static int troopTypeIndexFromId(const std::string& id) {
+    for (int i = 0; i < (int)TROOP_TYPE_COUNT; ++i)
+        if (id == TROOP_TYPES[i].id) return i;
+    return -1;
 }
 
 ScriptValue ScriptEngine::resolveRef(const std::string& ref,
@@ -1184,6 +1390,15 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             return ScriptValue::makeStr("Unknown");
         }
         if (prop == "turn") return ScriptValue::makeInt(m_game->m_turnNumber);
+        // ── Whether a language model is answering diplomacy ──
+        //
+        // Asked for by mapmakers: a scenario written around bargaining with a
+        // machine correspondent plays quite differently from one where the only
+        // diplomacy is the scripted kind, and a script has no other way to tell.
+        // False whenever the module is absent, so a map that branches on this
+        // still runs -- it simply takes the other branch.
+        if (prop == "llm_diplomacy") return ScriptValue::makeBool(m_game->m_llmAvailable);
+        if (prop == "mail_enabled") return ScriptValue::makeBool(m_game->mailAvailable());
         if (prop == "country_count") {
             long long n = 0;
             for (const auto& [id, c] : m_game->m_countries.getAll()) {
@@ -1290,6 +1505,71 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
                 if (prov.countryId == cid) count++;
             return ScriptValue::makeInt(count);
         }
+
+        // ── The army, by kind ──
+        //
+        // `country.ISO.troops` is everyone; `country.ISO.troops.militia` is one
+        // kind. The type ids are the ones in TROOP_TYPES and never translated,
+        // so a script that names `mech` keeps working in every language.
+        if (prop == "troops") {
+            long long men = 0;
+            const int wantType = (dots.size() >= 4) ? troopTypeIndexFromId(dots[3]) : -1;
+            if (dots.size() >= 4 && wantType < 0) {
+                addError("", 0, "country." + iso + ".troops: no troop type called '" + dots[3] + "'");
+                return {};
+            }
+            for (const auto& [pid, units] : m_game->m_provinceArmies)
+                for (const ArmyUnit& u : units) {
+                    if (u.countryId != cid) continue;
+                    if (wantType >= 0 && (int)u.type != wantType) continue;
+                    men += u.count;
+                }
+            return ScriptValue::makeInt(men);
+        }
+
+        // ── The books ──
+        //
+        // Read from the SAME snapshot the economy screen and the country
+        // profile draw, so a script and the screen never disagree about what a
+        // country earned. A country with no turn behind it yet reads zero
+        // rather than erroring: turn-zero scripts are the common case.
+        if (prop == "income" || prop == "expenses" || prop == "national_value" ||
+            prop == "population") {
+            auto hIt = m_game->m_incomeHistory.find(cid);
+            if (prop == "population") return ScriptValue::makeInt(m_game->countryPopulation(cid));
+            if (prop == "national_value")
+                return ScriptValue::makeFloat(m_game->countryNationalValue(cid));
+            if (hIt == m_game->m_incomeHistory.end() || hIt->second.empty())
+                return ScriptValue::makeFloat(0.0);
+            const auto& now = hIt->second.back();
+            return ScriptValue::makeFloat(prop == "income" ? now.total : now.expenses);
+        }
+
+        // How many research programmes it can run -- the effective number,
+        // including anything a script forced.
+        if (prop == "research_groups")
+            return ScriptValue::makeInt(m_game->researchGroupsUnlocked(cid));
+
+        if (prop == "district_count") {
+            m_game->ensureDefaultDistrict(cid);   // see the note in foreach district
+            auto dIt = m_game->m_districts.find(cid);
+            return ScriptValue::makeInt(dIt == m_game->m_districts.end()
+                                        ? 0 : (long long)dIt->second.size());
+        }
+        // country.ISO.district.<n>.<field>
+        if (prop == "district" && dots.size() >= 5) {
+            m_game->ensureDefaultDistrict(cid);
+            auto dIt = m_game->m_districts.find(cid);
+            if (dIt == m_game->m_districts.end()) return {};
+            long long n = -1;
+            try { n = std::stoll(dots[3]); } catch (...) { return {}; }
+            if (n < 0 || n >= (long long)dIt->second.size()) return {};
+            const District& d = dIt->second[(size_t)n];
+            if (dots[4] == "name")      return ScriptValue::makeStr(d.name);
+            if (dots[4] == "share")     return ScriptValue::makeInt(d.sharePct);
+            if (dots[4] == "provinces") return ScriptValue::makeInt((long long)d.provinces.size());
+            return {};
+        }
     }
 
     // province.ID.property
@@ -1317,6 +1597,36 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             auto it = m_game->m_provinceIndustry.find(pid);
             return ScriptValue::makeInt(it != m_game->m_provinceIndustry.end() ? it->second.fortification : 0);
         }
+        // province.ID.troops[.TYPE] -- everyone standing here, or one kind.
+        if (prop == "troops") {
+            const int wantType = (dots.size() >= 4) ? troopTypeIndexFromId(dots[3]) : -1;
+            if (dots.size() >= 4 && wantType < 0) {
+                addError("", 0, "province." + dots[1] + ".troops: no troop type called '" +
+                                dots[3] + "'");
+                return {};
+            }
+            long long men = 0;
+            auto aIt = m_game->m_provinceArmies.find(pid);
+            if (aIt != m_game->m_provinceArmies.end())
+                for (const ArmyUnit& u : aIt->second) {
+                    if (wantType >= 0 && (int)u.type != wantType) continue;
+                    men += u.count;
+                }
+            return ScriptValue::makeInt(men);
+        }
+        // Which district governs it, by name. Empty for an undivided country.
+        if (prop == "district") {
+            if (p->countryId > 0) m_game->ensureDefaultDistrict(p->countryId);
+            auto dIt = m_game->m_districts.find(p->countryId);
+            if (dIt == m_game->m_districts.end()) return ScriptValue::makeStr("");
+            for (const District& d : dIt->second)
+                if (std::find(d.provinces.begin(), d.provinces.end(), pid) != d.provinces.end())
+                    return ScriptValue::makeStr(d.name);
+            return ScriptValue::makeStr("");
+        }
+        // The resolver's own figure, not a re-derived one.
+        if (prop == "rebellion_chance")
+            return ScriptValue::makeFloat(m_game->getProvinceRebellionChance(pid));
     }
 
     return ScriptValue::makeStr(ref); // unknown ref — return as string
@@ -1358,6 +1668,19 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
 
         if (prop == "treasury") { m_game->m_countries.getAll()[cid].treasury = (float)val.asFloat(); return true; }
         if (prop == "name") { m_game->m_countries.getAll()[cid].name = val.asString(); return true; }
+        // set country.ISO.research_groups N  -- 0 hands the decision back to
+        // the economy, which is how a scenario un-forces what it forced.
+        if (prop == "research_groups") {
+            const long long n = val.asInt();
+            if (n < 0 || n > Game::RESEARCH_GROUPS_MAX) {
+                addError("", 0, "research_groups: expected 0.." +
+                                std::to_string(Game::RESEARCH_GROUPS_MAX));
+                return false;
+            }
+            if (n == 0) m_game->m_scriptResearchGroups.erase(cid);
+            else        m_game->m_scriptResearchGroups[cid] = (int)n;
+            return true;
+        }
         // set country.ISO.at_war_with ISO true/false
         if (prop == "at_war_with" && dots.size() >= 4) {
             std::string otherIso = dots[3];
@@ -1427,6 +1750,61 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
                 return true;
             }
             return false;
+        }
+
+        // ── set province.ID.troops[.TYPE] N ──
+        //
+        // The garrison this province holds for its OWNER. Setting a total with
+        // no type named puts the difference into line infantry and takes any
+        // shortfall off the largest formations first, so `set
+        // province.5.troops 0` empties the province rather than leaving an
+        // untouched remainder of some other kind.
+        if (prop == "troops") {
+            const int cid = p->countryId;
+            if (cid <= 0) return false;
+            const long long want = std::max(0LL, val.asInt());
+            auto& units = m_game->m_provinceArmies[pid];
+
+            if (dots.size() >= 4) {
+                const int t = troopTypeIndexFromId(dots[3]);
+                if (t < 0) {
+                    addError("", 0, "province." + dots[1] + ".troops: no troop type called '" +
+                                    dots[3] + "'");
+                    return false;
+                }
+                for (ArmyUnit& u : units)
+                    if (u.countryId == cid && (int)u.type == t) {
+                        u.count = (int)want;
+                        units.erase(std::remove_if(units.begin(), units.end(),
+                                     [](const ArmyUnit& x) { return x.count <= 0; }), units.end());
+                        return true;
+                    }
+                if (want > 0) m_game->addTroopsTo(pid, cid, (int)want, (TroopType)t);
+                return true;
+            }
+
+            long long have = 0;
+            for (const ArmyUnit& u : units) if (u.countryId == cid) have += u.count;
+            if (want > have) {
+                m_game->addTroopsTo(pid, cid, (int)(want - have), TROOP_LINE);
+                return true;
+            }
+            long long cut = have - want;
+            // Largest first, so a partial cut lands on the mass rather than
+            // wiping out a small specialist formation for arithmetic reasons.
+            std::sort(units.begin(), units.end(), [](const ArmyUnit& a, const ArmyUnit& b) {
+                return a.count > b.count;
+            });
+            for (ArmyUnit& u : units) {
+                if (cut <= 0) break;
+                if (u.countryId != cid) continue;
+                const long long take = std::min<long long>(cut, u.count);
+                u.count -= (int)take;
+                cut -= take;
+            }
+            units.erase(std::remove_if(units.begin(), units.end(),
+                         [](const ArmyUnit& x) { return x.count <= 0; }), units.end());
+            return true;
         }
     }
 

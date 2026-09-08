@@ -36,5 +36,40 @@ Dostaniesz ostrzeżenie. Drugiego nie zawsze.
 Lekarstwa są niepopularne albo powolne: obsadź ją garnizonem, wydaj na nią
 pieniądze albo daj jej to, czego chce. Wybierz wcześnie, bo wszystkie trzy
 potrzebują tur.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Pieniądze wydane na to w większości się marnują. Otwórz Politykę, potem
+§**Okręgi**§.
 
+---
+@Signals Officer
+Budżet spadał dotąd na cały kraj naraz -- ten sam ciężar na spokojne hrabstwo
+i na to, które się zbroi. Podziel więc kraj. §**Okręg**§ to jego kawałek, który
+rządzisz jako całością: wmaluj w niego prowincje, nadaj mu barwę i
+§**udział**§. Udziały zawsze dają sto, bo budżet jest jeden.
+
+---
+@Signals Officer
+Liczy się udział w §**pieniądzach**§ wobec udziału w §**ziemi**§. Okręg mający
+dziesiątą część kraju i dziesiątą część budżetu jest pilnowany dokładnie tak
+jak wcześniej -- dzielenie nic nie zmienia, dopóki udziały są równe.
+
+---
+@Signals Officer
+Zakreśl mały okręg wokół kłopotu, daj mu ćwierć pieniędzy, a będzie pilnowany
+kilka razy mocniej; panel poda ci liczbę. Płaci za to cała reszta i to właśnie
+jest decyzja. Jest przycisk do równego podziału: rozsądny początek i rzadko
+miejsce, w którym warto zostać.
+
+Okręg stanowi też własne §**prawo regionalne**§: godzinę policyjną, wakacje
+podatkowe, język sądów. Drobne, miejscowe i każde jest wymianą.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Zamknij to.
+
+---
+@Signals Officer
 To są niepokoje. Coś jeszcze?

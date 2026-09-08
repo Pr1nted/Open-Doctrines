@@ -88,10 +88,34 @@ export async function issueJoinTicket(
     options: TicketOptions,
     now = Math.floor(Date.now() / 1000),
 ): Promise<string> {
+    const psid = await psidFor(env, account.id, serverId);
+
+    // ── A time-limited way back from a pseudonym to an account ──
+    //
+    // WHY THIS EXISTS. A player who is abused in a game can name their abuser
+    // only by psid -- that is the only identity a client ever sees, by design.
+    // The psid is HMAC(PAIRWISE_KEY, account + server) and is one-way, so
+    // without this note NOBODY, including us, could act on such a report. The
+    // choice is between a bounded record here and a report button that cannot
+    // work.
+    //
+    // WHAT IT DOES AND DOES NOT CHANGE. It is a RETENTION change, not a new
+    // capability: this function already has the account id and the server id in
+    // hand and computes the psid from them, so the linkage exists at this
+    // moment either way. What changes is that it survives for 30 days instead
+    // of for the length of this request.
+    //
+    // WHAT IT IS NOT. It is not given to servers, it is not readable by any
+    // route, and it is used in exactly one place -- resolving the accused in a
+    // report (see moderation/reports.ts). Thirty days because that is long
+    // enough to act on something that happened in a recent game and short
+    // enough that it is not a permanent map of who plays where.
+    await env.OD_ACCOUNTS.put(`mod:psid:${psid}`, account.id, { expirationTtl: 30 * 86400 });
+
     const claims: TicketClaims = {
         iss: env.ISSUER,
         aud: audRelay(sessionId),
-        psid: await psidFor(env, account.id, serverId),
+        psid,
         name: options.alias?.trim() || account.nick,
         badges: options.presentBadges ? account.badges : [],
         nonce: options.nonce,

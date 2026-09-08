@@ -253,7 +253,7 @@ changed.
 | `Politics.Read` | Political compass, policies, province unrest, minorities | Read-only. |
 | `Politics.Write` | Enact and cancel policies | Goes through the game's own `enactPolicy`, so cost, prerequisites and the per-turn cap still apply. Implies `Politics.Read`. |
 | `Economy.Read` | Gross/net income, army and navy upkeep, bankruptcy, industry level and specialisation, province resources | Read-only. |
-| `Economy.Write` | Set province industry level | A scenario-authoring tool: writes the built level and does not charge for it. Implies `Economy.Read`. |
+| `Economy.Write` | Set province industry level | A scenario-authoring tool: writes the built level and does not charge for it. **It also does not check the province's industry capacity** — the same licence the shipped maps have, since a map author places industry a province could not build for itself. What a mod writes above capacity behaves exactly like a grandfathered province: it stands, it earns, and the game refuses to build it *higher*. Implies `Economy.Read`. |
 | `MapEditor` | Read and write the open map editor project — population, industry, forts, ports, resources, compass, and the map's name/author/licence | **Inert outside the editor.** Every call returns a neutral value unless the editor is open with a project loaded, so it cannot reach into a running game. |
 
 ### The two rules that hold across every module
@@ -533,6 +533,41 @@ assume deterministic turns, and since learning and mods can never overlap, a
 
 Headless `--train-ai` loads no mods at all — it never opens the mod menu, which
 is the only load path.
+
+### Doctrine data lives in the map, not in `data/`
+
+`data/policies.json` is **not what a running game reads**. Every `.odmap`
+embeds its own copy, and the embedded copy wins — so editing the file in `data/`
+and nothing else produces a doctrine change that never happens. The file is also
+**generated**: `tools/gen_policies.py` authors it, deriving each doctrine's
+advertised "gains" and "costs" text from the effects it actually applies, so
+that what a doctrine says and what it does are one fact rather than two that
+agree today.
+
+After any doctrine change, all three, in order:
+
+```
+python3 tools/gen_policies.py
+python3 tools/update_odmap_member.py policies.json data/policies.json data/STDmaps/*.odmap
+python3 tools/check_policies.py
+```
+
+The last one is in `tests/run_all.sh` and reports "N map(s) in sync". A new
+lever also needs its printed form in `kTradeoffForms` (`src/Game_Policies.cpp`)
+and a re-run of `tools/i18n_extract.py`, or the doctrine screen will print an
+untranslatable string.
+
+### The world seed
+
+Turn resolution is deterministic *given a seed*. A new game takes its seed from
+`std::random_device`, so two campaigns started from the same map diverge; the
+chosen seed is written to the load log. A save stores the live generator state,
+not the seed, so reloading continues the world rather than restarting its luck.
+
+Set `OD_WORLD_SEED=<n>` to pin a world — the same number reproduces the same
+campaign, which is what a mod's determinism test should use. `--train-ai` and
+`--eval-ai` pin their own seed from their arguments and ignore the environment
+variable, so a training or benchmark run is unaffected by it either way.
 
 ## Mod states and deferred activation
 

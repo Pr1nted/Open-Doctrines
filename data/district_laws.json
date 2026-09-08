@@ -1,0 +1,49 @@
+{
+  "//": "Regional law. NOT the doctrine list under a different name.",
+  "//2": "A doctrine is a thing a COUNTRY is. These are what a provincial",
+  "//3": "administration actually gets to decide: a curfew, a land tax holiday,",
+  "//4": "whose language the courts run in. Small, cheap, local, and each one",
+  "//5": "buys calm with money or money with resentment. cost_per_turn is PER",
+  "//6": "PROVINCE, so a law is priced by how much ground it is administered over.",
+  "laws": [
+    { "id": "curfew", "name": "Curfew",
+      "description": "Nobody on the streets after dark. Quiet, and nothing gets done.",
+      "cost_per_turn": 0.20, "unrest_pct": -4.0, "income_pct": -5.0, "growth_pct": 0.0 },
+
+    { "id": "local_militia", "name": "Local Militia",
+      "description": "Neighbours under arms. Cheaper than a garrison and less popular than one.",
+      "cost_per_turn": 0.15, "unrest_pct": -3.0, "income_pct": -2.0, "growth_pct": 0.0 },
+
+    { "id": "language_rights", "name": "Language Rights",
+      "description": "The courts and the schools speak the local tongue.",
+      "cost_per_turn": 0.25, "unrest_pct": -5.0, "income_pct": -1.0, "growth_pct": 0.0 },
+
+    { "id": "provincial_assembly", "name": "Provincial Assembly",
+      "description": "Let them argue locally about what you would have decided anyway.",
+      "cost_per_turn": 0.30, "unrest_pct": -6.0, "income_pct": -3.0, "growth_pct": 0.0 },
+
+    { "id": "public_works", "name": "Public Works",
+      "description": "Roads, drains and wages. Expensive, and it shows.",
+      "cost_per_turn": 0.45, "unrest_pct": -4.0, "income_pct": 2.0, "growth_pct": 1.0 },
+
+    { "id": "tax_holiday", "name": "Tax Holiday",
+      "description": "Take nothing for a while and see whether they stop shouting.",
+      "cost_per_turn": 0.00, "unrest_pct": -6.0, "income_pct": -10.0, "growth_pct": 2.0 },
+
+    { "id": "martial_law", "name": "Martial Law",
+      "description": "The garrison governs. It works, and it is remembered.",
+      "cost_per_turn": 0.35, "unrest_pct": -9.0, "income_pct": -12.0, "growth_pct": -3.0 },
+
+    { "id": "settlement_grants", "name": "Settlement Grants",
+      "description": "Pay people to move here. The people already here notice.",
+      "cost_per_turn": 0.30, "unrest_pct": 2.0, "income_pct": 0.0, "growth_pct": 5.0 },
+
+    { "id": "company_towns", "name": "Company Towns",
+      "description": "The works owns the housing, the shop and the constable.",
+      "cost_per_turn": 0.10, "unrest_pct": 4.0, "income_pct": 8.0, "growth_pct": 0.0 },
+
+    { "id": "grain_requisition", "name": "Grain Requisition",
+      "description": "Take the harvest at your price. They will not forget the year.",
+      "cost_per_turn": 0.05, "unrest_pct": 5.0, "income_pct": 6.0, "growth_pct": -2.0 }
+  ]
+}

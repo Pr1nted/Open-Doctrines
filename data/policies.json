@@ -219,7 +219,8 @@
         "armyAtkPct": 10,
         "navyCostPct": 15,
         "industryCostPct": -20,
-        "popGrowthPct": -1.0
+        "popGrowthPct": -1.0,
+        "maintenanceCostPct": -20
       },
       "incompatible_with": [
         "consumer_economy",
@@ -246,6 +247,7 @@
         "costs": [
           "Industry cost +20%",
           "Population growth -1.0%/turn",
+          "Army upkeep +20%",
           "Unrest +3.0%",
           "-14/turn income",
           "Economic -20",
@@ -335,7 +337,7 @@
       "tradeoffs": {
         "gains": [
           "Industry cost -25%",
-          "Upkeep -10%"
+          "Army upkeep -10%"
         ],
         "costs": [
           "Resource income -8%",
@@ -417,10 +419,12 @@
         "popModPct": 12,
         "popGrowthPct": 1.5,
         "conscriptionPct": -20,
-        "armyAtkPct": -5
+        "armyAtkPct": -5,
+        "maintenanceCostPct": -8
       },
       "incompatible_with": [
         "total_war_economy",
+        "war_on_several_fronts",
         "mass_mobilisation",
         "consumer_goods_priority",
         "war_economy_total"
@@ -443,6 +447,7 @@
         "costs": [
           "Manpower -20%",
           "Army attack -5%",
+          "Army upkeep +8%",
           "-6/turn income",
           "Economic +15",
           "Social +15"
@@ -616,7 +621,8 @@
       "levers": {
         "conscriptionPct": 30,
         "conscriptionCostPct": 15,
-        "popGrowthPct": -0.5
+        "popGrowthPct": -0.5,
+        "maintenanceCostPct": -10
       },
       "incompatible_with": [
         "professional_army",
@@ -638,11 +644,62 @@
         ],
         "costs": [
           "Population growth -0.5%/turn",
+          "Army upkeep +10%",
           "Unrest +1.0%",
           "Minority growth -1%/turn",
           "-6/turn income",
           "Economic +5",
           "Social -15"
+        ]
+      },
+      "propaganda_duration": 0
+    },
+    {
+      "id": "war_on_several_fronts",
+      "name": "War on Several Fronts",
+      "category": "authoritarian",
+      "description": "Plan for three enemies, not one. The staff work is enormous and so is the bill.",
+      "cost_per_turn": 16,
+      "implementation_turns": 6,
+      "compass_shift": {
+        "economic": 5,
+        "social": -20
+      },
+      "requirements": {
+        "min_economic": -100,
+        "max_economic": 100,
+        "min_social": -100,
+        "max_social": 20
+      },
+      "levers": {
+        "warDeclarations": 2,
+        "maintenanceCostPct": -20,
+        "armyDefPct": -8
+      },
+      "incompatible_with": [
+        "demobilisation",
+        "consumer_economy"
+      ],
+      "folder": "Authoritarian",
+      "effects": {
+        "minority_growth_rate": 0.0,
+        "immigration_boost": 0.0,
+        "pacification_cost": 0.0,
+        "unrest_reduction": -0.02,
+        "public_opinion_shift": 0.0,
+        "target_minority": ""
+      },
+      "tradeoffs": {
+        "gains": [
+          "War declarations +2/turn"
+        ],
+        "costs": [
+          "Army upkeep +20%",
+          "Army defence -8%",
+          "Unrest +2.0%",
+          "-16/turn income",
+          "Economic +5",
+          "Social -20"
         ]
       },
       "propaganda_duration": 0
@@ -737,7 +794,7 @@
       "tradeoffs": {
         "gains": [
           "Resource income +15%",
-          "Upkeep -10%"
+          "Army upkeep -10%"
         ],
         "costs": [
           "Industry cost +12%",
@@ -770,7 +827,9 @@
         "conscriptionPct": 45,
         "armyDefPct": 8,
         "popGrowthPct": -1.5,
-        "popModPct": -10
+        "popModPct": -10,
+        "conscriptionCostPct": 30,
+        "maintenanceCostPct": -25
       },
       "incompatible_with": [
         "professional_army",
@@ -790,11 +849,13 @@
       "tradeoffs": {
         "gains": [
           "Manpower +45%",
-          "Army defence +8%"
+          "Army defence +8%",
+          "Recruitment cost -30%"
         ],
         "costs": [
           "Population growth -1.5%/turn",
           "Population income -10%",
+          "Army upkeep +25%",
           "Unrest +4.0%",
           "-11/turn income",
           "Economic -5",
@@ -978,7 +1039,8 @@
       "levers": {
         "industryCostPct": 12,
         "armyDefPct": 6,
-        "conscriptionPct": -12
+        "conscriptionPct": -12,
+        "maintenanceCostPct": 8
       },
       "folder": "Libertarian",
       "effects": {
@@ -993,6 +1055,7 @@
         "gains": [
           "Industry cost -12%",
           "Army defence +6%",
+          "Army upkeep -8%",
           "Unrest -2.0%",
           "Minority growth +1%/turn"
         ],
@@ -1077,7 +1140,8 @@
         "armyAtkPct": 18,
         "armyDefPct": 12,
         "conscriptionPct": -25,
-        "conscriptionCostPct": -20
+        "conscriptionCostPct": -20,
+        "maintenanceCostPct": -15
       },
       "incompatible_with": [
         "conscription",
@@ -1100,6 +1164,7 @@
         "costs": [
           "Manpower -25%",
           "Recruitment cost +20%",
+          "Army upkeep +15%",
           "-10/turn income",
           "Economic +8",
           "Social +10"
@@ -1183,7 +1248,8 @@
         "armyDefPct": 12,
         "conscriptionCostPct": 15,
         "navyCostPct": -20,
-        "navySpeedPct": -10
+        "navySpeedPct": -10,
+        "maintenanceCostPct": -12
       },
       "incompatible_with": [
         "naval_supremacy",
@@ -1208,6 +1274,7 @@
         "costs": [
           "Ship cost +20%",
           "Ship speed -10%",
+          "Army upkeep +12%",
           "-10/turn income",
           "Economic -5",
           "Social -10"
@@ -1775,7 +1842,8 @@
         "armyDefPct": 10,
         "conscriptionCostPct": 10,
         "navyAtkPct": -10,
-        "navySpeedPct": -8
+        "navySpeedPct": -8,
+        "maintenanceCostPct": -10
       },
       "incompatible_with": [
         "naval_supremacy_doctrine",
@@ -1800,6 +1868,7 @@
         "costs": [
           "Ship attack -10%",
           "Ship speed -8%",
+          "Army upkeep +10%",
           "-8/turn income",
           "Economic -5",
           "Social -5"
@@ -1879,7 +1948,9 @@
         "industryCostPct": 15,
         "armyAtkPct": 10,
         "popGrowthPct": -1.5,
-        "migrationRate": -20
+        "migrationRate": -20,
+        "conscriptionCostPct": 20,
+        "maintenanceCostPct": -18
       },
       "incompatible_with": [
         "consumer_goods_priority",
@@ -1901,11 +1972,13 @@
         "gains": [
           "Manpower +25%",
           "Industry cost -15%",
-          "Army attack +10%"
+          "Army attack +10%",
+          "Recruitment cost -20%"
         ],
         "costs": [
           "Population growth -1.5%/turn",
           "Migration -20%",
+          "Army upkeep +18%",
           "Unrest +6.0%",
           "-18/turn income",
           "Economic -20",
@@ -1935,7 +2008,8 @@
         "popGrowthPct": 1.2,
         "popModPct": 15,
         "conscriptionPct": -20,
-        "armyAtkPct": -5
+        "armyAtkPct": -5,
+        "maintenanceCostPct": -10
       },
       "incompatible_with": [
         "war_economy_total",
@@ -1962,6 +2036,7 @@
         "costs": [
           "Manpower -20%",
           "Army attack -5%",
+          "Army upkeep +10%",
           "-5/turn income",
           "Economic +15",
           "Social +10"
@@ -1990,11 +2065,13 @@
         "maintenanceCostPct": 25,
         "popGrowthPct": 1.0,
         "conscriptionPct": -25,
-        "armyDefPct": -10
+        "armyDefPct": -10,
+        "conscriptionCostPct": -15
       },
       "incompatible_with": [
         "war_economy_total",
         "conscription",
+        "war_on_several_fronts",
         "total_war_economy",
         "mass_mobilisation"
       ],
@@ -2009,13 +2086,14 @@
       },
       "tradeoffs": {
         "gains": [
-          "Upkeep -25%",
+          "Army upkeep -25%",
           "Population growth +1.0%/turn",
           "Unrest -4.0%"
         ],
         "costs": [
           "Manpower -25%",
           "Army defence -10%",
+          "Recruitment cost +15%",
           "Social +8"
         ]
       },
@@ -2041,7 +2119,8 @@
       "levers": {
         "popGrowthPct": 0.8,
         "conscriptionPct": 8,
-        "indoctrinationPct": 6
+        "indoctrinationPct": 6,
+        "maintenanceCostPct": 10
       },
       "folder": "Miscellaneous",
       "effects": {
@@ -2057,6 +2136,7 @@
           "Population growth +0.8%/turn",
           "Manpower +8%",
           "Indoctrination +6%",
+          "Army upkeep -10%",
           "Unrest -5.0%",
           "Pulls provinces toward the government"
         ],
@@ -2140,7 +2220,8 @@
         "maintenanceCostPct": 20,
         "industryUpkeepPct": 15,
         "passiveIncome": 8,
-        "popGrowthPct": -1.0
+        "popGrowthPct": -1.0,
+        "conscriptionCostPct": -10
       },
       "incompatible_with": [
         "universal_healthcare",
@@ -2159,12 +2240,13 @@
       },
       "tradeoffs": {
         "gains": [
-          "Upkeep -20%",
+          "Army upkeep -20%",
           "Industry upkeep -15%",
           "Treasury +8/turn"
         ],
         "costs": [
           "Population growth -1.0%/turn",
+          "Recruitment cost +10%",
           "Unrest +8.0%",
           "Economic +18",
           "Social -5"
@@ -2241,7 +2323,8 @@
       "levers": {
         "armyDefPct": 10,
         "popGrowthPct": -1.0,
-        "migrationRate": -25
+        "migrationRate": -25,
+        "maintenanceCostPct": -8
       },
       "incompatible_with": [
         "general_amnesty",
@@ -2266,6 +2349,7 @@
         "costs": [
           "Population growth -1.0%/turn",
           "Migration -25%",
+          "Army upkeep +8%",
           "Unrest +15.0%",
           "Minority growth -2%/turn",
           "-12/turn income",

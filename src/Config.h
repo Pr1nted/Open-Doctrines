@@ -1,4 +1,6 @@
+#pragma once
 #include <string>
+#include <vector>
 #include "Keybinds.h"
 
 struct Color;
@@ -38,6 +40,30 @@ struct Config {
     std::string language = "en";
     /** The account terms and privacy policy have been accepted. */
     bool accountAgreed = false;
+    /**
+     * Skip the between-turns phase that shows what everybody did.
+     *
+     * Remembered between sessions because it is a preference about pacing, not
+     * a per-game choice -- a player who does not want the beat never wants it.
+     * Greater Diplomacy carries the same setting ("Skip Viewing AI Moves?").
+     */
+    bool skipViewingOrders = false;
+    /**
+     * Render at the display's real pixel density.
+     *
+     * Off, the framebuffer is the window's LOGICAL size and the system stretches
+     * it to the panel -- so on a 2x display every pixel of the map, the
+     * interface and the text is drawn once and shown as four. That is what
+     * "blurry on a big display" is, and it is not a font problem.
+     *
+     * On, raylib asks for a framebuffer at the panel's own resolution. On macOS
+     * that is coordinate-transparent: the ortho projection stays in logical
+     * units and only the viewport grows (rcore.c SetupViewport has an __APPLE__
+     * branch for exactly this), so nothing in the game has to be laid out
+     * differently. Kept as a setting because the machine this was written on
+     * reports a scale of 1.00 and cannot exercise the path.
+     */
+    bool highDpi = true;
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;
@@ -142,6 +168,83 @@ struct Config {
     // no service was configured and told the player to edit a file they do not
     // have. A value in config.json still wins, so a player can point at another.
     std::string accountIssuer = bakedAccountIssuer();
+
+    /**
+     * Where in-game bug reports, suggestions and ratings are sent.
+     *
+     * Defaults to the account service, because a fork that has one has the
+     * relay too -- they are the same Worker. Empty disables reporting outright
+     * and the menu entry says so rather than failing on send: a fork with no
+     * service of its own should not be sending its players' bug reports to
+     * somebody else's channel.
+     */
+    std::string feedbackEndpoint = bakedAccountIssuer();
+
+    /**
+     * A random, meaningless id for this installation, minted on first use.
+     *
+     * It exists so the service can cap reports per copy of the game without
+     * knowing who anybody is: not derived from hardware, not tied to an
+     * account, and worth nothing to anyone who reads it. See Feedback.h.
+     */
+    std::string installId;
+
+    /// Reports sent today, and the day they were counted for (YYYY-MM-DD).
+    int         feedbackSentToday = 0;
+    std::string feedbackCountedOn;
+
+    /**
+     * Rating prompt state.
+     *
+     * `ratingAsked` is set the first time the prompt is shown and never
+     * cleared: a player who ignored it once has answered. `ratingGiven` is set
+     * when they rate, and either one stops the prompt forever.
+     */
+    bool        ratingAsked = false;
+    bool        ratingGiven = false;
+    /// Minutes of play, accumulated across sessions. The prompt waits for some.
+    int         minutesPlayed = 0;
+
+    // ── Mail ──
+    //
+    // `mailPolicy` is the HOST's setting and travels with the lobby; the copy
+    // here is what a single-player game uses and what a host's own client seeds
+    // the lobby from. See mail::Policy.
+    //   0 nobody   1 players only   2 advisors only   3 everyone
+    int         mailPolicy = 3;
+    /// This player's own door. See mail::Lock: 0 open, 1 advisors only, 2 shut.
+    /// A host can narrow who may write; nothing a host permits overrides this.
+    int         mailLock = 0;
+    /// Words the host will not carry. Blunt on purpose -- see mail::blacklisted.
+    std::vector<std::string> mailBlacklist;
+
+    // ── The age prompt ──
+    //
+    // WHAT THIS IS: a local, self-declared question, asked once, stored here,
+    // and never transmitted anywhere. WHAT IT IS NOT: a verified age check.
+    // Self-declaration is not "highly effective age assurance" under the UK
+    // Online Safety Act, so nothing in the game claims that it is -- the prompt
+    // says what it does and the terms say the same. A host who needs a real
+    // check needs a real provider, and that is a decision with legal advice
+    // behind it rather than a checkbox here.
+    //
+    // Off by default: a prompt that appears for everybody, everywhere, in a
+    // game that mostly has no chat in it at all, would be theatre.
+    bool        agePromptOn = false;
+    /// Set once the player has answered. 0 = unanswered, 1 = said adult,
+    /// 2 = said under age, which locks mail to nobody.
+    int         ageAnswer = 0;
+
+    // ── The language-model module ──
+    //
+    // Off unless a player turns it on. `llmEndpoint` is a chat-completions base
+    // URL: a runner on this machine, or a remote API. `llmApiKey` is only ever
+    // sent to a NON-local endpoint the player typed themselves -- see
+    // Game_Llm.cpp, which refuses to attach it otherwise.
+    bool        llmEnabled = false;
+    std::string llmEndpoint = "http://127.0.0.1:8080/v1";
+    std::string llmModel = "local-model";
+    std::string llmApiKey;
 
     /**
      * Proves WHICH server this machine is, when hosting.

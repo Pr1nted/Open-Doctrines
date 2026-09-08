@@ -35,5 +35,39 @@ Dobite opozorilo. Drugega ne vedno.
 @Signals Officer
 Zdravila so nepriljubljena ali počasna: postavite posadko, vlagajte vanjo ali ji
 dajte, kar hoče. Odločite se zgodaj, saj vsa tri potrebujejo poteze.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Denar za to se večinoma zapravi. Odprite Politiko, nato §**Okraji**§.
 
+---
+@Signals Officer
+Proračun je doslej padal na vso državo naenkrat -- enaka teža na mirno grofijo
+kot na tisto, ki se oborožuje. Zato razdelite državo. §**Okraj**§ je njen kos,
+ki ga upravljate kot celoto: vanj vrišite province, dajte mu barvo in
+§**delež**§. Deleži vedno dajo sto, ker je proračun en sam.
+
+---
+@Signals Officer
+Šteje delež §**denarja**§ proti deležu §**zemlje**§. Okraj z desetino države in
+desetino proračuna je nadzorovan natanko kot prej -- delitev ne spremeni nič,
+dokler so deleži enaki.
+
+---
+@Signals Officer
+Zarišite majhen okraj okoli težave, dajte mu četrtino denarja in nadzorovan bo
+nekajkrat ostreje; plošča vam pove številko. Za to plača vse ostalo in prav to
+je odločitev. Obstaja gumb za enakomerno delitev: razumen začetek in redko
+kraj, kjer bi ostali.
+
+Okraj sprejema tudi svoje §**deželno pravo**§: policijsko uro, davčne počitnice,
+jezik sodišč. Drobno, krajevno, in vsako je menjava.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Zaprite to.
+
+---
+@Signals Officer
 To so nemiri. Še kaj?

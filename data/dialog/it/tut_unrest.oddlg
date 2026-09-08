@@ -36,5 +36,41 @@ Ricevi un avvertimento. Non sempre ne ricevi un secondo.
 @Signals Officer
 I rimedi sono impopolari o lenti: presidiarla, spenderci sopra, o darle ciò che
 vuole. Scegli presto, perché tutti e tre impiegano turni a funzionare.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Il denaro speso lì va in gran parte sprecato. Apri Politica, poi
+§**Distretti**§.
 
+---
+@Signals Officer
+Il bilancio cadeva su tutto il paese in una volta -- lo stesso peso su una
+contea tranquilla e su quella che si sta armando. Quindi dividi il paese. Un
+§**distretto**§ è un pezzo che governi come unità: dipingici dentro le
+province, dagli un colore e una §**quota**§. Le quote fanno sempre cento,
+perché il bilancio è uno solo.
+
+---
+@Signals Officer
+Conta la quota del §**denaro**§ contro la quota del §**terreno**§. Un distretto
+con un decimo del paese su un decimo del bilancio è sorvegliato esattamente
+come prima: dividere non cambia nulla finché le quote restano pari.
+
+---
+@Signals Officer
+Traccia un piccolo distretto attorno al guaio, dagli un quarto del denaro e
+sarà sorvegliato molte volte più duramente; il pannello ti dà la cifra. Tutto
+il resto lo paga, e questa è la decisione. C'è un pulsante per dividere in
+parti uguali: un inizio sensato e di rado il posto in cui restare.
+
+Un distretto emana anche la propria §**legge regionale**§: un coprifuoco, una
+tregua fiscale, la lingua dei tribunali. Piccola, locale, e ognuna uno scambio.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Chiudilo.
+
+---
+@Signals Officer
 Questo è il malcontento. Altro?

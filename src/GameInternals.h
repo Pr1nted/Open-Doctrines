@@ -99,6 +99,17 @@ int nearestIndex(float val, float* vals, int count);
 std::string makeSettingLabel(int tab, int index, const Config& cfg);
 void applyFpsTarget(int target);
 
+/// True when LEFT/RIGHT steps the row's value instead of flipping to the next
+/// settings tab.
+///
+/// This was written as a list of exceptions -- isValue, then FPS, then
+/// resolution -- and every row added after those three inherited the wrong
+/// answer. Accent Color, AI Difficulty, UI Scale and Colourblind Colours all
+/// have adjustment code that the arrows could never reach, because the guard
+/// above it had already switched tab and reset the index to 0. Asking the
+/// question once, here, is what keeps a new row from arriving broken.
+bool settingUsesArrows(int tab, int index);
+
 // ── Resource limiter (runtime panel, F10 / Ctrl+L) ──
 // The budget lives in a translation-unit global rather than being threaded
 // through applyFpsTarget's signature because the frame cap has to hold for the
@@ -110,6 +121,20 @@ constexpr float RESOURCE_BUDGET_MIN = 0.10f;
 void setResourceBudget(float budget);
 /** Reseed the turn resolver's PRNG; called per map so a seed replays a world. */
 void seedSimRng(unsigned int seed);
+/**
+ * One draw from that same PRNG, non-negative, for the rare caller outside the
+ * turn resolver that legitimately needs it -- world creation, which happens
+ * once and before any turn.
+ *
+ * NOT a general-purpose random. Every draw advances the stream the turn
+ * resolver replays, so calling this from anything that runs per frame, or per
+ * turn, or only when a panel is open, makes the same seed stop reproducing the
+ * same world. That is the failure the determinism check exists to catch.
+ */
+int simRandShared();
+/** The turn RNG's whole state, for saving; see the note on g_simRng. */
+std::string simRngState();
+void setSimRngState(const std::string& st);
 float resourceBudget();
 /** Frame ceiling the budget implies, or 0 when the budget is unlimited. */
 int budgetedFpsCeiling();

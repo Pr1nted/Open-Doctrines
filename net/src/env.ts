@@ -38,4 +38,24 @@ export interface Env {
     DISCORD_CLIENT_SECRET?: string;
     GITHUB_CLIENT_ID?: string;
     GITHUB_CLIENT_SECRET?: string;
+
+    // Where player reports go. All optional: with none of them set the
+    // endpoint still accepts and validates a report and simply has nowhere to
+    // put it, which is the right behaviour for a fork that has not configured
+    // one -- the game should not show an error to a player for the
+    // maintainer's missing secret.
+    //
+    // The security webhook is separate on purpose. A report saying "here is
+    // how to get past the mod sandbox" must never become a public GitHub
+    // issue, and routing it to its own channel is how that is enforced rather
+    // than remembered. Falls back to the ordinary webhook when unset.
+    FEEDBACK_DISCORD_WEBHOOK?: string;
+    FEEDBACK_DISCORD_SUGGESTION_WEBHOOK?: string;
+    FEEDBACK_DISCORD_SECURITY_WEBHOOK?: string;
+    FEEDBACK_GITHUB_TOKEN?: string;
+    FEEDBACK_GITHUB_REPO?: string;   // "owner/repo"
+    /** Shared secret for the repository's issues webhook. See feedback/github-hook.ts. */
+    FEEDBACK_GITHUB_WEBHOOK_SECRET?: string;
+    /** Where bans and timeouts are announced. See moderation/reports.ts. */
+    MODERATION_DISCORD_WEBHOOK?: string;
 }

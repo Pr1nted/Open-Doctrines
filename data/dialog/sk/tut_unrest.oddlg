@@ -35,5 +35,40 @@ Dostanete varovanie. Druhé nie vždy.
 @Signals Officer
 Lieky sú nepopulárne alebo pomalé: dajte tam posádku, míňajte na ňu, alebo jej
 dajte, čo chce. Rozhodnite sa skoro, lebo všetky tri potrebujú ťahy.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Peniaze na to sa z väčšej časti premrhajú. Otvorte Politiku, potom
+§**Okresy**§.
 
+---
+@Signals Officer
+Rozpočet doteraz dopadal na celú krajinu naraz -- rovnaká váha na pokojné
+grófstvo aj na to, ktoré sa zbrojí. Rozdeľte teda krajinu. §**Okres**§ je jej
+kus, ktorý spravujete ako celok: vmaľujte doň provincie, dajte mu farbu a
+§**podiel**§. Podiely vždy dajú sto, lebo rozpočet je jeden.
+
+---
+@Signals Officer
+Rozhoduje podiel na §**peniazoch**§ proti podielu na §**pôde**§. Okres s
+desatinou krajiny a desatinou rozpočtu je strážený presne ako predtým --
+delenie nič nemení, kým sú podiely rovnaké.
+
+---
+@Signals Officer
+Obkreslite malý okres okolo problému, dajte mu štvrtinu peňazí a bude strážený
+niekoľkokrát tvrdšie; panel vám povie číslo. Platí za to všetko ostatné a práve
+to je to rozhodnutie. Je tu tlačidlo na rovné rozdelenie: rozumný začiatok a
+zriedka miesto, kde zostať.
+
+Okres tiež vydáva vlastné §**krajské právo**§: zákaz vychádzania, daňové
+prázdniny, jazyk súdov. Drobné, miestne, a každé je výmena.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Zavrite to.
+
+---
+@Signals Officer
 To sú nepokoje. Ešte niečo?

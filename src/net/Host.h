@@ -44,6 +44,7 @@ struct NetHostEvent {
         LobbyChanged,
         OrdersReceived,
         Chat,
+        PlayerReport,    // somebody told the host about somebody else
         Failed,          // error() says why
         Closed,
     } kind = Kind::LobbyChanged;
@@ -51,6 +52,7 @@ struct NetHostEvent {
     uint16_t    peerId = 0;
     std::string text;
     NetChat     chat;
+    NetPlayerReport report;
 };
 
 class NetHost {
@@ -178,6 +180,14 @@ public:
 
     /** Send a turn's changes to everyone. `payload` is an .odsv delta. */
     void broadcastDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+
+    /**
+     * Send the middle-state overlay's data for one turn.
+     *
+     * Display only; see NetMsg::TurnOrders. A client that ignores it loses the
+     * overlay and nothing else, so this is never worth failing a turn over.
+     */
+    void broadcastTurnOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
 
     /**
      * Tell everyone which countries this world has.

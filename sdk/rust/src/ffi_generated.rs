@@ -499,6 +499,42 @@ extern "C" {
     /// `()i`
     pub fn model_loaded() -> u32;
 
+    /// The AI's own version, e.g. "ParrotZero 8.4.0" -- ARCH.RULES.PATCH, and
+    /// independent of the game's version. ARCH is the network shape and action
+    /// space, RULES is behaviour a benchmark can see, PATCH cannot move a
+    /// number. A mod that reads the feature vector should check ARCH before
+    /// trusting its layout, and anything comparing measurements across builds
+    /// should record RULES. Two-call sizing: call with cap 0 to learn the
+    /// length, allocate, call again. Returns the full length either way; the
+    /// copy is truncated to cap.
+    /// `(ii)i`
+    pub fn ai_version(buf: *mut u8, cap: u32) -> u32;
+
+    /// The AI's ARCH number on its own, which is also the model file's format
+    /// byte. The feature count and the action sets are only stable within one
+    /// ARCH; a bump means old weights are refused on purpose.
+    /// `()i`
+    pub fn ai_arch() -> u32;
+
+    /// The posture the AI has chosen for this country -- 0 expand, 1
+    /// consolidate, 2 defend, 3 develop -- or GEARBOX_INVALID if it holds none
+    /// (a country the AI does not play, or one that has not been given a stance
+    /// yet). Held for several turns at a time rather than chosen fresh each
+    /// turn.
+    /// `(i)i`
+    pub fn country_stance(country: u32) -> u32;
+
+    /// The stance's name: "expand", "consolidate", "defend", "develop". Never
+    /// translated, and stable within an ARCH. Two-call sizing: call with cap 0
+    /// to learn the length, allocate, call again. Returns the full length
+    /// either way; the copy is truncated to cap.
+    /// `(iii)i`
+    pub fn stance_name(index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// How many stances there are to choose between.
+    /// `()i`
+    pub fn stance_count() -> u32;
+
 }
 
 #[link(wasm_import_module = "gearbox:military.read")]
@@ -580,6 +616,27 @@ extern "C" {
     /// Port level, 0..3. 0 means no port, so no embarking and no ship repair.
     /// `(i)i`
     pub fn province_port_level(province: u32) -> u32;
+
+    /// How many kinds of soldier exist.
+    /// `()i`
+    pub fn troop_type_count() -> u32;
+
+    /// The stable id of troop type `index` -- line, militia, assault, mech.
+    /// Never translated. Two-call sizing: call with cap 0 to learn the length,
+    /// allocate, call again. Returns the full length either way; the copy is
+    /// truncated to cap.
+    /// `(iii)i`
+    pub fn troop_type_id(index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// How many soldiers of that kind this country has, everywhere. 0 for a
+    /// troop type that does not exist.
+    /// `(iii)I`
+    pub fn country_army_of_type(country: u32, troop_type: *const u8, troop_type_len: u32) -> i64;
+
+    /// How many soldiers of that kind this country has standing in that
+    /// province.
+    /// `(iiii)I`
+    pub fn province_troops_of_type(province: u32, country: u32, troop_type: *const u8, troop_type_len: u32) -> i64;
 
 }
 
@@ -665,6 +722,12 @@ extern "C" {
     /// `(i)F`
     pub fn country_funding(country: u32) -> f64;
 
+    /// How many research programmes this country may run at once, 1 to 3. This
+    /// is the effective number, including any override a script or a mod has
+    /// set.
+    /// `(i)i`
+    pub fn country_research_groups(country: u32) -> u32;
+
 }
 
 #[link(wasm_import_module = "gearbox:research.write")]
@@ -673,6 +736,12 @@ extern "C" {
     /// 'points per turn' is not a quantity this game has.
     /// `(iF)i`
     pub fn set_country_funding(country: u32, share: f64) -> u32;
+
+    /// Force how many research programmes a country may run, 1 to 3, or 0 to
+    /// hand the decision back to its economy. Outranks the economic gate in
+    /// both directions and is saved with the game. Returns 1 on success.
+    /// `(ii)i`
+    pub fn set_country_research_groups(country: u32, groups: u32) -> u32;
 
 }
 
@@ -724,6 +793,65 @@ extern "C" {
     /// `(ii)F`
     pub fn province_minority_share(province: u32, index: u32) -> f64;
 
+    /// How many districts this country is divided into. Districts are built on
+    /// demand, so asking is what creates the default one for a country that has
+    /// never been divided.
+    /// `(i)i`
+    pub fn country_district_count(country: u32) -> u32;
+
+    /// The district's name. Two-call sizing: call with cap 0 to learn the
+    /// length, allocate, call again. Returns the full length either way; the
+    /// copy is truncated to cap.
+    /// `(iiii)i`
+    pub fn country_district_name(country: u32, index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// This district's claim on the country's pacification budget, in percent.
+    /// The shares of a country's districts sum to 100.
+    /// `(ii)i`
+    pub fn country_district_share(country: u32, index: u32) -> u32;
+
+    /// How many provinces this district holds.
+    /// `(ii)i`
+    pub fn country_district_province_count(country: u32, index: u32) -> u32;
+
+    /// Province `n` of this district, or GEARBOX_INVALID if there is no such
+    /// one.
+    /// `(iii)i`
+    pub fn country_district_province(country: u32, index: u32, n: u32) -> u32;
+
+    /// How many regional laws this district runs.
+    /// `(ii)i`
+    pub fn country_district_law_count(country: u32, index: u32) -> u32;
+
+    /// The stable id of regional law `n` in this district. Two-call sizing:
+    /// call with cap 0 to learn the length, allocate, call again. Returns the
+    /// full length either way; the copy is truncated to cap.
+    /// `(iiiii)i`
+    pub fn country_district_law(country: u32, index: u32, n: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// How many regional laws exist to choose from.
+    /// `()i`
+    pub fn district_law_count() -> u32;
+
+    /// The stable id of regional law `index`. Two-call sizing: call with cap 0
+    /// to learn the length, allocate, call again. Returns the full length
+    /// either way; the copy is truncated to cap.
+    /// `(iii)i`
+    pub fn district_law_id(index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// The display name of regional law `index`, untranslated. Two-call sizing:
+    /// call with cap 0 to learn the length, allocate, call again. Returns the
+    /// full length either way; the copy is truncated to cap.
+    /// `(iii)i`
+    pub fn district_law_name(index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// Whether this country publishes that figure in its profile: 1 if it does,
+    /// 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
+    /// a decision with a consequence -- migrants read it -- rather than a
+    /// display setting.
+    /// `(ii)i`
+    pub fn country_discloses(country: u32, field: u32) -> u32;
+
 }
 
 #[link(wasm_import_module = "gearbox:politics.write")]
@@ -734,6 +862,22 @@ extern "C" {
     /// afforded. Returns 1 if the policy is already in the requested state.
     /// `(iiii)i`
     pub fn set_country_policy(country: u32, policy_id: *const u8, policy_id_len: u32, enabled: u32) -> u32;
+
+    /// Set this district's claim on the pacification budget. The other
+    /// districts are rebalanced so the shares still sum to 100, exactly as
+    /// dragging the slider does. Returns 1 on success.
+    /// `(iii)i`
+    pub fn set_country_district_share(country: u32, index: u32, percent: u32) -> u32;
+
+    /// Pass or repeal a regional law in this district. Returns 1 on success, 0
+    /// for an unknown law or district.
+    /// `(iiiii)i`
+    pub fn set_country_district_law(country: u32, index: u32, law: *const u8, law_len: u32, on: u32) -> u32;
+
+    /// Publish or withhold one of the figures in this country's profile.
+    /// Returns 1 on success.
+    /// `(iii)i`
+    pub fn set_country_disclosure(country: u32, field: u32, on: u32) -> u32;
 
 }
 
@@ -776,6 +920,21 @@ extern "C" {
     /// "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
     /// `(iii)F`
     pub fn province_resource(province: u32, which: *const u8, which_len: u32) -> f64;
+
+    /// What this country spent last turn, in total. The same figure its profile
+    /// publishes and the economy screen draws.
+    /// `(i)F`
+    pub fn country_expenses(country: u32) -> f64;
+
+    /// What the whole country is worth: every industry level, fort, port and
+    /// division at what it cost to raise. A stock, where the income figures are
+    /// flows.
+    /// `(i)F`
+    pub fn country_national_value(country: u32) -> f64;
+
+    /// How many people live in this country.
+    /// `(i)I`
+    pub fn country_population(country: u32) -> i64;
 
 }
 

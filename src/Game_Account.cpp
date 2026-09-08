@@ -701,6 +701,7 @@ void Game::drawAccountProviders(int centerX, int y, const AccountInfo& info) {
             if (id == "google")  all.push_back(AuthProvider::Google);
             if (id == "discord") all.push_back(AuthProvider::Discord);
             if (id == "github")  all.push_back(AuthProvider::GitHub);
+            if (id == "itch")    all.push_back(AuthProvider::Itch);
         }
     }
     if (all.empty()) return;

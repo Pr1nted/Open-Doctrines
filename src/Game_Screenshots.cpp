@@ -1,4 +1,5 @@
 #include "Game.h"
+#include <ctime>
 #include "Game_Gdtl.h"
 #include "GameInternals.h"
 #include "Audio.h"
@@ -74,6 +75,8 @@ const Shot SHOTS[] = {
     {"mods",          20, false},
     {"multiplayer",   20, false},
     {"map-editor",    45, false},
+    // ...and the editor with a real map open, on the Districts tools.
+    {"editor-districts", 90, false},
     // The translation layer, in a build that has it with the option switched
     // on -- see the skip in tickScreenshotTour. Before the world shots because
     // they need no world, and loading one costs seconds.
@@ -93,11 +96,56 @@ const Shot SHOTS[] = {
     // them: the proof that a generated name is transliterated rather than left
     // in Latin among Cyrillic.
     {"world-map-uk",  45, true},
+    // ── THE CLAIMS TABS, IN A LANGUAGE THAT DOES NOT FIT ──
+    //
+    // These sat on a fixed 140 px pitch and overlapped in every language whose
+    // words are longer than English's, which is most of them. Nobody saw it
+    // because the claims screen had no shot at all -- so it gets one, and it
+    // gets one in Ukrainian, where the two long labels are what break it.
+    {"claims-uk",     25, true},
+    // The Districts tab: an inline map painted by district, the budget they
+    // divide, and the shares. Photographed because it is a new screen and
+    // because every layout fault this session was found in a screenshot.
+    {"districts",     25, true},
+    // The country profile, opened on the player's own country so the published
+    // figures are togglable and the flag strip has something in it.
+    {"country-profile", 25, true},
     {"world-map-ja",  45, true},
     {"province",      20, true},
+    // The army view: the garrison list, whose stacks are sharing the ground,
+    // and the buttons that act on them. It is the screen unit types are FOR,
+    // and it was built without anybody being able to look at it -- so it is
+    // photographed every time these are retaken.
+    {"army",          20, true},
+    // The recruit picker, which only appears once a country has researched a
+    // formation -- so the shot grants them, because "invisible until you have
+    // the tech" is exactly the thing that would otherwise never be photographed.
+    {"army-kinds",    20, true},
+    // The same province with MECHANISED selected. Two shots that differ only in
+    // the picked kind are the proof that the manpower rule is live: the same
+    // people raise a quarter as many of them, and cost more money doing it.
+    {"army-mech",     20, true},
+    // The army research tab, which is where the Formations branch lives. Its
+    // first draft was drawn straight through the navy column; nothing but a
+    // picture of it would have said so.
+    {"research-army", 25, true},
+    // The Orders option, which hangs off Process Turn -- lit, with something to
+    // show -- on a desktop canvas and on a phone. Both, because the request was
+    // for a control that works on a phone AND does not look odd on a computer,
+    // and neither half of that can be checked by reasoning about it.
+    {"orders-desktop", 30, true},
+    {"orders-portrait", 30, true},
+    // The between-turns phase itself: banner, the one button, and a map with
+    // everybody's orders on it. A phase that waits for a person is a hang for
+    // anything that does not have one, so the tour sets the state directly
+    // rather than processing a turn to reach it.
+    {"orders-phase",  30, true},
+    {"orders-zoom",   20, true},
     {"policies",      20, true},
     {"economy",       20, true},
+    {"economy-local", 20, true},
     {"research",      20, true},
+    {"research-portrait", 20, true},
     // The comms window over the map. Photographed like everything else here:
     // by setting the state the F9 key sets and letting the real frame happen,
     // so a broken filter photographs as broken.
@@ -157,6 +205,23 @@ const Shot SHOTS[] = {
     {"tutorial-waiting", 300, true},
     // The turn button before the lesson has introduced it.
     {"turn-locked",   200, true},
+    // The report form, with a report half written in it and the diagnostics
+    // box ticked -- the layout is all hand-computed, and the chip row wraps.
+    {"feedback",      60, true},
+    // The same form showing the diagnostics in full, which is the promise the
+    // feature makes and the one thing worth checking by eye.
+    {"feedback-diag", 60, true},
+    // The rating prompt, in its corner.
+    {"rating",        60, true},
+    // The post: a correspondence with letters both ways, one still unsent.
+    {"mail",          60, true},
+    {"mail-list",     60, true},
+    // The mail settings, and the dialog for reporting a letter.
+    {"mail-settings", 60, true},
+    {"mail-report",   60, true},
+    // The developer queue, with one report opened for a decision.
+    {"dev-reports",   40, false},
+    {"dev-lookup",    40, false},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -414,7 +479,7 @@ bool Game::tickScreenshotTour() {
 
         const std::string name = shot.name;
         if (name != "pointer-resized" && name != "menu-portrait" &&
-            name != "world-portrait" &&
+            name != "world-portrait" && name != "orders-portrait" &&
             (GetScreenWidth() != 1600 || GetScreenHeight() != 900))
             SetWindowSize(1600, 900);   // undo the resize shot, for everyone after it
         if (name == "tutorial-world") {
@@ -464,6 +529,113 @@ bool Game::tickScreenshotTour() {
             applyLanguageForShot(name == "world-map-uk" ? "uk" : "ja");
             m_activeViewTab = 8;   // Country Names: the view these labels are for
             if (m_renderer) m_renderer->setSelectedProvince(0);
+        } else if (name == "country-profile") {
+            m_inCountryProfile = true;
+            m_profileCountryId = m_playerCountryId;
+            m_profileScroll = 0;
+            // A history to show: two eras, so the strip is not a single flag.
+            if (Country* pc2 = m_countries.getCountry(m_playerCountryId)) {
+                if (pc2->flagHistory.empty()) {
+                    pc2->flagHistory.push_back({0, pc2->flagActual, pc2->flagCensored});
+                    pc2->flagHistory.push_back({14, pc2->flagActual, pc2->flagCensored});
+                }
+                pc2->foundedTurn = std::max(0, m_turnNumber - 38);
+            }
+            m_countryDisclosure[m_playerCountryId] =
+                DISCLOSE_EXPENSES | DISCLOSE_TREASURY | DISCLOSE_DISTRICT_LAWS |
+                DISCLOSE_DOCTRINES;
+            m_treasuryLastTurn[m_playerCountryId] = 4210.0;
+            // Divided, and governing the halves differently -- the profile
+            // shows the division to anybody, and the LAW only because this
+            // country publishes it. A shot of one undivided district with no
+            // law would prove neither.
+            {
+                ensureDefaultDistrict(m_playerCountryId);
+                auto& ds2 = m_districts[m_playerCountryId];
+                if (ds2.size() == 1 && ds2[0].provinces.size() >= 4) {
+                    auto all = ds2[0].provinces;
+                    const size_t half = all.size() / 2;
+                    ds2[0].provinces.assign(all.begin(), all.begin() + half);
+                    ds2[0].sharePct = 65;
+                    District d2;
+                    d2.id = 2;
+                    // Through uniqueDistrictName, like the real one: the two
+                    // halves of one country often suggest the same name, and
+                    // the first shot of this had two districts both called
+                    // "Central Prefecture".
+                    // GROUND FIRST. Both the suggested name and the fallback
+                    // that picks a direction instead of a numeral are computed
+                    // FROM the provinces, so naming a district before giving it
+                    // any produced "British Empire II" where the real path
+                    // produces "Eastern British Empire".
+                    d2.provinces.assign(all.begin() + half, all.end());
+                    d2.name = uniqueDistrictName(
+                        m_playerCountryId,
+                        suggestDistrictName(m_playerCountryId, d2.provinces),
+                        -1, d2.provinces);
+                    d2.sharePct = 35;
+                    d2.r = 120; d2.g = 180; d2.b = 140;
+                    ds2.push_back(std::move(d2));
+                }
+                if (!m_districtLaws.empty() && ds2.size() >= 2) {
+                    ds2[0].policies.push_back(m_districtLaws.front().id);
+                    if (m_districtLaws.size() > 2)
+                        ds2[1].policies.push_back(m_districtLaws[2].id);
+                }
+            }
+            // Twelve turns of history, or every graph on the screen says "not
+            // enough turns yet" and the shot proves only that the boxes exist.
+            {
+                auto& h = m_incomeHistory[m_playerCountryId];
+                if (h.size() < 8) {
+                    auto base = computeCountryIncome(m_playerCountryId);
+                    base.population = countryPopulation(m_playerCountryId);
+                    h.clear();
+                    for (int k = 0; k < 12; ++k) {
+                        auto v = base;
+                        const float t = 0.72f + 0.03f * k;
+                        v.total      *= t;
+                        v.expenses   *= 0.85f + 0.02f * k;
+                        v.net         = v.total - v.expenses;
+                        v.population  = (long long)(base.population * (0.90 + 0.01 * k));
+                        h.push_back(v);
+                    }
+                }
+            }
+        } else if (name == "districts") {
+            m_activeSidebarTab = 1;
+            m_inPolitics = true;
+            m_policyTab = 5;
+            // Three districts, so the shares, the colours and the map all have
+            // something to show. Carved off the front of what the country owns.
+            ensureDefaultDistrict(m_playerCountryId);
+            auto& ds = m_districts[m_playerCountryId];
+            if (ds.size() == 1 && ds[0].provinces.size() >= 9) {
+                auto all = ds[0].provinces;
+                ds[0].provinces.assign(all.begin(), all.begin() + all.size() / 3);
+                for (int k = 1; k <= 2; ++k) {
+                    District d;
+                    d.id = k + 1;
+                    const Color c = ColorFromHSV((float)((d.id * 67) % 360), 0.55f, 0.85f);
+                    d.r = c.r; d.g = c.g; d.b = c.b;
+                    const size_t a = all.size() * k / 3, b = all.size() * (k + 1) / 3;
+                    d.provinces.assign(all.begin() + a, all.begin() + b);
+                    // Named the way the paint handler names one: after the
+                    // ground, once it has some. Hard-coding "District 2" here
+                    // photographed a state the game never produces.
+                    d.name = uniqueDistrictName(
+                        m_playerCountryId,
+                        suggestDistrictName(m_playerCountryId, d.provinces), -1, d.provinces);
+                    ds.push_back(std::move(d));
+                }
+                splitDistrictSharesEqually(m_playerCountryId);
+                m_districtOverlayDirty = true;
+            }
+        } else if (name == "claims-uk") {
+            applyLanguageForShot("uk");
+            m_activeSidebarTab = 3;
+            m_inClaims = true;
+            m_claimsTab = 0;
         } else if (name == "language-uk") {
             m_currentScreen = SCREEN_MENU;
             m_inSettings = false;
@@ -494,6 +666,20 @@ bool Game::tickScreenshotTour() {
                 Audio::BlockingCall quiet;
                 m_mapEditor = new MapEditor();
                 m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
+            }
+            m_currentScreen = SCREEN_MAP_EDITOR;
+        } else if (name == "editor-districts") {
+            if (!m_mapEditor) {
+                Audio::BlockingCall quiet;
+                m_mapEditor = new MapEditor();
+                m_mapEditor->init(m_screenW, m_screenH, m_dataDir);
+            }
+            {
+                Audio::BlockingCall quiet;
+                // 1914 rather than the modern map: fewer, larger countries, so
+                // the two districts are legible at the tour's zoom.
+                if (!m_mapEditor->shotSeedDistricts(m_dataDir + "STDmaps/1914.odmap"))
+                    printf("  (editor-districts: map would not load, shot skipped)\n");
             }
             m_currentScreen = SCREEN_MAP_EDITOR;
         } else if (name == "gdtl-info") {
@@ -533,6 +719,142 @@ bool Game::tickScreenshotTour() {
             gdtlTranslateTo(out);
             printf("[SHOT] gdtl: ok=%d notes=%zu %s\n", (int)m_gdtlOk, m_gdtlNotes.size(),
                    m_gdtlMessage.c_str());
+        } else if (name == "research-army") {
+            m_activeSidebarTab = 4;
+            m_inResearch = true;
+            m_researchTab = 2;              // Army; see catKeys[] in Game_Research.cpp
+            m_researchZoom = 0.75f;
+            m_researchCamX = 0; m_researchCamY = 40;
+        } else if (name == "army-kinds" || name == "army-mech") {
+            m_activeViewTab = 5;
+            // Grant the three formation technologies to the player so the
+            // picker has something to offer.
+            //
+            // m_countryResearched, NOT Country::research -- there are two
+            // stores and hasResearched() reads the first. Granting the second
+            // photographed a panel with no picker on it, which is the shot
+            // doing its job: an invisible feature and a broken one look
+            // identical from the outside.
+            for (const char* id : {"militia_levy", "assault_doctrine", "mechanisation"})
+                m_countryResearched[m_playerCountryId].insert(id);
+            int best = -1; long long bestPop = -1;
+            for (const auto& [pid, pop] : m_provincePopulations) {
+                const Province* p = m_provinces.getProvinceById(pid);
+                if (!p || p->countryId != m_playerCountryId) continue;
+                if (pop > bestPop) { bestPop = pop; best = pid; }
+            }
+            if (best > 0 && m_renderer) m_renderer->setSelectedProvince(best);
+            m_recruitType = (name == "army-mech") ? TROOP_MECHANISED : TROOP_LINE;
+        } else if (name == "orders-desktop" || name == "orders-portrait" ||
+                   name == "orders-phase") {
+            // The strip is greyed until a turn has resolved, and a loaded save
+            // has no order log (it is per-turn display state, not saved). So
+            // put a plausible turn in it: the option lit, the overlay drawn,
+            // and the arrows over real provinces.
+            m_activeSidebarTab = 0;
+            m_activeViewTab = 5;
+            m_turnOrderLog.clear();
+            m_turnOrderLogTurn = m_turnNumber;
+            {
+                // ── ORDERS BETWEEN PROVINCES THAT TOUCH ──
+                //
+                // This used to pair mine[k] with mine[k+1] -- two entries of a
+                // hash map, in whatever order it happened to iterate. Every
+                // photograph it produced was therefore a spray of arrows
+                // between random continents, Norway to Australia and Peru to
+                // Siberia, which is not a thing the game can draw and not a
+                // thing anyone could check. A fixture that fabricates nonsense
+                // cannot catch a regression in what it photographs: the arrows
+                // were unreadable, so nobody could see whether they were right.
+                //
+                // So each order now runs to a province that ACTUALLY ADJOINS
+                // its source, and carries the detail a real order carries.
+                std::vector<int> mine;
+                for (const auto& [pid, units] : m_provinceArmies) {
+                    const Province* p = m_provinces.getProvinceById(pid);
+                    if (p && p->countryId > 0) mine.push_back(pid);
+                    if (mine.size() > 400) break;
+                }
+                std::sort(mine.begin(), mine.end());   // and in a stable order
+                int made = 0;
+                const int pcts[] = {25, 50, 75, 100};
+                for (size_t k = 0; k < mine.size() && made < 22; ++k) {
+                    const Province* p = m_provinces.getProvinceById(mine[k]);
+                    if (!p) continue;
+                    int dst = -1;
+                    for (size_t j = 0; j < mine.size() && dst < 0; ++j)
+                        if (j != k && provincesAdjacent(mine[k], mine[j])) dst = mine[j];
+                    if (dst < 0) continue;
+                    TurnOrderMark m;
+                    m.kind = (made % 3 == 0) ? TurnOrderMark::Kind::Artillery
+                                             : TurnOrderMark::Kind::ArmyMove;
+                    m.countryId = p->countryId;
+                    m.fromProvince = mine[k];
+                    m.toProvince = dst;
+                    m.detail = (m.kind == TurnOrderMark::Kind::ArmyMove)
+                                   ? std::to_string(pcts[made % 4]) + "%"
+                                   : "he";
+                    m_turnOrderLog.push_back(std::move(m));
+                    ++made;
+                }
+                // A carrier working over a coast, so the shot covers the one
+                // kind of attack that starts at a hull rather than a province.
+                for (size_t k = 0; k < m_ships.size() && k < 3; ++k) {
+                    int dst = -1;
+                    for (int pid : mine) {
+                        auto c = m_provinceCenters.find(pid);
+                        if (c == m_provinceCenters.end()) continue;
+                        dst = pid; break;
+                    }
+                    if (dst < 0) break;
+                    TurnOrderMark m;
+                    m.kind = TurnOrderMark::Kind::NavalBombard;
+                    m.countryId = m_ships[k].countryId;
+                    m.fromLon = m_ships[k].lon; m.fromLat = m_ships[k].lat;
+                    m.fromProvince = -1;
+                    m.toProvince = dst;
+                    m.detail = "heavy";
+                    m_turnOrderLog.push_back(std::move(m));
+                }
+
+                // And the two kinds that stand still, so the shot covers them.
+                const size_t stride = std::max<size_t>(1, mine.size() / 7);
+                for (size_t k = 0, done = 0; k < mine.size() && done < 6; k += stride, ++done) {
+                    const Province* p = m_provinces.getProvinceById(mine[k]);
+                    if (!p) continue;
+                    TurnOrderMark m;
+                    m.countryId = p->countryId;
+                    m.fromProvince = m.toProvince = mine[k];
+                    if (done % 2 == 0) {
+                        m.kind = TurnOrderMark::Kind::Recruit;
+                        m.detail = "12.0k Line Infantry";
+                    } else {
+                        m.kind = TurnOrderMark::Kind::Build;
+                        m.detail = "industry";
+                    }
+                    m_turnOrderLog.push_back(std::move(m));
+                }
+            }
+            if (name == "orders-portrait") SetWindowSize(402, 874);
+            // ONLY THE ORDERS SHOTS. Setting this for every shot in the
+            // block put the Viewing Orders banner across the economy screen.
+            m_turnState = TURN_VIEWING_ORDERS;
+            // ── AND ONE OF THEM IS ZOOMED IN ──
+            //
+            // The standing orders -- a levy raised, a works going up -- are
+            // deliberately not drawn at world zoom, so the world-zoom shot
+            // proves only that the clutter is gone. It cannot show the cues
+            // are RIGHT, which is the half that can silently break. This one
+            // flies to a province that has one and photographs it.
+            if (name == "orders-zoom" && m_renderer && !m_turnOrderLog.empty()) {
+                int pid = -1;
+                for (const auto& m2 : m_turnOrderLog)
+                    if (m2.kind == TurnOrderMark::Kind::Recruit) { pid = m2.fromProvince; break; }
+                auto cit = m_provinceCenters.find(pid);
+                if (cit != m_provinceCenters.end())
+                    m_renderer->flyTo(cit->second.x, cit->second.y,
+                                      m_renderer->getMinZoom() * 6.0f, 1000.0f);
+            }
         } else if (name == "menu-portrait") {
             // A phone held upright. The menu had never been measured against a
             // canvas narrower than it is tall, and the title ran off both
@@ -589,6 +911,21 @@ bool Game::tickScreenshotTour() {
             m_activeViewTab = 0;          // no panel: this shot is the map itself
         } else if (name == "province") {
             m_activeViewTab = 2;          // industry: the busiest of the tabs
+        } else if (name == "army") {
+            // Tab 5 is the army view, and the shot wants a province with troops
+            // in it -- the most populous one we own is the tour's selection and
+            // is very likely garrisoned, but pick the biggest garrison outright
+            // rather than hope.
+            m_activeViewTab = 5;
+            int best = -1; long long bestMen = -1;
+            for (const auto& [pid, units] : m_provinceArmies) {
+                const Province* p = m_provinces.getProvinceById(pid);
+                if (!p || p->countryId != m_playerCountryId) continue;
+                long long n = 0;
+                for (const auto& u : units) n += u.count;
+                if (n > bestMen) { bestMen = n; best = pid; }
+            }
+            if (best > 0 && m_renderer) m_renderer->setSelectedProvince(best);
         } else if (name == "policies") {
             m_activeSidebarTab = 1;
             m_inPolitics = true;
@@ -603,9 +940,61 @@ bool Game::tickScreenshotTour() {
         } else if (name == "economy") {
             m_activeSidebarTab = 2;
             m_inEconomy = true;
-        } else if (name == "research") {
+            m_turnState = TURN_NORMAL;
+        } else if (name == "economy-local") {
+            // The half with the country's own books in it -- the breakdown, the
+            // two pies and the three graphs. The tour only ever photographed
+            // the global league tables, so every layout fault on this side
+            // (a legend drawn through the pies, the second pie drawn through
+            // the first one's legend) went unseen for as long as it existed.
+            m_activeSidebarTab = 2;
+            m_inEconomy = true;
+            m_economyTab = 1;   // Local
+            m_turnState = TURN_NORMAL;
+            // Two turns of history, so the graphs have something to draw.
+            auto& h = m_incomeHistory[m_playerCountryId];
+            if (h.size() < 6) {
+                auto cs = computeCountryIncome(m_playerCountryId);
+                cs.nationalValue = countryNationalValue(m_playerCountryId);
+                cs.population    = countryPopulation(m_playerCountryId);
+                for (int k = (int)h.size(); k < 6; ++k) {
+                    auto v = cs;
+                    v.total          *= 0.80f + 0.04f * k;
+                    v.expenses       *= 0.90f + 0.02f * k;
+                    v.net             = v.total - v.expenses;
+                    v.nationalValue  *= 0.70f + 0.06f * k;
+                    h.push_back(v);
+                }
+            }
+        } else if (name == "research" || name == "research-portrait") {
             m_activeSidebarTab = 4;
             m_inResearch = true;
+            // The phone canvas, where the cards cannot sit beside the economy
+            // slider and drop to a row of their own. Photographed because the
+            // alternative -- the fit loop skipping all three -- puts the whole
+            // research system out of reach with nothing on screen saying so.
+            if (name == "research-portrait") SetWindowSize(402, 874);
+            // THREE LIVE CARDS, so the shot covers the controls and not three
+            // locked placeholders. Whether this country really earns three
+            // groups depends on the save; the panel is what is being
+            // photographed, so the cards are put in the state they are drawn in.
+            for (int g = 0; g < RESEARCH_GROUPS_MAX; ++g) {
+                auto& grp = m_researchGroups[g];
+                grp.sharePct = (g == 2) ? 34 : 33;
+                grp.autoAdvance = (g == 1);
+                for (size_t i = 0; i < m_researchNodes.size(); ++i) {
+                    const auto& n = m_researchNodes[i];
+                    if (n.researched || n.inProgress) continue;
+                    if (!isNodeAvailableFor(n, m_playerCountryId)) continue;
+                    bool taken = false;
+                    for (int k = 0; k < g; ++k) taken |= (m_researchGroups[k].activeNode == (int)i);
+                    if (taken) continue;
+                    grp.activeNode = (int)i;
+                    m_researchNodes[i].inProgress = true;
+                    m_researchNodes[i].invested = m_researchNodes[i].cost / (g + 3);
+                    break;
+                }
+            }
         } else if (name == "intro-markup") {
             m_activeSidebarTab = 0;
             m_inResearch = m_inEconomy = m_inPolitics = false;
@@ -616,6 +1005,117 @@ bool Game::tickScreenshotTour() {
             m_dialog.jumpTo(2);          // "never ran a country before?"
             if (const dlg::Page* pg = m_dialog.currentPage()) commsSpeaker(pg->speaker);
             m_dialogPage = m_dialog.pageIndex();
+        } else if (name == "feedback" || name == "feedback-diag") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_paused = false;
+            // NOT opened here. This runs after endFrame(), so a form opened now
+            // has never had a frame drawn behind it and would photograph on
+            // black -- which is not what a player sees. Opened at frame 20
+            // below, once the world has drawn and been captured.
+            m_feedbackKind = feedback::Kind::Bug;
+            m_feedbackCategory = feedback::Category::Scripting;
+            m_feedbackTitle = "Districts panel draws over the minimap";
+            m_feedbackBody = "At 1280x720 the districts list overlaps the minimap\n"
+                             "in the bottom right. It is fine at 1600x900.";
+            m_feedbackAttach = true;
+            m_feedbackPreview = (name == "feedback-diag");
+            m_feedbackPreviewScroll = 0;
+        } else if (name == "mail" || name == "mail-list" ||
+                   name == "mail-settings" || name == "mail-report") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_llmAvailable = true;            // so the button and a bot exist
+            m_config.mailPolicy = (int)mail::Policy::Everyone;
+            m_mail.clear();
+            {
+                // A conversation worth photographing: something sent, an answer
+                // from a machine correspondent, and one still on the desk.
+                mail::Box& mine = mailbox(m_playerCountryId);
+                const int other = (m_playerCountryId == 5) ? 1 : 5;
+                mine.write(m_playerCountryId, other,
+                           "Your fleet movements in the Channel are noted. Are we to "
+                           "understand these as exercises?", m_turnNumber - 2);
+                mine.deliver(m_turnNumber - 1);
+                mail::Message reply;
+                reply.id = 9001;
+                reply.fromCountry = other;
+                reply.toCountry = m_playerCountryId;
+                reply.body = "Exercises, nothing more. We would sooner discuss the "
+                             "tariff question, which troubles us far more than your "
+                             "coastline does.";
+                reply.writtenTurn = m_turnNumber - 1;
+                reply.deliverTurn = m_turnNumber;
+                reply.status = mail::Status::Delivered;
+                reply.author = mail::Author::Bot;
+                mine.receive(reply);
+                mine.write(m_playerCountryId, other,
+                           "Then let us talk tariffs. I will send terms next turn.",
+                           m_turnNumber);
+                m_mailThread = (name == "mail-list") ? 0 : other;
+            }
+            m_mailOpen = true;
+            m_mailScroll = m_mailListScroll = 0;
+            m_mailSettingsOpen = (name == "mail-settings");
+            if (name == "mail-settings") m_config.llmEnabled = true;
+            if (name == "mail-report") {
+                // Photographed on the advisor's letter, which is the one a
+                // player would actually be reporting.
+                m_mailSettingsOpen = false;
+                m_reportOpen = true;
+                m_reportMessageId = 9001;
+                m_reportCountry = m_mailThread;
+                m_reportReason = 1;
+                m_reportNote = "They kept at it after being asked to stop.";
+                m_reportWithContext = true;
+            }
+        } else if (name == "dev-reports" || name == "dev-lookup") {
+            // Rows stood up directly: the real screen fetches them from the
+            // account service, which a screenshot run has no account for.
+            m_currentScreen = SCREEN_MENU;
+            m_devReports.clear();
+            DevReport a;
+            a.id = "r1"; a.accused = "Troublemaker"; a.reporter = "Kaiserin";
+            a.reason = "harassment"; a.server = "Vlad's evening game";
+            a.note = "They kept at it after being asked to stop.";
+            a.message = "you are worthless and should quit";
+            a.context = {"I would rather not discuss the border tonight.",
+                         "You never want to discuss anything.",
+                         "That is not fair. We spoke about it last turn.",
+                         "And you lied about it last turn.",
+                         "I did not lie. My fleet moved for the exercises I announced.",
+                         "Nobody believes that.",
+                         "Please stop.",
+                         "Or what? You will write me another letter?"};
+            a.status = "open";
+            m_devReports.push_back(a);
+            DevReport b;
+            b.id = "r2"; b.accused = "Someone"; b.reporter = "Anna";
+            b.reason = "spam"; b.message = "join my server join my server join my";
+            b.status = "actioned"; b.outcome = "timeout 7d";
+            m_devReports.push_back(b);
+            m_devReportsOpen = true;
+            m_devReportSelected = 0;
+            if (name == "dev-lookup") {
+                m_devTab = ReportTab::Lookup;
+                m_devReportSelected = -1;
+                m_devLookupText = "TestTroublemaker";
+                DevProfile p;
+                p.valid = true;
+                p.id = "acct-test-troublemaker";
+                p.nickname = "TestTroublemaker";
+                p.linkedCount = 1;
+                p.banned = true;
+                p.bannedUntil = (long long)time(nullptr) + 36 * 3600;
+                p.banReason = "Conduct towards other players.";
+                p.against = { m_devReports[0] };
+                DevReport filed = m_devReports[1];
+                filed.reason = "spam";
+                p.filed = { filed };
+                m_devProfile = p;
+            }
+        } else if (name == "rating") {
+            m_inResearch = m_inEconomy = m_inPolitics = false;
+            m_feedbackOpen = false;
+            m_ratingPromptOpen = true;
         } else if (name == "turn-locked") {
             m_activeSidebarTab = 0;
             m_inResearch = m_inEconomy = m_inPolitics = false;
@@ -827,6 +1327,16 @@ bool Game::tickScreenshotTour() {
         // Resize AGAIN part-way through, so the capture is of a window that
         // has just moved rather than one that settled minutes ago.
         SetWindowSize(1500, 820);
+    }
+    if ((std::string(shot.name) == "feedback" || std::string(shot.name) == "feedback-diag") &&
+        m_shotFrame == 20) {
+        // Now: the world is on screen and endFrame has a picture of it.
+        // Set directly rather than through openFeedbackForm(), which refuses
+        // when the build has no reporting endpoint -- the shot is of the form,
+        // not of the refusal.
+        m_feedbackOpen = true;
+        m_feedbackSwallowClick = true;
+        m_feedbackDiag = feedbackDiagnostics();
     }
     if (std::string(shot.name) == "intro-two" && m_shotFrame == 90) {
         m_dialog.jumpTo(6);          // Mia answers; both are now on the link

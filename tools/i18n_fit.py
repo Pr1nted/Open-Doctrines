@@ -25,6 +25,7 @@ Two halves, because neither can answer it alone:
 
     python3 tools/i18n_fit.py                     # measure and report
     python3 tools/i18n_fit.py --manifest p.tsv    # a manifest from elsewhere
+    python3 tools/i18n_fit.py --binary path/to/OpenDoctrines
 
 Regenerate the manifest whenever a widget is added or resized:
 
@@ -40,8 +41,15 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 LANG = os.path.join(ROOT, "data", "lang")
+# WHICH BINARY MEASURES. Hard-coded to build/, this failed with an empty
+# error the moment anybody built anywhere else -- "the game could not measure:"
+# and nothing after the colon, because a missing executable sets no stderr. The
+# repo has learned this once already with the trainer picking up whichever tree
+# happened to be newest; the answer there was the same, an explicit flag.
 GAME = os.path.join(ROOT, "build", "OpenDoctrines.app", "Contents", "MacOS",
                     "OpenDoctrines")
+if "--binary" in sys.argv:
+    GAME = sys.argv[sys.argv.index("--binary") + 1]
 
 CODES = ["uk", "be", "kk", "ja", "zh", "de", "it", "fr", "es", "cs", "sl", "sk",
          "pl", "af", "ar", "hi", "ko", "bg", "tr", "ur"]
@@ -171,7 +179,12 @@ def main():
     r = subprocess.run([GAME, "--measure-text", inp, outp],
                        capture_output=True, text=True)
     if r.returncode != 0 or not os.path.exists(outp):
-        print("the game could not measure:", r.stderr.strip()[:400])
+        why = r.stderr.strip()[:400]
+        if not why:
+            why = (f"no output from {GAME}"
+                   + ("" if os.path.exists(GAME) else " -- it does not exist."
+                      " Pass --binary <path> to the build you want measured."))
+        print("the game could not measure:", why)
         return 2
 
     at = {}

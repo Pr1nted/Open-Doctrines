@@ -94,8 +94,54 @@ void Game::progressCountryResearch(int countryId) {
     int& invested = m_countryResearchInvested[countryId];
     if (m_countryResearched[countryId].count(node.id)) { active = -1; invested = 0; return; }
 
+    // ── THE SAME BUDGET RULE THE PLAYER GETS ──
+    //
+    // Shares sum to 100 across the unlocked groups -- evenly, because the net
+    // has no action for setting them and inventing a preference here would be
+    // a rule with no author. An idle group's share is not lost: it is left in
+    // the pool for the ones that are working, exactly as the player's is.
+    // Gated so the AI half can be measured against itself. Without this the
+    // control arm is the same build as the treatment, which is an A/B with one
+    // arm -- and it reports a perfect null every time.
+    static const bool groupsOff = getenv("OD_RGROUPS_OFF") != nullptr;
+    const int unlocked = groupsOff ? 1
+        : std::clamp(researchGroupsUnlocked(countryId), 1, RESEARCH_GROUPS_MAX);
+    auto& extra = m_countryResearchExtra[countryId];
+
+    // Each extra group takes the cheapest thing it can start that no other
+    // group here is already on. Cheapest-available is the same fallback the
+    // policy net's own research action uses when its focus has nothing left,
+    // so this adds throughput without adding a second opinion about WHAT to
+    // research -- which is the part the net owns.
+    for (int g = 1; g < unlocked; ++g) {
+        auto& sl = extra[g - 1];
+        if (sl.activeNode >= 0 && sl.activeNode < (int)m_researchNodes.size()) {
+            if (!m_countryResearched[countryId].count(m_researchNodes[sl.activeNode].id))
+                continue;
+            sl.activeNode = -1; sl.invested = 0;
+        }
+        int best = -1, bestCost = INT32_MAX;
+        for (size_t i = 0; i < m_researchNodes.size(); ++i) {
+            const ResearchNode& n = m_researchNodes[i];
+            if (m_countryResearched[countryId].count(n.id)) continue;
+            if (!isNodeAvailableFor(n, countryId)) continue;
+            if ((int)i == active) continue;
+            bool taken = false;
+            for (int k = 1; k < unlocked; ++k)
+                if (k != g && extra[k - 1].activeNode == (int)i) taken = true;
+            if (taken) continue;
+            if (n.cost < bestCost) { bestCost = n.cost; best = (int)i; }
+        }
+        sl.activeNode = best;
+        sl.invested = 0;
+    }
+    // Groups that have something to work on; the divisor, so nothing leaks.
+    int working = 1;
+    for (int g = 1; g < unlocked; ++g) if (extra[g - 1].activeNode >= 0) ++working;
+    const int perGroup = pts / std::max(1, working);
+
     if (m_ai) m_ai->noteResearchFunded(countryId);
-    int toSpend = std::min(pts, node.cost - invested);
+    int toSpend = std::min(perGroup, node.cost - invested);
     if (toSpend > 0) { invested += toSpend; pts -= toSpend; }
     if (invested >= node.cost) {
         if (m_ai) m_ai->noteResearchDone(countryId);
@@ -106,6 +152,21 @@ void Game::progressCountryResearch(int countryId) {
             const Country* c = m_countries.getCountry(countryId);
             printf("[RESEARCH] %s completed %s\n",
                    c ? c->name.c_str() : "?", node.id.c_str());
+        }
+    }
+    for (int g = 1; g < unlocked; ++g) {
+        auto& sl = extra[g - 1];
+        if (sl.activeNode < 0 || sl.activeNode >= (int)m_researchNodes.size()) continue;
+        ResearchNode& n2 = m_researchNodes[sl.activeNode];
+        const int spend = std::min({perGroup, pts, n2.cost - sl.invested});
+        if (spend <= 0) continue;
+        sl.invested += spend;
+        pts -= spend;
+        if (sl.invested >= n2.cost) {
+            if (m_ai) m_ai->noteResearchDone(countryId);
+            m_countryResearched[countryId].insert(n2.id);
+            sl.activeNode = -1;
+            sl.invested = 0;
         }
     }
 }
@@ -202,20 +263,20 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
     // brake on the snowball survives, it just stops being a wall.
     add("ind_eff1","Standardised Parts",
         "Interchangeable components and common tooling. Industry upkeep -15%",
-        "buildings","efficiency",{"ind3"},30,1050,280).industryUpkeepPct=15;
+        "efficiency","works",{"ind3"},30,80,120).industryUpkeepPct=15;
     add("ind_eff2","Assembly Line",
         "Continuous flow production. Industry upkeep -15%",
-        "buildings","efficiency",{"ind_eff1"},60,1050,380).industryUpkeepPct=15;
+        "efficiency","works",{"ind_eff1"},60,80,320).industryUpkeepPct=15;
     add("ind_eff3","Scientific Management",
         "Time-and-motion study across the works. Industry upkeep -15%",
-        "buildings","efficiency",{"ind_eff2"},110,1050,480).industryUpkeepPct=15;
+        "efficiency","works",{"ind_eff2"},110,80,520).industryUpkeepPct=15;
     add("ind_eff_grid","National Power Grid",
         "One grid, one tariff. Industry upkeep -15%",
-        "buildings","efficiency",{"ind_eff3"},220,880,580).industryUpkeepPct=15;
+        "efficiency","works",{"ind_eff3"},220,-90,720).industryUpkeepPct=15;
     m_researchNodes.back().mutexGroup=11;
     add("ind_eff_auto","Automation",
         "Machines that mind themselves. Industry upkeep -10%, population modifier +15%",
-        "buildings","efficiency",{"ind_eff3"},220,1220,580).industryUpkeepPct=10;
+        "efficiency","works",{"ind_eff3"},220,250,720).industryUpkeepPct=10;
     m_researchNodes.back().popModPct=15;
     m_researchNodes.back().mutexGroup=11;
 
@@ -273,65 +334,121 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
 
     // ─── Army > Navy (linear with branches) ───
     add("navy1","Naval Engineering","Unlocks ship building",
-        "army","navy",{},8,450,80).unlockShips=true;
+        "army","navy",{},8,750,80).unlockShips=true;
     add("navy2","Advanced Shipbuilding","Ship cost -10%",
-        "army","navy",{"navy1"},12,450,180).navyCostPct=10;
+        "army","navy",{"navy1"},12,750,180).navyCostPct=10;
     add("navy3","Naval Architecture","Ship cost -15%",
-        "army","navy",{"navy2"},20,450,280).navyCostPct=15;
+        "army","navy",{"navy2"},20,750,280).navyCostPct=15;
     add("navy4","Efficient Dockyards","Ship cost -20%",
-        "army","navy",{"navy3"},25,340,380).navyCostPct=20;
+        "army","navy",{"navy3"},25,640,380).navyCostPct=20;
     m_researchNodes.back().mutexGroup=5;
     add("navy5","Naval Logistics","Ship speed +25%",
-        "army","navy",{"navy3"},25,560,380).navySpeedPct=25;
+        "army","navy",{"navy3"},25,860,380).navySpeedPct=25;
     m_researchNodes.back().mutexGroup=5;
     add("navy6","Fleet Modernization","Ship cost -15%",
-        "army","navy",{"navy4","navy5"},30,450,480).navyCostPct=15;
+        "army","navy",{"navy4","navy5"},30,750,480).navyCostPct=15;
     m_researchNodes.back().depsAny=true;
     add("navy7","Radar Technology","Ship defence +15%",
-        "army","navy",{"navy6"},30,340,580).navyDefPct=15;
+        "army","navy",{"navy6"},30,640,580).navyDefPct=15;
     m_researchNodes.back().mutexGroup=8;
     add("navy8","Naval Aviation","Ship attack +15%",
-        "army","navy",{"navy6"},30,560,580).navyAtkPct=15;
+        "army","navy",{"navy6"},30,860,580).navyAtkPct=15;
     m_researchNodes.back().mutexGroup=8;
     add("navy9","Fleet Logistics","Ship speed +10%",
-        "army","navy",{"navy7","navy8"},35,450,680).navySpeedPct=10;
+        "army","navy",{"navy7","navy8"},35,750,680).navySpeedPct=10;
     m_researchNodes.back().depsAny=true;
     add("navy10","Global Navy Doctrine","Ship attack +10%, Ship defence +10%",
-        "army","navy",{"navy9"},40,450,780);
+        "army","navy",{"navy9"},40,750,780);
     m_researchNodes.back().navyAtkPct=10; m_researchNodes.back().navyDefPct=10;
+
+    // ─── Army > Formations: WHAT the army is made of ──────────────────────
+    //
+    // A branch about composition rather than another column of percentages.
+    // Each node unlocks a kind from TROOP_TYPES, exactly as the artillery
+    // branch below unlocks an ammunition from ARTY_COSTS -- same mechanism,
+    // same table-driven shape, nothing new invented.
+    //
+    // Line infantry has no node: it is what every army has always been made of,
+    // and gating it would strand every existing save behind a technology it
+    // never researched.
+    //
+    // The three are deliberately NOT a line. Militia hangs off basic training
+    // because a country that can drill conscripts can raise a levy; the other
+    // two need real logistics, because that is what an expensive soldier
+    // actually costs a country. Cheap and early, or good and late.
+    // ── ITS OWN TREE, NOT A FOURTH COLUMN OF THE ARMY ONE ──
+    //
+    // This branch was tried twice inside the army category and was wrong both
+    // times, for the same underlying reason. At x=400 it drew straight through
+    // the navy column; moved clear to x=1350 it drew short lines but pushed its
+    // prerequisites the full width of the tree, so "Militia Levies" hung off a
+    // wire that crossed both other branches to reach Basic Training.
+    //
+    // Neither position was the problem. The army category is three dense
+    // columns that already fill the canvas, and a fourth thing whose deps reach
+    // back into the first column cannot be placed in it without crossing
+    // something. So it is a tree of its own, which is also what it IS: every
+    // other army node makes the troops you already have better, and these
+    // change what a province is able to raise at all.
+    //
+    // Its prerequisites still live in Army, and cross-tree deps deliberately
+    // draw no line -- see the connection-line pass, which now skips them rather
+    // than drawing to a node that is not on this screen.
+    add("militia_levy","Militia Levies",
+        "Raise militia: half the money and men of line infantry, and better on the defensive. Poor at attacking.",
+        "formations","infantry",{"basic_training"},10,80,120);
+    m_researchNodes.back().troopType="militia";
+    add("assault_doctrine","Assault Infantry",
+        "Raise assault infantry: expensive in men, hits hard, fights well on a narrow front",
+        // ── THE LADDER IS ITS OWN ──
+        //
+        // This hung off Combined Arms, in the Army tree, so the Formations tree
+        // read as three unconnected nodes with their prerequisites somewhere
+        // else entirely -- and the one line it did draw, down to Mechanisation,
+        // made it look like a chain that started nowhere. Militia first is also
+        // the better rule: a country learns to raise a cheap levy before it
+        // learns to raise an expensive assault division, and the tree now says
+        // so. Mechanisation still needs Advanced Logistics from the Army tree,
+        // which is the point of it -- a mechanised division IS logistics.
+        "formations","infantry",{"militia_levy"},30,80,320);
+    m_researchNodes.back().troopType="assault";
+    add("mechanisation","Mechanisation",
+        "Raise mechanised troops: costly in everything and thirsty for fuel, but the best use of a frontage",
+        "formations","infantry",{"logistics","assault_doctrine"},55,80,520);
+    m_researchNodes.back().troopType="mech";
 
     // ─── Army > Artillery (linear with final branch) ───
     add("arty1","Mortar","Kills 5% of troops in targeted province",
-        "army","artillery",{},12,950,80);
+        "army","artillery",{},12,1250,80);
     m_researchNodes.back().artilleryType="mortar"; m_researchNodes.back().artilleryTroopKillPct=5;
     add("arty2","Light Artillery","Kills 10% of troops in targeted province",
-        "army","artillery",{"arty1"},20,950,180);
+        "army","artillery",{"arty1"},20,1250,180);
     m_researchNodes.back().artilleryType="light"; m_researchNodes.back().artilleryTroopKillPct=10;
     add("arty3","Heavy Artillery","Kills 20% of troops, 5% of population",
-        "army","artillery",{"arty2"},30,950,280);
+        "army","artillery",{"arty2"},30,1250,280);
     m_researchNodes.back().artilleryType="heavy"; m_researchNodes.back().artilleryTroopKillPct=20;
     m_researchNodes.back().artilleryPopKillPct=5;
     add("arty4a","Napalm","Kills 25% of troops, 15% of population",
-        "army","artillery",{"arty3"},50,800,380);
+        "army","artillery",{"arty3"},50,1100,380);
     m_researchNodes.back().artilleryType="napalm"; m_researchNodes.back().artilleryTroopKillPct=25;
     m_researchNodes.back().artilleryPopKillPct=15; m_researchNodes.back().mutexGroup=6;
     add("arty4b","Carpet Bombing","Kills 15% of troops, 10% of population. 50% chance to damage fortifications",
-        "army","artillery",{"arty3"},50,1100,380);
+        "army","artillery",{"arty3"},50,1400,380);
     m_researchNodes.back().artilleryType="carpet"; m_researchNodes.back().artilleryTroopKillPct=15;
     m_researchNodes.back().artilleryPopKillPct=10; m_researchNodes.back().artilleryFortDamageChance=50;
     m_researchNodes.back().mutexGroup=6;
     add("arty5","Chemical Artillery","Kills 50% of troops, 30% of population",
-        "army","artillery",{"arty4a","arty4b"},80,950,480);
+        "army","artillery",{"arty4a","arty4b"},80,1250,480);
     m_researchNodes.back().depsAny=true;
     m_researchNodes.back().artilleryType="chemical"; m_researchNodes.back().artilleryTroopKillPct=50;
     m_researchNodes.back().artilleryPopKillPct=30;
     add("arty6a","Nuclear Shelling","Kills 75% of troops. Damages industry -3, fortifications -2",
-        "army","artillery",{"arty5"},100,800,580);
+        "army","artillery",{"arty5"},100,1100,580);
     m_researchNodes.back().artilleryType="nuclear"; m_researchNodes.back().artilleryTroopKillPct=75;
     m_researchNodes.back().artilleryIndustryDamage=3; m_researchNodes.back().artilleryFortDamage=2;
     m_researchNodes.back().mutexGroup=7;
     add("arty6b","Biological Shelling","Kills 80% of troops, 95% of population",
-        "army","artillery",{"arty5"},100,1100,580);
+        "army","artillery",{"arty5"},100,1400,580);
     m_researchNodes.back().artilleryType="biological"; m_researchNodes.back().artilleryTroopKillPct=80;
     m_researchNodes.back().artilleryPopKillPct=95; m_researchNodes.back().mutexGroup=7;
 
@@ -457,6 +574,195 @@ bool Game::hasResearched(const std::string& nodeId, int countryId) const {
     return false;
 }
 
+// Temporary instrument: the distribution of income per head, so the group
+// unlock thresholds are chosen off the shipped world rather than guessed.
+void Game::dumpResearchCapacity() {
+    printf("[RCAP] turn %d, world median income per 1M = %.3f\n",
+           m_turnNumber, researchMedianPerMillion());
+    for (const auto& [cid, c] : m_countries.getAll()) {
+        if (cid <= 0 || cid >= REBEL_CID_MIN) continue;
+        long long pop = 0;
+        int provs = 0;
+        for (const auto& [pid, p] : m_provinces.getAllProvinces()) {
+            if (p.countryId != cid) continue;
+            ++provs;
+            auto it = m_provincePopulations.find(pid);
+            if (it != m_provincePopulations.end()) pop += it->second;
+        }
+        if (provs == 0 || pop <= 0) continue;
+        auto cs = computeCountryIncome(cid);
+        const float med = researchMedianPerMillion();
+        const float mine = researchIncomePerMillion(cid);
+        printf("[RCAP] %-28s pop %12lld  gross %8.1f  grossX %6.2f  per1m %7.3f  perX %5.2f  GROUPS %d\n",
+               c.name.c_str(), pop, cs.total,
+               researchMedianGross() > 0 ? cs.total / researchMedianGross() : 0.0f,
+               mine, med > 0 ? mine / med : 0.0f, researchGroupsUnlocked(cid));
+    }
+}
+
+void Game::rebuildResearchCapacity() const {
+    if (m_rgroupCacheTurn == m_turnNumber) return;
+    m_rgroupCacheTurn = m_turnNumber;
+    m_rgroupPerMillion.clear();
+    m_rgroupGross.clear();
+
+    // ONE PASS over the provinces, accumulating by owner, rather than one pass
+    // per country. This is the whole reason the answer is cached at all.
+    std::unordered_map<int, long long> pop;
+    for (const auto& [pid, p] : m_provinces.getAllProvinces()) {
+        if (p.countryId <= 0 || p.countryId >= REBEL_CID_MIN) continue;
+        auto it = m_provincePopulations.find(pid);
+        if (it != m_provincePopulations.end()) pop[p.countryId] += it->second;
+    }
+    std::vector<float> all, gross;
+    all.reserve(pop.size());
+    gross.reserve(pop.size());
+    for (const auto& [cid, n] : pop) {
+        if (n <= 0) continue;
+        m_rgroupGross[cid] = computeCountryIncome(cid).total;
+        gross.push_back(m_rgroupGross[cid]);
+        // Gross, not net. Net is what is LEFT after the war, and measured
+        // across this project the AI runs its treasury at zero by design -- so
+        // net would drop every country at war to one group the turn it
+        // mobilised, which is a rule about warfare wearing the clothes of a
+        // rule about industry.
+        const float v = computeCountryIncome(cid).total / ((float)n / 1000000.0f);
+        m_rgroupPerMillion[cid] = v;
+        all.push_back(v);
+    }
+    if (all.empty()) { m_rgroupMedian = 0.0f; m_rgroupMedianGross = 0.0f; return; }
+    std::sort(all.begin(), all.end());
+    m_rgroupMedian = all[all.size() / 2];
+    std::sort(gross.begin(), gross.end());
+    m_rgroupMedianGross = gross[gross.size() / 2];
+}
+
+float Game::researchIncomePerMillion(int countryId) const {
+    if (countryId <= 0 || countryId == SPC_CID) return 0.0f;
+    rebuildResearchCapacity();
+    auto it = m_rgroupPerMillion.find(countryId);
+    return it == m_rgroupPerMillion.end() ? 0.0f : it->second;
+}
+
+float Game::researchMedianPerMillion() const {
+    rebuildResearchCapacity();
+    return m_rgroupMedian;
+}
+
+float Game::researchGross(int countryId) const {
+    rebuildResearchCapacity();
+    auto it = m_rgroupGross.find(countryId);
+    return it == m_rgroupGross.end() ? 0.0f : it->second;
+}
+
+float Game::researchMedianGross() const {
+    rebuildResearchCapacity();
+    return m_rgroupMedianGross;
+}
+
+int Game::researchGroupsUnlocked(int countryId) const {
+    if (countryId <= 0 || countryId == SPC_CID) return 1;
+    // A scenario's word overrides the economy's. Checked first so a forced
+    // count is not silently raised by the gate below, and clamped so a script
+    // cannot invent a fourth programme the UI has no room for.
+    {
+        auto it = m_scriptResearchGroups.find(countryId);
+        if (it != m_scriptResearchGroups.end() && it->second > 0)
+            return std::clamp(it->second, 1, RESEARCH_GROUPS_MAX);
+    }
+    const float medGross = researchMedianGross();
+    const float medHead  = researchMedianPerMillion();
+    if (medGross <= 0.0f) return 1;        // nothing to compare against yet
+
+    // THE GATE FIRST. An economy spread too thin over too many people supports
+    // one programme however large it is in total; see the constants.
+    if (medHead > 0.0f &&
+        researchIncomePerMillion(countryId) < medHead * RGROUP_POVERTY_MULT)
+        return 1;
+
+    const float mine = researchGross(countryId);
+    if (mine >= medGross * RGROUP3_GROSS_MULT) return 3;
+    if (mine >= medGross * RGROUP2_GROSS_MULT) return 2;
+    return 1;                               // ONE IS ALWAYS AVAILABLE
+}
+
+void Game::normaliseResearchShares(int changed) {
+    const int unlocked = std::clamp(researchGroupsUnlocked(m_playerCountryId),
+                                    1, RESEARCH_GROUPS_MAX);
+    if (unlocked <= 1) {                       // one group owns the whole budget
+        m_researchGroups[0].sharePct = 100;
+        return;
+    }
+    changed = std::clamp(changed, 0, unlocked - 1);
+    int mine = std::clamp(m_researchGroups[changed].sharePct, 0, 100);
+    m_researchGroups[changed].sharePct = mine;
+
+    int rest = 0;
+    for (int g = 0; g < unlocked; ++g)
+        if (g != changed) rest += std::max(0, m_researchGroups[g].sharePct);
+
+    const int budget = 100 - mine;
+    int handed = 0, last = -1;
+    for (int g = 0; g < unlocked; ++g) {
+        if (g == changed) continue;
+        // In proportion to what they already hold, so dragging one slider does
+        // not silently reorder the other two. With nothing to go on -- every
+        // other share at zero -- they split what is left evenly.
+        const int v = rest > 0
+            ? (int)((long long)budget * std::max(0, m_researchGroups[g].sharePct) / rest)
+            : budget / (unlocked - 1);
+        m_researchGroups[g].sharePct = v;
+        handed += v;
+        last = g;
+    }
+    // Integer division loses up to a point or two; the remainder goes somewhere
+    // rather than nowhere, or the sum reads 99 and the rule is a lie.
+    if (last >= 0) m_researchGroups[last].sharePct += budget - handed;
+    for (int g = unlocked; g < RESEARCH_GROUPS_MAX; ++g)
+        m_researchGroups[g].sharePct = 0;
+}
+
+int Game::researchGroupPoints(int groupIndex, int totalPoints) const {
+    // NORMALISED OVER THE GROUPS THAT ARE ACTUALLY WORKING. Shares that only
+    // summed to 100 would leak the budget of an idle group into nothing, so a
+    // country with one project running would research at a third speed for no
+    // reason it could see. An idle group claims nothing.
+    const int unlocked = researchGroupsUnlocked(m_playerCountryId);
+    int denom = 0;
+    for (int g = 0; g < unlocked && g < RESEARCH_GROUPS_MAX; ++g)
+        if (m_researchGroups[g].activeNode >= 0)
+            denom += std::max(1, m_researchGroups[g].sharePct);
+    if (denom <= 0 || groupIndex >= unlocked) return 0;
+    if (m_researchGroups[groupIndex].activeNode < 0) return 0;
+    const int mine = std::max(1, m_researchGroups[groupIndex].sharePct);
+    return (int)((long long)totalPoints * mine / denom);
+}
+
+int Game::researchAutoNext(int groupIndex, int countryId) const {
+    if (groupIndex < 0 || groupIndex >= RESEARCH_GROUPS_MAX) return -1;
+    const int last = m_researchGroups[groupIndex].lastNode;
+    if (last < 0 || last >= (int)m_researchNodes.size()) return -1;
+    const ResearchNode& from = m_researchNodes[last];
+
+    // ── ONE CANDIDATE MEANS NO DECISION ──
+    //
+    // Scoped to the BRANCH the group was already working, not the whole tree:
+    // "carry on down this line" is a continuation, "start a different line" is
+    // a choice, and the point of the setting is to make the first automatic
+    // without ever making the second. Two open nodes on the branch is the
+    // decision the player asked to be stopped for; none is the end of it.
+    int found = -1;
+    for (size_t i = 0; i < m_researchNodes.size(); ++i) {
+        const ResearchNode& n = m_researchNodes[i];
+        if (n.category != from.category || n.subcategory != from.subcategory) continue;
+        if (n.researched || hasResearched(n.id, countryId)) continue;
+        if (!n.isAvailable(m_researchNodes)) continue;
+        if (found >= 0) return -1;          // a decision, not a continuation
+        found = (int)i;
+    }
+    return found;
+}
+
 void Game::addResearchPoints(int countryId) {
     if (countryId <= 0 || countryId == SPC_CID) return;
     auto cs = computeCountryIncome(countryId);
@@ -467,20 +773,46 @@ void Game::addResearchPoints(int countryId) {
     // Clamp points
     if (m_researchPoints > 10000) m_researchPoints = 10000;
 
-    // Add points to active research node
-    if (m_researchActiveNode >= 0 && m_researchActiveNode < (int)m_researchNodes.size()) {
-        auto& node = m_researchNodes[m_researchActiveNode];
-        if (hasResearched(node.id, countryId)) { m_researchActiveNode = -1; return; }
-        if (node.researched) { m_researchActiveNode = -1; return; } // legacy fallback
-        // Spend points
-        int toSpend = std::min(m_researchPoints, node.cost - node.invested);
+    // THE BUDGET IS DIVIDED ONCE, BEFORE ANY OF IT IS SPENT. Handing the first
+    // group the whole pool and the second whatever survived would make the
+    // order of this loop a game rule.
+    const int unlocked = researchGroupsUnlocked(countryId);
+    int budget[RESEARCH_GROUPS_MAX] = {};
+    for (int g = 0; g < unlocked && g < RESEARCH_GROUPS_MAX; ++g)
+        budget[g] = researchGroupPoints(g, m_researchPoints);
+
+    for (int g = 0; g < unlocked && g < RESEARCH_GROUPS_MAX; ++g) {
+        ResearchGroup& grp = m_researchGroups[g];
+        if (grp.activeNode < 0 || grp.activeNode >= (int)m_researchNodes.size()) continue;
+        auto& node = m_researchNodes[grp.activeNode];
+        if (hasResearched(node.id, countryId) || node.researched) {
+            node.inProgress = false;
+            grp.activeNode = -1;
+            continue;
+        }
+        int toSpend = std::min({budget[g], m_researchPoints, node.cost - node.invested});
+        if (toSpend <= 0) continue;
         node.invested += toSpend;
         m_researchPoints -= toSpend;
         if (node.invested >= node.cost) {
             node.researched = true;
             node.inProgress = false;
             m_countryResearched[countryId].insert(node.id);
-            m_researchActiveNode = -1;
+            grp.lastNode = grp.activeNode;
+            grp.activeNode = -1;
+            if (countryId == m_playerCountryId) {
+                Audio::get().playSfx("research_complete");
+                printf("[RESEARCH] %s completed!\n", node.name.c_str());
+                m_researchAlert = true;
+            }
+            // And walk on, if it was told to and there is only one way to walk.
+            if (grp.autoAdvance) {
+                const int next = researchAutoNext(g, countryId);
+                if (next >= 0) {
+                    grp.activeNode = next;
+                    m_researchNodes[next].inProgress = true;
+                }
+            }
             trackChange();
         }
     }
@@ -661,6 +993,17 @@ namespace {
 /// name and is the one shape tools/i18n_extract.py refuses to collect, on the
 /// grounds that a bare lowercase word is usually an id. It usually is. So the
 /// id stays an id and the heading is a heading.
+/// The display name of a tree, for naming the one a prerequisite lives in.
+const char* categoryLabel(const std::string& id) {
+    if (id == "buildings")  return "Buildings";
+    if (id == "efficiency") return "Efficiency";
+    if (id == "army")       return "Army";
+    if (id == "formations") return "Formations";
+    if (id == "population") return "Population";
+    if (id == "misc")       return "Misc";
+    return id.c_str();
+}
+
 const char* subcategoryLabel(const std::string& id) {
     if (id == "army")           return T("Army");
     if (id == "navy")           return T("Navy");
@@ -700,13 +1043,20 @@ void Game::drawResearchTab() {
     DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
     // ─── Category tabs ───
-    const char* catNames[] = {"Buildings", "Army", "Population", "Misc"};
-    const char* catKeys[] = {"buildings", "army", "population", "misc"};
-    int catCount = 4;
+    const char* catNames[] = {"Buildings", "Efficiency", "Army", "Formations",
+                              "Population", "Misc"};
+    const char* catKeys[] = {"buildings", "efficiency", "army", "formations",
+                             "population", "misc"};
+    int catCount = 6;
     int catTabY = 8;
     int catTabH = 30;
     int catTabStartX = 16;
-    int catSpacing = 200;
+    // FITTED, NOT FIXED. This was a hard 200 px a tab, which put the last of
+    // four at x=616 and would have put the last of six at 1016 -- off the right
+    // of any window narrower than that, with no way to reach the tabs it hid.
+    // Adding a tree must not be able to push another one off the screen.
+    int catSpacing = std::min(200, (m_screenW - catTabStartX * 2) / catCount);
+    if (catSpacing < 90) catSpacing = 90;
     for (int c = 0; c < catCount; ++c) {
         int tx = catTabStartX + c * catSpacing;
         Rectangle cr = {(float)tx, (float)catTabY, (float)(catSpacing - 8), (float)catTabH};
@@ -807,6 +1157,12 @@ void Game::drawResearchTab() {
         for (const auto& req : node.deps) {
             int depMutexGroup = 0;
             for (auto& pn : m_researchNodes) {
+                // A PREREQUISITE IN ANOTHER TREE GETS NO LINE. Positions are
+                // absolute and per-tree, so drawing to a node this tab is not
+                // showing puts a wire across the canvas to a coordinate that
+                // means nothing here. The dependency still binds -- it is
+                // checked globally, and the node stays locked until it is met.
+                if (pn.category != node.category) continue;
                 if (pn.id == req) {
                     depMutexGroup = pn.mutexGroup;
                     int px = (int)(pn.posX * m_researchZoom + m_researchCamX);
@@ -820,6 +1176,7 @@ void Game::drawResearchTab() {
             if (depMutexGroup > 0) {
                 for (auto& sn : m_researchNodes) {
                     if (sn.id == req || sn.mutexGroup != depMutexGroup) continue;
+                    if (sn.category != node.category) continue;
                     int sx = (int)(sn.posX * m_researchZoom + m_researchCamX);
                     int sy = (int)(sn.posY * m_researchZoom + m_researchCamY);
                     Color sCol = sn.researched ? Color{100, 200, 100, 80} : Color{80, 80, 80, 60};
@@ -876,28 +1233,57 @@ void Game::drawResearchTab() {
     // ─── Hover tooltip ───
     if (m_researchHoveredNode >= 0) {
         auto& node = m_researchNodes[m_researchHoveredNode];
+        // ── WHAT IT STILL NEEDS, BY NAME ──
+        //
+        // A prerequisite in another tree draws no line, so a locked node in
+        // Formations used to say only "Research prerequisites first" with
+        // nothing on screen to point at -- the whole reason the line was there
+        // in the first place. So the missing ones are named, and the tree they
+        // are in is named with them, because that is where the player has to go.
+        std::string needs;
+        if (!node.researched && !node.inProgress) {
+            for (const auto& req : node.deps) {
+                for (const auto& pn : m_researchNodes) {
+                    if (pn.id != req || pn.researched) continue;
+                    if (!needs.empty()) needs += ", ";
+                    needs += T(pn.name);
+                    if (pn.category != node.category)
+                        needs += std::string(" (") + categoryLabel(pn.category) + ")";
+                    break;
+                }
+            }
+        }
         int tw0 = MeasureText(T(node.name), 14);
         int dw = MeasureText(T(node.desc), 11);
-        int tipW = std::max(tw0, dw) + 20;
+        int nw = needs.empty() ? 0 : MeasureText(needs.c_str(), 11);
+        int tipW = std::max(std::max(tw0, dw), nw) + 20;
         int tipX = (int)mouse.x + 16; if (tipX + tipW > m_screenW) tipX = m_screenW - tipW - 8;
         int tipY = (int)mouse.y + 16;
         int tipH = 48;
         if (!node.researched && !node.inProgress && !node.isAvailable(m_researchNodes)) tipH += 12;
+        if (!needs.empty()) tipH += 14;
         DrawRectangle(tipX, tipY, tipW, tipH, {10, 10, 20, 220});
         DrawRectangleLines(tipX, tipY, tipW, tipH, {100, 100, 140, 200});
         DrawText(T(node.name), tipX + 10, tipY + 4, 14, WHITE);
         DrawText(T(node.desc), tipX + 10, tipY + 22, 11, {200, 200, 200, 255});
         if (!node.researched && !node.inProgress && !node.isAvailable(m_researchNodes))
             DrawText(T("LOCKED - Research prerequisites first"), tipX + 10, tipY + 36, 10, {200, 100, 100, 255});
+        if (!needs.empty())
+            DrawText(TextFormat(T("Needs: %s"), needs.c_str()), tipX + 10, tipY + 48, 11,
+                     Color{200, 180, 120, 255});
     }
 
     // ─── Click to start research ───
     if (!m_researchDragging && m_researchHoveredNode >= 0 && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         auto& node = m_researchNodes[m_researchHoveredNode];
         if (!node.researched && !node.inProgress && node.isAvailable(m_researchNodes)) {
-            if (m_researchActiveNode >= 0) m_researchNodes[m_researchActiveNode].inProgress = false;
+            // Into the SELECTED group, replacing whatever it was working on.
+            ResearchGroup& grp = m_researchGroups[std::clamp(m_researchGroupSel, 0,
+                                                             RESEARCH_GROUPS_MAX - 1)];
+            if (grp.activeNode >= 0) m_researchNodes[grp.activeNode].inProgress = false;
             node.inProgress = true;
-            m_researchActiveNode = m_researchHoveredNode;
+            grp.activeNode = m_researchHoveredNode;
+            grp.lastNode = m_researchHoveredNode;
             Audio::get().playSfx("research_start");
         } else if (node.researched || node.inProgress) {
             // Clicking something already done or already running is inspecting
@@ -909,16 +1295,206 @@ void Game::drawResearchTab() {
     }
 
     // ─── Bottom bar: research points + allocation + currently researching ───
-    int barY2 = m_screenH - 50;
-    DrawRectangle(0, barY2, m_screenW, 50, {10, 10, 15, 220});
-    DrawText(TextFormat(T("Research Points: %d"), m_researchPoints), 16, barY2 + 8, 16, hexToColor(m_config.accent()));
+    // TALLER, BECAUSE IT NOW CARRIES THREE PROGRAMMES. At 50 px the group
+    // rows were drawn straight through the economy slider -- they started at
+    // screen-centre minus 240, which on a 1600 canvas is x=560, and the slider
+    // runs 300 to 600 with its readout past 760.
+    // ── AND IF THEY DO NOT FIT BESIDE THE SLIDER, THEY GO BELOW IT ──
+    //
+    // The cards sit to the right of the economy allocation, which needs the
+    // first 800 px. On a phone canvas there is no such room -- 402 px wide,
+    // the whole strip is off the right edge -- and the loop that skips a card
+    // it cannot fit would have skipped ALL THREE, leaving the primary control
+    // of the research system simply unreachable on that device with nothing on
+    // screen to say so. Cards this narrow get their own row instead.
+    const int cardsGap = 10, cardsMinW = 96;
+    const int cardsNeed = RESEARCH_GROUPS_MAX * cardsMinW
+                        + cardsGap * (RESEARCH_GROUPS_MAX - 1);
+    const bool cardsBesideSlider = (m_screenW - 800 - 16) >= cardsNeed;
+    const int cardsX = cardsBesideSlider ? 800 : 16;
+    const int barH2 = cardsBesideSlider ? 92 : 92 + 78;
+    int barY2 = m_screenH - barH2;
+    DrawRectangle(0, barY2, m_screenW, barH2, {10, 10, 15, 220});
+    DrawText(TextFormat(T("Research Points: %d"), m_researchPoints), 16, barY2 + 6, 16, hexToColor(m_config.accent()));
 
-    // Currently researching indicator
-    if (m_researchActiveNode >= 0 && m_researchActiveNode < (int)m_researchNodes.size()) {
-        auto& rn = m_researchNodes[m_researchActiveNode];
-        int rx = m_screenW / 2 - 200;
-        DrawText(TextFormat(T("Researching: %s (%d/%d RP)"), rn.name.c_str(), rn.invested, rn.cost),
-                 rx, barY2 + 8, 14, {200, 200, 100, 255});
+    // What each group is working on, one line each.
+    {
+        const int unlocked = researchGroupsUnlocked(m_playerCountryId);
+        // A GROUP UNLOCKING CHANGES THE DIVISOR. Fixing the sum only when a
+        // slider moves would leave a country that just earned its second group
+        // showing 100/50, and a country that lost one showing 50/50 of a budget
+        // one group now owns outright.
+        int shareSum = 0;
+        for (int g = 0; g < unlocked && g < RESEARCH_GROUPS_MAX; ++g)
+            shareSum += m_researchGroups[g].sharePct;
+        if (shareSum != 100) normaliseResearchShares(m_researchGroupSel);
+
+        // ── CARDS, NOT ROWS ──
+        //
+        // A group carries four things -- what it is building, how far along it
+        // is, what share of the budget it gets, and whether it walks on alone.
+        // Laid out as a 21 px strip those became a name clipped to fit, no
+        // progress at all, a slider the width of a thumbnail and a button
+        // squeezed against the screen edge. They are the primary control of a
+        // whole subsystem and were the smallest thing on the screen.
+        //
+        // Side by side, because the question a player asks here is a
+        // comparison -- which programme gets the budget -- and stacked rows
+        // make you read three lines to answer it.
+        // CLEAR OF THE ECONOMY SLIDER. That runs 300 to 600, its percentage
+        // sits at 608 and the "(+N RP/turn)" readout after it reaches about
+        // 780 -- so a card starting at 700 was drawn straight through the one
+        // number telling the player how much research their allocation buys.
+        const int gap = cardsGap;
+        const int availW = m_screenW - cardsX - 16;
+        const int cardW = std::clamp((availW - gap * (RESEARCH_GROUPS_MAX - 1))
+                                     / RESEARCH_GROUPS_MAX, cardsMinW, 260);
+        const int cardH = 80;
+        for (int g = 0; g < RESEARCH_GROUPS_MAX; ++g) {
+            ResearchGroup& grp = m_researchGroups[g];
+            const bool live = (g < unlocked);
+            const bool sel  = (m_researchGroupSel == g);
+            // On the narrow layout they hang below the slider row rather than
+            // beside it; see cardsBesideSlider.
+            Rectangle card = {(float)(cardsX + g * (cardW + gap)),
+                              (float)(barY2 + (cardsBesideSlider ? 6 : 84)),
+                              (float)cardW, (float)cardH};
+            if (card.x + card.width > m_screenW - 4) break;
+
+            // ── A LOCKED GROUP SAYS WHY, AND BY HOW MUCH ──
+            //
+            // "Locked" on its own is a wall. Both halves of the rule are
+            // ratios the player can move -- build industry, or hold fewer
+            // mouths -- so the card names whichever one is actually stopping
+            // them. Telling a big poor empire to grow its economy points it at
+            // the one thing that will not help, and that empire is precisely
+            // the case the poverty gate exists for.
+            if (!live) {
+                DrawRectangleRounded(card, 0.12f, 6, Color{17, 18, 24, 200});
+                DrawRectangleRoundedLines(card, 0.12f, 6, Color{46, 48, 60, 160});
+                DrawText(TextFormat(T("Group %d"), g + 1),
+                         (int)card.x + 10, (int)card.y + 8, 13, Color{95, 98, 112, 255});
+                DrawText(T("locked"), (int)card.x + 10, (int)card.y + 26, 11,
+                         Color{120, 100, 70, 255});
+                const float medHead  = researchMedianPerMillion();
+                const float medGross = researchMedianGross();
+                const float perX  = medHead  > 0.0f
+                    ? researchIncomePerMillion(m_playerCountryId) / medHead : 0.0f;
+                const float grossX = medGross > 0.0f
+                    ? researchGross(m_playerCountryId) / medGross : 0.0f;
+                int lfs = 11;
+                const std::string why = perX < RGROUP_POVERTY_MULT
+                    ? std::string(TextFormat(T("income per head %.2fx, needs %.2fx"),
+                                             perX, RGROUP_POVERTY_MULT))
+                    : std::string(TextFormat(T("economy %.1fx, needs %.0fx"), grossX,
+                                             (g == 1) ? RGROUP2_GROSS_MULT
+                                                      : RGROUP3_GROSS_MULT));
+                const std::string fit = odText::fitToWidth(why, cardW - 20, lfs, 8);
+                DrawText(fit.c_str(), (int)card.x + 10, (int)card.y + 42, lfs,
+                         Color{105, 108, 122, 255});
+                continue;
+            }
+
+            const bool hov = !m_paused && CheckCollisionPointRec(mouse, card);
+            DrawRectangleRounded(card, 0.12f, 6,
+                sel ? Color{34, 40, 54, 225} : hov ? Color{27, 31, 42, 210}
+                                                   : Color{19, 21, 28, 195});
+            DrawRectangleRoundedLines(card, 0.12f, 6,
+                sel ? hexToColor(m_config.accent()) : Color{60, 64, 80, 170});
+
+            DrawText(TextFormat(T("Group %d"), g + 1),
+                     (int)card.x + 10, (int)card.y + 7, 13,
+                     sel ? hexToColor(m_config.accent()) : Color{170, 175, 195, 255});
+
+            // ── AND THE FOLLOW SWITCH, WHERE IT FITS ──
+            Rectangle ab = {card.x + card.width - 50, card.y + 6, 44, 15};
+            const bool ah = !m_paused && CheckCollisionPointRec(mouse, ab);
+            DrawRectangleRounded(ab, 0.35f, 4,
+                grp.autoAdvance ? Color{50, 84, 52, 225}
+                                : ah ? Color{40, 44, 58, 205} : Color{24, 26, 34, 190});
+            DrawRectangleRoundedLines(ab, 0.35f, 4,
+                grp.autoAdvance ? Color{110, 190, 120, 215} : Color{70, 74, 92, 165});
+            const char* al = T("Auto");
+            DrawText(al, (int)(ab.x + (ab.width - MeasureText(al, 10)) / 2),
+                     (int)(ab.y + 3), 10,
+                     grp.autoAdvance ? WHITE : Color{160, 165, 185, 255});
+            if (ah) m_uiHint = T("Follow this branch automatically, stopping at any real choice");
+
+            // ── WHAT IT IS BUILDING, AND HOW FAR ALONG ──
+            // The progress bar is the thing the strip had no room for at all,
+            // and it is the only part of this that changes on its own.
+            int nfs = 12;
+            std::string what = T("idle");
+            float frac = 0.0f;
+            if (grp.activeNode >= 0 && grp.activeNode < (int)m_researchNodes.size()) {
+                const auto& rn = m_researchNodes[grp.activeNode];
+                what = T(rn.name);
+                frac = rn.cost > 0 ? (float)rn.invested / rn.cost : 0.0f;
+            }
+            const std::string nl = odText::fitToWidth(what, cardW - 20, nfs, 9);
+            DrawText(nl.c_str(), (int)card.x + 10, (int)card.y + 26, nfs,
+                     grp.activeNode >= 0 ? Color{225, 222, 205, 255}
+                                         : Color{112, 116, 132, 255});
+
+            const Rectangle pb = {card.x + 10, card.y + 44, (float)cardW - 20, 9};
+            DrawRectangle((int)pb.x, (int)pb.y, (int)pb.width, (int)pb.height,
+                          Color{30, 32, 42, 220});
+            if (frac > 0.0f)
+                DrawRectangle((int)pb.x, (int)pb.y,
+                              (int)(pb.width * std::clamp(frac, 0.0f, 1.0f)),
+                              (int)pb.height, Color{200, 180, 70, 235});
+            DrawRectangleLines((int)pb.x, (int)pb.y, (int)pb.width, (int)pb.height,
+                               Color{62, 66, 84, 190});
+            if (grp.activeNode >= 0 && grp.activeNode < (int)m_researchNodes.size()) {
+                const auto& rn = m_researchNodes[grp.activeNode];
+                const char* pt = TextFormat("%d/%d", rn.invested, rn.cost);
+                // BESIDE THE BAR, NOT ON IT. Dark text sat legibly on the
+                // filled part and vanished into the empty part -- so a project
+                // just started, which is exactly when a player wants the
+                // figure, was the case that could not be read.
+                const int px = (int)(pb.x + pb.width - MeasureText(pt, 9) - 3);
+                DrawText(pt, px + 1, (int)pb.y + 1, 9, Color{0, 0, 0, 190});
+                DrawText(pt, px, (int)pb.y, 9, Color{232, 228, 210, 255});
+            }
+
+            // ── ITS CLAIM ON THE TURN'S POINTS ──
+            const Rectangle sh = {card.x + 10, card.y + 60, (float)cardW - 58, 14};
+            DrawRectangle((int)sh.x, (int)sh.y, (int)sh.width, (int)sh.height,
+                          Color{30, 32, 42, 215});
+            DrawRectangle((int)sh.x, (int)sh.y,
+                          (int)(sh.width * grp.sharePct / 100), (int)sh.height,
+                          Color{58, 100, 62, 220});
+            DrawRectangleLines((int)sh.x, (int)sh.y, (int)sh.width, (int)sh.height,
+                               Color{70, 74, 92, 200});
+            DrawText(TextFormat("%d%%", grp.sharePct),
+                     (int)(sh.x + sh.width + 6), (int)sh.y + 2, 11,
+                     Color{190, 195, 215, 255});
+            if (!m_paused && CheckCollisionPointRec(mouse, sh) &&
+                IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                grp.sharePct = std::clamp((int)((mouse.x - sh.x) / sh.width * 100), 0, 100);
+                normaliseResearchShares(g);   // the three always add to 100
+                m_researchGroupSel = g;
+            }
+
+            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_paused) {
+                if (ah) {
+                    grp.autoAdvance = !grp.autoAdvance;
+                    Audio::get().playSfx("click_soft");
+                    // Turned on while idle, it should start now rather than
+                    // wait for a project to finish first.
+                    if (grp.autoAdvance && grp.activeNode < 0) {
+                        const int next = researchAutoNext(g, m_playerCountryId);
+                        if (next >= 0) {
+                            grp.activeNode = next;
+                            m_researchNodes[next].inProgress = true;
+                        }
+                    }
+                } else if (hov && m_researchGroupSel != g) {
+                    m_researchGroupSel = g;
+                    Audio::get().playSfx("tab_switch");
+                }
+            }
+        }
     }
 
     auto cs2 = computeCountryIncome(m_playerCountryId);
@@ -929,7 +1505,7 @@ void Game::drawResearchTab() {
     if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
     if (m_researchAllocation > maxAllocFrac) m_researchAllocation = maxAllocFrac;
     int sliderX = 300;
-    int sliderY = barY2 + 14;
+    int sliderY = barY2 + 30;
     int sliderW = 300;
     int sliderH = 18;
 
@@ -956,4 +1532,34 @@ void Game::drawResearchTab() {
             m_researchAllocation = std::clamp(t, 0.0f, maxAllocFrac);
         }
     }
+}
+
+
+// === unlockedTroopTypes ===
+//
+// See Game::unlockedTroopTypes. Found by walking the research nodes for a
+// `troopType`, exactly as an ammunition is found by `artilleryType` -- so
+// adding a kind is a table entry and a node, not a fourth place to edit.
+std::vector<TroopType> Game::unlockedTroopTypes(int countryId) const {
+    // Line infantry always. It is what every army in every existing save is
+    // made of, and gating it would strand those campaigns behind a technology
+    // they never researched.
+    std::vector<TroopType> out{TROOP_LINE};
+    for (const auto& n : m_researchNodes) {
+        if (n.troopType.empty()) continue;
+        if (!hasResearched(n.id, countryId)) continue;
+        const TroopType t = troopTypeFromId(n.troopType.c_str());
+        if (t == TROOP_LINE) continue;                       // never doubled
+        if (std::find(out.begin(), out.end(), t) == out.end()) out.push_back(t);
+    }
+    // Sorted by the enum so the panel's order, the AI's order and a replay's
+    // order are the same order.
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+bool Game::troopTypeUnlocked(int countryId, TroopType t) const {
+    if (t == TROOP_LINE) return true;
+    const auto v = unlockedTroopTypes(countryId);
+    return std::find(v.begin(), v.end(), t) != v.end();
 }

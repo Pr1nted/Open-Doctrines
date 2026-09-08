@@ -38,5 +38,42 @@ Sie bekommen eine Warnung. Eine zweite nicht immer.
 Die Mittel sind unbeliebt oder langsam: Besatzung hinlegen, Geld hineinstecken
 oder ihr geben, was sie will. Entscheiden Sie früh, denn alle drei brauchen
 Runden.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Das Geld dafür ist zum größten Teil verschwendet. Öffnen Sie Politik, dann
+§**Bezirke**§.
 
+---
+@Signals Officer
+Der Etat fiel bisher auf das ganze Land zugleich -- dasselbe Gewicht auf eine
+ruhige Grafschaft wie auf die, die sich bewaffnet. Also teilen Sie das Land
+auf. Ein §**Bezirk**§ ist ein Stück davon, das Sie als Einheit regieren: malen
+Sie Provinzen hinein, geben Sie ihm eine Farbe und einen §**Anteil**§. Die
+Anteile ergeben immer hundert, denn es gibt nur einen Etat.
+
+---
+@Signals Officer
+Es zählt der Anteil am §**Geld**§ gegen den Anteil am §**Boden**§. Ein Bezirk
+mit einem Zehntel des Landes auf einem Zehntel des Etats wird genau wie zuvor
+bewacht -- Aufteilen ändert also nichts, solange die Anteile gleich bleiben.
+
+---
+@Signals Officer
+Ziehen Sie einen kleinen Bezirk um den Unruheherd, geben Sie ihm ein Viertel
+des Geldes, und er wird um ein Vielfaches härter bewacht; die Zahl steht im
+Fenster. Überall sonst zahlt dafür, und das ist die Entscheidung. Es gibt eine
+Schaltfläche zum gleichmäßigen Aufteilen: ein vernünftiger Anfang und selten
+der Ort zum Bleiben.
+
+Ein Bezirk erlässt auch eigenes §**Regionalrecht**§: eine Ausgangssperre, eine
+Steuerpause, die Sprache der Gerichte. Klein, örtlich, und jedes ein Tausch.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Schließen Sie es.
+
+---
+@Signals Officer
 Das ist die Unruhe. Sonst noch etwas?

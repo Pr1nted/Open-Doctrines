@@ -58,6 +58,26 @@ const Template kPalette[] = {
     {"wait until",      "waitUntil map.turn >= 10",          nullptr},
     {"play dialogue",   "dialog intro",                      nullptr},
     {"include",         "include \"library\"",               nullptr},
+    // ── The content the language learned later ──
+    //
+    // Templates, like everything above: each one is a line the parser already
+    // understands, filled in with a plausible example, so clicking it gives a
+    // working statement to edit rather than a form to complete.
+    {"wait N turns",    "wait 5 turns",                      nullptr},
+    {"set with 'to'",   "set var.name to 1 + 1",             nullptr},
+    {"print values",    "print \"turn {map.turn}\"",          nullptr},
+    {"for each district","foreach district in country.USA",  "next"},
+    {"for each country","foreach country in world",          "next"},
+    {"country troops",  "set var.men to country.USA.troops",  nullptr},
+    {"troops of a kind","set var.men to country.USA.troops.militia", nullptr},
+    {"garrison here",   "set province.5.troops.line 10000",  nullptr},
+    {"country income",  "set var.money to country.USA.income", nullptr},
+    {"country expenses","set var.cost to country.USA.expenses", nullptr},
+    {"what it is worth","set var.value to country.USA.national_value", nullptr},
+    {"research groups", "set country.USA.research_groups 3",  nullptr},
+    {"research: auto",  "set country.USA.research_groups 0",  nullptr},
+    {"district share",  "set var.s to country.USA.district.0.share", nullptr},
+    {"trouble here",    "set var.risk to province.5.rebellion_chance", nullptr},
 };
 
 // The engine version a document declares, from its header line. Absent means
@@ -190,7 +210,7 @@ void MapEditor::flattenBlocks(const BlockList& bl, std::vector<int>& path,
 // ── The view ──
 
 void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
-    static const Color kAccent = {255, 215, 0, 255};   // matches the editor's gold
+    static const Color& kAccent = MapEditor::s_accent;   // the player's accent
     const Vector2 mouse = GetMousePosition();
     const Rectangle area = {(float)x, (float)y, (float)w, (float)h};
     DrawRectangle(x, y, w, h, Color{18, 18, 25, 255});
@@ -248,8 +268,8 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
         // A block the declared version will refuse is shown as refused, here,
         // rather than at load. Dropping the version on a script that uses the
         // new statements is otherwise a silent break.
-        const bool tooNew = (docVersion < 2 &&
-                             ScriptEngine::isVersion2StatementPublic(headWord(r.b->head)));
+        const bool tooNew =
+            docVersion < ScriptEngine::statementMinVersion(headWord(r.b->head));
         Color c = blockColor(r.b->kind);
         if (tooNew) c = Color{92, 52, 52, 255};
         if (dragging) c = ColorAlpha(c, 0.45f);
@@ -435,7 +455,7 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
         int refused = 0;
         for (const BlockRow& r : rows)
             if (!r.isArm && !r.isTerm && !r.isSlot && r.b &&
-                ScriptEngine::isVersion2StatementPublic(headWord(r.b->head))) ++refused;
+                docVersion < ScriptEngine::statementMinVersion(headWord(r.b->head))) ++refused;
 
         DrawText(T("Engine"), x + 14, barY + 46, 12, Color{120, 120, 140, 255});
         int vx = x + 70;
@@ -454,9 +474,16 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
             }
             vx += 40;
         }
-        if (docVersion < 2 && refused > 0)
-            DrawText(TextFormat(T("%d block(s) need version 2"), refused),
+        if (refused > 0) {
+            // WHICH version, not just "a newer one": with three of them the
+            // message has to name the header that would accept the blocks.
+            int need = docVersion;
+            for (const BlockRow& r : rows)
+                if (!r.isArm && !r.isTerm && !r.isSlot && r.b)
+                    need = std::max(need, ScriptEngine::statementMinVersion(headWord(r.b->head)));
+            DrawText(TextFormat(T("%d block(s) need version %d"), refused, need),
                      vx + 8, barY + 46, 12, Color{235, 120, 120, 255});
+        }
         else
             DrawText(TextFormat("%d blocks", (int)rows.size()), vx + 8, barY + 46, 12,
                      Color{120, 120, 140, 255});
@@ -464,12 +491,41 @@ void MapEditor::drawBlockEditor(int x, int y, int w, int h) {
 
     // ── Palette ──
     if (m_blockPaletteOpen) {
-        const int pw = 220, ph = std::min(h - 40, (int)(sizeof(kPalette) / sizeof(kPalette[0])) * 24 + 16);
+        // ── IT SCROLLS, BECAUSE IT OUTGREW THE SCREEN ──
+        //
+        // The height was clamped to the panel but the rows were drawn from the
+        // full list regardless, so once the palette passed about seventeen
+        // entries the ones past the clamp were painted outside their own box --
+        // and the last of them off the bottom of the window entirely. The count
+        // that fits is computed once and the rest scroll under the wheel.
+        const int kRowH = 24;
+        const int total = (int)(sizeof(kPalette) / sizeof(kPalette[0]));
+        const int pw = 220;
+        const int ph = std::min(h - 40, total * kRowH + 16);
+        const int visible = std::max(1, (ph - 16) / kRowH);
+        const int maxScroll = std::max(0, total - visible);
         const int pxx = x + w - pw - 12, pyy = y + h - 84 - ph - 6;
-        DrawRectangleRounded({(float)pxx, (float)pyy, (float)pw, (float)ph}, 0.04f, 6, Color{30, 30, 40, 245});
-        DrawRectangleRoundedLines({(float)pxx, (float)pyy, (float)pw, (float)ph}, 0.04f, 6, kAccent);
-        for (size_t i = 0; i < sizeof(kPalette) / sizeof(kPalette[0]); ++i) {
-            const Rectangle rr = {(float)(pxx + 8), (float)(pyy + 8 + (int)i * 24), (float)(pw - 16), 22};
+        const Rectangle panelRect = {(float)pxx, (float)pyy, (float)pw, (float)ph};
+        if (CheckCollisionPointRec(mouse, panelRect)) {
+            const float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f) m_blockPaletteScroll -= (int)wheel;
+        }
+        m_blockPaletteScroll = std::clamp(m_blockPaletteScroll, 0, maxScroll);
+        DrawRectangleRounded(panelRect, 0.04f, 6, Color{30, 30, 40, 245});
+        DrawRectangleRoundedLines(panelRect, 0.04f, 6, kAccent);
+        if (maxScroll > 0) {
+            // A thumb, so it is visible that there is more below.
+            const float frac = (float)visible / (float)total;
+            const float trackH = (float)(ph - 16);
+            const float thumbH = std::max(18.0f, trackH * frac);
+            const float t = (maxScroll > 0) ? (float)m_blockPaletteScroll / (float)maxScroll : 0.0f;
+            DrawRectangleRounded({(float)(pxx + pw - 6), (float)pyy + 8 + t * (trackH - thumbH),
+                                  3, thumbH}, 0.5f, 4, Color{120, 120, 150, 255});
+        }
+        for (int vi = 0; vi < visible; ++vi) {
+            const size_t i = (size_t)(vi + m_blockPaletteScroll);
+            if (i >= (size_t)total) break;
+            const Rectangle rr = {(float)(pxx + 8), (float)(pyy + 8 + vi * kRowH), (float)(pw - 16), 22};
             const bool hov = CheckCollisionPointRec(mouse, rr);
             if (hov) DrawRectangleRounded(rr, 0.3f, 4, Color{255, 255, 255, 20});
             DrawText(kPalette[i].label, (int)rr.x + 8, (int)rr.y + 4, 13, hov ? kAccent : WHITE);

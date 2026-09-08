@@ -64,14 +64,29 @@ public:
 
     // 2 adds expressions (arithmetic, and/or, parentheses, calls), `set =`
     // and its compound forms, elseif, for/repeat, break/continue and print.
-    // Version 1 files still run: everything added is backward compatible, and
-    // the header is a declaration of intent rather than a gate.
-    static const int ENGINE_VERSION = 2;
+    //
+    // 3 adds the game the game has become: `wait N turns`, `set x to <expr>`,
+    // `{value}` interpolation inside print, and `foreach district`. The refs
+    // that came with it -- an army by kind, a country's income and expenses,
+    // its districts, its research lock -- are not gated, because a reference to
+    // something that does not exist has always read as an empty value rather
+    // than as an error, and making it fail now would break scripts that guard
+    // on it.
+    //
+    // Version 1 and 2 files still run: everything added is backward compatible,
+    // and a file that declares an older version GETS that version's language,
+    // which is what makes pinning mean something.
+    static const int ENGINE_VERSION = 3;
     static const int MIN_ENGINE_VERSION = 1;
 
-    // The editor lints against the same rule the engine enforces, so a line
-    // the game will refuse is flagged while it is being typed.
-    static bool isVersion2StatementPublic(const std::string& kw);
+    /**
+     * The lowest engine version that accepts this statement: 1, 2 or 3.
+     *
+     * The editor lints against the same function the engine enforces, so a line
+     * the game will refuse is flagged while it is being typed -- and with three
+     * versions a boolean "is this new" no longer says which header to write.
+     */
+    static int statementMinVersion(const std::string& kw);
 
 private:
     Game* m_game;
@@ -91,6 +106,9 @@ private:
         std::string name;
         std::vector<std::string> lines;
         int resumeLine = 0;
+        /// Set by `wait N turns`: resume on this turn rather than on a
+        /// condition. -1 means the parked line is an ordinary waitUntil.
+        int waitUntilTurn = -1;
     };
     std::vector<SuspendedScript> m_suspended;
 
@@ -122,6 +140,12 @@ private:
     // waitUntil helpers
     static bool isWaitLine(const std::string& line);
     static std::string waitCondition(const std::string& line);
+    /// `wait <expr> turns` -- the count is evaluated when the script parks.
+    static bool isWaitTurnsLine(const std::string& line);
+    static std::string waitTurnsCount(const std::string& line);
+    /// Fill `{ref}` holes in a string with what the refs resolve to.
+    std::string interpolate(const std::string& in,
+                            const std::unordered_map<std::string, ScriptValue>& localVars);
 
     // Execute a block of lines (with nesting support for if/foreach/while)
     bool executeBlock(const std::vector<std::string>& lines, int& lineIdx,
@@ -174,7 +198,6 @@ private:
     // version 1 must behave the way version 1 did, or "pin the version"
     // means nothing.
     int m_scriptVersion = ENGINE_VERSION;
-    static bool isVersion2Statement(const std::string& kw);
 
     int m_tryDepth = 0;
     bool m_errorCaught = false;

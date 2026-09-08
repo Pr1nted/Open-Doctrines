@@ -1,0 +1,311 @@
+diff --git a/data/policies.json b/data/policies.json
+index 75b8890..411cd84 100644
+--- a/data/policies.json
++++ b/data/policies.json
+@@ -219,7 +219,8 @@
+         "armyAtkPct": 10,
+         "navyCostPct": 15,
+         "industryCostPct": -20,
+-        "popGrowthPct": -1.0
++        "popGrowthPct": -1.0,
++        "maintenanceCostPct": -20
+       },
+       "incompatible_with": [
+         "consumer_economy",
+@@ -249,7 +250,8 @@
+           "Unrest +3.0%",
+           "-14/turn income",
+           "Economic -20",
+-          "Social -20"
++          "Social -20",
++          "Army upkeep +20%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -417,7 +419,8 @@
+         "popModPct": 12,
+         "popGrowthPct": 1.5,
+         "conscriptionPct": -20,
+-        "armyAtkPct": -5
++        "armyAtkPct": -5,
++        "maintenanceCostPct": -8
+       },
+       "incompatible_with": [
+         "total_war_economy",
+@@ -445,7 +448,8 @@
+           "Army attack -5%",
+           "-6/turn income",
+           "Economic +15",
+-          "Social +15"
++          "Social +15",
++          "Army upkeep +8%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -616,7 +620,8 @@
+       "levers": {
+         "conscriptionPct": 30,
+         "conscriptionCostPct": 15,
+-        "popGrowthPct": -0.5
++        "popGrowthPct": -0.5,
++        "maintenanceCostPct": -10
+       },
+       "incompatible_with": [
+         "professional_army",
+@@ -642,7 +647,8 @@
+           "Minority growth -1%/turn",
+           "-6/turn income",
+           "Economic +5",
+-          "Social -15"
++          "Social -15",
++          "Army upkeep +10%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -770,7 +776,9 @@
+         "conscriptionPct": 45,
+         "armyDefPct": 8,
+         "popGrowthPct": -1.5,
+-        "popModPct": -10
++        "popModPct": -10,
++        "conscriptionCostPct": 30,
++        "maintenanceCostPct": -25
+       },
+       "incompatible_with": [
+         "professional_army",
+@@ -790,7 +798,8 @@
+       "tradeoffs": {
+         "gains": [
+           "Manpower +45%",
+-          "Army defence +8%"
++          "Army defence +8%",
++          "Recruitment cost -30%"
+         ],
+         "costs": [
+           "Population growth -1.5%/turn",
+@@ -798,7 +807,8 @@
+           "Unrest +4.0%",
+           "-11/turn income",
+           "Economic -5",
+-          "Social -18"
++          "Social -18",
++          "Army upkeep +25%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -978,7 +988,8 @@
+       "levers": {
+         "industryCostPct": 12,
+         "armyDefPct": 6,
+-        "conscriptionPct": -12
++        "conscriptionPct": -12,
++        "maintenanceCostPct": 8
+       },
+       "folder": "Libertarian",
+       "effects": {
+@@ -994,7 +1005,8 @@
+           "Industry cost -12%",
+           "Army defence +6%",
+           "Unrest -2.0%",
+-          "Minority growth +1%/turn"
++          "Minority growth +1%/turn",
++          "Army upkeep -8%"
+         ],
+         "costs": [
+           "Manpower -12%",
+@@ -1077,7 +1089,8 @@
+         "armyAtkPct": 18,
+         "armyDefPct": 12,
+         "conscriptionPct": -25,
+-        "conscriptionCostPct": -20
++        "conscriptionCostPct": -20,
++        "maintenanceCostPct": -15
+       },
+       "incompatible_with": [
+         "conscription",
+@@ -1102,7 +1115,8 @@
+           "Recruitment cost +20%",
+           "-10/turn income",
+           "Economic +8",
+-          "Social +10"
++          "Social +10",
++          "Army upkeep +15%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -1183,7 +1197,8 @@
+         "armyDefPct": 12,
+         "conscriptionCostPct": 15,
+         "navyCostPct": -20,
+-        "navySpeedPct": -10
++        "navySpeedPct": -10,
++        "maintenanceCostPct": -12
+       },
+       "incompatible_with": [
+         "naval_supremacy",
+@@ -1210,7 +1225,8 @@
+           "Ship speed -10%",
+           "-10/turn income",
+           "Economic -5",
+-          "Social -10"
++          "Social -10",
++          "Army upkeep +12%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -1775,7 +1791,8 @@
+         "armyDefPct": 10,
+         "conscriptionCostPct": 10,
+         "navyAtkPct": -10,
+-        "navySpeedPct": -8
++        "navySpeedPct": -8,
++        "maintenanceCostPct": -10
+       },
+       "incompatible_with": [
+         "naval_supremacy_doctrine",
+@@ -1802,7 +1819,8 @@
+           "Ship speed -8%",
+           "-8/turn income",
+           "Economic -5",
+-          "Social -5"
++          "Social -5",
++          "Army upkeep +10%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -1879,7 +1897,9 @@
+         "industryCostPct": 15,
+         "armyAtkPct": 10,
+         "popGrowthPct": -1.5,
+-        "migrationRate": -20
++        "migrationRate": -20,
++        "conscriptionCostPct": 20,
++        "maintenanceCostPct": -18
+       },
+       "incompatible_with": [
+         "consumer_goods_priority",
+@@ -1901,7 +1921,8 @@
+         "gains": [
+           "Manpower +25%",
+           "Industry cost -15%",
+-          "Army attack +10%"
++          "Army attack +10%",
++          "Recruitment cost -20%"
+         ],
+         "costs": [
+           "Population growth -1.5%/turn",
+@@ -1909,7 +1930,8 @@
+           "Unrest +6.0%",
+           "-18/turn income",
+           "Economic -20",
+-          "Social -15"
++          "Social -15",
++          "Army upkeep +18%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -1935,7 +1957,8 @@
+         "popGrowthPct": 1.2,
+         "popModPct": 15,
+         "conscriptionPct": -20,
+-        "armyAtkPct": -5
++        "armyAtkPct": -5,
++        "maintenanceCostPct": -10
+       },
+       "incompatible_with": [
+         "war_economy_total",
+@@ -1964,7 +1987,8 @@
+           "Army attack -5%",
+           "-5/turn income",
+           "Economic +15",
+-          "Social +10"
++          "Social +10",
++          "Army upkeep +10%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -1990,7 +2014,8 @@
+         "maintenanceCostPct": 25,
+         "popGrowthPct": 1.0,
+         "conscriptionPct": -25,
+-        "armyDefPct": -10
++        "armyDefPct": -10,
++        "conscriptionCostPct": -15
+       },
+       "incompatible_with": [
+         "war_economy_total",
+@@ -2016,7 +2041,8 @@
+         "costs": [
+           "Manpower -25%",
+           "Army defence -10%",
+-          "Social +8"
++          "Social +8",
++          "Recruitment cost +15%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -2041,7 +2067,8 @@
+       "levers": {
+         "popGrowthPct": 0.8,
+         "conscriptionPct": 8,
+-        "indoctrinationPct": 6
++        "indoctrinationPct": 6,
++        "maintenanceCostPct": 10
+       },
+       "folder": "Miscellaneous",
+       "effects": {
+@@ -2058,7 +2085,8 @@
+           "Manpower +8%",
+           "Indoctrination +6%",
+           "Unrest -5.0%",
+-          "Pulls provinces toward the government"
++          "Pulls provinces toward the government",
++          "Army upkeep -10%"
+         ],
+         "costs": [
+           "-8/turn income",
+@@ -2140,7 +2168,8 @@
+         "maintenanceCostPct": 20,
+         "industryUpkeepPct": 15,
+         "passiveIncome": 8,
+-        "popGrowthPct": -1.0
++        "popGrowthPct": -1.0,
++        "conscriptionCostPct": -10
+       },
+       "incompatible_with": [
+         "universal_healthcare",
+@@ -2167,7 +2196,8 @@
+           "Population growth -1.0%/turn",
+           "Unrest +8.0%",
+           "Economic +18",
+-          "Social -5"
++          "Social -5",
++          "Recruitment cost +10%"
+         ]
+       },
+       "propaganda_duration": 0
+@@ -2241,7 +2271,8 @@
+       "levers": {
+         "armyDefPct": 10,
+         "popGrowthPct": -1.0,
+-        "migrationRate": -25
++        "migrationRate": -25,
++        "maintenanceCostPct": -8
+       },
+       "incompatible_with": [
+         "general_amnesty",
+@@ -2269,10 +2300,11 @@
+           "Unrest +15.0%",
+           "Minority growth -2%/turn",
+           "-12/turn income",
+-          "Social -25"
++          "Social -25",
++          "Army upkeep +8%"
+         ]
+       },
+       "propaganda_duration": 0
+     }
+   ]
+-}
++}
+\ No newline at end of file

@@ -306,6 +306,77 @@ int main() {
         check(odscript::blockAt(d.blocks, {1, 9, 0}) == nullptr, "so is a bad body index");
     }
 
+    // ── What the newer statements do to the block round trip ──
+    //
+    // Everything added for districts, troops, the economy and the research
+    // lock is written in the syntax the parser already had, which is the point
+    // -- but "already had" is a claim, and the block editor rewriting somebody
+    // else's script is the exact failure this file exists to prevent.
+    {
+        const std::string src =
+            "#OD/MapEngine/2\n"
+            "set country.USA.research_groups 3\n"
+            "set province.5.troops.militia 12000\n"
+            "set var.total to country.USA.troops + country.FRA.troops\n"
+            "print \"turn {map.turn}: {country.USA.national_value}\"\n"
+            "foreach district in country.USA\n"
+            "    if district.share > 50\n"
+            "        print district.name\n"
+            "    endif\n"
+            "next\n"
+            "wait 5 turns\n"
+            "print \"done\"\n";
+        odscript::Doc d = odscript::parseScript(src);
+        check(d.error.empty(), "the new statements parse  [" + d.error + "]");
+        check(odscript::unparseScript(d) == src, "and round-trip byte-identical");
+        check(d.blocks.size() == 7, "seven top-level statements");
+        check(d.blocks[4].kind == odscript::Block::FOREACH, "foreach district is a foreach");
+        check(d.blocks[4].bodies.size() == 1 && d.blocks[4].bodies[0].size() == 1,
+              "with the if inside it");
+        // `wait N turns` is not `waitUntil`, and must not be mistaken for it:
+        // one parks on a condition, the other on a date.
+        check(d.blocks[5].kind != odscript::Block::WAIT || d.blocks[5].head == "wait 5 turns",
+              "wait N turns survives as written");
+    }
+
+    // ── `wait N turns`, as ScriptEngine reads it ──
+    //
+    // Replicated rather than linked: reaching the real one means building a
+    // Game. If the rule changes, change it here in the same commit.
+    {
+        auto isWaitTurns = [](const std::string& line) {
+            if (line.rfind("wait", 0) != 0) return false;
+            if (line.size() < 5 || (line[4] != ' ' && line[4] != '\t')) return false;
+            std::string t = line;
+            while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+            const size_t sp = t.find_last_of(" \t");
+            if (sp == std::string::npos) return false;
+            const std::string last = t.substr(sp + 1);
+            return last == "turns" || last == "turn";
+        };
+        auto count = [](const std::string& line) {
+            std::string t = line;
+            while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+            const size_t sp = t.find_last_of(" \t");
+            std::string mid = t.substr(4, sp - 4);
+            const size_t s0 = mid.find_first_not_of(" \t");
+            if (s0 == std::string::npos) return std::string("1");
+            mid = mid.substr(s0);
+            while (!mid.empty() && (mid.back() == ' ' || mid.back() == '\t')) mid.pop_back();
+            return mid.empty() ? std::string("1") : mid;
+        };
+        check(isWaitTurns("wait 5 turns"), "wait 5 turns");
+        check(isWaitTurns("wait 1 turn"), "singular reads the same");
+        check(isWaitTurns("wait var.n turns"), "the count can be an expression");
+        check(count("wait 5 turns") == "5", "the count is what sits between");
+        check(count("wait var.n turns") == "var.n", "expression counts come through whole");
+        check(count("wait  12  turns") == "12", "extra spacing does not change it");
+        // The ones it must NOT swallow.
+        check(!isWaitTurns("waitUntil map.turn >= 10"), "waitUntil is a different statement");
+        check(!isWaitTurns("wait"), "a bare wait is not this");
+        check(!isWaitTurns("wait until something"), "and neither is a sentence that is not it");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

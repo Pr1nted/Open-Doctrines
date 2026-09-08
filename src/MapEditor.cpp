@@ -73,7 +73,10 @@ static bool createDir(const std::string& p) {
 }
 static Rectangle Rect(float x, float y, float w, float h) { return {x, y, w, h}; }
 
-static const Color ACCENT = {255, 215, 0, 255};  // Gold accent
+Color MapEditor::s_accent = {255, 215, 0, 255};   // until Game pushes the player's
+// A REFERENCE, so the hundred-odd uses below follow the setting without each
+// one having to ask for it.
+static const Color& ACCENT = MapEditor::s_accent;
 static const Color COL_LAND  = {200, 190, 160, 255}; // matches LandSeaMap in-game land
 static const Color COL_SEA   = { 40,  80, 160, 255}; // matches LandSeaMap in-game sea
 
@@ -841,6 +844,7 @@ bool MapEditor::loadExistingMap(const std::string& path) {
             }
         }
     } catch (...) { LoadLog() << "  Bad claims.json in imported map\n"; }
+    loadDistrictsJson(getStr("districts.json"));
     try {
         std::string pol = getStr("policies.json");
         if (!pol.empty()) {
@@ -1250,6 +1254,355 @@ void MapEditor::rebuildClaimsOverlay() {
         m_renderer->updateClaimsTexture(m_claimsPixels.data());
     }
     m_claimsOverlayCid = m_selectedCountry;
+}
+
+// ── District painting ───────────────────────────────────────────
+//
+// Districts partition a country; claims overlap it. That is the whole
+// difference in the code below: painting a province into a district takes it
+// out of whichever one held it, so the invariant the game relies on -- every
+// owned province in exactly one district -- holds at authoring time too.
+//
+// The overlay reuses the claims texture. Both are "one country's business,
+// painted over the map", the two brushes are mutually exclusive, and a second
+// full-map RGBA buffer would cost 32 MB to show the same thing.
+
+int MapEditor::districtOfProvince(int cid, int pid) const {
+    auto it = m_editorDistricts.find(cid);
+    if (it == m_editorDistricts.end()) return -1;
+    for (size_t i = 0; i < it->second.size(); ++i)
+        if (it->second[i].provinces.count(pid)) return (int)i;
+    return -1;
+}
+
+bool MapEditor::shotSeedDistricts(const std::string& mapPath) {
+    if (!importFromPath(mapPath)) return false;
+    m_mode = MODE_COUNTRIES;
+
+    // The country with the most provinces that are all in ONE place. The
+    // biggest country on a 1914 map is an empire with provinces on five
+    // continents, and no view of it shows two districts at once -- which is
+    // the one thing this shot exists to show.
+    std::unordered_map<int, int> counts;
+    std::unordered_map<int, int> minX, maxX, minY, maxY;
+    for (int y = 0; y < MAP_H; y += 4) {
+        const Color* row = &m_provincePixels[(size_t)y * MAP_W];
+        for (int x = 0; x < MAP_W; x += 4) {
+            const Province* p = m_editProvinces.getProvince(x, y);
+            if (!p || p->countryId <= 0) continue;
+            const int cid = p->countryId;
+            if (!minX.count(cid)) { minX[cid] = maxX[cid] = x; minY[cid] = maxY[cid] = y; }
+            minX[cid] = std::min(minX[cid], x); maxX[cid] = std::max(maxX[cid], x);
+            minY[cid] = std::min(minY[cid], y); maxY[cid] = std::max(maxY[cid], y);
+        }
+    }
+    for (const auto& [pid, p] : m_editProvinces.getAllProvinces())
+        if (p.countryId > 0) counts[p.countryId]++;
+    int best = -1, bestN = 0;
+    for (const auto& [cid, n] : counts) {
+        if (!minX.count(cid)) continue;
+        if (maxX[cid] - minX[cid] > MAP_W / 6) continue;    // scattered: an empire
+        if (maxY[cid] - minY[cid] > MAP_H / 4) continue;
+        if (n > bestN || (n == bestN && cid < best)) { best = cid; bestN = n; }
+    }
+    if (best < 0) return false;
+    m_selectedCountry = best;
+
+    // Cut east from west, which is a division anybody can see is deliberate.
+    std::vector<int> owned;
+    for (const auto& [pid, p] : m_editProvinces.getAllProvinces())
+        if (p.countryId == best) owned.push_back(pid);
+    std::sort(owned.begin(), owned.end());
+    m_editorDistricts.erase(best);
+    addDistrict(best);
+    addDistrict(best);
+    auto& v = m_editorDistricts[best];
+    v[0].name = "Heartland";
+    v[0].sharePct = 65;
+    v[1].name = "Frontier";
+    v[1].sharePct = 35;
+    for (size_t i = 0; i < owned.size(); ++i)
+        v[i * 2 < owned.size() ? 0 : 1].provinces.insert(owned[i]);
+    m_selectedDistrict = 0;
+    m_districtBrushActive = true;
+    m_claimsBrushActive = m_countryBrushActive = false;
+    rebuildDistrictOverlay();
+    if (m_renderer) m_renderer->setShowClaims(true);
+
+    // The editor lays itself out for the size it was told about, and the tour's
+    // frame is not always that size -- laid out for 1920 and photographed at
+    // 1600, the whole side panel sits off the right edge and the shot shows a
+    // bare map. Take the size from the frame that is actually being captured.
+    resize(GetScreenWidth(), GetScreenHeight());
+
+    // And point the camera at the country, or the districts are painted
+    // somewhere off screen. At the LARGEST province rather than the average
+    // position of all of them: the country with the most ground on a 1914 map
+    // is a colonial empire, and the mean of its provinces is a spot in the
+    // Atlantic with nothing painted on it.
+    {
+        std::unordered_set<int> ownedSet(owned.begin(), owned.end());
+        std::unordered_map<int, long long> px, py, cnt;
+        for (int y = 0; y < MAP_H; y += 2) {
+            const Color* row = &m_provincePixels[(size_t)y * MAP_W];
+            for (int x = 0; x < MAP_W; x += 2) {
+                const int pid = Province::colorToId(row[x].r, row[x].g, row[x].b);
+                if (pid == 0 || !ownedSet.count(pid)) continue;
+                px[pid] += x; py[pid] += y; cnt[pid]++;
+            }
+        }
+        int bigPid = -1; long long bigN = 0;
+        for (const auto& [pid, n] : cnt)
+            if (n > bigN || (n == bigN && pid < bigPid)) { bigPid = pid; bigN = n; }
+        if (bigPid >= 0 && m_renderer) {
+            m_renderer->flyTo((float)(px[bigPid] / bigN), (float)(py[bigPid] / bigN), 2.2f, 1000.0f);
+            m_renderer->update(1.0f);   // land on it now; the tour photographs soon after
+        }
+    }
+    return true;
+}
+
+void MapEditor::addDistrict(int cid) {
+    if (cid <= 0) return;
+    auto& v = m_editorDistricts[cid];
+    EditorDistrict d;
+    d.name = "District " + std::to_string(v.size() + 1);
+    // Spread around the wheel so two neighbouring districts are never a shade
+    // apart -- the point of painting them is telling them apart.
+    // Saturated on purpose: at 0.55 the first district came out a sandy tan
+    // that was almost exactly the colour of unpainted land, so a country fully
+    // assigned to it looked like a country with no districts at all.
+    const int k = (int)v.size();
+    const float hue = std::fmod(37.0f + 67.0f * (float)k, 360.0f);
+    Color c = ColorFromHSV(hue, 0.80f, 0.90f);
+    d.r = c.r; d.g = c.g; d.b = c.b;
+    v.push_back(std::move(d));
+    m_selectedDistrict = (int)v.size() - 1;
+    trackChange();
+}
+
+void MapEditor::removeDistrict(int cid, int index) {
+    auto it = m_editorDistricts.find(cid);
+    if (it == m_editorDistricts.end()) return;
+    auto& v = it->second;
+    if (index < 0 || index >= (int)v.size()) return;
+    // Its ground goes back to being undistricted rather than to a neighbour:
+    // in the editor an author can see what is unassigned and decide. In the
+    // GAME the same removal hands it to the nearest district, because there
+    // nobody is looking at it.
+    v.erase(v.begin() + index);
+    if (v.empty()) m_editorDistricts.erase(it);
+    m_selectedDistrict = std::max(0, index - 1);
+    m_districtOverlayCid = -2;
+    trackChange();
+}
+
+void MapEditor::rebuildDistrictOverlay() {
+    if (!m_renderer || !m_hasProvinces || m_provincePixels.empty()) return;
+    if (m_claimsPixels.size() != (size_t)MAP_W * MAP_H)
+        m_claimsPixels.assign((size_t)MAP_W * MAP_H, Color{0, 0, 0, 0});
+    else
+        std::fill(m_claimsPixels.begin(), m_claimsPixels.end(), Color{0, 0, 0, 0});
+
+    // pid -> colour, built once; the per-pixel loop is 33M iterations and must
+    // not walk a district list inside it.
+    std::unordered_map<int, Color> colByPid;
+    auto it = m_editorDistricts.find(m_selectedCountry);
+    if (it != m_editorDistricts.end())
+        for (const auto& d : it->second) {
+            const Color c{d.r, d.g, d.b, 190};
+            for (int pid : d.provinces) colByPid[pid] = c;
+        }
+    if (!colByPid.empty()) {
+        for (int y = 0; y < MAP_H; ++y) {
+            const Color* row = &m_provincePixels[(size_t)y * MAP_W];
+            for (int x = 0; x < MAP_W; ++x) {
+                const int pid = Province::colorToId(row[x].r, row[x].g, row[x].b);
+                if (pid == 0) continue;
+                auto cIt = colByPid.find(pid);
+                if (cIt != colByPid.end()) m_claimsPixels[(size_t)y * MAP_W + x] = cIt->second;
+            }
+        }
+    }
+
+    if (!m_renderer->hasClaimsTexture()) {
+        Image img{};
+        img.data = m_claimsPixels.data();
+        img.width = MAP_W;
+        img.height = MAP_H;
+        img.mipmaps = 1;
+        img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        Texture2D t = LoadTextureFromImage(img);
+        SetTextureFilter(t, TEXTURE_FILTER_POINT);
+        m_renderer->setClaimsTexture(t);
+    } else {
+        m_renderer->updateClaimsTexture(m_claimsPixels.data());
+    }
+    m_districtOverlayCid = m_selectedCountry;
+    m_claimsOverlayCid = -2;   // the two share a texture; force a rebuild on switch
+}
+
+void MapEditor::applyDistrictBrush(int cx, int cy) {
+    if (!m_hasProvinces || m_selectedCountry < 0 || m_provincePixels.empty()) return;
+    if (cx < 0 || cx >= MAP_W || cy < 0 || cy >= MAP_H) return;
+    if (!m_editLandSea.isLand(cx, cy)) return;
+    const Province* pc = m_editProvinces.getProvince(cx, cy);
+    if (!pc) return;
+    const int pid = pc->id;
+    if (m_districtBrushTouched.count(pid)) return;   // one change per province per stroke
+    m_districtBrushTouched.insert(pid);
+
+    // Only ground this country owns. A district over somebody else's province
+    // would be dropped by reconcileDistricts() the moment the game loaded it,
+    // so refusing it here is telling the author the truth earlier.
+    if (pc->countryId != m_selectedCountry) return;
+
+    auto& v = m_editorDistricts[m_selectedCountry];
+    if (v.empty()) { m_editorDistricts.erase(m_selectedCountry); return; }
+    m_selectedDistrict = std::clamp(m_selectedDistrict, 0, (int)v.size() - 1);
+
+    bool changed = false;
+    for (auto& d : v) changed |= (d.provinces.erase(pid) > 0);
+    if (!m_districtBrushErase) {
+        changed |= v[(size_t)m_selectedDistrict].provinces.insert(pid).second;
+    }
+    if (!changed) return;
+
+    // Repaint just this province, in the colour of whichever district now holds
+    // it (or clear it), and push the touched rectangle.
+    const int di = districtOfProvince(m_selectedCountry, pid);
+    const Color col = (di < 0) ? Color{0, 0, 0, 0}
+                               : Color{v[(size_t)di].r, v[(size_t)di].g, v[(size_t)di].b, 190};
+    int bx0 = MAP_W, by0 = MAP_H, bx1 = -1, by1 = -1;
+    if (!m_claimsPixels.empty()) {
+        for (int y = 0; y < MAP_H; ++y) {
+            const Color* row = &m_provincePixels[(size_t)y * MAP_W];
+            for (int x = 0; x < MAP_W; ++x) {
+                if (Province::colorToId(row[x].r, row[x].g, row[x].b) != pid) continue;
+                m_claimsPixels[(size_t)y * MAP_W + x] = col;
+                bx0 = std::min(bx0, x); bx1 = std::max(bx1, x);
+                by0 = std::min(by0, y); by1 = std::max(by1, y);
+            }
+        }
+    }
+    if (bx1 >= 0 && m_renderer && m_renderer->hasClaimsTexture()) {
+        const int rw = bx1 - bx0 + 1, rh = by1 - by0 + 1;
+        std::vector<Color> rect((size_t)rw * rh);
+        for (int row = 0; row < rh; ++row)
+            memcpy(&rect[(size_t)row * rw], &m_claimsPixels[(size_t)(by0 + row) * MAP_W + bx0],
+                   (size_t)rw * sizeof(Color));
+        m_renderer->updateClaimsTextureRec(rect.data(), bx0, by0, rw, rh);
+    }
+    trackChange();
+}
+
+MapEditor::DistrictSectionRects MapEditor::districtSectionRects(int px, int listW, int editY) const {
+    // ── DISTRICTS ARE NOT A FEATURE YOU SWITCH ON ──
+    //
+    // This section used to hide behind "Districts: OFF (0)", beside the two
+    // paint-mode toggles, which said that a country either has districts or
+    // does not. Every country has them -- the game builds one covering
+    // everything the moment anybody asks -- and the only question is how many.
+    // So the list, the count and the controls are always here, and the toggle
+    // that remains is about the BRUSH: which of the three things a drag on the
+    // map paints.
+    DistrictSectionRects r;
+    const float fpx = (float)px, fw = (float)listW;
+    editY += 14;                                          // "Districts (n)" heading
+
+    auto it = m_editorDistricts.find(m_selectedCountry);
+    const size_t n = (it == m_editorDistricts.end()) ? 0 : it->second.size();
+    for (size_t i = 0; i < n && i < DISTRICT_ROWS_MAX; ++i) {
+        r.rows.push_back({fpx, (float)editY, fw - 18.0f, 18});
+        r.dels.push_back({fpx + fw - 16.0f, (float)editY + 2.0f, 14, 14});
+        editY += 20;
+    }
+    r.add = {fpx, (float)editY, fw, 20};
+    editY += 22;
+    if (n > 0) {
+        r.name  = {fpx, (float)editY, fw, 20};
+        editY += 22;
+        editY += 14;                                      // "Budget share:" label
+        r.share = {fpx + 16.0f, (float)editY, fw - 60.0f, 10};
+        editY += 18;
+    }
+
+    // The brush, last, because it is about painting rather than about the
+    // districts existing.
+    r.toggle = {fpx, (float)editY, fw, 22};
+    editY += 24;
+    if (m_districtBrushActive) {
+        const int half = (listW - 6) / 2;
+        r.paint = {fpx, (float)editY, (float)half, 20};
+        r.erase = {(float)(px + half + 6), (float)editY, (float)half, 20};
+        editY += 24;
+        editY += 14;                                      // the hint line
+    }
+    editY += 4;
+    r.endY = editY;
+    return r;
+}
+
+/// The one reader for districts.json: an imported .odmap and a reopened
+/// project take the same path, so a shape that works in one works in both.
+void MapEditor::loadDistrictsJson(const std::string& json) {
+    m_editorDistricts.clear();
+    m_selectedDistrict = 0;
+    m_districtOverlayCid = -2;
+    if (json.empty()) return;
+    try {
+        std::unordered_map<std::string, int> cidByIso;
+        for (auto& [cid, c] : m_editCountries.getAll())
+            if (!c.isoA3.empty()) cidByIso[c.isoA3] = cid;
+        auto j = nlohmann::json::parse(json);
+        for (auto& [iso, arr] : j.items()) {
+            auto it = cidByIso.find(iso);
+            if (it == cidByIso.end() || !arr.is_array()) continue;
+            std::vector<EditorDistrict> v;
+            for (auto& e : arr) {
+                EditorDistrict d;
+                d.name = e.value("name", "");
+                if (e.contains("color") && e["color"].is_array() && e["color"].size() >= 3) {
+                    d.r = (unsigned char)e["color"][0].get<int>();
+                    d.g = (unsigned char)e["color"][1].get<int>();
+                    d.b = (unsigned char)e["color"][2].get<int>();
+                }
+                d.sharePct = e.value("share", 0);
+                if (e.contains("provinces"))
+                    for (auto& pv : e["provinces"]) d.provinces.insert(pv.get<int>());
+                if (e.contains("laws"))
+                    for (auto& lv : e["laws"]) d.laws.push_back(lv.get<std::string>());
+                if (d.provinces.empty()) continue;
+                v.push_back(std::move(d));
+            }
+            if (!v.empty()) m_editorDistricts[it->second] = std::move(v);
+        }
+    } catch (...) { LoadLog() << "  Bad districts.json\n"; }
+}
+
+// {ISO: [{name, color, share, provinces, laws}, ...]} -- read by Game_Loading.
+std::string MapEditor::buildDistrictsJson() const {
+    nlohmann::json root = nlohmann::json::object();
+    for (const auto& [cid, v] : m_editorDistricts) {
+        const Country* c = m_editCountries.getCountry(cid);
+        if (!c || c->isoA3.empty()) continue;
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& d : v) {
+            if (d.provinces.empty()) continue;   // a district is its ground
+            nlohmann::json e;
+            e["name"] = d.name;
+            e["color"] = {(int)d.r, (int)d.g, (int)d.b};
+            e["share"] = d.sharePct;
+            nlohmann::json pj = nlohmann::json::array();
+            for (int pid : d.provinces) pj.push_back(pid);
+            e["provinces"] = pj;
+            if (!d.laws.empty()) e["laws"] = d.laws;
+            arr.push_back(std::move(e));
+        }
+        if (!arr.empty()) root[c->isoA3] = arr;
+    }
+    if (root.empty()) return std::string();
+    return root.dump(2);
 }
 
 void MapEditor::applyClaimsBrush(int cx, int cy) {
@@ -3228,6 +3581,8 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     if (!provCompassJson.empty()) writeStr(tmpDir + "political_compass.json", provCompassJson);
     std::string claimsJson = buildClaimsJson();
     if (!claimsJson.empty()) writeStr(tmpDir + "claims.json", claimsJson);
+    const std::string districtsJson = buildDistrictsJson();
+    if (!districtsJson.empty()) writeStr(tmpDir + "districts.json", districtsJson);
     std::string policiesJson = buildPoliciesJson();
     std::string startingPoliciesJson = buildStartingPoliciesJson();
     std::string startingMinorityPoliciesJson = buildStartingMinorityPoliciesJson();
@@ -3314,6 +3669,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     if (!shipsJson.empty()) addFile("ships.json");
     if (!relationsJson.empty()) addFile("relations.json");
     if (!claimsJson.empty()) addFile("claims.json");
+    if (!districtsJson.empty()) addFile("districts.json");
     if (!minoritiesJsonOut.empty()) addFile("minorities.json");
     if (!minorityColorsJsonOut.empty()) addFile("minority_colors.json");
     if (!provCompassJson.empty()) addFile("political_compass.json");
@@ -3394,6 +3750,7 @@ bool MapEditor::saveProject() {
         addStr("ships.json", buildShipsJson());
         addStr("relations.json", buildRelationsJson());
         addStr("claims.json", buildClaimsJson());
+        addStr("districts.json", buildDistrictsJson());
         addStr("minorities.json", buildMinoritiesJson());
         addStr("minority_colors.json", buildMinorityColorsJson());
         addStr("political_compass.json", buildProvinceCompassJson());
@@ -3677,6 +4034,7 @@ bool MapEditor::loadProject(const std::string& path) {
                     }
                 }
             } catch (...) { LoadLog() << "  Bad claims.json in project\n"; }
+            loadDistrictsJson(getStr("districts.json"));
             try {
                 std::string pc = getStr("political_compass.json");
                 if (!pc.empty()) {
@@ -3797,7 +4155,7 @@ void MapEditor::update(float dt) {
     if (IsKeyPressed(KEY_ESCAPE)) {
         bool textEditActive = m_editingSeed || m_editingCountryCount ||
                               m_editingCountryName || m_metaEditField >= 0 || m_licenseTextFocus ||
-                              m_editingDateYear || m_provPopEditing;
+                              m_editingDateYear || m_provPopEditing || m_editingDistrictName;
         if (m_licenseTextFocus) {
             m_licenseTextFocus = false;
         } else if (m_editingDateYear) {
@@ -3844,7 +4202,7 @@ void MapEditor::update(float dt) {
          IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) &&
         IsKeyPressed(KEY_S) &&
         !(m_editingSeed || m_editingCountryCount || m_editingCountryName ||
-          m_metaEditField >= 0 || m_licenseTextFocus || m_scriptEdOpen)) {
+          m_editingDistrictName || m_metaEditField >= 0 || m_licenseTextFocus || m_scriptEdOpen)) {
         saveProject();
     }
 
@@ -4274,6 +4632,12 @@ void MapEditor::updateEdit(float dt) {
                 } else {
                     m_provStrokeActive = true; // brush/erase: freehand painting
                 }
+            } else if (m_mode == MODE_COUNTRIES && m_districtBrushActive
+                       && m_hasProvinces && m_selectedCountry >= 0) {
+                m_districtStrokeActive = true;
+                m_districtBrushTouched.clear();
+                int cx, cy; screenToCanvas((int)mouse.x, (int)mouse.y, cx, cy);
+                applyDistrictBrush(cx, cy);
             } else if (claimsPainting) {
                 m_claimsStrokeActive = true;
                 m_claimsBrushTouched.clear();
@@ -4343,14 +4707,30 @@ void MapEditor::updateEdit(float dt) {
             m_claimsBrushTouched.clear();
         }
     }
+    if (m_districtStrokeActive) {
+        if (lmb && inCanvas) {
+            int cx, cy; screenToCanvas((int)mouse.x, (int)mouse.y, cx, cy);
+            applyDistrictBrush(cx, cy);
+        }
+        if (!lmb) {
+            m_districtStrokeActive = false;
+            m_districtBrushTouched.clear();
+        }
+    }
     // Claims overlay follows the claims brush: visible only while it's armed,
     // and rebuilt whenever the selected country changes (it only ever shows
-    // one country's claims at a time).
+    // one country's claims at a time). Districts share the same overlay
+    // texture and the same rule -- whichever brush is armed owns it, and each
+    // invalidates the other's cached country so a switch always repaints.
     {
-        bool wantClaims = (m_mode == MODE_COUNTRIES && m_claimsBrushActive && m_hasProvinces);
-        if (wantClaims && m_claimsOverlayCid != m_selectedCountry) rebuildClaimsOverlay();
-        if (m_renderer && m_renderer->getShowClaims() != wantClaims)
-            m_renderer->setShowClaims(wantClaims);
+        const bool wantDistricts = (m_mode == MODE_COUNTRIES && m_districtBrushActive && m_hasProvinces);
+        const bool wantClaims = (m_mode == MODE_COUNTRIES && m_claimsBrushActive &&
+                                 !wantDistricts && m_hasProvinces);
+        if (wantDistricts && m_districtOverlayCid != m_selectedCountry) rebuildDistrictOverlay();
+        else if (wantClaims && m_claimsOverlayCid != m_selectedCountry) rebuildClaimsOverlay();
+        const bool wantAny = wantDistricts || wantClaims;
+        if (m_renderer && m_renderer->getShowClaims() != wantAny)
+            m_renderer->setShowClaims(wantAny);
     }
 
     // ── Navy: place / select / delete ships on the canvas ──
@@ -4517,6 +4897,14 @@ void MapEditor::updateToolbar() {
         m_wantsSettings = true;
         return;
     }
+    // Report, left of Settings. Narrower than either, and neither bordered nor
+    // coloured like them: it is not part of the work, it is there for the day
+    // the work goes wrong.
+    Rectangle repBtn = {(float)(m_screenW - 400), (float)((m_toolbarH-30)/2), 74, 30};
+    if (CheckCollisionPointRec(mouse, repBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        m_wantsFeedback = true;
+        return;
+    }
     if (mouse.y < 0 || mouse.y > m_toolbarH) return;
     const char* names[] = {"Landmass","Provinces","Countries","Navy","Relations","Scripts","Generator","Metadata"};
     int btnW = 95, btnH = 34, gap = 4, startX = 8;
@@ -4562,6 +4950,13 @@ void MapEditor::drawToolbar() {
     int stw = MeasureText(T("Settings"), 13);
     DrawText(T("Settings"), (int)(setBtn.x + setBtn.width/2 - stw/2), (int)(setBtn.y + 8), 13,
              setHov ? WHITE : LIGHTGRAY);
+
+    Rectangle repBtn = {(float)(m_screenW - 400), (float)((m_toolbarH-30)/2), 74, 30};
+    bool repHov = CheckCollisionPointRec(GetMousePosition(), repBtn);
+    if (repHov) DrawRectangleRounded(repBtn, 0.15f, 6, Color{45,35,38,200});
+    int rtw = MeasureText(T("Report"), 13);
+    DrawText(T("Report"), (int)(repBtn.x + repBtn.width/2 - rtw/2), (int)(repBtn.y + 8), 13,
+             repHov ? Color{235,170,170,255} : Color{130,130,145,255});
 
     DrawText(TextFormat(T("Zoom: %.2fx"), m_renderer ? m_renderer->getZoom() : 1.0f), m_screenW - 120, 16, 12, WHITE);
 }
@@ -4617,11 +5012,11 @@ void MapEditor::drawCanvas() {
         int n = 0;
         auto ci = m_editorClaims.find(m_selectedCountry);
         if (ci != m_editorClaims.end()) n = (int)ci->second.size();
-        std::string line = std::string("Claims of ") + (cc ? cc->name : std::string("(no country)"))
-                         + ": " + std::to_string(n) + (n == 1 ? " province" : " provinces");
-        const char* hint = n == 0 ? "Drag over provinces to claim them"
-                                  : (m_claimsBrushErase ? "Unclaim mode — drag to remove"
-                                                        : "Claim mode — drag to add");
+        std::string line = TextFormat(T("Claims of %s: %d province(s)"),
+                                      cc ? cc->name.c_str() : T("(no country)"), n);
+        const char* hint = n == 0 ? T("Drag over provinces to claim them")
+                                  : (m_claimsBrushErase ? T("Unclaim mode - drag to remove")
+                                                        : T("Claim mode - drag to add"));
         int tw = std::max(MeasureText(line.c_str(), 14), MeasureText(hint, 11));
         int bw = tw + 34, bh = 46;
         int bx = m_canvasX + 12, by = m_canvasY + 12;
@@ -4630,6 +5025,36 @@ void MapEditor::drawCanvas() {
         DrawRectangle(bx + 10, by + 11, 12, 12, Color{CLAIM_COL.r, CLAIM_COL.g, CLAIM_COL.b, 255});
         DrawText(line.c_str(), bx + 28, by + 10, 14, WHITE);
         DrawText(hint, bx + 28, by + 28, 11, Color{170, 170, 180, 220});
+    }
+
+    // ── District legend: which district the brush is filling, and how much of
+    //    the country is still in no district at all. An author needs to know
+    //    when they are done, and "0 unassigned" is the only way to know. ──
+    if (m_mode == MODE_COUNTRIES && m_districtBrushActive && m_hasProvinces) {
+        auto dIt = m_editorDistricts.find(m_selectedCountry);
+        const int dn = (dIt == m_editorDistricts.end()) ? 0 : (int)dIt->second.size();
+        int owned = 0, assigned = 0;
+        for (const auto& [pid, p] : m_editProvinces.getAllProvinces()) {
+            if (p.countryId != m_selectedCountry) continue;
+            ++owned;
+            if (districtOfProvince(m_selectedCountry, pid) >= 0) ++assigned;
+        }
+        const EditorDistrict* sd = nullptr;
+        if (dn > 0) sd = &dIt->second[(size_t)std::clamp(m_selectedDistrict, 0, dn - 1)];
+        std::string line = sd ? std::string(TextFormat(T("Painting: %s"), sd->name.c_str()))
+                              : std::string(T("No districts yet"));
+        std::string sub = TextFormat(T("%d of %d provinces assigned  -  %d district(s)"),
+                                     assigned, owned, dn);
+        int tw = std::max(MeasureText(line.c_str(), 14), MeasureText(sub.c_str(), 11));
+        int bw = tw + 34, bh = 46;
+        int bx = m_canvasX + 12, by = m_canvasY + 12;
+        Color sw = sd ? Color{sd->r, sd->g, sd->b, 255} : Color{120, 120, 130, 255};
+        DrawRectangleRounded({(float)bx, (float)by, (float)bw, (float)bh}, 0.15f, 6, Color{15, 15, 20, 220});
+        DrawRectangleRoundedLines({(float)bx, (float)by, (float)bw, (float)bh}, 0.15f, 6, sw);
+        DrawRectangle(bx + 10, by + 11, 12, 12, sw);
+        DrawText(line.c_str(), bx + 28, by + 10, 14, WHITE);
+        DrawText(sub.c_str(), bx + 28, by + 28, 11,
+                 assigned < owned ? Color{230, 180, 120, 230} : Color{170, 170, 180, 220});
     }
 
     // ── Ship markers (Navy mode only) ──
@@ -4664,33 +5089,51 @@ void MapEditor::drawCanvas() {
 //  Bottom Bar
 // ════════════════════════════════════════════════════════════════
 
+MapEditor::BottomBarRects MapEditor::bottomBarRects() const {
+    BottomBarRects r;
+    const float by = (float)(m_screenH - m_bottomH);
+    const int gap = 5, btnW = 70;
+
+    r.toolsLabelX = 10;
+    int x = 10 + MeasureText(T("Tools"), 14) + 12;
+    for (int i = 0; i < 4; ++i) {
+        r.tools[i] = {(float)x, by + 10, (float)btnW, 30};
+        x += btnW + gap;
+    }
+    x += 45;
+    r.sizeLabelX = x;
+    x += MeasureText(T("Size"), 13) + 10;
+    r.slider = {(float)x, by + 17, 120, 14};
+    // Room for the number printed after the slider, which is three digits wide
+    // at most and must not run into the Land button.
+    x += 120 + 8 + MeasureText("000", 13) + 20;
+    r.land = {(float)x, by + 10, 70, 30};
+    r.sea  = {(float)(x + 75), by + 10, 70, 30};
+    r.mode = {(float)(x + 160), by + 10, 90, 30};
+    return r;
+}
+
 void MapEditor::updateBottomBar() {
     Vector2 mouse = GetMousePosition();
     int by = m_screenH - m_bottomH;
     if (mouse.y < by) return;
-    const char* names[] = {"Brush","Rect","Fill","Erase"};
-    int startX = 60, gap = 5, btnW = 70;
-    for (int i = 0; i < 4; i++) {
-        Rectangle r = {(float)(startX + i*(btnW+gap)), (float)(by + 10), (float)btnW, 30};
-        if (CheckCollisionPointRec(mouse, r) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_tool = (Tool)i;
-    }
+    const BottomBarRects r = bottomBarRects();
+    for (int i = 0; i < 4; i++)
+        if (CheckCollisionPointRec(mouse, r.tools[i]) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+            m_tool = (Tool)i;
     // Brush size slider. The drag-to-value mapping and the drawn fill must use
     // the same max (BRUSH_MAX) — they used to disagree (40 vs 60), so the fill
     // always lagged behind the cursor and the slider felt offset.
-    Rectangle slider = {(float)(startX + 4*75 + gap + 80), (float)(by + 17), 120, 14};
-    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, {slider.x-5, slider.y-5, slider.width+10, slider.height+10})) {
-        float t = (GetMouseX() - slider.x) / slider.width;
+    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, {r.slider.x - 5, r.slider.y - 5,
+                                       r.slider.width + 10, r.slider.height + 10})) {
+        float t = (GetMouseX() - r.slider.x) / r.slider.width;
         m_brushSize = (int)lroundf(std::max(0.0f, std::min(1.0f, t)) * BRUSH_MAX);
         m_brushSize = std::max(1, std::min((int)BRUSH_MAX, m_brushSize));
     }
-    // Paint land / sea toggle
-    Rectangle landBtn = {(float)(startX + 4*75 + gap + 220), (float)(by+10), 70, 30};
-    if (CheckCollisionPointRec(mouse, landBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_drawAsLand = true;
-    Rectangle seaBtn = {(float)(startX + 4*75 + gap + 295), (float)(by+10), 70, 30};
-    if (CheckCollisionPointRec(mouse, seaBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_drawAsLand = false;
-    // Draw / Pan toggle
-    Rectangle modeBtn = {(float)(startX + 4*75 + gap + 380), (float)(by+10), 90, 30};
-    if (CheckCollisionPointRec(mouse, modeBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_isPanMode = !m_isPanMode;
+    if (CheckCollisionPointRec(mouse, r.land) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_drawAsLand = true;
+    if (CheckCollisionPointRec(mouse, r.sea) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_drawAsLand = false;
+    if (CheckCollisionPointRec(mouse, r.mode) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_isPanMode = !m_isPanMode;
 }
 
 void MapEditor::drawBottomBar() {
@@ -4698,36 +5141,31 @@ void MapEditor::drawBottomBar() {
     DrawRectangle(0, by, m_screenW, m_bottomH, Color{25, 25, 30, 255});
 
     const char* names[] = {"Brush","Rect","Fill","Erase"};
-    int startX = 60, gap = 5, btnW = 70;
-    DrawText(T("Tools"), 10, by + 18, 14, LIGHTGRAY);
+    const BottomBarRects r = bottomBarRects();
+    DrawText(T("Tools"), r.toolsLabelX, by + 18, 14, LIGHTGRAY);
     for (int i = 0; i < 4; i++) {
-        Rectangle r = {(float)(startX + i*(btnW+gap)), (float)(by + 10), (float)btnW, 30};
+        const Rectangle& br = r.tools[i];
         bool sel = (m_tool == i);
         Color accent = sel ? ACCENT : Color{255,255,255,30};
         Color bg = sel ? ColorAlpha(ACCENT, 0.12f) : BLANK;
-        bool hov = CheckCollisionPointRec(GetMousePosition(), r);
+        bool hov = CheckCollisionPointRec(GetMousePosition(), br);
         if (hov && !sel) bg = Color{255,255,255,10};
-        DrawRectangleRounded(r, 0.1f, 6, bg);
-        DrawRectangleRoundedLines(r, 0.1f, 6, accent);
-        int tw = MeasureText(names[i], 13);
-        DrawText(names[i], (int)(r.x + r.width/2 - tw/2), (int)(r.y + 9), 13, sel ? ACCENT : (hov ? WHITE : LIGHTGRAY));
+        DrawRectangleRounded(br, 0.1f, 6, bg);
+        DrawRectangleRoundedLines(br, 0.1f, 6, accent);
+        int tw = MeasureText(T(names[i]), 13);
+        DrawText(T(names[i]), (int)(br.x + br.width/2 - tw/2), (int)(br.y + 9), 13,
+                 sel ? ACCENT : (hov ? WHITE : LIGHTGRAY));
     }
 
-    DrawText(T("Size"), startX + 4*75 + gap + 50, by+18, 13, LIGHTGRAY);
-    Rectangle slider = {(float)(startX + 4*75 + gap + 80), (float)(by + 17), 120, 14};
-    DrawRectangleRounded(slider, 0.3f, 4, Color{50,50,60,255});
-    Rectangle fill = {slider.x, slider.y, slider.width * m_brushSize / BRUSH_MAX, slider.height};
+    DrawText(T("Size"), r.sizeLabelX, by + 18, 13, LIGHTGRAY);
+    DrawRectangleRounded(r.slider, 0.3f, 4, Color{50,50,60,255});
+    Rectangle fill = {r.slider.x, r.slider.y, r.slider.width * m_brushSize / BRUSH_MAX, r.slider.height};
     if (fill.width > 0) DrawRectangleRounded(fill, 0.3f, 4, ACCENT);
-    DrawText(TextFormat("%d", m_brushSize), (int)(slider.x + slider.width + 8), by+18, 13, WHITE);
+    DrawText(TextFormat("%d", m_brushSize), (int)(r.slider.x + r.slider.width + 8), by + 18, 13, WHITE);
 
-    // Land / Sea toggle
-    Rectangle landBtn = {(float)(startX + 4*75 + gap + 220), (float)(by+10), 70, 30};
-    Rectangle seaBtn = {(float)(startX + 4*75 + gap + 295), (float)(by+10), 70, 30};
-    drawButton("Land", landBtn, m_drawAsLand, 14);
-    drawButton("Sea", seaBtn, !m_drawAsLand, 14);
-    // Draw / Pan toggle
-    Rectangle modeBtn = {(float)(startX + 4*75 + gap + 380), (float)(by+10), 90, 30};
-    drawButton(m_isPanMode ? "Pan" : "Draw", modeBtn, false, 14);
+    drawButton(T("Land"), r.land, m_drawAsLand, 14);
+    drawButton(T("Sea"), r.sea, !m_drawAsLand, 14);
+    drawButton(m_isPanMode ? T("Pan") : T("Draw"), r.mode, false, 14);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -5524,6 +5962,92 @@ void MapEditor::updateCountryPanel() {
         }
         editY += 4;
 
+        // ── Districts: cut this country up before the game ever starts ──
+        // Layout comes from districtSectionRects(), which drawCountryPanel()
+        // also calls -- see the note on the struct.
+        {
+            const DistrictSectionRects dr = districtSectionRects(px, listW, editY);
+            auto& dv = m_editorDistricts[m_selectedCountry];
+            if (CheckCollisionPointRec(mouse, dr.toggle) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                m_districtBrushActive = !m_districtBrushActive;
+                if (m_districtBrushActive) {
+                    m_countryBrushActive = false;   // the paint modes are mutually exclusive
+                    m_claimsBrushActive = false;
+                    if (dv.empty()) addDistrict(m_selectedCountry);
+                    rebuildDistrictOverlay();
+                } else {
+                    m_editingDistrictName = false;
+                }
+            }
+            if (m_districtBrushActive) {
+                if (CheckCollisionPointRec(mouse, dr.paint) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                    m_districtBrushErase = false;
+                if (CheckCollisionPointRec(mouse, dr.erase) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                    m_districtBrushErase = true;
+            }
+            // The list is always live, brush or no brush: adding, naming,
+            // deleting and setting a share are things you do to districts, not
+            // things you do while painting.
+            {
+                for (size_t i = 0; i < dr.rows.size(); ++i) {
+                    if (CheckCollisionPointRec(mouse, dr.dels[i]) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                        removeDistrict(m_selectedCountry, (int)i);
+                        m_editingDistrictName = false;
+                        rebuildDistrictOverlay();
+                        break;
+                    }
+                    if (CheckCollisionPointRec(mouse, dr.rows[i]) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                        m_selectedDistrict = (int)i;
+                        m_editingDistrictName = false;
+                    }
+                }
+                if (CheckCollisionPointRec(mouse, dr.add) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                    addDistrict(m_selectedCountry);
+
+                auto dIt = m_editorDistricts.find(m_selectedCountry);
+                if (dIt != m_editorDistricts.end() && !dIt->second.empty()) {
+                    m_selectedDistrict = std::clamp(m_selectedDistrict, 0, (int)dIt->second.size() - 1);
+                    EditorDistrict& sd = dIt->second[(size_t)m_selectedDistrict];
+                    if (!m_editingDistrictName && CheckCollisionPointRec(mouse, dr.name) &&
+                        IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                        m_editingDistrictName = true;
+                        m_districtNameText = sd.name;
+                    }
+                    if (m_editingDistrictName) {
+                        int key = GetCharPressed();
+                        while (key > 0) {
+                            Audio::get().playSfx("key_type", 0.12f);
+                            if (key >= 32 && key < 128 && m_districtNameText.size() < 40)
+                                m_districtNameText.push_back((char)key);
+                            key = GetCharPressed();
+                        }
+                        odTextEditKeys(m_districtNameText, 40);
+                        const bool clickedAway = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                                                 !CheckCollisionPointRec(mouse, dr.name);
+                        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE) || clickedAway) {
+                            if (!m_districtNameText.empty() && !IsKeyPressed(KEY_ESCAPE)) {
+                                sd.name = m_districtNameText;
+                                m_dirty = true;
+                            }
+                            m_editingDistrictName = false;
+                        }
+                    }
+                    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) &&
+                        CheckCollisionPointRec(mouse, {dr.share.x - 4, dr.share.y - 4,
+                                                       dr.share.width + 8, dr.share.height + 8})) {
+                        float pct = (GetMouseX() - dr.share.x) / dr.share.width;
+                        pct = std::max(0.0f, std::min(1.0f, pct));
+                        const int nv = (int)std::lround(pct * 100.0f);
+                        if (sd.sharePct != nv) { sd.sharePct = nv; m_dirty = true; }
+                    }
+                }
+            }
+            if (m_editorDistricts.count(m_selectedCountry) &&
+                m_editorDistricts[m_selectedCountry].empty())
+                m_editorDistricts.erase(m_selectedCountry);   // never leave an empty list behind
+            editY = dr.endY;
+        }
+
         Rectangle ethnicBtn = {(float)px, (float)editY, (float)listW, 22};
         if (CheckCollisionPointRec(mouse, ethnicBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
             openCountryEthnicList(m_selectedCountry);
@@ -5753,7 +6277,7 @@ void MapEditor::drawCountryPanel() {
             if (ci != m_editorClaims.end()) claimCount = (int)ci->second.size();
         }
         drawButton(m_claimsBrushActive ? TextFormat(T("Claims Brush: ON (%d)"), claimCount)
-                                       : TextFormat("Claims Brush: OFF (%d)", claimCount),
+                                       : TextFormat(T("Claims Brush: OFF (%d)"), claimCount),
                    claimBtn, m_claimsBrushActive, 11);
         editY += 24;
         if (m_claimsBrushActive) {
@@ -5767,6 +6291,64 @@ void MapEditor::drawCountryPanel() {
             editY += 14;
         }
         editY += 4;
+
+        // ── Districts (layout from districtSectionRects, shared with the
+        //    click pass -- see the note on the struct) ──
+        {
+            const DistrictSectionRects dr = districtSectionRects(px, listW, editY);
+            auto dIt = m_editorDistricts.find(m_selectedCountry);
+            const int dn = (dIt == m_editorDistricts.end()) ? 0 : (int)dIt->second.size();
+            DrawText(TextFormat(T("Districts (%d)"), dn), px, (int)dr.add.y -
+                     (dn > 0 ? 20 * (int)dr.rows.size() + 14 : 14), 12, LIGHTGRAY);
+            {
+                for (size_t i = 0; i < dr.rows.size(); ++i) {
+                    const EditorDistrict& d = dIt->second[i];
+                    const bool sel = ((int)i == m_selectedDistrict);
+                    const Rectangle& row = dr.rows[i];
+                    DrawRectangleRec(row, sel ? Color{45, 45, 60, 255} : Color{25, 25, 35, 255});
+                    if (sel) DrawRectangleLinesEx(row, 1, Color{120, 160, 220, 255});
+                    DrawRectangle((int)row.x + 3, (int)row.y + 3, 12, 12, Color{d.r, d.g, d.b, 255});
+                    DrawText(d.name.c_str(), (int)row.x + 20, (int)row.y + 4, 10, WHITE);
+                    const char* cnt = TextFormat("%d", (int)d.provinces.size());
+                    DrawText(cnt, (int)(row.x + row.width) - MeasureText(cnt, 10) - 4,
+                             (int)row.y + 4, 10, Color{160, 160, 175, 255});
+                    drawButton("x", dr.dels[i], false, 10);
+                }
+                if (dn > (int)DISTRICT_ROWS_MAX)
+                    DrawText(TextFormat(T("+%d more"), dn - (int)DISTRICT_ROWS_MAX),
+                             px, (int)dr.add.y - 12, 9, GRAY);
+                drawButton(T("+ New district"), dr.add, false, 11);
+                if (dn > 0) {
+                    const EditorDistrict& sd =
+                        dIt->second[(size_t)std::clamp(m_selectedDistrict, 0, dn - 1)];
+                    const bool ed = m_editingDistrictName;
+                    DrawRectangleRec(dr.name, ed ? Color{35, 35, 50, 255} : Color{25, 25, 35, 255});
+                    DrawRectangleLinesEx(dr.name, 1, Color{70, 70, 90, 255});
+                    DrawText(ed ? (m_districtNameText + "_").c_str() : sd.name.c_str(),
+                             (int)dr.name.x + 5, (int)dr.name.y + 5, 11, WHITE);
+                    // 0 means "no claim of its own"; the game splits what is
+                    // left evenly, so say that rather than showing "0%".
+                    DrawText(sd.sharePct > 0 ? TextFormat(T("Budget share: %d%%"), sd.sharePct)
+                                             : T("Budget share: even"),
+                             px, (int)dr.share.y - 14, 11, LIGHTGRAY);
+                    DrawRectangleRec(dr.share, Color{40, 40, 55, 255});
+                    DrawRectangle((int)dr.share.x, (int)dr.share.y,
+                                  (int)(dr.share.width * (float)sd.sharePct / 100.0f),
+                                  (int)dr.share.height, Color{120, 160, 220, 255});
+                }
+            }
+            drawButton(m_districtBrushActive ? T("Painting districts")
+                                             : T("Paint districts"),
+                       dr.toggle, m_districtBrushActive, 11);
+            if (m_districtBrushActive) {
+                drawButton(T("Assign"), dr.paint, !m_districtBrushErase, 11);
+                drawButton(T("Clear"),  dr.erase, m_districtBrushErase, 11);
+                DrawText(m_districtBrushErase ? T("Drag over provinces to take them out")
+                                              : T("Drag over provinces to add them"),
+                         px, dr.endY - 18, 9, GRAY);
+            }
+            editY = dr.endY;
+        }
 
         // ── Ethnic Relations: see every minority this country has and set
         //    how it treats each one (click handling in updateCountryPanel) ──
@@ -7043,8 +7625,17 @@ void MapEditor::drawScriptPanel() {
     };
     if (drawButton("+ Script", nsBtn, false, 12) && inputOk) {
         std::string n = freshName("script_");
-        m_scripts[n] = "#OD/MapEngine/1\n# Entry script: runs when the map loads.\n"
-                       "# waitUntil <cond> suspends until the condition holds (checked each turn).\n\n";
+        // THE LATEST VERSION, not the oldest. A new script was starting life
+        // pinned to version 1, so every statement added since -- print, for,
+        // try, wait, `set x to`, foreach district -- was refused in a file the
+        // editor had just created, and the author's first experience of the
+        // language was a lint error on a line the docs told them to write.
+        // Pinning is for a script that needs an old language, not for a blank
+        // one.
+        m_scripts[n] = "#OD/MapEngine/" + std::to_string(ScriptEngine::ENGINE_VERSION) +
+                       "\n# Entry script: runs when the map loads.\n"
+                       "# waitUntil <cond> suspends until the condition holds (checked each turn).\n"
+                       "# wait <n> turns pauses for that many turns.\n\n";
         trackChange();
         openScriptEditor(n);
     }
@@ -7531,8 +8122,8 @@ void MapEditor::lintScriptEditor() {
             if (norm != line) { line = norm; tokens = tokenizeStatic(line); if (tokens.empty()) continue; }
         }
         const std::string& kw = tokens[0];
-        if (declaredVersion < 2 && ScriptEngine::isVersion2StatementPublic(kw)) {
-            m_scriptEdErrors[i] = "'" + kw + "' needs #OD/MapEngine/2";
+        if (const int need = ScriptEngine::statementMinVersion(kw); declaredVersion < need) {
+            m_scriptEdErrors[i] = "'" + kw + "' needs #OD/MapEngine/" + std::to_string(need);
             continue;
         }
 
