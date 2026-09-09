@@ -55,6 +55,8 @@ Activity describe(Where where, const std::string& scenarioRaw,
     const std::string scenario = clean(scenarioRaw);
     const std::string country = clean(countryRaw);
     Activity a;
+    // No asset key by default: Discord then shows the application's own icon,
+    // which is already uploaded. See withAsset.
 
     switch (where) {
         case Where::MapEditor:
@@ -82,6 +84,15 @@ Activity describe(Where where, const std::string& scenarioRaw,
             break;
     }
     a.details = "In the main menu";
+    return a;
+}
+
+Activity withAsset(Activity a, const std::string& key, const std::string& tooltip) {
+    if (key.empty()) return a;
+    a.largeImage = clean(key);
+    // The same picture whatever the player is doing: it identifies the GAME,
+    // and an icon that changes per screen reads as a different game each time.
+    a.largeText = clean(tooltip);
     return a;
 }
 

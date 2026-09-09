@@ -319,5 +319,16 @@ void Game::pumpDiscordPresence() {
         where = presence::Where::Multiplayer;
     }
 
-    m_discord.update(presence::describe(where, scenario, country), GetTime());
+    m_discord.update(presence::withAsset(presence::describe(where, scenario, country),
+                                         m_config.discordLargeImage, "OpenDoctrines"),
+                     GetTime());
+    if (std::getenv("OD_DISCORD_TRACE")) {
+        static double sayAt = 0.0;
+        if (GetTime() > sayAt) {
+            sayAt = GetTime() + 3.0;
+            fprintf(stderr, "[DISCORD] connected=%d ready=%d status=%s\n",
+                    (int)m_discord.connected(), (int)m_discord.ready(),
+                    m_discord.status().empty() ? "-" : m_discord.status().c_str());
+        }
+    }
 }

@@ -677,6 +677,13 @@ set(OD_ACCOUNT_ISSUER "" CACHE STRING
     "Account service URL baked into the build (empty = no sign-in offered)")
 message(STATUS "Account service: ${OD_ACCOUNT_ISSUER}")
 
+# The Discord application id for rich presence. Public -- it is in every
+# presence payload -- and baked so a downloaded build has presence without the
+# player creating an application of their own. Empty means no presence.
+set(OD_DISCORD_APP_ID "" CACHE STRING
+    "Discord application id baked into the build (empty = no rich presence)")
+message(STATUS "Discord presence: ${OD_DISCORD_APP_ID}")
+
 # Into a generated header rather than a -D; see src/AccountIssuer.h.in for
 # what went wrong when it was a define.
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/AccountIssuer.h.in"

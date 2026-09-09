@@ -17,3 +17,10 @@
 // compiler reads directly. Nothing splits it, nothing escapes it, and there
 // is no shell in the path at all.
 #define OD_ACCOUNT_ISSUER_BAKED "@OD_ACCOUNT_ISSUER@"
+
+// The Discord application, for rich presence. Baked for the same reason and by
+// the same route: config.json is not in the repository, so an id left only
+// there works for whoever set it and for nobody who downloads the game. It is a
+// PUBLIC identifier -- it travels in every presence payload -- so unlike a
+// secret it belongs in the build.
+#define OD_DISCORD_APP_ID_BAKED "@OD_DISCORD_APP_ID@"

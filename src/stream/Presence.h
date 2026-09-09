@@ -37,7 +37,41 @@ enum class Where {
 struct Activity {
     std::string details;   ///< the bold line: what they are doing
     std::string state;     ///< the line under it: the particulars
+
+    /**
+     * The picture beside the two lines.
+     *
+     * This is an ASSET KEY, not a file or a URL: the image is uploaded once to
+     * the Discord application and referenced by the name it was given there.
+     * A client cannot send Discord a picture, which is the whole reason rich
+     * presence needs an application at all -- and is why game detection alone
+     * shows Discord's grey placeholder however good the game's own icon is.
+     *
+     * Empty means no image, which is what happens until somebody uploads one.
+     */
+    std::string largeImage;
+    /// The tooltip on that picture. Wasted if largeImage is empty.
+    std::string largeText;
 };
+
+/**
+ * The asset key to send, or empty for none.
+ *
+ * ── EMPTY IS THE RIGHT DEFAULT, AND IT IS NOT LAZINESS ──
+ *
+ * An activity that names NO asset makes Discord fall back to the application's
+ * own icon -- the one uploaded on the General Information page, which every
+ * application has because Discord asks for it while you are creating one. An
+ * activity that names an asset key which has not been uploaded gets nothing at
+ * all: checked against a real application, whose /assets endpoint answered `[]`
+ * while its icon was set.
+ *
+ * So sending nothing shows the logo, and sending "logo" shows a blank until
+ * somebody has been to a second page and uploaded the same picture again. The
+ * default is therefore empty, and this exists for whoever wants a DIFFERENT
+ * picture from the app icon.
+ */
+Activity withAsset(Activity a, const std::string& key, const std::string& tooltip);
 
 /**
  * Build the activity.

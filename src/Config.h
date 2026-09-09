@@ -13,6 +13,7 @@ struct Color;
  * whether or not its translation unit was built with the definition.
  */
 const std::string& bakedAccountIssuer();
+const std::string& bakedDiscordAppId();
 
 struct Config {
     float flySpeed = 2.0f;
@@ -57,7 +58,16 @@ struct Config {
      * starts announcing that on first run has decided something on the player's
      * behalf. Made at discord.com/developers/applications.
      */
-    std::string discordAppId;
+    std::string discordAppId = bakedDiscordAppId();
+
+    /**
+     * A Rich Presence art asset key, or empty to use the application's icon.
+     *
+     * Empty is right for almost everybody: Discord falls back to the icon the
+     * application already has. Set this only to show a DIFFERENT picture, and
+     * only after uploading it under Rich Presence -> Art Assets.
+     */
+    std::string discordLargeImage;
 
     std::string streamChatChannel;
     float       streamChatSeconds = 30.0f;

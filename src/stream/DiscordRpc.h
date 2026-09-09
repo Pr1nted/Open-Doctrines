@@ -60,6 +60,9 @@ public:
     void clear();
 
     bool connected() const;
+    /// True once Discord has answered READY. Connected but not ready means
+    /// it rejected the application id; see status().
+    bool ready() const;
 
     /// For diagnostics and the settings screen; empty when all is well.
     std::string status() const;

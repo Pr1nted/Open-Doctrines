@@ -89,6 +89,38 @@ int main() {
         ok(wellFormed, "and is not cut in the middle of a character");
     }
 
+    section("the picture");
+    {
+        // Game detection shows Discord's grey placeholder however good the
+        // game's icon is; only an uploaded ASSET KEY gets the real logo.
+        // MEASURED AGAINST A REAL APPLICATION: its /assets endpoint answered
+        // `[]` while its icon was set, so naming an un-uploaded key shows
+        // nothing and naming none shows the app icon.
+        auto a = presence::describe(Where::Menu, "", "");
+        ok(a.largeImage.empty(), "no key by default, so Discord uses the app's own icon");
+        a = presence::withAsset(a, "logo", "OpenDoctrines");
+        ok(a.largeImage == "logo", "a key is used when one is configured");
+        ok(a.largeText == "OpenDoctrines", "with a tooltip");
+        auto b = presence::withAsset(presence::describe(Where::MapEditor, "Baltic", ""),
+                                     "", "OpenDoctrines");
+        ok(b.largeImage.empty(), "and an empty key adds nothing");
+    }
+    {
+        presence::Activity a;
+        a.details = "x";
+        a.largeImage = "logo";
+        a.largeText = "OpenDoctrines";
+        const std::string j = discordrpc::activityPayload(a, 1, 0, "n");
+        ok(j.find("\"large_image\":\"logo\"") != std::string::npos, "the key is sent");
+        ok(j.find("\"large_text\":\"OpenDoctrines\"") != std::string::npos, "and the tooltip");
+
+        presence::Activity none;
+        none.details = "x";
+        const std::string j2 = discordrpc::activityPayload(none, 1, 0, "n");
+        ok(j2.find("assets") == std::string::npos,
+           "and with no key, no assets object at all -- an empty one shows a placeholder");
+    }
+
     section("the JSON Discord is actually sent");
     {
         const auto a = presence::describe(Where::Playing, "1939", "France");

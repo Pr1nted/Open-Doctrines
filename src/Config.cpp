@@ -21,6 +21,14 @@
 #define OD_ACCOUNT_ISSUER_BAKED ""
 #endif
 
+// The same fallback, and it is not optional: several test targets compile
+// Config.cpp without the generated header on their include path, and a missing
+// define is a compile error rather than an empty presence. Empty means no
+// presence, which is the right answer for a build that was never given an id.
+#ifndef OD_DISCORD_APP_ID_BAKED
+#define OD_DISCORD_APP_ID_BAKED ""
+#endif
+
 // AN EXTERNAL SYMBOL, not a bare literal.
 //
 // A plain string literal lives in a mergeable section, and on Linux this one
@@ -34,6 +42,15 @@ extern "C" const char od_account_issuer[] = OD_ACCOUNT_ISSUER_BAKED;
 const std::string& bakedAccountIssuer() {
     static const std::string kIssuer = od_account_issuer;
     return kIssuer;
+}
+
+// Same shape, same reasoning: a named array with external linkage, so nothing
+// folds it into a neighbouring literal.
+extern "C" const char od_discord_app_id[] = OD_DISCORD_APP_ID_BAKED;
+
+const std::string& bakedDiscordAppId() {
+    static const std::string kId = od_discord_app_id;
+    return kId;
 }
 
 static float findFloat(const std::string& json, const std::string& key, float def) {
@@ -140,7 +157,10 @@ bool Config::load(const std::string& path) {
     fullscreen = findBool(json, "fullscreen", false);
     showActualFlags = findBool(json, "showActualFlags", true);
     streamSafe      = findBool(json, "streamSafe", false);
-    discordAppId      = findConfigString(json, "discordAppId", "");
+    // A value in config.json still wins, so a fork can point at its own
+    // application without rebuilding.
+    discordAppId      = findConfigString(json, "discordAppId", bakedDiscordAppId());
+    discordLargeImage = findConfigString(json, "discordLargeImage", "");
     streamChatChannel = findConfigString(json, "streamChatChannel", "");
     streamChatSeconds = findFloat(json, "streamChatSeconds", 30.0f);
     language = findConfigString(json, "language", "en");
@@ -287,6 +307,7 @@ bool Config::save(const std::string& path) {
     file << "  \"showActualFlags\": " << (showActualFlags ? "true" : "false") << ",\n";
     file << "  \"streamSafe\": " << (streamSafe ? "true" : "false") << ",\n";
     file << "  \"discordAppId\": \"" << discordAppId << "\",\n";
+    file << "  \"discordLargeImage\": \"" << discordLargeImage << "\",\n";
     file << "  \"streamChatChannel\": \"" << streamChatChannel << "\",\n";
     file << "  \"streamChatSeconds\": " << streamChatSeconds << ",\n";
     file << "  \"language\": \"" << language << "\",\n";

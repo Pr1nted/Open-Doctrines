@@ -1,6 +1,7 @@
 #include "DiscordRpc.h"
 
 #include <cstdio>
+#include <cerrno>
 #include <ctime>
 #include <cstdlib>
 #include <cstring>
@@ -61,6 +62,15 @@ std::string activityPayload(const presence::Activity& a, long long pid,
     // actually read off a presence.
     if (startedAt > 0)
         j += ",\"timestamps\":{\"start\":" + std::to_string(startedAt) + "}";
+    // Assets are omitted entirely when there is no key: an "assets" object with
+    // an empty large_image makes Discord show its own placeholder rather than
+    // nothing, which looks like the game asked for the wrong picture.
+    if (!a.largeImage.empty()) {
+        j += ",\"assets\":{\"large_image\":\"" + jsonEscape(a.largeImage) + "\"";
+        if (!a.largeText.empty())
+            j += ",\"large_text\":\"" + jsonEscape(a.largeText) + "\"";
+        j += "}";
+    }
     j += "}}}";
     return j;
 }
@@ -136,7 +146,100 @@ struct Rpc::Impl {
     void disconnect() {
         if (fd >= 0) { ::close(fd); fd = -1; }
         lastSent.clear();
+        inbox.clear();
     }
+
+    std::string inbox;   // partial frames, between reads
+
+    /**
+     * Read whatever Discord has said, and notice when it is a refusal.
+     *
+     * The first version never read at all. It could therefore not tell a
+     * WORKING connection from one Discord had already rejected -- a wrong
+     * application id looked exactly like success, for ever, with the presence
+     * silently absent. Discord answers a bad client_id with an ERROR dispatch
+     * and then closes, so the difference is one read away.
+     *
+     * Non-blocking: a game must never wait on this.
+     */
+    void readReplies() {
+        if (fd < 0) return;
+        char buf[2048];
+        for (;;) {
+            const ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+            if (n > 0) { inbox.append(buf, (size_t)n); continue; }
+            if (n == 0) {                       // Discord hung up
+                status = "Discord closed the connection.";
+                disconnect();
+                return;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            disconnect();
+            return;
+        }
+
+        while (inbox.size() >= 8) {
+            uint32_t op = 0, len = 0;
+            std::memcpy(&op, inbox.data(), 4);
+            std::memcpy(&len, inbox.data() + 4, 4);
+            if (len > (1u << 20)) { disconnect(); return; }   // not a frame
+            if (inbox.size() < 8 + len) break;
+            const std::string body = inbox.substr(8, len);
+            inbox.erase(0, 8 + len);
+
+            if (op == kOpClose) {
+                // Carries Discord's own words, which are the only useful thing
+                // to show: "Invalid Client ID" is a fixable mistake and a
+                // generic failure is not.
+                status = describeError(body);
+                disconnect();
+                return;
+            }
+            const std::string evt = fieldOf(body, "evt");
+            if (evt == "ERROR") {
+                status = describeError(body);
+                continue;
+            }
+            if (evt == "READY") {
+                ready = true;
+                status.clear();
+            }
+        }
+    }
+
+    /**
+     * The value of a top-level string field, whitespace and all.
+     *
+     * Written because matching the literal "\"evt\":\"READY\"" depends on
+     * Discord emitting compact JSON. It does -- which is why that worked
+     * against the real client and failed against a stand-in whose json.dumps
+     * put a space after the colon. A matcher that only works because of
+     * somebody else's formatting is a matcher waiting to break.
+     */
+    static std::string fieldOf(const std::string& body, const std::string& key) {
+        const std::string needle = "\"" + key + "\"";
+        size_t at = body.find(needle);
+        if (at == std::string::npos) return {};
+        at += needle.size();
+        while (at < body.size() && (body[at] == ' ' || body[at] == '\t')) ++at;
+        if (at >= body.size() || body[at] != ':') return {};
+        ++at;
+        while (at < body.size() && (body[at] == ' ' || body[at] == '\t')) ++at;
+        if (at >= body.size() || body[at] != '"') return {};
+        ++at;
+        const size_t end = body.find('"', at);
+        if (end == std::string::npos) return {};
+        return body.substr(at, end - at);
+    }
+
+    static std::string describeError(const std::string& body) {
+        // The message field, without a JSON parser on a socket -- the same
+        // reasoning as src/net/HttpClient.h.
+        const std::string msg = fieldOf(body, "message");
+        return msg.empty() ? "Discord refused the connection." : msg;
+    }
+
+    bool ready = false;
 
     bool connect() {
         for (const std::string& path : candidatePaths()) {
@@ -179,11 +282,13 @@ void Rpc::configure(const std::string& appId) {
 }
 
 bool Rpc::connected() const { return m_impl->fd >= 0; }
+bool Rpc::ready() const { return m_impl->ready; }
 std::string Rpc::status() const { return m_impl->status; }
 
 void Rpc::update(const presence::Activity& activity, double now) {
     if (m_impl->appId.empty()) return;
 
+    m_impl->readReplies();
     if (m_impl->fd < 0) {
         // Discord not running is the ordinary case, not a failure. Retried
         // slowly and silently: somebody who opens Discord halfway through a
@@ -192,8 +297,22 @@ void Rpc::update(const presence::Activity& activity, double now) {
         if (now < m_impl->retryAt) return;
         m_impl->retryAt = now + 30.0;
         if (!m_impl->connect()) return;
+        m_impl->ready = false;
         m_impl->startedAt = (long long)::time(nullptr);
     }
+
+    // ── NOTHING BEFORE READY ──
+    //
+    // connect() only SENDS the handshake; Discord answers a moment later. The
+    // first version fell straight through and wrote SET_ACTIVITY in the same
+    // call -- before the handshake had been answered. Discord discards an
+    // activity sent then, and the dedup below meant it was never sent again:
+    // the connection was healthy, `ready` went true, and the presence was
+    // simply never there.
+    //
+    // Found against the real client, not the stand-in -- the stand-in never
+    // replied READY, so this path did not exist in the test.
+    if (!m_impl->ready) return;
 
     const std::string payload =
         activityPayload(activity, (long long)::getpid(), m_impl->startedAt, "od-presence");

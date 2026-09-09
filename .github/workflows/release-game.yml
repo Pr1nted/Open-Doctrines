@@ -108,7 +108,7 @@ jobs:
         # wrong for a release, which would then only be reproducible against
         # whatever that branch was on the day. Bump this to the tag a release is
         # meant to carry; see the option's own comment in CMakeLists.txt.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.4.1"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.4.1"
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
@@ -181,6 +181,34 @@ jobs:
             exit 1
           fi
           echo "account service found in:"
+          echo "$found"
+
+      # And the same guard for the Discord application id, for the same reason
+      # the one above exists: config.json is user data and is never packaged,
+      # so a release that loses this flag ships a game whose rich presence is
+      # simply absent for every player -- while working perfectly on the
+      # machine of whoever has it in their own config, which is the way this
+      # kind of loss stays invisible.
+      - name: The build carries the Discord application id
+        shell: bash
+        run: |
+          set -e
+          appid="1547303703370014830"
+          # LC_ALL=C for the same reason as above: GNU grep in a UTF-8 locale
+          # can decline to match inside a binary whose bytes are not UTF-8.
+          # -a, as the issuer guard above does. WITHOUT it this finds nothing
+          # in a binary and fails a release that is perfectly correct: tried
+          # locally on a build that demonstrably contained the id, and plain
+          # `grep -l` reported it missing while `grep -la` found it.
+          found=$(LC_ALL=C grep -rla "$appid" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No Discord app id in ${{ matrix.artifact }}::This \
+            build does not contain $appid, so rich presence would be missing for \
+            every player who downloads it. Check the -DOD_DISCORD_APP_ID on the \
+            configure step."
+            exit 1
+          fi
+          echo "Discord application id found in:"
           echo "$found"
 
       # The same guard, for the same reason, on the other flag this configure
@@ -276,6 +304,7 @@ jobs:
           # Same reason as the desktop configure above.
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release \
             -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
+            -DOD_DISCORD_APP_ID=1547303703370014830
           emmake cmake --build build-web -j 4
 
       - name: Package
