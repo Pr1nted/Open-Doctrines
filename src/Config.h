@@ -49,6 +49,16 @@ struct Config {
      * The channel is a public name, not a credential -- the reader is anonymous
      * and can only read. See src/stream/IrcParse.h.
      */
+    /**
+     * The Discord application id for rich presence. Empty means no presence.
+     *
+     * Empty by DEFAULT, like the account service: presence is published under
+     * somebody's name to everybody they share a server with, and a game that
+     * starts announcing that on first run has decided something on the player's
+     * behalf. Made at discord.com/developers/applications.
+     */
+    std::string discordAppId;
+
     std::string streamChatChannel;
     float       streamChatSeconds = 30.0f;
     /**

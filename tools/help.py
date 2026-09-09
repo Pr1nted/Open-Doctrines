@@ -57,6 +57,11 @@ GROUPS = [
         # Concurrency gate for game processes: each spikes ~2 GB loading the
         # map, and four at once is what put a 16 GB machine into swap.
         "odlock.py",
+        # Follows a long run's log until it finishes, and ALWAYS takes its tail
+        # down again. The hand-typed version of this leaked one `tail -f` per
+        # run whenever the waiting shell was killed first -- 155 of them had
+        # accumulated on one machine, each following a log that ended days ago.
+        "watchlog.sh",
     ]),
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",

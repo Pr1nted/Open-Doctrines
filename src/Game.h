@@ -4,6 +4,7 @@
 #include "net/Announcements.h"
 #include "stream/ChatReader.h"
 #include "stream/ChatVote.h"
+#include "stream/DiscordRpc.h"
 #include "stream/OverlayFeed.h"
 #include "util/LoadLog.h"
 #include "comms/Transmission.h"
@@ -5427,6 +5428,11 @@ private:
     void drawChatVotePanel(int x, int y, int w);
     /// Rewrite overlay.txt / overlay.json for OBS. See stream/OverlayFeed.h.
     void writeOverlayFeed();
+    /// Tell Discord what the player is doing. See stream/Presence.h.
+    void pumpDiscordPresence();
+    discordrpc::Rpc m_discord;
+    /// The world's own name, for the presence line. Never the save path.
+    std::string m_currentWorldName;
     std::vector<chatvote::Option> buildChatOptions(int cid) const;
 
     std::unique_ptr<chatread::Reader> m_chatReader;

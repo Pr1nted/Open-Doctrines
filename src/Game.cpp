@@ -2371,6 +2371,8 @@ void Game::run() {
         // Chat's socket, pumped every frame. Does nothing until a streamer has
         // pointed it at a channel; see Game_ChatPlays.cpp.
         pumpChatPlays();
+        // What Discord shows under this player's name.
+        pumpDiscordPresence();
         // The main-menu board: asks the service once per run, and collects the
         // reply whenever it lands. No service configured or no internet means
         // no board, which is the whole of the offline behaviour.

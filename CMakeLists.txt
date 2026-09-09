@@ -892,6 +892,8 @@ set(GAME_SOURCES
     src/stream/ChatReader.cpp
     src/stream/OverlayFeed.cpp
     src/stream/JoinLink.cpp
+    src/stream/Presence.cpp
+    src/stream/DiscordRpc.cpp
     src/Game_ChatPlays.cpp
     src/Game_Announcements.cpp
     src/Game_AdminAnnounce.cpp
@@ -2048,6 +2050,11 @@ endif()
 # --- twitch chat lines ---
 # --- obs overlay feed ---
 # --- stream join links ---
+# --- discord presence text ---
+add_executable(PresenceTest EXCLUDE_FROM_ALL tests/presence_test.cpp
+               src/stream/Presence.cpp src/stream/DiscordRpc.cpp)
+target_include_directories(PresenceTest PRIVATE src tests)
+
 add_executable(JoinLinkTest EXCLUDE_FROM_ALL tests/join_link_test.cpp
                src/stream/JoinLink.cpp)
 target_include_directories(JoinLinkTest PRIVATE src tests)

@@ -3508,6 +3508,11 @@ void Game::startNewGame(const std::string& mapName) {
 }
 
 void Game::startNewGameWithName(const std::string& mapName, const std::string& worldName) {
+    // The name Discord shows. Set at the one door every new world comes
+    // through, and deliberately the WORLD's name rather than a file path --
+    // a path carries the player's real name and is read by everybody in every
+    // server they are in. See src/stream/Presence.h.
+    m_currentWorldName = worldName.empty() ? mapName : worldName;
     // Cleared here rather than trusted to be false: this is the one door every
     // new world comes through, and startTutorial sets the flag again straight
     // after calling it. The AI switch goes with it -- a real game played after
@@ -3651,6 +3656,16 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
 }
 
 void Game::startLoadedGame(const std::string& saveName) {
+    // The save's own NAME, not its path: a path is "/Users/<real name>/...".
+    // Stripped of its directory and extension for the same reason.
+    {
+        std::string n = saveName;
+        const size_t slash = n.find_last_of("/\\");
+        if (slash != std::string::npos) n = n.substr(slash + 1);
+        const size_t dot = n.rfind(".odsv");
+        if (dot != std::string::npos) n = n.substr(0, dot);
+        m_currentWorldName = n;
+    }
     m_tutorialMode = false;   // a real world, whatever the last one was
     AISystem::s_tutorialAI = false;
     unloadGameData();

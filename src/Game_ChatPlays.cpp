@@ -291,3 +291,33 @@ bool Game::handleJoinUrl(const std::string& url) {
     m_mpCodeField = code;
     return true;
 }
+
+// ─────────────────────────────────────────────────────── discord presence ──
+//
+// One place decides what the player is doing; Presence.h decides how to say it
+// and DiscordRpc.cpp decides how to send it. Neither of those knows about the
+// game, and this knows nothing about sockets or wording.
+
+void Game::pumpDiscordPresence() {
+    m_discord.configure(m_config.discordAppId);
+    if (m_config.discordAppId.empty()) return;
+
+    presence::Where where = presence::Where::Menu;
+    std::string scenario, country;
+
+    if (m_currentScreen == SCREEN_MAP_EDITOR) {
+        where = presence::Where::MapEditor;
+        scenario = modEditorMapName();
+    } else if (m_currentScreen == SCREEN_PLAYING) {
+        where = presence::Where::Playing;
+        // The world's own name, which is what a player would call it -- the
+        // save PATH is never used here: it carries a real name. See Presence.h.
+        scenario = m_currentWorldName;
+        if (const Country* me = m_countries.getCountry(m_playerCountryId))
+            country = me->name;
+    } else if (m_currentScreen == SCREEN_MULTIPLAYER) {
+        where = presence::Where::Multiplayer;
+    }
+
+    m_discord.update(presence::describe(where, scenario, country), GetTime());
+}

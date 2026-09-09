@@ -140,6 +140,7 @@ bool Config::load(const std::string& path) {
     fullscreen = findBool(json, "fullscreen", false);
     showActualFlags = findBool(json, "showActualFlags", true);
     streamSafe      = findBool(json, "streamSafe", false);
+    discordAppId      = findConfigString(json, "discordAppId", "");
     streamChatChannel = findConfigString(json, "streamChatChannel", "");
     streamChatSeconds = findFloat(json, "streamChatSeconds", 30.0f);
     language = findConfigString(json, "language", "en");
@@ -285,6 +286,7 @@ bool Config::save(const std::string& path) {
     file << "  \"fullscreen\": " << (fullscreen ? "true" : "false") << ",\n";
     file << "  \"showActualFlags\": " << (showActualFlags ? "true" : "false") << ",\n";
     file << "  \"streamSafe\": " << (streamSafe ? "true" : "false") << ",\n";
+    file << "  \"discordAppId\": \"" << discordAppId << "\",\n";
     file << "  \"streamChatChannel\": \"" << streamChatChannel << "\",\n";
     file << "  \"streamChatSeconds\": " << streamChatSeconds << ",\n";
     file << "  \"language\": \"" << language << "\",\n";
