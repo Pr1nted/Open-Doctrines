@@ -139,6 +139,9 @@ bool Config::load(const std::string& path) {
     screenH = findInt(json, "screenH", 900);
     fullscreen = findBool(json, "fullscreen", false);
     showActualFlags = findBool(json, "showActualFlags", true);
+    streamSafe      = findBool(json, "streamSafe", false);
+    streamChatChannel = findConfigString(json, "streamChatChannel", "");
+    streamChatSeconds = findFloat(json, "streamChatSeconds", 30.0f);
     language = findConfigString(json, "language", "en");
     uiScale = findFloat(json, "uiScale", 1.0f);
     colourBlindMode = findInt(json, "colourBlindMode", 0);
@@ -198,6 +201,7 @@ bool Config::load(const std::string& path) {
     mailBlacklist     = findConfigStringList(json, "mailBlacklist");
     agePromptOn       = findBool(json, "agePromptOn", false);
     ageAnswer         = (int)findFloat(json, "ageAnswer", 0.0f);
+    lobbyChatShown    = findBool(json, "lobbyChatShown", true);
     llmEnabled        = findBool(json, "llmEnabled", false);
     llmEndpoint       = findConfigString(json, "llmEndpoint", "");
     llmModel          = findConfigString(json, "llmModel", "");
@@ -280,6 +284,9 @@ bool Config::save(const std::string& path) {
     file << "  \"screenH\": " << screenH << ",\n";
     file << "  \"fullscreen\": " << (fullscreen ? "true" : "false") << ",\n";
     file << "  \"showActualFlags\": " << (showActualFlags ? "true" : "false") << ",\n";
+    file << "  \"streamSafe\": " << (streamSafe ? "true" : "false") << ",\n";
+    file << "  \"streamChatChannel\": \"" << streamChatChannel << "\",\n";
+    file << "  \"streamChatSeconds\": " << streamChatSeconds << ",\n";
     file << "  \"language\": \"" << language << "\",\n";
     file << "  \"uiScale\": " << uiScale << ",\n";
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
@@ -329,6 +336,7 @@ bool Config::save(const std::string& path) {
     file << "],\n";
     file << "  \"agePromptOn\": " << (agePromptOn ? "true" : "false") << ",\n";
     file << "  \"ageAnswer\": " << ageAnswer << ",\n";
+    file << "  \"lobbyChatShown\": " << (lobbyChatShown ? "true" : "false") << ",\n";
     file << "  \"llmEnabled\": " << (llmEnabled ? "true" : "false") << ",\n";
     file << "  \"llmEndpoint\": \"" << llmEndpoint << "\",\n";
     file << "  \"llmModel\": \"" << llmModel << "\",\n";

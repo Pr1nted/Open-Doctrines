@@ -29,7 +29,8 @@
 // The consent screen a player sees is correspondingly short, which is the
 // visible half of the same decision.
 
-export const PROVIDER_IDS = ["google", "discord", "github", "itch"] as const;
+export const PROVIDER_IDS =
+    ["google", "discord", "github", "itch", "twitch", "youtube", "kick"] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
 
 export function isProviderId(v: string): v is ProviderId {
@@ -129,6 +130,106 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
             return Number.isFinite(value) && value > 0 ? value : null;
         },
         canCreateAccount: true,
+    },
+    // ── THE STREAMING PLATFORMS ──
+    //
+    // Linked for the same reason the others are -- a way in, and a verified
+    // channel on a profile -- and additionally because a tournament wants to
+    // know whose stream is whose. None of them is allowed to CREATE an account:
+    // see canCreateAccount below.
+    twitch: {
+        id: "twitch",
+        label: "Twitch",
+        authorizeUrl: "https://id.twitch.tv/oauth2/authorize",
+        tokenUrl: "https://id.twitch.tv/oauth2/token",
+        userUrl: "https://id.twitch.tv/oauth2/userinfo",
+        // OIDC, so `openid` alone is enough: the userinfo response carries the
+        // stable id and the channel name, and nothing here wants an email.
+        scope: "openid",
+        // Twitch's OIDC documentation lists client_secret_post and does not
+        // document code_challenge, so this asks for the plain code flow rather
+        // than sending parameters the token endpoint may reject.
+        pkce: false,
+        flow: "code",
+        subjectOf: (u) => (typeof u.sub === "string" ? u.sub : null),
+        suggestedName: (u) =>
+            typeof u.preferred_username === "string" ? u.preferred_username : null,
+        // Twitch does not say when the account was made, so the young-account
+        // check has nothing to work with here.
+        accountCreatedAt: () => null,
+        canCreateAccount: false,
+    },
+    youtube: {
+        id: "youtube",
+        label: "YouTube",
+        // Google's OAuth, because that is what YouTube uses -- but the SUBJECT
+        // is the channel id from the Data API rather than the Google `sub`.
+        // Two reasons: a Google account may hold several channels, and linking
+        // "youtube" must not silently be the same identity as linking "google".
+        authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        tokenUrl: "https://oauth2.googleapis.com/token",
+        userUrl: "https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true",
+        scope: "https://www.googleapis.com/auth/youtube.readonly",
+        pkce: true,
+        flow: "code",
+        subjectOf: (u) => {
+            const items = u.items;
+            if (!Array.isArray(items) || items.length === 0) return null;
+            const first = items[0] as Record<string, unknown>;
+            return typeof first.id === "string" ? first.id : null;
+        },
+        suggestedName: (u) => {
+            const items = u.items;
+            if (!Array.isArray(items) || items.length === 0) return null;
+            const snippet = (items[0] as Record<string, unknown>).snippet;
+            if (!snippet || typeof snippet !== "object") return null;
+            const title = (snippet as Record<string, unknown>).title;
+            return typeof title === "string" ? title : null;
+        },
+        accountCreatedAt: (u) => {
+            const items = u.items;
+            if (!Array.isArray(items) || items.length === 0) return null;
+            const snippet = (items[0] as Record<string, unknown>).snippet;
+            if (!snippet || typeof snippet !== "object") return null;
+            const at = (snippet as Record<string, unknown>).publishedAt;
+            if (typeof at !== "string") return null;
+            const ms = Date.parse(at);
+            return Number.isFinite(ms) ? ms : null;
+        },
+        canCreateAccount: false,
+    },
+    kick: {
+        id: "kick",
+        label: "Kick",
+        authorizeUrl: "https://id.kick.com/oauth/authorize",
+        tokenUrl: "https://id.kick.com/oauth/token",
+        // Called with no query parameters, this answers for the token's own
+        // user.
+        userUrl: "https://api.kick.com/public/v1/users",
+        scope: "user:read",
+        // Kick REQUIRES PKCE: the authorize endpoint mandates code_challenge
+        // and code_challenge_method=S256.
+        pkce: true,
+        flow: "code",
+        subjectOf: (u) => {
+            // { data: [ { user_id: 123, name: "..." } ] }
+            const data = u.data;
+            const row = Array.isArray(data) && data.length > 0
+                ? (data[0] as Record<string, unknown>) : null;
+            const id = row ? row.user_id : u.user_id;
+            // Numeric on the wire; stored as a string like every other subject.
+            if (typeof id === "number" && Number.isFinite(id)) return String(id);
+            return typeof id === "string" && id ? id : null;
+        },
+        suggestedName: (u) => {
+            const data = u.data;
+            const row = Array.isArray(data) && data.length > 0
+                ? (data[0] as Record<string, unknown>) : null;
+            const name = row ? row.name : u.name;
+            return typeof name === "string" ? name : null;
+        },
+        accountCreatedAt: () => null,
+        canCreateAccount: false,
     },
     github: {
         id: "github",

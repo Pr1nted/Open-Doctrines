@@ -83,6 +83,18 @@ struct LobbySettings {
     NetAbsent     absent = NetAbsent::Ai;
 
     /**
+     * Whether players may talk to each other in this game.
+     *
+     * HOST-SIDE ONLY, and deliberately not on the wire. NetLobbyState::decode
+     * ends with r.done(), so appending a field to it makes every older client
+     * reject the whole lobby state rather than ignore one byte -- and a
+     * protocol bump the week of a tournament is a way to lose the tournament.
+     * A client does not need to know: it sends, and a host with chat off drops
+     * the line and tells that one sender why. See src/net/ChatRules.h.
+     */
+    bool chat = true;
+
+    /**
      * Account services this server accepts. Empty means the official one only,
      * which is decided by whoever constructs this rather than in here.
      */

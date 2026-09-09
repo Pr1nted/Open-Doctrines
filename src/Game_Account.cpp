@@ -139,6 +139,9 @@ int accountProvidersWidth(const std::vector<AuthProvider>& all) {
 // openAccountMenu
 // ────────────────────────────────────────────────────────────────────────────
 void Game::openAccountMenu() {
+    // Opening the screen with the id still revealed from before the mode was
+    // turned on would put it back on camera; the reveal is per-visit anyway.
+    if (m_config.streamSafe) m_accountShowId = false;
     m_accountAgreed = m_config.accountAgreed;
     m_currentScreen = SCREEN_ACCOUNT;
     m_accountNickField.clear();
@@ -318,7 +321,27 @@ void Game::updateAccountMenu() {
             if (click) {
                 if (!m_accountShowId) {
                     if (CheckCollisionPointRec(mouse, L.idButton)) {
+                        // ── NOT WHILE THE CAMERA IS ON ──
+                        //
+                        // The account id follows this person across every
+                        // server they have played on; it is the one identifier
+                        // the account system exists to keep local. Copying it
+                        // still works -- the clipboard is not on the stream --
+                        // so a streamer who needs to send it to somebody can,
+                        // without it ever being drawn.
+                        if (m_config.streamSafe) {
+                            m_accountNote = T("Hidden while stream-safe mode is on.");
+                            m_accountNoteTimer = 4.0f;
+                            return;
+                        }
                         m_accountShowId = true;
+                        return;
+                    }
+                    if (m_config.streamSafe &&
+                        CheckCollisionPointRec(mouse, L.idCopy)) {
+                        SetClipboardText(info.id.c_str());
+                        m_accountNote = T("Account ID copied.");
+                        m_accountNoteTimer = 3.0f;
                         return;
                     }
                 } else {

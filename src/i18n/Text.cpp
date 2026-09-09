@@ -134,6 +134,31 @@ std::vector<std::vector<unsigned>> logicalLines(const char* text) {
     return lines;
 }
 
+void utf8Append(std::string& out, int cp) {
+    const unsigned c = (unsigned)cp;
+    if (c < 0x80) { out += (char)c; }
+    else if (c < 0x800) {
+        out += (char)(0xC0 | (c >> 6));
+        out += (char)(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+        out += (char)(0xE0 | (c >> 12));
+        out += (char)(0x80 | ((c >> 6) & 0x3F));
+        out += (char)(0x80 | (c & 0x3F));
+    } else {
+        out += (char)(0xF0 | (c >> 18));
+        out += (char)(0x80 | ((c >> 12) & 0x3F));
+        out += (char)(0x80 | ((c >> 6) & 0x3F));
+        out += (char)(0x80 | (c & 0x3F));
+    }
+}
+
+void utf8PopBack(std::string& out) {
+    if (out.empty()) return;
+    size_t i = out.size() - 1;
+    while (i > 0 && (unsigned char)out[i] >= 0x80 && (unsigned char)out[i] < 0xC0) --i;
+    out.erase(i);
+}
+
 std::string fitToWidth(const std::string& text, int width, int& fontSize, int floorSize) {
     if (width <= 0 || text.empty()) return text;
     if (measureText(text.c_str(), fontSize) <= width) return text;

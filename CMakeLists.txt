@@ -886,7 +886,20 @@ set(GAME_SOURCES
     src/Feedback.cpp
     src/Game_Feedback.cpp
     src/Game_Mail.cpp
+    src/StreamSafe.cpp
+    src/stream/ChatVote.cpp
+    src/stream/IrcParse.cpp
+    src/stream/ChatReader.cpp
+    src/stream/OverlayFeed.cpp
+    src/stream/JoinLink.cpp
+    src/Game_ChatPlays.cpp
+    src/Game_Announcements.cpp
+    src/Game_AdminAnnounce.cpp
     src/Game_Llm.cpp
+    # Threads on desktop, an ASYNCIFY queue in the browser. See its header.
+    src/util/Async.cpp
+    # Hand-run: --llm-letter, a real letter through the real send path.
+    src/Game_LlmLetter.cpp
     src/Game_Moderation.cpp
     src/Game_DevReports.cpp
     src/Mail.cpp
@@ -944,6 +957,7 @@ set(GAME_SOURCES
     src/net/AccountClient.cpp
     src/net/BadgeStyle.cpp
     src/net/Host.cpp
+    src/net/Announcements.cpp
     src/net/HttpClient.cpp
     src/net/JoinTicket.cpp
     src/net/Lobby.cpp
@@ -2012,6 +2026,51 @@ endif()
 # --- lobby rules ---
 # Pure logic: no sockets, no renderer, no game headers. Almost every case is a
 # rule a client must not be able to break by asking nicely.
+# --- lobby chat rules ---
+# Pure: a number and a clock, no sockets. See src/net/ChatRules.h.
+# --- announcement board ---
+# Pure: parses a document, no sockets. The refusals are the point; see the
+# header for why this is a sealed format.
+add_executable(AnnouncementsTest EXCLUDE_FROM_ALL tests/announcements_test.cpp
+               src/net/Announcements.cpp src/net/HttpClient.cpp
+               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(AnnouncementsTest PRIVATE src tests)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_compile_definitions(AnnouncementsTest PRIVATE OD_ENABLE_NET=1)
+    target_link_libraries(AnnouncementsTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
+# --- stream-safe redaction ---
+# Pure string work: what a code and a path look like on camera.
+# --- chat votes ---
+# Chat plays the country. Pure counting: no socket, no game state.
+# --- twitch chat lines ---
+# --- obs overlay feed ---
+# --- stream join links ---
+add_executable(JoinLinkTest EXCLUDE_FROM_ALL tests/join_link_test.cpp
+               src/stream/JoinLink.cpp)
+target_include_directories(JoinLinkTest PRIVATE src tests)
+
+add_executable(OverlayFeedTest EXCLUDE_FROM_ALL tests/overlay_feed_test.cpp
+               src/stream/OverlayFeed.cpp src/StreamSafe.cpp)
+target_include_directories(OverlayFeedTest PRIVATE src tests)
+
+add_executable(IrcParseTest EXCLUDE_FROM_ALL tests/irc_parse_test.cpp
+               src/stream/IrcParse.cpp)
+target_include_directories(IrcParseTest PRIVATE src tests)
+
+add_executable(ChatVoteTest EXCLUDE_FROM_ALL tests/chat_vote_test.cpp
+               src/stream/ChatVote.cpp)
+target_include_directories(ChatVoteTest PRIVATE src tests)
+
+add_executable(StreamSafeTest EXCLUDE_FROM_ALL tests/stream_safe_test.cpp
+               src/StreamSafe.cpp)
+target_include_directories(StreamSafeTest PRIVATE src tests)
+
+add_executable(NetChatTest EXCLUDE_FROM_ALL tests/net_chat_test.cpp)
+target_include_directories(NetChatTest PRIVATE src tests)
+
 add_executable(NetLobbyTest EXCLUDE_FROM_ALL
     tests/net_lobby_test.cpp
     src/net/Lobby.cpp
@@ -2335,16 +2394,26 @@ add_executable(ToolReleaseTest EXCLUDE_FROM_ALL tests/tool_release_test.cpp
                src/net/NetUrl.cpp)
 target_include_directories(ToolReleaseTest PRIVATE src src/net)
 target_compile_definitions(ToolReleaseTest PRIVATE OD_ENABLE_NET=1)
-target_link_libraries(ToolReleaseTest PRIVATE
-                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(ToolReleaseTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 
 add_executable(LlmRoundTripTest EXCLUDE_FROM_ALL tests/llm_roundtrip_test.cpp
                src/llm/Advisor.cpp src/Mail.cpp
                src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
 target_include_directories(LlmRoundTripTest PRIVATE src src/llm)
 target_compile_definitions(LlmRoundTripTest PRIVATE OD_ENABLE_NET=1)
-target_link_libraries(LlmRoundTripTest PRIVATE
-                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(LlmRoundTripTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 
 add_executable(AdvisorTest EXCLUDE_FROM_ALL tests/advisor_test.cpp
                src/llm/Advisor.cpp src/llm/Runner.cpp src/Mail.cpp
@@ -2355,24 +2424,54 @@ target_compile_definitions(AdvisorTest PRIVATE OD_ENABLE_NET=1)
 # The whole of mbedTLS, not just mbedcrypto: TlsSocket needs mbedtls_net_*,
 # which lives in mbedtls proper. Linking only the crypto half compiled fine and
 # failed at the link, which is how this was missed the first time.
-target_link_libraries(AdvisorTest PRIVATE
-                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(AdvisorTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 target_include_directories(MailRulesTest PRIVATE src)
+
+# Needs a running model runner, so NOT in run_all.sh: it measures the MODEL,
+# not us -- whether one actually reaches for the tools that steer a country.
+add_executable(LlmToolsLiveCheck EXCLUDE_FROM_ALL tests/llm_tools_live_check.cpp
+               src/llm/Advisor.cpp src/Mail.cpp
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(LlmToolsLiveCheck PRIVATE src src/llm)
+target_compile_definitions(LlmToolsLiveCheck PRIVATE OD_ENABLE_NET=1)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(LlmToolsLiveCheck PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 
 # Needs the internet, so NOT in run_all.sh. Run by hand after touching connect.
 add_executable(NetLiveCheck EXCLUDE_FROM_ALL tests/net_live_check.cpp
                src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
 target_include_directories(NetLiveCheck PRIVATE src)
 target_compile_definitions(NetLiveCheck PRIVATE OD_ENABLE_NET=1)
-target_link_libraries(NetLiveCheck PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(NetLiveCheck PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 
 add_executable(NetConnectTimeoutTest EXCLUDE_FROM_ALL
                tests/net_connect_timeout_test.cpp
                src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
 target_include_directories(NetConnectTimeoutTest PRIVATE src)
 target_compile_definitions(NetConnectTimeoutTest PRIVATE OD_ENABLE_NET=1)
-target_link_libraries(NetConnectTimeoutTest PRIVATE
-                      MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+# mbedTLS is not built for the browser; these are host-side tests that need
+# real sockets, so on web they simply are not linked. Same guard as
+# NetConnectTest above.
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(NetConnectTimeoutTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
 
 # Only Advisor.cpp: the ordering assertions read constexpr members of AISystem,
 # which need no definition, so this stays a fast pure-logic test rather than

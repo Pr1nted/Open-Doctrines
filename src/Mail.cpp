@@ -58,6 +58,27 @@ Refusal mayWrite(const Rules& rules, bool toIsBot, Lock toLock) {
     return Refusal::None;
 }
 
+Refusal mayWriteToRoom(const Rules& rules, const std::vector<RoomMember>& members) {
+    // The host's switch covers rooms too, and covers them first.
+    if (rules.policy == Policy::Nobody) return Refusal::MailOff;
+    // An empty room is nobody to write to. Not an error the player caused, but
+    // not a letter either.
+    if (members.empty()) return Refusal::MailOff;
+
+    // ONE MEMBER WHO CAN HEAR YOU IS ENOUGH. Delivery walks the room again and
+    // honours each shut door individually, so a letter to a room of five where
+    // one has closed theirs still reaches the other four -- refusing the whole
+    // letter because one person is unavailable would let any member veto the
+    // room.
+    Refusal firstWhy = Refusal::RecipientClosed;
+    for (const RoomMember& m : members) {
+        const Refusal r = mayWrite(rules, m.isBot, m.lock);
+        if (r == Refusal::None) return Refusal::None;
+        firstWhy = r;
+    }
+    return firstWhy;
+}
+
 bool blacklisted(const std::string& body, const std::vector<std::string>& words) {
     if (words.empty()) return false;
     std::string lower = body;
@@ -80,6 +101,10 @@ Refusal check(const std::string& body, const Rules& rules, bool toIsBot, Lock to
     const Refusal who = mayWrite(rules, toIsBot, toLock);
     if (who != Refusal::None) return who;
 
+    return checkBody(body, blacklist);
+}
+
+Refusal checkBody(const std::string& body, const std::vector<std::string>& blacklist) {
     // Trim before judging emptiness: a letter of spaces is an empty letter.
     const size_t first = body.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return Refusal::Empty;

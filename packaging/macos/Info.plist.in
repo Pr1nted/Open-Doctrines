@@ -12,5 +12,17 @@
     <key>LSMinimumSystemVersion</key><string>11.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>CFBundleIconFile</key><string>icon</string>
+    <!-- opendoctrines://join/<code> — a viewer clicking a link from a stream.
+         macOS hands the URL to an already-running copy through the Apple Event
+         that raylib surfaces as a dropped file, and to a cold start as argv;
+         both land in Game::handleJoinUrl. See src/Game_ChatPlays.cpp. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key><string>com.opendoctrines.join</string>
+            <key>CFBundleURLSchemes</key>
+            <array><string>opendoctrines</string></array>
+        </dict>
+    </array>
 </dict>
 </plist>

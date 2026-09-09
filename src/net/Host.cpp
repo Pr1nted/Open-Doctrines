@@ -3,6 +3,8 @@
 #include "HttpClient.h"
 #include "JoinTicket.h"
 #include "ModAttest.h"
+#include "ChatRules.h"
+#include "RateLimit.h"
 #include "WsServer.h"
 
 #include <atomic>
@@ -24,6 +26,21 @@ constexpr long long kAuthTimeoutSeconds = 30;
 long long nowSeconds() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+/**
+ * Monotonic seconds, for things that measure ELAPSED time rather than say when.
+ *
+ * nowSeconds() above is the wall clock: it is the right answer for "is this
+ * ticket expired", and the wrong one for a rate limit. It has one-second
+ * granularity, so every budget in a sub-second window refills by zero or by a
+ * whole second's worth depending on which side of a tick the frame landed; and
+ * it steps when the machine syncs its clock, which on a host left running for a
+ * tournament is a certainty rather than a hypothetical.
+ */
+double nowMonotonic() {
+    return std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 /**
@@ -76,6 +93,14 @@ struct NetHost::Impl {
 
     Config config;
     Lobby  lobby;
+    // Per-peer chat budgets. Lives beside the lobby because the host is the
+    // only thing that can enforce them; the RULE is in ChatRules.h so it can be
+    // tested without a socket. See tests/net_chat_test.cpp.
+    netchat::Gate chatGate;
+    // Every client->server frame passes these. See handlePeerMessage.
+    netrate::PerPeer frameBudget{25.0, 50.0};              // frames per second
+    netrate::PerPeer byteBudget{4.0 * 1024 * 1024,         // bytes per second
+                                16.0 * 1024 * 1024};
 
     std::string errorText;
     std::string code;
@@ -186,6 +211,11 @@ struct NetHost::Impl {
     void handlePeerMessage(uint16_t peerId, const uint8_t* body, size_t size);
     void expirePending();
     void broadcastLobbyInternal();
+    void flushLobbyBroadcast(double now);
+    /// Folded lobby broadcasts. See broadcastLobbyInternal.
+    bool   lobbyDirty = false;
+    double lastLobbyBroadcast = 0.0;
+    static constexpr double kLobbyBroadcastMinGap = 0.25;   // seconds
 };
 
 NetHost::NetHost() : m_impl(std::make_unique<Impl>()) {}
@@ -428,6 +458,11 @@ void NetHost::update() {
 
     impl.expirePending();
     impl.checkLiveness();
+
+    // Any lobby broadcast folded away by the coalescing window goes out here,
+    // on the same thread that handles frames. Nothing is dropped -- this is
+    // what guarantees a burst still ends in exactly one send.
+    impl.flushLobbyBroadcast(nowMonotonic());
 }
 
 // -------------------------------------------------------------- addressing ----
@@ -650,6 +685,9 @@ void NetHost::Impl::checkLiveness() {
             server.closeConn(s.conn, "silent");
             seated.erase(seated.begin() + static_cast<long>(i));
             lobby.disconnect(peerId);
+            chatGate.forget(peerId);
+            frameBudget.forget(peerId);
+            byteBudget.forget(peerId);
             push({NetHostEvent::Kind::PeerLeft, peerId, "lost connection", {}});
             broadcastLobbyInternal();
             continue;
@@ -675,6 +713,9 @@ void NetHost::Impl::handleDisconnected(WsConnId conn) {
     // Disconnected, not evicted: the seat, the country and any orders are kept
     // so the same player can come back to them.
     lobby.disconnect(peerId);
+    chatGate.forget(peerId);   // relay handles are reused; see ChatRules.h
+    frameBudget.forget(peerId);
+    byteBudget.forget(peerId);
     push({NetHostEvent::Kind::PeerLeft, peerId, "", {}});
     broadcastLobbyInternal();
 }
@@ -721,6 +762,30 @@ NetWelcome NetHost::Impl::welcomeFor(const LobbyMember& m) const {
 }
 
 void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size_t size) {
+    // ── A BUDGET IN FRONT OF EVERYTHING, NOT JUST CHAT ──
+    //
+    // Chat got a limit because it is broadcast. The worse case had none: a
+    // MALFORMED Orders frame is the cheapest thing a client can send -- it
+    // fails to decode, is recorded, and used to broadcast the whole lobby to
+    // every peer. That particular fan-out is coalesced now, but the underlying
+    // hole was that nothing counted frames at all, so a peer could drive any
+    // handler on this switch as fast as it could write, decode cost and all.
+    //
+    // Two budgets, because a client can be expensive in two different ways.
+    // Both are far above what a real client does: a game sends a handful of
+    // frames a turn and a Ping every few seconds, so 25/s sustained with 50 in
+    // hand is orders of magnitude of headroom, while a flood is stopped dead.
+    // The byte budget exists because one frame may be megabytes -- orders on a
+    // large map -- and a hundred of those is a different attack from a hundred
+    // small ones.
+    //
+    // A refused frame is DROPPED, not answered. Telling a flooder why would be
+    // a reply per flood frame, which is the thing being prevented; and a client
+    // that is merely enthusiastic recovers on its own within a second.
+    const double now = nowMonotonic();
+    if (!frameBudget.allow(peerId, 1.0, now)) return;
+    if (!byteBudget.allow(peerId, (double)size, now)) return;
+
     NetMsg type;
     const uint8_t* payload = nullptr;
     size_t payloadSize = 0;
@@ -802,6 +867,31 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             NetChat c;
             if (!NetChat::decode(payload, payloadSize, c)) return;
             c.fromPeerId = peerId;        // attribution is ours
+
+            // ── THE RULES, BEFORE THE AMPLIFIER ──
+            //
+            // Every accepted line is sent to every peer, so the host is a fan-
+            // out of however many people are in the game. Unrated, that made
+            // whoever typed fastest into everyone else's problem. Decided in
+            // ChatRules.h, applied here, which is the only place that can.
+            netchat::Policy pol = chatGate.policy();
+            pol.enabled = lobby.settings().chat;
+            chatGate.configure(pol);
+            const netchat::Verdict v = chatGate.admit(peerId, c.text, nowMonotonic());
+            if (v != netchat::Verdict::Allowed) {
+                // TO THE SENDER, AND NOBODY ELSE. Announcing a refusal to the
+                // room would hand a flooder the broadcast they were refused,
+                // which is the whole thing being prevented.
+                const char* why = netchat::explain(v);
+                if (*why) {
+                    NetChat back;
+                    back.fromPeerId = 0;      // 0 = the server speaking
+                    back.text = why;
+                    toPeer(peerId, NetMsg::ChatFrom, back.encode());
+                }
+                return;
+            }
+
             NetHostEvent e{NetHostEvent::Kind::Chat, peerId, c.text, c};
             push(std::move(e));
             broadcast(NetMsg::ChatFrom, c.encode());
@@ -851,7 +941,35 @@ void NetHost::Impl::relayModMessage(const NetModMsg& in, uint16_t fromPeerId) {
         if (s.peerId != fromPeerId) server.send(s.conn, frame);
 }
 
+// ── COALESCED, BECAUSE A CLIENT CHOOSES HOW OFTEN THIS RUNS ──
+//
+// Fifteen call sites, and several of them are reached straight from a frame a
+// client sent. The cheapest is a MALFORMED Orders message: it fails to decode,
+// is recorded, and broadcasts the whole lobby -- roster and all -- to every
+// peer, then returns. So the least effort a client can spend is also the
+// largest fan-out the host performs, which in an eight-player tournament is
+// one bad actor turning a stream of junk into eight roster broadcasts apiece.
+//
+// The state is a SNAPSHOT, not a stream of edits: sending it once after a burst
+// says exactly what sending it thirty times would. So a broadcast that lands
+// within the window is folded into a single pending one and flushed by the
+// host's own tick. Nothing is dropped -- `dirty` guarantees a send follows --
+// only merged.
 void NetHost::Impl::broadcastLobbyInternal() {
+    lobbyDirty = true;
+    const double now = nowMonotonic();
+    // The first one goes out immediately: a lobby that takes a beat to show a
+    // player who just joined feels broken, and the burst is what needs damping,
+    // not the first event.
+    if (now - lastLobbyBroadcast < kLobbyBroadcastMinGap) return;
+    flushLobbyBroadcast(now);
+}
+
+void NetHost::Impl::flushLobbyBroadcast(double now) {
+    if (!lobbyDirty) return;
+    lobbyDirty = false;
+    lastLobbyBroadcast = now;
+
     NetLobbyState s;
     s.state = lobby.state();
     s.assignment = lobby.settings().assignment;

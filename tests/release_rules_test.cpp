@@ -193,6 +193,48 @@ int main() {
            "and the disaffected region is");
     }
 
+    section("the country's own people are not a region");
+    {
+        // The case the shipped map actually produced: Germany, 6 provinces,
+        // four German and two Sorbian, every group at the default alignment.
+        // The German run is under the size cap and was being offered.
+        auto adj = lineWorld(6);
+        std::vector<ReleaseProvince> owned = {
+            prov(1, "German", 90, 5000), prov(2, "German", 90, 5000),
+            prov(3, "Sorbian", 80, 100), prov(4, "Sorbian", 80, 100),
+            prov(5, "German", 90, 5000), prov(6, "German", 90, 5000),
+        };
+        const std::string core = coreMinorityOf(owned);
+        ok(core == "German", "the largest people by head count is the core");
+        auto r = findReleasableRegions(owned, [&](int p) { return adj[p]; },
+                                       nullptr, core);
+        ok(r.size() == 1, "only the minority is a region");
+        if (r.size() == 1)
+            ok(r[0].minority == "Sorbian", "and it is the Sorbians, not the Germans");
+    }
+    {
+        // Head count, not province count. A people spread thin over many
+        // provinces is not the core if a denser one outweighs it.
+        auto adj = lineWorld(4);
+        std::vector<ReleaseProvince> owned = {
+            prov(1, "Dense", 90, 100000),
+            prov(2, "Thin", 90, 10), prov(3, "Thin", 90, 10), prov(4, "Thin", 90, 10),
+        };
+        ok(coreMinorityOf(owned) == "Dense",
+           "three thin provinces do not outweigh one crowded one");
+    }
+    {
+        // And with no core named, nothing changes: the parameter is optional
+        // and the old callers keep the old answer.
+        auto adj = lineWorld(4);
+        std::vector<ReleaseProvince> owned = {
+            prov(1, "A", 90, 100), prov(2, "A", 90, 100),
+            prov(3, "B", 90, 100), prov(4, "B", 90, 100),
+        };
+        ok(findReleasableRegions(owned, [&](int p) { return adj[p]; }).size() == 2,
+           "no core named, both peoples are regions");
+    }
+
     section("the size cap also protects the core");
     {
         auto adj = lineWorld(6);

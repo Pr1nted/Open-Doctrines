@@ -108,6 +108,63 @@ r = await get("/account/export", token);
 t("export returns every field", r.status === 200 && !!r.json.account.linkedIdentities[0].subjectHash);
 t("and says plainly that no email was collected", /never collected your email/i.test(JSON.stringify(r.json)));
 
+// --- viewer links: the real router, real KV, real HTTP ---
+//
+// The unit tests exercise the store. This exercises the thing a viewer's
+// browser actually touches: the route, the page it renders, and the fact that
+// a spent or unknown token renders a page rather than a stack trace.
+r = await post("/viewer-link", { code: "AAAA-BBBB" });
+t("minting a viewer link needs an account", r.status === 401, JSON.stringify(r.json));
+
+r = await post("/viewer-link", { code: "not a code" }, token);
+t("and a real session code", r.status === 400, JSON.stringify(r.json));
+
+r = await post("/viewer-link", { code: "AAAA-BBBB", uses: 2 }, token);
+const link = r.json;
+t("a signed-in host can mint one", r.status === 200 && !!link.token, JSON.stringify(r.json));
+t("and is handed a URL to give out", typeof link.url === "string" && link.url.endsWith(link.token));
+t("that expires", typeof link.expires === "number" && link.expires > Date.now() / 1000);
+t("and is not the session code", !JSON.stringify(link).includes("AAAA-BBBB") ||
+   link.token !== "AAAA-BBBB");
+
+// The page a viewer lands on.
+let page = await fetch(`${B}/j/${link.token}`);
+let html = await page.text();
+t("the link opens a page", page.status === 200);
+t("that offers the deep link", html.includes(`opendoctrines://join/AAAA-BBBB`));
+t("and shows the code to type if the scheme is not registered", html.includes("AAAA-BBBB"));
+t("and is never cached, because opening it spends a use",
+  (page.headers.get("cache-control") || "").includes("no-store"));
+
+// Two uses were minted; the first is spent, so one is left, then none.
+page = await fetch(`${B}/j/${link.token}`);
+t("the second use still works", page.status === 200);
+page = await fetch(`${B}/j/${link.token}`);
+html = await page.text();
+t("the third is refused", page.status === 410);
+t("and says the link was used up", /used up/.test(html), html.slice(0, 200));
+
+page = await fetch(`${B}/j/abcdefghjk`);
+t("an unknown token renders a page rather than an error", page.status === 410);
+page = await fetch(`${B}/j/NOTATOKEN1`);
+t("and a malformed one is not even a route", page.status === 404);
+
+// --- live lookup: the shape, with no credentials configured ---
+//
+// This deployment has no Twitch/YouTube/Kick app keys, so nothing can be live.
+// That is the case worth testing here: the endpoint must answer normally rather
+// than fail, because a live badge is decoration and must never break a lobby.
+r = await post("/live", { channels: [{ platform: "twitch", channel: "somebody" },
+                                     { platform: "kick", channel: "someone" }] });
+t("the live endpoint answers without credentials", r.status === 200, JSON.stringify(r.json));
+t("and reports nobody live rather than erroring",
+  r.json.live && Object.values(r.json.live).every((v) => v.live === false),
+  JSON.stringify(r.json));
+r = await post("/live", { channels: [{ platform: "myspace", channel: "x" },
+                                     { platform: "twitch", channel: "a/../b" }] });
+t("an unknown platform and an unsafe channel are simply absent",
+  r.status === 200 && Object.keys(r.json.live || {}).length === 0, JSON.stringify(r.json));
+
 // --- delete, two steps ---
 r = await post("/account/delete", {}, token);
 t("delete step one explains rather than deleting", r.status === 200 && r.json.status === "confirm", JSON.stringify(r.json));

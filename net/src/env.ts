@@ -39,6 +39,19 @@ export interface Env {
     GITHUB_CLIENT_ID?: string;
     GITHUB_CLIENT_SECRET?: string;
 
+    // The streaming platforms. Optional like the rest: credentialsFor() returns
+    // null when a provider has no id set, and a provider with no credentials is
+    // simply not offered -- so a fork that has not registered an app with
+    // Twitch does not show a Twitch button that cannot work.
+    TWITCH_CLIENT_ID?: string;
+    TWITCH_CLIENT_SECRET?: string;
+    YOUTUBE_CLIENT_ID?: string;
+    YOUTUBE_CLIENT_SECRET?: string;
+    KICK_CLIENT_ID?: string;
+    KICK_CLIENT_SECRET?: string;
+    /// Public reads on the YouTube Data API take a key rather than OAuth.
+    YOUTUBE_API_KEY?: string;
+
     // Where player reports go. All optional: with none of them set the
     // endpoint still accepts and validates a report and simply has nowhere to
     // put it, which is the right behaviour for a fork that has not configured

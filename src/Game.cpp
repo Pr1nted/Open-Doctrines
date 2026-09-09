@@ -2,6 +2,8 @@
 #include "util/LoadLog.h"
 #include "Palette.h"
 #include "Game.h"
+
+#include "util/Async.h"
 // The shaped-Devanagari pipeline. Not reached through Game.h like the rest of
 // the language layer: it owns a font and an atlas of its own, and only this
 // file starts it.
@@ -142,7 +144,7 @@ const int MENU_COUNT = 5;
 // developer badge, and mainMenuCount() simply stops counting before it for
 // everybody else. Last rather than somewhere sensible precisely so hiding it is
 // a subtraction and cannot renumber anything above it.
-const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate", "Reports"};
+const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate", "Admin"};
 const int MAIN_MENU_COUNT = 11;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
@@ -299,9 +301,13 @@ const Setting ADVANCED_ITEMS[] = {
     // On by default. Asks the game's own release host about the game itself,
     // which is a different disclosure from the mod check above.
     {"Check for game updates", false, -1},
+    // Playing in front of an audience. Hides invite codes, tunnel addresses,
+    // the account id and the real name inside a file path, and forces censored
+    // flags whatever "Show Actual Flags" says. See src/StreamSafe.h.
+    {"Stream-safe mode", false, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 7;
+const int ADVANCED_COUNT = 8;
 
 // Experimental: behaviour that changes how the game plays rather than how it
 // looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
@@ -604,6 +610,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += onOff(cfg.modUpdateChecks);
     } else if (tab == 4 && index == 5) {
         label += onOff(cfg.gameUpdateChecks);
+    } else if (tab == 4 && index == 6) {
+        label += onOff(cfg.streamSafe);
     } else if (tab == 5 && index == 0) {
         label += onOff(cfg.aiLearning);
     } else if (tab == 5 && index == 1) {
@@ -2333,6 +2341,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_MENU) drawMenuBackground();
             endFrame();
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
 
@@ -2343,6 +2352,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
             else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
 
@@ -2354,6 +2364,17 @@ void Game::run() {
         // Keeps the runner up for as long as the game is. Self-throttled to a
         // probe every 3s and a restart attempt at most every 15s.
         pumpLlmServer();
+        // Web: one queued request per frame, at the top of the loop where the
+        // stack is shallow and ASYNCIFY can unwind cheaply. A no-op on desktop,
+        // where the same work is already running on threads. See util/Async.h.
+        odasync::pump();
+        // Chat's socket, pumped every frame. Does nothing until a streamer has
+        // pointed it at a channel; see Game_ChatPlays.cpp.
+        pumpChatPlays();
+        // The main-menu board: asks the service once per run, and collects the
+        // reply whenever it lands. No service configured or no internet means
+        // no board, which is the whole of the offline behaviour.
+        if (m_currentScreen == SCREEN_MENU) pumpAnnouncements();
 
         if (m_mailOpen && !m_feedbackOpen) {
             m_screenW = GetScreenWidth();
@@ -2363,6 +2384,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
             else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
 
@@ -2387,6 +2409,7 @@ void Game::run() {
             // The tour photographs this form, and its tick is below the
             // `continue`. Without this the tour stops dead on that shot.
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
         if (m_feedbackBackdropTried) {
@@ -2688,6 +2711,7 @@ void Game::run() {
         if (m_shotTour && !tickScreenshotTour()) m_running = false;
         // Same place, same reason: the walk asks what the frame just drew.
         if (m_walk && !tickTutorialWalk()) m_running = false;
+        if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
     }
 }
 

@@ -339,6 +339,50 @@ int main() {
            "but keeps the letters they already received");
     }
 
+    section("a room is not a recipient");
+    {
+        // THE BUG THIS PINS. The send path described a group as "a recipient
+        // who is not a bot", and writing to a non-bot needs a multiplayer game,
+        // so every room in every SINGLE-PLAYER game was refused with "Mail is
+        // switched off on this server" -- rooms whose members were all bots.
+        mail::Rules solo;
+        solo.policy = mail::Policy::Everyone;
+        solo.llmAvailable = true;
+        solo.multiplayer = false;            // a single-player game
+
+        const std::vector<mail::RoomMember> bots = {{true, mail::Lock::Open},
+                                                    {true, mail::Lock::Open}};
+        ok(mail::mayWriteToRoom(solo, bots) == mail::Refusal::None,
+           "a room of bots is writable in a single-player game");
+        ok(mail::mayWrite(solo, false, mail::Lock::Open) == mail::Refusal::MailOff,
+           "while a PERSON still is not, which is what the old code claimed");
+
+        // One shut door does not close the room: delivery honours each door
+        // individually, so the rest still hear you.
+        const std::vector<mail::RoomMember> mixed = {{true, mail::Lock::Nobody},
+                                                     {true, mail::Lock::Open}};
+        ok(mail::mayWriteToRoom(solo, mixed) == mail::Refusal::None,
+           "one member with a shut door does not veto the room");
+
+        const std::vector<mail::RoomMember> allShut = {{true, mail::Lock::Nobody},
+                                                       {true, mail::Lock::Nobody}};
+        ok(mail::mayWriteToRoom(solo, allShut) == mail::Refusal::RecipientClosed,
+           "a room where nobody can hear you is refused, with their reason");
+
+        mail::Rules off;
+        off.policy = mail::Policy::Nobody;
+        ok(mail::mayWriteToRoom(off, bots) == mail::Refusal::MailOff,
+           "the host's switch covers rooms too");
+        ok(mail::mayWriteToRoom(solo, {}) == mail::Refusal::MailOff,
+           "and an empty room is nobody to write to");
+
+        // The body half is judged separately now; both halves still apply.
+        ok(mail::checkBody("   ", {}) == mail::Refusal::Empty,
+           "an empty letter is still empty in a room");
+        ok(mail::checkBody("hello", {"hello"}) == mail::Refusal::Blacklisted,
+           "and a forbidden word is still forbidden");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

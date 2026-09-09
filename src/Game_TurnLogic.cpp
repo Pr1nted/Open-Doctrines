@@ -764,6 +764,51 @@ void Game::processTurn() {
     // next turn like everybody else's -- no speed advantage over a person.
     runAdvisors();
 
+    // ── CHAT'S TURN, IF A CHANNEL IS READING ──
+    //
+    // A poll that has not been resolved by the time the turn does is applied
+    // now rather than abandoned: a vote chat cast is a vote chat should see
+    // land, and carrying it to the next turn would apply it to a board that has
+    // moved. Opening the next one happens after the turn resolves, below.
+    if (chatPlaysActive() && m_chatPoll.closesAt() > 0.0) applyChatWinner();
+    // And the next one opens against the board as it now is: options built
+    // before the turn resolved would name countries that may no longer border
+    // this one.
+    if (chatPlaysActive()) openChatVote();
+    writeOverlayFeed();   // OBS reads these files; see stream/OverlayFeed.h
+
+    // ── AND NO DISADVANTAGE EITHER ──
+    //
+    // "No speed advantage" was the intention; what the code did was slower than
+    // that. runAdvisors ASKS here, and its answer was collected by the NEXT
+    // turn's runAdvisors and only then written as a pending letter -- so it
+    // left a turn after that. Ledger for a letter written on turn 1:
+    //
+    //   turn 1 resolves  letter delivered (turn 2), advisor asked
+    //   turn 2 resolves  answer collected, written pending for turn 4
+    //   turn 3 resolves  answer delivered           -> visible on turn 4
+    //
+    // A PERSON answering that same letter writes during turn 2 and it lands on
+    // turn 3. The advisor was a full turn slower than the rule it was supposed
+    // to be obeying, and slower again whenever the model missed a turn -- which
+    // is how a reply to turn 1 arrived on turn 5.
+    //
+    // So the answer is collected in the SAME resolution that asked for it: wait
+    // for the workers, post what came back, and it goes out as a pending letter
+    // stamped exactly as a person's would be. Visible on turn 3, which is
+    // parity -- not an advantage.
+    //
+    // BOUNDED, AND SKIPPED WHERE THERE IS NOBODY TO WAIT FOR. A stalled model
+    // must never stop a turn resolving; headless self-play and the eval never
+    // wait at all.
+    if (!m_aiTraining && llmSettling()) {
+        setLoadingProgress(0.0f, T("Waiting for replies..."));
+        waitForAdvisors(kAdvisorTurnWait, [this](float p) {
+            setLoadingProgress(p, T("Waiting for replies..."));
+        });
+        collectAdvisorAnswers();
+    }
+
     // Resume any map scripts suspended on waitUntil now that turn/date advanced
     if (m_scriptEngine) {
         m_scriptEngine->tick();
@@ -3181,13 +3226,14 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
         const int streak = (stIt != m_bankruptStreak.end()) ? stIt->second : 0;
         if (streak >= RELEASE_BANKRUPT_STREAK) {
         const auto regions = releasableRegions(countryId);
-        if (!regions.empty()) {
+        const ReleaseCandidate* shed = regions.empty() ? nullptr : &regions.front();
+        if (shed) {
             // releasableRegions returns largest-population first, which is also
             // the most expensive to keep and the most unrest to be rid of.
-            const int newCid = releaseNation(countryId, regions.front());
+            const int newCid = releaseNation(countryId, *shed);
             if (newCid > 0) {
-                releasedProvinces = (int)regions.front().provinces.size();
-                releasedName = regions.front().minority;
+                releasedProvinces = (int)shed->provinces.size();
+                releasedName = shed->minority;
                 // The books do not improve this turn -- the province's income
                 // was already counted and the shortfall already owed -- so
                 // `remaining` is deliberately untouched. What changes is next

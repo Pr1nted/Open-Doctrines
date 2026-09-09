@@ -88,6 +88,18 @@ std::string firstChars(const std::string& text, int chars);
 /// original wherever possible, and an ellipsised prefix where even the floor
 /// size is not enough.
 std::string fitToWidth(const std::string& text, int width, int& fontSize, int floorSize = 9);
+
+/**
+ * Append one code point as UTF-8, and remove one from the end.
+ *
+ * ONE HOME, because there are several text fields now -- a letter, a country
+ * filter, a lobby chat line -- and they are all typed into by people writing in
+ * twenty-one languages. A field that assumes one byte per character is a field
+ * half the players cannot type their own name into, and the version of this
+ * that lived privately in one .cpp was about to be copied into a second.
+ */
+void utf8Append(std::string& out, int codepoint);
+void utf8PopBack(std::string& out);
 /// How many characters -- not bytes -- `text` is.
 int charCount(const std::string& text);
 

@@ -4397,6 +4397,12 @@ void Game::drawInner() {
                     }
                 }
                 showLoadingScreen();
+                // The wait for advisors used to be here, BEFORE the turn. That
+                // was the wrong place: it waited for the previous turn's
+                // requests, which only pulled the reply forward by one turn and
+                // still left advisors a turn slower than people. It now happens
+                // inside processTurn, in the same resolution that asks -- see
+                // the note there.
                 setLoadingProgress(0.0f, "Processing turn...");
                 EndDrawing();
                 processTurn();

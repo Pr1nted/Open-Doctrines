@@ -153,6 +153,172 @@ int main() {
            "and the quotation marks models wrap letters in");
         ok(tidyReply("Britain: Your fleet worries us.", "Britain") == "Your fleet worries us.",
            "and the name they insist on putting in front");
+
+        // ── FROM A REAL LETTER THE PLAYER WAS SHOWN ──
+        //
+        // Germany's reply opened by narrating the disposition step, and then
+        // wrote itself a letterhead. Both shipped into the bubble.
+        {
+            const std::string real =
+                "This exchange has left me disposed toward them, cooler, as their "
+                "tone is inflammatory even at the start of our exchange.\n"
+                "\n"
+                "To: French Republic\n"
+                "From: German Empire\n"
+                "October 1939\n"
+                "\n"
+                "I am not attacking Poland for the sake of it.";
+            const std::string got = tidyReply(real, "German Empire");
+            ok(got.find("disposed toward") == std::string::npos,
+               "the narrated disposition is not shown to the player");
+            ok(got.find("To: French Republic") == std::string::npos,
+               "and neither is the letterhead it wrote itself");
+            ok(got.find("From: German Empire") == std::string::npos,
+               "either line of it");
+            ok(got.find("I am not attacking Poland") != std::string::npos,
+               "while the letter itself survives");
+        }
+        // ── ANOTHER REAL ONE, POSTED TO THE PLAYER AS POLAND'S LETTER ──
+        {
+            const std::string real =
+                "What do you want from this situation? Set goal: Poland should "
+                "protect its territorial integrity.";
+            ok(tidyReply(real, "Poland").empty(),
+               "a tool named mid-sentence is not a letter");
+        }
+        ok(tidyReply("I will hold the line. We press: hard.", "Poland").empty(),
+           "and press: mid-line is caught too");
+        // Word boundaries, so ordinary words that CONTAIN a tool name survive.
+        ok(tidyReply("Their envoy tried to impress: we were unmoved.", "Poland")
+               == "Their envoy tried to impress: we were unmoved.",
+           "\"impress:\" is not the press tool");
+        ok(tidyReply("We will reset goal posts if you insist.", "Poland")
+               == "We will reset goal posts if you insist.",
+           "and \"reset goal\" is not set_goal");
+        // ── HEADINGS THE MODEL GAVE ITSELF, BOTH FROM REAL LETTERS ──
+        {
+            const std::string third =
+                "Empire of Russia\n\nWhat does that mean, no interference in "
+                "our war? What does it mean for them, exactly?";
+            const std::string got = tidyReply(third, "Poland");
+            ok(got.find("Empire of Russia") == std::string::npos,
+               "a third country used as a letterhead is dropped");
+            ok(got.rfind("What does that mean", 0) == 0,
+               "and the letter starts where it should");
+
+            const std::string echo =
+                "Your territories, for free\n\nPoland will not give away its "
+                "provinces.";
+            ok(tidyReply(echo, "Poland").rfind("Poland will not", 0) == 0,
+               "so is the player's own words echoed back as a subject line");
+        }
+        // ALL THREE CONDITIONS, or this eats real openings.
+        ok(tidyReply("Enough.\n\nWe will not discuss it further.", "Poland")
+               .rfind("Enough.", 0) == 0,
+           "a punctuated opening line is not a heading");
+        ok(tidyReply("We will not yield\nand you know it.", "Poland")
+               .rfind("We will not yield", 0) == 0,
+           "and neither is a line the letter runs straight on from");
+
+        // ── SPAIN'S LETTER, IN FULL, AS THE PLAYER RECEIVED IT ──
+        {
+            const std::string real =
+                "Preferred Doctrine: Mobilize the army along the border with "
+                "French Republic to be prepared for any opportunity that may "
+                "arise.\n"
+                "\n"
+                "Record: This exchange has made us view French Republic with a "
+                "slightly warmer disposition, as an opportunity may have arisen "
+                "to gain an advantage over them.";
+            const std::string got = tidyReply(real, "Spanish Autocracy");
+            ok(got.find("Preferred Doctrine") == std::string::npos,
+               "an inflected tool name is not a letter");
+            ok(got.find("Record:") == std::string::npos,
+               "and neither is the model's own record heading");
+            ok(got.find("warmer disposition") == std::string::npos,
+               "nor a disposition narrated without a colon");
+            ok(got.empty(), "a letter that was only machinery becomes no letter");
+        }
+        // THE RECORD HEADING ON ITS OWN. Spain's letter is caught by the
+        // disposition rule too, so it cannot tell whether this heading rule
+        // does anything -- deleting the rule left every test green. A record
+        // line that names no disposition is what separates them.
+        ok(tidyReply("Record: we intend to hold the line at the Ebro.\n"
+                     "We will not be moved.", "Spain")
+               == "We will not be moved.",
+           "a Record: heading is dropped even with no disposition in it");
+
+        // Narrow, or it eats real sentences.
+        ok(tidyReply("We would prefer a doctrine of restraint.", "Spain")
+               == "We would prefer a doctrine of restraint.",
+           "\"prefer a doctrine\" without a colon is a sentence");
+        ok(tidyReply("Our records show your fleet at Cadiz.", "Spain")
+               == "Our records show your fleet at Cadiz.",
+           "and \"records\" mid-sentence is not the Record heading");
+        ok(tidyReply("The weather is warmer this spring.", "Spain")
+               == "The weather is warmer this spring.",
+           "\"warmer\" without the word disposition is left alone");
+
+        // ── THE RECORD BLOCK: MACHINERY WITH SOMEWHERE TO LIVE ──
+        {
+            std::string text =
+                "You will not have our provinces. Ask for something we can "
+                "actually give.\n"
+                "\n"
+                "[[RECORD]]\n"
+                "disposition: cooler\n"
+                "goal: keep Poland whole through the decade\n"
+                "intend: more recruitment\n"
+                "press: Serbia\n"
+                "doctrine: land_reform\n";
+            const llm::Records r = llm::splitRecords(text);
+            ok(r.found, "the marker is recognised");
+            ok(text.find("[[RECORD]]") == std::string::npos,
+               "and everything from it onward is cut off the letter");
+            ok(text.find("disposition") == std::string::npos,
+               "so no recorded field can reach the player");
+            ok(text.rfind("You will not have our provinces", 0) == 0,
+               "while the letter itself is untouched");
+            ok(r.disposition == -1, "cooler is read as a step away");
+            ok(r.goal == "keep Poland whole through the decade", "the goal is read");
+            ok(r.leans.size() == 1 && r.leans[0] == "more recruitment",
+               "and the lean, which parseLean still has to understand");
+            ok(llm::parseLean(r.leans[0]).ok, "and it does");
+            ok(r.press == "Serbia" && r.doctrine == "land_reform",
+               "press and doctrine come through verbatim");
+        }
+        {
+            // A model that ignores the format costs nothing: no marker, no
+            // change, and the filters above are still there for it.
+            std::string plain = "We will consider it.";
+            const llm::Records r = llm::splitRecords(plain);
+            ok(!r.found && plain == "We will consider it.",
+               "a letter with no block is left exactly as it was");
+        }
+        {
+            // Lower case, because a model told [[RECORD]] writes [[record]].
+            std::string t = "No.\n[[record]]\ndisposition: warmer\n";
+            const llm::Records r = llm::splitRecords(t);
+            ok(r.found && r.disposition == 1, "the marker is matched case-insensitively");
+            ok(t.rfind("No.", 0) == 0 && t.find("record") == std::string::npos,
+               "and the block still comes off");
+        }
+        {
+            // A field nobody asked for is ignored rather than guessed at.
+            std::string t = "Fine.\n[[RECORD]]\nmood: splendid\ndisposition: cooler\n";
+            const llm::Records r = llm::splitRecords(t);
+            ok(r.disposition == -1 && r.goal.empty(),
+               "an invented field changes nothing");
+        }
+
+        // The narrow rule has to leave ordinary prose alone: a country may say
+        // it feels warmer without that being the tool leaking.
+        ok(tidyReply("We are warmer toward you than toward Vienna.", "Britain")
+               == "We are warmer toward you than toward Vienna.",
+           "a letter that merely says \"warmer\" is left alone");
+        ok(tidyReply("From the Baltic to the Black Sea, we will not yield.", "Britain")
+               == "From the Baltic to the Black Sea, we will not yield.",
+           "and a sentence beginning \"From\" is not a letterhead");
         ok(tidyReply("Foreign Minister of Britain: Noted.", "Britain") == "Noted.",
            "however they phrase it");
         ok(tidyReply("**Noted.**", "Britain") == "Noted.", "markdown is stripped");

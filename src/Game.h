@@ -1,6 +1,10 @@
 #pragma once
 #include "GameStructs.h"
 #include "ReleaseRules.h"
+#include "net/Announcements.h"
+#include "stream/ChatReader.h"
+#include "stream/ChatVote.h"
+#include "stream/OverlayFeed.h"
 #include "util/LoadLog.h"
 #include "comms/Transmission.h"
 #include "dialog/DialogBox.h"
@@ -369,6 +373,11 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
+    /** Constructs trade offers a neighbour could make to one AI country and
+     *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
+     *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
+     *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
+     *  and PROBE_OK / PROBE_FAIL. */
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -404,6 +413,66 @@ public:
     // change, which is the only reason the README's images can be trusted to
     // still be the game.
     void beginScreenshotTour(const std::string& outDir, const std::string& savePath);
+
+    /**
+     * "opendoctrines://join/<code>" from a stream link.
+     *
+     * Public because a cold start receives it as argv, before anything
+     * else has happened. Returns false for anything that is not exactly
+     * that shape -- a scheme handler is input from outside the game.
+     */
+    bool handleJoinUrl(const std::string& url);
+
+    // Hand-run diagnostic (`--llm-letter`): sends a real letter through the
+    // interface's own send path and reports whether it reached the four hooks
+    // the AI reads. See src/Game_LlmLetter.cpp for why it is a mode.
+    void beginLlmLetterWalk(const std::string& savePath,
+                            const std::string& correspondent);
+    bool tickLlmLetterWalk();
+    void reportLlmState(int cid, const char* when);
+    int  llmInFlight() const;
+    /// True while any advisor is still writing. For the turn barrier.
+    bool llmSettling() const;
+    /// Wait (bounded) for outstanding advisor requests. See Game_Llm.cpp.
+    void waitForAdvisors(double seconds,
+                         const std::function<void(float)>& onWait = {});
+    bool llmLetterPassed() const { return m_llmLetterPass; }
+
+    // ─── Lobby chat ───────────────────────────────────────────────────────
+    //
+    // The transport for this has existed since the protocol was written and
+    // nothing ever read the events: a Chat frame arrived, was decoded into a
+    // NetSessionEvent, and fell out of the switch. See drawMpChat.
+    struct ChatLine {
+        std::string who;      ///< resolved when it arrives; the roster changes
+        std::string text;
+        bool        system = false;   ///< from the server, not from a player
+    };
+    void pushChatLine(const std::string& who, const std::string& text,
+                      bool system = false);
+    void drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click);
+    void updateMpChat();
+    std::string chatNameOf(uint16_t peerId) const;
+
+    std::vector<ChatLine> m_chatLog;
+    std::string m_chatDraft;
+    bool        m_chatFocus = false;
+    int         m_chatScroll = 0;
+    /// Per-player, local, persisted: someone who does not want a chat window.
+    bool        m_chatShown = true;
+    void setLlmLetterShot(const std::string& p) { m_llmLetterShot = p; }
+
+    bool        m_llmLetter = false;
+    int         m_llmLetterPhase = 0;
+    int         m_llmLetterFrame = 0;
+    int         m_llmLetterTarget = 0;
+    bool        m_llmLetterPass = false;
+    double      m_llmLetterStart = 0.0;
+    int         m_llmLetterSaidAt = -1;
+    int         m_llmLetterCountdown = 120;
+    std::string m_llmLetterSave;
+    std::string m_llmLetterWho;
+    std::string m_llmLetterShot;
 
     /**
      * --tutorial-walk: play every route of the tutorial, page by page, and
@@ -892,6 +961,19 @@ private:
     void mpDrainEvents();
     void mpNote(const std::string& text, bool error = false);
 
+    // ─── Announcement board (main menu) ───────────────────────────────────
+    //
+    // Fetched once per run from the account service. Empty means no board, and
+    // that is what a player with no internet sees. What an announcement may
+    // CONTAIN is decided in src/net/Announcements.h, which is the sealed part.
+    void pumpAnnouncements();
+    std::vector<odnews::Item> liveAnnouncements() const;
+    void runAnnouncementAction(const odnews::Button& b);
+    void drawAnnouncementBoard(int x, int y, int w, int h, Vector2 mouse, bool click);
+    std::vector<odnews::Item> m_announcements;
+    int         m_announcementScroll = 0;
+    std::string m_pendingJoinCode;
+
     MpPage      m_mpPage = MpPage::Hub;
     std::string m_mpNote;
     bool        m_mpNoteError = false;
@@ -931,6 +1013,15 @@ private:
     int  m_mpAssignment = 1;    // NetAssignment: 0 host-assigns, 1 players pick
     int  m_mpLateJoin  = 1;     // NetLateJoin:  0 refuse, 1 spectate
     int  m_mpAbsent    = 0;     // NetAbsent:    0 AI plays, 1 idle
+    /**
+     * Whether players may talk to each other in this game. The HOST's switch.
+     *
+     * Not on the wire -- see LobbySettings::chat for why appending to
+     * NetLobbyState would break every older client rather than be ignored by
+     * them. A host with this off simply drops what arrives and tells that one
+     * sender why.
+     */
+    bool m_mpChat      = true;
     int  m_mpStore     = 0;     // TurnStoreKind index; see mpStoreKind()
     bool m_mpAnonymous = false;
     bool m_mpDedicated = false;
@@ -4283,7 +4374,8 @@ private:
      * policy, every conquest and every drift of alignment, and a stale list
      * would offer the player ground that is no longer theirs to give.
      */
-    std::vector<ReleaseCandidate> releasableRegions(int countryId) const;
+    std::vector<ReleaseCandidate> releasableRegions(int countryId,
+                                                    ReleaseRejects* why = nullptr) const;
     /**
      * Let one go. Returns the new country's id, or -1 if the region is no
      * longer releasable.
@@ -5087,6 +5179,16 @@ private:
     /// which case `toCountry` is unused -- the reply goes to every member.
     void askAdvisor(int fromCountry, int toCountry, int groupId = 0);
     void runAdvisors();
+    void collectAdvisorAnswers();
+    /**
+     * How long a turn may wait for advisors before going on without them.
+     *
+     * Long enough for a local model to finish a letter it has already started
+     * (measured at roughly one to four seconds warm, more on a cold load), and
+     * short enough that a runner which has died costs one pause rather than the
+     * game. See the note in processTurn.
+     */
+    static constexpr double kAdvisorTurnWait = 10.0;
     std::string llmRelativeStrength(int fromCountry, int toCountry) const;
     /// Fill in what a foreign ministry would plausibly know, in words.
     void describeSituation(int me, int them, llm::Situation& out) const;
@@ -5303,6 +5405,59 @@ private:
         std::vector<std::string> context;
         long long at = 0;
     };
+    // ─── The admin panel ──────────────────────────────────────────────────
+    //
+    // Two tabs behind one menu entry: the reports queue that was already here,
+    // and the announcement board's editing view. Both are gated by the same
+    // badge on the service, so the game asks for no secret and stores none.
+    // ─── Chat plays a country ─────────────────────────────────────────────
+    //
+    // See src/Game_ChatPlays.cpp. The rules live in stream/ChatVote.h and
+    // stream/IrcParse.h, which have no socket and no Game in them.
+    static constexpr int CHAT_ACT_NONE  = 0;
+    static constexpr int CHAT_ACT_WAR   = 1;
+    static constexpr int CHAT_ACT_PEACE = 2;
+
+    void startChatPlays(const std::string& channel, int countryId);
+    void stopChatPlays();
+    bool chatPlaysActive() const;
+    void openChatVote();
+    void applyChatWinner();
+    void pumpChatPlays();
+    void drawChatVotePanel(int x, int y, int w);
+    /// Rewrite overlay.txt / overlay.json for OBS. See stream/OverlayFeed.h.
+    void writeOverlayFeed();
+    std::vector<chatvote::Option> buildChatOptions(int cid) const;
+
+    std::unique_ptr<chatread::Reader> m_chatReader;
+    chatvote::Poll m_chatPoll;
+    int         m_chatCountry = 0;
+    std::string m_chatNote;
+    std::string m_chatLastWinner;
+
+    enum class AdminTab : uint8_t { Reports = 0, Announcements };
+    AdminTab m_adminTab = AdminTab::Reports;
+
+    void drawAdminAnnouncements(int x, int y, int w, int h, Vector2 mouse, bool click);
+    void updateAdminAnnouncements();
+    void fetchAdminAnnouncements();
+    void editAnnouncement(const std::string& op, const std::string& id,
+                          const std::string& itemJson);
+    void postComposedAnnouncement();
+    void collectAdminAnnouncements();
+
+    /// Everything on the board, hidden entries included. The editing view.
+    std::vector<odnews::Item> m_adminAnnouncements;
+    std::vector<bool>         m_adminAnnHidden;   ///< parallel to the above
+    std::string m_adminAnnStatus;
+
+    /// The composer. Plain fields; `m_adminField` says which has the caret.
+    std::string m_annId, m_annTitle, m_annBody, m_annBtnLabel, m_annBtnParam;
+    std::string m_annEventIn;      ///< "3d", "6h 30m" -- how far off the event is
+    int  m_annBtnAction = 0;       ///< 0 none, 1 join, 2 community, 3 account
+    int  m_annTimeStyle = 0;       ///< 0 none, 1 local, 2 countdown
+    int  m_adminField = -1;        ///< which composer field has focus
+
     std::vector<DevReport> m_devReports;
     bool   m_devReportsOpen = false;
     int    m_devReportScroll = 0;

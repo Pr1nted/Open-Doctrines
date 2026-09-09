@@ -28,6 +28,9 @@
 #include <system_error>
 #include <mutex>
 #include <set>
+#include "util/Async.h"
+
+#include <chrono>
 #include <thread>
 
 namespace {
@@ -299,6 +302,22 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     // for the game thread to answer -- is the shape of a deadlock during turn
     // processing, which is the worst possible place for one.
     std::map<std::string, std::string> lookups;
+    // ── KEYS ARE NORMALISED, BECAUSE A MODEL DOES NOT TYPE A DATABASE KEY ──
+    //
+    // The table was keyed by the country's exact name, and anything else missed
+    // and came back "There is no country by that name in this world" -- which
+    // the model then NARRATED. Posted to a player as Poland's letter: "It seems
+    // like there is no country called ~me~ in the game."
+    //
+    // So the key is lowercased and trimmed, and the pronouns a letter-writer
+    // actually reaches for are registered as aliases below.
+    auto norm = [](std::string v) {
+        for (auto& c : v) c = (char)std::tolower((unsigned char)c);
+        const size_t a = v.find_first_not_of(" \t\r\n.\"'");
+        if (a == std::string::npos) return std::string();
+        const size_t b = v.find_last_not_of(" \t\r\n.\"'");
+        return v.substr(a, b - a + 1);
+    };
     {
         int toolCount = 0;
         const llm::Tool* toolList = llm::tools(&toolCount);
@@ -312,6 +331,28 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
             if (toolList[t].argName) continue;
             lookups[std::string(toolList[t].name) + "\x1f"] =
                 answerAdvisorTool(fromCountry, toolList[t].name, "");
+        }
+        // ── AND WHEN IT ASKS ABOUT ITSELF BY PRONOUN ──
+        //
+        // "standing_with(me)" is not a question with an answer -- your standing
+        // with yourself -- but the honest reply is to say so, not to claim the
+        // country does not exist. The country-taking tools get a sentence that
+        // points at the our_ tools instead.
+        {
+            std::string ownName;
+            if (const Country* self = m_countries.getCountry(fromCountry))
+                ownName = self->name;
+            for (int t = 0; t < toolCount; ++t) {
+                if (!toolList[t].argName || toolList[t].records) continue;
+                const std::string said =
+                    "That is your own country. Ask about yourself with the tools "
+                    "whose names begin with our_.";
+                for (const char* alias : {"me", "us", "myself", "ourselves",
+                                          "our country", "my country", "i"})
+                    lookups[std::string(toolList[t].name) + "\x1f" + alias] = said;
+                if (!ownName.empty())
+                    lookups[std::string(toolList[t].name) + "\x1f" + norm(ownName)] = said;
+            }
         }
         for (const auto& [cid, c] : m_countries.getAll()) {
             if (cid <= 0 || cid == fromCountry || cid >= REBEL_CID_MIN) continue;
@@ -327,8 +368,17 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
                 // "that is not something you can find out" -- which is both
                 // wasted work and a wrong answer sitting in the table.
                 if (!toolList[t].argName || toolList[t].records) continue;
-                lookups[std::string(toolList[t].name) + "\x1f" + c.name] =
+                const std::string answer =
                     answerAdvisorTool(fromCountry, toolList[t].name, c.name);
+                lookups[std::string(toolList[t].name) + "\x1f" + norm(c.name)] = answer;
+                // The country being written to answers to the second person as
+                // well as to its name: a letter says "you", not "the Republic
+                // of Poland".
+                if (cid == toCountry) {
+                    for (const char* alias : {"you", "your country", "them", "they",
+                                              "their country", "the recipient"})
+                        lookups[std::string(toolList[t].name) + "\x1f" + alias] = answer;
+                }
             }
         }
     }
@@ -337,7 +387,16 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         std::lock_guard<std::mutex> g(g_lock);
         ++g_inFlight;
     }
-    std::thread([fromCountry, toCountry, groupId, url, key, me, model, turns, lookups,
+    // The same normalisation the table was built with. Copied into the worker
+    // rather than captured by reference: this thread outlives this function.
+    auto normArg = [](std::string v) {
+        for (auto& c : v) c = (char)std::tolower((unsigned char)c);
+        const size_t a = v.find_first_not_of(" \t\r\n.\"'");
+        if (a == std::string::npos) return std::string();
+        const size_t b = v.find_last_not_of(" \t\r\n.\"'");
+        return v.substr(a, b - a + 1);
+    };
+    odasync::run([fromCountry, toCountry, groupId, url, key, me, model, turns, lookups, normArg,
                  timeout = 45000]() mutable {
         std::string reply;
         int disposition = 0;
@@ -371,7 +430,24 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
             const auto calls = offerTools ? llm::toolCallsFromResponse(res.body)
                                           : std::vector<llm::ToolCall>{};
             if (calls.empty()) {
-                reply = llm::tidyReply(llm::replyFromResponse(res.body), me);
+                std::string raw = llm::replyFromResponse(res.body);
+                // ── THE BLOCK COMES OFF BEFORE ANYTHING ELSE LOOKS AT IT ──
+                //
+                // Split first, so the records never reach tidyReply and can
+                // never be mistaken for prose. What the model put in the block
+                // is what it MEANT to record; a tool call it also made is
+                // merged below, and the block wins where both name the same
+                // thing, because it is the channel we asked for.
+                const llm::Records rec = llm::splitRecords(raw);
+                if (rec.found) {
+                    if (!rec.goal.empty()) goal = rec.goal;
+                    if (!rec.press.empty()) press = rec.press;
+                    if (!rec.doctrine.empty()) doctrine = rec.doctrine;
+                    for (const std::string& l : rec.leans)
+                        if (leans.size() < 4) leans.push_back(l);
+                    if (rec.disposition != 0) disposition = rec.disposition;
+                }
+                reply = llm::tidyReply(raw, me);
                 // NOTHING LEFT AFTER TIDYING means the model answered with
                 // machinery rather than a letter -- "No specific function call
                 // is requested to answer this prompt" was one, posted to a
@@ -442,7 +518,7 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
                     turns.push_back(llm::toolResultTurn(call, "Noted."));
                     continue;
                 }
-                auto it = lookups.find(call.name + "\x1f" + call.argument);
+                auto it = lookups.find(call.name + "\x1f" + normArg(call.argument));
                 // A model asked for our own army will often pass an argument
                 // anyway -- its own country's name, or the correspondent's --
                 // because every other tool it has takes one. Answering that
@@ -458,26 +534,102 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
             }
         }
 
+        // ── THE LETTER GOES HOME FIRST ──
+        //
+        // The steering pass below is a second request, and it used to run
+        // before this: the reply sat finished on this thread while another
+        // round trip completed, and the country simply took longer to answer
+        // for no benefit anybody could see. Posting first costs nothing --
+        // steering is read by the AI on a later turn, not by the letter.
+        {
+            std::lock_guard<std::mutex> g(g_lock);
+            // An empty reply is dropped rather than written as an empty letter:
+            // a model that failed to answer should look like a country that
+            // chose not to write, which is a thing countries do.
+            if (!reply.empty()) {
+                Answer a;
+                a.from = fromCountry;
+                a.to = toCountry;
+                a.groupId = groupId;
+                a.body = reply;
+                a.goal = goal;
+                a.leans = leans;
+                a.press = press;
+                a.doctrine = doctrine;
+                a.disposition = disposition;
+                g_answers.push_back(std::move(a));
+            }
+        }
+
+        // ── THE STEERING PASS, AND WHY IT IS GATED ON THE DISPOSITION ──
+        //
+        // intend, press and prefer_doctrine are the only tools that reach what
+        // the country actually DOES, and measured against llama3.1:8b they were
+        // never called: the model makes one tool call per letter and the
+        // disposition step in the prompt claims it, 9 times in 10. Zero of ten
+        // letters steered, so the four hooks in AISystem that read this state
+        // sat at zero in every real game.
+        //
+        // Asked on its own, with only these three tools, it steers happily --
+        // and steers ANYTHING. On a note about a reception in Vienna it steered
+        // 10 of 10, pressing Italy, Russia, and once the very country it was
+        // writing to. It answers the question rather than reading the letter,
+        // so it cannot be trusted to decide whether to steer at all.
+        //
+        // It can already tell the difference, though, and it says so in a field
+        // that measured clean: disposition was "cooler" on every urgent letter
+        // and "unchanged" on every bland one. So the cheap reliable question
+        // gates the expensive unreliable one. With it: 6 usable steering calls
+        // in 10 urgent letters, 0 in 10 bland ones.
+        //
+        // The cost is one short request, and only on letters that moved the
+        // country -- not on every piece of correspondence in the game.
+        if (!reply.empty() && disposition != 0 && leans.empty() &&
+            press.empty() && doctrine.empty()) {
+            HttpRequest req;
+            req.method = "POST";
+            req.url = url;
+            req.body = llm::steeringRequestBody(turns, model);
+            req.bearer = key;
+            req.allowInsecure = true;
+            req.timeoutMs = timeout;
+            const HttpResponse res = httpRequest(req);
+            if (res.ok()) {
+                std::vector<std::string> more;
+                std::string morePress, moreDoctrine;
+                for (const llm::ToolCall& call : llm::toolCallsFromResponse(res.body)) {
+                    // Only the three. A model handed a narrow question still
+                    // sometimes answers a wider one, and nothing else it names
+                    // here has been answered or should be acted on.
+                    if (call.argument.empty()) continue;
+                    if (call.name == "intend") {
+                        if (more.size() < 4) more.push_back(call.argument);
+                    } else if (call.name == "press") {
+                        morePress = call.argument;
+                    } else if (call.name == "prefer_doctrine") {
+                        moreDoctrine = call.argument;
+                    }
+                }
+                // A second answer carrying no letter. runAdvisors applies the
+                // steering and writes nothing, so this cannot become a phantom
+                // second message in the thread.
+                if (!more.empty() || !morePress.empty() || !moreDoctrine.empty()) {
+                    Answer a;
+                    a.from = fromCountry;
+                    a.to = toCountry;
+                    a.groupId = groupId;
+                    a.leans = more;
+                    a.press = morePress;
+                    a.doctrine = moreDoctrine;
+                    std::lock_guard<std::mutex> g2(g_lock);
+                    g_answers.push_back(std::move(a));
+                }
+            }
+        }
+
         std::lock_guard<std::mutex> g(g_lock);
         --g_inFlight;
-        // An empty reply is dropped rather than written as an empty letter: a
-        // model that failed to answer should look like a country that chose not
-        // to write, which is a thing countries do.
-        if (!reply.empty())
-        {
-            Answer a;
-            a.from = fromCountry;
-            a.to = toCountry;
-            a.groupId = groupId;
-            a.body = reply;
-            a.goal = goal;
-            a.leans = leans;
-            a.press = press;
-            a.doctrine = doctrine;
-            a.disposition = disposition;
-            g_answers.push_back(std::move(a));
-        }
-    }).detach();
+    });
 }
 
 /**
@@ -488,12 +640,81 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
  * is the same rule a person follows, and means advisors do not talk over each
  * other or reply to themselves forever.
  */
-void Game::runAdvisors() {
+/// How many advisor requests are in the air. For the --llm-letter diagnostic.
+int Game::llmInFlight() const {
+    // Queued work counts as in flight. On desktop odasync::outstanding() and
+    // g_inFlight track the same threads; on web the queue holds requests that
+    // have not started yet, and a wait that ignored them would give up before
+    // the first one ran.
+    std::lock_guard<std::mutex> g(g_lock);
+    return g_inFlight > 0 ? g_inFlight : odasync::outstanding();
+}
+
+bool Game::llmSettling() const {
+    return llmConfigured() && llmInFlight() > 0;
+}
+
+/**
+ * Let the advisors finish before the turn resolves.
+ *
+ * WHY THIS HAD TO EXIST. An advisor's answer is collected by the NEXT
+ * runAdvisors(), so a request still in the air when the turn resolves has its
+ * letter held over to the turn after. Play at any speed and that compounds: a
+ * letter written on turn 1 came back on turn 5, and from the player's side the
+ * country simply was not answering. Nothing was broken -- the reply was always
+ * in flight -- but "it will arrive in four turns" and "it is ignoring you" look
+ * identical from the mail screen.
+ *
+ * BOUNDED, AND THE BOUND IS THE POINT. A local model that has stalled, a
+ * runner that was killed, an endpoint typed wrong -- none of those may stop a
+ * player from taking their turn. It waits for what is outstanding and then goes
+ * on regardless, because a game that hangs on a language model is worse than
+ * one whose letters are late.
+ *
+ * `onWait` is called while it waits so the caller can keep drawing; a frozen
+ * window for ten seconds is its own bug.
+ */
+void Game::waitForAdvisors(double seconds, const std::function<void(float)>& onWait) {
+    if (!llmConfigured()) return;
+    const double until = GetTime() + seconds;
+    while (llmInFlight() > 0 && GetTime() < until) {
+        if (onWait) {
+            const double left = until - GetTime();
+            onWait((float)(1.0 - left / seconds));
+        }
+        // ── SLEEP, AND THIS IS NOT A POLITENESS ──
+        //
+        // The first version spun with no pause, and llmInFlight() takes the
+        // same mutex the worker needs in order to record that it has finished.
+        // One thread hammering a lock thousands of times a second can keep the
+        // other from ever acquiring it, so the count never fell, the wait never
+        // ended, and the turn hung -- observed as a run stuck on "advisor
+        // asked" for eighteen minutes against a ten-second bound.
+        //
+        // 20ms is far below anything a person notices and leaves the lock free
+        // essentially all the time. The answers themselves are collected by the
+        // caller; this only waits for the workers to put them down.
+        // ON WEB THIS IS WHAT RUNS THE WORK. There are no threads: the request
+        // sits on a queue until something pumps it, and the main loop is not
+        // running while a turn resolves. A wait that did not pump here would be
+        // a wait for something that cannot happen, every time.
+        if (odasync::pump()) continue;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}
+
+/**
+ * Post whatever the workers have finished. Safe to call more than once a turn.
+ *
+ * Split out of runAdvisors so the turn can collect a SECOND time, after waiting
+ * for the advisors it just asked. See waitForAdvisors and the note in
+ * processTurn about replying at the same speed as a person.
+ */
+void Game::collectAdvisorAnswers() {
     if (!llmConfigured()) return;
 
-    // First: post anything the workers finished since last turn. Written as
-    // ordinary pending letters, so they leave on the NEXT turn like everybody
-    // else's -- an advisor gets no speed advantage over a person.
+    // Written as ordinary pending letters, so they leave on the next turn like
+    // everybody else's -- an advisor gets no speed advantage over a person.
     std::vector<Answer> ready;
     {
         std::lock_guard<std::mutex> g(g_lock);
@@ -502,6 +723,16 @@ void Game::runAdvisors() {
     for (const Answer& a : ready) {
         std::string name;
         if (const Country* c = m_countries.getCountry(a.from)) name = c->name;
+        // A steering-only answer carries no letter. See the steering pass in
+        // askAdvisor: it comes home separately so it cannot delay the reply,
+        // and writing an empty body here would post a blank message.
+        if (a.body.empty()) {
+            if (!a.goal.empty()) m_llmGoal[a.from] = a.goal;
+            for (const std::string& lean : a.leans) applyLlmLean(a.from, lean);
+            if (!a.press.empty())    applyLlmPress(a.from, a.press);
+            if (!a.doctrine.empty()) applyLlmDoctrine(a.from, a.doctrine);
+            continue;
+        }
         if (a.groupId != 0) {
             const mail::Group* g = mailGroup(a.groupId);
             if (!g || !g->has(a.from)) continue;   // removed while it was thinking
@@ -536,6 +767,12 @@ void Game::runAdvisors() {
             d = llm::foldDisposition(d, a.disposition);
         }
     }
+
+}
+
+void Game::runAdvisors() {
+    if (!llmConfigured()) return;
+    collectAdvisorAnswers();
 
     // Then: ask for the next round. Bounded, because a hundred countries each
     // holding a correspondence would be a hundred simultaneous requests to one
@@ -621,7 +858,7 @@ void Game::testLlmRunner() {
     const std::string unreach    = T("Nothing answered there. Is the runner running?");
     const std::string refusedMsg = T("It refused the request. Check the model name and the key.");
 
-    std::thread([this, url, payload, key, okMsg, noModel, unreach, refusedMsg]() {
+    odasync::run([this, url, payload, key, okMsg, noModel, unreach, refusedMsg]() {
         HttpRequest req;
         req.method = "POST";
         req.url = url;
@@ -652,7 +889,7 @@ void Game::testLlmRunner() {
         g_testResult = said;
         g_testOk = good;
         g_testFresh = true;
-    }).detach();
+    });
 }
 
 
@@ -690,6 +927,15 @@ void Game::pumpLlmTest() {
  * touches a string the renderer is reading.
  */
 void Game::installLlmRunner() {
+#ifdef __EMSCRIPTEN__
+    // A tab cannot download a binary, unpack it and run it, and should not
+    // pretend to be about to. Said plainly, and once: the settings screen also
+    // hides the button, and this is the guard for every other way in.
+    m_llmTestOk = false;
+    m_llmTestResult = T("The browser version cannot install a runner. Run one on "
+                        "your computer and give its address here.");
+    return;
+#endif
     if (m_llmInstalling) return;
     m_llmInstalling = true;
     m_llmTestOk = false;
@@ -744,6 +990,17 @@ void Game::pullLlmModel(const std::string& model) {
     m_llmPullStatus = T("Starting...");
 
     const std::string apiBase = llm::apiRootOf(m_config.llmEndpoint);
+#ifdef __EMSCRIPTEN__
+    // Pulling is Ollama's own job and the game asks for it through curl, which
+    // is a program. The runner it is talking to can be asked directly instead.
+    {
+        std::lock_guard<std::mutex> g(g_pullLock);
+        g_pullRunning = false;
+        g_pullFinished = true;
+        g_pullError = T("Pull the model on the computer running it, then reload.");
+    }
+    return;
+#endif
     const std::string streamFile = m_dataDir + "/llm-pull.ndjson";
     {
         std::lock_guard<std::mutex> g(g_pullLock);
@@ -1345,12 +1602,12 @@ void Game::probeLlmNetwork() {
         if (g_netProbing || g_netState == 1) return;
         g_netProbing = true;
     }
-    std::thread([]() {
+    odasync::run([]() {
         const bool ok = llm::reachable();
         std::lock_guard<std::mutex> g(g_netLock);
         g_netState = ok ? 1 : 2;
         g_netProbing = false;
-    }).detach();
+    });
 }
 
 int Game::llmNetworkState() const {
@@ -1413,19 +1670,24 @@ void Game::pumpLlmServer() {
         }
         if (go) {
             const std::string endpoint = m_config.llmEndpoint;
-            std::thread([endpoint]() {
+            odasync::run([endpoint]() {
                 const llm::Status st = llm::probeStatus(endpoint);
                 std::lock_guard<std::mutex> g(g_statusLock);
                 g_status = st;
                 g_statusFresh = true;
                 g_statusProbing = false;
-            }).detach();
+            });
         }
     }
 
     // Only a runner in OUR folder, on a LOCAL endpoint, and only when the
     // player asked for advisors. A remote API has nothing here to start, and a
     // runner somebody else is managing is not ours to respawn.
+#ifdef __EMSCRIPTEN__
+    // And never in a browser, which has no processes to start. The probe above
+    // still runs, so the page can tell whether something is answering.
+    return;
+#endif
     if (m_llmAlive || !llm::isLocal(m_config.llmEndpoint)) return;
     if (!llm::installed(m_dataDir) || now < m_llmNextStartAt) return;
     m_llmNextStartAt = now + 15.0;

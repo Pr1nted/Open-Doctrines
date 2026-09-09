@@ -37,6 +37,10 @@ import {
 import { checkAccountAge, tooNewMessage } from "./accounts/policy.js";
 import { checkNickname } from "./accounts/nickname.js";
 import { isAdmin, setBadge } from "./accounts/badges.js";
+import { applyEdit, forClients, readAll, type Announcement, type Edit } from "./announcements/store.js";
+import { isLive } from "./live/lookup.js";
+import { createLink, useLink } from "./live/viewerlink.js";
+import { safeChannel } from "./live/platforms.js";
 import {
     confirmDeletion, describeDeletion, exportAccount, issueDeleteConfirmation,
 } from "./accounts/rights.js";
@@ -158,6 +162,11 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (get && path === "/account/export") return accountExport(request, env);
     if (post && path === "/account/delete") return accountDelete(request, env);
 
+    // The main-menu board. Public and cacheable: it is the same handful of
+    // sentences for everybody, and the client asks once per launch.
+    if (get && path === "/announcements") return announcements(env);
+    if (post && path === "/admin/announcement") return adminAnnouncement(request, env);
+
     if (post && path === "/admin/badge") return adminBadge(request, env);
     if (post && path === "/admin/ban") return adminBan(request, env);
 
@@ -166,6 +175,23 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (post && path === "/feedback") return feedbackSubmit(request, env);
     if (post && path === "/feedback/github") return feedbackGithubHook(request, env);
     if (post && path === "/moderation/report") return moderationReport(request, env);
+    // The board's editing view, and the one write that changes it. Signed in
+    // with the same session token the reports screen uses, and gated on the
+    // same badge -- so posting an announcement from inside the game needs no
+    // secret typed into a text field and stored on disk.
+    // Who is live. Public, cached, and it answers "not live" for everything it
+    // cannot check -- a live badge is decoration and must never be a reason a
+    // lobby fails to open.
+    if (post && path === "/live") return liveLookup(request, env);
+
+    // A viewer link: minted by a host, clicked by a viewer. The session code
+    // itself never travels through either of these in the clear on a stream --
+    // see live/viewerlink.ts for why the code cannot do this job itself.
+    if (post && path === "/viewer-link") return viewerLinkCreate(request, env);
+    const joinMatch = /^\/j\/([a-z0-9]{10})$/.exec(path);
+    if (joinMatch && get) return viewerLinkOpen(env, joinMatch[1]!);
+    if (get  && path === "/moderation/announcements") return announcementList(request, env);
+    if (post && path === "/moderation/announcement") return announcementEdit(request, env);
     if (get  && path === "/moderation/reports") return moderationList(request, env);
     if (post && path === "/moderation/decide") return moderationDecide(request, env);
     if (get  && path === "/moderation/account") return moderationProfile(request, env, url);
@@ -766,6 +792,120 @@ async function moderationAct(request: Request, env: Env): Promise<Response> {
 }
 
 /** The queue, for an account carrying the developer badge. */
+async function viewerLinkCreate(request: Request, env: Env): Promise<Response> {
+    // Held to an account, so a link cannot be minted by anybody who happens to
+    // know a session code.
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const body = await readJson<{ code?: string; uses?: number }>(request, 4 * 1024);
+    const code = String(body?.code ?? "");
+    if (!isSessionCode(code)) return fail(400, "bad_request", "Not a session code.");
+
+    const link = await createLink(env, code, Math.floor(Date.now() / 1000),
+                                  typeof body?.uses === "number" ? body.uses : undefined);
+    // The URL is built here so the game never has to know the shape of it.
+    return json({
+        token: link.token,
+        url: `${env.ISSUER}/j/${link.token}`,
+        expires: link.expires,
+        uses: link.uses,
+    });
+}
+
+async function viewerLinkOpen(env: Env, token: string): Promise<Response> {
+    const r = await useLink(env, token, Math.floor(Date.now() / 1000));
+    // ── A PAGE, NOT A REDIRECT ──
+    //
+    // The viewer is arriving from a chat message on a phone or a browser that
+    // has never heard of this game. A bare redirect to a custom scheme shows
+    // them a browser error; a page can say what is about to happen, offer the
+    // download to somebody who has not got the game, and put the code where
+    // they can type it if the scheme handler is not registered.
+    const escape = (v: string) =>
+        v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const body = r.ok
+        ? `<h1>Join the game</h1>
+           <p><a class="go" href="opendoctrines://join/${escape(r.code)}">Open OpenDoctrines</a></p>
+           <p class="small">Not working? Start the game, choose Play Multiplayer,
+              and enter <code>${escape(r.code)}</code>.</p>`
+        : `<h1>That link has ${r.reason === "expired" ? "expired"
+                              : r.reason === "spent" ? "been used up" : "stopped working"}</h1>
+           <p class="small">Ask the host for a new one.</p>`;
+    const html = `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenDoctrines</title>
+<style>body{font-family:system-ui,sans-serif;background:#0c0d12;color:#dfe4f0;
+display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+main{max-width:32rem;padding:2rem}h1{font-size:1.4rem}
+a.go{display:inline-block;padding:.7rem 1.1rem;border:1px solid #6ee7a0;
+border-radius:.4rem;color:#6ee7a0;text-decoration:none}
+.small{color:#98a0b8;font-size:.9rem}code{color:#fff}</style>
+<main>${body}</main>`;
+    return new Response(html, {
+        status: r.ok ? 200 : 410,
+        headers: { "content-type": "text/html; charset=utf-8",
+                   // Never cached: it spends a use, and a cached copy would
+                   // hand the same one out twice.
+                   "cache-control": "no-store" },
+    });
+}
+
+async function liveLookup(request: Request, env: Env): Promise<Response> {
+    const body = await readJson<{ channels?: { platform?: string; channel?: string }[] }>(
+        request, 8 * 1024);
+    const asked = Array.isArray(body?.channels) ? body!.channels! : [];
+    // Bounded: a lobby is at most a few dozen people, and an unbounded list is
+    // an unbounded fan-out of upstream requests from one cheap POST.
+    const wanted = asked.slice(0, 32);
+
+    const out: Record<string, { live: boolean; title?: string; viewers?: number }> = {};
+    await Promise.all(wanted.map(async (row) => {
+        const platform = row?.platform;
+        if (platform !== "twitch" && platform !== "youtube" && platform !== "kick") return;
+        const channel = safeChannel(String(row?.channel ?? ""));
+        if (!channel) return;
+        out[`${platform}:${channel}`] = await isLive(env, platform, channel);
+    }));
+
+    return json({ live: out }, 200, { "cache-control": "public, max-age=30" });
+}
+
+async function announcementList(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
+    // The WHOLE list, hidden entries included: putting something back requires
+    // being able to see what was taken down.
+    return json({ all: await readAll(env) });
+}
+
+async function announcementEdit(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
+
+    const body = await readJson<{ op?: string; id?: string; item?: Announcement }>(
+        request, 16 * 1024);
+    if (!body?.op) return fail(400, "bad_request", "Missing op.");
+
+    let edit: Edit;
+    if (body.op === "put") {
+        if (!body.item) return fail(400, "bad_request", "put needs an item.");
+        edit = { op: "put", item: body.item };
+    } else if (body.op === "hide" || body.op === "show" || body.op === "purge") {
+        if (!body.id) return fail(400, "bad_request", `${body.op} needs an id.`);
+        edit = { op: body.op, id: body.id };
+    } else {
+        return fail(400, "bad_op", "op must be put, hide, show or purge.");
+    }
+
+    const result = await applyEdit(env, edit, Math.floor(Date.now() / 1000));
+    // The reason is written for whoever is typing it, in the game, right now --
+    // which is the whole point of validating on this side as well as in the
+    // client. See announcements/store.ts.
+    if (!result.ok) return fail(400, "bad_announcement", result.reason);
+    return json({ all: result.all });
+}
+
 async function moderationList(request: Request, env: Env): Promise<Response> {
     const account = await authenticate(request, env);
     // 404, not 403. A 403 confirms the route exists and that this account is
@@ -979,6 +1119,43 @@ async function accountDelete(request: Request, env: Env): Promise<Response> {
     const result = await confirmDeletion(env, account, body.confirm);
     if (!result.ok) return fail(400, "bad_confirmation", "That confirmation expired. Start again.");
     return json({ status: "deleted" });
+}
+
+async function announcements(env: Env): Promise<Response> {
+    const now = Math.floor(Date.now() / 1000);
+    const items = forClients(await readAll(env), now);
+    // Shaped exactly as src/net/Announcements.h reads it. A short cache because
+    // a board that changes on the hour does not need to be fetched by every
+    // launch in that hour, and the client asks only once per run anyway.
+    return json({ items }, 200, { "cache-control": "public, max-age=300" });
+}
+
+async function adminAnnouncement(request: Request, env: Env): Promise<Response> {
+    // 404 rather than 403, like the other admin routes: an endpoint that
+    // answers "forbidden" is an endpoint somebody now knows exists.
+    if (!isAdmin(request, env)) return fail(404, "not_found", "No such endpoint.");
+
+    const body = await readJson<{
+        op?: string; id?: string; item?: Announcement;
+    }>(request);
+    if (!body?.op) return fail(400, "bad_request", "Missing op.");
+
+    let edit: Edit;
+    if (body.op === "put") {
+        if (!body.item) return fail(400, "bad_request", "put needs an item.");
+        edit = { op: "put", item: body.item };
+    } else if (body.op === "hide" || body.op === "show" || body.op === "purge") {
+        if (!body.id) return fail(400, "bad_request", `${body.op} needs an id.`);
+        edit = { op: body.op, id: body.id };
+    } else {
+        return fail(400, "bad_op", "op must be put, hide, show or purge.");
+    }
+
+    const result = await applyEdit(env, edit, Math.floor(Date.now() / 1000));
+    if (!result.ok) return fail(400, "bad_announcement", result.reason);
+    // The WHOLE list, hidden entries included -- this is the editing view, and
+    // putting something back requires being able to see what was taken down.
+    return json({ all: result.all });
 }
 
 async function adminBadge(request: Request, env: Env): Promise<Response> {

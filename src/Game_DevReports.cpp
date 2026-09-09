@@ -265,6 +265,7 @@ void Game::parseDevReports() {
 }
 
 void Game::updateDevReports() {
+    if (m_adminTab == AdminTab::Announcements) { updateAdminAnnouncements(); return; }
     if (!m_devReportsOpen) return;
     parseDevReports();
     parseProfile();
@@ -330,7 +331,48 @@ void Game::drawDevReports() {
     DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.02f, 8,
                               Color{70, 74, 96, 220});
 
-    DrawText(T("Reports"), x + 24, y + 20, 24, accent);
+    DrawText(T("Admin"), x + 24, y + 20, 24, accent);
+
+    // ── TWO TABS BEHIND ONE MENU ENTRY ──
+    //
+    // The reports queue and the announcement board are the same job -- looking
+    // after the game in front of other people -- and they were one menu slot
+    // and no slot respectively. A tab strip costs nothing and stops the main
+    // menu growing an entry every time something needs a screen.
+    {
+        const char* names[] = {T("Reports"), T("Announcements")};
+        int tx = x + 24 + MeasureText(T("Admin"), 24) + 28;
+        for (int i = 0; i < 2; ++i) {
+            const int tw = MeasureText(names[i], 13);
+            const Rectangle tab = {(float)tx, (float)(y + 24), (float)(tw + 20), 24};
+            const bool on = ((int)m_adminTab == i);
+            const bool hov = CheckCollisionPointRec(mouse, tab);
+            DrawText(names[i], tx + 10, y + 29, 13,
+                     on ? WHITE : (hov ? Color{206, 212, 232, 255} : Color{130, 136, 158, 255}));
+            if (on) DrawRectangle(tx + 10, y + 45, tw, 2, accent);
+            if (hov && click) {
+                m_adminTab = (AdminTab)i;
+                // Asked when the tab is opened, not on a timer: the board
+                // changes when somebody changes it, which is right here.
+                if (m_adminTab == AdminTab::Announcements) fetchAdminAnnouncements();
+                Audio::get().playSfx("click_light");
+            }
+            tx += tw + 26;
+        }
+    }
+
+    if (m_adminTab == AdminTab::Announcements) {
+        drawAdminAnnouncements(x + 24, y + 62, w - 48, h - 100, mouse, click);
+        // The close button is drawn by the shared code below; everything else
+        // on this panel belongs to the reports queue.
+        const Rectangle closeOnly = {(float)(x + w - 104), (float)(y + 18), 80, 28};
+        const bool ch = CheckCollisionPointRec(mouse, closeOnly);
+        DrawRectangleRounded(closeOnly, 0.2f, 6, ch ? Color{60, 40, 44, 240} : Color{28, 30, 42, 220});
+        DrawRectangleRoundedLines(closeOnly, 0.2f, 6, Color{110, 96, 100, 200});
+        DrawText(T("Close"), (int)closeOnly.x + 20, (int)closeOnly.y + 8, 13, WHITE);
+        if (ch && click) closeDevReports();
+        return;
+    }
 
     std::string status;
     { std::lock_guard<std::mutex> g(g_lock); status = g_status; }

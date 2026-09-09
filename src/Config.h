@@ -31,6 +31,26 @@ struct Config {
     int screenH = 900;
     bool fullscreen = false;
     bool showActualFlags = true;
+
+    /**
+     * Playing in front of an audience.
+     *
+     * Hides the things a stream should not carry -- invite codes, tunnel
+     * addresses, the account id, the real name inside a file path -- and forces
+     * censored flags regardless of showActualFlags above. See src/StreamSafe.h
+     * for what actually leaks and why this is a camera setting rather than a
+     * security one.
+     */
+    bool streamSafe = false;
+
+    /**
+     * Chat plays a country: which channel to read, and how long a vote runs.
+     *
+     * The channel is a public name, not a credential -- the reader is anonymous
+     * and can only read. See src/stream/IrcParse.h.
+     */
+    std::string streamChatChannel;
+    float       streamChatSeconds = 30.0f;
     /**
      * Which language the interface is in: "en", "uk", "ja", ... See
      * src/i18n/Locale.h. Stored as the code rather than as an index, so a
@@ -241,6 +261,15 @@ struct Config {
     // URL: a runner on this machine, or a remote API. `llmApiKey` is only ever
     // sent to a NON-local endpoint the player typed themselves -- see
     // Game_Llm.cpp, which refuses to attach it otherwise.
+    /**
+     * Whether the lobby chat panel is shown to THIS player.
+     *
+     * Local and personal: it hides a window and never stops anybody else
+     * talking. Whether chat exists in a game at all is the HOST's switch, and
+     * lives in LobbySettings on the host.
+     */
+    bool        lobbyChatShown = true;
+
     bool        llmEnabled = false;
     /**
      * EMPTY UNTIL SET, and that is load-bearing rather than tidy.

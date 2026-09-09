@@ -3732,7 +3732,11 @@ void Game::rebuildFlags() {
         // thing before the map appears -- so an unpumped stall here is the one
         // a player hears just as they expect the game to start.
         Audio::get().pump();
-        const FlagPattern& fp = m_config.showActualFlags ? c.flagActual : c.flagCensored;
+        // Stream mode overrides the preference rather than changing it: a
+        // streamer turning the mode off later must get their setting back, not
+        // whatever it was overwritten with.
+        const bool actual = m_config.showActualFlags && !m_config.streamSafe;
+        const FlagPattern& fp = actual ? c.flagActual : c.flagCensored;
         Texture2D tex = FlagRenderer::render(fp, 256, 128, m_dataDir, &m_odmJsonData);
         m_countryFlags[id] = tex;
     }

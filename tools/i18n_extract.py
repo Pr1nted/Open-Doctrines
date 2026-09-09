@@ -279,6 +279,12 @@ def collect():
             # numbers harder to line up.
             if fn == "Game_AITrain.cpp":
                 continue
+            # Same reasoning for the hand-run --llm-letter diagnostic: its one
+            # long literal is the letter it SENDS to a model, not text drawn to
+            # anybody, and it is written in English on purpose because that is
+            # what the check is about.
+            if fn == "Game_LlmLetter.cpp":
+                continue
             path = os.path.join(dirpath, fn)
             rel = os.path.relpath(path, ROOT)
             text = open(path, encoding="utf-8", errors="replace").read()

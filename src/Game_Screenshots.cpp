@@ -244,6 +244,8 @@ const Shot SHOTS[] = {
     {"mail-report",   60, true},
     // The developer queue, with one report opened for a decision.
     {"dev-reports",   40, false},
+    // The board's editing view: what is up, and writing the next one.
+    {"admin-announce", 40, false},
     {"dev-lookup",    40, false},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
@@ -1223,6 +1225,29 @@ bool Game::tickScreenshotTour() {
                 m_reportNote = "They kept at it after being asked to stop.";
                 m_reportWithContext = true;
             }
+        } else if (name == "admin-announce") {
+            // The board's editing view, stood up the same way the reports rows
+            // are: the real screen asks the account service, and a screenshot
+            // run has no account. What is being photographed is the SCREEN.
+            m_currentScreen = SCREEN_MENU;
+            m_devReportsOpen = true;
+            m_adminTab = AdminTab::Announcements;
+            m_adminAnnouncements.clear();
+            odnews::Item live;
+            live.id = "tourney-1"; live.title = "Autumn Tournament";
+            m_adminAnnouncements.push_back(live);
+            odnews::Item down;
+            down.id = "patch-112"; down.title = "1.1.2a is out";
+            m_adminAnnouncements.push_back(down);
+            m_adminAnnHidden = {false, true};
+            m_annId = "tourney-2";
+            m_annTitle = "Winter Tournament";
+            m_annBody = "**Thirty-two seats**, and a {accent}new map{/accent}.";
+            m_annBtnAction = 1;
+            m_annBtnLabel = "Join the lobby";
+            m_annBtnParam = "ODT-2K7X";
+            m_annTimeStyle = 2;
+            m_annEventIn = "3d 6h";
         } else if (name == "dev-reports" || name == "dev-lookup") {
             // Rows stood up directly: the real screen fetches them from the
             // account service, which a screenshot run has no account for.

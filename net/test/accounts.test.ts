@@ -309,3 +309,56 @@ describe("link-only providers", () => {
         expect(linked.ok).toBe(true);
     });
 });
+
+describe("the streaming platforms", () => {
+    // Added for tournaments: a linked channel says whose stream is whose. The
+    // cases worth pinning are the ones where a provider's reply is shaped
+    // differently from everybody else's.
+    it("offers Twitch, YouTube and Kick", () => {
+        for (const id of ["twitch", "youtube", "kick"])
+            expect(PROVIDERS[id as keyof typeof PROVIDERS]).toBeDefined();
+    });
+
+    it("takes YouTube's identity from the CHANNEL, not the Google account", () => {
+        // A Google account may hold several channels, and linking "youtube"
+        // must not silently be the same identity as linking "google".
+        const yt = PROVIDERS.youtube;
+        const reply = { items: [{ id: "UC_channel_123", snippet: { title: "A Channel",
+                                                                   publishedAt: "2019-04-01T00:00:00Z" } }] };
+        expect(yt.subjectOf(reply)).toBe("UC_channel_123");
+        expect(yt.suggestedName(reply)).toBe("A Channel");
+        expect(yt.accountCreatedAt(reply)).toBe(Date.parse("2019-04-01T00:00:00Z"));
+        // An account with no channel cannot be linked.
+        expect(yt.subjectOf({ items: [] })).toBeNull();
+        expect(yt.subjectOf({})).toBeNull();
+    });
+
+    it("reads Kick's numeric id out of its data array, as a string", () => {
+        const kick = PROVIDERS.kick;
+        expect(kick.subjectOf({ data: [{ user_id: 4242, name: "someone" }] })).toBe("4242");
+        expect(kick.suggestedName({ data: [{ user_id: 4242, name: "someone" }] }))
+            .toBe("someone");
+        expect(kick.subjectOf({ data: [] })).toBeNull();
+    });
+
+    it("takes Twitch's sub, which is what OIDC gives us", () => {
+        const twitch = PROVIDERS.twitch;
+        expect(twitch.subjectOf({ sub: "1234", preferred_username: "streamer" })).toBe("1234");
+        expect(twitch.suggestedName({ sub: "1234", preferred_username: "streamer" }))
+            .toBe("streamer");
+        expect(twitch.subjectOf({})).toBeNull();
+    });
+
+    it("lets none of them CREATE an account", () => {
+        // A channel is a way to prove who you are, not a way in: these are
+        // linked to an account that already exists.
+        for (const id of ["twitch", "youtube", "kick"] as const)
+            expect(PROVIDERS[id].canCreateAccount).toBe(false);
+    });
+
+    it("requires PKCE where the provider does", () => {
+        expect(PROVIDERS.kick.pkce).toBe(true);      // Kick mandates it
+        expect(PROVIDERS.youtube.pkce).toBe(true);   // Google supports it
+        expect(PROVIDERS.twitch.pkce).toBe(false);   // Twitch does not document it
+    });
+});

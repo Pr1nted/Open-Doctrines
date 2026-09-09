@@ -227,6 +227,38 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // --llm-letter <save.odsv> [country] [shot.png]
+    // Sends a real letter through the interface's own send path and reports
+    // whether it reached the four hooks the AI reads. Needs a window, the
+    // player's own config and a running model. See src/Game_LlmLetter.cpp.
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--llm-letter") != 0) continue;
+        if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+            fprintf(stderr, "--llm-letter needs a save, e.g. \"Screenshot World.odsv\"\n");
+            return 2;
+        }
+        const std::string save = argv[i + 1];
+        std::string who, shot;
+        if (i + 2 < argc && strncmp(argv[i + 2], "--", 2) != 0) who = argv[i + 2];
+        if (i + 3 < argc && strncmp(argv[i + 3], "--", 2) != 0) shot = argv[i + 3];
+        game.setLlmLetterShot(shot);
+        game.beginLlmLetterWalk(save, who);
+        game.run();
+        return game.llmLetterPassed() ? 0 : 1;
+    }
+
+    // opendoctrines://join/<code>
+    //
+    // A viewer clicking a link from a stream. macOS hands the URL to a COLD
+    // start as an ordinary argument (and to a running copy as an Apple Event;
+    // see the drop handler in Game::run). Windows and Linux pass it as argv
+    // too, so one path covers all three.
+    for (int i = 1; i < argc; ++i) {
+        if (strncmp(argv[i], "opendoctrines://", 16) != 0) continue;
+        game.handleJoinUrl(argv[i]);
+        break;
+    }
+
     // --tutorial-walk
     // Plays every route of the tutorial, page by page, and reports every page
     // that points at nothing, waits on a condition that never comes true, or

@@ -19,35 +19,9 @@
 
 namespace {
 
-/// Append one code point as UTF-8. The letters are written in twenty-one
-/// languages, so a text field that assumes one byte per character is a text
-/// field half the players cannot type their own name into.
-void utf8Append(std::string& out, int cp) {
-    const unsigned c = (unsigned)cp;
-    if (c < 0x80) { out += (char)c; }
-    else if (c < 0x800) {
-        out += (char)(0xC0 | (c >> 6));
-        out += (char)(0x80 | (c & 0x3F));
-    } else if (c < 0x10000) {
-        out += (char)(0xE0 | (c >> 12));
-        out += (char)(0x80 | ((c >> 6) & 0x3F));
-        out += (char)(0x80 | (c & 0x3F));
-    } else {
-        out += (char)(0xF0 | (c >> 18));
-        out += (char)(0x80 | ((c >> 12) & 0x3F));
-        out += (char)(0x80 | ((c >> 6) & 0x3F));
-        out += (char)(0x80 | (c & 0x3F));
-    }
-}
 
 /// Erase one CHARACTER, continuation bytes and all -- not one byte, which
 /// would leave a half-written character behind and draw as a replacement box.
-void utf8PopBack(std::string& out) {
-    if (out.empty()) return;
-    size_t i = out.size() - 1;
-    while (i > 0 && (unsigned char)out[i] >= 0x80 && (unsigned char)out[i] < 0xC0) --i;
-    out.erase(i);
-}
 
 /// Case-insensitive substring, ASCII-folded. Enough for a name filter: the
 /// non-Latin scripts this game ships in have no case to fold, and a Ukrainian
@@ -298,11 +272,30 @@ bool Game::mailSendDraft() {
     // delivery, one member at a time. Checking one member here would let one
     // shut door block a letter to everybody else.
     const bool toGroup = (m_mailGroupThread != 0);
-    const mail::Refusal why = mail::check(
-        m_mailDraft, mailRules(),
-        toGroup ? false : mailIsBot(m_mailThread),
-        toGroup ? mail::Lock::Open : mailLockOf(m_mailThread),
-        m_config.mailBlacklist);
+    // ── A ROOM IS NOT A RECIPIENT ──
+    //
+    // This used to describe a group as "a recipient who is not a bot", and
+    // writing to a non-bot requires a multiplayer game -- so every group in
+    // every single-player game was refused with "Mail is switched off on this
+    // server", in rooms whose members were all bots. The room's members are
+    // asked instead, and each of their doors is checked AGAIN at delivery, one
+    // at a time, which is where a shut one is honoured.
+    mail::Refusal why;
+    if (toGroup) {
+        std::vector<mail::RoomMember> members;
+        if (const mail::Group* g = mailGroup(m_mailGroupThread)) {
+            for (int m : g->members) {
+                if (m == m_playerCountryId) continue;
+                members.push_back({mailIsBot(m), mailLockOf(m)});
+            }
+        }
+        why = mail::mayWriteToRoom(mailRules(), members);
+        if (why == mail::Refusal::None)
+            why = mail::checkBody(m_mailDraft, m_config.mailBlacklist);
+    } else {
+        why = mail::check(m_mailDraft, mailRules(), mailIsBot(m_mailThread),
+                          mailLockOf(m_mailThread), m_config.mailBlacklist);
+    }
     if (why != mail::Refusal::None) {
         m_mailNotice = T(mail::refusalText(why));
         m_mailNoticeUntil = GetTime() + 6.0;
@@ -496,7 +489,45 @@ void Game::drawMail() {
                           (int)box.y + 6, 2, 14, WHITE);
         }
 
-        const Rectangle list = {(float)(x + 24), (float)(y + 112), (float)(w - 48), (float)(h - 180)};
+        // ── WHO YOU HAVE ALREADY PICKED, WHERE THE FILTER CANNOT HIDE THEM ──
+        //
+        // Picking is done from a list you type to narrow, so the moment you
+        // search for the second country the first one leaves the screen. The
+        // only thing left saying it happened was the count on the Create
+        // button -- "Create with 2" over a list showing one row, which reads as
+        // the button being wrong rather than as a filtered list. Shown as
+        // chips, above the filter, and clicking one takes it back off.
+        int listTop = y + 112;
+        if (m_mailPickingGroup && !m_mailGroupPicks.empty()) {
+            int cx = x + 24, cy = y + 112;
+            for (size_t i = 0; i < m_mailGroupPicks.size(); ++i) {
+                const Country* c = m_countries.getCountry(m_mailGroupPicks[i]);
+                if (!c) continue;
+                int fs = 12;
+                const std::string nm = odText::fitToWidth(c->name, 150, fs, 9);
+                const int cwid = MeasureText(nm.c_str(), fs) + 34;
+                if (cx + cwid > x + w - 24) { cx = x + 24; cy += 26; }
+                const Rectangle chip = {(float)cx, (float)cy, (float)cwid, 22};
+                const bool chh = CheckCollisionPointRec(mouse, chip);
+                DrawRectangleRounded(chip, 0.4f, 6,
+                                     chh ? Color{70, 40, 44, 240} : Color{34, 60, 44, 235});
+                DrawRectangleRoundedLines(chip, 0.4f, 6,
+                                          chh ? Color{190, 110, 100, 220}
+                                              : Color{110, 180, 130, 200});
+                DrawText(nm.c_str(), cx + 8, cy + 5, fs, WHITE);
+                DrawText("x", cx + cwid - 16, cy + 4, 13,
+                         chh ? Color{255, 200, 190, 255} : Color{170, 200, 180, 255});
+                if (chh && click) {
+                    m_mailGroupPicks.erase(m_mailGroupPicks.begin() + (long)i);
+                    Audio::get().playSfx("click_soft");
+                    break;
+                }
+                cx += cwid + 6;
+            }
+            listTop = cy + 32;
+        }
+        const Rectangle list = {(float)(x + 24), (float)listTop, (float)(w - 48),
+                                (float)(h - (listTop - y) - 68)};
         BeginScissorMode((int)list.x, (int)list.y, (int)list.width, (int)list.height);
         int ry = (int)list.y - m_mailPickerScroll;
         for (const auto& [cid, country] : m_countries.getAll()) {
@@ -515,20 +546,34 @@ void Game::drawMail() {
                     m_mailPickingGroup &&
                     std::find(m_mailGroupPicks.begin(), m_mailGroupPicks.end(), cid) !=
                         m_mailGroupPicks.end();
+                // ── THE TICK OWNS THE EDGE, AND THE TAG GIVES WAY ──
+                //
+                // Both used to be laid out from row.width with no knowledge of
+                // each other, so on a picked bot -- which is most of them --
+                // the tick was drawn through the "bot" chip and came out as a
+                // stray mark beside it. Anything pinned to the same edge has to
+                // be positioned in one place.
+                float rightEdge = row.x + row.width - 10;
                 if (picked) {
-                    DrawRectangleRounded({row.x + row.width - 26, row.y + 9, 16, 16},
+                    DrawRectangleRounded({rightEdge - 16, row.y + 9, 16, 16},
                                          0.3f, 6, Color{60, 120, 80, 240});
-                    DrawText("x", (int)(row.x + row.width - 21), (int)row.y + 11, 13, WHITE);
+                    DrawText("x", (int)(rightEdge - 11), (int)row.y + 11, 13, WHITE);
+                    rightEdge -= 24;
                 }
-                DrawText(country.name.c_str(), (int)row.x + 50, (int)row.y + 9, 14,
-                         (rh || picked) ? WHITE : Color{200, 206, 226, 255});
                 if (isBot) {
                     const int tw = MeasureText(T(mail::botTag()), 11);
-                    DrawRectangleRounded({row.x + row.width - tw - 30, row.y + 9, (float)tw + 14, 17},
+                    DrawRectangleRounded({rightEdge - tw - 14, row.y + 9, (float)tw + 14, 17},
                                          0.4f, 6, Color{60, 48, 78, 230});
-                    DrawText(T(mail::botTag()), (int)(row.x + row.width - tw - 23),
+                    DrawText(T(mail::botTag()), (int)(rightEdge - tw - 7),
                              (int)row.y + 12, 11, Color{206, 186, 232, 255});
+                    rightEdge -= tw + 22;
                 }
+                // Clipped to what is left, so a long name runs into neither.
+                int nameSize = 14;
+                DrawText(odText::fitToWidth(country.name,
+                                            (int)(rightEdge - row.x - 60), nameSize, 10).c_str(),
+                         (int)row.x + 50, (int)row.y + 9, nameSize,
+                         (rh || picked) ? WHITE : Color{200, 206, 226, 255});
             }
             if (rh && click) {
                 if (m_mailPickingGroup) {
@@ -1104,19 +1149,25 @@ void Game::updateMail() {
         int k = GetCharPressed();
         while (k > 0) {
             if (k >= 32 && m_mailPickerQuery.size() + 4 <= 64) {
-                utf8Append(m_mailPickerQuery, k);
+                odText::utf8Append(m_mailPickerQuery, k);
                 m_mailPickerScroll = 0;   // a new filter starts at the top
             }
             k = GetCharPressed();
         }
         if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
             !m_mailPickerQuery.empty()) {
-            utf8PopBack(m_mailPickerQuery);
+            odText::utf8PopBack(m_mailPickerQuery);
             m_mailPickerScroll = 0;
         }
         return;
     }
-    if (m_mailThread == 0) return;
+    // A ROOM IS A THREAD TOO. This read `m_mailThread == 0`, which is exactly
+    // what a group room looks like -- the room is in m_mailGroupThread and the
+    // one-to-one thread is zero -- so every keystroke typed into a group was
+    // dropped here, three functions before anything that could have complained.
+    // The compose box drew, took focus, showed its caret, and ignored the
+    // keyboard. Reported as "I could not write into a group".
+    if (m_mailThread == 0 && m_mailGroupThread == 0) return;
     if (!m_mailComposeFocus) return;
 
     int key = GetCharPressed();
@@ -1124,13 +1175,13 @@ void Game::updateMail() {
         // Same UTF-8 handling as the report form, and for the same reason: a
         // letter written in Ukrainian is a letter.
         if (key >= 32 && m_mailDraft.size() + 4 <= mail::kMaxBody)
-            utf8Append(m_mailDraft, key);
+            odText::utf8Append(m_mailDraft, key);
         key = GetCharPressed();
     }
 
     if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
         if (!m_mailDraft.empty()) {
-            utf8PopBack(m_mailDraft);
+            odText::utf8PopBack(m_mailDraft);
             Audio::get().playSfx("key_type", 0.12f);
         }
     }

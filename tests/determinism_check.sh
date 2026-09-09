@@ -89,6 +89,35 @@ run_bounded() {
     return 0
 }
 
+# ── PIN THE MODEL, OR THIS MEASURES THE FILESYSTEM ──
+#
+# Every run loads data/ai/model.bin, and that file is WRITTEN BY OTHER THINGS:
+# a game running with AI Learning on saves it as the player takes turns, and a
+# training loop rewrites it outright. Six runs spread over a few minutes can
+# therefore load six different models, diverge for exactly that reason, and be
+# reported as "the same seed no longer plays the same game" -- pointing whoever
+# reads it at the turn resolver, where there is nothing to find.
+#
+# Observed directly: model.bin went 6bedb6ce -> c10c35f7 DURING one of these
+# checks, while a game was open in another window.
+#
+# So the runs get their own data directory with a frozen copy. Nothing else can
+# write it, and a divergence now means what the message says it means.
+det_data="$tmp/data"
+mkdir -p "$det_data/ai"
+if [ -f "$root/data/ai/model.bin" ]; then
+    cp "$root/data/ai/model.bin" "$det_data/ai/model.bin"
+    # Everything else the run needs is read-only, so it is linked rather than
+    # copied: the maps alone are hundreds of megabytes.
+    for entry in "$root/data"/*; do
+        name=$(basename "$entry")
+        [ "$name" = "ai" ] && continue
+        ln -s "$entry" "$det_data/$name" 2>/dev/null || true
+    done
+    export OD_DATA_DIR="$det_data"
+    echo "  (model pinned for the run: $(basename "$det_data"))"
+fi
+
 export OD_DET_TRACE=1
 runs=6
 i=1

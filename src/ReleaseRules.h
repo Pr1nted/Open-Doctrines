@@ -100,11 +100,32 @@ struct ReleaseProvince {
     float alignment = 0.0f;
 };
 
+/**
+ * Why regions were not offered. Optional, for diagnostics and for tests.
+ *
+ * A rule that answers "none" is indistinguishable from a rule that never ran,
+ * and this one answered "none" for 27 of 29 countries while 209 provinces
+ * passed both of its gates. Counting the refusals is what told the two apart.
+ */
+struct ReleaseRejects {
+    int blobs = 0;        ///< contiguous same-minority runs found
+    int tooSmall = 0;     ///< fewer than RELEASE_MIN_PROVINCES
+    int tooLarge = 0;     ///< more than RELEASE_MAX_SHARE of the country
+    int accepted = 0;
+    int impossible = 0;   ///< the country is too small for the two rules to agree
+    int core = 0;         ///< provinces held by the country's own people
+};
+
 /** A region that could become a country. */
 struct ReleaseCandidate {
     std::string minority;
     std::vector<int> provinces;   ///< ascending, so the answer is stable
     long long population = 0;
+    /**
+     * More than RELEASE_MAX_SHARE of the country. Never returned -- see the
+     * refusal below for why offering these would dismember the core.
+     */
+    bool oversized = false;
 };
 
 /**
@@ -121,9 +142,52 @@ struct ReleaseCandidate {
  * offered the player a different region on a re-run of the same save would be a
  * worse bug than one that offered none.
  */
+/**
+ * The people a country is built around: the largest by head count across the
+ * ground it holds.
+ *
+ * WHAT THIS IS FOR. Alignment was supposed to keep a country's own people off
+ * the release list -- "a nation's own people are highly aligned and never
+ * offered". Measured on the shipped 1939 map at turn 3, it does not: alignment
+ * starts at 50 for every people in the world and the bar is 55, so on turn one
+ * EVERY group counts as disaffected. The list offered the British Empire its
+ * English provinces, the Soviet Union its Russian ones, Germany its German
+ * ones and Spain its Spanish ones. RELEASE_MAX_SHARE was the other guard and
+ * cannot help: two English provinces out of two hundred and fifty-four is
+ * nowhere near half of anything.
+ *
+ * BY POPULATION, AND THE KNOWN COST OF THAT. The header above argues at length
+ * that "the country's own people" is not computable, and its example is this
+ * one: by population Britain's largest group is Hindustani, so on a colonial
+ * empire this protects the colony and still offers the metropole. That is a
+ * real limitation and it is chosen deliberately -- it removes the core case
+ * for nation-states, which is most of the map, without a map-format change.
+ * A `core_minority` field in countries.json is the fix that has no such hole.
+ */
+inline std::string coreMinorityOf(const std::vector<ReleaseProvince>& owned) {
+    // Head count, not province count: province count makes Britain's core
+    // Indigenous Canadian, which is emptier still.
+    std::unordered_map<std::string, double> byPeople;
+    for (const auto& p : owned) {
+        if (p.topMinority.empty()) continue;
+        byPeople[p.topMinority] += (double)p.population * (double)p.topMinorityPct / 100.0;
+    }
+    std::string best;
+    double bestN = 0.0;
+    for (const auto& [name, n] : byPeople) {
+        // Ties by name, so the answer never depends on hash order.
+        if (n > bestN || (n == bestN && !best.empty() && name < best)) {
+            bestN = n;
+            best = name;
+        }
+    }
+    return best;
+}
+
 template <typename NeighborFn>
 inline std::vector<ReleaseCandidate> findReleasableRegions(
-    const std::vector<ReleaseProvince>& owned, NeighborFn neighborsOf) {
+    const std::vector<ReleaseProvince>& owned, NeighborFn neighborsOf,
+    ReleaseRejects* why = nullptr, const std::string& coreMinority = std::string()) {
     std::vector<ReleaseCandidate> out;
     if (owned.size() < RELEASE_MIN_PROVINCES) return out;
 
@@ -158,6 +222,11 @@ inline std::vector<ReleaseCandidate> findReleasableRegions(
 
     const size_t maxProvinces =
         (size_t)((double)owned.size() * (double)RELEASE_MAX_SHARE);
+    // The two rules can contradict each other outright. A country of three
+    // provinces has maxProvinces == 1 and RELEASE_MIN_PROVINCES == 2, so no
+    // region can satisfy both and release is impossible by arithmetic rather
+    // than by anything the player did.
+    if (why && maxProvinces < RELEASE_MIN_PROVINCES) ++why->impossible;
 
     // A province belongs to at most one candidate: once it has been claimed by
     // a region it cannot seed or join another, so the regions offered never
@@ -165,6 +234,12 @@ inline std::vector<ReleaseCandidate> findReleasableRegions(
     std::unordered_set<int> taken;
 
     for (const auto& seed : owned) {
+        // The country's own people are not a region to be freed. See
+        // coreMinorityOf for what this does and does not cover.
+        if (!coreMinority.empty() && seed.topMinority == coreMinority) {
+            if (why) ++why->core;
+            continue;
+        }
         if (seed.topMinorityPct < RELEASE_DOMINANCE_PCT) continue;
         if (seed.topMinority.empty()) continue;
         if (seed.alignment > RELEASE_MAX_ALIGNMENT) continue;   // content: not a region
@@ -192,12 +267,33 @@ inline std::vector<ReleaseCandidate> findReleasableRegions(
                 if (!seen.count(n)) { seen.insert(n); stack.push_back(n); }
         }
 
-        if (cand.provinces.size() < RELEASE_MIN_PROVINCES) continue;
+        if (why) ++why->blobs;
+        if (cand.provinces.size() < RELEASE_MIN_PROVINCES) {
+            if (why) ++why->tooSmall;
+            continue;
+        }
         // Too large to give away. Refused whole rather than trimmed: a region
         // is a nation, and handing over an arbitrary half of one because the
         // whole would not fit is not a border anybody drew.
-        if (maxProvinces > 0 && cand.provinces.size() > maxProvinces) continue;
+        // ── TOO LARGE IS REFUSED WHOLE, AND THAT IS LOAD-BEARING ──
+        //
+        // It is tempting to return these and let the player trim one down to a
+        // legal size, since both screens that offer a release already let you
+        // choose a subset. It was tried, and it is wrong: the size cap is what
+        // stops a country being offered its OWN CORE. A homogeneous country's
+        // only region is the whole of itself, and a country whose majority
+        // people hold four provinces of six would be invited to hand three of
+        // them away. There is deliberately no titular-people rule (see above),
+        // so size is the only thing standing in for one.
+        //
+        // tests/release_rules_test.cpp pins both cases.
+        cand.oversized = (maxProvinces > 0 && cand.provinces.size() > maxProvinces);
+        if (cand.oversized) {
+            if (why) ++why->tooLarge;
+            continue;
+        }
 
+        if (why) ++why->accepted;
         std::sort(cand.provinces.begin(), cand.provinces.end());
         for (int pid : cand.provinces) taken.insert(pid);
         out.push_back(std::move(cand));

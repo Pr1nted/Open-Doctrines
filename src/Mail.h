@@ -106,6 +106,20 @@ struct Rules {
     bool   multiplayer = false;
 };
 
+/**
+ * One member of a room, as the rule needs to see them.
+ *
+ * A ROOM IS NOT A RECIPIENT, and treating it as one was a real bug: the send
+ * path described a group as "a recipient who is not a bot", and writing to a
+ * non-bot needs multiplayer, so every group in every single-player game was
+ * refused with "Mail is switched off on this server" -- in rooms whose members
+ * were all bots.
+ */
+struct RoomMember {
+    bool isBot = false;
+    Lock lock = Lock::Open;
+};
+
 /// Why a letter may not be sent. Empty string means it may.
 enum class Refusal : uint8_t {
     None = 0,
@@ -143,6 +157,20 @@ bool available(const Rules& rules);
  * past what the recipient will accept.
  */
 Refusal mayWrite(const Rules& rules, bool toIsBot, Lock toLock);
+
+/**
+ * May a letter go into a room with these members?
+ *
+ * The author's own door, then whether ANY member could receive it. Delivery
+ * checks each member again one at a time -- that is where a shut door is
+ * honoured -- so this is not about who gets it, only about whether sending is
+ * pointless or forbidden outright. A room where nobody can hear you is refused
+ * with the reason the first member gave, rather than silently going nowhere.
+ */
+Refusal mayWriteToRoom(const Rules& rules, const std::vector<RoomMember>& members);
+
+/// The half of check() that judges the LETTER: empty, too long, forbidden word.
+Refusal checkBody(const std::string& body, const std::vector<std::string>& blacklist);
 
 /**
  * Check a letter's text against the host's forbidden words.

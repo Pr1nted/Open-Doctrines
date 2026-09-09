@@ -34,6 +34,7 @@
 #endif
 #include "Audio.h"
 #include "GameInternals.h"
+#include "StreamSafe.h"
 #include "net/AccountClient.h"
 #include "net/BadgeStyle.h"
 #include "net/Host.h"
@@ -513,6 +514,7 @@ void Game::mpOpenHost() {
                                                : NetAssignment::PlayersPick;
     cfg.lobby.lateJoin = m_mpLateJoin == 0 ? NetLateJoin::Refuse : NetLateJoin::Spectate;
     cfg.lobby.absent   = m_mpAbsent == 0 ? NetAbsent::Ai : NetAbsent::Idle;
+    cfg.lobby.chat     = m_mpChat;
     cfg.bindAll = m_mpBindAll;
     cfg.port = (uint16_t)std::clamp(atoi(m_mpPortField.c_str()), 0, 65535);
     cfg.lobby.maxPlayers = (uint8_t)m_mpMaxPlayers;
@@ -752,6 +754,11 @@ void Game::mpDrainEvents() {
                     Audio::get().playSfx("notify");
                     break;
                 }
+                case NetHostEvent::Kind::Chat:
+                    // The host sees its own broadcast here rather than through
+                    // a loopback connection it does not have.
+                    pushChatLine(chatNameOf(e.chat.fromPeerId), e.chat.text);
+                    break;
                 case NetHostEvent::Kind::Failed:
                     mpNote(e.text, true);
                     break;
@@ -847,6 +854,12 @@ void Game::mpDrainEvents() {
                     mpSaveJoinedSession();
                     break;
                 }
+                case NetSessionEvent::Kind::Chat:
+                    // peer 0 is the server speaking -- a refusal meant for this
+                    // player, or the host's own line.
+                    pushChatLine(chatNameOf(e.chat.fromPeerId), e.chat.text,
+                                 e.chat.fromPeerId == 0);
+                    break;
                 case NetSessionEvent::Kind::Notice:
                     // "The AI played X because ..." -- said out loud, always.
                     if (!e.notice.text.empty()) mpNote(e.notice.text);
@@ -877,6 +890,12 @@ void Game::mpDrainEvents() {
 void Game::updateMultiplayerMenu() {
     const float dt = GetFrameTime();
     if (m_mpNoteTimer > 0.0f) m_mpNoteTimer -= dt;
+    // The player's own preference, read once from the config it was saved
+    // to. Done here rather than at load because the config is read before
+    // the field exists on some paths.
+    static bool chatPrefRead = false;
+    if (!chatPrefRead) { chatPrefRead = true; m_chatShown = m_config.lobbyChatShown; }
+    updateMpChat();   // the lobby chat field, when it has focus
 
     // Collect a finished server registration, and carry on where the click
     // left off.
@@ -965,7 +984,15 @@ void Game::drawMultiplayerMenu() {
         case MpPage::Hub:       drawMpHub(mouse, click); break;
         case MpPage::Join:      drawMpJoin(mouse, click); break;
         case MpPage::HostSetup: drawMpHostSetup(mouse, click); break;
-        case MpPage::Lobby:     drawMpLobby(mouse, click); break;
+        case MpPage::Lobby:
+            drawMpLobby(mouse, click);
+            // Down the right-hand side, out of the way of the roster. Drawn
+            // after the lobby so its input field takes clicks first.
+            if (m_netHost || m_netSession) {
+                const int cw = 300;
+                drawMpChat(m_screenW - cw - 24, 150, cw, m_screenH - 240, mouse, click);
+            }
+            break;
     }
 
     if (m_mpNoteTimer > 0.0f && !m_mpNote.empty()) {
@@ -1598,6 +1625,26 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                      "is easier to exploit than one the AI defends.",
                m_mpAbsent, 2);
 
+        // ── THE HOST'S SWITCH ──
+        //
+        // Separate from the player's own Hide chat, and they are different
+        // kinds of thing: this decides whether anybody may talk in this game at
+        // all, and it is enforced on the host where a client cannot argue with
+        // it. Rate limiting comes with it either way -- see src/net/ChatRules.h
+        // -- because an eight-player lobby fans every line out eight times and
+        // that was unrated for as long as the feature has existed.
+        {
+            int mode = m_mpChat ? 0 : 1;
+            choice("Players talking to each other",
+                   m_mpChat ? "Chat is on" : "Chat is off",
+                   m_mpChat
+                       ? "Anyone in the lobby can write to everybody. Each player "
+                         "can hide the window for themselves."
+                       : "Nothing sent is passed on, and whoever sent it is told so.",
+                   mode, 2);
+            m_mpChat = (mode == 0);
+        }
+
         const MpButton anon = buttonAt((float)(centerX - fieldW / 2), (float)y, 24.0f, 24.0f, mouse);
         DrawRectangleRounded(anon.rect, 0.2f, 6,
                              m_mpAnonymous ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
@@ -1757,7 +1804,15 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
     if (hosting) {
         const std::string code = m_netHost->code();
         if (!code.empty()) {
-            const std::string line = "Invite code:  " + code;
+            // ── THE CODE IS A KEY, AND IT IS ON SCREEN FOR THE WHOLE LOBBY ──
+            //
+            // Anybody reading it off a stream can walk into a private game.
+            // During a tournament that IS the tournament, so in stream mode it
+            // is masked -- the host still has it (it is in their own clipboard
+            // via the copy button, and on their own screen with the mode off),
+            // the camera does not.
+            const std::string shown = m_config.streamSafe ? streamsafe::maskSecret(code) : code;
+            const std::string line = "Invite code:  " + shown;
             DrawText(line.c_str(), centerX - MeasureText(line.c_str(), 24) / 2, y, 24,
                      Color{200, 220, 240, 255});
             y += 32;
@@ -1766,7 +1821,10 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             // reading out "port 27015" to a friend on another continent is a
             // host whose game nobody joins.
             if (m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up) {
-                const std::string addr = "Address:  " + m_mpTunnel->address();
+                // A route to this machine, and one that outlives the session.
+                const std::string addr = "Address:  " +
+                    (m_config.streamSafe ? streamsafe::maskSecret(m_mpTunnel->address())
+                                         : m_mpTunnel->address());
                 DrawText(addr.c_str(), centerX - MeasureText(addr.c_str(), 19) / 2, y, 19,
                          Color{170, 220, 180, 255});
                 y += 26;
@@ -3561,7 +3619,9 @@ void Game::drawMpHostConsole(int x, int top) {
         y += 18;
     };
 
-    line("Invite code", m_netHost->code().empty() ? "--" : m_netHost->code(),
+    line("Invite code", m_netHost->code().empty() ? "--"
+             : (m_config.streamSafe ? streamsafe::maskSecret(m_netHost->code())
+                                    : m_netHost->code()),
          Color{200, 215, 235, 255});
 
     std::string where;
@@ -4350,4 +4410,133 @@ bool Game::mpApplyTurnOrders(const std::vector<uint8_t>& payload, int turnNumber
     m_turnOrderLog = std::move(parsed);
     m_turnOrderLogTurn = turnNumber;
     return true;
+}
+
+// ─────────────────────────────────────────────────────────── lobby chat ────
+//
+// The wire for this was written years before the screen: a client sends Chat,
+// the host stamps who it came from and broadcasts ChatFrom, and the client
+// decoded it into an event that NOTHING READ. Chat has been arriving and
+// falling out of a switch statement this whole time.
+//
+// Two switches over it, and they are different kinds of thing. The HOST's is a
+// rule about the game -- see LobbySettings::chat, enforced in Host.cpp, where
+// it is also rate limited. The PLAYER's is about their own screen, is local,
+// and never stops anybody else talking: somebody who does not want a chat
+// window should not have to leave the game to be rid of it.
+
+std::string Game::chatNameOf(uint16_t peerId) const {
+    if (peerId == 0) return "Server";
+    // The roster is the only place a peer id becomes a person, and it changes
+    // under us -- so the name is resolved when the line ARRIVES and stored,
+    // rather than looked up when it is drawn. A player who leaves mid-game
+    // should not turn every line they wrote into "unknown".
+    if (m_netHost) {
+        for (const NetPeer& p : m_netHost->lobby().roster())
+            if (p.peerId == peerId) return p.name;
+    }
+    if (m_netSession) {
+        for (const NetPeer& p : m_netSession->roster())
+            if (p.peerId == peerId) return p.name;
+    }
+    return "Someone";
+}
+
+void Game::pushChatLine(const std::string& who, const std::string& text, bool system) {
+    if (text.empty()) return;
+    m_chatLog.push_back(ChatLine{who, text, system});
+    // A ceiling, because a lobby left open overnight is a lobby with an
+    // unbounded vector in it.
+    constexpr size_t kMaxLines = 200;
+    if (m_chatLog.size() > kMaxLines)
+        m_chatLog.erase(m_chatLog.begin(), m_chatLog.begin() + (m_chatLog.size() - kMaxLines));
+    m_chatScroll = 0;   // a new line pulls the view to the bottom
+}
+
+void Game::updateMpChat() {
+    if (!m_chatShown || !m_chatFocus) return;
+    int k = GetCharPressed();
+    while (k > 0) {
+        // 512 is NetLimits::kChat; stopping here means the host never has to
+        // refuse a line for length, which is a refusal nobody can act on.
+        if (k >= 32 && m_chatDraft.size() + 4 <= 512) odText::utf8Append(m_chatDraft, k);
+        k = GetCharPressed();
+    }
+    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
+        !m_chatDraft.empty())
+        odText::utf8PopBack(m_chatDraft);
+
+    if (IsKeyPressed(KEY_ENTER) && !m_chatDraft.empty()) {
+        if (m_netSession) m_netSession->sendChat(m_chatDraft);
+        // The host has no session to send through, and its own line is echoed
+        // back to it through the same broadcast every player gets -- so it is
+        // NOT pushed locally here, or the host would see everything twice.
+        else if (m_netHost) m_netHost->sendChat(m_chatDraft);
+        m_chatDraft.clear();
+    }
+}
+
+void Game::drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click) {
+    const Color accent = hexToColor(m_config.accent());
+
+    // The player's own switch, drawn whether or not the panel is open, because
+    // a control that disappears when you use it cannot be undone.
+    const Rectangle tog = {(float)(x + w - 92), (float)(y - 26), 92, 22};
+    const bool th = CheckCollisionPointRec(mouse, tog);
+    DrawRectangleRounded(tog, 0.3f, 6, th ? Color{44, 48, 66, 240} : Color{26, 28, 38, 220});
+    DrawRectangleRoundedLines(tog, 0.3f, 6, Color{90, 96, 130, 200});
+    DrawText(m_chatShown ? T("Hide chat") : T("Show chat"), (int)tog.x + 10,
+             (int)tog.y + 5, 11, WHITE);
+    if (th && click) {
+        m_chatShown = !m_chatShown;
+        m_chatFocus = false;
+        m_config.lobbyChatShown = m_chatShown;
+        m_config.save(m_configPath);
+        Audio::get().playSfx("click_soft");
+    }
+    if (!m_chatShown) return;
+
+    const int inputH = 26;
+    const Rectangle view = {(float)x, (float)y, (float)w, (float)(h - inputH - 6)};
+    DrawRectangleRec(view, Color{11, 12, 17, 235});
+    DrawRectangleLinesEx(view, 1, Color{50, 54, 72, 180});
+
+    BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+    // Drawn from the bottom up, so the newest line is always the one you can
+    // see and a long backlog scrolls off the top where it belongs.
+    int ly = (int)(view.y + view.height) - 18 + m_chatScroll;
+    for (auto it = m_chatLog.rbegin(); it != m_chatLog.rend() && ly > view.y - 20; ++it) {
+        const std::string line = it->system ? it->text : (it->who + ": " + it->text);
+        int fs = 12;
+        const std::string fit = odText::fitToWidth(line, (int)view.width - 16, fs, 9);
+        DrawText(fit.c_str(), (int)view.x + 8, ly, 12,
+                 it->system ? Color{210, 170, 120, 255} : Color{206, 212, 232, 255});
+        ly -= 16;
+    }
+    EndScissorMode();
+    if (CheckCollisionPointRec(mouse, view)) {
+        const float wheel = GetMouseWheelMove();
+        if (wheel != 0.0f)
+            m_chatScroll = std::clamp(m_chatScroll + (int)(wheel * 32), 0,
+                                      std::max(0, (int)m_chatLog.size() * 16));
+    }
+
+    const Rectangle field = {(float)x, (float)(y + h - inputH), (float)w, (float)inputH};
+    const bool fh = CheckCollisionPointRec(mouse, field);
+    DrawRectangleRec(field, m_chatFocus ? Color{22, 25, 34, 255} : Color{15, 17, 23, 255});
+    DrawRectangleLinesEx(field, 1, m_chatFocus ? accent : Color{60, 64, 84, 200});
+    if (fh && click) m_chatFocus = true;
+    else if (click && !fh) m_chatFocus = false;
+
+    if (m_chatDraft.empty() && !m_chatFocus) {
+        DrawText(T("Say something to the lobby"), (int)field.x + 8, (int)field.y + 7, 12,
+                 Color{96, 100, 118, 255});
+    } else {
+        int fs = 12;
+        const std::string fit = odText::fitToWidth(m_chatDraft, (int)field.width - 20, fs, 9);
+        DrawText(fit.c_str(), (int)field.x + 8, (int)field.y + 7, 12, WHITE);
+        if (m_chatFocus && (int)(GetTime() * 2) % 2)
+            DrawRectangle((int)field.x + 10 + MeasureText(fit.c_str(), 12),
+                          (int)field.y + 6, 2, 14, WHITE);
+    }
 }

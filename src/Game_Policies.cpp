@@ -1052,7 +1052,8 @@ float Game::getProvinceRebellionChance(int provinceId) const {
 // one, so the largest is usually well short of a majority -- which is why the
 // rule wants a majority and not a plurality, and why most provinces are not
 // part of any releasable region at all.
-std::vector<ReleaseCandidate> Game::releasableRegions(int countryId) const {
+std::vector<ReleaseCandidate> Game::releasableRegions(int countryId,
+                                                      ReleaseRejects* why) const {
     std::vector<ReleaseProvince> owned;
     for (int pid : provincesOf(countryId)) {
         auto mit = m_provinceMinorities.find(pid);
@@ -1073,11 +1074,14 @@ std::vector<ReleaseCandidate> Game::releasableRegions(int countryId) const {
     }
     // provincesOf is the ordered index, so `owned` arrives in a stable order and
     // the rule's own tie-breaks do the rest. See the determinism note there.
+    // Computed from the same `owned` the rule reads, so the two can never
+    // disagree about which provinces the country holds.
+    const std::string core = coreMinorityOf(owned);
     return findReleasableRegions(owned, [this](int pid) {
         static const std::vector<int> none;
         auto it = m_provinceNeighbors.find(pid);
         return (it != m_provinceNeighbors.end()) ? it->second : none;
-    });
+    }, why, core);
 }
 
 // === drawPolicySearchBox / policyMatchesSearch ===
@@ -3767,6 +3771,37 @@ void Game::drawCountryProfile() {
             m_inCountryProfile = false;
             Audio::get().playSfx("panel_close", 0.45f);
             return;                        // nothing below should draw a dead frame
+        }
+
+        // ── Write to them, from here ──
+        //
+        // This screen is where a player decides what they think of a country,
+        // so it is where they decide to say something to it. The alternative
+        // was: close the profile, open Mail, press New letter, then find the
+        // same country again in a list of a hundred and ninety.
+        //
+        // Only when a letter would actually be accepted -- the same check the
+        // picker makes, so a button never appears for a door that is shut.
+        if (cid != m_playerCountryId && mailAvailable() &&
+            mail::mayWrite(mailRules(), mailIsBot(cid), mailLockOf(cid)) ==
+                mail::Refusal::None) {
+            const int mw = MeasureText(T("Write to them"), 14) + 28;
+            const Rectangle mb = {close.x - mw - 10, close.y, (float)mw, (float)bh};
+            const bool mh = CheckCollisionPointRec(mouse, mb);
+            DrawRectangleRounded(mb, 0.2f, 6, mh ? Color{40, 60, 46, 245} : Color{26, 34, 30, 225});
+            DrawRectangleRoundedLines(mb, 0.2f, 6,
+                                      mh ? Color{120, 190, 140, 230} : Color{78, 96, 84, 200});
+            DrawText(T("Write to them"), (int)mb.x + 14, (int)mb.y + 8, 14,
+                     mh ? WHITE : Color{190, 214, 196, 255});
+            if (mh && click) {
+                m_inCountryProfile = false;
+                openMail();
+                // Straight into the correspondence with THEM, not the list.
+                m_mailThread = cid;
+                m_mailPicking = false;
+                m_mailComposeFocus = true;
+                return;
+            }
         }
     }
     y += 84;

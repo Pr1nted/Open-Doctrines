@@ -294,6 +294,23 @@ Turn toolResultTurn(const ToolCall& call, const std::string& answer);
 std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
                                      const std::string& model, int maxTokens = 220);
 
+/// The `tools` array, keeping only those `keep` accepts. Null keeps all.
+std::string toolsJson(bool (*keep)(const std::string&));
+
+/// The three tools that reach the country's play, as opposed to its prose.
+bool isSteeringTool(const std::string& name);
+
+/**
+ * The steering pass: the same conversation, asked once more with ONLY the
+ * three steering tools offered.
+ *
+ * Measured, not assumed: offered alongside the lookups and the disposition, a
+ * small model spends its single tool call on one of those and never steers.
+ * See the note beside the definition for the figures.
+ */
+std::string steeringRequestBody(const std::vector<Turn>& turns,
+                                const std::string& model, int maxTokens = 120);
+
 /**
  * How many times a letter may go round the ask-and-answer loop.
  *
@@ -301,6 +318,55 @@ std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
  * we signed" and short enough that a confused model cannot spend a minute of
  * somebody's turn on it.
  */
+/**
+ * What a country recorded alongside its letter, written in the letter itself.
+ *
+ * ── WHY THERE IS A SECOND CHANNEL AT ALL ──
+ *
+ * The first one is the model's own function calling, and against a small local
+ * model it leaks. Every one of these reached a player as a letter:
+ *
+ *     "This exchange has left me disposed toward them, cooler..."
+ *     "What do you want from this situation? Set goal: Poland should..."
+ *     "Preferred Doctrine: Mobilize the army along the border..."
+ *     "Record: This exchange has made us view France with a warmer disposition"
+ *     "It seems like there is no country called ~me~ in the game."
+ *
+ * Each one was answered with another rule in tidyReply, and each new rule was
+ * written because a NEW form had already been posted to somebody. That is a
+ * losing shape: the filter can only ever describe leaks that have happened.
+ *
+ * So the machinery gets a place to live that is not the prose. The model is
+ * asked to end its letter with a marked block, everything before the marker is
+ * the letter, and everything after it is never shown to anybody. A model that
+ * writes its records in the block cannot leak them, because the separation is
+ * syntactic rather than a guess about wording.
+ *
+ * The filters STAY. This makes leaking unnecessary; it cannot make it
+ * impossible, and a model that ignores the format is exactly the model the
+ * filters were written for.
+ */
+struct Records {
+    bool found = false;              ///< the marker was present
+    std::string goal;
+    std::string press;
+    std::string doctrine;
+    std::vector<std::string> leans;  ///< phrases for parseLean
+    int disposition = 0;             ///< -1, 0 or +1
+};
+
+/// The marker. Deliberately unlike anything a diplomat writes.
+inline constexpr const char* kRecordMarker = "[[RECORD]]";
+
+/**
+ * Split a reply into the letter and what was recorded with it.
+ *
+ * `text` is left holding ONLY the letter. When the marker is absent nothing is
+ * removed and `found` is false, which is the ordinary case for a model that
+ * used its tool calls instead.
+ */
+Records splitRecords(std::string& text);
+
 constexpr int kMaxToolRounds = 3;
 
 /**

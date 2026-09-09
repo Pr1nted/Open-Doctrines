@@ -716,6 +716,25 @@ void Game::drawMainMenu() {
         }
     }
 
+    // ── THE ANNOUNCEMENT BOARD ──
+    //
+    // To the RIGHT of the items, in the space the menu column leaves. Drawn
+    // before them so a hover highlight is never painted over the board, and
+    // skipped entirely when there is nothing to say -- an empty frame sitting
+    // on the main menu for ever is worse than no board at all.
+    //
+    // On a narrow window there is no room beside the column and it is simply
+    // not shown: a phone held upright has about four hundred points across and
+    // the menu already fills them.
+    {
+        const int boardW = std::min(340, m_screenW / 3);
+        const int boardX = centerX + 230 + btnDX;
+        const int boardH = std::min(460, m_screenH - startY - 60);
+        if (boardX + boardW <= m_screenW - 24 && boardH > 120)
+            drawAnnouncementBoard(boardX, startY - 10, boardW, boardH, mouse,
+                                  IsMouseButtonReleased(MOUSE_BUTTON_LEFT));
+    }
+
     for (int i = 0; i < count; ++i) {
         int y = startY + i * itemH;
         bool isSelected = (i == m_menuIndex);
@@ -2821,6 +2840,7 @@ void Game::updateSettingsFromMenu() {
                 m_modUpdatesAsked = false;
             }
             else if (m_settingsTab == 4 && m_settingsIndex == 5) { m_config.gameUpdateChecks = true; }
+            else if (m_settingsTab == 4 && m_settingsIndex == 6) { m_config.streamSafe = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
             else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
@@ -2922,6 +2942,17 @@ void Game::updateSettingsFromMenu() {
                 ? "On — each mod's author will see that you run their mod when the check runs"
                 : "Off — no outbound requests";
             m_menuFeedbackTimer = 4.0f;
+        } else if (strcmp(s.label, "Stream-safe mode") == 0) {
+            m_config.streamSafe = !m_config.streamSafe;
+            Audio::get().playSfx(m_config.streamSafe ? "toggle_on" : "toggle_off");
+            // Flags are baked when a world loads, so a world already open keeps
+            // the ones it has. Said out loud rather than left as a surprise
+            // halfway through a stream.
+            m_menuFeedback = m_config.streamSafe
+                ? "On — codes, addresses, account ID and file paths are hidden, "
+                  "and flags are censored (reload a world to recolour it)"
+                : "Off — everything is shown again";
+            m_menuFeedbackTimer = 5.0f;
         } else if (strcmp(s.label, "Check for game updates") == 0) {
             m_config.gameUpdateChecks = !m_config.gameUpdateChecks;
             Audio::get().playSfx(m_config.gameUpdateChecks ? "toggle_on" : "toggle_off");
