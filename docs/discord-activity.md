@@ -75,10 +75,24 @@ the number on the wire, and it was wrong to lead with:
     OpenDoctrines.js     0.4M     0.1M    0.1M
     TOTAL               20.9M             6.6M
 
-**6.6 MB** is what a CDN sends, and it puts a first load at about two seconds
-on a typical home connection, five on a slow one, and ten on 4G. A returning
-player pays one revalidation per file and no body at all — see
-`packaging/web/_headers`, where the caching is chosen for exactly that.
+**6.6 MB** is what a CDN can send. What it actually sent, when deployed and
+measured in a browser, was **13.2 MB** — because Cloudflare compresses by
+content-type and `application/octet-stream` is not on its list, so the 10 MB
+`.data` went over the wire whole while the wasm was brotli'd to 3.1 MB. The
+loader reads that file as an ArrayBuffer and never looks at its type, so
+`_headers` now declares it `application/wasm` and the real transfer is
+**7.2 MB**: wasm 3.07, data 4.05, js 0.08.
+
+Nothing local would have shown this. It is the difference between what
+compresses and what the CDN *chooses* to compress, and it is only visible from
+the outside.
+
+That puts a first load at about two seconds on a typical home connection, five
+on a slow one, ten on 4G. A returning player pays one revalidation per file and
+no body at all — see `packaging/web/_headers`.
+
+**It is deployed**: <https://opendoctrines.pages.dev>. Verified rendering from
+that URL, not only locally.
 
 That is no longer the thing most likely to sink this. Trimming the `.data`
 bundle (5.4 MB of it is maps) is now an optimisation rather than a
@@ -139,7 +153,9 @@ flags (account service and Discord app id both baked in, or sign-in and
 presence go missing) and deploys `index.html`, the three big files and
 `_headers`.
 
-You end up with `https://<project>.pages.dev`. Note it; the next half needs it.
+This is already done: the project is `opendoctrines` and the site is
+<https://opendoctrines.pages.dev>. Re-running the script redeploys it, which
+is how every player gets the new build.
 
 A custom domain is worth doing before you tell anybody about it: the URL
 mapping in Discord points at whatever you set here, and moving later means
@@ -153,7 +169,7 @@ On the same application the rich presence uses
 1. **Activities → Settings** — enable Activities.
 2. **Activities → URL Mappings** — add the root mapping:
 
-       /            ->  <project>.pages.dev
+       /            ->  opendoctrines.pages.dev
 
    and one more, because the game talks to the account service and the
    multiplayer relay, and *both are the same host*:

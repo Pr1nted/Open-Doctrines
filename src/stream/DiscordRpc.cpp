@@ -38,6 +38,21 @@ std::string jsonEscape(const std::string& v) {
     return out;
 }
 
+/**
+ * This process's id, which Discord requires in every SET_ACTIVITY.
+ *
+ * unistd.h comes with the socket headers, so `::getpid` does not exist in the
+ * build that has no socket -- which is the browser, where there are no process
+ * ids at all. Zero there: nothing reads it, because that build never connects.
+ */
+long long currentPid() {
+#ifdef OD_DISCORD_IPC
+    return (long long)::getpid();
+#else
+    return 0;
+#endif
+}
+
 // Opcodes, from Discord's own rpc_connection.cpp.
 constexpr uint32_t kOpHandshake = 0;
 constexpr uint32_t kOpFrame     = 1;
@@ -264,8 +279,19 @@ struct Rpc::Impl {
         return false;
     }
 #else
+    // ── THE NO-SOCKET BUILD NEEDS EVERY MEMBER, NOT MOST OF THEM ──
+    //
+    // update() calls readReplies() and reads `ready` unconditionally, because
+    // those are not platform decisions -- they are the shape of the class. The
+    // first version left them inside the socket branch and the WEB BUILD
+    // stopped compiling, which the desktop build could not have told me.
+    //
+    // Everything here is inert: connect() fails, so update() returns before it
+    // would matter.
+    bool ready = false;
     bool writeFrame(uint32_t, const std::string&) { return false; }
     void disconnect() {}
+    void readReplies() {}
     bool connect() { return false; }
 #endif
 };
@@ -315,7 +341,7 @@ void Rpc::update(const presence::Activity& activity, double now) {
     if (!m_impl->ready) return;
 
     const std::string payload =
-        activityPayload(activity, (long long)::getpid(), m_impl->startedAt, "od-presence");
+        activityPayload(activity, (long long)currentPid(), m_impl->startedAt, "od-presence");
     if (payload == m_impl->lastSent) return;
     // Discord drops updates sent too fast rather than erroring, which would
     // leave a stale line on screen. Held to a gap, then the NEWEST state is

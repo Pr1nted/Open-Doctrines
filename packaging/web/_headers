@@ -14,10 +14,20 @@
 # file arrives immediately. That is exactly the trade this wants.
 /*
   Cache-Control: public, max-age=0, must-revalidate
-  # The game is meant to be framed -- by Discord, and by itch.io today. Saying
-  # so explicitly, because a default that blocks framing would break both and
-  # the symptom is a blank rectangle with nothing in the console.
-  X-Frame-Options: ALLOWALL
+  # ── NO X-Frame-Options AT ALL, WHICH IS THE POINT ──
+  #
+  # The game is meant to be framed: by Discord, and by itch.io today. The
+  # header's only valid values are DENY and SAMEORIGIN -- both of which would
+  # break that -- and ALLOWALL, which this file used to send, is not a real
+  # value. It "works" purely because browsers ignore what they cannot parse,
+  # which is a bad thing to depend on and reads as deliberate to whoever finds
+  # it next.
+  #
+  # Absence is the standard way to say "framing is allowed". A CSP
+  # frame-ancestors list would be the way to restrict it, and is deliberately
+  # not set here: under Discord the page is served through the proxy at
+  # <id>.discordsays.com rather than framed from this origin directly, so a
+  # list written without testing that is a list that blocks the Activity.
   Referrer-Policy: no-referrer
 
 # Correct types, stated rather than assumed: a .wasm served as
@@ -25,7 +35,18 @@
 # slower path, or fails outright depending on the browser.
 /*.wasm
   Content-Type: application/wasm
+# ── THE .data BUNDLE'S TYPE IS CHOSEN FOR COMPRESSION ──
+#
+# Measured against the deployed site, not the local files: the wasm came down
+# brotli'd at 3.1 MB and the .data came down at the full 10 MB, because
+# Cloudflare compresses by content-type and application/octet-stream is not on
+# its list. That doubled the real download, and no amount of looking at
+# `ls` would have shown it.
+#
+# The loader fetches this as an ArrayBuffer and never reads the type, so
+# declaring it application/wasm costs nothing and puts it on the compressible
+# list. It is a bundle of game data either way.
 /*.data
-  Content-Type: application/octet-stream
+  Content-Type: application/wasm
 /*.js
   Content-Type: text/javascript; charset=utf-8
