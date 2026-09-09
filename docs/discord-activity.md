@@ -65,19 +65,30 @@ about a phone held upright). Unmeasured in an actual Discord mobile frame.
 
 ## The risks, with numbers
 
-**Payload — the big one.** Today's web build is **21 MB**:
+**Payload — measured, and much smaller than it looks.** An earlier draft of
+this document called 21 MB the biggest risk. That was the number on disk, not
+the number on the wire, and it was wrong to lead with:
 
-    OpenDoctrines.wasm   10.4 MB
-    OpenDoctrines.data   10.0 MB
-    OpenDoctrines.js      0.4 MB
+    file                 raw     gzip   brotli
+    OpenDoctrines.wasm  10.4M     3.2M    2.7M
+    OpenDoctrines.data  10.0M     4.3M    3.8M
+    OpenDoctrines.js     0.4M     0.1M    0.1M
+    TOTAL               20.9M             6.6M
 
-That is a download before anything is on screen, in a context where people
-click expecting a game in seconds. It is survivable on itch.io, where somebody
-has chosen to visit a page; it is a different proposition in a voice channel.
-Mitigations exist — the `.data` bundle is mostly maps (5.4 MB of `.odmap` on
-disk) and could be fetched on demand rather than preloaded — but **this is the
-thing most likely to decide whether the Activity is good or merely possible**,
-and it should be measured on a real connection before anything else is built.
+**6.6 MB** is what a CDN sends, and it puts a first load at about two seconds
+on a typical home connection, five on a slow one, and ten on 4G. A returning
+player pays one revalidation per file and no body at all — see
+`packaging/web/_headers`, where the caching is chosen for exactly that.
+
+That is no longer the thing most likely to sink this. Trimming the `.data`
+bundle (5.4 MB of it is maps) is now an optimisation rather than a
+prerequisite.
+
+**It runs in a sandboxed iframe.** Tested locally against Discord's own sandbox
+flags (`allow-scripts allow-same-origin allow-popups allow-forms`): the menu
+renders, the canvas sizes to 1280x720, five requests, all 200, and nothing in
+the console. This was the other thing worth checking before building anything,
+because a web build that will not frame is a non-starter.
 
 **Distribution.** Activities are open to all developers, and a *Developer
 Activity Shelf* (Discord Settings → Advanced) exists for testing during
@@ -92,16 +103,14 @@ only appears inside Discord and not in any local test.
 
 ## What I would do first, in order
 
-1. **Measure the load.** Serve today's `build-web/` over HTTPS and open it as
-   an Activity via the Developer Activity Shelf. No SDK, no auth — just find
-   out what 21 MB feels like in the frame, on desktop and on a phone. This
-   answers the question that decides everything else, and costs a hosting
-   setup rather than a port.
+1. ~~Measure the load.~~ **Done** — see above. 6.6 MB on the wire, runs in a
+   sandboxed iframe. `tools/deploy-web.sh` puts it on Cloudflare Pages;
+   `packaging/web/_headers` carries the caching and the framing.
 2. Add the SDK prologue and `patchUrlMappings`; confirm the account service and
-   a multiplayer session both work through the proxy.
+   a multiplayer session both work through the proxy. **This is the next real
+   unknown**: the proxy rewrites every request, and a `blocked:csp` only
+   appears inside Discord.
 3. Then auth, and only then the account-model decision.
-
-Step 1 is deliberately not a commitment to the rest.
 
 ## Estimate
 
@@ -114,3 +123,68 @@ Rough, and honest about which parts are guesses:
   with a real design question in it.
 - Payload reduction: **unknown until step 1**. Could be nothing; could be the
   largest piece of work here.
+
+## Setting it up — what only you can do
+
+Two halves: hosting (a script, below) and Discord's own settings (a web page,
+which no script of mine can click for you).
+
+### 1. Host the build
+
+    tools/deploy-web.sh
+
+The first run opens a browser for Cloudflare's own login and wrangler keeps the
+token — nothing here reads or stores a credential. It builds with the release
+flags (account service and Discord app id both baked in, or sign-in and
+presence go missing) and deploys `index.html`, the three big files and
+`_headers`.
+
+You end up with `https://<project>.pages.dev`. Note it; the next half needs it.
+
+A custom domain is worth doing before you tell anybody about it: the URL
+mapping in Discord points at whatever you set here, and moving later means
+editing it in two places.
+
+### 2. Turn the application into an Activity
+
+On the same application the rich presence uses
+(`1547303703370014830`), at discord.com/developers/applications:
+
+1. **Activities → Settings** — enable Activities.
+2. **Activities → URL Mappings** — add the root mapping:
+
+       /            ->  <project>.pages.dev
+
+   and one more, because the game talks to the account service and the
+   multiplayer relay, and *both are the same host*:
+
+       /api         ->  opendoctrines-net.opendoctrines.workers.dev
+
+   Anything not mapped fails with `blocked:csp` and nothing else. This is the
+   step that most often takes two attempts.
+3. **Installation** — the Activity needs the `applications.commands` scope so
+   it can be launched in a server.
+
+### 3. Test it before anybody else sees it
+
+In the Discord **client**: Settings → **Advanced** → enable **Developer
+Activity Shelf**. Your application then appears in the activity picker of any
+voice channel you can use, without being published or reviewed.
+
+Join a voice channel, open the picker, launch OpenDoctrines.
+
+### 4. Publishing, later
+
+Discoverability in the App Directory needs the application verified and
+Discovery enabled. That is a submission, not a build step, and it is worth
+leaving until after step 2 of the plan above — there is no point listing an
+Activity whose networking has not been through the proxy yet.
+
+## What is NOT done
+
+The build is hosted and framed; it is not yet an Activity. Without the Embedded
+App SDK prologue it will load in the frame and behave as a normal web build:
+no Discord identity, no participants, and — the part that will actually bite —
+**its network calls have not been through the proxy**, so sign-in and
+multiplayer are unverified inside Discord. That is step 2, and it is the next
+thing worth doing.

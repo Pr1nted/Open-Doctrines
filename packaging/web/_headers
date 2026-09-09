@@ -1,0 +1,31 @@
+# Cloudflare Pages headers for the web build.
+#
+# ── CACHING IS WHAT MAKES "IT UPDATES ITSELF" TRUE OR FALSE ──
+#
+# The whole appeal of the Activity is that everybody runs whatever was last
+# deployed. Our filenames are NOT content-hashed -- OpenDoctrines.wasm is
+# always called that -- so an aggressive max-age would pin players to a stale
+# build for the length of the cache, and the update would arrive whenever the
+# browser felt like it.
+#
+# `max-age=0, must-revalidate` asks the browser to check every load. That is
+# not the same as re-downloading: an unchanged file answers 304 with no body,
+# so a returning player pays a round trip rather than six megabytes. A changed
+# file arrives immediately. That is exactly the trade this wants.
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  # The game is meant to be framed -- by Discord, and by itch.io today. Saying
+  # so explicitly, because a default that blocks framing would break both and
+  # the symptom is a blank rectangle with nothing in the console.
+  X-Frame-Options: ALLOWALL
+  Referrer-Policy: no-referrer
+
+# Correct types, stated rather than assumed: a .wasm served as
+# application/octet-stream fails instantiateStreaming and falls back to a
+# slower path, or fails outright depending on the browser.
+/*.wasm
+  Content-Type: application/wasm
+/*.data
+  Content-Type: application/octet-stream
+/*.js
+  Content-Type: text/javascript; charset=utf-8

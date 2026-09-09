@@ -25,6 +25,10 @@ GROUPS = [
     ("Releasing", [
         "release.py", "odver.py", "package.py", "build.py", "screenshots.sh",
         "itch-cover.py", "banner.py", "package_android.sh",
+        # Builds the web version and puts it on Cloudflare Pages -- the hosting
+        # a Discord Activity needs, and the thing that makes the web build
+        # update itself for everybody. See docs/discord-activity.md.
+        "deploy-web.sh",
     ]),
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
