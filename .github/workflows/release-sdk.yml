@@ -41,6 +41,15 @@ jobs:
       - uses: mymindstorm/setup-emsdk@v14
         with: { version: latest }
 
+      # TinyGo, not this repo, is what pins Go. sdk_toolchains.sh installs
+      # TinyGo's LATEST release, and each TinyGo accepts only a narrow band of
+      # Go versions -- the current one wants 1.25 through 1.27. The runner
+      # image ships whatever it ships (1.24 when this broke), so without this
+      # the SDK release fails the moment TinyGo moves its floor, on a tag,
+      # after everything else has already passed. Raise this when TinyGo does.
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+
       - name: Install SDK toolchains
         run: tools/sdk_toolchains.sh install
 
