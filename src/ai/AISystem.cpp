@@ -2529,6 +2529,13 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     const CountryStat& st = m_stats[cid];
 
     CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
+    if (std::getenv("OD_ACT_HIST")) {
+        s_expense[0] += inc.armyExpenses;   s_expense[1] += inc.navyExpenses;
+        s_expense[2] += inc.policyCosts;    s_expense[3] += inc.minorityCosts;
+        s_expense[4] += inc.researchCost;   s_expense[5] += inc.pacificationCost;
+        s_expense[6] += inc.industryUpkeep; s_expense[7] += inc.total;
+        ++s_expenseN;
+    }
 
     f[0] = nlog(c->treasury, 4.0);
     f[1] = std::tanh(inc.net / 100.0f);
@@ -12967,6 +12974,12 @@ long long AISystem::s_austeritySteps = 0;
 // further reorder is worth trying depends entirely on which branches fire at
 // all. Trace firings before attributing.
 long long AISystem::s_austBranch[6] = {0,0,0,0,0,0};
+// WHERE THE MONEY ACTUALLY GOES. The econ head withholds industry for want of
+// cash on 90.4% of the turns it wants it, and industry compounds the same way
+// research does -- so whatever is consuming the budget is the largest untapped
+// lever in the game. Never measured; this measures it.
+double AISystem::s_expense[8] = {0,0,0,0,0,0,0,0};
+long long AISystem::s_expenseN = 0;
 // Mean research allocation per country-turn, under OD_ACT_HIST only.
 //
 // The research-ratchet finding is +21.9 points of world across three seed
@@ -13019,6 +13032,15 @@ void AISystem::dumpActionHistogram() {
     fprintf(stderr, "[ACTHIST] naval reflex bought: %lld ports, %lld destroyers; industry reflex: %lld\n",
             s_navalPorts, s_navalShips, s_industryBuys);
     fprintf(stderr, "[ACTHIST] research austerity steps: %lld\n", s_austeritySteps);
+    if (s_expenseN > 0) {
+        static const char* en[8] = {"army","navy","policy","minority",
+                                    "research","pacification","indUpkeep","GROSS"};
+        fprintf(stderr, "[ACTHIST] mean expenses over %lld country-turns:\n", s_expenseN);
+        for (int i = 0; i < 8; ++i)
+            fprintf(stderr, "[ACTHIST]   %-14s %8.2f   %5.1f%% of gross\n", en[i],
+                    s_expense[i] / (double)s_expenseN,
+                    s_expense[7] > 0 ? 100.0 * s_expense[i] / s_expense[7] : 0.0);
+    }
     fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
             s_austBranch[0], s_austBranch[1], s_austBranch[2],

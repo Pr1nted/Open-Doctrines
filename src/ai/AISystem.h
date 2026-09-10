@@ -137,7 +137,9 @@ public:
     static long long s_navalShips;
     static long long s_industryBuys;
     static long long s_austeritySteps;
-    static long long s_austBranch[6];   ///< 0 research-first 1 pacification 2 doctrine 3 minority 4 scrap 5 research-last
+    static long long s_austBranch[6];
+    static double s_expense[8];      ///< army navy policy minority research pacification indUpkeep gross
+    static long long s_expenseN;   ///< 0 research-first 1 pacification 2 doctrine 3 minority 4 scrap 5 research-last
     static void dumpActionHistogram();
     void navalReflex(int cid);
     void industryReflex(int cid);

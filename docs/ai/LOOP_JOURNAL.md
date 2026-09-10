@@ -15184,3 +15184,43 @@ varies over five seats.
 This is the fifth instrument change today and the first aimed at MY reading
 rather than at the tool's correctness. The tool was never wrong. It reported a
 mean of six numbers, four of which could not move, and I supplied the rest.
+
+## 252 — the AI's budget, measured for the first time
+
+Instrumented CountryIncomeSnapshot at the econ entry. 217,538 country-turns,
+N24, 400 turns, share of GROSS income:
+
+    research         41.1%   (78.92)      pacification    10.8%   (20.77)
+    minority         18.0%   (34.61)      policy           4.2%    (8.11)
+    industry upkeep  17.9%   (34.43)      navy             0.5%    (0.94)
+                                          army             0.3%    (0.57)
+
+    gross 191.93   expenses 178.35   net ~13.6, a 7% margin
+
+THREE THINGS FALL OUT.
+
+1. RESEARCH DOMINATES at 41%, more than twice the minority bill. Journal and
+   memory have repeatedly called the minority bill "the largest standing
+   expense in the game". It is not, and never was measured. Corrected.
+
+2. THE ENTIRE MILITARY IS 0.8% OF GROSS. Army 0.3%, navy 0.5%. Money is not
+   what limits the AI's army, so there is no improvement to find in military
+   spending. That is consistent rather than surprising: above the combat
+   frontage both sides cap, so a bigger army buys nothing (journal 39a) and
+   the AI is correct not to fund one. The width rule, not the budget, is the
+   binding constraint on army size.
+
+3. THE 7% MARGIN EXPLAINS THE INDUSTRY BLOCK. The econ head withholds industry
+   for want of cash on 90.4% of the turns it wants it. After research,
+   minorities, upkeep and pacification there is almost nothing left.
+
+AND IT CLOSES THE OBVIOUS FOLLOW-UP BEFORE IT COSTS ANYTHING. "Free money from
+research to fund compounding industry" is the natural read of point 3, and it
+has already been measured: OD_RESEARCH_BAR at 0.35 and 0.25 scored 262 and 202
+on the reliable seats against 435 for the shipped 0.45. Research compounds
+harder than industry at this horizon. The allocation is approximately right.
+
+So the budget is characterised and it is not where the next improvement lives.
+That is a negative result, but it is the first time the question has been
+answerable at all -- and it retires a wrong claim that had been repeated in
+three places.
