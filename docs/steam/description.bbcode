@@ -1,0 +1,171 @@
+Steam store page copy. Paste each block into the field named above it.
+
+Steam takes BBCode, not HTML, so this is not docs/itch/description.html with the
+tags swapped -- and images CANNOT be hotlinked the way the itch page pulls them
+off jsdelivr. Upload each screenshot under Asset Upload -> extras, then refer to
+it as {STEAM_APP_IMAGE}/extras/<name>.png. An external [img] URL is stripped and
+you find out after publishing.
+
+================================================================================
+SHORT DESCRIPTION            (Basic Info -> Short Description, 300 char maximum)
+================================================================================
+
+A free, open-source grand strategy game. Run a country's industry, armies,
+research and politics across 1641 provinces and six historical scenarios, from
+1914 to the modern day. Build your own world in the map editor, play multiplayer
+with no port forwarding, and mod it in thirteen languages.
+
+================================================================================
+ABOUT THIS GAME                                  (Basic Info -> About This Game)
+================================================================================
+
+[h2]Run a country[/h2]
+
+OpenDoctrines is a grand strategy game about the whole of a state: its industry,
+its armies, its research, its politics and its neighbours. It is free, it is
+open source, and there is nothing to buy inside it.
+
+Provinces have population, industry, fortification, resources and an ethnic
+composition. Countries have a treasury, a research programme, a political
+compass, claims on their neighbours and opinions about each other.
+
+Industry is bounded by the ground it stands on. Each province states the level
+it can support, set by its population, how densely that population lives, its
+land area and its mineral wealth. Building an industrial power means holding
+places worth industrialising, not buying the same factory everywhere.
+
+[img]{STEAM_APP_IMAGE}/extras/province.png[/img]
+
+[h2]Six scenarios on a 1641-province world[/h2]
+
+[list]
+[*][b]Modern Day[/b] (2000) — 185 countries. Population from World Bank totals, deposits from USGS surveys.
+[*][b]The Powder Keg[/b] (1914) — five empires and a continent of alliances waiting on one funeral.
+[*][b]The Last Spring[/b] (1918) — Germany has won in the east and is losing in the west.
+[*][b]The Gathering Storm[/b] (1939) — Europe on the morning the Wehrmacht crossed the Polish border.
+[*][b]Year Zero[/b] (1945) — the war is over and nothing has been settled.
+[*][b]The Missile Crisis[/b] (1962) — two blocs, one ocean between them, and missiles in Cuba.
+[/list]
+
+Doctrines sit on a left/right and authoritarian/libertarian compass, with
+implementation times, an ethnic policy, and the unrest that follows a bad one.
+Rebellions spawn from that unrest and hold real territory. Wars pull in guarantee
+chains. Ceasefires are negotiated over provinces, money and dropped claims.
+
+[img]{STEAM_APP_IMAGE}/extras/world-map.png[/img]
+
+[h2]Every turn is recorded[/h2]
+
+A finished game replays as a timelapse and exports as a GIF from inside the
+game — the same history rendered as politics, as population, or as troop
+concentration.
+
+[h2]Build your own world[/h2]
+
+Draw land and sea, cut provinces, place countries, populations, resources and
+claims, then export a map anyone else can load. There is a procedural generator
+too, for when you want [i]a[/i] world rather than a specific one.
+
+[img]{STEAM_APP_IMAGE}/extras/map-editor.png[/img]
+
+[h2]Multiplayer that needs no port forwarding[/h2]
+
+Players dial out over an encrypted connection, so joining needs no router
+configuration. Hosting is a listening socket on the host's machine, and the game
+can open a tunnel to it for you.
+
+The host is authoritative: state only ever flows server to client, orders are
+validated server-side and re-attributed to the authenticated player's country,
+and a client never computes a turn. [b]A player who disconnects keeps their seat
+and their country[/b] — the turn resolves without them, and they get that same
+country back when they return.
+
+[h2]Mods, in thirteen languages[/h2]
+
+Mods are WebAssembly, so a mod is the same file on every platform, and it runs in
+a sandbox with a capability grant you can see and revoke. The SDK has bindings
+for C, C++, Rust, Zig, Go, Java, Kotlin, JavaScript, TypeScript, AssemblyScript,
+Lua, Python and hand-written WAT — every one builds the same example, and the
+test suite checks they all render byte-identical output.
+
+[img]{STEAM_APP_IMAGE}/extras/mods.png[/img]
+
+[hr][/hr]
+
+[h2]What is not finished[/h2]
+
+Being honest about an alpha is cheaper than disappointing people later.
+
+[list]
+[*][b]There is no tutorial.[/b] Province actions live behind the view tabs on the bottom bar, and the game does not yet tell you that. This is the single biggest thing missing.
+[*][b]The AI plays a whole game and will not outplay a good player.[/b] It is a neural network trained by self-play against a league of its own frozen past versions. It reliably beats random play and is currently about level with the hand-written strategy it is measured against — a rung it has reached and not yet passed. The difficulty setting changes how much noise it adds to its own choices rather than how well it plays.
+[*][b]The dedicated server is young.[/b] It is smoke-tested on every platform before release but has not been run in anger by anybody.
+[*][b]Play-by-post turns are built but not yet played.[/b] The whole path exists and is unit-tested; what has not happened is a real campaign across several days on two machines.
+[/list]
+
+[h2]No macOS build on Steam[/h2]
+
+Steam requires macOS builds to be signed and notarized, and this project pays for
+neither. Mac players are not left out — the macOS builds are free on
+[url=https://pr1nted.itch.io/open-doctrines]itch.io[/url] and
+[url=https://github.com/Pr1nted/Open-Doctrines/releases]GitHub[/url], along with
+an Android APK and a browser version that needs no download at all.
+
+[h2]Free, and open source[/h2]
+
+Free to play, modify and share non-commercially, under the OpenDoctrines
+Non-Commercial License. The mods, maps, saves and videos you make are yours. The
+code is on [url=https://github.com/Pr1nted/Open-Doctrines]GitHub[/url]; the
+people are on [url=https://discord.gg/wqS65jzVv5]Discord[/url].
+
+================================================================================
+TAGS                                        (up to 20, most important first)
+================================================================================
+
+Grand Strategy · Strategy · Turn-Based Strategy · Wargame · Historical ·
+Alternate History · World War II · Cold War · Political Sim · Diplomacy ·
+Economy · Simulation · Singleplayer · Multiplayer · Moddable · Level Editor ·
+Procedural Generation · Sandbox · Open Source · Indie
+
+Genres: Strategy, Simulation, Indie, Free To Play
+
+================================================================================
+EARLY ACCESS QUESTIONNAIRE                    (recommended -- see the note below)
+================================================================================
+
+Ship this as Early Access. The game IS an alpha, and Steam has a formal label
+that says so. Without it, "no tutorial" and "the AI is beatable" arrive as
+negative reviews from people who expected a finished game; with it, they arrive
+as feedback. A free game can be Early Access.
+
+Why Early Access?
+  "The game is playable from end to end and is not finished. There is no
+  tutorial, the AI is still being trained, and two systems -- the dedicated
+  server and play-by-post turns -- are built and tested but have never been
+  used in anger by a real group. We would rather say that on the label than in
+  an apology later."
+
+How long will this be in Early Access?
+  "Until there is a tutorial, the AI stops improving measurably between builds,
+  and a play-by-post campaign has been run start to finish by people who are
+  not the developer. We are not naming a date we cannot keep."
+
+How is the full version planned to differ?
+  "A tutorial, a stronger AI, and the two young systems above proven rather than
+  merely tested. Everything already in the game stays in it. Nothing is being
+  held back for a paid version, because there is no paid version."
+
+What is the current state?
+  "Six scenarios on a 1641-province world map, a full economic, research,
+  political and military model, rebellion and diplomacy, a map editor with a
+  procedural generator, host-authoritative multiplayer, and a WebAssembly mod
+  SDK with bindings for thirteen languages. The 'What is not finished' section
+  of the store page lists every gap we know about."
+
+Will the game be priced differently during and after Early Access?
+  "No. The game is free now and will be free afterwards."
+
+How are you involving the community?
+  "Bug reports and suggestions are sent from inside the game, and the code and
+  issue tracker are public on GitHub. Discussion, and most of the arguing about
+  what to build next, happens on Discord."

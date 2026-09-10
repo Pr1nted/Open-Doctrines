@@ -5683,6 +5683,17 @@ private:
     bool  m_ratingPromptOpen = false;
     float m_playedSeconds = 0.0f;   ///< the part of a minute not yet counted
 
+    /**
+     * Something just went well for the player, and the prompt may use it.
+     *
+     * Set where the good thing happens -- currently a war ended on terms that
+     * gained the player ground -- and cleared when the prompt spends it. It is
+     * a latch rather than an event because the moment it is set is exactly the
+     * moment the player is reading a peace deal, and a box in the corner then
+     * is an interruption; maybeOfferRating() waits for the next quiet frame.
+     */
+    bool  m_ratingMoment = false;
+
     /// The frame the form opened on, kept so the player can still see what they
     /// are reporting. Same trick as m_popupBackdrop, and for the same reason:
     /// the world behind is a picture, so it cannot take a click meant for the

@@ -628,6 +628,27 @@ bool Game::updateRatingPrompt() {
     return true;
 }
 
+// Two doors into the prompt, and the first is the one that carries it.
+//
+// A single 45-minute clock asked at a moment chosen by arithmetic: whatever the
+// player happened to be doing when the timer expired, which for most of them was
+// nothing in particular and for some was losing. It also asked almost nobody --
+// most people meet this game in a browser tab, and 45 minutes of cumulative play
+// is a bar the large majority never reach, so the question was put mainly to the
+// few who were always going to answer it anyway.
+//
+// So: a low floor plus a good moment. MOMENT_MINUTES is long enough to have an
+// opinion and short enough that a browser session can reach it, and the moment
+// itself is the guard against asking too early -- the player has just come out
+// of a war with ground to show for it, which is when they think well of the game
+// and when what they say is worth reading.
+//
+// FALLBACK_MINUTES keeps the old behaviour for the player whose game never
+// produces such a moment: a builder, a peaceful run, somebody losing slowly.
+// They are asked eventually, on the clock, exactly as before.
+constexpr int RATING_MOMENT_MINUTES   = 10;
+constexpr int RATING_FALLBACK_MINUTES = 45;
+
 void Game::maybeOfferRating(float dt) {
     if (m_config.ratingAsked || m_config.ratingGiven || m_ratingPromptOpen) return;
     if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
@@ -638,9 +659,17 @@ void Game::maybeOfferRating(float dt) {
         m_playedSeconds = std::fmod(m_playedSeconds, 60.0f);
         m_config.save(m_configPath);   // so the count survives a crash, not only a quit
     }
-    // Long enough to have an opinion, and between turns rather than during one:
-    // nobody wants to be asked how they feel while their army is moving.
-    if (m_config.minutesPlayed >= 45 && m_turnState == TURN_NORMAL) {
+
+    // Between turns rather than during one: nobody wants to be asked how they
+    // feel while their army is moving. Both doors are behind this.
+    if (m_turnState != TURN_NORMAL) return;
+
+    if (m_ratingMoment && m_config.minutesPlayed >= RATING_MOMENT_MINUTES) {
+        m_ratingMoment = false;
+        m_ratingPromptOpen = true;
+        return;
+    }
+    if (m_config.minutesPlayed >= RATING_FALLBACK_MINUTES) {
         m_ratingPromptOpen = true;
     }
 }

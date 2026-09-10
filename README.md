@@ -1,5 +1,17 @@
 # OpenDoctrines
 
+**A free, open-source grand strategy game that runs in a browser.**
+
+It is the kind of game Hearts of Iron IV and Victoria are: provinces with
+population and industry, a research tree, doctrines you pick and live with,
+war, rebellion and diplomacy across a world map. It plays on Windows, macOS,
+Linux, Android and **in a browser tab with no download and no account** — and
+it costs nothing, on every one of them.
+
+[**Play it in your browser**](https://pr1nted.itch.io/open-doctrines) ·
+[Downloads](https://github.com/Pr1nted/Open-Doctrines/releases) ·
+[Discord](https://discord.gg/wqS65jzVv5)
+
 A grand strategy game about running a country: its industry, its armies, its
 research, its politics and its neighbours. Six historical scenarios on a
 1641-province world map, a map editor for building your own, multiplayer that

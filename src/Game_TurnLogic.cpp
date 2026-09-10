@@ -6306,6 +6306,21 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
     // has nothing to do with. Walking armies home there would hand out a free
     // retreat in exchange for a province.
     if (endsWar) withdrawArmiesAfterPeace(srcCid, tgtCid);
+
+    // A war the player has just ended with ground to show for it. That is the
+    // moment the rating prompt waits for -- see maybeOfferRating(). Gated on
+    // endsWar because a trade moves provinces without settling anything, and on
+    // the player having GAINED because being made to cede territory is the same
+    // event from the losing side and is nobody's idea of a high point.
+    //
+    // Not shown here: the prompt opens on a later quiet frame, not on top of the
+    // peace terms the player is still reading.
+    if (endsWar && !m_aiTraining) {
+        const bool playerGained =
+            (srcCid == m_playerCountryId && !terms.theirProvs.empty()) ||
+            (tgtCid == m_playerCountryId && !terms.ourProvs.empty());
+        if (playerGained) m_ratingMoment = true;
+    }
 }
 
 // === expelStrandedArmies ===
