@@ -5265,7 +5265,7 @@ std::string AISystem::execEconomy(int cid, int action) {
                     return didNothing("research: the campaign first");
             }
             {
-                static const bool cutResearch = !std::getenv("OD_SIEGE_RESEARCH") || atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
+                static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
                 // Gated on the EARMARK (a fort is owed), not on the siege alone:
                 // refusing fund-up whenever besieged measured 67.9 world
                 // survival against 69.8 for this form on the peer's aggregate
@@ -6952,7 +6952,7 @@ static int lossFreezeTurns() {
 // country and ruinous for a growing one. This keeps the solvency floor and
 // spares the growth engine.
 static bool austerityResearchLast() {
-    static const bool v = std::getenv("OD_AUSTERITY_RESEARCH_LAST") &&
+    static const bool v = !std::getenv("OD_AUSTERITY_RESEARCH_LAST") ||
                           atoi(std::getenv("OD_AUSTERITY_RESEARCH_LAST")) != 0;
     return v;
 }
@@ -7849,7 +7849,7 @@ void AISystem::siegeReflex(int cid) {
     static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
     // OD_SIEGE_RESEARCH=0 keeps the research slider out of the reflex (the
     // fort and its earmark stay), to measure which half costs China.
-    static const bool cutResearch = !std::getenv("OD_SIEGE_RESEARCH") || atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
+    static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
     auto raIt = g.m_countryResearchAllocation.find(cid);
     if (cutResearch && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.10f) {
         raIt->second = std::max(0.10f, raIt->second - 0.15f);
