@@ -14600,3 +14600,49 @@ entirely different routes. Two measurements pointing the same way are not
 one story -- which is exactly [[measurements-replicate-explanations-dont]],
 cited by me in the same message where I broke it. Recorded as two facts
 that happen to agree, and a hypothesis for a later run.
+
+## 238 — the austerity step does not replicate; it inverts. RETRACTED
+
+Set D, same binary, same model, same 400 turns and difficulty, 6/6 seats
+both arms, zero dropped seeds:
+
+    seat              par |  setC .15  .05      d |  setD .15  .05      d
+    1914:FRA:rung     6.7 |      413  413     +0 |      297  273    -24
+    1914:SWE:rung     1.0 |      500  500     +0 |      500  190   -310
+    1939:USA:rung     5.6 |      391  415    +24 |      402  402     +0
+    modern:CHN:rung   2.5 |      500  500     +0 |      500  500     +0
+    1914:FRA:rush     6.7 |       17  134   +117 |       44    4    -40
+    1939:NOR:hood     1.3 |       46   51     +5 |       38   38     +0
+
+    setC  OD BENCH 311 -> 336  (+24)
+    setD  OD BENCH 297 -> 235  (-62)
+
+FRA:rush -- the seat that WAS the finding -- moves +117 on one hold-out set
+and -40 on the other. Sweden loses 310 points on set D having been untouched
+on set C. Entry 236 is retracted in full.
+
+WHAT I SAID AND WHAT IT WAS WORTH: I called this "the largest single
+improvement I have measured all session" and told the peer that if it held it
+would change the release. It was noise on one seed set. The mechanism was
+articulable, the direction was predicted in advance, the effect was large, it
+cost nothing anywhere, and it was still noise.
+
+WHAT ACTUALLY WORKED, and it is the only reason this is a retraction rather
+than a shipped regression:
+
+  1. The shape test flagged it -- 80% of net land on one seat -- and I nearly
+     argued past it because the number was attractive and a peer offered a
+     plausible reason to. The correct response to "one seat carries this" is
+     lower confidence, not a better story about why the seat matters.
+  2. Both of us refused to put it in a tag that was minutes away, on the
+     grounds that one hold-out set is not enough for a default. That judgement
+     is worth more than the finding would have been.
+
+Note the control arms differ too: FRA:rush scores 17 on set C and 44 on set D
+under identical code. The seat's difficulty varies 2.6x between hold-out sets,
+which is the whole reason a single set cannot settle anything about it.
+
+Standing conclusion restored: the rusher seat is not reachable by a knob. I
+retracted that conclusion in entry 236 on this evidence and now retract the
+retraction. [[corrections-inherit-confidence]] -- the retraction got less
+scrutiny than the original claim and failed the same way.
