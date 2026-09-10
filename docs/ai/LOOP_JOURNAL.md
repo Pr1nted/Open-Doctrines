@@ -14827,3 +14827,31 @@ which I said to the user, to the peer, in entry 237, in entry 241's partial
 correction, and in a committed README. Third correction of the same claim
 today, each one smaller than the last and each one still overstated.
 [[corrections-inherit-confidence]].
+
+## 243 — the bistability detector, and why it cannot be a detector
+
+Added a bistable-seat warning to od_bench. First attempt keyed it off the
+SAMPLE: flag a seat whose seeds straddle both regimes. Tested it against the
+data that fooled me -- set C, [3.1, 0.2, 0.2] -- and it did not fire.
+
+It could not. Nothing in those three values reaches the holding band, so
+there is no straddle to detect. Inferring bistability from three samples runs
+into the identical small-n problem the warning exists to announce. The
+detector failed on the exact case it was written for, which is the cleanest
+possible demonstration of the thing being flagged.
+
+Rewritten to key off the SEAT -- 1914:FRA:rush is known bistable from 22 runs
+-- with sample-straddle kept as a secondary trigger for seats not yet on the
+list. Verified three ways: fires on the 3-seed case that fooled me, fires on
+a rung seat given an artificial straddle, and at 11 seeds switches to
+"read collapse rate 5/11, not the mean", which independently reproduces the
+rate I computed by hand.
+
+A test expectation of mine was also wrong: I asserted the warning should go
+SILENT at 11 seeds. It should not. A two-regime seat has no meaningful mean at
+any n; what changes with n is the ADVICE -- below ten seeds read nothing, above
+it read the collapse rate. The code was right and my expectation was wrong,
+which is worth recording because I nearly "fixed" working code to match it.
+
+The tool now carries the most expensive lesson of the session at the point
+where the number gets read, which is the only place a warning survives.
