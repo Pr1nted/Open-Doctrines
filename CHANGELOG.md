@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased
+
+- **The map as a globe.** Press **F7** and the world wraps onto a sphere you can
+  turn: drag to spin it, wheel to zoom, click a province exactly as before. The
+  ground you were looking at stays in front of you across the switch, both ways.
+
+  It costs less than it sounds because of two things the map already was. The
+  political layer is an **equirectangular raster**, which is the projection a
+  sphere wants — so the globe needs no new art and no second copy of the map.
+  And a province is identified by its **pixel colour**, so picking is ray→sphere,
+  sphere→latitude and longitude, then the same lookup the flat map already does.
+  There is no second pick path to keep in step with the first.
+
+  Every overlay comes across for the same reason: both views composite the same
+  stack of full-map textures, so claims, population, resources, districts,
+  borders and the editor's own layers all arrive without a line of globe-specific
+  code. The one thing the flat projection never had to say is *this point is
+  behind the planet* — that is answered once, where map positions become screen
+  positions, rather than at each of the places that draw a marker.
+
+- **Day and night, and the season.** A terminator you can tune: how dark the
+  unlit half goes, how bright the lit half is, how wide dawn is, and what colour
+  the sun is. `night_floor` defaults well above black on purpose — a fully dark
+  night side makes half an empire invisible, and the map is a working document
+  before it is a picture.
+
+  The month moves the sun's **declination**, not its longitude: longitude is time
+  of day, declination is the season. In June the northern hemisphere leans into
+  the light; in December the reverse.
+
+- **Weather, in the air rather than on the ground.** Cloud sits inside the
+  atmosphere at a settable height and casts shadows on the ground beneath it —
+  which is what puts it above the map instead of on it. It thickens as you zoom
+  in, because from orbit you want the ground through the pattern and close in you
+  are looking along a much longer path of air.
+
+  The field is built from **cellular noise** organised by cyclonic rotation.
+  Summed smooth noise gives torn wool however many octaves you add: real weather
+  turns around lows, and a cumulus field is discrete cells with clear air between
+  them. Both are generated, not shipped, and both are baked on a worker thread —
+  on a browser, where there are no threads to bake on, at a quarter the size.
+
+- **A sky each map carries.** Stars, a moon that takes the same light as the
+  planet and therefore shows a phase, and a sun you can turn towards. Eclipses
+  fall out of the same term asked from two places: the moon shadowing the ground
+  is a solar eclipse, the planet shadowing the moon is a lunar one.
+
+  All of it is authored per map in the editor's Metadata panel and stored as
+  `sky.json` inside the `.odmap`. Every field is optional, so a map written
+  before any of this existed loads with Earth-like defaults rather than being
+  refused — which matters in a format that already carries 118 files.
+
+- **The Admin screen says how many accounts exist.** Counted by walking the keys
+  rather than kept as a running total: the store has no atomic increment, so two
+  sign-ups landing together would both read the same number and write the same
+  number back, losing one permanently with nothing able to notice afterwards. A
+  count that drifts quietly downward is worse than no count, because it still
+  looks like a fact.
+
 ## game 1.2.0a
 
 - **OpenDoctrines plays inside Discord.** The game is an Activity now: launch it

@@ -1115,6 +1115,18 @@ MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
     return Facing::Front;
 }
 
+float MapRenderer::getZoom() const {
+    if (m_view != ViewMode::Globe || !m_globe) return m_camera.zoom;
+    // Pixels the planet's radius covers on screen, from the perspective
+    // projection, divided by the map pixels one radius represents. That makes
+    // the number mean the same thing in both views -- which is the only reason
+    // the call sites can stay as they are.
+    const float halfFovTan = tanf(45.0f * 0.5f * DEG2RAD);
+    const float pixelsPerRadius = (m_screenH * 0.5f) / (halfFovTan * m_globe->distance());
+    const float mapPixelsPerRadius = (float)m_mapW / (2.0f * PI);
+    return pixelsPerRadius / mapPixelsPerRadius;
+}
+
 void MapRenderer::setViewMode(ViewMode m) {
     if (m == m_view) return;
 

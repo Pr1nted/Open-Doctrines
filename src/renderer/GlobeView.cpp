@@ -95,6 +95,66 @@ void main() {
     finalColor = vec4(airColour * rim * lit * airStrength, rim * lit * airStrength);
 })";
 
+// ── The sun's glare ──
+//
+// One shell, faded per pixel by how directly it faces the camera. Nested opaque
+// shells were the first attempt and produced visible concentric rings: the
+// falloff has to happen inside the fragment, not between draw calls.
+const char* kGlowVertEs = R"(#version 100
+attribute vec3 vertexPosition;
+attribute vec3 vertexNormal;
+uniform mat4 mvp;
+uniform mat4 matModel;
+varying vec3 vN;
+varying vec3 vW;
+void main() {
+    vN = vertexNormal;
+    vW = vec3(matModel * vec4(vertexPosition, 1.0));
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+})";
+
+const char* kGlowFragEs = R"(#version 100
+precision mediump float;
+varying vec3 vN;
+varying vec3 vW;
+uniform vec3 viewPos;
+uniform vec3 glowColour;
+uniform float glowFalloff;
+void main() {
+    vec3 n = normalize(vN);
+    vec3 v = normalize(viewPos - vW);
+    float f = pow(max(dot(n, v), 0.0), glowFalloff);
+    gl_FragColor = vec4(glowColour * f, f);
+})";
+
+const char* kGlowVert330 = R"(#version 330
+in vec3 vertexPosition;
+in vec3 vertexNormal;
+uniform mat4 mvp;
+uniform mat4 matModel;
+out vec3 vN;
+out vec3 vW;
+void main() {
+    vN = vertexNormal;
+    vW = vec3(matModel * vec4(vertexPosition, 1.0));
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+})";
+
+const char* kGlowFrag330 = R"(#version 330
+in vec3 vN;
+in vec3 vW;
+uniform vec3 viewPos;
+uniform vec3 glowColour;
+uniform float glowFalloff;
+out vec4 finalColor;
+void main() {
+    vec3 n = normalize(vN);
+    vec3 v = normalize(viewPos - vW);
+    float f = pow(max(dot(n, v), 0.0), glowFalloff);
+    finalColor = vec4(glowColour * f, f);
+})";
+
+
 }  // namespace
 
 namespace globe {
@@ -424,6 +484,15 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uCloudRot    = GetShaderLocation(m_shader, "cloudRot");
         m_uCloudAmt    = GetShaderLocation(m_shader, "cloudAmt");
         m_material.shader = m_shader;
+        m_glow = LoadShaderFromMemory(kEs ? kGlowVertEs : kGlowVert330,
+                                      kEs ? kGlowFragEs : kGlowFrag330);
+        m_haveGlow = m_glow.id != 0 && m_glow.id != rlGetShaderIdDefault();
+        if (m_haveGlow) {
+            m_gView    = GetShaderLocation(m_glow, "viewPos");
+            m_gColour  = GetShaderLocation(m_glow, "glowColour");
+            m_gFalloff = GetShaderLocation(m_glow, "glowFalloff");
+        }
+
         m_air = LoadShaderFromMemory(kEs ? kAirVertEs : kAirVert330,
                                      kEs ? kAirFragEs : kAirFrag330);
         m_haveAir = m_air.id != 0 && m_air.id != rlGetShaderIdDefault();
@@ -523,7 +592,7 @@ void GlobeView::setSky(const Sky& s) {
 namespace {
 
 /// The three sky images, as pixels. No GPU in here at all -- that is the point.
-struct SkyImages { Image stars{}, cloud{}, moon{}; };
+struct SkyImages { Image stars{}, cloud{}, moon{}, glow{}; };
 
 /**
  * Paint the sky textures. PURE CPU, and safe to run off the render thread.
@@ -564,20 +633,85 @@ void bakeSky(const GlobeView::Sky& sky, SkyImages& out) {
     Image stars = GenImageColor(SW, SH, BLACK);
     unsigned int seed = 0x5EED1234u;
     auto rnd = [&seed]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) & 0xFFFF; };
+
+    // A little smooth noise of its own: fbm below belongs to the cloud section
+    // and is not in scope yet, and the band needs SMOOTH variation. Per-pixel
+    // random is not mottling, it is white noise, and it reads as television
+    // static rather than as unresolved stars.
+    auto smooth2 = [](float x, float y) {
+        auto h = [](int a, int b) {
+            unsigned int n = (unsigned int)(a * 374761393 + b * 668265263);
+            n = (n ^ (n >> 13)) * 1274126177u;
+            return (float)((n ^ (n >> 16)) & 0xFFFF) / 65535.0f;
+        };
+        const int x0 = (int)floorf(x), y0 = (int)floorf(y);
+        const float fx = x - x0, fy = y - y0;
+        auto sm = [](float t) { return t * t * (3.0f - 2.0f * t); };
+        const float a = h(x0, y0), b = h(x0 + 1, y0), c = h(x0, y0 + 1), d = h(x0 + 1, y0 + 1);
+        const float top = a + (b - a) * sm(fx), bot = c + (d - c) * sm(fx);
+        return top + (bot - top) * sm(fy);
+    };
+
+    // A faint band across the sky. Without it the field is uniform, and a
+    // uniform scatter of points reads as static rather than as a galaxy seen
+    // edge-on -- which is the single most recognisable thing about a night sky.
+    for (int y = 0; y < SH; ++y) {
+        for (int x = 0; x < SW; ++x) {
+            const float u = (float)x / (float)SW;
+            const float v = (float)y / (float)SH;
+            // A great circle tilted off the equator, so it crosses the sheet
+            // diagonally rather than running along a row.
+            const float band = sinf(u * 2.0f * PI * 1.0f + 0.7f) * 0.16f + 0.5f;
+            const float d = fabsf(v - band);
+            float g = expf(-(d * d) / 0.0016f) * 0.055f;
+            // Mottled, or it is a painted stripe.
+            // Gently mottled. The first pass multiplied by a fresh random
+            // number PER PIXEL, which is not mottling -- it is white noise, and
+            // it read as television static rather than as unresolved stars.
+            g *= 0.62f + 0.55f * smooth2((float)x / SW * 26.0f, (float)y / SH * 13.0f);
+            if (g > 0.004f) {
+                const unsigned char c = (unsigned char)std::clamp(g * 255.0f * sky.starBrightness, 0.0f, 255.0f);
+                ImageDrawPixel(&stars, x, y, Color{c, c, (unsigned char)std::min(255, c + 6), 255});
+            }
+        }
+    }
+
     for (int i = 0; i < sky.starCount; ++i) {
         const int x = (int)(rnd() % SW);
         // Uniform in sin(latitude), not in latitude: an equirectangular sheet
         // stretches enormously at the poles, and uniform rows would pile the
         // sky up above both of them.
-        const float v = ((float)(rnd() % 10000) / 10000.0f) * 2.0f - 1.0f;
-        const int y = (int)(((asinf(v) / PI) + 0.5f) * (float)SH) % SH;
-        // A few bright, most faint: an even brightness reads as static.
+        const float vv = ((float)(rnd() % 10000) / 10000.0f) * 2.0f - 1.0f;
+        const int y = (int)(((asinf(vv) / PI) + 0.5f) * (float)SH) % SH;
+
         const float t = (float)(rnd() % 1000) / 1000.0f;
         const float mag = (t * t * t) * 0.85f + 0.15f;
-        const unsigned char b =
-            (unsigned char)std::clamp(mag * 255.0f * sky.starBrightness, 0.0f, 255.0f);
-        ImageDrawPixel(&stars, x, y, Color{b, b, (unsigned char)std::min(255, b + 12), 255});
+        const float b = std::clamp(mag * 255.0f * sky.starBrightness, 0.0f, 255.0f);
+
+        // COLOUR, because real stars have it: hot ones blue-white, cool ones
+        // orange. A field of pure white points is the tell of a generated sky.
+        const float hue = (float)(rnd() % 1000) / 1000.0f;
+        float r = b, g = b, bl = b;
+        if (hue < 0.28f)      { r = b * 0.80f; g = b * 0.88f; }            // blue-white
+        else if (hue > 0.76f) { bl = b * 0.72f; g = b * 0.88f; }           // orange
+        auto put = [&](int px, int py, float k) {
+            px = ((px % SW) + SW) % SW;
+            if (py < 0 || py >= SH) return;
+            const Color o = GetImageColor(stars, px, py);
+            ImageDrawPixel(&stars, px, py, Color{
+                (unsigned char)std::min(255, (int)(o.r + r * k)),
+                (unsigned char)std::min(255, (int)(o.g + g * k)),
+                (unsigned char)std::min(255, (int)(o.b + bl * k)), 255});
+        };
+        put(x, y, 1.0f);
+        // The brightest few get a little bleed, so magnitude reads as SIZE and
+        // not only as brightness -- which is how the eye actually sorts stars.
+        if (mag > 0.62f) {
+            put(x + 1, y, 0.45f); put(x - 1, y, 0.45f);
+            put(x, y + 1, 0.45f); put(x, y - 1, 0.45f);
+        }
     }
+
     out.stars = stars;
 
     // ── Cloud ──
@@ -823,7 +957,32 @@ void bakeSky(const GlobeView::Sky& sky, SkyImages& out) {
     }
     out.moon = moon;
 
+    // ── The sun's glare ──
+    //
+    // A bare disc reads as a sticker. What makes a star look like one is the
+    // halo around it -- the eye expects light to spill. This is a radial
+    // falloff drawn additively, which is a cheap stand-in for the bloom a real
+    // camera would produce, and it needs no post-processing pass.
+    const int GS = 256;
+    Image glow = GenImageColor(GS, GS, Color{0, 0, 0, 0});
+    for (int y = 0; y < GS; ++y) {
+        for (int x = 0; x < GS; ++x) {
+            const float dx = (float)x / GS * 2.0f - 1.0f;
+            const float dy = (float)y / GS * 2.0f - 1.0f;
+            const float r = sqrtf(dx * dx + dy * dy);
+            if (r > 1.0f) continue;
+            // Two terms: a tight core and a wide skirt. One falloff alone is
+            // either a hard dot or a soft smudge; real glare is both at once.
+            const float a = powf(std::max(0.0f, 1.0f - r), 6.0f) * 0.85f
+                          + powf(std::max(0.0f, 1.0f - r), 1.6f) * 0.16f;
+            ImageDrawPixel(&glow, x, y, Color{255, 250, 236,
+                           (unsigned char)std::clamp(a * 255.0f, 0.0f, 255.0f)});
+        }
+    }
+    out.glow = glow;
+
 }
+
 
 }  // namespace
 
@@ -875,12 +1034,15 @@ void GlobeView::buildSkyTextures() {
     m_starTex  = LoadTextureFromImage(ready.stars);
     m_cloudTex = LoadTextureFromImage(ready.cloud);
     m_moonTex  = LoadTextureFromImage(ready.moon);
+    m_glowTex  = LoadTextureFromImage(ready.glow);
     SetTextureFilter(m_starTex, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(m_cloudTex, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(m_moonTex, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(m_glowTex, TEXTURE_FILTER_BILINEAR);
     UnloadImage(ready.stars);
     UnloadImage(ready.cloud);
     UnloadImage(ready.moon);
+    UnloadImage(ready.glow);
     m_skyBuilt = true;
 }
 
@@ -960,6 +1122,34 @@ void GlobeView::drawSky(const Camera3D& cam) {
             MatrixTranslate(at.x, at.y, at.z));
         DrawMesh(m_mesh, disc, m);
         if (disc.maps) MemFree(disc.maps);
+
+        // ── Glare ──
+        //
+        // Nested shells rather than a billboard. A camera-facing quad was the
+        // obvious build and drew nothing here, and rather than keep debugging a
+        // sprite this reuses the one mesh that is already proven in this file:
+        // three additive spheres, each larger and fainter, which is a radial
+        // falloff built out of geometry. It also cannot face the wrong way.
+        if (m_haveGlow) {
+            const Vector3 eye = cameraPosition();
+            const Vector3 gc{m_sun.colour.r / 255.0f * 0.55f,
+                             m_sun.colour.g / 255.0f * 0.55f,
+                             m_sun.colour.b / 255.0f * 0.55f};
+            const float fall = 2.4f;
+            SetShaderValue(m_glow, m_gView, &eye, SHADER_UNIFORM_VEC3);
+            SetShaderValue(m_glow, m_gColour, &gc, SHADER_UNIFORM_VEC3);
+            SetShaderValue(m_glow, m_gFalloff, &fall, SHADER_UNIFORM_FLOAT);
+            Material halo = LoadMaterialDefault();
+            halo.shader = m_glow;
+            const float rs = m_sky.sunSize * 5.5f;
+            BeginBlendMode(BLEND_ADDITIVE);
+            rlDisableDepthMask();
+            DrawMesh(m_mesh, halo, MatrixMultiply(MatrixScale(rs, rs, rs),
+                                                  MatrixTranslate(at.x, at.y, at.z)));
+            rlEnableDepthMask();
+            EndBlendMode();
+            if (halo.maps) MemFree(halo.maps);
+        }
     }
     (void)cam;
 }
@@ -975,6 +1165,8 @@ GlobeView::~GlobeView() {
     if (m_starTex.id > 0) UnloadTexture(m_starTex);
     if (m_cloudTex.id > 0) UnloadTexture(m_cloudTex);
     if (m_moonTex.id > 0) UnloadTexture(m_moonTex);
+    if (m_glowTex.id > 0) UnloadTexture(m_glowTex);
+    if (m_haveGlow) UnloadShader(m_glow);
     if (m_haveAir) UnloadShader(m_air);
     if (m_haveShader) UnloadShader(m_shader);
     if (m_material.maps) MemFree(m_material.maps);

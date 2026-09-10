@@ -57,7 +57,16 @@ public:
     bool hasClaimsTexture() const { return m_claimsTex.id > 0; }
     void setShowResource(int idx) { m_showResource = idx; }
     int  getShowResource() const { return m_showResource; }
-    float getZoom() const { return m_camera.zoom; }
+    /**
+     * Screen pixels per map pixel, in whichever view is up.
+     *
+     * The flat camera's own zoom on the flat map. On the globe it is DERIVED
+     * from the orbit distance, because the 2D camera is frozen while the globe
+     * is up -- and seven call sites use this to size markers and pick levels of
+     * detail. Left alone, a boat drawn on the globe kept whatever size it had
+     * when you last looked at the flat map, however far in you zoomed.
+     */
+    float getZoom() const;
     // Fully-zoomed-out level, i.e. the whole map on screen. Depends on the map
     // and window size, so anything that wants "how far out are we, really"
     // has to measure against this rather than against a fixed number.

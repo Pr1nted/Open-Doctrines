@@ -260,7 +260,11 @@ private:
     Texture2D m_starTex{};      ///< generated, not loaded: no art asset for this
     Texture2D m_cloudTex{};
     Texture2D m_moonTex{};
+    Texture2D m_glowTex{};
     Shader m_air{};
+    Shader m_glow{};
+    bool m_haveGlow = false;
+    int m_gView = -1, m_gColour = -1, m_gFalloff = -1;
     bool m_haveAir = false;
     int m_aViewPos = -1, m_aSunDir = -1, m_aColour = -1, m_aStrength = -1, m_aFalloff = -1;
     bool m_skyBuilt = false;
