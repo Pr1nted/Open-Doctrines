@@ -154,8 +154,38 @@ inline bool connectInProgress() { return errno == EINPROGRESS; }
  * when it expires. Not full Happy Eyeballs -- attempts are sequential, not
  * overlapped -- but it is the part that matters here.
  */
+/**
+ * Winsock, started once per process.
+ *
+ * On Windows getaddrinfo and socket fail outright until WSAStartup has run, and
+ * they fail with WSANOTINITIALISED -- which surfaces here as "could not look up
+ * <host>", a name-resolution message for something that is not a name problem.
+ *
+ * mbedtls does this itself inside mbedtls_net_connect, and that used to be the
+ * only way out of this file, so it was covered by accident. connectWithin was
+ * then written to hand-roll getaddrinfo and connect -- deliberately, because
+ * mbedtls_net_connect is a blocking connect with no timeout -- and the init
+ * went with it. Every HTTPS call made before something happened to construct a
+ * WsServer (whose constructor is the one other WSAStartup in the tree) failed
+ * on Windows: sign-in, the account service, update checks, the announcement
+ * board, feedback.
+ *
+ * So it belongs HERE, at the bottom of the stack every caller goes through,
+ * rather than in one caller's constructor.
+ */
+static void ensureSocketsReady() {
+#if defined(_WIN32)
+    static const bool started = [] {
+        WSADATA wsa;
+        return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+    }();
+    (void)started;
+#endif
+}
+
 int connectWithin(const std::string& host, const std::string& port, int timeoutMs,
                   std::string& error) {
+    ensureSocketsReady();
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
