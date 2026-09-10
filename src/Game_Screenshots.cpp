@@ -107,6 +107,8 @@ const Shot SHOTS[] = {
     {"globe-industry",   60, true},
     {"globe-navy",       60, true},
     {"globe-resources",  60, true},
+    {"globe-orders",     40, true},
+    {"globe-orders-navy",40, true},
     {"globe-names",   60, true},
     {"globe-unroll-a", 4, true},
     {"globe-unroll-b", 9, true},
@@ -436,6 +438,13 @@ bool Game::tickScreenshotTour() {
             m_currentScreen = SCREEN_PLAYING;
             m_paused = false;
             m_inSettings = false;
+            // And the FLAT map, every time, unless this shot asked for the
+            // globe. Exactly the fault described above, in its second form: the
+            // globe shots left the view turned and every world shot after them
+            // quietly photographed a sphere. orders-desktop came back as a
+            // picture of the planet.
+            if (m_renderer && std::string(shot.name).rfind("globe-", 0) != 0)
+                m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
         }
         if (shot.needsWorld && !g_worldReady) {
             if (m_shotSave.empty()) {
@@ -814,7 +823,7 @@ bool Game::tickScreenshotTour() {
             if (best > 0 && m_renderer) m_renderer->setSelectedProvince(best);
             m_recruitType = (name == "army-mech") ? TROOP_MECHANISED : TROOP_LINE;
         } else if (name == "orders-desktop" || name == "orders-portrait" ||
-                   name == "orders-phase") {
+                   name == "orders-phase" || name.rfind("globe-orders", 0) == 0) {
             // The strip is greyed until a turn has resolved, and a loaded save
             // has no order log (it is per-turn display state, not saved). So
             // put a plausible turn in it: the option lit, the overlay drawn,
@@ -904,6 +913,33 @@ bool Game::tickScreenshotTour() {
                 }
             }
             if (name == "orders-portrait") SetWindowSize(402, 874);
+            // The same fabricated turn, seen from orbit. Tab 5 is where the
+            // guns are read and tab 6 is where the hulls are, so the two arcs
+            // need a shot each -- the artillery one and the carrier one are
+            // different code paths and only look alike.
+            if (name.rfind("globe-orders", 0) == 0) {
+                const bool navy = (name == "globe-orders-navy");
+                m_activeViewTab = navy ? 6 : 5;
+                // Centred on a shot that was actually fired, and close in. From
+                // orbit a battery's arc is two pixels of a planet and the
+                // picture proves nothing -- which is the same reason the flat
+                // tour has an orders-zoom beside its orders-desktop.
+                const auto kind = navy ? TurnOrderMark::Kind::NavalBombard
+                                       : TurnOrderMark::Kind::Artillery;
+                Vector2 at{(float)m_landSea.getWidth() * 0.5f,
+                           (float)m_landSea.getHeight() * 0.34f};
+                for (const auto& m2 : m_turnOrderLog) {
+                    if (m2.kind != kind) continue;
+                    auto c = m_provinceCenters.find(m2.toProvince);
+                    if (c == m_provinceCenters.end()) continue;
+                    at = c->second;
+                    break;
+                }
+                m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
+                m_renderer->snapTo(at.x, at.y, m_renderer->getMinZoom() * 8.0f);
+                m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
+                m_renderer->zoomGlobe(5.0f);   // down to just above the surface
+            }
             // ONLY THE ORDERS SHOTS. Setting this for every shot in the
             // block put the Viewing Orders banner across the economy screen.
             m_turnState = TURN_VIEWING_ORDERS;

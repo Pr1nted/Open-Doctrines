@@ -1383,6 +1383,39 @@ void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
     while (px >= m_mapW) px -= m_mapW;
 }
 
+bool MapRenderer::globeCentreOnScreen(float& sx, float& sy) const {
+    if (m_view != ViewMode::Globe || !m_globe || m_morphing) return false;
+    const float u = (m_globe->longitude() + PI) / (2.0f * PI);
+    const float v = (PI * 0.5f - m_globe->latitude()) / PI;
+    return pixelToScreen(u * (float)m_mapW, v * (float)m_mapH, sx, sy) == Facing::Front;
+}
+
+MapRenderer::Facing MapRenderer::shellPoint(Vector2 from, Vector2 to, float t,
+                                            float& sx, float& sy) const {
+    if (m_view == ViewMode::Globe && m_globe) {
+        if (m_morphing) return Facing::Behind;    // same rule as every overlay
+        return m_globe->arcPoint(from.x, from.y, to.x, to.y, t,
+                                 m_screenW, m_screenH, sx, sy)
+             ? Facing::Front : Facing::Behind;
+    }
+    // Flat: the short way round, and a straight line, exactly as before.
+    //
+    // Anchored on the SOURCE's tile copy and stepped from there, rather than
+    // each point choosing its own nearest copy. That is what the old arrow code
+    // did -- it corrected the destination back onto the source's copy by hand --
+    // and a shot across the antimeridian is the case where the two disagree.
+    float dx = to.x - from.x;
+    while (dx >  (float)m_mapW * 0.5f) dx -= (float)m_mapW;
+    while (dx < -(float)m_mapW * 0.5f) dx += (float)m_mapW;
+    const float anchored = from.x + roundf((m_camera.target.x - from.x) / (float)m_mapW)
+                                    * (float)m_mapW;
+    const Vector2 v = GetWorldToScreen2D({anchored + dx * t,
+                                          from.y + (to.y - from.y) * t}, m_camera);
+    sx = v.x;
+    sy = v.y;
+    return Facing::Front;
+}
+
 MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
                                               float& sx, float& sy) const {
     if (m_view == ViewMode::Globe && m_globe) {

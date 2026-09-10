@@ -77,6 +77,20 @@
   starts to unroll. Asserted rather than eyeballed: the map pixels the 2D view
   puts on each screen edge land on those same edges here.
 
+- **Shells arc.** Artillery and naval bombardment no longer draw as a straight
+  line from gun to target: the flight leaves the ground, rises and comes down on
+  what it is hitting, and the barbed head is aimed along the descent rather than
+  along the line between the two ends. An army march stays straight, because a
+  march is something you could meet on the road.
+
+  The path is the great circle between gun and target -- the way a shell
+  actually goes -- lifted off the surface in between, so a flight fired from
+  beyond the horizon can be watched climbing into view before its target is
+  visible. Seen from directly overhead the climb alone shows almost nothing, as
+  a real trajectory would not, so the flight is also bowed on screen away from
+  the middle of the disc: the direction comes from the planet's own outward and
+  only the amount is a drawing convention.
+
 - **Ship routes stay on the planet.** Route tracks and army arrows were still
   projected with the flat map's tile-wrapping, which on a globe drew lines
   straight off the edge of the screen. They go through the projection now, a leg

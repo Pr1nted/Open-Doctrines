@@ -267,6 +267,14 @@ public:
     /// an unreadable band there.
     float facing(float px, float py) const;
 
+    /// A point on a shell's flight from one map pixel to another: `t` runs 0 at
+    /// the gun to 1 at the target. The path is the great circle between them --
+    /// which is the way a shell actually goes -- lifted off the surface in
+    /// between, so the flight reads as something that leaves the ground rather
+    /// than a line drawn on it. False when the planet is in the way.
+    bool arcPoint(float px0, float py0, float px1, float py1, float t,
+                  int screenW, int screenH, float& sx, float& sy) const;
+
     bool pixelToScreen(float px, float py, int screenW, int screenH,
                        float& sx, float& sy) const;
 

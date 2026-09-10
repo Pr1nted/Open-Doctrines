@@ -5843,6 +5843,8 @@ private:
      */
     void drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float alpha);
     bool projectRoutePoint(Vector2 w, float shift, Vector2& out) const;
+    bool drawShellArc(Vector2 wa, Vector2 wb, Color col, float bodyW,
+                      Vector2& headFrom, Vector2& headAt) const;
     void drawMapSegment(Vector2 a, Vector2 b, float shift, float thick, Color col) const;
 
     // ─── The middle state: what every country ordered this turn ─────────────

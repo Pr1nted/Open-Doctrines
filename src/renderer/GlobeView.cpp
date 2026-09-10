@@ -1468,6 +1468,45 @@ float GlobeView::facing(float px, float py) const {
     return std::clamp((c - h) / (1.0f - h), 0.0f, 1.0f);
 }
 
+bool GlobeView::arcPoint(float px0, float py0, float px1, float py1, float t,
+                         int screenW, int screenH, float& sx, float& sy) const {
+    if (!m_ready) return false;
+    const Vector3 a = pixelToUnit(px0, py0);
+    const Vector3 b = pixelToUnit(px1, py1);
+
+    // Along the great circle, by slerp. Interpolating the map coordinates
+    // instead would bend the flight the way the PROJECTION bends, which at high
+    // latitude is a visible detour the gunner is not taking.
+    const float ang = acosf(std::clamp(Vector3DotProduct(a, b), -1.0f, 1.0f));
+    Vector3 p = a;
+    if (ang > 1e-4f) {
+        const float s = sinf(ang);
+        p = Vector3Normalize(Vector3Add(Vector3Scale(a, sinf((1.0f - t) * ang) / s),
+                                        Vector3Scale(b, sinf(t * ang) / s)));
+    }
+
+    // ── How high the shell goes ──
+    //
+    // With the range, but not in proportion to it: a battery firing into the
+    // next province still has to look like it lobbed something, and a shot
+    // across a quarter of the world must not arc into orbit. Floor and ceiling,
+    // and a gentle slope between.
+    const float peak = std::clamp(0.012f + 0.55f * ang, 0.012f, 0.11f);
+    const Vector3 q = Vector3Scale(p, 1.0f + peak * sinf(t * PI));
+
+    // Hidden exactly when the planet is between it and the eye. For a sphere
+    // that is one dot product: the polar plane of the eye. It holds for points
+    // ABOVE the surface too, which is the whole reason an arc can be watched
+    // rising over the limb before its target comes into view.
+    if (Vector3DotProduct(q, cameraPosition()) <= 1.0f) return false;
+
+    const Camera3D cam = camera(screenW, screenH);
+    const Vector2 v = GetWorldToScreenEx(q, cam, screenW, screenH);
+    sx = v.x;
+    sy = v.y;
+    return true;
+}
+
 bool GlobeView::pixelToScreen(float px, float py, int screenW, int screenH,
                               float& sx, float& sy) const {
     if (!m_ready) return false;

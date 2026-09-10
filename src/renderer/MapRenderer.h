@@ -122,6 +122,15 @@ public:
      */
     enum class Facing { Front, Behind };
     Facing pixelToScreen(float px, float py, float& sx, float& sy) const;
+
+    /// Sample the flight of a shell from one map point to another, `t` in [0,1].
+    /// On the globe it arcs over the surface; on the flat map it is the straight
+    /// line it has always been, because a flat map has no above to rise into.
+    Facing shellPoint(Vector2 from, Vector2 to, float t, float& sx, float& sy) const;
+
+    /// Where the point directly under the camera lands on screen -- the middle
+    /// of the disc. False on the flat map, which has no such point.
+    bool globeCentreOnScreen(float& sx, float& sy) const;
     void setSelectedProvince(int id) { m_selectedProvinceId = id; }
     int getSelectedProvinceId() const { return m_selectedProvinceId; }
     void setPaused(bool paused) { m_paused = paused; }

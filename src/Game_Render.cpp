@@ -6222,6 +6222,102 @@ void Game::drawMapSegment(Vector2 a, Vector2 b, float shift,
 }
 
 
+// ── A shell's flight ──
+//
+// Sampled and drawn as a run of short segments, so on the globe it arcs up off
+// the surface and back down; on the flat map the sampler hands back the same
+// straight line it always drew. A flight can be partly hidden -- fired from
+// behind the limb, appearing as it climbs -- so the run is broken wherever the
+// planet gets in the way rather than bridged across it.
+//
+// Returns the last two visible points, which is where the head goes: on an arc
+// the shell arrives travelling DOWNWARD, and a head aimed along the straight
+// line from gun to target would point somewhere the shell never went.
+bool Game::drawShellArc(Vector2 wa, Vector2 wb, Color col, float bodyW,
+                        Vector2& headFrom, Vector2& headAt) const {
+    if (!m_renderer) return false;
+    const bool globe = m_renderer->viewMode() == MapRenderer::ViewMode::Globe;
+    const int N = globe ? 28 : 1;
+
+    std::vector<std::vector<Vector2>> runs;
+    for (int i = 0; i <= N; ++i) {
+        Vector2 p{};
+        if (m_renderer->shellPoint(wa, wb, (float)i / (float)N, p.x, p.y)
+                == MapRenderer::Facing::Behind) {
+            if (!runs.empty() && !runs.back().empty()) runs.push_back({});
+            continue;
+        }
+        if (runs.empty()) runs.push_back({});
+        runs.back().push_back(p);
+    }
+
+    // ── Why the lift alone is not enough ──
+    //
+    // The shell rises straight up from the surface, which is correct and, from
+    // directly overhead, invisible: "up" there is TOWARDS the camera, and a
+    // perspective projection turns a climb of a fiftieth of a radius into about
+    // three pixels of outward drift. A real trajectory looks flat seen from
+    // above, and so did this one.
+    //
+    // So the flight is also bowed on screen, away from the middle of the disc --
+    // the direction is the planet's own outward, taken from the projection and
+    // not invented, and only the amount is a drawing convention. Near the limb
+    // the 3D climb already does the work and this adds little; overhead, where
+    // the climb shows nothing, it is what makes a lob read as a lob.
+    if (globe) {
+        float cx = 0.0f, cy = 0.0f;
+        if (m_renderer->globeCentreOnScreen(cx, cy)) {
+            Vector2 first{}, last{};
+            bool haveEnds = false;
+            for (const auto& r : runs) {
+                if (r.empty()) continue;
+                if (!haveEnds) { first = r.front(); haveEnds = true; }
+                last = r.back();
+            }
+            if (haveEnds) {
+                const float dx = last.x - first.x, dy = last.y - first.y;
+                const float len = sqrtf(dx * dx + dy * dy);
+                if (len > 2.0f) {
+                    Vector2 n{-dy / len, dx / len};
+                    // The side facing away from the centre of the disc.
+                    const float mx = (first.x + last.x) * 0.5f - cx;
+                    const float my = (first.y + last.y) * 0.5f - cy;
+                    if (n.x * mx + n.y * my < 0.0f) { n.x = -n.x; n.y = -n.y; }
+                    const float amp = std::min(len * 0.22f, 46.0f);
+                    // Parameterised by position ALONG the chord, so a run broken
+                    // by the limb keeps the same arc its visible parts belong to
+                    // rather than each piece bowing on its own.
+                    for (auto& r : runs)
+                        for (Vector2& q : r) {
+                            const float u = ((q.x - first.x) * dx + (q.y - first.y) * dy)
+                                          / (len * len);
+                            const float f = sinf(std::clamp(u, 0.0f, 1.0f) * PI);
+                            q.x += n.x * amp * f;
+                            q.y += n.y * amp * f;
+                        }
+                }
+            }
+        }
+    }
+
+    // Both passes over the whole run before the next: the dark stroke is drawn
+    // first and entirely, so the colour covers its own overlaps at the joints
+    // instead of them showing through as a beaded line.
+    bool drew = false;
+    for (const std::vector<Vector2>& r : runs) {
+        if (r.size() < 2) continue;
+        for (size_t i = 0; i + 1 < r.size(); ++i)
+            DrawLineEx(r[i], r[i + 1], bodyW + 2.0f, ColorAlpha(BLACK, 0.35f));
+        for (size_t i = 0; i + 1 < r.size(); ++i)
+            DrawLineEx(r[i], r[i + 1], bodyW, ColorAlpha(col, 0.9f));
+        headFrom = r[r.size() - 2];
+        headAt   = r.back();
+        drew = true;
+    }
+    return drew;
+}
+
+
 bool Game::projectRoutePoint(Vector2 w, float shift, Vector2& out) const {
     if (!m_renderer) return false;
     if (m_renderer->viewMode() == MapRenderer::ViewMode::Globe) {
@@ -6484,9 +6580,18 @@ void Game::drawMiddleStateOverlay() {
         // shape this game already uses for men on a road and a second visual
         // language for the same event is one the player has to learn twice.
         const float bodyW = barbed ? 2.0f : 4.0f;
-        DrawLineEx(sa, sb, bodyW + 2.0f, ColorAlpha(BLACK, 0.35f));   // read over terrain
-        DrawLineEx(sa, sb, bodyW, ColorAlpha(col, 0.9f));
-        const float ang = atan2f(sb.y - sa.y, sb.x - sa.x);
+        // A shell arcs; an army does not. The barbed line is the gun, and on the
+        // globe it now leaves the ground -- which is what the head has to be
+        // aimed along, so the direction comes from the end of the FLIGHT.
+        Vector2 hf{sa}, ha{sb};
+        if (barbed) {
+            if (!drawShellArc(wa, {wa.x + dx, wb.y}, col, bodyW, hf, ha)) return;
+            sb = ha;
+        } else {
+            DrawLineEx(sa, sb, bodyW + 2.0f, ColorAlpha(BLACK, 0.35f));   // read over terrain
+            DrawLineEx(sa, sb, bodyW, ColorAlpha(col, 0.9f));
+        }
+        const float ang = atan2f(sb.y - hf.y, sb.x - hf.x);
         const float hl = barbed ? 11.0f : 15.0f;
         const float spread = barbed ? 0.45f : 0.5f;
         const Vector2 h1 = {sb.x - hl * cosf(ang - spread), sb.y - hl * sinf(ang - spread)};
@@ -6565,13 +6670,19 @@ void Game::drawMiddleStateOverlay() {
                 if (b == m_provinceCenters.end()) break;
                 int sx2, sy2;
                 m_landSea.lonLatToPixel((float)m.fromLon, (float)m.fromLat, sx2, sy2);
-                const Vector2 sa = worldToScreen({(float)sx2, (float)sy2});
-                const Vector2 sb = worldToScreen(b->second);
+                const Vector2 wFrom{(float)sx2, (float)sy2};
+                const Vector2 sa = worldToScreen(wFrom);
+                Vector2 sb = worldToScreen(b->second);
                 if ((sa.x < -200 && sb.x < -200) || (sa.x > m_screenW + 200 && sb.x > m_screenW + 200))
                     break;
-                DrawLineEx(sa, sb, 4.0f, ColorAlpha(BLACK, 0.30f));
-                DrawLineEx(sa, sb, 2.0f, ColorAlpha(col, 0.85f));
-                const float ang = atan2f(sb.y - sa.y, sb.x - sa.x);
+                // The same flight the guns ashore get. A carrier's shell has no
+                // more reason to travel along the ground than a battery's, and
+                // giving the two different shapes would say they were different
+                // kinds of event.
+                Vector2 hf{sa}, ha{sb};
+                if (!drawShellArc(wFrom, b->second, col, 2.0f, hf, ha)) break;
+                sb = ha;
+                const float ang = atan2f(sb.y - hf.y, sb.x - hf.x);
                 const Vector2 h1 = {sb.x - 11.0f * cosf(ang - 0.45f), sb.y - 11.0f * sinf(ang - 0.45f)};
                 const Vector2 h2 = {sb.x - 11.0f * cosf(ang + 0.45f), sb.y - 11.0f * sinf(ang + 0.45f)};
                 DrawLineEx(sb, h1, 2.0f, ColorAlpha(col, 0.85f));
