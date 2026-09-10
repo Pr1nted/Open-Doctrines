@@ -1,0 +1,64 @@
+# OpenDoctrines as a Flatpak.
+#
+# WHY THIS EXISTS. The published Linux binary is built on Ubuntu 22.04 and so
+# needs glibc 2.35 or newer; README.md tells Ubuntu 20.04, Debian 11 and RHEL 9
+# users to build from source instead. A Flatpak carries its own runtime, so on
+# those distributions this is the difference between "compile it yourself" and
+# "install it". That is the whole point of packaging it this way.
+#
+# WHY IT UNPACKS A RELEASE RATHER THAN BUILDING FROM SOURCE. A flatpak-builder
+# build has no network. CMakeLists.txt pulls SIX dependencies with FetchContent
+# at configure time -- raylib, harfbuzz, wamr, mbedtls, libdatachannel and
+# dragoman -- each of which would have to become its own pinned module, with
+# their transitive dependencies after them. Extracting the release archive is
+# one URL and one checksum per version instead. Flathub's reviewers prefer
+# source builds and may push back on this; see README.md beside this file.
+app-id: io.github.Pr1nted.OpenDoctrines
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: opendoctrines
+
+finish-args:
+  # raylib links GLFW against X11 here, so this is X11 rather than Wayland.
+  - --socket=x11
+  - --share=ipc
+  # OpenGL. Without it raylib fails at window creation rather than degrading.
+  - --device=dri
+  # Gamepads. The interface is drawn for a mouse, but a pad drives the same
+  # pointer and README.md calls it the better way to play on a touch device.
+  - --device=input
+  - --socket=pulseaudio
+  # Multiplayer dials OUT over wss://, and sign-in talks to the account
+  # service. Both are useless without this, and neither listens.
+  - --share=network
+
+modules:
+  - name: opendoctrines
+    buildsystem: simple
+    build-commands:
+      # /app is read-only at runtime, and this game keeps its config, saves and
+      # trained AI model inside its data directory -- see Game.cpp, where
+      # m_configPath is m_dataDir + "config.json". So the shipped tree is
+      # installed as read-only reference material and the launcher seeds a
+      # writable copy on first run. See opendoctrines-launcher.
+      - install -Dm755 OpenDoctrines -t /app/lib/opendoctrines
+      - cp -r data /app/lib/opendoctrines/data
+      - install -Dm644 VERSION -t /app/lib/opendoctrines
+      - install -Dm755 opendoctrines-launcher /app/bin/opendoctrines
+      - install -Dm644 io.github.Pr1nted.OpenDoctrines.desktop -t /app/share/applications
+      - install -Dm644 io.github.Pr1nted.OpenDoctrines.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 data/Icon/icon.png
+          /app/share/icons/hicolor/256x256/apps/io.github.Pr1nted.OpenDoctrines.png
+    sources:
+      - type: archive
+        url: https://github.com/Pr1nted/Open-Doctrines/releases/download/v1.2.0a/OpenDoctrines-linux-x64.zip
+        sha256: a88f5c81772286fa2183f7aff144298ab595c650125c635e63c993c93518bfd2
+        # The archive wraps everything in OpenDoctrines-linux-x64/.
+        strip-components: 1
+      - type: file
+        path: opendoctrines-launcher
+      - type: file
+        path: io.github.Pr1nted.OpenDoctrines.desktop
+      - type: file
+        path: io.github.Pr1nted.OpenDoctrines.metainfo.xml

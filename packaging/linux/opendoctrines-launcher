@@ -1,0 +1,38 @@
+#!/bin/sh
+# Seed a writable data directory, then run the game against it.
+#
+# The game treats its data directory as read-write: config.json, saves/ and the
+# AI model all live inside it (Game.cpp, m_configPath = m_dataDir + ...). Inside
+# a Flatpak /app is read-only, so running against the installed tree would fail
+# on the first setting change -- and would fail quietly, because a config that
+# cannot be written looks exactly like one that has nothing in it.
+#
+# So: copy once into XDG_DATA_HOME, and point OD_DATA_DIR there.
+set -eu
+
+src=/app/lib/opendoctrines/data
+dest="${XDG_DATA_HOME:-$HOME/.local/share}/opendoctrines/data"
+stamp="$dest/.installed-version"
+version=$(cat /app/lib/opendoctrines/VERSION 2>/dev/null || echo unknown)
+
+if [ ! -d "$dest" ]; then
+    mkdir -p "$(dirname "$dest")"
+    cp -r "$src" "$dest"
+    printf '%s\n' "$version" > "$stamp"
+elif [ "$(cat "$stamp" 2>/dev/null || echo none)" != "$version" ]; then
+    # An update shipped new maps, languages or audio. Refresh the shipped tree
+    # WITHOUT touching anything the player made: saves, the config and any
+    # installed mods are theirs and are never overwritten from /app.
+    for item in "$src"/*; do
+        name=$(basename "$item")
+        case "$name" in
+            saves|mods|config.json|ai) continue ;;
+        esac
+        rm -rf "$dest/$name"
+        cp -r "$item" "$dest/$name"
+    done
+    printf '%s\n' "$version" > "$stamp"
+fi
+
+export OD_DATA_DIR="$dest"
+exec /app/lib/opendoctrines/OpenDoctrines "$@"

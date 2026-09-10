@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenDoctrines
+GenericName=Grand Strategy Game
+Comment=Run a country: its industry, armies, research, politics and neighbours
+Exec=opendoctrines
+Icon=io.github.Pr1nted.OpenDoctrines
+Categories=Game;StrategyGame;
+Keywords=strategy;grand strategy;wargame;history;map;simulation;
+Terminal=false
+StartupNotify=true
