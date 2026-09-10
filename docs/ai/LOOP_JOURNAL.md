@@ -15500,3 +15500,44 @@ Step size is the cheapest to falsify and is running: one map at OD_LR_SCALE
 0.25, 0.05 and 0.01. If France survives at 0.01 this is a step-size problem
 with a boring fix. If it does not, no learning rate saves it and the update
 rule needs something that remembers.
+
+## 259 — training goes from 45% of parent to 89%: step size plus the opponent fix
+
+Journal 258 located the collapse as a cliff inside map one. Falsified step size
+as the cause, one map from the same parent, France seat, 3 seeds:
+
+    parent   27.57
+    LR 0.25   1.27      <- destroyed; this is what every run used
+    LR 0.05  18.47      <- survives
+    LR 0.01  16.73      <- no better than 0.05
+
+So 0.25 is catastrophic and 0.05 is not, and lowering further buys nothing.
+NOTE this contradicts memory ladder-quarter-rate, which records 0.25 as having
+HELD a strong parent and beaten full rate by 36 paired. Either that was
+conditions-specific or it is stale; here 0.25 destroys France in 300 turns.
+
+Then eight maps at the safe rate, with and without the journal 257 fix:
+
+    arm                        FRA     USA     CHN    reliable
+    parent                   27.57   21.77   18.13       433
+    self-play, LR 0.05        7.40   18.77   11.77       305   (-128)
+    scripted 0.33, LR 0.05   19.37   20.87   20.43       387    (-46)
+
+THE OPPONENT FIX IS WORTH +82 once the step size is not drowning it -- it was
+worth +42 at LR 0.25. China at 20.43 BEATS the parent's 18.13.
+
+387/433 is 89% of parent. Memory training-degrades-the-model records all
+sixteen historical checkpoints as "none above 45% of parent". Two changes --
+a step size that does not destroy, and an opponent the policy is actually
+scored against -- move training from catastrophic to nearly break-even.
+
+STILL NEGATIVE, and France carries almost all of it: 19.37 against 27.57 while
+USA and CHN are at or above parent. So there is a France-specific failure left
+that the other two seats do not share.
+
+OPEN: is 387 a waypoint upward or a stop on the way down? Sixteen and
+twenty-four maps at these settings are running. If the curve climbs, training
+works and the remaining question is how long to run it. If it bleeds, the
+missing piece is an anchor -- replay across maps, a trust region, a KL penalty
+-- because nothing currently holds the policy near a parent that already plays
+well.
