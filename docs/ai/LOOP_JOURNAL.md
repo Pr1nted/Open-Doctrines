@@ -15461,3 +15461,42 @@ by the opponent mix.
 Next question, unanswered: where in the run does the collapse happen? A cliff
 and a slope want different fixes, and benching at 1, 2, 4 and 8 maps would say
 which this is.
+
+## 258 — the collapse is a cliff inside the FIRST map, and it is selective
+
+Benched independent trainings from the same parent at 1, 2, 4 and 8 maps
+(same seed, so map N is the same map in every run), on the three seats that
+can measure. Raw land, 3 seeds each:
+
+    maps      1914:FRA   1939:USA   modern:CHN
+    parent      27.57      21.77       18.13
+    1            1.27      26.57        0.00
+    2            1.27      16.40        2.17
+    4            3.40      27.57        1.67
+    8            0.30       1.63        0.00
+
+A CLIFF, NOT A SLOPE, and it lands inside the first 300 turns. France goes
+27.57 -> 1.27 and China 18.13 -> 0.00 after ONE map. Combined with journal
+257's five-turn check, which came back healthy at 28.6, the whole collapse
+happens between turn 5 and turn 300 of the first map.
+
+AND IT IS SELECTIVE, which is the informative part. USA survives four maps and
+at four maps BEATS the parent (27.57 against 21.77) while the other two seats
+are already destroyed. Training is not uniformly damaging the network; it is
+moving the policy toward whatever the training map rewards and away from
+everything else. That is catastrophic forgetting, not erosion.
+
+It also retires my own framing from journal 257. I described 433 -> 11 over
+2,400 turns as if the run accumulated damage. It does not: the damage is done
+in map one, and maps two through eight mostly hold the wreckage in place.
+
+WHY THIS MATTERS FOR THE FIX: an opponent-distribution change (journal 257's
+OD_TRAIN_SCRIPTED_SHARE) cannot address a policy that forgets two seats inside
+one map. Nor can a longer run, more maps, or a better objective. The candidates
+are step size, and the absence of anything holding the policy near a parent
+that already plays well -- replay across maps, a trust region, a KL penalty.
+
+Step size is the cheapest to falsify and is running: one map at OD_LR_SCALE
+0.25, 0.05 and 0.01. If France survives at 0.01 this is a step-size problem
+with a boring fix. If it does not, no learning rate saves it and the update
+rule needs something that remembers.
