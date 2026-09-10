@@ -14940,3 +14940,55 @@ recent runs and stated it as a property of the bench. The corpus said 12%.
 The discipline that saved it was checking before claiming -- which is the
 same discipline that failed on the play-trained model, where I checked three
 seeds and claimed a capability.
+
+## 246 — the research bar: mechanism live, effect absent, and the instrument earned itself
+
+OD_RESEARCH_BAR (0.45) is the real ceiling on research spending -- it stops
+OFFERING fund-up at 0.45, which makes the 0.50 clamp unreachable. Flagged
+twice in this journal as "still worth running" and never run.
+
+MECHANISM CONFIRMED FIRST, for six minutes rather than assuming:
+
+    bar 0.45   mean allocation 0.4353   21,634 decisions
+    bar 0.65   mean allocation 0.4929   17,038 decisions
+
++5.8 points of national output into research, sustained over 400 turns. Note
+it settles at 0.49 and not 0.65 -- the head balances rather than pins, which
+is the "tug of war, not a ratchet" correction already in the source comment.
+A 20-point ceiling lift buys a 6-point equilibrium shift.
+
+BENCHED, hold-out C, N24, both arms one binary:
+
+    bar 0.45   OD BENCH 311 +/- 12   land 82.73%   survival 77   worst 17
+    bar 0.65   OD BENCH 292 +/- 21   land 73.90%   survival 85   worst 13
+
+    seat              par    0.45    0.65       d
+    1914:FRA:rung     6.7   27.70   19.97   -7.73
+    1914:SWE:rung     1.0   13.17    7.33   -5.83
+    1939:USA:rung     5.6   21.90   17.80   -4.10
+    modern:CHN:rung   2.5   18.20   20.37   +2.17
+    1914:FRA:rush     6.7    1.17    8.27   +7.10   <- BISTABLE
+    1939:NOR:hood     1.3    0.60    0.17   -0.43
+
+-19 rating against a floor the tool printed as ~34. NOT RESOLVABLE, and the
+direction is negative on every seat that can measure. The lone gain is the
+bistable seat flipping regime, and it is what lifts survival 77 -> 85.
+
+NOT following it to set D. A result inside the noise floor does not earn
+another 1.8 hours; that is what measuring the floor was for.
+
+THIS IS THE AUSTERITY EPISODE IN MINIATURE and the difference is the tooling.
+Same shape -- aggregate moved, driven by the bistable seat, survival up,
+growth seats quietly down. In the morning I called that shape the largest
+improvement of the session and spent hours before set D killed it. This time
+od_bench printed "1 seat(s) bistable" and "diffs under ~34 are noise" above
+the number, and the reading took one pass.
+
+ALSO A CLEAN INERTNESS CHECK, unplanned: the 0.45 control reproduced OD BENCH
+311 and land 82.73% EXACTLY, matching austerity-step-0.15-setC from a binary
+two rebuilds ago. So removing the failed overrun guard and fixing the
+OD_SIEGE_RESEARCH comment were behaviourally inert, as claimed rather than
+assumed.
+
+The research subsystem is now well mapped: the clamp is unreachable, the bar
+is negative, and the order-plus-siege change is the one that works and shipped.
