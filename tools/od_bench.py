@@ -85,6 +85,7 @@ import argparse
 import json
 import os
 import re
+import math
 import statistics
 import subprocess
 import time
@@ -523,6 +524,29 @@ def report(label, scores):
     if not vals:
         return None
     rating = statistics.mean(vals)
+    # THE RATING'S OWN ERROR BAR, from the per-seed spreads this run recorded.
+    # Measured 2026-09-10 across three independent full runs: the per-seed
+    # rating has sd 15-21, so a 3-seed mean carries se 9-12. An UNPAIRED
+    # difference below about 28 points (2 x sqrt(2) x se) is not distinguishable
+    # from noise, and a whole day was spent on a "+24" that was inside it.
+    # Paired arms -- same seeds both sides -- cancel most of this and are the
+    # reason a replicated paired result can be trusted at a smaller margin.
+    se_note = ""
+    try:
+        n_seeds = min((len(v) for v in SPREAD.values() if v), default=0)
+        if n_seeds >= 2 and len(SPREAD) >= len(SEATS):
+            per_seed = []
+            for s in range(n_seeds):
+                sv = [min(seat_score(SPREAD[f"{m}:{i}:{w}"][s], par), CAP * 100.0)
+                      for m, i, w, par, _ in SEATS if SPREAD.get(f"{m}:{i}:{w}")]
+                if sv:
+                    per_seed.append(statistics.mean(sv))
+            if len(per_seed) >= 2:
+                se = statistics.stdev(per_seed) / math.sqrt(len(per_seed))
+                se_note = (f"  +/- {se:.0f} se   "
+                           f"(unpaired diffs under ~{2 * math.sqrt(2) * se:.0f} are noise)")
+    except (ValueError, KeyError, IndexError, ZeroDivisionError):
+        se_note = ""
     ver = sorted(AI_VERSION)
     # SAY HOW MANY SEATS THE MEAN IS OVER. A seat that produced no [BENCH]
     # line prints "--" in the table above and is skipped here, so the rating
@@ -535,7 +559,7 @@ def report(label, scores):
     # carry its own denominator.
     seat_note = "" if len(vals) == len(SEATS) else \
         f"   [!! {len(vals)} of {len(SEATS)} SEATS -- NOT COMPARABLE]"
-    print(f"\n  {label}: OD BENCH {rating:.0f} over {len(vals)}/{len(SEATS)} seats{seat_note}   "
+    print(f"\n  {label}: OD BENCH {rating:.0f} over {len(vals)}/{len(SEATS)} seats{seat_note}{se_note}   "
           f"(100 = held every seat; 0 = annihilated everywhere)"
           + (f"   [{ver[0]}]" if len(ver) == 1 else
              f"   [MIXED VERSIONS {ver} -- the binary changed mid-run]" if ver else ""))
