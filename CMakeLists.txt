@@ -971,6 +971,7 @@ set(GAME_SOURCES
     src/net/JoinTicket.cpp
     src/net/Lobby.cpp
     src/net/NetUrl.cpp
+    src/net/RelayLink.cpp
     src/net/PeerLinkNative.cpp
     src/net/PeerLinkWeb.cpp
     src/net/PeerLinkUnavailable.cpp
@@ -990,6 +991,10 @@ set(GAME_SOURCES
     src/PoliticalIdentity.cpp
     src/util/WebAssets.cpp
     src/util/WebPersist.cpp
+    # Opening a page outside the game. Not raylib's OpenURL directly: in a
+    # Discord Activity that call is refused silently. See its header.
+    src/util/OpenLink.cpp
+    src/Usage.cpp
     src/net/WorldSync.cpp
     src/net/WsCommon.cpp
     src/net/WsHandshake.cpp
@@ -1394,8 +1399,29 @@ if(EMSCRIPTEN)
     # live -- therefore relinked NOTHING, and the built page silently stayed on
     # the previous version. Found by shipping a long-press handler and watching
     # it not exist in build-web/index.html.
+    # The shell is STAMPED, not copied. Its Discord Activity prologue needs two
+    # values the page cannot ask the wasm for, because it runs before the wasm:
+    # which account service to route through Discord's proxy, and which Discord
+    # application this build belongs to. Writing them into shell.html by hand
+    # would be a second copy of each -- and the copy nobody updates is the one
+    # that is wrong -- so they are substituted here from the one definition of
+    # each that already exists.
+    #
+    # string(REPLACE) rather than configure_file(): the shell contains CSS
+    # @keyframes, and @-delimited substitution would treat that as a variable.
+    set(OD_WEB_SHELL_IN  "${CMAKE_SOURCE_DIR}/shell.html")
+    set(OD_WEB_SHELL_OUT "${CMAKE_CURRENT_BINARY_DIR}/shell.stamped.html")
+    file(READ "${OD_WEB_SHELL_IN}" od_shell_text)
+    string(REPLACE "__OD_ACCOUNT_ISSUER__" "${OD_ACCOUNT_ISSUER}" od_shell_text "${od_shell_text}")
+    string(REPLACE "__OD_DISCORD_APP_ID__" "${OD_DISCORD_APP_ID}" od_shell_text "${od_shell_text}")
+    file(GENERATE OUTPUT "${OD_WEB_SHELL_OUT}" CONTENT "${od_shell_text}")
+    # file(READ) happens at configure time and CMake cannot see that on its own,
+    # so editing the shell would leave a stale stamped copy -- the very bug the
+    # LINK_DEPENDS below was added to fix, reintroduced one layer up.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${OD_WEB_SHELL_IN}")
+
     set_property(TARGET OpenDoctrines APPEND PROPERTY LINK_DEPENDS
-                 "${CMAKE_SOURCE_DIR}/shell.html")
+                 "${OD_WEB_SHELL_OUT}")
 
     # Stage exactly what ships, and preload THAT.
     #
@@ -1706,7 +1732,7 @@ if(EMSCRIPTEN)
         "-sINITIAL_MEMORY=${OD_WEB_INITIAL_MEMORY}"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMAXIMUM_MEMORY=${OD_WEB_MAXIMUM_MEMORY}"
-        "--shell-file" "${CMAKE_SOURCE_DIR}/shell.html"
+        "--shell-file" "${OD_WEB_SHELL_OUT}"
         # The STAGED copy, never ${CMAKE_SOURCE_DIR}/data. See the staging step
         # above: preloading the working copy put whatever was lying in data/
         # inside a file served to every player, including data/account.json --
@@ -1990,6 +2016,7 @@ add_executable(NetConnectTest EXCLUDE_FROM_ALL
     tests/net_connect_test.cpp
     src/net/Host.cpp
     src/net/Session.cpp
+    src/net/RelayLink.cpp
     src/net/Lobby.cpp
     src/net/JoinTicket.cpp
     src/net/ModAttest.cpp
@@ -2040,6 +2067,12 @@ endif()
 # --- announcement board ---
 # Pure: parses a document, no sockets. The refusals are the point; see the
 # header for why this is a sealed format.
+# The relay's framing. No network in it: the bytes are the whole risk, and a
+# peer id read the wrong way round misdelivers a turn rather than failing.
+add_executable(RelayLinkTest EXCLUDE_FROM_ALL tests/relay_link_test.cpp
+               src/net/RelayLink.cpp)
+target_include_directories(RelayLinkTest PRIVATE src tests)
+
 add_executable(AnnouncementsTest EXCLUDE_FROM_ALL tests/announcements_test.cpp
                src/net/Announcements.cpp src/net/HttpClient.cpp
                src/net/TlsSocket.cpp src/net/NetUrl.cpp)

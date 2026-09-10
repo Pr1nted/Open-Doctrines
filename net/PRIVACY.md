@@ -176,8 +176,55 @@ information exists for the length of one request and then it is gone.
 ## Bug reports, suggestions and ratings
 
 Sending one is entirely up to you: nothing here happens unless you fill in the
-form and press Send. There is no background telemetry, no crash uploader and no
-usage reporting anywhere in the game.
+form and press Send. There is no background telemetry and no crash uploader
+anywhere in the game.
+
+There is one piece of usage reporting, and it is **off unless you turn it on**
+— see "Telling us how long you played", below.
+
+## Telling us how long you played
+
+**Off by default. Nothing is sent unless you switch it on** in Settings, and
+switching it back off stops it immediately. Earlier versions of this policy said
+there was no usage reporting at all; this is the exception, and it exists
+because we could not otherwise tell whether people were enjoying the game or
+bouncing off it in the first minute.
+
+When it is on, the game sends **one message at the end of a play session**
+containing exactly two things:
+
+- roughly how long you played, as one of five ranges: under a minute, 1–5
+  minutes, 5–15 minutes, 15–60 minutes, or over an hour
+- whether you were playing in a browser, on a desktop, or on Android
+
+That is the whole message. There is **no account, no nickname, no pseudonym, no
+installation id, no device details and no address kept**. Nothing links one
+report to another, so we cannot tell whether two reports came from the same
+person or from two different people — and we cannot tell that anyone is a
+returning player, which is a real thing we gave up on purpose.
+
+### Deleting it
+
+**There is nothing here to delete on request, and we would rather say so than
+offer a button that does nothing.** Because no report carries anything that
+identifies you, we have no way to find "your" reports among everyone else's.
+Anyone claiming they could would either be wrong or would have to be storing
+something we have said we do not store.
+
+What we do instead:
+
+- **Every report deletes itself after 90 days.** Not by policy — the record is
+  written with an expiry and the storage removes it whether we act or not.
+- **We can erase all of it, on request.** If you would rather the whole set did
+  not exist, ask (see the address at the top) and it is deleted — everyone's,
+  because there is no smaller unit to delete.
+- **Turning the setting off stops it at once.** No final report is sent.
+
+### What we do with it
+
+Counts, by day, of how many plays fell into each range. That is the only form it
+is ever read in, and it is published at `/stats` on the service, where you can
+see exactly as much of it as we can.
 
 **You need an account to send one, and your report is published.** Bug reports
 and suggestions require you to be signed in, and each one is signed with your

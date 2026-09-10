@@ -195,6 +195,9 @@ const std::vector<Field>& fields() {
          }},
         BOOL_FIELD("bind-all", bindAll, ServerSettingScope::Restart,
                    "listen on every interface rather than loopback only"),
+        BOOL_FIELD("relay", relay, ServerSettingScope::Restart,
+                   "host through the account service; no port, and the only way "
+                   "browser players can reach this server"),
         {"tunnel", ServerSettingScope::Restart,
          "off, auto, cloudflared or localhost.run", FieldKind::Text,
          [](const ServerConfig& c) { return std::string(serverTunnelModeName(c.tunnel)); },

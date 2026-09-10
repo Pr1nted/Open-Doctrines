@@ -5326,6 +5326,18 @@ void Game::drawInner() {
     // it must not be drawn over the words explaining what it is pointing at.
     drawTutorialPointer();
 
+    // ── THE CHAT VOTE, WHICH NOTHING USED TO DRAW ──
+    //
+    // drawChatVotePanel() had no caller: the poll opened, the votes tallied and
+    // the winner was applied, with nothing on screen to say any of it was
+    // happening. It returns immediately unless chat-plays is live, so this
+    // costs a branch in every other game.
+    //
+    // Left-hand side, below the country strip: the right is the view tabs and
+    // the bottom is the turn bar, and a streamer's own overlay usually sits
+    // bottom-right. Under the comms window, which is a dialog and should win.
+    drawChatVotePanel(24, 150, std::min(300, m_screenW / 4));
+
     // The comms window sits over the map but under mod panels and dialogs.
     drawComms();
     drawDialogue();

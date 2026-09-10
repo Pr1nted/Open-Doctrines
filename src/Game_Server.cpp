@@ -47,6 +47,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "net/AccountClient.h"
 
 namespace fs = std::filesystem;
 
@@ -204,6 +205,41 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         return 2;
     }
     console.info("data: " + m_dataDir);
+
+    // ── THE GAME'S OWN CONFIG, AND THE ACCOUNT IT HOSTS AS ──
+    //
+    // The client does both of these in Game::init(), which a dedicated server
+    // never calls -- init() opens an OpenGL window, which is the whole reason
+    // this entry point exists. So the server ran with an EMPTY m_config and an
+    // uninitialised AccountClient, which meant issuer, token and
+    // serverCredential were all blank when it finally tried to open a session.
+    //
+    // It failed at the last possible moment, having already loaded the map,
+    // generated a world and written a save, with "Sign in and register this
+    // server before hosting." -- advice that cannot be followed, because the
+    // machine WAS signed in and registered and this process had simply never
+    // looked. A dedicated server has never opened a session.
+    m_configPath = m_dataDir + "config.json";
+    m_config.load(m_configPath);
+    AccountClient::get().init(m_config.accountIssuer, m_dataDir + "account.json");
+
+    // init() only says WHERE the session is kept. bootstrap() is what reads it
+    // -- the stored token is loaded synchronously, so the credentials needed to
+    // open a session exist the moment this returns.
+    //
+    // The rest of the account (nickname, badges) is refreshed on a worker, and
+    // it is worth a short wait: the host's own row in its own lobby is drawn
+    // from it, and opening before it lands is exactly how that row came to read
+    // "someone". Bounded, and not fatal -- a server that cannot reach the
+    // account service to refresh a name can still host under one.
+    if (AccountClient::get().bootstrap()) {
+        for (int i = 0; i < 100 && !AccountClient::get().account().valid(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!AccountClient::get().account().valid()) {
+        console.warn("the stored account did not refresh; hosting under whatever "
+                     "name the service has on file.");
+    }
 
     // ── configuration ──
     for (const std::string& p : config.problems()) console.warn(p);
@@ -512,6 +548,7 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     m_mpListed     = config.listed;
     m_mpAnonymous  = config.anonymous;
     m_mpDedicated  = true;
+    m_mpViaRelay   = config.relay;
     m_mpMaxPlayers = (int)config.maxPlayers;
     m_mpAssignment = (config.assignment == "host") ? 0 : 1;
     m_mpLateJoin   = (config.lateJoin == "refuse") ? 0 : 1;
@@ -521,6 +558,24 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         console.info("world loaded: " + std::to_string(m_provinces.getAllProvinces().size()) +
                      " provinces, " + std::to_string(m_countries.getAll().size()) + " countries");
         console.info("config and content are good. Not opening a session (--check).");
+
+        // ── AND LEAVE NOTHING BEHIND, WHICH IT DID NOT ──
+        //
+        // Loading a map auto-creates the save the world will be played in, and
+        // that happens before this branch. So --check, which exists to answer
+        // "is this box configured correctly" and says in the line above that it
+        // is not opening a session, wrote a full world into data/saves/ on
+        // every run. An operator health-checking a server in a loop filled
+        // their disk with worlds nobody ever played -- this tree has 2,668 of
+        // them, 1.7 GB, and the game's own save browser shows them all.
+        //
+        // Only the file this run just created, and only under --check.
+        if (!m_currentSavePath.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(m_currentSavePath, ec);
+            std::filesystem::remove(m_currentSavePath + ".odkey", ec);
+            m_currentSavePath.clear();
+        }
         unloadGameData();
         return 0;
     }
@@ -537,7 +592,14 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     //
     // A dedicated server's whole job is being reachable, so this is reported in
     // full rather than left for someone to infer from silence.
-    if (config.tunnel != ServerTunnelMode::Off) {
+    // NO TUNNEL FOR A RELAYED HOST. There is no listening port to point one
+    // at, so `tunnel: auto` would start cloudflared, spend half a minute
+    // getting an address, and publish a hostname that answers nothing. The
+    // relay is already the route in.
+    if (config.relay && config.tunnel != ServerTunnelMode::Off) {
+        console.info("no tunnel: this server is relayed, so there is no port to "
+                     "expose and no address to publish.");
+    } else if (config.tunnel != ServerTunnelMode::Off) {
         TunnelProvider want = TunnelProvider::None;
         if (config.tunnel == ServerTunnelMode::Cloudflared)  want = TunnelProvider::Cloudflared;
         if (config.tunnel == ServerTunnelMode::LocalhostRun) want = TunnelProvider::LocalhostRun;
@@ -560,8 +622,14 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         }
     }
 
-    console.info("listening on port " + std::to_string(m_netHost->listenPort()) +
-                 (config.bindAll ? " (all interfaces)" : " (loopback only)"));
+    if (config.relay) {
+        // No port was bound, so there is none to report. Reporting one anyway
+        // ("listening on port 0") reads as a server that failed to bind.
+        console.info("hosting through the account service; no port is open.");
+    } else {
+        console.info("listening on port " + std::to_string(m_netHost->listenPort()) +
+                     (config.bindAll ? " (all interfaces)" : " (loopback only)"));
+    }
     if (!m_netHost->listenNote().empty()) console.warn(m_netHost->listenNote());
 
     return 0;
@@ -590,13 +658,42 @@ bool Game::serverTick() {
         mpHostTurnUpdate();
         if (m_mpTunnel) m_mpTunnel->update();
 
+        // ── A SESSION THAT FAILED AFTER OPENING WAS ASKED FOR ──
+        //
+        // Opening is ASYNCHRONOUS: mpOpenHost() starts a worker that posts to
+        // the account service, fetches the issuer key and only then goes Live.
+        // serverBegin checks for failure the instant it returns, which is
+        // before that worker can possibly have finished -- so it only ever
+        // caught the synchronous refusals, and a failure a second later was
+        // never looked at again.
+        //
+        // The result was a server that sat silent forever: no join code, no
+        // error, nothing in the log after "listening on port". The reason was
+        // in m_netHost->error() the whole time with nobody reading it. Say it
+        // once, and stop -- a dedicated server whose session did not open has
+        // no job left to do, and staying up pretends otherwise.
+        if (!m_srv->announcedFailure && m_netHost->phase() == NetHost::Phase::Closed) {
+            m_srv->announcedFailure = true;
+            m_srv->exitCode = 4;
+            const std::string why = m_netHost->error();
+            console.error("the session did not open" +
+                          (why.empty() ? std::string(".") : ": " + why));
+            return false;
+        }
+
         // 3. Say the things an operator is waiting to be told, once each.
         if (!m_srv->announcedCode && m_netHost->phase() == NetHost::Phase::Live) {
             m_srv->announcedCode = true;
             console.info("session open. Join code: " + m_netHost->code());
-            if (config.tunnel == ServerTunnelMode::Off && !config.bindAll)
+            if (config.relay) {
+                // The code IS the invite here: there is no address half to
+                // pair it with, which is also why a browser can join at all.
+                console.info("players join with that code alone -- leave the "
+                             "address blank. Web players can only join this way.");
+            } else if (config.tunnel == ServerTunnelMode::Off && !config.bindAll) {
                 console.warn("bind-all is false and no tunnel is running, so only this "
                              "machine can reach the server.");
+            }
         }
         if (!m_srv->announcedTunnel && m_mpTunnel) {
             if (m_mpTunnel->state() == Tunnel::State::Up) {
@@ -722,12 +819,15 @@ int Game::runDedicatedServer(ServerConfig& config, ServerConsole& console,
     if (rc != 0) return rc;
     // --check returns 0 from serverBegin having deliberately left no
     // runtime behind, so this loop does not run and there is nothing to end.
+    int rc2 = 0;
     while (m_srv && serverTick()) {
         // A server spends nearly all its life with nothing to do, and a spin
         // loop would burn a core to discover that -- on a VPS that is the
         // whole machine, and on a metered one it is a bill.
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
+    // Read BEFORE serverEnd(), which tears the runtime down.
+    if (m_srv) rc2 = m_srv->exitCode;
     serverEnd();
-    return 0;
+    return rc2;
 }

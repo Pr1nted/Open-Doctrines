@@ -25,3 +25,29 @@
  */
 bool odTextEditKeys(std::string& field, size_t maxLen,
                     const char* forbidden = "", bool digitsOnly = false);
+
+/**
+ * Text the player has just asked to paste, or empty.
+ *
+ * Consumes it: calling twice in a frame gives the second caller nothing, which
+ * is what stops a paste landing in two fields at once.
+ *
+ * DESKTOP is Ctrl+V or Cmd+V plus GetClipboardText(). WEB cannot work that
+ * way -- reading the clipboard in a browser is asynchronous, permission-gated,
+ * and refused outright inside a sandboxed iframe -- so there the shell listens
+ * for the browser's own `paste` event, which needs no permission because the
+ * keypress IS the consent, and this collects what it left behind.
+ */
+std::string odTakePaste();
+
+/**
+ * Append pasted text to a UTF-8 field, honouring a BYTE cap.
+ *
+ * For the fields that do their own typing because they accept more than ASCII
+ * (the announcement body, a bug report, a moderator's note). Stops at the
+ * first line break -- text copied out of a terminal brings one along, and it
+ * is never meant as part of the value -- and never splits a UTF-8 sequence.
+ *
+ * @return true if anything was added
+ */
+bool odTextAppendPaste(std::string& field, const std::string& pasted, size_t maxBytes);

@@ -968,6 +968,16 @@ private:
     // that is what a player with no internet sees. What an announcement may
     // CONTAIN is decided in src/net/Announcements.h, which is the sealed part.
     void pumpAnnouncements();
+    /**
+     * Ask the board again, though it has already been asked this run.
+     *
+     * pumpAnnouncements() fetches ONCE per run on purpose -- a menu that polls
+     * is a menu talking to a server for as long as it is left open. But that
+     * makes the one person who changes the board the one person who cannot see
+     * the change: post an announcement from the Admin screen, go back to the
+     * menu, and it shows whatever the board held when the game started.
+     */
+    void announcementBoardChanged();
     std::vector<odnews::Item> liveAnnouncements() const;
     void runAnnouncementAction(const odnews::Button& b);
     void drawAnnouncementBoard(int x, int y, int w, int h, Vector2 mouse, bool click);
@@ -1026,6 +1036,8 @@ private:
     int  m_mpStore     = 0;     // TurnStoreKind index; see mpStoreKind()
     bool m_mpAnonymous = false;
     bool m_mpDedicated = false;
+    /// Host through the account service's relay rather than listening.
+    bool m_mpViaRelay = false;
     /** Which page of host settings is showing: 0 basics, 1 rules, 2 turns. */
     int  m_mpSetupTab = 0;
 
@@ -1179,6 +1191,8 @@ private:
     // request took -- on the click that is supposed to start the game.
     enum class MpRegister : uint8_t { Idle = 0, Working, Done, Failed };
     std::thread              m_mpRegisterThread;
+    /// Said once per host attempt: an open that failed after open() returned.
+    bool                     m_mpOpenFailed = false;
     std::atomic<MpRegister>  m_mpRegisterState{MpRegister::Idle};
     std::string              m_mpRegisterResult;   // guarded by m_mpRegisterMutex
     std::string              m_mpRegisterError;

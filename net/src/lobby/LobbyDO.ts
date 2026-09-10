@@ -500,6 +500,19 @@ export class LobbyDO extends DurableObject<Env> {
         ws.send(JSON.stringify({ ok: true, peerId: peer.peerId, role: peer.role }));
 
         if (peer.role !== "host") {
+            // ── COUNTED, NOT IDENTIFIED ──
+            //
+            // Two numbers per session and nothing else: how many arrivals it
+            // saw, and the most people in it at once. No pseudonym, no
+            // account, no address, nothing that says WHO -- so this cannot be
+            // turned into a record of anybody, only into "how many games get
+            // played and how big they get". See recordSession().
+            this.set("joins", String(Number(this.get("joins") ?? "0") + 1));
+            const live = this.ctx.getWebSockets()
+                .filter((o) => this.attachment(o)?.authed &&
+                               this.attachment(o)?.role !== "host").length;
+            if (live > Number(this.get("peak") ?? "0")) this.set("peak", String(live));
+
             this.toHost(ToHost.PeerJoined, peer.peerId, new TextEncoder().encode(
                 JSON.stringify(identity),
             ));
@@ -772,6 +785,41 @@ export class LobbyDO extends DurableObject<Env> {
         await this.webSocketClose(ws);
     }
 
+    /**
+     * One row about a session that has ended. AGGREGATE ONLY.
+     *
+     * How long it ran, how many people arrived, how many were in it at once.
+     * There is deliberately nothing here that could identify a person or a
+     * game: no code, no pseudonym, no nickname, no address. It answers "are
+     * people actually playing together, and do lobbies fill" and cannot answer
+     * anything about you.
+     *
+     * WRITTEN ONCE, AT TEARDOWN. A counter updated live would be a write per
+     * join, and the free tier's daily write budget is small enough that
+     * measuring the game could stop the game working. One key per finished
+     * session, expiring on its own, is affordable at any volume this will see.
+     *
+     * Never throws into the caller: losing a statistic must not affect a game.
+     */
+    private async recordSession(): Promise<void> {
+        try {
+            const created = Number(this.get("createdAt") ?? "0");
+            if (!created) return;
+            const day = new Date().toISOString().slice(0, 10);
+            const row = {
+                s: Math.max(0, Math.round((Date.now() - created) / 1000)),
+                j: Number(this.get("joins") ?? "0"),
+                p: Number(this.get("peak") ?? "0"),
+            };
+            await this.env.OD_ACCOUNTS.put(
+                `stat:${day}:${crypto.randomUUID()}`, JSON.stringify(row),
+                { expirationTtl: 90 * 24 * 60 * 60 },
+            );
+        } catch {
+            // A statistic is not worth a failed teardown.
+        }
+    }
+
     override async alarm(): Promise<void> {
         const sockets = this.ctx.getWebSockets();
 
@@ -795,6 +843,7 @@ export class LobbyDO extends DurableObject<Env> {
         const longForm = this.settings()?.longForm === true;
         if (!longForm) {
             // Rapid: the game is over, so the session goes with it.
+            await this.recordSession();
             await this.ctx.storage.deleteAll();
             // This instance keeps serving after the wipe, and `deleteAll` took
             // the tables with it. A straggler arriving now must get a clean

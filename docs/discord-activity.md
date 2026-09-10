@@ -41,6 +41,10 @@ A JavaScript prologue that runs **before** the wasm starts:
 `shell.html` already exists (19 KB) and is passed to the linker via
 `--shell-file`, so there is a place for this to live.
 
+**Built.** The prologue is in `shell.html` (`odActivity`, `odDiscordSetup`,
+`odDiscordGate`) and runs from `Module.preRun`, so the patch is in place before
+`main()` and therefore before any C++ network call. Auth is still step 3.
+
 ### 3. Auth, which is the one genuinely new server piece
 Inside an Activity the normal OAuth redirect cannot run — there is no browser
 to redirect. The SDK returns a code that must be exchanged **server side** for
@@ -120,10 +124,10 @@ only appears inside Discord and not in any local test.
 1. ~~Measure the load.~~ **Done** — see above. 6.6 MB on the wire, runs in a
    sandboxed iframe. `tools/deploy-web.sh` puts it on Cloudflare Pages;
    `packaging/web/_headers` carries the caching and the framing.
-2. Add the SDK prologue and `patchUrlMappings`; confirm the account service and
-   a multiplayer session both work through the proxy. **This is the next real
-   unknown**: the proxy rewrites every request, and a `blocked:csp` only
-   appears inside Discord.
+2. ~~Add the SDK prologue and `patchUrlMappings`.~~ **Done** — see "How the
+   proxy layer works" below. Confirming a real sign-in and a real multiplayer
+   session through the proxy still needs a Discord client, and is the one thing
+   here that cannot be tested from this machine.
 3. Then auth, and only then the account-model decision.
 
 ## Estimate
@@ -180,14 +184,38 @@ On the same application the rich presence uses
    step that most often takes two attempts.
 3. **Installation** — the Activity needs the `applications.commands` scope so
    it can be launched in a server.
+4. **General Information → policy links.** Discord **refuses a `workers.dev`
+   URL** for these ("the specified Privacy Policy URL is not allowed"): it is a
+   shared suffix, so anyone can hold one. `pages.dev` it accepts. Use:
+
+       Terms of Service URL   https://opendoctrines.pages.dev/terms
+       Privacy Policy URL     https://opendoctrines.pages.dev/privacy
+
+   Those pages are rendered from `net/TERMS.md` and `net/PRIVACY.md` at deploy
+   time -- the same files the Worker imports and serves to the game -- so the
+   published policy and the one players agree to are one document.
+
+   The Worker's own `/terms` and `/privacy` are still what the GAME links to,
+   and they now answer two ways: a browser (`Accept: text/html`) is redirected
+   to the rendered pages above, and anything else gets the markdown byte for
+   byte. So the in-game "Privacy policy" button lands on a page rather than on
+   the source of one, without the game needing to know either URL.
 
 ### 3. Test it before anybody else sees it
 
-In the Discord **client**: Settings → **Advanced** → enable **Developer
-Activity Shelf**. Your application then appears in the activity picker of any
-voice channel you can use, without being published or reviewed.
+In the Discord **client**: User Settings → App Settings → **Advanced** →
+**Developer Mode** on. (There is no switch called "Developer Activity Shelf" —
+the shelf is what Developer Mode gives you.) Your application then appears in
+the activity picker of any voice channel you can use, without being published,
+reviewed, or installed to a server: owning the app in the portal is enough.
 
-Join a voice channel, open the picker, launch OpenDoctrines.
+Join a voice channel, click the **rocket** button in the voice controls, and
+pick OpenDoctrines.
+
+**If it is not in the list, the cause is almost always Supported Platforms.**
+The shelf only shows an application on platforms ticked under Activities →
+Settings → Supported Platforms in the portal. An app with only Android ticked
+is invisible on a desktop client, and nothing anywhere says why.
 
 ### 4. Publishing, later
 
@@ -196,11 +224,84 @@ Discovery enabled. That is a submission, not a build step, and it is worth
 leaving until after step 2 of the plan above — there is no point listing an
 Activity whose networking has not been through the proxy yet.
 
+## How the proxy layer works
+
+The whole of it is that **the transport is diverted and the identity is not.**
+
+`patchUrlMappings` rewrites outbound URLs — it patches `fetch`, `WebSocket` and
+`XMLHttpRequest.prototype.open`, which between them is everything this build
+can emit (`emscripten_fetch` is an XHR; `WsWeb.cpp` is a plain `new
+WebSocket`). One mapping covers the lot, because sign-in and the relay are
+routes on the same Worker:
+
+    https://opendoctrines-net…workers.dev/session/ABCD
+      ->  https://<app id>.discordsays.com/api/session/ABCD
+    wss://opendoctrines-net…workers.dev/session/ABCD/ws
+      ->  wss://<app id>.discordsays.com/api/session/ABCD/ws
+
+**The obvious wrong answer is to repoint `accountIssuer` at the proxy**, and it
+would fail in a way that looks nothing like a URL problem. The issuer is an
+identity: `Session.cpp:answerChallenge` refuses a host that names a different
+account service, and the Worker signs every ticket with its own canonical URL
+whatever route the request arrived by. An Activity player carrying a proxy URL
+would disagree with every host in existence and be refused from every game. So
+the C++ keeps the canonical URL and only the transport moves.
+
+`ready()` is the other half, and it is why the SDK is used rather than fifty
+lines of our own rewriter: until it resolves, Discord holds its own loading
+screen over the iframe, so an Activity that skips the handshake runs perfectly
+underneath something the player cannot see past. That handshake is a private
+protocol between the SDK and the Discord client.
+
+Three things keep this from rotting:
+
+- **The shell is stamped, not hand-edited.** CMake substitutes the account
+  service and the application id into `shell.html`, from the one definition of
+  each that already exists. There is no second copy to fall out of step.
+- **The mapping is tested against Discord's own rewriter.**
+  `packaging/web/discord/mapping.test.mjs` reads the mappings *out of
+  `shell.html`* and runs them through the SDK's `attemptRemap`. It asserts the
+  WebSocket keeps its `wss:` scheme, that same-origin files are left alone, and
+  that a build with no account service maps nothing. Deliberately breaking the
+  prefix, the activity detection and the empty-issuer guard each turns it red.
+- **CI asserts the substitution ran.** A page that shipped the literal string
+  `__OD_ACCOUNT_ISSUER__` would build, load and play everywhere except inside
+  Discord.
+
+The SDK is bundled at deploy time from a pinned version
+(`packaging/web/discord/`), not committed as a minified blob. It is fetched by
+the page **only** when `frame_id` and `instance_id` are present, so itch.io and
+plain-web players never download it.
+
+If the handshake never answers, an 8-second timeout releases the run dependency
+and the game starts anyway: a game with no sign-in beats a game that never
+starts.
+
 ## What is NOT done
 
-The build is hosted and framed; it is not yet an Activity. Without the Embedded
-App SDK prologue it will load in the frame and behave as a normal web build:
-no Discord identity, no participants, and — the part that will actually bite —
-**its network calls have not been through the proxy**, so sign-in and
-multiplayer are unverified inside Discord. That is step 2, and it is the next
-thing worth doing.
+The prologue is written, stamped, bundled, tested and **deployed**, and the
+proxy layer has been driven end to end on the live build — by opening
+<https://opendoctrines.pages.dev/?frame_id=…&instance_id=…>, which makes the
+page take the Activity path without a Discord client:
+
+- the SDK was fetched from the deploy and `patchUrlMappings` ran;
+- `fetch`, `WebSocket` and `XMLHttpRequest.prototype.open` were all replaced;
+- a relay socket URL came out as
+  `wss://<origin>/api/session/ABCD/ws` — proxy path, `wss:` scheme intact;
+- and the game reached the main menu anyway when the handshake failed, which
+  is the boot gate's timeout doing its job.
+
+The handshake is the part that cannot be faked: without a real Discord parent
+the SDK stops at `platform query param is not defined`. Discord supplies
+`platform` alongside `frame_id` and `instance_id`; the prologue deliberately
+does not require it for detection, because refusing to activate on a missing
+param would be a silent no-op, while failing at the SDK is a logged one.
+
+So: the routing is proven on the shipped artefact, and **the Discord handshake,
+a real sign-in and a real multiplayer join are still unverified**. Those need
+the Developer Activity Shelf and a voice channel.
+
+Still genuinely absent: **Discord identity**. The Activity does not know who is
+playing it, does not use the participant list, and asks nobody to authorise
+anything. `authorize` → `authenticate` → a token exchanged server-side, plus
+the decision about whether an Activity player gets a full account, is step 3.

@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
+#include "util/OpenLink.h"
 
 // ----------------------------------------------------- world access -------
 
@@ -1915,7 +1916,7 @@ void Game::updateModsMenu() {
                                   (float)(MeasureText(T("Can be updated"), 12) + 14), 19.0f};
                     if (CheckCollisionPointRec(mouse, upB)) {
                         Audio::get().playSfx("click_light");
-                        OpenURL(up->page.c_str());
+                        odlink::open(up->page.c_str());
                         m_modFeedback = "Opened the mod's page in your browser";
                         m_modFeedbackTimer = 3.0f;
                         return;

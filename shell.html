@@ -202,9 +202,246 @@ function odBootProgress(loaded, total) {
   if (t) t.innerHTML = OD_TIPS[Math.floor(Math.random() * OD_TIPS.length)];
 })();
 
+// ─── DISCORD ACTIVITY: EVERYTHING LEAVES THROUGH DISCORD'S PROXY ───────────
+//
+// Inside an Activity this page is served from https://<app id>.discordsays.com
+// and a Content Security Policy blocks every other host. The account service
+// and the multiplayer relay are on a different host, so left alone EVERY
+// request the game makes fails as `blocked:csp` -- sign-in, the lobby list,
+// joining a game, the lot.
+//
+// The fix is Discord's own. A URL Mapping in the developer portal says "/api
+// on the proxy means <the worker>", and patchUrlMappings rewrites outbound
+// URLs to match. It patches fetch, WebSocket and XMLHttpRequest.prototype.open,
+// which between them is everything this build can emit: emscripten_fetch is an
+// XHR, and the WebSocket transport is a plain `new WebSocket`.
+//
+// WHAT IS DELIBERATELY NOT DONE HERE, because it is the obvious wrong answer:
+// the game's account issuer is NOT repointed at the proxy. The issuer is an
+// IDENTITY and not merely an address -- the host compares the issuer named in
+// a join ticket against its own, and the client refuses a host that names a
+// different one (Session.cpp, answerChallenge). The Worker signs tickets with
+// its own canonical URL whatever route the request arrived by, so an Activity
+// player carrying a proxy URL would disagree with every host in existence and
+// be refused from every game. The URL the C++ holds stays canonical; only the
+// transport is diverted, which is precisely the division patchUrlMappings is
+// for.
+//
+// OUTSIDE DISCORD NOTHING HERE RUNS. The same shell serves itch.io and the
+// plain web build, where there is no proxy, no frame and nothing to patch.
+var odActivity = (function () {
+  var params = new URLSearchParams(location.search);
+  // The SDK itself refuses to construct without both of these, so they are the
+  // honest test for "are we inside an Activity" -- better than sniffing the
+  // hostname, which is also true of a browser tab opened at the proxy URL.
+  var frameId = params.get('frame_id');
+  var instanceId = params.get('instance_id');
+
+  // Stamped by CMake from OD_ACCOUNT_ISSUER and OD_DISCORD_APP_ID, so a fork
+  // that runs its own service and its own Discord app gets its own values and
+  // there is no second copy of either to fall out of step.
+  var issuer = '__OD_ACCOUNT_ISSUER__';
+  var appId = '__OD_DISCORD_APP_ID__';
+
+  var host = '';
+  try { if (issuer) host = new URL(issuer).host; } catch (e) { host = ''; }
+
+  // The app id from the origin is a cross-check, not a guess: inside an
+  // Activity the page is always served from <app id>.discordsays.com, so a
+  // build stamped with the wrong id can be caught rather than failing later
+  // as an unexplained handshake error.
+  var fromOrigin = /\.discordsays\.com$/.test(location.hostname)
+    ? location.hostname.split('.')[0] : '';
+
+  return {
+    active: !!(frameId && instanceId),
+    clientId: appId || fromOrigin,
+    originId: fromOrigin,
+    // One mapping covers the whole service: the relay's /session/<code>/ws is
+    // a route on the same Worker as sign-in. This must match the URL Mappings
+    // set in the developer portal exactly.
+    mappings: host ? [{ prefix: '/api', target: host }] : []
+  };
+})();
+
+// ─── HOW LONG THIS PLAY LASTED, IF THE PLAYER SAID YES ────────────────────
+//
+// OFF until the game says otherwise. The C++ side owns the setting and calls
+// odUsageSetConsent whenever it changes, so switching it off in Settings stops
+// this at once rather than at the next launch.
+//
+// IT LIVES HERE BECAUSE OF WHEN IT HAS TO RUN. The report is sent when the
+// session ENDS, and on the web that is the moment the tab goes away -- after
+// which no wasm runs at all. pagehide plus sendBeacon is the only thing the
+// browser guarantees at that point.
+//
+// What goes out is one of five range labels and which build this is. There is
+// no id, no cookie, no account and nothing that links two reports; see
+// PRIVACY.md, which describes exactly this and nothing more.
+(function () {
+  var consent = false, endpoint = '', surface = 'web';
+  var startedAt = Date.now();
+  var sent = false;
+
+  window.odUsageSetConsent = function (on, url, which) {
+    consent = !!on;
+    endpoint = url || '';
+    surface = which || 'web';
+  };
+
+  function bucket(seconds) {
+    // The same five the service will accept and the same five the C++ side
+    // computes. Deliberately coarse: a duration in seconds is a sharper thing
+    // than this question needs.
+    if (seconds < 60)   return '<1m';
+    if (seconds < 300)  return '1-5m';
+    if (seconds < 900)  return '5-15m';
+    if (seconds < 3600) return '15-60m';
+    return '60m+';
+  }
+
+  function report() {
+    if (sent || !consent || !endpoint) return;
+    sent = true;                     // pagehide can fire more than once
+    try {
+      var body = JSON.stringify({
+        bucket: bucket((Date.now() - startedAt) / 1000),
+        surface: surface
+      });
+      // sendBeacon survives the page going away, which fetch does not.
+      var blob = new Blob([body], { type: 'application/json' });
+      if (!(navigator.sendBeacon && navigator.sendBeacon(endpoint, blob))) {
+        fetch(endpoint, { method: 'POST', body: body, keepalive: true,
+                          headers: { 'Content-Type': 'application/json' } });
+      }
+    } catch (e) { /* a statistic is never worth breaking the page for */ }
+  }
+
+  // pagehide, not unload: unload is unreliable on mobile and blocks the
+  // back/forward cache. This is the event that actually fires when a tab is
+  // closed or backgrounded for good.
+  window.addEventListener('pagehide', report);
+})();
+
+// ─── PASTE, WHICH THE BROWSER WILL ONLY GIVE US THIS WAY ───────────────────
+//
+// raylib's GetClipboardText() is a desktop call. In a browser it has nothing
+// to return: reading the clipboard is asynchronous, permission-gated, and
+// inside a sandboxed Discord iframe often refused outright. So every text
+// field in the web build silently ignored Cmd+V -- typing worked, pasting did
+// nothing, and there was no error to notice.
+//
+// The `paste` event is the way round it and needs no permission at all: the
+// browser fires it on Cmd+V and hands over the text, because the user pressing
+// the key IS the consent. It is stashed here and collected by the C++ side on
+// the next frame (see odTextEditKeys).
+//
+// Not consumed here, deliberately: the game decides whether a field is focused
+// and what it will accept. This only carries the text across.
+window.odPaste = '';
+document.addEventListener('paste', function (e) {
+  try {
+    var d = e.clipboardData || window.clipboardData;
+    if (d) window.odPaste = d.getData('text') || '';
+  } catch (err) { /* a refused clipboard is a paste that does nothing */ }
+});
+
+// Opening a link OUTSIDE the game, from inside a sandboxed iframe.
+//
+// window.open is refused in a Discord Activity, and refused SILENTLY: no
+// exception, no console message, and a return value that looks like every
+// other blocked popup. The Account screen's "Open the page again" button did
+// nothing at all, with nothing anywhere to say why.
+//
+// So the call is not made when there is a Discord client to ask instead.
+// openExternalLink shows the player a confirmation and opens the page outside
+// Discord. Everywhere else -- itch.io, a plain browser tab -- this is the
+// window.open it always was.
+window.odOpenExternal = function (url) {
+  var sdk = window.odDiscordSdk;
+  if (sdk && sdk.commands && typeof sdk.commands.openExternalLink === 'function') {
+    try {
+      sdk.commands.openExternalLink({ url: url }).catch(function (e) {
+        console.warn('[discord] could not open ' + url + ': ' + ((e && e.message) || e));
+      });
+      return;
+    } catch (e) {
+      console.warn('[discord] openExternalLink threw: ' + ((e && e.message) || e));
+    }
+  }
+  window.open(url, '_blank');
+};
+
+function odLoadScript(src) {
+  return new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = false;
+    s.onload = function () { resolve(); };
+    s.onerror = function () { reject(new Error('could not load ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+
+function odDiscordSetup() {
+  if (!odActivity.mappings.length)
+    return Promise.reject(new Error('this build has no account service to map'));
+  if (!odActivity.clientId)
+    return Promise.reject(new Error('this build has no Discord application id'));
+  if (odActivity.originId && odActivity.clientId !== odActivity.originId) {
+    // Not fatal -- the origin is the authority and the handshake would fail on
+    // the stamped one -- but it means the build and the app disagree.
+    console.warn('[discord] built for app ' + odActivity.clientId +
+                 ' but served from ' + odActivity.originId + '; using the origin');
+    odActivity.clientId = odActivity.originId;
+  }
+  return odLoadScript('discord-sdk.js').then(function () {
+    var api = window.OD_Discord;
+    if (!api || !api.patchUrlMappings || !api.DiscordSDK)
+      throw new Error('discord-sdk.js loaded but exported nothing usable');
+    // Before anything asks for a socket or a URL, and before main() runs.
+    api.patchUrlMappings(odActivity.mappings);
+    window.odDiscordPatched = true;
+    var sdk = new api.DiscordSDK(odActivity.clientId);
+    window.odDiscordSdk = sdk;
+    // Until this resolves Discord is still showing its own loading screen over
+    // the iframe, so the game would be running underneath something nobody can
+    // see past.
+    return sdk.ready();
+  });
+}
+
+// Hold main() until the patch is in place -- NOT until the page loads. The
+// wasm and the .data are same-origin and download regardless; what must not
+// happen is the game reaching the menu, asking the account service whether it
+// is signed in, and having that request blocked before anything was patched.
+//
+// addRunDependency is emscripten's own mechanism for exactly this. The timeout
+// is not optional: a Discord client that never answers the handshake would
+// otherwise leave a player looking at a loading bar forever, and a game that
+// starts with no sign-in is far better than a game that never starts.
+function odDiscordGate() {
+  if (!odActivity.active) return;
+  if (typeof addRunDependency !== 'function') return;
+  addRunDependency('od-discord');
+  var released = false;
+  var release = function (note, bad) {
+    if (released) return;
+    released = true;
+    (bad ? console.warn : console.log)('[discord] ' + note);
+    removeRunDependency('od-discord');
+  };
+  setTimeout(function () {
+    release('no answer in 8s; starting without the proxy set up', true);
+  }, 8000);
+  odDiscordSetup().then(
+    function () { release('proxy patched and handshake complete'); },
+    function (e) { release('setup failed: ' + ((e && e.message) || e), true); });
+}
+
 var Module = {
   locateFile: function(s) { return s; },
-  preRun: [],
+  preRun: [odDiscordGate],
   postRun: [],
 
   // Emscripten's own progress reporting. The file packager calls this with

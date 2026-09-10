@@ -100,6 +100,7 @@ EM_JS(int, odFitCanvasJS, (), {
 #include "GameInternals.h"
 // odEnsureAsset(): the full font is fetched, not preloaded. See reloadFonts().
 #include "util/WebAssets.h"
+#include "Usage.h"
 
 std::string formatPop(long long pop) {
     struct Step { long long div; const char* suffix; };
@@ -305,9 +306,22 @@ const Setting ADVANCED_ITEMS[] = {
     // the account id and the real name inside a file path, and forces censored
     // flags whatever "Show Actual Flags" says. See src/StreamSafe.h.
     {"Stream-safe mode", false, -1},
+    // OFF, and off after every update. The one piece of usage reporting in the
+    // game: one coarse duration per play session, nothing that identifies the
+    // player or links two reports. See Config::usageReports and PRIVACY.md.
+    {"Report how long I play", false, -1},
+    // The stream's chat votes on this player's orders. A PREFERENCE: it needs a
+    // country, so the game starts it when a game starts and stops it when the
+    // game ends. Until this row existed there was no way to switch the feature
+    // on at all -- startChatPlays() had no caller anywhere.
+    {"Chat plays my country", false, -1},
+    // isValue: this one is TYPED, not toggled. Without it the channel could
+    // only be set by editing config.json by hand, which made the toggle above
+    // useless to anybody who had not been told about the file.
+    {"Chat channel", true, -1},
     {"Back", false, -1},
 };
-const int ADVANCED_COUNT = 8;
+const int ADVANCED_COUNT = 11;
 
 // Experimental: behaviour that changes how the game plays rather than how it
 // looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
@@ -612,6 +626,18 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += onOff(cfg.gameUpdateChecks);
     } else if (tab == 4 && index == 6) {
         label += onOff(cfg.streamSafe);
+    } else if (tab == 4 && index == 7) {
+        label += onOff(cfg.usageReports);
+    } else if (tab == 4 && index == 8) {
+        // The channel is part of the label: "on" with nowhere to read from is
+        // a setting that looks enabled and does nothing.
+        label += cfg.chatPlays
+            ? (cfg.streamChatChannel.empty() ? std::string(": on, but no channel set")
+                                             : ": " + cfg.streamChatChannel)
+            : std::string(": Off");
+    } else if (tab == 4 && index == 9) {
+        label += ": " + (cfg.streamChatChannel.empty()
+                             ? std::string("(not set)") : cfg.streamChatChannel);
     } else if (tab == 5 && index == 0) {
         label += onOff(cfg.aiLearning);
     } else if (tab == 5 && index == 1) {
@@ -1222,6 +1248,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // opening that screen used to publish an EMPTY nickname, which is why the
     // host's own row in its own lobby read "someone".
     AccountClient::get().bootstrap();
+
+    // The page cannot know what the player chose until it is told, and the
+    // setting is loaded by now. Pushed again whenever it is toggled, so
+    // switching it off takes effect immediately rather than at next launch.
+    odUsagePushConsent(m_config);
 
 #ifndef __EMSCRIPTEN__
     {
@@ -2247,6 +2278,21 @@ void Game::run() {
     while (m_running && !WindowShouldClose()) {
         float dt = GetFrameTime();
 
+        // ── ABOVE EVERY EARLY-OUT IN THIS LOOP, WHICH IS THE WHOLE POINT ──
+        //
+        // Web: one queued request per frame, where the stack is shallow and
+        // ASYNCIFY can unwind cheaply. A no-op on desktop, where the same work
+        // is already running on threads. See util/Async.h.
+        //
+        // This used to sit sixty lines further down, below the popup, admin and
+        // host-report branches -- each of which `continue`s. So opening the
+        // Admin screen queued its fetch and then took a branch that skipped the
+        // only thing that could ever run it: the panel sat on "Fetching..."
+        // forever, and every later request queued behind it. Anything that
+        // draws a modal and continues would have done the same, so the fix is
+        // the position, not a pump() in each branch.
+        odasync::pump();
+
         // Before anything reads input. The pad's virtual cursor and its
         // synthetic buttons are what getMouse() and the shims in
         // GameInternals.h hand to every screen, so they have to be current for
@@ -2364,12 +2410,24 @@ void Game::run() {
         // Keeps the runner up for as long as the game is. Self-throttled to a
         // probe every 3s and a restart attempt at most every 15s.
         pumpLlmServer();
-        // Web: one queued request per frame, at the top of the loop where the
-        // stack is shallow and ASYNCIFY can unwind cheaply. A no-op on desktop,
-        // where the same work is already running on threads. See util/Async.h.
-        odasync::pump();
         // Chat's socket, pumped every frame. Does nothing until a streamer has
         // pointed it at a channel; see Game_ChatPlays.cpp.
+        // ── STARTING IT, WHICH NOTHING USED TO DO ──
+        //
+        // startChatPlays() had no caller anywhere in the game: the reader, the
+        // vote tally, the overlay feed and the viewer link were all written and
+        // unreachable. It needs a country, so the earliest honest moment is
+        // here -- a game is running and the player holds a seat.
+        if (m_config.chatPlays && !m_config.streamChatChannel.empty() &&
+            m_currentScreen == SCREEN_PLAYING && m_playerCountryId > 0 &&
+            !chatPlaysActive()) {
+            startChatPlays(m_config.streamChatChannel, m_playerCountryId);
+        }
+        // And stopping it when there is no longer a country to play.
+        if (chatPlaysActive() &&
+            (m_currentScreen != SCREEN_PLAYING || !m_config.chatPlays)) {
+            stopChatPlays();
+        }
         pumpChatPlays();
         // What Discord shows under this player's name.
         pumpDiscordPresence();

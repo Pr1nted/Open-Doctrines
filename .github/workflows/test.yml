@@ -472,6 +472,39 @@ jobs:
           test -d build-web/data/audio/music || { echo "streamed music was not copied"; exit 1; }
           ls -lh build-web/OpenDoctrines.* build-web/data/audio/music | head -20
 
+      # THE SHELL IS STAMPED, NOT COPIED.
+      #
+      # The Discord Activity prologue needs the account service host and the
+      # application id, and CMake substitutes both into the shell at configure
+      # time. If that substitution silently stops happening, the page still
+      # builds, still loads and still plays everywhere except inside Discord --
+      # where it tries to route its traffic to the literal host
+      # "__OD_ACCOUNT_ISSUER__" and every request is refused. Nothing else in
+      # this job would notice.
+      #
+      # This build passes no issuer, so the stamped value is empty and the
+      # prologue maps nothing. What is asserted is that the SUBSTITUTION RAN.
+      - name: The Activity prologue was stamped
+        run: |
+          set -e
+          grep -q "odDiscordGate" build-web/index.html \
+            || { echo "the Discord Activity prologue is missing from the page"; exit 1; }
+          if grep -qF "__OD_ACCOUNT_ISSUER__" build-web/index.html || \
+             grep -qF "__OD_DISCORD_APP_ID__" build-web/index.html; then
+            echo "an unsubstituted placeholder shipped in index.html"; exit 1
+          fi
+
+      # The proxy mapping itself, checked against Discord's own rewriter. See
+      # packaging/web/discord/mapping.test.mjs -- the failure it exists to
+      # catch is remote, silent and reported by a player, not by a build.
+      - name: The Discord URL mapping is right
+        working-directory: packaging/web/discord
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+          test -s discord-sdk.js || { echo "the SDK bundle is empty"; exit 1; }
+
   # ── The dedicated server, on its own ────────────────────────────────────
   #
   # The server is already built and smoke-tested inside qualify, but only

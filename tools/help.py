@@ -46,6 +46,13 @@ GROUPS = [
         # network, because Safari's inspector needs a cable and the failure
         # being chased kills the tab it would be printed in.
         "devlog_server.py",
+        # Plays whole games headlessly on generated worlds and reports what
+        # broke: a crash, a hang, a world that will not load, or the same seed
+        # diverging between two runs. Unit tests check pieces in isolation and
+        # qualify.sh plays ONE scripted game; this is the part that plays many
+        # and does not know in advance what it is looking for. Refuses to start
+        # while a bench is running -- each instance spikes ~2 GB at map load.
+        "fuzz.py",
     ]),
     ("Training the AI", [
         # Re-deflates the shipped model container with zopfli. Same format,

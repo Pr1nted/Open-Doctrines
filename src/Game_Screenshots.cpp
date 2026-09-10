@@ -1248,6 +1248,16 @@ bool Game::tickScreenshotTour() {
             m_annBtnParam = "ODT-2K7X";
             m_annTimeStyle = 2;
             m_annEventIn = "3d 6h";
+            // FOCUS THE BODY, so the caret is in the picture.
+            //
+            // Without this the shot photographed the screen with no field
+            // focused and therefore no caret -- so when the caret came out at
+            // the left margin one line BELOW the text, this shot looked
+            // exactly the same as it always had. The same bug had already been
+            // found and fixed once in the mail composer, which does have a
+            // caret shot ("mail-caret"); this screen did not, and that is how
+            // it survived here. Both fields now draw through drawFieldText.
+            m_adminField = 2;
         } else if (name == "dev-reports" || name == "dev-lookup") {
             // Rows stood up directly: the real screen fetches them from the
             // account service, which a screenshot run has no account for.

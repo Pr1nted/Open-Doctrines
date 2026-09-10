@@ -443,6 +443,7 @@ void Game::mpStartHosting() {
 void Game::mpOpenHost() {
     AccountClient& account = AccountClient::get();
     if (!m_netHost) m_netHost = new NetHost();
+    m_mpOpenFailed = false;      // a fresh attempt gets a fresh complaint
 
     NetHost::Config cfg;
     cfg.issuer = account.issuer();
@@ -472,6 +473,7 @@ void Game::mpOpenHost() {
     cfg.turnSeconds = (uint32_t)mpTurnSeconds();
     cfg.anonymous = m_mpAnonymous;
     cfg.dedicated = m_mpDedicated;
+    cfg.viaRelay  = m_mpViaRelay;
     cfg.store = mpStoreKind();
 
     // Long-form needs a key to seal orders with, and the SAME key every time
@@ -531,7 +533,9 @@ void Game::mpOpenHost() {
     // before the listener so it publishes a port that is already accepting.
     tunnelSetToolsDir(mpToolsDir());
     const std::vector<TunnelProvider> providers = tunnelProvidersAvailable();
-    if (m_mpUseTunnel && !providers.empty() && !m_mpBindAll) {
+    // A relayed host binds no port, so there is nothing for a tunnel to reach:
+    // starting one would publish an address that answers nothing.
+    if (m_mpUseTunnel && !providers.empty() && !m_mpBindAll && !m_mpViaRelay) {
         const TunnelProvider p =
             providers[(size_t)std::clamp(m_mpTunnelChoice, 0, (int)providers.size() - 1)];
 
@@ -613,12 +617,21 @@ void Game::mpOpenHost() {
 }
 
 void Game::mpBeginJoin(const std::string& address, const std::string& code) {
+    // ── CLEAR THE LAST COMPLAINT BEFORE MAKING A NEW ATTEMPT ──
+    //
+    // The note survives until something replaces it, so a failure from a
+    // previous try stayed on screen while the player fixed the thing it was
+    // complaining about. "that is not a usable WebSocket address" sat under a
+    // join that no longer had an address in it at all -- the message was true
+    // when written and a lie by the time it was read, which is worse than no
+    // message, because it points at the attempt in front of you.
+    mpNote("");
+
     AccountClient& account = AccountClient::get();
     if (account.status() != AccountClient::Status::SignedIn) {
         mpNote("Please log in to proceed", true);
         return;
     }
-    if (address.empty()) { mpNote("Enter the server's address.", true); return; }
     if (!ServerBook::validCode(code)) {
         mpNote("That invite code does not look right.", true);
         return;
@@ -626,13 +639,26 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
 
     if (!m_netSession) m_netSession = new NetSession();
 
-    // Every plausible route, in order. A host is often reachable by one address
-    // from outside and a different one from the same network, and the player
-    // has no way to know which applies to them.
-    std::vector<std::string> candidates{address};
-    if (address.find(':') == std::string::npos) {
-        // No port given: try the default before giving up on the address.
-        candidates.push_back(address + ":27015");
+    // ── AN EMPTY ADDRESS IS NOT A MISTAKE ANY MORE ──
+    //
+    // It used to be refused with "Enter the server's address.", which made the
+    // code alone useless -- and left a browser with no way in at all, since a
+    // Discord Activity may only reach the hosts in its URL mappings and cannot
+    // open a socket to a home connection or a tunnel whatever is typed.
+    //
+    // No address now means "go through the account service's relay", which the
+    // code alone is enough to name. Handing NetSession an empty list is how
+    // that is asked for; see the relay note in Session.cpp.
+    std::vector<std::string> candidates;
+    if (!address.empty()) {
+        // Every plausible route, in order. A host is often reachable by one
+        // address from outside and a different one from the same network, and
+        // the player has no way to know which applies to them.
+        candidates.push_back(address);
+        if (address.find(':') == std::string::npos) {
+            // No port given: try the default before giving up on the address.
+            candidates.push_back(address + ":27015");
+        }
     }
 
     if (!m_netSession->join(candidates, account.issuer(), code,
@@ -695,6 +721,37 @@ void Game::mpDrainModMessages() {
 }
 
 void Game::mpDrainEvents() {
+    // ── AN OPEN THAT FAILED AFTER open() RETURNED ──
+    //
+    // Opening a session is asynchronous: open() starts a worker that posts to
+    // the account service and only then goes Live. The check at the call site
+    // reads its SYNCHRONOUS return, which catches "you are not signed in" and
+    // nothing else -- so a refusal that arrives a second later was never shown
+    // anywhere, and the lobby sat on "Opening the game..." for ever.
+    //
+    // What was hiding behind it: "That server credential is not valid." The
+    // message was in m_netHost->error() the whole time.
+    if (m_netHost && !m_mpOpenFailed &&
+        m_netHost->phase() == NetHost::Phase::Closed) {
+        m_mpOpenFailed = true;
+        const std::string why = m_netHost->error();
+        mpNote(why.empty() ? "The game could not be opened." : why, true);
+
+        // A CREDENTIAL THAT IS NO LONGER GOOD IS NOT A PERMANENT CONDITION.
+        //
+        // It is registered once and cached in config.json, and the register
+        // step only runs when that field is EMPTY -- so once the stored one
+        // stopped being valid, every future attempt reused it and failed the
+        // same way, with no route back short of hand-editing the file.
+        // Clearing it here means the next attempt registers again.
+        if (why.find("credential") != std::string::npos) {
+            m_config.serverCredential.clear();
+            m_config.save(m_configPath);
+            mpNote("This server's registration had expired; it will register "
+                   "again next time you host.");
+        }
+    }
+
     if (m_mpTunnel) {
         const Tunnel::State before = m_mpTunnel->state();
         m_mpTunnel->update();
@@ -758,6 +815,12 @@ void Game::mpDrainEvents() {
                     // The host sees its own broadcast here rather than through
                     // a loopback connection it does not have.
                     pushChatLine(chatNameOf(e.chat.fromPeerId), e.chat.text);
+                    break;
+                case NetHostEvent::Kind::JoinRefused:
+                    // Into the lobby chat, which only the host is reading at
+                    // this point, and NOT broadcast: who tried and failed to
+                    // get in is the host's business and nobody else's.
+                    pushChatLine("", e.text + " tried to join and was turned away.");
                     break;
                 case NetHostEvent::Kind::Failed:
                     mpNote(e.text, true);
@@ -1155,6 +1218,15 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     if (click && CheckCollisionPointRec(mouse, code)) m_mpFocus = 1;
     y += fieldH + 26;
 
+    // ── THE WARNING IS ABOUT A DIRECT CONNECTION, SO IT IS SHOWN FOR ONE ──
+    //
+    // Leaving an address blank goes through the account service's relay, and
+    // then the host does not see the player's address at all -- the relay is
+    // the middleman the text below says does not exist. Showing it anyway, and
+    // demanding the tickbox, would be asking somebody to accept a disclosure
+    // that is not happening.
+    const bool direct = !m_mpAddressField.empty();
+
     // The one thing about joining that cannot be taken back afterwards. It is
     // stated here, before connecting, rather than left to the privacy policy.
     const std::string warnText =
@@ -1162,41 +1234,55 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
         "design, so we cannot hide it. It roughly indicates where you are and who "
         "your internet provider is. Use a VPN if you would rather the host did "
         "not see it.";
-    // Measured, not guessed: the box is sized to what it will hold.
-    const float boxH = 12.0f + 26.0f +
-                       (float)measureWrapped(warnText, fieldW, 15) + 10.0f;
-    const Rectangle box{(float)(centerX - fieldW / 2 - 10), (float)y - 8,
-                        (float)fieldW + 20, boxH};
-    DrawRectangleRounded(box, 0.08f, 8, Color{40, 34, 26, 210});
-    DrawRectangleRoundedLines(box, 0.08f, 8, Color{170, 140, 90, 200});
+    if (!direct) {
+        // Said plainly, because "no address" looks like something forgotten.
+        DrawText(T("No address: joining through the account service"),
+                 centerX - fieldW / 2, y, 16, Color{150, 195, 165, 255});
+        DrawText(T("The host will not see your IP address."),
+                 centerX - fieldW / 2, y + 22, 15, Color{150, 158, 172, 255});
+        y += 52;
+    }
 
-    int ty = y + 2;
-    DrawText(T("The host will see your IP address"), centerX - fieldW / 2, ty, 18,
-             Color{235, 200, 140, 255});
-    ty += 26;
-    drawWrapped(warnText, centerX - fieldW / 2, ty, fieldW, 15,
-                Color{200, 190, 175, 255});
+    if (direct) {
+        // Measured, not guessed: the box is sized to what it will hold.
+        const float boxH = 12.0f + 26.0f +
+                           (float)measureWrapped(warnText, fieldW, 15) + 10.0f;
+        const Rectangle box{(float)(centerX - fieldW / 2 - 10), (float)y - 8,
+                            (float)fieldW + 20, boxH};
+        DrawRectangleRounded(box, 0.08f, 8, Color{40, 34, 26, 210});
+        DrawRectangleRoundedLines(box, 0.08f, 8, Color{170, 140, 90, 200});
 
-    // Below the panel, never on its edge.
-    const MpButton ack = buttonAt((float)(centerX - fieldW / 2),
-                                  box.y + box.height + 12.0f, 26.0f, 26.0f, mouse);
-    DrawRectangleRounded(ack.rect, 0.2f, 6,
-                         m_mpIpWarningAccepted ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
-    DrawRectangleRoundedLines(ack.rect, 0.2f, 6, Color{150, 160, 175, 200});
-    if (m_mpIpWarningAccepted) DrawText("x", (int)ack.rect.x + 9, (int)ack.rect.y + 4, 18, WHITE);
-    DrawText(T("I understand"), (int)ack.rect.x + 36, (int)ack.rect.y + 5, 16,
-             Color{200, 205, 215, 255});
-    if (click && ack.hovered) m_mpIpWarningAccepted = !m_mpIpWarningAccepted;
+        int ty = y + 2;
+        DrawText(T("The host will see your IP address"), centerX - fieldW / 2, ty, 18,
+                 Color{235, 200, 140, 255});
+        ty += 26;
+        drawWrapped(warnText, centerX - fieldW / 2, ty, fieldW, 15,
+                    Color{200, 190, 175, 255});
 
-    y = (int)ack.rect.y + 56;
+        // Below the panel, never on its edge.
+        const MpButton ack = buttonAt((float)(centerX - fieldW / 2),
+                                      box.y + box.height + 12.0f, 26.0f, 26.0f, mouse);
+        DrawRectangleRounded(ack.rect, 0.2f, 6,
+                             m_mpIpWarningAccepted ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
+        DrawRectangleRoundedLines(ack.rect, 0.2f, 6, Color{150, 160, 175, 200});
+        if (m_mpIpWarningAccepted) DrawText("x", (int)ack.rect.x + 9, (int)ack.rect.y + 4, 18, WHITE);
+        DrawText(T("I understand"), (int)ack.rect.x + 36, (int)ack.rect.y + 5, 16,
+                 Color{200, 205, 215, 255});
+        if (click && ack.hovered) m_mpIpWarningAccepted = !m_mpIpWarningAccepted;
+
+        y = (int)ack.rect.y + 56;
+    } else {
+        y += 8;
+    }
     const int btnW = 220, btnH = 50, gap = 16;
     const MpButton back = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
                                    (float)btnW, (float)btnH, mouse);
     drawButton(back, "Back", 19, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_mpPage = MpPage::Hub; m_mpFocus = -1; }
 
-    const bool ready = m_mpIpWarningAccepted && !m_mpAddressField.empty() &&
-                       !m_mpCodeField.empty();
+    // An address is optional now; the tickbox is only asked for when there is
+    // one, because it acknowledges a disclosure that only a direct join makes.
+    const bool ready = !m_mpCodeField.empty() && (!direct || m_mpIpWarningAccepted);
     const MpButton go = buttonAt((float)(centerX + gap / 2), (float)y,
                                  (float)btnW, (float)btnH, mouse);
     drawButton(go, "Join", 19, Color{40, 60, 48, 230}, Color{130, 190, 140, 210}, ready);
@@ -1669,6 +1755,28 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         if (click && ded.hovered) m_mpDedicated = !m_mpDedicated;
         y += 30;
 
+        // ── THE ONLY WAY A BROWSER PLAYER CAN GET IN ──
+        //
+        // A listening host is unreachable from a Discord Activity whatever the
+        // player types: the Activity may only talk to the hosts in its URL
+        // mappings, and somebody's home connection is not one of them. Hosting
+        // through the account service puts both ends on the same relay, so
+        // there is no port to forward and the code is the whole invite.
+        const MpButton rel = buttonAt((float)(centerX - fieldW / 2), (float)y, 24.0f, 24.0f, mouse);
+        DrawRectangleRounded(rel.rect, 0.2f, 6,
+                             m_mpViaRelay ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
+        DrawRectangleRoundedLines(rel.rect, 0.2f, 6, Color{150, 160, 175, 200});
+        if (m_mpViaRelay) DrawText("x", (int)rel.rect.x + 8, (int)rel.rect.y + 3, 17, WHITE);
+        DrawText(T("Host through the account service"), (int)rel.rect.x + 32,
+                 (int)rel.rect.y + 4, 15, Color{200, 205, 215, 255});
+        if (click && rel.hovered) m_mpViaRelay = !m_mpViaRelay;
+        y += 28;
+        y = drawWrapped("No port to forward and no tunnel, and players join with the "
+                        "code alone. Required for anyone playing in a browser or in "
+                        "Discord. The game then needs the account service for as long "
+                        "as it runs, where a listening host only needs it to start.",
+                        centerX - fieldW / 2, y, fieldW, 13, Color{130, 138, 152, 255}) + 6;
+
         // ── Mail and advisors, for the host who decides them ──
         //
         // The same pane the settings menu opens. Here because who may write on
@@ -1820,7 +1928,37 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             // one, because that is the thing that works from outside -- a host
             // reading out "port 27015" to a friend on another continent is a
             // host whose game nobody joins.
-            if (m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up) {
+            //
+            // A RELAYED HOST HAS NO ADDRESS AT ALL, and saying "Listening on
+            // port 0" is worse than saying nothing: it reads as a broken
+            // server rather than as the one arrangement where there is nothing
+            // to forward and nothing to read out. The code is the whole invite.
+            if (m_mpViaRelay) {
+                // THE ONE LINK WITH NOTHING ELSE TO SHOW FOR IT. A listening
+                // host proves itself by its port; a relayed one proves nothing
+                // until somebody joins, and if its socket never came up the
+                // service quietly reclaims the session -- leaving a host
+                // reading out a code that stopped working, with no way to tell.
+                const NetHost::RelayState rs = m_netHost->relayState();
+                const char* line =
+                    rs == NetHost::RelayState::Connected  ? "Relay: connected -- the game is reachable."
+                  : rs == NetHost::RelayState::Failed     ? "Relay: NOT connected. Nobody can join."
+                                                          : "Relay: connecting...";
+                const Color col =
+                    rs == NetHost::RelayState::Connected  ? Color{150, 195, 165, 255}
+                  : rs == NetHost::RelayState::Failed     ? Color{225, 140, 130, 255}
+                                                          : Color{215, 200, 140, 255};
+                DrawText(line, centerX - MeasureText(line, 15) / 2, y, 15, col);
+                y += 22;
+                const char* how = "Players join with the code alone.";
+                DrawText(how, centerX - MeasureText(how, 15) / 2, y, 15,
+                         Color{150, 195, 165, 255});
+                y += 22;
+                const char* why = "No address to forward, and the only way in for web players.";
+                DrawText(why, centerX - MeasureText(why, 14) / 2, y, 14,
+                         Color{130, 140, 155, 255});
+                y += 24;
+            } else if (m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up) {
                 // A route to this machine, and one that outlives the session.
                 const std::string addr = "Address:  " +
                     (m_config.streamSafe ? streamsafe::maskSecret(m_mpTunnel->address())
@@ -3370,6 +3508,20 @@ std::string localNetworkAddress() {
 
 std::string Game::mpInviteText() const {
     if (!m_netHost) return {};
+
+    // ── A RELAYED GAME HAS NO ADDRESS, AND MUST NOT INVENT ONE ──
+    //
+    // This pasted "Address: 127.0.0.1:0" for a relayed host -- a loopback
+    // address and a port that was never bound, because nothing is listening.
+    // Anyone handed that either fails to connect or, worse, types it in and is
+    // told their input is malformed, which points at them rather than at the
+    // invite. The code alone IS the invite here, so that is all it says.
+    if (m_mpViaRelay) {
+        return "Join my OpenDoctrines game\n"
+               "Code: " + m_netHost->code() + "\n"
+               "Leave the address blank -- this game is hosted through the "
+               "account service.\n";
+    }
 
     // Both halves, because either alone is useless: the address says WHERE and
     // the code says WHICH GAME. A host pasting only one of them into a chat is

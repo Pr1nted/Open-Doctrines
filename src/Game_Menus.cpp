@@ -28,6 +28,8 @@
 #ifndef _WIN32
 #endif
 #include <ctime>
+#include "util/OpenLink.h"
+#include "Usage.h"
 
 namespace {
 
@@ -475,9 +477,9 @@ void Game::updateCommunityMenu() {
         // that account for almost every player. raylib's OpenURL covers all four,
         // and is what every other link in this codebase already uses.
         if (CheckCollisionPointRec(mouse, discordBtn)) {
-            OpenURL("https://discord.gg/wqS65jzVv5");
+            odlink::open("https://discord.gg/wqS65jzVv5");
         } else if (CheckCollisionPointRec(mouse, githubBtn)) {
-            OpenURL("https://github.com/Pr1nted/Open-Doctrines");
+            odlink::open("https://github.com/Pr1nted/Open-Doctrines");
         } else if (CheckCollisionPointRec(mouse, backBtn)) {
             Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
@@ -1061,6 +1063,41 @@ UpdatePanelLayout updatePanelLayout(int screenW, int screenH) {
 // anonymous namespace above because the map browser wraps text too, and two
 // implementations of this is how one of them ends up being the one that
 // splits a codepoint.
+// One field's text and one caret. See GameInternals.h for why this is shared.
+void drawFieldText(Rectangle box, const std::string& text, int fontSize,
+                   int pad, int lineH, Color color, bool caret) {
+    int ty = (int)box.y + pad;
+    std::string line;
+
+    // THE CARET IS CAPTURED INSIDE THE LOOP, WHILE THE LAST LINE STILL EXISTS.
+    // Computing it afterwards is the bug this function exists to delete: by
+    // then `line` is empty and `ty` has moved on by one row.
+    int caretX = (int)box.x + pad;
+    int caretY = ty;
+
+    for (size_t i = 0; i <= text.size(); ++i) {
+        const bool end = (i == text.size());
+        if (!end && text[i] != '\n') {
+            line += text[i];
+            if (MeasureText(line.c_str(), fontSize) < box.width - pad * 2 - 4) continue;
+        }
+        if (end) {
+            caretX = (int)box.x + pad + MeasureText(line.c_str(), fontSize);
+            caretY = ty;
+        }
+        // Measured either way, drawn only where it fits: a row past the bottom
+        // must still advance ty, or the caret lands on the wrong line.
+        if (ty + lineH < box.y + box.height)
+            DrawText(line.c_str(), (int)box.x + pad, ty, fontSize, color);
+        ty += lineH;
+        line.clear();
+    }
+
+    if (caret && (int)(GetTime() * 2) % 2)
+        DrawRectangle(caretX, std::min(caretY, (int)(box.y + box.height - lineH - 2)),
+                      2, fontSize + 2, WHITE);
+}
+
 std::vector<std::string> wrapText(const std::string& text, int fontSize, int maxW) {
     std::vector<std::string> lines;
     std::string line;
@@ -1255,9 +1292,9 @@ bool Game::updatePanelClick(Vector2 mouse) {
             // macOS hands off to the browser rather than installing; see
             // GameUpdates.h for why.
             if (!GameUpdates::canSelfInstall() && !st.pageUrl.empty())
-                OpenURL(st.pageUrl.c_str());
+                odlink::open(st.pageUrl.c_str());
         } else if (st.stage == Stage::Failed && !st.pageUrl.empty()) {
-            OpenURL(st.pageUrl.c_str());
+            odlink::open(st.pageUrl.c_str());
         }
         return true;
     }
@@ -2534,22 +2571,53 @@ void Game::updateSettingsFromMenu() {
 
     // Only process keyboard/mouse when not editing a value
     if (m_editingValue) {
+        // ── ONE FIELD HERE TAKES TEXT ──
+        //
+        // Everything else on this path is a number, and the loop below only
+        // ever accepted digits and a decimal point. A channel name typed into
+        // it would have produced an empty field and no way to tell why.
+        const bool textField = (m_settingsTab == 4 &&
+                                m_settingsIndex >= 0 &&
+                                m_settingsIndex < TAB_ITEM_COUNTS[4] &&
+                                strcmp(TAB_ITEMS[4][m_settingsIndex].label, "Chat channel") == 0);
         int c = GetCharPressed();
         while (c > 0) {
             // Every character the field takes. Jittered, because a
             // typed word is a run of distinct taps, not one tap looped.
             Audio::get().playSfx("key_type", 0.12f);
-            if (c >= '0' && c <= '9') m_editBuffer += (char)c;
+            if (textField) {
+                // What a channel name can be on Twitch, YouTube and Kick
+                // between them. A space cannot be part of one, and letting one
+                // in produces a name the reader silently never matches.
+                const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+                if (ok && m_editBuffer.size() < 64) m_editBuffer += (char)c;
+            }
+            else if (c >= '0' && c <= '9') m_editBuffer += (char)c;
             else if (c == '.' && m_editBuffer.find('.') == std::string::npos) m_editBuffer += '.';
             c = GetCharPressed();
         }
-        odTextEditKeys(m_editBuffer, 256);
+        // Paste is filtered the same way, so the clipboard cannot put a space
+        // or a whole URL into a field typing would have refused.
+        odTextEditKeys(m_editBuffer, textField ? 64 : 256,
+                       textField ? " \t/:@#" : "");
         if (IsKeyPressed(KEY_ENTER)) {
-            float val = std::strtof(m_editBuffer.c_str(), nullptr);
-            if (m_settingsTab == 0 && m_settingsIndex == 2) {
-                m_config.maxZoom = std::clamp(val, 1.0f, 50.0f);
-            } else if (m_settingsTab == 1 && m_settingsIndex == 0) {
-                m_config.flySpeed = std::clamp(val, 0.1f, 10.0f);
+            if (textField) {
+                m_config.streamChatChannel = m_editBuffer;
+                // Changing the channel while chat is being read has to take
+                // effect; the reader is started with the old one.
+                if (chatPlaysActive()) stopChatPlays();
+                m_menuFeedback = m_editBuffer.empty()
+                    ? "Channel cleared — chat will not be read"
+                    : "Channel set to " + m_editBuffer;
+                m_menuFeedbackTimer = 4.0f;
+            } else {
+                float val = std::strtof(m_editBuffer.c_str(), nullptr);
+                if (m_settingsTab == 0 && m_settingsIndex == 2) {
+                    m_config.maxZoom = std::clamp(val, 1.0f, 50.0f);
+                } else if (m_settingsTab == 1 && m_settingsIndex == 0) {
+                    m_config.flySpeed = std::clamp(val, 0.1f, 10.0f);
+                }
             }
             m_editingValue = false;
         }
@@ -2953,6 +3021,35 @@ void Game::updateSettingsFromMenu() {
                   "and flags are censored (reload a world to recolour it)"
                 : "Off — everything is shown again";
             m_menuFeedbackTimer = 5.0f;
+        } else if (strcmp(s.label, "Chat plays my country") == 0) {
+            // Toggling it on with no channel is the one case worth catching
+            // here: the feature would sit "on" and never read anything, which
+            // is indistinguishable from it being broken.
+            if (!m_config.chatPlays && m_config.streamChatChannel.empty()) {
+                m_menuFeedback = "Set \"Chat channel\" below first — that is the "
+                                 "channel whose chat votes";
+                m_menuFeedbackTimer = 6.0f;
+            } else {
+                m_config.chatPlays = !m_config.chatPlays;
+                Audio::get().playSfx(m_config.chatPlays ? "toggle_on" : "toggle_off");
+                m_menuFeedback = m_config.chatPlays
+                    ? "On — chat votes on your orders while a game is running"
+                    : "Off — chat is not read";
+                m_menuFeedbackTimer = 4.0f;
+                if (!m_config.chatPlays) stopChatPlays();
+            }
+        } else if (strcmp(s.label, "Report how long I play") == 0) {
+            m_config.usageReports = !m_config.usageReports;
+            Audio::get().playSfx(m_config.usageReports ? "toggle_on" : "toggle_off");
+            // Says what it sends, not just that it is on. "Usage data: On" is
+            // the wording that gets switched on by people who would not have
+            // agreed to the thing it actually does.
+            m_menuFeedback = m_config.usageReports
+                ? "On — at the end of a session the game sends how long it lasted, "
+                  "as one of five ranges, and nothing else"
+                : "Off — the game reports nothing about how you play";
+            m_menuFeedbackTimer = 5.0f;
+            odUsagePushConsent(m_config);
         } else if (strcmp(s.label, "Check for game updates") == 0) {
             m_config.gameUpdateChecks = !m_config.gameUpdateChecks;
             Audio::get().playSfx(m_config.gameUpdateChecks ? "toggle_on" : "toggle_off");
@@ -3032,9 +3129,16 @@ void Game::updateSettingsFromMenu() {
             m_rebindingAction = items[m_settingsIndex].actionId;
             m_waitingForKey = true;
         } else if (s.isValue) {
-            float cur = (m_settingsTab == 0) ? m_config.maxZoom : (m_settingsTab == 1 ? m_config.flySpeed : 0);
-            char buf[32]; snprintf(buf, sizeof(buf), "%.1f", cur);
-            m_editBuffer = buf;
+            // The chat channel is the one TEXT field here; everything else on
+            // this path is a number. Seeded with what is already set so an
+            // edit is a correction rather than a retype.
+            if (m_settingsTab == 4 && strcmp(s.label, "Chat channel") == 0) {
+                m_editBuffer = m_config.streamChatChannel;
+            } else {
+                float cur = (m_settingsTab == 0) ? m_config.maxZoom : (m_settingsTab == 1 ? m_config.flySpeed : 0);
+                char buf[32]; snprintf(buf, sizeof(buf), "%.1f", cur);
+                m_editBuffer = buf;
+            }
             m_editingValue = true;
         }
     }

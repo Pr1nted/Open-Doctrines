@@ -1034,35 +1034,9 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
         DrawText(T("Write a letter. It leaves when the turn is processed."),
                  (int)field.x + 8, (int)field.y + 8, 12, Color{96, 100, 118, 255});
     } else {
-        int ty = (int)field.y + 6;
-        std::string line;
-        // WHERE THE CARET GOES, CAPTURED WHILE THE LAST LINE STILL EXISTS.
-        //
-        // It used to be worked out after the loop, from `line` and `ty` -- but
-        // the loop's final pass draws the last line, advances ty and CLEARS
-        // line. So the caret was measured against an empty string at the y of
-        // the row below: it sat at the left margin, one line under the text,
-        // which is exactly where it should not be.
-        int caretX = (int)field.x + 8;
-        int caretY = ty;
-        for (size_t i = 0; i <= m_mailDraft.size(); ++i) {
-            const bool end = (i == m_mailDraft.size());
-            if (!end && m_mailDraft[i] != '\n') {
-                line += m_mailDraft[i];
-                if (MeasureText(line.c_str(), 13) < field.width - 20) continue;
-            }
-            if (end) {
-                caretX = (int)field.x + 8 + MeasureText(line.c_str(), 13);
-                caretY = ty;
-            }
-            if (ty + 16 < field.y + field.height)
-                DrawText(line.c_str(), (int)field.x + 8, ty, 13, WHITE);
-            ty += 16;
-            line.clear();
-        }
-        if (m_mailComposeFocus && (int)(GetTime() * 2) % 2)
-            DrawRectangle(caretX, std::min(caretY, (int)(field.y + field.height - 18)),
-                          2, 14, WHITE);
+        // The fix that started here now lives in drawFieldText; see
+        // GameInternals.h for why all four fields call one function.
+        drawFieldText(field, m_mailDraft, 13, 8, 16, WHITE, m_mailComposeFocus);
     }
 
     const Rectangle send = {(float)(x + w - 24 - 118), field.y, 118, field.height};

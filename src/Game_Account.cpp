@@ -19,6 +19,7 @@
 
 #include <cstring>
 #include <ctime>
+#include "util/OpenLink.h"
 
 namespace {
 
@@ -241,13 +242,13 @@ void Game::updateAccountMenu() {
                 const Button pol = buttonAt((float)(centerX - 170), (float)(noteY + 82),
                                             170, 32, mouse);
                 if (click && pol.hovered && !client.privacyUrl().empty()) {
-                    OpenURL(client.privacyUrl().c_str());
+                    odlink::open(client.privacyUrl().c_str());
                     return;
                 }
                 const Button ter = buttonAt((float)(centerX + 6), (float)(noteY + 82),
                                             170, 32, mouse);
                 if (click && ter.hovered && !client.termsUrl().empty()) {
-                    OpenURL(client.termsUrl().c_str());
+                    odlink::open(client.termsUrl().c_str());
                     return;
                 }
             }
@@ -269,7 +270,7 @@ void Game::updateAccountMenu() {
             const Button cancel = buttonAt((float)(centerX - btnW / 2),
                                            (float)(startY + 110 + btnH + gap),
                                            (float)btnW, (float)btnH, mouse);
-            if (click && open.hovered) OpenURL(client.verifyUrl().c_str());
+            if (click && open.hovered) odlink::open(client.verifyUrl().c_str());
             if (click && cancel.hovered) client.cancelSignIn();
             break;
         }

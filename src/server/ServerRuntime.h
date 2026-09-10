@@ -41,5 +41,18 @@ struct ServerRuntime {
 
     /** Said once each, not every tick. */
     bool announcedCode = false;
+    /// Said once, when an open that was still in flight turns out to have failed.
+    bool announcedFailure = false;
+
+    /**
+     * What the process exits with.
+     *
+     * Non-zero when the run ended because something was wrong rather than
+     * because it was asked to stop. A session that never opened used to exit 0,
+     * which tells a supervisor -- systemd, a container runtime, a shell loop --
+     * that the server did its job and shut down cleanly. It would not be
+     * restarted, and nothing would be alerted.
+     */
+    int exitCode = 0;
     bool announcedTunnel = false;
 };

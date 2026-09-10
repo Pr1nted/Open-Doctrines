@@ -48,6 +48,43 @@ echo "==> compiling resources"
 rm -rf "$BUILD/res-compiled"; mkdir -p "$BUILD/res-compiled"
 "$BT/aapt2" compile --dir android/res -o "$BUILD/res-compiled/res.zip"
 
+# ── THE VERSION, STAMPED RATHER THAN TYPED ──
+#
+# AndroidManifest.xml carried versionCode="1" and versionName="1.0.6a" as
+# literals, and every other platform takes its version from the VERSION file.
+# So the APK told the world it was 1.0.6a while the game reported 1.1.2a, and
+# every build since the first declared version code 1.
+#
+# The version code is the one that actually breaks things: EVERY STORE REFUSES
+# AN UPDATE THAT DOES NOT INCREASE IT. A second upload to Amazon, Samsung or
+# Play would have been rejected, and the automation for it could not have
+# worked at all.
+#
+# major*10000 + minor*100 + patch, so 1.1.2 -> 10102. Monotonic as long as
+# minor and patch stay under 100, and it is checked below rather than assumed.
+VERSION_FULL="$(tr -d '[:space:]' < VERSION)"
+if ! [[ "$VERSION_FULL" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    echo "VERSION file is malformed: '$VERSION_FULL'" >&2; exit 1
+fi
+V_MAJOR="${BASH_REMATCH[1]}"; V_MINOR="${BASH_REMATCH[2]}"; V_PATCH="${BASH_REMATCH[3]}"
+if [ "$V_MINOR" -ge 100 ] || [ "$V_PATCH" -ge 100 ]; then
+    echo "version $VERSION_FULL cannot be encoded: minor and patch must stay under 100" >&2
+    exit 1
+fi
+VERSION_CODE=$(( V_MAJOR * 10000 + V_MINOR * 100 + V_PATCH ))
+echo "==> version $VERSION_FULL (android versionCode $VERSION_CODE)"
+
+# Written to a generated copy; the checked-in manifest keeps its placeholders so
+# nobody has to remember to edit it, and a stale literal cannot come back.
+MANIFEST="$BUILD/AndroidManifest.xml"
+mkdir -p "$BUILD"
+sed -e "s/__OD_VERSION_CODE__/$VERSION_CODE/" \
+    -e "s/__OD_VERSION_NAME__/$VERSION_FULL/" \
+    android/AndroidManifest.xml > "$MANIFEST"
+if grep -q "__OD_VERSION" "$MANIFEST"; then
+    echo "the manifest still has an unsubstituted placeholder" >&2; exit 1
+fi
+
 echo "==> compiling the manifest and packing assets"
 # -A hands the assets directory to aapt2 directly. The first version of this
 # re-zipped the APK in python to move files under assets/, which recompressed
@@ -55,7 +92,7 @@ echo "==> compiling the manifest and packing assets"
 # 4-byte aligned, so the install was rejected outright.
 "$BT/aapt2" link \
     -I "$PLATFORM" \
-    --manifest android/AndroidManifest.xml \
+    --manifest "$MANIFEST" \
     -A "$BUILD/assets" \
     "$BUILD/res-compiled/res.zip" \
     -o "$BUILD/base.apk" \

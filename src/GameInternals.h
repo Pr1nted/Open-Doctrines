@@ -29,6 +29,30 @@ struct Setting { const char* label; bool isValue; int actionId; };
 // one character.
 std::vector<std::string> wrapText(const std::string& text, int fontSize, int maxW);
 
+/**
+ * Draw an editable multi-line field's text, and its caret in the right place.
+ *
+ * ── WHY THIS IS ONE FUNCTION AND NOT FOUR ──
+ *
+ * Every text box in this game wrapped its own text with the same eight-line
+ * loop, and then drew the caret AFTER that loop from the loop's own leftovers
+ * -- `line`, which the final pass has just cleared, and `y`, which it has just
+ * advanced. So the caret was measured against an empty string one row below
+ * the text and sat at the left margin, under everything the player had typed.
+ *
+ * It was found and fixed in the mail composer. The other three copies kept it,
+ * because a copied loop does not inherit a later fix -- and the admin screen's
+ * copy is how it was found the second time. Four call sites, one behaviour, so
+ * now there is one place where that behaviour is written down.
+ *
+ * `pad` insets the text from the box on both axes; `lineH` is the row pitch.
+ * Rows below the bottom of `box` are measured but not drawn, so the caret
+ * still lands correctly on a field that has overflowed. Pass `caret` false and
+ * this is just wrapped text.
+ */
+void drawFieldText(Rectangle box, const std::string& text, int fontSize,
+                   int pad, int lineH, Color color, bool caret);
+
 Color hexToColor(int hex);
 std::string formatPop(long long pop);
 std::string formatTroops(long long men);

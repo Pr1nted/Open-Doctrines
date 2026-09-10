@@ -6957,8 +6957,8 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
         if (traceCid >= 0 && (attackerCid == traceCid || dst->countryId == traceCid)) {
             long long defOwn = 0;
             for (const auto& u : dstArmies) if (isHostile(u) && u.countryId == dst->countryId) defOwn += u.count;
-            fprintf(stderr, "[BATTLE] turn %d pid=%d owner=%d atk=%d attackers=%d engaged=%lld def=%lld (owner's %lld) width=%lld atkSupply=%.2f defSupply=%.2f atkPower=%.0f defPower=%.0f => %s\n",
-                    m_turnNumber, pid, dst->countryId, attackerCid, attackers, w.engagedAtk, w.defTroops, defOwn, w.width,
+            fprintf(stderr, "[BATTLE] turn %d pid=%d owner=%d atk=%d attackers=%lld engaged=%lld def=%lld (owner's %lld) width=%lld atkSupply=%.2f defSupply=%.2f atkPower=%.0f defPower=%.0f => %s\n",
+                    m_turnNumber, pid, dst->countryId, attackerCid, attackerCount, w.engagedAtk, w.defTroops, defOwn, w.width,
                     w.atkSupply, w.defTroops > 0 ? (double)supplyFactor(dst->countryId, pid) : 1.0,
                     w.atkPower, w.defPower, w.defTroops <= 0 ? "walk-in" : w.atkPower > w.defPower ? "carried" : "repulsed");
         }

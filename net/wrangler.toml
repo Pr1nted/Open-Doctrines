@@ -29,6 +29,16 @@ fallthrough = true
 # from any other issuer renders as unofficial).
 ISSUER = "https://opendoctrines-net.opendoctrines.workers.dev"
 
+# Where the RENDERED policy documents live. /privacy and /terms serve markdown
+# to programs and redirect browsers here, so a person following the game's
+# "Privacy policy" button gets a page instead of the source of one. The pages
+# there are generated from net/PRIVACY.md and net/TERMS.md by the web deploy,
+# so there is one document, not two.
+#
+# Remove this and both routes simply serve markdown to everyone, which is what
+# a fork without a web deploy wants.
+DOCS_BASE = "https://opendoctrines.pages.dev"
+
 # ---------------------------------------------------------------- storage ----
 #
 # One namespace. Everything is keyed by prefix (acct:, ident:, nick:, dc:,

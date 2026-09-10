@@ -2,6 +2,9 @@
 #include <set>
 #include "PoliticalIdentity.h"
 #include "TextInput.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 #include "Audio.h"
 #include "GameInternals.h"
 #include "SaveManager.h"
@@ -469,6 +472,48 @@ void Game::updatePopup() {
 
 // See src/TextInput.h. A free function rather than a Game method because the
 // map editor's fields need it too and MapEditor is not a Game.
+std::string odTakePaste() {
+    // Ctrl+V, and Cmd+V too -- on macOS Ctrl+V is not what anyone presses.
+    const bool keyed = (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
+                        IsKeyDown(KEY_LEFT_SUPER)   || IsKeyDown(KEY_RIGHT_SUPER)) &&
+                       IsKeyPressed(KEY_V);
+#ifdef __EMSCRIPTEN__
+    // THE KEY IS NOT CONSULTED HERE, deliberately. The browser's paste event
+    // arrives on its own schedule, not necessarily on the frame raylib saw the
+    // V go down, so requiring both would drop pastes at random. Text waiting
+    // in the buffer means a paste happened; that is the whole signal.
+    //
+    // A fixed literal script with nothing interpolated into it.
+    if (const char* got = emscripten_run_script_string(
+            "(function(){var s=window.odPaste||'';window.odPaste='';return s;})()")) {
+        if (*got) return std::string(got);
+    }
+    (void)keyed;
+    return {};
+#else
+    if (!keyed) return {};
+    const char* clip = GetClipboardText();
+    return (clip && *clip) ? std::string(clip) : std::string();
+#endif
+}
+
+bool odTextAppendPaste(std::string& field, const std::string& pasted, size_t maxBytes) {
+    const size_t before = field.size();
+    for (size_t i = 0; i < pasted.size(); ++i) {
+        const unsigned char c = (unsigned char)pasted[i];
+        if (c == '\n' || c == '\r' || c == '\t') break;
+        if (c < 32) continue;                       // other control bytes: dropped
+        // How long this character is, so a cap can never cut one in half.
+        const size_t len = (c < 0x80) ? 1 : ((c >> 5) == 0x6) ? 2
+                         : ((c >> 4) == 0xE) ? 3 : ((c >> 3) == 0x1E) ? 4 : 1;
+        if (i + len > pasted.size()) break;         // truncated sequence at the end
+        if (field.size() + len > maxBytes) break;
+        field.append(pasted, i, len);
+        i += len - 1;
+    }
+    return field.size() != before;
+}
+
 bool odTextEditKeys(std::string& field, size_t maxLen, const char* forbidden,
                     bool digitsOnly) {
     bool changed = false;
@@ -492,13 +537,11 @@ bool odTextEditKeys(std::string& field, size_t maxLen, const char* forbidden,
         changed = true;
     }
 
-    // Ctrl+V, and Cmd+V too -- on macOS Ctrl+V is not what anyone presses.
-    bool paste = (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||
-                  IsKeyDown(KEY_LEFT_SUPER)   || IsKeyDown(KEY_RIGHT_SUPER)) &&
-                 IsKeyPressed(KEY_V);
-    if (paste) {
-        const char* clip = GetClipboardText();
-        if (clip && *clip) {
+    // Where the text comes from differs by platform; see odTakePaste.
+    const std::string pasted = odTakePaste();
+    if (!pasted.empty()) {
+        {
+            const char* clip = pasted.c_str();
             size_t before = field.size();
             for (const char* q = clip; *q && field.size() < maxLen; ++q) {
                 // A pasted newline or tab ends the value rather than joining

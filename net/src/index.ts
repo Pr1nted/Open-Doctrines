@@ -14,7 +14,7 @@
 
 import type { Env } from "./env.js";
 import {
-    authenticate, fail, json, preflight, rateLimit, readJson, text, withCors,
+    authenticate, fail, json, preflight, rateLimit, readJson, text, wantsHtml, withCors,
 } from "./http.js";
 import {
     clientCredentials, isProviderId, PROVIDERS, type ProviderId,
@@ -120,14 +120,31 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
         });
     }
 
-    if (get && path === "/privacy") {
-        return text(PRIVACY_POLICY, 200, "text/markdown; charset=utf-8");
-    }
-
-    // Served from the same repository file the client links to, so the text a
-    // player agreed to and the text in the tree cannot drift apart.
-    if (get && path === "/terms") {
-        return text(TERMS_OF_USE, 200, "text/markdown; charset=utf-8");
+    // ── ONE URL, TWO READERS ──
+    //
+    // These are markdown because that is what they are in the tree, and the
+    // game links to them by URL. But a PERSON following that link gets a
+    // browser showing the source, ## and ** on display -- which is what these
+    // documents looked like to anyone who clicked "Privacy policy" in the
+    // Account screen.
+    //
+    // A browser says so in its Accept header. When one asks, it is sent to the
+    // rendered copy on the web build's own site, which is generated from these
+    // very files at deploy time (packaging/web/policies). Anything that is not
+    // a browser -- curl, a script, a client reading the text -- still gets the
+    // markdown it asked for, byte for byte.
+    //
+    // WHY NOT JUST PUT THE HTML HERE: because then this Worker and the deploy
+    // would each hold a rendering of the same document, and the second copy is
+    // the one that goes stale. And Discord will not accept a workers.dev URL
+    // for a policy link at all, so a rendered copy has to exist over there
+    // regardless.
+    if (get && (path === "/privacy" || path === "/terms")) {
+        const doc = path === "/privacy" ? PRIVACY_POLICY : TERMS_OF_USE;
+        if (env.DOCS_BASE && wantsHtml(request)) {
+            return Response.redirect(`${env.DOCS_BASE}${path}`, 302);
+        }
+        return text(doc, 200, "text/markdown; charset=utf-8");
     }
 
     // Every game server verifies tickets against this, offline and cached, so
@@ -196,6 +213,36 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (post && path === "/moderation/decide") return moderationDecide(request, env);
     if (get  && path === "/moderation/account") return moderationProfile(request, env, url);
     if (post && path === "/moderation/account") return moderationAct(request, env);
+    // ── HOW MUCH THE GAME IS ACTUALLY PLAYED ──
+    //
+    // Aggregated from the rows LobbyDO writes when a session ends: duration,
+    // arrivals, and the most people in a lobby at once. Public because there is
+    // nothing in it to protect -- no row identifies a person or a game, and the
+    // individual rows are never returned, only counts and medians over a day.
+    //
+    // MEDIAN, NOT MEAN. One long-form session left running for a week would
+    // drag an average into uselessness while saying nothing about how long a
+    // game actually holds someone.
+    if (get && path === "/stats") return sessionStats(env, url);
+
+    // ── HOW LONG A PLAY LASTED, FROM PLAYERS WHO SAID YES ──
+    //
+    // OFF unless a player turned it on. Not "on unless they turned it off",
+    // and not on for a first run before they have seen the setting: the game
+    // promises no usage reporting, and the only honest way to have any is for
+    // the player to have chosen it.
+    //
+    // The report is one coarse bucket and a surface. There is no id, no
+    // cookie, no account, no address kept, and nothing that links two reports
+    // from the same person -- which is exactly why "delete my data" has no
+    // meaning here and why the policy says so instead of offering a button
+    // that would do nothing. See usageReport().
+    if (post && path === "/usage") return usageReport(request, env);
+
+    // Deleting all of it, which is the only deletion this data admits of.
+    // Developer badge only; see usageForget().
+    if (post && path === "/usage/forget") return usageForget(request, env);
+
     if (get  && path === "/tournaments") return tournamentList(env);
     if (post && path === "/tournaments") return tournamentSet(request, env);
 
@@ -210,7 +257,18 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (sessionMatch && isSessionCode(sessionMatch[1]!)) {
         const code = sessionMatch[1]!;
         const stub = env.LOBBY.get(env.LOBBY.idFromName(code));
-        if (sessionMatch[2]) return stub.fetch(new Request("https://lobby/ws", request));
+        // ── THE QUERY MUST SURVIVE THIS REWRITE ──
+        //
+        // The object reads `?role=` to decide whether a socket is the host, a
+        // player or a spectator. Rewriting the URL without url.search dropped
+        // it, so EVERY connection arrived with no role and defaulted to
+        // "player" -- including the host's. The alarm then found no host,
+        // closed everyone with 4404 and deleted the session, five seconds
+        // after it opened. A host could never connect as one, so the relay had
+        // never carried a game.
+        if (sessionMatch[2]) {
+            return stub.fetch(new Request("https://lobby/ws" + url.search, request));
+        }
         if (get) return withCors(await stub.fetch(new Request("https://lobby/info")));
     }
 
@@ -1344,4 +1402,129 @@ function htmlPage(title: string, message: string): Response {
 <p>${escape(message)}</p>`,
         { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
     );
+}
+
+interface StatRow { s: number; j: number; p: number; }
+
+/**
+ * Daily play statistics, aggregated on read.
+ *
+ * Aggregating here rather than keeping running totals is what makes this cost
+ * one write per finished session instead of one per join -- see
+ * recordSession() in LobbyDO. At the volumes this service sees, listing a
+ * day's keys is cheap and a lost update is impossible by construction.
+ */
+async function sessionStats(env: Env, url: URL): Promise<Response> {
+    const days = Math.min(90, Math.max(1, Number(url.searchParams.get("days") ?? "14")));
+    const out: Array<Record<string, number | string | Record<string, number>>> = [];
+
+    for (let i = 0; i < days; i++) {
+        const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+        const listed = await env.OD_ACCOUNTS.list({ prefix: `stat:${day}:`, limit: 1000 });
+        const rows: StatRow[] = [];
+        for (const k of listed.keys) {
+            const raw = await env.OD_ACCOUNTS.get(k.name);
+            if (!raw) continue;
+            try { rows.push(JSON.parse(raw) as StatRow); } catch { /* skip a bad row */ }
+        }
+        // Opted-in play reports for the same day, counted by bucket.
+        const usage: Record<string, number> = {};
+        const uKeys = await env.OD_ACCOUNTS.list({ prefix: `usage:${day}:`, limit: 1000 });
+        for (const k of uKeys.keys) {
+            const raw = await env.OD_ACCOUNTS.get(k.name);
+            if (!raw) continue;
+            try {
+                const u = JSON.parse(raw) as { b: string };
+                usage[u.b] = (usage[u.b] ?? 0) + 1;
+            } catch { /* skip a bad row */ }
+        }
+
+        if (rows.length === 0) { out.push({ day, sessions: 0, plays: usage }); continue; }
+
+        const lengths = rows.map((r) => r.s).sort((a, b) => a - b);
+        const median = lengths[Math.floor(lengths.length / 2)] ?? 0;
+        out.push({
+            day,
+            sessions: rows.length,
+            joins: rows.reduce((n, r) => n + (r.j || 0), 0),
+            // A session nobody joined is a lobby that was opened and abandoned,
+            // which is a different problem from one that filled and ended.
+            sessionsWithAPlayer: rows.filter((r) => (r.j || 0) > 0).length,
+            biggestLobby: rows.reduce((n, r) => Math.max(n, r.p || 0), 0),
+            medianSeconds: median,
+            longestSeconds: lengths[lengths.length - 1] ?? 0,
+            // From players who opted in, and only ever as counts per bucket.
+            plays: usage,
+        });
+    }
+    return json({ days: out });
+}
+
+/** The only durations this service will record. A free-text field would be a
+ *  place to put something identifying, so there is not one. */
+const USAGE_BUCKETS = ["<1m", "1-5m", "5-15m", "15-60m", "60m+"] as const;
+const USAGE_SURFACES = ["web", "desktop", "android"] as const;
+
+/**
+ * One anonymous report that a play session happened and roughly how long for.
+ *
+ * WHAT IS DELIBERATELY NOT STORED: anything at all about who sent it. No
+ * account, no install id, no pseudonym, no IP, no user agent, no timestamp
+ * finer than the day. Two reports from the same person are indistinguishable
+ * from two reports by different people, on purpose -- it is what keeps this on
+ * the right side of the promise in PRIVACY.md, and it is also the reason there
+ * is no per-person deletion: there is no "per person" here to delete.
+ *
+ * The cost of that honesty: this cannot measure returning players. Retention
+ * across sessions needs linkage, linkage needs an identifier, and an
+ * identifier is the thing being refused.
+ */
+async function usageReport(request: Request, env: Env): Promise<Response> {
+    const body = await readJson<{ bucket?: string; surface?: string }>(request);
+    const bucket = body?.bucket ?? "";
+    const surface = body?.surface ?? "";
+    // An allowlist, not validation of free text: the set of things that can be
+    // written here is fixed at deploy time and cannot be widened by a caller.
+    if (!(USAGE_BUCKETS as readonly string[]).includes(bucket)) {
+        return fail(400, "bad_request", "Not a bucket this service records.");
+    }
+    if (!(USAGE_SURFACES as readonly string[]).includes(surface)) {
+        return fail(400, "bad_request", "Not a surface this service records.");
+    }
+
+    const day = new Date().toISOString().slice(0, 10);
+    await env.OD_ACCOUNTS.put(
+        `usage:${day}:${crypto.randomUUID()}`, JSON.stringify({ b: bucket, f: surface }),
+        { expirationTtl: 90 * 24 * 60 * 60 },
+    );
+    return json({ ok: true });
+}
+
+/**
+ * Erase every usage and session statistic this service holds.
+ *
+ * THE ONLY DELETION THAT MEANS ANYTHING HERE. Nothing recorded is tied to a
+ * person, so "delete mine" cannot be honoured -- there is no way to tell which
+ * rows would be yours, and a button that pretended otherwise would be worse
+ * than not offering one. What CAN be promised is that the whole lot goes, on
+ * request, immediately rather than waiting out the 90-day expiry.
+ *
+ * Gated on the developer badge, and it answers 404 to everyone else so the
+ * route does not confirm it exists.
+ */
+async function usageForget(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account || !account.badges?.includes("developer")) {
+        return fail(404, "not_found", "No such endpoint.");
+    }
+    let removed = 0;
+    for (const prefix of ["usage:", "stat:"]) {
+        let cursor: string | undefined;
+        do {
+            const listed = await env.OD_ACCOUNTS.list({ prefix, cursor, limit: 1000 });
+            for (const k of listed.keys) { await env.OD_ACCOUNTS.delete(k.name); removed++; }
+            cursor = listed.list_complete ? undefined : listed.cursor;
+        } while (cursor);
+    }
+    return json({ ok: true, removed });
 }

@@ -25,6 +25,7 @@
 #include "Audio.h"
 #include "net/AccountClient.h"
 #include "net/HttpClient.h"
+#include "util/Async.h"
 #include "i18n/Locale.h"
 #include "i18n/Text.h"
 #include "json.hpp"
@@ -35,6 +36,7 @@
 #include <ctime>
 #include <mutex>
 #include <thread>
+#include "TextInput.h"
 
 namespace {
 
@@ -98,7 +100,7 @@ void Game::fetchDevReports() {
     const std::string failed = T("Could not reach the service.");
     const std::string refused = T("This account is not a moderator.");
 
-    std::thread([url, token, failed, refused]() {
+    odasync::run([url, token, failed, refused]() {
         HttpRequest req;
         req.method = "GET";
         req.url = url;
@@ -118,7 +120,7 @@ void Game::fetchDevReports() {
             // where the reader is the one account that should have it.
             g_status = (res.status == 404) ? refused : failed;
         }
-    }).detach();
+    });
 }
 
 /**
@@ -213,7 +215,7 @@ void Game::decideDevReport(const std::string& id, const char* action, double day
         std::lock_guard<std::mutex> g(g_lock);
         g_status = T("Working...");
     }
-    std::thread([url, token, payload = body.dump(), done, failed]() {
+    odasync::run([url, token, payload = body.dump(), done, failed]() {
         HttpRequest req;
         req.method = "POST";
         req.url = url;
@@ -223,7 +225,7 @@ void Game::decideDevReport(const std::string& id, const char* action, double day
         const HttpResponse res = httpRequest(req);
         std::lock_guard<std::mutex> g(g_lock);
         g_status = res.ok() ? done : (res.error.empty() ? failed : res.error);
-    }).detach();
+    });
     m_devReportRefetch = GetTime() + 1.2;   // let the write land, then re-read
 }
 
@@ -284,6 +286,9 @@ void Game::updateDevReports() {
             !m_devLookupText.empty()) {
             m_devLookupText.pop_back();
         }
+        // An account id is the definitive thing nobody types by hand.
+        const std::string pasted = odTakePaste();
+        if (!pasted.empty()) odTextAppendPaste(m_devLookupText, pasted, 64);
         if (IsKeyPressed(KEY_ENTER)) { m_devLookupFocus = false; lookUpAccount(); }
     }
 
@@ -305,6 +310,15 @@ void Game::updateDevReports() {
         if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) &&
             !m_devTimeoutText.empty()) {
             m_devTimeoutText.pop_back();
+        }
+        // Pasted text goes through the same narrow filter typing does, so the
+        // clipboard cannot put a paragraph in a duration field.
+        const std::string pastedDur = odTakePaste();
+        for (char c : pastedDur) {
+            if (m_devTimeoutText.size() >= 24) break;
+            if (isdigit((unsigned char)c) || c == '.' || c == ' ' ||
+                strchr("mhdwyMHDWY", c) != nullptr)
+                m_devTimeoutText += c;
         }
         if (IsKeyPressed(KEY_ENTER)) m_devTimeoutFocus = false;
     }
@@ -645,7 +659,7 @@ void Game::lookUpAccount() {
         std::lock_guard<std::mutex> g(g_lock);
         g_status = T("Looking...");
     }
-    std::thread([url, token, missing]() {
+    odasync::run([url, token, missing]() {
         HttpRequest req;
         req.method = "GET";
         req.url = url;
@@ -659,7 +673,7 @@ void Game::lookUpAccount() {
         }
         std::lock_guard<std::mutex> g(g_lock);
         g_status = res.ok() ? "" : missing;
-    }).detach();
+    });
 }
 
 void Game::actOnAccount(const char* action, double days) {
@@ -683,7 +697,7 @@ void Game::actOnAccount(const char* action, double days) {
         std::lock_guard<std::mutex> g(g_lock);
         g_status = T("Working...");
     }
-    std::thread([url, token, payload = body.dump(), done, failed]() {
+    odasync::run([url, token, payload = body.dump(), done, failed]() {
         HttpRequest req;
         req.method = "POST";
         req.url = url;
@@ -700,7 +714,7 @@ void Game::actOnAccount(const char* action, double days) {
         }
         std::lock_guard<std::mutex> g(g_lock);
         g_status = res.ok() ? done : (res.error.empty() ? failed : res.error);
-    }).detach();
+    });
 }
 
 void Game::parseProfile() {

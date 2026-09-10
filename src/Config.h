@@ -69,6 +69,18 @@ struct Config {
      */
     std::string discordLargeImage;
 
+    /**
+     * Let the stream's chat vote on this player's orders.
+     *
+     * A PREFERENCE, not the live state. Chat-plays needs a country, so it can
+     * only actually begin once a game is running -- the game starts it when
+     * this is on and a channel is set, and stops it when the game ends. Before
+     * this existed there was no way to switch the feature on at all: the whole
+     * of Game_ChatPlays.cpp was written, tested and unreachable, because
+     * startChatPlays() had no caller anywhere in the game.
+     */
+    bool        chatPlays = false;
+    /** The channel to read, without a leading # or a URL. */
     std::string streamChatChannel;
     float       streamChatSeconds = 30.0f;
     /**
@@ -191,6 +203,22 @@ struct Config {
     // while this one asks the game's own host about the game. Players who want
     // no outbound traffic at all can switch it off in Settings > Advanced.
     bool gameUpdateChecks = true;
+
+    /**
+     * Whether the game says how long a play session lasted.
+     *
+     * OFF, and it stays off through every update: this is the one piece of
+     * usage reporting in the game, and the policy that describes it only holds
+     * while it is something a player chose rather than something they failed
+     * to notice.
+     *
+     * What it sends is one message at the end of a session: a duration as one
+     * of five coarse ranges, and whether this was web, desktop or Android.
+     * Nothing identifies the player or the installation, and nothing links two
+     * reports -- which is why there is no "delete mine", and why PRIVACY.md
+     * says so rather than offering a button that could not work.
+     */
+    bool usageReports = false;
 
     // Where the account service lives, e.g.
     // "https://opendoctrines-net.example.workers.dev".

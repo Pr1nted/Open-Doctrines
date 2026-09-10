@@ -1,0 +1,15 @@
+{
+  "name": "opendoctrines-discord-shim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundles Discord's Embedded App SDK for the web build's Activity prologue",
+  "scripts": {
+    "build": "esbuild entry.mjs --bundle --format=iife --minify --outfile=discord-sdk.js --log-level=warning",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@discord/embedded-app-sdk": "2.5.0",
+    "esbuild": "^0.25.0"
+  }
+}

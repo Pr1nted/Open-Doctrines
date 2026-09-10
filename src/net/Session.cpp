@@ -1,7 +1,9 @@
 #include "Session.h"
+#include "RelayLink.h"
 
 #include "HttpClient.h"
 #include "WebSocket.h"
+#include "util/Async.h"
 
 #include <atomic>
 #include <chrono>
@@ -95,6 +97,19 @@ struct NetSession::Impl {
     WebSocket socket;
     std::thread joinWorker;
     std::atomic<bool> abandon{false};
+
+    /**
+     * Joining through the account service's relay rather than straight to a
+     * host, which is the only route that works from a browser.
+     *
+     * The difference is WHERE THE CHALLENGE COMES FROM. A direct host opens the
+     * conversation by sending a nonce over the socket; the relay does not talk
+     * first, it waits for the HELLO. But the relay's own /info reply carries a
+     * nonce for exactly this purpose, so relay mode fetches that and feeds it
+     * through the same answerChallenge() path. One handshake, two ways in.
+     */
+    std::atomic<bool> relay{false};
+    std::atomic<bool> relayAsked{false};
 
     // Held only for the length of the handshake.
     std::string pendingHello;
@@ -224,14 +239,35 @@ bool NetSession::join(const std::vector<std::string>& addresses,
         m_impl->fail("Sign in before joining a game.");
         return false;
     }
-    if (addresses.empty()) {
-        m_impl->fail("That server has no address to connect to.");
-        return false;
+    // ── NO ADDRESS MEANS THE RELAY ──
+    //
+    // A join used to need both a code and somewhere to connect. That is fine
+    // on a desktop and impossible in a browser: inside a Discord Activity the
+    // Content Security Policy permits only the hosts named in the app's URL
+    // mappings, so a player there cannot open a socket to somebody's home
+    // connection or to a tunnel hostname whatever they type.
+    //
+    // The account service relays for exactly this reason, and its relay is
+    // reachable through the same mapping the rest of the service uses. So an
+    // empty address list is not an error any more -- it is the request to go
+    // that way, and the code alone is enough to say where.
+    //
+    // The URL is BUILT from the issuer this player already chose, never read
+    // out of a reply. See netrelay::relayUrl.
+    std::vector<std::string> dial = addresses;
+    const bool viaRelay = dial.empty();
+    if (viaRelay) {
+        const std::string url = netrelay::relayUrl(issuer, code, "player");
+        if (url.empty()) {
+            m_impl->fail("That invite code is not one this service could have issued.");
+            return false;
+        }
+        dial.push_back(url);
     }
 
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
-        m_impl->addresses = addresses;
+        m_impl->addresses = dial;
         m_impl->issuer = issuer;
         m_impl->code = code;
         m_impl->token = token;
@@ -241,6 +277,8 @@ bool NetSession::join(const std::vector<std::string>& addresses,
     m_impl->attempt.store(0);
     m_impl->challengeSeen.store(false);
     m_impl->abandon.store(false);
+    m_impl->relay.store(viaRelay);
+    m_impl->relayAsked.store(false);
     m_impl->phase.store(Phase::Connecting);
 
     // Straight to the host. Nothing is asked of the account service until the
@@ -382,7 +420,14 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
     // If web HTTP is ever implemented, this has to become asyncify-aware
     // rather than staying inline -- a real request here WOULD stall the frame.
 #ifdef __EMSCRIPTEN__
-    fetchTicket();
+    // QUEUED, not inline. The comment above used to say this was safe because
+    // httpRequest() on emscripten was a stub that never touched the network --
+    // and it warned that a real implementation would have to become
+    // asyncify-aware. Web HTTP is real now (see the emscripten_fetch backend in
+    // HttpClient.cpp), so running this inline would block the frame for the
+    // whole round trip. odasync runs it from the top of the main loop, where
+    // ASYNCIFY can unwind cheaply.
+    odasync::run(std::move(fetchTicket));
 #else
     if (joinWorker.joinable()) joinWorker.join();
     joinWorker = std::thread(std::move(fetchTicket));
@@ -402,6 +447,47 @@ void NetSession::update() {
     // The host's challenge arrives as text; everything after is binary.
     std::string challenge;
     while (impl.socket.pollText(challenge)) impl.answerChallenge(challenge);
+
+    // ── THE RELAY DOES NOT SPEAK FIRST ──
+    //
+    // A direct host opens with a challenge; the relay waits for the HELLO and
+    // closes the socket if anything else arrives. So on a relayed join there is
+    // no text frame to react to, and the handshake has to be started from this
+    // side once the socket is up.
+    //
+    // The nonce comes from the relay's own /info, which issues one for exactly
+    // this purpose -- so the reply is handed to answerChallenge() unchanged and
+    // the rest of the join is the path it always was. answerChallenge tolerates
+    // a document with no "session" or "issuer" in it: those are the host naming
+    // itself, and here there is no host on the other end of the socket to name.
+    if (impl.relay.load() && ws == WsState::Open && !impl.relayAsked.exchange(true)) {
+        std::string iss, c;
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            iss = impl.issuer; c = impl.code;
+        }
+        auto askRelay = [&impl, iss, c] {
+            HttpRequest info;
+            info.url = iss + "/session/" + c;
+            info.allowInsecure = iss.rfind("http://localhost", 0) == 0 ||
+                                 iss.rfind("http://127.0.0.1", 0) == 0;
+            info.timeoutMs = kJoinTimeoutMs;
+            const HttpResponse res = httpRequest(info);
+            if (impl.abandon.load()) return;
+            if (!res.ok()) {
+                impl.fail(res.error.empty() ? "No game is running under that code."
+                                            : res.error);
+                return;
+            }
+            impl.answerChallenge(res.body);
+        };
+#ifdef __EMSCRIPTEN__
+        odasync::run(askRelay);
+#else
+        if (impl.joinWorker.joinable()) impl.joinWorker.join();
+        impl.joinWorker = std::thread(askRelay);
+#endif
+    }
 
     // Sent from here rather than from the worker so the socket is only ever
     // touched from this thread.

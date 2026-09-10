@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <ctime>
 #include <mutex>
+#include "TextInput.h"
 
 namespace {
 
@@ -233,6 +234,13 @@ void Game::collectAdminAnnouncements() {
         g_fresh = false;
         payload = g_payload;
     }
+    // Whatever just landed here -- a post, a hide, a delete -- is a change to
+    // the board every player reads, including this one. The menu asks once per
+    // run, so without this the author is the last person to see their own
+    // announcement: it would appear for everyone else on their next launch and
+    // not here until this game was restarted.
+    announcementBoardChanged();
+
     // The SAME parser the menu board uses, so nothing can be edited into
     // existence here that a player's game would refuse to draw.
     std::string why;
@@ -282,6 +290,12 @@ void Game::updateAdminAnnouncements() {
     }
     if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !field->empty())
         odText::utf8PopBack(*field);
+    // These fields type their own characters because they accept more than
+    // ASCII, so they take the paste separately rather than through
+    // odTextEditKeys. The cap is the same one typing uses.
+    const std::string pasted = odTakePaste();
+    if (!pasted.empty())
+        odTextAppendPaste(*field, pasted, (m_adminField == 2) ? 1200u : 120u);
     // Shift+Enter breaks a line in the body, exactly as the letter box does.
     if (m_adminField == 2 && IsKeyPressed(KEY_ENTER) &&
         (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) &&
@@ -352,22 +366,7 @@ void Game::drawAdminAnnouncements(int x, int y, int w, int h, Vector2 mouse, boo
         else if (click && !hov && on) m_adminField = -1;
 
         // Wrapped only for the body; the rest are one line and are clipped.
-        int ty = (int)box.y + 5;
-        std::string line;
-        for (size_t i = 0; i <= value.size(); ++i) {
-            const bool end = (i == value.size());
-            if (!end && value[i] != '\n') {
-                line += value[i];
-                if (MeasureText(line.c_str(), 12) < colW - 16) continue;
-            }
-            DrawText(line.c_str(), (int)box.x + 6, ty, 12, WHITE);
-            ty += 16;
-            line.clear();
-            if (ty > box.y + box.height - 16) break;
-        }
-        if (on && (int)(GetTime() * 2) % 2)
-            DrawRectangle((int)box.x + 6 + MeasureText(line.c_str(), 12),
-                          std::min(ty, (int)(box.y + box.height - 14)), 2, 12, WHITE);
+        drawFieldText(box, value, 12, 6, 16, WHITE, on);
         fy += (int)box.height + 8;
     };
 

@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include "util/OpenLink.h"
+#include "TextInput.h"
 
 std::string Game::feedbackDiagnostics() const {
     std::ostringstream o;
@@ -302,22 +304,7 @@ void Game::drawFeedbackForm() {
             // Wrapped by hand: the description is the one field where a player
             // writes more than fits on a line, and a box that scrolls sideways
             // hides what they already wrote.
-            int ly = (int)box.y + 6;
-            std::string line;
-            for (size_t i = 0; i <= text.size(); ++i) {
-                const bool end = (i == text.size());
-                if (!end && text[i] != '\n') {
-                    line += text[i];
-                    if (MeasureText(line.c_str(), 13) < box.width - 20) continue;
-                }
-                if (ly + 16 < box.y + box.height)
-                    DrawText(line.c_str(), (int)box.x + 8, ly, 13, WHITE);
-                ly += 16;
-                line.clear();
-            }
-            if (active && (int)(GetTime() * 2) % 2)
-                DrawRectangle((int)box.x + 8 + MeasureText(line.c_str(), 13),
-                              std::min(ly, (int)(box.y + box.height - 18)), 2, 14, WHITE);
+            drawFieldText(box, text, 13, 8, 16, WHITE, active);
         }
         cy += height + 12;
     };
@@ -511,6 +498,12 @@ void Game::updateFeedbackForm() {
         if (!text.empty()) { popUtf8(text); Audio::get().playSfx("key_type", 0.12f); }
     }
 
+    // Typed above by hand because these fields accept more than ASCII; the
+    // paste comes through the shared path so it behaves the same everywhere.
+    const std::string pasted = odTakePaste();
+    if (!pasted.empty() && odTextAppendPaste(text, pasted, cap))
+        Audio::get().playSfx("key_type", 0.12f);
+
     // Enter breaks a line in the description and does nothing in the title,
     // which is one line by definition.
     if (m_feedbackField == 1 && IsKeyPressed(KEY_ENTER) && text.size() < cap) text += '\n';
@@ -621,7 +614,7 @@ bool Game::updateRatingPrompt() {
     if (CheckCollisionPointRec(mouse, ratingRateRect())) {
         m_config.ratingGiven = true;
         answered();
-        OpenURL(feedback::ratingUrl());
+        odlink::open(feedback::ratingUrl());
         Audio::get().playSfx("confirm");
     } else if (CheckCollisionPointRec(mouse, ratingWrongRect())) {
         answered();

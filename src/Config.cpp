@@ -196,6 +196,8 @@ bool Config::load(const std::string& path) {
     // player into an outbound request they never agreed to.
     modUpdateChecks = findBool(json, "modUpdateChecks", false);
     gameUpdateChecks = findBool(json, "gameUpdateChecks", true);
+    usageReports = findBool(json, "usageReports", false);
+    chatPlays = findBool(json, "chatPlays", false);
     accentColor = findInt(json, "accentColor", 0xFFD700);
     // OD_ACCOUNT_ISSUER is baked in at BUILD time, and is empty unless the
     // person building set it. See the note in Config.h: a source build must not
@@ -334,6 +336,8 @@ bool Config::save(const std::string& path) {
     file << "  \"mapAtmosphere\": " << (mapAtmosphere ? "true" : "false") << ",\n";
     file << "  \"modUpdateChecks\": " << (modUpdateChecks ? "true" : "false") << ",\n";
     file << "  \"gameUpdateChecks\": " << (gameUpdateChecks ? "true" : "false") << ",\n";
+    file << "  \"usageReports\": " << (usageReports ? "true" : "false") << ",\n";
+    file << "  \"chatPlays\": " << (chatPlays ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
     file << "  \"accountIssuer\": \"" << accountIssuer << "\",\n";
     file << "  \"feedbackEndpoint\": \"" << feedbackEndpoint << "\",\n";

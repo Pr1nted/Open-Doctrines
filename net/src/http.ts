@@ -136,3 +136,21 @@ export async function readJson<T>(request: Request, maxBytes = 8 * 1024): Promis
         return null;
     }
 }
+
+/**
+ * Is this a browser asking for a page, rather than a program asking for data?
+ *
+ * `Accept: text/html` is the honest signal and the only one used. Deliberately
+ * NOT a User-Agent test: curl can be made to look like Chrome and a real
+ * browser can be made to look like anything, but a client that says it accepts
+ * HTML and gets HTML has no complaint either way.
+ *
+ * A request with no Accept header, or `*` / `*​/*`, is treated as NOT a browser.
+ * That is the safe direction: a program handed a redirect to a styled page
+ * breaks, while a person handed markdown can still read it.
+ */
+export function wantsHtml(request: Request): boolean {
+    const accept = request.headers.get("accept");
+    if (!accept) return false;
+    return accept.split(",").some((part) => part.trim().toLowerCase().startsWith("text/html"));
+}

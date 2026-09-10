@@ -21,6 +21,7 @@
 #include "Audio.h"
 #include "net/AccountClient.h"
 #include "net/HttpClient.h"
+#include "util/Async.h"
 #include "net/Session.h"
 #include "net/Host.h"
 #include "net/Lobby.h"
@@ -31,6 +32,7 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include "TextInput.h"
 
 namespace {
 
@@ -171,7 +173,7 @@ void Game::sendReportToIssuer() {
         if (g_busy) return;
         g_busy = true;
     }
-    std::thread([url, payload = body.str(), token, sent, failed]() {
+    odasync::run([url, payload = body.str(), token, sent, failed]() {
         HttpRequest req;
         req.method = "POST";
         req.url = url;
@@ -182,7 +184,7 @@ void Game::sendReportToIssuer() {
         std::lock_guard<std::mutex> g(g_lock);
         g_busy = false;
         g_result = res.ok() ? sent : (res.error.empty() ? failed : res.error);
-    }).detach();
+    });
 }
 
 /**
@@ -333,21 +335,7 @@ void Game::drawReportDialog() {
         DrawRectangleRec(box, m_reportNoteFocus ? Color{22, 25, 34, 255} : Color{15, 17, 23, 255});
         DrawRectangleLinesEx(box, 1, m_reportNoteFocus ? accent : Color{60, 64, 84, 200});
         if (hov && click) m_reportNoteFocus = true;
-        int ty = (int)box.y + 6;
-        std::string line;
-        for (size_t i = 0; i <= m_reportNote.size(); ++i) {
-            const bool end = (i == m_reportNote.size());
-            if (!end && m_reportNote[i] != '\n') {
-                line += m_reportNote[i];
-                if (MeasureText(line.c_str(), 13) < box.width - 20) continue;
-            }
-            if (ty + 16 < box.y + box.height)
-                DrawText(line.c_str(), (int)box.x + 8, ty, 13, WHITE);
-            ty += 16; line.clear();
-        }
-        if (m_reportNoteFocus && (int)(GetTime() * 2) % 2)
-            DrawRectangle((int)box.x + 8 + MeasureText(line.c_str(), 13),
-                          std::min(ty, (int)(box.y + box.height - 18)), 2, 14, WHITE);
+        drawFieldText(box, m_reportNote, 13, 8, 16, WHITE, m_reportNoteFocus);
         cy += 86;
     }
 
@@ -440,6 +428,11 @@ void Game::updateReportDialog() {
             m_reportNote.erase(i);
         }
     }
+
+    // A note is the field most likely to be pasted into: whoever is judging a
+    // report is usually quoting something.
+    const std::string pasted = odTakePaste();
+    if (!pasted.empty()) odTextAppendPaste(m_reportNote, pasted, 1000);
 }
 
 // ────────────────────────────────────────── what the host was told ────

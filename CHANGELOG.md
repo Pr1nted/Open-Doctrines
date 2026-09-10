@@ -1,6 +1,100 @@
 # Changelog
 
-## Unreleased
+## game 1.2.0a
+
+- **OpenDoctrines plays inside Discord.** The game is an Activity now: launch it
+  from the rocket button in a voice channel and it runs in the client, with no
+  download and no install. Whatever is deployed is what everybody in that channel
+  is playing, the moment it goes up.
+
+  The work was mostly in one place, and it is not the obvious one. Inside an
+  Activity a Content Security Policy allows exactly the hosts named in the app's
+  URL mappings, so every request the game makes has to be rewritten to go through
+  Discord's proxy. What is deliberately **not** rewritten is the account service's
+  identity: a host compares the issuer named in a join ticket against its own, so
+  repointing it would have made an Activity player disagree with every host in
+  existence. The transport is diverted; the identity is not.
+
+- **You can join a game with the invite code alone.** Leave the address blank and
+  the game goes through the account service's relay: no port to forward, no tunnel
+  to keep alive, and the host never learns your IP address — so the panel warning
+  you about that is shown only when you actually type an address.
+
+  This is the only way a player in a browser or in Discord can join at all, since
+  a sandboxed Activity cannot open a socket to somebody's home connection whatever
+  they paste in. Hosts opt in with **Host through the account service** on the host
+  screen, or `relay: true` in a dedicated server's config.
+
+  The trade is stated plainly because it is real: a relayed game needs the account
+  service for the whole of its life, where a listening host only needs it to start.
+
+- **A dedicated server could never open a session, and now can.** It skipped
+  `Game::init()` — correctly, because that opens an OpenGL window — and that is
+  also where the game's config is read and the account client is set up. So it ran
+  with no issuer, no token and no credential, and failed at the last step with
+  "Sign in and register this server before hosting": advice that could not be
+  followed, because the machine *was* signed in and this process had simply never
+  looked.
+
+  Two more things were hiding behind that. The failure check ran once,
+  synchronously, before the asynchronous open could possibly have failed — so a
+  later refusal was never looked at again and the server sat silent for ever with
+  no join code and no error. And a server credential that had stopped being valid
+  was unrecoverable, because registration only ran when the field was empty. All
+  three are fixed; a failed open now says why, clears a dead credential, and exits
+  non-zero instead of telling a supervisor it shut down cleanly.
+
+- **Telling us how long you played, if you want to.** A new Advanced setting,
+  **off by default and off after every update**. When it is on, the game sends one
+  message at the end of a session: how long it lasted as one of five ranges, and
+  whether you were on web, desktop or Android. That is the entire message — no
+  account, no nickname, no installation id, no device, no address.
+
+  Because nothing links two reports, **there is no "delete mine" and we do not
+  pretend to offer one**; every report expires by itself after ninety days, and the
+  whole set can be erased on request. It also means returning players cannot be
+  counted, which is a real thing given up on purpose: counting them needs an
+  identifier, and an identifier is the thing being refused. PRIVACY.md and TERMS.md
+  now say all of this, including the sentence that used to promise no usage
+  reporting at all.
+
+- **Paste works in text fields.** Ctrl+V and Cmd+V were handled, but the web build
+  called a desktop clipboard function that returns nothing in a browser — so in
+  Discord every field silently ignored a paste, including the one you put an invite
+  code into. The page now listens for the browser's own paste event, which needs no
+  permission because the keypress is the consent.
+
+  Four screens had never called the shared editing code at all, so paste had never
+  worked in them on any platform: the admin fields, the bug report, the moderator's
+  note and the account lookup. They keep their own typing rules — the duration
+  field still refuses anything but a duration — and take the paste through one
+  shared path.
+
+- **The caret sits at the end of what you typed.** It was worked out after the
+  wrapping loop, from a line buffer the loop's last pass had just cleared and a y
+  position it had just advanced — so it sat at the left margin, one line below the
+  text. Fixed once in the mail composer months ago; the fix did not travel, because
+  a copied loop does not inherit a later one. Three more copies had it. All four
+  fields now draw through one function, and the screenshot that photographs that
+  screen focuses a field so the caret is actually in the picture.
+
+- **The Android build reports its own version.** `AndroidManifest.xml` carried
+  `versionCode="1"` and `versionName="1.0.6a"` as literals while every other
+  platform stamped itself from the `VERSION` file — so the APK announced 1.0.6a
+  and every build ever made declared version code 1. That is the value **every app
+  store refuses an update on if it does not increase**, so the next upload to any
+  of them would have been rejected. Both are stamped at packaging time now, and the
+  build fails if a placeholder survives.
+
+- **The hosted web build ships the game, not just the menu.** The deploy script
+  copied four files and left `data/` behind — 61 MB of maps, music, fonts and the
+  AI model that are served next to the page rather than inside the preload. Every
+  deploy since hosting was set up put a playable menu online with nothing behind
+  it. It was invisible because the host answers a missing path with `index.html`
+  and status 200, so the game asked for a 1.2 MB map, was handed 10 KB of HTML, and
+  reported that the download had failed. The deploy now stages `data/`, ships a
+  404 page so a missing file fails as one, and checks the live URL afterwards
+  rather than trusting the upload.
 
 - **Mail: letters between countries, delivered when the turn resolves.** A new
   Mail button opens a correspondence with any country you may write to — one

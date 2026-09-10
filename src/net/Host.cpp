@@ -1,4 +1,6 @@
 #include "Host.h"
+#include "RelayLink.h"
+#include "WebSocket.h"
 
 #include "HttpClient.h"
 #include "JoinTicket.h"
@@ -113,6 +115,73 @@ struct NetHost::Impl {
     uint32_t turnNumber = 0;
 
     WsServer  server;
+
+    // ── HOSTING THROUGH THE RELAY ──
+    //
+    // A host normally LISTENS and players dial in. That cannot work for a
+    // player in a browser: a Discord Activity may only reach the hosts named in
+    // its URL mappings, so nothing it types will open a socket to a home
+    // connection or a tunnel. The account service relays for exactly this, and
+    // both ends reach it through the mapping the rest of the service uses.
+    //
+    // The difference is not merely which socket. Over the relay THE RELAY
+    // VERIFIES THE TICKET and hands over an identity it has already checked, so
+    // the whole HELLO-and-verify path below is not walked at all. What stays
+    // identical is everything after admission: the lobby, the frames, the turn
+    // logic. That is the point -- one set of rules, two ways in.
+    bool      viaRelay = false;
+    WebSocket relaySock;
+    bool      relaySaidHello = false;
+    bool      relaySeated = false;
+    std::string relayHello;          ///< minted at open, sent once connected
+
+    /**
+     * Relay peer ids live in a tagged range of the WsConnId space.
+     *
+     * The rest of this file addresses a peer by WsConnId, and a relay peer has
+     * no socket of its own to be identified by. Tagging rather than reusing the
+     * low range means a relay id can never be mistaken for a listening socket's
+     * id even if both were somehow live at once.
+     */
+    static constexpr WsConnId kRelayTag = 0x80000000u;
+    static WsConnId connOfRelay(uint16_t peerId) { return kRelayTag | peerId; }
+    static bool     isRelayConn(WsConnId c) { return (c & kRelayTag) != 0; }
+    static uint16_t relayOfConn(WsConnId c) { return (uint16_t)(c & 0xFFFFu); }
+
+    /**
+     * Send one frame to one peer, whichever way it is attached.
+     *
+     * Every send in this file goes through here. Under the relay a frame is
+     * wrapped with the header the relay routes on; direct, it is the socket's
+     * own send. Nothing above this needs to know which.
+     */
+    void sendToConn(WsConnId conn, const std::vector<uint8_t>& frame) {
+        if (!conn) return;
+        if (isRelayConn(conn)) {
+            const auto wrapped = netrelay::encodeFromHost(
+                netrelay::FromHost::ToPeer, relayOfConn(conn),
+                frame.data(), frame.size());
+            relaySock.send(wrapped);
+            return;
+        }
+        server.send(conn, frame);
+    }
+
+    /** Drop one peer, whichever way it is attached. */
+    void closePeer(WsConnId conn, const std::string& why) { closePeer(conn, why.c_str()); }
+    void closePeer(WsConnId conn, const char* why) {
+        if (!conn) return;
+        if (isRelayConn(conn)) {
+            const std::string reason = why ? why : "";
+            const auto wrapped = netrelay::encodeFromHost(
+                netrelay::FromHost::Kick, relayOfConn(conn),
+                (const uint8_t*)reason.data(), reason.size());
+            relaySock.send(wrapped);
+            return;
+        }
+        server.closeConn(conn, why);
+    }
+
     uint16_t  boundPort = 0;
     std::string listenNote;
     std::thread opener;
@@ -158,6 +227,14 @@ struct NetHost::Impl {
     std::deque<NetModMsg> modInbox;
 
     void relayModMessage(const NetModMsg& in, uint16_t fromPeerId);
+
+    /** Everything after "who is this", shared by both ways in. */
+    void seatPeer(WsConnId conn, const std::string& psid, const std::string& name,
+                  const std::string& badges, const std::string& issuer);
+    /** Connect, hand over the host ticket, and translate relayed frames. */
+    void pumpRelay();
+    /** Seat a peer the relay has already authenticated. */
+    void admitRelayPeer(uint16_t relayPeerId, const std::string& identityJson);
     uint16_t nextPeerId = 1;        // 0 is "nobody"
 
     std::vector<NetHostEvent> events;
@@ -261,6 +338,13 @@ std::string NetHost::listenNote() const {
     return m_impl->listenNote;
 }
 
+NetHost::RelayState NetHost::relayState() const {
+    if (!m_impl->viaRelay) return RelayState::NotUsed;
+    if (m_impl->relaySeated) return RelayState::Connected;
+    if (m_impl->relaySock.state() == WsState::Closed) return RelayState::Failed;
+    return RelayState::Connecting;
+}
+
 size_t NetHost::unauthenticatedCount() const { return m_impl->pending.size(); }
 
 // ------------------------------------------------------------------ open ----
@@ -286,10 +370,15 @@ bool NetHost::open(const Config& config) {
     m_impl->phase.store(Phase::Opening);
     m_impl->abandon.store(false);
 
+    m_impl->viaRelay = config.viaRelay;
+
     // Bind BEFORE talking to the account service. A port that cannot be opened
     // is the most common way hosting fails, and finding out first means the
     // host is told about it instead of registering a session nobody can reach.
-    {
+    //
+    // A relayed host binds nothing: there is no port for anyone to reach, which
+    // is the whole point of going that way.
+    if (!config.viaRelay) {
         std::string why;
         if (!m_impl->server.listen(config.port, config.bindAll, why)) {
             if (config.portFallback && config.port != 0 &&
@@ -350,6 +439,7 @@ bool NetHost::open(const Config& config) {
             return;
         }
 
+        const std::string descriptor = httpJsonString(res.body, "descriptor", 4096);
         const std::string code  = httpJsonString(res.body, "code", 32);
         const std::string psid  = httpJsonString(res.body, "hostPsid", 128);
         if (code.empty() || psid.empty()) {
@@ -415,6 +505,56 @@ bool NetHost::open(const Config& config) {
         impl->hostPeerId = hostSeat;
         impl->lobby.setHost(hostSeat);
 
+        // ── THE HOST'S OWN TICKET, WHEN HOSTING THROUGH THE RELAY ──
+        //
+        // The relay authenticates the host exactly as it authenticates a
+        // player: a ticket minted against a nonce it issued, checked against
+        // the account that opened the session. So the host does the same dance
+        // a joiner does -- ask /info for a nonce, spend it at /ticket -- and
+        // the socket is opened from update(), on the thread that owns it.
+        //
+        // Minted HERE rather than there because this is already a worker: the
+        // frame thread must not block on two round trips.
+        if (impl->viaRelay) {
+            HttpRequest info;
+            info.url = c.issuer + "/session/" + code;
+            info.allowInsecure = local;
+            info.timeoutMs = kOpenTimeoutMs;
+            const HttpResponse infoRes = httpRequest(info);
+            if (impl->abandon.load()) return;
+            const std::string nonce = httpJsonString(infoRes.body, "nonce", 128);
+            if (!infoRes.ok() || nonce.empty()) {
+                impl->fail("The relay would not issue a challenge for this session.");
+                return;
+            }
+
+            HttpRequest mint;
+            mint.method = "POST";
+            mint.url = c.issuer + "/ticket";
+            mint.bearer = c.token;
+            mint.allowInsecure = local;
+            mint.timeoutMs = kOpenTimeoutMs;
+            mint.body = "{\"descriptor\":\"" + httpJsonEscape(descriptor) +
+                        "\",\"nonce\":\"" + httpJsonEscape(nonce) + "\"}";
+            const HttpResponse tRes = httpRequest(mint);
+            if (impl->abandon.load()) return;
+            const std::string ticket = httpJsonString(tRes.body, "ticket", 4096);
+            if (!tRes.ok() || ticket.empty()) {
+                const std::string why = httpJsonString(tRes.body, "message", 512);
+                impl->fail(why.empty() ? "The relay refused this server's own ticket."
+                                       : why);
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(impl->mutex);
+                impl->relayHello = netrelay::helloFrame(ticket);
+            }
+            // NOT Live yet: a relayed host is not open for business until the
+            // relay has accepted it. update() finishes the job.
+            impl->push({NetHostEvent::Kind::Opened, 0, code, {}});
+            return;
+        }
+
         impl->phase.store(Phase::Live);
         impl->push({NetHostEvent::Kind::Opened, 0, code, {}});
     });
@@ -429,6 +569,7 @@ void NetHost::update() {
     if (p == Phase::Idle || p == Phase::Closed) return;
 
     impl.server.update();
+    impl.pumpRelay();
 
     WsServerEvent e;
     while (impl.server.nextEvent(e)) {
@@ -470,17 +611,257 @@ void NetHost::update() {
 // Each peer has its own socket now, so "send to one" is the simple case and
 // "send to all" is the loop. Under the relay it was the other way round.
 
+// ── SEATING SOMEBODY WHOSE IDENTITY IS ALREADY ESTABLISHED ──
+//
+// Shared by both ways in, and it is everything AFTER the question "who is
+// this". A direct connection answers that by presenting a ticket this host
+// verifies; a relayed one arrives with the relay's answer, already checked
+// against the same issuer. From here on there is no difference, and there must
+// not be one -- a player seated over the relay gets the same welcome, the same
+// country list and the same turn-store key as one that dialled in.
+void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
+                             const std::string& name, const std::string& badges,
+                             const std::string& issuer) {
+    // A returning player keeps their seat: Lobby matches on the pseudonym and
+    // moves the handle, so a reconnect does not cost a country or submitted
+    // orders. That is why the psid and not the socket is the identity.
+    const uint16_t peerId = nextPeerId++;
+    const LobbyDenial denial = lobby.admit(peerId, psid, name, badges,
+                                           issuer, issuer == config.issuer);
+    if (denial != LobbyDenial::None) {
+        NetRejectMsg r;
+        r.reason = denial == LobbyDenial::SessionFull       ? NetReject::SessionFull
+                 : denial == LobbyDenial::GameInProgress    ? NetReject::GameInProgress
+                 : denial == LobbyDenial::IssuerNotAccepted ? NetReject::IssuerNotAccepted
+                 : NetReject::Unknown;
+        r.text = lobbyDenialText(denial);
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        // THE HOST IS THE ONLY PERSON WHO CAN DO ANYTHING ABOUT THIS.
+        //
+        // A refusal is delivered to the person refused and nowhere else, so a
+        // host whose seats are full, whose mod list does not match, or who has
+        // banned somebody sees an empty lobby and no sign that anyone tried.
+        // "Nobody is joining" and "everybody is being turned away" look
+        // identical from here, and only one of them is the host's to fix.
+        push({NetHostEvent::Kind::JoinRefused, 0,
+              name.empty() ? std::string("Someone") : name, {}});
+        closePeer(conn, "refused");
+        dropPending(conn);
+        return;
+    }
+
+    // Whatever seat the lobby settled on -- a fresh one, or the one this
+    // pseudonym already held -- is the seat this socket now speaks for.
+    uint16_t settled = peerId;
+    if (const LobbyMember* m = lobby.findByPsid(psid)) settled = m->peerId;
+
+    // A reconnect supersedes the older socket rather than sitting alongside it.
+    for (size_t i = seated.size(); i-- > 0;) {
+        if (seated[i].peerId == settled && seated[i].conn != conn) {
+            closePeer(seated[i].conn, "reconnected elsewhere");
+            seated.erase(seated.begin() + static_cast<long>(i));
+        }
+    }
+
+    dropPending(conn);
+    seated.push_back(Seated{conn, settled, nowSeconds(), 0});
+
+    const LobbyMember* m = lobby.find(settled);
+    if (!m) {
+        // Admitted, but no seat can be found for it. This should be
+        // unreachable; it is handled because the alternative is replying with
+        // NOTHING, and a client that is neither welcomed nor refused just hangs
+        // until it times out with no idea why. Every path out of here answers.
+        NetRejectMsg r;
+        r.reason = NetReject::Unknown;
+        r.text = "The server could not seat you. Try joining again.";
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        closePeer(conn, "unseated");
+        dropPending(conn);
+        return;
+    }
+
+    sendToConn(conn, netEncodeFrame(NetMsg::Welcome, welcomeFor(*m).encode()));
+    // Straight after the welcome, so a player can pick a country without
+    // having to load the map first.
+    if (!countries.countries.empty())
+        sendToConn(conn, netEncodeFrame(NetMsg::Countries, countries.encode()));
+
+    // Long-form: where the turns live, and the key to seal orders with. Sent
+    // here so a returning player has it before they do anything else -- and
+    // gated inside, because a spectator must not receive the key at all.
+    if (config.turnSeconds == 0 && config.store != TurnStoreKind::Manual &&
+        !m->spectator && m->countryId != 0) {
+        NetTurnStoreInfo info;
+        info.store       = static_cast<uint8_t>(config.store);
+        info.sessionCode = code;
+        info.sealKey     = config.sealKey;
+        sendToConn(conn, netEncodeFrame(NetMsg::TurnStoreInfo, info.encode()));
+    }
+
+    push({NetHostEvent::Kind::PeerJoined, settled, name, {}});
+    broadcastLobbyInternal();
+}
+
+
+// ── A PEER THE RELAY HAS ALREADY VOUCHED FOR ──
+//
+// No ticket is verified here, and that is the trade relay hosting makes. The
+// relay checked it against the same issuer this host would have used, burned
+// the nonce and the jti, and refuses a banned pseudonym -- then hands over the
+// identity it established. A host that re-derived any of that would be
+// checking a claim it cannot see the evidence for.
+//
+// What is NOT trusted is the shape of the document: every field is read with a
+// ceiling, and a peer with no pseudonym is not seated at all.
+void NetHost::Impl::admitRelayPeer(uint16_t relayPeerId, const std::string& identityJson) {
+    const std::string psid   = httpJsonString(identityJson, "psid",   128);
+    const std::string name   = httpJsonString(identityJson, "name",   64);
+    const std::string issuer = httpJsonString(identityJson, "issuer", 256);
+    if (psid.empty()) return;
+
+    // Badges arrive as a JSON array; the lobby wants them comma-separated.
+    std::string badges;
+    const size_t at = identityJson.find("\"badges\"");
+    if (at != std::string::npos) {
+        const size_t open = identityJson.find('[', at);
+        const size_t close = (open == std::string::npos)
+                           ? std::string::npos : identityJson.find(']', open);
+        if (open != std::string::npos && close != std::string::npos) {
+            std::string one;
+            bool inQuotes = false;
+            for (size_t i = open + 1; i < close && badges.size() < 256; ++i) {
+                const char ch = identityJson[i];
+                if (ch == '"') {
+                    inQuotes = !inQuotes;
+                    if (!inQuotes && !one.empty()) {
+                        if (!badges.empty()) badges += ",";
+                        badges += one;
+                        one.clear();
+                    }
+                } else if (inQuotes) {
+                    one += ch;
+                }
+            }
+        }
+    }
+
+    seatPeer(connOfRelay(relayPeerId), psid, name, badges,
+             issuer.empty() ? config.issuer : issuer);
+}
+
+// ── THE RELAY SIDE OF update() ──
+//
+// Connect when the ticket is ready, say hello, and then translate. Everything
+// after admission is the same code a directly-connected peer goes through --
+// only the way a frame arrives differs.
+void NetHost::Impl::pumpRelay() {
+    if (!viaRelay) return;
+
+    std::string hello;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        hello = relayHello;
+    }
+    if (hello.empty()) return;              // the opener has not minted it yet
+
+    // One connect, from this thread, once.
+    if (relaySock.state() == WsState::Idle) {
+        std::string iss, c;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            iss = config.issuer; c = code;
+        }
+        const std::string url = netrelay::relayUrl(iss, c, "host");
+        if (url.empty()) { fail("This service's address cannot carry a relay."); return; }
+        const bool insecure = url.rfind("ws://", 0) == 0;
+        if (!relaySock.connect(url, insecure)) {
+            fail(relaySock.error().empty() ? "Could not reach the relay."
+                                           : relaySock.error());
+        }
+        return;
+    }
+
+    if (relaySock.state() == WsState::Closed) {
+        if (phase.load() == Phase::Live) {
+            // Losing the relay mid-game is losing every player at once, and
+            // pretending otherwise would leave a lobby full of ghosts.
+            fail(relaySock.error().empty() ? "The relay connection was lost."
+                                           : relaySock.error());
+        }
+        return;
+    }
+    if (relaySock.state() != WsState::Open) return;
+
+    if (!relaySaidHello) {
+        relaySaidHello = true;
+        relaySock.sendText(hello);
+        return;                              // the answer arrives next frame
+    }
+
+    // The relay answers the hello as text, and says nothing else in text ever.
+    std::string text;
+    while (relaySock.pollText(text)) {
+        uint16_t assigned = 0;
+        std::string role;
+        if (!netrelay::parseHelloReply(text, assigned, role)) {
+            fail("The relay refused this server.");
+            return;
+        }
+        // THE ROLE IS CHECKED, NOT ASSUMED.
+        //
+        // Going Live on "ok" alone hid a real failure: the relay was granting
+        // this socket "player" because the role never reached it, and a host
+        // that is not the host is swept as an idle player moments later. The
+        // symptom was a session that opened and vanished; the cause was two
+        // layers away and invisible from here.
+        if (role != "host") {
+            fail("The relay seated this server as \"" +
+                 (role.empty() ? std::string("(none)") : role) +
+                 "\" rather than as the host, so nobody could have joined.");
+            return;
+        }
+        if (!relaySeated) {
+            relaySeated = true;
+            phase.store(Phase::Live);
+        }
+    }
+
+    std::vector<uint8_t> frame;
+    while (relaySock.poll(frame)) {
+        netrelay::Inbound in;
+        if (!netrelay::decodeToHost(frame.data(), frame.size(), in)) continue;
+        switch (in.kind) {
+            case netrelay::ToHost::PeerJoined:
+                admitRelayPeer(in.peerId, std::string(in.payload.begin(), in.payload.end()));
+                break;
+            case netrelay::ToHost::PeerLeft:
+                handleDisconnected(connOfRelay(in.peerId));
+                break;
+            case netrelay::ToHost::Data: {
+                const WsConnId conn = connOfRelay(in.peerId);
+                const uint16_t seat = peerFor(conn);
+                if (!seat) break;            // not seated: not listened to
+                for (auto& s2 : seated)
+                    if (s2.conn == conn) s2.lastHeard = nowSeconds();
+                handlePeerMessage(seat, in.payload.data(), in.payload.size());
+                break;
+            }
+        }
+    }
+}
+
 void NetHost::Impl::toPeer(uint16_t peerId, NetMsg type,
                            const std::vector<uint8_t>& payload) {
     // The host's own seat has no socket. Its UI reads the lobby directly, so
     // there is nothing to deliver and nothing has gone wrong.
     const WsConnId conn = connFor(peerId);
-    if (conn) server.send(conn, netEncodeFrame(type, payload));
+    if (conn) sendToConn(conn, netEncodeFrame(type, payload));
 }
 
 void NetHost::Impl::broadcast(NetMsg type, const std::vector<uint8_t>& payload) {
     const std::vector<uint8_t> frame = netEncodeFrame(type, payload);
-    for (const Seated& s : seated) server.send(s.conn, frame);
+    for (const Seated& s : seated) sendToConn(s.conn, frame);
 }
 
 // ------------------------------------------------------------------ joins ----
@@ -494,7 +875,7 @@ void NetHost::Impl::handleConnected(WsConnId conn, const std::string& peerAddres
     // The account service keeps only the first 64 characters, so anything
     // longer comes back truncated and can never match. Caught here rather than
     // as "nobody can join" with no other symptom.
-    if (p.nonce.size() > 64) { server.closeConn(conn, "internal"); return; }
+    if (p.nonce.size() > 64) { closePeer(conn, "internal"); return; }
     p.peerAddress = peerAddress;
     p.since = nowSeconds();
     pending.push_back(p);
@@ -532,8 +913,8 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
             : "You speak network version " + std::to_string(theirs) +
               "; this server speaks " + std::to_string(kNetProtocolVersion) +
               ". Whichever of you is older needs to update.";
-        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        server.closeConn(conn, "protocol");
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        closePeer(conn, "protocol");
         dropPending(conn);
         return;
     }
@@ -550,8 +931,8 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
             NetRejectMsg r;
             r.reason = NetReject::ModMismatch;
             r.text = verdict.summary();
-            server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-            server.closeConn(conn, "mods");
+            sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+            closePeer(conn, "mods");
             dropPending(conn);
             return;
         }
@@ -570,8 +951,8 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         NetRejectMsg r;
         r.reason = NetReject::Unknown;
         r.text = "That sign-in could not be verified. Try joining again.";
-        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        server.closeConn(conn, "unverified");
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        closePeer(conn, "unverified");
         dropPending(conn);
         return;
     }
@@ -581,8 +962,8 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         NetRejectMsg r;
         r.reason = NetReject::Unknown;
         r.text = "That sign-in was already used. Try joining again.";
-        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        server.closeConn(conn, "replayed");
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        closePeer(conn, "replayed");
         dropPending(conn);
         return;
     }
@@ -593,76 +974,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         badges += b;
     }
 
-    // A returning player keeps their seat: Lobby matches on the pseudonym and
-    // moves the handle, so a reconnect does not cost a country or submitted
-    // orders. That is why the psid and not the socket is the identity.
-    const uint16_t peerId = nextPeerId++;
-    const LobbyDenial denial = lobby.admit(peerId, ticket.psid, ticket.name, badges,
-                                           ticket.issuer, ticket.issuer == config.issuer);
-    if (denial != LobbyDenial::None) {
-        NetRejectMsg r;
-        r.reason = denial == LobbyDenial::SessionFull       ? NetReject::SessionFull
-                 : denial == LobbyDenial::GameInProgress    ? NetReject::GameInProgress
-                 : denial == LobbyDenial::IssuerNotAccepted ? NetReject::IssuerNotAccepted
-                 : NetReject::Unknown;
-        r.text = lobbyDenialText(denial);
-        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        server.closeConn(conn, "refused");
-        dropPending(conn);
-        return;
-    }
-
-    // Whatever seat the lobby settled on -- a fresh one, or the one this
-    // pseudonym already held -- is the seat this socket now speaks for.
-    uint16_t settled = peerId;
-    if (const LobbyMember* m = lobby.findByPsid(ticket.psid)) settled = m->peerId;
-
-    // A reconnect supersedes the older socket rather than sitting alongside it.
-    for (size_t i = seated.size(); i-- > 0;) {
-        if (seated[i].peerId == settled && seated[i].conn != conn) {
-            server.closeConn(seated[i].conn, "reconnected elsewhere");
-            seated.erase(seated.begin() + static_cast<long>(i));
-        }
-    }
-
-    dropPending(conn);
-    seated.push_back(Seated{conn, settled, nowSeconds(), 0});
-
-    const LobbyMember* m = lobby.find(settled);
-    if (!m) {
-        // Admitted, but no seat can be found for it. This should be
-        // unreachable; it is handled because the alternative is replying with
-        // NOTHING, and a client that is neither welcomed nor refused just hangs
-        // until it times out with no idea why. Every path out of here answers.
-        NetRejectMsg r;
-        r.reason = NetReject::Unknown;
-        r.text = "The server could not seat you. Try joining again.";
-        server.send(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        server.closeConn(conn, "unseated");
-        dropPending(conn);
-        return;
-    }
-
-    server.send(conn, netEncodeFrame(NetMsg::Welcome, welcomeFor(*m).encode()));
-    // Straight after the welcome, so a player can pick a country without
-    // having to load the map first.
-    if (!countries.countries.empty())
-        server.send(conn, netEncodeFrame(NetMsg::Countries, countries.encode()));
-
-    // Long-form: where the turns live, and the key to seal orders with. Sent
-    // here so a returning player has it before they do anything else -- and
-    // gated inside, because a spectator must not receive the key at all.
-    if (config.turnSeconds == 0 && config.store != TurnStoreKind::Manual &&
-        !m->spectator && m->countryId != 0) {
-        NetTurnStoreInfo info;
-        info.store       = static_cast<uint8_t>(config.store);
-        info.sessionCode = code;
-        info.sealKey     = config.sealKey;
-        server.send(conn, netEncodeFrame(NetMsg::TurnStoreInfo, info.encode()));
-    }
-
-    push({NetHostEvent::Kind::PeerJoined, settled, ticket.name, {}});
-    broadcastLobbyInternal();
+    seatPeer(conn, ticket.psid, ticket.name, badges, ticket.issuer);
 }
 
 void NetHost::Impl::checkLiveness() {
@@ -682,7 +994,7 @@ void NetHost::Impl::checkLiveness() {
             // and the psid still owns that country. Lobby::disconnect marks
             // them away so the turn can stop waiting on them.
             const uint16_t peerId = s.peerId;
-            server.closeConn(s.conn, "silent");
+            closePeer(s.conn, "silent");
             seated.erase(seated.begin() + static_cast<long>(i));
             lobby.disconnect(peerId);
             chatGate.forget(peerId);
@@ -696,7 +1008,7 @@ void NetHost::Impl::checkLiveness() {
         // One ping per quiet period, not one per frame.
         if (quiet >= kQuietSeconds && now - s.lastPinged >= kQuietSeconds) {
             s.lastPinged = now;
-            server.send(s.conn, netEncodeFrame(NetMsg::Pong, {}));
+            sendToConn(s.conn, netEncodeFrame(NetMsg::Pong, {}));
         }
     }
 }
@@ -724,7 +1036,7 @@ void NetHost::Impl::expirePending() {
     const long long now = nowSeconds();
     for (size_t i = pending.size(); i-- > 0;) {
         if (now - pending[i].since <= kAuthTimeoutSeconds) continue;
-        server.closeConn(pending[i].conn, "no ticket");
+        closePeer(pending[i].conn, "no ticket");
         pending.erase(pending.begin() + static_cast<long>(i));
     }
     replay.sweep(issuerClock.now(now));
@@ -929,7 +1241,7 @@ void NetHost::Impl::relayModMessage(const NetModMsg& in, uint16_t fromPeerId) {
 
     const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::ModMsgFrom, out.encode());
     if (in.peerId != NetModMsg::kBroadcast) {
-        if (WsConnId c = connFor(in.peerId)) server.send(c, frame);
+        if (WsConnId c = connFor(in.peerId)) sendToConn(c, frame);
         return;
     }
 
@@ -938,7 +1250,7 @@ void NetHost::Impl::relayModMessage(const NetModMsg& in, uint16_t fromPeerId) {
     modInbox.push_back(out);
     if (modInbox.size() > 256) modInbox.pop_front();
     for (const Seated& s : seated)
-        if (s.peerId != fromPeerId) server.send(s.conn, frame);
+        if (s.peerId != fromPeerId) sendToConn(s.conn, frame);
 }
 
 // ── COALESCED, BECAUSE A CLIENT CHOOSES HOW OFTEN THIS RUNS ──
@@ -1010,7 +1322,7 @@ void NetHost::setCountries(const NetCountryList& list) {
     // Anyone already here gets it now; anyone arriving later gets it with
     // their welcome.
     const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::Countries, list.encode());
-    for (const auto& s : m_impl->seated) m_impl->server.send(s.conn, frame);
+    for (const auto& s : m_impl->seated) m_impl->sendToConn(s.conn, frame);
 }
 
 void NetHost::setMapName(const std::string& name) {
@@ -1106,7 +1418,7 @@ void NetHost::kick(uint16_t peerId, const std::string& reason) {
     // Told first, then disconnected: a kick that arrives as a dead socket is
     // indistinguishable from the game crashing.
     if (const WsConnId conn = m_impl->connFor(peerId)) {
-        m_impl->server.closeConn(conn, reason);
+        m_impl->closePeer(conn, reason);
         for (size_t i = m_impl->seated.size(); i-- > 0;)
             if (m_impl->seated[i].conn == conn)
                 m_impl->seated.erase(m_impl->seated.begin() + static_cast<long>(i));

@@ -14,6 +14,15 @@ export interface Env {
 
     ISSUER: string;
 
+    /**
+     * Where the human-readable copies of the policy documents live.
+     *
+     * Optional. Unset -- which is every fork that has not deployed a web build
+     * -- means /privacy and /terms serve markdown to everybody, exactly as
+     * before, rather than redirecting to a site that does not exist.
+     */
+    DOCS_BASE?: string;
+
     // Ed25519 keypair, as JWK JSON strings. Two separate secrets rather than
     // deriving the public half from the private one: `crypto.subtle` will not
     // export a public key from a private import, and we serve the public JWK

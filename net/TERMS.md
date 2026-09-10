@@ -23,6 +23,7 @@ Questions: **opendoctrines@gmail.com**
   them.
 - The game connects to those servers directly, so **the host sees your IP
   address**. That is a property of the design, not an oversight.
+- The game reports nothing about how you play unless you switch that on.
 - Nothing here takes away rights your local law gives you.
 
 ---
@@ -138,6 +139,27 @@ mail is on and who may use it, you can maintain a list of words your server will
 not carry, and you can remove people. If you enable the age prompt, note what it
 is: a local, self-declared question, and **not** a verified age check — see the
 in-game text, which says so plainly.
+
+## Measuring how much the game is played
+
+The game does not report anything about how you play unless you turn that on in
+Settings. It is off when you install it, off after every update, and turning it
+off stops it at once.
+
+If you do turn it on, what is sent is one message per play session saying
+roughly how long it lasted — as one of five ranges — and whether you were on
+web, desktop or Android. Nothing in it identifies you or your installation, and
+nothing links two of them together.
+
+Because of that, **we cannot delete "your" reports on request, and we do not
+pretend to be able to.** Every report expires by itself after ninety days, and
+if you want the whole set gone before then, ask and we will erase all of it.
+The privacy policy sets this out in full.
+
+We also count things the service does on its own: how many multiplayer sessions
+are opened, how long they run, how many people join them. Those are records of
+our own service running, they contain no identifiers either, and they are
+published in aggregate at `/stats`.
 
 ## Availability, and the honest bit
 

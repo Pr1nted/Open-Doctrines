@@ -15,8 +15,8 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="io.itch.pr1nted.opendoctrines"
-          android:versionCode="1"
-          android:versionName="1.0.6a">
+          android:versionCode="__OD_VERSION_CODE__"
+          android:versionName="__OD_VERSION_NAME__">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 

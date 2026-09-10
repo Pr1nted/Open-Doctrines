@@ -1,0 +1,14 @@
+{
+  "name": "opendoctrines-policies",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders net/PRIVACY.md and net/TERMS.md into pages the web build can serve",
+  "scripts": {
+    "build": "node render.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "marked": "^15.0.0"
+  }
+}

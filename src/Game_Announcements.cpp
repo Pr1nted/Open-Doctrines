@@ -88,6 +88,13 @@ void Game::pumpAnnouncements() {
     });
 }
 
+void Game::announcementBoardChanged() {
+    // Only the gate is cleared, not the items: the board on screen stays as it
+    // is until the new answer arrives, rather than blinking empty first.
+    std::lock_guard<std::mutex> g(g_lock);
+    g_asked = false;
+}
+
 std::vector<odnews::Item> Game::liveAnnouncements() const {
     return odnews::live(m_announcements, (long long)std::time(nullptr));
 }

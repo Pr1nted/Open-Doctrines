@@ -45,6 +45,7 @@ struct NetHostEvent {
         OrdersReceived,
         Chat,
         PlayerReport,    // somebody told the host about somebody else
+        JoinRefused,     // somebody tried and was turned away; text says why
         Failed,          // error() says why
         Closed,
     } kind = Kind::LobbyChanged;
@@ -93,6 +94,20 @@ public:
         bool dedicated = false;
 
         bool listed = false;            // show in the public directory
+
+        /**
+         * Host through the account service's relay instead of listening.
+         *
+         * Both ends connect OUT to it, so no port is opened, nothing has to be
+         * forwarded, and a player inside a Discord Activity can reach the game
+         * at all -- which a listening host cannot offer them, because the
+         * Activity may only talk to the hosts in its URL mappings.
+         *
+         * The trade: the relay authenticates joiners, so the game only runs for
+         * as long as the account service is reachable. A listening host keeps
+         * seating players with the service down; this one cannot.
+         */
+        bool viaRelay = false;
         bool showBadges = true;
         uint32_t turnSeconds = 0;       // 0 = long-form, no countdown
         TurnStoreKind store = TurnStoreKind::DurableObject;
@@ -160,6 +175,18 @@ public:
      * silently is a forwarded port that stops working for no visible reason.
      */
     std::string listenNote() const;
+
+    /**
+     * How the relay socket is doing, for a host that went that way.
+     *
+     * Visible because it is the one link with nothing else to show for it: a
+     * listening host proves itself by its port, and a relayed one proves
+     * nothing at all until somebody joins. When it fails to connect, the
+     * session is quietly reclaimed at the far end and the host sits looking at
+     * a code that stopped working without being told.
+     */
+    enum class RelayState { NotUsed, Connecting, Connected, Failed };
+    RelayState relayState() const;
 
     /** How many connections are up but have not yet proved who they are. */
     size_t unauthenticatedCount() const;

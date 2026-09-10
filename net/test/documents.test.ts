@@ -52,3 +52,62 @@ describe("the documents the game links to", () => {
         }
     });
 });
+
+// ── THE SAME URL, ANSWERED TWO WAYS ──
+//
+// Markdown is right for a program and wrong for a person: a browser shows the
+// source, ## and ** included, which is what anyone clicking "Privacy policy"
+// in the Account screen actually got. A browser announces itself in Accept, so
+// it is sent to the rendered copy instead.
+//
+// The direction that matters is the DEFAULT. A program that gets an
+// unrequested redirect to a styled page breaks; a person handed markdown can
+// still read it. So anything that does not explicitly ask for HTML must keep
+// getting the bytes.
+describe("a browser is sent to the rendered copy", () => {
+    const DOCS = (env as unknown as { DOCS_BASE?: string }).DOCS_BASE;
+    const browser = { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" } };
+
+    it("is configured with somewhere to send it", () => {
+        // If this is unset the redirect cannot happen at all, and the rest of
+        // this block would pass by doing nothing.
+        expect(DOCS).toBeTruthy();
+    });
+
+    for (const path of ["/privacy", "/terms"]) {
+        it(`redirects a browser asking for ${path}`, async () => {
+            const res = await SELF.fetch(`${ORIGIN}${path}`, { ...browser, redirect: "manual" });
+            expect(res.status).toBe(302);
+            expect(res.headers.get("location")).toBe(`${DOCS}${path}`);
+        });
+
+        it(`still serves ${path} as markdown to anything else`, async () => {
+            const expected = path === "/privacy" ? PRIVACY_POLICY : TERMS_OF_USE;
+            // No Accept at all -- curl, and most library HTTP clients.
+            const bare = await SELF.fetch(`${ORIGIN}${path}`);
+            expect(bare.status).toBe(200);
+            expect(await bare.text()).toBe(expected);
+
+            // `*/*` is "anything", which is not "I am a browser". curl sends
+            // exactly this, and it must not be redirected.
+            const any = await SELF.fetch(`${ORIGIN}${path}`, { headers: { accept: "*/*" } });
+            expect(any.status).toBe(200);
+            expect(await any.text()).toBe(expected);
+
+            // Something that wants the source on purpose.
+            const md = await SELF.fetch(`${ORIGIN}${path}`, { headers: { accept: "text/markdown" } });
+            expect(md.status).toBe(200);
+            expect(await md.text()).toBe(expected);
+        });
+    }
+
+    // Matching "html" loosely would redirect this, because the string contains
+    // it. Only a real text/html entry counts.
+    it("is not fooled by a media type that merely contains 'html'", async () => {
+        const res = await SELF.fetch(`${ORIGIN}/privacy`, {
+            headers: { accept: "application/xhtml+xml" }, redirect: "manual",
+        });
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe(PRIVACY_POLICY);
+    });
+});

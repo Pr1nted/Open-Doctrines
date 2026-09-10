@@ -81,6 +81,18 @@ net/wrangler.toml.bak
 # one binary in history.
 data/tools/cloudflared
 
+# The language-model runner and any weights pulled through it. Same shape as
+# the cloudflared binary above -- fetched at runtime into the game's own data
+# directory, never part of the source tree. This was missed when the runner
+# landed, and it is not a small miss: a pulled model makes this directory
+# gigabytes, so `git add -A` in a tree where anyone has used the feature tries
+# to commit them. See src/llm/Runner.h, installDir().
+data/llm/
+
+# Wrangler's local cache at the repo root. net/.wrangler/ was already ignored;
+# running wrangler from the root makes a second one that was not.
+.wrangler/
+
 # Four-client playtest sandbox: synthetic accounts and symlinked assets.
 .playtest/
 data-p2/

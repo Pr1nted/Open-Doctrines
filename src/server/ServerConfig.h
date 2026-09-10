@@ -147,6 +147,16 @@ struct ServerConfig {
     uint16_t port = 27015;
     /** Listen on every interface. False binds loopback, for a tunnelled setup. */
     bool bindAll = false;
+
+    /**
+     * Host through the account service's relay instead of a listening port.
+     *
+     * No port to forward, no tunnel to keep alive, and it is the ONLY way a
+     * player inside a Discord Activity can reach this server at all. The trade
+     * is that the game needs the account service for the whole of its life
+     * rather than only at the start.
+     */
+    bool relay = false;
     ServerTunnelMode tunnel = ServerTunnelMode::Auto;
 
     // ── mods ──
