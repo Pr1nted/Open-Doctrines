@@ -172,8 +172,22 @@ if command -v python3 >/dev/null 2>&1; then
     step "llm round trip"
     python3 "$root/tests/llm_stub.py" 8791 >/dev/null 2>&1 &
     stub_pid=$!
-    sleep 1
-    if "$bin/LlmRoundTripTest" http://127.0.0.1:8791/v1; then :; else fail=1; fi
+    # WAIT FOR THE PORT, do not sleep at it. `sleep 1` was enough on every
+    # machine anyone had run this on and not enough on the macos-x64 runner,
+    # where the test failed with "could not reach 127.0.0.1 in time" -- a
+    # started-too-slowly race reported as a broken round trip. Poll until the
+    # socket answers, up to 20s, and say plainly if it never does.
+    ready=""
+    for _ in $(seq 1 100); do
+        if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.2); sys.exit(0 if s.connect_ex(('127.0.0.1',8791))==0 else 1)" 2>/dev/null; then
+            ready=1; break
+        fi
+        sleep 0.2
+    done
+    if [ -z "$ready" ]; then
+        echo "  FAIL  the stand-in runner never came up on 127.0.0.1:8791"
+        fail=1
+    elif "$bin/LlmRoundTripTest" http://127.0.0.1:8791/v1; then :; else fail=1; fi
     kill "$stub_pid" 2>/dev/null
     wait "$stub_pid" 2>/dev/null
 else

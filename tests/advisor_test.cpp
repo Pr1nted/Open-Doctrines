@@ -43,6 +43,18 @@ static mail::Message letter(int from, int to, const std::string& body,
     return m;
 }
 
+/**
+ * The reflex a phrase leans on, or "" if it names none.
+ *
+ * A helper rather than an inline ternary because the three call sites below
+ * used the GNU `a ?: b` extension, which MSVC does not accept -- and writing it
+ * out longhand would call parseLean twice per assertion.
+ */
+static std::string reflexOf(const char* phrase) {
+    const Lean lean = parseLean(phrase);
+    return std::string(lean.reflex ? lean.reflex : "");
+}
+
 int main() {
     // Dump the real schema for the manual round-trip against a live model.
     // Hand-copying it into a script is how a demo ends up proving that a
@@ -484,11 +496,11 @@ int main() {
            "and it is the fortify one");
         ok(forts.direction < 0, "leaning away from it");
 
-        ok(std::string(parseLean("stop disbanding troops").reflex ?: "") == "manpower",
+        ok(reflexOf("stop disbanding troops") == "manpower",
            "disbanding is the manpower reflex");
-        ok(std::string(parseLean("less campaigning").reflex ?: "") == "campaign",
+        ok(reflexOf("less campaigning") == "campaign",
            "campaigning is its own");
-        ok(std::string(parseLean("fewer garrisons").reflex ?: "") == "garrison",
+        ok(reflexOf("fewer garrisons") == "garrison",
            "and so is garrisoning");
 
         // A sampled-action lean must NOT come back as a reflex.
