@@ -85,6 +85,11 @@ public:
     /// Put the view somewhere with no animation. For harnesses that need a known
     /// starting state; setViewMode is what the game uses.
     void snapViewMode(ViewMode m);
+    /// A name already placed this frame, as the run of screen points it
+    /// occupies. A run rather than a box because names are rotated and bowed.
+    struct PlacedLabel { std::vector<Vector2> pts; float radius; };
+    mutable std::vector<Vector2> m_labelPts;   ///< scratch, kept to avoid a per-label allocation
+
     void drawCountryNames();
     void anchorSheetToFlat();
     /// 1 on the flat map, and on the globe how square-on the ground is.

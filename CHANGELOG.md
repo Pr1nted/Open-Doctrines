@@ -94,6 +94,16 @@
   with no zooming in to escape it — the larger country keeps its name and the
   smaller ones yield. The flat map's labelling is untouched.
 
+  Two further rules the sphere needed, both found by looking at what the limb
+  actually did. A name is set ALONG the surface only while the surface has room
+  for it; where it has not -- a small country, or ground seen almost edge-on --
+  the name is set as a straight run through the same centre and along the same
+  projected direction, so it stays readable instead of collapsing into a smudge.
+  And names are decluttered against the run they actually occupy, sampled
+  through the projection, rather than against a box guessed from their letter
+  count: a country's name is set along its own axis and usually bowed, so the
+  box claimed room the name did not use and missed room it did.
+
 - **The Admin screen says how many accounts exist.** Counted by walking the keys
   rather than kept as a running total: the store has no atomic increment, so two
   sign-ups landing together would both read the same number and write the same
