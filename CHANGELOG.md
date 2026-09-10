@@ -52,6 +52,28 @@
   before any of this existed loads with Earth-like defaults rather than being
   refused — which matters in a format that already carries 118 files.
 
+- **The world unrolls into the globe instead of cutting to it.** F7 no longer
+  swaps one picture for another: the map lifts off the flat, curls, and closes
+  into a sphere over about seven tenths of a second, with the camera swinging
+  round to the longitude you end up looking at. The same vertex knows both of
+  its homes — where it sits on the sphere, and where it sits on a flat sheet cut
+  from the same texture coordinates — so the whole move is one blend between
+  them and costs nothing but the blend. Daylight comes back as it flattens,
+  because a flat map has no night side, and the cloud and atmosphere shells hold
+  off until the planet is round enough to wear them. Counters, labels and clicks
+  sit the animation out: mid-unroll a place is at neither of the two positions
+  those paths know how to compute, and half a second of nothing reads as part of
+  the move where half a second of markers in the wrong place reads as a fault.
+
+- **Country names follow the surface of the globe.** Each letter is placed
+  through the same projection as everything else, so a name bends with the ground
+  it sits on and a country past the horizon takes its name with it. Two things
+  the flat map never needed: names shrink and fade toward the limb, where a
+  continent's worth of ground is seen edge-on and occupies a few pixels; and
+  where names would overprint — thirty countries in a hand's breadth of Europe,
+  with no zooming in to escape it — the larger country keeps its name and the
+  smaller ones yield. The flat map's labelling is untouched.
+
 - **The Admin screen says how many accounts exist.** Counted by walking the keys
   rather than kept as a running total: the store has no atomic increment, so two
   sign-ups landing together would both read the same number and write the same

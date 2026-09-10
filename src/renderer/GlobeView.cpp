@@ -226,14 +226,29 @@ attribute vec2 vertexTexCoord;
 attribute vec3 vertexNormal;
 uniform mat4 mvp;
 uniform mat4 matModel;
+uniform float morph;
 varying vec2 fragTexCoord;
 varying vec3 fragNormal;
 varying vec3 fragWorld;
 void main() {
     fragTexCoord = vertexTexCoord;
     fragNormal   = vertexNormal;
-    fragWorld    = vec3(matModel * vec4(vertexPosition, 1.0));
-    gl_Position  = mvp * vec4(vertexPosition, 1.0);
+    // ── Unrolling the planet ──
+    //
+    // The same vertex has two homes: where it sits on the sphere, and where it
+    // would sit on a flat sheet laid out from the same UVs. Blending between
+    // them in the VERTEX stage is what makes the switch one continuous motion
+    // rather than a cut -- and it costs one mix, because both positions are
+    // already known here.
+    // NOT named 'flat': that is an interpolation qualifier in GLSL 330 and the
+    // shader will not compile, which shows up as a globe that quietly renders
+    // unlit rather than as an error.
+    vec3 sheet = vec3((vertexTexCoord.x - 0.5) * 3.30,
+                      (0.5 - vertexTexCoord.y) * 1.65,
+                      0.0);
+    vec3 p = mix(sheet, vertexPosition, morph);
+    fragWorld    = vec3(matModel * vec4(p, 1.0));
+    gl_Position  = mvp * vec4(p, 1.0);
 })";
 
 const char* kFragmentEs = R"(#version 100
@@ -270,6 +285,10 @@ uniform sampler2D cloudTex;
 uniform float cloudR;      // shell radius; <= 1 disables the term entirely
 uniform float cloudRot;    // the shell's rotation, so shadows follow the drift
 uniform float cloudAmt;
+// Same unroll the vertex stage runs on. A flat sheet has no night side -- it is
+// the map, drawn the way the map is drawn -- so daylight comes back as the
+// planet flattens and the terminator sweeps off it rather than being cut away.
+uniform float morph;
 void main() {
     vec4 texel = texture2D(texture0, fragTexCoord) * colDiffuse;
     float d = dot(normalize(fragNormal), normalize(sunDir));
@@ -304,7 +323,7 @@ void main() {
     }
     vec3 day   = texel.rgb * sunColour * sunStrength * shade * (1.0 - 0.38 * cloudShade);
     vec3 night = texel.rgb * nightFloor;
-    gl_FragColor = vec4(mix(night, day, lit), texel.a);
+    gl_FragColor = vec4(mix(night, day, mix(1.0, lit, morph)), texel.a);
 })";
 
 const char* kVertex330 = R"(#version 330
@@ -313,14 +332,29 @@ in vec2 vertexTexCoord;
 in vec3 vertexNormal;
 uniform mat4 mvp;
 uniform mat4 matModel;
+uniform float morph;
 out vec2 fragTexCoord;
 out vec3 fragNormal;
 out vec3 fragWorld;
 void main() {
     fragTexCoord = vertexTexCoord;
     fragNormal   = vertexNormal;
-    fragWorld    = vec3(matModel * vec4(vertexPosition, 1.0));
-    gl_Position  = mvp * vec4(vertexPosition, 1.0);
+    // ── Unrolling the planet ──
+    //
+    // The same vertex has two homes: where it sits on the sphere, and where it
+    // would sit on a flat sheet laid out from the same UVs. Blending between
+    // them in the VERTEX stage is what makes the switch one continuous motion
+    // rather than a cut -- and it costs one mix, because both positions are
+    // already known here.
+    // NOT named 'flat': that is an interpolation qualifier in GLSL 330 and the
+    // shader will not compile, which shows up as a globe that quietly renders
+    // unlit rather than as an error.
+    vec3 sheet = vec3((vertexTexCoord.x - 0.5) * 3.30,
+                      (0.5 - vertexTexCoord.y) * 1.65,
+                      0.0);
+    vec3 p = mix(sheet, vertexPosition, morph);
+    fragWorld    = vec3(matModel * vec4(p, 1.0));
+    gl_Position  = mvp * vec4(p, 1.0);
 })";
 
 const char* kFragment330 = R"(#version 330
@@ -356,6 +390,10 @@ uniform sampler2D cloudTex;
 uniform float cloudR;      // shell radius; <= 1 disables the term entirely
 uniform float cloudRot;    // the shell's rotation, so shadows follow the drift
 uniform float cloudAmt;
+// Same unroll the vertex stage runs on. A flat sheet has no night side -- it is
+// the map, drawn the way the map is drawn -- so daylight comes back as the
+// planet flattens and the terminator sweeps off it rather than being cut away.
+uniform float morph;
 out vec4 finalColor;
 void main() {
     vec4 texel = texture(texture0, fragTexCoord) * colDiffuse;
@@ -391,8 +429,14 @@ void main() {
     }
     vec3 day   = texel.rgb * sunColour * sunStrength * shade * (1.0 - 0.38 * cloudShade);
     vec3 night = texel.rgb * nightFloor;
-    finalColor = vec4(mix(night, day, lit), texel.a);
+    finalColor = vec4(mix(night, day, mix(1.0, lit, morph)), texel.a);
 })";
+
+/// GLSL's smoothstep, on the CPU side.
+float smoothstep(float a, float b, float x) {
+    const float t = std::clamp((x - a) / (b - a), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
 
 }  // namespace
 
@@ -483,6 +527,7 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uCloudR      = GetShaderLocation(m_shader, "cloudR");
         m_uCloudRot    = GetShaderLocation(m_shader, "cloudRot");
         m_uCloudAmt    = GetShaderLocation(m_shader, "cloudAmt");
+        m_uMorph       = GetShaderLocation(m_shader, "morph");
         m_material.shader = m_shader;
         m_glow = LoadShaderFromMemory(kEs ? kGlowVertEs : kGlowVert330,
                                       kEs ? kGlowFragEs : kGlowFrag330);
@@ -1174,7 +1219,30 @@ GlobeView::~GlobeView() {
 }
 
 Vector3 GlobeView::cameraPosition() const {
-    return globe::eyeFromOrbit(m_lat, m_lon, m_dist);
+    const Vector3 orbit = globe::eyeFromOrbit(m_lat, m_lon, m_dist);
+    if (m_morph >= 0.999f) return orbit;
+
+    // Mid-unroll the camera is somewhere between two places: square on to the
+    // flat sheet, and out at the orbit it is heading for. Blended along the ARC
+    // rather than the straight line between them, because a straight line
+    // between two opposite sides of the planet passes through the middle of it,
+    // and the camera would briefly be inside the world.
+    const Vector3 headOn{0.0f, 0.0f, 2.55f};
+    const float ra = Vector3Length(headOn), rb = Vector3Length(orbit);
+    if (ra < 1e-4f || rb < 1e-4f) return orbit;
+    const Vector3 na = Vector3Scale(headOn, 1.0f / ra);
+    const Vector3 nb = Vector3Scale(orbit, 1.0f / rb);
+    const float ang = acosf(std::clamp(Vector3DotProduct(na, nb), -1.0f, 1.0f));
+    Vector3 dir = nb;
+    if (ang > 1e-3f) {
+        Vector3 axis = Vector3CrossProduct(na, nb);
+        // Exactly antipodal: the cross product carries no direction, so any axis
+        // perpendicular to the pair will do. Going over the pole is the one that
+        // does not look like a stumble.
+        if (Vector3Length(axis) < 1e-4f) axis = Vector3{0.0f, 1.0f, 0.0f};
+        dir = Vector3RotateByAxisAngle(na, Vector3Normalize(axis), ang * m_morph);
+    }
+    return Vector3Scale(dir, ra + (rb - ra) * m_morph);
 }
 
 Camera3D GlobeView::camera(int screenW, int screenH) const {
@@ -1216,6 +1284,11 @@ void GlobeView::draw(int screenW, int screenH) {
         setOccluder(moonWorld(), (m_sky.moon && m_lit) ? m_sky.moonSize : 0.0f);
     }
 
+    // Uploaded here rather than in the block above, because that block is
+    // conditional and this must not be: an unset uniform reads as zero, which
+    // is a permanently flat planet.
+    if (m_haveShader) SetShaderValue(m_shader, m_uMorph, &m_morph, SHADER_UNIFORM_FLOAT);
+
     const Camera3D cam = camera(screenW, screenH);
     BeginMode3D(cam);
     drawSky(cam);
@@ -1242,8 +1315,14 @@ void GlobeView::draw(int screenW, int screenH) {
         // multiplier, tied to camera distance, doing what the atmosphere would
         // do if this integrated one.
         const float t = std::clamp((kMaxDist - m_dist) / (kMaxDist - kMinDist), 0.0f, 1.0f);
-        const float thick = std::clamp(m_sky.cloudOpacity * (0.72f + 0.85f * t * t),
-                                       0.0f, 1.0f);
+        // Held back until the planet is nearly round again. The shell is scaled
+        // about the origin AFTER the unroll, so mid-morph it is a slightly
+        // different shape from the ground beneath it and stands off it as a dark
+        // crescent -- and against a flat sheet it is coplanar and z-fights.
+        // Neither is worth solving for two tenths of a second of an animation.
+        const float shell = smoothstep(0.72f, 1.0f, m_morph);
+        const float thick = std::clamp(m_sky.cloudOpacity * (0.72f + 0.85f * t * t)
+                                       * shell, 0.0f, 1.0f);
         cl.maps[MATERIAL_MAP_DIFFUSE].color = ColorAlpha(WHITE, thick);
         rlDisableDepthMask();     // transparent: depth-test, do not depth-write
         DrawMesh(m_mesh, cl, MatrixMultiply(MatrixScale(r, r, r),
@@ -1262,7 +1341,8 @@ void GlobeView::draw(int screenW, int screenH) {
         SetShaderValue(m_air, m_aViewPos, &eye, SHADER_UNIFORM_VEC3);
         SetShaderValue(m_air, m_aSunDir, &sd, SHADER_UNIFORM_VEC3);
         SetShaderValue(m_air, m_aColour, &col, SHADER_UNIFORM_VEC3);
-        SetShaderValue(m_air, m_aStrength, &m_sky.airStrength, SHADER_UNIFORM_FLOAT);
+        const float airAmt = m_sky.airStrength * smoothstep(0.72f, 1.0f, m_morph);
+        SetShaderValue(m_air, m_aStrength, &airAmt, SHADER_UNIFORM_FLOAT);
         SetShaderValue(m_air, m_aFalloff, &m_sky.airFalloff, SHADER_UNIFORM_FLOAT);
         Material air = LoadMaterialDefault();
         air.shader = m_air;
@@ -1333,6 +1413,17 @@ bool GlobeView::screenToPixel(float sx, float sy, int screenW, int screenH,
     const Vector3 p = Vector3Add(o, Vector3Scale(d, t));
     globe::pixelFromUnit(p, m_mapW, m_mapH, px, py);
     return true;
+}
+
+float GlobeView::facing(float px, float py) const {
+    if (m_dist <= 1.0f) return 1.0f;
+    const Vector3 p = pixelToUnit(px, py);
+    const Vector3 eye = Vector3Normalize(cameraPosition());
+    // At the horizon dot(p, eyeDir) is 1/dist, not 0 -- the tangent point, not
+    // the great circle. Remapped so the number means what its name says.
+    const float c = Vector3DotProduct(p, eye);
+    const float h = 1.0f / m_dist;
+    return std::clamp((c - h) / (1.0f - h), 0.0f, 1.0f);
 }
 
 bool GlobeView::pixelToScreen(float px, float py, int screenW, int screenH,

@@ -188,6 +188,10 @@ public:
      */
     bool moonOnScreen(int screenW, int screenH, Vector2& pos, float& radius) const;
 
+    /// 0 = laid out flat, 1 = a sphere. Anything between is the unroll.
+    void setMorph(float t) { m_morph = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); }
+    float morph() const { return m_morph; }
+
     void setMonth(int month);
     int month() const { return m_month; }
     const Sky& sky() const { return m_sky; }
@@ -228,6 +232,13 @@ public:
      * rotated out of view must not draw, and every caller would otherwise have
      * to work that out for itself and get it subtly wrong.
      */
+    /// How square-on the ground at this pixel is: 1 under the camera, falling to
+    /// 0 at the horizon. This is the FORESHORTENING, and anything drawn on the
+    /// surface at a fixed screen size needs it -- near the limb a hand's width
+    /// of map occupies a few pixels, so labels sized for the flat view pile into
+    /// an unreadable band there.
+    float facing(float px, float py) const;
+
     bool pixelToScreen(float px, float py, int screenW, int screenH,
                        float& sx, float& sy) const;
 
@@ -252,6 +263,7 @@ private:
     int m_uNightFloor = -1, m_uSoftness = -1;
     int m_uMoonPos = -1, m_uMoonR = -1;
     int m_uCloudTex = -1, m_uCloudR = -1, m_uCloudRot = -1, m_uCloudAmt = -1;
+    int m_uMorph = -1;
     Sun m_sun{};
     Night m_night{};
     bool m_lit = true;
@@ -273,6 +285,7 @@ private:
     struct Bake;
     std::shared_ptr<Bake> m_bake;
     float m_cloudPhase = 0.0f;
+    float m_morph = 1.0f;
     int m_month = 5;                          ///< 0 = January
     Vector3 moonWorld() const;   ///< where the moon is; pure, no draw needed
     /// What stands between the next body drawn and the sun. Radius 0 = nothing.

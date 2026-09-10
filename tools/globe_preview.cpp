@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     const float dist = (argc > 5) ? (float)atof(argv[5]) : 3.0f;
 
     const int W = 1400, H = 1000;
-    SetTraceLogLevel(LOG_WARNING);
+    SetTraceLogLevel(getenv("OD_VERBOSE") ? LOG_ALL : LOG_WARNING);
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(W, H, "globe preview");
     if (!IsWindowReady()) { printf("no window\n"); return 1; }
@@ -101,6 +101,11 @@ int main(int argc, char** argv) {
     globe.setSky(sky);
     globe.update(3.0f);   // a little drift, so cloud is not at phase zero
     if (const char* e = getenv("OD_MONTH")) globe.setMonth(atoi(e));
+    // A single frame of the unroll, so the animation can be looked at as stills.
+    if (const char* e = getenv("OD_MORPH")) {
+        const float t = (float)atof(e);
+        globe.setMorph(t * t * (3.0f - 2.0f * t));   // the same easing the game applies
+    }
     // Park the moon between us and the sun to exercise the eclipse term.
     // ── Lunar eclipse ──
     //
@@ -186,6 +191,11 @@ int main(int argc, char** argv) {
                    globe.latitude() * RAD2DEG, globe.longitude() * RAD2DEG, globe.distance());
         }
     }
+
+    printf("SUN disc=%d size=%.2f dist=%.1f dir=(%.2f %.2f %.2f) glowReady=%d\n",
+           (int)globe.sky().sunDisc, globe.sky().sunSize, globe.sky().sunDistance,
+           globe.sun().dir.x, globe.sun().dir.y, globe.sun().dir.z,
+           (int)globe.skyReady());
 
     Image shot = LoadImageFromScreen();
     ExportImage(shot, argv[2]);

@@ -374,7 +374,20 @@ void MapRenderer::flyTo(float x, float y, float zoom, float speed) {
 void MapRenderer::update(float dt) {
     bool userInteracted = false;
 
-    if (!m_paused && m_view == ViewMode::Globe && m_globe) {
+    if (m_morphing) {
+        // ~0.7s each way. Eased at both ends rather than run at a constant rate:
+        // the sheet starts and stops without a jolt, which is most of what makes
+        // the move read as one object turning rather than two frames spliced.
+        const float step = dt / 0.70f;
+        m_morph += (m_morphTo > m_morph) ? step : -step;
+        if (m_morph >= 1.0f) { m_morph = 1.0f; m_morphing = false; }
+        if (m_morph <= 0.0f) { m_morph = 0.0f; m_morphing = false; finishTransition(); }
+    }
+
+    // Input is the globe's only while the globe is actually a globe. Orbiting a
+    // half-unrolled sheet moves the camera along an arc that is itself being
+    // interpolated, and the two fight.
+    if (!m_paused && !m_morphing && m_view == ViewMode::Globe && m_globe) {
         // The globe takes the same gestures as the flat map -- drag to move,
         // wheel to zoom -- so the hand does not have to learn a second map.
         // Handled here rather than in the caller so no input code has to know
@@ -739,47 +752,31 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
     m_surfaceDirty = false;
 }
 
-void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
-    if (m_view == ViewMode::Globe) {
-        if (!m_globe) m_globe = new GlobeView(m_mapW, m_mapH);
-        // WHICH layers are drawn is derived, not announced. Every show/hide
-        // toggle changes the stack, and requiring each one to remember to mark
-        // the composite stale is a rule that gets broken by the next overlay
-        // somebody adds -- the symptom being a globe that quietly shows the
-        // previous view's layers. A signature over the stack cannot be
-        // forgotten. Pixel changes still mark themselves: see above.
-        unsigned long long sig = 1469598103934665603ULL;
-        for (const Layer& l : layerStack(landSea)) {
-            sig = (sig ^ l.tex.id) * 1099511628211ULL;
-            sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;
-        }
-        if (sig != m_surfaceSig) { m_surfaceSig = sig; m_surfaceDirty = true; }
-        if (m_surfaceDirty || m_surface.id == 0) buildSurface(landSea);
-        m_globe->setSurface(m_surface.texture);
-        m_globe->draw(m_screenW, m_screenH);
-        return;
-    }
 
-    BeginMode2D(m_camera);
+// Country names, drawn from BOTH views. Lifted out of draw() because the globe
+// path returns before the end of it, so for as long as this was inline the
+// globe silently had no labels at all -- the code was right and simply never
+// ran. Every position goes through pixelToScreen, which is what makes the same
+// routine curve the names round a sphere and lay them flat on a map.
+namespace {
+/// Characters, not bytes. strlen would triple-count a Cyrillic or CJK name and
+/// reserve three times the room it needs, which on the globe means it wins every
+/// collision it is in.
+int utf8Length(const std::string& s) {
+    int n = 0;
+    for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++n;
+    return n;
+}
+}  // namespace
 
-    float viewW = m_screenW / m_camera.zoom;
-    float left = m_camera.target.x - viewW * 0.5f;
-    float right = m_camera.target.x + viewW * 0.5f;
-    int tileStart = static_cast<int>(std::floor(left / m_mapW));
-    int tileEnd = static_cast<int>(std::ceil(right / m_mapW));
+float MapRenderer::faceCosine(float px, float py) const {
+    if (m_view != ViewMode::Globe || !m_globe) return 1.0f;
+    return m_globe->facing(px, py);
+}
 
-    for (const Layer& l : layerStack(landSea)) {
-        if (l.tex.id == 0) continue;
-        for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(l.tex, tx * m_mapW, 0, l.tint);
-        }
-    }
-
-    EndMode2D();
-
-    // Draw country names overlay — curved per-character text
+void MapRenderer::drawCountryNames() {
     if (m_showCountryNames && m_countryLabels) {
-        float t = (m_camera.zoom - m_minZoom) / (m_maxZoom - m_minZoom);
+        float t = (getZoom() - m_minZoom) / (m_maxZoom - m_minZoom);
         t = std::clamp(t, 0.0f, 1.0f);
         uint8_t alpha = (uint8_t)(255.0f * (1.0f - t));
         if (alpha < 25) alpha = 25;
@@ -787,7 +784,35 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
         bool haveFallback = (m_fallbackFont.texture.id > 0);
         float spacing = 3.0f;
 
-        for (auto& label : *m_countryLabels) {
+        // ── Decluttering, on the globe only ──
+        //
+        // At whole-planet zoom Europe is thirty countries inside a hand's
+        // breadth, and their names overprint into a grey smear. The flat map
+        // solves this by being zoomed in; the globe has no such escape, because
+        // seeing the whole planet at once is the point of it.
+        //
+        // So: biggest country first, and a name is kept only if its box is clear
+        // of every name already kept. Greedy and one pass -- the ordering is
+        // what makes it look deliberate rather than arbitrary, because the name
+        // that survives a collision is always the more important one.
+        //
+        // Scoped to the globe. The flat map's labelling is not broken and is not
+        // this routine's to change.
+        std::vector<Rectangle> taken;
+        const bool declutter = (m_view == ViewMode::Globe);
+        std::vector<const CountryLabel*> order;
+        order.reserve(m_countryLabels->size());
+        for (auto& l : *m_countryLabels) order.push_back(&l);
+        if (declutter) {
+            std::sort(order.begin(), order.end(),
+                      [](const CountryLabel* a, const CountryLabel* b) {
+                          if (a->fontSize != b->fontSize) return a->fontSize > b->fontSize;
+                          return a->name < b->name;   // stable across frames
+                      });
+        }
+
+        for (const CountryLabel* lp : order) {
+            const CountryLabel& label = *lp;
             // Wrap label center to the copy closest to the camera
             Vector2 center = label.center;
             {
@@ -796,19 +821,77 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
                 while (dx < -m_mapW * 0.5f) { center.x += m_mapW; dx += m_mapW; }
             }
 
-            Vector2 sp = GetWorldToScreen2D(center, m_camera);
+            // Whole-label cull, through the seam so the globe drops a country
+            // that has turned past the horizon rather than smearing its name
+            // across the limb.
+            Vector2 sp{};
+            if (pixelToScreen(center.x, center.y, sp.x, sp.y) == Facing::Behind) continue;
+
+            // ── The limb ──
+            //
+            // Ground near the edge of the disc is seen almost edge-on, so a
+            // continent's worth of it lands in a few pixels. Names sized for the
+            // flat map pile into an illegible band there. Sized and faded by how
+            // square-on the ground is, they thin out into the limb instead --
+            // which is also what a label on a real curved surface would do.
+            // Exactly 1 on the flat map, so nothing there changes.
+            const float face = faceCosine(center.x, center.y);
+            if (face < 0.30f) continue;
             if (sp.x < -300 || sp.x > m_screenW + 300) continue;
             if (sp.y < -100 || sp.y > m_screenH + 100) continue;
 
-            Color col = {255, 255, 255, alpha};
+            uint8_t a = alpha;
+            {   // fade the last of it out rather than dropping names on a hard edge
+                const float f = std::clamp((face - 0.30f) / 0.22f, 0.0f, 1.0f);
+                a = (uint8_t)(alpha * f);
+                if (a == 0) continue;
+            }
+            Color col = {255, 255, 255, a};
 
             const char* text = label.name.c_str();
             int len = (int)strlen(text);
             if (len < 1) continue;
 
             // Display font size: scales with zoom but never tiny
-            float displayFs = (float)label.fontSize * m_camera.zoom;
+            float displayFs = (float)label.fontSize * getZoom() * (0.55f + 0.45f * face);
+            // Clamped BEFORE the collision test, not after. Measuring a box from
+            // the unclamped size gives a 4px box for text that draws at 14, so
+            // nothing ever overlaps anything and the whole test quietly passes
+            // everything through.
             displayFs = std::clamp(displayFs, 14.0f, (float)label.fontSize);
+
+            if (declutter) {
+                // The box the name will occupy, estimated from its length rather
+                // than measured: the per-glyph walk below is what knows the real
+                // extent, and running it twice to reject most of its own output
+                // costs more than the estimate is worth. Roughly 0.62 em per
+                // character is right for this font and both fallbacks.
+                // Names are set along the country's own axis, so a vertical one
+                // occupies a tall thin box rather than a wide flat one. The
+                // extent is taken from the label's SCREEN angle, which the glyph
+                // walk below derives the same way.
+                const float bw = (float)utf8Length(label.name) * displayFs * 0.62f;
+                float ax = 0.0f, ay = 0.0f;
+                {
+                    const Vector2 ah{center.x + cosf(label.angle) * 6.0f,
+                                     center.y + sinf(label.angle) * 6.0f};
+                    Vector2 ap{};
+                    float th = label.angle;
+                    if (pixelToScreen(ah.x, ah.y, ap.x, ap.y) == Facing::Front)
+                        th = atan2f(ap.y - sp.y, ap.x - sp.x);
+                    ax = fabsf(cosf(th)); ay = fabsf(sinf(th));
+                }
+                const float pad = displayFs * 0.30f;
+                const float w = bw * ax + displayFs * ay + pad;
+                const float h = bw * ay + displayFs * ax + pad;
+                const Rectangle box{sp.x - w * 0.5f, sp.y - h * 0.5f, w, h};
+                bool clash = false;
+                for (const Rectangle& r : taken) {
+                    if (CheckCollisionRecs(box, r)) { clash = true; break; }
+                }
+                if (clash) continue;
+                taken.push_back(box);
+            }
 
             // Decode UTF-8 into codepoints, determine per-char font
             struct CharInfo { int cp; Font* font; float advance; };
@@ -860,10 +943,35 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
                     center.y + dir.y * cursor + perp.y * curvatureOffset
                 };
 
-                float tangent = atan2f(cosf(p * PI) * PI * useCurvature, totalW);
-                float deg = (label.angle + tangent) * RAD2DEGF;
+                // ── Orientation, taken from the PROJECTION rather than from
+                // the map ──
+                //
+                // In map space a label's angle is a constant. On a sphere the
+                // same line of text runs uphill at one end of a country and
+                // downhill at the other, and a fixed angle makes the name slide
+                // off the surface it is naming. So the character's direction is
+                // measured on SCREEN: project the glyph and a point just along
+                // the text from it, and take the angle between them. On the flat
+                // map the projection is affine and this reproduces exactly what
+                // the constant angle gave.
+                const float tangent = atan2f(cosf(p * PI) * PI * useCurvature, totalW);
+                const float aheadA = label.angle + tangent;
+                const Vector2 ahead = {pos.x + cosf(aheadA) * 6.0f,
+                                       pos.y + sinf(aheadA) * 6.0f};
 
-                Vector2 screenPos = GetWorldToScreen2D(pos, m_camera);
+                Vector2 screenPos{}, screenAhead{};
+                if (pixelToScreen(pos.x, pos.y, screenPos.x, screenPos.y) == Facing::Behind) {
+                    cursor += cw;
+                    if (ci < chars.size() - 1) cursor += spacing;
+                    continue;      // this glyph is round the back
+                }
+                float deg;
+                if (pixelToScreen(ahead.x, ahead.y, screenAhead.x, screenAhead.y) == Facing::Front) {
+                    deg = atan2f(screenAhead.y - screenPos.y,
+                                 screenAhead.x - screenPos.x) * RAD2DEGF;
+                } else {
+                    deg = aheadA * RAD2DEGF;   // at the very limb, fall back
+                }
                 char buf[8] = {};
                 int wpos = 0;
                 int cpv = chars[ci].cp;
@@ -881,6 +989,53 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             }
         }
     }
+}
+
+void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
+    if (m_view == ViewMode::Globe) {
+        if (!m_globe) m_globe = new GlobeView(m_mapW, m_mapH);
+        // WHICH layers are drawn is derived, not announced. Every show/hide
+        // toggle changes the stack, and requiring each one to remember to mark
+        // the composite stale is a rule that gets broken by the next overlay
+        // somebody adds -- the symptom being a globe that quietly shows the
+        // previous view's layers. A signature over the stack cannot be
+        // forgotten. Pixel changes still mark themselves: see above.
+        unsigned long long sig = 1469598103934665603ULL;
+        for (const Layer& l : layerStack(landSea)) {
+            sig = (sig ^ l.tex.id) * 1099511628211ULL;
+            sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;
+        }
+        if (sig != m_surfaceSig) { m_surfaceSig = sig; m_surfaceDirty = true; }
+        if (m_surfaceDirty || m_surface.id == 0) buildSurface(landSea);
+        m_globe->setSurface(m_surface.texture);
+        // smoothstep: zero slope at both ends.
+        const float e = m_morph * m_morph * (3.0f - 2.0f * m_morph);
+        m_globe->setMorph(e);
+        m_globe->draw(m_screenW, m_screenH);
+        // Labels ride on the sphere. Suppressed mid-unroll along with every
+        // other overlay, by the guard in pixelToScreen.
+        drawCountryNames();
+        return;
+    }
+
+    BeginMode2D(m_camera);
+
+    float viewW = m_screenW / m_camera.zoom;
+    float left = m_camera.target.x - viewW * 0.5f;
+    float right = m_camera.target.x + viewW * 0.5f;
+    int tileStart = static_cast<int>(std::floor(left / m_mapW));
+    int tileEnd = static_cast<int>(std::ceil(right / m_mapW));
+
+    for (const Layer& l : layerStack(landSea)) {
+        if (l.tex.id == 0) continue;
+        for (int tx = tileStart; tx < tileEnd; ++tx) {
+            DrawTexture(l.tex, tx * m_mapW, 0, l.tint);
+        }
+    }
+
+    EndMode2D();
+
+    drawCountryNames();
 
     // Skip click/tooltip when paused (menu overlay handles input)
     if (m_paused) return;
@@ -1086,7 +1241,10 @@ void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
         // A click that misses the planet lands on empty space. Reported as
         // province 0 by leaving the coordinates outside the raster, which is
         // what callers already treat as "nothing there".
-        if (!m_globe->screenToPixel(sx, sy, m_screenW, m_screenH, px, py)) {
+        // Same rule as pixelToScreen: while the planet is unrolling, a click
+        // resolves to nowhere rather than to a province that is not under the
+        // cursor.
+        if (m_morphing || !m_globe->screenToPixel(sx, sy, m_screenW, m_screenH, px, py)) {
             px = -1; py = -1;
         }
         return;
@@ -1102,6 +1260,9 @@ void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
 MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
                                               float& sx, float& sy) const {
     if (m_view == ViewMode::Globe && m_globe) {
+        // Mid-unroll every point is between its two homes and neither answer is
+        // right, so nothing is placed at all until the planet settles.
+        if (m_morphing) return Facing::Behind;
         if (!m_globe->pixelToScreen(px, py, m_screenW, m_screenH, sx, sy))
             return Facing::Behind;
         return Facing::Front;
@@ -1139,14 +1300,44 @@ void MapRenderer::setViewMode(ViewMode m) {
         if (!m_globe) { m_globe = new GlobeView(m_mapW, m_mapH); if (m_haveSky) m_globe->setSky(m_sky); }
         m_globe->lookAt(m_camera.target.x, m_camera.target.y);
         m_surfaceDirty = true;
+        m_view = ViewMode::Globe;
+        m_flatPending = false;
+        m_morphTo = 1.0f;
+        m_morphing = true;
     } else if (m_globe) {
-        const float u = (m_globe->longitude() + PI) / (2.0f * PI);
-        const float v = (PI * 0.5f - m_globe->latitude()) / PI;
-        m_camera.target = { u * (float)m_mapW, v * (float)m_mapH };
-        // The vertical clamp in update() will pull this inside the map edges on
-        // the next frame, which is where that rule already lives.
+        // Going the other way the view does NOT flip yet: the sphere has to
+        // unroll first, and only the 3D path can draw that. m_flatPending marks
+        // the intent; finishTransition() below carries the camera over and makes
+        // the switch once the sheet is flat.
+        m_flatPending = true;
+        m_morphTo = 0.0f;
+        m_morphing = true;
+    } else {
+        m_view = m;
     }
-    m_view = m;
+}
+
+void MapRenderer::snapViewMode(ViewMode m) {
+    setViewMode(m);
+    if (!m_morphing) return;
+    m_morph = m_morphTo;
+    m_morphing = false;
+    finishTransition();
+}
+
+void MapRenderer::finishTransition() {
+    if (!m_flatPending || !m_globe) return;
+    // Carry the view across. Whatever ground was in front of you stays in front
+    // of you; done here rather than by the caller so there is one definition of
+    // what "the same place" means, and so the round trip returns you where you
+    // started instead of drifting a little each time.
+    const float u = (m_globe->longitude() + PI) / (2.0f * PI);
+    const float v = (PI * 0.5f - m_globe->latitude()) / PI;
+    m_camera.target = { u * (float)m_mapW, v * (float)m_mapH };
+    // The vertical clamp in update() will pull this inside the map edges on the
+    // next frame, which is where that rule already lives.
+    m_view = ViewMode::Flat;
+    m_flatPending = false;
 }
 
 void MapRenderer::setSky(const GlobeViewSky& sky) {

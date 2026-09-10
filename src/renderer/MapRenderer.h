@@ -82,7 +82,17 @@ public:
      */
     enum class ViewMode { Flat, Globe };
     void setViewMode(ViewMode m);
+    /// Put the view somewhere with no animation. For harnesses that need a known
+    /// starting state; setViewMode is what the game uses.
+    void snapViewMode(ViewMode m);
+    void drawCountryNames();
+    /// 1 on the flat map, and on the globe how square-on the ground is.
+    float faceCosine(float px, float py) const;
+    void finishTransition();
     ViewMode viewMode() const { return m_view; }
+    /// True while the planet is mid-unroll. Overlays sit this out: see the note
+    /// on m_morph.
+    bool inTransition() const { return m_morphing; }
 
     /// Turn and zoom the globe. No-ops in the flat view, so callers that handle
     /// input do not need to branch on the mode.
@@ -196,6 +206,25 @@ private:
     // the stack changes, because compositing 8192x4096 every frame is not free
     // on a phone and the map does not change every frame.
     ViewMode m_view = ViewMode::Flat;
+    // ── The unroll ──
+    //
+    // Switching projection is a change of how the world is drawn, and cutting
+    // between the two leaves you to work out for yourself that the province you
+    // were looking at is the one now over there. The morph answers that
+    // question by showing it, so nothing has to be re-found by hand.
+    //
+    // m_view flips to Globe at the START of the animation in BOTH directions --
+    // the flat renderer cannot draw a half-sphere, so the 3D path owns the whole
+    // transition and the flat view is only restored once the sheet is flat
+    // again. Overlays (markers, labels, picking) sit the animation out entirely:
+    // mid-morph a point on the map is at neither of the two positions those
+    // paths know how to compute, and half a second of no counters reads as part
+    // of the move where half a second of counters in the wrong place reads as a
+    // bug.
+    bool  m_morphing = false;
+    float m_morph = 1.0f;      // 0 = flat sheet, 1 = sphere
+    float m_morphTo = 1.0f;
+    bool  m_flatPending = false;
     GlobeViewSky m_sky{};
     bool m_haveSky = false;
     GlobeView* m_globe = nullptr;

@@ -621,6 +621,9 @@ bool WindowShouldClose(void) { return g_stopRequested; }
 //   comms/Transmission   clips the eyelid to a straight cut with the scissor,
 //                        and draws an elliptical ring by scaling a circular
 //                        one, which needs the matrix stack too
+//   renderer/GlobeView   depth mask and face culling, for the transparent
+//                        shells drawn over the planet; and the default shader
+//                        id, to tell a compiled shader from raylib's fallback
 //
 // These are NOT in ServerRaylibStubs.cpp because that file is generated from
 // raylib.h, and rlgl is a separate header the generator does not read.
@@ -636,6 +639,11 @@ void rlEnableScissorTest(void);
 void rlDisableScissorTest(void);
 void rlScissor(int x, int y, int width, int height);
 void rlDrawRenderBatchActive(void);
+void rlEnableDepthMask(void);
+void rlDisableDepthMask(void);
+void rlEnableBackfaceCulling(void);
+void rlDisableBackfaceCulling(void);
+unsigned int rlGetShaderIdDefault(void);
 }
 
 void rlPushMatrix(void) {}
@@ -646,3 +654,10 @@ void rlEnableScissorTest(void) {}
 void rlDisableScissorTest(void) {}
 void rlScissor(int, int, int, int) {}
 void rlDrawRenderBatchActive(void) {}
+void rlEnableDepthMask(void) {}
+void rlDisableDepthMask(void) {}
+void rlEnableBackfaceCulling(void) {}
+void rlDisableBackfaceCulling(void) {}
+// Zero, which is not a valid program id -- so the server agrees with the client
+// that nothing compiled, and GlobeView takes its no-shader path.
+unsigned int rlGetShaderIdDefault(void) { return 0; }

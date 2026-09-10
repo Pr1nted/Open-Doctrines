@@ -92,6 +92,16 @@ const Shot SHOTS[] = {
     // different map from the tour's, so it is loaded on its own.
     {"tutorial-world", 60, false},
     {"world-map",     45, true},
+    // The globe, through the game's own UI rather than a preview harness: the
+    // same renderer, the same overlay code, the same labels. Three frames of the
+    // unroll are photographed BY LETTING IT RUN -- settleFrames is the clock, so
+    // what these show is the animation the player gets, not a still posed to
+    // look like one.
+    {"globe",         60, true},
+    {"globe-names",   60, true},
+    {"globe-unroll-a", 4, true},
+    {"globe-unroll-b", 9, true},
+    {"globe-unroll-c",16, true},
     // The same map with the names written the way another language writes
     // them: the proof that a generated name is transliterated rather than left
     // in Latin among Cyrillic.
@@ -958,6 +968,21 @@ bool Game::tickScreenshotTour() {
             }
         } else if (name == "world-map") {
             m_activeViewTab = 0;          // no panel: this shot is the map itself
+        } else if (name == "globe" || name == "globe-names" ||
+                   name.rfind("globe-unroll", 0) == 0) {
+            // Tab 8 IS the country-names overlay -- update() re-derives the
+            // renderer flag from this every frame, so setting the flag directly
+            // here would be overwritten before the shot was taken.
+            m_activeViewTab = (name == "globe-names") ? 8 : 0;
+            // The unroll shots start the switch and are captured a few frames
+            // in; the settled ones ask for the globe and are given 60 frames,
+            // which is comfortably past the ~42 the animation takes.
+            // Start from flat every time, then make the ordinary switch: these
+            // shots have to photograph the path the F7 key takes, and asking a
+            // globe to become a globe is a no-op that would quietly produce five
+            // identical stills.
+            m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
+            m_renderer->setViewMode(MapRenderer::ViewMode::Globe);
         } else if (name == "province") {
             m_activeViewTab = 2;          // industry: the busiest of the tabs
         } else if (name == "army") {
