@@ -15265,3 +15265,54 @@ development remain untested.
 
 Reflex reverted; the firing counts are the artefact and they are here. Cost
 about twenty minutes against a ~2 hour A/B that would have measured 5 events.
+
+## 254 — half the politics head is dead, and the documented trade fix did not work
+
+OD_ACT_HIST on the politics module, 400 turns, N24, 30,471 decisions. Mapping
+from the source comment: hold policy pac+ pac- cancel ally nap guarantee calm
+concil repress TRADE.
+
+    a0  hold          offered  30471   taken 56.99%
+    a1  enact policy  offered   7318   taken  0.00%
+    a2  pacify UP     offered  10976   taken 21.35%
+    a3  pacify DOWN   offered  18251   taken  0.00%
+    a4  cancel policy offered  22210   taken  0.00%
+    a5  alliance      offered   6897   taken  0.72%
+    a6  NAP           offered   5560   taken  6.64%
+    a7  guarantee     offered   6858   taken  0.00%
+    a8  calm          offered  11022   taken 51.94%
+    a9  conciliate    offered  11572   taken 39.92%
+    a10 REPRESS       offered  30471   taken  0.00%
+    a11 TRADE         offered   2287   taken  0.00%
+
+SIX OF TWELVE ARE EXACTLY ZERO, on tens of thousands of offers each.
+
+1. REPRESS IS OFFERED ON EVERY SINGLE DECISION -- 30,471 of 30,471 -- and
+   taken never. That answers the standing question "why does the AI never
+   repress" as definitively as it can be answered: not a mask problem, not
+   availability. The head is offered it every time and refuses every time.
+
+2. THE TRADE FIX DID NOT WORK. The source note records that a flat 400
+   treasury floor was "the single reason AI-to-AI trade had never once
+   happened", and derives a lower floor so it "cannot silently become a
+   prohibition again". The floor was the diagnosis and it was fixed. Trade is
+   now offered on 7.5% of politics decisions against the note's 3.1% -- and is
+   still taken ZERO times. The fix raised the offer rate and changed no
+   behaviour, which is [[mask-changes-need-a-retrain]] exactly: a frozen policy
+   does not take a newly-available action. The note anticipated that wall for
+   specialisation and not for trade.
+
+3. PACIFICATION IS A ONE-WAY RATCHET. Up is taken 21.35%, down is taken 0.00%
+   on 18,251 offers. So pacification only ever rises by the head's choice, and
+   falls only when austerity cuts it -- i.e. only once the country is already
+   insolvent. It is 10.8% of gross (journal 252). Same SHAPE as the research
+   ratchet whose fix shipped for +71/+42, though the research one had both
+   directions alive (95.5% up, 29.5% down) where this has one direction dead.
+
+4. DOCTRINE MANAGEMENT IS ENTIRELY REFLEX-DRIVEN. enact 0.00%, cancel 0.00%,
+   yet austerity repeals doctrines 28 times a world. The head does not manage
+   doctrines at all; the reflex does.
+
+Nothing acted on yet. Recording because this is the first time the politics
+head has been measured action-by-action, and three of these were open
+questions.
