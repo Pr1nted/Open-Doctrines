@@ -12980,6 +12980,8 @@ long long AISystem::s_austBranch[6] = {0,0,0,0,0,0};
 // lever in the game. Never measured; this measures it.
 double AISystem::s_expense[8] = {0,0,0,0,0,0,0,0};
 long long AISystem::s_expenseN = 0;
+
+
 // Mean research allocation per country-turn, under OD_ACT_HIST only.
 //
 // The research-ratchet finding is +21.9 points of world across three seed

@@ -15224,3 +15224,44 @@ So the budget is characterised and it is not where the next improvement lives.
 That is a negative result, but it is the first time the question has been
 answerable at all -- and it retires a wrong claim that had been repeated in
 three places.
+
+## 253 — specialisation is not the missing income: there is not enough of it to buy
+
+AI_SOCIAL_BUDGET_SHARE's note says the AI's poverty "cannot be fixed by
+redirecting" spending, and names where the income must come from instead:
+"trade, specialisation, resource development". Specialisation is also the last
+near-dead econ action never priced -- 9 taken of 3,473 offered.
+
+The structural case for trying it was real and different from the naval case
+that cost 40% of the map: a ship is permanent UPKEEP and compounds against you
+over 400 turns, while a specialisation is a ONE-OFF price with permanent
+income and no upkeep. Opposite shapes over the horizon, so that precedent does
+not transfer. And nextSpecBuy already ranks by return per gold, so a reflex
+would buy the four-turn province rather than the hundred-turn median.
+
+Built specializeReflex (OD_SPEC_REFLEX = payback ceiling in turns, 0 = off).
+Verified inert unset: fired 0, seat score 3.1, matching the known control
+exactly. Then counted firings instead of benching:
+
+    payback ceiling      fired (400 turns, ALL countries)
+    10 turns                 5
+    30 turns                33
+    100 turns               84
+
+Even at a hundred-turn ceiling -- which buys HALF of all candidates, including
+deals that take a quarter of the game to repay -- it fires 84 times across
+about twenty countries and four hundred turns. At the ten-turn ceiling that
+represents a genuinely good deal, five.
+
+So the head declining specialisation 99.7% of the time is not a collapsed
+head refusing a good action. It is a correct response to a menu that is
+overwhelmingly bad deals, and the good ones are nearly singular: 13,076 of
+20,740 opportunities had NO candidate at all.
+
+CONCLUSION: specialisation is not where the missing income is, and the note's
+suggestion is half-refuted -- not because specialising is bad, but because
+there is not enough of it on the map to matter. Trade and resource
+development remain untested.
+
+Reflex reverted; the firing counts are the artefact and they are here. Cost
+about twenty minutes against a ~2 hour A/B that would have measured 5 events.
