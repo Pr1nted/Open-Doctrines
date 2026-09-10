@@ -625,9 +625,32 @@ def report(label, scores):
     # Print them together and the trade is visible instead of hidden in a mean.
     survival = statistics.mean(min(v, 100.0) for v in vals)
     worst = min(vals)
+    # HOW MANY SEATS SURVIVAL IS ACTUALLY MADE OF. Every seat at or above par
+    # caps at 100 and contributes an identical constant, so survival varies
+    # ONLY over the seats below par. On 2026-09-10 a research-bar sweep moved
+    # survival 77 -> 89 with FOUR of six seats sitting at exactly 100 in both
+    # arms: the whole difference was 1914:FRA:rush (bistable) and 1939:NOR:hood
+    # (par 1.3, magnifier territory). Read as a six-seat statistic it looked
+    # like the AI becoming harder to kill. It was two unmeasurable seats.
+    live = [v for v in vals if v < 100.0]
+    surv_note = ""
+    if len(live) <= 2:
+        surv_note = (f"   [!! survival varies over only {len(live)} of {len(vals)} seats "
+                     f"-- the rest are at or above par and constant]")
+    # WHICH SEAT IS THE WORST, because it changes identity. Fixing the worst
+    # seat promotes the next one, and "worst seat 17 -> 59" then compares two
+    # DIFFERENT seats while reading as a floor lift.
+    worst_seat = ""
+    for mapname, iso, world, par, _why in SEATS:
+        key = f"{mapname}:{iso}:{world}"
+        v = scores.get(key)
+        if v is not None and abs(seat_score(v, par) - worst) < 1e-6:
+            worst_seat = f" ({mapname}:{iso} {world})"
+            break
     print(f"  {' ' * len(label)}  survival {survival:.0f}   "
-          f"worst seat {worst:.0f}   "
-          f"(survival = mean of min(seat,100): growth above par earns nothing)")
+          f"worst seat {worst:.0f}{worst_seat}   "
+          f"(survival = mean of min(seat,100): growth above par earns nothing)"
+          f"{surv_note}")
     return rating
 
 
