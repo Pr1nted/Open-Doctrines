@@ -14736,3 +14736,39 @@ about a world I had not asked for. Seventh instance today of
 [[true-about-the-adjacent-thing]] and the second I produced myself.
 
 Code reverted; patch kept at scratchpad/research-guard-overrun-FAILED.patch.
+
+## 241 — "the model that survives invasion" was a mean over two observations
+
+Tried to diagnose WHY the play-trained model beats N24 on the invaded seat,
+by diffing action histograms. The diagnostic run scored the user model 0.2 on
+seed 909091 where N24 scored 3.1 -- the opposite of the advantage I have been
+citing all session. So I went back to the spread I never read:
+
+    1914:FRA:rush, 400 turns, difficulty 3, three hold-out seeds
+
+        N24          3.1   0.2   0.2     mean 1.17   score 17
+        play-trained 0.2   8.7  10.1     mean 6.30   score 95
+
+It is BIMODAL. The play-trained model holds 8.7 and 10.1 on two worlds and is
+annihilated at 0.2 on the third -- which is the one world where N24 does
+better. So "the only artefact that survives being overrun" is wrong. The
+defensible claim is that it holds an invaded country on MOST worlds where N24
+holds none, and with n=3 and that variance the difference in means rests on
+two observations.
+
+I stated the stronger version repeatedly today: to the peer, to the user, in
+journal 237, and in a README that is committed and pushed. Corrected in
+6bd704c. The numbers were right every time -- 6.3, 1.17, 95, 17 are all
+accurate -- and the sentence built on them was not.
+
+This is [[rates-need-counts]] in its plainest form: a mean whose spread I
+never printed, quoted as a property. od_bench PRINTS the spread on every seat
+line, in brackets, and I read the mean column for two hours.
+
+SECOND FAILURE, same run: OD_ACT_HIST_FILE produced 13 bytes -- "0.4287 36277",
+the research-allocation accumulator, not the action table. The action
+histogram goes to stdout, which I had filtered to `grep "^\[BENCH\] seat"`.
+So the diagnostic I built this run for produced nothing at all, and I only
+noticed because the score line contradicted a claim I believed. Had the scores
+agreed with my expectation I would have reported an empty histogram as
+"no behavioural difference found".
