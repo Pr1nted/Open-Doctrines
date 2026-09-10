@@ -402,6 +402,9 @@ def note_ai_version(out):
 
 AI_VERSION = set()
 DROPPED = []
+# Per-seat raw seed values, so report() can tell a stable seat from a bistable
+# one. See BISTABLE below.
+SPREAD = {}
 
 
 def run_seat(binary, mapname, iso, world, model, seed):
@@ -453,6 +456,13 @@ def seat_score(share, par):
     return min(share / par, CAP) * 100.0
 
 
+# Seats measured to have no middle: a run either holds the country or is
+# annihilated. Established for 1914:FRA:rush over 22 runs, 2026-09-10.
+# A mean over fewer than ~10 seeds here is a coin-flip estimate.
+KNOWN_BISTABLE = {"1914:FRA:rush"}
+BISTABLE_SEATS = []
+
+
 def report(label, scores):
     """scores: {"map:iso": world share}. Returns the rating."""
     print(f"\n  {'seat':<18} {'held':>6} {'par':>6} {'score':>7}   ")
@@ -467,8 +477,49 @@ def report(label, scores):
             continue
         sc = seat_score(v, par)
         vals.append(sc)
+        # BISTABLE seats. `1914:FRA:rush` does not have a middle: across 22
+        # runs in one day (two models, 11 paired seeds) every result was
+        # either 5.7-11.3 land or below 1.5, with NOTHING between. Collapse
+        # rate was 5/11 and 3/11. A 3-seed mean of that is a Bernoulli
+        # estimate from three coin flips, and it LOOKS like a measurement
+        # because it prints to two decimals.
+        #
+        # It cost a full day: a "5.6x capability gap" between two models was
+        # one of them drawing three collapse worlds (N24 read 1.17 on those
+        # three seeds and 4.24 over eleven), and a knob finding that
+        # "failed to replicate" across two seed sets was three flips, twice.
+        #
+        # This is keyed off the SEAT, not off the sample, because three seeds
+        # usually CANNOT show it -- set C was [3.1, 0.2, 0.2], which never
+        # reaches the holding band at all. Detecting it from the spread only
+        # works when the sample happens to straddle, which is the same
+        # small-n problem the warning exists to flag.
+        raw = SPREAD.get(key) or []
+        straddles = (len(raw) > 1 and min(raw) < 0.25 * par and max(raw) > 0.75 * par)
+        bistable = (key in KNOWN_BISTABLE and len(raw) < 10) or straddles
         note = "  wiped out" if v <= 0.05 else ("  capped" if v / par > CAP else "")
+        if bistable:
+            spread_s = "/".join(f"{g:.1f}" for g in raw) if raw else "?"
+            # n matters for the ADVICE, not for whether it is bimodal. The mean
+            # of a two-regime seat describes no run that happened at any n; but
+            # with enough seeds the collapse RATE is a real quantity, and below
+            # that it is a coin-flip estimate.
+            if len(raw) >= 10:
+                coll = sum(1 for g in raw if g < 0.25 * par)
+                note += (f"  [BIMODAL {spread_s} -- read collapse rate "
+                         f"{coll}/{len(raw)}, not the mean]")
+            else:
+                note += f"  [BISTABLE {spread_s} -- only {len(raw)} seeds, mean is not a measurement]"
+            BISTABLE_SEATS.append(label_)
         print(f"  {label_:<18} {v:>6.1f} {par:>6.1f} {sc:>7.0f}{note}")
+    if BISTABLE_SEATS:
+        print(f"\n  [BENCH] {len(BISTABLE_SEATS)} seat(s) bistable: "
+              f"{', '.join(BISTABLE_SEATS)}")
+        print("  [BENCH] a two-regime seat has no meaningful mean. With 10+ seeds read "
+              "its collapse\n  [BENCH] RATE; with fewer, read nothing. Paired within-seed "
+              "arms are the reliable\n  [BENCH] comparison either way -- both sides draw the "
+              "same worlds.")
+        BISTABLE_SEATS.clear()
     if not vals:
         return None
     rating = statistics.mean(vals)
@@ -667,6 +718,7 @@ def main():
             continue
         mean = statistics.mean(got)
         scores[f"{mapname}:{iso}:{world}"] = mean
+        SPREAD[f"{mapname}:{iso}:{world}"] = list(got)
         spread = "  ".join(f"{g:.1f}" for g in got)
         print(f"  {mapname}:{iso} {world:<5} {mean:5.1f}  (par {par:.1f})   [{spread}]")
 
