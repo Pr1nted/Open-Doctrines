@@ -469,6 +469,7 @@ def report(label, scores):
     print(f"\n  {'seat':<18} {'held':>6} {'par':>6} {'score':>7}   ")
     print(f"  {'-'*18} {'-'*6} {'-'*6} {'-'*7}")
     vals = []
+    pinned_seats = []
     for mapname, iso, world, par, _why in SEATS:
         key = f"{mapname}:{iso}:{world}"
         v = scores.get(key)
@@ -498,6 +499,8 @@ def report(label, scores):
         raw = SPREAD.get(key) or []
         straddles = (len(raw) > 1 and min(raw) < 0.25 * par and max(raw) > 0.75 * par)
         bistable = (key in KNOWN_BISTABLE and len(raw) < 10) or straddles
+        if v / par > CAP:
+            pinned_seats.append(label_)
         note = "  wiped out" if v <= 0.05 else ("  capped" if v / par > CAP else "")
         if bistable:
             spread_s = "/".join(f"{g:.1f}" for g in raw) if raw else "?"
@@ -513,6 +516,21 @@ def report(label, scores):
                 note += f"  [BISTABLE {spread_s} -- only {len(raw)} seeds, mean is not a measurement]"
             BISTABLE_SEATS.append(label_)
         print(f"  {label_:<18} {v:>6.1f} {par:>6.1f} {sc:>7.0f}{note}")
+    # PINNED seats carry no information about the arm. A seat whose share
+    # exceeds CAP x par scores exactly CAP*100 however well it actually did,
+    # so if BOTH arms of an A/B pin it, it contributes an identical constant
+    # to both and the rating is blind to any change there. Measured
+    # 2026-09-10: with a strong model, 2 of 6 seats pinned in both arms on
+    # hold-out C (SWE par 1.0 ran [24.2, 9.0, 6.3] -- a 4x spread, entirely
+    # invisible) and 1 of 6 on D. That is a third of the rating that cannot
+    # move. It also DAMPS the rating's variance, so the standard error above
+    # understates how noisy the discriminating part is.
+    if pinned_seats:
+        print(f"\n  [BENCH] {len(pinned_seats)} seat(s) pinned at CAP: "
+              f"{', '.join(pinned_seats)}")
+        print("  [BENCH] a pinned seat scores the same however well it did -- the rating "
+              "cannot see\n  [BENCH] improvement there, and if the other arm pins it too "
+              "it is a shared constant.")
     if BISTABLE_SEATS:
         print(f"\n  [BENCH] {len(BISTABLE_SEATS)} seat(s) bistable: "
               f"{', '.join(BISTABLE_SEATS)}")
