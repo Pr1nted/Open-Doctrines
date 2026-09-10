@@ -16,6 +16,7 @@ on:
   push:
     tags: ["gearbox-v*"]
   workflow_dispatch:
+  workflow_call:               # release-dryrun.yml runs this without a tag
 
 permissions:
   contents: write
@@ -115,6 +116,11 @@ jobs:
   publish:
     name: Publish to GitHub
     needs: test
+    # Only ever from a real gearbox tag. release-dryrun.yml calls this whole
+    # workflow from main to rehearse the tag; without this guard the rehearsal
+    # would publish. release-server.yml's Publish has carried the same guard
+    # from the start -- this one was relying on the trigger alone.
+    if: startsWith(github.ref, 'refs/tags/gearbox-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

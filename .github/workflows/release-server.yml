@@ -35,6 +35,7 @@ on:
     tags:
       - 'server-v*'
   workflow_dispatch:      # so a build can be cut without tagging
+  workflow_call:          # release-dryrun.yml runs this without a tag
 
 permissions:
   contents: write

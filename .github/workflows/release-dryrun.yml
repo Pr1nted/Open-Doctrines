@@ -1,0 +1,71 @@
+# Rehearse a release without tagging one.
+#
+# WHY THIS EXISTS
+#
+# 1.2.0a needed five tag moves. Every failure was found by pushing a tag,
+# watching CI, fixing one thing and tagging again:
+#
+#   - four MSVC-only compile errors in the server
+#   - TinyGo's latest release moving its Go floor past the runner's 1.24
+#   - the SDK release running the full suite without Pillow or numpy
+#
+# Not all of those were uncovered. test.yml ALREADY builds the server on
+# windows-x64, and would have caught every MSVC error on the push to main --
+# but test.yml sets `cancel-in-progress`, and re-tagging pushes main again, so
+# each fix cancelled the run that was about to report the next problem. The
+# cure for that half is discipline: let Test finish before tagging.
+#
+# The other half was a real hole. Nothing outside a `gearbox-v*` tag builds a
+# single SDK example or runs tests/run_all.sh with the SDK toolchains, so the
+# Go and Python failures could not be discovered anywhere but on a tag.
+#
+# WHAT THIS RUNS
+#
+# Everything a tag runs, minus publishing: the full fourteen-job test matrix,
+# the SDK's toolchain install and example builds, and the three-platform server
+# build with its smoke test. Both release workflows are called as reusable
+# workflows rather than copied, so this cannot drift from what a tag does --
+# a copy would be a second definition to keep in step, which is how a rehearsal
+# stops resembling the performance.
+#
+# Publishing is skipped because both Publish jobs are gated on their own tag
+# ref, and this runs from a branch. That is belt and braces: the trigger cannot
+# match either, and the guard means it still would not publish if it did.
+#
+# HOW TO USE IT
+#
+# Run it from the Actions tab on the commit you intend to tag. Green means the
+# release path itself is exercised. Then tag.
+name: Release dry run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+
+  sdk:
+    name: SDK
+    uses: ./.github/workflows/release-sdk.yml
+    permissions:
+      contents: write        # the reusable workflow declares it; publish is skipped
+
+  server:
+    name: Server
+    uses: ./.github/workflows/release-server.yml
+    permissions:
+      contents: write        # same -- its Publish is gated on a server-v tag
+
+  verdict:
+    name: Rehearsed
+    needs: [test, sdk, server]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Test, SDK and server all built without a tag."
+          echo "The release path is exercised; tagging should not discover new breakage."
