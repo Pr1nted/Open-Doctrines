@@ -492,6 +492,78 @@
   from one that is already collapsing. Left on; `OD_AI_DLAW_OFF` turns it off in
   one variable.
 
+- **Your chat can play a country.** Hand a country to your stream and let
+  **Twitch, YouTube or Kick** decide its turn. Chat types commands, the game
+  tallies them for a window, and when the window closes the winner is applied
+  with everyone able to see why.
+
+  One vote each, because a tally where the loudest typist wins is a keyboard
+  test rather than a vote — a viewer may change their mind and the last thing
+  they typed counts, but they cannot stack. A command is a choice from a list
+  the game defines, never free text: chat is untrusted input and is treated
+  that way. The reader connects anonymously, holds no credential and cannot
+  post.
+
+  The overlay feed writes **files** for OBS instead of opening a port. The
+  obvious build is an HTTP endpoint on localhost, and it is the wrong one here:
+  it triggers a firewall prompt on first run, during a stream, on camera.
+
+- **Discord rich presence.** What you are playing appears under your name: the
+  screen, the scenario, the country. Never a save path, an invite code, an
+  account id or a session code.
+
+  That is not a privacy setting, it is the shape of the data — the only inputs
+  the code takes are a screen, a scenario name and a country name, so there is
+  nothing else it *could* leak. Presence is read by strangers in every server
+  you are in, which is the reason to build it that way rather than to filter it
+  afterwards.
+
+- **An announcement board on the main menu.** News, releases and tournaments,
+  fetched from the account service.
+
+  It is a **sealed format**, and that is the whole point: content from a server
+  drawn by a client is the exact shape of a remote code execution bug. So a body
+  is text marked up with the same parser the tutorial dialogue uses, which
+  produces styled glyph runs and can do nothing else. A button cannot name an
+  action — it picks one from a closed list defined in the game, and the document
+  supplies at most one short parameter whose meaning the game decides. Nothing
+  fetched can ask the game to open a URL, run a file or load a mod. Anything
+  unrecognised is refused whole rather than half-drawn, and no network at all
+  simply means no board.
+
+- **Infantry is a choice now, not a quantity.** Every soldier used to be the
+  same soldier, so recruiting was one number and every battle was arithmetic on
+  it. There are four kinds now — three of them infantry — and each answers
+  differently in every column:
+
+  | | money | manpower | frontage | attack | defence | fuel |
+  |---|---|---|---|---|---|---|
+  | Line Infantry | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+  | Militia | 0.50 | 0.60 | 1.00 | 0.70 | **1.15** | 0.80 |
+  | Assault Infantry | 2.00 | 2.50 | **0.80** | **1.35** | 0.95 | 1.20 |
+  | Mechanised | 3.50 | 4.00 | **0.60** | 1.25 | 1.15 | 3.00 |
+
+  **Frontage is the column that changes the game.** A province fights across a
+  limited width, and above it both sides' counts cancel — power reduces to
+  `width x stat/frontage`, so the fight is decided by attack and defence PER
+  METRE rather than by how many men arrived. Bringing more stopped being the
+  only answer; bringing better now competes for the same manpower pool.
+
+  Line Infantry is exactly 1.00 in every column on purpose. Every soldier in
+  every existing save is line infantry, so the multipliers changed nothing at
+  all until a second type existed — the first stage shipped as a byte-identical
+  evaluation rather than a hope.
+
+  **Militia was wrong once, and the mistake is worth keeping.** It was drafted
+  at 1.20 frontage on the reasoning that an untrained rabble uses a frontage
+  badly. That sounds right and is arithmetically fatal: it made militia worse
+  than line at *both* attack and defence per metre, so it was strictly dominated
+  in the quarter of all assaults that are width-bound. An AI rule buying the
+  best defence per unit of money duly picked it and lost 34 and 28 rating points
+  on two models, with the floor falling from 110 to 26. Frontage is footprint,
+  not skill: a militiaman occupies a man's width like anybody else, and what he
+  lacks is training, which is the attack column.
+
 - **The AI stops cutting research first when money runs short.** Austerity took
   the research slider down before anything else, on the reasoning that a slider
   comes back up for free the moment income recovers. For a country that is merely
@@ -510,10 +582,26 @@
 
   **Both halves of that replicate, and the second half is not a small-par
   artefact.** The four seats not under existential pressure gain between 2.3 and
-  17.6 points of the world's land each. The seat being invaded loses 3.87 and 5.80
-  — raw land share on a seat whose par is 6.7, so that is real territory, not a
-  ratio effect on a sliver. On hold-out D the previous behaviour held every seat
-  above par and this one does not.
+  17.6 points of the world's land each. The seat being invaded loses ground on
+  both sets — several points of raw land share on a seat whose par is 6.7, so
+  real territory rather than a ratio effect on a sliver. On hold-out D the
+  previous behaviour held every seat above par and this one does not.
+
+  That loss is deliberately not quoted to the decimal. The invaded seat is
+  bistable: across 22 recorded runs it either holds roughly 6 to 11 percent of
+  the world or collapses below 1.5, with nothing in between, so a three-seed
+  mean of it is nearer three coin flips than a measurement — it prints to two
+  decimals and moves by a factor of three on the draw.
+
+  Nor does playing both arms on the same worlds rescue it. Pairing controls how
+  hard the world is; it does not control which side of the cliff a run lands on,
+  and a seat this close to a tipping point can be flipped by a small change to
+  the policy alone — the same seed has put two different models on opposite
+  sides of it. What holds the direction up is replication: the sign is the same
+  on two independent seed sets, and the rating gaps behind it (+71 and +42) sit
+  well outside the noise floor of a three-seed run, which is about a dozen
+  points of standard error. Expect a re-run on fresh seeds to reproduce the
+  direction and not the number.
 
   Said plainly, because the rating alone would not say it: the AI expands harder
   and holds considerably more ground when it is not fighting for its life, and a

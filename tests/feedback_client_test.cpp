@@ -21,6 +21,17 @@
 #include <cstdlib>
 #include <string>
 
+// MSVC has no POSIX setenv/unsetenv, and this test needs them: it sets HOME and
+// USERPROFILE to check that a personal path is scrubbed out of a bug report.
+// Shimmed rather than skipped on Windows -- USERPROFILE is the variable that
+// MATTERS there, so skipping would drop the coverage exactly where the rule is
+// most load-bearing. _putenv_s with an empty value removes the variable, which
+// is what unsetenv means here. Same shape as src/llm/Runner.cpp.
+#if defined(_WIN32)
+static int setenv(const char* k, const char* v, int) { return _putenv_s(k, v); }
+static int unsetenv(const char* k) { return _putenv_s(k, ""); }
+#endif
+
 static int g_checks = 0, g_fails = 0;
 static void ok(bool cond, const std::string& what) {
     ++g_checks;
