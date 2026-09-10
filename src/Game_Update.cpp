@@ -138,12 +138,31 @@ void Game::handlePauseMenu() {
             trySaveGame();
         }
         else if (m_menuIndex == 3) {
+            // The timelapse is rendered from a SAVE, not from anything held in
+            // memory -- exportHistoryGif walks the file with buildTurnSnapshots.
+            // So the game is written out first, and not as a convenience: skip
+            // it and the export silently shows a state older than the one the
+            // player is looking at, which reads as the feature being broken.
+            if (m_unsavedChanges || m_currentSavePath.empty()) {
+                m_config.save(m_configPath);
+                trySaveGame();
+            }
+            // trySaveGame can still leave us with nothing -- a refused path, a
+            // full disk, a browser that would not persist. Opening the history
+            // screen on an empty path would show an empty timeline and blame
+            // the player's game rather than the save that never happened.
+            if (!m_currentSavePath.empty()) {
+                m_paused = false;
+                openHistoryScreen(m_currentSavePath);
+            }
+        }
+        else if (m_menuIndex == 4) {
             // Straight into the form. The pause menu stays up behind it, so
             // closing the report puts the player back where they were rather
             // than into a game they did not mean to resume.
             openFeedbackForm(feedback::Kind::Bug, feedback::Category::Other);
         }
-        else if (m_menuIndex == 4) {
+        else if (m_menuIndex == 5) {
             if (m_unsavedChanges) {
                 m_showUnsavedWarning = true;
                 m_unsavedChoice = 0;

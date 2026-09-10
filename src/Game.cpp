@@ -129,9 +129,16 @@ std::string formatTroops(long long men) {
 
 // Report sits above Quit rather than below it: Quit stays last, where every
 // player already expects the way out to be.
-const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Report a problem",
-                            "Quit to Menu"};
-const int MENU_COUNT = 5;
+//
+// TIMELAPSE IS HERE BECAUSE NOBODY WAS FINDING IT. The export existed, and was
+// reachable only from a per-save gear dialog inside the save browser -- five
+// steps from anywhere, and none of them on the path a player actually walks.
+// The GIF is the most shareable thing this project makes, and it was being
+// made almost never. This puts it where somebody who has just played a game
+// will see it, which is the only place it was ever going to be used from.
+const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Timelapse",
+                            "Report a problem", "Quit to Menu"};
+const int MENU_COUNT = 6;
 // .odstate is on every build, not just the web one. The browser is where it is
 // indispensable -- data/ there is an Emscripten MEMFS that dies with the tab --
 // but "put my whole setup on a stick and carry it to another machine" is not a
