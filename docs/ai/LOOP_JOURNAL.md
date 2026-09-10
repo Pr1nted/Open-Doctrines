@@ -15032,3 +15032,42 @@ killed the overrun guard on one seat in six minutes.
 
 Branch counters kept -- they are three lines behind OD_ACT_HIST and the next
 person to have this idea gets the answer without a build.
+
+## 248 — an inverted reading caught before it became a finding
+
+Audited for the pattern that produced the one shipped win: a place where the
+AI prices something with its own number instead of the resolver's. Two
+BuildCosts functions are never called by the AI -- artyMoneyCost and
+maintenanceCostMod -- and austerity's "repeal the costliest doctrine" (28
+firings a world) ranks by `costPerTurn` alone.
+
+policies.json shows 23 doctrines with `maintenanceCostPct` / `industryCostPct`
+levers, and the biggest STICKER prices carry the biggest levers:
+
+    war_economy_total      cost 18   maintenanceCostPct -18
+    war_on_several_fronts  cost 16   maintenanceCostPct -20
+    mass_mobilisation      cost 11   maintenanceCostPct -25
+
+I read those as savings and had a serious-sounding bug: austerity
+systematically repealing the doctrines that pay for themselves, worst-first,
+in a branch that fires 28 times a world.
+
+IT IS INVERTED. `buildCostMod(pct) = max(0, 1 - pct/100)`, so POSITIVE is a
+discount and NEGATIVE is a surcharge. `mass_mobilisation`'s generated UI text
+lists "Army upkeep +25%" under COSTS. Those doctrines cost money TWICE, and
+repealing the highest sticker first is roughly right.
+
+WHAT SAVED IT: the struct comment said "a COST reduction is stored POSITIVE"
+and I checked it against buildCostMod and then against the generated UI string
+rather than trusting my reading of the JSON. Two independent confirmations of
+a sign, for a finding I wanted to be true.
+
+Also nearly lost to a bad instrument first: my initial parser looked for
+`costPerTurn` where the schema is `cost_per_turn`, and returned "0 policies
+with a cost and a cost effect" -- a clean, wrong null. Caught by asking the
+parser to prove it could see ANY costs at all before believing it saw none.
+
+RESIDUAL, too small to chase: ranking by sticker ignores surcharge levers,
+which mis-orders two doctrines only when armyUpkeep exceeds ~100. Upkeep is
+0.01 per 10k men, so that is a hundred million men. Stickers (10-18) dominate
+the percentage term (1.5-2.5) for any real army.
