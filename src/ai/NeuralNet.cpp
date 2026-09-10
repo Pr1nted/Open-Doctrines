@@ -366,47 +366,6 @@ void NeuralNet::accumulateCrossEntropyInto(Scratch& s, int target, float weight,
     backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
 }
 
-void NeuralNet::accumulateCrossEntropyTargetInto(Scratch& s,
-                                                 const std::vector<float>& target,
-                                                 float weight,
-                                                 const std::vector<uint8_t>* validMask) const {
-    if (!valid() || target.empty() || s.gw.size() != m_layers.size()) return;
-    const std::vector<float>& logits = s.acts.back();
-    std::vector<float> probs;
-    if (validMask && !validMask->empty()) {
-        std::vector<float> ml(logits);
-        for (size_t i = 0; i < ml.size(); ++i)
-            if (i >= validMask->size() || !(*validMask)[i]) ml[i] = -1e9f;
-        softmax(ml, 1.0f, probs);
-    } else {
-        softmax(logits, 1.0f, probs);
-    }
-    // Renormalise the target over the legal set. A visit share for an action
-    // the mask now deletes is not evidence about the legal ones.
-    double tot = 0.0;
-    for (size_t i = 0; i < target.size() && i < probs.size(); ++i) {
-        if (validMask && !validMask->empty() &&
-            (i >= validMask->size() || !(*validMask)[i])) continue;
-        if (target[i] > 0.0f) tot += target[i];
-    }
-    if (tot <= 0.0) return;
-
-    // d(-sum_i t_i log p_i)/dz_j = p_j - t_j
-    std::vector<float> g(probs.size(), 0.0f);
-    for (size_t i = 0; i < probs.size(); ++i) {
-        double t = 0.0;
-        if (i < target.size() && target[i] > 0.0f &&
-            (!validMask || validMask->empty() ||
-             (i < validMask->size() && (*validMask)[i])))
-            t = target[i] / tot;
-        g[i] = weight * (probs[i] - (float)t);
-    }
-
-    std::vector<const float*> w; std::vector<std::pair<int,int>> d;
-    for (const Layer& L : m_layers) { w.push_back(L.w.data()); d.push_back({L.in, L.out}); }
-    backpropInto(m_sizes, s, g, w, d, m_tanhOutput);
-}
-
 void NeuralNet::accumulatePPOInto(Scratch& s, int action, float advantage,
                                   float oldLogProb, float clipEps,
                                   float entropyCoef,
@@ -755,39 +714,6 @@ void NeuralNet::serialize(std::vector<uint8_t>& out) const {
         for (float f : L.mb) putf(f);
         for (float f : L.vb) putf(f);
     }
-}
-
-bool NeuralNet::replicateOutputBlocks(const NeuralNet& narrow,
-                                     int blockSize, int blocks) {
-    if (blockSize <= 0 || blocks <= 0) return false;
-    if (m_sizes.size() != narrow.m_sizes.size()) return false;
-    if (m_layers.size() != narrow.m_layers.size() || m_layers.empty()) return false;
-    // Everything but the output width has to match, or these are not the same
-    // net with a wider head and copying rows between them means nothing.
-    if (!std::equal(m_sizes.begin(), m_sizes.end() - 1, narrow.m_sizes.begin()))
-        return false;
-    if (narrow.m_sizes.back() != blockSize) return false;
-    if (m_sizes.back() != blockSize * blocks) return false;
-
-    // Hidden layers are shared outright; only the last one fans out.
-    for (size_t l = 0; l + 1 < m_layers.size(); ++l) m_layers[l] = narrow.m_layers[l];
-
-    Layer& dst = m_layers.back();
-    const Layer& src = narrow.m_layers.back();
-    if (src.in != dst.in) return false;
-    for (int b = 0; b < blocks; ++b)
-        for (int r = 0; r < blockSize; ++r) {
-            const int to = b * blockSize + r;
-            std::copy(src.w.begin() + (size_t)r * src.in,
-                      src.w.begin() + (size_t)(r + 1) * src.in,
-                      dst.w.begin() + (size_t)to * dst.in);
-            dst.b[to] = src.b[r];
-        }
-    // Adam state deliberately NOT copied: the moments describe a different
-    // parameter set and carrying them over would apply one output's momentum to
-    // twelve others. They rebuild within a few hundred updates.
-    m_updates = narrow.m_updates;
-    return true;
 }
 
 bool NeuralNet::deserialize(const uint8_t* data, size_t size) {

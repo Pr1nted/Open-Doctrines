@@ -1,7 +1,5 @@
 #pragma once
-#include <map>
 #include "NeuralNet.h"
-#include "../BuildCosts.h"   // TroopType, for chooseTroopType
 
 struct NavyShip;   // GameStructs.h; only referenced by pointer/reference here
 #include <cstdio>
@@ -115,34 +113,6 @@ public:
     //          6 carrier, 7 research fund up, 8 research fund down,
     //          9 research focus buildings, 10 focus army, 11 focus navy
     static constexpr int ECON_ACTIONS = 12;
-    // OD_ACT_HIST=1 dumps per-module action counts at exit. See the module
-    // dispatch in runModule.
-    static int s_actHist[4][12];
-    // Mean research allocation per country-turn (OD_ACT_HIST only): the
-    // quantity the research-ratchet explanation names, as opposed to the
-    // outcome every arm has measured so far.
-    // Why an econ action was absent from the menu (OD_ACT_HIST only):
-    // offered, present but unaffordable, or not possible at all.
-    // Refused executions by reason (OD_ACT_HIST only): the 58 didNothing
-    // sites, where the policy chose and a rule declined.
-    static std::map<std::string, long long> s_noopWhy;
-    static void dumpNoopHistogram();
-    static long long s_gateOffered[12];
-    static long long s_gateNoCash[12];
-    static long long s_gateImpossible[12];
-    static double    s_researchSum;
-    static long long s_researchN;
-    static int s_offHist[4][12];
-    static long long s_navalPorts;
-    static long long s_navalShips;
-    static long long s_industryBuys;
-    static long long s_austeritySteps;
-    static void dumpActionHistogram();
-    void navalReflex(int cid);
-    void industryReflex(int cid);
-    void researchAusterityReflex(int cid);
-    std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
-    std::unordered_map<int,int> m_lastIndustryBuy;///< cid -> turn of last industry level
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,
     //           5 propose alliance, 6 propose NAP, 7 propose guarantee,
     //           8 enact a policy aimed at calming the country,
@@ -182,246 +152,6 @@ public:
                   NAVY_ACTIONS <= MAX_MODULE_ACTIONS,
                   "MAX_MODULE_ACTIONS must cover every module head");
     static constexpr int DIPLO_ACTIONS = 2; // 0=reject 1=accept
-    /**
-     * WHAT WAS ASKED. Indexes the per-kind counters in TrainStats.
-     *
-     * The diplo head is one {TRUNK_OUT, 2} map serving every one of these, and
-     * the only thing that tells it which is being asked is a one-hot in the
-     * TRUNK's input (feats[80], [89..92], [112]). So "how agreeable is the AI"
-     * has no single answer: it is five rates, and they can disagree. Counting
-     * them apart is the cheapest way to find out whether it is a pushover, a
-     * hermit, or -- the likeliest and least visible case -- both at once on
-     * different questions.
-     *
-     * OFFER_OTHER keeps the denominator honest if a new request kind is added
-     * and nobody updates offerKindOf().
-     */
-    enum OfferKind {
-        OFFER_CEASEFIRE = 0, OFFER_ALLIANCE, OFFER_NAP, OFFER_GUARANTEE,
-        OFFER_CALL_TO_ARMS, OFFER_TRADE, OFFER_OTHER, OFFER_KINDS
-    };
-    static int offerKindOf(const std::string& action);
-    static const char* offerKindName(int kind);
-    /**
-     * The same answer, recovered from a recorded state.
-     *
-     * The update runs long after the request is gone, and reads the kind back
-     * out of the one-hot decideDiplomacy wrote into `diploFeatures`. Deriving
-     * it rather than storing a second copy keeps Experience the same size and
-     * makes it impossible for the two to disagree.
-     */
-    static int offerKindFromFeatures(const std::vector<float>& feats);
-    /**
-     * ── ONE ACCEPT/REJECT PAIR PER REQUEST KIND ──
-     *
-     * The head used to be `{TRUNK_OUT, 2}` for ALL of them, with the kind
-     * reaching it only as a one-hot in the TRUNK's input -- an embedding that
-     * is simultaneously serving four other heads. That is not enough to hold
-     * two opinions, and journal 05 measured what happens when it is asked to:
-     * correcting the ceasefire reward drove the head to refuse EVERYTHING,
-     * non-aggression pacts included, and pacts transfer no territory at all.
-     * One linear map cannot say "refuse ceasefires while winning, still sign
-     * pacts", so it collapsed all five together and Sweden, whose survival runs
-     * on pacts, went from 210 to 10.
-     *
-     * With a pair per kind and every other pair masked out at decision time,
-     * one kind's policy CANNOT be smeared over another's: the gradient for a
-     * ceasefire reaches the ceasefire rows and nothing else.
-     *
-     * Old model files migrate for free. A stored `{320,2}` blob is the
-     * "gained outputs" case NeuralNet::deserialize already handles -- the two
-     * existing rows keep their trained weights and land on OFFER_CEASEFIRE,
-     * which is the kind they were overwhelmingly trained on, and the other
-     * twelve rows start from Xavier.
-     */
-    static constexpr int DIPLO_OUTPUTS = DIPLO_ACTIONS * OFFER_KINDS;
-    /**
-     * Scale on the diplo head's gradient INTO THE SHARED TRUNK.
-     *
-     * Per-kind output rows fix the readout and not the representation: every
-     * pair reads the same embedding, and ceasefires supply ~73% of the diplo
-     * head's samples, so an unscaled gradient lets one question reshape what
-     * the other six are answered from. 1.0 is the old behaviour; 0.0 detaches
-     * diplomacy from the trunk entirely, leaving it a linear readout of an
-     * embedding the four modules shape. Set with OD_DIPLO_TRUNK_GRAD.
-     */
-    static float s_diploTrunkGrad;
-    /**
-     * The same scale, applied to CEASEFIRE samples only.
-     *
-     * Journal 07 detached the whole head from the trunk and lost: that removes
-     * diplomacy's ability to shape ANY representation rather than freeing it
-     * from a monopoly. But it proved the mechanism — alliances came off a 0%
-     * constant to a 44-57% rate conditioned on the asker's strength the moment
-     * the representation stopped being rewritten under them.
-     *
-     * This is the surgical version. Ceasefires are ~73% of the diplo head's
-     * samples; silencing THEIR trunk gradient alone leaves the other four kinds
-     * shaping the embedding with their own, far smaller, contributions, and
-     * leaves every kind's own output pair training normally. If the diagnosis
-     * is right this frees the others without paying journal 07's price.
-     *
-     * 1.0 is the old behaviour and the default. Set OD_DIPLO_CEASEFIRE_TRUNK.
-     */
-    static float s_diploCeasefireTrunkGrad;
-    /**
-     * Weight on the agreement terms in `diploReward` — pacts held and
-     * co-belligerents — both 0.6 as written.
-     *
-     * Journal 05 added `+1.2*tanh(dGained/2)` because ground taken was unpriced,
-     * and rescaled nothing beside it. Journal 08 priced the result: accepting a
-     * pact pays at most +0.193 (0 -> 1 held, and less thereafter), while
-     * refusing keeps that country conquerable and two provinces pay +0.914 —
-     * **4.7 to 1 against signing**, because `declareWar` must break a pact
-     * first, so an agreement is a standing constraint on the thing the reward
-     * now pays best for.
-     *
-     * The head duly refused 53 pacts out of 53 with the net consulted on every
-     * one. That is the same failure as journal 04 and as `AI_CALL_RELUCTANCE`,
-     * a third time: a rate with no counterexample in it, caused by the reward.
-     *
-     * 1.0 is the shipped behaviour. Set OD_DIPLO_PACT_WEIGHT.
-     */
-    static float s_diploPactWeight;
-    /// OD_CEASEFIRE_CREDIT: weight on Experience::ceasefireCredit. 1 default, 0 off.
-    static float s_ceasefireCredit;
-    /**
-     * ── A THUMB ON THE SCALE FOR STAGING, THE ACTION NOBODY TAKES ──
-     *
-     * `stage` moves half a garrison onto ALLIED soil beside a shared enemy —
-     * the only way the AI ever uses an alliance to reach a front. Measured
-     * 2026-09-04 on `model.loop-base.bin`:
-     *
-     *     war action     mean advantage    policy P at T=1
-     *     stage               +1.0175              0.0
-     *     declare war         +0.4094            100.0
-     *     attack              +0.2005             85.4
-     *     reinforce           +0.0339             94.3
-     *
-     * **The highest-advantage action in the war module has zero probability.**
-     * The 1,066 staging moves seen in a training run were EXPLORATION finding
-     * it, not the policy choosing it — and every one of them paid. A collapsed
-     * action cannot recover on its own: at P=0 it is never sampled, so nothing
-     * but the entropy bonus ever pushes back.
-     *
-     * It also only became reachable recently. Staging needs an alliance, and
-     * journal 10 is the first model that signs any (83-85%, against ~0%), so
-     * the opportunities largely did not exist before.
-     *
-     * A bias rather than a reflex: `fortifyReflex` is worth +4.7 and the war
-     * head's other reflex cost 90% of a survival seat, so the safe shape here
-     * is one that leaves the policy the last word. 0 is the shipped behaviour.
-     * Set OD_WAR_STAGE_BIAS.
-     */
-    /** Compare "declare from strength" against the TARGET's army, not against
-     *  2. See the note at scriptedChoice. Changes the benchmark's ruler, so it
-     *  is off unless OD_SCRIPT_DECLARE_FIX is set. */
-    /**
-     * ── PER-HEAD ENTROPY, BECAUSE ONE NUMBER CANNOT SERVE FIVE HEADS ──
-     *
-     * `PPO_ENTROPY` is 0.01 and that value was earned: raising it to 0.03 cost
-     * the WAR module 0.31 land over six seeds, because more exploration bought
-     * attacks the policy had been right to decline. That experiment is sound
-     * and it says nothing about the other heads.
-     *
-     * Measured 2026-09-04 at temperature 1: the diplomacy head reads **H =
-     * 0.000 on every request kind, in every model** — ln2 = 0.693 is an
-     * undecided binary policy, so this one has no uncertainty anywhere. A
-     * saturated policy cannot discover the action it assigns ~0 to: PPO's ratio
-     * has nothing to work with, the alternative is never sampled, and an
-     * entropy bonus of 0.01 is negligible against advantages of order 1. It is
-     * why every reward change in journals 05-10 moved the head to a NEW CORNER
-     * rather than to a judgement.
-     *
-     * The diplo head also sees two orders of magnitude fewer samples than the
-     * war head and chooses between TWO actions rather than eight, so the
-     * coefficient that is right for one is not obviously right for the other.
-     *
-     * Indexed MOD_ECONOMY..MOD_WAR then MOD_COUNT for diplomacy. All default to
-     * PPO_ENTROPY, so an unset build behaves exactly as before.
-     *   OD_PPO_ENTROPY_HEADS="econ,pol,war,navy,diplo"
-     */
-    static float entropyFor(int head);
-    /**
-     * ── LATENT MCTS: A POLICY IMPROVEMENT OPERATOR, NOT A RE-RANKER ──
-     *
-     * `searchScores` is a beam search whose leaf evaluation is `max Q(emb)`,
-     * and Q is already what orders the actions — so it re-derives its own
-     * input. That is why depth 2 measured 65.9% -> 62.8% of the land at 8.5x
-     * the think time. The verdict was right and it is a verdict on THAT
-     * search, not on search.
-     *
-     * Three things make a search improve a policy rather than restate it:
-     *   AGGREGATION  hundreds of simulations, and the VISIT DISTRIBUTION as
-     *                the output, not the best leaf. Visit counts are a better
-     *                policy than the priors they started from.
-     *   ALLOCATION   PUCT spends simulations where the prior and the returns
-     *                disagree, instead of a fixed beam of three.
-     *   NOISE        Dirichlet at the root, in training only. Without it an
-     *                action the policy scores at 1e-33 is never tried, and
-     *                journal 13 measured exactly that: `artillery` at 1e-33,
-     *                `fort`/`port`/`specialize` at hard zero. PUCT alone cannot
-     *                rescue them because its exploration term is proportional
-     *                to the prior. This is the mechanism by which a dead action
-     *                can come back, and nothing else in this codebase has one.
-     *
-     * Rolls forward in LATENT space with `m_dynamics` (MuZero-shaped: the
-     * representation, dynamics and prediction functions all already exist), so
-     * a simulation costs one small forward pass rather than a game turn.
-     *
-     * Off unless OD_MCTS_SIMS is set. The payoff is not the inference-time
-     * re-ranking — journal 16's beam search shows that is worth little — it is
-     * training the policy toward the visit distribution, which is the operator
-     * AlphaZero is built on and which `NeuralNet::accumulateCrossEntropyInto`
-     * (masked) already supports.
-     */
-    void mctsPolicy(int module, const std::vector<float>& emb,
-                    const std::vector<bool>& valid, std::vector<float>& visitsOut,
-                    bool rootNoise);
-    /** Weight on the cross-entropy pull toward the visit distribution. Below 1
-     *  because PPO stays primary: the visits come from a LATENT rollout and
-     *  the dynamics model drifts. */
-    static constexpr float MCTS_POLICY_WEIGHT = 0.5f;
-    static constexpr int   MCTS_MAX_DEPTH   = 6;
-    static constexpr float MCTS_DISCOUNT    = 0.9f;
-    static constexpr double MCTS_ROOT_ALPHA = 0.6;   // Dirichlet concentration
-    static constexpr double MCTS_ROOT_NOISE = 0.25;  // AlphaZero's mixing weight
-    static int   mctsSims();
-    static float mctsCpuct();
-    /**
-     * ── LOSS AVERSION ON GROUND ──
-     *
-     * `global` scores land as `PHI_PROV * (log1p(now) - log1p(then))`, which is
-     * SYMMETRIC: two provinces gained pay exactly what two lost cost. Every
-     * intervention measured on 2026-09-04 that raised the rating did it the
-     * same way — growth seats up, both survival seats down (journal 27, four
-     * separate changes, same shape). The rating and the survival seats are in
-     * tension, and a symmetric land term is the obvious place that tension
-     * lives: nothing in the reward says that losing your last provinces is
-     * worse than failing to take somebody else's.
-     *
-     * This scales the NEGATIVE half only. 1.0 is the shipped behaviour.
-     * `OD_LOSS_AVERSION=2` makes ground lost cost twice what the same ground
-     * gained pays.
-     *
-     * It is deliberately NOT a bonus for surviving: a per-turn payment for
-     * still being alive is a payment for doing nothing, and this project has
-     * already found that rewarding the absence of an action teaches the
-     * absence of every action (see the note at `noopChosen`).
-     */
-    static float s_lossAversion;
-    static bool s_scriptDeclareFix;
-    /** Do not "declare from strength" while a stronger non-allied neighbour is
-     *  adjacent. The book fix the user asked for. OD_SCRIPT_LOOM_FIX=0 disables. */
-    static bool s_scriptLoomFix;
-    static float s_warBias[8];   // WAR_ACTIONS wide; see s_warStageBias note above
-    /// OD_NAVY_BIAS: the same per-action logit bias for the NAVY head, 7 wide
-    /// (hold, move, bombard, embark, land, scrap, engage). Added to measure
-    /// the embarkation sink: 0% of ~9,000 embarkations per eval reach a
-    /// hostile shore (journal 35m). Bench-only until a rule replaces it.
-    static float s_navyBias[7];
-    /** Back-compatible alias for `s_warBias[7]`; journal 11 swept this name. */
-    static float& s_warStageBias;
     /** One-hot width for (module, action) on the dynamics head's input. */
     static constexpr int DYN_ACTION_ONEHOT = MOD_COUNT * MAX_MODULE_ACTIONS;
     /**
@@ -613,50 +343,6 @@ public:
          * searchDepth() and the dynamics head.
          */
         int   searchDepth;
-        /** ── RULES THAT ARE ONLY RIGHT ON SOME RUNGS ──
-         *
-         * Measured on N24 across all three shipped rungs (campaigns off,
-         * one binary, each arm against its own control):
-         *
-         *     rung        guarantor bar   siege reflex
-         *     1 easy           -39            +8
-         *     2 normal          +1           -32
-         *     3 hard           +61           +35
-         *
-         * Both were chosen on rung 3 and both were wrong elsewhere. The
-         * guarantor bar refuses a war whose target has a larger protector;
-         * that is worth 61 points where the protectors actually intervene
-         * effectively and costs 39 where they do not, because the AI is
-         * declining wars it would have won. The siege reflex trades research
-         * for fortification under threat, which pays where the threat is
-         * real and costs 32 on the rung where it is not.
-         *
-         * A rung is not a multiplier on one game; it selects which faculties
-         * play at all (this table decides the aim head, coalitions, the
-         * action budget and the search depth). So a RULE may belong to a
-         * rung too, and saying so here keeps that decision beside the other
-         * per-rung faculties instead of hidden in the rule. */
-        /** Both TRUE on every rung, and the story of why is worth keeping.
-         *
-         * Single-rule ablations with campaigns OFF said these two belonged
-         * to the hard rung only (guarantor bar -39 at easy, siege reflex
-         * -32 at normal). Measured in the configuration that actually
-         * ships -- campaigns ON -- the signs reverse: at easy the bar is
-         * worth +52 (199 with, 147 without) and at normal both-on reads
-         * 274 against 240. Effects do not compose; an ablation is only
-         * evidence about the configuration it was taken in.
-         *
-         * The fields stay because per-rung rules are a legitimate idea and
-         * the machinery is now here, but nothing currently justifies
-         * setting one false. */
-        bool  useGuarantorBar;
-        bool  useSiegeReflex;
-        // NOTE: every row of DIFFICULTY must initialise these two. C++ fills
-        // missing initialisers with zero WITHOUT a diagnostic, so adding a
-        // field here and forgetting a row silently switches the feature off
-        // for that rung -- which happened on the first attempt and read as a
-        // 78-point regression that looked like a bad rule rather than a
-        // missing brace.
     };
     /**
      * Four rungs a player can pick, and a fifth row that only self-play uses.
@@ -959,37 +645,9 @@ public:
     // again.
     static constexpr double AI_WAR_BAR_UNCLAIMED       = 2.00; // 2.50 was too high
     static constexpr double AI_WAR_BAR_UNCLAIMED_NAVAL = 2.20; // 2.75 was too high
-    // The main aggression dial, last tuned (2.50 -> 2.00) in a game with no
-    // campaigns, one chosen war, and a second-front bar that could not fire.
-    // OD_UNCLAIMED_BAR scales BOTH, keeping the land/naval ratio.
-    static double unclaimedBar(bool naval) {
-        static const double scale = std::getenv("OD_UNCLAIMED_BAR")
-                                  ? atof(std::getenv("OD_UNCLAIMED_BAR")) : 1.0;
-        return (naval ? AI_WAR_BAR_UNCLAIMED_NAVAL : AI_WAR_BAR_UNCLAIMED) * scale;
-    }
     // Added to the bar when already fighting someone. One front at a time
     // unless the second is genuinely easy.
-    // Added to the bar when already fighting someone. One front at a time
-    // unless the second is genuinely easy.
-    //
-    // NOTE: this was UNREACHABLE until 8.6.0. With AI_MAX_CONCURRENT_WARS
-    // at 1, a country with a war already returned false at the concurrency
-    // gate before ever reaching this line, so 0.50 had never been measured
-    // in a game where it could fire. Measured at 8.6.1 and KEPT: it is a
-    // ceiling-floor dial, monotone on N24 (0.20 / 0.50 / 1.00 -> rating
-    // 283 / 270 / 238, survival 91 / 100 / 100, floor 44 / 97 / 100).
-    // 0.20 buys 13 rating on both models and costs N24 the only perfect
-    // bench any ruler has posted. N37 read 286 at 1.00, which N24 (238)
-    // contradicts -- so differences of ~10 here do NOT survive a change
-    // of model, and this constant is at the resolution limit of a
-    // three-seed bench. OD_SECOND_FRONT_BAR overrides.
     static constexpr double AI_WAR_BAR_SECOND_FRONT    = 0.50;
-    static double secondFrontBar() {
-        static const double v = std::getenv("OD_SECOND_FRONT_BAR")
-                              ? atof(std::getenv("OD_SECOND_FRONT_BAR"))
-                              : AI_WAR_BAR_SECOND_FRONT;
-        return v;
-    }
     // ONE WAR AT A TIME. Measured: at 2 this gate almost never fired, because
     // an AI rarely chose a third war anyway -- the reduction came only from the
     // superiority bar, and total declarations fell just 11%. Finishing a war
@@ -997,15 +655,6 @@ public:
     // it is the one a player can see and plan around. It restrains only wars
     // the AI CHOOSES: being attacked, honouring a guarantee and answering a
     // call to arms all still pile on regardless, so coalitions still happen.
-    //
-    // 2 since ParrotZero 8.6.0. The measurement above was taken before
-    // campaigns existed; once the campaign cap went to 2, a country could
-    // hold two commitments while being allowed one war it chose, so the
-    // second campaign could only point at somebody already fighting it.
-    // Lifting the limit: N37 266 -> 277, N24 259 -> 270 with survival
-    // 90 -> 100 and the worst seat 41 -> 97 -- not one seat lost on the
-    // whole bench. The gate DID fire; what the old measurement could not
-    // see is that the wars it blocked are the ones a commitment feeds.
     static constexpr int    AI_MAX_CONCURRENT_WARS     = 1;
     // Nor while the home front is this unhappy (Game::WAR_WEARINESS_MAX is 20).
     // 12 was most of the way to maximum unrest -- a country that far gone has
@@ -1258,19 +907,6 @@ public:
      * reason the two features sit next to each other.
      */
     static constexpr int    AI_OPENING_TURNS  = 20;
-    /**
-     * The book length, overridable for DIAGNOSIS ONLY (`OD_OPENING_TURNS`).
-     *
-     * The note above is right that training and play must see the same opening,
-     * so this is not a tuning knob — changing it at eval alone creates exactly
-     * the divergence the book exists to prevent. It is here because the
-     * `1939:NOR hood` seat opens with Norway DECLARING WAR on a third party in
-     * the turns before its largest neighbour blitzes it, and no policy bias
-     * moves that (declare-war biased to -30: bit-identical). If the decision is
-     * the book's rather than the policy's, no amount of AI work can reach it,
-     * and that is worth knowing before spending more iterations on the seat.
-     */
-    static int openingTurns();
 
     static constexpr float  BC_DEFAULT_WEIGHT = 0.30f;
     /**
@@ -1567,16 +1203,6 @@ public:
     /// Read once from OD_BC_FROM_SCRIPT. 0 = off, which is the default.
     static float s_bcWeight;
     /**
-     * Which MODULES cloning applies to. Whole-policy cloning was measured
-     * (journal 30) and imports the script's blind spots — no navy, no staging,
-     * a weak economy — into seats the model already wins, so rush FELL under
-     * it even though the script beats the model on that seat by 172 to 160.
-     * The one thing the teacher does better is a WAR-head behaviour.
-     * `OD_BC_MODULES="war"` (comma list of econ,pol,war,navy); unset = all,
-     * the shipped behaviour.
-     */
-    static bool bcCloneModule(int module);
-    /**
      * OD_BC_OBSERVE=1: ask the teacher and COUNT the agreement, but apply no
      * gradient.
      *
@@ -1726,27 +1352,6 @@ public:
     // 12 rather than `N_STEP` only because N_STEP is declared further down
     // this header; the static_assert beside it keeps the two equal.
     static constexpr int    AI_PLAN_HORIZON            = 12;
-    // ── THE PLAY HALF OF THE HORIZON (OD_PLAN_HORIZON, off) ──
-    //
-    // AI_PLAN_HORIZON does two jobs: it is the economy's planning window at
-    // PLAY time (projectIncome, for the doctrine budget and a warship berth)
-    // and, via the static_assert below, it is N_STEP -- the number of turns a
-    // TRAINING decision is credited over. The standing suspicion is that 12 is
-    // too short, since everything that survives measurement here pays off over
-    // hundreds of turns: campaigns are worth +73 at 400 turns and far less at
-    // 120, the siege research cut +113.
-    //
-    // Testing the training half needs a training run. Testing the PLAY half
-    // needs two bench arms, and this knob separates them: it changes only what
-    // projectIncome is asked for, leaving N_STEP and the assert alone. A
-    // LONGER window projects more income and so permits more spending, which
-    // is two-sided -- the AI's bankruptcy history came from spending against
-    // income it did not have.
-    static int planHorizon() {
-        static const int v = std::getenv("OD_PLAN_HORIZON")
-                           ? atoi(std::getenv("OD_PLAN_HORIZON")) : AI_PLAN_HORIZON;
-        return v > 0 ? v : AI_PLAN_HORIZON;
-    }
 
     /**
      * ── WHEN THE WORLD DECIDES YOU ARE THE PROBLEM ──
@@ -2056,27 +1661,6 @@ public:
      * war is going badly, and deciding that is exactly what the head is for.
      */
     static constexpr float  AI_TRADE_NET_FLOOR         = 120.0f;
-    /**
-     * THE AMPHIBIOUS DOCTRINE (user decision, 2026-09-04). A landing is a
-     * national undertaking with preconditions, not a port reflex. All three
-     * are enforced in bestEmbarkPort, which every cohort's embark goes
-     * through, so the script, the model and the rung obey the same doctrine.
-     *   AMPHIB_ARMY_SHARE  -- men aboard boats plus the force being loaded may
-     *                         not exceed this share of the country's army.
-     *   AMPHIB_ODDS        -- SCRIPTED COHORT ONLY: the force must outnumber
-     *                         the garrison of some hostile port on its sea by
-     *                         this ratio (stands in for resolveAssault's fort
-     *                         and doctrine modifiers). The model is not bound:
-     *                         a landing that might lose is a judgment the war
-     *                         head must be free to make and be scored on.
-     *   A port with hostile troops on its own border never embarks (no
-     *   constant: it is a rule).
-     * Before this the scripted rung loaded half of any port garrison whenever
-     * a hostile port shared its sea: champion on v8 -> v8.1 Sweden 67 -> 0,
-     * Norway 59 -> 15, from landings no player would ever mount.
-     */
-    static constexpr float  AMPHIB_ARMY_SHARE          = 0.25f;
-    static constexpr float  AMPHIB_ODDS                = 1.5f;
 
     AISystem(Game* game, const std::string& modelPath);
     ~AISystem();
@@ -2463,12 +2047,6 @@ public:
         SCRIPT_VARIANT_COUNT
     };
     /** Which exploit the control cohort plays, or -1 for the ordinary rungs. */
-    /// How often the call picker had a choice, and how often it took a
-    /// different friend than raw army would have. Public because the eval
-    /// prints it: an unchanged OUTCOME cannot distinguish "no reordering"
-    /// from "not running" -- see the saturated predictAcceptance head.
-    static long long s_callPickDecisions, s_callPickReorders;
-
     static int s_exploitVariant;
     /**
      * WHO plays that exploit, when it should not be everybody.
@@ -2505,7 +2083,6 @@ public:
 
     // ── Training progress feed (cheap, for the trainer dashboard) ──
     struct TrainStats {
-        int withdrawsOrdered = 0;       ///< battles pulled out of; see withdrawReflex
         /// Behavioural cloning: how often the teacher was consulted, and how
         /// often the policy already agreed with it. The agreement rate is the
         /// evidence that cloning is doing something -- see the note on
@@ -2572,86 +2149,6 @@ public:
          * country's side those are refusals like any other.
          */
         long long diploRequests = 0, diploAccepted = 0;
-        /**
-         * The same question split by WHAT was asked and by WHOM. See OfferKind.
-         *
-         * `diploAccepted/diploRequests` is one rate over five very different
-         * requests, and a single number cannot answer "is it a pushover". Sixty
-         * percent is correct play if those were ceasefires in wars it was
-         * losing and a catastrophe if they were calls to arms into wars it had
-         * no stake in -- and the aggregate reads the same either way.
-         *
-         * `...FromStronger` is the half that speaks to the complaint directly.
-         * A country that says yes to whatever the biggest army in the room asks
-         * is a pushover whatever its overall rate looks like, and a country
-         * that says yes only to people it could beat is the opposite: it is
-         * bullying, which reads as competence.
-         *
-         * Counted where diploRequests is, before the heuristic gates, so
-         * `sum(diploAskedOf) == diploRequests` is an invariant rather than an
-         * approximation. If those two ever disagree a gate has grown an early
-         * return above the counter.
-         */
-        long long diploAskedOf[OFFER_KINDS]         = {0};
-        long long diploSaidYes[OFFER_KINDS]         = {0};
-        long long diploAskedFromStronger[OFFER_KINDS] = {0};
-        long long diploYesToStronger[OFFER_KINDS]     = {0};
-        /// Ceasefire answers by the credit's own war-state test (0 winning,
-        /// 1 losing, 2 even). The per-kind line cannot tell a refusal while
-        /// winning from one while losing; this can (journal 35e).
-        long long cfAsked[3] = {0};
-        long long cfYes[3]   = {0};
-        /// Trades settled by RULE rather than by the head: gifts and clearly
-        /// favourable deals accepted, land-at-a-loss refused (journal 35f).
-        long long tradeRuleAccepts  = 0;
-        long long tradeRuleRefusals = 0;
-        /// Ceasefires settled by rule: accepted while losing at no cost,
-        /// refused while winning with nothing offered (journal 35g).
-        long long ceasefireRuleAccepts  = 0;
-        long long ceasefireRuleRefusals = 0;
-        /// Boat-turns with troops aboard and an enemy port known: parked with
-        /// no move order and still out of landing range, vs still sailing.
-        long long boatsParkedOutOfRange = 0;
-        long long boatsSailing = 0;
-        /**
-         * ...and how many of those the NET was actually asked about.
-         *
-         * Several heuristic gates refuse before the head is consulted — the
-         * pact cap (`AI_ALLY_MAX_PACTS`), the call-to-arms gates, the trade
-         * floor. Every one of them lands in `diploAskedOf` without a matching
-         * `diploSaidYes`, which is indistinguishable from the head saying no.
-         * So "pacts 0/64" could mean the policy refuses every pact, or that it
-         * was never asked about one — two completely different findings, and
-         * the counters as first written could not separate them.
-         *
-         * Incremented immediately before the forward pass, so
-         * `diploAskedOf - diploReachedNet` is exactly what the gates ate, and
-         * the head's real rate is `diploSaidYes / diploReachedNet`.
-         */
-        long long diploReachedNet[OFFER_KINDS] = {0};
-        /**
-         * ── IS THE HEAD DECIDED, OR IS IT COLLAPSED? ──
-         *
-         * `PPOStats::entropy` exists in NeuralNet precisely because entropy
-         * "says a head is collapsing WHILE it collapses -- by the time a bench
-         * prints 100% the run is over and the model is ruined". It is wired for
-         * the four module heads and NOT for this one, which is the head that
-         * has produced a constant in every configuration tried so far:
-         * accept-everything at 108, refuse-everything at 160,
-         * accept-ceasefires-again at 141.
-         *
-         * A rate of 0% tells you what it did. Entropy tells you whether it had
-         * a choice. Near ln2 = 0.693 the policy is still spread and the run of
-         * refusals is the situations, not the weights; near 0 the weights have
-         * decided and no reward change will move it without a retrain.
-         *
-         * Decision-time rather than training-time, so it can be read off any
-         * FINISHED model with an ordinary eval. Recovered from the chosen
-         * action's log-probability: the choice is binary once masked, so
-         * p = exp(logProb) determines the whole distribution.
-         */
-        double diploEntropySum[OFFER_KINDS] = {0.0};
-        long long diploEntropyN[OFFER_KINDS] = {0};
         /**
          * What it said when it said no. See RefusalReason.
          *
@@ -2767,26 +2264,6 @@ public:
          */
         double warAdvSum[WAR_ACTIONS] = {0.0};
         long long warAdvN[WAR_ACTIONS] = {0};
-        /**
-         * ── IS THE DIPLOMACY ADVANTAGE ABOUT THE ANSWER, OR ABOUT THE COUNTRY? ──
-         *
-         * `diploReward` is mostly `global` — how the country is doing over the
-         * window. That is a fact about the COUNTRY, not about the answer it
-         * gave, and the two are confounded in a way that matters: strong
-         * countries refuse (they do not need the deal) and also prosper, so
-         * "refuse" correlates with a good return without ever having caused
-         * one. A head fed that signal learns to refuse everything, and giving
-         * it more capacity per request kind does not help, because every kind
-         * sees the same confound.
-         *
-         * So record the advantage actually credited, split by kind and by
-         * answer. If accepting and refusing carry roughly the SAME advantage,
-         * the head is being asked to learn from a signal that does not
-         * distinguish them, and no amount of head is going to fix that.
-         * Indexed [kind][0=reject, 1=accept].
-         */
-        double diploAdvSum[OFFER_KINDS][DIPLO_ACTIONS] = {{0.0}};
-        long long diploAdvN[OFFER_KINDS][DIPLO_ACTIONS] = {{0}};
         /**
          * THE ADVANTAGE, SPLIT INTO ITS TWO HALVES.
          *
@@ -3953,24 +3430,7 @@ private:
          * Experience trains the four module heads and the stance, and their
          * states genuinely do not contain a request.
          */
-        /**
-         * The MCTS visit distribution at this decision, per module, when the
-         * search ran. Empty otherwise.
-         *
-         * This is the POLICY TARGET, and it is the whole reason the search is
-         * worth having. A search used only to pick a move is a re-ranker and
-         * journal 16 measured what that is worth. Training the policy toward
-         * the visits is the improvement operator: the visits are a better
-         * policy than the priors that produced them, so the network chases its
-         * own search, and the next search starts from a better prior.
-         */
-        std::vector<float> visits[MOD_COUNT];
         std::vector<float> diploFeatures;
-        /// Per-decision ceasefire credit, written at answer time: the reward
-        /// has no term that distinguishes a ceasefire accepted while winning
-        /// from one accepted while losing, and without one "yes" wins in
-        /// every state (journal 35d). Summed if a turn answers twice.
-        float ceasefireCredit = 0.0f;
         std::vector<std::vector<float>> diploRelCand;
         int targetChosen = -1;
         /**
@@ -4322,9 +3782,6 @@ private:
     // Province count at the END of last turn, so "did I just lose ground?" is
     // answerable from a single turn's stats.
     std::unordered_map<int, int> m_prevProvinces;
-    // The turn each country last lost a province; m_stats is rebuilt every
-    // turn, so it lives beside m_prevProvinces. See losingGround().
-    std::unordered_map<int, int> m_lastLossTurn;
     // cid -> the turn its current, unbroken run of being at war began. Erased
     // the moment it is at peace, so the entry always describes ONE war period
     // and Experience::warTurns is its age. Maintained in beginTurn only:
@@ -4400,27 +3857,6 @@ public:
      * cannot drift out of range that way.
      */
     double worldArmyPerProvince() const { return m_medianArmyPerProvince; }
-
-    /**
-     * The stance held for a country, or -1 if it holds none.
-     *
-     * Public only so the mod ABI can expose it: gearbox:neural's
-     * country_stance reports what the AI has decided it is doing with a
-     * country, which is the one piece of its reasoning that is a summary
-     * rather than a number. Observe-only there, as that whole module is --
-     * nothing on the wire can set a stance.
-     */
-    /**
-     * Why a model file that EXISTED could not be used; empty when there was no
-     * file at all. The difference matters: no file is a legitimate first run,
-     * and a refused file means this process is about to play on random weights.
-     */
-    const std::string& loadError() const { return m_loadError; }
-
-    int modStanceOf(int cid) const {
-        auto it = m_stance.find(cid);
-        return it == m_stance.end() ? -1 : it->second.first;
-    }
 private:
 
     // Running reward normalisation (mean/var per module), so advantage scale
@@ -4455,10 +3891,6 @@ private:
     // other until the gradients are summed.
     struct WorkItem {
         /// Legality mask the sample was taken under; empty = unmasked head.
-        /** MCTS visit distribution for this decision; empty when search was off.
-         *  Trained toward with masked cross-entropy — the AlphaZero policy
-         *  improvement operator. See Experience::visits. */
-        std::vector<float> visits;
         std::vector<uint8_t> validMask;
         /// The behaviour mixture; see Experience::mixScale.
         float mixScale = 1.0f, mixFloor = 0.0f;
@@ -4550,21 +3982,7 @@ private:
      * resumed run re-measures the policy it actually loaded rather than
      * inheriting a correction for a state it may no longer be in.
      */
-    /**
-     * Guard slots: the four module heads, then ONE SLOT PER OFFER KIND of the
-     * diplomacy head (MOD_COUNT + kind). The diplomacy head used to be one
-     * slot, measured on the MEAN answer distribution over every kind -- and a
-     * mixture of "always refuse ceasefires" and "always accept alliances" has
-     * plenty of entropy, so the guard read a healthy 0.5 while the
-     * non-aggression kind sat at H = 0.000 on every map (journal 34c: 0/213
-     * pacts signed, n=185 asked, entropy zero). The head is per kind; the
-     * guard has to be per kind or it is measuring the wrong thing.
-     */
-    static constexpr int GUARD_HEADS = MOD_COUNT + OFFER_KINDS;
-    static_assert(GUARD_HEADS == 11, "update the m_entropyCoef initialiser");
-    float m_entropyCoef[GUARD_HEADS] = {PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY,
-                                        PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY,
-                                        PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY};
+    float m_entropyCoef[MOD_COUNT] = {PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY, PPO_ENTROPY};
     /// Mean entropy and its ceiling per module, last batch. For the log.
     float m_headEntropy[MOD_COUNT] = {0, 0, 0, 0};
     float m_headCeiling[MOD_COUNT] = {0, 0, 0, 0};
@@ -4575,11 +3993,11 @@ private:
      * has no entropy left at all. Written between batches and read by every
      * worker during one, so no synchronisation is needed.
      */
-    float m_headDeficit[GUARD_HEADS] = {};
+    float m_headDeficit[MOD_COUNT] = {0, 0, 0, 0};
     /// Batches this head has spent under its floor. Reported so a run that is
     /// being held up by the guard is distinguishable from one that never
     /// needed it.
-    long long m_collapseBatches[GUARD_HEADS] = {};
+    long long m_collapseBatches[MOD_COUNT] = {0, 0, 0, 0};
     /**
      * Decayed counts of what each head was OFFERED and what it CHOSE.
      *
@@ -4591,11 +4009,11 @@ private:
      * Written during the serial decision phase and read in the serial guard,
      * so no synchronisation is needed.
      */
-    double m_marginalChosen[GUARD_HEADS][MAX_MODULE_ACTIONS] = {};
-    double m_marginalOffered[GUARD_HEADS][MAX_MODULE_ACTIONS] = {};
+    double m_marginalChosen[MOD_COUNT][MAX_MODULE_ACTIONS] = {};
+    double m_marginalOffered[MOD_COUNT][MAX_MODULE_ACTIONS] = {};
     /// Marginal entropy and its ceiling per module, last batch. For the log.
-    float m_marginalH[GUARD_HEADS]       = {};
-    float m_marginalCeiling[GUARD_HEADS] = {};
+    float m_marginalH[MOD_COUNT]       = {0, 0, 0, 0};
+    float m_marginalCeiling[MOD_COUNT] = {0, 0, 0, 0};
     static constexpr long long GUARD_LOG_BATCHES = 200;
     long long m_learnBatches = 0;
     /// Merged across workers each batch, then consumed by the guard.
@@ -4652,8 +4070,6 @@ private:
     /** See attackCandidates: one scan per country per turn. */
     mutable std::unordered_map<int, AttackScan> m_attackScanCache;
     mutable std::unordered_map<int, EnactPick> m_enactCache;
-    struct BombardSlot { int turn = -1; bool ok = false; };
-    mutable std::unordered_map<int, BombardSlot> m_bombardCache;
     mutable std::unordered_map<int, ShipScan> m_shipScanCache;
     /** Cleared before every exec call, set by didNothing. See noopChosen. */
     bool m_execNoop = false;
@@ -4750,7 +4166,6 @@ private:
     };
     WorldSnapshot m_world;
     CoalitionState m_coalition;
-    std::string m_loadError;   ///< see loadError()
     std::vector<std::vector<float>> m_lastRelCand;
     /** cid -> (stance, turn it was chosen). Held for STANCE_WINDOW turns. */
     std::unordered_map<int, std::pair<int,int>> m_stance;
@@ -4799,34 +4214,6 @@ private:
     NeuralNet m_leagueTrunk;
     NeuralNet m_leaguePolicy[MOD_COUNT];
     bool m_leagueLoaded = false;
-    /**
-     * This map's league opponent is the hand-written RUSHER, not a past self.
-     *
-     * Self-play without one measurably erodes rush defence: five hours of
-     * training beat its own predecessor at every merge while losing seven
-     * points of land to a rusher on five worlds of five, because nothing in
-     * the pool ever played one. The merge guard screens for that AFTER the
-     * fact and throws the run away; this trains against it instead.
-     *
-     * No file is loaded — the league countries are marked scripted and play
-     * SCRIPT_BLITZ, so `m_leagueThisCountry` must stay FALSE for them or the
-     * turn would reach for league weights that were never read.
-     */
-    bool m_leagueIsExploiter = false;
-    /**
-     * The exploiter's MAXIMUM share of the PFSP draw. 0 = off (shipped).
-     *
-     * Uncapped it took 7 maps of 8 (journal 20), because PFSP weights by loss
-     * rate and the policy never gets good at a blitz — so the weighting keeps
-     * feeding it and the run specialises against one opponent. A league that is
-     * 88% rusher is not a league; it is a different single opponent, and that
-     * run scored 102 against the 162 it started from.
-     *
-     * `OD_LEAGUE_EXPLOIT=0.25` caps it at a quarter of the draw. Bare
-     * `OD_LEAGUE_EXPLOIT=1` is read as "on at the default cap" rather than
-     * "always", which is the reading that produced journal 20.
-     */
-    static float s_leagueExploitCap;
     std::unordered_set<int> m_leagueCids;
     bool m_leagueThisCountry = false;
     /**
@@ -4897,11 +4284,8 @@ private:
      * Static because the AISystem is destroyed and rebuilt on every map
      * rotation; per-instance counters would reset before they meant anything.
      */
-    /** +1: the EXPLOITER slot. See loadLeagueOpponent -- PFSP treats it as an
-     *  ordinary opponent, so the pool plays it more often exactly while the
-     *  policy is bad at it, which is the property wanted. */
-    static int s_leagueGames[LEAGUE_CHECKPOINTS + 1];
-    static int s_leagueLosses[LEAGUE_CHECKPOINTS + 1]; // maps the frozen side won
+    static int s_leagueGames[LEAGUE_CHECKPOINTS];
+    static int s_leagueLosses[LEAGUE_CHECKPOINTS];   // maps where the frozen side held more land
     /** Which slot the current map is playing against, or -1. */
     int m_leagueSlot = -1;
     /** Score the finished map against the opponent that played it. */
@@ -4960,8 +4344,6 @@ private:
      * the country's provinces with two hash lookups -- the executor was already
      * paying it on every turn this action was chosen.
      */
-    /// nextIndustryBuy asked about one named province; see the war economy.
-    bool industryBuyAt(int cid, int pid, int& outLevel, float& outCost) const;
     bool nextIndustryBuy(int cid, int& outPid, int& outLevel, float& outCost) const;
     bool nextSpecBuy(int cid, int& outPid, const char*& outRes, float& outCost) const;
     /** The port province this country would load troops at, and its garrison.
@@ -5022,8 +4404,6 @@ private:
      *  order? The mask's question, and the first thing the executor's issuing
      *  loop asks of each candidate. */
     bool attackAvailable(int cid) const;
-    /// Warship + affordable researched ammunition + an enemy port in range.
-    bool bombardAvailable(int cid) const;
     /**
      * The doctrine this country would enact, or nullptr.
      *
@@ -5081,6 +4461,18 @@ private:
     const DifficultyProfile& difficulty() const;
 public:
     /**
+     * The stance this AI is playing toward a country: the same value
+     * stanceOf returns, exposed for the mod ABI.
+     *
+     * -1 for a country it does not play or has not given a stance to; the wire
+     * turns that into GEARBOX_INVALID. See Game::modCountryStance.
+     */
+    int modStanceOf(int cid) const {
+        auto it = m_stance.find(cid);
+        return it == m_stance.end() ? -1 : it->second.first;
+    }
+
+    /**
      * Gradient updates behind one module's policy head.
      *
      * Reported by the eval because the reward-term gates cannot be read without
@@ -5134,8 +4526,7 @@ private:
     static constexpr int MAX_REINFORCE_ORDERS = 4;
     static constexpr int MAX_GARRISON_ORDERS  = 3;
     /** Move half the strongest adjacent friendly garrison into `dstPid`. */
-    /// want>0 asks for that many men (see OD_REINF_SIZED); 0 keeps the flat 50.
-    bool reinforceProvince(int cid, int dstPid, long long want = 0);
+    bool reinforceProvince(int cid, int dstPid);
     /** Unsampled defensive doctrine — see the note on the definition. */
     void garrisonReflex(int cid);
     // Peacetime housekeeping the policy should not be gambling on: shuffling
@@ -5163,29 +4554,6 @@ private:
      * is heading for the wall.
      */
     void austerityReflex(int cid);
-    void siegeReflex(int cid);
-    void pacificationReflex(int cid);
-    void campaignReflex(int cid);
-    void peaceReflex(int cid);
-    /** What a campaign is projected to cost and whether it can be finished.
-     *  See projectCampaign: the AI's lookahead, in closed form over the
-     *  campaign's whole deadline, using the resolver's own arithmetic. */
-    struct Projection {
-        bool  finishes = false;      ///< enemy beaten inside the deadline
-        int   turns = 0;             ///< how long it took, or the deadline
-        double ourLosses = 0.0;      ///< men spent getting there
-        double survivingShare = 1.0; ///< of the committed force
-    };
-    Projection projectCampaign(int cid, int enemyCid, int stagingPid,
-                               int targetPid, long long committed) const;
-    /// Which kind of soldier to raise now; see OD_TROOP_KINDS.
-    TroopType chooseTroopType(int cid) const;
-    void withdrawReflex(int cid);
-    void callToArmsReflex(int cid);
-    float siegeEarmark(int cid) const;
-    bool besieged(const CountryStat& st) const;
-    bool underSiege(int cid) const;
-    bool losingGround(int cid) const;
     /** Buys the fort the economy head never buys. See the definition. */
     void fortifyReflex(int cid);
     /**
@@ -5230,42 +4598,6 @@ private:
      * bankruptcy cascade, which is the thing this exists to avoid.
      */
     static constexpr double AI_AUSTERITY_RUNWAY_TURNS = 8.0;
-
-    /** LOSING GROUND: a province was lost within this many turns. While it
-     *  holds, no action may add per-turn upkeep -- the income that would pay
-     *  for it is the thing being taken. Norway, 1939, one rushing neighbour
-     *  (seed 20260801): income 48 -> 13 in four turns while the politics head
-     *  added 12 of doctrine upkeep and 7.5 of minority programmes against a
-     *  projected budget; bankrupt at turn 5, minority cut, rebellion, East and
-     *  Central Norway seceded. Without those two additions the books balance
-     *  (expenses 11 against income 13) and the cascade never starts. */
-    static constexpr int    AI_LOSS_FREEZE_TURNS = 8;
-
-    /** A campaign commits this share of the national army to one target,
-     *  for this many turns, and only against a target the ordinary attack
-     *  rule already rates this well. Deliberately modest: the siege
-     *  reflex's earmark starved the industry head when it was not
-     *  (journal 39g), and a commitment that empties the country is the
-     *  Norway failure with extra steps. */
-    // 0.20 since ParrotZero 8.4.0. 0.35 was a guess never swept until it
-    // was: at 0.20 three models go 206 -> 250, 224 -> 253 and 235 -> 227,
-    // mean 222 -> 243, and NO model's worst seat gets worse (26->31,
-    // 28->41, 18->36). At 0.55 the floor collapses to 8. The size of the
-    // committed force is the ceiling-floor exchange rate for campaigns --
-    // a third of the army is a spearhead that costs the seat its defence,
-    // a fifth is one that does not. OD_CAMPAIGN_SHARE overrides.
-    static constexpr float  AI_CAMPAIGN_SHARE      = 0.35f;
-    static constexpr int    AI_CAMPAIGN_DEADLINE   = 12;   // == the credit horizon
-    static constexpr float  AI_CAMPAIGN_MIN_MARGIN = 1.15f;
-    /** A campaign that would end with less than this share of its committed
-     *  force intact is not worth opening, however good the target. */
-    static constexpr double AI_CAMPAIGN_MIN_LEFT   = 0.25;
-    /** When the treasury would go negative THIS turn, austerity keeps cutting
-     *  until the books balance or nothing is left, up to this many cuts. One
-     *  cut a turn cannot answer a 20-a-turn collapse, and the bankruptcy
-     *  cascade that follows charges +20% rebellion and a minority cut of its
-     *  own -- the AI making the same cuts a turn earlier pays neither. */
-    static constexpr int    AI_AUSTERITY_MAX_CUTS = 6;
 
     /**
      * What share of the scripted training cohort plays something OTHER than the
@@ -5424,11 +4756,8 @@ private:
      * permitted entry wins, so the rules never have to re-check the conditions
      * the masks already enforce.
      */
-    /** `bookTurn`: this is one of the SEAT's opening-book turns rather than a
-     *  rung country's turn. The looming-neighbour rule applies only then — on
-     *  the whole rung it annihilated the 1914:SWE seat (journal 34b). */
     int  scriptedChoice(int module, int cid, const std::vector<bool>& valid,
-                        int variant = SCRIPT_AGGRESSOR, bool bookTurn = false) const;
+                        int variant = SCRIPT_AGGRESSOR) const;
     /** Whether the scripted opponent accepts a request. */
     bool scriptedDiplomacy(int targetCid, const std::string& action,
                            const std::string& sourceIso) const;

@@ -170,21 +170,6 @@ public:
                                     const std::vector<uint8_t>* validMask = nullptr) const;
 
     /**
-     * The same, against a target DISTRIBUTION rather than one index.
-     *
-     * What a search returns is a distribution over actions -- MCTS visit
-     * counts -- and that distribution is the point: it carries how much better
-     * the second-best action was, which a one-hot throws away. Training toward
-     * it is the AlphaZero policy improvement step.
-     *
-     * `target` is renormalised over the LEGAL set, so a caller may pass raw
-     * visit shares without worrying whether the mask has since changed.
-     */
-    void accumulateCrossEntropyTargetInto(Scratch& s, const std::vector<float>& target,
-                                          float weight,
-                                          const std::vector<uint8_t>* validMask = nullptr) const;
-
-    /**
      * What one PPO sample did, so a caller can watch the policy's health
      * rather than infer it afterwards from a benchmark.
      *
@@ -206,25 +191,6 @@ public:
                            const std::vector<uint8_t>* validMask = nullptr,
                            float mixScale = 1.0f, float mixFloor = 0.0f,
                            PPOStats* out = nullptr) const;
-    /**
-     * Fill this net's output blocks by REPEATING a narrower net's outputs.
-     *
-     * For a head that gained outputs because one decision is now made in
-     * several contexts -- the same accept/reject asked once per request kind --
-     * rather than because there are new actions to choose from. deserialize's
-     * ordinary migration is right for new ACTIONS and starts them at Xavier,
-     * which is the correct neutral prior for something nothing has been learned
-     * about. It is the WRONG prior here: the other blocks are not new choices,
-     * they are the choice that was already trained, being asked about something
-     * else. Starting them neutral silently discards a trained policy for every
-     * context but the first, and the model's behaviour changes the instant it
-     * loads -- the same objection the input-widening path already makes.
-     *
-     * `narrow` must have identical layer sizes except that its output is
-     * `blockSize`, and this net's must be `blockSize * blocks`. Returns false
-     * rather than half-copying if that does not hold.
-     */
-    bool replicateOutputBlocks(const NeuralNet& narrow, int blockSize, int blocks);
     /** log pi(a|s) at temperature 1 for the logits currently in `s`. */
     static float logProbOf(const std::vector<float>& logits, int action);
     /**
