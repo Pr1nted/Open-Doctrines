@@ -9,6 +9,7 @@
 #include "SaveManager.h"
 #include "ai/AISystem.h"
 #include "raymath.h"
+#include <bit>          // std::popcount -- MSVC has no __builtin_popcount
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -7569,7 +7570,7 @@ void Game::buildNavGrid() {
     const int label = (int)denseLabel.size();
     long long edges = 0, cells = 0;
     for (size_t i = 0; i < n; ++i)
-        if (m_nav.navigable[i]) { ++cells; edges += __builtin_popcount(m_nav.link[i]); }
+        if (m_nav.navigable[i]) { ++cells; edges += std::popcount(m_nav.link[i]); }
     printf("  Sea routing: %dx%d cells, %d raster body(ies), %lld navigable cells, "
            "%lld sailable edges, %d reachable sea(s)\n",
            m_nav.w, m_nav.h, label, cells, edges, seas);

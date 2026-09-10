@@ -18,6 +18,9 @@
 // For the connect below. mbedtls_net_connect has no timeout of its own, so the
 // socket calls have to be made here.
 #if defined(_WIN32)
+// NOMINMAX before winsock2.h, which drags in windows.h: without it `min`
+// and `max` become macros and the std::min below stops parsing.
+#define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
