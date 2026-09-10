@@ -82,11 +82,18 @@
   than a screen wide -- true looking at the whole planet, and false the moment
   you go close, which is exactly when anyone would notice. Close in you were
   looking at a small patch of a half-size texture stretched over the screen, and
-  it read as a low-resolution map because it was one. The composite is now sized
-  from what is actually on screen, so one texel is about one pixel at whatever
-  distance the camera is at: full resolution down at the surface, and LESS than
-  before out at arm's length, where the old fixed half was more than the view
-  could use.
+  it read as a low-resolution map because it was one.
+
+  Zoomed in it now composites only the ground actually on screen, at the full
+  resolution of the raster, and the shader samples that patch instead of the
+  whole map. The far view is unchanged -- there a window would cost the wrap
+  handling and buy nothing. The patch is bounded by the VIEWPORT rather than by
+  the horizon, which at the nearest zoom is the difference between 21 degrees of
+  planet and 42, and it goes in as two pieces when it straddles the
+  antimeridian, where the map wraps and a patch cannot. Close in this costs
+  about 16 MB against the 134 MB a full-resolution copy of the whole map would
+  need, and resolves coastlines and islands that neither of the earlier sizes
+  could.
 
 - **Shells arc.** Artillery and naval bombardment no longer draw as a straight
   line from gun to target: the flight leaves the ground, rises and comes down on

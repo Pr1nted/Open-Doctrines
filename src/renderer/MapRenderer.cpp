@@ -727,63 +727,180 @@ std::vector<MapRenderer::Layer> MapRenderer::layerStack(const LandSeaMap& landSe
     return out;
 }
 
-// How wide the composited surface needs to be for the globe to look sharp at the
-// distance it is currently at.
+// ── What the composite has to hold, and how big to make it ──
 //
-// It used to be a flat half of the raster, on the reasoning that "the whole
-// planet is at most a screen wide". That is true looking at the whole planet and
-// false the moment you zoom in, which is exactly when anyone would notice -- the
-// close view is a small patch of a 4096-wide texture stretched over the screen,
-// and it reads as a low-resolution map because it is one.
+// Far out, the whole planet is on screen and the answer is the whole map at a
+// resolution the view can actually use. Zoomed in, the visible ground is a small
+// cap: compositing the whole map to serve it spends every texel outside the cap
+// on nothing, which is why the close view needed a 134 MB full-resolution copy
+// to look sharp. A window over just that cap gets the same sharpness out of a
+// target a quarter the size, because none of it is wasted.
 //
-// So it is sized from what is actually on screen: enough texels across the
-// planet that one texel is about one pixel at the current distance. Rounded to
-// powers of two so a slow zoom crosses a handful of sizes rather than rebuilding
-// every frame, and capped at the raster's own resolution -- past that there is
-// nothing more to show.
-int MapRenderer::surfaceWidthFor(float dist) const {
-    if (dist < 0.001f) dist = 0.001f;
-    const float pixelsPerRadius = ((float)m_screenH * 0.5f)
-                                / (tanf(45.0f * 0.5f * DEG2RAD) * dist);
-    int want = (int)(2.0f * PI * pixelsPerRadius);
-    int w = 1024;
-    while (w < want && w < m_mapW) w *= 2;
-#if defined(PLATFORM_WEB) || defined(PLATFORM_ANDROID) || defined(GRAPHICS_API_OPENGL_ES2)
-    // A full-resolution copy of the shipped raster is 134 MB of VRAM. A desktop
-    // already holds several textures that size; a phone and a browser tab do
-    // not, and a failed allocation there costs the whole view rather than some
-    // sharpness.
-    if (w > 4096) w = 4096;
-#endif
-    return std::min(w, m_mapW);
+// The window is deliberately larger than the cap. Back faces are culled but the
+// near hemisphere is not clipped to what is visible, so fragments beyond the
+// horizon are still rasterised; they end up off screen, but a window that only
+// just covered the cap would have them sampling past its edge, and the bilinear
+// filter would drag that edge inward into view.
+MapRenderer::SurfaceWindow MapRenderer::surfaceWindow() const {
+    SurfaceWindow w;
+    const int half = m_mapW > 4096 ? m_mapW / 2 : m_mapW;
+    if (m_view != ViewMode::Globe || !m_globe) {
+        w.texW = half; w.texH = std::max(1, half * m_mapH / m_mapW);
+        return w;
+    }
+
+    const float dist = std::max(1.0001f, m_globe->distance());
+    const float lat  = m_globe->latitude();
+
+    // ── How far round the planet the SCREEN reaches ──
+    //
+    // Not how far the horizon reaches. Close in they are very different: at the
+    // nearest zoom the horizon is 42 degrees away and the viewport shows barely
+    // 21, so a window sized to the horizon is four times the ground it needs.
+    // Sized to the horizon it also reached over the pole, which forces the whole
+    // map -- the first version of this fell back to the full composite every
+    // time and was byte-for-byte the thing it was replacing.
+    //
+    // A point `th` round from under the camera projects to radius
+    // f*sin(th)/(dist-cos(th)), which climbs with th, so walking outwards and
+    // stopping at the corner of the screen finds the angle wanted.
+    const float horizon = acosf(1.0f / dist);
+    const float f = ((float)m_screenH * 0.5f) / tanf(45.0f * 0.5f * DEG2RAD);
+    const float rMax = 0.5f * sqrtf((float)m_screenW * (float)m_screenW +
+                                    (float)m_screenH * (float)m_screenH) * 1.06f;
+    float cap = horizon;
+    for (int i = 1; i <= 48; ++i) {
+        const float th = horizon * (float)i / 48.0f;
+        const float den = dist - cosf(th);
+        const float r = (den > 0.01f) ? f * sinf(th) / den : 1e9f;
+        if (r > rMax) { cap = th; break; }
+    }
+    // A margin, then clamped to the horizon: there is nothing beyond it to hold.
+    cap = std::min(cap * 1.12f + 0.02f, horizon);
+
+    // Longitude covers more ground per radian the nearer the pole. A cap that
+    // reaches over the pole spans every longitude, and there the wrap stops
+    // meaning anything at all.
+    const float alat = fabsf(lat);
+    float dLon;
+    if (alat + cap >= PI * 0.5f - 0.01f) dLon = PI;
+    else dLon = asinf(std::min(1.0f, sinf(cap) / cosf(alat)));
+
+    w.du = dLon / PI;              // dLon is a half-width; the map spans 2*PI
+    w.dv = (cap * 2.0f) / PI;
+    if (w.du >= 0.75f || w.dv >= 0.75f) {
+        // Most of the map anyway: a window would cost the wrap handling and buy
+        // nothing.
+        w.texW = half; w.texH = std::max(1, half * m_mapH / m_mapW);
+        return w;
+    }
+
+    const float uc = (m_globe->longitude() + PI) / (2.0f * PI);
+    const float vc = (PI * 0.5f - lat) / PI;
+    w.u0 = uc - w.du * 0.5f;
+    w.v0 = vc - w.dv * 0.5f;
+
+    // ── Quantised, so panning does not recomposite every frame ──
+    //
+    // The window follows the camera, and a window that follows exactly is a
+    // full rebuild of a multi-megabyte target on every mouse move. Snapped to a
+    // grid an eighth of its own size, it rebuilds once per eighth of a turn.
+    const float gx = w.du / 8.0f, gy = w.dv / 8.0f;
+    w.u0 = floorf(w.u0 / gx) * gx;
+    w.v0 = floorf(w.v0 / gy) * gy;
+    // Grown by one grid step each way so the snap can never uncover an edge.
+    w.u0 -= gx; w.du += gx * 2.0f;
+    w.v0 -= gy; w.dv += gy * 2.0f;
+    // Vertically the map does not wrap, so a window off the top or bottom is
+    // clamped rather than folded.
+    if (w.v0 < 0.0f) { w.dv += w.v0; w.v0 = 0.0f; }
+    if (w.v0 + w.dv > 1.0f) w.dv = 1.0f - w.v0;
+    if (w.dv <= 0.001f) { w.texW = half; w.texH = std::max(1, half * m_mapH / m_mapW); return w; }
+
+    // ── How many texels, and why not a power of two ──
+    //
+    // Two ceilings: what the screen can show, and what the raster can supply.
+    // The smaller wins, and here it is almost always the raster -- close in the
+    // ground is magnified, so the source runs out of detail long before the
+    // screen runs out of pixels.
+    //
+    // The scale that matters for the first is the one directly under the camera,
+    // f/(dist-1) pixels per radian, NOT the projected radius of the whole sphere:
+    // sizing by the latter asks for a quarter of the texels the middle of the
+    // view actually uses, because that is where the ground is nearest.
+    //
+    // Sized to that, in steps of 256 rather than doublings. Rounding up to a
+    // power of two was asking for two to four times the texels the window could
+    // use, which ran into the memory ceiling and got halved back to barely more
+    // than the full composite gave -- a window costing an extra resample to
+    // deliver the same picture. Nothing here needs a power of two: the patch is
+    // clamped, not wrapped, and carries no mipmaps.
+    const float perRadian = f / std::max(dist - 1.0f, 0.05f);
+    const float wantW = std::min(w.du * 2.0f * PI * perRadian, w.du * (float)m_mapW);
+    auto step256 = [](float v, int lo, int hi) {
+        int n = ((int)(v + 128.0f) / 256) * 256;
+        return std::clamp(n, lo, hi);
+    };
+    w.texW = step256(wantW, 512, 4096);
+    w.texH = step256(w.texW * (w.dv * (float)m_mapH) / (w.du * (float)m_mapW), 256, 4096);
+
+    // A last ceiling on memory, for a window that is large AND close. The full
+    // composite costs 34 MB; a window is allowed more, because it is the close
+    // view and the only one that can use it, but not without limit.
+    const long long budget = 4096LL * 3072LL;
+    while ((long long)w.texW * w.texH > budget && w.texW > 512) {
+        w.texW = step256(w.texW * 0.75f, 512, 4096);
+        w.texH = step256(w.texH * 0.75f, 256, 4096);
+    }
+    w.full = false;
+    return w;
 }
 
 void MapRenderer::buildSurface(const LandSeaMap& landSea) {
-    const int w = (m_view == ViewMode::Globe && m_globe)
-                ? surfaceWidthFor(m_globe->distance())
-                : (m_mapW > 4096 ? m_mapW / 2 : m_mapW);
-    const int h = std::max(1, w * m_mapH / m_mapW);
-    if (m_surface.id == 0 || m_surface.texture.width != w || m_surface.texture.height != h) {
+    const SurfaceWindow win = surfaceWindow();
+    if (m_surface.id == 0 || m_surface.texture.width != win.texW ||
+        m_surface.texture.height != win.texH) {
         if (m_surface.id > 0) UnloadRenderTexture(m_surface);
-        m_surface = LoadRenderTexture(w, h);
+        m_surface = LoadRenderTexture(win.texW, win.texH);
         // Bilinear, or the sphere shows the raster's texels at the limb where
         // it is most compressed.
         SetTextureFilter(m_surface.texture, TEXTURE_FILTER_BILINEAR);
     }
+    if (m_globe) m_globe->setSurfaceWindow({win.u0, win.v0}, {win.du, win.dv});
 
     BeginTextureMode(m_surface);
     ClearBackground(BLANK);
+    const float W = (float)win.texW, H = (float)win.texH;
     for (const Layer& l : layerStack(landSea)) {
         if (l.tex.id == 0) continue;
+        const float tw = (float)l.tex.width, th = (float)l.tex.height;
         // NEGATIVE source height, and it is not a trick: a render target is
         // stored bottom-up, so anything drawn into it arrives upside down when
         // sampled. Flipping each layer on the way in cancels that exactly, and
         // costs nothing -- the alternative is a flag the globe has to carry and
         // every future consumer of this surface has to remember.
+        if (win.full) {
+            DrawTexturePro(l.tex, {0.0f, 0.0f, tw, -th}, {0.0f, 0.0f, W, H},
+                           {0.0f, 0.0f}, 0.0f, l.tint);
+            continue;
+        }
+        // A window can straddle the antimeridian, where the source wraps and the
+        // patch does not, so it goes in as up to two pieces.
+        float x0 = fmodf(win.u0, 1.0f);
+        if (x0 < 0.0f) x0 += 1.0f;
+        const float srcY = win.v0 * th, srcH = win.dv * th;
+        const float firstU = std::min(win.du, 1.0f - x0);
         DrawTexturePro(l.tex,
-                       {0.0f, 0.0f, (float)l.tex.width, -(float)l.tex.height},
-                       {0.0f, 0.0f, (float)w, (float)h},
+                       {x0 * tw, srcY, firstU * tw, -srcH},
+                       {0.0f, 0.0f, W * (firstU / win.du), H},
                        {0.0f, 0.0f}, 0.0f, l.tint);
+        if (firstU < win.du) {
+            const float restU = win.du - firstU;
+            DrawTexturePro(l.tex,
+                           {0.0f, srcY, restU * tw, -srcH},
+                           {W * (firstU / win.du), 0.0f, W * (restU / win.du), H},
+                           {0.0f, 0.0f}, 0.0f, l.tint);
+        }
     }
     EndTextureMode();
     m_surfaceDirty = false;
@@ -1159,7 +1276,15 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
         // The wanted resolution is part of the signature, so zooming in rebuilds
         // the composite at the size the new view needs without anyone having to
         // remember to say so.
-        sig = (sig ^ (unsigned long long)surfaceWidthFor(m_globe->distance())) * 1099511628211ULL;
+        {
+            const SurfaceWindow sw = surfaceWindow();
+            auto q = [](float f) { return (unsigned long long)(long long)(f * 100000.0f); };
+            sig = (sig ^ q(sw.u0)) * 1099511628211ULL;
+            sig = (sig ^ q(sw.v0)) * 1099511628211ULL;
+            sig = (sig ^ q(sw.du)) * 1099511628211ULL;
+            sig = (sig ^ q(sw.dv)) * 1099511628211ULL;
+            sig = (sig ^ (unsigned long long)sw.texW) * 1099511628211ULL;
+        }
         for (const Layer& l : layerStack(landSea)) {
             sig = (sig ^ l.tex.id) * 1099511628211ULL;
             sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;

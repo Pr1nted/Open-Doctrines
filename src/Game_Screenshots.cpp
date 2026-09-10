@@ -108,6 +108,10 @@ const Shot SHOTS[] = {
     {"globe-navy",       60, true},
     {"globe-resources",  60, true},
     {"globe-close",      60, true},
+    // Straddling the antimeridian, where the map wraps and the composited patch
+    // does not -- so it goes in as two pieces, and a seam here is the failure
+    // that costs nothing to look for and is invisible everywhere else.
+    {"globe-dateline",   60, true},
     {"globe-orders",     40, true},
     {"globe-orders-navy",40, true},
     {"globe-names",   60, true},
@@ -825,7 +829,7 @@ bool Game::tickScreenshotTour() {
             m_recruitType = (name == "army-mech") ? TROOP_MECHANISED : TROOP_LINE;
         } else if (name == "orders-desktop" || name == "orders-portrait" ||
                    name == "orders-phase" || name.rfind("globe-orders", 0) == 0 ||
-                   name == "globe-close") {
+                   name == "globe-close" || name == "globe-dateline") {
             // The strip is greyed until a turn has resolved, and a loaded save
             // has no order log (it is per-turn display state, not saved). So
             // put a plausible turn in it: the option lit, the overlay drawn,
@@ -942,13 +946,18 @@ bool Game::tickScreenshotTour() {
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
                 m_renderer->zoomGlobe(5.0f);   // down to just above the surface
             }
-            if (name == "globe-close") {
+            if (name == "globe-close" || name == "globe-dateline") {
                 // Right down on the surface: the view where the composited
                 // texture's resolution is what you are actually looking at.
                 m_activeViewTab = 0;
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
-                m_renderer->snapTo((float)m_landSea.getWidth() * 0.53f,
-                                   (float)m_landSea.getHeight() * 0.30f,
+                // The Bering strait for the dateline shot: land on BOTH sides
+                // of the wrap, which is the only place a seam in the two-piece
+                // composite would actually be visible. Open ocean under cloud
+                // proves nothing, and was the first thing this pointed at.
+                const bool dl = (name == "globe-dateline");
+                m_renderer->snapTo((float)m_landSea.getWidth()  * (dl ? 0.992f : 0.53f),
+                                   (float)m_landSea.getHeight() * (dl ? 0.16f  : 0.30f),
                                    m_renderer->getMinZoom() * 8.0f);
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
                 m_renderer->zoomGlobe(6.0f);

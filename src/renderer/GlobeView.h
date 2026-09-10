@@ -217,6 +217,15 @@ public:
     }
 
     /// 0 = laid out flat, 1 = a sphere. Anything between is the unroll.
+    /// Which part of the map the surface texture holds. Origin is the top-left
+    /// corner in map UV, size is how much of the map it spans; (0,0)+(1,1) is
+    /// the whole thing. Set by MapRenderer, which is what composites it.
+    void setSurfaceWindow(Vector2 origin, Vector2 size) {
+        m_winOrigin = origin;
+        m_winSize   = {size.x > 0.0001f ? size.x : 1.0f,
+                       size.y > 0.0001f ? size.y : 1.0f};
+    }
+
     void setMorph(float t) { m_morph = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); }
     float morph() const { return m_morph; }
 
@@ -300,6 +309,7 @@ private:
     int m_uMoonPos = -1, m_uMoonR = -1;
     int m_uCloudTex = -1, m_uCloudR = -1, m_uCloudRot = -1, m_uCloudAmt = -1;
     int m_uMorph = -1;
+    int m_uWinOrigin = -1, m_uWinSize = -1;
     Sun m_sun{};
     Night m_night{};
     bool m_lit = true;
@@ -322,6 +332,8 @@ private:
     std::shared_ptr<Bake> m_bake;
     float m_cloudPhase = 0.0f;
     float m_morph = 1.0f;
+    Vector2 m_winOrigin{0.0f, 0.0f};
+    Vector2 m_winSize{1.0f, 1.0f};
     Vector3 m_sheetEye{0.0f, 0.0f, 2.55f};
     Vector3 m_sheetTarget{0.0f, 0.0f, 0.0f};
     int m_month = 5;                          ///< 0 = January
@@ -332,6 +344,7 @@ private:
     void startSkyBake();
     void buildSkyTextures();
     void drawSky(const Camera3D& cam);
+    void setWindowUniforms(bool on) const;
 
     // Camera, in spherical coordinates about the origin.
     float m_lat = 0.35f;      ///< radians, + is north

@@ -92,7 +92,14 @@ public:
 
     void drawCountryNames();
     void anchorSheetToFlat();
-    int  surfaceWidthFor(float dist) const;
+    /// The part of the map the composite needs to hold, and how big a target to
+    /// hold it in. `full` means the whole map, which is what the far view wants.
+    struct SurfaceWindow {
+        float u0 = 0.0f, v0 = 0.0f, du = 1.0f, dv = 1.0f;
+        int   texW = 1024, texH = 512;
+        bool  full = true;
+    };
+    SurfaceWindow surfaceWindow() const;
     /// 1 on the flat map, and on the globe how square-on the ground is.
     float faceCosine(float px, float py) const;
     void finishTransition();

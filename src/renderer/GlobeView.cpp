@@ -320,8 +320,23 @@ uniform float cloudAmt;
 // the map, drawn the way the map is drawn -- so daylight comes back as the
 // planet flattens and the terminator sweeps off it rather than being cut away.
 uniform float morph;
+// ── Sampling a WINDOW of the map instead of all of it ──
+//
+// Zoomed in, the visible ground is a small cap of the planet, and compositing
+// the whole map to serve it wastes almost every texel it makes. The surface
+// texture then holds just the region on screen, and these two say where that
+// region sits: the fragment's place on the planet is remapped into the patch
+// before it is sampled.
+//
+// Identity is origin (0,0) size (1,1) -- the whole map, and exactly the lookup
+// this did before. fract() on the horizontal, because a window is free to
+// straddle the antimeridian where the map wraps and the patch does not.
+uniform vec2 winOrigin;
+uniform vec2 winSize;
 void main() {
-    vec4 texel = texture2D(texture0, fragTexCoord) * colDiffuse;
+    vec2 mapUv = vec2(fract(fragTexCoord.x - winOrigin.x) / winSize.x,
+                      (fragTexCoord.y - winOrigin.y) / winSize.y);
+    vec4 texel = texture2D(texture0, mapUv) * colDiffuse;
     float d = dot(normalize(fragNormal), normalize(sunDir));
     float lit = smoothstep(-softness, softness, d);
     // ── The moon's shadow ──
@@ -425,9 +440,24 @@ uniform float cloudAmt;
 // the map, drawn the way the map is drawn -- so daylight comes back as the
 // planet flattens and the terminator sweeps off it rather than being cut away.
 uniform float morph;
+// ── Sampling a WINDOW of the map instead of all of it ──
+//
+// Zoomed in, the visible ground is a small cap of the planet, and compositing
+// the whole map to serve it wastes almost every texel it makes. The surface
+// texture then holds just the region on screen, and these two say where that
+// region sits: the fragment's place on the planet is remapped into the patch
+// before it is sampled.
+//
+// Identity is origin (0,0) size (1,1) -- the whole map, and exactly the lookup
+// this did before. fract() on the horizontal, because a window is free to
+// straddle the antimeridian where the map wraps and the patch does not.
+uniform vec2 winOrigin;
+uniform vec2 winSize;
 out vec4 finalColor;
 void main() {
-    vec4 texel = texture(texture0, fragTexCoord) * colDiffuse;
+    vec2 mapUv = vec2(fract(fragTexCoord.x - winOrigin.x) / winSize.x,
+                      (fragTexCoord.y - winOrigin.y) / winSize.y);
+    vec4 texel = texture(texture0, mapUv) * colDiffuse;
     float d = dot(normalize(fragNormal), normalize(sunDir));
     float lit = smoothstep(-softness, softness, d);
     // ── The moon's shadow ──
@@ -559,6 +589,8 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uCloudRot    = GetShaderLocation(m_shader, "cloudRot");
         m_uCloudAmt    = GetShaderLocation(m_shader, "cloudAmt");
         m_uMorph       = GetShaderLocation(m_shader, "morph");
+        m_uWinOrigin   = GetShaderLocation(m_shader, "winOrigin");
+        m_uWinSize     = GetShaderLocation(m_shader, "winSize");
         m_material.shader = m_shader;
         m_glow = LoadShaderFromMemory(kEs ? kGlowVertEs : kGlowVert330,
                                       kEs ? kGlowFragEs : kGlowFrag330);
@@ -1122,6 +1154,14 @@ void GlobeView::buildSkyTextures() {
     m_skyBuilt = true;
 }
 
+void GlobeView::setWindowUniforms(bool on) const {
+    if (!m_haveShader) return;
+    const Vector2 o = on ? m_winOrigin : Vector2{0.0f, 0.0f};
+    const Vector2 z = on ? m_winSize   : Vector2{1.0f, 1.0f};
+    SetShaderValue(m_shader, m_uWinOrigin, &o, SHADER_UNIFORM_VEC2);
+    SetShaderValue(m_shader, m_uWinSize,   &z, SHADER_UNIFORM_VEC2);
+}
+
 void GlobeView::drawSky(const Camera3D& cam) {
     // Asks for the bake and returns whether it has landed. Everything below
     // already checks its own texture for id 0, so a sky that is still being
@@ -1334,7 +1374,13 @@ void GlobeView::draw(int screenW, int screenH) {
     const Camera3D cam = camera(screenW, screenH);
     BeginMode3D(cam);
     drawSky(cam);
+    // The window belongs to the GROUND alone. The moon and the cloud shell are
+    // drawn with this same shader and their own textures, and a window meant for
+    // the map would remap those too -- printing a corner of the weather across
+    // the whole sky.
+    setWindowUniforms(true);
     DrawMesh(m_mesh, m_material, MatrixIdentity());
+    setWindowUniforms(false);
 
     // ── Cloud ──
     //
