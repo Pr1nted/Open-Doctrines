@@ -30,7 +30,7 @@
 // visible half of the same decision.
 
 export const PROVIDER_IDS =
-    ["google", "discord", "github", "itch", "twitch", "youtube", "kick"] as const;
+    ["google", "discord", "github", "itch", "twitch", "youtube", "kick", "steam"] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
 
 export function isProviderId(v: string): v is ProviderId {
@@ -54,8 +54,14 @@ export interface ProviderConfig {
      * exchanged server-side for a token. "implicit" means the token itself
      * arrives in the URL fragment and the callback has to be a page that reads
      * it -- itch.io offers nothing else.
+     *
+     * "openid2" is not OAuth at all. Steam speaks OpenID 2.0: no client
+     * registration, no secret, no scopes and no tokens. The identity arrives in
+     * the callback query already signed, and the only thing that makes it
+     * trustworthy is asking Steam to confirm the signature is theirs. See
+     * identityFromOpenId.
      */
-    flow: "code" | "implicit";
+    flow: "code" | "implicit" | "openid2";
     /** Pulls the stable, provider-scoped user id out of the userinfo response. */
     subjectOf(user: Record<string, unknown>): string | null;
     /** A name to OFFER as a starting nickname. Never stored on its own. */
@@ -296,6 +302,72 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
          */
         canCreateAccount: false,
     },
+
+    /**
+     * STEAM IS A DIFFERENT PROTOCOL, NOT A DIFFERENT DIALECT.
+     *
+     * itch.io is OAuth done weakly; Steam is not OAuth. It implements OpenID
+     * 2.0, which has no client id, no client secret, no scope parameter and no
+     * tokens of any kind. There is nothing to register and nothing to keep
+     * safe. One endpoint serves as both the authorization endpoint and the
+     * verification endpoint, told apart by `openid.mode`.
+     *
+     * What arrives on the callback is a signed assertion naming a SteamID64.
+     * The signature is Steam's, and the ONLY way to check it is to hand every
+     * parameter back to Steam with `openid.mode=check_authentication` and
+     * believe the answer. Skip that step and this provider trusts a URL that
+     * anybody can type. Same principle as itch.io: never believe the
+     * credential, spend it against the provider and use what the provider says.
+     */
+    steam: {
+        id: "steam",
+        label: "Steam",
+        authorizeUrl: "https://steamcommunity.com/openid/login",
+        // Empty for a harder reason than itch.io's: OpenID 2.0 has no tokens,
+        // so there is no endpoint an exchange could even be sent to.
+        tokenUrl: "",
+        // Also empty. The assertion carries the SteamID64 and nothing else. A
+        // display name would mean a Steam Web API key in the Worker and a call
+        // to ISteamUser/GetPlayerSummaries -- a new long-lived secret to hold
+        // and rotate, bought with a nickname suggestion. Not a trade worth
+        // making, and declining it makes Steam the narrowest provider here.
+        userUrl: "",
+        scope: "",
+        pkce: false,
+        flow: "openid2",
+        /**
+         * The SteamID64 out of the claimed identifier.
+         *
+         * Anchored deliberately. `claimed_id` is attacker-influenced until
+         * check_authentication has passed, and a loose pattern would accept
+         * something like `https://evil.example/steamcommunity.com/openid/id/1`.
+         */
+        subjectOf: (u) => {
+            const claimed = u["openid.claimed_id"];
+            if (typeof claimed !== "string") return null;
+            const m = /^https:\/\/steamcommunity\.com\/openid\/id\/([0-9]{17})$/.exec(claimed);
+            return m?.[1] ?? null;
+        },
+        // Nothing to suggest: the assertion has no name in it.
+        suggestedName: () => null,
+        /**
+         * Steam does publish a creation date -- `timecreated` -- but only for
+         * PUBLIC profiles, so it goes missing exactly when somebody has a
+         * reason to hide it. A gate that any evader can switch off is not a
+         * gate, which is why canCreateAccount is false below.
+         */
+        accountCreatedAt: () => null,
+        /**
+         * LINK ONLY, for the reason directly above.
+         *
+         * A player signing in with a linked Steam account lands straight in
+         * their existing account; one who has never linked is told to sign up
+         * through a gateable provider first and add Steam afterwards. Same
+         * bargain as itch.io: a convenience for people who are already here,
+         * not a way around the age gate.
+         */
+        canCreateAccount: false,
+    },
 };
 
 /**
@@ -309,6 +381,12 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
 export function clientCredentials(
     env: Record<string, unknown>, provider: ProviderId,
 ): { id: string; secret: string } | null {
+    // OpenID 2.0 has no client registration: nothing to send, nothing to keep
+    // secret. Steam identifies the relying party by the realm in the request,
+    // which is our own origin -- so there is no environment variable to miss,
+    // and Steam sign-in works on a fresh deployment with no configuration.
+    if (PROVIDERS[provider].flow === "openid2") return { id: "", secret: "" };
+
     const id = env[`${provider.toUpperCase()}_CLIENT_ID`];
     if (typeof id !== "string" || !id) return null;
 

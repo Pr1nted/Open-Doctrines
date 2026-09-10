@@ -14,10 +14,42 @@ export function redirectUri(env: Env, provider: ProviderId): string {
     return `${env.ISSUER}/auth/callback/${provider}`;
 }
 
+/** What OpenID 2.0 calls "let the provider tell us who this is". */
+const IDENTIFIER_SELECT = "http://specs.openid.net/auth/2.0/identifier_select";
+
+/**
+ * The OpenID 2.0 request, which shares almost nothing with the OAuth one.
+ *
+ * WHERE THE STATE GOES. OpenID 2.0 has no `state` parameter -- the spec simply
+ * does not have one. It is carried in `return_to` instead, and that is safe for
+ * the same reason a state parameter is: Steam signs `openid.return_to` as part
+ * of the assertion, so a tampered state breaks the signature and
+ * check_authentication fails. The callback checks the echoed return_to against
+ * the one it would have built, which closes the loop.
+ */
+function openIdRequestUrl(env: Env, claims: AuthRequestClaims, state: string): string {
+    const provider = PROVIDERS[claims.provider];
+    const returnTo = new URL(redirectUri(env, claims.provider));
+    returnTo.searchParams.set("state", state);
+
+    const url = new URL(provider.authorizeUrl);
+    url.searchParams.set("openid.ns", "http://specs.openid.net/auth/2.0");
+    url.searchParams.set("openid.mode", "checkid_setup");
+    url.searchParams.set("openid.return_to", returnTo.toString());
+    // The realm is what Steam shows the player as the site asking. Our origin,
+    // and it must cover return_to or Steam refuses the request outright.
+    url.searchParams.set("openid.realm", new URL(env.ISSUER).origin);
+    url.searchParams.set("openid.identity", IDENTIFIER_SELECT);
+    url.searchParams.set("openid.claimed_id", IDENTIFIER_SELECT);
+    return url.toString();
+}
+
 export async function authorizeUrl(
     env: Env, claims: AuthRequestClaims, state: string,
 ): Promise<string | null> {
     const provider = PROVIDERS[claims.provider];
+    if (provider.flow === "openid2") return openIdRequestUrl(env, claims, state);
+
     const creds = clientCredentials(env as unknown as Record<string, unknown>, claims.provider);
     if (!creds) return null;
 
@@ -59,6 +91,57 @@ export async function identityFromImplicitToken(
     if (PROVIDERS[provider].flow !== "implicit") return null;
     if (!accessToken || accessToken.length > 4096) return null;
     return fetchIdentity(provider, accessToken);
+}
+
+/**
+ * Turn a Steam OpenID callback into an identity, or refuse it.
+ *
+ * THE ENTIRE SECURITY OF THIS FLOW IS THE SECOND HALF. Everything in the query
+ * was written by whoever loaded the URL; a `claimed_id` naming any SteamID64 in
+ * the world costs an attacker nothing to type. What they cannot produce is
+ * Steam's signature over it -- so the parameters go back to Steam with
+ * `openid.mode=check_authentication`, and only Steam answering `is_valid:true`
+ * makes any of it true. Nothing is read out of the query before that passes.
+ */
+export async function identityFromOpenId(
+    env: Env, provider: ProviderId, url: URL,
+): Promise<ResolvedIdentity | null> {
+    const config = PROVIDERS[provider];
+    if (config.flow !== "openid2") return null;
+    // A cancelled sign-in comes back as mode=cancel, which is not a failure to
+    // report to the player as one.
+    if (url.searchParams.get("openid.mode") !== "id_res") return null;
+
+    // The return_to Steam signed has to be the one we asked for. Checked before
+    // the network call, so a forged callback aimed at another realm never costs
+    // a round trip.
+    const expected = new URL(redirectUri(env, provider));
+    const state = url.searchParams.get("state");
+    if (state) expected.searchParams.set("state", state);
+    if (url.searchParams.get("openid.return_to") !== expected.toString()) return null;
+
+    const body = new URLSearchParams();
+    for (const [k, v] of url.searchParams) if (k.startsWith("openid.")) body.set(k, v);
+    body.set("openid.mode", "check_authentication");
+
+    const response = await fetch(config.authorizeUrl, {
+        method: "POST",
+        headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "user-agent": "OpenDoctrines-Net",
+        },
+        body,
+    });
+    if (!response.ok) return null;
+
+    // Key-value form, not JSON: "ns:http://...\nis_valid:true\n". Matched on a
+    // whole line so that `is_valid:false` can never satisfy a substring test.
+    const text = await response.text();
+    if (!text.split("\n").some((line) => line.trim() === "is_valid:true")) return null;
+
+    const sub = config.subjectOf(Object.fromEntries(url.searchParams));
+    if (!sub) return null;
+    return { sub, suggestedName: null, createdAt: null };
 }
 
 export async function exchangeCode(

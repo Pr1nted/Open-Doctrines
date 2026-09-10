@@ -25,7 +25,7 @@ import {
 } from "./auth/device.js";
 import {
     authorizeUrl, exchangeCode, fetchIdentity, identityFromImplicitToken,
-    type ResolvedIdentity,
+    identityFromOpenId, type ResolvedIdentity,
 } from "./auth/oauth.js";
 import { issueSessionToken } from "./auth/token.js";
 import { issueJoinTicket, psidFor } from "./auth/ticket.js";
@@ -475,15 +475,31 @@ async function authCallback(
     // fragment and hand it back over POST. Everything after that is identical.
     if (PROVIDERS[provider].flow === "implicit") return implicitCallbackPage();
 
+    // The two remaining flows end identically and differ only in how the
+    // identity is proved: OAuth exchanges a code for a token and asks the
+    // provider who it belongs to; OpenID 2.0 gets a signed assertion up front
+    // and asks Steam whether the signature is really theirs. Both arrive with
+    // our own signed request token in `state` -- OpenID 2.0 has no such
+    // parameter of its own, so it rides inside return_to, which Steam signs.
+    const openid = PROVIDERS[provider].flow === "openid2";
+
     const state = url.searchParams.get("state");
-    const code = url.searchParams.get("code");
     const claims = state ? await verifyAuthRequest(env, state) : null;
-    if (!claims || !code || claims.provider !== provider) {
+    if (!claims || claims.provider !== provider) {
         return htmlPage("Sign-in failed", "That sign-in could not be completed. Start again from the game.");
     }
 
-    const accessToken = await exchangeCode(env, provider, code, claims.rid);
-    const identity = accessToken ? await fetchIdentity(provider, accessToken) : null;
+    let identity: ResolvedIdentity | null;
+    if (openid) {
+        identity = await identityFromOpenId(env, provider, url);
+    } else {
+        const code = url.searchParams.get("code");
+        if (!code) {
+            return htmlPage("Sign-in failed", "That sign-in could not be completed. Start again from the game.");
+        }
+        const accessToken = await exchangeCode(env, provider, code, claims.rid);
+        identity = accessToken ? await fetchIdentity(provider, accessToken) : null;
+    }
     if (!identity) {
         await storeResult(env, claims.rid, {
             kind: "error", code: "provider_failed",
