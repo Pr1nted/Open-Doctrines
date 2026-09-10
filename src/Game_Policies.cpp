@@ -863,6 +863,10 @@ float Game::getCountryUnrest(int countryId) const {
     return std::min(100.0f, std::max(0.0f, unrest));
 }
 
+double g_pacApplied = 0.0;   ///< suppression points actually applied
+double g_pacNeeded  = 0.0;   ///< of those, how many cancelled real unrest
+long long g_pacN    = 0;
+
 float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // A province that has just risen cannot rise again yet. Gated here rather
     // than in processRebellions so the number the player reads is the number
@@ -1014,6 +1018,26 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // dozens of provinces made early fragmentation certain for every country,
     // and pacification was a mandatory tax rather than a tool for hotspots.
     total -= REBELLION_LOYALTY_FLOOR;
+
+    // ── HOW MUCH OF THE PACIFICATION BUDGET IS SPENT ON NOTHING ──
+    //
+    // `total` is clamped to >= 0 on return, so suppression that overshoots the
+    // unrest it was buying against vanishes from the result while the money is
+    // still spent. Pacification is 10.8% of gross (journal 252) and the head
+    // only ever raises it -- pacify-down is taken on 0.00% of 18,251 offers --
+    // so the question is how much of that spend is buying nothing at all.
+    // Counted once per province-turn, same guard as the trace below.
+    if (std::getenv("OD_ACT_HIST")) {
+        static int wTurn = -1, wPid = -1;
+        if (!(wTurn == m_turnNumber && wPid == provinceId)) {
+            wTurn = m_turnNumber; wPid = provinceId;
+            const float preSup = total + suppressionPct;   // unrest before suppression
+            const float needed = std::min(suppressionPct, std::max(0.0f, preSup));
+            g_pacApplied += suppressionPct;
+            g_pacNeeded  += needed;
+            ++g_pacN;
+        }
+    }
 
     // OD_UNREST_TRACE=<cid>: the terms of this sum for one country's
     // provinces, once per turn (the resolver's call; the UI panels call this

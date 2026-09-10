@@ -15316,3 +15316,48 @@ SIX OF TWELVE ARE EXACTLY ZERO, on tens of thousands of offers each.
 Nothing acted on yet. Recording because this is the first time the politics
 head has been measured action-by-action, and three of these were open
 questions.
+
+## 255 — 94% of pacification buys nothing, and removing it costs 90 rating
+
+The politics head raises pacification on 21.35% of offers and lowers it on
+0.00% of 18,251 (journal 254). Instrumented what that costs: the rebellion sum
+is clamped at zero on return, so suppression that overshoots is invisible while
+the money is still spent.
+
+    applied 19,471,985   needed 1,029,786   WASTED 94.7%   over 1.63M province-turns
+
+Pacification is 10.8% of gross (journal 252), so that reads as ~10% of all AI
+income spent on nothing, against a net margin of 7%.
+
+Built pacificationTrimReflex: ask the resolver for the smallest allocation that
+still zeroes every province (Game::pacificationNeeded, exposing the resolver's
+own arithmetic rather than copying it), step down 0.125 a turn, never below
+need + slack. Verified inert unset -- control seat score 3.1 exactly. At slack
+0.10 it cut applied suppression 19.5M -> 7.5M, a 61% reduction.
+
+    reliable-seat rating       hold-out C   435 -> 338   (-97)
+                               hold-out D   400 -> 314   (-85)
+
+REPLICATED AND DECISIVELY NEGATIVE. Every reliable seat loses land on both
+sets; France halves on C.
+
+WHY, AND IT IS THE USEFUL PART: the overshoot is a BUFFER. Unrest fluctuates;
+suppression above current unrest is what stops it ever crossing the threshold.
+Because it works, the clamp records it as having cancelled nothing. My metric
+compared suppression against CURRENT unrest and could not see the spikes that
+never happened -- the better the buffer, the more wasteful it looks.
+
+So the head's 0.00% pacify-down rate is correct play and the "ratchet" is not a
+defect. Fourth unrest lever to lose.
+
+TWO METHOD NOTES:
+  - The aggregate would have called set D inconclusive: OD BENCH 297 -> 274,
+    inside that arm's own +/-42. The reliable-seat rating said -85. Two pinned
+    seats dilute the headline, which is why the per-seat read is not optional.
+  - I told the user this was "the strongest lead since the shipped change" on
+    the strength of the mechanism being LARGE. It was large in the wrong
+    direction. Mechanism size has not predicted sign once today.
+
+Reflex and the Game helper reverted; the waste counter stays behind OD_ACT_HIST
+because the next person will ask the same question. Patch kept at
+scratchpad/pactrim-FAILED.patch.

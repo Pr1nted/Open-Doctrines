@@ -12982,6 +12982,8 @@ double AISystem::s_expense[8] = {0,0,0,0,0,0,0,0};
 long long AISystem::s_expenseN = 0;
 
 
+
+
 // Mean research allocation per country-turn, under OD_ACT_HIST only.
 //
 // The research-ratchet finding is +21.9 points of world across three seed
@@ -13042,6 +13044,14 @@ void AISystem::dumpActionHistogram() {
             fprintf(stderr, "[ACTHIST]   %-14s %8.2f   %5.1f%% of gross\n", en[i],
                     s_expense[i] / (double)s_expenseN,
                     s_expense[7] > 0 ? 100.0 * s_expense[i] / s_expense[7] : 0.0);
+    }
+    {
+        extern double g_pacApplied; extern double g_pacNeeded; extern long long g_pacN;
+        if (g_pacN > 0)
+            fprintf(stderr, "[ACTHIST] pacification: applied %.1f  needed %.1f  WASTED %.1f%%"
+                    "  over %lld province-turns\n", g_pacApplied, g_pacNeeded,
+                    g_pacApplied > 0 ? 100.0 * (g_pacApplied - g_pacNeeded) / g_pacApplied : 0.0,
+                    g_pacN);
     }
     fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",

@@ -379,6 +379,7 @@ public:
      *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
      *  because nobody in an eval ever proposes a trade. Prints [PROBE] lines
      *  and PROBE_OK / PROBE_FAIL. */
+    bool runTradeProbe(const std::string& seatSpec, unsigned int seed);
     /** Scope a benchmark rush to the seat's neighbours. See m_benchRushNeighbours. */
     void setBenchRushNeighbours(int howMany) { m_benchRushNeighbours = howMany; }
     void setBenchSeat(const std::string& spec) {
@@ -4389,6 +4390,7 @@ private:
      * policy, every conquest and every drift of alignment, and a stale list
      * would offer the player ground that is no longer theirs to give.
      */
+    void reportReleaseProbe();
     std::vector<ReleaseCandidate> releasableRegions(int countryId,
                                                     ReleaseRejects* why = nullptr) const;
     /**
