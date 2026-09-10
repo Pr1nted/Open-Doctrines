@@ -4,11 +4,21 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+// The sockets this test drives directly. It already had a _WIN32 branch for
+// closeSock, so the Windows path was half-written -- but the POSIX headers were
+// included unconditionally, so MSVC never got as far as it. winsock2.h must
+// precede windows.h, and NOMINMAX with it for the usual reason.
+#if defined(_WIN32)
+#define NOMINMAX
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 #include "net/TlsSocket.h"
 
 static int checks = 0, fails = 0;
@@ -73,6 +83,15 @@ static long long walkMs(const std::vector<const char*>& ips, int timeoutMs) {
 
 int main() {
     printf("HttpClient connect timeout\n\n");
+#if defined(_WIN32)
+    // socket() fails outright on Windows until the process has done this, and
+    // the failure is a silent -1 rather than anything that names the cause.
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        printf("  FAIL  WSAStartup\n");
+        return 1;
+    }
+#endif
     // 10.255.255.1 is RFC1918 space with nothing on it: packets are dropped
     // rather than refused, which is exactly the shape that used to hang.
     const long long blackholed = msFor("https://10.255.255.1/x", 5000);
@@ -145,5 +164,8 @@ int main() {
     ok(three < 4500, "the per-attempt floor cannot push the total past the deadline");
 
     printf("\n%d checks, %d failed\n", checks, fails);
+#if defined(_WIN32)
+    WSACleanup();
+#endif
     return fails == 0 ? 0 : 1;
 }
