@@ -5265,6 +5265,8 @@ std::string AISystem::execEconomy(int cid, int action) {
                     return didNothing("research: the campaign first");
             }
             {
+                // Same knob as siegeReflex, same sense: default OFF is what
+                // ships, OD_SIEGE_RESEARCH=1 restores the old behaviour.
                 static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
                 // Gated on the EARMARK (a fort is owed), not on the siege alone:
                 // refusing fund-up whenever besieged measured 67.9 world
@@ -7847,8 +7849,18 @@ void AISystem::siegeReflex(int cid) {
     const CountryStat& st = sIt->second;
     if (!besieged(st)) return;
     static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
-    // OD_SIEGE_RESEARCH=0 keeps the research slider out of the reflex (the
-    // fort and its earmark stay), to measure which half costs China.
+    // OD_SIEGE_RESEARCH=1 puts the research slider back INTO the reflex.
+    //
+    // The default is OFF, and off is what shipped: keeping the slider out of
+    // the reflex (the fort and its earmark stay) is worth +71 rating on
+    // hold-out C and +42 on D, paired with austerityResearchLast. Journal 239.
+    //
+    // This comment used to read "OD_SIEGE_RESEARCH=0 keeps the slider out",
+    // which was true at 4cea3bc when the gate defaulted ON. c06b3cc flipped
+    // the default to ship the win and left the comment describing the old
+    // semantics, so =0 became a no-op that looks like a control. Anyone
+    // following it would disable something already disabled, see no change,
+    // and conclude the research half is free.
     static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
     auto raIt = g.m_countryResearchAllocation.find(cid);
     if (cutResearch && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.10f) {
