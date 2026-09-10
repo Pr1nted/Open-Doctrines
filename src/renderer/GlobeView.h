@@ -110,13 +110,19 @@ public:
     /**
      * How dark the unlit half goes, and how wide dawn is.
      *
-     * `floorLevel` is NOT zero by default and should not be. A fully black night
-     * side makes half a player's empire invisible -- borders, unit markers,
-     * everything -- and the map is a working document before it is a picture.
-     * This setting exists for legibility first and atmosphere second.
+     * `floorLevel` is NOT zero by default and should not be: a black night side
+     * would take half the political map with it, and the map is a working
+     * document before it is a picture.
+     *
+     * But only the MAP goes dark. Markers, counters, arrows and country names
+     * are screen-space overlays drawn after the sphere and are not touched by
+     * this at all -- an earlier note here claimed unit markers went with it,
+     * which is simply not so, and it was the reason the floor sat higher than it
+     * needed to. What the floor buys is the readability of the province colours
+     * and borders underneath; that is the whole of the trade.
      */
     struct Night {
-        float floorLevel = 0.34f;   ///< 0 = black, 1 = no night at all
+        float floorLevel = 0.18f;   ///< 0 = black, 1 = no night at all
         float softness   = 0.09f;   ///< width of the terminator band, in dot units
     };
 

@@ -77,6 +77,19 @@
   starts to unroll. Asserted rather than eyeballed: the map pixels the 2D view
   puts on each screen edge land on those same edges here.
 
+- **The night side is darker.** The floor it sits at went from 0.34 of full
+  brightness to 0.18, so the terminator reads as a real edge and a planet at
+  night looks like one. It is not zero and should not be: the political colours
+  underneath still have to be readable, because the map is a working document
+  before it is a picture.
+
+  The note explaining why it sat so high claimed a dark night side would take
+  unit markers with it. That was never true -- markers, counters, arrows and
+  country names are screen-space overlays drawn after the sphere and are not
+  touched by the terminator at all. Only the map dims, which is a smaller price
+  than the note had been charging for. Maps can still set their own value in
+  `sky.json`, and the map editor exposes it.
+
 - **The globe is sharp when you zoom in.** Its surface was composited at half
   the map's resolution, on the reasoning that the whole planet is never more
   than a screen wide -- true looking at the whole planet, and false the moment
