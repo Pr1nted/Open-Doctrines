@@ -141,7 +141,11 @@ int llmCommand(const std::string& what, const std::string& dataDir) {
         };
         std::signal(SIGINT, bye);
         std::signal(SIGTERM, bye);
+#ifdef SIGHUP
+        // Not a POSIX-only nicety by choice: Windows has no SIGHUP at all,
+        // and referring to it there is a compile error, not a no-op.
         std::signal(SIGHUP, bye);
+#endif
 
         while (llm::serverAlive(pid)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(400));

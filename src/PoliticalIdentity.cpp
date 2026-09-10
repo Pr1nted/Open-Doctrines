@@ -1,5 +1,7 @@
 #include "PoliticalIdentity.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 
 namespace politid {
