@@ -14646,3 +14646,50 @@ Standing conclusion restored: the rusher seat is not reachable by a knob. I
 retracted that conclusion in entry 236 on this evidence and now retract the
 retraction. [[corrections-inherit-confidence]] -- the retraction got less
 scrutiny than the original claim and failed the same way.
+
+## 239 — what the shipped change actually does: it buys growth with the floor
+
+The research change (OD_SIEGE_RESEARCH off + austerity research last) shipped
+in 2f100d1. Measured against its own absence in the SHIPPED binary with the
+SHIPPED model, both hold-out sets, 6/6 seats, no dropped seeds:
+
+    seat              par |   C off   C on      d |   D off   D on      d
+    1914:FRA:rung     6.7 |   17.07  27.70 +10.63 |   10.20  19.90  +9.70
+    1914:SWE:rung     1.0 |    9.93  13.17  +3.23 |    9.67  11.97  +2.30
+    1939:USA:rung     5.6 |    4.33  21.90 +17.57 |   11.03  22.53 +11.50
+    modern:CHN:rung   2.5 |   14.73  18.20  +3.47 |   11.10  14.13  +3.03
+    1914:FRA:rush     6.7 |    5.03   1.17  -3.87 |    8.73   2.93  -5.80
+    1939:NOR:hood     1.3 |    0.47   0.60  +0.13 |    1.37   0.50  -0.87
+
+    rating      241 -> 311  (+71)   |   255 -> 297  (+42)
+    survival     81 ->  77  ( -4)   |   100 ->  80  (-20)
+    worst seat   36 ->  17  (-18)   |   105 ->  38  (-67)
+
+IT HOLDS. +71 and +42 rating, +31.2 and +19.9 land, on two hold-out sets it
+was not chosen against. That is the confirmation the austerity constant failed
+and it is why one of these shipped and the other is retracted.
+
+BUT IT IS A TRADE, AND THE TRADE ALSO REPLICATES. The four comfortable seats
+gain 3 to 17 points of the world each. The seat under invasion LOSES 3.87 and
+5.80 points of the world -- raw land share, par 6.7, so not a small-par
+magnifier artefact. On set D the pre-change AI held EVERY seat above par
+(worst 105, survival 100); after the change the worst seat is 38.
+
+So the release note figure is real and one-sided. The AI we shipped expands
+much better and collapses much harder. Both halves replicate.
+
+Note what this says about the aggregate: OD BENCH rose 71 and 42 while
+survival fell 4 and 20. A single number cannot carry this change, and the one
+we quote is the half that flatters it. [[aggregate-vs-seat-measurement]] and
+[[floor-not-rating]] both warned exactly this and I still read the headline
+first.
+
+It also makes WORSE the specific failure the user's play-trained model was
+best at -- 95 on the invaded seat against N24's 17 (entry 237). The shipped
+change pushes that seat down further. Two independent lines now point at
+collapse-under-invasion as the AI's real weakness, and the release moved it in
+the wrong direction while improving everything else.
+
+NOT a reason to unship: +71/+42 aggregate on two hold-out sets is the best
+evidence any change has had this session. It is a reason for the note to say
+what was bought and what it cost.
