@@ -15361,3 +15361,54 @@ TWO METHOD NOTES:
 Reflex and the Game helper reverted; the waste counter stays behind OD_ACT_HIST
 because the next person will ask the same question. Patch kept at
 scratchpad/pactrim-FAILED.patch.
+
+## 256 — the knob space is exhausted, and now there is a map rather than an assertion
+
+Checked the last two unexamined heads against what is already recorded, before
+building anything. Both were closed: raising pacification is OD_PACIFY_REFLEX
+(N37 255 -> 171, journal 40), and every gated form of suing for peace is worse
+(journal 14128). So the day ends with a subsystem map instead of a list of
+attempts.
+
+WHAT IS MEASURED AND CLOSED, with the direction that was tested:
+
+    research allocation   optimum at 0.45; BOTH directions measured
+                          (0.25/0.35 -> 202/262, 0.65 -> 372, vs 435)
+    pacification          local optimum; BOTH directions measured
+                          (trim -97/-85 today, raise -84 on N37)
+    peace / ceasefire     every gated form worse; head takes it 0.27%
+    austerity ordering    forced -- no cheap resource left to substitute
+    social budget share   0.33 never binds; bill sits at 28.8% of gross
+    specialisation        5 good candidates per 400 turns; not a lever
+    trade                 offered 7.5%, taken 0.00%; the floor fix raised
+                          availability and changed no behaviour
+    doctrine repeal       sticker ranking is right; lever signs are inverted
+                          from how they read
+    military spending     0.8% of gross; width caps power, not money
+    minority spend        three gates, all lost
+    reflex layer          11/11 audited, defaults correct
+    narrowings            0 for 11
+
+WHAT THE BUDGET LOOKS LIKE (journal 252, first ever measured): research 41.1%,
+minority 18.0%, industry upkeep 17.9%, pacification 10.8%, policy 4.2%, navy
+0.5%, army 0.3%. Net margin ~7%.
+
+THE CONCLUSION, stated plainly: the AI's ALLOCATIONS are approximately optimal
+and its refusals are approximately correct. Every place a rule could move money
+or force an action has been measured, and the head was right in almost every
+case. The three big refusals -- repress 0.00% of 30,471, trade 0.00% of 2,287,
+pacify-down 0.00% of 18,251 -- are priced decisions, not collapse. Journal 255
+is the clearest case: 94% of pacification "buys nothing" and removing it costs
+90 rating, because the overshoot is a buffer against spikes that then never
+happen.
+
+SO FURTHER IMPROVEMENT NEEDS A DIFFERENT POLICY, not a different rule. That is
+training, which has failed 16 checkpoints out of 16 from this parent
+(memory: training-degrades-the-model), and the one lever on it that is known to
+work -- N_STEP, which collapses the conciliation bill thirtyfold -- only
+matters if training works at all.
+
+The honest summary of the day: one real improvement found and shipped
+(+71/+42, replicated), one release, six instrument changes, and a systematic
+map of why the remaining knob space is empty. The map is worth more than
+another attempt would have been.
