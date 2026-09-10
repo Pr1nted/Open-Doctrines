@@ -492,6 +492,34 @@
   from one that is already collapsing. Left on; `OD_AI_DLAW_OFF` turns it off in
   one variable.
 
+- **The AI stops cutting research first when money runs short.** Austerity took
+  the research slider down before anything else, on the reasoning that a slider
+  comes back up for free the moment income recovers. For a country that is merely
+  tight rather than failing, that is the growth engine being switched off to pay a
+  bill it could have met another way. Research now comes down last, after
+  everything else has been given.
+
+  Measured in the shipped binary with the shipped model, against its own absence,
+  on two hold-out seed sets it was never tuned against. Six of six seats scored in
+  every arm, no seeds lost:
+
+  | | rating | survival | worst seat |
+  |---|---|---|---|
+  | hold-out C | 241 → 311 | 81 → 77 | 36 → 17 |
+  | hold-out D | 255 → 297 | 100 → 80 | 105 → 38 |
+
+  **Both halves of that replicate, and the second half is not a small-par
+  artefact.** The four seats not under existential pressure gain between 2.3 and
+  17.6 points of the world's land each. The seat being invaded loses 3.87 and 5.80
+  — raw land share on a seat whose par is 6.7, so that is real territory, not a
+  ratio effect on a sliver. On hold-out D the previous behaviour held every seat
+  above par and this one does not.
+
+  Said plainly, because the rating alone would not say it: the AI expands harder
+  and holds considerably more ground when it is not fighting for its life, and a
+  country being overrun does worse than it did before.
+  `OD_AUSTERITY_RESEARCH_LAST=0` restores the old order in one variable.
+
 - **Publishing your books now matters to the AI, not just to migrants.** It
   read the true treasury, army, industry and ground of every country directly,
   so a country's decision to publish or withhold changed nothing about how the
