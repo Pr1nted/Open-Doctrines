@@ -3073,6 +3073,23 @@ void AISystem::takeTurn(int cid) {
     // In the tutorial EVERY country is scripted and every one of them
     // turtles: the lesson makes promises about what the neighbours will do,
     // and a learned policy has never agreed to keep them.
+    // ── IS THE TRAINING VARIANT MIX ACTUALLY REACHABLE? ──
+    // m_randomCids is populated only by setRandomCountries, whose sole caller
+    // is runAIEvaluation. If that holds, isRandomCountry() is false for every
+    // country during --train-ai, m_scriptedThisCountry can never be set, and
+    // the variant MIX below -- labelled TRAINING ONLY -- is unreachable while
+    // training. Counted rather than argued.
+    if (std::getenv("OD_TRAIN_PROBE")) {
+        static long long seen = 0, randoms = 0, scripted = 0;
+        ++seen;
+        if (isRandomCountry(cid)) ++randoms;
+        if (s_tutorialAI || s_scriptDuel || (isRandomCountry(cid) && s_scriptedControl))
+            ++scripted;
+        if (seen == 1 || (seen % 500) == 0)
+            fprintf(stderr, "[TRAINPROBE] country-turns %lld  inCohort %lld  scripted %lld  "
+                    "(selfPlayLearning=%d scriptedControl=%d)\n",
+                    seen, randoms, scripted, (int)selfPlayLearning(), (int)s_scriptedControl);
+    }
     m_scriptedThisCountry = s_tutorialAI || s_scriptDuel ||
                             (isRandomCountry(cid) && s_scriptedControl) ||
                             // The league slot is the rusher: its countries play

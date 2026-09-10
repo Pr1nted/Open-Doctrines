@@ -15412,3 +15412,52 @@ The honest summary of the day: one real improvement found and shipped
 (+71/+42, replicated), one release, six instrument changes, and a systematic
 map of why the remaining knob space is empty. The map is worth more than
 another attempt would have been.
+
+## 257 — training never meets the opponent it is scored against, and that is not why it fails
+
+WHY TRAINING FAILS, part one: a real defect. setRandomCountries() is called
+from runAIEvaluation and NOWHERE ELSE. So during every --train-ai run
+m_randomCids is empty, isRandomCountry() is false for every country, and
+m_scriptedThisCountry can never be set. Counted rather than argued:
+
+    training     1500 country-turns   inCohort 0     scripted 0
+    evaluation   first decision       inCohort 1     scripted 1
+
+Two consequences. The policy is optimised against copies of itself and scored
+against a world of scripted opponents it has never played. And the variant mix
+in AISystem.cpp -- SCRIPT_BLITZ/TECH/DIPLO/NAVY/TURTLE, labelled TRAINING ONLY
+and written because "across an entire training run the policy faced exactly one
+strategy" -- is gated on isRandomCountry() and HAS NEVER EXECUTED in the path
+it was written for. The diagnosis was right, the fix was built, and it was
+unreachable.
+
+Wired it in behind OD_TRAIN_SCRIPTED_SHARE (0 = off = unchanged). At 0.33,
+29% of training country-turns are played by scripts, and the mix fires on every
+map (18 of 53 on 1914, 25 of 76 on crowded).
+
+THE EXPERIMENT: one parent (N24, md5 verified identical in both sandboxes),
+8 maps x 300 turns, OD_LR_SCALE=0.25, benched on hold-out C.
+
+    arm              reliable seats     land
+    parent                    433      81.97%
+    self-play only             11      10.27%
+    scripted 0.33              53      16.80%
+
+THE FIX HELPS AND IT DOES NOT MATTER. +42 reliable against pure self-play, and
+both arms are catastrophically below a parent they started from. 433 -> 11 is
+not erosion, it is destruction, and 2,400 turns did it at QUARTER learning
+rate (OD_LR_SCALE verified read at AISystem.h:3109, not merely passed).
+
+NOT A LOAD BUG. Trained 1 map x 5 turns from the same parent and benched it:
+28.6 on the seat against the parent's 18.9. The parent deserializes and plays
+fine; the damage accumulates over the run.
+
+SO THE REAL PROBLEM IS NOT THE OPPONENT DISTRIBUTION. It is whatever makes
+2,400 turns of gradient destroy 97% of a model's rating. The self-play/scripted
+mismatch is a genuine defect and worth having fixed, but it is a second-order
+term next to this. Sixteen checkpoints failing was never going to be explained
+by the opponent mix.
+
+Next question, unanswered: where in the run does the collapse happen? A cliff
+and a slope want different fixes, and benching at 1, 2, 4 and 8 maps would say
+which this is.
