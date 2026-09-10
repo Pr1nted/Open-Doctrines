@@ -14772,3 +14772,58 @@ So the diagnostic I built this run for produced nothing at all, and I only
 noticed because the score line contradicted a claim I believed. Had the scores
 agreed with my expectation I would have reported an empty histogram as
 "no behavioural difference found".
+
+## 242 — the invaded seat is BISTABLE, and three seeds cannot measure it
+
+Ran the invaded seat on 8 fresh seeds for both models, to test whether the
+advantage I have been citing all session exists at all. Paired, 11 seeds:
+
+    seed          N24   USER    diff
+    909091        3.1    0.2    -2.9
+    20230115      0.2    8.7    +8.5
+    42424242      0.2   10.1    +9.9
+    111333        9.5    7.5    -2.0
+    24680         0.3   10.8   +10.5
+    5150          7.7    9.1    +1.4
+    909           0.3    8.6    +8.3
+    77777         0.3    1.3    +1.0
+    31415        11.3    0.5   -10.8
+    8675309       2.9    5.7    +2.8
+    4040404      10.8    8.2    -2.6
+
+    N24  4.24 (sd 4.63)   USER 6.43 (sd 3.93)
+    paired diff +2.19  se 2.01  t = 1.09  95% CI [-2.29, +6.67]
+
+THE ADVANTAGE IS NOT SIGNIFICANT. The interval spans zero and includes N24
+being better. What produced the apparent 5.6x gap was the SEED SET:
+
+    N24   set C 1.17   ->  all 11  4.24     3.6x understated
+    USER  set C 6.33   ->  all 11  6.43     representative
+
+Set C happened to hold three of N24's collapse worlds. The play-trained
+model's number was fine; N24's was not, and I compared them anyway.
+
+THE REAL STRUCTURE, and it is worth more than the retraction: the seat is
+BISTABLE. Every one of the 22 runs either holds 5.7-11.3 land or collapses
+below 1.5. There is essentially nothing between 1.5 and 5.7. Collapse rate
+is 5/11 for N24 and 3/11 for the play-trained model.
+
+So measuring that seat with three seeds is estimating a Bernoulli parameter
+from three coin flips. Every three-seed reading of FRA:rush this session --
+including the ones that drove the austerity finding (17 -> 134) and its
+retraction (44 -> 4) -- was doing that. The austerity result inverting between
+set C and set D is exactly what a bistable outcome does under n=3, and I
+explained it at the time as a real effect that failed to replicate. The truer
+statement is that neither reading measured anything.
+
+WHAT SURVIVES: the shipped change's cost on this seat (-3.87 setC, -5.80 setD)
+is a PAIRED within-seed comparison, control and treatment on identical worlds,
+and it replicated across two independent seed sets in the same direction. That
+is much more robust than a between-model comparison. But its MAGNITUDE rests
+on 3+3 seeds of a bistable quantity and should not be quoted precisely.
+
+WHAT DOES NOT: "the play-trained model survives invasion where N24 does not",
+which I said to the user, to the peer, in entry 237, in entry 241's partial
+correction, and in a committed README. Third correction of the same claim
+today, each one smaller than the last and each one still overstated.
+[[corrections-inherit-confidence]].
