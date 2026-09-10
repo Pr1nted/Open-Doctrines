@@ -14855,3 +14855,45 @@ which is worth recording because I nearly "fixed" working code to match it.
 
 The tool now carries the most expensive lesson of the session at the point
 where the number gets read, which is the only place a warning survives.
+
+## 244 — the bench's noise floor, measured at last, and a claim of mine it breaks
+
+Mined every per-seat spread od_bench has printed into logs still on disk.
+Three complete 6-seat runs recovered, per-seed ratings reconstructed:
+
+    53   68   83     mean  68   sd 15   se(n=3)  9
+    288  330  309    mean 309   sd 21   se(n=3) 12
+    318  333  350    mean 334   sd 16   se(n=3)  9
+
+A 3-SEED OD BENCH HAS SE 9-12. An unpaired difference under ~28 points is
+noise. This number was available all session -- the spreads were printed on
+every seat line -- and I never computed it.
+
+Against it: the austerity constant's +24 on set C was inside the floor before
+anything else was wrong with it. The shipped change's +71 and +42 are outside
+it, on two independent sets, which is why that one is real.
+
+Some seats are far noisier than I assumed. 1914:SWE:rung ran [24.2, 9.0, 6.3]
+-- a 4x spread on a par-1.0 seat, so its score is pinned at CAP regardless and
+its variance is invisible in the rating. 1914:FRA:rung ran [19.1, 36.0, 28.0].
+Only 1939:NOR:hood was genuinely tight, and only because it collapses every
+time.
+
+od_bench now prints `+/- N se (unpaired diffs under ~M are noise)` beside the
+rating, computed from that run's own spreads. Verified against the hand
+calculation: se 12, per-seed [288, 330, 309], identical.
+
+A CLAIM OF MINE THAT THIS BREAKS. I told the peer, and put in entry 242, that
+"pairing is the defence against bistability, because both arms draw the same
+world". The first half is right and the conclusion is wrong.
+
+Pairing controls WORLD DIFFICULTY. It does not control regime-flipping, and
+the data says the world does not determine the regime: on seed 909091 N24
+scored 3.1 and the play-trained model 0.2; on seed 31415, 11.3 and 0.5. Same
+world, opposite regimes, decided by the policy. So a bistable seat sits near a
+tipping point and ANY small code change can flip it, giving +/-10 land of pure
+amplification that pairing does nothing about.
+
+What actually carries the shipped change's cost finding is REPLICATION across
+two independent seed sets in the same direction -- not pairing. The peer's
+note says both, so it stands; my reasoning for it did not.
