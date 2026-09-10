@@ -303,7 +303,7 @@ jobs:
         run: |
           # Same reason as the desktop configure above.
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
             -DOD_DISCORD_APP_ID=1547303703370014830
           emmake cmake --build build-web -j 4
 

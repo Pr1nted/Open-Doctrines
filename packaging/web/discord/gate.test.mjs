@@ -37,7 +37,8 @@ function boot({ search = '?frame_id=f1&instance_id=i1', sdk = 'ok',
         .replace('__OD_ACCOUNT_ISSUER__', ISSUER)
         .replace('__OD_DISCORD_APP_ID__', APP_ID);
 
-    const log = { deps: [], patched: null, warns: [], notes: [], timers: [] };
+    const log = { deps: [], patched: null, warns: [], notes: [], timers: [],
+                  listeners: [], beacons: [], opened: false };
     let node = null;
 
     const ctx = {
@@ -52,7 +53,21 @@ function boot({ search = '?frame_id=f1&instance_id=i1', sdk = 'ok',
         document: {
             head: { appendChild: (n) => { node = n; } },
             createElement: () => ({ src: '', async: true, onload: null, onerror: null }),
+            // The paste bridge subscribes here at load, same as the beacon
+            // does on window. Recorded so a test can assert it.
+            addEventListener: (ev, fn) => log.listeners.push('document:' + ev),
         },
+        // The usage beacon posts through this on pagehide. It is never called
+        // at load -- only registering is -- but a stub that lacks it would
+        // fail the moment a test exercised the beacon rather than the gate.
+        navigator: { sendBeacon: (url, body) => { log.beacons.push(url); return true; } },
+        open: () => { log.opened = true; },
+        // The prologue registers a pagehide listener for the usage beacon.
+        // Every browser has this; the stub did not, so seven tests died on
+        // "window.addEventListener is not a function" -- an incomplete fake
+        // page, not a broken gate. Recorded rather than swallowed, so a test
+        // can assert what the prologue subscribes to.
+        addEventListener: (ev, fn) => log.listeners.push(ev),
         addRunDependency: (n) => log.deps.push('+' + n),
         removeRunDependency: (n) => log.deps.push('-' + n),
         window: {},
@@ -139,7 +154,14 @@ test('a handshake that never answers is released by the timeout', async () => {
         clearTimeout: () => {},
         location: { search: '?frame_id=f1&instance_id=i1', hostname: PROXY_HOST },
         console: { log() {}, warn() {} },
-        document: { head: { appendChild() {} }, createElement: () => ({}) },
+        document: { head: { appendChild() {} }, createElement: () => ({}),
+                    addEventListener() {} },
+        // Same browser members the boot() stub needs, for the same reason:
+        // the prologue registers the paste bridge and the usage beacon at
+        // load, before anything about the gate has run.
+        addEventListener() {},
+        navigator: { sendBeacon: () => true },
+        open() {},
         addRunDependency: (n) => deps.push('+' + n),
         removeRunDependency: (n) => deps.push('-' + n),
     };
