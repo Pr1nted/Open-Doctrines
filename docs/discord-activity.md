@@ -111,7 +111,7 @@ because a web build that will not frame is a non-starter.
 **Distribution.** Activities are open to all developers, and a *Developer
 Activity Shelf* (Discord Settings → Advanced) exists for testing during
 development. Being discoverable in the App Directory needs verification and
-Discovery enabled. So: testable immediately, publicly listed later.
+Discovery enabled -- **both of which are now done**; see *Publishing* below.
 
 **The proxy is not a normal network.** Every request is rewritten. Anything
 that builds a URL at runtime — and the C++ builds several from
@@ -217,12 +217,40 @@ The shelf only shows an application on platforms ticked under Activities →
 Settings → Supported Platforms in the portal. An app with only Android ticked
 is invisible on a desktop client, and nothing anywhere says why.
 
-### 4. Publishing, later
+### 4. Publishing — done, 2026-09-10
 
-Discoverability in the App Directory needs the application verified and
-Discovery enabled. That is a submission, not a build step, and it is worth
-leaving until after step 2 of the plan above — there is no point listing an
-Activity whose networking has not been through the proxy yet.
+Discovery is **enabled**, and every requirement on the App Discovery Status page
+passes: slash commands, a verified application, 2FA on the developer account, a
+designated community support server, summary and description, a tag, a locale,
+an install URL, and links to the terms and the privacy policy.
+
+The last two are the ones worth re-checking after any deploy, and not by their
+status code. Cloudflare Pages answers a missing path with `index.html`, so a
+policy link that has stopped existing returns 200 carrying the game -- which
+looks alive to Discord's checker and to anybody clicking quickly. Read the first
+heading, not the response:
+
+```bash
+curl -s https://opendoctrines.pages.dev/terms.html   | grep -i '<h1'
+curl -s https://opendoctrines.pages.dev/privacy.html | grep -i '<h1'
+```
+
+Both were live and serving the real documents when this was written.
+
+**Enabled is not the same as listed, and neither is the same as ranked.** The
+App Directory is a catalogue you can be in while nobody browsing finds you --
+ranking leans on installs and activity, so a new entry starts deep. The
+placement actually worth having is the rocket-button shelf in a voice channel,
+which is a related surface and not the same switch.
+
+**Check it from somebody else's account.** A developer sees their own
+application in the directory in ways the public does not, so your own search
+proves nothing. Ask two or three people in the support server to search for it,
+and to look for it behind the rocket button in a voice channel. If they find it,
+it is genuinely live; if only you can, it is not yet.
+
+One consequence worth noticing: the support-server requirement means the Discord
+is linked from the listing, so directory traffic lands there.
 
 ## How the proxy layer works
 
