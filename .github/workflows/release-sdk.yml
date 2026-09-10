@@ -38,6 +38,17 @@ jobs:
         with: { distribution: temurin, java-version: "21" }
       - uses: actions/setup-node@v5
         with: { node-version: "22" }
+
+      # This job runs tests/run_all.sh, the same full suite test.yml runs, so it
+      # needs the same Python packages -- and did not have them. Pillow decodes
+      # the GIFs the encoder writes; numpy is what the five shipped-map checks
+      # read pixels with. Without them those six report ModuleNotFoundError and
+      # the SDK release fails for a reason that has nothing to do with the SDK.
+      # test.yml has carried this step, and the comment explaining it, since the
+      # checks were written; this workflow was simply never given it.
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: python -m pip install --quiet Pillow numpy
       - uses: mymindstorm/setup-emsdk@v14
         with: { version: latest }
 
