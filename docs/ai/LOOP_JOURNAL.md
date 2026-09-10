@@ -14897,3 +14897,46 @@ amplification that pairing does nothing about.
 What actually carries the shipped change's cost finding is REPLICATION across
 two independent seed sets in the same direction -- not pairing. The peer's
 note says both, so it stands; my reasoning for it did not.
+
+## 245 — a third of the rating could not move, and my first version of that claim was wrong
+
+The peer's line -- "a seat whose variance is structurally invisible in the
+rating is not contributing information, it is contributing the appearance of
+information" -- is testable, so I tested it.
+
+MY FIRST HYPOTHESIS, from the recent N24 spreads: SWE (par 1.0) and CHN (par
+2.5) always pin at CAP, so a third of every rating is a constant. Checked
+against all 829 stored runs:
+
+    1914:SWE:rung   pinned in 101/829 runs   12%
+    modern:CHN:rung  pinned in  55/829       7%
+    every other seat under 7%, none above 12%
+
+WRONG as stated. Across the corpus -- which is mostly weaker models -- almost
+nothing pins. I had generalised from today's runs to the instrument.
+
+BUT RIGHT WHERE IT MATTERED. Restricted to the A/Bs I actually ran today, all
+on N24, counting seats pinned in BOTH arms:
+
+    austerity  0.15 vs 0.05   set C   2 of 6 dead   set D   1 of 6
+    shipped change on/off     set C   2 of 6 dead   set D   1 of 6
+
+So on set C a third of the rating was an identical constant in both arms and
+could not express a preference. The bench is blind to any improvement on a
+pinned seat: SWE ran [24.2, 9.0, 6.3] behind a score of 500 in every case.
+
+It also means the noise floor from entry 244 is FLATTERING. Constant terms
+have zero variance, so pinning damps the measured spread of the rating; the
+se of 9-12 is real for the rating as computed, but the discriminating part of
+it is proportionally noisier than that.
+
+od_bench now names pinned seats and says the rating cannot see improvement
+there. Third instrument change today, all the same shape: the summary line
+now states its own denominator, its own resolution, and which of its inputs
+are inert.
+
+Worth noting the pattern in my own error: I formed the hypothesis from six
+recent runs and stated it as a property of the bench. The corpus said 12%.
+The discipline that saved it was checking before claiming -- which is the
+same discipline that failed on the play-trained model, where I checked three
+seeds and claimed a capability.
