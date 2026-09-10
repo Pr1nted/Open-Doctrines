@@ -7055,7 +7055,7 @@ void AISystem::austerityReflex(int cid) {
     if (!austerityResearchLast() &&
         !what && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.01f) {
         raIt->second = std::max(0.0f, raIt->second - 0.15f);
-        what = "cut research funding";
+        what = "cut research funding"; ++s_austBranch[0];
     }
     auto pacIt = g.m_countryPacification.find(cid);
     if (!what && pacIt != g.m_countryPacification.end() && pacIt->second > 0.01f) {
@@ -7064,7 +7064,7 @@ void AISystem::austerityReflex(int cid) {
         // budgets and never below a quarter while anything else remains.
         pacIt->second = std::max(0.25f, pacIt->second - 0.125f);
         if (pacIt->second < 0.25f + 1e-3f && inc.policyCosts <= 0.0f) what = nullptr;
-        else what = "cut pacification";
+        else { what = "cut pacification"; ++s_austBranch[1]; }
     }
 
     // ── 2. Repeal the costliest doctrine ──
@@ -7082,7 +7082,7 @@ void AISystem::austerityReflex(int cid) {
                         break;
                     }
             }
-            if (bestIdx >= 0) { g.cancelPolicy(bestIdx); what = "repealed a doctrine"; }
+            if (bestIdx >= 0) { g.cancelPolicy(bestIdx); what = "repealed a doctrine"; ++s_austBranch[2]; }
         }
     }
 
@@ -7120,7 +7120,7 @@ void AISystem::austerityReflex(int cid) {
         }
         if (bestOpt >= 0) {
             g.setEthnicPolicyOption(cid, bestName, bestCat, bestOpt);
-            what = "trimmed a minority programme";
+            what = "trimmed a minority programme"; ++s_austBranch[3];
         }
     }
 
@@ -7149,7 +7149,7 @@ void AISystem::austerityReflex(int cid) {
             statsFor(cid).shipsScrapped++;
             m_shipsScrappedThisTurn[cid]++;
             scrapSaving += bestCost;
-            what = "scrapped a warship";
+            what = "scrapped a warship"; ++s_austBranch[4];
         }
     }
 
@@ -7157,7 +7157,7 @@ void AISystem::austerityReflex(int cid) {
     if (austerityResearchLast() &&
         !what && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.01f) {
         raIt->second = std::max(0.0f, raIt->second - 0.15f);
-        what = "cut research funding";
+        what = "cut research funding"; ++s_austBranch[5];
     }
 
     if (what) statsFor(cid).austerityCuts++;
@@ -12962,6 +12962,11 @@ long long AISystem::s_navalPorts = 0;
 long long AISystem::s_navalShips = 0;
 long long AISystem::s_industryBuys = 0;
 long long AISystem::s_austeritySteps = 0;
+// Which austerity branch actually fired. The shipped win was a REORDER of this
+// list (research moved from first to last, +71/+42 rating), so whether any
+// further reorder is worth trying depends entirely on which branches fire at
+// all. Trace firings before attributing.
+long long AISystem::s_austBranch[6] = {0,0,0,0,0,0};
 // Mean research allocation per country-turn, under OD_ACT_HIST only.
 //
 // The research-ratchet finding is +21.9 points of world across three seed
@@ -13014,6 +13019,10 @@ void AISystem::dumpActionHistogram() {
     fprintf(stderr, "[ACTHIST] naval reflex bought: %lld ports, %lld destroyers; industry reflex: %lld\n",
             s_navalPorts, s_navalShips, s_industryBuys);
     fprintf(stderr, "[ACTHIST] research austerity steps: %lld\n", s_austeritySteps);
+    fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
+            "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
+            s_austBranch[0], s_austBranch[1], s_austBranch[2],
+            s_austBranch[3], s_austBranch[4], s_austBranch[5]);
     for (int m = 0; m < MOD_COUNT; ++m) {
         long long tot = 0;
         for (int a = 0; a < MAX_MODULE_ACTIONS; ++a) tot += s_actHist[m][a];

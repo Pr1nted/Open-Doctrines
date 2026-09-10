@@ -14992,3 +14992,43 @@ assumed.
 
 The research subsystem is now well mapped: the clamp is unreachable, the bar
 is negative, and the order-plus-siege change is the one that works and shipped.
+
+## 247 — austerity has nothing cheap left to cut; the ordering is forced
+
+The shipped win was a REORDER of the austerity list (research first -> last,
++71/+42). Asked whether any sibling reorder is available. Instrumented which
+branch fires instead of guessing -- 400 turns, one world, N24:
+
+    research-first    0     <- the shipped change, confirmed doing its job
+    pacification     20
+    doctrine         28
+    minority         46
+    scrap-ship        5
+    research-last    10
+
+FIRST HYPOTHESIS, killed by the counts: scrap worthless warships before
+repealing doctrines. The AI buys 0 ships in 6,020 offers and forcing it to
+cost 40% of the map, so a hull is near-free to give up while a doctrine is an
+ongoing benefit. But scrap fires only 5 times in 109 cuts -- the ships are
+SCARCE, so the reorder can convert at most 5 events. Not within a mile of a
+~34-point floor.
+
+SECOND HYPOTHESIS, killed by the structure: minority trimming fires most (46),
+and alignment loss compounds into unrest and rebellion, so it looks like the
+research case. But the loop takes the FIRST AVAILABLE branch, so minority
+firing 46 times means pacification and doctrine were exhausted or unavailable
+on those turns. Move minority later and what fires instead is scrap-ship (5
+available) or RESEARCH-LAST -- which is the thing the shipped change exists to
+protect. Demoting minority re-loads the cut onto research and undoes the win.
+
+SO THE ORDERING IS NEARLY FORCED. Austerity reaches for the cheapest thing it
+has; the win came from the one item that was catastrophically mispriced, and
+after removing it there is no cheap resource left to substitute. Scarcity, not
+ordering, is now the binding constraint.
+
+Cost: ~20 minutes of instrumentation instead of a ~2 hour A/B that could not
+have cleared the floor either way. This is the same instrument-first move that
+killed the overrun guard on one seat in six minutes.
+
+Branch counters kept -- they are three lines behind OD_ACT_HIST and the next
+person to have this idea gets the answer without a build.
