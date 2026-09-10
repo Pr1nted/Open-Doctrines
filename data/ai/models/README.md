@@ -23,11 +23,28 @@ Benched 2026-09-10 on hold-out seeds 909091 / 20230115 / 42424242,
 | | | **OD BENCH 68** | **OD BENCH 311** |
 
 N24 is far stronger overall, which is why it ships. **This model is kept
-for one reason: it scores 95 on the invaded seat where N24 scores 17.**
-Self-play erodes rush defence; play against a human evidently does not.
-It is the only artefact in the project that survives being overrun, and
-no rule change has reproduced that — the one that appeared to (austerity
-step 0.15 -> 0.05) inverted on a second seed set and was retracted.
+for one reason: on the invaded seat it means 6.3 land against N24's 1.17
+(scores 95 and 17).**
+
+Read the spread before drawing a mechanism from that, because those are
+means of three seeds and they are bimodal:
+
+| seed | N24 | this model |
+|---|---|---|
+| 909091 | **3.1** | 0.2 |
+| 20230115 | 0.2 | **8.7** |
+| 42424242 | 0.2 | **10.1** |
+
+So it wins two worlds decisively, and on the third it is annihilated just
+as N24 usually is — that world is the one where N24 does better. The
+honest claim is that it holds an invaded country on most worlds where N24
+holds none, NOT that it reliably survives invasion. With n=3 and that
+variance, the difference in means rests on two observations.
+
+No rule change has reproduced even that much: the one that appeared to
+(austerity step 0.15 -> 0.05) inverted on a second seed set and was
+retracted, and gating the shipped research change on being overrun made
+the seat three times worse.
 
 Caveats: trained at whatever difficulty the owner plays and benched at 3,
 so 68 is a floor, not a fair overall measure. It has its own catastrophe
