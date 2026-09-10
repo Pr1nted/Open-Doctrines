@@ -473,7 +473,18 @@ def report(label, scores):
         return None
     rating = statistics.mean(vals)
     ver = sorted(AI_VERSION)
-    print(f"\n  {label}: OD BENCH {rating:.0f}   "
+    # SAY HOW MANY SEATS THE MEAN IS OVER. A seat that produced no [BENCH]
+    # line prints "--" in the table above and is skipped here, so the rating
+    # is a mean over the SURVIVORS. On set C, dropping the rusher seat alone
+    # moves the 0.15 arm from 311 to 370 -- larger than the entire 0.15->0.05
+    # effect of +25, and pointing the other way. It also drops preferentially:
+    # the seat likeliest to die is the one being overrun. The seed-loss guard
+    # upstream already refuses to call such a run comparable, but the headline
+    # number gets read out of logs and out of the store without it, so it must
+    # carry its own denominator.
+    seat_note = "" if len(vals) == len(SEATS) else \
+        f"   [!! {len(vals)} of {len(SEATS)} SEATS -- NOT COMPARABLE]"
+    print(f"\n  {label}: OD BENCH {rating:.0f} over {len(vals)}/{len(SEATS)} seats{seat_note}   "
           f"(100 = held every seat; 0 = annihilated everywhere)"
           + (f"   [{ver[0]}]" if len(ver) == 1 else
              f"   [MIXED VERSIONS {ver} -- the binary changed mid-run]" if ver else ""))

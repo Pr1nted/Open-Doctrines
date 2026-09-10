@@ -14169,3 +14169,434 @@ CONSEQUENCES:
 Four hours of extraction and verification to arrive at "do not ship it",
 and it was worth every arm: the alternative was a release note claiming
 +21.9 for a change measured at -0.26 in the build it was going into.
+
+## 227 -- the code and the model cannot ship apart
+
+    pre-branch code + 30 Aug model              113 / 14.53%
+    my code + 30 Aug model, NEW defaults         31 /  9.03%
+    my code + 30 Aug model, OLD defaults         15 /  4.17%
+
+The architecture is the cause, not the defaults -- and the research
+defaults MITIGATE the damage rather than causing it. So the obvious
+partial revert (drop c06b3cc, keep the instruments) would have shipped
+4.17%, worse than leaving both commits in and far worse than reverting
+both.
+
+I recommended "revert both" from caution and was right by luck. The
+smaller revert was the one that looked safer and it is the worst of the
+three states.
+
+WHY. My code runs DIPLO_ACTIONS x OFFER_KINDS. The 30 August model has a
+single trained {320,2} pair, so the loader replicates it across all seven
+request kinds and the AI answers every request with weights trained on
+their undifferentiated average. That is exactly the defect the per-kind
+split was built to fix, reintroduced by shipping the split without a model
+trained for it.
+
+THE GENERAL CONSTRAINT, which is bigger than this release: in this
+project the AI CODE AND THE MODEL ARE ONE ARTEFACT. Any change to the
+network's shape -- and the diplomacy widening is one -- cannot ship ahead
+of a model trained under it, and the migration path that makes old models
+loadable is what hides the damage. It loads, it runs, it plays worse, and
+nothing warns you.
+
+That also retires a framing I used all day: "the AI code is better, the
+model is unchanged, so play is much the same". For shape-changing code
+that sentence is never available. Better code plus an old model is a
+regression, not a neutral.
+
+DECISION HANDED BACK: revert both commits, or ship N24 with them. There
+is no third option and the partial revert is a trap.
+
+## 228 -- the regression is real, reproducible, and I cannot explain it
+
+    pre-branch code + 30 Aug model                 113 / 14.53%
+    my code + old model, as committed               31 /  9.03%
+    my code + old model, campaign+siege ablated     18 /  5.17%
+    my code + old model, old research defaults      15 /  4.17%
+
+TWO MECHANISMS PROPOSED, TWO REFUTED.
+
+  1. "The diplomacy widening degrades an old model." Argued from the
+     migration. But replicating one trained {320,2} pair across seven
+     request kinds is behaviourally IDENTICAL to HEAD's single head
+     answering all kinds -- there is no training at play time to make the
+     copies diverge. I asserted this mechanism to the peer and to the user
+     before checking that reasoning.
+  2. "The new default-on reflexes (campaign, siege) misfire with a model
+     they were not tuned against." Measured: ablating them costs a further
+     3.86 points. They are HELPING.
+
+Both components I suspected are load-bearing in the wrong direction: the
+research defaults are worth +4.86 on this pairing and the two reflexes
++3.86. Strip either and it gets worse. The regression sits underneath
+both and I do not know what it is.
+
+WHAT IS SOLID: my branch with the 30 August model holds 9.03% of the
+world where the pre-branch code holds 14.53%, on three hold-out seeds at
+400 turns, reproduced twice. The practical conclusion is unchanged and
+does not depend on the mechanism -- do not ship this code with that model.
+
+WHAT I MUST WITHDRAW: entry 227's general rule, that "the AI code and the
+model are one artefact" because a shape-changing change cannot ship ahead
+of its model. That is a good-sounding principle built on mechanism (1),
+which I have now refuted myself. The observation that prompted it stands;
+the explanation does not, and I put it in the journal as a general
+constraint on one measurement and one plausible story.
+
+This is the seventh mechanism this session to be falsified while its
+number held, and the second time today I have generalised a rule from a
+mechanism before testing the mechanism.
+
+## 229 -- the behavioural diff: not diplomacy, and the AI is doing MORE
+
+Same 30 August model through both builds, 3 maps x 400 turns:
+
+    metric (per 1k country-turns)   pre-branch    my build
+    pacts proposed                       2.58        2.59
+    war declarations                     4.55        4.71
+    ceasefire offers                     0.93        0.66
+    research nodes                     103.94      109.92
+    austerity cuts                       4.08        2.06
+    bankrupt country-turns               0.2%        0.1%
+    conciliations                       82.81      103.37
+    largest power                       14.6%       23.2%
+
+DIPLOMACY IS UNCHANGED. 2.58 against 2.59 pacts. Whatever my branch does
+to an old model, it does not do it through the diplomacy head -- which
+independently confirms that withdrawing the widening hypothesis was
+right, by a route that did not depend on my reasoning about it.
+
+THE CHANGES ARE ECONOMIC. Research output up 5.8%, austerity cuts HALVED,
+bankruptcy down, conciliations up 25%. That is the research change doing
+exactly what it was built to do: countries keep their research, stay
+solvent, and therefore austerity fires half as often -- so it trims the
+minority programmes half as often, and the conciliation bill grows.
+
+A CANDIDATE, OFFERED AS A CANDIDATE. Fewer austerity cuts means less
+trimming of minority spending, and the minority bill is the largest
+standing expense in this game. A model trained under the OLD economics
+may be mispricing a world where that bill is allowed to grow. I am not
+asserting this -- I have proposed two mechanisms tonight and refuted
+both, and the honest status of this one is "consistent with the numbers
+and untested".
+
+WHAT IS SOLID AND NEW: the regression is not in diplomacy, and my branch
+makes the AI MORE active on every axis rather than less. Largest power
+14.6% -> 23.2% means the strongest AI country snowballs harder. The seat
+bench scores ONE seat against a scripted world, so a change that helps
+every model country compete can lower the measured seat while raising
+the cohort -- which the bench itself hinted at with "model-cohort share
+0.47 vs seat's own 0.37".
+
+That is a measurement-shape problem I have written down before (a rule
+that helps everyone lowers every seat's score) and it may be the whole
+story here. It does NOT change the recommendation: the seat bench is what
+a player experiences as their own country, and 9.03% against 14.53% is
+still the number that matters for shipping.
+
+## 230 -- not a metric artefact: the seat is annihilated
+
+    1914:FRA, old model, 400 turns, one seed
+    pre-branch build   seat 12.5%   model 12.5% / script 87.5%
+    my build           seat  0.0%   model  0.1% / script 99.9%
+                       cohort share 0.11 vs seat 0.00
+
+Both the seat AND the model cohort collapse. So the "a change that helps
+every model country lowers the measured seat" explanation -- which I had
+started to believe, and which my own notes support as a real failure mode
+-- does not apply here. France is simply destroyed.
+
+THIRD HYPOTHESIS REFUTED TONIGHT. The regression is not:
+    the diplomacy widening   (pacts 2.58 vs 2.59, unchanged)
+    the new default-on reflexes (ablating them costs a further 3.9)
+    the research defaults    (reverting them costs a further 4.9)
+    a seat-versus-cohort measurement artefact (cohort collapses too)
+
+WHAT IT LEAVES. My branch changes the rules enough that a policy not
+trained under them is annihilated rather than merely worse. 12.5% to zero
+is not degradation, it is a different game that the old model cannot
+play. With N24 -- trained under these rules -- the same branch scores
+81.97%.
+
+SO THE CONCLUSION I WITHDREW IN 227 IS BACK, ON DIFFERENT EVIDENCE. I
+said "the AI code and the model are one artefact" and withdrew it because
+I had built it on the diplomacy mechanism, which was wrong. The claim now
+rests on measurement instead: four candidate causes eliminated, the seat
+annihilated with an untrained policy, and the same code scoring 81.97%
+with a trained one. That is a much better footing than the story I
+originally gave it, and the practical rule is unchanged -- these ship
+together or not at all.
+
+Worth noting the difference between the two versions of this entry. In
+227 I had one measurement and a plausible mechanism, and I wrote a
+general rule. Here I have five measurements, no mechanism, and the same
+rule. The second is worth more.
+
+## 231 -- isolated: the campaign system and the siege reflex, together
+
+    1914:FRA, 30 August model, 400 turns, one seed
+    pre-branch build                        12.5%
+    my build                                 0.0%
+    OD_CAMPAIGNS=0                           0.0%   campaigns alone: nothing
+    OD_CAMPAIGNS=0 + siege ablated           8.0%   the pair: most of it back
+    all six new reflexes ablated             8.0%   no more than the pair
+
+The campaign system and the siege reflex TOGETHER account for 8.0 of the
+12.5-point gap. Neither alone moves it at all, and my other four new
+reflexes add nothing beyond the pair.
+
+That is the fifth superadditive interaction measured in this session and
+the clearest. Both are large rule additions -- campaigns commit a country
+to a chosen offensive, siege diverts money to forts and research away
+from the laboratory -- and a policy trained without either is destroyed
+by having both.
+
+WHAT MADE IT FINDABLE: switching to a SINGLE SEAT. Every earlier attempt
+cost fifty minutes because I was benching six seats and three seeds, and
+I twice called this investigation too expensive to pursue. France alone
+shows the effect at its most extreme (12.5% to zero), so each arm took
+three minutes -- a sixteenfold speedup on exactly the question I had been
+deferring. The instrument was the obstacle, not the question.
+
+THE REMAINING 4.5 POINTS are in code I have not isolated, and I am
+stopping here rather than chasing them. The practical answer is complete:
+the branch reshapes the game enough that an untrained policy cannot play
+it, the two subsystems responsible are named, and the fix is the one
+already established -- ship the branch with a model trained under it.
+
+FOR 1.2.1: this is not a defect to repair before shipping. Campaigns and
+the siege reflex are worth having; N24 is trained with both and scores
+81.97% where the pre-branch pairing scores 14.53%. It is a coupling to
+respect, not a bug to fix.
+
+## 232 -- the rusher seat wants a different policy, and now there is proof
+
+    threat-aware recruit, hold-out C, 400 turns, against 308 / 81.97%
+    FRA:rush    1.03 ->  7.93   +6.90   ABOVE its par of 6.7
+    SWE:rung   13.03 ->  2.27  -10.77
+    USA:rung   21.77 -> 12.87   -8.90
+    FRA:rung   27.57 -> 23.93   -3.63
+    CHN:mod    18.13 -> 14.70   -3.43
+    net -19.97
+
+Third change to lift the rushed seat and lose overall:
+
+    peace reflex     FRA:rush +4.57   net  +3.87
+    recruit mask     FRA:rush +4.50   net  +3.73
+    threat recruit   FRA:rush +6.90   net -19.97
+
+Three unrelated mechanisms, all lifting the same seat, all costing the
+others. That is no longer a coincidence: THE RUSHED SEAT WANTS A
+DIFFERENT POLICY FROM THE REST OF THE BOARD, and no global knob can serve
+both. It is also the only seat with real headroom left -- everything else
+is at or above par.
+
+The source already rejected this knob, and correctly: "41 rating, 9
+survival and 33 floor worse than applying it to reinforcement alone... it
+is not how OFTEN the correction fires, it is WHICH decision it governs."
+My -19.97 agrees. What that measurement could not see is that the loss is
+paid by five comfortable seats and the gain lands entirely on the one
+being overrun.
+
+WHY THIS IS THE ONE CONDITIONAL WORTH TRYING, after nine failed ones.
+Every narrowing that failed this session narrowed a rule that was
+GLOBALLY POSITIVE -- siege gating, the peace strength bar, the peace war
+count. Restricting a rule that already helps everywhere can only lose.
+This rule is globally NEGATIVE and locally worth seven points on a seat
+at 15% of par. A condition is not an optimisation here; it is the only
+way the rule could ever be used at all.
+
+Next: gate it on being outmatched, and measure. If nine-for-nine holds
+and this fails too, the honest conclusion is that the rusher problem
+needs a different KIND of change than a knob.
+
+## 233 -- ten narrowings, ten losses, and the rusher problem is not a knob
+
+    threat-aware recruit, gated on being outmatched
+    control                     81.97%
+    ungated                     62.00%   -19.97
+    bar 0.25 (besieged default) 61.83%   -20.14
+    bar 0.50                    57.10%   -24.87
+
+Tightening the gate makes it WORSE, monotonically. And this was the case
+where the argument for a condition was strongest: a rule that is globally
+negative and locally worth +6.90 on a seat at 15% of par. If a conditional
+was ever going to work, it was this one.
+
+TEN NARROWINGS THIS SESSION, TEN LOSSES:
+
+    siege share 0.75 / 0.50            worse than either end
+    peace strength bar 1.5 / 2.5       worse than both ends
+    peace war count 3 / 4              worse than both ends
+    austerity research-last alone      lost the floor
+    threat-recruit bar 0.25 / 0.50     worse than ungated
+
+Against that, both changes that helped REMOVED a condition rather than
+adding one. I do not have a mechanism and I am not going to invent one,
+but as an empirical rule for this AI it is now strong enough to act on:
+conditions are expensive here, and a rule that fires broadly and is
+sometimes wrong beats a rule that fires narrowly and is usually right.
+
+THE RUSHER THREAD CLOSES. Three unrelated changes lift that seat and all
+three cost the board; gating the best of them makes it worse. The seat is
+not reachable by any knob in the game, conditionally or otherwise. If it
+is to be fixed it needs a different KIND of change -- a policy that knows
+it is losing, which is a training-side property, and training from this
+parent has failed sixteen checkpoints out of sixteen.
+
+So the honest closing position on the rusher seat: understood, measured,
+and out of reach of the tools available. That is a better place than it
+was twelve hours ago, when it was simply "the seat that always dies".
+
+## 234 -- the credit horizon causes the conciliation ratchet, and nothing else
+
+Two models from one parent, same rate, same rounds, same rule config,
+differing only in OD_N_STEP (verified in the log: "N_STEP overridden: 40").
+
+                              N_STEP=12    N_STEP=40
+    conciliate taken-when-offered  73.23%      2.30%
+    conciliations per 1k          140.34      35.24
+    repress taken                   0.00%      0.00%
+    fund up                        98.29%     98.52%
+    fund down                      41.41%     41.20%
+
+CONFIRMED: the horizon causes the conciliation ratchet. Widening the
+credit window from 12 to 40 turns collapses conciliation by a factor of
+THIRTY. Conciliation is free at the moment it is chosen and bills for
+ever; at 12 turns the bill is invisible and at 40 turns it is not. That
+is the first mechanism this session to survive its test rather than be
+falsified by it, and it was predicted in writing before the run.
+
+REFUTED, and it was half my case: repression stays at EXACTLY 0.00% of
+44,961 offers. The horizon is not what stops the AI repressing. A longer
+window makes it stop PAYING, not start coercing -- it simply does less
+of both. So whatever holds repression at zero is something else, and I no
+longer have a candidate.
+
+ALSO REFUTED: "one horizon explains both ratchets". Fund-up and fund-down
+are unchanged to within a tenth of a percent (98.29/41.41 against
+98.52/41.20). The research slider is completely insensitive to the credit
+window. I had presented the pairing of the two ratchets as the strongest
+evidence for the horizon story; the pairing is not real.
+
+Note also that fund-down runs at 41% in BOTH trained models, so the
+"fund up 81% / fund down 0.4%" ratchet in the source comment is a
+property of some particular model, not of the architecture. That is the
+same attribution error I made about ships and about fund-down earlier --
+a rate read off one model and described as the AI's.
+
+WHAT IS ACTIONABLE. If training is ever made to work here, N_STEP is a
+real lever on the minority bill, which is the largest standing expense in
+the game and which three separate hand-written gates failed to control.
+That is worth knowing and it is not reachable by any rule.
+
+## 235 — the last open question in memory was already closed, against the memory
+
+`econ-head-is-collapsed` carried an explicit untested item: whether the four
+non-naval dead actions (`fort`, `specialize`, `fund down`, `focus bldg`) were
+the same priced-refusal story as the naval ones. Checked before spending a
+bench run on it. Three of the four are not dead at all — on N24, `fund down`
+runs at 29.5% (and ~41% in both horizon-test models), `focus bldg` is the
+research-branch action at 90.4%, `fortify` at 0.7% is forced by a shipped
+reflex. Only `specialize` (0.3%) is near-dead.
+
+The "eight actions at exactly 0.0" list was marginal probability on ONE model,
+2026-08-29. Written down as a property of the head, it survived nine days and
+would have sent this session to price actions that are alive.
+
+That is the third instance today of the same error: a number true of one model
+quoted as a property of the architecture. The other two were mine (the fund
+up/down attribution) and the codebase's own comment. Both memories corrected,
+index hook included -- an index line that still sells a retracted claim is
+worse than no memory.
+
+Nothing untested remains in the dead-action thread.
+
+## 236 — the austerity step, and a metric that changes identity under you
+
+Swept a constant nobody had looked at: austerity drags the research slider
+by 0.15 a pass, while the head's own research action moves it by 0.05. So
+austerity cuts three times faster than the policy can restore it, and the
+policy is visibly trying -- fund up on 95.5% of offers against fund down on
+29.5%. Hold-out set C, N24, 400 turns, difficulty 3, same binary both arms,
+knob proven inert per call (1560 of 1561 lines identical unset vs 0.15):
+
+    step 0.15 (shipped)   OD BENCH 311   land 82.73%   survival 77   worst 17
+    step 0.05             OD BENCH 336   land 92.50%   survival 92   worst 51
+
+    seat              par    0.15 land  score   0.05 land  score   d.surv
+    1914:FRA:rung     6.7        27.70    413       27.70    413     +0.0
+    1914:SWE:rung     1.0        13.17    500       13.17    500     +0.0
+    1939:USA:rung     5.6        21.90    391       23.23    415     +0.0
+    modern:CHN:rung   2.5        18.20    500       18.73    500     +0.0
+    1914:FRA:rush     6.7         1.17     17        9.00    134    +82.6
+    1939:NOR:hood     1.3         0.60     46        0.67     51     +5.1
+
+FAILS the shape test: 80% of net land is one seat. The peer argued survival
+and worst-seat do not decompose like land, so the test was rejecting a broad
+improvement on a narrow metric. Checked instead of assuming: survival is 94%
+one seat -- MORE concentrated than land, not less. The four comfortable seats
+sit at 391-500% of par and cap at 100, so they cannot contribute, which makes
+survival more dominated by the single uncapped seat.
+
+WORST SEAT 17 -> 51 IS A SEAT SWAP, NOT A FLOOR LIFT. At 0.15 the worst seat
+is FRA:rush at 17. At 0.05 FRA:rush reaches 134 and stops being worst;
+NOR:hood at 51 becomes worst, having itself moved only 46 -> 51. The metric
+changed identity between arms. It will do that every time a single bad seat
+is fixed, and it reads exactly like a broad improvement.
+
+WHAT IT IS: a country being actively overrun ends ABOVE its starting share
+(17% -> 134% of par) where it was previously near annihilation. Nothing else
+moves and nothing gets worse. Narrow, large, and at no cost -- which is new:
+every previous rusher-seat fix paid for it on the board, and that is why I
+concluded in entry ~230 that the seat was unreachable by any knob. That
+conclusion was wrong. It was wrong because I never looked inside a rule that
+was already working.
+
+Not a magnifier artefact: FRA:rush par is 6.7, the largest in the set. The
+NOR:hood 46 -> 51 IS in magnifier territory and I do not claim it.
+
+FOR THE RELEASE RECORD: 82.73% is the 0.15 arm. 0.05 measured better on one
+hold-out set BEFORE the tag, and 1.2.0a ships 0.15 deliberately -- one seed
+set is not enough for a default, and four numbers inverted on contact with a
+different configuration today. Set D is running. Recording it now so it is
+legible as a decision rather than discovered later as an oversight.
+
+## 237 — the user's model, measured before it was replaced
+
+The user's play-trained model had never been benched, and the release
+proposed to overwrite it with N24. Hold-out set C, N24's exact conditions,
+6/6 seats both runs, zero dropped seeds:
+
+    seat              par    USER    N24   N24@0.05
+    1914:FRA:rung     6.7      79    413    413
+    1914:SWE:rung     1.0       7    500    500
+    1939:USA:rung     5.6     151    391    415
+    modern:CHN:rung   2.5      36    500    500
+    1914:FRA:rush     6.7      95     17    134
+    1939:NOR:hood     1.3      41     46     51
+
+    USER play-trained    OD BENCH  68   survival 59   worst  7
+    N24 @0.15 (ships)    OD BENCH 311   survival 77   worst 17
+
+N24 ships: 4.6x better overall, four seats won outright.
+
+BUT THE MODEL WE WERE ABOUT TO DISCARD SCORES 95 ON THE RUSHER SEAT WHERE
+N24 SCORES 17. Predicted in advance from [[selfplay-erodes-rush-defence]] --
+human play teaches something self-play destroys -- and it is now a measured
+fact rather than an inference from that memory. Replacing it unmeasured
+would have thrown away the only artefact in the project that survives being
+invaded, and nothing would have recorded that it existed.
+
+Caveats that keep it honest: trained at whatever difficulty the user plays,
+benched at 3, so 68 is a FLOOR on it and not a fair overall measure. And it
+has its own catastrophe -- SWE at 0.1 land, score 7. Not a hidden gem.
+
+WHAT I WROTE AND THE PEER CORRECTLY REFUSED: that the 0.05 constant
+"recovers by rule what human play had learned". 134 and 95 are compatible
+with that and nothing has tested it. They could reach those numbers by
+entirely different routes. Two measurements pointing the same way are not
+one story -- which is exactly [[measurements-replicate-explanations-dont]],
+cited by me in the same message where I broke it. Recorded as two facts
+that happen to agree, and a hypothesis for a later run.
