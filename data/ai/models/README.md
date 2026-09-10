@@ -22,29 +22,35 @@ Benched 2026-09-10 on hold-out seeds 909091 / 20230115 / 42424242,
 | 1939:NOR hood | 1.3 | 41 | 46 |
 | | | **OD BENCH 68** | **OD BENCH 311** |
 
-N24 is far stronger overall, which is why it ships. **This model is kept
-for one reason: on the invaded seat it means 6.3 land against N24's 1.17
-(scores 95 and 17).**
+N24 is far stronger overall, which is why it ships.
 
-Read the spread before drawing a mechanism from that, because those are
-means of three seeds and they are bimodal:
+**The reason this model was originally kept did not survive testing.** It was
+kept because it scored 95 on the invaded seat against N24's 17 — a 5.6x gap.
+Re-measured on 11 paired seeds (the original 3 plus 8 fresh), that gap is
+mostly an artefact of which seeds were used:
 
-| seed | N24 | this model |
+| | original 3 seeds | all 11 seeds |
 |---|---|---|
-| 909091 | **3.1** | 0.2 |
-| 20230115 | 0.2 | **8.7** |
-| 42424242 | 0.2 | **10.1** |
+| N24 | 1.17 | **4.24** |
+| this model | 6.33 | 6.43 |
 
-So it wins two worlds decisively, and on the third it is annihilated just
-as N24 usually is — that world is the one where N24 does better. The
-honest claim is that it holds an invaded country on most worlds where N24
-holds none, NOT that it reliably survives invasion. With n=3 and that
-variance, the difference in means rests on two observations.
+    paired difference  +2.19 land   se 2.01   t = 1.09
+    95% CI             [-2.29, +6.67]   — spans zero
+    wins               this model 7 of 11
 
-No rule change has reproduced even that much: the one that appeared to
-(austerity step 0.15 -> 0.05) inverted on a second seed set and was
-retracted, and gating the shipped research change on being overrun made
-the seat three times worse.
+This model's score was representative. N24's was not: the original three
+seeds happened to contain three of N24's collapse worlds, understating it
+3.6-fold. On 11 seeds the difference is not statistically distinguishable
+from zero.
+
+**What IS real, and is the more useful observation:** the invaded seat is
+BISTABLE for both models. Every run either holds 5.7-11.3 land or collapses
+below 1.5 — almost nothing in between. Collapse rate is 5/11 for N24 and
+3/11 for this model. So a 3-seed measurement of that seat is estimating a
+Bernoulli parameter from three coin flips, and will swing wildly.
+
+Kept anyway: it is the owner's own play data, it is not reproducible, and
+nothing else in the project was trained on human play.
 
 Caveats: trained at whatever difficulty the owner plays and benched at 3,
 so 68 is a floor, not a fair overall measure. It has its own catastrophe
