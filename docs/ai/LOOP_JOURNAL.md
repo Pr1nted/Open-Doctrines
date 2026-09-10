@@ -14693,3 +14693,46 @@ the wrong direction while improving everything else.
 NOT a reason to unship: +71/+42 aggregate on two hold-out sets is the best
 evidence any change has had this session. It is a reason for the note to say
 what was bought and what it cost.
+
+## 240 — the obvious fix for the trade makes the trade worse. 0 for 11
+
+Entry 239 showed the shipped research change costs the invaded seat 3.87 and
+5.80 points of the world. The obvious fix: when a country is being overrun,
+revert it to the old behaviour -- fund defence, not laboratories. Implemented
+as OD_RESEARCH_GUARD_OVERRUN (worstDeficit >= bar x army), gating both the
+austerity ordering and the siege research cut. Default 0.0 = shipped.
+
+One seat, 1914:FRA:rush, N24, 400 turns, difficulty 3, three hold-out seeds:
+
+    control (shipped)   3.1  0.2  0.2   mean 1.17
+    guard 0.25          0.2  0.3  0.3   mean 0.27
+
+It does not merely fail to help the seat it was built for. It makes that seat
+THREE TIMES WORSE. Narrowings are now 0 for 11 this session, and this one lost
+on the very seat it targeted -- so the failure is not "the gate costs more
+elsewhere than it recovers here", it is that the premise was wrong. A country
+being overrun does not do better by cutting research; it does worse.
+
+That kills the reading I had of entry 239. I described the trade as "funding
+laboratories instead of defence", which sounds like an error the AI is making.
+It is not: taking the research away from the losing country makes it lose
+harder. Whatever the shipped change costs that seat, redirecting the money is
+not the recovery.
+
+METHOD NOTE, and it is why this cost six minutes rather than three hours:
+diagnosed on ONE seat before benching six. The full A/B would have been ~3.3
+hours to reach the same kill.
+
+The control arm doubled as the inertness proof -- it reproduced the stored
+setC mean of 1.17 EXACTLY on a freshly built binary, which simultaneously
+validates the harness and proves the knob inert when unset. Worth building
+that check into every diagnostic: a control that must reproduce a known stored
+value catches a broken harness before the treatment arm is read.
+
+I needed that check. The first run of this diagnostic passed --vs-exploit 1
+where the rush world is 3, and returned a clean control mean of 27.6 -- which
+is the RUNG seat's stored value (27.70), not the rush seat's. Accurate numbers
+about a world I had not asked for. Seventh instance today of
+[[true-about-the-adjacent-thing]] and the second I produced myself.
+
+Code reverted; patch kept at scratchpad/research-guard-overrun-FAILED.patch.
