@@ -15152,3 +15152,35 @@ lacks -- one seed set, non-monotone.
 TO THE USER: I put a design question to them -- should AI countries snowball or
 be hard to kill -- on the strength of this. The question is legitimate; the
 evidence I offered for it is not. Corrected in the same message.
+
+## 251 — fixing the reader, not the resolve
+
+Four claims today rested on the same two seats. I added flags for those seats
+this afternoon and then read past them, twice. Flags in the margin do not work
+when the number in the middle of the line still reads as a six-seat statistic.
+
+So the line itself now carries it:
+
+    survival 77   worst seat 17 (1914:FRA rush)   [!! survival varies over only
+                                                   2 of 6 seats -- the rest are
+                                                   at or above par and constant]
+    survival 89   worst seat 59 (1939:NOR hood)   [!! ... 2 of 6 seats ...]
+
+Two failure modes closed at the point of reading:
+
+  1. Survival is a mean of min(seat,100). Any seat at or above par is a
+     constant, so survival varies ONLY over seats below par. In the arms that
+     fooled me, four of six were pinned at exactly 100 in BOTH arms and the
+     whole 77 -> 89 was rush and hood. It now says so.
+  2. The worst seat NAMES itself. "17" and "59" above are different seats, and
+     printed side by side that is obvious. Printed as bare numbers it reads as
+     a floor lift, which is what I reported to the user yesterday and retracted
+     today.
+
+Verified by discrimination rather than by inspection: fires on both arms that
+fooled me, silent on the play-trained model's run where survival genuinely
+varies over five seats.
+
+This is the fifth instrument change today and the first aimed at MY reading
+rather than at the tool's correctness. The tool was never wrong. It reported a
+mean of six numbers, four of which could not move, and I supplied the rest.
