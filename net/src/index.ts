@@ -32,7 +32,7 @@ import { issueJoinTicket, psidFor } from "./auth/ticket.js";
 import {
     accountForIdentity, asSubjectHash, changeNickname, createAccount, getAccount,
     banInForce, identSubHash, identityIsBanned, linkIdentity, publicAccount, setBanned,
-    unlinkIdentity,
+    unlinkIdentity, countAccounts,
 } from "./accounts/store.js";
 import { checkAccountAge, tooNewMessage } from "./accounts/policy.js";
 import { checkNickname } from "./accounts/nickname.js";
@@ -209,6 +209,7 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (joinMatch && get) return viewerLinkOpen(env, joinMatch[1]!);
     if (get  && path === "/moderation/announcements") return announcementList(request, env);
     if (post && path === "/moderation/announcement") return announcementEdit(request, env);
+    if (get  && path === "/moderation/overview") return moderationOverview(request, env);
     if (get  && path === "/moderation/reports") return moderationList(request, env);
     if (post && path === "/moderation/decide") return moderationDecide(request, env);
     if (get  && path === "/moderation/account") return moderationProfile(request, env, url);
@@ -962,6 +963,20 @@ async function announcementEdit(request: Request, env: Env): Promise<Response> {
     // client. See announcements/store.ts.
     if (!result.ok) return fail(400, "bad_announcement", result.reason);
     return json({ all: result.all });
+}
+
+/**
+ * The numbers the admin screen shows about the service as a whole.
+ *
+ * Moderator-gated like everything else here, so it is reachable from inside the
+ * game with a session token and no secret. One field today; the shape is a
+ * bag so a second number does not need a second round trip later.
+ */
+async function moderationOverview(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
+    const { accounts, exact } = await countAccounts(env);
+    return json({ accounts, exact });
 }
 
 async function moderationList(request: Request, env: Env): Promise<Response> {

@@ -226,6 +226,16 @@ void Game::update(float dt) {
     if (m_currentScreen != SCREEN_PLAYING) return;
 
     if (IsKeyPressed(KEY_F9)) toggleComms();
+
+    // F7 turns the world. The globe is a VIEW, not a mode: nothing about the
+    // game state, the orders or the turn changes, so this sits with the other
+    // view keys rather than anywhere that could be mistaken for a rule.
+    if (IsKeyPressed(KEY_F7) && m_renderer) {
+        const bool toGlobe = m_renderer->viewMode() == MapRenderer::ViewMode::Flat;
+        m_renderer->setViewMode(toGlobe ? MapRenderer::ViewMode::Globe
+                                        : MapRenderer::ViewMode::Flat);
+        Audio::get().playSfx("click_light");
+    }
     updateComms(dt);
     // Keybind capture mode — freezes all other input
     if (m_waitingForKey) {
@@ -1055,20 +1065,33 @@ void Game::update(float dt) {
                         Vector2 mp = getMouse();
                         auto cit = m_provinceCenters.find(m_artilleryWheelProvince);
                         if (cit != m_provinceCenters.end()) {
-                            int mw = m_landSea.getWidth();
-                            const Camera2D& cam2 = m_renderer->getCamera();
-                            Vector2 wwp = cit->second;
-                            while (wwp.x - cam2.target.x > mw * 0.5f) wwp.x -= mw;
-                            while (wwp.x - cam2.target.x < -mw * 0.5f) wwp.x += mw;
-                            Vector2 center = GetWorldToScreen2D(wwp, cam2);
-                            float dx = mp.x - center.x, dy = mp.y - center.y;
-                            float dist = sqrtf(dx*dx + dy*dy);
-                            if (dist > 30.0f) {
-                                float angle = atan2f(dy, dx);
-                                if (angle < 0) angle += 2*PI;
-                                m_artilleryWheelHover = ((int)((angle + PI*0.625f) / (PI*0.25f))) % 8;
-                            } else {
+                            // Through the renderer's seam, so the wheel is
+                            // measured from where the province actually IS in
+                            // the view that is up. A province on the far side
+                            // returns Behind and the wheel is left alone --
+                            // you cannot aim at something you cannot see.
+                            float csx = 0.0f, csy = 0.0f;
+                            const bool visible =
+                                m_renderer->pixelToScreen(cit->second.x, cit->second.y,
+                                                          csx, csy) ==
+                                MapRenderer::Facing::Front;
+                            if (!visible) {
+                                // Nothing to aim from: leave the wheel where it
+                                // is. NOT a return -- this sits inside
+                                // Game::update, and returning here would skip
+                                // the rest of the frame's work entirely.
                                 m_artilleryWheelHover = -1;
+                            } else {
+                                const Vector2 center = {csx, csy};
+                                const float dx = mp.x - center.x, dy = mp.y - center.y;
+                                const float dist = sqrtf(dx*dx + dy*dy);
+                                if (dist > 30.0f) {
+                                    float angle = atan2f(dy, dx);
+                                    if (angle < 0) angle += 2*PI;
+                                    m_artilleryWheelHover = ((int)((angle + PI*0.625f) / (PI*0.25f))) % 8;
+                                } else {
+                                    m_artilleryWheelHover = -1;
+                                }
                             }
                         }
                     } else {

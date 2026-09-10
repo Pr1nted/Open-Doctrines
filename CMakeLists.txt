@@ -958,6 +958,8 @@ set(GAME_SOURCES
     src/map/ProvinceMap.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
+    src/renderer/GlobeView.cpp
+    src/map/SkyFile.cpp
     src/renderer/FlagRenderer.cpp
     src/renderer/NanoSVGWrapper.cpp
     src/mods/ModPackage.cpp
@@ -2067,6 +2069,24 @@ endif()
 # --- announcement board ---
 # Pure: parses a document, no sockets. The refusals are the point; see the
 # header for why this is a sealed format.
+# A window that draws the globe with a real map on it, for looking at.
+# Not shipped: EXCLUDE_FROM_ALL, and nothing depends on it.
+add_executable(GlobePreview EXCLUDE_FROM_ALL tools/globe_preview.cpp
+               src/renderer/GlobeView.cpp src/util/Async.cpp)
+target_include_directories(GlobePreview PRIVATE src)
+target_link_libraries(GlobePreview raylib)
+
+# The globe's texture mapping and its picking, held to being inverses.
+#
+# Links raylib for its types and raymath, and opens no window: the geometry was
+# split out of GlobeView precisely so the part that has to be exact needs no GPU
+# to test. A disagreement here shows up in the game as clicks landing on the
+# wrong province near the poles.
+add_executable(GlobeProjectionTest EXCLUDE_FROM_ALL tests/globe_projection_test.cpp
+               src/renderer/GlobeView.cpp src/util/Async.cpp)
+target_include_directories(GlobeProjectionTest PRIVATE src tests)
+target_link_libraries(GlobeProjectionTest raylib)
+
 # The relay's framing. No network in it: the bytes are the whole risk, and a
 # peer id read the wrong way round misdelivers a turn rather than failing.
 add_executable(RelayLinkTest EXCLUDE_FROM_ALL tests/relay_link_test.cpp

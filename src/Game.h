@@ -5530,6 +5530,8 @@ private:
     void openDevReports();
     void closeDevReports();
     void fetchDevReports();
+    /// How many accounts exist, for the Admin header. Fails silently.
+    void fetchAdminOverview();
     void parseDevReports();
     void decideDevReport(const std::string& id, const char* action, double days);
     void drawDevReports();

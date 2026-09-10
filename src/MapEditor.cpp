@@ -10,6 +10,7 @@
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
+#include "map/SkyFile.h"
 #include "util/LoadLog.h"
 // The editor draws its own hints and labels, and they are translated too. It
 // does not include Game.h, which is where everything else picks this up.
@@ -3610,6 +3611,11 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     meta["has_scripts"] = !m_scripts.empty();
     writeStr(tmpDir + "metadata.json", meta.dump());
 
+    // The sky, beside the rest of the map's own data. Always written, even when
+    // untouched: a map that carries an explicit sky is a map whose look does
+    // not change when the engine's defaults do.
+    skyfile::save(tmpDir + "sky.json", m_sky);
+
     // Thumbnail: the author's custom image if they set one, else downsample
     // the political map. Either way it ships as a THUMB_W x THUMB_H PNG.
     // Sampled straight out of m_politicalPixels rather than off a file, since
@@ -3687,6 +3693,7 @@ std::string MapEditor::exportODMap(const std::string& destPath) {
     if (startingMinorityPoliciesJson.empty())
         LoadLog() << "  NOTE: no ethnic-relations settings to export\n";
     addFile("metadata.json");
+    addFile("sky.json");
     addFile("thumb.png");
     // Embed custom flag SVGs
     for (auto& [arcName, filePath] : customFlags) {
@@ -8911,6 +8918,82 @@ void MapEditor::drawMetadataPanel() {
 
     drawField(0);
     drawField(1);
+
+    // ── Sky ──
+    //
+    // Everything the globe view draws that is not the map itself. Grouped here
+    // rather than given its own mode because it is map METADATA -- properties
+    // of the world, like its name and its date, not a thing you paint.
+    //
+    // Sliders rather than typed numbers: every one of these is judged by eye
+    // against the globe, and a value you have to type is a value you stop
+    // adjusting.
+    auto skySlider = [&](const char* label, float* value, float lo, float hi,
+                         const char* fmt) {
+        DrawText(label, px, y, 11, Color{150, 155, 170, 255});
+        char buf[32]; snprintf(buf, sizeof(buf), fmt, *value);
+        const int vw = MeasureText(buf, 11);
+        DrawText(buf, px + listW - vw, y, 11, WHITE);
+        y += 15;
+        const Rectangle bar = {(float)px, (float)y, (float)listW, 6};
+        DrawRectangleRounded(bar, 1.0f, 4, Color{32, 32, 44, 255});
+        const float t = std::clamp((*value - lo) / (hi - lo), 0.0f, 1.0f);
+        DrawRectangleRounded({bar.x, bar.y, bar.width * t, bar.height}, 1.0f, 4, ACCENT);
+        const Rectangle grab = {bar.x + bar.width * t - 5, bar.y - 4, 10, 14};
+        DrawRectangleRounded(grab, 0.4f, 4, WHITE);
+        const Rectangle hit = {bar.x, bar.y - 7, bar.width, 20};
+        if (inputOk && CheckCollisionPointRec(mouse, hit) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            const float nt = std::clamp((mouse.x - bar.x) / bar.width, 0.0f, 1.0f);
+            const float nv = lo + nt * (hi - lo);
+            if (nv != *value) { *value = nv; trackChange(); }
+        }
+        y += 18;
+    };
+    auto skyToggle = [&](const char* label, bool* value) {
+        const Rectangle box = {(float)px, (float)y, 16, 16};
+        DrawRectangleRounded(box, 0.2f, 4, *value ? ACCENT : Color{32, 32, 44, 255});
+        DrawRectangleRoundedLines(box, 0.2f, 4, Color{70, 70, 84, 255});
+        DrawText(label, px + 24, y + 2, 12, WHITE);
+        const Rectangle hit = {(float)px, (float)y, (float)listW, 16};
+        if (inputOk && CheckCollisionPointRec(mouse, hit) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            *value = !*value; trackChange();
+        }
+        y += 22;
+    };
+
+    y += 8;
+    DrawText(T("Sky"), px, y, 15, ACCENT); y += 22;
+    DrawText(T("Seen in the globe view (F7)."), px, y, 11, Color{130, 135, 150, 255}); y += 18;
+
+    skyToggle(T("Stars"), &m_sky.stars);
+    if (m_sky.stars) skySlider(T("Star brightness"), &m_sky.starBrightness, 0.0f, 2.0f, "%.2f");
+
+    skyToggle(T("Atmosphere"), &m_sky.atmosphere);
+    if (m_sky.atmosphere) {
+        skySlider(T("Air height"), &m_sky.airHeight, 0.005f, 0.09f, "%.3f");
+        skySlider(T("Air strength"), &m_sky.airStrength, 0.0f, 2.5f, "%.2f");
+        skySlider(T("Air falloff"), &m_sky.airFalloff, 1.0f, 6.0f, "%.2f");
+    }
+
+    skyToggle(T("Cloud"), &m_sky.cloud);
+    if (m_sky.cloud) {
+        skySlider(T("Cloud cover"), &m_sky.cloudOpacity, 0.0f, 1.0f, "%.2f");
+        skySlider(T("Cloud height"), &m_sky.cloudHeight, 0.0f, 1.0f, "%.2f");
+        skySlider(T("Cloud drift"), &m_sky.cloudDrift, 0.0f, 0.04f, "%.3f");
+    }
+
+    skyToggle(T("Moon"), &m_sky.moon);
+    if (m_sky.moon) {
+        skySlider(T("Moon size"), &m_sky.moonSize, 0.05f, 2.5f, "%.2f");
+        skySlider(T("Moon distance"), &m_sky.moonDistance, 4.0f, 60.0f, "%.1f");
+        skySlider(T("Moon longitude"), &m_sky.moonLon, 0.0f, 360.0f, "%.0f");
+        skySlider(T("Moon latitude"), &m_sky.moonLat, -60.0f, 60.0f, "%.0f");
+    }
+
+    skyToggle(T("Sun visible"), &m_sky.sunDisc);
+    if (m_sky.sunDisc) skySlider(T("Sun size"), &m_sky.sunSize, 0.5f, 12.0f, "%.1f");
+
+    y += 10;
 
     // ── Start date: month picker + year field + AD/BC toggle ──
     DrawText(T("Start date:"), px, y, 12, LIGHTGRAY); y += 16;

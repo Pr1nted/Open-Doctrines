@@ -1,4 +1,5 @@
 #include "MapRenderer.h"
+#include "GlobeView.h"
 // Not just the pad's cursor but its buttons: this renderer answers the clicks
 // that select a province, drag an army and pan the map, and it asks raylib for
 // them itself. Without the shims the stick moved a pointer nothing could click.
@@ -54,14 +55,18 @@ MapRenderer::~MapRenderer() {
     if (m_claimsTex.id > 0) UnloadTexture(m_claimsTex);
     if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
     if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
+    if (m_surface.id > 0) UnloadRenderTexture(m_surface);
+    delete m_globe;
 }
 
 void MapRenderer::setEditorOverlay(Texture2D tex) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
     m_editorOverlayTex = tex;
 }
 
 void MapRenderer::setHighlight(Texture2D tex, int x, int y) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
     m_highlightTex = tex;
     m_highlightX = x;
@@ -69,21 +74,25 @@ void MapRenderer::setHighlight(Texture2D tex, int x, int y) {
 }
 
 void MapRenderer::clearHighlight() {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
     m_highlightTex = Texture2D{};
 }
 
 void MapRenderer::setPoliticalTexture(Texture2D tex) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0) UnloadTexture(m_politicalTex);
     m_politicalTex = tex;
 }
 
 void MapRenderer::updatePoliticalTexture(const void* data) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTexture(m_politicalTex, data);
 }
 
 void MapRenderer::updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTextureRec(m_politicalTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
 }
@@ -158,6 +167,7 @@ static inline uint8_t borderAlphaAt(const uint32_t* pixels, int mapW, int mapH,
 
 void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH,
                                      int rx, int ry, int rw, int rh) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_borderTex.id == 0 || provPixels == nullptr || m_borderPixels.empty()) return;
     // Expand by 2 so border/halo transitions at the rect edge recompute correctly
     int x0 = std::max(0, rx - 2), y0 = std::max(0, ry - 2);
@@ -178,41 +188,49 @@ void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH
 }
 
 void MapRenderer::setPopulationTexture(Texture2D tex) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_populationTex.id > 0) UnloadTexture(m_populationTex);
     m_populationTex = tex;
 }
 
 void MapRenderer::updatePopulationTexture(const void* data) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_populationTex.id > 0)
         UpdateTexture(m_populationTex, data);
 }
 
 void MapRenderer::setResourceTexture(Texture2D tex) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
     m_resourceTex = tex;
 }
 
 void MapRenderer::updateResourceTexture(const void* data) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_resourceTex.id > 0)
         UpdateTexture(m_resourceTex, data);
 }
 
 void MapRenderer::setClaimsTexture(Texture2D tex) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_claimsTex.id > 0) UnloadTexture(m_claimsTex);
     m_claimsTex = tex;
 }
 
 void MapRenderer::updateClaimsTexture(const void* data) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_claimsTex.id > 0)
         UpdateTexture(m_claimsTex, data);
 }
 
 void MapRenderer::updateClaimsTextureRec(const void* rectData, int x, int y, int w, int h) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_claimsTex.id > 0)
         UpdateTextureRec(m_claimsTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
 }
 
 void MapRenderer::computeBorderTexture(const Image& provImage) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (provImage.data == nullptr) return;
 
     const int mapW = provImage.width;
@@ -355,6 +373,33 @@ void MapRenderer::flyTo(float x, float y, float zoom, float speed) {
 
 void MapRenderer::update(float dt) {
     bool userInteracted = false;
+
+    if (!m_paused && m_view == ViewMode::Globe && m_globe) {
+        // The globe takes the same gestures as the flat map -- drag to move,
+        // wheel to zoom -- so the hand does not have to learn a second map.
+        // Handled here rather than in the caller so no input code has to know
+        // which view is up.
+        const Vector2 d = GetMouseDelta();
+        const bool panning = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) ||
+                             (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !m_blockLeftPan);
+        if (panning) {
+            if (!m_isDragging) m_isDragging = true;
+            if (fabs(d.x) > 3.0f || fabs(d.y) > 3.0f) m_wasDragged = true;
+            // Negated: dragging left should turn the globe so the ground moves
+            // WITH the cursor, the way dragging the flat map does.
+            m_globe->orbit(-d.x, -d.y);
+        }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE) ||
+            IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_isDragging = false;
+
+        const float w = GetMouseWheelMove();
+        if (w != 0.0f &&
+            (m_provincePanelRect.height <= 0 ||
+             !CheckCollisionPointRec(getMouse(), m_provincePanelRect))) {
+            m_globe->zoom(w);
+        }
+        return;
+    }
 
     if (!m_paused) {
         // Handle drag/zoom — when paused, block all map interaction
@@ -599,6 +644,7 @@ void MapRenderer::buildSelectionGlow() {
 }
 
 void MapRenderer::setBulkSelection(const std::vector<int>& provinceIds, Color tint) {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     clearBulkSelection();
     if (provinceIds.empty()) return;
 
@@ -628,68 +674,104 @@ void MapRenderer::setBulkSelection(const std::vector<int>& provinceIds, Color ti
 }
 
 void MapRenderer::clearBulkSelection() {
+    m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_bulkTex.id > 0) UnloadTexture(m_bulkTex);
     m_bulkTex = {};
 }
 
+std::vector<MapRenderer::Layer> MapRenderer::layerStack(const LandSeaMap& landSea) const {
+    std::vector<Layer> out;
+    out.push_back({landSea.getTexture(), WHITE});
+
+    // Claims mode paints the political base and then a semi-transparent claims
+    // pattern over it; every other mode picks ONE base layer.
+    if (m_showClaims && m_claimsTex.id > 0) {
+        if (m_politicalTex.id > 0) out.push_back({m_politicalTex, WHITE});
+        out.push_back({m_claimsTex, WHITE});
+    } else {
+        Texture2D mainTex = m_politicalTex;
+        if (m_showResource >= 0 && m_resourceTex.id > 0)      mainTex = m_resourceTex;
+        else if (m_showRelations && m_populationTex.id > 0)   mainTex = m_populationTex;
+        else if (m_showPopulation && m_populationTex.id > 0)  mainTex = m_populationTex;
+        if (mainTex.id > 0) out.push_back({mainTex, WHITE});
+    }
+
+    if (!m_showCountryNames && m_borderTex.id > 0)
+        out.push_back({m_borderTex, ColorAlpha(BLACK, 0.15f)});
+    if (m_selectionTex.id > 0) out.push_back({m_selectionTex, WHITE});
+    // Painted for a bulk action but not committed: drawn last so a province
+    // that is both selected and painted reads as painted, which is what the
+    // player is deciding about.
+    if (m_bulkTex.id > 0) out.push_back({m_bulkTex, WHITE});
+    return out;
+}
+
+void MapRenderer::buildSurface(const LandSeaMap& landSea) {
+    // Bounded on purpose. The shipped raster is 8192x4096, and a render target
+    // that size is 134 MB of VRAM for a texture the globe never shows at full
+    // resolution -- the whole planet is at most a screen wide. Half is ample
+    // and fits on a phone.
+    const int w = m_mapW > 4096 ? m_mapW / 2 : m_mapW;
+    const int h = m_mapH > 2048 ? m_mapH / 2 : m_mapH;
+    if (m_surface.id == 0 || m_surface.texture.width != w || m_surface.texture.height != h) {
+        if (m_surface.id > 0) UnloadRenderTexture(m_surface);
+        m_surface = LoadRenderTexture(w, h);
+        // Bilinear, or the sphere shows the raster's texels at the limb where
+        // it is most compressed.
+        SetTextureFilter(m_surface.texture, TEXTURE_FILTER_BILINEAR);
+    }
+
+    BeginTextureMode(m_surface);
+    ClearBackground(BLANK);
+    for (const Layer& l : layerStack(landSea)) {
+        if (l.tex.id == 0) continue;
+        // NEGATIVE source height, and it is not a trick: a render target is
+        // stored bottom-up, so anything drawn into it arrives upside down when
+        // sampled. Flipping each layer on the way in cancels that exactly, and
+        // costs nothing -- the alternative is a flag the globe has to carry and
+        // every future consumer of this surface has to remember.
+        DrawTexturePro(l.tex,
+                       {0.0f, 0.0f, (float)l.tex.width, -(float)l.tex.height},
+                       {0.0f, 0.0f, (float)w, (float)h},
+                       {0.0f, 0.0f}, 0.0f, l.tint);
+    }
+    EndTextureMode();
+    m_surfaceDirty = false;
+}
+
 void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
+    if (m_view == ViewMode::Globe) {
+        if (!m_globe) m_globe = new GlobeView(m_mapW, m_mapH);
+        // WHICH layers are drawn is derived, not announced. Every show/hide
+        // toggle changes the stack, and requiring each one to remember to mark
+        // the composite stale is a rule that gets broken by the next overlay
+        // somebody adds -- the symptom being a globe that quietly shows the
+        // previous view's layers. A signature over the stack cannot be
+        // forgotten. Pixel changes still mark themselves: see above.
+        unsigned long long sig = 1469598103934665603ULL;
+        for (const Layer& l : layerStack(landSea)) {
+            sig = (sig ^ l.tex.id) * 1099511628211ULL;
+            sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;
+        }
+        if (sig != m_surfaceSig) { m_surfaceSig = sig; m_surfaceDirty = true; }
+        if (m_surfaceDirty || m_surface.id == 0) buildSurface(landSea);
+        m_globe->setSurface(m_surface.texture);
+        m_globe->draw(m_screenW, m_screenH);
+        return;
+    }
+
     BeginMode2D(m_camera);
 
-    const Texture2D& tex = landSea.getTexture();
     float viewW = m_screenW / m_camera.zoom;
     float left = m_camera.target.x - viewW * 0.5f;
     float right = m_camera.target.x + viewW * 0.5f;
-
     int tileStart = static_cast<int>(std::floor(left / m_mapW));
     int tileEnd = static_cast<int>(std::ceil(right / m_mapW));
-    for (int tx = tileStart; tx < tileEnd; ++tx) {
-        DrawTexture(tex, tx * m_mapW, 0, WHITE);
-    }
 
-    // Claims overlay mode: political base + semi-transparent claims pattern
-    if (m_showClaims && m_claimsTex.id > 0) {
+    for (const Layer& l : layerStack(landSea)) {
+        if (l.tex.id == 0) continue;
         for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(m_politicalTex, tx * m_mapW, 0, WHITE);
-        }
-        for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(m_claimsTex, tx * m_mapW, 0, WHITE);
-        }
-    } else {
-        Texture2D mainTex = m_politicalTex;
-        if (m_showResource >= 0 && m_resourceTex.id > 0)
-            mainTex = m_resourceTex;
-        else if (m_showRelations && m_populationTex.id > 0)
-            mainTex = m_populationTex;
-        else if (m_showPopulation && m_populationTex.id > 0)
-            mainTex = m_populationTex;
-        if (mainTex.id > 0) {
-            for (int tx = tileStart; tx < tileEnd; ++tx) {
-                DrawTexture(mainTex, tx * m_mapW, 0, WHITE);
-            }
-        }
-    }
-
-    // Draw borders overlay (province borders — hidden in country-names mode)
-    if (!m_showCountryNames && m_borderTex.id > 0) {
-        Color borderColor = ColorAlpha(BLACK, 0.15f);
-        for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(m_borderTex, tx * m_mapW, 0, borderColor);
-        }
-    }
-
-    // Draw selection glow
-    if (m_selectionTex.id > 0) {
-        for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(m_selectionTex, tx * m_mapW, 0, WHITE);
-        }
-    }
-
-    // Provinces painted for a bulk action but not yet committed. Drawn after
-    // the single selection so a province that is both still reads as painted --
-    // which is what the player is deciding about.
-    if (m_bulkTex.id > 0) {
-        for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(m_bulkTex, tx * m_mapW, 0, WHITE);
+            DrawTexture(l.tex, tx * m_mapW, 0, l.tint);
         }
     }
 
@@ -1000,6 +1082,15 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
 }
 
 void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
+    if (m_view == ViewMode::Globe && m_globe) {
+        // A click that misses the planet lands on empty space. Reported as
+        // province 0 by leaving the coordinates outside the raster, which is
+        // what callers already treat as "nothing there".
+        if (!m_globe->screenToPixel(sx, sy, m_screenW, m_screenH, px, py)) {
+            px = -1; py = -1;
+        }
+        return;
+    }
     Vector2 screenPos = { sx, sy };
     Vector2 worldPos = GetScreenToWorld2D(screenPos, m_camera);
     py = static_cast<int>(worldPos.y);
@@ -1008,10 +1099,54 @@ void MapRenderer::screenToPixel(float sx, float sy, int& px, int& py) const {
     while (px >= m_mapW) px -= m_mapW;
 }
 
-void MapRenderer::pixelToScreen(float px, float py, float& sx, float& sy) const {
+MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
+                                              float& sx, float& sy) const {
+    if (m_view == ViewMode::Globe && m_globe) {
+        if (!m_globe->pixelToScreen(px, py, m_screenW, m_screenH, sx, sy))
+            return Facing::Behind;
+        return Facing::Front;
+    }
     // The map wraps horizontally: project the tile copy nearest the camera
     float wrapped = px + roundf((m_camera.target.x - px) / (float)m_mapW) * (float)m_mapW;
     Vector2 v = GetWorldToScreen2D({wrapped, py}, m_camera);
     sx = v.x;
     sy = v.y;
+    // The flat map has no hidden half, so there is nothing here to hide behind.
+    return Facing::Front;
+}
+
+void MapRenderer::setViewMode(ViewMode m) {
+    if (m == m_view) return;
+
+    // Carry the view across, BOTH WAYS. Switching is a change of projection,
+    // not of place: whatever ground was in front of you stays in front of you.
+    // Done here rather than by the caller so there is one definition of what
+    // "the same place" means, and so the round trip actually returns you where
+    // you started instead of drifting a little each time.
+    if (m == ViewMode::Globe) {
+        if (!m_globe) { m_globe = new GlobeView(m_mapW, m_mapH); if (m_haveSky) m_globe->setSky(m_sky); }
+        m_globe->lookAt(m_camera.target.x, m_camera.target.y);
+        m_surfaceDirty = true;
+    } else if (m_globe) {
+        const float u = (m_globe->longitude() + PI) / (2.0f * PI);
+        const float v = (PI * 0.5f - m_globe->latitude()) / PI;
+        m_camera.target = { u * (float)m_mapW, v * (float)m_mapH };
+        // The vertical clamp in update() will pull this inside the map edges on
+        // the next frame, which is where that rule already lives.
+    }
+    m_view = m;
+}
+
+void MapRenderer::setSky(const GlobeViewSky& sky) {
+    m_sky = sky;
+    m_haveSky = true;
+    if (m_globe) m_globe->setSky(m_sky);
+}
+
+void MapRenderer::orbitGlobe(float dx, float dy) {
+    if (m_view == ViewMode::Globe && m_globe) m_globe->orbit(dx, dy);
+}
+
+void MapRenderer::zoomGlobe(float amount) {
+    if (m_view == ViewMode::Globe && m_globe) m_globe->zoom(amount);
 }

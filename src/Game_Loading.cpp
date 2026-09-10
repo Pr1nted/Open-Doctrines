@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "map/SkyFile.h"
 #include "util/LoadLog.h"
 // getrusage() below. Guarded the way Game.cpp guards the same header: MSVC has
 // no <sys/resource.h>, and emscripten reports the wasm heap instead.
@@ -382,6 +383,16 @@ void Game::updateLoading() {
                 m_renderer->setDpiScale(pointerScale());
                 m_renderer->computeBorderTexture(m_provinces.getImage());
                 m_renderer->setPoliticalTexture(m_politicalTex);
+                // The sky this map carries, if it carries one. A map with no
+                // sky.json keeps the Earth-like defaults, which is every map
+                // written before the globe existed -- so this must never be a
+                // reason a map fails to load.
+                {
+                    GlobeView::Sky sky;
+                    if (skyfile::load(m_dataDir + "sky.json", sky))
+                        LoadLog() << "  sky.json applied" << std::endl;
+                    m_renderer->setSky(sky);
+                }
                 m_renderer->setFallbackFont(m_gameFont);
             }
             m_loadingPhase = LOAD_BUILD_POP;
@@ -2935,6 +2946,16 @@ bool Game::loadMapPack(const std::string& odmPath) {
     m_renderer->setDpiScale(pointerScale());
     m_renderer->computeBorderTexture(m_provinces.getImage());
     m_renderer->setPoliticalTexture(m_politicalTex);
+    // Same as the loading path above: a map may carry its own sky, and one
+    // that does not keeps the defaults. BOTH sites need this -- a map pack
+    // loaded directly (the editor, a mod, the scenario browser) never goes
+    // through updateLoading at all, and a sky that only worked when you
+    // started a normal game would look like the feature was intermittent.
+    {
+        GlobeView::Sky sky;
+        skyfile::load(m_dataDir + "sky.json", sky);
+        m_renderer->setSky(sky);
+    }
     m_renderer->setFallbackFont(m_gameFont);
 
     setLoadingProgress(0.6f, "Building population data...");

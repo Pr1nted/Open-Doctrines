@@ -209,6 +209,34 @@ export async function identityIsBanned(
     return (await env.OD_ACCOUNTS.get(banIdentKey(provider, subHash))) !== null;
 }
 
+/**
+ * How many accounts exist, counted by walking the keys.
+ *
+ * NOT a stored counter, and that is the whole decision. KV has no atomic
+ * increment: two sign-ups landing together would both read the same number and
+ * both write the same number back, losing one for good, with nothing anywhere
+ * that could later notice. A count that drifts quietly downward is worse than
+ * no count, because it still looks like a fact. Listing costs a little more per
+ * call and cannot be wrong.
+ *
+ * `cap` bounds the walk so one request cannot page through an unbounded
+ * namespace. Past it the answer reports `exact: false` rather than handing back
+ * a smaller number dressed as the total -- the caller is told it is a floor.
+ */
+export async function countAccounts(
+    env: Env, cap = 100000,
+): Promise<{ accounts: number; exact: boolean }> {
+    let accounts = 0;
+    let cursor: string | undefined;
+    do {
+        const listed = await env.OD_ACCOUNTS.list({ prefix: "acct:", cursor, limit: 1000 });
+        accounts += listed.keys.length;
+        if (accounts >= cap) return { accounts, exact: false };
+        cursor = listed.list_complete ? undefined : listed.cursor;
+    } while (cursor);
+    return { accounts, exact: true };
+}
+
 export async function createAccount(
     env: Env, provider: ProviderId, subHash: SubjectHash, nickInput: string,
     now = Math.floor(Date.now() / 1000),

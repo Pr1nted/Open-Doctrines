@@ -1,5 +1,7 @@
 #pragma once
 #include "raylib.h"
+#include "GlobeView.h"
+using GlobeViewSky = GlobeView::Sky;
 #include "../map/LandSeaMap.h"
 #include "../map/ProvinceMap.h"
 #include "../map/CountryMap.h"
@@ -61,8 +63,40 @@ public:
     // has to measure against this rather than against a fixed number.
     float getMinZoom() const { return m_minZoom; }
     void computeBorderTexture(const Image& provImage);
+    /**
+     * Which view the map is drawn in.
+     *
+     * The globe is not a different map -- it is the same textures on a sphere.
+     * Everything above this line (overlays, selection, borders, painting) is
+     * unchanged by the switch, because all of it composites into one surface
+     * before either view draws anything.
+     */
+    enum class ViewMode { Flat, Globe };
+    void setViewMode(ViewMode m);
+    ViewMode viewMode() const { return m_view; }
+
+    /// Turn and zoom the globe. No-ops in the flat view, so callers that handle
+    /// input do not need to branch on the mode.
+    /// The sky this map carries. Kept here rather than on the globe so it
+    /// survives the globe not existing yet -- a map loads long before anyone
+    /// presses F7.
+    void setSky(const GlobeViewSky& sky);
+
+    void orbitGlobe(float dx, float dy);
+    void zoomGlobe(float amount);
+
     void screenToPixel(float sx, float sy, int& px, int& py) const;
-    void pixelToScreen(float px, float py, float& sx, float& sy) const;
+
+    /**
+     * Whether a map point is in front of the camera or behind the planet.
+     *
+     * The flat map has no hidden half and always answers Front. The globe does,
+     * and it is answered HERE rather than at each call site: a marker whose
+     * province has turned out of view must not draw, and fifteen call sites
+     * working that out for themselves is fifteen chances to get it subtly wrong.
+     */
+    enum class Facing { Front, Behind };
+    Facing pixelToScreen(float px, float py, float& sx, float& sy) const;
     void setSelectedProvince(int id) { m_selectedProvinceId = id; }
     int getSelectedProvinceId() const { return m_selectedProvinceId; }
     void setPaused(bool paused) { m_paused = paused; }
@@ -144,6 +178,35 @@ private:
     Texture2D m_resourceTex{};
     Texture2D m_claimsTex{};
     Camera2D m_camera{};
+
+    // ── The globe ──
+    //
+    // The surface is the whole layer stack composited once into a texture, so
+    // the sphere samples exactly what the flat view draws -- claims, districts,
+    // population, borders, selection and all. Rebuilt only when something in
+    // the stack changes, because compositing 8192x4096 every frame is not free
+    // on a phone and the map does not change every frame.
+    ViewMode m_view = ViewMode::Flat;
+    GlobeViewSky m_sky{};
+    bool m_haveSky = false;
+    GlobeView* m_globe = nullptr;
+    RenderTexture2D m_surface{};
+    bool m_surfaceDirty = true;
+    unsigned long long m_surfaceSig = 0;  ///< which layers were last composited
+    void buildSurface(const LandSeaMap& landSea);
+
+    /**
+     * The layer stack, in order, as textures and tints.
+     *
+     * ONE definition, used by both views: the flat map tiles each entry
+     * horizontally, the globe composites them into a single surface. Written
+     * this way because the alternative -- each view listing the layers itself --
+     * drifts the moment somebody adds an overlay and updates only the view they
+     * were looking at, and the symptom is a layer that exists in one view and
+     * not the other.
+     */
+    struct Layer { Texture2D tex; Color tint; };
+    std::vector<Layer> layerStack(const LandSeaMap& landSea) const;
     Vector2 getMouse() const;
     int m_screenW, m_screenH;
     float m_dpiScale = 1.0f;

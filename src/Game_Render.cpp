@@ -3146,13 +3146,23 @@ void Game::drawInner() {
         }
         m_renderer->draw(m_landSea, m_provinces, m_countries);
     }
-    // Wrap-aware world-to-screen: renders elements on the map copy nearest the camera
+    // Map position to screen, through the renderer's own seam so this agrees
+    // with the view that is actually up. On the flat map it is the wrap-aware
+    // projection it always was; on the globe it is the sphere.
+    //
+    // OFF-SCREEN IS THE ANSWER FOR THE FAR SIDE, and it is deliberate rather
+    // than lazy. Forty-one call sites use this, every one of them either to
+    // draw or to hit-test, and threading a visibility flag through all of them
+    // would be a large mechanical edit for a result they would each have to
+    // implement identically. A point far outside the window draws nothing and
+    // hit-tests as a miss -- which is exactly what a province on the far side
+    // of the planet should do. It is a sentinel, produced in ONE place and
+    // documented here, not a silent failure.
     auto worldToScreen = [&](Vector2 wp) -> Vector2 {
-        int mw = m_landSea.getWidth();
-        const Camera2D& cam = m_renderer->getCamera();
-        while (wp.x - cam.target.x > mw * 0.5f) wp.x -= mw;
-        while (wp.x - cam.target.x < -mw * 0.5f) wp.x += mw;
-        return GetWorldToScreen2D(wp, cam);
+        float sx = 0.0f, sy = 0.0f;
+        if (m_renderer->pixelToScreen(wp.x, wp.y, sx, sy) == MapRenderer::Facing::Behind)
+            return {-100000.0f, -100000.0f};
+        return {sx, sy};
     };
     // Draw industry circles (if in industry view) using world-to-screen coords
     //
@@ -6285,10 +6295,12 @@ void Game::drawMiddleStateOverlay() {
     m_ordersHiddenByZoom = 0;
     int cuesDrawn = 0;
 
+    // Same seam, same far-side sentinel as the overlay above.
     auto worldToScreen = [&](Vector2 wp) -> Vector2 {
-        while (wp.x - cam.target.x >  mw * 0.5f) wp.x -= mw;
-        while (wp.x - cam.target.x < -mw * 0.5f) wp.x += mw;
-        return GetWorldToScreen2D(wp, cam);
+        float sx = 0.0f, sy = 0.0f;
+        if (m_renderer->pixelToScreen(wp.x, wp.y, sx, sy) == MapRenderer::Facing::Behind)
+            return {-100000.0f, -100000.0f};
+        return {sx, sy};
     };
 
     auto colourOf = [&](int cid) -> Color {

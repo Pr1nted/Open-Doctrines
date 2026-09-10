@@ -46,6 +46,17 @@ std::string g_status;        ///< what to tell the reader
 bool        g_busy = false;
 bool        g_fresh = false; ///< a payload arrived and has not been parsed yet
 
+/// How many accounts the service has, for the Admin header.
+///
+/// Its own state rather than a field on the reports payload: the two are
+/// fetched independently, and a count that vanished whenever the queue was
+/// being refreshed would flicker for no reason a reader could follow.
+/// -1 means "not asked yet or the answer never came", which draws as nothing
+/// at all -- an admin screen that says "0 accounts" because a request failed
+/// is worse than one that says nothing.
+long long   g_accounts = -1;
+bool        g_accountsExact = true;
+
 }  // namespace
 
 bool Game::isDeveloper() const {
@@ -77,6 +88,7 @@ void Game::openDevReports() {
     m_devReportScroll = 0;
     m_devReportSelected = -1;
     fetchDevReports();
+    fetchAdminOverview();
     Audio::get().playSfx("panel_open");
 }
 
@@ -120,6 +132,48 @@ void Game::fetchDevReports() {
             // where the reader is the one account that should have it.
             g_status = (res.status == 404) ? refused : failed;
         }
+    });
+}
+
+/**
+ * How many accounts exist, for the Admin header.
+ *
+ * Separate from the reports fetch on purpose: they answer different questions,
+ * and the queue is refetched whenever a decision is made. Bundling them would
+ * mean recounting the whole namespace every time somebody dismissed a report.
+ *
+ * Failure is silent by design. This is one line of context on a screen whose
+ * job is the queue; an error banner for a number nobody asked for would push
+ * the actual work down the page. It simply does not appear.
+ */
+void Game::fetchAdminOverview() {
+    const AccountClient& account = AccountClient::get();
+    if (!account.account().valid()) return;
+    const std::string url = issuerBase(m_config.accountIssuer) + "/moderation/overview";
+    const std::string token = account.sessionToken();
+
+    odasync::run([url, token]() {
+        HttpRequest req;
+        req.method = "GET";
+        req.url = url;
+        req.bearer = token;
+        req.timeoutMs = 20000;
+        const HttpResponse res = httpRequest(req);
+        if (!res.ok()) return;
+        long long n = -1;
+        bool exact = true;
+        try {
+            const auto doc = nlohmann::json::parse(res.body);
+            if (doc.contains("accounts") && doc["accounts"].is_number_integer())
+                n = doc["accounts"].get<long long>();
+            if (doc.contains("exact") && doc["exact"].is_boolean())
+                exact = doc["exact"].get<bool>();
+        } catch (...) {
+            return;                      // a malformed reply leaves the line blank
+        }
+        std::lock_guard<std::mutex> g(g_lock);
+        g_accounts = n;
+        g_accountsExact = exact;
     });
 }
 
@@ -353,6 +407,25 @@ void Game::drawDevReports() {
     // after the game in front of other people -- and they were one menu slot
     // and no slot respectively. A tab strip costs nothing and stops the main
     // menu growing an entry every time something needs a screen.
+    // How many people have signed up, on both tabs, out of the way of the work.
+    // Blank until the answer arrives, and blank for good if it never does --
+    // see fetchAdminOverview.
+    {
+        long long accounts = -1; bool exact = true;
+        { std::lock_guard<std::mutex> g(g_lock); accounts = g_accounts; exact = g_accountsExact; }
+        if (accounts >= 0) {
+            // Grouped, because six digits unseparated is a number nobody reads
+            // at a glance -- and this one is meant to be glanced at.
+            std::string digits = std::to_string(accounts);
+            for (int i = (int)digits.size() - 3; i > 0; i -= 3) digits.insert((size_t)i, ",");
+            const std::string line =
+                (exact ? "" : std::string(T("at least")) + " ") + digits + " " +
+                (accounts == 1 ? T("account") : T("accounts"));
+            const int lw = MeasureText(line.c_str(), 13);
+            DrawText(line.c_str(), x + w - 120 - lw, y + 29, 13, Color{130, 136, 158, 255});
+        }
+    }
+
     {
         const char* names[] = {T("Reports"), T("Announcements")};
         int tx = x + 24 + MeasureText(T("Admin"), 24) + 28;

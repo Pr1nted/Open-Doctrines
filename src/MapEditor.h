@@ -6,6 +6,7 @@
 #include "map/CountryMap.h"
 #include "renderer/MapRenderer.h"
 #include "raylib.h"
+#include "renderer/GlobeView.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -685,6 +686,12 @@ private:
     std::string m_metaEditText;
     std::string m_mapDate = "January 2000"; // composed: "<Month> <Year> <AD|BC>"
     int m_dateMonth = 0;         // 0-11
+
+    /// The sky this map carries. Edited on the Metadata panel, written to
+    /// sky.json on export, read back on open. Defaults are the Earth-like ones,
+    /// so a map that never touches this panel exports a sensible sky.
+    GlobeView::Sky m_sky{};
+    int m_skyScroll = 0;
     bool m_dateBC = false;
     std::string m_dateYearText = "2000";
     bool m_editingDateYear = false;
