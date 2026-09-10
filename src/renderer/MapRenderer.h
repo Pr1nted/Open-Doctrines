@@ -92,6 +92,7 @@ public:
 
     void drawCountryNames();
     void anchorSheetToFlat();
+    int  surfaceWidthFor(float dist) const;
     /// 1 on the flat map, and on the globe how square-on the ground is.
     float faceCosine(float px, float py) const;
     void finishTransition();

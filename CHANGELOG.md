@@ -77,6 +77,17 @@
   starts to unroll. Asserted rather than eyeballed: the map pixels the 2D view
   puts on each screen edge land on those same edges here.
 
+- **The globe is sharp when you zoom in.** Its surface was composited at half
+  the map's resolution, on the reasoning that the whole planet is never more
+  than a screen wide -- true looking at the whole planet, and false the moment
+  you go close, which is exactly when anyone would notice. Close in you were
+  looking at a small patch of a half-size texture stretched over the screen, and
+  it read as a low-resolution map because it was one. The composite is now sized
+  from what is actually on screen, so one texel is about one pixel at whatever
+  distance the camera is at: full resolution down at the surface, and LESS than
+  before out at arm's length, where the old fixed half was more than the view
+  could use.
+
 - **Shells arc.** Artillery and naval bombardment no longer draw as a straight
   line from gun to target: the flight leaves the ground, rises and comes down on
   what it is hitting, and the barbed head is aimed along the descent rather than

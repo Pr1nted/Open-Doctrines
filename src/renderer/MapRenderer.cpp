@@ -727,13 +727,42 @@ std::vector<MapRenderer::Layer> MapRenderer::layerStack(const LandSeaMap& landSe
     return out;
 }
 
+// How wide the composited surface needs to be for the globe to look sharp at the
+// distance it is currently at.
+//
+// It used to be a flat half of the raster, on the reasoning that "the whole
+// planet is at most a screen wide". That is true looking at the whole planet and
+// false the moment you zoom in, which is exactly when anyone would notice -- the
+// close view is a small patch of a 4096-wide texture stretched over the screen,
+// and it reads as a low-resolution map because it is one.
+//
+// So it is sized from what is actually on screen: enough texels across the
+// planet that one texel is about one pixel at the current distance. Rounded to
+// powers of two so a slow zoom crosses a handful of sizes rather than rebuilding
+// every frame, and capped at the raster's own resolution -- past that there is
+// nothing more to show.
+int MapRenderer::surfaceWidthFor(float dist) const {
+    if (dist < 0.001f) dist = 0.001f;
+    const float pixelsPerRadius = ((float)m_screenH * 0.5f)
+                                / (tanf(45.0f * 0.5f * DEG2RAD) * dist);
+    int want = (int)(2.0f * PI * pixelsPerRadius);
+    int w = 1024;
+    while (w < want && w < m_mapW) w *= 2;
+#if defined(PLATFORM_WEB) || defined(PLATFORM_ANDROID) || defined(GRAPHICS_API_OPENGL_ES2)
+    // A full-resolution copy of the shipped raster is 134 MB of VRAM. A desktop
+    // already holds several textures that size; a phone and a browser tab do
+    // not, and a failed allocation there costs the whole view rather than some
+    // sharpness.
+    if (w > 4096) w = 4096;
+#endif
+    return std::min(w, m_mapW);
+}
+
 void MapRenderer::buildSurface(const LandSeaMap& landSea) {
-    // Bounded on purpose. The shipped raster is 8192x4096, and a render target
-    // that size is 134 MB of VRAM for a texture the globe never shows at full
-    // resolution -- the whole planet is at most a screen wide. Half is ample
-    // and fits on a phone.
-    const int w = m_mapW > 4096 ? m_mapW / 2 : m_mapW;
-    const int h = m_mapH > 2048 ? m_mapH / 2 : m_mapH;
+    const int w = (m_view == ViewMode::Globe && m_globe)
+                ? surfaceWidthFor(m_globe->distance())
+                : (m_mapW > 4096 ? m_mapW / 2 : m_mapW);
+    const int h = std::max(1, w * m_mapH / m_mapW);
     if (m_surface.id == 0 || m_surface.texture.width != w || m_surface.texture.height != h) {
         if (m_surface.id > 0) UnloadRenderTexture(m_surface);
         m_surface = LoadRenderTexture(w, h);
@@ -1127,6 +1156,10 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
         // previous view's layers. A signature over the stack cannot be
         // forgotten. Pixel changes still mark themselves: see above.
         unsigned long long sig = 1469598103934665603ULL;
+        // The wanted resolution is part of the signature, so zooming in rebuilds
+        // the composite at the size the new view needs without anyone having to
+        // remember to say so.
+        sig = (sig ^ (unsigned long long)surfaceWidthFor(m_globe->distance())) * 1099511628211ULL;
         for (const Layer& l : layerStack(landSea)) {
             sig = (sig ^ l.tex.id) * 1099511628211ULL;
             sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;
