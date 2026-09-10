@@ -15071,3 +15071,42 @@ RESIDUAL, too small to chase: ranking by sticker ignores surcharge levers,
 which mis-orders two doctrines only when armyUpkeep exceeds ~100. Upkeep is
 0.01 per 10k men, so that is a hundred million men. Stickers (10-18) dominate
 the percentage term (1.5-2.5) for any real army.
+
+## 249 — the research bar is a growth/survival dial, and 0.45 is its land optimum
+
+I swept this knob upward, found -19, and wrote the subsystem up as "mapped".
+That was one direction of a two-directional constant. Completing it:
+
+    bar    OD BENCH        land     survival   worst
+    0.25   195 +/- 11     43.97%       77        18
+    0.35   237 +/- 28     54.63%       89        59
+    0.45   311 +/- 12     82.73%       77        17    <- shipped
+    0.65   292 +/- 21     73.90%       85        13
+
+0.45 IS THE PEAK. Lowering is decisively worse -- -116 at 0.25 against that
+arm's own ~30-point threshold. Raising is -19, inside the floor. The default
+was well chosen and is now measured rather than assumed.
+
+WORTH MORE THAN THE OPTIMUM, THOUGH: this knob is a GROWTH/SURVIVAL DIAL, and
+the two do not peak together.
+
+    0.35   survival 89   worst seat 59   land 54.63%
+    0.45   survival 77   worst seat 17   land 82.73%
+
+At 0.35 the AI holds far less of the world and is dramatically harder to kill
+-- worst seat 59 against 17, the best floor any configuration has produced all
+session, on the seat nothing else has moved. OD BENCH is a land-weighted mean,
+so it picks 0.45 by construction. A different objective picks 0.35.
+
+That is a design question rather than a bug, and it is the user's to answer:
+should AI countries snowball, or should they be hard to eliminate? The bench
+answers the first and has been silently deciding the second all session.
+
+Note this is the same trade the shipped change makes (journal 239: +71 rating,
+survival 100 -> 80 on set D). Two independent knobs in one subsystem, both
+buying growth with the floor. That is now a characterised property of the
+research allocation, not a coincidence of one change.
+
+METHOD: I called the subsystem mapped after sweeping one direction. Second
+time today I generalised from a partial sample -- the first was three seeds
+reading as a measurement. Sweep both ways before writing the conclusion.
