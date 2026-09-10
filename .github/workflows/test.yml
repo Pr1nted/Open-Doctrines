@@ -46,17 +46,28 @@ on:
   workflow_dispatch:
   workflow_call:               # release-game.yml calls this before publishing
 
-# One run per ref, newest wins. A newer commit makes an older run moot, and
-# this workflow is fourteen jobs.
+# One run per ref. On a branch or a pull request the newest commit makes an
+# older run moot, and this workflow is fourteen jobs -- so there, newest wins.
 #
-# This was off while the platforms were being brought up, and for a real
-# reason: each push killed the jobs that were about to say something, so no
-# commit ever produced a complete picture and the same failures had to be
-# rediscovered a push later. The condition for turning it back on was all
-# platforms green, which e561fae was -- all fourteen.
+# ON MAIN IT DOES NOT, AND THE REASON IS THE SAME ONE AS BEFORE. This was off
+# while the platforms were being brought up: each push killed the jobs that
+# were about to say something, so no commit ever produced a complete picture
+# and the same failures had to be rediscovered a push later. It went back on
+# once all fourteen were green at e561fae.
+#
+# What has changed since is not the platforms, it is the traffic. Two people
+# push to main through the day and the suite takes 30-45 minutes, so a run
+# almost never survives to a verdict. Twelve runs on main on 2026-09-10: SEVEN
+# cancelled, three failed, one passed. Whether main builds was, for most of
+# that day, simply unknown -- and a red main went unnoticed behind the
+# cancellations until somebody went looking.
+#
+# So: main runs to completion, everything else still yields to its successor.
+# The cost is runner minutes on superseded pushes to one branch. The thing it
+# buys is that "is main green" has an answer.
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   qualify:
