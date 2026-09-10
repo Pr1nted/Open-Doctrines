@@ -98,6 +98,15 @@ const Shot SHOTS[] = {
     // what these show is the animation the player gets, not a still posed to
     // look like one.
     {"globe",         60, true},
+    // Every overlay, on the sphere. These exist because the overlays are the
+    // half of the globe nobody looks at while building it, and a stack that
+    // composites correctly on a flat quad can still be wrong wrapped: ship
+    // markers, resource icons and the population ramp all place themselves
+    // through the projection seam rather than the map.
+    {"globe-population", 60, true},
+    {"globe-industry",   60, true},
+    {"globe-navy",       60, true},
+    {"globe-resources",  60, true},
     {"globe-names",   60, true},
     {"globe-unroll-a", 4, true},
     {"globe-unroll-b", 9, true},
@@ -969,11 +978,20 @@ bool Game::tickScreenshotTour() {
         } else if (name == "world-map") {
             m_activeViewTab = 0;          // no panel: this shot is the map itself
         } else if (name == "globe" || name == "globe-names" ||
-                   name.rfind("globe-unroll", 0) == 0) {
+                   name.rfind("globe-unroll", 0) == 0 ||
+                   name.rfind("globe-", 0) == 0) {
             // Tab 8 IS the country-names overlay -- update() re-derives the
             // renderer flag from this every frame, so setting the flag directly
             // here would be overwritten before the shot was taken.
-            m_activeViewTab = (name == "globe-names") ? 8 : 0;
+            // Tabs are 1-based, 0 being "no overlay". update() re-derives the
+            // renderer's country-names flag from this every frame, so setting
+            // that flag directly here would be overwritten before the capture.
+            m_activeViewTab = (name == "globe-population") ? 1
+                            : (name == "globe-industry")   ? 2
+                            : (name == "globe-navy")       ? 6
+                            : (name == "globe-resources")  ? 7
+                            : (name == "globe-names")      ? 8
+                                                           : 0;
             // The unroll shots start the switch and are captured a few frames
             // in; the settled ones ask for the globe and are given 60 frames,
             // which is comfortably past the ~42 the animation takes.
@@ -982,6 +1000,14 @@ bool Game::tickScreenshotTour() {
             // globe to become a globe is a no-op that would quietly produce five
             // identical stills.
             m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
+            // Pinned, because the globe takes its longitude from wherever the
+            // flat camera happens to be and the flat camera is left wherever the
+            // previous shot put it. Without this the same shot points at a
+            // different ocean run to run, and a missing fleet reads as a bug in
+            // the markers rather than as the camera looking somewhere else.
+            m_renderer->snapTo((float)m_landSea.getWidth() * 0.50f,
+                               (float)m_landSea.getHeight() * 0.34f,
+                               m_renderer->getMinZoom());
             m_renderer->setViewMode(MapRenderer::ViewMode::Globe);
         } else if (name == "province") {
             m_activeViewTab = 2;          // industry: the busiest of the tabs

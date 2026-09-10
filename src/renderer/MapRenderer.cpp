@@ -371,6 +371,14 @@ void MapRenderer::flyTo(float x, float y, float zoom, float speed) {
     m_isDragging = false;
 }
 
+void MapRenderer::snapTo(float x, float y, float zoom) {
+    m_camera.target = { x, y };
+    m_camera.zoom   = std::clamp(zoom, m_minZoom, m_maxZoom);
+    m_flying = false;
+    m_wasDragged = false;
+    m_isDragging = false;
+}
+
 void MapRenderer::update(float dt) {
     bool userInteracted = false;
 
@@ -1299,22 +1307,59 @@ void MapRenderer::setViewMode(ViewMode m) {
     if (m == ViewMode::Globe) {
         if (!m_globe) { m_globe = new GlobeView(m_mapW, m_mapH); if (m_haveSky) m_globe->setSky(m_sky); }
         m_globe->lookAt(m_camera.target.x, m_camera.target.y);
+        anchorSheetToFlat();
         m_surfaceDirty = true;
         m_view = ViewMode::Globe;
         m_flatPending = false;
+        // Wound back to flat explicitly. Without this the very first switch of a
+        // session finds m_morph already at 1 -- its initial value, because the
+        // globe IS a sphere whenever it is drawn normally -- and the animation
+        // completes on the frame it starts, so the first F7 a player presses is
+        // the only one that cuts.
+        m_morph = 0.0f;
         m_morphTo = 1.0f;
         m_morphing = true;
     } else if (m_globe) {
         // Going the other way the view does NOT flip yet: the sphere has to
         // unroll first, and only the 3D path can draw that. m_flatPending marks
-        // the intent; finishTransition() below carries the camera over and makes
-        // the switch once the sheet is flat.
+        // the intent; the flip happens in finishTransition() once it is flat.
+        //
+        // The destination framing is settled HERE, before the animation starts,
+        // and the sheet anchored on it -- otherwise the unroll ends on one
+        // framing and the 2D view takes over with another, which is the same
+        // jump at the other end. Zoom comes across as well as position: matching
+        // half the framing is matching none of it.
+        const float globeZoom = getZoom();     // still the globe's, m_view unchanged
+        const float u = (m_globe->longitude() + PI) / (2.0f * PI);
+        const float v = (PI * 0.5f - m_globe->latitude()) / PI;
+        m_camera.target = { u * (float)m_mapW, v * (float)m_mapH };
+        m_camera.zoom   = std::clamp(globeZoom, m_minZoom, m_maxZoom);
+        anchorSheetToFlat();
         m_flatPending = true;
+        m_morph = 1.0f;      // the sphere it is unrolling FROM
         m_morphTo = 0.0f;
         m_morphing = true;
     } else {
         m_view = m;
     }
+}
+
+// Frame a 3D camera onto the flat sheet so it reproduces, as closely as a
+// perspective camera can, exactly what the 2D view is showing right now. This
+// is what makes the unroll begin where the eye already is: without it the
+// animation opens on a whole-world shot and the first frame is a jump.
+void MapRenderer::anchorSheetToFlat() {
+    if (!m_globe) return;
+    // Wrapped first: the flat map repeats horizontally and its camera target is
+    // free to wander outside the raster.
+    float tpx = m_camera.target.x;
+    while (tpx < 0.0f) tpx += (float)m_mapW;
+    while (tpx >= (float)m_mapW) tpx -= (float)m_mapW;
+
+    Vector3 eye{}, at{};
+    globe::sheetAnchor(tpx, m_camera.target.y, m_camera.zoom,
+                       m_mapW, m_mapH, m_screenW, m_screenH, eye, at);
+    m_globe->setSheetAnchor(eye, at);
 }
 
 void MapRenderer::snapViewMode(ViewMode m) {
@@ -1326,18 +1371,15 @@ void MapRenderer::snapViewMode(ViewMode m) {
 }
 
 void MapRenderer::finishTransition() {
-    if (!m_flatPending || !m_globe) return;
-    // Carry the view across. Whatever ground was in front of you stays in front
-    // of you; done here rather than by the caller so there is one definition of
-    // what "the same place" means, and so the round trip returns you where you
-    // started instead of drifting a little each time.
-    const float u = (m_globe->longitude() + PI) / (2.0f * PI);
-    const float v = (PI * 0.5f - m_globe->latitude()) / PI;
-    m_camera.target = { u * (float)m_mapW, v * (float)m_mapH };
-    // The vertical clamp in update() will pull this inside the map edges on the
-    // next frame, which is where that rule already lives.
+    if (!m_flatPending) return;
+    // The camera was carried across when the switch was ASKED FOR, not here --
+    // the sheet has to be framed on the destination before the animation runs,
+    // or the last frame of the unroll and the first frame of the flat map are
+    // two different pictures.
     m_view = ViewMode::Flat;
     m_flatPending = false;
+    // The vertical clamp in update() pulls the target inside the map edges on
+    // the next frame, which is where that rule already lives.
 }
 
 void MapRenderer::setSky(const GlobeViewSky& sky) {

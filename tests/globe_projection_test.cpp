@@ -149,6 +149,57 @@ int main() {
         ok(globe::onNearSide(p, 0.0f, 0.0f, 8.0f), "and visible from far out");
     }
 
+
+    section("the unroll starts where the flat camera already was");
+    {
+        // The claim: at morph 0 the sheet camera shows EXACTLY what a 2D map
+        // camera at (target, zoom) shows. Asserted rather than photographed
+        // because the animation is driven by real time -- a screenshot taken one
+        // frame after the switch is already a third of the way through it, and
+        // an image comparison there measures the middle of the move while
+        // looking like it measures the start. That mistake was made first.
+        const int SW = 1600, SH = 900;
+        const float tx = MW * 0.52f, ty = MH * 0.32f;
+        const float zoom = 1.0986f;
+
+        Vector3 eye{}, at{};
+        globe::sheetAnchor(tx, ty, zoom, MW, MH, SW, SH, eye, at);
+
+        Camera3D cam{};
+        cam.position = eye;
+        cam.target   = at;
+        cam.up       = {0.0f, 1.0f, 0.0f};
+        cam.fovy     = 45.0f;
+        cam.projection = CAMERA_PERSPECTIVE;
+
+        // The point under the middle of the 2D view is under the middle of this
+        // one.
+        const Vector2 c = GetWorldToScreenEx(globe::sheetFromPixel(tx, ty, MW, MH),
+                                             cam, SW, SH);
+        ok(fabsf(c.x - SW * 0.5f) < 1.0f, "the target is dead centre horizontally");
+        ok(fabsf(c.y - SH * 0.5f) < 1.0f, "and dead centre vertically");
+
+        // And the map pixels the 2D camera puts on each screen edge land on the
+        // same edges here. This is the part that catches a wrong FIELD OF VIEW:
+        // the centre is right for any distance, the edges only for one.
+        const float halfPxW = SW * 0.5f / zoom;
+        const float halfPxH = SH * 0.5f / zoom;
+        const Vector2 l = GetWorldToScreenEx(globe::sheetFromPixel(tx - halfPxW, ty, MW, MH), cam, SW, SH);
+        const Vector2 r = GetWorldToScreenEx(globe::sheetFromPixel(tx + halfPxW, ty, MW, MH), cam, SW, SH);
+        const Vector2 t = GetWorldToScreenEx(globe::sheetFromPixel(tx, ty - halfPxH, MW, MH), cam, SW, SH);
+        const Vector2 b = GetWorldToScreenEx(globe::sheetFromPixel(tx, ty + halfPxH, MW, MH), cam, SW, SH);
+        ok(fabsf(l.x) < 2.0f,            "the left edge of the 2D view is the left edge here");
+        ok(fabsf(r.x - (float)SW) < 2.0f, "and the right edge is the right edge");
+        ok(fabsf(t.y) < 2.0f,             "the top edge is the top edge");
+        ok(fabsf(b.y - (float)SH) < 2.0f, "and the bottom edge is the bottom edge");
+
+        // Zooming the 2D view in must move the sheet camera closer, or the
+        // anchor would be right in one place and wrong everywhere else.
+        Vector3 eye2{}, at2{};
+        globe::sheetAnchor(tx, ty, zoom * 2.0f, MW, MH, SW, SH, eye2, at2);
+        ok(eye2.z < eye.z * 0.55f, "twice the zoom halves the distance");
+    }
+
     printf("\n%d checks, %d failed\n", checks, fails);
     return fails == 0 ? 0 : 1;
 }

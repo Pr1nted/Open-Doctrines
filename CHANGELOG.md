@@ -65,6 +65,26 @@
   those paths know how to compute, and half a second of nothing reads as part of
   the move where half a second of markers in the wrong place reads as a fault.
 
+- **A button for the globe, not just a function key.** Under Settings in the
+  right-hand column, labelled with where it will take you rather than where you
+  are. F7 still works; a function key is a thing you have to be told about.
+
+- **The unroll starts from where you were looking.** The animation used to open
+  on a whole-world shot no matter how far in you were zoomed, so its first frame
+  was itself a jump. The sheet is now framed on a camera that reproduces the 2D
+  view exactly -- same centre, same zoom -- and the same is done in reverse, with
+  the flat camera settled on the globe's position and zoom before the sphere
+  starts to unroll. Asserted rather than eyeballed: the map pixels the 2D view
+  puts on each screen edge land on those same edges here.
+
+- **Ship routes stay on the planet.** Route tracks and army arrows were still
+  projected with the flat map's tile-wrapping, which on a globe drew lines
+  straight off the edge of the screen. They go through the projection now, a leg
+  with an end round the back is dropped rather than drawn to a sentinel, and long
+  legs are subdivided so a track from the Channel to the Cape follows the ocean
+  instead of chording through the planet. The flat map draws exactly the line it
+  drew before.
+
 - **Country names follow the surface of the globe.** Each letter is placed
   through the same projection as everything else, so a name bends with the ground
   it sits on and a country past the horizon takes its name with it. Two things

@@ -66,6 +66,19 @@ Vector3 eyeFromOrbit(float lat, float lon, float dist);
  */
 bool onNearSide(Vector3 p, float lat, float lon, float dist);
 
+/// Where a map pixel sits on the FLAT sheet -- the layout the vertex shader
+/// blends away from. Kept here, beside the sphere's own mapping, so the two are
+/// read together; the shader carries the same two constants as literals.
+Vector3 sheetFromPixel(float px, float py, int mapW, int mapH);
+
+/// The camera that frames the flat sheet exactly as a 2D map camera framed on
+/// (targetPx, zoom) frames the map. This is the whole of "start the unroll where
+/// the eye already is", and it is here rather than in MapRenderer so it can be
+/// asserted without a GPU: see tests/globe_projection_test.cpp.
+void sheetAnchor(float targetPxX, float targetPxY, float zoom,
+                 int mapW, int mapH, int screenW, int screenH,
+                 Vector3& eye, Vector3& at);
+
 }  // namespace globe
 
 class GlobeView {
@@ -188,6 +201,21 @@ public:
      */
     bool moonOnScreen(int screenW, int screenH, Vector2& pos, float& radius) const;
 
+    /// The flat sheet's extent in world units, at morph 0. Declared here because
+    /// MapRenderer has to frame a camera onto the same rectangle the vertex
+    /// shader lays out -- the two numbers appear as literals in the shader
+    /// source, and any change has to be made in both places.
+    static constexpr float kSheetW = 3.30f;
+    static constexpr float kSheetH = 1.65f;
+
+    /// Where to view the flat sheet from at morph 0. The unroll blends between
+    /// this and the orbit camera, so setting it to whatever the 2D view was
+    /// framed on is what makes the switch begin exactly where the eye already
+    /// was rather than jumping to a whole-world shot first.
+    void setSheetAnchor(Vector3 eye, Vector3 target) {
+        m_sheetEye = eye; m_sheetTarget = target;
+    }
+
     /// 0 = laid out flat, 1 = a sphere. Anything between is the unroll.
     void setMorph(float t) { m_morph = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); }
     float morph() const { return m_morph; }
@@ -286,6 +314,8 @@ private:
     std::shared_ptr<Bake> m_bake;
     float m_cloudPhase = 0.0f;
     float m_morph = 1.0f;
+    Vector3 m_sheetEye{0.0f, 0.0f, 2.55f};
+    Vector3 m_sheetTarget{0.0f, 0.0f, 0.0f};
     int m_month = 5;                          ///< 0 = January
     Vector3 moonWorld() const;   ///< where the moon is; pure, no draw needed
     /// What stands between the next body drawn and the sun. Radius 0 = nothing.

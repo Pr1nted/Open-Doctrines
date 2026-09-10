@@ -200,6 +200,37 @@ bool onNearSide(Vector3 p, float lat, float lon, float dist) {
     return Vector3DotProduct(p, eye) > 1.0f;
 }
 
+Vector3 sheetFromPixel(float px, float py, int mapW, int mapH) {
+    const float u = px / (float)(mapW > 0 ? mapW : 1);
+    const float v = py / (float)(mapH > 0 ? mapH : 1);
+    return { (u - 0.5f) * GlobeView::kSheetW,
+             (0.5f - v) * GlobeView::kSheetH,
+             0.0f };
+}
+
+void sheetAnchor(float targetPxX, float targetPxY, float zoom,
+                 int mapW, int mapH, int screenW, int screenH,
+                 Vector3& eye, Vector3& at) {
+    // The map is equirectangular and the sheet is the same 2:1 rectangle, so one
+    // scale serves both axes.
+    const float pixelsPerUnit = (float)mapW / GlobeView::kSheetW;
+    const float z = (zoom > 0.0001f) ? zoom : 1.0f;
+
+    // A 2D camera whose offset is the screen centre shows screenW/zoom map
+    // pixels across, centred on its target. Half of that, in world units, is
+    // what the 3D camera has to span at the plane.
+    const float halfW = (float)screenW * 0.5f / z / pixelsPerUnit;
+    const float halfH = (float)screenH * 0.5f / z / pixelsPerUnit;
+    const float tanHalf = tanf(kFovY * 0.5f * DEG2RAD);
+    const float aspect  = (float)screenW / (float)screenH;
+    // Whichever axis needs the camera further back is the one that fits; taking
+    // the smaller would crop the view the player is already looking at.
+    const float dist = std::max(halfW / (tanHalf * aspect), halfH / tanHalf);
+
+    at  = sheetFromPixel(targetPxX, targetPxY, mapW, mapH);
+    eye = { at.x, at.y, dist };
+}
+
 }  // namespace globe
 
 
@@ -1227,11 +1258,17 @@ Vector3 GlobeView::cameraPosition() const {
     // rather than the straight line between them, because a straight line
     // between two opposite sides of the planet passes through the middle of it,
     // and the camera would briefly be inside the world.
-    const Vector3 headOn{0.0f, 0.0f, 2.55f};
-    const float ra = Vector3Length(headOn), rb = Vector3Length(orbit);
+    const Vector3 headOn = m_sheetEye;
+    // Measured from the point being LOOKED AT, not from the origin: with an
+    // off-centre sheet the eye is nowhere near the origin, and arcing about the
+    // origin would swing it through the map.
+    const Vector3 pivot = Vector3Scale(m_sheetTarget, 1.0f - m_morph);
+    const Vector3 a0 = Vector3Subtract(headOn, m_sheetTarget);
+    const Vector3 b0 = orbit;
+    const float ra = Vector3Length(a0), rb = Vector3Length(b0);
     if (ra < 1e-4f || rb < 1e-4f) return orbit;
-    const Vector3 na = Vector3Scale(headOn, 1.0f / ra);
-    const Vector3 nb = Vector3Scale(orbit, 1.0f / rb);
+    const Vector3 na = Vector3Scale(a0, 1.0f / ra);
+    const Vector3 nb = Vector3Scale(b0, 1.0f / rb);
     const float ang = acosf(std::clamp(Vector3DotProduct(na, nb), -1.0f, 1.0f));
     Vector3 dir = nb;
     if (ang > 1e-3f) {
@@ -1242,14 +1279,19 @@ Vector3 GlobeView::cameraPosition() const {
         if (Vector3Length(axis) < 1e-4f) axis = Vector3{0.0f, 1.0f, 0.0f};
         dir = Vector3RotateByAxisAngle(na, Vector3Normalize(axis), ang * m_morph);
     }
-    return Vector3Scale(dir, ra + (rb - ra) * m_morph);
+    return Vector3Add(pivot, Vector3Scale(dir, ra + (rb - ra) * m_morph));
 }
 
 Camera3D GlobeView::camera(int screenW, int screenH) const {
     (void)screenW; (void)screenH;
     Camera3D c{};
     c.position   = cameraPosition();
-    c.target     = { 0.0f, 0.0f, 0.0f };
+    // The sphere is at the origin and is always looked at directly; the flat
+    // sheet is looked at wherever the 2D view was pointed. Blended, so the eye
+    // travels from the one to the other instead of the picture jumping.
+    c.target     = (m_morph >= 0.999f)
+                 ? Vector3{0.0f, 0.0f, 0.0f}
+                 : Vector3Scale(m_sheetTarget, 1.0f - m_morph);
     c.up         = { 0.0f, 1.0f, 0.0f };
     c.fovy       = kFovY;
     c.projection = CAMERA_PERSPECTIVE;

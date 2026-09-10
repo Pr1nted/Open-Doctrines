@@ -86,6 +86,7 @@ public:
     /// starting state; setViewMode is what the game uses.
     void snapViewMode(ViewMode m);
     void drawCountryNames();
+    void anchorSheetToFlat();
     /// 1 on the flat map, and on the globe how square-on the ground is.
     float faceCosine(float px, float py) const;
     void finishTransition();
@@ -123,6 +124,9 @@ public:
     void setCountryFlags(const std::unordered_map<int, Texture2D>* flags) { m_countryFlags = flags; }
 
     void flyTo(float x, float y, float zoom, float speed = 2.0f);
+    /// Put the camera somewhere with no travel. flyTo is what the game uses;
+    /// this is for harnesses that need two shots taken from the same framing.
+    void snapTo(float x, float y, float zoom);
     void addZoom(float amount);
     void resize(int screenW, int screenH);
     void setMaxZoom(float zoom) { m_maxZoom = zoom; }

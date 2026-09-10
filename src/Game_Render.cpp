@@ -3087,6 +3087,58 @@ void Game::drawSidebarButtons() {
             m_settingsIndex = 0;
             m_settingsScroll = 0;
         }
+
+        // ─── GLOBE / FLAT ─────────────────────────────────────────────────
+        //
+        // Under Settings, same shape, same reason: it is an action. F7 does
+        // this too, but a function key is a thing you have to be told about --
+        // the same discoverability hole Settings itself was moved out of, and
+        // the globe is a good deal easier to miss than the pause menu.
+        //
+        // The button says WHERE IT WILL TAKE YOU, not where you are: a control
+        // labelled with the current state reads as a status light and gets
+        // pressed by people expecting it to confirm something.
+        if (m_renderer) {
+            const bool onGlobe = m_renderer->viewMode() == MapRenderer::ViewMode::Globe;
+            Rectangle gr = {(float)startX, (float)(setY + setH + 8),
+                            (float)btnSize, (float)setH};
+            offerUiTarget("btn.viewmode", gr);
+            const bool ghov = !m_paused && CheckCollisionPointRec(getMouse(), gr);
+            DrawRectangleRounded(gr, 0.25f, 8,
+                                 ghov ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180});
+            DrawRectangleRoundedLines(gr, 0.25f, 8,
+                                      ghov ? Color{140, 140, 170, 200} : Color{80, 80, 100, 150});
+
+            const Color gc = ghov ? WHITE : LIGHTGRAY;
+            const float cx = gr.x + btnSize / 2.0f, cy = gr.y + 14.0f;
+            if (onGlobe) {
+                // Going back to the flat map: a rectangle with a parallel and a
+                // meridian on it, which is what the flat map is.
+                DrawRectangleLinesEx({cx - 10.0f, cy - 6.5f, 20.0f, 13.0f}, 1.5f, gc);
+                DrawLineEx({cx - 10.0f, cy}, {cx + 10.0f, cy}, 1.0f, gc);
+                DrawLineEx({cx, cy - 6.5f}, {cx, cy + 6.5f}, 1.0f, gc);
+            } else {
+                // Going to the globe: a disc with an equator and two meridians,
+                // the ellipses drawn as arcs so it reads as a sphere rather than
+                // as a target.
+                DrawCircleLines((int)cx, (int)cy, 8.0f, gc);
+                DrawLineEx({cx - 8.0f, cy}, {cx + 8.0f, cy}, 1.0f, gc);
+                DrawEllipseLines((int)cx, (int)cy, 3.5f, 8.0f, gc);
+            }
+
+            int gfs = 12;
+            const std::string glabel =
+                odText::fitToWidth(onGlobe ? T("Flat map") : T("Globe"), btnSize - 8, gfs, 9);
+            DrawText(glabel.c_str(),
+                     (int)gr.x + (btnSize - MeasureText(glabel.c_str(), gfs)) / 2,
+                     (int)(gr.y + setH - gfs - 4), gfs, gc);
+
+            if (ghov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("click_light");
+                m_renderer->setViewMode(onGlobe ? MapRenderer::ViewMode::Flat
+                                                : MapRenderer::ViewMode::Globe);
+            }
+        }
     }
 }
 
@@ -6107,6 +6159,82 @@ const std::vector<std::pair<double, double>>* Game::shipDisplayRoute(
     return &pv.route;
 }
 
+
+// ── Projecting an overlay that is a LINE, not a point ──
+//
+// A point that turns past the horizon can be thrown off-screen and forgotten
+// about. A line cannot: drawing from a visible end to a sentinel a hundred
+// thousand pixels away puts a streak clean across the picture, which is exactly
+// what the ship routes did the first time the globe was looked at with the navy
+// view open. So this reports FAILURE, and every caller drops the segment.
+//
+// The horizontal shift is the flat map's business only -- it picks the tile copy
+// nearest the camera. A sphere has no copies.
+// Draw a leg of a route as a chain of short screen segments rather than one
+// straight one.
+//
+// On the flat map the projection is affine, so subdividing changes nothing and
+// this is the same line it always drew. On the globe it is the difference
+// between a track that lies on the ocean and a chord that cuts through the
+// planet -- a leg from Gibraltar to the Cape is a quarter of the way round the
+// world, and one straight screen segment across it is visibly wrong.
+//
+// The subdivision is in MAP space, which is how the flat map has always drawn
+// the same leg: it follows the route the game actually plotted rather than
+// substituting a great circle the ship is not sailing.
+void Game::drawMapSegment(Vector2 a, Vector2 b, float shift,
+                          float thick, Color col) const {
+    if (!m_renderer) return;
+
+    // The flat map keeps EXACTLY the line it drew before: one segment, both ends
+    // shifted by the caller's own wrap offset, no re-wrapping of its own. The
+    // first version of this re-derived the wrap here and moved the flat ship
+    // tracks -- a change nobody asked for, in the half of the code the globe
+    // work was not supposed to touch.
+    if (m_renderer->viewMode() != MapRenderer::ViewMode::Globe) {
+        Vector2 sa{}, sb{};
+        if (projectRoutePoint(a, shift, sa) && projectRoutePoint(b, shift, sb))
+            DrawLineEx(sa, sb, thick, col);
+        return;
+    }
+
+    const float mw = (float)m_landSea.getWidth();
+    float dx = b.x - a.x;
+    while (dx >  mw * 0.5f) dx -= mw;      // the short way round
+    while (dx < -mw * 0.5f) dx += mw;
+    const float dy = b.y - a.y;
+
+    // One segment per few degrees of arc, and never more than is worth drawing.
+    const float span = sqrtf(dx * dx + dy * dy);
+    const int n = std::clamp((int)(span / (mw / 96.0f)) + 1, 1, 32);
+
+    Vector2 prev{};
+    bool havePrev = projectRoutePoint(a, shift, prev);
+    for (int i = 1; i <= n; ++i) {
+        const float t = (float)i / (float)n;
+        const Vector2 w{a.x + dx * t, a.y + dy * t};
+        Vector2 cur{};
+        const bool have = projectRoutePoint(w, shift, cur);
+        if (have && havePrev) DrawLineEx(prev, cur, thick, col);
+        prev = cur;
+        havePrev = have;
+    }
+}
+
+
+bool Game::projectRoutePoint(Vector2 w, float shift, Vector2& out) const {
+    if (!m_renderer) return false;
+    if (m_renderer->viewMode() == MapRenderer::ViewMode::Globe) {
+        float sx = 0.0f, sy = 0.0f;
+        if (m_renderer->pixelToScreen(w.x, w.y, sx, sy) == MapRenderer::Facing::Behind)
+            return false;
+        out = {sx, sy};
+        return true;
+    }
+    out = GetWorldToScreen2D({w.x + shift, w.y}, m_renderer->getCamera());
+    return true;
+}
+
 void Game::drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float alpha) {
     if (mo.shipIndex < 0 || mo.shipIndex >= (int)m_ships.size()) return;
     const NavyShip& ship = m_ships[mo.shipIndex];
@@ -6156,7 +6284,13 @@ void Game::drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float al
     while (anchor.x - cam.target.x < -mw * 0.5f) anchor.x += mw;
     const float shift = anchor.x - pts[0].x;
     auto toScr = [&](Vector2 w) {
-        return GetWorldToScreen2D({w.x + shift, w.y}, cam);
+        Vector2 v{-100000.0f, -100000.0f};
+        projectRoutePoint(w, shift, v);
+        return v;
+    };
+    auto vis = [&](Vector2 w) {
+        Vector2 v{};
+        return projectRoutePoint(w, shift, v);
     };
 
     // How far this turn's range actually reaches along the route. THE POINT OF
@@ -6172,13 +6306,13 @@ void Game::drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float al
     bool turnEndFound = false;
 
     for (size_t i = 0; i + 1 < pts.size(); ++i) {
-        const Vector2 a = toScr(pts[i]), b = toScr(pts[i + 1]);
-        if (!reachable) { DrawLineEx(a, b, 1.5f, blocked); continue; }
+        if (!vis(pts[i]) || !vis(pts[i + 1])) continue;   // round the back
+        if (!reachable) { drawMapSegment(pts[i], pts[i+1], shift, 1.5f, blocked); continue; }
         const double len = segDeg[i];
         if (budget <= 1e-9) {
-            DrawLineEx(a, b, 1.5f, faint);                 // later turns
+            drawMapSegment(pts[i], pts[i+1], shift, 1.5f, faint);   // later turns
         } else if (budget >= len) {
-            DrawLineEx(a, b, 2.5f, solid);                 // sailed this turn
+            drawMapSegment(pts[i], pts[i+1], shift, 2.5f, solid);   // sailed this turn
             budget -= len;
             turnEnd = pts[i + 1];
         } else {
@@ -6187,8 +6321,8 @@ void Game::drawShipRoutePath(const PendingShipMoveOrder& mo, Color col, float al
             const float f = (float)(budget / std::max(1e-9, len));
             const Vector2 mid = {pts[i].x + (pts[i + 1].x - pts[i].x) * f,
                                  pts[i].y + (pts[i + 1].y - pts[i].y) * f};
-            DrawLineEx(a, toScr(mid), 2.5f, solid);
-            DrawLineEx(toScr(mid), b, 1.5f, faint);
+            drawMapSegment(pts[i], mid,      shift, 2.5f, solid);
+            drawMapSegment(mid, pts[i + 1],  shift, 1.5f, faint);
             turnEnd = mid;
             turnEndFound = true;
             budget = 0.0;
@@ -6332,8 +6466,17 @@ void Game::drawMiddleStateOverlay() {
         float dx = wb.x - wa.x;
         while (dx >  mw * 0.5f) dx -= mw;
         while (dx < -mw * 0.5f) dx += mw;
-        Vector2 sb = GetWorldToScreen2D({wa.x + dx, wb.y}, cam);
-        sb.x += sa.x - GetWorldToScreen2D(wa, cam).x;
+        Vector2 sb{};
+        if (m_renderer->viewMode() == MapRenderer::ViewMode::Globe) {
+            // No tile copies to choose between, and no screen-space correction
+            // to apply: the projection already puts both ends where they belong.
+            // An arrow with an end round the back is not drawn at all.
+            if (!projectRoutePoint(wb, 0.0f, sb)) return;   // a lambda, not a loop
+            if (!projectRoutePoint(wa, 0.0f, sa)) return;
+        } else {
+            sb = GetWorldToScreen2D({wa.x + dx, wb.y}, cam);
+            sb.x += sa.x - GetWorldToScreen2D(wa, cam).x;
+        }
 
         // AN ARMY MOVE IS DRAWN AS AN ARMY MOVE. A shell's flight is a thin
         // line because nothing travels along it that you could meet; a march
@@ -6543,12 +6686,11 @@ void Game::drawMiddleStateOverlay() {
                 while (anchor.x - cam.target.x >  mw * 0.5f) anchor.x -= mw;
                 while (anchor.x - cam.target.x < -mw * 0.5f) anchor.x += mw;
                 const float shift = anchor.x - pts[0].x;
-                for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                    const Vector2 p1 = GetWorldToScreen2D({pts[i].x + shift, pts[i].y}, cam);
-                    const Vector2 p2 = GetWorldToScreen2D({pts[i+1].x + shift, pts[i+1].y}, cam);
-                    DrawLineEx(p1, p2, 1.8f, ColorAlpha(col, 0.7f));
-                }
-                const Vector2 end = GetWorldToScreen2D({pts.back().x + shift, pts.back().y}, cam);
+                for (size_t i = 0; i + 1 < pts.size(); ++i)
+                    drawMapSegment(pts[i], pts[i + 1], shift, 1.8f,
+                                   ColorAlpha(col, 0.7f));
+                Vector2 end{};
+                if (!projectRoutePoint(pts.back(), shift, end)) break;
                 // A ring means "this is where it is going", so only draw one
                 // when that is true. A truncated foreign track ends where the
                 // hull IS, and ringing it would be a lie in the player's favour.
