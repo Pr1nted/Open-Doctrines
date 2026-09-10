@@ -904,64 +904,101 @@ void MapRenderer::drawCountryNames() {
             // need. A small country's name then reaches past its own borders,
             // which is the right trade: an unreadable name inside the lines
             // tells you nothing at all.
-            float runPx = 0.0f;
-            if (m_view == ViewMode::Globe) {   // the flat map cannot compress a run
+            // How long a run of `w` map units, centred here and along the
+            // label's axis, comes out ON SCREEN. Measured as a polyline through
+            // the middle rather than end to end: over a long arc the chord
+            // between the ends is meaningfully shorter than the text drawn along
+            // it, and that difference is what the fit below is chasing.
+            auto runLength = [&](float w) -> float {
+                const Vector2 h{cosf(label.angle) * w * 0.5f,
+                                sinf(label.angle) * w * 0.5f};
                 Vector2 e0{}, e1{};
-                const Vector2 half{cosf(label.angle) * totalW * 0.5f,
-                                   sinf(label.angle) * totalW * 0.5f};
-                const bool a0 = pixelToScreen(center.x - half.x, center.y - half.y,
-                                              e0.x, e0.y) == Facing::Front;
-                const bool a1 = pixelToScreen(center.x + half.x, center.y + half.y,
-                                              e1.x, e1.y) == Facing::Front;
-                if (a0 && a1)
-                    runPx = sqrtf((e1.x - e0.x) * (e1.x - e0.x) +
-                                  (e1.y - e0.y) * (e1.y - e0.y));
-            }
+                if (pixelToScreen(center.x - h.x, center.y - h.y, e0.x, e0.y) == Facing::Behind)
+                    return 0.0f;
+                if (pixelToScreen(center.x + h.x, center.y + h.y, e1.x, e1.y) == Facing::Behind)
+                    return 0.0f;
+                const float a1 = sqrtf((sp.x - e0.x) * (sp.x - e0.x) + (sp.y - e0.y) * (sp.y - e0.y));
+                const float a2 = sqrtf((e1.x - sp.x) * (e1.x - sp.x) + (e1.y - sp.y) * (e1.y - sp.y));
+                return a1 + a2;
+            };
+
             // How much screen the glyphs will actually take at the size they
             // will actually be drawn.
+            // Constant: the sum of the glyph advances at the size they are
+            // drawn. It does NOT move when the run is stretched -- the letters
+            // do not grow, the space they are given does.
             const float needPx = totalW * displayFs / (float)label.fontSize;
+            float runPx = 0.0f;
 
-            // ── Along the surface when there is room, flat when there is not ──
+            // ── Set along the surface, or not set at all ──
             //
-            // Stretching the map-space run until it was long enough was the
-            // first answer and it does not work: a name whose run projects to
-            // three pixels needs a fiftyfold stretch, which is half the planet,
-            // and over that distance the projection is nowhere near linear -- so
-            // the stretched run does not land where the arithmetic said and the
-            // letters still pile up.
+            // The run is laid out in MAP units from advances taken at the
+            // label's own size; the glyphs are drawn at a SCREEN size with a
+            // floor under it so they stay readable. Where the ground is small or
+            // seen edge-on those two disagree and every letter lands on the last
+            // one -- which is what the smears near the limb were: not two names
+            // colliding, one name colliding with itself.
             //
-            // When the surface has room, the name is set along it and bends with
-            // it, which is the whole point. When it has not, the name is set as
-            // a straight run in SCREEN space through the same centre and along
-            // the same projected direction: it no longer follows the curve, but
-            // at these sizes a curve two pixels deep was never visible, and the
-            // name is legible instead of being a smudge.
-            const bool flatRun = (m_view == ViewMode::Globe) &&
-                                 runPx > 0.5f && needPx > runPx;
-            Vector2 sdir{1.0f, 0.0f};
-            if (flatRun) {
-                Vector2 ahead{};
-                const Vector2 step{cosf(label.angle) * totalW * 0.25f,
-                                   sinf(label.angle) * totalW * 0.25f};
-                if (pixelToScreen(center.x + step.x, center.y + step.y,
-                                  ahead.x, ahead.y) == Facing::Front) {
-                    const float dx2 = ahead.x - sp.x, dy2 = ahead.y - sp.y;
-                    const float m = sqrtf(dx2 * dx2 + dy2 * dy2);
-                    if (m > 0.001f) sdir = {dx2 / m, dy2 / m};
-                    else            sdir = {cosf(label.angle), sinf(label.angle)};
-                } else {
-                    sdir = {cosf(label.angle), sinf(label.angle)};
+            // The run is therefore stretched until the letters fit it. The name
+            // then reaches past its own borders, which is ordinary cartography
+            // and the right trade -- an unreadable name inside the lines says
+            // nothing.
+            //
+            // But a name near the limb needs a stretch of fifty, and fifty times
+            // a short run is half the planet: the name would wrap round the
+            // world to be legible. That country does not get a name. Dropping it
+            // is the honest answer and the one an atlas gives; the alternative
+            // tried first was to set it straight across the screen instead,
+            // which reads as a caption floating in front of the globe rather
+            // than a name written on it.
+            float stretch = 1.0f;
+            if (m_view == ViewMode::Globe) {
+                // ── Fitting the run to the letters, on the surface ──
+                //
+                // Solved by iteration, not by one multiplication. Scaling the
+                // run by need/have assumes the map-to-screen relation is linear
+                // along it, and on a sphere it is not: the answer undershoots,
+                // sometimes by a lot, and the letters stay piled up. That was
+                // the second wrong fix -- and it looked plausible because the
+                // arithmetic is right, just about the wrong geometry.
+                //
+                // Each pass measures what the current run really projects to and
+                // corrects from there, damped so a wild first estimate cannot
+                // throw the run round the far side in one go.
+                const float maxSpan = (float)m_mapW * 0.18f;
+                float w = totalW;
+                float got = runLength(w);
+                for (int pass = 0; pass < 5 && got < needPx * 0.98f; ++pass) {
+                    if (got <= 0.5f) { w = 0.0f; break; }     // edge-on: no room
+                    w *= std::min(needPx / got, 4.0f);
+                    if (w > maxSpan) { w = 0.0f; break; }
+                    got = runLength(w);
                 }
+                // Still short after five passes means the surface here cannot
+                // hold the name at a readable size, however far it is spread.
+                // That country does not get a name -- which is the answer an
+                // atlas gives, and the only one that keeps every name that IS
+                // drawn written on the globe rather than floating over it.
+                if (w <= 0.0f || got < needPx * 0.80f) continue;
+                stretch = w / totalW;
+                totalW  = w;
+                runPx   = got;
             }
 
-            // Scale curvature proportionally
-            float curvScale = (label.span > 0) ? totalW / label.span : 1.0f;
+            // Scale curvature proportionally -- to the run as it was LAID OUT,
+            // grown by the stretch but not without limit. The bow has to grow
+            // with the run or the arc flattens out of shape, and it must not
+            // grow with the whole of a fivefold stretch or it throws the name
+            // clean off the country it belongs to.
+            const float laidW = totalW / stretch;
+            float curvScale = (label.span > 0)
+                            ? (laidW * std::min(stretch, 2.0f)) / label.span
+                            : 1.0f;
             float useCurvature = label.curvature * curvScale;
 
             Vector2 dir = {cosf(label.angle), sinf(label.angle)};
             Vector2 perp = {-dir.y, dir.x};
             float cursor = -totalW * 0.5f;
-            float cursorPx = -needPx * 0.5f;   // the flat-run equivalent
 
             if (declutter) {
                 // ── Deciding what overlaps, from the name as it is DRAWN ──
@@ -978,9 +1015,9 @@ void MapRenderer::drawCountryNames() {
                 // Sampled instead: the same map positions the glyph loop below
                 // walks, through the same projection, and two names collide when
                 // their sampled runs pass within a line's height of each other.
-                const float span = flatRun ? needPx
-                                 : (runPx > 1.0f ? runPx
-                                                 : displayFs * (float)chars.size() * 0.6f);
+                // After the stretch the run occupies roughly the screen length
+                // the glyphs asked for.
+                const float span = std::max(needPx, runPx);
                 const float rad = displayFs * 0.5f;
                 // Close enough together that two names cannot cross between
                 // consecutive samples without one of them noticing.
@@ -989,12 +1026,6 @@ void MapRenderer::drawCountryNames() {
                 m_labelPts.clear();
                 for (int si = 0; si < NS; ++si) {
                     const float pf = (float)si / (float)(NS - 1);
-                    if (flatRun) {
-                        // Straight on screen, so the samples are too.
-                        const float cs = (pf - 0.5f) * needPx;
-                        m_labelPts.push_back({sp.x + sdir.x * cs, sp.y + sdir.y * cs});
-                        continue;
-                    }
                     const float cur = (pf - 0.5f) * totalW;
                     const float off = sinf(pf * PI) * useCurvature;
                     Vector2 w{center.x + dir.x * cur + perp.x * off,
@@ -1022,7 +1053,13 @@ void MapRenderer::drawCountryNames() {
             }
 
             for (size_t ci = 0; ci < chars.size(); ci++) {
-                float cw = chars[ci].advance;
+                // The STRETCHED advance. Widening the run without widening the
+                // steps taken across it moves where the name starts and leaves
+                // the letters as tightly packed as they were -- which is what
+                // the last two attempts at this actually did, and why the smears
+                // survived a fix that measured correct every time: the run was
+                // the right length and nothing walked along it.
+                float cw = chars[ci].advance * stretch;
                 float charCenter = cursor + cw * 0.5f;
                 float p = (charCenter + totalW * 0.5f) / totalW;
 
@@ -1049,26 +1086,17 @@ void MapRenderer::drawCountryNames() {
                                        pos.y + sinf(aheadA) * 6.0f};
 
                 Vector2 screenPos{}, screenAhead{};
-                float deg;
-                const float cwPx = cw * displayFs / (float)label.fontSize;
-                if (flatRun) {
-                    // Placed and advanced entirely on screen, so the step
-                    // between letters is the step the glyphs are drawn with and
-                    // they cannot pile up whatever the projection is doing.
-                    screenPos = {sp.x + sdir.x * cursorPx, sp.y + sdir.y * cursorPx};
-                    deg = atan2f(sdir.y, sdir.x) * RAD2DEGF;
-                } else {
                 if (pixelToScreen(pos.x, pos.y, screenPos.x, screenPos.y) == Facing::Behind) {
                     cursor += cw;
                     if (ci < chars.size() - 1) cursor += spacing;
                     continue;      // this glyph is round the back
                 }
+                float deg;
                 if (pixelToScreen(ahead.x, ahead.y, screenAhead.x, screenAhead.y) == Facing::Front) {
                     deg = atan2f(screenAhead.y - screenPos.y,
                                  screenAhead.x - screenPos.x) * RAD2DEGF;
                 } else {
                     deg = aheadA * RAD2DEGF;   // at the very limb, fall back
-                }
                 }
                 char buf[8] = {};
                 int wpos = 0;
@@ -1083,11 +1111,7 @@ void MapRenderer::drawCountryNames() {
                             {0, displayFs * 0.5f}, deg, displayFs, 0, col);
 
                 cursor += cw;
-                cursorPx += cwPx;
-                if (ci < chars.size() - 1) {
-                    cursor   += spacing;
-                    cursorPx += spacing * displayFs / (float)label.fontSize;
-                }
+                if (ci < chars.size() - 1) cursor += spacing * stretch;
             }
         }
     }

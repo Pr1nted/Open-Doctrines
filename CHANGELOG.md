@@ -94,12 +94,17 @@
   with no zooming in to escape it — the larger country keeps its name and the
   smaller ones yield. The flat map's labelling is untouched.
 
-  Two further rules the sphere needed, both found by looking at what the limb
-  actually did. A name is set ALONG the surface only while the surface has room
-  for it; where it has not -- a small country, or ground seen almost edge-on --
-  the name is set as a straight run through the same centre and along the same
-  projected direction, so it stays readable instead of collapsing into a smudge.
-  And names are decluttered against the run they actually occupy, sampled
+  Every name is written ON the globe -- none of them turn to face the camera.
+  Where a country is too small on screen to hold its name at a readable size,
+  the run is widened along the surface until the letters fit, which is ordinary
+  cartography: the name reaches past its own borders rather than being crushed
+  inside them. The width is found by iteration, because the map-to-screen
+  relation along an arc is not linear and one division undershoots it. Where
+  even that cannot work -- ground seen almost edge-on near the limb, which would
+  need a name wrapped a fifth of the way round the world -- the country simply
+  goes unnamed, as it would in an atlas.
+
+  Names are also decluttered against the run they actually occupy, sampled
   through the projection, rather than against a box guessed from their letter
   count: a country's name is set along its own axis and usually bowed, so the
   box claimed room the name did not use and missed room it did.
