@@ -15110,3 +15110,45 @@ research allocation, not a coincidence of one change.
 METHOD: I called the subsystem mapped after sweeping one direction. Second
 time today I generalised from a partial sample -- the first was three seeds
 reading as a measurement. Sweep both ways before writing the conclusion.
+
+## 250 — RETRACTING 249's design claim: the survival half was two unmeasurable seats
+
+Entry 249 said the research bar is a growth/survival dial, and put to the user
+that 0.35 makes the AI "dramatically harder to kill -- worst seat 59 against
+17, the best floor any configuration has produced". Checked it properly:
+
+    bar     RELIABLE seats        rush    hood
+            (FRA/USA/CHN rung)
+    0.25    202                     18      44
+    0.35    262                     77      59
+    0.45    435                     17      46
+    0.65    372                    123      13
+
+WHAT SURVIVES: 0.45 is the optimum. On the three seats that can actually
+measure -- large par, never pinned, not bistable -- the response is monotone
+up to 0.45 and down after, with 60-230 point gaps. Solid, and far outside any
+floor.
+
+WHAT DOES NOT: everything I said about survival. The four non-noisy seats sit
+at exactly 100 in BOTH arms, so survival 77 -> 89 is entirely rush (17 -> 77)
+and hood (46 -> 59). rush is the bistable seat and hood has par 1.3, deep in
+magnifier territory. Neither is monotone in the bar: 18/77/17/123 and
+44/59/46/13. That is regime-flipping, not a dose-response.
+
+And the "worst seat 59" was a DIFFERENT SEAT -- hood, not rush -- which is the
+seat-swap I wrote a memory about this morning and then walked into.
+
+FOURTH TIME TODAY a claim of mine has rested on these two seats: the austerity
+constant, the play-trained model's "capability", the shipped change's survival
+cost, and now this. The pattern is not random. I reach for survival and floor
+numbers because they tell a better story than land share, and they are computed
+from the two seats least able to support one.
+
+NOT retracting journal 239's survival cost for the shipped change: that also
+lives on these seats, but its LAND cost replicated across two independent seed
+sets in the same direction (-3.87, -5.80). Replication is what this claim
+lacks -- one seed set, non-monotone.
+
+TO THE USER: I put a design question to them -- should AI countries snowball or
+be hard to kill -- on the strength of this. The question is legitimate; the
+evidence I offered for it is not. Corrected in the same message.
