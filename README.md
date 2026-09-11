@@ -476,8 +476,8 @@ Alpha, and the honest version of that word:
   waits as a draft until somebody has read the notes. Its optional windowed
   mode is built as a check and not shipped, and the Android build is
   unfinished.
-- There is **no tutorial**. Province actions live behind the view tabs on the
-  bottom bar, and the game does not currently tell you that.
+- The **tutorial is young**. There is one, with a map built for it, and it has
+  not yet been watched over the shoulder of a first-time player.
 - **Long-form (play-by-paste) turns are built but not yet played.** The whole
   path exists — the host publishes each resolved turn to a store, players submit
   orders sealed with a session key, and both sides work with the host offline —

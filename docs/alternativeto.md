@@ -86,7 +86,7 @@ Source and let the description carry the nuance rather than overstating it)*
 >
 > It plays in a browser with no download and no account, inside a Discord voice
 > channel as an Activity, or as a desktop and Android download. It is an alpha:
-> playable, and not finished — there is no tutorial yet.
+> playable, and not finished, with a tutorial that is still young.
 
 **Tags:** `grand-strategy` `strategy` `turn-based-strategy` `wargame`
 `alternate-history` `open-source` `moddable` `multiplayer` `map-editor`
