@@ -14,6 +14,19 @@
 # file arrives immediately. That is exactly the trade this wants.
 /*
   Cache-Control: public, max-age=0, must-revalidate
+  # ── THREE HEADERS THAT COST NOTHING AND CANNOT BREAK THE GAME ──
+  #
+  # Deliberately NOT a Content-Security-Policy. The game needs wasm evaluation
+  # and blob workers, itch.io and Discord both frame it, and inside an Activity
+  # every request is rewritten to a proxy host that is not known here -- so a
+  # CSP tight enough to be worth having would break the game in the one place
+  # hardest to test, and a CSP loose enough to be safe would assert nothing.
+  # These three are unconditional wins instead.
+  X-Content-Type-Options: nosniff
+  # No Referrer-Policy here: this block already sets `no-referrer` below, which
+  # is stricter than anything worth adding. Two of the same directive in one
+  # block is not an error, it is just the second one silently winning.
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), midi=()
   # ── NO X-Frame-Options AT ALL, WHICH IS THE POINT ──
   #
   # The game is meant to be framed: by Discord, and by itch.io today. The

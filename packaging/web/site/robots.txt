@@ -1,0 +1,10 @@
+# Crawl the site; skip the game's payload.
+#
+# /play/data/ is ~60 MB of maps, audio and fonts fetched on demand by the
+# running game. A crawler walking it gains nothing, and spends crawl budget
+# that should go on the five pages that are actually pages.
+User-agent: *
+Allow: /
+Disallow: /play/data/
+
+Sitemap: https://opendoctrines.pages.dev/sitemap.xml

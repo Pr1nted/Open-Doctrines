@@ -1,7 +1,7 @@
 /* Analytics, and the consent it is not allowed to skip.
  *
  * ── PUT YOUR MEASUREMENT ID ON THE NEXT LINE AND NOWHERE ELSE ──────────── */
-var OD_GA_ID = "";         /* e.g. "G-XXXXXXXXXX". Empty = analytics off. */
+var OD_GA_ID = "G-6DXCXHCNRL";   /* Empty string = analytics off entirely. */
 /* ─────────────────────────────────────────────────────────────────────────
  *
  * WHY THIS IS NOT JUST THE SNIPPET GOOGLE GIVES YOU.

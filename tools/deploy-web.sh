@@ -59,7 +59,8 @@ cp packaging/web/_headers "$out/_headers"
 # The site itself: a handful of static pages sharing one stylesheet.
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/site.css \
-   packaging/web/site/analytics.js "$out/"
+   packaging/web/site/analytics.js packaging/web/site/robots.txt \
+   packaging/web/site/sitemap.xml "$out/"
 
 # ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
 # policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
