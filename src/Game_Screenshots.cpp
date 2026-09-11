@@ -108,10 +108,17 @@ const Shot SHOTS[] = {
     {"globe-navy",       60, true},
     {"globe-resources",  60, true},
     {"globe-close",      60, true},
+    // Space, on the globe. The flat map flies to the selected province and sizes
+    // the zoom to it; this asks for the same thing through the same call and
+    // photographs where it lands.
+    {"globe-zoomto",     70, true},
     // Straddling the antimeridian, where the map wraps and the composited patch
     // does not -- so it goes in as two pieces, and a seam here is the failure
     // that costs nothing to look for and is invisible everywhere else.
     {"globe-dateline",   60, true},
+    // Land at NIGHT, with countries on it: the only view that shows whether the
+    // dark side is still a map you could govern from.
+    {"globe-night",      60, true},
     {"globe-orders",     40, true},
     {"globe-orders-navy",40, true},
     {"globe-names",   60, true},
@@ -448,8 +455,30 @@ bool Game::tickScreenshotTour() {
             // globe shots left the view turned and every world shot after them
             // quietly photographed a sphere. orders-desktop came back as a
             // picture of the planet.
-            if (m_renderer && std::string(shot.name).rfind("globe-", 0) != 0)
+            if (m_renderer && std::string(shot.name).rfind("globe-", 0) != 0) {
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Flat);
+                // ── AND THE CAMERA THE FLAT SHOTS EXPECT ──
+                //
+                // Leaving the globe carries its zoom back to the flat map, which
+                // is right for a player -- you return to the scale you were
+                // looking at -- and wrong for a fixture, because it means every
+                // flat shot after a globe shot is framed by whatever the globe
+                // shots did. world-map-uk quietly went from Europe filling the
+                // frame to the whole world.
+                //
+                // So the first world shot's camera is remembered and handed back
+                // to every later one. The globe shots set their own.
+                static bool haveFlatCam = false;
+                static float flatX = 0.0f, flatY = 0.0f, flatZoom = 1.0f;
+                if (!haveFlatCam) {
+                    flatX = m_renderer->getCameraTarget().x;
+                    flatY = m_renderer->getCameraTarget().y;
+                    flatZoom = m_renderer->getZoom();
+                    haveFlatCam = true;
+                } else {
+                    m_renderer->snapTo(flatX, flatY, flatZoom);
+                }
+            }
         }
         if (shot.needsWorld && !g_worldReady) {
             if (m_shotSave.empty()) {
@@ -829,7 +858,8 @@ bool Game::tickScreenshotTour() {
             m_recruitType = (name == "army-mech") ? TROOP_MECHANISED : TROOP_LINE;
         } else if (name == "orders-desktop" || name == "orders-portrait" ||
                    name == "orders-phase" || name.rfind("globe-orders", 0) == 0 ||
-                   name == "globe-close" || name == "globe-dateline") {
+                   name == "globe-close" || name == "globe-dateline" ||
+                   name == "globe-night" || name == "globe-zoomto") {
             // The strip is greyed until a turn has resolved, and a loaded save
             // has no order log (it is per-turn display state, not saved). So
             // put a plausible turn in it: the option lit, the overlay drawn,
@@ -946,7 +976,19 @@ bool Game::tickScreenshotTour() {
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
                 m_renderer->zoomGlobe(5.0f);   // down to just above the surface
             }
-            if (name == "globe-close" || name == "globe-dateline") {
+            if (name == "globe-zoomto" && m_shotProvince > 0) {
+                auto zt = m_provinceCenters.find(m_shotProvince);
+                if (zt != m_provinceCenters.end()) {
+                    m_renderer->setSelectedProvince(m_shotProvince);
+                    m_renderer->rebuildSelectionGlow();
+                    const float r = m_provinceRadius[m_shotProvince];
+                    float tz = std::min((float)m_screenW, (float)m_screenH) * 0.4f
+                             / std::max(r * 2.0f, 1.0f);
+                    tz = std::clamp(tz, m_renderer->getMinZoom(), 3.0f);
+                    m_renderer->flyTo(zt->second.x, zt->second.y, tz, m_config.flySpeed);
+                }
+            }
+            if (name == "globe-close" || name == "globe-dateline" || name == "globe-night") {
                 // Right down on the surface: the view where the composited
                 // texture's resolution is what you are actually looking at.
                 m_activeViewTab = 0;
@@ -956,11 +998,12 @@ bool Game::tickScreenshotTour() {
                 // composite would actually be visible. Open ocean under cloud
                 // proves nothing, and was the first thing this pointed at.
                 const bool dl = (name == "globe-dateline");
-                m_renderer->snapTo((float)m_landSea.getWidth()  * (dl ? 0.992f : 0.53f),
-                                   (float)m_landSea.getHeight() * (dl ? 0.16f  : 0.30f),
+                const bool ni = (name == "globe-night");
+                m_renderer->snapTo((float)m_landSea.getWidth()  * (ni ? 0.90f : dl ? 0.992f : 0.53f),
+                                   (float)m_landSea.getHeight() * (ni ? 0.22f : dl ? 0.16f  : 0.30f),
                                    m_renderer->getMinZoom() * 8.0f);
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
-                m_renderer->zoomGlobe(6.0f);
+                m_renderer->zoomGlobe(ni ? 3.5f : 6.0f);
             }
             // ONLY THE ORDERS SHOTS. Setting this for every shot in the
             // block put the Viewing Orders banner across the economy screen.
@@ -1067,6 +1110,12 @@ bool Game::tickScreenshotTour() {
                                (float)m_landSea.getHeight() * 0.34f,
                                m_renderer->getMinZoom());
             m_renderer->setViewMode(MapRenderer::ViewMode::Globe);
+            // A known height, every time. The globe keeps its zoom across a
+            // switch -- which is right for a player and wrong for a fixture:
+            // shots were inheriting whatever the previous one had zoomed to, so
+            // the same shot framed a different view run to run, and twice I read
+            // that as a rendering fault.
+            m_renderer->setGlobeDistance(2.6f);
         } else if (name == "province") {
             m_activeViewTab = 2;          // industry: the busiest of the tabs
         } else if (name == "army") {

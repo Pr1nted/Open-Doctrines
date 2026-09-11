@@ -21,6 +21,7 @@
 #include "map/LandSeaMap.h"
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
+#include "map/HistoryFile.h"
 #include "renderer/MapRenderer.h"
 #include "Feedback.h"
 #include "Mail.h"
@@ -2918,6 +2919,12 @@ public:
     std::vector<Policy> m_allPolicies;
     // JSON data loaded from .odmap archive (loaded in-memory, never written to disk)
     std::unordered_map<std::string, std::string> m_odmJsonData;
+    /// What each country did, if this map says so. Empty for maps without a
+    /// history.json, which is every map that shipped before this existed.
+    ///
+    /// NOT m_history: that name is taken by the save-browser and the timelapse,
+    /// which are a different feature entirely.
+    history::Doctrines m_countryDoctrines;
     std::unordered_map<int, std::string> m_rebelFlagSvgs; // rebel CID → SVG string
 
     std::unordered_map<std::string, std::vector<std::string>> m_startingPolicies; // isoA3 -> [policyId]

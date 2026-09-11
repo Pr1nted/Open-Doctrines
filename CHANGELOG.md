@@ -52,6 +52,16 @@
   before any of this existed loads with Earth-like defaults rather than being
   refused — which matters in a format that already carries 118 files.
 
+- **Bots can be asked to act like the countries they are.** A map may carry a
+  `history.json` saying, for dated windows, which neighbours a power pushed into
+  and which it left alone. Off by default, under Settings - Experimental, and
+  inert unless both the switch is on and the map says something.
+
+  It does not tell the AI what to do. It scales the resolver's own winnability
+  score, and the ordinary bar is applied to the result: a historical target gets
+  more tempting, a country that power did not attack gets less, and nothing is
+  added that the rules refuse or masked off that they allow.
+
 - **The world unrolls into the globe instead of cutting to it.** F7 no longer
   swaps one picture for another: the map lifts off the flat, curls, and closes
   into a sphere over about seven tenths of a second, with the camera swinging
@@ -87,8 +97,23 @@
   unit markers with it. That was never true -- markers, counters, arrows and
   country names are screen-space overlays drawn after the sphere and are not
   touched by the terminator at all. Only the map dims, which is a smaller price
-  than the note had been charging for. Maps can still set their own value in
-  `sky.json`, and the map editor exposes it.
+  than the note had been charging for.
+
+- **And the dark side is still a map you can govern from.** One multiplier over
+  the whole night side is a choice nobody wants: dark enough to look like night,
+  or bright enough to work in. It is a false choice, because the two halves of
+  the picture are not the same kind of thing. Sea, ice and empty ground are
+  scenery and can go as dark as looks right; a country's colour is information,
+  and dimming that is the only part that costs the player anything.
+
+  So they are dimmed separately -- scenery to 0.18, political colouring to 0.62.
+  Telling them apart by colour cannot work, because this map's ocean is as
+  saturated as any province, so the composite records it instead: the base map
+  and the layers drawn over it are composited with different alpha blending, and
+  the alpha channel -- which carried nothing, the sphere being opaque -- comes
+  out holding how much of each texel is something a player put there.
+
+  Both numbers, and the width of dawn, are carried in a map's `sky.json`.
 
 - **The globe is sharp when you zoom in.** Its surface was composited at half
   the map's resolution, on the reasoning that the whole planet is never more

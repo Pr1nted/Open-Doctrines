@@ -43,7 +43,7 @@ std::string hexOf(Color c) {
 
 }  // namespace
 
-bool skyfile::load(const std::string& path, GlobeView::Sky& out) {
+bool skyfile::load(const std::string& path, GlobeView::Sky& out, GlobeView::Night& night) {
     std::ifstream f(path);
     if (!f) return false;
     nlohmann::json j;
@@ -63,6 +63,13 @@ bool skyfile::load(const std::string& path, GlobeView::Sky& out) {
 
     take(j, "cloud", out.cloud);
     take(j, "cloud_opacity", out.cloudOpacity);
+    // How dark the unlit half goes. Two numbers, not one: `night_floor` is the
+    // scenery -- sea, ice, empty ground -- and `night_info` is the political
+    // colouring drawn over it, which has to stay readable after dark because
+    // the map is still being played on.
+    take(j, "night_floor", night.floorLevel);
+    take(j, "night_info", night.infoLevel);
+    take(j, "night_softness", night.softness);
     take(j, "cloud_drift", out.cloudDrift);
     take(j, "cloud_height", out.cloudHeight);
 
@@ -78,7 +85,7 @@ bool skyfile::load(const std::string& path, GlobeView::Sky& out) {
     return true;
 }
 
-bool skyfile::save(const std::string& path, const GlobeView::Sky& s) {
+bool skyfile::save(const std::string& path, const GlobeView::Sky& s, const GlobeView::Night& night) {
     nlohmann::json j;
     j["stars"] = s.stars;
     j["star_count"] = s.starCount;
@@ -93,6 +100,9 @@ bool skyfile::save(const std::string& path, const GlobeView::Sky& s) {
 
     j["cloud"] = s.cloud;
     j["cloud_opacity"] = s.cloudOpacity;
+    j["night_floor"] = night.floorLevel;
+    j["night_info"] = night.infoLevel;
+    j["night_softness"] = night.softness;
     j["cloud_drift"] = s.cloudDrift;
     j["cloud_height"] = s.cloudHeight;
 

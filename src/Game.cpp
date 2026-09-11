@@ -348,9 +348,15 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // a player with no module had no way in at all. A setup screen reachable
     // only after setup is finished is not a setup screen.
     {"AI Correspondents", false, -1},
+    // Bots lean towards what their country actually did, where the map says so.
+    // Experimental for two reasons: the AI's published rating is measured with
+    // it off, and a scenario that replays its own history is a different game
+    // from the balanced one. A map with no history.json shows this as having no
+    // effect, because it has none.
+    {"Historical AI", false, -1},
     {"Back", false, -1},
 };
-const int EXPERIMENTAL_COUNT = 4;
+const int EXPERIMENTAL_COUNT = 5;
 
 // THE LANGUAGE TAB HAS NO ROWS.
 //
@@ -648,6 +654,11 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
                              ? std::string("(not set)") : cfg.streamChatChannel);
     } else if (tab == 5 && index == 0) {
         label += onOff(cfg.aiLearning);
+    } else if (tab == 5 && index == 3) {
+        // Just on or off. Whether the map in front of you actually carries a
+        // history is said when the switch is thrown -- this is a free function
+        // and has no game to ask.
+        label += onOff(cfg.historicalAi);
     } else if (tab == 5 && index == 1) {
         // A BUILD WITHOUT THE LIBRARY SAYS SO, rather than saying "On".
         //

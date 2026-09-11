@@ -13,6 +13,23 @@
 // T(): the debug overlays below are drawn text like any other.
 #include "../i18n/Locale.h"
 #include "raymath.h"
+
+// ── Recording WHAT a texel is, not just what colour it is ──
+//
+// Declared rather than reached for through rlgl.h, which drags in the GL loader.
+// See the note on the composite's alpha channel in buildSurface.
+extern "C" void rlSetBlendFactorsSeparate(int glSrcRGB, int glDstRGB,
+                                          int glSrcAlpha, int glDstAlpha,
+                                          int glEqRGB, int glEqAlpha);
+namespace {
+// OpenGL's own numbers. Spelled out because rlgl.h is not included here and
+// these four have been stable since OpenGL 1.4.
+constexpr int kGlZero             = 0x0000;
+constexpr int kGlOne              = 0x0001;
+constexpr int kGlSrcAlpha         = 0x0302;
+constexpr int kGlOneMinusSrcAlpha = 0x0303;
+constexpr int kGlFuncAdd          = 0x8006;
+}  // namespace
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -348,6 +365,12 @@ void MapRenderer::resize(int screenW, int screenH) {
 }
 
 void MapRenderer::addZoom(float amount) {
+    if (m_view == ViewMode::Globe && m_globe) {
+        // The keyboard zoom, in the globe's own units. Scaled so a press moves
+        // about as much of the world as a press does on the flat map.
+        m_globe->zoom(amount * 5.0f);
+        return;
+    }
     Vector2 mouseWorldBefore = GetScreenToWorld2D(getMouse(), m_camera);
     m_camera.zoom += amount;
     if (m_camera.zoom < m_minZoom) m_camera.zoom = m_minZoom;
@@ -358,7 +381,32 @@ void MapRenderer::addZoom(float amount) {
     m_flying = false;
 }
 
+// The flat map's zoom expressed as a globe distance. getZoom() is the forward
+// direction of this and the two must stay each other's inverse, or the same key
+// frames a province differently depending on which view is up.
+float MapRenderer::distanceForZoom(float zoom) const {
+    if (zoom < 0.0001f) zoom = 0.0001f;
+    const float halfFovTan = tanf(45.0f * 0.5f * DEG2RAD);
+    const float mapPixelsPerRadius = (float)m_mapW / (2.0f * PI);
+    const float pixelsPerRadius = zoom * mapPixelsPerRadius;
+    return ((float)m_screenH * 0.5f) / (halfFovTan * pixelsPerRadius);
+}
+
 void MapRenderer::flyTo(float x, float y, float zoom, float speed) {
+    if (m_view == ViewMode::Globe && m_globe) {
+        // Same request, same easing, different geometry: a place and a height
+        // instead of a target and a zoom. Space frames the selected province on
+        // the globe exactly as it does on the map.
+        float px = x;
+        while (px < 0.0f) px += (float)m_mapW;
+        while (px >= (float)m_mapW) px -= (float)m_mapW;
+        const float lon = -PI + (px / (float)m_mapW) * 2.0f * PI;
+        const float lat = PI * 0.5f - (y / (float)m_mapH) * PI;
+        m_globe->beginFly(lon, lat, distanceForZoom(zoom));
+        m_flySpeed = speed;
+        return;
+    }
+
     // Pick shortest horizontal path from current camera position
     m_flyTarget = { x, y };
     while (m_flyTarget.x - m_camera.target.x > m_mapW * 0.5f) m_flyTarget.x -= m_mapW;
@@ -395,6 +443,9 @@ void MapRenderer::update(float dt) {
     // Input is the globe's only while the globe is actually a globe. Orbiting a
     // half-unrolled sheet moves the camera along an arc that is itself being
     // interpolated, and the two fight.
+    if (!m_paused && m_view == ViewMode::Globe && m_globe && m_globe->flying())
+        m_globe->tickFly(dt, m_flySpeed);
+
     if (!m_paused && !m_morphing && m_view == ViewMode::Globe && m_globe) {
         // The globe takes the same gestures as the flat map -- drag to move,
         // wheel to zoom -- so the hand does not have to learn a second map.
@@ -406,9 +457,13 @@ void MapRenderer::update(float dt) {
         if (panning) {
             if (!m_isDragging) m_isDragging = true;
             if (fabs(d.x) > 3.0f || fabs(d.y) > 3.0f) m_wasDragged = true;
-            // Negated: dragging left should turn the globe so the ground moves
-            // WITH the cursor, the way dragging the flat map does.
-            m_globe->orbit(-d.x, -d.y);
+            // NOT negated, and the negation that used to be here is why the
+            // globe turned the wrong way on both axes. The reasoning behind it
+            // was sound and the sign was not: east is -Z on this sphere, so the
+            // orbit already runs the other way round from what the flat map's
+            // pan arithmetic suggests. Asserted in globe_projection_test: a drag
+            // moves the ground WITH the cursor, which is the whole of the rule.
+            m_globe->orbit(d.x, d.y);
         }
         if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE) ||
             IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_isDragging = false;
@@ -640,6 +695,15 @@ void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
 }
 
 void MapRenderer::buildSelectionGlow() {
+    // ── The composite MUST be told, and the signature cannot tell it ──
+    //
+    // Every other layer change marks the composite stale, and this one relied on
+    // the signature noticing instead. It cannot: the signature hashes texture
+    // IDS, and unloading a texture then loading another hands back the SAME id.
+    // So selecting a second province without deselecting the first produced an
+    // identical signature, no rebuild, and a globe still outlining the province
+    // you had left -- while the panel named the one you had just clicked.
+    m_surfaceDirty = true;
     if (m_selectionTex.id > 0) {
         UnloadTexture(m_selectionTex);
         m_selectionTex = {};
@@ -749,56 +813,63 @@ MapRenderer::SurfaceWindow MapRenderer::surfaceWindow() const {
         return w;
     }
 
-    const float dist = std::max(1.0001f, m_globe->distance());
-    const float lat  = m_globe->latitude();
-
-    // ── How far round the planet the SCREEN reaches ──
+    // ── Measured off the screen, not derived from trigonometry ──
     //
-    // Not how far the horizon reaches. Close in they are very different: at the
-    // nearest zoom the horizon is 42 degrees away and the viewport shows barely
-    // 21, so a window sized to the horizon is four times the ground it needs.
-    // Sized to the horizon it also reached over the pole, which forces the whole
-    // map -- the first version of this fell back to the full composite every
-    // time and was byte-for-byte the thing it was replacing.
+    // The first version worked out the visible cap with spherical geometry and
+    // was wrong often enough to matter: ground outside the patch samples past
+    // its edge, and once the patch was clamped that came back as a globe with
+    // no map on it -- oceans and cloud and nothing else. Every such failure was
+    // the formula disagreeing with what the camera could actually see.
     //
-    // A point `th` round from under the camera projects to radius
-    // f*sin(th)/(dist-cos(th)), which climbs with th, so walking outwards and
-    // stopping at the corner of the screen finds the angle wanted.
-    const float horizon = acosf(1.0f / dist);
-    const float f = ((float)m_screenH * 0.5f) / tanf(45.0f * 0.5f * DEG2RAD);
-    const float rMax = 0.5f * sqrtf((float)m_screenW * (float)m_screenW +
-                                    (float)m_screenH * (float)m_screenH) * 1.06f;
-    float cap = horizon;
-    for (int i = 1; i <= 48; ++i) {
-        const float th = horizon * (float)i / 48.0f;
-        const float den = dist - cosf(th);
-        const float r = (den > 0.01f) ? f * sinf(th) / den : 1e9f;
-        if (r > rMax) { cap = th; break; }
+    // So the camera is ASKED. A grid of screen points is cast at the sphere, and
+    // the window is the bounding box of where they land. That cannot disagree
+    // with the view, because it IS the view. A ray that misses the planet means
+    // the limb is on screen, and past the limb the ground runs away round the
+    // back -- so any miss gives up and takes the whole map, which is the right
+    // answer when you can see an entire hemisphere anyway.
+    float uMin = 2.0f, uMax = -1.0f, vMin = 2.0f, vMax = -1.0f;
+    float uRef = 0.0f;
+    bool anyMiss = false, first = true;
+    for (int gy = 0; gy <= 8 && !anyMiss; ++gy) {
+        for (int gx = 0; gx <= 8; ++gx) {
+            int hx = 0, hy = 0;
+            if (!m_globe->screenToPixel((float)m_screenW * gx / 8.0f,
+                                        (float)m_screenH * gy / 8.0f,
+                                        m_screenW, m_screenH, hx, hy)) {
+                anyMiss = true;
+                break;
+            }
+            float u = (float)hx / (float)m_mapW;
+            const float v = (float)hy / (float)m_mapH;
+            // Unwrapped against the first hit, so a window straddling the
+            // antimeridian stays one interval instead of spanning the world.
+            if (first) { uRef = u; first = false; }
+            while (u - uRef >  0.5f) u -= 1.0f;
+            while (u - uRef < -0.5f) u += 1.0f;
+            uMin = std::min(uMin, u); uMax = std::max(uMax, u);
+            vMin = std::min(vMin, v); vMax = std::max(vMax, v);
+        }
     }
-    // A margin, then clamped to the horizon: there is nothing beyond it to hold.
-    cap = std::min(cap * 1.12f + 0.02f, horizon);
-
-    // Longitude covers more ground per radian the nearer the pole. A cap that
-    // reaches over the pole spans every longitude, and there the wrap stops
-    // meaning anything at all.
-    const float alat = fabsf(lat);
-    float dLon;
-    if (alat + cap >= PI * 0.5f - 0.01f) dLon = PI;
-    else dLon = asinf(std::min(1.0f, sinf(cap) / cosf(alat)));
-
-    w.du = dLon / PI;              // dLon is a half-width; the map spans 2*PI
-    w.dv = (cap * 2.0f) / PI;
-    if (w.du >= 0.75f || w.dv >= 0.75f) {
-        // Most of the map anyway: a window would cost the wrap handling and buy
-        // nothing.
+    if (anyMiss || uMax < uMin) {
         w.texW = half; w.texH = std::max(1, half * m_mapH / m_mapW);
         return w;
     }
 
-    const float uc = (m_globe->longitude() + PI) / (2.0f * PI);
-    const float vc = (PI * 0.5f - lat) / PI;
-    w.u0 = uc - w.du * 0.5f;
-    w.v0 = vc - w.dv * 0.5f;
+    const float dist = std::max(1.0001f, m_globe->distance());
+    const float f = ((float)m_screenH * 0.5f) / tanf(45.0f * 0.5f * DEG2RAD);
+
+    // A margin, because the near hemisphere is rasterised beyond what the
+    // viewport shows and those fragments must not sample past the edge.
+    const float padU = (uMax - uMin) * 0.12f + 0.004f;
+    const float padV = (vMax - vMin) * 0.12f + 0.004f;
+    w.du = std::min((uMax - uMin) + padU * 2.0f, 1.0f);
+    w.dv = std::min((vMax - vMin) + padV * 2.0f, 1.0f);
+    if (w.du >= 0.75f || w.dv >= 0.75f) {
+        w.texW = half; w.texH = std::max(1, half * m_mapH / m_mapW);
+        return w;
+    }
+    w.u0 = uMin - padU;
+    w.v0 = vMin - padV;
 
     // ── Quantised, so panning does not recomposite every frame ──
     //
@@ -865,14 +936,46 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
         // Bilinear, or the sphere shows the raster's texels at the limb where
         // it is most compressed.
         SetTextureFilter(m_surface.texture, TEXTURE_FILTER_BILINEAR);
+        // CLAMPED, and this is not a detail. A windowed patch is a piece of the
+        // map, so a fragment outside it produces a coordinate past 1 -- and a
+        // REPEATING texture answers that by drawing the patch again. The globe
+        // came out tiled with four copies of Iberia across it. Clamping turns
+        // the same mistake into a stripe of edge colour, which stays off screen
+        // when the window is doing its job and is obvious when it is not.
+        SetTextureWrap(m_surface.texture, TEXTURE_WRAP_CLAMP);
     }
     if (m_globe) m_globe->setSurfaceWindow({win.u0, win.v0}, {win.du, win.dv});
 
     BeginTextureMode(m_surface);
     ClearBackground(BLANK);
     const float W = (float)win.texW, H = (float)win.texH;
-    for (const Layer& l : layerStack(landSea)) {
+
+    // ── The alpha channel says which layer a texel came from ──
+    //
+    // The globe's night side has to be dark enough to read as night and bright
+    // enough to govern in, and one multiplier cannot be both. It does not have
+    // to be: sea, ice and empty ground are SCENERY and can go as dark as looks
+    // right, while a country's colour is INFORMATION and dimming it is the only
+    // part that costs the player anything.
+    //
+    // Telling them apart by colour does not work -- this map's ocean is a
+    // saturated blue and reads exactly like a province to any test on hue or
+    // chroma. But the layer stack already knows: the first layer is the world,
+    // everything after it is what has been drawn ON the world. So the two groups
+    // are composited with different ALPHA blending -- the base leaves alpha at
+    // zero, the rest accumulate coverage into it -- and the shader reads that
+    // coverage to decide how far to dim. The alpha channel was carrying nothing
+    // before; the sphere is opaque.
+    const std::vector<Layer> stack = layerStack(landSea);
+    bool first = true;
+    for (const Layer& l : stack) {
         if (l.tex.id == 0) continue;
+        rlSetBlendFactorsSeparate(kGlSrcAlpha, kGlOneMinusSrcAlpha,
+                                  first ? kGlZero : kGlOne,
+                                  first ? kGlOne  : kGlOneMinusSrcAlpha,
+                                  kGlFuncAdd, kGlFuncAdd);
+        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+        first = false;
         const float tw = (float)l.tex.width, th = (float)l.tex.height;
         // NEGATIVE source height, and it is not a trick: a render target is
         // stored bottom-up, so anything drawn into it arrives upside down when
@@ -882,6 +985,7 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
         if (win.full) {
             DrawTexturePro(l.tex, {0.0f, 0.0f, tw, -th}, {0.0f, 0.0f, W, H},
                            {0.0f, 0.0f}, 0.0f, l.tint);
+            EndBlendMode();
             continue;
         }
         // A window can straddle the antimeridian, where the source wraps and the
@@ -901,6 +1005,7 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
                            {W * (firstU / win.du), 0.0f, W * (restU / win.du), H},
                            {0.0f, 0.0f}, 0.0f, l.tint);
         }
+        EndBlendMode();
     }
     EndTextureMode();
     m_surfaceDirty = false;
@@ -1265,7 +1370,11 @@ void MapRenderer::drawCountryNames() {
 
 void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
     if (m_view == ViewMode::Globe) {
-        if (!m_globe) m_globe = new GlobeView(m_mapW, m_mapH);
+        if (!m_globe) {
+            m_globe = new GlobeView(m_mapW, m_mapH);
+            if (m_haveSky) m_globe->setSky(m_sky);
+            if (m_haveNight) m_globe->setNight(m_night);
+        }
         // WHICH layers are drawn is derived, not announced. Every show/hide
         // toggle changes the stack, and requiring each one to remember to mark
         // the composite stale is a rule that gets broken by the next overlay
@@ -1289,6 +1398,10 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             sig = (sig ^ l.tex.id) * 1099511628211ULL;
             sig = (sig ^ ColorToInt(l.tint)) * 1099511628211ULL;
         }
+        // The id alone is not identity: GL hands a freed id straight back, so
+        // two different textures can hash the same. What actually changed is
+        // WHICH province is selected, so that goes in too.
+        sig = (sig ^ (unsigned long long)(m_selectedProvinceId + 1)) * 1099511628211ULL;
         if (sig != m_surfaceSig) { m_surfaceSig = sig; m_surfaceDirty = true; }
         if (m_surfaceDirty || m_surface.id == 0) buildSurface(landSea);
         m_globe->setSurface(m_surface.texture);
@@ -1299,8 +1412,14 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
         // Labels ride on the sphere. Suppressed mid-unroll along with every
         // other overlay, by the guard in pixelToScreen.
         drawCountryNames();
-        return;
-    }
+        // NO early return. Everything below -- picking a province, the hover
+        // tooltip, the selection -- used to sit past one, so on the globe a
+        // click did nothing at all: the map was a picture you could turn and
+        // not a map you could use. Same shape of fault as the country names,
+        // in the same function, found the same way: by somebody trying to play
+        // on it. The one 2D-only step below is the mouse-to-map conversion,
+        // and that already had a globe path waiting in screenToPixel.
+    } else {
 
     BeginMode2D(m_camera);
 
@@ -1321,12 +1440,17 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
 
     drawCountryNames();
 
+    }
+
     // Skip click/tooltip when paused (menu overlay handles input)
     if (m_paused) return;
 
-    Vector2 mouseWorld = GetScreenToWorld2D(getMouse(), m_camera);
-    int px = static_cast<int>(mouseWorld.x);
-    int py = static_cast<int>(mouseWorld.y);
+    // Where the cursor is ON THE MAP, whichever projection is up. screenToPixel
+    // already answers this for both, and reports -1 when the click missed the
+    // planet entirely.
+    int px = 0, py = 0;
+    screenToPixel(getMouse().x, getMouse().y, px, py);
+    const bool onPlanet = (px >= 0 && py >= 0);
 
     int pxWrapped = px;
     while (pxWrapped < 0) pxWrapped += m_mapW;
@@ -1582,6 +1706,15 @@ MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
         if (m_morphing) return Facing::Behind;
         if (!m_globe->pixelToScreen(px, py, m_screenW, m_screenH, sx, sy))
             return Facing::Behind;
+        // ── The last few degrees before the horizon ──
+        //
+        // Ground there is seen so nearly edge-on that a whole continent of it
+        // lands in a band a few pixels wide, and every marker standing on it
+        // piles into that band -- a wall of overlapping counters round the limb
+        // that says nothing and hides the limb itself. They are dropped a little
+        // before the true horizon instead. The names already do this for
+        // themselves, and more strictly, so this does not change them.
+        if (m_globe->facing(px, py) < 0.12f) return Facing::Behind;
         return Facing::Front;
     }
     // The map wraps horizontally: project the tile copy nearest the camera
@@ -1591,6 +1724,13 @@ MapRenderer::Facing MapRenderer::pixelToScreen(float px, float py,
     sy = v.y;
     // The flat map has no hidden half, so there is nothing here to hide behind.
     return Facing::Front;
+}
+
+const Camera2D& MapRenderer::getCamera() const {
+    if (m_view != ViewMode::Globe || !m_globe) return m_camera;
+    m_viewCamera = m_camera;
+    m_viewCamera.zoom = getZoom();
+    return m_viewCamera;
 }
 
 float MapRenderer::getZoom() const {
@@ -1614,7 +1754,11 @@ void MapRenderer::setViewMode(ViewMode m) {
     // "the same place" means, and so the round trip actually returns you where
     // you started instead of drifting a little each time.
     if (m == ViewMode::Globe) {
-        if (!m_globe) { m_globe = new GlobeView(m_mapW, m_mapH); if (m_haveSky) m_globe->setSky(m_sky); }
+        if (!m_globe) {
+            m_globe = new GlobeView(m_mapW, m_mapH);
+            if (m_haveSky) m_globe->setSky(m_sky);
+            if (m_haveNight) m_globe->setNight(m_night);
+        }
         m_globe->lookAt(m_camera.target.x, m_camera.target.y);
         anchorSheetToFlat();
         m_surfaceDirty = true;
@@ -1691,6 +1835,12 @@ void MapRenderer::finishTransition() {
     // the next frame, which is where that rule already lives.
 }
 
+void MapRenderer::setNight(const GlobeView::Night& n) {
+    m_night = n;
+    m_haveNight = true;
+    if (m_globe) m_globe->setNight(m_night);
+}
+
 void MapRenderer::setSky(const GlobeViewSky& sky) {
     m_sky = sky;
     m_haveSky = true;
@@ -1699,6 +1849,10 @@ void MapRenderer::setSky(const GlobeViewSky& sky) {
 
 void MapRenderer::orbitGlobe(float dx, float dy) {
     if (m_view == ViewMode::Globe && m_globe) m_globe->orbit(dx, dy);
+}
+
+void MapRenderer::setGlobeDistance(float d) {
+    if (m_globe) m_globe->setDistance(d);
 }
 
 void MapRenderer::zoomGlobe(float amount) {

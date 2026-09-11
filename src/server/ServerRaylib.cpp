@@ -621,6 +621,8 @@ bool WindowShouldClose(void) { return g_stopRequested; }
 //   comms/Transmission   clips the eyelid to a straight cut with the scissor,
 //                        and draws an elliptical ring by scaling a circular
 //                        one, which needs the matrix stack too
+//   renderer/MapRenderer separate alpha blending, to record in the composite
+//                        which layer each texel came from
 //   renderer/GlobeView   depth mask and face culling, for the transparent
 //                        shells drawn over the planet; and the default shader
 //                        id, to tell a compiled shader from raylib's fallback
@@ -639,6 +641,7 @@ void rlEnableScissorTest(void);
 void rlDisableScissorTest(void);
 void rlScissor(int x, int y, int width, int height);
 void rlDrawRenderBatchActive(void);
+void rlSetBlendFactorsSeparate(int, int, int, int, int, int);
 void rlEnableDepthMask(void);
 void rlDisableDepthMask(void);
 void rlEnableBackfaceCulling(void);
@@ -654,6 +657,7 @@ void rlEnableScissorTest(void) {}
 void rlDisableScissorTest(void) {}
 void rlScissor(int, int, int, int) {}
 void rlDrawRenderBatchActive(void) {}
+void rlSetBlendFactorsSeparate(int, int, int, int, int, int) {}
 void rlEnableDepthMask(void) {}
 void rlDisableDepthMask(void) {}
 void rlEnableBackfaceCulling(void) {}

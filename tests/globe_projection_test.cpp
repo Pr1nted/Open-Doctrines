@@ -200,6 +200,51 @@ int main() {
         ok(eye2.z < eye.z * 0.55f, "twice the zoom halves the distance");
     }
 
+
+    section("a drag turns the globe the way the hand goes");
+    {
+        // The globe turned the wrong way on BOTH axes for as long as it existed,
+        // and no test could have caught it because none of them asked the only
+        // question that matters: after a drag, has the ground under the cursor
+        // moved with the cursor? Signs are easy to argue about and this sphere
+        // has a reversed one in it (east is -Z), so the property is asserted
+        // rather than the arithmetic reviewed.
+        const int SW = 1600, SH = 900;
+        const float dist = 2.6f;
+        const float scale = 0.0045f * (dist / 3.0f);   // as GlobeView::orbit uses
+
+        auto screenOf = [&](Vector3 p, float lat, float lon) {
+            Camera3D c{};
+            c.position = globe::eyeFromOrbit(lat, lon, dist);
+            c.target = {0.0f, 0.0f, 0.0f};
+            c.up = {0.0f, 1.0f, 0.0f};
+            c.fovy = 45.0f;
+            c.projection = CAMERA_PERSPECTIVE;
+            return GetWorldToScreenEx(p, c, SW, SH);
+        };
+
+        struct { float lat, lon; } spots[] = {
+            {20.0f, 10.0f}, {-35.0f, 150.0f}, {0.0f, -80.0f}, {60.0f, 0.0f},
+        };
+        bool right = true, down = true;
+        for (const auto& s2 : spots) {
+            const float lat = s2.lat * DEG2RAD, lon = s2.lon * DEG2RAD;
+            const Vector3 p = globe::unitFromPixel((lon + PI) / (2.0f * PI) * MW,
+                                                   (PI * 0.5f - lat) / PI * MH, MW, MH);
+            const Vector2 before = screenOf(p, lat, lon);
+
+            // The input path hands the mouse delta straight to orbit(), which
+            // does lon -= dx*scale and lat += dy*scale.
+            const float drag = 20.0f;
+            const Vector2 afterX = screenOf(p, lat, lon - drag * scale);
+            const Vector2 afterY = screenOf(p, lat + drag * scale, lon);
+            if (!(afterX.x - before.x > 2.0f)) right = false;
+            if (!(afterY.y - before.y > 2.0f)) down = false;
+        }
+        ok(right, "dragging right carries the ground right");
+        ok(down, "dragging down carries the ground down");
+    }
+
     printf("\n%d checks, %d failed\n", checks, fails);
     return fails == 0 ? 0 : 1;
 }

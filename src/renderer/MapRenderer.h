@@ -114,9 +114,14 @@ public:
     /// survives the globe not existing yet -- a map loads long before anyone
     /// presses F7.
     void setSky(const GlobeViewSky& sky);
+    /// How dark the unlit half goes, and how much of that the political
+    /// colouring is spared. Carried by the map, like the rest of the sky.
+    void setNight(const GlobeView::Night& n);
 
     void orbitGlobe(float dx, float dy);
     void zoomGlobe(float amount);
+    void setGlobeDistance(float d);
+    float distanceForZoom(float zoom) const;
 
     void screenToPixel(float sx, float sy, int& px, int& py) const;
 
@@ -212,7 +217,15 @@ public:
     void setWasDragged(bool v) { m_wasDragged = v; }
     bool getWasDragged() const { return m_wasDragged; }
     const Vector2& getCameraTarget() const { return m_camera.target; }
-    const Camera2D& getCamera() const { return m_camera; }
+    /// The 2D camera, with a zoom that means what the caller thinks it means.
+    ///
+    /// Thirty-nine places size markers, fonts and bars from `getCamera().zoom`,
+    /// asking a reasonable question -- how big is a map pixel on screen -- and
+    /// on the globe getting the answer for a view that is not on screen: the
+    /// flat camera is frozen at wherever it was left when you switched. So the
+    /// zoom is answered for the view that IS up. Target and offset stay the flat
+    /// camera's, because the only code that uses them is flat-only anyway.
+    const Camera2D& getCamera() const;
 
 private:
     void buildSelectionGlow();
@@ -223,6 +236,7 @@ private:
     Texture2D m_resourceTex{};
     Texture2D m_claimsTex{};
     Camera2D m_camera{};
+    mutable Camera2D m_viewCamera{};
 
     // ── The globe ──
     //
@@ -253,6 +267,8 @@ private:
     bool  m_flatPending = false;
     GlobeViewSky m_sky{};
     bool m_haveSky = false;
+    GlobeView::Night m_night{};
+    bool m_haveNight = false;
     GlobeView* m_globe = nullptr;
     RenderTexture2D m_surface{};
     bool m_surfaceDirty = true;

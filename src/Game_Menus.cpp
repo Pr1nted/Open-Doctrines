@@ -2736,7 +2736,7 @@ void Game::updateSettingsFromMenu() {
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
             { hovered = i; }
         // Reset button
-        if (items[i].isValue || (m_settingsTab == 0 && i <= 9) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && i < 2) || isVolumeSetting(m_settingsTab, i)) {
+        if (items[i].isValue || (m_settingsTab == 0 && i <= 9) || (m_settingsTab == 3 && items[i].actionId >= 0) || (m_settingsTab == 4 && i < 6) || (m_settingsTab == 5 && (i < 2 || i == 3)) || isVolumeSetting(m_settingsTab, i)) {
             const char* rl = "R";
             int rw = MeasureText(rl, 24);
             float rx = (m_settingsTab == 0 && i == 5) ? (centerX + 175) : (float)(centerX + tw/2 + 14);
@@ -2911,6 +2911,7 @@ void Game::updateSettingsFromMenu() {
             else if (m_settingsTab == 4 && m_settingsIndex == 6) { m_config.streamSafe = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
+            else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
             else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                 if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                     *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -3066,6 +3067,16 @@ void Game::updateSettingsFromMenu() {
             } else {
                 m_config.aiLearning = !m_config.aiLearning;
                 Audio::get().playSfx(m_config.aiLearning ? "toggle_on" : "toggle_off");
+            }
+        } else if (strcmp(s.label, "Historical AI") == 0) {
+            m_config.historicalAi = !m_config.historicalAi;
+            Audio::get().playSfx(m_config.historicalAi ? "toggle_on" : "toggle_off");
+            // Say plainly when the switch can do nothing here. The setting is
+            // global and the data is per-map, so it is entirely possible to turn
+            // this on and see no difference for a perfectly good reason.
+            if (m_config.historicalAi && m_countryDoctrines.empty()) {
+                m_menuFeedback = T("On — but this map carries no history, so nothing will change");
+                m_menuFeedbackTimer = 5.0f;
             }
         } else if (strcmp(s.label, "GDTL") == 0) {
             // TURNING IT OFF IS ALWAYS ALLOWED. Only turning it ON needs the

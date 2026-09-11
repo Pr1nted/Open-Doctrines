@@ -176,6 +176,10 @@ struct Config {
     // and every use of it warns before it writes anything. Only meaningful in a
     // build made with -DOD_ENABLE_GDTL=ON; without that the option is still
     // stored but the feature reports itself unavailable.
+    /// Bots lean towards what their country actually did, where the map says.
+    /// OFF by default and deliberately so: the AI's rating is measured with it
+    /// off, and a scenario's history is a different game from the balanced one.
+    bool historicalAi = false;
     bool gdtl = false;
 
     // Where Greater Diplomacy 5 lives, if the player has told us.

@@ -2814,6 +2814,27 @@ void Game::drawSidebarButtons() {
         if (findTop < 12) startY += (12 - findTop);
     }
 
+    // ── AND ROOM AT THE BOTTOM, FOR WHAT HANGS BELOW THE TABS ──
+    //
+    // The same correction as Mail's, at the other end. Settings and the view
+    // toggle are drawn under the column, and the column is centred on the screen
+    // without counting them -- so on any window shorter than about 900 they slid
+    // beneath the view-tab bar, and on a short one off the bottom entirely.
+    //
+    // That is why the globe had "no button": it was being drawn every frame,
+    // just below the edge of most windows. The one size it fitted at is the one
+    // the screenshot tour photographs, which is exactly the blind spot a fixed
+    // test resolution leaves behind. It shares the Settings row now, so it fits
+    // wherever Settings fits; this keeps that row itself clear of the bar.
+    {
+        const int stackH = 4 * btnSize + 3 * btnSpacing;   // the tabs
+        const int underH = 10 + 46;                        // the Settings row
+        const int barTop = m_screenH - bottomBarH() - 16;
+        const int over = (startY + stackH + underH) - barTop;
+        if (over > 0) startY -= over;
+        if (startY < 12) startY = 12;
+    }
+
     struct SBtn { Texture2D tex; const char* label; int id; bool disabled; };
     // T() here rather than at the draw: this is a struct table, and the
     // extractor only reads plain `const char*[]` tables (see i18n_extract.py
@@ -3050,7 +3071,11 @@ void Game::drawSidebarButtons() {
         const int shownH = shownTabs > 0
             ? shownTabs * btnSize + (shownTabs - 1) * btnSpacing : 0;
         const int setY = startY + shownH + 10;
-        Rectangle sr = {(float)startX, (float)setY, (float)btnSize, (float)setH};
+        // Half a row each: Settings and the view toggle. Side by side rather
+        // than stacked, so the pair occupies exactly the space Settings alone
+        // used to and cannot fall off the bottom of a short window.
+        const int halfW = (btnSize - 6) / 2;
+        Rectangle sr = {(float)(startX + halfW + 6), (float)setY, (float)halfW, (float)setH};
         offerUiTarget("btn.settings", sr);
         const bool shov = !m_paused && CheckCollisionPointRec(getMouse(), sr);
         DrawRectangleRounded(sr, 0.25f, 8,
@@ -3061,7 +3086,7 @@ void Game::drawSidebarButtons() {
         // A gear from primitives, as the magnifier above is: a ring, a hub and
         // six teeth. One more PNG in the atlas is not worth a shape this plain.
         const Color sc = shov ? WHITE : LIGHTGRAY;
-        const float gx = sr.x + btnSize / 2.0f, gy = sr.y + 14.0f;
+        const float gx = sr.x + halfW / 2.0f, gy = sr.y + 14.0f;
         DrawCircleLines((int)gx, (int)gy, 6.0f, sc);
         DrawCircleLines((int)gx, (int)gy, 2.0f, sc);
         for (int t = 0; t < 6; ++t) {
@@ -3072,9 +3097,9 @@ void Game::drawSidebarButtons() {
         }
 
         int sfs = 12;
-        const std::string slabel = odText::fitToWidth(T("Settings"), btnSize - 8, sfs, 9);
+        const std::string slabel = odText::fitToWidth(T("Settings"), halfW - 2, sfs, 7);
         DrawText(slabel.c_str(),
-                 (int)sr.x + (btnSize - MeasureText(slabel.c_str(), sfs)) / 2,
+                 (int)sr.x + (halfW - MeasureText(slabel.c_str(), sfs)) / 2,
                  (int)(sr.y + setH - sfs - 4), sfs, sc);
 
         if (shov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
@@ -3100,8 +3125,7 @@ void Game::drawSidebarButtons() {
         // pressed by people expecting it to confirm something.
         if (m_renderer) {
             const bool onGlobe = m_renderer->viewMode() == MapRenderer::ViewMode::Globe;
-            Rectangle gr = {(float)startX, (float)(setY + setH + 8),
-                            (float)btnSize, (float)setH};
+            Rectangle gr = {(float)startX, (float)setY, (float)halfW, (float)setH};
             offerUiTarget("btn.viewmode", gr);
             const bool ghov = !m_paused && CheckCollisionPointRec(getMouse(), gr);
             DrawRectangleRounded(gr, 0.25f, 8,
@@ -3110,7 +3134,7 @@ void Game::drawSidebarButtons() {
                                       ghov ? Color{140, 140, 170, 200} : Color{80, 80, 100, 150});
 
             const Color gc = ghov ? WHITE : LIGHTGRAY;
-            const float cx = gr.x + btnSize / 2.0f, cy = gr.y + 14.0f;
+            const float cx = gr.x + halfW / 2.0f, cy = gr.y + 14.0f;
             if (onGlobe) {
                 // Going back to the flat map: a rectangle with a parallel and a
                 // meridian on it, which is what the flat map is.
@@ -3128,9 +3152,9 @@ void Game::drawSidebarButtons() {
 
             int gfs = 12;
             const std::string glabel =
-                odText::fitToWidth(onGlobe ? T("Flat map") : T("Globe"), btnSize - 8, gfs, 9);
+                odText::fitToWidth(onGlobe ? T("Flat map") : T("Globe"), halfW - 2, gfs, 7);
             DrawText(glabel.c_str(),
-                     (int)gr.x + (btnSize - MeasureText(glabel.c_str(), gfs)) / 2,
+                     (int)gr.x + (halfW - MeasureText(glabel.c_str(), gfs)) / 2,
                      (int)(gr.y + setH - gfs - 4), gfs, gc);
 
             if (ghov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
@@ -5223,6 +5247,31 @@ void Game::drawInner() {
     // The phase draws over everything the map put down, and before the panels,
     // so its banner is not buried under a tab column that is not there.
     drawViewingOrdersPhase();
+
+    // ── Which province you are about to click ──
+    //
+    // On the flat map the cursor sits on the province and there is nothing to
+    // wonder about. On a globe the ground is curved and foreshortened, and near
+    // the limb a centimetre of screen is a great deal of map, so "what am I
+    // pointing at" stops being obvious. The answer the game has already worked
+    // out is drawn: a ring on the province it picked, and a line to the cursor
+    // when the two are far enough apart to be worth connecting.
+    if (m_renderer && m_renderer->viewMode() == MapRenderer::ViewMode::Globe &&
+        !m_paused && m_turnState == TURN_NORMAL) {
+        const int hid = m_renderer->hoveredProvinceId();
+        auto hit = m_provinceCenters.find(hid);
+        if (hid > 0 && hit != m_provinceCenters.end()) {
+            Vector2 hp{};
+            if (projectRoutePoint(hit->second, 0.0f, hp)) {
+                const Vector2 mp = getMouse();
+                const float dx = hp.x - mp.x, dy = hp.y - mp.y;
+                if (dx * dx + dy * dy > 26.0f * 26.0f)
+                    DrawLineEx(mp, hp, 1.0f, ColorAlpha(RAYWHITE, 0.35f));
+                DrawRing(hp, 7.0f, 9.0f, 0.0f, 360.0f, 20, ColorAlpha(BLACK, 0.5f));
+                DrawRing(hp, 8.0f, 9.5f, 0.0f, 360.0f, 20, ColorAlpha(RAYWHITE, 0.9f));
+            }
+        }
+    }
 
     drawBottomPanel();
     // In the same toolbar row as the resource picker and the navy filters,

@@ -100,6 +100,144 @@ void main() {
 // One shell, faded per pixel by how directly it faces the camera. Nested opaque
 // shells were the first attempt and produced visible concentric rings: the
 // falloff has to happen inside the fragment, not between draw calls.
+const char* kStarVertEs = R"(#version 100
+attribute vec3 vertexPosition;
+uniform mat4 mvp;
+uniform mat4 matModel;
+uniform vec3 viewPos;
+varying vec3 vDir;
+void main() {
+    vDir = vec3(matModel * vec4(vertexPosition, 1.0)) - viewPos;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+})";
+
+const char* kStarFragEs = R"(#version 100
+precision highp float;
+varying vec3 vDir;
+
+uniform float pixAng;   // how much angle one screen pixel covers
+float hash31(vec3 p) {
+    p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+void main() {
+    // ── Stars, sized in PIXELS ──
+    //
+    // The first attempt at this gave each star a size in RADIANS, which is the
+    // same mistake the texture made in a different costume: an angular size is
+    // a size on the SPHERE, so zooming in magnified them into blobs just as
+    // sampling a sheet did. A star is a point source. It should be about a pixel
+    // across whatever the camera is doing, and the only way to say that is to
+    // measure it in pixels -- pixAng is how much angle one pixel covers, handed
+    // in from the camera.
+    //
+    // Direction space is diced into cells. One hash decides whether a cell holds
+    // a star, three more place it inside the middle half so it never straddles
+    // two -- which is what lets this read one cell instead of the twenty-seven
+    // around it. Brightness is cubed, so the sky is mostly faint stars with a
+    // few bright ones, which is what makes a star field look like one.
+    vec3 d = normalize(vDir);
+    vec3 cell = floor(d * 140.0);
+    float amt = 0.0;
+    vec3 tint = vec3(1.0);
+    float h = hash31(cell);
+    if (h > 0.88) {
+        vec3 j = vec3(hash31(cell + 11.3), hash31(cell + 23.7), hash31(cell + 37.1));
+        vec3 sd = normalize((cell + 0.25 + 0.5 * j) / 140.0);
+        float ang = acos(clamp(dot(d, sd), -1.0, 1.0));
+        float m = hash31(cell + 53.9);
+        float mag = m * m * m;                       // few bright, many faint
+        float r = pixAng * (0.62 + 0.95 * mag);      // about a pixel, always
+        float core = exp(-(ang * ang) / (r * r));
+        // The brightest few pick up the cross an eye and a lens both add.
+        float spike = 0.0;
+        if (mag > 0.45) {
+            vec3 perp = d - sd * dot(d, sd);
+            float a2 = atan(dot(perp, vec3(0.0, 1.0, 0.0)),
+                            dot(perp, normalize(cross(sd, vec3(0.0, 1.0, 0.0)))));
+            spike = pow(max(0.0, abs(cos(a2 * 2.0))), 26.0)
+                  * exp(-ang / (pixAng * 5.0)) * (mag - 0.45) * 1.1;
+        }
+        amt = (core + spike) * (0.30 + 0.70 * mag);
+        float hue = hash31(cell + 71.3);
+        tint = mix(vec3(0.74, 0.82, 1.0), vec3(1.0, 0.86, 0.68), hue);
+    }
+    // The faint band of the galaxy, so the sky is not an even sprinkle.
+    float band = exp(-pow(dot(d, normalize(vec3(0.35, 0.82, -0.45))) * 3.1, 2.0));
+    vec3 col = tint * amt + vec3(0.32, 0.35, 0.48) * band * 0.05;
+    gl_FragColor = vec4(col, 1.0);
+})";
+
+const char* kStarVert330 = R"(#version 330
+in vec3 vertexPosition;
+uniform mat4 mvp;
+uniform mat4 matModel;
+uniform vec3 viewPos;
+out vec3 vDir;
+void main() {
+    vDir = vec3(matModel * vec4(vertexPosition, 1.0)) - viewPos;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+})";
+
+const char* kStarFrag330 = R"(#version 330
+in vec3 vDir;
+out vec4 finalColor;
+
+uniform float pixAng;   // how much angle one screen pixel covers
+float hash31(vec3 p) {
+    p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+void main() {
+    // ── Stars, sized in PIXELS ──
+    //
+    // The first attempt at this gave each star a size in RADIANS, which is the
+    // same mistake the texture made in a different costume: an angular size is
+    // a size on the SPHERE, so zooming in magnified them into blobs just as
+    // sampling a sheet did. A star is a point source. It should be about a pixel
+    // across whatever the camera is doing, and the only way to say that is to
+    // measure it in pixels -- pixAng is how much angle one pixel covers, handed
+    // in from the camera.
+    //
+    // Direction space is diced into cells. One hash decides whether a cell holds
+    // a star, three more place it inside the middle half so it never straddles
+    // two -- which is what lets this read one cell instead of the twenty-seven
+    // around it. Brightness is cubed, so the sky is mostly faint stars with a
+    // few bright ones, which is what makes a star field look like one.
+    vec3 d = normalize(vDir);
+    vec3 cell = floor(d * 140.0);
+    float amt = 0.0;
+    vec3 tint = vec3(1.0);
+    float h = hash31(cell);
+    if (h > 0.88) {
+        vec3 j = vec3(hash31(cell + 11.3), hash31(cell + 23.7), hash31(cell + 37.1));
+        vec3 sd = normalize((cell + 0.25 + 0.5 * j) / 140.0);
+        float ang = acos(clamp(dot(d, sd), -1.0, 1.0));
+        float m = hash31(cell + 53.9);
+        float mag = m * m * m;                       // few bright, many faint
+        float r = pixAng * (0.62 + 0.95 * mag);      // about a pixel, always
+        float core = exp(-(ang * ang) / (r * r));
+        // The brightest few pick up the cross an eye and a lens both add.
+        float spike = 0.0;
+        if (mag > 0.45) {
+            vec3 perp = d - sd * dot(d, sd);
+            float a2 = atan(dot(perp, vec3(0.0, 1.0, 0.0)),
+                            dot(perp, normalize(cross(sd, vec3(0.0, 1.0, 0.0)))));
+            spike = pow(max(0.0, abs(cos(a2 * 2.0))), 26.0)
+                  * exp(-ang / (pixAng * 5.0)) * (mag - 0.45) * 1.1;
+        }
+        amt = (core + spike) * (0.30 + 0.70 * mag);
+        float hue = hash31(cell + 71.3);
+        tint = mix(vec3(0.74, 0.82, 1.0), vec3(1.0, 0.86, 0.68), hue);
+    }
+    // The faint band of the galaxy, so the sky is not an even sprinkle.
+    float band = exp(-pow(dot(d, normalize(vec3(0.35, 0.82, -0.45))) * 3.1, 2.0));
+    vec3 col = tint * amt + vec3(0.32, 0.35, 0.48) * band * 0.05;
+    finalColor = vec4(col, 1.0);
+})";
+
 const char* kGlowVertEs = R"(#version 100
 attribute vec3 vertexPosition;
 attribute vec3 vertexNormal;
@@ -120,11 +258,46 @@ varying vec3 vW;
 uniform vec3 viewPos;
 uniform vec3 glowColour;
 uniform float glowFalloff;
+uniform vec3 sunPos;      // the star's centre, in world space
+uniform vec3 camRight;    // the screen's axes, so the streaks do not roll
+uniform vec3 camUp;
+uniform float glowSpan;   // how far from the centre this shell reaches, in radians
 void main() {
-    vec3 n = normalize(vN);
-    vec3 v = normalize(viewPos - vW);
-    float f = pow(max(dot(n, v), 0.0), glowFalloff);
-    gl_FragColor = vec4(glowColour * f, f);
+    // ── Looking at the sun ──
+    //
+    // Not a rim falloff on the sun's own ball, which is what this was and why it
+    // read as a bland white marble: the glare of a star is mostly OUTSIDE its
+    // disc. Everything here is measured as an ANGLE away from the sun's centre,
+    // so the shell the shader runs on is only a canvas and its size sets how far
+    // the flare reaches.
+    //
+    //   core    the sun itself, blown out
+    //   halo    the wide wash that makes you squint
+    //   rays    the streaks an eye and a lens both make, off the screen axes
+    vec3 v = normalize(vW - viewPos);
+    vec3 sd = normalize(sunPos - viewPos);
+    float ca = clamp(dot(v, sd), -1.0, 1.0);
+    float t = clamp(acos(ca) / max(glowSpan, 0.0001), 0.0, 1.0);
+
+    float core = exp(-t * 16.0);
+    float halo = exp(-t * 2.3) * 0.85;
+
+    // The angle ROUND the sun, on screen. Taken from the camera's own axes so
+    // the streaks stay put as the planet turns instead of rolling with it.
+    vec3 perp = v - sd * ca;
+    float a = atan(dot(perp, camUp), dot(perp, camRight));
+    float six  = pow(max(0.0, 0.55 + 0.45 * cos(a * 6.0)), 5.0);
+    // A long flat streak across the frame, the one a lens makes and the eye
+    // makes too. Phase zero, so it lies along the horizontal.
+    float two  = pow(max(0.0, 0.50 + 0.50 * cos(a * 2.0)), 1.6);
+    float rays = six * 0.85 * exp(-t * 1.9) + two * 0.55 * exp(-t * 1.3);
+
+    float amt = core * 1.5 + halo * 0.75 + rays * 0.7;
+    // Hot and white in the middle, warming outward, the way a bright source
+    // reads through air and through a lens.
+    vec3 col = mix(glowColour * 2.1, glowColour * vec3(1.0, 0.50, 0.18),
+                   clamp(t * 1.1, 0.0, 1.0));
+    gl_FragColor = vec4(col * amt, amt);
 })";
 
 const char* kGlowVert330 = R"(#version 330
@@ -146,12 +319,47 @@ in vec3 vW;
 uniform vec3 viewPos;
 uniform vec3 glowColour;
 uniform float glowFalloff;
+uniform vec3 sunPos;
+uniform vec3 camRight;
+uniform vec3 camUp;
+uniform float glowSpan;
 out vec4 finalColor;
 void main() {
-    vec3 n = normalize(vN);
-    vec3 v = normalize(viewPos - vW);
-    float f = pow(max(dot(n, v), 0.0), glowFalloff);
-    finalColor = vec4(glowColour * f, f);
+    // ── Looking at the sun ──
+    //
+    // Not a rim falloff on the sun's own ball, which is what this was and why it
+    // read as a bland white marble: the glare of a star is mostly OUTSIDE its
+    // disc. Everything here is measured as an ANGLE away from the sun's centre,
+    // so the shell the shader runs on is only a canvas and its size sets how far
+    // the flare reaches.
+    //
+    //   core    the sun itself, blown out
+    //   halo    the wide wash that makes you squint
+    //   rays    the streaks an eye and a lens both make, off the screen axes
+    vec3 v = normalize(vW - viewPos);
+    vec3 sd = normalize(sunPos - viewPos);
+    float ca = clamp(dot(v, sd), -1.0, 1.0);
+    float t = clamp(acos(ca) / max(glowSpan, 0.0001), 0.0, 1.0);
+
+    float core = exp(-t * 16.0);
+    float halo = exp(-t * 2.3) * 0.85;
+
+    // The angle ROUND the sun, on screen. Taken from the camera's own axes so
+    // the streaks stay put as the planet turns instead of rolling with it.
+    vec3 perp = v - sd * ca;
+    float a = atan(dot(perp, camUp), dot(perp, camRight));
+    float six  = pow(max(0.0, 0.55 + 0.45 * cos(a * 6.0)), 5.0);
+    // A long flat streak across the frame, the one a lens makes and the eye
+    // makes too. Phase zero, so it lies along the horizontal.
+    float two  = pow(max(0.0, 0.50 + 0.50 * cos(a * 2.0)), 1.6);
+    float rays = six * 0.85 * exp(-t * 1.9) + two * 0.55 * exp(-t * 1.3);
+
+    float amt = core * 1.5 + halo * 0.75 + rays * 0.7;
+    // Hot and white in the middle, warming outward, the way a bright source
+    // reads through air and through a lens.
+    vec3 col = mix(glowColour * 2.1, glowColour * vec3(1.0, 0.50, 0.18),
+                   clamp(t * 1.1, 0.0, 1.0));
+    finalColor = vec4(col * amt, amt);
 })";
 
 
@@ -293,6 +501,25 @@ uniform vec3 sunDir;
 uniform vec3 sunColour;
 uniform float sunStrength;
 uniform float nightFloor;
+// ── Dark, but still a map you can work in ──
+//
+// One multiplier over the whole night side makes a choice nobody wants: dark
+// enough to look like night, or bright enough to govern in. It is a false
+// choice, because the two halves of the picture are not the same kind of thing.
+// Ocean, terrain and empty land are SCENERY -- they can go as dark as the eye
+// finds convincing. A country's colour is INFORMATION, and dimming it is the
+// only part that actually costs the player anything.
+//
+// The two are told apart by chroma. The map's scenery is near-grey: dark navy
+// sea, grey ice, black unclaimed ground. A political colour is saturated by
+// construction, because it has to be told from its neighbours. So the more
+// colour a pixel carries, the less the night takes from it.
+uniform float nightInfo;
+uniform float polarCap;   // how far from a pole the smearing is averaged out
+// 1 while the ground is being drawn, 0 for everything else that borrows this
+// shader -- the moon and the cloud shell carry their own alpha, and reading it
+// as coverage would light the weather up at night.
+uniform float coverageMode;
 uniform float softness;
 // WHAT IS BETWEEN THIS SURFACE AND THE SUN, whatever that happens to be.
 //
@@ -337,6 +564,36 @@ void main() {
     vec2 mapUv = vec2(fract(fragTexCoord.x - winOrigin.x) / winSize.x,
                       (fragTexCoord.y - winOrigin.y) / winSize.y);
     vec4 texel = texture2D(texture0, mapUv) * colDiffuse;
+
+    // ── The poles ──
+    //
+    // An equirectangular map squeezes a whole circle of longitude into one
+    // row, so near a pole the picture is stretched sideways by 1/cos(lat)
+    // -- sixfold at eighty degrees. On a sphere that reads as everything
+    // being smeared into radial streaks, worst in the cloud, which has the
+    // finest detail. It is not the mesh: it is the projection, and it
+    // reaches far further than the pole cap itself.
+    //
+    // Cured by averaging AROUND the latitude circle, harder the nearer the
+    // pole. That throws away exactly what the projection cannot represent
+    // there -- detail in longitude -- and keeps what it can, the structure
+    // in latitude. At the pole itself it is a flat cap, which is what a
+    // pole looks like anyway.
+    //
+    // Only with the whole map loaded: a windowed patch has no latitude
+    // circle to walk, and a window is never used near a pole.
+    if (winSize.x > 0.999 && polarCap > 0.001) {
+        float pv = min(fragTexCoord.y, 1.0 - fragTexCoord.y);
+        float polar = 1.0 - smoothstep(0.0, polarCap, pv);
+        if (polar > 0.002) {
+            vec4 acc = vec4(0.0);
+            for (int i = 0; i < 8; i++) {
+                float uu = fract(fragTexCoord.x + (float(i) + 0.5) / 8.0);
+                acc += texture2D(texture0, vec2(uu, fragTexCoord.y));
+            }
+            texel = mix(texel, acc / 8.0 * colDiffuse, polar);
+        }
+    }
     float d = dot(normalize(fragNormal), normalize(sunDir));
     float lit = smoothstep(-softness, softness, d);
     // ── The moon's shadow ──
@@ -364,12 +621,51 @@ void main() {
             float clat = asin(clamp(q.y, -1.0, 1.0));
             vec2 cuv = vec2(fract((clon + 3.14159265) / 6.28318531),
                             (1.57079633 - clat) / 3.14159265);
-            cloudShade = texture2D(cloudTex, cuv).a * cloudAmt;
+            float cs = texture2D(cloudTex, cuv).a;
+            // The shadow has the SAME pole problem as the map, by the same
+            // cause -- it is sampled from an equirectangular sheet, so near a
+            // pole it fans into spokes. This, not the cloud shell, is what was
+            // drawing a pinwheel across the ice: turn the cloud off entirely
+            // and the pole comes out clean, which is how it was found.
+            float cpv = min(cuv.y, 1.0 - cuv.y);
+            float cpolar = 1.0 - smoothstep(0.0, 0.22, cpv);
+            if (cpolar > 0.002) {
+                float racc = 0.0;
+                for (int i = 0; i < 8; i++) {
+                    racc += texture2D(cloudTex, vec2(fract(cuv.x + (float(i) + 0.5) / 8.0),
+                                             cuv.y)).a;
+                }
+                cs = mix(cs, racc / 8.0, cpolar);
+            }
+            cloudShade = cs * cloudAmt;
         }
     }
     vec3 day   = texel.rgb * sunColour * sunStrength * shade * (1.0 - 0.38 * cloudShade);
-    vec3 night = texel.rgb * nightFloor;
-    gl_FragColor = vec4(mix(night, day, mix(1.0, lit, morph)), texel.a);
+    // Coverage, not colour. The composite records in alpha how much of this
+    // texel was painted by the layers ABOVE the world -- a country's colour, a
+    // border, a selection -- and that is what must stay readable after dark.
+    // Guessing from hue was tried and cannot work: this map's ocean is as
+    // saturated as any province.
+    float cov = texel.a * coverageMode;
+    vec3 night = texel.rgb * mix(nightFloor, nightInfo, cov);
+        // ── Dawn and dusk ──
+    //
+    // Light that reaches the terminator has come the long way through the air,
+    // which takes the blue out of it -- the same reason a sunset is red from the
+    // ground. A band of it either side of the line, strongest where the sun is
+    // exactly on the horizon, and gone by the time you are properly in day or
+    // properly in night.
+    //
+    // Scaled by morph so the flat sheet, which has no terminator, gets none of
+    // it. The cloud shell borrows this shader and so gets lit at dusk too, which
+    // is most of where the effect is actually seen from orbit.
+    // Biased to the DARK side of the line and kept faint. A strong band reads
+    // as a stripe painted across the map rather than as light in the air,
+    // which on a map full of flat saturated colour is what it becomes.
+    float dusk = exp(-pow((lit - 0.34) * 4.6, 2.0)) * morph;
+    vec3 lm = mix(night, day, mix(1.0, lit, morph));
+    lm += vec3(1.0, 0.45, 0.17) * dusk * 0.11 * sunStrength;
+    gl_FragColor = vec4(lm, mix(texel.a, 1.0, coverageMode));
 })";
 
 const char* kVertex330 = R"(#version 330
@@ -413,6 +709,25 @@ uniform vec3 sunDir;
 uniform vec3 sunColour;
 uniform float sunStrength;
 uniform float nightFloor;
+// ── Dark, but still a map you can work in ──
+//
+// One multiplier over the whole night side makes a choice nobody wants: dark
+// enough to look like night, or bright enough to govern in. It is a false
+// choice, because the two halves of the picture are not the same kind of thing.
+// Ocean, terrain and empty land are SCENERY -- they can go as dark as the eye
+// finds convincing. A country's colour is INFORMATION, and dimming it is the
+// only part that actually costs the player anything.
+//
+// The two are told apart by chroma. The map's scenery is near-grey: dark navy
+// sea, grey ice, black unclaimed ground. A political colour is saturated by
+// construction, because it has to be told from its neighbours. So the more
+// colour a pixel carries, the less the night takes from it.
+uniform float nightInfo;
+uniform float polarCap;   // how far from a pole the smearing is averaged out
+// 1 while the ground is being drawn, 0 for everything else that borrows this
+// shader -- the moon and the cloud shell carry their own alpha, and reading it
+// as coverage would light the weather up at night.
+uniform float coverageMode;
 uniform float softness;
 // WHAT IS BETWEEN THIS SURFACE AND THE SUN, whatever that happens to be.
 //
@@ -458,6 +773,36 @@ void main() {
     vec2 mapUv = vec2(fract(fragTexCoord.x - winOrigin.x) / winSize.x,
                       (fragTexCoord.y - winOrigin.y) / winSize.y);
     vec4 texel = texture(texture0, mapUv) * colDiffuse;
+
+    // ── The poles ──
+    //
+    // An equirectangular map squeezes a whole circle of longitude into one
+    // row, so near a pole the picture is stretched sideways by 1/cos(lat)
+    // -- sixfold at eighty degrees. On a sphere that reads as everything
+    // being smeared into radial streaks, worst in the cloud, which has the
+    // finest detail. It is not the mesh: it is the projection, and it
+    // reaches far further than the pole cap itself.
+    //
+    // Cured by averaging AROUND the latitude circle, harder the nearer the
+    // pole. That throws away exactly what the projection cannot represent
+    // there -- detail in longitude -- and keeps what it can, the structure
+    // in latitude. At the pole itself it is a flat cap, which is what a
+    // pole looks like anyway.
+    //
+    // Only with the whole map loaded: a windowed patch has no latitude
+    // circle to walk, and a window is never used near a pole.
+    if (winSize.x > 0.999 && polarCap > 0.001) {
+        float pv = min(fragTexCoord.y, 1.0 - fragTexCoord.y);
+        float polar = 1.0 - smoothstep(0.0, polarCap, pv);
+        if (polar > 0.002) {
+            vec4 acc = vec4(0.0);
+            for (int i = 0; i < 8; i++) {
+                float uu = fract(fragTexCoord.x + (float(i) + 0.5) / 8.0);
+                acc += texture(texture0, vec2(uu, fragTexCoord.y));
+            }
+            texel = mix(texel, acc / 8.0 * colDiffuse, polar);
+        }
+    }
     float d = dot(normalize(fragNormal), normalize(sunDir));
     float lit = smoothstep(-softness, softness, d);
     // ── The moon's shadow ──
@@ -485,12 +830,51 @@ void main() {
             float clat = asin(clamp(q.y, -1.0, 1.0));
             vec2 cuv = vec2(fract((clon + 3.14159265) / 6.28318531),
                             (1.57079633 - clat) / 3.14159265);
-            cloudShade = texture(cloudTex, cuv).a * cloudAmt;
+            float cs = texture(cloudTex, cuv).a;
+            // The shadow has the SAME pole problem as the map, by the same
+            // cause -- it is sampled from an equirectangular sheet, so near a
+            // pole it fans into spokes. This, not the cloud shell, is what was
+            // drawing a pinwheel across the ice: turn the cloud off entirely
+            // and the pole comes out clean, which is how it was found.
+            float cpv = min(cuv.y, 1.0 - cuv.y);
+            float cpolar = 1.0 - smoothstep(0.0, 0.22, cpv);
+            if (cpolar > 0.002) {
+                float racc = 0.0;
+                for (int i = 0; i < 8; i++) {
+                    racc += texture(cloudTex, vec2(fract(cuv.x + (float(i) + 0.5) / 8.0),
+                                             cuv.y)).a;
+                }
+                cs = mix(cs, racc / 8.0, cpolar);
+            }
+            cloudShade = cs * cloudAmt;
         }
     }
     vec3 day   = texel.rgb * sunColour * sunStrength * shade * (1.0 - 0.38 * cloudShade);
-    vec3 night = texel.rgb * nightFloor;
-    finalColor = vec4(mix(night, day, mix(1.0, lit, morph)), texel.a);
+    // Coverage, not colour. The composite records in alpha how much of this
+    // texel was painted by the layers ABOVE the world -- a country's colour, a
+    // border, a selection -- and that is what must stay readable after dark.
+    // Guessing from hue was tried and cannot work: this map's ocean is as
+    // saturated as any province.
+    float cov = texel.a * coverageMode;
+    vec3 night = texel.rgb * mix(nightFloor, nightInfo, cov);
+        // ── Dawn and dusk ──
+    //
+    // Light that reaches the terminator has come the long way through the air,
+    // which takes the blue out of it -- the same reason a sunset is red from the
+    // ground. A band of it either side of the line, strongest where the sun is
+    // exactly on the horizon, and gone by the time you are properly in day or
+    // properly in night.
+    //
+    // Scaled by morph so the flat sheet, which has no terminator, gets none of
+    // it. The cloud shell borrows this shader and so gets lit at dusk too, which
+    // is most of where the effect is actually seen from orbit.
+    // Biased to the DARK side of the line and kept faint. A strong band reads
+    // as a stripe painted across the map rather than as light in the air,
+    // which on a map full of flat saturated colour is what it becomes.
+    float dusk = exp(-pow((lit - 0.34) * 4.6, 2.0)) * morph;
+    vec3 lm = mix(night, day, mix(1.0, lit, morph));
+    lm += vec3(1.0, 0.45, 0.17) * dusk * 0.11 * sunStrength;
+    finalColor = vec4(lm, mix(texel.a, 1.0, coverageMode));
 })";
 
 /// GLSL's smoothstep, on the CPU side.
@@ -581,6 +965,9 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uSunColour   = GetShaderLocation(m_shader, "sunColour");
         m_uSunStrength = GetShaderLocation(m_shader, "sunStrength");
         m_uNightFloor  = GetShaderLocation(m_shader, "nightFloor");
+        m_uNightInfo   = GetShaderLocation(m_shader, "nightInfo");
+        m_uCoverage    = GetShaderLocation(m_shader, "coverageMode");
+        m_uPolarCap    = GetShaderLocation(m_shader, "polarCap");
         m_uSoftness    = GetShaderLocation(m_shader, "softness");
         m_uMoonPos     = GetShaderLocation(m_shader, "occPos");
         m_uMoonR       = GetShaderLocation(m_shader, "occR");
@@ -592,6 +979,15 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uWinOrigin   = GetShaderLocation(m_shader, "winOrigin");
         m_uWinSize     = GetShaderLocation(m_shader, "winSize");
         m_material.shader = m_shader;
+        m_starSh = LoadShaderFromMemory(kEs ? kStarVertEs : kStarVert330,
+                                       kEs ? kStarFragEs : kStarFrag330);
+        m_haveStarSh = m_starSh.id != 0 && m_starSh.id != rlGetShaderIdDefault();
+        if (m_haveStarSh) {
+            m_sView = GetShaderLocation(m_starSh, "viewPos");
+            m_sPix  = GetShaderLocation(m_starSh, "pixAng");
+        }
+        else TraceLog(LOG_WARNING, "GLOBE: star shader did not compile; sky left empty");
+
         m_glow = LoadShaderFromMemory(kEs ? kGlowVertEs : kGlowVert330,
                                       kEs ? kGlowFragEs : kGlowFrag330);
         m_haveGlow = m_glow.id != 0 && m_glow.id != rlGetShaderIdDefault();
@@ -599,6 +995,10 @@ GlobeView::GlobeView(int mapW, int mapH)
             m_gView    = GetShaderLocation(m_glow, "viewPos");
             m_gColour  = GetShaderLocation(m_glow, "glowColour");
             m_gFalloff = GetShaderLocation(m_glow, "glowFalloff");
+            m_gSunPos  = GetShaderLocation(m_glow, "sunPos");
+            m_gRight   = GetShaderLocation(m_glow, "camRight");
+            m_gUp      = GetShaderLocation(m_glow, "camUp");
+            m_gSpan    = GetShaderLocation(m_glow, "glowSpan");
         }
 
         m_air = LoadShaderFromMemory(kEs ? kAirVertEs : kAirVert330,
@@ -1156,6 +1556,16 @@ void GlobeView::buildSkyTextures() {
 
 void GlobeView::setWindowUniforms(bool on) const {
     if (!m_haveShader) return;
+    // The window and the coverage rule are both the ground's alone, and both
+    // have to be off for the shells that borrow this shader. One switch.
+    const float cov = on ? 1.0f : 0.0f;
+    SetShaderValue(m_shader, m_uCoverage, &cov, SHADER_UNIFORM_FLOAT);
+    // The ground keeps its detail almost to the pole -- Antarctica and Greenland
+    // are big enough to survive the stretch. The cloud does not: its detail is
+    // fine, so it smears into streaks from a long way out and needs averaging
+    // over a much wider band.
+    const float cap = on ? 0.045f : 0.22f;
+    SetShaderValue(m_shader, m_uPolarCap, &cap, SHADER_UNIFORM_FLOAT);
     const Vector2 o = on ? m_winOrigin : Vector2{0.0f, 0.0f};
     const Vector2 z = on ? m_winSize   : Vector2{1.0f, 1.0f};
     SetShaderValue(m_shader, m_uWinOrigin, &o, SHADER_UNIFORM_VEC2);
@@ -1174,12 +1584,20 @@ void GlobeView::drawSky(const Camera3D& cam) {
     // one piece of geometry for the planet, the cloud and the sky, and the star
     // dome inherits the mesh's UVs so a map can supply its own star sheet in
     // exactly the layout the political raster uses.
-    if (m_sky.stars && m_starTex.id > 0) {
+    if (m_sky.stars && m_haveStarSh) {
+        const Vector3 eye = cameraPosition();
+        SetShaderValue(m_starSh, m_sView, &eye, SHADER_UNIFORM_VEC3);
+        // One pixel, as an angle. The whole point of the star shader.
+        const float pixAng = (kFovY * DEG2RAD) / (float)std::max(m_screenH, 1);
+        SetShaderValue(m_starSh, m_sPix, &pixAng, SHADER_UNIFORM_FLOAT);
         Material sky = LoadMaterialDefault();
-        sky.maps[MATERIAL_MAP_DIFFUSE].texture = m_starTex;
+        sky.shader = m_starSh;
         rlDisableBackfaceCulling();     // we are inside it
         rlDisableDepthMask();           // and it must never occlude the planet
-        DrawMesh(m_mesh, sky, MatrixScale(-60.0f, 60.0f, 60.0f));
+        // NOT mirrored on X any more. The sheet had to be, to read right from
+        // the inside; a shader that answers by DIRECTION does not care which way
+        // the triangles face.
+        DrawMesh(m_mesh, sky, MatrixScale(60.0f, 60.0f, 60.0f));
         rlEnableDepthMask();
         rlEnableBackfaceCulling();
         if (sky.maps) MemFree(sky.maps);
@@ -1255,9 +1673,23 @@ void GlobeView::drawSky(const Camera3D& cam) {
             SetShaderValue(m_glow, m_gView, &eye, SHADER_UNIFORM_VEC3);
             SetShaderValue(m_glow, m_gColour, &gc, SHADER_UNIFORM_VEC3);
             SetShaderValue(m_glow, m_gFalloff, &fall, SHADER_UNIFORM_FLOAT);
+
+            // How far out the flare reaches, and which way is up on screen.
+            // The shell is only a canvas: everything in the shader is an angle
+            // from the sun's centre, so this radius IS the size of the glare.
+            const float rs = m_sky.sunSize * 20.0f;
+            const float toSun = std::max(Vector3Length(Vector3Subtract(at, eye)), 0.001f);
+            const float span = asinf(std::clamp(rs / toSun, 0.0f, 1.0f));
+            const Vector3 fwd = Vector3Normalize(Vector3Subtract(Vector3Zero(), eye));
+            const Vector3 rgt = Vector3Normalize(Vector3CrossProduct(fwd, {0.0f, 1.0f, 0.0f}));
+            const Vector3 upv = Vector3CrossProduct(rgt, fwd);
+            SetShaderValue(m_glow, m_gSunPos, &at, SHADER_UNIFORM_VEC3);
+            SetShaderValue(m_glow, m_gRight, &rgt, SHADER_UNIFORM_VEC3);
+            SetShaderValue(m_glow, m_gUp, &upv, SHADER_UNIFORM_VEC3);
+            SetShaderValue(m_glow, m_gSpan, &span, SHADER_UNIFORM_FLOAT);
+
             Material halo = LoadMaterialDefault();
             halo.shader = m_glow;
-            const float rs = m_sky.sunSize * 5.5f;
             BeginBlendMode(BLEND_ADDITIVE);
             rlDisableDepthMask();
             DrawMesh(m_mesh, halo, MatrixMultiply(MatrixScale(rs, rs, rs),
@@ -1283,6 +1715,7 @@ GlobeView::~GlobeView() {
     if (m_moonTex.id > 0) UnloadTexture(m_moonTex);
     if (m_glowTex.id > 0) UnloadTexture(m_glowTex);
     if (m_haveGlow) UnloadShader(m_glow);
+    if (m_haveStarSh) UnloadShader(m_starSh);
     if (m_haveAir) UnloadShader(m_air);
     if (m_haveShader) UnloadShader(m_shader);
     if (m_material.maps) MemFree(m_material.maps);
@@ -1361,6 +1794,10 @@ void GlobeView::draw(int screenW, int screenH) {
         SetShaderValue(m_shader, m_uSunColour, &col, SHADER_UNIFORM_VEC3);
         SetShaderValue(m_shader, m_uSunStrength, &strength, SHADER_UNIFORM_FLOAT);
         SetShaderValue(m_shader, m_uNightFloor, &night, SHADER_UNIFORM_FLOAT);
+        // Never below the scenery floor: an infoLevel under it would mean a
+        // country's colour going darker at night than the sea beside it.
+        const float info = m_lit ? std::max(m_night.infoLevel, m_night.floorLevel) : 1.0f;
+        SetShaderValue(m_shader, m_uNightInfo, &info, SHADER_UNIFORM_FLOAT);
         SetShaderValue(m_shader, m_uSoftness, &soft, SHADER_UNIFORM_FLOAT);
         // Only the moon is near enough and large enough to eclipse the ground.
         setOccluder(moonWorld(), (m_sky.moon && m_lit) ? m_sky.moonSize : 0.0f);
@@ -1371,6 +1808,7 @@ void GlobeView::draw(int screenW, int screenH) {
     // is a permanently flat planet.
     if (m_haveShader) SetShaderValue(m_shader, m_uMorph, &m_morph, SHADER_UNIFORM_FLOAT);
 
+    m_screenH = screenH;      // the sky needs it, to size a star in pixels
     const Camera3D cam = camera(screenW, screenH);
     BeginMode3D(cam);
     drawSky(cam);
@@ -1445,6 +1883,7 @@ void GlobeView::draw(int screenW, int screenH) {
 }
 
 void GlobeView::orbit(float dx, float dy) {
+    m_flying = false;   // the hand wins over the flight
     // Scale with distance so a drag moves the same amount of ground whether you
     // are close in or far out. Without this the globe is unusably fast when
     // zoomed in and unusably slow when zoomed out.
@@ -1458,7 +1897,40 @@ void GlobeView::orbit(float dx, float dy) {
     if (m_lon < -PI) m_lon += 2.0f * PI;
 }
 
+void GlobeView::beginFly(float lon, float lat, float dist) {
+    m_flyLon = lon;
+    m_flyLat = std::clamp(lat, -kLatLimit, kLatLimit);
+    m_flyDist = std::clamp(dist, kMinDist, kMaxDist);
+    // The short way round. Without this a flight from just east of the
+    // antimeridian to just west of it goes the whole way round the world.
+    while (m_flyLon - m_lon >  PI) m_flyLon -= 2.0f * PI;
+    while (m_flyLon - m_lon < -PI) m_flyLon += 2.0f * PI;
+    m_flying = true;
+}
+
+void GlobeView::tickFly(float dt, float speed) {
+    if (!m_flying) return;
+    // The same exponential chase the flat map uses, so the two views feel like
+    // one control rather than two that happen to share a key.
+    const float t = 1.0f - powf(0.5f, dt * std::max(speed, 0.01f));
+    m_lon  += (m_flyLon  - m_lon)  * t;
+    m_lat  += (m_flyLat  - m_lat)  * t;
+    m_dist += (m_flyDist - m_dist) * t;
+    if (fabsf(m_flyLon - m_lon) < 0.002f && fabsf(m_flyLat - m_lat) < 0.002f &&
+        fabsf(m_flyDist - m_dist) < 0.01f) {
+        m_lon = m_flyLon; m_lat = m_flyLat; m_dist = m_flyDist;
+        m_flying = false;
+    }
+    if (m_lon >  PI) { m_lon -= 2.0f * PI; m_flyLon -= 2.0f * PI; }
+    if (m_lon < -PI) { m_lon += 2.0f * PI; m_flyLon += 2.0f * PI; }
+}
+
+void GlobeView::setDistance(float d) {
+    m_dist = std::clamp(d, kMinDist, kMaxDist);
+}
+
 void GlobeView::zoom(float amount) {
+    m_flying = false;   // the hand wins over the flight
     // Multiplicative, so each notch covers the same PROPORTION of the remaining
     // distance -- linear steps crawl when far out and slam into the surface when
     // close in.

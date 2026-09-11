@@ -461,6 +461,11 @@ AISystem::attackCandidates(int cid) const {
     const CountryStat& st = stIt->second;
     auto relIt = g.m_relations.find(c->isoA3);
 
+    // Read once for the whole scan: neither the toggle, nor the map's doctrine,
+    // nor the year changes inside a turn.
+    const bool histOn = g.m_config.historicalAi && !g.m_countryDoctrines.empty();
+    const int histYear = histOn ? history::yearOf(g.m_mapDate) : history::kNoYear;
+
     auto garrisonOf = [&](int pid, int owner) {
         auto it = g.m_provinceArmies.find(pid);
         if (it == g.m_provinceArmies.end()) return 0;
@@ -643,6 +648,26 @@ AISystem::attackCandidates(int cid) const {
             // the policy's features are for: it does not have to be told which
             // signal matters. Anyone trying again should get the signal from a
             // trained head rather than from an argument.
+            // ── What this country actually did, if the map says so ──
+            //
+            // A doctrine scales the resolver's OWN winnability score, and the
+            // ordinary bar is then applied to the result. So a historical target
+            // becomes more tempting and may clear a bar it would otherwise have
+            // missed, and a country this power did not attack becomes less
+            // tempting and may fall below one it would have cleared -- but
+            // nothing is added that the rules refuse and nothing is masked off.
+            // Masking an action off a trained policy has cost rating every time
+            // it has been tried here; this is a thumb on the scale, not a veto.
+            //
+            // Off unless the player asked for it AND the map carries a history:
+            // with either missing, pressure() returns exactly 1 and this is a
+            // multiply by one, which is why the benched behaviour is untouched.
+            if (histOn) {
+                const Country* histTarget = g.m_countries.getCountry(nOwner);
+                if (histTarget)
+                    margin *= history::pressure(g.m_countryDoctrines, c->isoA3,
+                                                histTarget->isoA3, histYear);
+            }
             if (margin <= 1.05f) continue;   // the winnability bar
             slot.cands.push_back({fromPid, nid, nOwner, margin, fromAlly, myG, defG,
                                   (int)fort,

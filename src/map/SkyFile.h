@@ -18,11 +18,18 @@
 
 namespace skyfile {
 
-/// Read `path` into `out`. False when there is no file -- not an error.
-/// Fields the document omits keep whatever `out` already held.
-bool load(const std::string& path, GlobeView::Sky& out);
+/// Read `path` into `out` and `night`. False when there is no file -- not an
+/// error. Fields the document omits keep whatever the outputs already held.
+bool load(const std::string& path, GlobeView::Sky& out, GlobeView::Night& night);
+inline bool load(const std::string& path, GlobeView::Sky& out) {
+    GlobeView::Night ignored;
+    return load(path, out, ignored);
+}
 
-/// Write `s` to `path`. False only if the file could not be written.
-bool save(const std::string& path, const GlobeView::Sky& s);
+/// Write `s` and `night` to `path`. False only if the file could not be written.
+bool save(const std::string& path, const GlobeView::Sky& s, const GlobeView::Night& night);
+inline bool save(const std::string& path, const GlobeView::Sky& s) {
+    return save(path, s, GlobeView::Night{});
+}
 
 }  // namespace skyfile

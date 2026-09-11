@@ -960,6 +960,7 @@ set(GAME_SOURCES
     src/renderer/MapRenderer.cpp
     src/renderer/GlobeView.cpp
     src/map/SkyFile.cpp
+    src/map/HistoryFile.cpp
     src/renderer/FlagRenderer.cpp
     src/renderer/NanoSVGWrapper.cpp
     src/mods/ModPackage.cpp
@@ -2082,6 +2083,11 @@ target_link_libraries(GlobePreview raylib)
 # split out of GlobeView precisely so the part that has to be exact needs no GPU
 # to test. A disagreement here shows up in the game as clicks landing on the
 # wrong province near the poles.
+# What a map says its countries did. Pure data and arithmetic: no game, no GPU.
+add_executable(HistoryDoctrineTest EXCLUDE_FROM_ALL tests/history_doctrine_test.cpp
+               src/map/HistoryFile.cpp)
+target_include_directories(HistoryDoctrineTest PRIVATE src tests)
+
 add_executable(GlobeProjectionTest EXCLUDE_FROM_ALL tests/globe_projection_test.cpp
                src/renderer/GlobeView.cpp src/util/Async.cpp)
 target_include_directories(GlobeProjectionTest PRIVATE src tests)

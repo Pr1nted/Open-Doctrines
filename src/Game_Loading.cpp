@@ -389,10 +389,12 @@ void Game::updateLoading() {
                 // reason a map fails to load.
                 {
                     GlobeView::Sky sky;
-                    if (skyfile::load(m_dataDir + "sky.json", sky))
+                    GlobeView::Night night;
+                    if (skyfile::load(m_dataDir + "sky.json", sky, night))
                         LoadLog() << "  sky.json applied" << std::endl;
                     m_renderer->setSky(sky);
-                }
+                    m_renderer->setNight(night);
+                    }
                 m_renderer->setFallbackFont(m_gameFont);
             }
             m_loadingPhase = LOAD_BUILD_POP;
@@ -2010,7 +2012,14 @@ bool Game::loadFromODM(const std::string& odmPath) {
                             "minorities.json", "minority_colors.json", "starting_policies.json",
                             "country_compass.json", "starting_minority_policies.json", "thumb.png",
                             "resources.json", "relations.json", "claims.json", "ports.json",
-                            "armies.json", "ships.json", "policies.json", "districts.json"};
+                            "armies.json", "ships.json", "policies.json", "districts.json",
+                            // A new map file is invisible until it is named here:
+                            // this list is what gets unpacked, and everything
+                            // downstream reads m_odmJsonData. history.json was
+                            // written, zipped and loaded correctly and still did
+                            // nothing, because nothing ever took it out of the
+                            // archive.
+                            "history.json"};
     int found = 0;
     int neededCount = sizeof(needed) / sizeof(needed[0]);
 
@@ -2353,6 +2362,26 @@ bool Game::loadFromODM(const std::string& odmPath) {
         if (name == "land_sea.png" || name == "provinces.png" || name == "political.png" ||
             name == "thumb.png") continue;
         m_odmJsonData[name] = std::string(static_cast<char*>(e.data), e.size);
+    }
+
+    // ── The map's own account of what its countries did ──
+    //
+    // Here, next to the unpacking, and NOT beside the sky it resembles: the sky
+    // load sits inside a block guarded on the renderer, so a headless run --
+    // --simulate, the bench, a dedicated server -- would have skipped it, and
+    // the AI is exactly what this feature is for. Optional; a map without one
+    // behaves as it always has, and a malformed one is ignored rather than
+    // refused.
+    m_countryDoctrines.clear();
+    {
+        auto h = m_odmJsonData.find("history.json");
+        if (h != m_odmJsonData.end()) {
+            if (history::parse(h->second, m_countryDoctrines))
+                LoadLog() << "  history.json: " << m_countryDoctrines.size()
+                          << " countries with a doctrine" << std::endl;
+            else
+                LoadLog() << "  history.json present but unreadable; ignored" << std::endl;
+        }
     }
 
     // Free all extracted data
@@ -2953,9 +2982,11 @@ bool Game::loadMapPack(const std::string& odmPath) {
     // started a normal game would look like the feature was intermittent.
     {
         GlobeView::Sky sky;
-        skyfile::load(m_dataDir + "sky.json", sky);
+        GlobeView::Night night;
+        skyfile::load(m_dataDir + "sky.json", sky, night);
         m_renderer->setSky(sky);
-    }
+        m_renderer->setNight(night);
+        }
     m_renderer->setFallbackFont(m_gameFont);
 
     setLoadingProgress(0.6f, "Building population data...");

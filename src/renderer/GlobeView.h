@@ -122,7 +122,8 @@ public:
      * and borders underneath; that is the whole of the trade.
      */
     struct Night {
-        float floorLevel = 0.18f;   ///< 0 = black, 1 = no night at all
+        float floorLevel = 0.18f;   ///< scenery at night: sea, terrain, empty land
+        float infoLevel  = 0.62f;   ///< a country's own colour at night
         float softness   = 0.09f;   ///< width of the terminator band, in dot units
     };
 
@@ -296,6 +297,17 @@ public:
     float latitude() const { return m_lat; }
     float longitude() const { return m_lon; }
     float distance() const { return m_dist; }
+    /// Put the camera at a known height. zoom() is what the player drives; this
+    /// is for harnesses that need two shots taken from the same distance.
+    void setDistance(float d);
+
+    /// Travel to a place and a height, eased rather than jumped -- the globe's
+    /// half of the flat map's flyTo, so the same key does the same thing in
+    /// both views. Any drag or wheel cancels it.
+    void beginFly(float lon, float lat, float dist);
+    bool flying() const { return m_flying; }
+    void cancelFly() { m_flying = false; }
+    void tickFly(float dt, float speed);
 
 private:
     Camera3D camera(int screenW, int screenH) const;
@@ -311,7 +323,8 @@ private:
     Shader m_shader{};
     bool m_haveShader = false;
     int m_uSunDir = -1, m_uSunColour = -1, m_uSunStrength = -1;
-    int m_uNightFloor = -1, m_uSoftness = -1;
+    int m_uNightFloor = -1, m_uNightInfo = -1, m_uCoverage = -1, m_uSoftness = -1;
+    int m_uPolarCap = -1;
     int m_uMoonPos = -1, m_uMoonR = -1;
     int m_uCloudTex = -1, m_uCloudR = -1, m_uCloudRot = -1, m_uCloudAmt = -1;
     int m_uMorph = -1;
@@ -329,6 +342,11 @@ private:
     Shader m_glow{};
     bool m_haveGlow = false;
     int m_gView = -1, m_gColour = -1, m_gFalloff = -1;
+    int m_gSunPos = -1, m_gRight = -1, m_gUp = -1, m_gSpan = -1;
+    Shader m_starSh{};
+    bool m_haveStarSh = false;
+    int m_sView = -1, m_sPix = -1;
+    mutable int m_screenH = 900;
     bool m_haveAir = false;
     int m_aViewPos = -1, m_aSunDir = -1, m_aColour = -1, m_aStrength = -1, m_aFalloff = -1;
     bool m_skyBuilt = false;
@@ -337,6 +355,8 @@ private:
     struct Bake;
     std::shared_ptr<Bake> m_bake;
     float m_cloudPhase = 0.0f;
+    bool  m_flying = false;
+    float m_flyLon = 0.0f, m_flyLat = 0.0f, m_flyDist = 3.0f;
     float m_morph = 1.0f;
     Vector2 m_winOrigin{0.0f, 0.0f};
     Vector2 m_winSize{1.0f, 1.0f};
