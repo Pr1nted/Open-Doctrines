@@ -102,6 +102,31 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     );
     if (refusal) return refusal;
 
+    // ── IS THE SERVICE UP ──
+    //
+    // Its own route rather than a reuse of "/", because the two answer
+    // different questions and the callers are different. "/" describes the
+    // service to a CLIENT -- issuer, providers, policy links -- and grows
+    // whenever one of those changes. This answers a MONITOR, cheaply and in a
+    // shape that will not move.
+    //
+    // SHALLOW ON PURPOSE. It reports that this worker is running and reachable,
+    // and it checks nothing behind it: no KV read, no Durable Object woken. A
+    // health check that touches its dependencies on every request is a way to
+    // be billed for, and rate-limited by, whoever points a monitor at it -- and
+    // an uptime monitor firing every thirty seconds would wake a DO each time.
+    // So it says only what it actually knows, rather than implying it has
+    // verified a stack it has not looked at.
+    //
+    // tests/net_live_check.cpp probes this URL. That check passes on ANY status
+    // because what it tests is the TLS connect rather than the route, so it was
+    // passing against a 404 -- the endpoint simply did not exist. It exists now,
+    // which does not change that test and does give the URL it names a meaning.
+    if (get && path === "/health") {
+        return json({ ok: true, service: "opendoctrines-net" }, 200,
+                    { "cache-control": "no-store" });
+    }
+
     if (get && path === "/") {
         return json({
             service: "opendoctrines-net",
