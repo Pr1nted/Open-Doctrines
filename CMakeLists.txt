@@ -319,6 +319,12 @@ set(ODSEAL_DIST ${CMAKE_CURRENT_SOURCE_DIR}/third_party/odseal)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
     add_library(odseal STATIC ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
     target_include_directories(odseal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/guard)
+    # Entry points this archive has and an older prebuilt does not. Callers are
+    # compiled against whichever odseal is actually being linked, so a clone
+    # building against a prebuilt from before od_t4 existed still builds --
+    # it simply does not carry the check. Refreshing the prebuilts (see
+    # docs/odseal.md) is what turns it on for every platform.
+    target_compile_definitions(odseal PUBLIC OD_HAS_T4)
     set_target_properties(odseal PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(NOT MSVC)
         target_compile_options(odseal PRIVATE

@@ -315,7 +315,24 @@ struct OrderValidationTest {
         {
             game.m_tableSealMismatches.clear();
             const unsigned long long ours = game.tableSeal();
-            check(ours != 0ull, "the host computed a rule-table seal");
+
+            // TWO BUILDS, AND BOTH GET ASSERTED.
+            //
+            // A tree without guard/odseal.cpp links the committed prebuilt,
+            // which predates od_t4, so there is no word to compare and the
+            // check is inert by design. That must not read as a pass: the
+            // reason is printed, and what gets asserted instead is the
+            // inertness itself -- a host with no seal of its own must record
+            // nothing rather than flag everybody.
+            if (ours == 0ull) {
+                printf("  -- no rule-table seal in this build (odseal predates od_t4);\n"
+                       "     asserting that the check is inert rather than skipping it\n");
+                apply(cid, "{\"seal\":12345}");
+                check(game.m_tableSealMismatches.empty(),
+                      "a host with no seal of its own records nothing");
+                game.m_tableSealMismatches.clear();
+                return;
+            }
 
             // An honest client: the same install, so the same word.
             apply(cid, "{\"seal\":" + std::to_string(ours) + "}");

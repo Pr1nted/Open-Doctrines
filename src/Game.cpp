@@ -935,8 +935,14 @@ static Game* s_consoleOwner = nullptr;
 // on first use and cached, so it is right on both binaries without either of
 // them having to remember to ask.
 unsigned long long Game::tableSeal() {
+#ifdef OD_HAS_T4
     if (m_tableSeal == 0ull && !m_dataDir.empty())
         m_tableSeal = od_t4(m_dataDir.c_str());
+#endif
+    // Zero when this build links an odseal older than od_t4, which every
+    // caller already treats as "no opinion": the word is simply not sent, and
+    // a host that has none records nothing. A missing check is silent; a
+    // missing check that flagged everybody would not be.
     return m_tableSeal;
 }
 

@@ -2834,9 +2834,13 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
     // joining is not a way past it. An unknown key costs an older host nothing
     // -- mpApplyOrders reads the keys it knows and ignores the rest -- so this
     // needs no protocol version.
-    j["seal"] = const_cast<Game*>(this)->tableSeal();
+    if (const unsigned long long seal = const_cast<Game*>(this)->tableSeal())
+        j["seal"] = seal;
 
-    const std::string text = j.dump();
+    // Still guarded: with no orders and no seal to add, `j` is null, and
+    // dumping that gives "null" -- which mpApplyOrders discards as not an
+    // object. An empty turn is a legitimate thing to submit.
+    const std::string text = j.is_null() ? "{}" : j.dump();
     return std::vector<uint8_t>(text.begin(), text.end());
 }
 
