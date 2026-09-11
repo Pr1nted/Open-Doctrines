@@ -36,7 +36,14 @@ describe("the health endpoint", () => {
         expect(res.status).toBe(200);
     });
 
-    it("is a GET, and does not answer a POST to the same path", async () => {
+    it("answers a HEAD, which is what most uptime monitors send", async () => {
+        // Missed first time round, and it is the whole audience for this
+        // route: the deployed service answered GET 200 and HEAD 404.
+        const res = await SELF.fetch(`${ORIGIN}/health`, { method: "HEAD" });
+        expect(res.status).toBe(200);
+    });
+
+    it("does not answer a POST to the same path", async () => {
         const res = await SELF.fetch(`${ORIGIN}/health`, { method: "POST" });
         expect(res.status).not.toBe(200);
     });

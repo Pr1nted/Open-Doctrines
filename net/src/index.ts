@@ -122,7 +122,13 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // because what it tests is the TLS connect rather than the route, so it was
     // passing against a 404 -- the endpoint simply did not exist. It exists now,
     // which does not change that test and does give the URL it names a meaning.
-    if (get && path === "/health") {
+    //
+    // HEAD as well as GET, because that is what uptime monitors send: it is the
+    // cheaper request and many default to it. Answering 404 to HEAD would
+    // reproduce the very failure this route was added to end -- a monitor
+    // reporting something other than the truth about the service -- and would
+    // do it in the direction that cries wolf. The runtime drops the body.
+    if ((get || request.method === "HEAD") && path === "/health") {
         return json({ ok: true, service: "opendoctrines-net" }, 200,
                     { "cache-control": "no-store" });
     }
