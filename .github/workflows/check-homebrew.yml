@@ -1,0 +1,83 @@
+# Does the Homebrew tap credential actually work?
+#
+# The release pipeline bumps the cask as its very last step, and that step is
+# deliberately forgiving: a missing HOMEBREW_TAP_TOKEN warns and exits 0,
+# because an unconfigured tap is not a reason to withhold a release that has
+# already built and published. Which means a token that is ABSENT and a token
+# that is WRONG look identical from the outside -- a warning in a log nobody
+# reads, and Homebrew users quietly left on the previous version.
+#
+# A fine-grained PAT also EXPIRES. The same shape of problem as the Steam
+# session token, except this one cannot even fail the release, so it would go
+# unnoticed for longer. This is how you find out before a release, not after.
+#
+# It is READ-ONLY. It clones the tap and pushes nothing. A dry-run push is
+# deliberately NOT attempted: --dry-run still requires write access to report
+# success, and the failure modes it would add are worse than the question it
+# answers.
+name: Check Homebrew tap credentials
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Clone the tap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask GitHub whether the token reaches the tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # Told apart on purpose: "not set", "rejected" and "set but cannot see
+          # the tap" need three different fixes, and one "Homebrew failed" would
+          # hide which of them you have.
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set on this repository."
+            echo "Add it with: gh secret set HOMEBREW_TAP_TOKEN"
+            exit 1
+          fi
+
+          if ! git clone --depth 1 \
+               "https://x-access-token:${TAP_TOKEN}@github.com/Pr1nted/homebrew-tap.git" tap 2>err.log; then
+            echo "The token did not clone Pr1nted/homebrew-tap."
+            sed -e "s|${TAP_TOKEN}|***|g" err.log
+            echo
+            echo "Likely causes, in order:"
+            echo "  - the token expired (fine-grained PATs do)"
+            echo "  - it was not granted 'Contents: Read and write'"
+            echo "  - its repository access does not include Pr1nted/homebrew-tap"
+            exit 1
+          fi
+
+          if [ ! -f tap/Casks/opendoctrines.rb ]; then
+            echo "Cloned the tap, but Casks/opendoctrines.rb is not in it."
+            exit 1
+          fi
+
+          echo "Token reaches the tap. Cask currently names:"
+          grep -E '^  version ' tap/Casks/opendoctrines.rb
+
+          # Write access is not provable by a clone -- a read-only token clones
+          # a public repo perfectly well. This is what distinguishes them.
+          perms=$(git -C tap ls-remote --heads origin >/dev/null 2>&1 && echo reachable || echo no)
+          echo "Remote reachable for fetch: $perms"
+          echo
+          echo "NOTE: cloning proves the token exists and can READ. The tap is"
+          echo "public, so a token with no permissions at all would also clone."
+          echo "Write access is proven only by the release job's push, or by the"
+          echo "API check below."
+
+      - name: Does the token actually have write access?
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # The honest test. The repository endpoint reports the permissions the
+          # AUTHENTICATED token holds, so this distinguishes a read-only token
+          # from one that can push -- which the clone above cannot do.
+          push=$(gh api repos/Pr1nted/homebrew-tap --jq '.permissions.push' 2>/dev/null || echo error)
+          case "$push" in
+            true)  echo "Write access confirmed: the release job can push the cask bump." ;;
+            false) echo "Token can read but NOT push. Re-issue it with 'Contents: Read and write'."; exit 1 ;;
+            *)     echo "Could not read permissions; the token may lack metadata access."; exit 1 ;;
+          esac
