@@ -15695,3 +15695,47 @@ Running the same config three times to measure the spread directly. This is
 the check I should have run before the first training comparison, and it is
 the same failure as the three-seed bench means earlier today: I measured a
 noisy quantity once and read the number.
+
+## 263 — RETRACTION: training has sd 112, and my single-run comparisons proved nothing
+
+Same config three times -- same seed, same flags, same parent, 8 maps:
+
+    run 1   FRA 20.70  USA 29.27  CHN 17.40   reliable 436
+    run 2   FRA 10.17  USA 27.90  CHN  0.00   reliable 217
+    run 3   FRA 16.27  USA 12.70  CHN 10.13   reliable 292
+
+    mean 315   sd 112   range 217-436   parent 433
+
+Three different md5s: the seed does not make training deterministic. sd 112 on
+a 433 scale is 26% of the whole quantity.
+
+WHAT I CLAIMED TODAY, AND WHAT SURVIVES IT:
+
+    "scripted opposition worth +82"        inside 1 sd     NOT ESTABLISHED
+    "training reaches 89% of parent" (-46) inside 1 sd     NOT ESTABLISHED
+    "8/16/24 curve: 387, 380, 99"          387~380 same    SHAPE NOT ESTABLISHED
+    "LR 0.25 destroys, 0.05 does not"      large, 1 run    plausible, unreplicated
+    "the ladder rejected 5 of 5"           consistent with noise as well as
+                                           with coupling -- a 0.85 gate would
+                                           reject most draws from this spread
+    "the opponent defect is real"          SURVIVES
+
+The defect survives because it is not a bench comparison: setRandomCountries()
+is called only from runAIEvaluation, and a counter says training sees 0 scripted
+country-turns where evaluation sees them immediately. Counting a code path is
+immune to run-to-run variance. Everything I built ON TOP of that fact was one
+run per arm.
+
+THE COST OF DOING THIS HONESTLY. To resolve an effect d with sd 112 needs
+roughly n > 2*(2*112/d)^2 runs per arm: d=200 needs ~3, d=100 needs ~10, d=50
+needs ~40. At ~15 minutes per 8-map run, a moderate training effect costs hours
+of machine time per arm. That is the real reason sixteen historical checkpoints
+"failed" without a diagnosis -- at this variance, nobody could have told a real
+regression from a draw.
+
+THIRD TIME TODAY, AT THREE SCALES: three-seed bench means this morning,
+one-seed-set knob findings this afternoon, single-run training comparisons
+tonight. Each time the quantity was noisier than the effect, each time the fix
+was to run it twice, and each time I did not until a contradiction forced it.
+The instrument now prints its own error bars for the BENCH; nothing printed
+them for TRAINING, and I did not ask.
