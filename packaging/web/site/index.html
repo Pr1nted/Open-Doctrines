@@ -255,6 +255,42 @@
     </p>
   </section>
 
+  <!-- ── THE RATING ASK ──
+       Shown to everybody, deliberately. The first version of this detected who
+       had played, via a localStorage flag written by the game at /play/ -- same
+       origin, so the site could read it. It was dropped: the cookie policy and
+       net/PRIVACY.md both say the game itself stores nothing, a "have you
+       played" flag is not strictly necessary and so would need consent the game
+       does not ask for, and none of that is worth one extra sentence of copy.
+
+       Wording is deliberately not "please rate us". The honest version does
+       better and costs nothing: the score is already good and the count is the
+       problem, so say which one you are being asked for. -->
+  <section class="narrow" id="rate">
+    <h2>If you have played it, rate it</h2>
+    <p>
+      Ratings are the whole of how itch decides what to show people. The score is
+      not the problem: it sits at five stars. The count is, because a handful of
+      ratings is too few for itch to do anything with, and too few for anybody
+      else to read as a signal.
+    </p>
+    <p>
+      It takes a click, it needs an itch account and nothing else, and it does
+      more for whether the next person finds this than anything on this page.
+    </p>
+    <div class="cta">
+      <a class="btn" href="https://pr1nted.itch.io/open-doctrines"
+         rel="noopener">Rate it on itch.io</a>
+      <a class="btn ghost" href="https://github.com/Pr1nted/Open-Doctrines/issues"
+         rel="noopener">Report something instead</a>
+    </div>
+    <p class="note">
+      Rating happens on the itch page, under the game. If something is wrong, the
+      issue tracker is the more useful place and I would rather have that.
+    </p>
+  </section>
+
+
   <section class="narrow">
     <h2>Using it to teach</h2>
     <p>
