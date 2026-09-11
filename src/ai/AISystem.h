@@ -4728,8 +4728,20 @@ private:
     size_t m_lastSaveBytes = 0;
     // Checkpoint pacing. Losing at most a minute of self-play is a fine trade
     // for not rewriting a 12 MB file twice a second — see endTurn.
-    /// Wall-clock checkpoint interval. OD_SAVE_INTERVAL overrides it so an
-    /// experiment can run with no periodic save at all. See journal 268.
+    /// Wall-clock interval for the PERIODIC checkpoint. OD_SAVE_INTERVAL
+    /// overrides it.
+    ///
+    /// IT DOES NOT STOP CHECKPOINTS. writeLeagueCheckpoint() has a second
+    /// caller on map rotation (see the call after saveModel() in the
+    /// destructor path), which is deliberate -- a map is often shorter than
+    /// sixty seconds, so the timer alone would never fire inside one
+    /// instance's life. Raising this knob still leaves that one writing, and
+    /// seeded league slots are still overwritten: measured in journal 275 with
+    /// OD_SAVE_INTERVAL=99999, where slot 0 was replaced anyway.
+    ///
+    /// So this gates one of two callers. An experiment that needs NO
+    /// checkpoint at all has to address the rotation one too. The comment this
+    /// replaces claimed otherwise (journal 268, corrected in 275).
     static double saveIntervalSeconds() {
         static const double v = std::getenv("OD_SAVE_INTERVAL")
                               ? atof(std::getenv("OD_SAVE_INTERVAL")) : 60.0;
