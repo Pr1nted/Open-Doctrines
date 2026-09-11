@@ -78,6 +78,21 @@ the accepted list. Add a flag, rerun it, commit the result.
 
 ## Before you open a pull request
 
+Once, when you clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+That turns on `.githooks/pre-commit`, which refuses a commit that draws a
+string without listing it in `data/lang/en.json`. It costs 0.7s and checks
+what you are committing rather than what is on disk, so a colleague's
+half-finished work in the tree cannot block you. Without it the same mistake
+is caught by CI instead, roughly half an hour later, reported as the entire
+test suite failing on all four platforms.
+
+Then, per change:
+
 ```bash
 cmake --build cmake-build-debug/ -- -j8
 tests/run_all.sh

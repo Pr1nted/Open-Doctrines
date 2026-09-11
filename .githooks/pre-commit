@@ -1,0 +1,69 @@
+#!/bin/sh
+#
+# Refuse a commit that draws a string without listing it in data/lang/en.json.
+#
+# ── WHY THIS EXISTS ──
+#
+# tools/i18n_extract.py --check runs inside the qualify step, which means the
+# answer arrives from CI about thirty-five minutes after the push, on all four
+# platforms at once, reported as "the whole test suite" failing. Twice in one
+# day main went red for exactly this, from two different people, each time for a
+# single string on a button. The check costs 0.7s. It was being paid for in
+# half-hour increments.
+#
+# ── IT CHECKS WHAT IS BEING COMMITTED, NOT WHAT IS ON DISK ──
+#
+# This tree has more than one person editing it at once. A hook that read the
+# working tree would block your commit because somebody else's half-finished
+# button is sitting in src/, which is both wrong and the fastest way to get a
+# hook deleted. So the index is checked out to a temporary tree and the
+# extractor is run against THAT: the question it answers is "would the commit I
+# am about to make be green", which is the only question worth asking here.
+#
+# Skip it with `git commit --no-verify` if you are deliberately committing a
+# broken tree. Install it with:  git config core.hooksPath .githooks
+set -eu
+
+# Nothing that can move the catalogue? Then this commit cannot break it.
+# data/lang/en.json is in the list because removing a string by hand breaks the
+# check just as well as adding one without it.
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+case "$staged" in
+  *src/*|*data/policies.json*|*data/district_laws.json*|*data/credits.txt*|\
+  *data/tips.json*|*data/comms/cast.json*|*data/lang/en.json*|\
+  *tools/i18n_extract.py*) ;;
+  *) exit 0 ;;
+esac
+
+# A missing interpreter must not stop somebody committing. The check still runs
+# in CI; this hook is an early warning, not the authority.
+command -v python3 >/dev/null 2>&1 || {
+    echo "pre-commit: python3 not found, skipping the translatable-strings check" >&2
+    exit 0
+}
+
+tmp=$(mktemp -d) || exit 0
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+# Only the three directories the extractor reads. -z throughout because this
+# repo has paths with spaces in them (data/saves/Modern Day.odsv).
+git ls-files -z -- src data tools \
+  | git checkout-index -z --prefix="$tmp/" --stdin
+
+# The extractor derives its ROOT from its own location, so the copy inside the
+# temporary tree reads that tree and nothing else.
+if python3 "$tmp/tools/i18n_extract.py" --check >"$tmp/.out" 2>&1; then
+    exit 0
+fi
+
+cat "$tmp/.out" >&2
+cat >&2 <<'MSG'
+
+pre-commit: data/lang/en.json does not match the strings this commit draws.
+            CI fails this as "the whole test suite", about half an hour from now.
+
+  Fix it:   python3 tools/i18n_extract.py && git add data/lang/en.json
+
+  Bypass:   git commit --no-verify   (CI will still fail)
+MSG
+exit 1
