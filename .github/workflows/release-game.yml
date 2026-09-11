@@ -719,3 +719,94 @@ jobs:
             misconfiguration look different in it."
             exit 1
           fi
+
+  homebrew:
+    name: Bump the Homebrew cask
+    needs: publish
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Is the tap configured?
+        id: gate
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # GITHUB_TOKEN only reaches the repository this workflow runs in, so
+          # pushing to Pr1nted/homebrew-tap needs a token of its own. Same
+          # bargain as the itch and Steam steps: an unconfigured storefront is
+          # not a reason to fail a release that has already built and published.
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::warning title=Homebrew skipped::HOMEBREW_TAP_TOKEN(secret) \
+            is not set, so the cask still names the previous version. Nobody on \
+            Homebrew will be offered this release until it is bumped by hand -- \
+            brew compares the installed version against the string in the cask \
+            and nothing else. See packaging/linux/../macos/opendoctrines.rb."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "go=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Hash the published macOS archives
+        if: steps.gate.outputs.go == 'yes'
+        id: hash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The RELEASE assets, not this run's build artifacts. What a Homebrew
+          # user downloads is whatever is attached to the tag, so that is what
+          # has to be hashed -- hashing an artifact would let a re-upload drift
+          # away from the checksum without anything noticing.
+          for a in arm64 x64; do
+            gh release download "$GITHUB_REF_NAME" \
+               --repo "$GITHUB_REPOSITORY" \
+               --pattern "OpenDoctrines-macos-$a.zip" --clobber
+            sum=$(sha256sum "OpenDoctrines-macos-$a.zip" | cut -d' ' -f1)
+            echo "sha_$a=$sum" >> "$GITHUB_OUTPUT"
+            echo "  $a  $sum"
+          done
+
+      - name: Rewrite the cask and push it
+        if: steps.gate.outputs.go == 'yes'
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SHA_ARM: ${{ steps.hash.outputs.sha_arm64 }}
+          SHA_X64: ${{ steps.hash.outputs.sha_x64 }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/Pr1nted/homebrew-tap.git" tap
+          cask=tap/Casks/opendoctrines.rb
+
+          # Anchored on the leading two spaces so these only ever match the
+          # stanzas, never the same strings inside the comment block above them.
+          sed -i -E \
+            -e "s|^  version \".*\"$|  version \"${version}\"|" \
+            -e "s|^  sha256 arm:   \".*\",$|  sha256 arm:   \"${SHA_ARM}\",|" \
+            -e "s|^         intel: \".*\"$|         intel: \"${SHA_X64}\"|" \
+            "$cask"
+
+          # Prove the rewrite landed before committing. A sed that matched
+          # nothing exits 0 and leaves the old version in place, which would
+          # publish a "new" release nobody can install.
+          grep -q "version \"${version}\"" "$cask" || {
+            echo "::error title=Cask rewrite failed::version stanza did not \
+            change -- the cask's formatting has drifted from what the sed \
+            expects. Fix packaging/macos/opendoctrines.rb and the tap together."
+            exit 1
+          }
+          grep -q "$SHA_ARM" "$cask" && grep -q "$SHA_X64" "$cask" || {
+            echo "::error title=Cask rewrite failed::a sha256 stanza did not change."
+            exit 1
+          }
+
+          cd tap
+          git config user.name  "Pr1nted"
+          git config user.email "111568178+Pr1nted@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Cask already at ${version}; nothing to push."
+            exit 0
+          fi
+          git commit -qam "OpenDoctrines ${version}"
+          git push -q origin HEAD:main
+          echo "Cask bumped to ${version}."
