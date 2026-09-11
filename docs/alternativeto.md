@@ -92,6 +92,12 @@ Source and let the description carry the nuance rather than overstating it)*
 `alternate-history` `open-source` `moddable` `multiplayer` `map-editor`
 `browser-based`
 
+`open-source` is kept for the same reason it is kept on itch and Steam: it is a
+browse surface people filter by, and there is nothing accurate to move it to.
+The **Licence** field above is different and stays `Free` — that field is a
+declaration of what the licence is, not a word people search, and answering it
+"Open Source" would be a statement rather than a signpost.
+
 **URL:** https://pr1nted.itch.io/open-doctrines
 **Source:** https://github.com/Pr1nted/Open-Doctrines
 

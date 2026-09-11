@@ -66,6 +66,14 @@ not otherwise stay in step.
 Tags are how anybody finds this. `grand-strategy` and `moddable` are the two
 that describe it most specifically; do not spend all ten on generic words.
 
+`open-source` is kept on purpose, and is the one tag here that is not strictly
+accurate: the licence is source-available, not OSI open source, and the prose
+everywhere else was changed to say so. It stays because a tag is a browse
+surface rather than a claim — people filter itch by `open-source` to find
+exactly this kind of project, itch has no `source-available` tag to move to,
+and dropping it would cost a discovery channel and buy nothing. Do not "fix"
+this to match the description copy.
+
 ---
 
 ## 2. Edit theme — every field, and what to put in it
