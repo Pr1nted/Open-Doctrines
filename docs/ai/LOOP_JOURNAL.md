@@ -15592,3 +15592,50 @@ checkpoints failed and nobody knows why":
   3. With both fixed, training reaches 89% of parent where every prior
      checkpoint was below 45%.
   4. The residue is forgetting, not failure to learn, and it is seat-specific.
+
+## 261 — the ladder rejects everything, because there is nothing acceptable to accept
+
+Bench-gated ladder: train 4 maps from the accepted model, measure the three
+reliable seats, keep only if no seat falls below 0.85x parent AND the mean does
+not regress. Rejected rungs discarded, next rung retried from the same parent
+with a fresh seed. Five rungs:
+
+    rung  seed      FRA    USA    CHN   mean   worst
+    1     425255   9.07  21.23   5.33    243   0.29x
+    2     426268  25.77  20.80  13.73    419   0.76x
+    3     427281   8.97  22.27   8.77    294   0.33x
+    4     428294   8.63  23.03   1.40    199   0.08x
+    5     429307   2.27  17.23   1.43    133   0.08x
+
+    final best: the parent, 433, unchanged
+
+NOT ONE of five steps held all three seats. The gate did its job and there was
+nothing to bank.
+
+TWO THINGS THE PATTERN SHOWS. USA is robust -- 17 to 23 across every rung
+against a parent of 21.77 -- while FRA and CHN are fragile. And THE CASUALTY
+VARIES: rung 2 kept France at 0.93x and destroyed China instead. So it is not
+"training breaks France", it is "training breaks something, and which one
+depends on the maps it just saw".
+
+SO GATING CANNOT WORK HERE, and the reason is worth stating precisely: a gate
+banks acceptable steps, and at this step length there are none. The gain and
+the loss are COUPLED -- the policy cannot improve one seat except by spending
+another.
+
+THAT COMPLETES THE ELIMINATION. Across journals 257-261:
+  - opponent distribution: was a real defect, fixed, worth +82, not the cause
+  - step size: 0.25 destroys in one map, 0.05 does not, 0.01 is no better
+  - step length: 8 maps -46, 16 maps -53, 24 maps -334
+  - bench gating: 0 of 5 steps acceptable
+None of these is the problem, and together they exclude the tuning explanations.
+
+WHAT IS LEFT is the one thing this training loop does not have: anything that
+holds the policy near a parent that already plays well. Replay across maps, a
+trust region, a KL penalty to the parent, elastic weight consolidation -- any
+of them attacks the coupling directly rather than trying to schedule around it.
+
+Note the league machinery already loads a FROZEN PAST POLICY for some countries
+(m_leagueThisCountry, "acts with a frozen past policy and teaches nothing"), so
+the hard part of a KL anchor -- having the parent's network available at
+training time -- may already exist.
