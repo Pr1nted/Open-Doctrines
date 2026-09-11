@@ -142,6 +142,11 @@ public:
     static double s_expense[8];      ///< army navy policy minority research pacification indUpkeep gross
     static long long s_expenseN;
     static std::atomic<long long> s_anchorFired;
+    /// Rolling hash of every decision this process made, in order: the cheapest
+    /// way to ask whether two runs DECIDED the same things before asking why
+    /// their models differ. See journal 267.
+    static unsigned long long s_decisionHash;
+    static long long s_decisionCount;
     static std::atomic<long long> s_anchorWhy[4];
     static void dumpActionHistogram();
     void navalReflex(int cid);
@@ -4723,7 +4728,13 @@ private:
     size_t m_lastSaveBytes = 0;
     // Checkpoint pacing. Losing at most a minute of self-play is a fine trade
     // for not rewriting a 12 MB file twice a second — see endTurn.
-    static constexpr double SAVE_INTERVAL_SECONDS = 60.0;
+    /// Wall-clock checkpoint interval. OD_SAVE_INTERVAL overrides it so an
+    /// experiment can run with no periodic save at all. See journal 268.
+    static double saveIntervalSeconds() {
+        static const double v = std::getenv("OD_SAVE_INTERVAL")
+                              ? atof(std::getenv("OD_SAVE_INTERVAL")) : 60.0;
+        return v;
+    }
     std::chrono::steady_clock::time_point m_lastSave = std::chrono::steady_clock::now();
     bool m_modelDirReady = false;
     // Set by the trainer when a map is decided, so the last window of the

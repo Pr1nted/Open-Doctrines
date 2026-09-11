@@ -3661,6 +3661,16 @@ void AISystem::takeTurn(int cid) {
             if (k == 0) {
                 m_policy[mod].snapshotActs(exp.acts[mod]);
                 exp.action[mod] = act; exp.acted[mod] = true; exp.logProb[mod] = lp;
+                // FNV-1a over (cid, module, action), in decision order.
+                if (std::getenv("OD_DECISION_HASH")) {
+                    for (unsigned long long v : {(unsigned long long)cid,
+                                                 (unsigned long long)mod,
+                                                 (unsigned long long)act}) {
+                        s_decisionHash ^= v;
+                        s_decisionHash *= 1099511628211ull;
+                    }
+                    ++s_decisionCount;
+                }
                 exp.validMask[mod] = std::move(maskCopy);
                 exp.mixScale[mod] = m_lastMixScale;
                 exp.mixFloor[mod] = m_lastMixFloor;
@@ -10809,7 +10819,7 @@ void AISystem::endTurn() {
     // lose" is actually measured in, and it does not drift when the simulation
     // gets faster.
     const auto now = std::chrono::steady_clock::now();
-    if (std::chrono::duration<double>(now - m_lastSave).count() >= SAVE_INTERVAL_SECONDS) {
+    if (std::chrono::duration<double>(now - m_lastSave).count() >= saveIntervalSeconds()) {
         m_lastSave = now;
         saveModel();
         // Rides along with the periodic save rather than on a clock of its own:
@@ -13049,6 +13059,8 @@ long long AISystem::s_austBranch[6] = {0,0,0,0,0,0};
 double AISystem::s_expense[8] = {0,0,0,0,0,0,0,0};
 long long AISystem::s_expenseN = 0;
 std::atomic<long long> AISystem::s_anchorFired{0};
+unsigned long long AISystem::s_decisionHash = 1469598103934665603ull;   // FNV-1a offset
+long long AISystem::s_decisionCount = 0;
 std::atomic<long long> AISystem::s_anchorWhy[4];
 
 
@@ -13123,6 +13135,9 @@ void AISystem::dumpActionHistogram() {
                     g_pacApplied > 0 ? 100.0 * (g_pacApplied - g_pacNeeded) / g_pacApplied : 0.0,
                     g_pacN);
     }
+    if (s_decisionCount > 0)
+        fprintf(stderr, "[DECHASH] %llu over %lld decisions\n",
+                s_decisionHash, s_decisionCount);
     fprintf(stderr, "[ACTHIST] anchor gate: reached %lld  leagueLoaded %lld  policyValid %lld  emptyFeat %lld\n",
             s_anchorWhy[0].load(), s_anchorWhy[1].load(), s_anchorWhy[2].load(), s_anchorWhy[3].load());
     fprintf(stderr, "[ACTHIST] anchor pulls: %lld\n",
