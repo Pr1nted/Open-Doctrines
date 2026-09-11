@@ -15739,3 +15739,48 @@ tonight. Each time the quantity was noisier than the effect, each time the fix
 was to run it twice, and each time I did not until a contradiction forced it.
 The instrument now prints its own error bars for the BENCH; nothing printed
 them for TRAINING, and I did not ask.
+
+## 264 — hunting the training nondeterminism: four causes excluded, one found, not closed
+
+sd 112 (journal 263) makes every training A/B cost 10-40 runs per arm. A
+deterministic training mode would make them cheap, so: where does the variance
+come from?
+
+EXCLUDED, each by measurement rather than argument:
+
+  threading      OD_AI_THREADS=1 twice -> still two different md5s. And the
+                 update is statically partitioned with a serial fixed-order
+                 reduction, so it is deterministic given a thread count.
+  map generation same args twice -> identical scenario, seed, land, countries
+                 on every map. Worlds are reproducible.
+  BLAS           OD_USE_ACCELERATE is not defined in this build and the binary
+                 links no Accelerate. The comment warning that "BLAS may sum
+                 the dot products in a different order" does not apply here.
+  the simulation evaluation reproduced OD BENCH 311 / land 82.73% EXACTLY across
+                 three separate rebuilds today. Evaluation differs from training
+                 by aiLearning only, so the sim is deterministic and the
+                 learning path is not.
+
+FOUND, and it is real: a WALL CLOCK inside the learning path.
+AISystem.cpp:10811 fires saveModel() AND writeLeagueCheckpoint() every
+SAVE_INTERVAL_SECONDS = 60. The checkpoint one has an obvious feedback path --
+league countries PLAY those frozen weights, so a checkpoint landing at a
+different update makes a different opponent on every later map, which changes
+the experience the learner sees.
+
+WHAT IT DOES NOT EXPLAIN, and I am not going to paper over it: a ONE-MAP run
+from a fresh directory has no league files at its first turn, so
+loadLeagueOpponent() returns false and there is no league opponent at all. Two
+such runs still produced different models. So either the periodic save perturbs
+state through some path I have not found, or there is a second source.
+
+NEXT STEPS, in cost order: raise SAVE_INTERVAL_SECONDS via a knob so no
+periodic save fires inside a short run and re-test the one-map case; if it goes
+deterministic the save path is the whole story, and gating the checkpoint on
+update count instead of wall clock makes training reproducible. If it does not,
+the remaining suspects are the resource limiter (which scales worker count and
+may gate other work) and something in experience collection.
+
+Recording this open rather than closing it on the wall clock I did find --
+[[unexplained-is-reportable]]. The exclusions are worth as much as the cause
+would be: four plausible explanations are now off the table by measurement.
