@@ -60,19 +60,46 @@ not otherwise stay in step.
 | Release status | **In development** |
 | Pricing | No payments, or Donate — the licence is non-commercial |
 
-**Genre:** Strategy. **Tags:** `grand-strategy`, `strategy`, `map`, `moddable`,
-`multiplayer`, `singleplayer`, `open-source`, `alpha`, `history`, `simulation`.
+**Genre:** Strategy.
 
-Tags are how anybody finds this. `grand-strategy` and `moddable` are the two
-that describe it most specifically; do not spend all ten on generic words.
+**Tags actually on the live page** (checked 2026-09-11, nine of the ten allowed):
+`2d`, `4x`, `alternate-history`, `grand-strategy`, `historical`, `hoi4`,
+`indie`, `multiplayer`, `turn-based-strategy`.
 
-`open-source` is kept on purpose, and is the one tag here that is not strictly
-accurate: the licence is source-available, not OSI open source, and the prose
-everywhere else was changed to say so. It stays because a tag is a browse
-surface rather than a claim — people filter itch by `open-source` to find
-exactly this kind of project, itch has no `source-available` tag to move to,
-and dropping it would cost a discovery channel and buy nothing. Do not "fix"
-this to match the description copy.
+This list used to read `grand-strategy, strategy, map, moddable, multiplayer,
+singleplayer, open-source, alpha, history, simulation`, which was a plan and
+never what was set. Note in particular that there is no `open-source` tag on
+itch and there never was, so there is nothing there to keep or to correct.
+
+## What the tags are actually worth
+
+Tags are not one channel among several here, they are THE channel. Of roughly
+3,050 visits itch sent the page in the 30 days to 2026-09-11, about 1,410 came
+from tag browse pages, against 363 from Google and 87 from ChatGPT.
+
+| Tag | Visits in 30 days |
+|---|---|
+| `hoi4` | **761** |
+| `grand-strategy` | 333 |
+| `alternate-history` (with `historical`) | 228 |
+| `4x` | 47 |
+| `multiplayer` | 45 |
+| `2d`, `indie`, `turn-based-strategy` | below the top-20 cutoff (42) |
+
+`hoi4` alone is 54% of it. That is the finding worth acting on, and it is not
+about grand strategy: `hoi4` is a COMPETITOR'S NAME. People browse itch for the
+game they already play, and this appears next to it. The tags that describe the
+genre honestly earn a fraction of what one borrowed title does.
+
+So the free slot, and any slot freed by dropping `2d` or `indie` — both
+enormous, generic, and describing nothing a person would search for on purpose
+— is worth spending on another title people look for: `eu4`, `victoria-3`,
+`crusader-kings`, `paradox`, `civilization`, `wargame`, `cold-war`.
+
+Treat it as an experiment, not a decision. Tags can be changed at any time, and
+the referrer report under Analytics shows within a few days whether a new one
+earns its slot. Nothing else about the page's discoverability is this cheap to
+test or this easy to undo.
 
 ---
 
