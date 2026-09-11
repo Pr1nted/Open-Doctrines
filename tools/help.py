@@ -113,6 +113,13 @@ GROUPS = [
         # authors it, check_policies.py is the gate that keeps the two one fact
         # rather than two that agree today.
         "gen_policies.py", "check_policies.py",
+        # Whether a new doctrine or regional law changes what the AI does.
+        # Two reflexes pick a doctrine by argmax over the whole table and a
+        # third picks a regional law the same way, so an entry that beats the
+        # incumbent anywhere is a balance change wearing a content change's
+        # coat. This replays those three picks over a grid, before and after,
+        # and prints the cells whose winner moved.
+        "ai_policy_pick.py",
     ]),
     ("Translating the game", [
         "i18n_extract.py", "i18n_sync.py", "i18n_put.py", "i18n_wrap.py",
