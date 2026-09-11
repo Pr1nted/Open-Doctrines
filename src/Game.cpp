@@ -19,6 +19,7 @@
 #include "WinFatalDialog.h"
 #include "Audio.h"
 #include "net/AccountClient.h"
+#include "net/ServerBook.h"   // validCode, for the ?join= link
 #include "net/HttpClient.h"   // netSetWaitHook: the frame drawn while a request waits
 #include "SaveManager.h"
 #include "Keybinds.h"
@@ -2280,6 +2281,43 @@ void Game::run() {
         printf("[autostart] entering a world\n");
         fflush(stdout);
         startQuickStart();
+    }
+
+    // ─── ?join=CODE : AN INVITE SOMEBODY CAN CLICK ────────────────────────
+    //
+    // The invite used to be text: a code to read, paste and type. That only
+    // works for somebody who ALREADY has the game -- which is everybody the
+    // host could have invited anyway, so it grew nothing. A link opens the
+    // browser build with the code already in it, so a friend who has never
+    // heard of this lands on the join screen rather than on a download page.
+    //
+    // MARSHALLED A CHARACTER AT A TIME, deliberately. Pulling a string out of
+    // JS wants stringToUTF8 or EM_ASM_PTR and neither is known to be exported
+    // by this build -- UTF8ToString is the only direction proven here. Invite
+    // codes are A-Z, 0-9 and dashes (ServerBook::validCode), so charCodeAt is
+    // exact for them and the mask below cannot mangle anything legitimate.
+    {
+        EM_ASM({
+            window.__odJoin = new URLSearchParams(location.search).get('join') || "";
+        });
+        const int n = EM_ASM_INT({ return window.__odJoin.length; });
+        if (n > 0 && n <= 20) {
+            std::string joinCode;
+            for (int i = 0; i < n; ++i)
+                joinCode.push_back((char)(EM_ASM_INT({
+                    return window.__odJoin.charCodeAt($0) & 0x7F;
+                }, i)));
+            // Validated before it reaches the UI: a junk ?join= must land on an
+            // ordinary menu, not on a join screen primed to fail.
+            if (ServerBook::validCode(joinCode)) {
+                printf("[join] invite code from the URL\n");
+                fflush(stdout);
+                openMultiplayerMenu();
+                m_mpPage = MpPage::Join;
+                m_mpAddressField.clear();   // a link is always a relayed game
+                m_mpCodeField = joinCode;
+            }
+        }
     }
 #endif
     while (m_running && !WindowShouldClose()) {

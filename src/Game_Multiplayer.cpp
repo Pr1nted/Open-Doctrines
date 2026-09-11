@@ -18,6 +18,9 @@
 // Neither is buried in a policy nobody reads. See net/PRIVACY.md.
 
 #include "Game.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>   // odDiscordInvite bridge, see shell.html
+#endif
 #include "BuildCosts.h"
 #include "TextInput.h"
 
@@ -2001,8 +2004,35 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                        Color{120, 150, 190, 210});
             if (click && copy.hovered) {
                 SetClipboardText(mpInviteText().c_str());
-                mpNote("Invite copied -- address and code together.");
+                mpNote("Invite copied -- the link, and the code behind it.");
             }
+
+            // ── INSIDE DISCORD, A CLIPBOARD IS THE WRONG TOOL ──
+            //
+            // The copy button hands over a link, which is right everywhere the
+            // host might paste it -- except inside an Activity, where everyone
+            // who could read it is already in Discord and a link cannot put
+            // them into THIS voice channel's instance anyway. Discord's own
+            // invite does exactly that, so when it is available it is offered
+            // instead of asked for.
+            //
+            // Drawn only when the SDK can actually take it: on desktop, on
+            // itch.io, or in a browser tab this returns 0 and the row keeps the
+            // two buttons it always had.
+#ifdef __EMSCRIPTEN__
+            if (EM_ASM_INT({ return window.odDiscordCanInvite ? window.odDiscordCanInvite() : 0; })) {
+                const MpButton dbtn = buttonAt((float)(centerX - bw - 6), (float)(y + bh + 6),
+                                               (float)(bw * 2 + 12), (float)bh, mouse);
+                drawButton(dbtn, "Invite this voice channel", 15,
+                           Color{54, 44, 84, 235}, Color{130, 120, 200, 220});
+                if (click && dbtn.hovered) {
+                    if (EM_ASM_INT({ return window.odDiscordInvite(); }))
+                        mpNote("Discord is asking who to invite.");
+                    else
+                        mpNote("Discord would not open the invite.", true);
+                }
+            }
+#endif
 
             const MpButton test = buttonAt((float)(centerX + 6), (float)y,
                                            (float)bw, (float)bh, mouse);
@@ -3517,10 +3547,26 @@ std::string Game::mpInviteText() const {
     // told their input is malformed, which points at them rather than at the
     // invite. The code alone IS the invite here, so that is all it says.
     if (m_mpViaRelay) {
+        // ── A LINK FIRST, BECAUSE MOST PEOPLE PASTED THIS DO NOT HAVE THE GAME ──
+        //
+        // A code alone is only usable by somebody who already owns it, has it
+        // open, and knows where the join screen is. The link opens the browser
+        // build with the code filled in, so the invite works on a stranger --
+        // which is the only version of this that grows anything.
+        //
+        // Only for a RELAYED game. A direct-address game would have to carry
+        // the host's address in a URL that gets pasted into group chats, and
+        // the panel elsewhere in this file exists precisely to warn about
+        // handing that out. The code still follows, for anyone who has it
+        // installed already.
+        const std::string code = m_netHost->code();
         return "Join my OpenDoctrines game\n"
-               "Code: " + m_netHost->code() + "\n"
-               "Leave the address blank -- this game is hosted through the "
-               "account service.\n";
+               "https://opendoctrines.pages.dev/play/?join=" + code + "\n"
+               "\n"
+               "That link opens it in a browser with the code already in it -- "
+               "nothing to install.\n"
+               "Already have the game? Code: " + code + ", and leave the address "
+               "blank.\n";
     }
 
     // Both halves, because either alone is useless: the address says WHERE and

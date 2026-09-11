@@ -372,6 +372,42 @@ window.odOpenExternal = function (url) {
   window.open(url, '_blank');
 };
 
+  // ── INVITING PEOPLE FROM INSIDE AN ACTIVITY ──
+  //
+  // Outside Discord an invite is a link -- /play/?join=CODE -- and the host
+  // pastes it wherever their friends are. Inside an Activity that link is the
+  // wrong shape twice over: everyone who can see it is already in Discord, and
+  // an Activity runs per voice channel rather than per URL, so a link cannot
+  // put somebody into THIS instance.
+  //
+  // openInviteDialog is Discord's own answer: it posts an invite for the
+  // running instance into the channel, and pressing it drops the person into
+  // the same game. There is no documented public URL that does this -- the
+  // obvious-looking discord.com/activities/<id> is not a documented launch
+  // link, and Discord's SPA answers 200 for any path, so it cannot even be
+  // disproved by asking for it. Hence the SDK rather than a URL.
+  //
+  // Returns 1 when the dialog was asked for, 0 when there is nothing to ask.
+  window.odDiscordInvite = function () {
+    var sdk = window.odDiscordSdk;
+    if (!sdk || !sdk.commands || typeof sdk.commands.openInviteDialog !== 'function') return 0;
+    try {
+      sdk.commands.openInviteDialog().catch(function (e) {
+        console.warn('[discord] invite dialog refused: ' + ((e && e.message) || e));
+      });
+      return 1;
+    } catch (e) {
+      console.warn('[discord] openInviteDialog threw: ' + ((e && e.message) || e));
+      return 0;
+    }
+  };
+
+  // Whether the button is worth drawing at all.
+  window.odDiscordCanInvite = function () {
+    var sdk = window.odDiscordSdk;
+    return (sdk && sdk.commands && typeof sdk.commands.openInviteDialog === 'function') ? 1 : 0;
+  };
+
 function odLoadScript(src) {
   return new Promise(function (resolve, reject) {
     var s = document.createElement('script');
