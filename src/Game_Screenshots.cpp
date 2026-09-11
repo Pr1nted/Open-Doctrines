@@ -116,6 +116,10 @@ const Shot SHOTS[] = {
     // does not -- so it goes in as two pieces, and a seam here is the failure
     // that costs nothing to look for and is invisible everywhere else.
     {"globe-dateline",   60, true},
+    // Looking straight down a pole -- the one view where an equirectangular
+    // sheet is minified many times over and any filtering mistake shows as a
+    // pinwheel. Nothing else in the tour points a camera here.
+    {"globe-pole",       60, true},
     // Land at NIGHT, with countries on it: the only view that shows whether the
     // dark side is still a map you could govern from.
     {"globe-night",      60, true},
@@ -859,7 +863,8 @@ bool Game::tickScreenshotTour() {
         } else if (name == "orders-desktop" || name == "orders-portrait" ||
                    name == "orders-phase" || name.rfind("globe-orders", 0) == 0 ||
                    name == "globe-close" || name == "globe-dateline" ||
-                   name == "globe-night" || name == "globe-zoomto") {
+                   name == "globe-night" || name == "globe-zoomto" ||
+                   name == "globe-pole") {
             // The strip is greyed until a turn has resolved, and a loaded save
             // has no order log (it is per-turn display state, not saved). So
             // put a plausible turn in it: the option lit, the overlay drawn,
@@ -988,7 +993,8 @@ bool Game::tickScreenshotTour() {
                     m_renderer->flyTo(zt->second.x, zt->second.y, tz, m_config.flySpeed);
                 }
             }
-            if (name == "globe-close" || name == "globe-dateline" || name == "globe-night") {
+            if (name == "globe-close" || name == "globe-dateline" ||
+                name == "globe-night" || name == "globe-pole") {
                 // Right down on the surface: the view where the composited
                 // texture's resolution is what you are actually looking at.
                 m_activeViewTab = 0;
@@ -999,11 +1005,12 @@ bool Game::tickScreenshotTour() {
                 // proves nothing, and was the first thing this pointed at.
                 const bool dl = (name == "globe-dateline");
                 const bool ni = (name == "globe-night");
-                m_renderer->snapTo((float)m_landSea.getWidth()  * (ni ? 0.90f : dl ? 0.992f : 0.53f),
-                                   (float)m_landSea.getHeight() * (ni ? 0.22f : dl ? 0.16f  : 0.30f),
+                const bool po = (name == "globe-pole");
+                m_renderer->snapTo((float)m_landSea.getWidth()  * (po ? 0.50f : ni ? 0.90f : dl ? 0.992f : 0.53f),
+                                   (float)m_landSea.getHeight() * (po ? 0.035f : ni ? 0.22f : dl ? 0.16f : 0.30f),
                                    m_renderer->getMinZoom() * 8.0f);
                 m_renderer->snapViewMode(MapRenderer::ViewMode::Globe);
-                m_renderer->zoomGlobe(ni ? 3.5f : 6.0f);
+                m_renderer->zoomGlobe(po ? 2.5f : ni ? 3.5f : 6.0f);
             }
             // ONLY THE ORDERS SHOTS. Setting this for every shot in the
             // block put the Viewing Orders banner across the economy screen.
