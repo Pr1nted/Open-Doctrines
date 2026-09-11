@@ -463,6 +463,126 @@ P = [
          unrest=-0.15, opinion=-0.4, minority_growth=-0.02,
          levers={"armyDefPct": 10, "popGrowthPct": -1.0, "migrationRate": -25, "maintenanceCostPct": -8},
          incompatible_with=["general_amnesty", "free_press"]),
+
+    # ── A second bench of doctrines ───────────────────────────────────────
+    #
+    # Written to widen the choice without moving the world. Two AI reflexes
+    # read this table: enactablePolicy picks the doctrine nearest the country's
+    # compass that it can pay for, and the calming reflex picks the largest
+    # unrest reduction. Both are argmax over the whole list, so a new entry
+    # that beats the incumbent anywhere changes what every AI country in the
+    # game does -- which is a balance change wearing a content change's coat.
+    # So every doctrine below is deliberately NOT the new argmax: none shifts
+    # the compass by less than 8 points in total, and none calms harder than
+    # the 0.06 the three existing leaders already offer. tools/ai_policy_pick.py
+    # checks that, and says which cells of the grid moved if it stops holding.
+
+    # ── Left ──────────────────────────────────────────────────────────────
+    dict(id="collective_agriculture", name="Collectivised Agriculture", category="left",
+         description="The land is farmed in common. The harvest is counted before it is grown.",
+         cost_per_turn=7, implementation_turns=5,
+         compass_shift={"economic": -18, "social": -8}, requirements=R(maxe=10),
+         unrest=-0.04, minority_growth=-0.01,
+         levers={"resourceModPct": 18, "passiveIncome": 4, "popGrowthPct": -1.0,
+                 "industryUpkeepPct": -8},
+         incompatible_with=["land_reform"]),
+    dict(id="housing_programme", name="Mass Housing Programme", category="left",
+         description="Blocks, quickly. Nobody sleeps cold and nothing else is built this decade.",
+         cost_per_turn=13, implementation_turns=5,
+         compass_shift={"economic": -12, "social": 5}, requirements=R(maxe=30),
+         unrest=0.04, immigration=0.1,
+         levers={"popGrowthPct": 1.8, "popModPct": 8, "industryCostPct": -12},
+         incompatible_with=["austerity_programme"]),
+    dict(id="peoples_militia", name="People's Militia", category="left",
+         description="Arm the workers. Cheap divisions, and the government is no longer the only one holding rifles.",
+         cost_per_turn=4, implementation_turns=3,
+         compass_shift={"economic": -10, "social": -5}, requirements=R(maxe=40),
+         unrest=-0.02,
+         levers={"conscriptionPct": 25, "conscriptionCostPct": 20, "armyDefPct": 8,
+                 "armyAtkPct": -10, "indoctrinationPct": -6},
+         incompatible_with=["professional_army"]),
+
+    # ── Right ─────────────────────────────────────────────────────────────
+    dict(id="foreign_investment", name="Foreign Investment Act", category="right",
+         description="Let other people's money build the country. It leaves as easily as it came.",
+         cost_per_turn=0, implementation_turns=3,
+         compass_shift={"economic": 18, "social": 6}, requirements=R(mine=-20),
+         unrest=-0.02,
+         levers={"passiveIncome": 9, "industryCostPct": 15, "migrationRate": 10,
+                 "resourceModPct": -10},
+         incompatible_with=["autarky", "state_industry"]),
+    dict(id="mercenary_contracts", name="Mercenary Contracts", category="right",
+         description="Hire the fighting out. They are very good, and they are paid first.",
+         cost_per_turn=9, implementation_turns=2,
+         compass_shift={"economic": 10, "social": -5}, requirements=R(mine=-40),
+         unrest=0.01,
+         levers={"armyAtkPct": 14, "conscriptionPct": -20, "maintenanceCostPct": -22,
+                 "popGrowthPct": 0.5},
+         incompatible_with=["conscription", "mass_mobilisation"]),
+
+    # ── Authoritarian ─────────────────────────────────────────────────────
+    dict(id="internal_passports", name="Internal Passports", category="authoritarian",
+         description="Nobody moves without a paper. The country stays where it was put.",
+         cost_per_turn=5, implementation_turns=3,
+         compass_shift={"economic": 0, "social": -18}, requirements=R(maxs=40),
+         pacification=6.0, unrest=0.04, minority_growth=-0.01,
+         levers={"migrationRate": -30, "indoctrinationPct": 8, "popGrowthPct": -0.3},
+         incompatible_with=["open_borders"]),
+    dict(id="officer_purge", name="Purge of the Officer Corps", category="authoritarian",
+         description="The army will never plot again. It will also never think again.",
+         cost_per_turn=6, implementation_turns=2,
+         compass_shift={"economic": 0, "social": -22}, requirements=R(maxs=20),
+         pacification=8.0, unrest=0.05,
+         levers={"indoctrinationPct": 18, "armyAtkPct": -14, "armyDefPct": -8,
+                 "maintenanceCostPct": 10},
+         incompatible_with=["professional_army"]),
+    dict(id="fortress_doctrine", name="Fortress Doctrine", category="authoritarian",
+         description="Concrete and guns facing outward. Nothing gets in, and nothing sets out either.",
+         cost_per_turn=11, implementation_turns=5,
+         compass_shift={"economic": -6, "social": -10}, requirements=R(),
+         unrest=0.01,
+         levers={"armyDefPct": 22, "armyAtkPct": -12, "industryCostPct": -14,
+                 "navySpeedPct": -8},
+         incompatible_with=["war_on_several_fronts"]),
+
+    # ── Libertarian ───────────────────────────────────────────────────────
+    dict(id="judicial_independence", name="Judicial Independence", category="libertarian",
+         description="The courts answer to the law. Sometimes the law is inconvenient.",
+         cost_per_turn=6, implementation_turns=5,
+         compass_shift={"economic": 0, "social": 16}, requirements=R(mins=-40),
+         unrest=0.05, pacification=3.0,
+         levers={"passiveIncome": 5, "industryUpkeepPct": 8, "indoctrinationPct": -14},
+         incompatible_with=["secret_police", "martial_law"]),
+    dict(id="freedom_of_worship", name="Freedom of Worship", category="libertarian",
+         description="Everyone prays as they like. Everyone also notices who does not.",
+         cost_per_turn=3, implementation_turns=3,
+         compass_shift={"economic": 0, "social": 14}, requirements=R(mins=-40),
+         minority_growth=0.025, unrest=0.03,
+         levers={"migrationRate": 14, "popGrowthPct": 0.6, "indoctrinationPct": -10},
+         incompatible_with=["national_unity"]),
+    dict(id="right_of_conscience", name="Right of Conscience", category="libertarian",
+         description="A man may refuse to carry a rifle. Few do, and the ones who stay meant it.",
+         cost_per_turn=2, implementation_turns=2,
+         compass_shift={"economic": 0, "social": 18}, requirements=R(mins=-30),
+         unrest=0.04,
+         levers={"conscriptionPct": -22, "conscriptionCostPct": -10, "popGrowthPct": 0.5,
+                 "migrationRate": 8},
+         incompatible_with=["conscription", "mass_mobilisation", "war_economy_total"]),
+
+    # ── Miscellaneous ─────────────────────────────────────────────────────
+    dict(id="strategic_stockpile", name="Strategic Stockpile", category="miscellaneous",
+         description="Buy it before it is needed and sit on it. Dear, and one day it is the reason you are still fighting.",
+         cost_per_turn=8, implementation_turns=4,
+         compass_shift={"economic": -6, "social": -4}, requirements=R(),
+         levers={"resourceModPct": 16, "maintenanceCostPct": 12, "passiveIncome": -6,
+                 "industryCostPct": -8},
+         incompatible_with=["austerity_programme"]),
+    dict(id="literacy_campaign", name="Literacy Campaign", category="miscellaneous",
+         description="A campaign. Everyone learns to read, and then reads what you print.",
+         cost_per_turn=7, implementation_turns=1, propaganda_duration=14,
+         compass_shift={"economic": 0, "social": 8}, requirements=R(),
+         unrest=0.02, opinion=-0.3,
+         levers={"indoctrinationPct": 10, "popModPct": 6}),
 ]
 
 
@@ -529,6 +649,29 @@ CONFLICTS = [
     ("agrarian_priority", "rationalisation"),
     ("agrarian_priority", "state_industry"),
     ("colonial_office", "minority_rights"),
+
+    # The second bench. Same two kinds of entry as above: a contradiction no
+    # government runs both halves of, or a pair whose levers would stack a
+    # bonus that was priced to be taken once.
+    ("collective_agriculture", "privatization"),
+    ("collective_agriculture", "deregulation"),
+    ("foreign_investment", "war_economy_total"),
+    ("mercenary_contracts", "peoples_militia"),
+    ("mercenary_contracts", "war_economy_total"),
+    ("peoples_militia", "secret_police"),
+    ("peoples_militia", "officer_purge"),
+    ("internal_passports", "minority_rights"),
+    ("internal_passports", "commonwealth_settlement"),
+    ("officer_purge", "professional_army"),
+    ("judicial_independence", "censorship"),
+    ("judicial_independence", "opposition_smear"),
+    ("freedom_of_worship", "national_unity"),
+    ("right_of_conscience", "total_war_economy"),
+    ("right_of_conscience", "mass_mobilisation"),
+    ("fortress_doctrine", "naval_supremacy"),
+    ("fortress_doctrine", "naval_supremacy_doctrine"),
+    ("strategic_stockpile", "austerity_programme"),
+    ("housing_programme", "austerity_programme"),
 ]
 
 

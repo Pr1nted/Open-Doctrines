@@ -3010,12 +3010,37 @@ void Game::drawDistrictsTab() {
              listX + 12, y, 11, Color{150, 154, 170, 255});
     y += 17;
 
+    // ── AND IT SCROLLS ──
+    //
+    // It did not, and stopped at the bottom of the screen with an ellipsis.
+    // That was survivable while there were ten laws and is a bug at eighteen:
+    // the ones past the fold could not be clicked at all, and WHICH ones those
+    // were depended on how many districts the player had drawn above them --
+    // so the same law was in the game on one country and out of it on another.
+    const int lawTop = y;
+    const int lawViewH = std::max(60, m_screenH - 16 - lawTop);
+    const int lawTotalH = (int)m_districtLaws.size() * 42;
+    const int lawMaxScroll = std::max(0, lawTotalH - lawViewH);
+    const Rectangle lawView = {(float)listX, (float)lawTop, (float)listW, (float)lawViewH};
+    const bool overLaws = CheckCollisionPointRec(mouse, lawView);
+    if (overLaws) {
+        const float wheel = GetMouseWheelMove();
+        if (wheel != 0.0f) m_districtLawScroll -= (int)(wheel * 42.0f);
+    }
+    m_districtLawScroll = std::clamp(m_districtLawScroll, 0, lawMaxScroll);
+    y -= m_districtLawScroll;
+
+    BeginScissorMode(listX, lawTop, listW, lawViewH);
     for (const auto& law : m_districtLaws) {
-        if (y > m_screenH - 52) { DrawText("...", listX + 12, y, 12, Color{120, 124, 140, 255}); break; }
+        // Rows above and below the window are not drawn, and -- because the
+        // hit test is the same rectangle -- not clickable either. A scissor
+        // clips pixels, not input: without this a row scrolled off the top
+        // still answered a click on whatever is drawn over it.
+        if (y + 42 < lawTop || y > lawTop + lawViewH) { y += 42; continue; }
         const bool on = std::find(sel.policies.begin(), sel.policies.end(), law.id)
                         != sel.policies.end();
         Rectangle r = {(float)(listX + 10), (float)y, (float)(listW - 20), 38};
-        const bool ph = CheckCollisionPointRec(mouse, r);
+        const bool ph = overLaws && CheckCollisionPointRec(mouse, r);
         DrawRectangleRounded(r, 0.16f, 5,
             on ? Color{34, 58, 44, 228} : ph ? Color{30, 34, 46, 212} : Color{20, 22, 30, 192});
         DrawRectangleRoundedLines(r, 0.16f, 5,
@@ -3055,6 +3080,14 @@ void Game::drawDistrictsTab() {
             Audio::get().playSfx("click_soft");
         }
         y += 42;
+    }
+    EndScissorMode();
+
+    if (lawMaxScroll > 0) {
+        const float barH = (float)lawViewH * (float)lawViewH / (float)lawTotalH;
+        const float barY = (float)lawTop +
+                           (float)m_districtLawScroll / (float)lawMaxScroll * ((float)lawViewH - barH);
+        DrawRectangle(listX + listW - 10, (int)barY, 6, (int)barH, {150, 150, 170, 110});
     }
 }
 

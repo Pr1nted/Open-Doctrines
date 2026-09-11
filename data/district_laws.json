@@ -44,6 +44,38 @@
 
     { "id": "grain_requisition", "name": "Grain Requisition",
       "description": "Take the harvest at your price. They will not forget the year.",
-      "cost_per_turn": 0.05, "unrest_pct": 5.0, "income_pct": 6.0, "growth_pct": -2.0 }
+      "cost_per_turn": 0.05, "unrest_pct": 5.0, "income_pct": 6.0, "growth_pct": -2.0 },
+
+    { "id": "billeted_garrison", "name": "Billeted Garrison",
+      "description": "The regiment lives in the town it watches. Cheap to quarter, and never forgotten.",
+      "cost_per_turn": 0.10, "unrest_pct": -2.0, "income_pct": -4.0, "growth_pct": -0.5 },
+
+    { "id": "religious_endowment", "name": "Religious Endowment",
+      "description": "Pay the local clergy and let them say who is owed obedience.",
+      "cost_per_turn": 0.35, "unrest_pct": -5.0, "income_pct": -1.0, "growth_pct": 1.0 },
+
+    { "id": "model_schools", "name": "Model Schools",
+      "description": "Build the schools here first. It is expensive and it lasts a generation.",
+      "cost_per_turn": 0.35, "unrest_pct": -2.0, "income_pct": -1.0, "growth_pct": 2.0 },
+
+    { "id": "sanitary_board", "name": "Sanitary Board",
+      "description": "Clean water and a fever hospital. The children live; the ledger does not care.",
+      "cost_per_turn": 0.30, "unrest_pct": -1.5, "income_pct": -2.0, "growth_pct": 2.5 },
+
+    { "id": "free_port", "name": "Free Port",
+      "description": "Land a cargo here and pay nobody. The wharves fill, and so do the back streets.",
+      "cost_per_turn": 0.10, "unrest_pct": 1.0, "income_pct": 6.0, "growth_pct": 1.5 },
+
+    { "id": "market_charter", "name": "Market Charter",
+      "description": "Let the town hold its own market and keep a share. It grows rich and it grows opinions.",
+      "cost_per_turn": 0.05, "unrest_pct": 2.0, "income_pct": 7.0, "growth_pct": 1.0 },
+
+    { "id": "labour_levy", "name": "Labour Levy",
+      "description": "So many days a year on the roads, unpaid. The roads are excellent.",
+      "cost_per_turn": 0.00, "unrest_pct": 5.0, "income_pct": 6.0, "growth_pct": -1.5 },
+
+    { "id": "foreign_concession", "name": "Foreign Concession",
+      "description": "Sign the quarter over to somebody else's flag and bank the fee.",
+      "cost_per_turn": 0.00, "unrest_pct": 6.0, "income_pct": 12.0, "growth_pct": 0.0 }
   ]
 }

@@ -3493,6 +3493,17 @@ public:
     /// "4 years, 2 months", or nothing at all for a country the map began with.
     std::string countryAgeText(int cid) const;
     int  m_districtSel = 0;        ///< which district the map assigns clicks to
+    /**
+     * Scroll offset, in pixels, of the REGIONAL LAW list on the districts tab.
+     *
+     * The list used to draw straight down the panel and stop at the bottom of
+     * the screen with an ellipsis, which was survivable at ten laws and is a
+     * bug at eighteen: the laws below the fold were not merely unread, they
+     * could not be clicked at all, and which ones those were depended on how
+     * many districts the country had drawn above them. Anything the panel
+     * cannot reach is not in the game.
+     */
+    int  m_districtLawScroll = 0;
     bool m_districtPaint = false;  ///< dragging across the map to assign
     /// Pan/zoom of the districts map, in the same shape the claims map uses.
     float m_districtMapZoom = 1.0f;
