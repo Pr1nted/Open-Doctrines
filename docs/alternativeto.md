@@ -20,7 +20,7 @@ carried five alternatives:
 | RealPolitiks | paid | Mac, Windows, Linux, Android |
 | World Conqueror 4 | paid | Windows, Android, iPhone |
 
-**Not one of them is free. Not one is open source. Not one runs in a browser.**
+**Not one of them is free. Not one publishes its source. Not one runs in a browser.**
 AlternativeTo's sidebar filters on precisely those three properties, so this
 game would be the only result for a visitor who ticks any of them — on a page
 someone reached by searching for a cheaper way to play Hearts of Iron.
@@ -59,12 +59,12 @@ so add it once, honestly, and do not vote on it from other accounts.
 
 **Platforms:** Windows, Mac, Linux, Android, Web / Browser
 
-**Licence:** Free · Open Source
+**Licence:** Free · Source-available
 *(the source is public; the licence is non-commercial, so tick Free and Open
 Source and let the description carry the nuance rather than overstating it)*
 
 **Short description**
-> A free, open-source grand strategy game that runs in a browser. Run a
+> A free, source-available grand strategy game that runs in a browser. Run a
 > country's industry, armies, research and politics across 1641 provinces and
 > six historical scenarios, from 1914 to the modern day.
 
@@ -113,6 +113,15 @@ nothing else on the Hearts of Iron page.
 
 Nothing, and that is the point. Unlike a post it does not decay, and unlike a
 storefront it needs no upkeep beyond editing the description when the game stops
-being an alpha. Similar surfaces worth the same twenty minutes each:
-LibreGameWiki, OpenSourceGameClones, and Wikipedia's *List of open-source video
-games*.
+being an alpha.
+
+LibreGameWiki, OpenSourceGameClones and Wikipedia's *List of open-source video
+games* were listed here as similar surfaces. They are not: each requires an OSI
+open-source licence, and the OpenDoctrines Non-Commercial License is not one --
+it restricts a field of endeavour, which is exactly what that definition
+forbids. The game is source-available, and submitting it to those three would
+be rejected on the licence.
+
+AlternativeTo itself has no such requirement, which is why it is still worth
+doing: its licence field has a "Free" and an "Open Source" value, and the
+honest selection is Free.

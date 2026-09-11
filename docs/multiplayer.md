@@ -65,7 +65,7 @@ Not mod verification. **Authority.**
 
 **Mod matching is an integrity check, not an anti-tamper one**, and the UI says
 so in those words. A client is a program on hardware its owner controls; it can
-report any mod list it likes, and no open-source game changes that. What the
+report any mod list it likes, and no amount of public source changes that. What the
 check catches is the failure that actually happens — a wrong version, a
 truncated download, a mod someone edited and forgot to rebuild. A client that
 lies desyncs its own display and gains nothing.

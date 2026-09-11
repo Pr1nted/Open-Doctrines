@@ -1,6 +1,6 @@
 # OpenDoctrines
 
-**A free, open-source grand strategy game that runs in a browser.**
+**A free, source-available grand strategy game that runs in a browser.**
 
 It is the kind of game Hearts of Iron IV and Victoria are: provinces with
 population and industry, a research tree, doctrines you pick and live with,

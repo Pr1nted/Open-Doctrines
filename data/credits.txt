@@ -48,7 +48,7 @@
 - You, for playing the game!
 @
 
-$This is a free and open-source project.
+$This is a free, source-available project.
 $No copyright infringement is intended.
 
 $--- generated from tools/provenance.json — do not edit below ---

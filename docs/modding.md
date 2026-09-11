@@ -173,8 +173,8 @@ if its own set does not match by id, version and SHA-256 of the `.odmod`.
 
 **This is an integrity check, not an anti-tamper one**, and the game says so to
 players in exactly those words. A client is a program on hardware its owner
-controls; it can report any mod list it likes, and nothing in an open-source
-game changes that. What the check is for is the failure that actually happens:
+controls; it can report any mod list it likes, and no amount of public source
+changes that. What the check is for is the failure that actually happens:
 a wrong version, a truncated download, a mod someone edited and forgot to
 rebuild.
 
