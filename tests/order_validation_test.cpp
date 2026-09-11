@@ -305,6 +305,47 @@ struct OrderValidationTest {
             }
             check(!bad, "percentage is bounded and attribution is the server's");
         }
+
+        // ── THE RULE-TABLE SEAL ──
+        //
+        // Carried with every submission and compared against the host's own.
+        // It must never change what is APPLIED -- the host resolves from its
+        // own tables regardless -- so these check only what gets recorded, and
+        // that the recording is quiet in every case that is not evidence.
+        {
+            game.m_tableSealMismatches.clear();
+            const unsigned long long ours = game.tableSeal();
+            check(ours != 0ull, "the host computed a rule-table seal");
+
+            // An honest client: the same install, so the same word.
+            apply(cid, "{\"seal\":" + std::to_string(ours) + "}");
+            check(game.m_tableSealMismatches.empty(),
+                  "a client holding the same tables is not recorded");
+
+            // A client older than the field says nothing, which is not
+            // evidence of anything and must stay silent.
+            apply(cid, "{}");
+            check(game.m_tableSealMismatches.empty(),
+                  "a client that sends no seal is not recorded");
+
+            // And one playing from tables that are not the host's.
+            apply(cid, "{\"seal\":" + std::to_string(ours ^ 0x5EEDull) + "}");
+            check(game.m_tableSealMismatches.size() == 1,
+                  "a client holding different tables is recorded once");
+            if (game.m_tableSealMismatches.size() == 1) {
+                const auto& m = game.m_tableSealMismatches.front();
+                check(m.countryId == cid && m.ours == ours && m.theirs == (ours ^ 0x5EEDull),
+                      "the record names the country and both words");
+            }
+
+            // Said once per country per turn. A player submitting four times
+            // before the turn resolves is ordinary, and four identical lines
+            // would bury the one that mattered.
+            apply(cid, "{\"seal\":" + std::to_string(ours ^ 0x5EEDull) + "}");
+            check(game.m_tableSealMismatches.size() == 1,
+                  "the same turn is not recorded twice");
+            game.m_tableSealMismatches.clear();
+        }
     }
 };
 

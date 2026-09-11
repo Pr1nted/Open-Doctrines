@@ -926,6 +926,20 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 // the hook is a plain function pointer and has no Game to reach through.
 static Game* s_consoleOwner = nullptr;
 
+// The rule tables this install holds, folded to one word. See guard/odseal.h.
+//
+// COMPUTED HERE RATHER THAN IN init(), and the difference matters: the server
+// build never calls init() -- that is the whole point of it, no window -- so a
+// headless host, which is exactly what long-form is built around, would have
+// had no word to compare against and would silently have checked nothing. Read
+// on first use and cached, so it is right on both binaries without either of
+// them having to remember to ask.
+unsigned long long Game::tableSeal() {
+    if (m_tableSeal == 0ull && !m_dataDir.empty())
+        m_tableSeal = od_t4(m_dataDir.c_str());
+    return m_tableSeal;
+}
+
 bool Game::init(int screenW, int screenH, const char* title) {
 #if defined(PLATFORM_ANDROID)
     // Set below, AFTER InitWindow -- see the note there.
@@ -983,6 +997,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // behind a flag -- the whole point of a seal is that it is always checked.
     m_localeSeal = od_k9(m_dataDir.c_str());
     if (m_localeSeal == 0ull) std::abort();
+
 
     // Write down where this game is, so anything wanting to translate a map
     // into it does not have to go looking. Best effort, never fatal, and it

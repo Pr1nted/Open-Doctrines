@@ -2825,7 +2825,18 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
                                                  {"ammoType", sb.ammoType}});
     }
 
-    const std::string text = j.is_null() ? "{}" : j.dump();
+    // WHAT THIS INSTALL'S RULE TABLES COME TO.
+    //
+    // Carried with the orders rather than at the door, for two reasons: it is
+    // then INSIDE the seal (mpPublishOrders binds the whole payload to this
+    // turn and this player), so it cannot be stripped or swapped in transit;
+    // and it is checked every turn rather than once, so editing a table after
+    // joining is not a way past it. An unknown key costs an older host nothing
+    // -- mpApplyOrders reads the keys it knows and ignores the rest -- so this
+    // needs no protocol version.
+    j["seal"] = const_cast<Game*>(this)->tableSeal();
+
+    const std::string text = j.dump();
     return std::vector<uint8_t>(text.begin(), text.end());
 }
 
@@ -2866,6 +2877,38 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         return;                 // discarded whole; the lobby records it as malformed
     }
     if (!j.is_object()) return;
+
+    // ── DO BOTH ENDS HOLD THE SAME RULE BOOK ──
+    //
+    // Read before anything is applied, and it never changes what IS applied:
+    // the host resolves the turn from its own tables either way, so a client
+    // with edited doctrines already gains nothing at resolution. What this
+    // catches is the client editing them to plan against numbers nobody else
+    // is playing by -- and, more usefully, it says out loud that the person is
+    // running altered data at all.
+    //
+    // RECORDED, NOT PUNISHED. A mismatch is also what a mid-release data patch
+    // or a half-finished mod looks like, and dropping somebody's turn over it
+    // would be the reliance guard/odseal.h warns against. The host is told and
+    // decides. The player is not told, because the one fact that turns a
+    // refusal into a tuning signal is knowing which attempt registered.
+    if (const unsigned long long ourSeal = tableSeal()) {
+        const unsigned long long theirs =
+            j.contains("seal") && j["seal"].is_number_unsigned()
+                ? j["seal"].get<unsigned long long>() : 0ull;
+        // Absent means a client older than this field, which is not evidence of
+        // anything. Present and different is.
+        if (theirs != 0ull && theirs != ourSeal) {
+            bool seen = false;
+            for (const auto& m : m_tableSealMismatches)
+                if (m.countryId == countryId && m.turn == m_turnNumber + 1) { seen = true; break; }
+            if (!seen) {
+                m_tableSealMismatches.push_back({countryId, m_turnNumber + 1, theirs, ourSeal});
+                printf("  Country %d is playing from different rule tables than this host"
+                       " (%llu, expected %llu).\n", countryId, theirs, ourSeal);
+            }
+        }
+    }
 
     // THE authoritative check. A peer may submit anything; only orders over
     // provinces and ships that ITS country owns are kept. Nothing here trusts a

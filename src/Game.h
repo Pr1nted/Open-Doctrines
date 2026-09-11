@@ -3666,6 +3666,28 @@ private:
     bool m_shotTour = false;
     // Token from the startup integrity seal; see odseal / Game::init.
     unsigned long long m_localeSeal = 0;
+    /**
+     * This install's rule tables, folded into one word by od_t4.
+     *
+     * Sent with a player's orders and compared by the host against its own.
+     * Two installs of the same release agree; one whose doctrine or regional
+     * law tables have been edited does not. See guard/odseal.h for what that
+     * is worth -- it is a cost imposed on the cheap end of tampering, not a
+     * proof of anything, and nothing is punished automatically on the strength
+     * of it.
+     */
+    unsigned long long m_tableSeal = 0;
+    /// The above, computed on first use. Always call this, never the member.
+    unsigned long long tableSeal();
+    /** One submission whose tables disagreed with the host's. */
+    struct TableSealMismatch {
+        int countryId = 0;
+        int turn = 0;
+        unsigned long long theirs = 0;
+        unsigned long long ours = 0;
+    };
+    /// Host-side only, and never shown to the player it is about.
+    std::vector<TableSealMismatch> m_tableSealMismatches;
     std::string m_shotDir;               // where the PNGs land
     std::string m_shotSave;              // save loaded for the in-game shots
     std::string m_shotBaseLang;          // the language the tour runs in
