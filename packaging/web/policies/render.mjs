@@ -22,17 +22,43 @@ import { marked } from 'marked';
 const root = new URL('../../../', import.meta.url);
 const here = new URL('./', import.meta.url);
 
+const SITE = 'https://opendoctrines.pages.dev';
+
 const PAGES = [
-    { md: 'net/PRIVACY.md', out: 'privacy.html', title: 'Privacy policy' },
-    { md: 'net/TERMS.md',   out: 'terms.html',   title: 'Terms of use' },
+    { md: 'net/PRIVACY.md', out: 'privacy.html', slug: 'privacy', title: 'Privacy policy',
+      desc: 'What the account service stores, why, and how long it keeps it.' },
+    { md: 'net/TERMS.md',   out: 'terms.html',   slug: 'terms',   title: 'Terms of use',
+      desc: 'The terms that cover the game, the website and the account service.' },
 ];
 
 // Deliberately plain: no scripts, no fonts, no requests. A policy page that
 // depends on anything is a policy page that can fail to be readable.
-const shell = (title, body) => `<!DOCTYPE html>
+// The link card. Meta tags only -- consistent with the no-requests rule above,
+// because nothing here is fetched BY the page: og:image is pulled by whatever
+// is drawing the preview, and only when somebody shares the link.
+//
+// Generated rather than written into the HTML, because these two files are
+// build output -- packaging/web/policies/.gitignore ignores *.html -- so tags
+// added to the pages by hand survive exactly until the next render.
+const card = ({ slug, title, desc }) => `<meta property="og:type" content="article">
+<meta property="og:site_name" content="OpenDoctrines">
+<meta property="og:title" content="OpenDoctrines — ${title}">
+<meta property="og:description" content="${desc}">
+<meta property="og:url" content="${SITE}/${slug}">
+<meta property="og:image" content="${SITE}/card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpenDoctrines — ${title}">
+<meta name="twitter:description" content="${desc}">
+<meta name="twitter:image" content="${SITE}/card.png">
+<meta name="theme-color" content="#C9A227">`;
+
+const shell = (page, body) => `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenDoctrines — ${title}</title>
+<title>OpenDoctrines — ${page.title}</title>
+${card(page)}
 <style>
   :root{color-scheme:dark light}
   body{margin:0;background:#0b0f1c;color:#c8ccd8;
@@ -59,7 +85,7 @@ const shell = (title, body) => `<!DOCTYPE html>
 <a class="home" href="/">&larr; OpenDoctrines</a>
 ${body}
 <footer>The game's account service serves this same document at
-<code>/${title === 'Privacy policy' ? 'privacy' : 'terms'}</code>; both are generated
+<code>/${page.slug}</code>; both are generated
 from one file, so they cannot say different things.</footer>
 </main></body></html>
 `;
@@ -70,7 +96,7 @@ for (const p of PAGES) {
     // A legal document that silently rendered as nothing would be worse than
     // an error, so refuse anything implausibly short rather than publish it.
     if (md.length < 2000) throw new Error(`${p.md} is only ${md.length} bytes -- refusing to publish it`);
-    const html = shell(p.title, marked.parse(md));
+    const html = shell(p, marked.parse(md));
     writeFileSync(new URL(p.out, here), html);
     console.log(`  ${p.out.padEnd(14)} ${(html.length / 1024).toFixed(0)} KB  from ${p.md}`);
     wrote++;

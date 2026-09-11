@@ -2,6 +2,38 @@
 <html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" type="image/png" href="icon.png">
+<!-- ── THE LINK CARD FOR THE PAGE PEOPLE ACTUALLY PASTE ──
+     /play/?join=CODE exists to be dropped into a Discord message. Until these
+     tags it arrived as bare text: no picture, no title, nothing saying it was
+     a game at all. This is the page whose card matters most, and the only one
+     that can go stale on its own -- these tags reach the site through a web
+     RELINK, not through tools/deploy-web.sh, so a shell edit deployed without
+     rebuilding leaves the card behind. deploy-web.sh checks /play/ for og:image
+     for exactly that reason.
+
+     og:image MUST be absolute: a scraper fetches it out of context, and a
+     relative path resolves against nothing and fails silently -- the card
+     still draws, just blank, which reads as a design choice rather than a bug.
+
+     theme-color is not decoration -- Discord paints the embed's left stripe
+     with it. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenDoctrines">
+<meta property="og:locale" content="en">
+<meta property="og:title" content="Play OpenDoctrines — free grand strategy, straight in the browser">
+<meta property="og:description" content="No download, no install. Take a country through industry, war, research and politics across 1641 provinces. Free and open source.">
+<meta property="og:url" content="https://opendoctrines.pages.dev/play/">
+<meta property="og:image" content="https://opendoctrines.pages.dev/card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Play OpenDoctrines — free grand strategy, straight in the browser">
+<meta name="twitter:description" content="No download, no install. Take a country through industry, war, research and politics across 1641 provinces. Free and open source.">
+<meta name="twitter:image" content="https://opendoctrines.pages.dev/card.png">
+<meta name="twitter:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="theme-color" content="#C9A227">
 <style>
   body{margin:0;background:#050813;overflow:hidden}
   /* touch-action:none stops the browser claiming drags for scroll and pinch

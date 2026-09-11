@@ -6,6 +6,34 @@
 <title>OpenDoctrines — a free grand strategy game in your browser</title>
 <meta name="description" content="A free, open-source grand strategy game. Run a country's industry, armies, research and politics across 1641 provinces and six historical scenarios. Plays in a browser with no download and no account.">
 <link rel="icon" href="/favicon.png">
+<!-- ── THE LINK CARD. ABSOLUTE URLS, OR THERE IS NO CARD. ──
+     Every share of this page -- Discord, Bluesky, Slack, iMessage, a forum --
+     renders from these tags. Without them a link is bare text, which is what
+     the join links in `?join=` chat messages used to be.
+
+     og:image MUST be absolute. Scrapers fetch it out of context and a relative
+     path resolves against nothing, which fails silently: the card still draws,
+     just with no picture, so it looks like a design choice rather than a bug.
+
+     theme-color is not decoration either -- Discord paints the embed's left
+     stripe with it. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenDoctrines">
+<meta property="og:locale" content="en">
+<meta property="og:title" content="OpenDoctrines — a free grand strategy game in your browser">
+<meta property="og:description" content="Run a country's industry, armies, research and politics across 1641 provinces and six historical scenarios. Free, open source, and it plays in a browser with no download and no account.">
+<meta property="og:url" content="https://opendoctrines.pages.dev/">
+<meta property="og:image" content="https://opendoctrines.pages.dev/card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpenDoctrines — a free grand strategy game in your browser">
+<meta name="twitter:description" content="Run a country's industry, armies, research and politics across 1641 provinces and six historical scenarios. Free, open source, and it plays in a browser with no download and no account.">
+<meta name="twitter:image" content="https://opendoctrines.pages.dev/card.png">
+<meta name="twitter:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="theme-color" content="#C9A227">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Source+Sans+3:wght@400;600&family=Spectral:wght@600&display=swap">
 <link rel="stylesheet" href="/site.css">

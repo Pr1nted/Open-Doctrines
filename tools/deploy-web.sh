@@ -72,6 +72,21 @@ test ! -e "$out/play/analytics.js" || {
 mkdir -p "$out/img"
 cp docs/img/timelapse-political.gif "$out/img/timelapse.gif"
 
+# ── THE LINK CARD, SERVED FROM THE ROOT FOR EVERY PAGE ──
+#
+# One image for the whole site: the og:image tags in every page point at this
+# absolute URL, including /play/, so a join link pasted into a chat draws the
+# same card as the front page. Copied from docs/itch/ rather than kept a second
+# time under packaging/ -- it is 590 KB and one copy is enough.
+#
+# Fail loudly. A missing card is invisible in testing (the card still renders,
+# just blank) and would only show up as links that quietly look broken.
+[ -f docs/itch/banner-github-social.png ] || {
+    echo "the link card is missing: docs/itch/banner-github-social.png" >&2
+    exit 1
+}
+cp docs/itch/banner-github-social.png "$out/card.png"
+
 # ── THE STREAMED HALF OF THE GAME, WHICH THIS SCRIPT USED TO LEAVE BEHIND ──
 #
 # Not everything is inside OpenDoctrines.data. The maps, the music, the AI
@@ -150,8 +165,22 @@ fail=0
 #
 # Prints nothing until it has an answer, and gives up after ~20s so a genuinely
 # broken deploy still fails rather than hanging.
-probe() {                       # probe <url> <grep-args...> -> 0 if matched
+# ── THE WINDOW IS PER-CALL, BECAUSE 400 BYTES SILENTLY FAILED A GOOD DEPLOY ──
+#
+# This read a fixed first 400 bytes. The Activity-redirect check looks for
+# `frame_id`, which lives at byte 1249 of a correct index.html -- so that check
+# reported the redirect missing against a site that was serving it perfectly,
+# and the whole deploy exited 1 on a deploy with nothing wrong with it.
+#
+# Kept small by DEFAULT rather than made large for everyone: the map probe
+# asserts a zip's leading PK, and every local file header inside a zip is also
+# PK, so widening that one would turn "starts with a zip" into "contains the
+# letters PK somewhere", which a truncated file would still pass. Callers that
+# need to see further into a page ask for it.
+probe() {                       # probe <url> [--bytes N] <grep-args...>
     local url="$1"; shift
+    local window=400
+    if [ "${1:-}" = "--bytes" ]; then window="$2"; shift 2; fi
     local tmp i
     tmp=$(mktemp)
     for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -167,7 +196,7 @@ probe() {                       # probe <url> <grep-args...> -> 0 if matched
         if curl -fsS -o "$tmp" "$url" 2>/dev/null; then
             # -a because a map is binary, and BSD grep silently reports "no
             # match" on binary input rather than an error.
-            if head -c 400 "$tmp" | grep -qai "$@"; then rm -f "$tmp"; return 0; fi
+            if head -c "$window" "$tmp" | grep -qai "$@"; then rm -f "$tmp"; return 0; fi
         fi
         sleep 2
     done
@@ -183,7 +212,7 @@ probe() {                       # probe <url> <grep-args...> -> 0 if matched
 # by name: a staging mistake that swapped them would leave the game reachable
 # and the landing page a 404, or worse, the Activity redirect missing from a
 # root that looks fine in a browser.
-if probe "$site/" 'OpenDoctrines' && probe "$site/" 'frame_id'; then
+if probe "$site/" 'OpenDoctrines' && probe "$site/" --bytes 8192 'frame_id'; then
     echo "  ok    the root serves the site, with the Activity redirect in it"
 else
     echo "  FAIL  the root is not the landing page, or the Activity redirect is missing" >&2
@@ -195,6 +224,32 @@ if probe "$site/play/" 'OpenDoctrines'; then
     echo "  ok    /play/ serves the game"
 else
     echo "  FAIL  /play/ is not serving the game shell" >&2; fail=1
+fi
+
+# ── THE LINK CARD, CHECKED WHERE IT IS EASIEST TO LOSE ──
+#
+# /play/ is the one that matters and the one that breaks. Its tags live in
+# shell.html, which reaches the site only through a web RELINK -- so editing the
+# shell and redeploying without rebuilding leaves the site fine, the game fine,
+# and every join link pasted into a chat still bare text. Nothing else in this
+# script would notice.
+for page in "" "play/" "classroom"; do
+    if probe "$site/$page" --bytes 8192 'og:image'; then
+        echo "  ok    /$page has a link card"
+    else
+        echo "  FAIL  /$page has no og:image -- links to it render as bare text" >&2
+        [ -n "$page" ] || echo "        (if only /play/ fails: the web build is stale, relink it)" >&2
+        fail=1
+    fi
+done
+
+# The card itself, asserted to BE a PNG rather than merely to exist: Pages
+# answers 200 with index.html for anything missing, so "it downloads" proves
+# nothing at all here.
+if probe "$site/card.png" -e 'PNG'; then
+    echo "  ok    the link card image is served as a PNG"
+else
+    echo "  FAIL  /card.png is not a PNG -- every card will draw blank" >&2; fail=1
 fi
 
 if probe "$site/classroom" '<!doctype html'; then
