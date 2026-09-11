@@ -433,6 +433,27 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
             }
             return 400;
         }();
+        // ── A PINNED ANCHOR TARGET ──
+        //
+        // The anchor (OD_ANCHOR_K) pulls toward m_leagueTrunk/m_leaguePolicy.
+        // Those are normally filled by loadLeagueOpponent() from the ODLG
+        // checkpoints training writes as it goes -- so the anchor chases a
+        // drifting copy of the current policy, which is why journal 274
+        // measured it destroying the model at every weight tried.
+        //
+        // loadOpponentModel() fills the SAME nets from an ordinary model file,
+        // and AISystem.cpp already calls it whenever s_opponentModelPath is
+        // set. That assignment lives only in runAIEvaluation, so --vs-model
+        // reaches a measurement and never reaches training. This hands the
+        // same mechanism to --train-ai: OD_ANCHOR_MODEL=<path> anchors to that
+        // file instead of to a moving checkpoint.
+        if (const char* am = std::getenv("OD_ANCHOR_MODEL")) {
+            if (am[0]) {
+                AISystem::s_opponentModelPath = am;
+                printf("[TRAIN] anchor target pinned to %s\n", am);
+            }
+        }
+
         // ── LET TRAINING MEET THE OPPONENT IT IS SCORED AGAINST ──
         //
         // Training is pure self-play: setRandomCountries() is called from
