@@ -397,5 +397,37 @@ bool TurnStoreClient::publishOrders(uint32_t turnNumber, const std::string& psid
 
 bool TurnStoreClient::fetchOrders(const TurnStoreRef& ref, std::vector<uint8_t>& out,
                                   std::string& error) {
-    return fetchTurn(ref, out, error);   // same shape; the difference is the URL
+    // THE SAME SHAPE AS fetchTurn, AND NOT THE SAME REQUEST.
+    //
+    // A published turn is public on purpose, so it is fetched anonymously. A
+    // set of orders is not: the store now asks who is reading, and answers only
+    // the player whose orders they are and the host who has to open them. Sent
+    // without this the host's own turn resolution reads 401 and every player
+    // looks as though they submitted nothing.
+    //
+    // Why it changed: every player is handed the SAME session seal key, and the
+    // URL is derived from the join code, the turn and a published psid -- so
+    // while reads were unauthenticated, a rival could fetch and open anybody's
+    // orders before a simultaneous turn resolved. See LobbyDO.handleOrders.
+    if (m_config.kind == TurnStoreKind::Manual) {
+        error = "this game has no automatic turn transport";
+        return false;
+    }
+    if (ref.url.empty()) { error = "no orders to fetch"; return false; }
+
+    HttpRequest req;
+    req.url = ref.url;
+    req.bearer = m_config.token;
+    req.allowInsecure = ref.url.rfind("http://localhost", 0) == 0;
+    const HttpResponse res = httpRequest(req);
+    if (!res.ok()) {
+        error = res.error.empty() ? "Could not read those orders." : res.error;
+        return false;
+    }
+    if (!unwrapBlob(res.body, out)) {
+        error = "Those orders were not readable.";
+        return false;
+    }
+    error.clear();
+    return true;
 }

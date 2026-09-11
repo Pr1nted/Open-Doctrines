@@ -254,6 +254,8 @@ export class LobbyDO extends DurableObject<Env> {
             CREATE TABLE IF NOT EXISTS ban   (psid TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS blob  (k TEXT PRIMARY KEY, body TEXT NOT NULL,
                                               at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS peek  (at INTEGER NOT NULL, turn INTEGER NOT NULL,
+                                              who TEXT NOT NULL, target TEXT NOT NULL);
         `);
     }
 
@@ -283,6 +285,7 @@ export class LobbyDO extends DurableObject<Env> {
             case "/ws": return this.handleUpgrade(request);
             case "/turn": return this.handleTurn(request, url);
             case "/orders": return this.handleOrders(request, url);
+            case "/peeks": return this.handlePeeks(request);
             default: return new Response("not found", { status: 404 });
         }
     }
@@ -613,6 +616,27 @@ export class LobbyDO extends DurableObject<Env> {
      * public bucket cannot give: on jsonblob anyone holding a URL can overwrite
      * it, and the design accepts that because the seal turns tampering into a
      * lost turn rather than a forged one. Here we can simply refuse, so we do.
+     *
+     * READS ARE AUTHORISED TOO, AND THIS IS WHY.
+     *
+     * They were not, on the reasoning that "a reader without the key holds
+     * ciphertext" -- true of an outsider, and false of the people who matter.
+     * The seal key is ONE key per session handed to every player (Host.cpp
+     * sends the same `config.sealKey` to each peer), the orders URL is derived
+     * from the join code, the turn and a psid that is published in the roster,
+     * and turnOpen() binds the psid as associated data rather than as a secret.
+     * So a rival who had joined the game held every input to
+     *
+     *     GET /session/<code>/orders/<turn>/<their psid>
+     *
+     * and could open the result -- reading everybody's orders before a
+     * simultaneous turn resolved, with an unmodified client, from curl. That is
+     * the whole ballgame in a game of simultaneous turns, and TurnSeal.h
+     * promised in as many words that it could not happen.
+     *
+     * A player may read their own (resuming a session re-reads what it sent);
+     * the host may read anyone's, because opening them is how a turn resolves.
+     * Nobody else, ever.
      */
     private async handleOrders(request: Request, url: URL): Promise<Response> {
         if (!this.get("descriptor")) return this.noSession();
@@ -621,7 +645,30 @@ export class LobbyDO extends DurableObject<Env> {
         if (turn === null || !psid) return blobFail(400, "bad_request");
         const key = `orders:${turn}:${psid}`;
 
-        if (request.method === "GET") return this.blobRead(key, false);
+        if (request.method === "GET") {
+            const reader = await this.callerPsid(request);
+            if (!reader) return blobFail(401, "unauthorized");
+            if (reader !== psid && reader !== this.get("hostPsid")) {
+                // A REQUEST NOBODY'S CLIENT MAKES.
+                //
+                // Not a heuristic and not a threshold: no code path in the game
+                // asks for another player's orders, so an authenticated attempt
+                // at one is intent, not noise. It is recorded rather than only
+                // refused -- the refusal alone would teach whoever tried that
+                // the door is shut and tell the host nothing.
+                //
+                // Recorded HERE, on the host's own service, which is the part
+                // that matters: the reading is done by curl against a URL, so
+                // there is nothing on the cheat's machine to detect and nothing
+                // for them to switch off. See handlePeeks.
+                this.sql.exec(
+                    "INSERT INTO peek (at, turn, who, target) VALUES (?, ?, ?, ?)",
+                    Date.now(), turn, reader, psid,
+                );
+                return blobFail(403, "not_your_orders");
+            }
+            return this.blobRead(key, false);
+        }
         if (request.method !== "PUT") return blobFail(405, "bad_method");
 
         const caller = await this.callerPsid(request);
@@ -635,6 +682,35 @@ export class LobbyDO extends DurableObject<Env> {
         // resolves is ordinary play, and the check above means only the player
         // whose orders these are can do it.
         return this.blobWrite(key, body);
+    }
+
+    /**
+     * What the host is owed: who tried to read somebody else's orders.
+     *
+     * THE HOST AND NOBODY ELSE. A list of who has been caught reaching for
+     * other people's orders is itself sensitive -- handing it to the table
+     * would tell an accused player exactly which attempt registered, which is
+     * the one fact that turns a refusal into a tuning signal.
+     *
+     * The accused is not told, by design and by precedent: NetPlayerReport
+     * already works that way ("the accused is not told", Session.h). This is
+     * the same rule applied to something the server saw for itself rather than
+     * something a player alleged.
+     */
+    private async handlePeeks(request: Request): Promise<Response> {
+        if (!this.get("descriptor")) return this.noSession();
+        if (request.method !== "GET") return blobFail(405, "bad_method");
+        const caller = await this.callerPsid(request);
+        if (!caller) return blobFail(401, "unauthorized");
+        if (caller !== this.get("hostPsid")) return blobFail(403, "not_the_host");
+
+        const rows = [...this.sql.exec<{ at: number; turn: number; who: string; target: string }>(
+            "SELECT at, turn, who, target FROM peek ORDER BY at",
+        )];
+        return new Response(JSON.stringify({ peeks: rows }), {
+            headers: { "content-type": "application/json; charset=utf-8",
+                       "cache-control": "no-store" },
+        });
     }
 
     private blobRead(key: string, immutable: boolean): Response {

@@ -278,18 +278,23 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // Turn storage for TurnStoreKind::DurableObject (src/net/TurnStore.cpp).
     // The URL shapes are the game's, not ours to choose.
     //
-    // READS ARE UNAUTHENTICATED, and that is the design rather than an
-    // oversight. A published turn is public so that people can spectate a
-    // tournament without joining it. Orders are sealed before they leave the
-    // player's machine (src/net/TurnSeal.h), so a reader without the key holds
-    // ciphertext -- confidentiality never comes from the store. What the store
-    // must enforce is WRITES, and LobbyDO does.
+    // A PUBLISHED TURN is public, and unauthenticated reads of it are the
+    // design rather than an oversight: that is what lets people spectate a
+    // tournament without joining it, and it is immutable once written.
     //
-    // One honest difference from the jsonblob backend: there a blob sits at an
-    // unguessable URL, whereas these are derivable from the join code. Nobody
-    // gains readable orders by that, but an observer holding the code can tell
-    // WHETHER a given player has submitted for a turn. In a game where the host
-    // announces who is still to move, that is not a secret.
+    // ORDERS ARE NOT, AND USED TO BE. The reasoning was that orders are sealed
+    // before they leave the player's machine (src/net/TurnSeal.h), so a reader
+    // without the key holds ciphertext. True of an outsider; false of a rival,
+    // who holds the same per-SESSION key every player is handed, and who can
+    // derive the URL from the join code, the turn and a psid the roster
+    // publishes. Reads of orders are authorised in LobbyDO now, and an
+    // authenticated attempt at somebody else's is recorded for the host.
+    //
+    // One honest difference from the jsonblob backend remains: there a blob
+    // sits at an unguessable URL, whereas these are derivable from the join
+    // code, so an observer holding the code can tell WHETHER a given player has
+    // submitted for a turn. In a game where the host announces who is still to
+    // move, that is not a secret.
     const turnMatch = /^\/session\/([^/]+)\/turn\/(\d{1,9})$/.exec(path);
     if (turnMatch && isSessionCode(turnMatch[1]!)) {
         const stub = env.LOBBY.get(env.LOBBY.idFromName(turnMatch[1]!));
@@ -301,6 +306,14 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // The psid is 22 base64url characters (see psidFor), so it never contains a
     // separator -- but it is matched rather than trusted, because it arrives in
     // a path and is about to become part of a storage key.
+    // Who has been reaching for other people's orders. The host asks; LobbyDO
+    // refuses everybody else. See handlePeeks.
+    const peeksMatch = /^\/session\/([^/]+)\/peeks$/.exec(path);
+    if (peeksMatch && isSessionCode(peeksMatch[1]!)) {
+        const stub = env.LOBBY.get(env.LOBBY.idFromName(peeksMatch[1]!));
+        return withCors(await stub.fetch(new Request("https://lobby/peeks", request)));
+    }
+
     const ordersMatch =
         /^\/session\/([^/]+)\/orders\/(\d{1,9})\/([A-Za-z0-9_-]{1,64})$/.exec(path);
     if (ordersMatch && isSessionCode(ordersMatch[1]!)) {

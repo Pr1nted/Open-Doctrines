@@ -1,16 +1,19 @@
 // Long-form turn storage: who may write what, and what anyone may read.
 //
 // This is the server half of TurnStoreKind::DurableObject (src/net/TurnStore.h).
-// The URL shapes, the wire format and the absence of a bearer on reads all come
-// from the game's own client in src/net/TurnStore.cpp -- they are a contract
-// being met, not a design being chosen here, so the tests are written against
-// what that client actually sends.
+// The URL shapes and the wire format come from the game's own client in
+// src/net/TurnStore.cpp -- they are a contract being met, not a design being
+// chosen here, so the tests are written against what that client actually
+// sends.
 //
 // The asymmetry under test:
 //
-//   turn bundles   host writes once, and never again. Anyone reads.
-//   orders         one player writes their own, as often as they like. Nobody
-//                  else writes them.
+//   turn bundles   host writes once, and never again. Anyone reads, with no
+//                  credential: a spectator following a tournament has none.
+//   orders         one player writes their own, and reads their own. The host
+//                  reads anyone's, because opening them resolves the turn.
+//                  Nobody else does either -- and an authenticated attempt at
+//                  somebody else's is recorded for the host to see.
 
 import { env as testEnv, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -67,9 +70,14 @@ function put(url: string, token: string | null, body: string): Promise<Response>
     });
 }
 
-/** A read, deliberately with no credential -- the game sends none. */
+/** A read with no credential. Right for a turn bundle; refused for orders. */
 function read(url: string): Promise<Response> {
     return SELF.fetch(`${ORIGIN}${url}`);
+}
+
+/** A read that says who is asking, which is what fetchOrders now sends. */
+function readAs(url: string, token: string): Promise<Response> {
+    return SELF.fetch(`${ORIGIN}${url}`, { headers: { authorization: `Bearer ${token}` } });
 }
 
 beforeEach(async () => {
@@ -164,7 +172,7 @@ describe("submitting orders", () => {
         expect((await put(`/session/CCCC-DDDD/orders/1/${psid}`, token, wrapBlob(1, "c2Vjb25k"))).status)
             .toBe(200);
 
-        const got = await read(`/session/CCCC-DDDD/orders/1/${psid}`);
+        const got = await readAs(`/session/CCCC-DDDD/orders/1/${psid}`, token);
         expect(await got.json()).toMatchObject({ data: "c2Vjb25k" });
     });
 
@@ -185,7 +193,8 @@ describe("submitting orders", () => {
             wrapBlob(1, "Zm9yZ2Vk"),
         );
         expect(response.status).toBe(403);
-        expect((await read(`/session/CCCC-DDDE/orders/1/${alicePsid}`)).status).toBe(404);
+        expect((await readAs(`/session/CCCC-DDDE/orders/1/${alicePsid}`,
+                             await issueSessionToken(env, alice.id))).status).toBe(404);
     });
 
     it("is refused to the host, who is not the player either", async () => {
@@ -200,6 +209,109 @@ describe("submitting orders", () => {
             wrapBlob(1, "aG9zdA"),
         );
         expect(response.status).toBe(403);
+    });
+});
+
+// READING somebody else's orders, which is the attack the seal was believed to
+// cover and did not.
+//
+// One seal key is generated per SESSION and handed to every player (Host.cpp
+// sends the same config.sealKey to each peer); the URL is built from the join
+// code, the turn and a psid the roster publishes; and turnOpen() binds the psid
+// as associated data rather than treating it as a secret. So while reads were
+// unauthenticated, every input to "fetch and open a rival's orders before the
+// turn resolves" was in the hands of anybody who had joined the game -- with a
+// stock client, over plain HTTP GET.
+describe("reading orders", () => {
+    it("is refused without a credential, where a turn bundle is not", async () => {
+        const host = await anAccount("Hosty", "host-sub");
+        await openSession("KKKK-MMMM", host);
+        const alice = await anAccount("Alice", "alice-sub");
+        const alicePsid = await psidFor(env, alice.id, SERVER);
+        await put(`/session/KKKK-MMMM/orders/1/${alicePsid}`,
+                  await issueSessionToken(env, alice.id), wrapBlob(1, "b3JkZXJz"));
+
+        expect((await read(`/session/KKKK-MMMM/orders/1/${alicePsid}`)).status).toBe(401);
+    });
+
+    it("is refused to a rival holding a valid credential of their own", async () => {
+        const host = await anAccount("Hosty", "host-sub");
+        await openSession("KKKK-MMMN", host);
+        const alice = await anAccount("Alice", "alice-sub");
+        const bob = await anAccount("Bob", "bob-sub");
+        const alicePsid = await psidFor(env, alice.id, SERVER);
+        await put(`/session/KKKK-MMMN/orders/1/${alicePsid}`,
+                  await issueSessionToken(env, alice.id), wrapBlob(1, "c2VjcmV0"));
+
+        // Bob is a legitimate player in this very session. That is the point:
+        // he holds the session's seal key, so ciphertext would have been
+        // plaintext to him.
+        const peek = await readAs(`/session/KKKK-MMMN/orders/1/${alicePsid}`,
+                                  await issueSessionToken(env, bob.id));
+        expect(peek.status).toBe(403);
+        expect(await peek.text()).not.toContain("c2VjcmV0");
+    });
+
+    it("is allowed to the player themselves and to the host who must open it", async () => {
+        const host = await anAccount("Hosty", "host-sub");
+        await openSession("KKKK-MMMP", host);
+        const alice = await anAccount("Alice", "alice-sub");
+        const alicePsid = await psidFor(env, alice.id, SERVER);
+        await put(`/session/KKKK-MMMP/orders/1/${alicePsid}`,
+                  await issueSessionToken(env, alice.id), wrapBlob(1, "bWluZQ"));
+
+        expect((await readAs(`/session/KKKK-MMMP/orders/1/${alicePsid}`,
+                             await issueSessionToken(env, alice.id))).status).toBe(200);
+        // The host opens every player's orders to resolve the turn; refusing
+        // this would substitute the AI for everybody, every turn.
+        expect((await readAs(`/session/KKKK-MMMP/orders/1/${alicePsid}`,
+                             await issueSessionToken(env, host.id))).status).toBe(200);
+    });
+
+    it("tells the host who tried, and tells nobody else", async () => {
+        const host = await anAccount("Hosty", "host-sub");
+        await openSession("KKKK-MMMQ", host);
+        const alice = await anAccount("Alice", "alice-sub");
+        const bob = await anAccount("Bob", "bob-sub");
+        const alicePsid = await psidFor(env, alice.id, SERVER);
+        const bobPsid = await psidFor(env, bob.id, SERVER);
+        await put(`/session/KKKK-MMMQ/orders/3/${alicePsid}`,
+                  await issueSessionToken(env, alice.id), wrapBlob(3, "b3Vycw"));
+
+        await readAs(`/session/KKKK-MMMQ/orders/3/${alicePsid}`,
+                     await issueSessionToken(env, bob.id));
+
+        const seen = await readAs("/session/KKKK-MMMQ/peeks",
+                                  await issueSessionToken(env, host.id));
+        expect(seen.status).toBe(200);
+        expect(await seen.json()).toMatchObject({
+            peeks: [{ turn: 3, who: bobPsid, target: alicePsid }],
+        });
+
+        // The accused does not get to find out that it registered -- that is
+        // the one fact that would turn a refusal into a tuning signal. Same
+        // rule NetPlayerReport already follows.
+        expect((await readAs("/session/KKKK-MMMQ/peeks",
+                             await issueSessionToken(env, bob.id))).status).toBe(403);
+        expect((await read("/session/KKKK-MMMQ/peeks")).status).toBe(401);
+    });
+
+    it("records nothing when a player reads their own", async () => {
+        const host = await anAccount("Hosty", "host-sub");
+        await openSession("KKKK-MMMR", host);
+        const alice = await anAccount("Alice", "alice-sub");
+        const alicePsid = await psidFor(env, alice.id, SERVER);
+        await put(`/session/KKKK-MMMR/orders/1/${alicePsid}`,
+                  await issueSessionToken(env, alice.id), wrapBlob(1, "bWluZQ"));
+
+        await readAs(`/session/KKKK-MMMR/orders/1/${alicePsid}`,
+                     await issueSessionToken(env, alice.id));
+        await readAs(`/session/KKKK-MMMR/orders/1/${alicePsid}`,
+                     await issueSessionToken(env, host.id));
+
+        const seen = await readAs("/session/KKKK-MMMR/peeks",
+                                  await issueSessionToken(env, host.id));
+        expect(await seen.json()).toEqual({ peeks: [] });
     });
 });
 
@@ -306,7 +418,8 @@ describe("the routes themselves", () => {
         // DO request each time. Orders can still be revised.
         expect((await read("/session/GGGG-HHHJ/turn/1")).headers.get("cache-control"))
             .toContain("immutable");
-        expect((await read(`/session/GGGG-HHHJ/orders/1/${alicePsid}`)).headers.get("cache-control"))
+        expect((await readAs(`/session/GGGG-HHHJ/orders/1/${alicePsid}`,
+                             await issueSessionToken(env, alice.id))).headers.get("cache-control"))
             .toBe("no-store");
     });
 });
