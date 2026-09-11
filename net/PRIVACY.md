@@ -438,6 +438,37 @@ collects, and how to change your mind, is set out at
 
 ---
 
+## How long any of it is kept
+
+Read out of the code rather than chosen for this page, so the table and the
+service agree. Everything with a period below is expired by the store itself at
+that age — nobody has to remember to run anything.
+
+| What | Kept for |
+|---|---|
+| Your account: id, nickname, the provider ids you linked | **Until you delete it.** No expiry — it is the thing you signed up for |
+| The nickname index that makes a name unique | Until you delete the account |
+| A deleted account's nickname, held unclaimable | 30 days, then anyone may take it |
+| A **banned** identity's hash, if that account deletes itself | 1 year. Only the hash, and only so deleting is not a way to start over |
+| A sign-in result waiting for the game to collect it | 5 minutes |
+| Reports made through the moderation tools | 90 days |
+| Bug reports and suggestions: the issue thread they became | 180 days |
+| Duplicate-report suppression, and the daily send counters | 6 hours and 2 days |
+| Anonymous usage and lobby rows, if you turned reporting on | 90 days |
+
+**Deleting your account is immediate and it is real.** It removes the account
+record, the nickname index, and the link to every provider you signed in with,
+so nothing in the store points at you afterwards. Two things deliberately
+survive it, and both are named above: the nickname is held for 30 days so
+somebody cannot impersonate you the moment you leave, and a banned account
+leaves a one-year hash so deletion is not a reset button.
+
+We keep nothing for a "legitimate interest" beyond those. There is no archive,
+no backup tier that outlives the table above, and no analytics on any page the
+game itself serves.
+
+---
+
 ## Children
 
 This service is not for children under 13, or under the minimum age of digital
