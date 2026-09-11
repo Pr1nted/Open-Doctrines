@@ -32,10 +32,22 @@ It would also list more platforms than any entry there.
 Free, self-serve, no editorial queue. The listing is invisible until approved
 and editable by anyone afterwards.
 
-1. Create an account. **Use an address on a domain you control** if you have
-   one — it is what lets you later claim maker rights over the listing.
-2. User icon, top right → **Suggest new application**.
-3. Fill the fields below and submit.
+1. Create an account at <https://alternativeto.net>. **Use an address on a
+   domain you control** if you have one.
+2. **Verify the email before anything else.** Submission is blocked until you
+   do, and the form gives no useful hint about why.
+3. User icon, top right → **Suggest new application**. Fill the fields below.
+
+There is no direct deep link to the form here on purpose: AlternativeTo answers
+automated requests with 403, so any URL in this file would be a guess, and a
+guess that 404s wastes more time than a menu path costs.
+
+**Then do the second step, which is the one that matters.** Creating the listing
+gets a page nobody visits. Being ATTACHED to the pages people already land on is
+the whole point:
+
+> On each target page below: **Contribute to this page** → **Suggest
+> Alternatives** → search for OpenDoctrines and add it.
 
 Submitting your own project is allowed and normal; AlternativeTo has a "claim
 your listing" flow for makers. What the community does punish is astroturfing —
