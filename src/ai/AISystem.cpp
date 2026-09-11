@@ -11570,6 +11570,48 @@ void AISystem::runLearningWork() {
                 }
             }
 
+            // ── THE ANCHOR: a pull toward the frozen parent ──
+            //
+            // Same scratch, same flush, same learning rate as the policy
+            // gradient beside it. forwardInto() rather than forward(), because
+            // this runs on several workers and forward() mutates m_acts.
+            // Off unless OD_ANCHOR_K is set; see AISystem::anchorK().
+            if (anchorK() > 0.0f) {
+                s_anchorWhy[0].fetch_add(1, std::memory_order_relaxed);
+                if (m_leagueLoaded) s_anchorWhy[1].fetch_add(1, std::memory_order_relaxed);
+                if (m_leaguePolicy[m].valid()) s_anchorWhy[2].fetch_add(1, std::memory_order_relaxed);
+                if (w.features.empty()) s_anchorWhy[3].fetch_add(1, std::memory_order_relaxed);
+            }
+            if (anchorK() > 0.0f && ws.anchorReady && m_leaguePolicy[m].valid()) {
+                const std::vector<float>& emb =
+                    m_leagueTrunk.forwardInto(ws.anchorTrunk, w.features);
+                if (!emb.empty()) {
+                    const std::vector<float>& pl =
+                        m_leaguePolicy[m].forwardInto(ws.anchorPolicy[m], emb);
+                    if (!pl.empty()) {
+                        // Softmax over the SAME legal set the learner saw, so
+                        // the target cannot put mass on an action the mask
+                        // forbids this turn.
+                        std::vector<float> tgt(pl.size(), 0.0f);
+                        float mx = -1e30f;
+                        for (size_t a = 0; a < pl.size(); ++a)
+                            if (!mask || (a < mask->size() && (*mask)[a]))
+                                mx = std::max(mx, pl[a]);
+                        float sum = 0.0f;
+                        for (size_t a = 0; a < pl.size(); ++a)
+                            if (!mask || (a < mask->size() && (*mask)[a])) {
+                                tgt[a] = std::exp(pl[a] - mx); sum += tgt[a];
+                            }
+                        if (sum > 0.0f) {
+                            for (float& v : tgt) v /= sum;
+                            m_policy[m].accumulateCrossEntropyTargetInto(
+                                ws.policy[m], tgt, anchorK(), mask);
+                            s_anchorFired.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                }
+            }
+
             // ── THE CLONE, as one gradient in this batch ──
             //
             // Same scratch, same flush, same learning rate as the policy
@@ -11591,6 +11633,15 @@ void AISystem::runLearningWork() {
     if ((int)m_scratch.size() < threads) m_scratch.resize(threads);
     for (int t = 0; t < threads; ++t) {
         WorkerScratch& ws = m_scratch[t];
+        // The anchor's scratches, sized when the frozen net actually exists.
+        if (anchorK() > 0.0f && m_leagueLoaded && !ws.anchorReady &&
+            m_leagueTrunk.valid()) {
+            m_leagueTrunk.initScratch(ws.anchorTrunk);
+            for (int m = 0; m < MOD_COUNT; ++m)
+                if (m_leaguePolicy[m].valid())
+                    m_leaguePolicy[m].initScratch(ws.anchorPolicy[m]);
+            ws.anchorReady = true;
+        }
         if (!ws.ready) {
             for (int m = 0; m < MOD_COUNT; ++m) {
                 m_policy[m].initScratch(ws.policy[m]);
@@ -12997,6 +13048,8 @@ long long AISystem::s_austBranch[6] = {0,0,0,0,0,0};
 // lever in the game. Never measured; this measures it.
 double AISystem::s_expense[8] = {0,0,0,0,0,0,0,0};
 long long AISystem::s_expenseN = 0;
+std::atomic<long long> AISystem::s_anchorFired{0};
+std::atomic<long long> AISystem::s_anchorWhy[4];
 
 
 
@@ -13070,6 +13123,10 @@ void AISystem::dumpActionHistogram() {
                     g_pacApplied > 0 ? 100.0 * (g_pacApplied - g_pacNeeded) / g_pacApplied : 0.0,
                     g_pacN);
     }
+    fprintf(stderr, "[ACTHIST] anchor gate: reached %lld  leagueLoaded %lld  policyValid %lld  emptyFeat %lld\n",
+            s_anchorWhy[0].load(), s_anchorWhy[1].load(), s_anchorWhy[2].load(), s_anchorWhy[3].load());
+    fprintf(stderr, "[ACTHIST] anchor pulls: %lld\n",
+            s_anchorFired.load(std::memory_order_relaxed));
     fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
             s_austBranch[0], s_austBranch[1], s_austBranch[2],

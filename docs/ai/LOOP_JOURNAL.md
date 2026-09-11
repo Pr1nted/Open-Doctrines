@@ -15639,3 +15639,59 @@ Note the league machinery already loads a FROZEN PAST POLICY for some countries
 (m_leagueThisCountry, "acts with a frozen past policy and teaches nothing"), so
 the hard part of a KL anchor -- having the parent's network available at
 training time -- may already exist.
+
+## 262 — the anchor is built and too strong; and the same config twice differs by 57
+
+Built the missing anchor: a cross-entropy pull toward the frozen net's
+distribution, in the same batch and at the same learning rate as the policy
+gradient. Both halves already existed and had never been connected --
+m_leagueTrunk/m_leaguePolicy load and run a frozen policy, and
+accumulateCrossEntropyTargetInto trains toward a DISTRIBUTION rather than one
+action. OD_ANCHOR_K is the weight, 0 = off.
+
+A BUG WORTH RECORDING because the warning was already written down. The anchor
+fired ZERO times while every gate condition read as passing 97,936 times: I
+added WorkerScratch buffers and never sized them, so forwardInto() returned
+empty. The comment three lines above my insertion says "Forgetting this one is
+a forward pass into unallocated activations." I read it while writing. Found
+only by instrumenting each gate condition separately instead of assuming the
+block was unreached.
+
+RESULT AT K=0.5, sixteen maps:
+
+    arm                    FRA    USA    CHN   reliable
+    parent               27.57  21.77  18.13      433
+    K=0   (today)        21.17  27.77  17.83      437
+    K=0.5 anchor          3.43   2.33   0.43       37
+
+The anchor at 0.5 destroys the model. Too strong -- a cross-entropy term at
+that weight swamps the policy gradient, and it is chasing a league checkpoint
+that is itself drifting rather than a pinned parent.
+
+THE SERIOUS FINDING IS THE OTHER COLUMN. Sixteen maps, same seed, same flags,
+same parent, run twice:
+
+    earlier   FRA  9.43  USA 27.97  CHN 36.33   reliable 380
+    today     FRA 21.17  USA 27.77  CHN 17.83   reliable 437
+
+A 57-POINT SPREAD ON THE SAME CONFIGURATION. The only difference was
+OD_ANCHOR_K=0, which is inert by construction. So training is nondeterministic
+with a spread larger than most effects measured today.
+
+THAT PUTS MY OWN TRAINING CONCLUSIONS IN QUESTION. Every comparison in journals
+257-261 was a SINGLE RUN per arm:
+
+    scripted vs plain     387 vs 305   (+82)
+    the 8/16/24 curve     387, 380, 99
+    the ladder's 5 rungs  one run each
+
+If one configuration spans 380-437 by itself, an 82-point difference between
+two single runs is not established, and neither is the shape of that curve. The
+ladder's rejections are less affected -- five rungs all failed, and a 0.08x
+seat is outside any plausible run-to-run spread -- but the fine structure is
+not safe.
+
+Running the same config three times to measure the spread directly. This is
+the check I should have run before the first training comparison, and it is
+the same failure as the three-seed bench means earlier today: I measured a
+noisy quantity once and read the number.

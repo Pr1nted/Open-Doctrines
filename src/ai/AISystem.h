@@ -13,6 +13,7 @@ struct NavyShip;   // GameStructs.h; only referenced by pointer/reference here
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <atomic>
 #include <vector>
 
 class Game;
@@ -140,6 +141,8 @@ public:
     static long long s_austBranch[6];
     static double s_expense[8];      ///< army navy policy minority research pacification indUpkeep gross
     static long long s_expenseN;
+    static std::atomic<long long> s_anchorFired;
+    static std::atomic<long long> s_anchorWhy[4];
     static void dumpActionHistogram();
     void navalReflex(int cid);
     void industryReflex(int cid);
@@ -1659,6 +1662,30 @@ public:
      * the cheap-looking win is a real loss.
      */
     static constexpr float  AI_SOCIAL_BUDGET_SHARE     = 0.33f;
+    /**
+     * ── WHAT HOLDS THE POLICY NEAR A PARENT THAT ALREADY PLAYS WELL ──
+     *
+     * Training learns real improvements and pays for them out of a seat it
+     * already held: at 16 maps China DOUBLES the parent and the USA beats it by
+     * 28% while France falls to a third (journal 260). A bench-gated ladder
+     * rejected 5 of 5 steps because no step held all three seats (journal 261),
+     * so the gain and the loss are coupled and scheduling cannot separate them.
+     *
+     * This adds the missing term: a cross-entropy pull toward the FROZEN
+     * PARENT's distribution, alongside the policy gradient, in the same batch
+     * and at the same learning rate. It is the standard answer to catastrophic
+     * forgetting and the pieces already existed -- a frozen net that loads and
+     * runs (m_leagueTrunk), and a trainer that takes a target DISTRIBUTION
+     * rather than one action (accumulateCrossEntropyTargetInto).
+     *
+     * OD_ANCHOR_K is the weight; 0 (default) is off and the update is exactly
+     * what it was.
+     */
+    static float anchorK() {
+        static const float v = std::getenv("OD_ANCHOR_K")
+                             ? (float)atof(std::getenv("OD_ANCHOR_K")) : 0.0f;
+        return v;
+    }
     /**
      * ── THE ONE DIAL THAT IS A GAME-DESIGN CHOICE, NOT A BUG FIX ──
      *
@@ -4520,6 +4547,15 @@ private:
         /// The dynamics head, and a second trunk scratch for its target state.
         NeuralNet::Scratch dynamics;
         NeuralNet::Scratch trunkNext;
+        /// The FROZEN PARENT's activations, for the anchor term. Separate
+        /// scratches because NeuralNet::forward() mutates m_acts and the update
+        /// runs on several workers; forwardInto() is const and takes these.
+        NeuralNet::Scratch anchorTrunk;
+        NeuralNet::Scratch anchorPolicy[MOD_COUNT];
+        /// Separate from `ready`: the league nets load at the first turn of a
+        /// MAP, which is after the worker scratches are first prepared, so
+        /// these cannot be sized in the same pass.
+        bool anchorReady = false;
         NeuralNet::Scratch target;
         NeuralNet::Scratch attack;
         NeuralNet::Scratch diplo;
