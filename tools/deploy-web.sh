@@ -78,7 +78,7 @@ cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/press.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
-   packaging/web/site/sitemap.xml "$out/"
+   packaging/web/site/sitemap.xml packaging/web/site/llms.txt "$out/"
 
 # ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
 # policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
@@ -326,6 +326,15 @@ if probe "$site/press" '<!doctype html'; then
     echo "  ok    /press renders"
 else
     echo "  FAIL  /press is not being served" >&2; fail=1
+fi
+
+# llms.txt, asserted by its own first line rather than by "it downloads" --
+# Pages answers 200 with index.html for anything missing, so a typo in the
+# staging list above would otherwise read as a perfectly healthy text file.
+if probe "$site/llms.txt" '# OpenDoctrines'; then
+    echo "  ok    /llms.txt is served"
+else
+    echo "  FAIL  /llms.txt is missing or is the site's index page" >&2; fail=1
 fi
 if probe "$site/press/world-map.png" -e 'PNG'; then
     echo "  ok    the press screenshots are served as images"

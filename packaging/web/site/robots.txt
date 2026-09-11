@@ -7,4 +7,7 @@ User-agent: *
 Allow: /
 Disallow: /play/data/
 
+# A plain-language summary for the crawlers behind AI assistants, at
+# /llms.txt. Worth having: chatgpt.com referred more visits to the game
+# last month than Bing did.
 Sitemap: https://opendoctrines.pages.dev/sitemap.xml
