@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the web version and put it on Cloudflare Pages.
 #
-#   tools/deploy-web.sh [project-name]
+#   tools/deploy-web.sh [project-name] [branch]
 #
 # Authentication is wrangler's own: it opens a browser the first time and keeps
 # the token itself. Nothing here reads, prints or stores a credential -- which
@@ -16,6 +16,23 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 project="${1:-opendoctrines}"
+
+# ── NAME THE BRANCH, BECAUSE WRANGLER GUESSES IT FROM GIT ──
+#
+# Left to itself, `wrangler pages deploy` reads the current git branch and
+# deploys a PREVIEW for anything that is not the project's production branch.
+# Run from a detached worktree -- which is the right way to build a release,
+# since it cannot pick up whatever is half-finished in the working tree -- the
+# branch reads as "HEAD", and the deploy lands at head.opendoctrines.pages.dev
+# while production sits untouched. It reports complete success either way.
+#
+# That is exactly what happened on the first deploy of the press kit: every
+# file uploaded, every check failed, and the site was fine -- because the
+# checks were asking production about a build that had gone somewhere else.
+#
+# So it is stated rather than inferred. Pass a second argument to deploy a
+# preview on purpose.
+branch="${2:-main}"
 
 command -v emcmake >/dev/null || {
     echo "emcmake not found. Install and activate emsdk first." >&2; exit 1; }
@@ -187,8 +204,8 @@ echo "  discord-sdk.js: $(( $(wc -c < "$out/play/discord-sdk.js") / 1024 )) KB"
 raw=$(du -ck "$out"/play/OpenDoctrines.* | tail -1 | cut -f1)
 echo "  raw: $((raw / 1024)) MB (compressed on the wire; see the README note)"
 
-echo "== deploying =="
-npx wrangler pages deploy "$out" --project-name "$project"
+echo "== deploying to $project, branch $branch =="
+npx wrangler pages deploy "$out" --project-name "$project" --branch "$branch"
 
 # ── CHECK THE SITE, NOT THE UPLOAD ──
 #
