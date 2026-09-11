@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenDoctrines in the classroom — a note for teachers</title>
+<meta name="description" content="A briefing note for history and politics teachers: a free grand strategy game that installs nothing and needs no pupil account. What it teaches, how long it takes, and what to frame before a lesson.">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Source+Sans+3:wght@400;600&family=Spectral:wght@600&display=swap">
+<link rel="stylesheet" href="/site.css">
+<script src="/analytics.js" defer></script>
+<style>
+  /* A document surface inside the site's chrome. The rest of the site is a
+     lamplit map table; a briefing note a head of department will read wants to
+     look like a briefing note. */
+  .compass text.arm { font-family: "Source Sans 3", sans-serif; font-size: 13px; }
+  .compass line { stroke: var(--rule-firm); }
+  .compass .cap {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    letter-spacing: .14em; fill: var(--gold);
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="mark" href="/">Open<span>Doctrines</span></a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/classroom" aria-current="page">For teachers</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a class="play" href="/play/">Play now</a>
+    </nav>
+  </div>
+</header>
+
+<main class="narrow">
+  <section style="padding-top:52px">
+    <p class="label">Briefing note for teachers</p>
+    <h1>OpenDoctrines in the classroom</h1>
+    <p class="lede">
+      Pupils run a country — its budget, its industry, its politics and its
+      neighbours — and watch what their decisions cost.
+      <strong>It opens in a browser tab, installs nothing, and asks for no
+      account.</strong>
+    </p>
+
+    <dl class="facts">
+      <div><dt>Cost</dt><dd><strong>Free.</strong> No purchase, no licence, no subscription, nothing to buy inside it. The source is public.</dd></div>
+      <div><dt>Installation</dt><dd><strong>None.</strong> It runs in the browser you already have — nothing for IT to approve, package or deploy.</dd></div>
+      <div><dt>Pupil data</dt><dd><strong>No account is required to play.</strong> Single-player asks for no name, no email and no sign-in, so there is no pupil data to assess, store or delete. An account exists only for online multiplayer, which a lesson does not need.</dd></div>
+      <div><dt>Language</dt><dd>The interface is translated into <strong>21 languages</strong>, including Arabic, Czech, German, Hindi, Polish, Turkish, Ukrainian and Urdu.</dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>What it actually teaches</h2>
+    <p>
+      The game is a working model of a state under constraint, and nearly every
+      lesson in it comes from that constraint rather than from any text on screen.
+    </p>
+    <ul class="plain">
+      <li><strong>Scarcity is the whole game.</strong> Research, industry, the army and social policy come out of one budget. Pupils cannot have all four, and the argument about which to cut is the lesson.</li>
+      <li><strong>Geography limits industry.</strong> Each province states the industrial level it can support, set by its population, how densely that population lives, its land area and its mineral wealth — a more honest account of industrialisation than most textbooks manage.</li>
+      <li><strong>Decisions take time.</strong> Every policy carries an implementation period. A pupil who changes course every turn achieves nothing, and finds that out without being told.</li>
+      <li><strong>Repression is priced.</strong> Ethnic policy, unrest and rebellion are modelled, and a government that rules by force pays for it in money and in territory it stops controlling.</li>
+      <li><strong>Alliances drag you in.</strong> Guarantees pull third parties into wars they did not choose — the mechanism behind 1914, demonstrated rather than described.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The political compass, with its real contents</h2>
+    <p>
+      Pupils govern by choosing from <strong>46 policies</strong> on two axes.
+      Each has a running cost, a delay before it takes effect, and a permanent
+      shift in where the country sits. These are the actual policy names:
+    </p>
+    <figure>
+      <svg class="compass" viewBox="0 0 660 330" role="img"
+           aria-label="Two-axis political compass showing real policy names from the game">
+        <line x1="330" y1="34" x2="330" y2="296" stroke-width="1"/>
+        <line x1="64" y1="165" x2="596" y2="165" stroke-width="1"/>
+        <g class="cap" text-anchor="middle">
+          <text x="330" y="20">AUTHORITARIAN</text><text x="330" y="318">LIBERTARIAN</text>
+        </g>
+        <g class="cap">
+          <text x="64" y="157" text-anchor="start">LEFT</text>
+          <text x="596" y="157" text-anchor="end">RIGHT</text>
+        </g>
+        <g class="arm" fill="var(--ink)" text-anchor="middle">
+          <text x="330" y="47">Secret Police</text>
+          <text x="330" y="71">Press Censorship</text>
+          <text x="330" y="95">Universal Conscription</text>
+          <text x="330" y="119">Opposition Smear Campaign</text>
+          <text x="330" y="143">Autarky</text>
+        </g>
+        <g class="arm" fill="var(--ink)" text-anchor="middle">
+          <text x="330" y="197">Minority Rights Charter</text>
+          <text x="330" y="221">Free Press</text>
+          <text x="330" y="245">General Amnesty</text>
+          <text x="330" y="269">Open Borders</text>
+          <text x="330" y="293">Decentralisation</text>
+        </g>
+        <g class="arm" fill="var(--muted)" text-anchor="start">
+          <text x="64" y="184">Land Reform</text><text x="64" y="204">Worker Rights Act</text>
+          <text x="64" y="224">Progressive Wealth Tax</text><text x="64" y="244">State Industry Expansion</text>
+        </g>
+        <g class="arm" fill="var(--muted)" text-anchor="end">
+          <text x="596" y="184">Privatisation</text><text x="596" y="204">Flat Tax</text>
+          <text x="596" y="224">Free Trade</text><text x="596" y="244">Economic Deregulation</text>
+        </g>
+      </svg>
+      <figcaption>A selection of the 46. Every one costs money each turn it stays in force.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Before you show it to a class</h2>
+    <div class="alert">
+      <p><strong>Read this part rather than discovering it.</strong></p>
+      <p>
+        This is a game about the twentieth century and it does not look away from
+        it. Pupils can impose press censorship, run a secret police, smear the
+        opposition and repress an ethnic minority. The historical scenarios
+        include 1914, 1939 and 1945, and any country in them can be played.
+      </p>
+      <p style="margin:0">
+        Handled deliberately, that is the strongest thing the game offers: a
+        system where repression has a running cost and visibly loses you
+        territory teaches more than a slide saying repression is wrong. Handled
+        by accident, it is a conversation with a parent. The difference is
+        whether you framed it first — so plan the discussion that follows the
+        lesson before you plan the lesson.
+      </p>
+    </div>
+    <p>
+      There is no depicted violence. War is province colours changing and troop
+      numbers falling; no images of casualties, no combat animation.
+    </p>
+  </section>
+
+  <section>
+    <h2>Practical notes, honestly</h2>
+    <ul class="plain">
+      <li><strong>A full scenario does not fit a lesson.</strong> The world map is 1641 provinces and a campaign runs for hours. For a single period, use the tutorial or build a small scenario in the editor.</li>
+      <li><strong>There is a tutorial</strong>, with a map built for it and an advisor who talks a new player through a first game. It is young: it has not been tested on a room of pupils, and you would be among the first.</li>
+      <li><strong>You can build your own map.</strong> The editor draws land and sea, cuts provinces, and places countries, populations and resources — so a scenario can match a syllabus rather than the syllabus being bent to the game.</li>
+      <li><strong>The numbers are real.</strong> The modern scenario takes populations from World Bank totals and deposits from USGS surveys, which is what lets you tell a class the figures are not invented.</li>
+      <li><strong>It is an alpha.</strong> Playable and unfinished, made by one developer. Expect rough edges and treat that as part of the honesty of using it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Trying it takes five minutes</h2>
+    <p>No sign-up, no download, no commitment. Open it, start the tutorial, or take three turns of 1939.</p>
+    <div class="cta">
+      <a class="btn" href="/play/">Open the game</a>
+      <a class="btn ghost" href="/">About the game</a>
+    </div>
+    <p class="note">
+      If you use it in a lesson, the developer would genuinely like to hear how it
+      went — that feedback is scarce and it shapes what gets built next.
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a> or
+      <a href="https://github.com/Pr1nted/Open-Doctrines/issues">the issue tracker</a>.
+    </p>
+  </section>
+</main>
+
+<footer>
+  <div class="top-in">
+    <div class="flinks">
+      <a href="/play/">Play</a>
+      <a href="/">Home</a>
+      <a href="https://pr1nted.itch.io/open-doctrines">itch.io</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/cookies">Cookies</a>
+    </div>
+    <p>
+      Free to play, modify and share non-commercially under the OpenDoctrines
+      Non-Commercial License.
+    </p>
+  </div>
+</footer>
+</body>
+</html>

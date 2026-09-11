@@ -1,6 +1,6 @@
 # OpenDoctrines accounts — privacy policy
 
-**Last updated:** 2026-07-27
+**Last updated:** 2026-09-11
 
 > This file was drafted by looking at the code, not by a lawyer. It is accurate
 > about the software; it is not legal advice.
@@ -425,7 +425,16 @@ beyond being signed in.
   about you; the flow only goes the other way.
 
 There are no analytics, no advertising networks, no third-party scripts and no
-cookies on any page this service serves.
+cookies in the game, or on any page **this service** serves. That includes
+everything you reach while playing: the game itself sets nothing, whether you
+play in a browser, on itch.io or inside Discord.
+
+The **website** at `opendoctrines.pages.dev` — its home page, the note for
+teachers, and these policy pages — is a separate thing, and it may load Google
+Analytics. Nothing is loaded and no cookie is set unless you press Accept when
+asked, declining costs you nothing, and `/play/` is excluded either way. What it
+collects, and how to change your mind, is set out at
+<https://opendoctrines.pages.dev/cookies>.
 
 ---
 

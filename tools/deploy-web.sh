@@ -37,13 +37,39 @@ emmake cmake --build build-web -j "$(getconf _NPROCESSORS_ONLN 2>/dev/null || ec
 
 echo "== staging =="
 out=build-web/_deploy
-rm -rf "$out" && mkdir -p "$out"
+rm -rf "$out" && mkdir -p "$out/play"
+
+# ── THE GAME IS AT /play/, AND THE SITE IS AT THE ROOT ──
+#
+# It used to be the other way round. The cost of moving it is one thing and it
+# is worth naming: Discord's URL mapping points / at this host, so an Activity
+# launched from a voice channel loads the ROOT -- which is now a landing page,
+# not the game. The site's index.html forwards it on when it sees both
+# frame_id and instance_id, using the same test entry.mjs uses, so no mapping
+# in anybody's developer portal has to change. If that script is ever removed,
+# the Activity breaks and nothing here will say so.
 cp build-web/index.html \
    build-web/OpenDoctrines.js \
    build-web/OpenDoctrines.wasm \
-   build-web/OpenDoctrines.data "$out/"
+   build-web/OpenDoctrines.data "$out/play/"
 cp packaging/web/_headers "$out/_headers"
 [ -f packaging/web/favicon.png ] && cp packaging/web/favicon.png "$out/"
+[ -f packaging/web/favicon.png ] && cp packaging/web/favicon.png "$out/play/"
+
+# The site itself: a handful of static pages sharing one stylesheet.
+cp packaging/web/site/index.html packaging/web/site/classroom.html \
+   packaging/web/site/cookies.html packaging/web/site/site.css \
+   packaging/web/site/analytics.js "$out/"
+
+# ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
+# policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
+# analytics.js into the game directory would make a published policy false.
+test ! -e "$out/play/analytics.js" || {
+    echo "analytics.js must not be staged into play/ -- the policies say it is not there" >&2
+    exit 1
+}
+mkdir -p "$out/img"
+cp docs/img/timelapse-political.gif "$out/img/timelapse.gif"
 
 # ── THE STREAMED HALF OF THE GAME, WHICH THIS SCRIPT USED TO LEAVE BEHIND ──
 #
@@ -57,7 +83,7 @@ cp packaging/web/_headers "$out/_headers"
 # missing path with index.html and status 200, so the game asked for a 1.2 MB
 # map, was handed 10 KB of HTML, and reported that the download had failed.
 # Nothing was down. The file had never been uploaded.
-cp -R build-web/data "$out/data"
+cp -R build-web/data "$out/play/data"
 
 # Which is also why this is here. With a 404.html at the root, Pages returns a
 # real 404 for a path it does not have, and a missing file fails as a missing
@@ -65,7 +91,7 @@ cp -R build-web/data "$out/data"
 cp packaging/web/404.html "$out/404.html"
 
 # Name the file whose absence broke it, rather than trusting the copy above.
-test -s "$out/data/STDmaps/map.odmap" || {
+test -s "$out/play/data/STDmaps/map.odmap" || {
     echo "the default map is not in the upload -- the game would have no world to start" >&2
     exit 1
 }
@@ -94,11 +120,11 @@ cp packaging/web/policies/privacy.html packaging/web/policies/terms.html "$out/"
 echo "== discord sdk =="
 ( cd packaging/web/discord && npm ci --no-audit --no-fund && npm run build ) \
     || { echo "could not build the Discord SDK bundle" >&2; exit 1; }
-cp packaging/web/discord/discord-sdk.js "$out/"
-echo "  discord-sdk.js: $(( $(wc -c < "$out/discord-sdk.js") / 1024 )) KB"
+cp packaging/web/discord/discord-sdk.js "$out/play/"
+echo "  discord-sdk.js: $(( $(wc -c < "$out/play/discord-sdk.js") / 1024 )) KB"
 
 # What a player actually downloads, which is not what `ls` says.
-raw=$(du -ck "$out"/OpenDoctrines.* | tail -1 | cut -f1)
+raw=$(du -ck "$out"/play/OpenDoctrines.* | tail -1 | cut -f1)
 echo "  raw: $((raw / 1024)) MB (compressed on the wire; see the README note)"
 
 echo "== deploying =="
@@ -152,7 +178,31 @@ probe() {                       # probe <url> <grep-args...> -> 0 if matched
 # A map is a zip, so it starts PK. Asserting what it IS rather than what it is
 # not: "does not look like HTML" would also pass on an empty body or a
 # truncated one.
-if probe "$site/data/STDmaps/map.odmap" -e 'PK'; then
+# The root is the SITE now, and /play/ is the game. Both are worth asking for
+# by name: a staging mistake that swapped them would leave the game reachable
+# and the landing page a 404, or worse, the Activity redirect missing from a
+# root that looks fine in a browser.
+if probe "$site/" 'OpenDoctrines' && probe "$site/" 'frame_id'; then
+    echo "  ok    the root serves the site, with the Activity redirect in it"
+else
+    echo "  FAIL  the root is not the landing page, or the Activity redirect is missing" >&2
+    echo "        an Activity launched from Discord would land on a page that never forwards it" >&2
+    fail=1
+fi
+
+if probe "$site/play/" 'OpenDoctrines'; then
+    echo "  ok    /play/ serves the game"
+else
+    echo "  FAIL  /play/ is not serving the game shell" >&2; fail=1
+fi
+
+if probe "$site/classroom" '<!doctype html'; then
+    echo "  ok    /classroom renders"
+else
+    echo "  FAIL  /classroom is not being served" >&2; fail=1
+fi
+
+if probe "$site/play/data/STDmaps/map.odmap" -e 'PK'; then
     echo "  ok    the default map is served as map data"
 else
     echo "  FAIL  the map URL is not returning map data -- is data/ in the upload?" >&2; fail=1

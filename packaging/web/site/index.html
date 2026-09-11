@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenDoctrines — a free grand strategy game in your browser</title>
+<meta name="description" content="A free, open-source grand strategy game. Run a country's industry, armies, research and politics across 1641 provinces and six historical scenarios. Plays in a browser with no download and no account.">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Source+Sans+3:wght@400;600&family=Spectral:wght@600&display=swap">
+<link rel="stylesheet" href="/site.css">
+<script src="/analytics.js" defer></script>
+<script>
+/* THE ACTIVITY LANDS HERE, AND MUST NOT SEE A WEBSITE.
+ *
+ * Discord's URL mapping points / at this host, so an Activity launched from a
+ * voice channel loads this page rather than the game. Rather than ask anybody
+ * to edit a mapping in a developer portal -- a manual step that breaks the
+ * feature silently if it is forgotten -- the page forwards it on.
+ *
+ * The test is the same one packaging/web/discord/entry.mjs uses: BOTH
+ * frame_id and instance_id. Either alone is not an Activity, and treating it
+ * as one would send ordinary visitors to the game with no way back.
+ *
+ * Inline and first, before a stylesheet or a font can delay it. */
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('frame_id') && q.get('instance_id')) {
+    location.replace('/play/' + location.search + location.hash);
+  }
+})();
+</script>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="mark" href="/">Open<span>Doctrines</span></a>
+    <nav>
+      <a href="/" aria-current="page">Home</a>
+      <a href="/classroom">For teachers</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a class="play" href="/play/">Play now</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero narrow">
+    <p class="label">Free · open source · alpha</p>
+    <h1>Run a country, and live with what it costs.</h1>
+    <p class="lede">
+      A grand strategy game about the whole of a state — its industry, its
+      armies, its research, its politics and its neighbours. Six historical
+      scenarios on a 1641-province world map.
+      <strong>It plays in a browser tab with no download and no account.</strong>
+    </p>
+    <div class="cta">
+      <a class="btn" href="/play/">Play in your browser</a>
+      <a class="btn ghost" href="https://github.com/Pr1nted/Open-Doctrines/releases">Download</a>
+    </div>
+    <p class="note">Windows, macOS, Linux, Android — or inside a Discord voice channel.</p>
+  </section>
+
+  <figure class="narrow">
+    <img src="/img/timelapse.gif" alt="A whole game of the 1939 scenario replayed as a timelapse, borders shifting across Europe" loading="lazy">
+    <figcaption>Every turn is recorded. A finished game replays as a timelapse and exports as a GIF from inside the game — this is 1939, with every country played by the AI.</figcaption>
+  </figure>
+
+  <section class="narrow">
+    <h2>What you actually do</h2>
+    <p>
+      Provinces have population, industry, fortification, resources and an
+      ethnic composition. Countries have a treasury, a research programme, a
+      political compass, claims on their neighbours and opinions about each
+      other.
+    </p>
+    <p>
+      Industry is bounded by the ground it stands on: each province states the
+      level it can support, set by its population, how densely that population
+      lives, its land area and its mineral wealth. Building an industrial power
+      means holding places worth industrialising, not buying the same factory
+      everywhere.
+    </p>
+  </section>
+
+  <section>
+    <div class="grid">
+      <div class="card">
+        <h3>Six scenarios</h3>
+        <p>1914, 1918, 1939, 1945, 1962 and the modern day — 185 countries, with
+           populations from World Bank totals and deposits from USGS surveys.</p>
+      </div>
+      <div class="card">
+        <h3>Build your own world</h3>
+        <p>Draw land and sea, cut provinces, place countries and resources, then
+           export a map anyone else can load. There is a procedural generator too.</p>
+      </div>
+      <div class="card">
+        <h3>Multiplayer, no port forwarding</h3>
+        <p>Players dial out, so joining needs no router configuration. Disconnect
+           and you keep your seat and your country.</p>
+      </div>
+      <div class="card">
+        <h3>Mods in thirteen languages</h3>
+        <p>Mods are WebAssembly and run sandboxed, with a capability grant you can
+           see and revoke. C, Rust, Zig, Go, Python, Lua and more.</p>
+      </div>
+      <div class="card">
+        <h3>Plays inside Discord</h3>
+        <p>Launch it from the rocket button in a voice channel. Nobody installs
+           anything, and everyone is on whatever was last deployed.</p>
+      </div>
+      <div class="card">
+        <h3>Translated into 21 languages</h3>
+        <p>Arabic, Chinese, Czech, German, Hindi, Japanese, Korean, Polish,
+           Turkish, Ukrainian, Urdu and more — the interface, not just the menus.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="narrow">
+    <h2>It is an alpha, and says so</h2>
+    <p>
+      Made by one developer, playable end to end, and not finished. The tutorial
+      is young and has not been watched over the shoulder of somebody new to the
+      genre. The AI plays a whole game and will not outplay a good player. The
+      dedicated server and play-by-post turns are built and tested but have not
+      been run in anger.
+    </p>
+    <p>
+      Being honest about that is cheaper than disappointing people later, and the
+      <a href="https://github.com/Pr1nted/Open-Doctrines">source and issue tracker</a>
+      are public so you can check.
+    </p>
+  </section>
+
+  <section class="narrow">
+    <h2>Using it to teach</h2>
+    <p>
+      It is free, installs nothing, and single-player asks for no account — which
+      between them clear the three things that usually stop software reaching a
+      classroom. There is a briefing note covering what it teaches, how long it
+      takes and what to frame before a lesson.
+    </p>
+    <p><a href="/classroom">Read the note for teachers →</a></p>
+  </section>
+</main>
+
+<footer>
+  <div class="top-in">
+    <div class="flinks">
+      <a href="/play/">Play</a>
+      <a href="/classroom">For teachers</a>
+      <a href="https://pr1nted.itch.io/open-doctrines">itch.io</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/cookies">Cookies</a>
+    </div>
+    <p>
+      Free to play, modify and share non-commercially under the OpenDoctrines
+      Non-Commercial License. The mods, maps, saves and videos you make are yours.
+    </p>
+  </div>
+</footer>
+</body>
+</html>
