@@ -62,6 +62,32 @@ not otherwise stay in step.
 
 **Genre:** Strategy.
 
+## Links, which the website was missing from entirely
+
+The info panel's **Links** field held only GitHub and Discord, and the
+description body linked the same two and nothing else. So the website, the
+press kit and the teachers' note were unreachable from the page with 6,316
+views and 3,496 browser plays — the one surface where a journalist, a streamer
+or a teacher actually lands.
+
+Set the Links field to:
+
+| Label | URL |
+|---|---|
+| Website | `https://opendoctrines.pages.dev` |
+| Press kit | `https://opendoctrines.pages.dev/press` |
+| GitHub | `https://github.com/Pr1nted/Open-Doctrines` |
+| Discord | `https://discord.gg/wqS65jzVv5` |
+
+The press kit earns its own row rather than being left one click deep. Somebody
+deciding whether to cover this is the visitor worth the least friction, and the
+licence answer they need — that monetised video is explicitly allowed — is on
+that page and nowhere else they would think to look.
+
+`description.html` now links all three in *Where everybody is* as well, which
+matters more: the info panel is a sidebar people skim past, the description is
+the thing they read.
+
 **Tags actually on the live page** (checked 2026-09-11, nine of the ten allowed):
 `2d`, `4x`, `alternate-history`, `grand-strategy`, `historical`, `hoi4`,
 `indie`, `multiplayer`, `turn-based-strategy`.
