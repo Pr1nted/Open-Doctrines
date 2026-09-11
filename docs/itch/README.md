@@ -66,6 +66,11 @@ not otherwise stay in step.
 `2d`, `4x`, `alternate-history`, `grand-strategy`, `historical`, `hoi4`,
 `indie`, `multiplayer`, `turn-based-strategy`.
 
+**Intended set** — `2d` and `indie` out, `eu4` and `victoria-3` in, leaving one
+slot free. See *The change being tested* below for why, and for how to tell
+whether it worked. This is set by hand in the itch dashboard; nothing in this
+repository can apply it.
+
 This list used to read `grand-strategy, strategy, map, moddable, multiplayer,
 singleplayer, open-source, alpha, history, simulation`, which was a plan and
 never what was set. Note in particular that there is no `open-source` tag on
@@ -96,10 +101,49 @@ enormous, generic, and describing nothing a person would search for on purpose
 — is worth spending on another title people look for: `eu4`, `victoria-3`,
 `crusader-kings`, `paradox`, `civilization`, `wargame`, `cold-war`.
 
-Treat it as an experiment, not a decision. Tags can be changed at any time, and
-the referrer report under Analytics shows within a few days whether a new one
-earns its slot. Nothing else about the page's discoverability is this cheap to
-test or this easy to undo.
+## Shelf size is the mechanism, and it runs backwards
+
+Checked on itch, 2026-09-11:
+
+| Tag | Games carrying it | Visits it sent in 30 days |
+|---|---|---|
+| `hoi4` | **13** | **761** |
+| `grand-strategy` | 58 | 333 |
+| `2d`, `indie` | tens of thousands | under 42 |
+
+A tag is a shelf. What a slot is worth is the demand for that shelf divided by
+how many games are standing on it, and `hoi4` wins on BOTH terms: a lot of
+people want Hearts of Iron and there are thirteen games there, so this one is
+seen. `grand-strategy` has four times the shelf and sends under half. `2d` and
+`indie` are shelves so crowded that being on them is the same as not being.
+
+So "is this a big tag" is the wrong question and picking the biggest available
+is the wrong move. Small and wanted beats large and generic, every time.
+
+None of these are curated: `hoi4` and `grand-strategy` both still show itch's
+"Suggest description for this tag" link, exactly as `eu4` and `victoria-3` do.
+An uncurated community tag with thirteen games is what 54% of the traffic
+arrives through.
+
+## The change being tested
+
+Dropping `2d` and `indie` for `eu4` and `victoria-3`.
+
+The honest state of it: `eu4` has 0 games and `victoria-3` has 1, so those
+shelves are empty. That is either the best possible position -- sole occupant
+of a shelf people want, which is what `hoi4` nearly is -- or it is an empty
+shelf because nobody browses it. Nothing visible from outside itch separates
+those two, and demand is not a number itch publishes.
+
+What makes it worth doing anyway is the price. `2d` and `indie` each send fewer
+than 42 visits a month and the cost is capped there; `hoi4` shows the upside is
+761. The Analytics referrer report names the tag each visit came through, so
+the answer arrives in days and the change is undone with a click.
+
+Read it in Analytics -> incoming visits -> By URL, looking for
+`itch.io/games/tag-eu4` and `tag-victoria-3`. If neither appears within a
+fortnight, the shelves are empty because nobody wants them: put the slots on
+`wargame` (112 games) or `paradox` (19), both of which at least exist.
 
 ---
 
