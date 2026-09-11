@@ -82,8 +82,25 @@ cp docs/img/timelapse-political.gif "$out/img/timelapse.gif"
 #
 # Fail loudly. A missing card is invisible in testing (the card still renders,
 # just blank) and would only show up as links that quietly look broken.
+# ── THE CARD IS GENERATED ART, AND IS NOT IN THE REPOSITORY ──
+#
+# .gitignore excludes docs/itch/banner-*.png on purpose: tools/banner.py
+# rebuilds any of it from the game's own map rasters, and the animated variants
+# run to 13 MB. That is the right call and it bit this script anyway -- the
+# first deploy from a clean checkout failed here, because the file every page's
+# og:image points at existed only on the machine that happened to have run the
+# generator.
+#
+# So build it rather than require it. 23 seconds, no arguments, no network.
+if [ ! -f docs/itch/banner-github-social.png ]; then
+    echo "  the link card is not built yet; running tools/banner.py"
+    python3 tools/banner.py --size github-social >/dev/null || {
+        echo "could not build the link card with tools/banner.py" >&2
+        exit 1
+    }
+fi
 [ -f docs/itch/banner-github-social.png ] || {
-    echo "the link card is missing: docs/itch/banner-github-social.png" >&2
+    echo "tools/banner.py ran but produced no docs/itch/banner-github-social.png" >&2
     exit 1
 }
 cp docs/itch/banner-github-social.png "$out/card.png"
