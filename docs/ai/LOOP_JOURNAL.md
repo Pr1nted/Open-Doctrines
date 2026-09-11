@@ -15541,3 +15541,54 @@ works and the remaining question is how long to run it. If it bleeds, the
 missing piece is an anchor -- replay across maps, a trust region, a KL penalty
 -- because nothing currently holds the policy near a parent that already plays
 well.
+
+## 260 — training DOES learn; it cannot hold what it already had
+
+Sixteen and twenty-four maps at the safe settings (LR 0.05, scripted 0.33),
+three reliable seats, 3 seeds each:
+
+    maps        FRA    USA    CHN   reliable
+    parent    27.57  21.77  18.13      433
+    8         19.37  20.87  20.43      387
+    16         9.43  27.97  36.33      380
+    24         8.57   9.47   0.00       99
+
+    as a ratio to parent
+    maps=8    FRA 0.70x   USA 0.96x   CHN 1.13x
+    maps=16   FRA 0.34x   USA 1.28x   CHN 2.00x
+    maps=24   FRA 0.31x   USA 0.44x   CHN 0.00x
+
+387 -> 380 reads as a plateau and IS NOT ONE. Underneath it, China DOUBLES the
+parent and the USA beats it by 28%, while France falls to a third. Two seats
+improving substantially and one being destroyed, in the same model, at the same
+time. The reliable-seat mean cancels them and shows a flat line.
+
+So the earlier framing -- "training degrades the model" -- is wrong, and so was
+mine in journal 258 ("catastrophic forgetting" as a label without the
+evidence). This is the evidence: the policy learns real improvements and pays
+for them out of a seat it already held. At 24 maps it stops being a trade and
+becomes a collapse.
+
+THAT CHANGES WHAT THE FIX IS. Nothing here is a broken update rule, a bad
+objective, or an opponent-distribution problem. It is the absence of anything
+holding the policy near a parent that already plays France well. The standard
+answers all apply: experience replay across maps, a trust region, a KL penalty
+to the parent, or elastic weight consolidation.
+
+AND A PRACTICAL ONE THAT NEEDS NO NEW MACHINERY: bench-gated laddering. Eight
+maps costs 46 points of a 433 parent and buys CHN 1.13x; sixteen buys CHN 2.00x
+and USA 1.28x for 53. A ladder that trains a short step, benches, and keeps
+only what does not regress a seat would bank the gains and refuse the trade.
+That is what the existing OD_LR_SCALE ladder work was reaching for.
+
+WHAT IS NOW ESTABLISHED ABOUT TRAINING, after starting the day at "16 of 16
+checkpoints failed and nobody knows why":
+
+  1. Training never faced the scripted opponent it is scored against --
+     setRandomCountries is evaluation-only. Fixed (journal 257), worth +82 at
+     a safe step size.
+  2. The historical step size destroys a strong parent inside ONE map:
+     France 27.57 -> 1.27 at LR 0.25, 18.47 at 0.05 (journal 259).
+  3. With both fixed, training reaches 89% of parent where every prior
+     checkpoint was below 45%.
+  4. The residue is forgetting, not failure to learn, and it is seat-specific.
