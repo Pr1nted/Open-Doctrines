@@ -9,18 +9,27 @@
 # A tap is a plain git repository with a Casks/ directory. No review, no
 # waiting, and moving to homebrew/cask later costs nothing.
 #
-# QUARANTINE CANNOT BE TURNED OFF FROM IN HERE. There is no `quarantine`
-# stanza; Homebrew deliberately gives cask authors no way to decide that on the
-# user's behalf. Since these builds are not signed with an Apple Developer ID,
-# an ordinary `brew install --cask opendoctrines` installs an app macOS then
-# refuses to open. The install line to publish is therefore:
+# QUARANTINE CANNOT BE AVOIDED THROUGH BREW AT ALL. Verified by running it on
+# Homebrew 6.0.22, not by reading the Cookbook:
+#
+#   - There is no `quarantine` stanza. Homebrew gives cask authors no way to
+#     decide this for the user.
+#   - `--no-quarantine` NO LONGER EXISTS. It is rejected outright --
+#     "Error: invalid option" -- and appears nowhere in `brew install --help`.
+#   - `HOMEBREW_CASK_OPTS="--no-quarantine"` is accepted and silently ignored:
+#     the install succeeds and the app still carries com.apple.quarantine.
+#
+# These builds are unsigned, so the installed app is quarantined and macOS
+# refuses to open it. One line clears it, and it is the same command README.md
+# already documents for the zip. The four lines to publish:
 #
 #     brew tap Pr1nted/tap
-#     brew install --cask --no-quarantine opendoctrines
+#     brew trust --cask Pr1nted/tap/opendoctrines
+#     brew install --cask opendoctrines
+#     xattr -dr com.apple.quarantine /Applications/OpenDoctrines.app
 #
-# That flag is the user saying they trust it, which is the same decision
-# README.md asks them to make with right-click -> Open, in one line instead of
-# a paragraph. Publish it WITH the flag or this packaging helps nobody.
+# `brew trust` is required too: a third-party tap refuses to load a cask until
+# trusted. Publish all four or this packaging helps nobody.
 cask "opendoctrines" do
   # Matches the published asset names: OpenDoctrines-macos-{arm64,x64}.zip
   arch arm: "arm64", intel: "x64"
@@ -34,12 +43,26 @@ cask "opendoctrines" do
   desc "Grand strategy game about running a country"
   homepage "https://github.com/Pr1nted/Open-Doctrines"
 
+  # GIT TAGS, NOT THE RELEASES API, AND THE REASON IS THE ALPHA.
+  #
+  # Every game release here is marked pre-release while the game is in alpha.
+  # :github_latest takes the newest release that is NOT a pre-release, so it
+  # skipped all of them and returned gearbox-v1.2 -- the mod SDK, a different
+  # product. :github_releases is no better: it filters drafts and pre-releases
+  # out before the regex is ever applied, leaving nothing at all to match.
+  #
+  # Git tags carry no such flag, so they list regardless. The anchored regex is
+  # what keeps the three release lines apart: the game is vN.N.Na, the SDK is
+  # gearbox-vN.N, the dedicated server is server-vN.N.Na. Only the first matches.
   livecheck do
-    url :url
-    strategy :github_latest
+    url "https://github.com/Pr1nted/Open-Doctrines.git"
+    regex(/^v(\d+(?:\.\d+)+[a-z]?)$/i)
+    strategy :git
   end
 
-  depends_on macos: ">= :big_sur"
+  # Bare symbol, not ">= :big_sur" — the string-comparison form is deprecated
+  # and brew warns on every invocation. A bare symbol already means "or newer".
+  depends_on macos: :big_sur
 
   # Both archives wrap the bundle in a directory named after the architecture.
   # Everything the game needs is inside the bundle -- data/ included, 1113 files
