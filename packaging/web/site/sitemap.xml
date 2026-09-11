@@ -3,6 +3,7 @@
   <url><loc>https://opendoctrines.pages.dev/</loc><priority>1.0</priority></url>
   <url><loc>https://opendoctrines.pages.dev/play/</loc><priority>0.9</priority></url>
   <url><loc>https://opendoctrines.pages.dev/classroom</loc><priority>0.8</priority></url>
+  <url><loc>https://opendoctrines.pages.dev/press</loc><priority>0.6</priority></url>
   <url><loc>https://opendoctrines.pages.dev/privacy</loc><priority>0.3</priority></url>
   <url><loc>https://opendoctrines.pages.dev/terms</loc><priority>0.3</priority></url>
   <url><loc>https://opendoctrines.pages.dev/cookies</loc><priority>0.3</priority></url>

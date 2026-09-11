@@ -58,7 +58,8 @@ cp packaging/web/_headers "$out/_headers"
 
 # The site itself: a handful of static pages sharing one stylesheet.
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
-   packaging/web/site/cookies.html packaging/web/site/site.css \
+   packaging/web/site/cookies.html packaging/web/site/press.html \
+   packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
    packaging/web/site/sitemap.xml "$out/"
 
@@ -86,6 +87,32 @@ cp docs/img/timelapse-political.gif "$out/img/timelapse.gif"
     exit 1
 }
 cp docs/itch/banner-github-social.png "$out/card.png"
+
+# ── THE PRESS KIT'S ASSETS ──
+#
+# Curated, not the whole of docs/img: menu screens sell nothing and a press kit
+# that leads with a black screen and three buttons reads as carelessness. The
+# names here are the names /press links to, so a rename in one place has to be a
+# rename in both -- hence the loop failing loudly rather than skipping.
+mkdir -p "$out/press"
+for shot in world-map province economy research policies comms tutorial \
+            multiplayer mods; do
+    [ -f "docs/img/$shot.png" ] || {
+        echo "press kit: docs/img/$shot.png is missing but /press links to it" >&2
+        exit 1
+    }
+    cp "docs/img/$shot.png" "$out/press/$shot.png"
+done
+for reel in timelapse-political timelapse-population timelapse-troops; do
+    [ -f "docs/img/$reel.gif" ] || {
+        echo "press kit: docs/img/$reel.gif is missing but /press links to it" >&2
+        exit 1
+    }
+    cp "docs/img/$reel.gif" "$out/press/$reel.gif"
+done
+cp docs/itch/banner-github-social.png "$out/press/logo-wide.png"
+cp docs/itch/cover-titled.png          "$out/press/cover.png"
+echo "  press kit: $(du -sh "$out/press" | cut -f1) of images"
 
 # ── THE STREAMED HALF OF THE GAME, WHICH THIS SCRIPT USED TO LEAVE BEHIND ──
 #
@@ -233,7 +260,7 @@ fi
 # shell and redeploying without rebuilding leaves the site fine, the game fine,
 # and every join link pasted into a chat still bare text. Nothing else in this
 # script would notice.
-for page in "" "play/" "classroom"; do
+for page in "" "play/" "classroom" "press"; do
     if probe "$site/$page" --bytes 8192 'og:image'; then
         echo "  ok    /$page has a link card"
     else
@@ -256,6 +283,20 @@ if probe "$site/classroom" '<!doctype html'; then
     echo "  ok    /classroom renders"
 else
     echo "  FAIL  /classroom is not being served" >&2; fail=1
+fi
+
+# The press kit, and one of the images it links to. The page rendering proves
+# nothing about the images: they are copied by a separate loop above, and a
+# press kit whose screenshots are all broken is worse than no press kit.
+if probe "$site/press" '<!doctype html'; then
+    echo "  ok    /press renders"
+else
+    echo "  FAIL  /press is not being served" >&2; fail=1
+fi
+if probe "$site/press/world-map.png" -e 'PNG'; then
+    echo "  ok    the press screenshots are served as images"
+else
+    echo "  FAIL  /press/world-map.png is not a PNG -- the press kit images are missing" >&2; fail=1
 fi
 
 if probe "$site/play/data/STDmaps/map.odmap" -e 'PK'; then

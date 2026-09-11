@@ -117,7 +117,11 @@ a { color: var(--gold); text-underline-offset: 3px; }
 .card p { margin: 0; font-size: 15px; color: var(--muted); }
 
 figure { margin: 30px 0; }
-figure img { width: 100%; border-radius: 4px; border: 1px solid var(--rule); display: block; }
+/* height:auto is load-bearing, not tidiness. The press-kit images carry
+   width/height attributes so the page reserves the right space before they
+   load -- and with a width set and no height, the browser uses the ATTRIBUTE
+   height as the CSS height, rendering a 1600x900 screenshot at 477x900. */
+figure img { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--rule); display: block; }
 figcaption { font-size: 13.5px; color: var(--faint); margin-top: 10px; }
 
 .facts { border-top: 1px solid var(--rule); margin: 30px 0 0; }
@@ -171,3 +175,26 @@ footer a:hover { color: var(--gold); }
 .cookiebar-b { display: flex; gap: 10px; margin-left: auto; }
 .cookiebar .btn { padding: 9px 18px; font-size: 14px; }
 @media (max-width: 520px) { .cookiebar-b { width: 100%; } .cookiebar .btn { flex: 1; text-align: center; } }
+
+/* ── press kit ──
+   .copy is boilerplate meant to be selected and pasted, so it is set in the
+   mono face and given a left rule: it should read as a quoted block rather
+   than as the page talking, or a journalist pastes the surrounding sentence
+   along with it. */
+.copy {
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-left: 2px solid var(--gold-dim);
+  border-radius: 0 4px 4px 0; padding: 16px 18px 2px; margin: 10px 0 26px;
+}
+.copy p { font-family: "IBM Plex Mono", ui-monospace, monospace;
+          font-size: 14px; line-height: 1.6; color: var(--ink); }
+
+/* Two per row on a wide screen, one on a phone. Screenshots are 16:9 and the
+   detail in them only reads at a decent width, so this deliberately does NOT
+   pack in three. */
+.shots { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); margin: 26px 0; }
+.shots figure { margin: 0; }
+.shots.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.shots a { display: block; line-height: 0; }
+.shots img { transition: border-color .18s ease; }
+.shots a:hover img { border-color: var(--gold-dim); }
