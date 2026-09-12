@@ -75,32 +75,54 @@ SEED = 19650714                    # Mariner 4 reached Mars on this date
 # Note which names survive: the basins are all underwater, so the countries are
 # named for highlands (Terra), volcanic provinces (Tharsis, Elysium, Alba) and
 # plateaus (Solis, Hesperia, Lunae) -- and the seas carry the basin names.
+# REACH is how far a state's settlement spread before the borders met, and it
+# is a design decision rather than an accident of where its capital sits.
+#
+# Grown at one uniform rate, the map came out backwards: the states this file
+# calls great powers finished smallest, because eight of them are seeded within
+# one band of longitude around Tharsis and hemmed each other in, while the
+# southern Terrae had open ground and ran away with it. Tharsis Union -- the
+# industrial heartland the whole map is arranged around -- placed tenth, and
+# Xanthe finished on twelve provinces. Reach is the dial that fixes that: a
+# state expands at a cost of 1/reach per province, so 2.0 reaches twice as far.
 COUNTRIES = [
-    # iso   name                      lon    lat   colour     left  auth
-    ("THA", "Tharsis Union",          247.0,   0.0, "#b4552f", -25,  35),
-    ("OLY", "Olympian League",        226.0,  18.6, "#c9793a",  40, -30),
-    ("ALB", "Alba Commune",           250.0,  40.0, "#8d6b45", -70,  10),
-    ("TMP", "Tempe Republic",         289.0,  40.0, "#5f8a6a",  10, -45),
-    ("LUN", "Lunae Directorate",      295.0,  10.0, "#7a6ba0", -30,  60),
-    ("XAN", "Xanthe League",          310.0,   5.0, "#4f86a8",  35, -20),
-    ("MRN", "Marineris Confederation",300.0, -13.0, "#3f7d8c",  15, -55),
-    ("NOC", "Noctis Technate",        265.0,  -7.0, "#6f5f9c", -15,  70),
-    ("SOL", "Solis Protectorate",     270.0, -26.0, "#a4623f",  20,  55),
-    ("THU", "Thaumasia",              295.0, -40.0, "#8a7a4a",   0,   5),
-    ("NER", "Nereidum Shore",         316.0, -50.0, "#4e7f7a",  25, -25),
-    ("NOA", "Noachis Terra",          350.0, -45.0, "#96684f", -10,  40),
-    ("MER", "Meridiani Compact",        0.0,  -2.0, "#b0894a",  45, -35),
-    ("SAB", "Terra Sabaea",            42.0,   2.0, "#7f8f4e", -20,  25),
-    ("SYR", "Syrtis Major",            70.0,   8.0, "#4b6b3f", -45,  50),
-    ("TYR", "Tyrrhena",                90.0, -12.0, "#9a5a5a",   5,  15),
-    ("HES", "Hesperia Concord",       110.0, -22.0, "#6a7fa0",  30, -40),
-    ("CIM", "Terra Cimmeria",         145.0, -35.0, "#8c5f7a", -35,  45),
-    ("ELY", "Elysium",                147.0,  25.0, "#c08a55",  50, -50),
-    ("MEM", "Memnonia",               200.0, -10.0, "#7d6a55", -5,   20),
-    ("SIR", "Terra Sirenum",          210.0, -40.0, "#5a7d92",  -55, 30),
-    ("AON", "Aonia Terra",            260.0, -60.0, "#6b8a76",   0,  -10),
-    ("PRM", "Promethei Terra",        100.0, -65.0, "#a07b5f",  -40, 65),
-    ("AUS", "Terra Australe",           0.0, -85.0, "#8fa0ad",  -60, 80),
+    # iso   name                      lon    lat   colour     left  auth  reach
+    ("THA", "Tharsis Union",          247.0,   0.0, "#b4552f", -25,  35, 1.75),
+    ("OLY", "Olympian League",        226.0,  18.6, "#c9793a",  40, -30, 1.55),
+    ("ALB", "Alba Commune",           250.0,  40.0, "#8d6b45", -70,  10, 1.05),
+    ("TMP", "Tempe Republic",         289.0,  40.0, "#5f8a6a",  10, -45, 1.15),
+    ("LUN", "Lunae Directorate",      295.0,  10.0, "#7a6ba0", -30,  60, 1.30),
+    ("XAN", "Xanthe League",          310.0,   5.0, "#4f86a8",  35, -20, 1.45),
+    ("MRN", "Marineris Confederation",300.0, -13.0, "#3f7d8c",  15, -55, 1.55),
+    ("NOC", "Noctis Technate",        265.0,  -7.0, "#6f5f9c", -15,  70, 1.35),
+    ("SOL", "Solis Protectorate",     270.0, -26.0, "#a4623f",  20,  55, 1.05),
+    ("THU", "Thaumasia",              295.0, -40.0, "#8a7a4a",   0,   5, 0.85),
+    ("NER", "Nereidum Shore",         316.0, -50.0, "#4e7f7a",  25, -25, 0.85),
+    ("NOA", "Noachis Terra",          350.0, -45.0, "#96684f", -10,  40, 0.90),
+    ("MER", "Meridiani Compact",        0.0,  -2.0, "#b0894a",  45, -35, 1.15),
+    ("SAB", "Terra Sabaea",            42.0,   2.0, "#7f8f4e", -20,  25, 1.00),
+    ("SYR", "Syrtis Major",            70.0,   8.0, "#4b6b3f", -45,  50, 1.15),
+    ("TYR", "Tyrrhena",                90.0, -12.0, "#9a5a5a",   5,  15, 1.00),
+    ("HES", "Hesperia Concord",       110.0, -22.0, "#6a7fa0",  30, -40, 1.00),
+    ("CIM", "Terra Cimmeria",         145.0, -35.0, "#8c5f7a", -35,  45, 0.85),
+    ("ELY", "Elysium",                147.0,  25.0, "#c08a55",  50, -50, 1.00),
+    ("MEM", "Memnonia",               200.0, -10.0, "#7d6a55", -5,   20, 1.00),
+    ("SIR", "Terra Sirenum",          210.0, -40.0, "#5a7d92",  -55, 30, 0.80),
+    ("AON", "Aonia Terra",            260.0, -60.0, "#6b8a76",   0,  -10, 0.70),
+    ("PRM", "Promethei Terra",        100.0, -65.0, "#a07b5f",  -40, 65, 0.70),
+    ("AUS", "Terra Australe",           0.0, -85.0, "#8fa0ad",  -60, 80, 0.60),
+    # The southern highlands are one enormous open plain, and eight states was
+    # not enough of them: whoever was seeded there ran to 148 provinces on a
+    # low reach purely because nobody was in the way. These break that ground
+    # up. All are real Martian regions, and all are above the waterline.
+    ("HEL", "Hellespontus",            40.0, -50.0, "#7f7f9c",  -15,  30, 0.95),
+    ("MAL", "Malea",                   55.0, -65.0, "#9c8f7f",  -30,  55, 0.80),
+    ("IAP", "Iapygia",                 65.0, -15.0, "#6f8f7f",   10, -15, 1.00),
+    ("AMN", "Amenthes",               110.0,   5.0, "#8f7f6f",   25, -30, 1.05),
+    ("ERI", "Eridania",               235.0, -45.0, "#7f6f8f",  -45,  20, 0.90),
+    ("DAE", "Daedalia",               235.0, -20.0, "#a08f6f",   15,   0, 1.00),
+    ("ICA", "Icaria",                 253.0, -43.0, "#6f8fa0",  -20,  35, 0.85),
+    ("CHR", "Terra Chronium",         140.0, -58.0, "#8f9c8f",  -35,  45, 0.80),
 ]
 
 # Doctrines each state opens with. Checked against data/policies.json by
@@ -130,6 +152,14 @@ POLICIES = {
     "AON": ["freedom_of_worship", "general_amnesty"],
     "PRM": ["autarky", "fortress_doctrine"],
     "AUS": ["autarky", "strategic_stockpile"],
+    "HEL": ["merchant_marine", "free_trade"],
+    "MAL": ["autarky", "traditionalism"],
+    "IAP": ["free_trade", "consumer_economy"],
+    "AMN": ["deregulation", "free_press"],
+    "ERI": ["collective_agriculture", "conscription"],
+    "DAE": ["rationalisation", "technocracy"],
+    "ICA": ["agrarian_priority", "traditionalism"],
+    "CHR": ["national_unity", "fortress_doctrine"],
 }
 
 # Where the settlers came from, which is what "ethnicity" means on a world
@@ -287,17 +317,23 @@ def assign_countries(adj, clat, clon, nprov):
              (np.minimum(np.abs(clon - lon0), 360 - np.abs(clon - lon0))
               * np.cos(np.radians(clat)))**2)
         return int(np.argmin(d))
+    import heapq
     owner = np.full(nprov, -1, np.int32)
-    frontier = deque()
-    for ci, (iso, name, lon0, lat0, col, l, a) in enumerate(COUNTRIES):
-        p = nearest(lat0, lon0)
-        if owner[p] < 0:
-            owner[p] = ci; frontier.append(p)
-    while frontier:
-        p = frontier.popleft()
+    cost = np.full(nprov, np.inf)
+    heap = []
+    for ci, c in enumerate(COUNTRIES):
+        p = nearest(c[3], c[2])
+        step = 1.0 / c[7]
+        if cost[p] > 0.0:
+            cost[p] = 0.0; heapq.heappush(heap, (0.0, p, ci, step))
+    while heap:
+        d, p, ci, step = heapq.heappop(heap)
+        if owner[p] >= 0: continue
+        owner[p] = ci
         for q in adj[p]:
-            if owner[q] < 0:
-                owner[q] = owner[p]; frontier.append(q)
+            if owner[q] < 0 and d + step < cost[q]:
+                cost[q] = d + step
+                heapq.heappush(heap, (d + step, q, ci, step))
     return owner
 
 
@@ -483,7 +519,7 @@ def pack(b):
                           "crew": {"destroyer": 320, "boat": 60, "carrier": 1800}[t]})
 
     countries = {}
-    for ci, (iso, name, lon0, lat0, col, l, a) in enumerate(COUNTRIES):
+    for ci, (iso, name, lon0, lat0, col, l, a, _reach) in enumerate(COUNTRIES):
         r, g, bl = int(col[1:3], 16), int(col[3:5], 16), int(col[5:7], 16)
         flag = {"type": "hstripes_3", "colors": [
             "#%02x%02x%02x" % (max(r-55, 0), max(g-55, 0), max(bl-55, 0)), col,
