@@ -52,5 +52,14 @@
     "license": "CC-BY-4.0",
     "thumbnail": "1962_thumb.png",
     "hasScripts": false
+  },
+  {
+    "name": "The Three Superstates",
+    "filename": "1984.odmap",
+    "author": "OpenDoctrines",
+    "description": "Three powers divide the world and none of them can conquer another. The war is real, permanent, and fought over the belt of contested countries between them -- for their labour, and because a war that cannot be won need never end. Inspired by George Orwell's Nineteen Eighty-Four.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "1984_thumb.png",
+    "hasScripts": false
   }
 ]

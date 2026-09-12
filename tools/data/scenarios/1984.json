@@ -1,0 +1,390 @@
+{
+  "$comment": "Three superstates on modern province geometry, after the world of George Orwell's Nineteen Eighty-Four. What is taken from the novel is its PREMISE and the three names -- a partition of the globe, which is an idea rather than protected expression, and three short names, which copyright does not reach. No text from the book is reproduced anywhere in this file or in the game; every description here is written for this scenario. Flags are procedural patterns from each power's colour, so no artwork is copied either. See docs/scenario-licensing.md.",
+  "schema": 1,
+  "id": "1984",
+  "name": "The Three Superstates",
+  "date": "April 1984 AD",
+  "author": "OpenDoctrines",
+  "description": "Three powers divide the world and none of them can conquer another. The war is real, permanent, and fought over the belt of contested countries between them -- for their labour, and because a war that cannot be won need never end. Inspired by George Orwell's Nineteen Eighty-Four.",
+  "independent_default": true,
+  "independent_except": [
+    "UNC",
+    "XNC",
+    "XSO",
+    "BLC"
+  ],
+  "population_scale": 0.78,
+  "industry_scale": 0.5,
+  "industry_level_cap": 9,
+  "powers": [
+    {
+      "iso": "OCE",
+      "name": "Oceania",
+      "color": "#5a6b86",
+      "$comment": "The Americas, the Atlantic islands including the British Isles, Australasia, and Africa south of the contested belt.",
+      "owns": [
+        "USA",
+        "CAN",
+        "MEX",
+        "GTM",
+        "BLZ",
+        "HND",
+        "SLV",
+        "NIC",
+        "CRI",
+        "PAN",
+        "CUB",
+        "HTI",
+        "DOM",
+        "JAM",
+        "BHS",
+        "TTO",
+        "PRI",
+        "COL",
+        "VEN",
+        "GUY",
+        "SUR",
+        "ECU",
+        "PER",
+        "BRA",
+        "BOL",
+        "PRY",
+        "CHL",
+        "ARG",
+        "URY",
+        "GRL",
+        "FLK",
+        "SGS",
+        "ATF",
+        "GBR",
+        "IRL",
+        "IMN",
+        "ISL",
+        "FRO",
+        "AUS",
+        "NZL",
+        "PNG",
+        "FJI",
+        "SLB",
+        "VUT",
+        "NCL",
+        "PYF",
+        "WSM",
+        "ZAF",
+        "NAM",
+        "BWA",
+        "ZWE",
+        "LSO",
+        "SWZ",
+        "MOZ",
+        "ZMB",
+        "MWI",
+        "AGO",
+        "MDG",
+        "MUS",
+        "COM"
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#2b3444",
+          "#5a6b86",
+          "#98a4b8"
+        ]
+      },
+      "army": 9200000,
+      "navy": 46,
+      "compass": {
+        "left": -55,
+        "auth": 100
+      },
+      "policies": [
+        "censorship",
+        "secret_police",
+        "national_unity",
+        "total_war_economy",
+        "internal_passports"
+      ]
+    },
+    {
+      "iso": "EUR",
+      "name": "Eurasia",
+      "color": "#8c4038",
+      "$comment": "The whole northern mass of Europe and Asia, from the Atlantic coast to the Bering Strait.",
+      "owns": [
+        "PRT",
+        "ESP",
+        "FRA",
+        "BEL",
+        "NLD",
+        "LUX",
+        "DEU",
+        "CHE",
+        "AUT",
+        "ITA",
+        "POL",
+        "CZE",
+        "SVK",
+        "HUN",
+        "ROU",
+        "BGR",
+        "GRC",
+        "ALB",
+        "SRB",
+        "HRV",
+        "BIH",
+        "SVN",
+        "MKD",
+        "DNK",
+        "NOR",
+        "SWE",
+        "FIN",
+        "EST",
+        "LVA",
+        "LTU",
+        "BLR",
+        "UKR",
+        "MDA",
+        "RUS",
+        "ALA",
+        "TUR",
+        "AFG",
+        "KAZ",
+        "UZB",
+        "TKM",
+        "KGZ",
+        "TJK",
+        "ARM",
+        "AZE",
+        "GEO"
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#3d1b17",
+          "#8c4038",
+          "#c07a70"
+        ]
+      },
+      "army": 11800000,
+      "navy": 21,
+      "compass": {
+        "left": -70,
+        "auth": 100
+      },
+      "policies": [
+        "censorship",
+        "secret_police",
+        "conscription",
+        "collective_agriculture",
+        "internal_passports"
+      ]
+    },
+    {
+      "iso": "EAS",
+      "name": "Eastasia",
+      "color": "#4f7a5e",
+      "$comment": "China and the lands south of it, the Japanese islands, and a fluctuating share of Manchuria, Mongolia and Tibet.",
+      "owns": [
+        "CHN",
+        "JPN",
+        "KOR",
+        "PRK",
+        "TWN",
+        "HKG",
+        "MNG",
+        "VNM",
+        "LAO",
+        "KHM",
+        "THA",
+        "MMR"
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#22392b",
+          "#4f7a5e",
+          "#84ab92"
+        ]
+      },
+      "army": 8400000,
+      "navy": 27,
+      "compass": {
+        "left": -60,
+        "auth": 100
+      },
+      "policies": [
+        "censorship",
+        "national_unity",
+        "mass_mobilisation",
+        "officer_purge",
+        "internal_passports"
+      ]
+    }
+  ],
+  "relations": {
+    "$comment": "The alignment at the opening: Oceania at war with Eurasia, allied with Eastasia. It is not expected to hold.",
+    "wars": [
+      [
+        "OCE",
+        "EUR"
+      ]
+    ],
+    "alliances": [
+      [
+        "OCE",
+        "EAS"
+      ]
+    ]
+  },
+  "claims": [
+    {
+      "by": "OCE",
+      "on": "MAR"
+    },
+    {
+      "by": "OCE",
+      "on": "DZA"
+    },
+    {
+      "by": "OCE",
+      "on": "TUN"
+    },
+    {
+      "by": "OCE",
+      "on": "LBY"
+    },
+    {
+      "by": "OCE",
+      "on": "EGY"
+    },
+    {
+      "by": "OCE",
+      "on": "SDN"
+    },
+    {
+      "by": "OCE",
+      "on": "NGA"
+    },
+    {
+      "by": "OCE",
+      "on": "GHA"
+    },
+    {
+      "by": "OCE",
+      "on": "CIV"
+    },
+    {
+      "by": "OCE",
+      "on": "SEN"
+    },
+    {
+      "by": "OCE",
+      "on": "COD"
+    },
+    {
+      "by": "OCE",
+      "on": "KEN"
+    },
+    {
+      "by": "OCE",
+      "on": "TZA"
+    },
+    {
+      "by": "EUR",
+      "on": "IRN"
+    },
+    {
+      "by": "EUR",
+      "on": "IRQ"
+    },
+    {
+      "by": "EUR",
+      "on": "SYR"
+    },
+    {
+      "by": "EUR",
+      "on": "LBN"
+    },
+    {
+      "by": "EUR",
+      "on": "JOR"
+    },
+    {
+      "by": "EUR",
+      "on": "ISR"
+    },
+    {
+      "by": "EUR",
+      "on": "PSE"
+    },
+    {
+      "by": "EUR",
+      "on": "SAU"
+    },
+    {
+      "by": "EUR",
+      "on": "KWT"
+    },
+    {
+      "by": "EUR",
+      "on": "ARE"
+    },
+    {
+      "by": "EUR",
+      "on": "OMN"
+    },
+    {
+      "by": "EUR",
+      "on": "YEM"
+    },
+    {
+      "by": "EUR",
+      "on": "QAT"
+    },
+    {
+      "by": "EUR",
+      "on": "PAK"
+    },
+    {
+      "by": "EUR",
+      "on": "IND"
+    },
+    {
+      "by": "EAS",
+      "on": "IDN"
+    },
+    {
+      "by": "EAS",
+      "on": "MYS"
+    },
+    {
+      "by": "EAS",
+      "on": "PHL"
+    },
+    {
+      "by": "EAS",
+      "on": "BRN"
+    },
+    {
+      "by": "EAS",
+      "on": "IND"
+    },
+    {
+      "by": "EAS",
+      "on": "BGD"
+    },
+    {
+      "by": "EAS",
+      "on": "LKA"
+    },
+    {
+      "by": "EAS",
+      "on": "NPL"
+    },
+    {
+      "by": "EAS",
+      "on": "BTN"
+    }
+  ]
+}

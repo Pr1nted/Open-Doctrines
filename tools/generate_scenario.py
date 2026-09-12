@@ -1018,10 +1018,18 @@ def build_minorities(scen, owner, centers):
     are labelled with. Everything else -- concentration boxes, the jitter, the
     colour table -- is generate_minorities.py's, imported rather than copied so
     the two cannot drift.
+
+    RUN FOR EVERY SCENARIO, OVERRIDES OR NOT. This used to return early when a
+    scenario declared no `ethnic_overrides`, which left minorities.json to be
+    copied from the base map by COPY_WITH_CAVEAT. That copy is keyed by BASE
+    province id, and every scenario re-cuts the geometry -- so the carried file
+    described provinces that no longer exist and said nothing about the ones
+    that now do. It went unnoticed because every scenario written so far
+    happened to declare overrides; the first one that did not shipped 1,380
+    stale entries and six provinces with no composition at all.
     """
-    overrides = scen.get("ethnic_overrides")
-    if not overrides:
-        return None, None
+    overrides = {k: v for k, v in (scen.get("ethnic_overrides") or {}).items()
+                 if not k.startswith("$")}
 
     sys.path.insert(0, TOOLS_DIR)
     import generate_minorities as gm
@@ -1029,8 +1037,7 @@ def build_minorities(scen, owner, centers):
     doc, iso_region = gm.load_groups()
     aliases, fallback = doc["aliases"], doc["region_fallback"]
     countries = dict(doc["countries"])
-    countries.update({iso: [list(x) for x in comp] for iso, comp in overrides.items()
-                      if not iso.startswith("$")})
+    countries.update({iso: [list(x) for x in comp] for iso, comp in overrides.items()})
 
     by_iso = {}
     for c in doc["concentrations"]:
@@ -1063,8 +1070,7 @@ def build_minorities(scen, owner, centers):
         for e in entries:
             colors.setdefault(e["n"], gm.color_from_name(e["n"]))
     print(f"  minorities regenerated for the era: {len(result)} provinces, "
-          f"{len(colors)} groups, {len([k for k in overrides if not k.startswith('$')])} "
-          f"country composition(s) overridden")
+          f"{len(colors)} groups, {len(overrides)} country composition(s) overridden")
     return result, colors
 
 
