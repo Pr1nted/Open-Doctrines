@@ -46,7 +46,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: write        # push the branch the archives land on
+  pull-requests: write   # and open the request that asks for them to be merged
 
 jobs:
   build:
@@ -278,7 +279,22 @@ jobs:
           rm -rf incoming
           find third_party/odseal -type f | sort
 
-      - name: Commit if anything changed
+      # ── A BRANCH AND A PULL REQUEST, NOT A PUSH ──
+      #
+      # This job used to push straight to the target branch and could not: main
+      # requires reviews and fourteen status checks, so the push was declined
+      # with GH006 and five successful builds were thrown away at the last step.
+      # A workflow whose entire purpose is to commit archives could not commit
+      # them, and the way that surfaced was a red run that said nothing about
+      # protection.
+      #
+      # A pull request goes through the same gate everything else does, which
+      # is the point of the gate. The archives are binaries built from a source
+      # nobody reviewing can read, so what a reviewer is actually confirming is
+      # that a rebuild was intended -- and that is worth one click.
+      - name: Open a pull request if anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -e
@@ -290,5 +306,28 @@ jobs:
             echo "archives are unchanged"
             exit 0
           fi
+
+          # WHAT CHANGED, IN THE ONLY TERMS THAT MEAN ANYTHING HERE. A diff of
+          # a stripped archive is unreadable, and two of these embed a build
+          # timestamp in the ar header -- so a rebuild from identical source
+          # shows as "changed" on macOS and web while linux and android come
+          # out byte-identical. The exported symbols are the part a reviewer
+          # can actually check, so they go in the body.
+          {
+            echo "Rebuilt from the sealed source. Exports per archive:"
+            echo
+            for f in $(find third_party/odseal -name 'libodseal.a' -o -name 'odseal.lib' | sort); do
+              echo "- \`$f\`: $(nm --defined-only --extern-only "$f" 2>/dev/null \
+                    | awk '$2=="T"{print $3}' | sed 's/^_//' | sort -u | tr '\n' ' ')"
+            done
+            echo
+            echo "Note: macOS and web archives embed a build timestamp, so they"
+            echo "differ on every rebuild even when the source has not changed."
+          } > /tmp/pr-body.md
+
+          BRANCH="odseal-prebuilts/$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
           git commit -m "Rebuild the odseal prebuilts"
-          git push origin HEAD:${{ inputs.ref }}
+          git push origin "$BRANCH"
+          gh pr create --base "${{ inputs.ref }}" --head "$BRANCH" \
+            --title "Rebuild the odseal prebuilts" --body-file /tmp/pr-body.md

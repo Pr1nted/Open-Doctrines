@@ -30,7 +30,18 @@ Building five archives on five machines by hand is the chore that silently
 stops happening, and it fails as a red CI on a platform nobody built for. So
 `.github/workflows/odseal-prebuilts.yml` does it: run it from the Actions tab
 and it rebuilds every archive from one source with one set of flags, tests each
-one, and commits whatever changed. Run it whenever the sealed source changes.
+one, and opens a pull request with whatever changed. Run it whenever the sealed
+source changes.
+
+It opens a request rather than pushing, because `main` requires reviews and
+status checks and a push from the workflow is declined — which spent five
+successful builds and reported a red run that said nothing about why.
+
+Two of the archives are not reproducible: the macOS and web `ar` headers carry
+a build timestamp, so those two differ on every rebuild even when the source is
+identical, while linux and android come out byte-for-byte the same. The pull
+request lists the exported symbols of each archive for that reason — it is the
+part of a stripped binary a reviewer can actually check.
 
 It needs two repository secrets, because the source is not in this repository:
 
