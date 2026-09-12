@@ -223,7 +223,24 @@ jobs:
           TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           GOT="$("$TC/llvm-nm" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
           echo "exports: $GOT"
-          test "$GOT" = "od_fz od_k9 od_s7 od_v3 " || { echo "unexpected exports"; exit 1; }
+          # An EXACT list here meant the check failed the moment the sealed
+          # source grew an entry point -- the archive was correct and the
+          # assertion was stale, which is the failure that reads as "the build
+          # is broken" and is not. Two rules instead, and they are the two the
+          # check is actually for: every entry point the game links must be
+          # present, and nothing may be exported that is not a known one,
+          # because a stray symbol is what points a reader at what this does.
+          REQUIRED="od_fz od_k9 od_s7 od_v3"
+          ALLOWED="od_fz od_k9 od_s7 od_t4 od_v3"
+          for s in $REQUIRED; do
+            printf '%s\n' $GOT | grep -qx "$s" || { echo "missing entry point: $s"; exit 1; }
+          done
+          for s in $GOT; do
+            case " $ALLOWED " in
+              *" $s "*) ;;
+              *) echo "unexpected export: $s"; exit 1 ;;
+            esac
+          done
 
       - uses: actions/upload-artifact@v4
         with:
