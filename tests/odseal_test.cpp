@@ -2,6 +2,16 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <sys/stat.h>
+#ifdef _WIN32
+#  include <direct.h>
+#  define od_mkdir(p) _mkdir(p)
+#  define od_rmdir(p) _rmdir(p)
+#else
+#  include <unistd.h>
+#  define od_mkdir(p) mkdir(p, 0755)
+#  define od_rmdir(p) rmdir(p)
+#endif
 static int fails=0;
 static bool blocked(const char* code, const std::string& s){
     unsigned a[8]={0};
@@ -55,6 +65,51 @@ int main(){
         expect(c, "", true, c);
     expect("ur","", false, "ur empty");
     expect("bg","", false, "bg empty");
+
+    // ── od_t4: the rule tables folded to one word ──
+    //
+    // Its whole job is to be equal on two installs of the same release and
+    // unequal when the tables have been edited, so those are the two things
+    // asserted -- against files this test writes, not against data/, because
+    // this runs on five platforms and must not depend on the checkout's shape.
+    printf("== rule-table seal ==\n");
+    {
+        const char* dir = "odseal_t4_tmp";
+        od_mkdir(dir);
+        auto put = [&](const char* name, const char* body){
+            std::string path = std::string(dir) + "/" + name;
+            FILE* f = fopen(path.c_str(), "wb");
+            if (f) { fwrite(body, 1, strlen(body), f); fclose(f); }
+        };
+        auto check = [&](bool ok, const char* label){
+            if (!ok) { printf("  FAIL %-22s\n", label); ++fails; }
+        };
+        const std::string root = std::string(dir) + "/";
+
+        put("policies.json", "{\"policies\":[{\"id\":\"land_reform\"}]}");
+        put("district_laws.json", "{\"laws\":[{\"id\":\"curfew\"}]}");
+
+        const unsigned long long a = od_t4(root.c_str());
+        check(a != 0ull, "a populated directory folds to something");
+        check(od_t4(root.c_str()) == a, "the same tables fold the same twice");
+
+        // The thing it exists to catch: a number changed in a shipped table.
+        put("policies.json", "{\"policies\":[{\"id\":\"land_reform\",\"x\":9}]}");
+        const unsigned long long b = od_t4(root.c_str());
+        check(b != a, "an edited table folds differently");
+
+        // A file that is not there is a difference too, not a silent zero.
+        std::string gone = std::string(dir) + "/district_laws.json";
+        remove(gone.c_str());
+        const unsigned long long c = od_t4(root.c_str());
+        check(c != 0ull && c != b, "a missing table folds differently");
+
+        check(od_t4(nullptr) == 0ull, "no directory folds to zero");
+
+        std::string p1 = std::string(dir) + "/policies.json";
+        remove(p1.c_str());
+        od_rmdir(dir);
+    }
 
     printf("\n%s\n", fails? "FAILURES":"all seal checks passed");
     return fails?1:0;

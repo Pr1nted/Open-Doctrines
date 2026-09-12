@@ -384,6 +384,11 @@ else()
     set_target_properties(odseal PROPERTIES
         IMPORTED_LOCATION ${ODSEAL_LIB}
         INTERFACE_INCLUDE_DIRECTORIES ${ODSEAL_DIST})
+    # The committed prebuilts export od_t4 as of the rebuild that added it, so
+    # a clone gets the rule-table check too rather than only a maintainer tree.
+    # The archives, this header and this line move together in one commit --
+    # that is what makes the define safe to set unconditionally here.
+    target_compile_definitions(odseal INTERFACE OD_HAS_T4)
     message(STATUS "odseal: prebuilt ${ODSEAL_PLATFORM}")
 endif()
 

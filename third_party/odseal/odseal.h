@@ -34,6 +34,27 @@ size_t od_fz(const int* cps, size_t n, int* out, size_t cap);
 // nonzero token on a clean pass; the caller treats a zero as a failed seal.
 unsigned long long od_k9(const char* dataDir);
 
+// Fold this build's own rule tables into one word. Two installs of the same
+// release produce the same word; an install whose tables have been edited does
+// not.
+//
+// A PURE FUNCTION OF THE FILES, and it has to be. The first version seeded it
+// with the od_k9 token, which is per-install state rather than per-release: a
+// windowed client computes that token during init() and the headless server
+// build never calls init() at all, so the same tables produced two different
+// words and every player would have been flagged by a headless host. Whatever
+// this folds, both ends must be able to arrive at independently.
+//
+// WHAT IT IS WORTH, EXACTLY. This runs on hardware its owner controls, so it
+// is a COST, not a proof: the word can be replayed, and the call can be
+// patched out by anyone willing to reverse a stripped archive. What it removes
+// is the cheap end -- editing a number in a shipped .json, which needs a text
+// editor. src/net/ModAttest.h is right that attestation from an open-source
+// client proves nothing; this is the one component whose source is not in the
+// tree, which is the whole of the difference. Treat a mismatch as something to
+// look at, never as something to punish automatically.
+unsigned long long od_t4(const char* dataDir);
+
 #ifdef __cplusplus
 }
 #endif
