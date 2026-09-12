@@ -30,12 +30,16 @@ Building five archives on five machines by hand is the chore that silently
 stops happening, and it fails as a red CI on a platform nobody built for. So
 `.github/workflows/odseal-prebuilts.yml` does it: run it from the Actions tab
 and it rebuilds every archive from one source with one set of flags, tests each
-one, and opens a pull request with whatever changed. Run it whenever the sealed
-source changes.
+one, and pushes whatever changed to a branch. Run it whenever the sealed source
+changes, then open the pull request it links to in the run summary.
 
-It opens a request rather than pushing, because `main` requires reviews and
-status checks and a push from the workflow is declined — which spent five
-successful builds and reported a red run that said nothing about why.
+It pushes a branch rather than committing, because `main` requires reviews and
+status checks and a direct push from the workflow is declined — which spent five
+successful builds and reported a red run that said nothing about why. It stops
+short of opening the request itself because the setting that would allow that
+("Allow GitHub Actions to create and approve pull requests") also lets a
+workflow approve one, and on a branch that requires review that is the gate
+approving itself.
 
 Two of the archives are not reproducible: the macOS and web `ar` headers carry
 a build timestamp, so those two differ on every rebuild even when the source is
