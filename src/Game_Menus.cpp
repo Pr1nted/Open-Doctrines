@@ -499,9 +499,9 @@ struct CommunityLink {
 const CommunityLink kCommunityLinks[] = {
     {"https://discord.gg/wqS65jzVv5", "discord.png",
      {40, 35, 55, 220}, {60, 50, 80, 240}, {100, 80, 140, 200}, {130, 100, 180, 255}},
-    {"https://pr1nted.itch.io/open-doctrines", nullptr,
+    {"https://pr1nted.itch.io/open-doctrines", "itch.png",
      {58, 34, 38, 220}, {84, 46, 52, 240}, {170, 92, 100, 200}, {220, 120, 130, 255}},
-    {"https://opendoctrines.pages.dev", nullptr,
+    {"https://opendoctrines.pages.dev", "website.png",
      {52, 45, 28, 220}, {74, 63, 38, 240}, {150, 130, 70, 200}, {200, 172, 90, 255}},
     {"https://github.com/Pr1nted/Open-Doctrines", "github.png",
      {35, 35, 45, 220}, {50, 50, 60, 240}, {110, 110, 130, 200}, {150, 150, 170, 255}},
@@ -572,11 +572,13 @@ void Game::drawCommunityMenu() {
     // project root, so they could resolve from a source checkout and never from
     // the .app bundle, where the CWD is wherever the user launched it from.
     //
-    // Checked with FileExists first because the files are absent from the
-    // repository: raylib logs a WARNING per failed LoadTexture, and a button
-    // with no icon falls back to its text label, so the only thing the attempt
-    // produced was noise in the log every run. A link with no icon named at all
-    // is the same case and costs nothing.
+    // FileExists first, and the icon field may be null. All four icons ARE in
+    // the repository now -- an older version of this comment said they were
+    // not, which was true when it was written and quietly stopped being true --
+    // but a data directory is a thing players edit, and raylib logs a WARNING
+    // per failed LoadTexture. A button whose icon is missing falls back to its
+    // text label and stays usable, which is the behaviour worth keeping
+    // whatever the reason for the absence.
     static bool linkIconsTried = false;
     static Texture2D linkIcons[kCommunityLinkCount] = {};
     if (!linkIconsTried) {
