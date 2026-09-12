@@ -455,18 +455,86 @@ void Game::drawCredits() {
 // ────────────────────────────────────────────────────────────────────────────
 // updateCommunityMenu
 // ────────────────────────────────────────────────────────────────────────────
+namespace {
+
+/**
+ * The Community menu's links, named once.
+ *
+ * The rectangles used to be computed twice -- once in updateCommunityMenu() to
+ * decide what was clicked and once in drawCommunityMenu() to paint it -- from
+ * two copies of the same arithmetic. That is fine until somebody adds a button,
+ * which is when the copies disagree and a click opens the link above the one
+ * under the cursor. Adding two links is exactly that change, so the arithmetic
+ * moved here and both callers ask for it.
+ *
+ * ORDER IS DELIBERATE. Discord first because this screen is called Community
+ * and that is the community. itch.io second because it is where a rating goes,
+ * and a rating is the single most useful thing a player who liked this can do.
+ * The website third, the source last: both matter to fewer people.
+ */
+/**
+ * THE LABELS ARE A `const char*[]` OF THEIR OWN, AND THAT IS NOT TIDINESS.
+ *
+ * tools/i18n_extract.py collects any `const char* x[] = {...}` by SHAPE, so
+ * these four reach data/lang/en.json the day they are written. It deliberately
+ * does NOT read struct tables -- widening it to those once swept in WASM
+ * signatures and permission ids -- so a `label` field inside CommunityLink
+ * below would be invisible to it, and the first version of this change silently
+ * DROPPED "Discord" and "GitHub" from the catalogue of all twenty-one
+ * languages while adding neither of the new two.
+ *
+ * Nor can they be wrapped in T() here, which is the documented answer for a
+ * struct table: this array is at namespace scope and is initialised before a
+ * language is loaded, so T() at this point freezes English in. They are looked
+ * up at draw time instead, which is when a language exists. See docs/i18n.md.
+ */
+const char* kCommunityLabels[] = {"Discord", "itch.io", "Website", "GitHub"};
+
+struct CommunityLink {
+    const char* url;
+    const char* icon;       ///< file under data/icons/links/, or nullptr
+    Color       bg, bgHover, border, borderHover;
+};
+
+const CommunityLink kCommunityLinks[] = {
+    {"https://discord.gg/wqS65jzVv5", "discord.png",
+     {40, 35, 55, 220}, {60, 50, 80, 240}, {100, 80, 140, 200}, {130, 100, 180, 255}},
+    {"https://pr1nted.itch.io/open-doctrines", nullptr,
+     {58, 34, 38, 220}, {84, 46, 52, 240}, {170, 92, 100, 200}, {220, 120, 130, 255}},
+    {"https://opendoctrines.pages.dev", nullptr,
+     {52, 45, 28, 220}, {74, 63, 38, 240}, {150, 130, 70, 200}, {200, 172, 90, 255}},
+    {"https://github.com/Pr1nted/Open-Doctrines", "github.png",
+     {35, 35, 45, 220}, {50, 50, 60, 240}, {110, 110, 130, 200}, {150, 150, 170, 255}},
+};
+constexpr int kCommunityLinkCount = (int)(sizeof(kCommunityLinks) / sizeof(kCommunityLinks[0]));
+// Two arrays indexed by the same i. A mismatch is a wrong label on a right
+// link, which reads as a bug in the menu rather than in this file, so it is a
+// compile error instead.
+static_assert(sizeof(kCommunityLabels) / sizeof(kCommunityLabels[0]) == (size_t)kCommunityLinkCount,
+              "every community link needs exactly one label");
+
+constexpr int kCommBtnW = 260, kCommBtnH = 64, kCommGap = 14, kCommBackH = 48;
+
+int communityTotalH() {
+    return kCommBtnH * kCommunityLinkCount + kCommGap * (kCommunityLinkCount - 1) + kCommBackH + 30;
+}
+int communityStartY(int screenH) { return (screenH - communityTotalH()) / 2; }
+
+Rectangle communityLinkRect(int i, int screenW, int screenH) {
+    const int y = communityStartY(screenH) + i * (kCommBtnH + kCommGap);
+    return {(float)(screenW / 2 - kCommBtnW / 2), (float)y, (float)kCommBtnW, (float)kCommBtnH};
+}
+Rectangle communityBackRect(int screenW, int screenH) {
+    const int y = communityStartY(screenH)
+                + kCommunityLinkCount * kCommBtnH + (kCommunityLinkCount - 1) * kCommGap + 30;
+    return {(float)(screenW / 2 - 80), (float)y, 160, (float)kCommBackH};
+}
+
+}  // namespace
+
 void Game::updateCommunityMenu() {
     if (isMouseOverConsole()) return;
     Vector2 mouse = getMouse();
-
-    int btnW = 260, btnH = 80, gap = 20, backBtnH = 48;
-    int totalH = btnH * 2 + gap + backBtnH + 30;
-    int startY = (m_screenH - totalH) / 2;
-    int centerX = m_screenW / 2;
-
-    Rectangle discordBtn = {(float)(centerX - btnW / 2), (float)startY, (float)btnW, (float)btnH};
-    Rectangle githubBtn = {(float)(centerX - btnW / 2), (float)(startY + btnH + gap), (float)btnW, (float)btnH};
-    Rectangle backBtn = {(float)(centerX - 80), (float)(startY + btnH * 2 + gap + 30), 160, (float)backBtnH};
 
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         // OpenURL, not system("open ..."). `open` is a macOS command: on Windows
@@ -476,11 +544,13 @@ void Game::updateCommunityMenu() {
         // one platform it was written on and silently did nothing on the three
         // that account for almost every player. raylib's OpenURL covers all four,
         // and is what every other link in this codebase already uses.
-        if (CheckCollisionPointRec(mouse, discordBtn)) {
-            odlink::open("https://discord.gg/wqS65jzVv5");
-        } else if (CheckCollisionPointRec(mouse, githubBtn)) {
-            odlink::open("https://github.com/Pr1nted/Open-Doctrines");
-        } else if (CheckCollisionPointRec(mouse, backBtn)) {
+        for (int i = 0; i < kCommunityLinkCount; ++i) {
+            if (CheckCollisionPointRec(mouse, communityLinkRect(i, m_screenW, m_screenH))) {
+                odlink::open(kCommunityLinks[i].url);
+                return;
+            }
+        }
+        if (CheckCollisionPointRec(mouse, communityBackRect(m_screenW, m_screenH))) {
             Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
         }
@@ -497,84 +567,61 @@ void Game::drawCommunityMenu() {
     drawMenuBackground();
     DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 160});
 
-    // Loaded once, and from m_dataDir like every other asset. These two were the
+    // Loaded once, and from m_dataDir like every other asset. These were the
     // only paths in the game that assumed the process working directory was the
     // project root, so they could resolve from a source checkout and never from
     // the .app bundle, where the CWD is wherever the user launched it from.
     //
-    // Checked with FileExists first because both files are absent from the
-    // repository: raylib logs a WARNING per failed LoadTexture, and the buttons
-    // below already fall back to their text labels, so the only thing the
-    // attempt produced was noise in the log every run.
+    // Checked with FileExists first because the files are absent from the
+    // repository: raylib logs a WARNING per failed LoadTexture, and a button
+    // with no icon falls back to its text label, so the only thing the attempt
+    // produced was noise in the log every run. A link with no icon named at all
+    // is the same case and costs nothing.
     static bool linkIconsTried = false;
-    static Texture2D discordIcon{};
-    static Texture2D githubIcon{};
+    static Texture2D linkIcons[kCommunityLinkCount] = {};
     if (!linkIconsTried) {
         linkIconsTried = true;
-        const std::string dir = m_dataDir + "icons/links/";
-        const std::string dPath = dir + "discord.png";
-        const std::string gPath = dir + "github.png";
-        if (FileExists(dPath.c_str())) discordIcon = LoadTexture(dPath.c_str());
-        if (FileExists(gPath.c_str())) githubIcon  = LoadTexture(gPath.c_str());
+        for (int i = 0; i < kCommunityLinkCount; ++i) {
+            if (!kCommunityLinks[i].icon) continue;
+            const std::string path = m_dataDir + "icons/links/" + kCommunityLinks[i].icon;
+            if (FileExists(path.c_str())) linkIcons[i] = LoadTexture(path.c_str());
+        }
     }
 
-    Vector2 mouse = getMouse();
-    int btnW = 260, btnH = 80, gap = 20, backBtnH = 48;
-    int totalH = btnH * 2 + gap + backBtnH + 30;
-    int startY = (m_screenH - totalH) / 2;
-    int centerX = m_screenW / 2;
-    int fontSize = 24;
+    const Vector2 mouse = getMouse();
+    const int centerX = m_screenW / 2;
+    const int fontSize = 22;
 
-    // Title
     const char* title = "Community";
-    int titleW = MeasureText(title, 48);
-    DrawText(title, centerX - titleW / 2, startY - 90, 48, hexToColor(m_config.accent()));
+    DrawText(title, centerX - MeasureText(title, 48) / 2,
+             communityStartY(m_screenH) - 90, 48, hexToColor(m_config.accent()));
 
-    // Discord button
-    {
-        Rectangle r = {(float)(centerX - btnW / 2), (float)startY, (float)btnW, (float)btnH};
-        bool hover = CheckCollisionPointRec(mouse, r);
-        Color bg = hover ? Color{60, 50, 80, 240} : Color{40, 35, 55, 220};
-        Color bd = hover ? Color{130, 100, 180, 255} : Color{100, 80, 140, 200};
-        DrawRectangleRounded(r, 0.15f, 8, bg);
-        DrawRectangleRoundedLines(r, 0.15f, 8, bd);
+    for (int i = 0; i < kCommunityLinkCount; ++i) {
+        const CommunityLink& L = kCommunityLinks[i];
+        const Rectangle r = communityLinkRect(i, m_screenW, m_screenH);
+        const bool hover = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.15f, 8, hover ? L.bgHover : L.bg);
+        DrawRectangleRoundedLines(r, 0.15f, 8, hover ? L.borderHover : L.border);
 
-        if (discordIcon.id > 0) {
-            float scale = 36.0f / discordIcon.height;
-            float iw = discordIcon.width * scale;
-            DrawTexturePro(discordIcon, {0, 0, (float)discordIcon.width, (float)discordIcon.height},
-                {r.x + 16, r.y + (btnH - 36) / 2.0f, iw, 36}, {0, 0}, 0, WHITE);
+        if (linkIcons[i].id > 0) {
+            const float scale = 32.0f / linkIcons[i].height;
+            const float iw = linkIcons[i].width * scale;
+            DrawTexturePro(linkIcons[i],
+                {0, 0, (float)linkIcons[i].width, (float)linkIcons[i].height},
+                {r.x + 16, r.y + (kCommBtnH - 32) / 2.0f, iw, 32}, {0, 0}, 0, WHITE);
         }
-        DrawText(T("Discord"), centerX - MeasureText(T("Discord"), fontSize) / 2, startY + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
+        const char* label = T(kCommunityLabels[i]);
+        DrawText(label, centerX - MeasureText(label, fontSize) / 2,
+                 (int)r.y + kCommBtnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
     }
 
-    // GitHub button
     {
-        Rectangle r = {(float)(centerX - btnW / 2), (float)(startY + btnH + gap), (float)btnW, (float)btnH};
-        bool hover = CheckCollisionPointRec(mouse, r);
-        Color bg = hover ? Color{50, 50, 60, 240} : Color{35, 35, 45, 220};
-        Color bd = hover ? Color{150, 150, 170, 255} : Color{110, 110, 130, 200};
-        DrawRectangleRounded(r, 0.15f, 8, bg);
-        DrawRectangleRoundedLines(r, 0.15f, 8, bd);
-
-        if (githubIcon.id > 0) {
-            float scale = 36.0f / githubIcon.height;
-            float iw = githubIcon.width * scale;
-            DrawTexturePro(githubIcon, {0, 0, (float)githubIcon.width, (float)githubIcon.height},
-                {r.x + 16, r.y + (btnH - 36) / 2.0f, iw, 36}, {0, 0}, 0, WHITE);
-        }
-        DrawText(T("GitHub"), centerX - MeasureText(T("GitHub"), fontSize) / 2, startY + btnH + gap + btnH / 2 - fontSize / 2, fontSize, hover ? WHITE : LIGHTGRAY);
-    }
-
-    // Back button
-    {
-        Rectangle r = {(float)(centerX - 80), (float)(startY + btnH * 2 + gap + 30), 160, (float)backBtnH};
-        bool hover = CheckCollisionPointRec(mouse, r);
-        Color bg = hover ? Color{70, 70, 80, 240} : Color{50, 50, 60, 220};
-        Color bd = hover ? Color{150, 150, 170, 255} : Color{110, 110, 130, 200};
-        DrawRectangleRounded(r, 0.15f, 8, bg);
-        DrawRectangleRoundedLines(r, 0.15f, 8, bd);
-        DrawText(T("Back"), centerX - MeasureText(T("Back"), 22) / 2, r.y + (backBtnH - 22) / 2, 22, hover ? WHITE : LIGHTGRAY);
+        const Rectangle r = communityBackRect(m_screenW, m_screenH);
+        const bool hover = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.15f, 8, hover ? Color{70, 70, 80, 240} : Color{50, 50, 60, 220});
+        DrawRectangleRoundedLines(r, 0.15f, 8, hover ? Color{150, 150, 170, 255} : Color{110, 110, 130, 200});
+        DrawText(T("Back"), centerX - MeasureText(T("Back"), 22) / 2,
+                 (int)r.y + (kCommBackH - 22) / 2, 22, hover ? WHITE : LIGHTGRAY);
     }
 
     DrawText(T("ESC to go back"), 10, m_screenH - 24, 14, Color{80, 80, 90, 200});

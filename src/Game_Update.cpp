@@ -180,6 +180,11 @@ void Game::update(float dt) {
     // endFrame(), which is after the map has already taken this frame's clicks,
     // so consuming the click has to happen here or picking a star also picks a
     // province.
+    tickPlayClock(dt);
+    // The usage question first: it is asked far earlier, and each prompt holds
+    // off while the other is open, so in practice they are never both up.
+    maybeOfferUsage(dt);
+    if (updateUsagePrompt()) return;
     maybeOfferRating(dt);
     if (updateRatingPrompt()) return;
 

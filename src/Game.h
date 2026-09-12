@@ -5736,6 +5736,20 @@ private:
      */
     bool  m_ratingMoment = false;
 
+    /**
+     * The usage-reporting question, asked once and early.
+     *
+     * EARLY BECAUSE IT IS CONSENT, NOT A FAVOUR. Nothing is sent until this is
+     * answered yes, so every minute it waits is data that was never collected
+     * and cannot be. The rating prompt waits for an opinion to exist; this one
+     * only waits long enough to be sure somebody is actually playing.
+     *
+     * It is deliberately the FIRST of the two to appear, and the two never
+     * overlap: maybeOfferRating() holds off while this is open and vice versa.
+     * Two boxes in one corner is how both get dismissed unread.
+     */
+    bool  m_usagePromptOpen = false;
+
     /// The frame the form opened on, kept so the player can still see what they
     /// are reporting. Same trick as m_popupBackdrop, and for the same reason:
     /// the world behind is a picture, so it cannot take a click meant for the
@@ -5759,7 +5773,15 @@ private:
     Rectangle ratingRateRect() const;
     Rectangle ratingWrongRect() const;
     Rectangle ratingDismissRect() const;
+    bool promptsAreHidden() const;
+    void tickPlayClock(float dt);
     void maybeOfferRating(float dt);
+    void maybeOfferUsage(float dt);
+    void drawUsagePrompt();
+    bool updateUsagePrompt();
+    Rectangle usagePromptRect() const;
+    Rectangle usageYesRect() const;
+    Rectangle usageNoRect() const;
 
     // ─── Map Editor ───
     MapEditor* m_mapEditor = nullptr;

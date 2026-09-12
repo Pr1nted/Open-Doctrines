@@ -48,6 +48,10 @@ struct Shot {
 // while no world is loaded, which is also the cheapest time to photograph it.
 const Shot SHOTS[] = {
     {"main-menu",     30, false},
+    // The four outward links, photographed because they are the only route
+    // from the game to anywhere else and a wrong one is invisible until a
+    // player presses it.
+    {"community",     30, false},
     // The opening conversation, where it actually plays: on the menu,
     // with no world under it.
     {"menu-intro",   150, false},
@@ -606,6 +610,8 @@ bool Game::tickScreenshotTour() {
             if (m_dialogOpen) endDialogue();
         } else if (name == "main-menu") {
             m_currentScreen = SCREEN_MENU;
+        } else if (name == "community") {
+            m_currentScreen = SCREEN_COMMUNITY;
         } else if (name == "menu-intro") {
             m_currentScreen = SCREEN_MENU;
             m_inSettings = false;

@@ -535,7 +535,7 @@ void Game::updateFeedbackForm() {
 // prompt that gets a worse answer each time.
 
 void Game::drawRatingPrompt() {
-    if (!m_ratingPromptOpen) return;
+    if (!m_ratingPromptOpen || promptsAreHidden()) return;
 
     const Vector2 mouse = getMouse();
     const Color accent = hexToColor(m_config.accent());
@@ -600,7 +600,7 @@ Rectangle Game::ratingDismissRect() const {
  * @return true when the pointer is over the prompt.
  */
 bool Game::updateRatingPrompt() {
-    if (!m_ratingPromptOpen) return false;
+    if (!m_ratingPromptOpen || promptsAreHidden()) return false;
     const Vector2 mouse = getMouse();
     if (!CheckCollisionPointRec(mouse, ratingPromptRect())) return false;
     if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
@@ -646,19 +646,175 @@ bool Game::updateRatingPrompt() {
 // FALLBACK_MINUTES keeps the old behaviour for the player whose game never
 // produces such a moment: a builder, a peaceful run, somebody losing slowly.
 // They are asked eventually, on the clock, exactly as before.
-constexpr int RATING_MOMENT_MINUTES   = 10;
-constexpr int RATING_FALLBACK_MINUTES = 45;
+/**
+ * ── THE USAGE-REPORTING QUESTION ──
+ *
+ * Asked once, early, and answered either way for good.
+ *
+ * WHY IT EXISTS. The setting has been shipping since 1.2.0a, defaults to off,
+ * and lives in a menu. In ninety days it produced one report, on a day before
+ * the release, which was almost certainly a developer testing it. A consent
+ * toggle nobody is ever shown is not a privacy feature, it is a feature that
+ * does not work: the people who would have said yes were never asked.
+ *
+ * WHY EARLY, when the rating prompt waits. Nothing is sent until this is
+ * answered, so every minute it waits is a session that went uncounted and
+ * cannot be recovered. The rating prompt is waiting for an opinion to form;
+ * this one only has to wait long enough to be sure somebody is playing rather
+ * than looking. Three minutes is that.
+ *
+ * WHY THE TWO NEVER OVERLAP. Each holds off while the other is open, and this
+ * one comes first by a wide margin. Two boxes in the same corner is how both
+ * get clicked away unread, and the rating prompt is the more valuable of the
+ * two -- it must not be spent covering for this one.
+ *
+ * WHAT MAKES IT CONSENT rather than a dark pattern: the two answers are the
+ * same size, in the same place, with no default and no pre-selection; the text
+ * says what is collected before the buttons are reachable; and declining is
+ * permanent rather than a snooze. Nothing has been sent at the moment the
+ * question is asked.
+ */
+constexpr int USAGE_ASK_MINUTES = 3;
 
-void Game::maybeOfferRating(float dt) {
-    if (m_config.ratingAsked || m_config.ratingGiven || m_ratingPromptOpen) return;
+/**
+ * The play clock both prompts wait on.
+ *
+ * It used to be counted inside maybeOfferRating(), AFTER that function's early
+ * returns -- so the minute the rating was answered, the clock stopped. Nothing
+ * depended on it afterwards, so nothing was visibly wrong, and it stayed that
+ * way until a second prompt started reading the same number and would have sat
+ * waiting forever for a value that no longer moved.
+ *
+ * Counted unconditionally here instead, which also makes `minutesPlayed` mean
+ * what its name says rather than "minutes played before the rating was
+ * answered". Saved as it rolls over so the count survives a crash, not only a
+ * clean quit.
+ */
+void Game::tickPlayClock(float dt) {
     if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
-
     m_playedSeconds += dt;
     if (m_playedSeconds >= 60.0f) {
         m_config.minutesPlayed += (int)(m_playedSeconds / 60.0f);
         m_playedSeconds = std::fmod(m_playedSeconds, 60.0f);
-        m_config.save(m_configPath);   // so the count survives a crash, not only a quit
+        m_config.save(m_configPath);
     }
+}
+
+void Game::maybeOfferUsage(float dt) {
+    (void)dt;   // tickPlayClock() keeps the clock; this only reads it
+    if (m_config.usageAsked || m_usagePromptOpen) return;
+    // Never on top of the other one, and never over a form or a paused game.
+    if (m_ratingPromptOpen || m_feedbackOpen || m_paused) return;
+    if (m_currentScreen != SCREEN_PLAYING) return;
+    if (m_turnState != TURN_NORMAL) return;
+
+    // No endpoint, no question. A build with no account service configured has
+    // nowhere to send a report, so asking would be collecting an answer to a
+    // question that cannot be acted on.
+    if (m_config.accountIssuer.empty()) return;
+
+    if (m_config.minutesPlayed >= USAGE_ASK_MINUTES) m_usagePromptOpen = true;
+}
+
+Rectangle Game::usagePromptRect() const {
+    return {(float)(m_screenW - 360 - 24), (float)(m_screenH - 150 - 24), 360, 150};
+}
+Rectangle Game::usageYesRect() const {
+    const Rectangle b = usagePromptRect();
+    return {b.x + 16, b.y + 104, 160, 32};
+}
+Rectangle Game::usageNoRect() const {
+    const Rectangle b = usagePromptRect();
+    // The same width as yes, beside it. A "no" that is smaller or quieter than
+    // the "yes" is not a freely given choice, whatever the text says.
+    return {b.x + 184, b.y + 104, 160, 32};
+}
+
+
+/**
+ * Open is not the same as showing.
+ *
+ * maybeOffer*() refuses to OPEN a prompt over a paused game or a form, which
+ * is not the same as refusing to DRAW one that is already open: a player who
+ * is asked and then presses Escape gets the box laid over "Continue / Settings
+ * / Save", and a click meant for the menu can land on an answer. Found in a
+ * screenshot-tour frame, where the pause menu and the usage question are both
+ * on screen at once.
+ *
+ * Hidden rather than answered. The question has not been put to anybody while
+ * it is behind a menu, so it must not count as asked; it comes back on the
+ * next quiet frame with the answer still owed.
+ */
+bool Game::promptsAreHidden() const {
+    return m_paused || m_feedbackOpen || m_currentScreen != SCREEN_PLAYING;
+}
+
+void Game::drawUsagePrompt() {
+    if (!m_usagePromptOpen || promptsAreHidden()) return;
+
+    const Vector2 mouse = getMouse();
+    const Color accent = hexToColor(m_config.accent());
+    const Rectangle box = usagePromptRect();
+
+    DrawRectangleRounded(box, 0.08f, 8, Color{18, 20, 27, 245});
+    DrawRectangleRoundedLines(box, 0.08f, 8, Color{70, 74, 96, 220});
+    const int x = (int)box.x, y = (int)box.y;
+
+    DrawText(T("Share anonymous usage?"), x + 16, y + 14, 15, accent);
+    // Three short lines rather than a paragraph: this is the part that has to
+    // be read for the answer to mean anything.
+    DrawText(T("That a session happened, and roughly how long."), x + 16, y + 38, 12,
+             Color{160, 166, 186, 255});
+    DrawText(T("No account, no identifier, nothing linkable to you."), x + 16, y + 56, 12,
+             Color{160, 166, 186, 255});
+    DrawText(T("Change it any time in Settings."), x + 16, y + 74, 12,
+             Color{130, 134, 152, 255});
+
+    const Rectangle yes = usageYesRect();
+    const Rectangle no  = usageNoRect();
+    const bool yh = CheckCollisionPointRec(mouse, yes);
+    const bool nh = CheckCollisionPointRec(mouse, no);
+
+    DrawRectangleRounded(yes, 0.2f, 6, yh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235});
+    DrawRectangleRoundedLines(yes, 0.2f, 6, Color{110, 180, 130, 220});
+    DrawText(T("Share"), (int)yes.x + 12, (int)yes.y + 9, 13, WHITE);
+
+    DrawRectangleRounded(no, 0.2f, 6, nh ? Color{52, 56, 72, 250} : Color{34, 36, 48, 235});
+    DrawRectangleRoundedLines(no, 0.2f, 6, Color{110, 114, 140, 220});
+    DrawText(T("No thanks"), (int)no.x + 12, (int)no.y + 9, 13, Color{225, 228, 240, 255});
+}
+
+/** @return true when the pointer is over the prompt, so the map does not also take the click. */
+bool Game::updateUsagePrompt() {
+    if (!m_usagePromptOpen || promptsAreHidden()) return false;
+    const Vector2 mouse = getMouse();
+    if (!CheckCollisionPointRec(mouse, usagePromptRect())) return false;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+
+    const bool yes = CheckCollisionPointRec(mouse, usageYesRect());
+    const bool no  = CheckCollisionPointRec(mouse, usageNoRect());
+    if (!yes && !no) return true;   // a click inside the box but on neither answer
+
+    // Asked is set either way. Declining has to be remembered as an answer, or
+    // the question returns next session and the "no" meant nothing.
+    m_config.usageAsked   = true;
+    m_config.usageReports = yes;
+    m_config.save(m_configPath);
+    m_usagePromptOpen = false;
+    Audio::get().playSfx(yes ? "confirm" : "back");
+    return true;
+}
+
+constexpr int RATING_MOMENT_MINUTES   = 10;
+constexpr int RATING_FALLBACK_MINUTES = 45;
+
+void Game::maybeOfferRating(float dt) {
+    (void)dt;   // the clock is tickPlayClock()'s job now
+    if (m_config.ratingAsked || m_config.ratingGiven || m_ratingPromptOpen) return;
+    // Never two boxes in the same corner. The usage question is asked far
+    // earlier, so in practice this only holds for the frames it is open.
+    if (m_usagePromptOpen) return;
+    if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
 
     // Between turns rather than during one: nobody wants to be asked how they
     // feel while their army is moving. Both doors are behind this.

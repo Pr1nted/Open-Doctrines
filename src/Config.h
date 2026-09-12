@@ -274,6 +274,12 @@ struct Config {
      */
     bool        ratingAsked = false;
     bool        ratingGiven = false;
+    /// Whether the usage-reporting question has been put to the player. Set
+    /// the first time the prompt is shown, whichever way they answer, so it is
+    /// asked once and never again. Separate from `usageReports`, which is the
+    /// answer: asked-and-declined and never-asked have to be distinguishable,
+    /// or declining would make the prompt come back forever.
+    bool        usageAsked = false;
     /// Minutes of play, accumulated across sessions. The prompt waits for some.
     int         minutesPlayed = 0;
 

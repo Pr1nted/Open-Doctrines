@@ -3231,6 +3231,7 @@ void Game::endFrame() {
     drawHostReports();
     drawFeedbackForm();
     drawFeedbackNotice();   // over the form, not under it
+    drawUsagePrompt();
     drawRatingPrompt();
     drawPadCursor();
 
