@@ -61,5 +61,14 @@
     "license": "CC-BY-4.0",
     "thumbnail": "1984_thumb.png",
     "hasScripts": false
+  },
+  {
+    "name": "Mars",
+    "filename": "mars.odmap",
+    "author": "OpenDoctrines",
+    "description": "Real Martian topography with the basins flooded. Every sea is a named basin -- Hellas, Utopia, Chryse, Argyre -- and every state stands on the highlands between them.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "mars_thumb.png",
+    "hasScripts": false
   }
 ]

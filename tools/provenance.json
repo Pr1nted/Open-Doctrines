@@ -65,6 +65,14 @@
    "url": "https://www.openhistoricalmap.org/",
    "attribution": false,
    "used_by": "tools/fetch_ohm_borders.py, consumed by tools/carve_borders.py"
+  },
+  {
+   "name": "MOLA MEGDR (Mars Orbiter Laser Altimeter)",
+   "what": "Global Mars topography, 16 pixels/degree. The coastline, the provinces and the population weighting of the Mars map are all derived from it; nothing else on that map comes from outside.",
+   "license": "Public domain",
+   "url": "https://pds-geosciences.wustl.edu/missions/mgs/megdr.html",
+   "attribution": false,
+   "used_by": "tools/generate_mars.py"
   }
  ],
  "removed_data": [

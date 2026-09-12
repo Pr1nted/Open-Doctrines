@@ -67,6 +67,13 @@ Checked by `tools/check_data_licences.py`, which runs in the test suite.
 - **Source:** <https://www.openhistoricalmap.org/>
 - **Consumed by:** `tools/fetch_ohm_borders.py, consumed by tools/carve_borders.py`
 
+### MOLA MEGDR (Mars Orbiter Laser Altimeter)
+
+- **Used for:** Global Mars topography, 16 pixels/degree. The coastline, the provinces and the population weighting of the Mars map are all derived from it; nothing else on that map comes from outside.
+- **Licence:** Public domain
+- **Source:** <https://pds-geosciences.wustl.edu/missions/mgs/megdr.html>
+- **Consumed by:** `tools/generate_mars.py`
+
 ## Data deliberately not used
 
 Recorded because the absence is a decision, not an oversight, and

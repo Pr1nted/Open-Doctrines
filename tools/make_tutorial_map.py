@@ -741,7 +741,9 @@ def main():
         "political_compass.json": _j(compass),
         "country_compass.json": _j({m["iso"]: m["compass"] for m in COUNTRIES.values()}),
         "starting_policies.json": _j({"starting_policies": {
-            "ASH": ["free_press", "public_schooling"],
+            "ASH": ["free_press", "worker_rights"],   # public_schooling never existed:
+            # it was a typo that sat here silently doing nothing, because a
+            # starting doctrine nothing declares is simply skipped at load.
             "KES": ["conscription", "censorship"],
             "VER": ["state_industry", "land_reform"],
         }}),

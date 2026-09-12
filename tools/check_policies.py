@@ -110,6 +110,20 @@ def main():
                 continue
             start = json.loads(z.read("starting_policies.json")).get("starting_policies", {})
             for iso, held in start.items():
+                # 5. A STARTING DOCTRINE THAT IS NOT A DOCTRINE.
+                #
+                # Nothing anywhere refuses one: enactPolicy looks the id up,
+                # finds nothing and returns, so the country simply starts
+                # without it and no line is printed. Two shipped maps carried
+                # one -- tutorial.odmap handed Ashford "public_schooling", a
+                # name that has never existed -- and the only reason it was
+                # ever noticed is that a new map made the same typo. The
+                # conflict check below could not see them either, because an
+                # unknown id matches nothing in the conflict table.
+                for d in held:
+                    if d not in name:
+                        fail("%s: %s starts with '%s', which is not a doctrine"
+                             % (m, iso, d))
                 for a, b in itertools.combinations(held, 2):
                     if b in conflict.get(a, ()):
                         fail("%s: %s starts with %s and %s, which conflict"

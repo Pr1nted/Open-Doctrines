@@ -61,6 +61,7 @@ $--- generated from tools/provenance.json — do not edit below ---
 - World Bank Open Data (CC BY 4.0)
 - Wikimedia Commons (Public domain, CC0 and OGL-om 1.0 — per file)
 - OpenHistoricalMap (CC0)
+- MOLA MEGDR (Mars Orbiter Laser Altimeter) (Public domain)
 @
 @Required Attribution
 ---
