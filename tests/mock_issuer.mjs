@@ -55,7 +55,14 @@ const publishedPair = WRONG_KEY
     : signingPair;
 const publishedJwk = await webcrypto.subtle.exportKey("jwk", publishedPair.publicKey);
 
-const ISSUER = `http://localhost:${PORT}`;
+// `let`, and reassigned once the socket is actually bound -- see the listen
+// call at the bottom. With --port 0 the OS picks the port, and it is not
+// known until then; every token this service signs carries ISSUER as its
+// `iss`, so getting this wrong does not fail loudly, it mints tickets the
+// host cannot verify. The handlers read this at request time and the ready
+// line is printed after the reassignment, so nothing can observe the
+// placeholder.
+let ISSUER = `http://localhost:${PORT}`;
 const CODE = "TESTCODE";
 
 async function sign(claims) {
@@ -196,6 +203,11 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-    // The test harness waits for this line before starting the game side.
+    // PORT may be 0, meaning "whatever is free" -- which is the whole point:
+    // the process that BINDS the port is now the one that chooses it, so there
+    // is no window between picking and binding for anything else to take it.
+    ISSUER = `http://localhost:${server.address().port}`;
+    // The test harness waits for this line before starting the game side, and
+    // reads the port back out of it.
     console.log(`mock-issuer ready on ${ISSUER}${WRONG_KEY ? " (publishing a WRONG key)" : ""}`);
 });

@@ -65,12 +65,23 @@ if [ -x "$build/Release/NetConnectTest" ] || [ -f "$build/Release/NetConnectTest
     bin="$build/Release"
 fi
 
-# A port nothing else is on. Asking the OS for one and closing it immediately
-# is racy in principle; in practice it is what is available without a helper,
-# and a collision shows up as a clean failure rather than a wrong result.
-pick_port() {
-    node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close();});'
-}
+# THE PORT IS CHOSEN BY WHATEVER BINDS IT.
+#
+# There used to be a pick_port() here that asked Node for a free port, printed
+# it, and closed the listener -- and the comment above it conceded the race and
+# argued a collision would show up as "a clean failure rather than a wrong
+# result". It does, and that is the problem: it is a clean failure attributed
+# to whichever commit was unlucky. One turned up on windows-x64 as
+#
+#     FAIL  the player is welcomed -- rejected: That server refused the connection.
+#
+# on a push that changed nothing but map data, while the same case passed
+# seconds later in the same run. Something took the port between the close and
+# the issuer's bind, the host could not reach the issuer to verify a ticket,
+# and the join was refused.
+#
+# So the issuer is started with --port 0 and reports the port it actually got.
+# There is no window left to lose.
 
 MOCK_PID=""
 cleanup() {
@@ -85,12 +96,10 @@ run_case() {
     local mode="$1"; shift
     local extra="${1:-}"
 
-    local port
-    port="$(pick_port)"
     local log
     log="$(mktemp)"
 
-    node "$root/tests/mock_issuer.mjs" --port "$port" $extra > "$log" 2>&1 &
+    node "$root/tests/mock_issuer.mjs" --port 0 $extra > "$log" 2>&1 &
     MOCK_PID=$!
 
     # Wait for it to say it is listening rather than sleeping a fixed amount.
@@ -111,6 +120,20 @@ run_case() {
             return 1
         fi
     done
+
+    # The ready line carries the bound port; take it from there rather than
+    # assuming we know it. Anchored on the URL and digits so the trailing
+    # " (publishing a WRONG key)" of the --wrong-key case cannot confuse it.
+    local port
+    port="$(sed -n 's|.*mock-issuer ready on http://localhost:\([0-9][0-9]*\).*|\1|p' "$log" | head -1)"
+    if [ -z "$port" ]; then
+        echo "the stand-in account service came up but reported no port:"
+        cat "$log"
+        rm -f "$log"
+        cleanup
+        MOCK_PID=""
+        return 1
+    fi
 
     "$bin/NetConnectTest" "http://localhost:$port" "$mode"
     local rc=$?
