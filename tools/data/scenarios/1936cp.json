@@ -5,7 +5,7 @@
   "name": "Mitteleuropa",
   "date": "March 1936 AD",
   "author": "OpenDoctrines",
-  "description": "Eighteen years after the armistice at Spa. Germany holds central Europe through a ring of client kingdoms it wrote the borders of, Austria-Hungary has survived its own succession, and the Entente lost. None of it is settled.",
+  "description": "Eighteen years after the armistice at Spa. Germany holds central Europe through a ring of client kingdoms it wrote the borders of, Austria-Hungary has survived its own succession, and the Entente lost. None of it is settled -- and in the steppe, the forests and the hills there are people who never stopped shooting at it.",
   "independent_default": true,
   "independent_except": [
     "UNC",
@@ -17,6 +17,222 @@
   "industry_scale": 0.3,
   "industry_level_cap": 8,
   "powers": [
+    {
+      "iso": "MAK",
+      "name": "Free Territory",
+      "color": "#2f2f2f",
+      "$comment": "The south-eastern steppe around Hulyaipole. Makhno's insurgents fought the German and Austrian occupation of Ukraine in 1918; this is that war never having ended. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "UKR",
+          "bbox": [
+            32.0,
+            46.5,
+            38.5,
+            49.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#000000",
+          "#2f2f2f",
+          "#6b6b6b"
+        ]
+      },
+      "army": 210000,
+      "navy": 0,
+      "compass": {
+        "left": -75,
+        "auth": -70
+      },
+      "policies": [
+        "peoples_militia",
+        "land_reform",
+        "decentralization"
+      ]
+    },
+    {
+      "iso": "KOM",
+      "name": "Komiti",
+      "color": "#8a5c3f",
+      "$comment": "Toplica and the southern hills. Serbia rose against the Austro-Hungarian occupation in 1917 and was put down; the hills were never really taken. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "SRB",
+          "bbox": [
+            20.5,
+            42.9,
+            22.6,
+            44.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#532508",
+          "#8a5c3f",
+          "#c6987b"
+        ]
+      },
+      "army": 120000,
+      "navy": 0,
+      "compass": {
+        "left": -20,
+        "auth": 30
+      },
+      "policies": [
+        "peoples_militia",
+        "national_unity",
+        "traditionalism"
+      ]
+    },
+    {
+      "iso": "POW",
+      "name": "Polish Military Organisation",
+      "color": "#a83f4f",
+      "$comment": "Lublin and the Kielce country. The Regency Kingdom is a German creation and the POW never accepted it as independence. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "POL",
+          "bbox": [
+            18.5,
+            49.8,
+            23.5,
+            52.3
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#710818",
+          "#a83f4f",
+          "#e47b8b"
+        ]
+      },
+      "army": 165000,
+      "navy": 0,
+      "compass": {
+        "left": -15,
+        "auth": 15
+      },
+      "policies": [
+        "peoples_militia",
+        "free_press",
+        "national_unity"
+      ]
+    },
+    {
+      "iso": "RED",
+      "name": "Red Partisans",
+      "color": "#b03030",
+      "$comment": "The forests east of the Berezina. Brest-Litovsk was signed by a government that called it a breathing space, and not everyone stopped fighting. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "BLR",
+          "bbox": [
+            27.5,
+            51.5,
+            31.5,
+            54.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#790000",
+          "#b03030",
+          "#ec6c6c"
+        ]
+      },
+      "army": 230000,
+      "navy": 0,
+      "compass": {
+        "left": -85,
+        "auth": 70
+      },
+      "policies": [
+        "peoples_militia",
+        "collective_agriculture",
+        "total_war_economy"
+      ]
+    },
+    {
+      "iso": "EIR",
+      "name": "Irish Republic",
+      "color": "#3f7a4f",
+      "$comment": "Connacht and Munster. A Britain that lost the war on the continent is a Britain with less to spare for Ireland. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "IRL",
+          "bbox": [
+            -10.0,
+            51.5,
+            -7.5,
+            54.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#084318",
+          "#3f7a4f",
+          "#7bb68b"
+        ]
+      },
+      "army": 45000,
+      "navy": 0,
+      "compass": {
+        "left": -25,
+        "auth": -15
+      },
+      "policies": [
+        "peoples_militia",
+        "free_press",
+        "general_amnesty"
+      ]
+    },
+    {
+      "iso": "PNJ",
+      "name": "Ghadar",
+      "color": "#c2a24a",
+      "$comment": "The Punjab. Ghadar took German money and German rifles during the war; the war going the other way is the version where that mattered. Box drawn against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "IND",
+          "bbox": [
+            74.0,
+            29.5,
+            78.0,
+            33.5
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#8b6b13",
+          "#c2a24a",
+          "#fede86"
+        ]
+      },
+      "army": 130000,
+      "navy": 0,
+      "compass": {
+        "left": -40,
+        "auth": -10
+      },
+      "policies": [
+        "peoples_militia",
+        "agrarian_priority",
+        "free_press"
+      ]
+    },
     {
       "iso": "GER",
       "name": "German Empire",
@@ -585,6 +801,14 @@
       [
         "GER",
         "BEL"
+      ],
+      [
+        "POW",
+        "FRA"
+      ],
+      [
+        "EIR",
+        "USA"
       ]
     ],
     "non_aggression": [
@@ -599,6 +823,48 @@
       [
         "JPN",
         "USA"
+      ],
+      [
+        "RED",
+        "MAK"
+      ]
+    ],
+    "wars": [
+      [
+        "MAK",
+        "UKR"
+      ],
+      [
+        "MAK",
+        "GER"
+      ],
+      [
+        "KOM",
+        "AUH"
+      ],
+      [
+        "POW",
+        "POL"
+      ],
+      [
+        "POW",
+        "GER"
+      ],
+      [
+        "RED",
+        "RUT"
+      ],
+      [
+        "RED",
+        "GER"
+      ],
+      [
+        "EIR",
+        "GBR"
+      ],
+      [
+        "PNJ",
+        "GBR"
       ]
     ]
   },
@@ -642,6 +908,30 @@
     {
       "by": "OTT",
       "on": "GRC"
+    },
+    {
+      "by": "MAK",
+      "on": "UKR"
+    },
+    {
+      "by": "KOM",
+      "on": "AUH"
+    },
+    {
+      "by": "POW",
+      "on": "POL"
+    },
+    {
+      "by": "RED",
+      "on": "RUT"
+    },
+    {
+      "by": "EIR",
+      "on": "GBR"
+    },
+    {
+      "by": "PNJ",
+      "on": "GBR"
     }
   ]
 }
