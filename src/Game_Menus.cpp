@@ -2384,7 +2384,7 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
     // A MAP BY PATH as well as by name: "some/where/custom.odmap:ISO[:world]".
     // Split after ".odmap", not at the first colon, so a path that holds a
     // colon itself (C:\\...) still parses. This is how an imported map is
-    // played -- Strategy Fly's live viewer lets a person pick any .odmap.
+    // played -- Open Fly's live viewer lets a person pick any .odmap.
     std::string seatPart;
     const size_t odmapEnd = spec.find(".odmap:");
     if (odmapEnd != std::string::npos) {

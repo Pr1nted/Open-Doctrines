@@ -2891,7 +2891,7 @@ include(CPack)
 # renderer, no audio and no network -- the server's recipe (GAME_SOURCES with
 # raylib's drawing half as stubs) plus src/web/AgentWeb.cpp, which exports the
 # agent session in Game_Agent.cpp to JavaScript. An outside player in a browser
-# (Strategy Fly's simulated fly) decides a turn in the page and this resolves
+# (Open Fly's simulated fly) decides a turn in the page and this resolves
 # it, under the rules the FIFO door applies. Not in ALL: the game's own web
 # build does not need it.
 #

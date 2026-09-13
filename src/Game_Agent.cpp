@@ -21,7 +21,7 @@
 // same legal menus, the same executor, the model's per-module budget, and a
 // module that ends the moment it picks 0. Those rules used to live inside
 // runBenchAgent's FIFO loop. They live here now, once, and there are two ways
-// in: runBenchAgent speaks them as text over a FIFO (the protocol Strategy Fly's
+// in: runBenchAgent speaks them as text over a FIFO (the protocol Open Fly's
 // Python driver parses), and the browser build calls them directly
 // (src/web/AgentWeb.cpp). A second copy of the budget rule in either caller
 // would be the copy that drifts.

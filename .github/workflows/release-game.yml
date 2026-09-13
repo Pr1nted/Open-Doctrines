@@ -508,6 +508,27 @@ jobs:
             nothing was pushed to the itch android channel."
           fi
 
+      - name: Tell Open Fly
+        # Open Fly (Pr1nted/Open-Fly) rebuilds the browser fly against every game
+        # release and posts a devlog. It polls for new tags on its own every six
+        # hours; this makes it immediate. OPEN_FLY_DISPATCH_TOKEN is a fine-grained
+        # token for Pr1nted/Open-Fly only, Contents: read and write. Absent or
+        # failing, this warns and the release stands: the poll still catches it.
+        env:
+          TOKEN: ${{ secrets.OPEN_FLY_DISPATCH_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning title=Open Fly not told::OPEN_FLY_DISPATCH_TOKEN is not set. Open Fly will pick up $TAG on its next poll."
+            exit 0
+          fi
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Pr1nted/Open-Fly/dispatches \
+            -d "{\"event_type\":\"open-doctrines-release\",\"client_payload\":{\"tag\":\"$TAG\"}}" \
+            || echo "::warning title=Open Fly not told::the dispatch failed. Open Fly will pick up $TAG on its next poll."
+
   # Steam, which is the same idea as the itch.io push above and a different
   # shape in three ways worth knowing before reading the script.
   #
