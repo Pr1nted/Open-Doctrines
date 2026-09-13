@@ -381,7 +381,9 @@ void Game::updateLoading() {
                                          m_landSea.getWidth(), m_landSea.getHeight());
             if (m_renderer) {
                 m_renderer->setDpiScale(pointerScale());
-                m_renderer->computeBorderTexture(m_provinces.getImage());
+                // Only the drawn borders and the selection glow read this raster;
+                // province centres no longer depend on it (buildProvinceData).
+                if (!m_agentLoad) m_renderer->computeBorderTexture(m_provinces.getImage());
                 m_renderer->setPoliticalTexture(m_politicalTex);
                 // The sky this map carries, if it carries one. A map with no
                 // sky.json keeps the Earth-like defaults, which is every map
@@ -425,7 +427,7 @@ void Game::updateLoading() {
         }
         case LOAD_GEN_ICONS: {
             setLoadingProgress(0.82f, "Generating icons...");
-            generateIcons();
+            if (!m_agentLoad) generateIcons();
             m_loadingPhase = LOAD_BUILD_PROV_DATA;
             break;
         }
@@ -453,13 +455,17 @@ void Game::updateLoading() {
         }
         case LOAD_COMPUTE_LABELS: {
             setLoadingProgress(0.90f, "Computing country labels...");
+            // NOT skipped on an agent load: besides the labels, this builds
+            // m_provinceNeighbors, the adjacency graph the turn logic and the
+            // AI's legal menus read. Skipping it removed fort, reinforce and
+            // every diplomatic action from the menus.
             computeCountryLabels();
             if (m_renderer) {
                 m_renderer->setCountryLabels(&m_countryLabels);
                 m_renderer->setMaxZoom(m_config.maxZoom);
                 m_renderer->setDebugMode(m_config.debugMode);
             }
-            rebuildFlags();
+            if (!m_agentLoad) rebuildFlags();
             if (m_renderer) m_renderer->setCountryFlags(&m_countryFlags);
             m_loadingPhase = LOAD_CREATE_SAVE;
             break;
@@ -959,9 +965,16 @@ void Game::buildPopulationLookups() {
     logHeapAt("  pop: before arrays");
     m_pixelCountryArray.assign(totalPixels, 0);
     logHeapAt("  pop: +pixelCountryArray");
-    m_politicalPixelBuffer.resize(totalPixels);
+    // The political texture's two buffers are all this function builds that
+    // only the screen reads. An agent load leaves them empty, and every later
+    // writer checks (generatePoliticalTexture, rebuildOwnershipPixels,
+    // rebuildGradientField).
+    const bool paint = !m_agentLoad;
+    if (paint) m_politicalPixelBuffer.resize(totalPixels);
+    else std::vector<Color>().swap(m_politicalPixelBuffer);
     logHeapAt("  pop: +politicalPixelBuffer");
-    m_gradientDist.assign(totalPixels, 255);
+    if (paint) m_gradientDist.assign(totalPixels, 255);
+    else std::vector<uint8_t>().swap(m_gradientDist);
     logHeapAt("  pop: +gradientDist");
 
     int maxCid = 0;
@@ -1019,7 +1032,8 @@ void Game::buildPopulationLookups() {
         if (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
             m_provinceAreaArray[pid] += areaRowW;
 
-        if (pid == 0 || cid == 0) {
+        if (!paint) {
+        } else if (pid == 0 || cid == 0) {
             m_politicalPixelBuffer[i] = Color{10, 15, 40, 255};
         } else {
             const Country* c = m_countries.getCountry(cid);
@@ -1035,6 +1049,8 @@ void Game::buildPopulationLookups() {
     }
 
     logHeapAt("  pop: after fill loop");
+
+    if (!paint) return;          // the rest is the political texture
 
     odBuildGradientField(m_pixelCountryArray.data(), w, h, m_gradientDist);
 
@@ -1080,6 +1096,9 @@ void Game::rebuildGradientField() {
     const Image& provImg = m_provinces.getImage();
     const int w2 = provImg.width, h2 = provImg.height;
     if ((int)m_pixelCountryArray.size() != w2 * h2) return;
+    // The field only shades the political texture; with no texture buffer
+    // (an agent load) there is nothing to shade, and it was a full-raster BFS.
+    if (m_politicalPixelBuffer.empty()) { m_gradientDirty = false; return; }
     // The same field, by the same routine as the load builds it. It was a
     // second copy of the BFS, and this one ran once per TURN -- so the 256 MB
     // queue described above was not a load-time cost, it was a per-turn one.
@@ -3323,6 +3342,7 @@ void Game::rebuildOwnershipPixels() {
     int totalPixels = w2 * h2;
     const auto* srcPixels = (const Color*)provImg.data;
     for (auto& vec : m_countryPixels) vec.clear();
+    const bool paint = m_politicalPixelBuffer.size() == (size_t)totalPixels;   // empty on an agent load
     for (int i = 0; i < totalPixels; ++i) {
         // Once a raster row's worth. Same reason as the scans in MapRenderer:
         // this is a full-map pass and nothing refills the music while it runs.
@@ -3333,7 +3353,7 @@ void Game::rebuildOwnershipPixels() {
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
         m_pixelCountryArray[i] = (uint16_t)cid;
-        m_politicalPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255} :
+        if (paint) m_politicalPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255} :
             (m_countries.getCountry(cid) ? m_countries.getCountry(cid)->color : Color{80, 80, 80, 255});
         if (cid > 0 && cid < (int)m_countryPixels.size())
             m_countryPixels[cid].push_back(i);

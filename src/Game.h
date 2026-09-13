@@ -4535,6 +4535,12 @@ private:
      */
     int m_benchPlayUntilTurn = 0;
     int m_agentUntilTurn = 0;          // see agentBegin
+    // Set by agentBegin before it loads. A world played from outside is never
+    // drawn, so the load skips what only feeds the screen: the border raster,
+    // the political texture and its shading field, icons and flags. Nothing a
+    // turn reads is skipped: province centres, adjacency (computeCountryLabels
+    // builds it, so that still runs), ownership pixels and areas.
+    bool m_agentLoad = false;
     unsigned int m_agentMapSeed = 0;
     /** The score the seat finished on, once it has. Negative until then. */
     float m_benchScoreShare = -1.0f;

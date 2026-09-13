@@ -102,6 +102,7 @@ bool Game::agentBegin(const std::string& seatSpec, unsigned int seed, int untilT
     AISystem::s_readOnlyModel = true;
     applyFpsTarget(-1);
     Audio::s_disabled = true;
+    m_agentLoad = true;                // see Game.h: load nothing that is only drawn
 
     startBenchSeat(seatSpec, untilTurn);
     while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {

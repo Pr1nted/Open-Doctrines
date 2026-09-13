@@ -558,7 +558,10 @@ void MapRenderer::buildProvinceData(
     m_provinceGlow.clear();
     centers_out.clear();
     radii_out.clear();
-    if (m_borderPixels.empty()) return;
+    // CENTRES DO NOT NEED THE BORDER RASTER, only the glow does. This used to
+    // return here without one, and the turn logic reads the centres -- so a
+    // load that skips the raster (Game::m_agentLoad) still gets them.
+    const bool glow = !m_borderPixels.empty();
 
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
     if (!provPixels) return;
@@ -623,7 +626,7 @@ void MapRenderer::buildProvinceData(
             // have the same pixel: `pi` is a byte offset into a 4-byte RGBA
             // image, and reading the coverage byte at pi+3 was only ever right
             // while the border layer was also four bytes wide.
-            uint8_t ba = m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1];
+            uint8_t ba = glow ? m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1] : 0;
             if (ba > 0) {
                 int foundPid = 0;
                 for (int pass = 0; pass < 5 && foundPid == 0; ++pass) {
