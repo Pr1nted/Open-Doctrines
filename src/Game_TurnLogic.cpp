@@ -4210,14 +4210,32 @@ void Game::processArmyMovement(int countryId) {
         // landed. See resolveAssault: it fights the WHOLE garrison rather than
         // the first stack it finds, and places the survivors itself.
         ForceComposition survivors;
+        // ── THE ORDER LEAVES THE QUEUE BEFORE THE ASSAULT, NOT AFTER IT ──
+        //
+        // resolveAssault can capture the province, and captureProvince drops
+        // every queued move order out of the captured ground -- other countries'
+        // orders, anywhere in this vector. Erasing by index afterwards removed
+        // whichever order had slid into slot i, left this one queued to march
+        // again next turn, and when the dropped order sat at the tail, erased
+        // one past the end. libc++ memmoves a negative count there and the turn
+        // dies in processArmyMovement (1914:SWE seed 20260801, turn 30, with a
+        // random player); libstdc++ silently pops the last order instead, which
+        // is why no Linux run or CI job ever showed it.
+        const int fromPid = mo.fromProvince, toPid = mo.toProvince;
+        m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+        const size_t queued = m_pendingMoveOrders.size();
+        const size_t aheadDropped = (size_t)std::count_if(
+            m_pendingMoveOrders.begin(), m_pendingMoveOrders.begin() + i,
+            [toPid](const PendingMoveOrder& o) { return o.fromProvince == toPid; });
         // The source province is the fallback: men who never got into the
         // fight march back to where they came from. See resolveAssault.
-        const bool took = resolveAssault(countryId, mo.toProvince, moving, survivors,
-                                         mo.fromProvince);
+        const bool took = resolveAssault(countryId, toPid, moving, survivors, fromPid);
+        // Orders before i that left with the province shift the unvisited ones
+        // down by that many; step back so none of them is skipped.
+        if (m_pendingMoveOrders.size() < queued) i -= aheadDropped;
         if (m_config.aiDebug && took)
             printf("[BATTLE] cid=%d took prov %d from prov %d with %lld of %lld\n",
-                   countryId, mo.toProvince, mo.fromProvince, survivors.total(), toMove);
-        m_pendingMoveOrders.erase(m_pendingMoveOrders.begin() + i);
+                   countryId, toPid, fromPid, survivors.total(), toMove);
     }
 }
 
