@@ -560,7 +560,7 @@ void Game::drawCountryPanel() {
             Vector2 mouse = getMouse();
             Rectangle pRect = {(float)panelX, (float)panelY, (float)panelW, (float)panelH};
             if (!m_paused && CheckCollisionPointRec(mouse, pRect)) {
-                float wheel = GetMouseWheelMove();
+                float wheel = odMouseWheel();
                 if (wheel != 0) {
                     m_shipPanelScroll -= wheel * 20.0f;
                 }
@@ -1221,7 +1221,7 @@ void Game::drawCountryPanel() {
 
         const int visible = std::max(1, (listH - 8) / rowH);
         const int maxScroll = std::max(0, (int)rows.size() - visible);
-        if (CheckCollisionPointRec(getMouse(), listR)) m_armyListScroll -= GetMouseWheelMove();
+        if (CheckCollisionPointRec(getMouse(), listR)) m_armyListScroll -= odMouseWheel();
         m_armyListScroll = std::clamp(m_armyListScroll, 0.0f, (float)maxScroll);
         const int first = (int)m_armyListScroll;
 
@@ -3104,6 +3104,29 @@ void Game::drawSidebarButtons() {
 
         if (shov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             Audio::get().playSfx("click_heavy");
+            // The speciality panels close first. Every one of them already
+            // closes the others as it opens -- Politics clears Claims and
+            // Economy, Research clears all three -- and Settings was the only
+            // way in that did not, so it drew ON TOP of whatever was already
+            // up and the player got two windows at once. Nothing downstream
+            // recovers from it either: the sidebar buttons that would close
+            // them are gated on !m_paused, and this pauses.
+            //
+            // Claims goes out through clearClaimsView() rather than having
+            // its flag dropped, because the overlay it paints lives in the
+            // renderer and in m_claimsPixelBuffer, not in m_inClaims -- clear
+            // the flag alone and the map keeps wearing the claims.
+            if (m_showClaims) clearClaimsView();
+            m_inClaims = false;
+            m_inPolitics = false;
+            m_inEconomy = false;
+            m_inResearch = false;
+            m_claimsEditMode = false;
+            m_claimsEditToAdd.clear();
+            m_claimsEditToDrop.clear();
+            m_activeSidebarTab = 0;
+            if (m_renderer) m_renderer->setPaused(true);
+
             // Straight to the settings, not to the pause menu that contains
             // them: m_paused is what gives the screen over to that menu, and
             // m_inSettings is which page of it is showing.

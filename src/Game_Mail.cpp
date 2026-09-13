@@ -596,7 +596,7 @@ void Game::drawMail() {
         }
         EndScissorMode();
         if (CheckCollisionPointRec(mouse, list)) {
-            const float wheel = GetMouseWheelMove();
+            const float wheel = odMouseWheel();
             if (wheel != 0.0f) {
                 const int maxScroll = std::max(0, ry - (int)list.y - (int)list.height + 20 +
                                                     m_mailPickerScroll);
@@ -762,7 +762,7 @@ void Game::drawMail() {
         }
         EndScissorMode();
         if (CheckCollisionPointRec(mouse, list)) {
-            const float wheel = GetMouseWheelMove();
+            const float wheel = odMouseWheel();
             if (wheel != 0.0f) {
                 const int maxScroll = std::max(0, ry - (int)list.y - (int)list.height + 20 +
                                                     m_mailListScroll);
@@ -1015,7 +1015,7 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
     EndScissorMode();
 
     if (CheckCollisionPointRec(mouse, view)) {
-        const float wheel = GetMouseWheelMove();
+        const float wheel = odMouseWheel();
         if (wheel != 0.0f) {
             const int maxScroll = std::max(0, ly - (int)view.y - (int)view.height + 20 + m_mailScroll);
             m_mailScroll = std::clamp(m_mailScroll - (int)(wheel * 45), 0, maxScroll);
@@ -1671,7 +1671,7 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
     const int maxScroll = std::max(0, contentBottom - botY + 24);
     const Rectangle pane = {(float)x, (float)topY, (float)w, (float)(botY - topY)};
     if (CheckCollisionPointRec(mouse, pane)) {
-        const float wheel = GetMouseWheelMove();
+        const float wheel = odMouseWheel();
         if (wheel != 0.0f)
             m_mailSettingsScroll = std::clamp(m_mailSettingsScroll - (int)(wheel * 40),
                                               0, maxScroll);

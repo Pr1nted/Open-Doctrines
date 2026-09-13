@@ -1272,7 +1272,7 @@ void Game::updateEconomy() {
             }
         }
     }
-    int wheel = GetMouseWheelMove();
+    int wheel = odMouseWheel();
     if (wheel != 0 && m_economyTab == 0) {
         int scrollSpeed = 20;
         int marginX = 16;

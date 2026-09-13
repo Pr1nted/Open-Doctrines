@@ -1750,7 +1750,7 @@ void Game::updatePoliciesTab() {
     }
     // Scroll wheel for available policies
     if (m_policyTab == 0) {
-        float wheel = GetMouseWheelMove();
+        float wheel = odMouseWheel();
         if (wheel != 0) {
             int startY = 130;
             int listH = m_screenH - startY - 30;
@@ -1798,7 +1798,7 @@ void Game::updatePoliciesTab() {
             }
         }
 
-        float wheel = GetMouseWheelMove();
+        float wheel = odMouseWheel();
         if (wheel != 0) {
             int splitY = 80 + (m_screenH - 160) * 50 / 100;
             int gap = 6;
@@ -2289,7 +2289,7 @@ void Game::updateEthnicTab() {
     int rowH = 22;
     int expandedH = (int)m_ethnicPolicyCategories.size() * 24 + 10;
 
-    float wheel = GetMouseWheelMove();
+    float wheel = odMouseWheel();
     if (wheel != 0) {
         std::unordered_set<std::string> names;
         for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
@@ -2774,7 +2774,7 @@ void Game::drawDistrictsTab() {
 
         const bool over = CheckCollisionPointRec(mouse, dst);
         if (over) {
-            const float wheel = GetMouseWheelMove();
+            const float wheel = odMouseWheel();
             if (wheel != 0.0f) {
                 const float before = m_districtMapZoom;
                 m_districtMapZoom = std::clamp(m_districtMapZoom * (wheel > 0 ? 1.2f : 1.0f / 1.2f),
@@ -3024,7 +3024,7 @@ void Game::drawDistrictsTab() {
     const Rectangle lawView = {(float)listX, (float)lawTop, (float)listW, (float)lawViewH};
     const bool overLaws = CheckCollisionPointRec(mouse, lawView);
     if (overLaws) {
-        const float wheel = GetMouseWheelMove();
+        const float wheel = odMouseWheel();
         if (wheel != 0.0f) m_districtLawScroll -= (int)(wheel * 42.0f);
     }
     m_districtLawScroll = std::clamp(m_districtLawScroll, 0, lawMaxScroll);
@@ -3773,7 +3773,7 @@ void Game::updateCountryProfile() {
         m_profileScroll = 0;
         releaseProfileFlags();      // the textures go with the screen
     }
-    const float wheel = GetMouseWheelMove();
+    const float wheel = odMouseWheel();
     // Clamped to what is actually there, in both directions. Unbounded below,
     // the wheel scrolled the whole profile off the top into empty space; and
     // the page grew past one screen the moment it gained a map and a doctrine

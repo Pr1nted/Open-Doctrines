@@ -1083,7 +1083,7 @@ void Game::drawResearchTab() {
         m_researchDragPrevX = (int)mouse.x; m_researchDragPrevY = (int)mouse.y;
     } else { m_researchDragging = false; }
 
-    float wheel = GetMouseWheelMove();
+    float wheel = odMouseWheel();
     if (wheel != 0 && !overCatTab) {
         float oldZoom = m_researchZoom;
         m_researchZoom *= (wheel > 0) ? 1.2f : 0.833f;

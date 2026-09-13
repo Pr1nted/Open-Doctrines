@@ -57,6 +57,11 @@ Vector2 MapRenderer::getMouse() const {
     // dragging an army, pointing artillery -- and this renderer asks for the
     // pointer itself rather than being handed one. Without this the stick moved
     // a cursor that every panel could see and the map could not.
+    // And the finger's, for the same reason. On Android raylib's own mouse
+    // happens to follow touch point zero so this looked like it worked, but a
+    // desktop touchscreen synthesises nothing -- there the map was the one
+    // surface that could not see the cursor every panel could.
+    if (odTouch::active()) { Vector2 c = odTouch::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
     if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
     Vector2 m = GetMousePosition();
     return { m.x * m_dpiScale, m.y * m_dpiScale };
@@ -451,9 +456,9 @@ void MapRenderer::update(float dt) {
         // wheel to zoom -- so the hand does not have to learn a second map.
         // Handled here rather than in the caller so no input code has to know
         // which view is up.
-        const Vector2 d = GetMouseDelta();
-        const bool panning = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) ||
-                             (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !m_blockLeftPan);
+        const Vector2 d = odMouseDelta();
+        const bool panning = odMouseDown(MOUSE_BUTTON_MIDDLE) ||
+                             (odMouseDown(MOUSE_BUTTON_LEFT) && !m_blockLeftPan);
         if (panning) {
             if (!m_isDragging) m_isDragging = true;
             if (fabs(d.x) > 3.0f || fabs(d.y) > 3.0f) m_wasDragged = true;
@@ -465,10 +470,10 @@ void MapRenderer::update(float dt) {
             // moves the ground WITH the cursor, which is the whole of the rule.
             m_globe->orbit(d.x, d.y);
         }
-        if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE) ||
-            IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) m_isDragging = false;
+        if (odMouseReleased(MOUSE_BUTTON_MIDDLE) ||
+            odMouseReleased(MOUSE_BUTTON_LEFT)) m_isDragging = false;
 
-        const float w = GetMouseWheelMove();
+        const float w = odMouseWheel();
         if (w != 0.0f &&
             (m_provincePanelRect.height <= 0 ||
              !CheckCollisionPointRec(getMouse(), m_provincePanelRect))) {
@@ -479,9 +484,9 @@ void MapRenderer::update(float dt) {
 
     if (!m_paused) {
         // Handle drag/zoom — when paused, block all map interaction
-        Vector2 delta = GetMouseDelta();
-        bool panning = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) ||
-                       (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !m_blockLeftPan);
+        Vector2 delta = odMouseDelta();
+        bool panning = odMouseDown(MOUSE_BUTTON_MIDDLE) ||
+                       (odMouseDown(MOUSE_BUTTON_LEFT) && !m_blockLeftPan);
         if (panning) {
             if (!m_isDragging) m_isDragging = true;
             if (fabs(delta.x) > 3.0f || fabs(delta.y) > 3.0f) m_wasDragged = true;
@@ -489,12 +494,12 @@ void MapRenderer::update(float dt) {
             m_camera.target = Vector2Add(m_camera.target, move);
             if (m_flying && (fabs(delta.x) > 0 || fabs(delta.y) > 0)) userInteracted = true;
         }
-        if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE) ||
-            IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (odMouseReleased(MOUSE_BUTTON_MIDDLE) ||
+            odMouseReleased(MOUSE_BUTTON_LEFT)) {
             m_isDragging = false;
         }
 
-        float wheel = GetMouseWheelMove();
+        float wheel = odMouseWheel();
         if (wheel != 0.0f) {
             // Don't zoom if mouse is over the province info / ship list panel
             if (m_provincePanelRect.height <= 0 || !CheckCollisionPointRec(getMouse(), m_provincePanelRect)) {

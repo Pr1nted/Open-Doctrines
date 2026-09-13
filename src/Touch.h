@@ -56,6 +56,20 @@ bool suppressesMouse();
 /** Where the virtual cursor is, in screen pixels. */
 Vector2 cursor();
 
+/**
+ * How far the cursor moved this frame, in screen pixels.
+ *
+ * Zero unless one finger is down and dragging: the frame a finger lands it has
+ * not moved yet, and two fingers are a zoom rather than a pan.
+ *
+ * RAYLIB'S OWN GetMouseDelta() CANNOT STAND IN FOR THIS ON ANDROID. That
+ * backend advances the previous position only inside an ACTION_MOVE event
+ * (rcore_android.c), and its PollInputEvents never does it per frame -- so a
+ * finger held still sends nothing, the last delta stays in place, and whatever
+ * reads it keeps panning on its own.
+ */
+Vector2 delta();
+
 /** Put the cursor somewhere (used when a screen opens, so it starts sensibly). */
 void placeCursor(Vector2 p);
 

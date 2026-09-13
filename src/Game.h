@@ -607,6 +607,14 @@ private:
     bool m_loadingShouldCreateSave = false;
     bool m_loadingFailed = false;
     /**
+     * The save's state.json could not be read.
+     *
+     * Kept apart from m_loadingFailed because it is set deep inside
+     * loadStateJson, which has no business deciding whether the whole load is
+     * over. LOAD_SAVE_FINALIZE reads it and makes that call.
+     */
+    bool m_stateJsonBad = false;
+    /**
      * Why the last load failed, in words a player can act on.
      *
      * A failed load sends the player back to the main menu and, until this
@@ -6266,4 +6274,5 @@ private:
     void processPopulation();
     std::string saveStateJson();
     void loadStateJson(const std::string& json);
+    void loadStateJsonBody(const std::string& json);
 };

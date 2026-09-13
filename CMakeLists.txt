@@ -2107,6 +2107,17 @@ add_executable(GlobeProjectionTest EXCLUDE_FROM_ALL tests/globe_projection_test.
 target_include_directories(GlobeProjectionTest PRIVATE src tests)
 target_link_libraries(GlobeProjectionTest raylib)
 
+# The gesture layer, against a screen the test makes up.
+#
+# raylib's HEADERS but not raylib: the test defines the three entry points
+# odTouch calls, which is the only way to hold a finger still for a frame, and
+# linking the real library would collide with them.
+add_executable(TouchGestureTest EXCLUDE_FROM_ALL tests/touch_gesture_test.cpp
+               src/Touch.cpp)
+target_include_directories(TouchGestureTest PRIVATE src tests)
+target_include_directories(TouchGestureTest PRIVATE
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # The relay's framing. No network in it: the bytes are the whole risk, and a
 # peer id read the wrong way round misdelivers a turn rather than failing.
 add_executable(RelayLinkTest EXCLUDE_FROM_ALL tests/relay_link_test.cpp

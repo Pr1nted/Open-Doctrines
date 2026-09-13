@@ -52,6 +52,17 @@ inline float odMouseWheel() {
     return GetMouseWheelMove() + odPad::wheel();
 }
 
+// Pointer travel this frame, for the things that pan rather than point.
+//
+// Touch keeps its own, because raylib's is unusable on the one platform that
+// needs it: the Android backend advances the previous position only inside an
+// ACTION_MOVE event, so a resting finger leaves the last delta standing and
+// the map slides away under it. See odTouch::delta().
+inline Vector2 odMouseDelta() {
+    if (odTouch::suppressesMouse()) return odTouch::delta();
+    return GetMouseDelta();
+}
+
 // The same treatment for the keyboard, and for the same reason: the artillery
 // wheel, ship orders and box-select are keys HELD while the pointer aims, and a
 // pad with no way to press them can move armies and nothing else.

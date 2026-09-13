@@ -382,8 +382,18 @@ bool SaveManager::createSave(const std::string& odsvPath,
     // A save was written. On the web that write went to a filesystem that
     // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
     odPersistMark();
+
+    // ATOMIC, THE WAY appendTurn ALWAYS WAS -- AND FOR A REPORTED REASON.
+    //
+    // This wrote the archive straight to its final path, so a process that
+    // died mid-write left a half-finished .odsv sitting exactly where a real
+    // save belongs. A truncated zip is the tidy outcome; the nasty one is an
+    // archive that still opens and holds a truncated state.json, which is the
+    // file behind "close the app while it autosaves, reopen, load, crash".
+    // See the note over Game::loadStateJson.
+    const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive zip{};
-    if (!mz_zip_writer_init_file(&zip, odsvPath.c_str(), 0))
+    if (!mz_zip_writer_init_file(&zip, tmpPath.c_str(), 0))
         return false;
 
     // Embed the original .odmap
@@ -429,8 +439,25 @@ bool SaveManager::createSave(const std::string& odsvPath,
     const char* idx = "{\"turns\":[]}\n";
     mz_zip_writer_add_mem(&zip, "index.json", idx, strlen(idx), MZ_BEST_COMPRESSION);
 
-mz_zip_writer_finalize_archive(&zip);
+    // CHECKED, not called and forgotten. A finalize that failed still returned
+    // true from here, so a save that was never written reported success and
+    // was discovered later, by the loader, as a damaged file.
+    if (!mz_zip_writer_finalize_archive(&zip)) {
+        mz_zip_writer_end(&zip);
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     mz_zip_writer_end(&zip);
+
+    // The same rename as appendTurn, for the same reason: MSVC's rename fails
+    // if the target exists, so the old file goes first on Windows.
+#ifdef _WIN32
+    std::remove(odsvPath.c_str());
+#endif
+    if (std::rename(tmpPath.c_str(), odsvPath.c_str()) != 0) {
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     return true;
 }
  

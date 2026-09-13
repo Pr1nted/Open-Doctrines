@@ -779,7 +779,7 @@ void Game::updateCeasefireTermsMap(Rectangle slot) {
     Vector2 mouse = getMouse();
     bool over = CheckCollisionPointRec(mouse, slot);
 
-    float wheel = GetMouseWheelMove();
+    float wheel = odMouseWheel();
     if (over && wheel != 0.0f) {
         Rectangle before = ceasefireTermsMapView(slot);
         // Where the cursor is pointing, as a fraction of the slot and as a point
@@ -1287,7 +1287,7 @@ void Game::updateCeasefireScreen() {
     Rectangle dstRect = {dX, dY, dW, dH};
 
     // Mouse scroll for zoom
-    float wheel = GetMouseWheelMove();
+    float wheel = odMouseWheel();
     if (wheel != 0.0f) {
         m_ceasefireMapZoom *= (wheel > 0 ? 1.15f : 0.87f);
         if (m_ceasefireMapZoom < 1.0f) m_ceasefireMapZoom = 1.0f;
@@ -1935,10 +1935,47 @@ std::string Game::saveStateJson() {
     return j.dump();
 }
 
+// ── A DAMAGED SAVE MUST NOT TAKE THE PROCESS WITH IT ──
+//
+// Reported on Windows, 1.2.0a: play a few turns, let the autosave write, close
+// the application, open it again, load the world -- and the game DISAPPEARS.
+// No message, no menu, nothing for the player to report but "it crashes".
+//
+// This was it. state.json was handed to the THROWING nlohmann overload, and
+// nothing between here and main() catches: not replaySaveTurns, not the
+// LOAD_SAVE_FINALIZE phase (whose try/catch covers readMetadata and stops
+// short of the replay), not updateLoading, not any of its callers, and
+// main.cpp has neither a top-level catch nor a set_terminate. So a truncated
+// state.json went straight to std::terminate. Reproduced headlessly at HEAD: a
+// valid .odsv whose state.json is cut mid-object aborts the dedicated server
+// with SIGABRT and "uncaught exception ... parse_error.101", printing nothing
+// a player would ever see.
+//
+// AND A TRUNCATED state.json IS NOT EXOTIC. createSave() writes the archive
+// straight to its final path, so a process that dies mid-write leaves one
+// behind -- which is exactly the "close the app while it autosaves" the report
+// describes.
+//
+// Two layers, because the body throws for two different reasons: the parse is
+// the non-throwing overload now, and this wrapper catches the type errors the
+// field reads raise when a key holds something they did not expect.
 void Game::loadStateJson(const std::string& json) {
     if (json.empty()) return;
+    try {
+        loadStateJsonBody(json);
+    } catch (const std::exception& e) {
+        LoadLog() << "  state.json could not be applied: " << e.what() << std::endl;
+        m_stateJsonBad = true;
+    }
+}
 
-    nlohmann::json j = nlohmann::json::parse(json);
+void Game::loadStateJsonBody(const std::string& json) {
+    nlohmann::json j = nlohmann::json::parse(json, nullptr, false);
+    if (j.is_discarded()) {
+        LoadLog() << "  state.json is not valid JSON -- the save is damaged" << std::endl;
+        m_stateJsonBad = true;
+        return;
+    }
 
     // Pending upgrades
     if (j.contains("pendingUpgrades")) {

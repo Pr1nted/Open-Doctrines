@@ -451,7 +451,7 @@ void Game::update(float dt) {
     // Track any player interaction as an unsaved change
     if (!m_paused && !m_unsavedChanges &&
         (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) ||
-         GetMouseWheelMove() != 0 || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
+         odMouseWheel() != 0 || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
          IsKeyPressed(KEY_TAB))) {
         trackChange();
     }
@@ -492,7 +492,7 @@ void Game::update(float dt) {
             m_renderer->update(dt);
         }
         // Handle scroll wheel for the claims list
-        float wheel = GetMouseWheelMove();
+        float wheel = odMouseWheel();
         if (wheel != 0) {
             int listH = std::min(m_screenH - 250, 320);
             int contentH = 0;
@@ -636,7 +636,7 @@ void Game::update(float dt) {
                     m_claimsMapDragging = false;
 
                 // Zoom with mouse wheel (towards cursor)
-                float wheelClaims = GetMouseWheelMove();
+                float wheelClaims = odMouseWheel();
                 if (wheelClaims != 0 && !m_claimsEditMode) {
                     float oldZoom = m_claimsMapZoom;
                     m_claimsMapZoom *= (wheelClaims > 0) ? 1.15f : 0.87f;
@@ -1474,7 +1474,7 @@ void Game::update(float dt) {
             return;
 
         // Scroll wheel for scrolling item list
-        float wheel = GetMouseWheelMove();
+        float wheel = odMouseWheel();
         if (wheel != 0.0f) {
             m_settingsScroll -= (int)wheel;
             m_settingsScroll = std::clamp(m_settingsScroll, 0, maxScroll);

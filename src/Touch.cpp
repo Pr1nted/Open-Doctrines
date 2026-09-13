@@ -17,6 +17,7 @@ constexpr float PINCH_DEADZONE  = 6.0f;
 bool  s_active = false;
 bool  s_present = false;
 Vector2 s_cursor = {0, 0};
+Vector2 s_delta = {0, 0};
 
 // Where the real mouse was last frame, so a mouse that MOVES can take the
 // cursor back off touch. See the note in update().
@@ -48,6 +49,7 @@ float dist(Vector2 a, Vector2 b) {
 void update(float dt, int screenW, int screenH) {
     s_lPressed = s_lReleased = s_rPressed = s_rReleased = false;
     s_wheel = 0.0f;
+    s_delta = {0.0f, 0.0f};
 
     const Vector2 mouseNow = GetMousePosition();
     const int n = GetTouchPointCount();
@@ -117,6 +119,7 @@ void update(float dt, int screenW, int screenH) {
             const float dx = p.x - s_prevP0.x;
             const float dy = p.y - s_prevP0.y;
             s_travel += std::sqrt(dx * dx + dy * dy);
+            s_delta = {dx, dy};
         } else {
             s_downTime = 0.0f;
             s_travel = 0.0f;
@@ -170,6 +173,7 @@ bool active() { return s_active; }
 bool suppressesMouse() { return s_active; }
 bool present() { return s_present; }
 Vector2 cursor() { return s_cursor; }
+Vector2 delta() { return s_delta; }
 void placeCursor(Vector2 p) { s_cursor = p; }
 
 bool mouseDown(int button) {

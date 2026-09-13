@@ -558,7 +558,7 @@ void Game::drawHostReports() {
     EndScissorMode();
 
     if (CheckCollisionPointRec(mouse, list)) {
-        const float wheel = GetMouseWheelMove();
+        const float wheel = odMouseWheel();
         if (wheel != 0.0f) {
             const int maxScroll = std::max(0, ry - (int)list.y - (int)list.height + 20 +
                                                 m_hostReportScroll);

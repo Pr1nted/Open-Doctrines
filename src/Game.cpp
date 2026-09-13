@@ -2228,7 +2228,7 @@ void Game::drawConsoleWindow() {
     int maxLines = (int)(contentH / lineH);
 
     // Scroll wheel
-    float wheel = GetMouseWheelMove();
+    float wheel = odMouseWheel();
     if (CheckCollisionPointRec(mouse, {c.rect.x, contentY, c.rect.width, contentH})) {
         c.scrollOffset = std::max(0, c.scrollOffset - (int)wheel);
     }

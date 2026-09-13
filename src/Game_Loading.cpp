@@ -126,6 +126,7 @@ void Game::startLoading(const std::string& odmPath) {
     m_loadingTempOdm.clear();
     m_loadingResIdx = 0;
     m_loadingFailed = false;
+    m_stateJsonBad = false;
     m_loadError.clear();
     LoadLog() << "Started async loading: " << odmPath << std::endl;
 }
@@ -141,6 +142,7 @@ void Game::startLoadingSave(const std::string& savePath) {
     m_loadingOdmPath.clear();
     m_loadingResIdx = 0;
     m_loadingFailed = false;
+    m_stateJsonBad = false;
     m_loadError.clear();
     LoadLog() << "Started async save loading: " << savePath << std::endl;
 }
@@ -560,6 +562,25 @@ void Game::updateLoading() {
                 bool replayOk = replaySaveTurns(m_loadingSavePath);
                 if (!replayOk) {
                     LoadLog() << "  Failed to replay save turns" << std::endl;
+                }
+                // A save whose state.json is damaged used to take the process
+                // with it -- see the note over loadStateJson. It stops the
+                // load now and says so, rather than carrying on: state.json IS
+                // the pending orders, the claims, the research and the active
+                // policies, and a world that opened having quietly dropped all
+                // of them is worse than one that refused to open.
+                if (m_stateJsonBad) {
+                    m_loadError = "This save is damaged and could not be read:\n" +
+                                  m_loadingSavePath;
+                    m_loadingFailed = true;
+                    if (!m_loadingTempOdm.empty()) {
+                        std::remove(m_loadingTempOdm.c_str());
+                        m_loadingTempOdm.clear();
+                    }
+                    m_loadingSavePath.clear();
+                    m_loadingPhase = LOAD_DONE;
+                    hideLoadingScreen();
+                    return;
                 }
                 if (!m_loadingTempOdm.empty()) {
                     std::remove(m_loadingTempOdm.c_str());
