@@ -5,7 +5,7 @@
   "name": "The Long Occupation",
   "date": "October 1962 AD",
   "author": "OpenDoctrines",
-  "description": "Twenty years under an occupation that was supposed to be permanent. You are not it. You are the government that got out, the command that never surrendered, the republic ruling from Algiers, or the arsenal across the Atlantic -- and the continent is full of people waiting to hear that somebody is coming back.",
+  "description": "Twenty years under an occupation that was supposed to be permanent. You are not it. You are a government that got out, a command that never surrendered -- or a partisan republic holding a stretch of mountain the occupation has failed to take back, which is where this war is actually fought.",
   "independent_default": true,
   "independent_except": [
     "UNC",
@@ -17,6 +17,265 @@
   "industry_scale": 0.42,
   "industry_level_cap": 9,
   "powers": [
+    {
+      "iso": "YUP",
+      "name": "Partisan Republic",
+      "color": "#9c3f3f",
+      "$comment": "Bosnia and the Sandzak. Liberated territory is not an invention: the Republic of Uzice held ground for three months in 1941. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "BIH",
+          "bbox": [
+            16.8,
+            43.0,
+            18.6,
+            44.6
+          ]
+        },
+        {
+          "from": "SRB",
+          "bbox": [
+            18.6,
+            42.2,
+            20.4,
+            43.8
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#650808",
+          "#9c3f3f",
+          "#d87b7b"
+        ]
+      },
+      "army": 260000,
+      "navy": 0,
+      "compass": {
+        "left": -60,
+        "auth": 35
+      },
+      "policies": [
+        "peoples_militia",
+        "total_war_economy",
+        "national_unity"
+      ]
+    },
+    {
+      "iso": "AKP",
+      "name": "Home Army",
+      "color": "#b0894a",
+      "$comment": "The eastern forests and the Lublin country. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "POL",
+          "bbox": [
+            20.5,
+            49.8,
+            23.5,
+            53.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#795213",
+          "#b0894a",
+          "#ecc586"
+        ]
+      },
+      "army": 190000,
+      "navy": 0,
+      "compass": {
+        "left": -10,
+        "auth": 30
+      },
+      "policies": [
+        "peoples_militia",
+        "free_press",
+        "general_amnesty"
+      ]
+    },
+    {
+      "iso": "BPT",
+      "name": "Forest Command",
+      "color": "#5f7a4b",
+      "$comment": "Polesia. The marshes the occupation never finished clearing. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "BLR",
+          "bbox": [
+            24.0,
+            51.5,
+            27.5,
+            53.8
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#284314",
+          "#5f7a4b",
+          "#9bb687"
+        ]
+      },
+      "army": 240000,
+      "navy": 0,
+      "compass": {
+        "left": -65,
+        "auth": 55
+      },
+      "policies": [
+        "peoples_militia",
+        "collective_agriculture",
+        "conscription"
+      ]
+    },
+    {
+      "iso": "MAQ",
+      "name": "Maquis",
+      "color": "#4f6b8a",
+      "$comment": "The Massif Central and the Vercors. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "FRA",
+          "bbox": [
+            1.0,
+            43.0,
+            5.0,
+            46.0
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#183453",
+          "#4f6b8a",
+          "#8ba7c6"
+        ]
+      },
+      "army": 120000,
+      "navy": 0,
+      "compass": {
+        "left": -25,
+        "auth": -20
+      },
+      "policies": [
+        "peoples_militia",
+        "free_press",
+        "decentralization"
+      ]
+    },
+    {
+      "iso": "AND",
+      "name": "Andartes",
+      "color": "#6b8a7a",
+      "$comment": "The Pindus. Mountain country the plains have never governed. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "GRC",
+          "bbox": [
+            20.5,
+            39.0,
+            23.0,
+            40.5
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#345343",
+          "#6b8a7a",
+          "#a7c6b6"
+        ]
+      },
+      "army": 95000,
+      "navy": 0,
+      "compass": {
+        "left": -55,
+        "auth": 25
+      },
+      "policies": [
+        "peoples_militia",
+        "agrarian_priority"
+      ]
+    },
+    {
+      "iso": "PAR",
+      "name": "Partisan Committee",
+      "color": "#8a6b9c",
+      "$comment": "The Alpine north, where the free republics of 1944 stood. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "ITA",
+          "bbox": [
+            7.5,
+            44.8,
+            11.0,
+            46.5
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#533465",
+          "#8a6b9c",
+          "#c6a7d8"
+        ]
+      },
+      "army": 85000,
+      "navy": 0,
+      "compass": {
+        "left": -45,
+        "auth": -15
+      },
+      "policies": [
+        "peoples_militia",
+        "worker_rights",
+        "free_press"
+      ]
+    },
+    {
+      "iso": "SNU",
+      "name": "Slovak Uprising",
+      "color": "#7a8a5c",
+      "$comment": "Banska Bystrica and the central mountains. Boxes chosen against the base map's real province centres.",
+      "boxes": [
+        {
+          "from": "SVK",
+          "bbox": [
+            18.0,
+            48.2,
+            21.0,
+            49.2
+          ]
+        }
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#435325",
+          "#7a8a5c",
+          "#b6c698"
+        ]
+      },
+      "army": 70000,
+      "navy": 0,
+      "compass": {
+        "left": -30,
+        "auth": 20
+      },
+      "policies": [
+        "peoples_militia",
+        "conscription"
+      ]
+    },
     {
       "iso": "NSR",
       "name": "Occupation Authority",
@@ -487,6 +746,34 @@
       [
         "JPN",
         "CHN"
+      ],
+      [
+        "YUP",
+        "NSR"
+      ],
+      [
+        "AKP",
+        "NSR"
+      ],
+      [
+        "BPT",
+        "NSR"
+      ],
+      [
+        "MAQ",
+        "NSR"
+      ],
+      [
+        "AND",
+        "NSR"
+      ],
+      [
+        "SNU",
+        "NSR"
+      ],
+      [
+        "PAR",
+        "ITA"
       ]
     ],
     "alliances": [
@@ -505,6 +792,30 @@
       [
         "NSR",
         "ITA"
+      ],
+      [
+        "YUP",
+        "SOV"
+      ],
+      [
+        "BPT",
+        "SOV"
+      ],
+      [
+        "AKP",
+        "GBR"
+      ],
+      [
+        "MAQ",
+        "FFR"
+      ],
+      [
+        "AND",
+        "GBR"
+      ],
+      [
+        "SNU",
+        "SOV"
       ]
     ],
     "non_aggression": [
@@ -546,6 +857,34 @@
     {
       "by": "ITA",
       "on": "FFR"
+    },
+    {
+      "by": "YUP",
+      "on": "NSR"
+    },
+    {
+      "by": "AKP",
+      "on": "NSR"
+    },
+    {
+      "by": "BPT",
+      "on": "NSR"
+    },
+    {
+      "by": "MAQ",
+      "on": "NSR"
+    },
+    {
+      "by": "AND",
+      "on": "NSR"
+    },
+    {
+      "by": "SNU",
+      "on": "NSR"
+    },
+    {
+      "by": "PAR",
+      "on": "ITA"
     }
   ]
 }
