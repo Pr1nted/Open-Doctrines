@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -210,6 +210,10 @@ run "neural net gradients" "$bin/NeuralNetTest"
 run "ai model container" "$bin/ModelBlobTest" "$root/data/ai/model.bin"
 run "map-script expressions" "$bin/ScriptExprTest"
 run "odsv turn delta"  "$bin/SaveDeltaTest"
+# The archive around those deltas: written, closed, and opened again. The
+# failure it exists for is the one players report -- "my save will not load"
+# -- which until now had no test at any level.
+run "odsv round trip"  "$bin/SaveRoundTripTest"
 # The dialogue markup and its line breaker, then the character rig: loading
 # the shipped test character, skinning it, blending poses, and the blink
 # clock. The rig test reads data/characters/test, so it runs from the root.

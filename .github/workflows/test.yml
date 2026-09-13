@@ -294,6 +294,53 @@ jobs:
             echo "The packaged copy did not play three turns."; tail -30 pkg.log; exit 1; }
           echo "OK: the packaged copy found its own data and played 1939."
 
+      # ── THE SAVE FORMAT, WRITTEN HERE AND READ EVERYWHERE ELSE ──
+      #
+      # A player reported a world that would not load, on Windows, written by
+      # the same version that could not read it. Nothing in this workflow could
+      # have caught that: the save format had no test at the archive level at
+      # all, and the one per-platform save producer -- the --simulate step in
+      # qualify.sh -- needs a display and is SKIPPED on the hosted macOS
+      # runners, so it can never prove that a macOS save opens on Windows.
+      #
+      # SaveRoundTripTest links SaveManager and nothing else: no window, no GL,
+      # no map. So it runs everywhere, and --emit/--verify turns it into an
+      # exchange -- every platform writes a canonical save here, and the
+      # save-exchange job below reads all of them on all of them.
+      #
+      # The binary rides along with the saves so that job needs no build of its
+      # own; it is this runner's own build, and its matrix mirrors this one.
+      - name: Emit this platform's canonical save
+        shell: bash
+        run: |
+          set -e
+          BIN=build/SaveRoundTripTest
+          [ -f build/SaveRoundTripTest.exe ] && BIN=build/SaveRoundTripTest.exe
+          [ -f build/Release/SaveRoundTripTest.exe ] && BIN=build/Release/SaveRoundTripTest.exe
+          [ -f build/Release/SaveRoundTripTest ] && BIN=build/Release/SaveRoundTripTest
+          mkdir -p saves-out reader-out
+          "$BIN" --emit "saves-out/${{ matrix.name }}.odsv"
+          cp "$BIN" "reader-out/$(basename "$BIN")"
+          # The played world too, when this runner had a display to make one.
+          # Not verified below -- it is a real game, not the canonical fixture --
+          # but it is the artifact to hand somebody a save that will not load.
+          if [ -f build/qualify-sim/saves/Qualify.odsv ]; then
+            cp build/qualify-sim/saves/Qualify.odsv "saves-out/${{ matrix.name }}-played.odsv"
+          fi
+          ls -l saves-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saves-${{ matrix.name }}
+          path: saves-out/*.odsv
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-${{ matrix.name }}
+          path: reader-out/*
+          if-no-files-found: error
+
   # The web build is a platform too, and the one where "it compiled" is least
   # informative: it is the only target that links against different backends
   # (WsWeb rather than WsNative, PeerLinkWeb rather than PeerLinkNative), so it
@@ -736,3 +783,61 @@ jobs:
             fi
           done
           echo "ok: links nothing graphical"
+
+  # Every platform's save, read on every platform. This is the half that a
+  # per-platform test cannot do: "it round-trips here" is not "the file one
+  # machine writes is the file another can open", and the report that started
+  # this was exactly the second thing failing while the first was fine.
+  save-exchange:
+    name: saves cross-load (${{ matrix.name }})
+    needs: qualify
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-arm64, os: macos-14 }
+          - { name: macos-x64,   os: macos-15-intel }
+          - { name: windows-x64, os: windows-2022 }
+          - { name: linux-x64,   os: ubuntu-22.04 }
+
+    steps:
+      # Every platform's saves...
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: saves-*
+          path: incoming
+          merge-multiple: true
+
+      # ...and this platform's own reader, built in the qualify job. No
+      # checkout and no build: a ten-minute configure to run one 350 KB binary
+      # would be the slowest part of this workflow.
+      - uses: actions/download-artifact@v4
+        with:
+          name: reader-${{ matrix.name }}
+          path: reader
+
+      - name: Read every platform's save on this one
+        shell: bash
+        run: |
+          set -e
+          BIN="$(ls reader/SaveRoundTripTest reader/SaveRoundTripTest.exe 2>/dev/null | head -1)"
+          [ -n "$BIN" ] || { echo "no reader arrived for ${{ matrix.name }}"; exit 1; }
+          chmod +x "$BIN" || true
+          shopt -s nullglob
+          found=0; bad=0
+          for f in incoming/*.odsv; do
+            case "$f" in *-played.odsv) continue ;; esac
+            found=$((found + 1))
+            echo "--- $(basename "$f") ---"
+            if ! "$BIN" --verify "$f"; then bad=$((bad + 1)); fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "no canonical saves arrived from the qualify jobs"; exit 1
+          fi
+          if [ "$bad" -ne 0 ]; then
+            echo "$bad save(s) written on another platform do not read on ${{ matrix.name }}"
+            exit 1
+          fi
+          echo "OK: $found save(s) from other platforms read correctly on ${{ matrix.name }}"

@@ -570,7 +570,14 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         // them, 1.7 GB, and the game's own save browser shows them all.
         //
         // Only the file this run just created, and only under --check.
-        if (!m_currentSavePath.empty()) {
+        //
+        // m_autoCreatedSave IS that distinction, and leaving it out of the
+        // condition meant this deleted the save it had been asked to open:
+        // --load names an existing world, startLoadedGame puts that path in
+        // m_currentSavePath and sets this flag false, and then a health check
+        // erased somebody's game. The comment above was already right; the
+        // code below it was not.
+        if (m_autoCreatedSave && !m_currentSavePath.empty()) {
             std::error_code ec;
             std::filesystem::remove(m_currentSavePath, ec);
             std::filesystem::remove(m_currentSavePath + ".odkey", ec);

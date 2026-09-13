@@ -2634,6 +2634,23 @@ add_executable(SaveDeltaTest EXCLUDE_FROM_ALL
 target_include_directories(SaveDeltaTest PRIVATE src tests tools/map_generator)
 
 
+# The archive, not the codec beside it: create a save, write state into it,
+# append turns, then open it again and demand the same world back. Links
+# SaveManager.cpp alone -- no window, no GL, no map -- which is what lets it
+# run on every platform in CI and, through --emit/--verify, lets one
+# platform's save be read by all the others.
+add_executable(SaveRoundTripTest EXCLUDE_FROM_ALL
+    tests/save_roundtrip_test.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveRoundTripTest PRIVATE src tests tools/map_generator)
+
+
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp

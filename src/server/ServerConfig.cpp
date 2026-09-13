@@ -411,9 +411,20 @@ std::vector<std::string> ServerConfig::problems() const {
                       "so turns only advance when someone types `step-go`.");
 
     if (!loadSave.empty()) {
+        // RESOLVED THE WAY THE LOADER RESOLVES IT, not against the working
+        // directory. A bare "World.odsv" is looked for in <data>/saves/, which
+        // is where saves live and where the operator put it -- testing the raw
+        // string meant this warned "which does not exist" about a save the very
+        // next line then loaded successfully. A health warning that fires on a
+        // working configuration teaches operators to ignore health warnings.
         std::error_code ec;
-        if (!fs::exists(loadSave, ec))
-            out.push_back("load-save points at " + loadSave + ", which does not exist.");
+        const std::string dir = dataDir.empty() ? std::string("data/") : dataDir;
+        const std::string sep = (dir.back() == '/' || dir.back() == '\\') ? "" : "/";
+        const bool here  = fs::exists(loadSave, ec);
+        const bool saved = fs::exists(dir + sep + "saves/" + loadSave, ec);
+        if (!here && !saved)
+            out.push_back("load-save points at " + loadSave + ", which is neither a "
+                          "path that exists nor a save in " + dir + sep + "saves/.");
     }
     return out;
 }
