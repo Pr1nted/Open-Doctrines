@@ -106,6 +106,22 @@ public:
     void configure(const LobbySettings& s) { m_settings = s; }
     const LobbySettings& settings() const { return m_settings; }
 
+    /**
+     * The countries this world actually offers, as the host published them.
+     *
+     * The lobby held no such list, so claimCountry checked everything about a
+     * claim EXCEPT whether the country was one the host had offered. The
+     * NetCountryList that fills the picker is advisory -- a client that simply
+     * asked for a different id was handed it. That is the whole of the
+     * enforcement behind a map that withholds a country, and a map that
+     * withholds one has a reason.
+     *
+     * EMPTY MEANS "NOT TOLD", and then nothing is refused: a host that never
+     * calls this must keep behaving exactly as it did.
+     */
+    void setPlayableCountries(std::vector<uint16_t> ids);
+    bool countryIsPlayable(uint16_t countryId) const;
+
     NetSessionState state() const { return m_state; }
 
     /** Lobby -> Game. Refuses while any player still holds no country. */
@@ -262,6 +278,8 @@ private:
     LobbySettings m_settings;
     NetSessionState m_state = NetSessionState::Lobby;
     std::vector<LobbyMember> m_members;
+    /// What the host offered. Empty until it says; see setPlayableCountries.
+    std::vector<uint16_t> m_playable;
     uint16_t m_hostPeerId = 0;
     std::vector<std::string> m_bans;   // by psid
 

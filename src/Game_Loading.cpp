@@ -579,6 +579,7 @@ void Game::updateLoading() {
             for (auto& [cid, c] : m_countries.getAll()) {
                 if (cid == UNC_CID || cid == BLC_CID) continue;
                 if (countryProvCount[cid] == 0) continue;
+                if (countryWithheldFromPlay(c.isoA3)) continue;
                 m_playableCountryIds.push_back(cid);
             }
             // Sort by country name
@@ -3705,6 +3706,39 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     std::string odmPath = mapName;
     startLoading(odmPath);
     m_currentScreen = SCREEN_LOADING;
+}
+
+// Countries no scenario offers as a seat, by their scenario-local code.
+//
+// IN THE BINARY, NOT IN THE MAP, and that distinction is the whole of what
+// this can promise. There is no "playable" field in a .odmap and this does not
+// add one: a flag in the archive is a flag the owner of the archive can clear
+// in a text editor, so a rule that lived there would be a suggestion. Here it
+// costs a rebuild instead.
+//
+// It is NOT a guarantee against the owner of the file, and must not be sold as
+// one. Single-player runs on the player's machine, the map is the player's
+// file, and at the point the list above is built the only identity the loader
+// has is the path it loaded from. Rename the country in countries.json and
+// this rule no longer matches -- there is nothing here that could notice.
+//
+// WHERE IT IS ENFORCED FOR REAL is multiplayer, and not by this function: the
+// host publishes the list built above, and Lobby::claimCountry now refuses
+// anything outside it. A modified client can ask for whatever it likes; the
+// host is the one that answers, and its answer comes from its own map.
+//
+// Codes are scenario-local, so this withholds a specific regime in a specific
+// scenario rather than a real country: NSR is the occupation government in the
+// Axis-victory scenario, and nothing else in the game uses that code. The
+// German Empire in Mitteleuropa is GER and is perfectly playable.
+//
+// Written as a comparison rather than a `const char*` table on purpose:
+// tools/i18n_extract.py collects the literals out of such a declaration, and a
+// country code is not text anybody reads. The catalogue holds no ISO codes --
+// its only three-letter entries are words on screen -- and adding one would
+// put "NSR" in front of nineteen translators.
+bool Game::countryWithheldFromPlay(const std::string& isoA3) {
+    return isoA3 == "NSR";
 }
 
 void Game::startLoadedGame(const std::string& saveName) {

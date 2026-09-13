@@ -217,6 +217,15 @@ void Lobby::evict(uint16_t peerId) {
 
 // -------------------------------------------------------------- countries ----
 
+void Lobby::setPlayableCountries(std::vector<uint16_t> ids) {
+    m_playable = std::move(ids);
+}
+
+bool Lobby::countryIsPlayable(uint16_t countryId) const {
+    if (m_playable.empty()) return true;   // not told; refuse nothing
+    return std::find(m_playable.begin(), m_playable.end(), countryId) != m_playable.end();
+}
+
 LobbyDenial Lobby::claimCountry(uint16_t peerId, uint16_t countryId) {
     if (m_state != NetSessionState::Lobby) return LobbyDenial::NotInLobby;
 
@@ -224,6 +233,9 @@ LobbyDenial Lobby::claimCountry(uint16_t peerId, uint16_t countryId) {
     if (!me) return LobbyDenial::NoSuchPeer;
     if (me->spectator) return LobbyDenial::Spectator;
     if (countryId == 0) return LobbyDenial::NoSuchCountry;
+    // A country the host never offered is not a country here, whatever the
+    // client believes it saw.
+    if (!countryIsPlayable(countryId)) return LobbyDenial::NoSuchCountry;
 
     if (m_settings.assignment == NetAssignment::HostAssigns && peerId != m_hostPeerId) {
         return LobbyDenial::HostOnly;
@@ -252,6 +264,9 @@ LobbyDenial Lobby::assignCountry(uint16_t byPeerId, uint16_t targetPeerId,
 
     // 0 means "take it away", which the host must be able to do.
     if (countryId != 0) {
+        // The host is not exempt: it cannot hand out a country the world does
+        // not offer either, and a host UI is as modifiable as any other client.
+        if (!countryIsPlayable(countryId)) return LobbyDenial::NoSuchCountry;
         if (const LobbyMember* holder = holderOf(countryId)) {
             if (holder->peerId != targetPeerId) return LobbyDenial::CountryTaken;
         }

@@ -1319,6 +1319,16 @@ bool NetHost::startGame(std::string& why, bool force) {
 
 void NetHost::setCountries(const NetCountryList& list) {
     m_impl->countries = list;
+    // AND THE LOBBY IS TOLD, from the one place the list is set.
+    //
+    // This list is what the picker draws; the lobby is what decides a claim.
+    // While only the first knew, a country left out of the list was left out
+    // of the UI and nowhere else -- asking for it by id worked. Forwarding
+    // here rather than at the call sites is what keeps the two from drifting.
+    std::vector<uint16_t> playable;
+    playable.reserve(list.countries.size());
+    for (const auto& e : list.countries) playable.push_back(e.id);
+    m_impl->lobby.setPlayableCountries(std::move(playable));
     // Anyone already here gets it now; anyone arriving later gets it with
     // their welcome.
     const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::Countries, list.encode());

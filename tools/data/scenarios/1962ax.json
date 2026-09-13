@@ -1,0 +1,551 @@
+{
+  "$comment": "An Axis victory in Europe, and the war that did not stop. Built from documented war aims -- the occupation administrations, Generalplan Ost's settlement zone, the Atlantic defences -- and from nothing else. The premise is an alternate history older than any game that uses it (The Man in the High Castle, 1962; Fatherland; SS-GB); the invented states, characters and lore of the mods set in the same premise belong to their authors and are not used, referenced or implied. See docs/scenario-licensing.md.\\n\\nTHE OCCUPATION IS NOT A SEAT. NSR is withheld from play by Game::countryWithheldFromPlay, which lives in the binary rather than here -- a flag in this file would be a flag anyone could clear. It carries a plain administrative banner in BOTH flag fields, because the actual/censored setting belongs to the player and cannot enforce anything: no historical insignia of that regime ships in this map at all.\\n\\nThe seats are the people still fighting it.",
+  "schema": 1,
+  "id": "1962ax",
+  "name": "The Long Occupation",
+  "date": "October 1962 AD",
+  "author": "OpenDoctrines",
+  "description": "Twenty years under an occupation that was supposed to be permanent. You are not it. You are the government that got out, the command that never surrendered, the republic ruling from Algiers, or the arsenal across the Atlantic -- and the continent is full of people waiting to hear that somebody is coming back.",
+  "independent_default": true,
+  "independent_except": [
+    "UNC",
+    "XNC",
+    "XSO",
+    "BLC"
+  ],
+  "population_scale": 0.5,
+  "industry_scale": 0.42,
+  "industry_level_cap": 9,
+  "powers": [
+    {
+      "iso": "NSR",
+      "name": "Occupation Authority",
+      "color": "#3a3a3a",
+      "owns": [
+        "DEU",
+        "AUT",
+        "CZE",
+        "SVK",
+        "POL",
+        "NLD",
+        "BEL",
+        "LUX",
+        "DNK",
+        "NOR",
+        "FRA",
+        "SVN",
+        "HRV",
+        "BIH",
+        "SRB",
+        "HUN",
+        "GRC",
+        "ALB",
+        "BGR",
+        "ROU",
+        "UKR",
+        "BLR",
+        "LTU",
+        "LVA",
+        "EST",
+        "MDA"
+      ],
+      "army": 2600000,
+      "navy": 40,
+      "compass": {
+        "left": -15,
+        "auth": 100
+      },
+      "policies": [
+        "secret_police",
+        "censorship",
+        "internal_passports",
+        "officer_purge",
+        "national_unity"
+      ],
+      "flag": {
+        "type": "hstripes_3",
+        "colors": [
+          "#2b2b2b",
+          "#3a3a3a",
+          "#4a4a4a"
+        ]
+      },
+      "flag_censored": {
+        "type": "hstripes_3",
+        "colors": [
+          "#2b2b2b",
+          "#3a3a3a",
+          "#4a4a4a"
+        ]
+      },
+      "$comment": "Not playable. See Game::countryWithheldFromPlay -- the rule is in the binary, not in this file. Its flag is a plain administrative banner in BOTH fields because the actual/censored switch is a player setting and cannot enforce anything; no historical insignia ships in this map."
+    },
+    {
+      "iso": "SOV",
+      "name": "Soviet Command, Sverdlovsk",
+      "color": "#8c3a3a",
+      "owns": [
+        "RUS",
+        "KAZ",
+        "UZB",
+        "TKM",
+        "KGZ",
+        "TJK"
+      ],
+      "army": 3100000,
+      "navy": 12,
+      "compass": {
+        "left": -70,
+        "auth": 85
+      },
+      "policies": [
+        "total_war_economy",
+        "conscription",
+        "secret_police"
+      ],
+      "$comment": "The government that did not surrender, running the war from beyond the Urals."
+    },
+    {
+      "iso": "USA",
+      "name": "United States",
+      "color": "#4b82c6",
+      "owns": [
+        "USA",
+        "PRI",
+        "PHL"
+      ],
+      "army": 2400000,
+      "navy": 58,
+      "compass": {
+        "left": 10,
+        "auth": -25
+      },
+      "policies": [
+        "deregulation",
+        "free_press",
+        "naval_supremacy"
+      ],
+      "$comment": "Never invaded, never at peace: the arsenal the resistance is armed from."
+    },
+    {
+      "iso": "GBR",
+      "name": "British Government in Exile",
+      "color": "#a85c5c",
+      "owns": [
+        "CAN",
+        "AUS",
+        "NZL",
+        "ZAF",
+        "IND",
+        "PAK",
+        "BGD",
+        "MMR",
+        "LKA",
+        "KEN",
+        "UGA",
+        "NGA",
+        "GHA",
+        "SLE",
+        "GMB",
+        "ZWE",
+        "ZMB",
+        "BWA",
+        "MWI",
+        "CYP",
+        "BRN",
+        "HKG",
+        "FJI",
+        "GUY",
+        "BLZ",
+        "JAM",
+        "TTO",
+        "BHS",
+        "MUS"
+      ],
+      "army": 1300000,
+      "navy": 44,
+      "compass": {
+        "left": 5,
+        "auth": 5
+      },
+      "policies": [
+        "free_press",
+        "merchant_marine",
+        "professional_army"
+      ],
+      "$comment": "Ottawa, not London. The Commonwealth kept fighting after the islands did not. Malaya is Japan's in this premise, not the Commonwealth's."
+    },
+    {
+      "iso": "FFR",
+      "name": "Free French Africa",
+      "color": "#5f8a9c",
+      "owns": [
+        "DZA",
+        "TUN",
+        "MAR",
+        "MRT",
+        "MLI",
+        "NER",
+        "TCD",
+        "SEN",
+        "GIN",
+        "CIV",
+        "BFA",
+        "BEN",
+        "CMR",
+        "GAB",
+        "COG",
+        "CAF",
+        "GNQ",
+        "MDG",
+        "DJI"
+      ],
+      "army": 520000,
+      "navy": 9,
+      "compass": {
+        "left": 0,
+        "auth": 10
+      },
+      "policies": [
+        "free_press",
+        "colonial_office"
+      ],
+      "$comment": "Algiers. The republic that never signed."
+    },
+    {
+      "iso": "JPN",
+      "name": "Empire of Japan",
+      "color": "#b06b7a",
+      "owns": [
+        "JPN",
+        "KOR",
+        "TWN",
+        "VNM",
+        "LAO",
+        "KHM",
+        "THA",
+        "IDN",
+        "MYS",
+        "PNG"
+      ],
+      "army": 2200000,
+      "navy": 46,
+      "compass": {
+        "left": -5,
+        "auth": 90
+      },
+      "policies": [
+        "national_unity",
+        "naval_supremacy",
+        "conscription"
+      ],
+      "$comment": "Playable. The instruction was that the German occupation is not; this is a different state and a different war."
+    },
+    {
+      "iso": "ITA",
+      "name": "Italian Empire",
+      "color": "#5c8a6b",
+      "owns": [
+        "ITA",
+        "LBY",
+        "ERI",
+        "SOM",
+        "ETH"
+      ],
+      "army": 700000,
+      "navy": 20,
+      "compass": {
+        "left": -10,
+        "auth": 80
+      },
+      "policies": [
+        "national_unity",
+        "colonial_office"
+      ]
+    },
+    {
+      "iso": "CHN",
+      "name": "China",
+      "color": "#c2b06b",
+      "owns": [
+        "CHN",
+        "MNG"
+      ],
+      "army": 3000000,
+      "navy": 4,
+      "compass": {
+        "left": -40,
+        "auth": 60
+      },
+      "policies": [
+        "conscription",
+        "agrarian_priority"
+      ]
+    },
+    {
+      "iso": "ESP",
+      "name": "Spain",
+      "color": "#c48a4a",
+      "owns": [
+        "ESP",
+        "ESH",
+        "GNB",
+        "CPV",
+        "STP"
+      ],
+      "army": 300000,
+      "navy": 6,
+      "compass": {
+        "left": 0,
+        "auth": 70
+      },
+      "policies": [
+        "autarky",
+        "traditionalism"
+      ]
+    },
+    {
+      "iso": "TUR",
+      "name": "Turkey",
+      "color": "#7a8a5c",
+      "owns": [
+        "TUR"
+      ],
+      "army": 420000,
+      "navy": 7,
+      "compass": {
+        "left": -5,
+        "auth": 45
+      },
+      "policies": [
+        "national_unity"
+      ]
+    },
+    {
+      "iso": "SWE",
+      "name": "Sweden",
+      "color": "#6ba8b0",
+      "owns": [
+        "SWE"
+      ],
+      "army": 180000,
+      "navy": 8,
+      "compass": {
+        "left": -15,
+        "auth": 10
+      },
+      "policies": [
+        "free_press",
+        "free_trade"
+      ]
+    },
+    {
+      "iso": "CHE",
+      "name": "Switzerland",
+      "color": "#9c6b6b",
+      "owns": [
+        "CHE"
+      ],
+      "army": 250000,
+      "navy": 0,
+      "compass": {
+        "left": 5,
+        "auth": 15
+      },
+      "policies": [
+        "fortress_doctrine",
+        "free_press"
+      ],
+      "$comment": "Surrounded, armed, and left alone -- so far."
+    },
+    {
+      "iso": "PRT",
+      "name": "Portugal",
+      "color": "#7a6b8a",
+      "owns": [
+        "PRT",
+        "AGO",
+        "MOZ"
+      ],
+      "army": 140000,
+      "navy": 5,
+      "compass": {
+        "left": 5,
+        "auth": 60
+      },
+      "policies": [
+        "colonial_office"
+      ]
+    },
+    {
+      "iso": "IRN",
+      "name": "Iran",
+      "color": "#8a7f5c",
+      "owns": [
+        "IRN",
+        "IRQ",
+        "SYR",
+        "LBN",
+        "ISR",
+        "PSE",
+        "JOR",
+        "SAU",
+        "KWT",
+        "QAT",
+        "ARE",
+        "OMN",
+        "YEM"
+      ],
+      "army": 380000,
+      "navy": 5,
+      "compass": {
+        "left": -10,
+        "auth": 55
+      },
+      "policies": [
+        "autarky"
+      ],
+      "$comment": "The corridor both sides need and neither holds."
+    },
+    {
+      "iso": "BRA",
+      "name": "Brazil",
+      "color": "#6b8a5c",
+      "owns": [
+        "BRA"
+      ],
+      "army": 300000,
+      "navy": 9,
+      "compass": {
+        "left": 0,
+        "auth": 30
+      },
+      "policies": [
+        "free_trade"
+      ]
+    },
+    {
+      "iso": "ARG",
+      "name": "Argentina",
+      "color": "#8fa0ad",
+      "owns": [
+        "ARG",
+        "URY",
+        "PRY"
+      ],
+      "army": 220000,
+      "navy": 6,
+      "compass": {
+        "left": 5,
+        "auth": 45
+      },
+      "policies": []
+    },
+    {
+      "iso": "MEX",
+      "name": "Mexico",
+      "color": "#a4623f",
+      "owns": [
+        "MEX",
+        "GTM",
+        "HND",
+        "SLV",
+        "NIC",
+        "CRI",
+        "PAN",
+        "CUB"
+      ],
+      "army": 260000,
+      "navy": 4,
+      "compass": {
+        "left": -20,
+        "auth": 35
+      },
+      "policies": [
+        "land_reform"
+      ]
+    }
+  ],
+  "relations": {
+    "wars": [
+      [
+        "NSR",
+        "SOV"
+      ],
+      [
+        "NSR",
+        "GBR"
+      ],
+      [
+        "NSR",
+        "FFR"
+      ],
+      [
+        "NSR",
+        "USA"
+      ],
+      [
+        "JPN",
+        "CHN"
+      ]
+    ],
+    "alliances": [
+      [
+        "USA",
+        "GBR"
+      ],
+      [
+        "GBR",
+        "FFR"
+      ],
+      [
+        "USA",
+        "FFR"
+      ],
+      [
+        "NSR",
+        "ITA"
+      ]
+    ],
+    "non_aggression": [
+      [
+        "NSR",
+        "JPN"
+      ],
+      [
+        "NSR",
+        "TUR"
+      ],
+      [
+        "NSR",
+        "ESP"
+      ],
+      [
+        "USA",
+        "SOV"
+      ]
+    ]
+  },
+  "claims": [
+    {
+      "by": "SOV",
+      "on": "NSR"
+    },
+    {
+      "by": "GBR",
+      "on": "NSR"
+    },
+    {
+      "by": "FFR",
+      "on": "NSR"
+    },
+    {
+      "by": "CHN",
+      "on": "JPN"
+    },
+    {
+      "by": "ITA",
+      "on": "FFR"
+    }
+  ]
+}

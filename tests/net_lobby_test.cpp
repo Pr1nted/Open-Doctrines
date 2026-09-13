@@ -159,6 +159,52 @@ void testCountryClaims() {
     check("and releases the old one", l.holderOf(40) == nullptr);
 }
 
+void testPlayableCountries() {
+    printf("\n=== only the countries the host offered ===\n");
+
+    // NOT TOLD, REFUSE NOTHING. Every other test in this file claims 40 and 41
+    // without publishing anything, and all of them must keep passing: a host
+    // that never calls setPlayableCountries behaves exactly as it always did.
+    {
+        Lobby l = makeLobby();
+        uint16_t a = join(l, "a", "Alice");
+        check("with no list published, any country is claimable",
+              l.claimCountry(a, 4242) == LobbyDenial::None);
+    }
+
+    Lobby l = makeLobby();
+    uint16_t a = join(l, "a", "Alice");
+    uint16_t b = join(l, "b", "Bob");
+    l.setPlayableCountries({40, 41});
+
+    check("a country the host offered is claimable",
+          l.claimCountry(a, 40) == LobbyDenial::None);
+    // The picker is drawn from the published list; the lobby is what decides.
+    // While only the picker knew, a country left out of the list was left out
+    // of the UI and nowhere else, and asking for it by id worked.
+    check("a country the host never offered is not a country",
+          l.claimCountry(b, 99) == LobbyDenial::NoSuchCountry);
+    check("and nobody ended up holding it", l.holderOf(99) == nullptr);
+    check("the offered one is still claimable afterwards",
+          l.claimCountry(b, 41) == LobbyDenial::None);
+
+    // The host is not exempt. A host UI is as modifiable as any other client,
+    // and "the host may hand out anything" would put the rule back where it
+    // started.
+    Lobby h = makeLobby(8, NetAssignment::HostAssigns);
+    uint16_t host = join(h, "host", "Hosty");
+    uint16_t c = join(h, "c", "Carol");
+    h.setHost(host);
+    h.setPlayableCountries({40, 41});
+    check("the host can assign an offered country",
+          h.assignCountry(host, c, 40) == LobbyDenial::None);
+    check("the host cannot assign one the world does not offer",
+          h.assignCountry(host, c, 99) == LobbyDenial::NoSuchCountry);
+    check("and the earlier assignment stands", h.find(c)->countryId == 40);
+    check("taking a country back still works",
+          h.assignCountry(host, c, 0) == LobbyDenial::None);
+}
+
 void testHostAssigns() {
     printf("\n=== host-assigned countries ===\n");
 
@@ -490,6 +536,7 @@ int main() {
     testAdmission();
     testLateJoin();
     testCountryClaims();
+    testPlayableCountries();
     testHostAssigns();
     testSwaps();
     testOrdersSurviveReconnect();

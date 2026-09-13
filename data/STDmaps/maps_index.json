@@ -63,6 +63,15 @@
     "hasScripts": false
   },
   {
+    "name": "The Long Occupation",
+    "filename": "1962ax.odmap",
+    "author": "OpenDoctrines",
+    "description": "Twenty years under an occupation that was supposed to be permanent. You are not it. You are the government that got out, the command that never surrendered, the republic ruling from Algiers, or the arsenal across the Atlantic -- and the continent is full of people waiting to hear that somebody is coming back.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "1962ax_thumb.png",
+    "hasScripts": false
+  },
+  {
     "name": "The Three Superstates",
     "filename": "1984.odmap",
     "author": "OpenDoctrines",

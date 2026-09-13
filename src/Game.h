@@ -2678,6 +2678,8 @@ public:
     std::unordered_map<std::string, Color> m_minorityColors;
     int m_playerCountryId = 0;
     std::vector<int> m_playableCountryIds;
+    /// Scenario-local codes no map offers as a seat. See the definition.
+    static bool countryWithheldFromPlay(const std::string& isoA3);
     int m_countrySelectIndex = 0;
     float m_countrySelectScroll = 0;
     int m_pendingCountryId = 0;
