@@ -2546,123 +2546,16 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
 // ────────────────────────────────────────────────────────────────────────────
 bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                          unsigned int seed, int untilTurn) {
-    // SAFE BY CONSTRUCTION, not by the caller remembering. This builds a
-    // real AISystem and ~AISystem() saves unconditionally, so without this
-    // this run's exit overwrites <data>/ai/model.bin. ServerMain used to
-    // set it at the call site; journal 311 wired a new caller and did not,
-    // which is exactly the failure a call-site guard invites. Journal 314.
-    AISystem::s_readOnlyModel = true;
-    applyFpsTarget(-1);
-    Audio::s_disabled = true;
-
-    startBenchSeat(seatSpec, untilTurn);
-    while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {
-        if (WindowShouldClose()) return false;
-        updateLoading();
-    }
-    if (m_loadingFailed) { fprintf(stderr, "[AGENT] load failed\n"); return false; }
-    hideLoadingScreen();
-    m_currentScreen = SCREEN_PLAYING;
-    m_benchPlayUntilTurn = untilTurn;
-
-    // ── THE SAME WORLD THE MODEL PLAYED ──
-    //
-    // Turn logic calls rand() directly (combat rolls, rebellion chances) and
-    // raylib's InitWindow seeds that from the wall clock, so without this every
-    // agent run is a DIFFERENT game from the one the model was scored on and
-    // the comparison is unpaired. That is not a small caveat here: the model's
-    // three seeds on 1914:FRA:rush came out 0.3, 9.3 and 9.8 -- a spread far
-    // wider than any plausible difference between two players. Same two lines,
-    // same reason, as the eval loop; see the note at "SEED THE C PRNG".
-    //
-    // DERIVED THE WAY THE EVAL DERIVES IT, not used raw. runAIEvaluation seeds
-    // an mt19937 with the run's base seed and draws a per-map seed from it --
-    // `p.seed = rng() & 0x7FFFFFFF` -- so seeding rand() with the base seed
-    // here would produce a DIFFERENT world from the one the model was scored
-    // on, while looking for all the world like the same one. The first draw is
-    // the first map's seed, which is the map a one-map seat run plays.
-    std::mt19937 seatRng(seed);
-    const unsigned int mapSeed = (unsigned int)(seatRng() & 0x7FFFFFFF);
-    srand(mapSeed);
-    seedSimRng(mapSeed);
+    // The rules live in Game_Agent.cpp; this is only the FIFO around them.
+    if (!agentBegin(seatSpec, seed, untilTurn)) return false;
     printf("[AGENT] seed %u -> map seed %u (the world the model was scored on)\n",
-           seed, mapSeed);
-
-    const int cid = m_playerCountryId;
-    const Country* me = m_countries.getCountry(cid);
-    if (!me) { fprintf(stderr, "[AGENT] no seat country\n"); return false; }
-    if (!m_ai)
-        m_ai = new AISystem(this, m_evalModelOverride.empty()
-                                      ? m_dataDir + m_aiModelPath
-                                      : m_evalModelOverride);
-
-    static const char* ECON_N[] = {"save","industry","fort","port","specialize",
-        "destroyer","carrier","fund up","fund down","focus bldg","focus army","focus navy"};
-    static const char* POL_N[] = {"hold","enact","pacify up","pacify dn","cancel",
-        "alliance","nap","guarantee","calming","conciliate","repress","trade"};
-    static const char* WAR_N[] = {"hold","recruit","reinforce","attack","declare war",
-        "artillery","ceasefire","stage"};
-    static const char* NAVY_N[] = {"hold","move","bombard","embark","land","scrap","engage"};
-    struct ModInfo { const char* letter; const char* label; const char* const* names; };
-    static const ModInfo MODS[] = {
-        {"e", "economy",  ECON_N}, {"p", "politics", POL_N},
-        {"w", "war",      WAR_N},  {"n", "navy",     NAVY_N},
-    };
-
+           seed, agentMapSeed());
     printf("[AGENT] seat %s, %d turns. Write choices to %s, one line per turn.\n",
            seatSpec.c_str(), untilTurn, pipePath.c_str());
     fflush(stdout);
 
-    while (m_turnNumber < untilTurn) {
-        m_ai->agentRefresh();
-
-        // ── The position ──
-        const CountryIncomeSnapshot inc = computeCountryIncome(cid);
-        long long mine = 0, owned = 0, army = 0;
-        for (int owner : m_provinceCountryLookup) {
-            if (owner <= 0 || owner >= REBEL_CID_MIN) continue;
-            ++owned; if (owner == cid) ++mine;
-        }
-        for (const auto& [pid, units] : m_provinceArmies)
-            for (const auto& u : units) if (u.countryId == cid) army += u.count;
-        std::string warList;
-        if (auto rIt = m_relations.find(me->isoA3); rIt != m_relations.end())
-            for (const auto& [iso, rel] : rIt->second)
-                if (rel.war) { if (!warList.empty()) warList += " "; warList += iso; }
-
-        printf("\n[AGENT] ===== turn %d/%d  %s (%s) =====\n", m_turnNumber, untilTurn,
-               me->name.c_str(), me->isoA3.c_str());
-        printf("[AGENT] land %lld/%lld (%.2f%% of the world)  army %lld  treasury %.1f\n",
-               mine, owned, owned ? 100.0 * (double)mine / (double)owned : 0.0,
-               army, me->treasury);
-        printf("[AGENT] gross %.1f net %.1f  (army %.1f navy %.1f industry %.1f "
-               "research %.1f minorities %.1f)\n", inc.total, inc.net,
-               inc.armyExpenses, inc.navyExpenses, inc.industryUpkeep,
-               inc.researchCost, inc.minorityCosts);
-        printf("[AGENT] at war with: %s\n", warList.empty() ? "(nobody)" : warList.c_str());
-        for (int mod = 0; mod < 4; ++mod) {
-            std::vector<bool> legal;
-            m_ai->agentLegal(cid, mod, legal);
-            std::string line;
-            for (size_t a = 0; a < legal.size(); ++a) {
-                if (!legal[a]) continue;
-                if (!line.empty()) line += "  ";
-                line += MODS[mod].letter + std::string(":") + std::to_string(a) +
-                        " " + MODS[mod].names[a];
-            }
-            printf("[AGENT] %-8s %s\n", MODS[mod].label, line.c_str());
-        }
-        // ── THE MODEL'S BUDGET, STATED ──
-        //
-        // A difference in score is only a difference in judgement if both
-        // players get the same number of moves. The policy makes up to
-        // agentBudget() picks per module each turn and stops a module when it
-        // picks 0; before this, an agent could send any number of actions and
-        // the comparison measured the budget rather than the player.
-        printf("[AGENT] budget e:%d p:%d w:%d n:%d  (a module also ends when it picks 0)\n",
-               m_ai->agentBudget(cid, 0), m_ai->agentBudget(cid, 1),
-               m_ai->agentBudget(cid, 2), m_ai->agentBudget(cid, 3));
-        printf("[AGENT] waiting\n");
+    while (!agentOver()) {
+        fputs(agentPositionText().c_str(), stdout);
         fflush(stdout);
 
         // ── One line of choices, from whoever is playing ──
@@ -2682,47 +2575,19 @@ bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePat
         while (!cmds.empty() && (cmds.back() == '\n' || cmds.back() == '\r')) cmds.pop_back();
         if (cmds == "quit") { printf("[AGENT] stopped early at turn %d\n", m_turnNumber); break; }
 
-        int used[4] = {0, 0, 0, 0};
-        bool passed[4] = {false, false, false, false};
-        size_t at = 0;
-        while (at < cmds.size()) {
-            const size_t comma = cmds.find(',', at);
-            std::string tok = cmds.substr(at, comma == std::string::npos
-                                               ? std::string::npos : comma - at);
-            at = (comma == std::string::npos) ? cmds.size() : comma + 1;
-            while (!tok.empty() && tok.front() == ' ') tok.erase(tok.begin());
-            if (tok.size() < 3 || tok[1] != ':') continue;
-            const char* found = strchr("epwn", tok[0]);
-            if (!found) { printf("[AGENT] ? unknown module in %s\n", tok.c_str()); continue; }
-            const int mod = (int)(found - "epwn");
-            const int act = atoi(tok.c_str() + 2);
-            std::vector<bool> legal;
-            m_ai->agentLegal(cid, mod, legal);
-            if (act < 0 || act >= (int)legal.size() || !legal[act]) {
-                printf("[AGENT] REFUSED %s: not legal this turn\n", tok.c_str());
-                continue;
-            }
-            // After the legality check, so a refused token costs nothing -- the
-            // policy only ever picks from the legal set, and would not have
-            // spent a move on it either.
-            if (passed[mod]) {
-                printf("[AGENT] SKIPPED %s: this module already picked 0 this turn\n", tok.c_str());
-                continue;
-            }
-            const int budget = m_ai->agentBudget(cid, mod);
-            if (used[mod] >= budget) {
-                printf("[AGENT] OVER BUDGET %s: %d of %d this turn\n", tok.c_str(), used[mod], budget);
-                continue;
-            }
-            ++used[mod];
-            if (act == 0) passed[mod] = true;
-            printf("[AGENT] did %s -> %s\n", tok.c_str(),
-                   m_ai->agentExec(cid, mod, act).c_str());
-            m_ai->agentRefresh();
+        for (const AgentMove& mv : agentPlay(cmds)) {
+            if (mv.outcome == "did")
+                printf("[AGENT] did %s -> %s\n", mv.token.c_str(), mv.detail.c_str());
+            else if (mv.outcome == "refused")
+                printf("[AGENT] REFUSED %s: %s\n", mv.token.c_str(), mv.detail.c_str());
+            else if (mv.outcome == "skipped")
+                printf("[AGENT] SKIPPED %s: %s\n", mv.token.c_str(), mv.detail.c_str());
+            else if (mv.outcome == "over_budget")
+                printf("[AGENT] OVER BUDGET %s: %s this turn\n", mv.token.c_str(), mv.detail.c_str());
+            else
+                printf("[AGENT] ? unknown module in %s\n", mv.token.c_str());
         }
-
-        processTurn();
-        PollInputEvents();
+        agentEndTurn();
     }
 
     // m_benchPlayUntilTurn prints the [BENCH] line from processTurn itself.

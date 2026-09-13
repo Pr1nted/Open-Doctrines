@@ -872,6 +872,9 @@ message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    # One seat played from outside a turn at a time: the FIFO agent door and
+    # the browser build both go through it. See its header comment.
+    src/Game_Agent.cpp
     # Built everywhere, a no-op off Windows. It is separate from Game.cpp
     # because Game.cpp must include <windows.h> with NOUSER -- which removes
     # MessageBoxA, the one call a fatal startup error needs. See its header.
@@ -2881,3 +2884,56 @@ if(NOT EMSCRIPTEN)
 endif()
 
 include(CPack)
+
+# ── THE GAME AS A MODULE A WEB PAGE DRIVES ──
+#
+# OpenDoctrinesAgent: the headless game built for the browser, with no
+# renderer, no audio and no network -- the server's recipe (GAME_SOURCES with
+# raylib's drawing half as stubs) plus src/web/AgentWeb.cpp, which exports the
+# agent session in Game_Agent.cpp to JavaScript. An outside player in a browser
+# (Strategy Fly's simulated fly) decides a turn in the page and this resolves
+# it, under the rules the FIFO door applies. Not in ALL: the game's own web
+# build does not need it.
+#
+#   emcmake cmake -S . -B build-agent-web -DCMAKE_BUILD_TYPE=Release
+#   cmake --build build-agent-web --target OpenDoctrinesAgent
+#
+# gives OpenDoctrinesAgent.mjs / .wasm / .data, loadable from a page or a worker.
+if(EMSCRIPTEN)
+    set(AGENT_WEB_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM AGENT_WEB_SOURCES main.cpp)
+    list(APPEND AGENT_WEB_SOURCES
+        src/web/AgentWeb.cpp
+        src/server/ServerRaylib.cpp        # images, files, text, time -- no window
+        src/server/ServerRaylibStubs.cpp)  # the drawing half, as no-ops
+    add_executable(OpenDoctrinesAgent EXCLUDE_FROM_ALL ${AGENT_WEB_SOURCES})
+    set_target_properties(OpenDoctrinesAgent PROPERTIES SUFFIX ".mjs")
+    target_link_libraries(OpenDoctrinesAgent odseal)
+    target_compile_definitions(OpenDoctrinesAgent PRIVATE
+                               OD_SERVER=1 OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(OpenDoctrinesAgent PRIVATE
+        src tools/map_generator ${CMAKE_CURRENT_BINARY_DIR}/generated
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_options(OpenDoctrinesAgent PRIVATE -fexceptions)
+    target_link_options(OpenDoctrinesAgent PRIVATE
+        "-fexceptions"
+        "-lwebsocket.js"
+        "-lidbfs.js"
+        "-sFETCH=1"
+        "-sMODULARIZE=1"
+        "-sEXPORT_ES6=1"
+        "-sEXPORT_NAME=createOpenDoctrinesAgent"
+        "-sENVIRONMENT=web,worker,node"
+        "--no-entry"
+        "-sEXPORTED_FUNCTIONS=['_od_agent_begin','_od_agent_position','_od_agent_play','_od_agent_end_turn','_od_agent_map_seed','_malloc','_free']"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','FS']"
+        "-sFORCE_FILESYSTEM=1"
+        "-sWASM_BIGINT"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sINITIAL_MEMORY=268435456"
+        "-sMAXIMUM_MEMORY=4294967296"
+        "-sSTACK_SIZE=${OD_WEB_STACK_SIZE}"
+        "--preload-file" "${OD_WEB_DATA}@/data"
+        "--exclude-file=*/audio/*"
+        "--exclude-file=*/fonts/unifont-full.ttf")
+endif()

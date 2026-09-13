@@ -1,4 +1,5 @@
 #include "Game.h"
+#include <filesystem>
 #include "util/LoadLog.h"
 #include "Palette.h"
 #include "ai/AISystem.h"   // s_scriptedControl, for startBenchSeat
@@ -2380,14 +2381,25 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
     // ordinary rung, which is the half of the benchmark that measures whether
     // you can survive rather than whether you can play.
     std::string mapName = "1914", iso = spec, world = "rung";
-    const size_t colon = spec.find(':');
-    if (colon != std::string::npos) {
+    // A MAP BY PATH as well as by name: "some/where/custom.odmap:ISO[:world]".
+    // Split after ".odmap", not at the first colon, so a path that holds a
+    // colon itself (C:\\...) still parses. This is how an imported map is
+    // played -- Strategy Fly's live viewer lets a person pick any .odmap.
+    std::string seatPart;
+    const size_t odmapEnd = spec.find(".odmap:");
+    if (odmapEnd != std::string::npos) {
+        mapName = spec.substr(0, odmapEnd + 6);
+        seatPart = spec.substr(odmapEnd + 7);
+    } else if (const size_t colon = spec.find(':'); colon != std::string::npos) {
         mapName = spec.substr(0, colon);
-        iso = spec.substr(colon + 1);
-        const size_t colon2 = iso.find(':');
+        seatPart = spec.substr(colon + 1);
+    }
+    if (!seatPart.empty() || odmapEnd != std::string::npos) {
+        iso = seatPart;
+        const size_t colon2 = seatPart.find(':');
         if (colon2 != std::string::npos) {
-            world = iso.substr(colon2 + 1);
-            iso = iso.substr(0, colon2);
+            world = seatPart.substr(colon2 + 1);
+            iso = seatPart.substr(0, colon2);
         }
     }
     static const std::pair<const char*, const char*> kBenchMaps[] = {
@@ -2395,13 +2407,27 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
         {"1939", "STDmaps/1939.odmap"}, {"1945", "STDmaps/1945.odmap"},
         {"1962", "STDmaps/1962.odmap"}, {"modern", "STDmaps/map.odmap"},
     };
-    const char* file = nullptr;
+    std::string file;
+    std::string saveLabel = mapName;
     for (const auto& [name, path] : kBenchMaps)
-        if (mapName == name) { file = path; break; }
-    if (!file) {
-        LoadLog() << "[BENCH] no shipped scenario named \"" << mapName
-                  << "\"" << std::endl;
-        return;
+        if (mapName == name) { file = m_dataDir + path; break; }
+    if (file.empty() && mapName.size() > 6 &&
+        mapName.compare(mapName.size() - 6, 6, ".odmap") == 0) {
+        // As given if it exists, otherwise relative to the data folder. The
+        // save is named for the file's stem: a path in a save name would put
+        // separators into a file name.
+        std::error_code ec;
+        file = std::filesystem::exists(mapName, ec) ? mapName : m_dataDir + mapName;
+        saveLabel = std::filesystem::path(mapName).stem().string();
+    }
+    {
+        std::error_code ec;
+        if (file.empty() || !std::filesystem::exists(file, ec)) {
+            LoadLog() << "[BENCH] no scenario named or found at \"" << mapName
+                      << "\"" << std::endl;
+            m_loadingFailed = true;
+            return;
+        }
     }
 
     m_forcedStartIso = iso;
@@ -2424,7 +2450,7 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
                   : world == "hood" ? "on the rung, except your largest neighbour"
                                     : "on the scripted rung")
               << std::endl;
-    startNewGameWithName(m_dataDir + file, "Bench " + mapName + " " + iso);
+    startNewGameWithName(file, "Bench " + saveLabel + " " + iso);
     // ...AND SET THE SEAT AGAIN, BECAUSE startNewGameWithName CLEARS IT.
     //
     // That function clears m_forcedStartIso on its first line -- deliberately,

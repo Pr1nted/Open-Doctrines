@@ -375,6 +375,33 @@ public:
      */
     bool runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                        unsigned int seed, int untilTurn);
+
+    // ── ONE SEAT, PLAYED FROM OUTSIDE, A TURN AT A TIME ──
+    //
+    // The rules an outside player plays a seat under -- the legal menus, the
+    // model's per-module budget, a module ending when it picks 0 -- live in
+    // these, once. runBenchAgent speaks them over a FIFO; the browser build
+    // (src/web/AgentWeb.cpp) calls them directly. See Game_Agent.cpp.
+    struct AgentPosition;
+    struct AgentMove { std::string token, outcome, detail; };
+    struct AgentColor { int cid; unsigned char r, g, b; std::string iso; };
+    /** Point the game at a data folder the caller already has (the browser build's /data/). */
+    bool agentUseDataDir(const std::string& dir);
+    /** Load the seat ("map:ISO[:world]", map by name or by .odmap path) and seed it. */
+    bool agentBegin(const std::string& seatSpec, unsigned int seed, int untilTurn);
+    AgentPosition agentPosition();
+    /** The position as the FIFO protocol prints it, ending "[AGENT] waiting". */
+    std::string agentPositionText();
+    /** The same position as JSON; `withMap` adds province owners and colours. */
+    std::string agentPositionJson(bool withMap);
+    std::string agentOwners(std::vector<AgentColor>& colors);
+    /** Apply one turn's "e:1,w:2" choices under the budget rules. */
+    std::vector<AgentMove> agentPlay(const std::string& tokens);
+    /** Resolve the turn. False once the seat has played its last turn. */
+    bool agentEndTurn();
+    bool agentOver() const { return m_turnNumber >= m_agentUntilTurn; }
+    unsigned int agentMapSeed() const { return m_agentMapSeed; }
+    float agentBenchShare() const { return m_benchScoreShare; }
     /** Constructs trade offers a neighbour could make to one AI country and
      *  asks decideDiplomacy directly: a gift, a robbery, a fair sale, a small
      *  loss. Verifies the trade RULES (journal 35f), which no eval exercises
@@ -4507,6 +4534,8 @@ private:
      * score itself rather than trusting anybody to stop on time.
      */
     int m_benchPlayUntilTurn = 0;
+    int m_agentUntilTurn = 0;          // see agentBegin
+    unsigned int m_agentMapSeed = 0;
     /** The score the seat finished on, once it has. Negative until then. */
     float m_benchScoreShare = -1.0f;
     int m_aiWorkerId = -1, m_aiWorkerCount = 0;
