@@ -411,18 +411,14 @@ def build(keep_work=False):
     ls_img = Image.fromarray(ls, mode="P")
     ls_img.putpalette([0,0,0, 0,0,0, 255,255,255] + [0,0,0]*253)
 
-    # thumbnail: land shaded by height, sea flat, states left out on purpose --
-    # the browser draws its own owner colours over it.
-    sh = np.clip((mean_elev[np.clip(lab, 0, None)] - SEA_LEVEL) / 9000.0, 0, 1)
-    thumb = np.zeros(lab.shape + (3,), np.uint8)
-    thumb[~land] = (38, 64, 110)
-    m = lab >= 0
-    thumb[m] = np.stack([(120 + 115*sh)[m], (78 + 88*sh)[m], (58 + 62*sh)[m]], -1).astype(np.uint8)
-    thumb_img = Image.fromarray(thumb).resize((512, 256), Image.LANCZOS)
+    # The thumbnail is NOT drawn here; see finish_archive(). It is the map
+    # browser's picture of who owns what, tools/rebuild_map_preview.py checks it
+    # against province ownership, and the only way to agree with that check is
+    # to call the same function it does.
 
     return dict(lab=lab, land=land, nprov=nprov, owner=owner, clat=clat, clon=clon,
                 area_px=area_px, pop=pop, sea_adj=sea_adj, mean_elev=mean_elev,
-                prov_png=prov_png, ls_img=ls_img, thumb_img=thumb_img, rng=rng)
+                prov_png=prov_png, ls_img=ls_img, rng=rng)
 
 
 def group_colour(name):
@@ -597,7 +593,7 @@ def write_odmap(b, d):
 
     png = {}
     for name, arr in (("provinces.png", Image.fromarray(b["prov_png"], "RGB")),
-                      ("land_sea.png", b["ls_img"]), ("thumb.png", b["thumb_img"])):
+                      ("land_sea.png", b["ls_img"])):
         buf = io.BytesIO(); arr.save(buf, "PNG", optimize=True); png[name] = buf.getvalue()
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -610,7 +606,7 @@ def write_odmap(b, d):
     print("  wrote %s (%.1f MB)" % (os.path.relpath(OUT, ROOT), os.path.getsize(OUT)/1e6))
 
     thumb_path = os.path.join(ROOT, "data", "STDmaps", "mars_thumb.png")
-    b["thumb_img"].save(thumb_path)
+    finish_archive(thumb_path)
     idx_path = os.path.join(ROOT, "data", "STDmaps", "maps_index.json")
     with open(idx_path) as f: idx = json.load(f)
     idx = [e for e in idx if e.get("filename") != "mars.odmap"]
@@ -620,6 +616,38 @@ def write_odmap(b, d):
                 "hasScripts": False})
     with open(idx_path, "w") as f: json.dump(idx, f, indent=2); f.write("\n")
     print("  registered in maps_index.json")
+
+
+def finish_archive(thumb_path):
+    """Draw the browser preview, and rewrite the archive the shared way.
+
+    NOT A HAND-ROLLED THUMBNAIL, and the first version here was one: a shaded
+    relief, with a comment claiming the browser painted owners over it. It does
+    not. thumb.png IS what the browser shows before a world is loaded, and
+    tools/rebuild_map_preview.py checks it against province ownership -- a
+    relief map disagrees on 131,070 pixels of 131,072 and failed the suite on
+    all four platforms. Redrawing it as flat owner colours still drifted 95%,
+    because build_thumb downsamples the ids FIRST and then runs a border
+    gradient at thumbnail scale. There is no approximating that; the only way
+    to agree with the check is to call what the check calls.
+
+    EFFORT_FAST, deliberately. Zopfli belongs in tools/shrink_maps.py "and
+    nowhere else" (odmap_pack.py) -- generation writes fast and the compaction
+    pass squeezes afterwards, which is why a freshly generated map is expected
+    to read as "not compact" until that pass runs.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from fill_water_speckle import build_thumb
+    from odmap_pack import EFFORT_FAST, layer_png, province_ids, read_members, write_odmap
+
+    members, dirs = read_members(OUT)
+    thumb = build_thumb(province_ids(members),
+                        json.loads(members["provinces.json"]),
+                        json.loads(members["countries.json"]))
+    members["thumb.png"] = layer_png(thumb, EFFORT_FAST)
+    write_odmap(OUT, members, dirs, EFFORT_FAST)
+    thumb.save(thumb_path, optimize=True)
+    print("  preview drawn by build_thumb, the way every tool that rewrites a map draws it")
 
 
 def main(argv):

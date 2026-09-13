@@ -91,6 +91,11 @@ GROUPS = [
         "check_map_history.py", "reanchor_map_history.py", "fetch_ohm_borders.py",
         "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
         "rebuild_map_preview.py", "check_map_integrity.py",
+        # Mars, from real MOLA topography with the basins flooded. Its own
+        # generator rather than a scenario: a scenario reassigns the Earth
+        # map's provinces, and this builds a base map -- coastline, provinces
+        # and countries -- from elevation instead.
+        "generate_mars.py",
         "odmap_pack.py", "shrink_maps.py",
         # How both the .odmap archives and the release zip are deflated: an
         # ordinary zip, found by searching much harder for it.
