@@ -2646,6 +2646,16 @@ bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePat
             }
             printf("[AGENT] %-8s %s\n", MODS[mod].label, line.c_str());
         }
+        // ── THE MODEL'S BUDGET, STATED ──
+        //
+        // A difference in score is only a difference in judgement if both
+        // players get the same number of moves. The policy makes up to
+        // agentBudget() picks per module each turn and stops a module when it
+        // picks 0; before this, an agent could send any number of actions and
+        // the comparison measured the budget rather than the player.
+        printf("[AGENT] budget e:%d p:%d w:%d n:%d  (a module also ends when it picks 0)\n",
+               m_ai->agentBudget(cid, 0), m_ai->agentBudget(cid, 1),
+               m_ai->agentBudget(cid, 2), m_ai->agentBudget(cid, 3));
         printf("[AGENT] waiting\n");
         fflush(stdout);
 
@@ -2666,6 +2676,8 @@ bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePat
         while (!cmds.empty() && (cmds.back() == '\n' || cmds.back() == '\r')) cmds.pop_back();
         if (cmds == "quit") { printf("[AGENT] stopped early at turn %d\n", m_turnNumber); break; }
 
+        int used[4] = {0, 0, 0, 0};
+        bool passed[4] = {false, false, false, false};
         size_t at = 0;
         while (at < cmds.size()) {
             const size_t comma = cmds.find(',', at);
@@ -2684,6 +2696,20 @@ bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePat
                 printf("[AGENT] REFUSED %s: not legal this turn\n", tok.c_str());
                 continue;
             }
+            // After the legality check, so a refused token costs nothing -- the
+            // policy only ever picks from the legal set, and would not have
+            // spent a move on it either.
+            if (passed[mod]) {
+                printf("[AGENT] SKIPPED %s: this module already picked 0 this turn\n", tok.c_str());
+                continue;
+            }
+            const int budget = m_ai->agentBudget(cid, mod);
+            if (used[mod] >= budget) {
+                printf("[AGENT] OVER BUDGET %s: %d of %d this turn\n", tok.c_str(), used[mod], budget);
+                continue;
+            }
+            ++used[mod];
+            if (act == 0) passed[mod] = true;
             printf("[AGENT] did %s -> %s\n", tok.c_str(),
                    m_ai->agentExec(cid, mod, act).c_str());
             m_ai->agentRefresh();

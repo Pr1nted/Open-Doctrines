@@ -2153,6 +2153,16 @@ public:
             default:           return execNavy(cid, action);
         }
     }
+    // The policy's own per-turn budget for a module, so a hand-played seat gets
+    // exactly as many picks as the model does: politics keeps its rate limit,
+    // the other three get actionsPerModule(). The same loop in takeTurn also
+    // ends a module the moment it picks action 0, and runBenchAgent applies
+    // that rule too -- a budget without it would let an agent pass and then
+    // act again, which the model cannot do.
+    int agentBudget(int cid, int module) const {
+        return module == MOD_POLITICS ? ACTIONS_PER_MODULE_PER_TURN
+                                      : actionsPerModule(cid);
+    }
 private:
 public:
     // Decide + enqueue this country's orders through the same pending-order
