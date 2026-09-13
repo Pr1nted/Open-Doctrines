@@ -60,6 +60,14 @@ Three parts must all stay:
 
 ## STANDING: train ~1,000 turns, not 4,000 (journal 26)
 
+> **SUPERSEDED by journal 272 — do not follow this as a general rule.** The
+> length curve is PARENT-SPECIFIC and non-monotone. From the declared
+> reference it reads 14 / 159 / 100 / 159 at 0 / 8 / 16 / 24 maps: longer is
+> not better, 24 maps equals 8 for three times the compute, and there is no
+> peak to tune to. Recipe of record is now **train 8 maps and measure**, and
+> re-measure if the length changes. The curve below is one seed from one
+> parent and does not transfer. Kept for the record.
+
 A length curve from a GOOD model, one seed, everything else equal:
 
     turns    0     1008    1839    3948
@@ -85,6 +93,110 @@ the cohorts were built at map start. It now reports the seat's OWN share.
         baseline        101 / survival 65 / worst 4
         standing best   157 / survival 88 / worst 38
   * Do NOT compare a pre-29b number with a post-29b one directly. Re-bench.
+
+## STANDING: what this bench can and cannot resolve (journals 287-298)
+
+Five measurement facts, each settled by an entry that spent runs learning it.
+They are here because they change what is worth running, not just how to read
+it.
+
+**1. The instrument only sees effects above ~90 points, not ~60.** Journal 296
+measured the per-seed se correctly at ~30 on EIGHT seeds; the conversion to a
+detectable difference dropped the root-two that an UNPAIRED comparison needs,
+so the table printed a one-sample interval. Corrected journal 348, and the
+measured value on two 8-seed arms agrees: pooled per-seed rating sd 94.0, se
+33, MDD 92.
+
+    seeds   runs/arm   se   detectable at 95%   (was printed as)
+       8        24     30          83                  59
+      16        48     21          58                  42
+      32        96     15          42                  29
+
+    MDD = 1.96 x se x sqrt(2).  od_bench prints each arm's own se and its
+    "unpaired diffs under ~N are noise" line, which has always been right --
+    trust that line over this table if they disagree.
+
+**And the printed rating is NOT the statistic that se describes (journal 351).**
+`report()` computes the headline from the MEAN seat shares while the se comes
+from PER-SEED ratings. `min(share/par, CAP)` is concave, so the printed number
+is biased upward whenever a seat is bistable or capped -- measured at **+45
+points** on the standard 3-seat control (381 printed, 336 per-seed). To compare
+an arm with its own floor, use the per-seed figure. Backlog item 87.
+
+**So possibly NOTHING has cleared the floor since journal 281.** The one
+measurement recorded as clearing it was pacify at −86/−88, which is below 92,
+and its arms were stored before journal 339 began keeping per-seed values, so
+its own se cannot be recovered (backlog item 75). Do not quote "exactly one
+measurement has cleared" — it may be zero. **Say "not resolvable at 24 runs",
+not "no effect"**; those are different claims and this project has repeatedly
+written the stronger one.
+
+**1b. The floor belongs to the RATING, not to the runs (journal 348).**
+
+> **And an MDD is a property of the ARMS, not of the seat (journal 351).** The
+> figures below came from journals 338/349's arms; the pacify arm of journal
+> 351 is far tighter and the same eight seeds resolve 4.34pp on France instead
+> of 11.75. A change that stabilises the world is easier to detect than one
+> that destabilises it. **Recompute the MDD from the arms you actually ran** --
+> `--compare` prints each seat's permutation p, which needs no MDD at all.
+
+The
+rating averages three seats, so an effect on ONE seat is divided by three while
+its noise falls only by root three. Measured on 64 observations, the per-seat
+land-share permutation test `--compare` prints resolves, at the SAME eight
+seeds:
+
+    1914:FRA  11.75pp   vs the rating needing 18.51pp on that seat   1.58x
+    1939:USA   8.07pp   vs                     15.48pp               1.92x
+    modern:CHN 9.65pp   vs NEVER — both arms sit above the 5x cap     inf
+
+**Concentrated effect → test the seat. Diffuse effect → the rating.** On the
+evidence to date that is not a refinement, it is the whole difference between
+measuring something and not: at eight seeds this sequence is **0 for ~15 on the
+rating** (journal 351 -- even the pacify reflex, the largest effect it has
+produced, misses the floor by two points) and the same 24 runs resolved one of
+three seats at p = 0.010. Any
+effect on a capped seat is always a per-seat question, and more seeds buy
+nothing against a constant. This does NOT rescue a RATE question (a collapse
+or annihilation rate): those are proportions, the binomial floor is ~0.49 at
+eight seeds, and journal 349 walked into exactly that.
+
+**2. Seed-pairing buys nothing.** Journal 296 measured variance saved at −12%
+to +11% across four knobs: zero. Seeds have NO persistent character (mean
+cross-configuration correlation −0.09), because toggling a knob re-rolls which
+worlds go well. The se stays honest, but matched arms are not worth arranging
+and precision comes only from MORE SEEDS.
+
+**3. Read the graded-observation count before any comparison.** `od_bench.py`
+prints `N/M observations GRADED`. An observation pinned at 0 or at the cap is a
+constant. Two arms — or two models — that saturate DIFFERENT seats are scored
+by different instruments, and a comparison between them is meaningless rather
+than negative. Journals 284 and 286 rejected two candidates for "inverting on a
+second lineage" when the second lineage graded 10/24 and could not measure
+either question. Journal 295 caught two arms of the SAME model differing
+18/24 vs 12/24.
+
+**4. A derived quantity has a value under pure chance — read the effect against
+THAT, not against zero.** Journal 294: sorting an effect by its own baseline
+gives `corr(X, Y−X)` ≈ −0.86 for free at the observed variances; the observed
+−0.81 was WEAKER than chance and the "insurance rule" it looked like did not
+exist. Five lines of algebra replaced 96 planned runs. When the baseline is
+awkward, shuffle one arm against the other a few thousand times. Related: "N of
+M seeds helped" has a null of M/2, not 0.
+
+**5. Count the groupings you looked at.** Three entries in a row reported a
+4-of-4 sign pattern at "P = 0.06". With ~6 candidate groupings per entry,
+P(some 4-of-4) = 0.55 — the expected yield of looking. Do not attach a P to a
+pattern you found by looking; report the observation without one, or
+pre-register the grouping on the next dataset.
+
+**And two things the AI actually is.** Of the eleven ablatable reflexes only
+SEVEN are on by default (garrison, fortify, redeploy, austerity, manpower,
+siege, campaign); peace, pacification, withdraw and callToArms each self-gate
+off, so `OD_ABLATE` on them is a silent no-op (journal 297). Two section
+headers in AISystem.cpp say "on by default" and are wrong. And `od_bench.py`
+defaults to **TURNS = 120** — set `OD_BENCH_TURNS=400`, which every measurement
+in journals 281-298 used.
 
 ## 1. Orient (cheap, always)
 
@@ -151,8 +263,16 @@ cmake --build build/ --target OpenDoctrinesServer -j8
 If you only build `OpenDoctrines`, the bench measures a **stale** server. It
 prints a `!!` warning when the server is older than the game binary — read it.
 
-Six seats, three seeds, absolute. 100 = held every seat. Compare with
-`--compare loop-base loop-NN-shortname`, which also prints *seats won*.
+Six seats, absolute. 100 = held every seat. Compare with
+`--compare loop-base loop-NN-shortname`, which also prints *seats won* and,
+since journal 339, a per-seat LAND SHARE table with medians and an unpaired
+permutation test.
+
+**EIGHT seeds, not three.** The file's default seed list is three and every
+measurement since journal 281 has used eight, set through `OD_BENCH_SEEDS`:
+13579, 246810, 555555, 987654, 3141592, 271828, 1618033, 8080808. Three seeds
+on a bistable seat is three coin flips (journal 292). Set `OD_BENCH_TURNS=400`
+in the same breath — the file's default is 120.
 
 **Read seats won, not only the rating.** A change that lifts the rating by
 winning two great-power seats while losing `1914:FRA:rush` and `1939:NOR:hood`
@@ -162,6 +282,23 @@ the AI actually loses.
 
 **Rush guard.** REJECT any change that gives up more than 5 points on
 `1914:FRA:rush` or `1939:NOR:hood`, whatever it does to the mean.
+
+> **The rush half of this is not well-formed (journal 291).** `1914:FRA:rush`
+> has two regimes and nothing between: ~197 and ~3 in score space, a step of
+> 190 points. A 5-point threshold on a seat that only ever returns one of two
+> values 190 apart is not a threshold — every reading is 0 or a catastrophic
+> violation, decided by which side of the knife-edge that world fell. It is a
+> COLLAPSE RATE question and needs ~128 seeds per arm to resolve a difference
+> of 0.12. **The hood half works as written** (graded, narrow, a −4 means
+> something). Until this is restated, no candidate can be described as
+> "cleared past the rush guard" — the honest phrasing is "rush unresolved".
+> Backlog item 19 is the decision.
+
+> **Caution on WORST SEAT (journal 287).** On the three rung seats the worst
+> seat is usually `modern:CHN`, whose par is 2.5 against a 5x cap — it scores
+> exactly 500 or exactly 0 on 22 of 24 observations. A "floor" that moves is
+> normally that coin landing differently, not the AI holding better. Read the
+> raw per-seat share and the graded count before believing a floor.
 
 **Read SURVIVAL and WORST SEAT, printed under the rating.** The rating is a mean
 of ratios capped at 500, so a seat that runs away can BUY it while a seat that
@@ -174,6 +311,17 @@ A change that lifts the rating while survival falls has bought runaway growth
 and paid in robustness — the exact trade a training run was rolled back for in
 August, on the grounds that holding a great power is the case the AI already
 wins. Treat it as a REJECT unless the growth is the thing being tested.
+
+> **But survival is NOT an independent check on the three RUNG seats (journal
+> 336).** France and the USA sit above par on every seed there, so `min(seat,
+> 100)` returns the cap and they contribute constants: survival is
+> `(100 + 100 + China) / 3`, which is China's annihilation rate rescaled.
+> Eight arms were recomputed and not one survival interval cleared zero.
+> `od_bench` now prints its own warning — `survival varies over only N of M
+> seats` — read that line before quoting the number. Survival means something
+> on the small-par seats (`1914:SWE` par 1.0, `1939:NOR:hood` par 1.3), which
+> are the seats excluded for being bistable; that tension is backlog item 70
+> and is not resolved.
 
 **Re-baseline** — re-run the bench on `model.loop-base.bin` under the *new*
 binary, and compare against that instead — whenever the diff touches anything
@@ -247,6 +395,17 @@ on concentration counters, not the rating.
 | **REJECT** | otherwise — revert the paths listed in step 4, immediately |
 | **PARK** | interesting but unmeasurable with the current instruments; write the missing instrument as a backlog item |
 
+**A difference below the floor is PARK, not KEEP.** This is where correcting
+the floor actually bites: at eight seeds per arm the rating resolves ~90 points
+(STANDING 1), so a +43 is not a small win, it is no reading at all. Journals
+338 and 349 both produced one and both are PARK. Check the arm's own
+`unpaired diffs under ~N are noise` line before writing KEEP.
+
+**And "survival not down" is nearly free on the three rung seats** — it is
+China's annihilation rate rescaled there, so it will usually abstain rather
+than agree (journal 336, and the caveat in step 5). It is a real clause on the
+full six-seat set.
+
 A REJECT is a *result*, not a failure. Most of the value in the journal is the
 list of things that do not work, because every one of them looked reasonable.
 
@@ -269,6 +428,15 @@ again.
 
 ## What is already known. Do not re-derive these.
 
+- **Training degrades the shipping model -- established on two seed sets
+  (journals 357, 359).** N24 trained 8 maps on the settled recipe (journal 272)
+  reads 336 -> 192 and 306 -> 184 per-seed rating, both clearing their floors,
+  pooled −133 with CI [−197, −69]. The loss lands on the seats that can fall.
+  Two traps, both nearly taken: a `--worker` run writes `ai/model.w1.bin` and
+  leaves `ai/model.bin` as the untouched PARENT (Game_AITrain.cpp:191), so
+  bench the worker file; and a training arm takes ~2.8 hours because maps end
+  early on STAGNATION_TURNS -- do not price it as turns x 3000. One training
+  run so far; a different training seed is untested.
 - **Passivity is load-bearing.** The war head declines most attacks; a reflex
   taking only the "free" 2.5x-margin assaults collapsed France 6.5 → 0.5. The
   AI is not losing because it is passive, it is passive because it is losing.

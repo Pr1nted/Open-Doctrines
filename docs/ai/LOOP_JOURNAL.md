@@ -15784,3 +15784,10575 @@ may gate other work) and something in experience collection.
 Recording this open rather than closing it on the wall clock I did find --
 [[unexplained-is-reportable]]. The exclusions are worth as much as the cause
 would be: four plausible explanations are now off the table by measurement.
+
+## 265 — iteration: does the wall-clock save explain the one-map nondeterminism?
+
+BACKLOG NOTE. The NEXT list is dated 2026-09-05 and its top three items are
+superseded (v10/v11 lineage, stuck boats DONE at 38g, the ladder judged at 38l).
+The backlog's own ordering rule -- "cheap instruments before expensive changes"
+-- puts journal 264's open item at the top instead: training is nondeterministic
+at sd 112 (journal 263), which makes every training A/B cost 10-40 runs per arm.
+An instrument that removes that is worth more than any change measured through it.
+
+HYPOTHESIS, before implementing, falsifiable:
+
+  IF SAVE_INTERVAL_SECONDS is raised so that no periodic save fires inside a
+  one-map training run, THEN two identical one-map runs produce BYTE-IDENTICAL
+  models (same md5).
+
+  If they still differ, the periodic save is not the cause and the remaining
+  suspects are the resource limiter and experience collection.
+
+Why this is the right test: journal 264 excluded threading, map generation,
+BLAS and the simulation by measurement, and found a 60-second wall clock
+driving saveModel() + writeLeagueCheckpoint() inside the learning path. The
+league half has an obvious feedback route, but it CANNOT explain a one-map run
+from a fresh directory -- there are no league files to load at its first turn.
+So either the save itself perturbs state, or something else does. This
+separates those.
+
+PATHS I WILL TOUCH THIS ITERATION (for a mechanical revert on REJECT):
+  src/ai/AISystem.h      -- SAVE_INTERVAL_SECONDS becomes a knob, default 60
+Nothing else. The 12 dirty paths in the tree are the globe/sky work of another
+session and are not mine to touch.
+
+VERDICT: REJECT. The hypothesis is refuted and the change is reverted.
+
+    control    (60s save)      run 1  9fce4f53   run 2  759b5d10
+    treatment  (no save)       run 1  9fce4f53   run 2  c59b2bd6
+
+Suppressing the periodic save did not make two runs agree, so
+saveModel()/writeLeagueCheckpoint() is not the cause of the one-map
+nondeterminism. Reverted src/ai/AISystem.h and src/ai/AISystem.cpp to HEAD;
+verified both are byte-identical to HEAD and that the only other path I touched
+is this journal. Patch kept at scratchpad/it265-save-interval-knob.patch in case
+a later iteration wants the knob as an instrument.
+
+THE RESULT IS MORE INFORMATIVE THAN THE HYPOTHESIS WAS. Run 1 of BOTH pairs is
+the same model, 9fce4f53, across a control and a treatment that differ in an
+environment variable. Run 2 of each pair differs from run 1 and from each other.
+
+So the first run after a fresh sandbox is REPRODUCIBLE, and later runs are not.
+That rules out "randomness inside one run" and points at state that PERSISTS
+BETWEEN runs -- something outside OD_DATA_DIR, since the sandbox is deleted and
+re-copied every time. It also explains why the earlier repeat test (journal 263)
+measured sd 112: those three runs were consecutive, so runs 2 and 3 were already
+in the perturbed regime.
+
+NEXT ITERATION, the obvious candidates in cost order:
+  1. Something written outside OD_DATA_DIR -- check for files the trainer
+     touches in the repo, /tmp, or the binary's own directory, by timestamp
+     before and after a run.
+  2. The odlock gate itself: tools/odlock.py serialises games, so run 2 may
+     start while run 1's process is still releasing, changing timing.
+  3. Machine state: CPU frequency or thermal throttling changing how many
+     turns fit a budgeted window, if any budget gates the sim rather than
+     just sleeping.
+
+Test for (1) and cheapest: snapshot mtimes of the repo tree and /tmp before and
+after one training run, and diff. If a file outside the sandbox is being
+written, that is the carrier.
+
+PENDING COMMIT (nothing to commit this iteration -- the change was reverted).
+The journal entry itself is the artefact:
+
+    docs/ai/LOOP_JOURNAL.md   entry 265
+
+    Journal: the periodic save is not the training nondeterminism
+
+    Suppressing it left two runs differing. But run 1 of both arms is
+    byte-identical, so the first run after a fresh sandbox reproduces and
+    later ones do not — the carrier is state persisting between runs.
+
+## 266 — iteration: what does a training run write outside its sandbox?
+
+BACKLOG ITEM 0 (training determinism, blocks all training work).
+
+HYPOTHESIS, before measuring, falsifiable:
+
+  IF a training run writes state OUTSIDE OD_DATA_DIR, THEN a file newer than a
+  marker dropped immediately before the run will show it, and that file is the
+  carrier that makes run 2 differ from run 1.
+
+  If NOTHING outside the sandbox is written, the carrier is not a file and the
+  remaining suspects are the odlock gate's timing and machine state.
+
+Why this test: journal 265 established that the FIRST run after a fresh sandbox
+is byte-reproducible (two arms, different env, identical md5 9fce4f53) while
+later runs are not. The sandbox is deleted and re-copied every run, so whatever
+persists is outside it.
+
+MEASUREMENT ONLY. No source change this iteration, so nothing to revert. Paths
+I will write: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. Nothing else.
+
+VERDICT: REJECT. The hypothesis is refuted. A training run writes exactly two
+things outside its sandbox:
+
+    data/ai/.odlocks/slot0.lock      the concurrency gate's lock file
+    <session>/tasks/*.output          the harness's own capture
+
+Neither carries model state. So the between-run carrier is NOT a file, and
+"delete the stray file" is not the fix. No source change was made, so there is
+nothing to revert; the paths I wrote are this journal and BACKLOG.md.
+
+FOUR MORE CANDIDATES EXCLUDED while judging, all by reading the code the
+measurement pointed at:
+
+    time-budgeted learning   the ONLY steady_clock in the learning path is the
+                             save at 10811, already excluded in journal 265.
+                             Nothing processes "as much as fits in X ms".
+    resource limiter         gates worker count and nothing else; and
+                             OD_AI_THREADS=1 bypasses it anyway.
+    action sampling          m_rng is `std::mt19937 m_rng{1337}` with the
+                             comment "fixed seed: identical state -> identical
+                             picks". Exploration is seeded, not wall-clock.
+    stray checkpoints        nothing written outside OD_DATA_DIR.
+
+A CORRECTION TO JOURNAL 265's READING. I wrote that "the first run after a
+fresh sandbox is reproducible". Re-reading the sequence, the four runs were
+ca, cb, ta, tb in order and runs 1 and 3 matched while 2 and 4 differed from
+them and from each other. That is ALTERNATING, not first-vs-rest. What runs 1
+and 3 share is that each began after a pause; runs 2 and 4 each began
+immediately after another run finished. So the pattern is consistent with
+process-start conditions rather than with accumulated state, which is a
+different suspect from the one I recorded.
+
+WHAT IS LEFT, and it is the classic one this hunt has not touched: ADDRESS
+LAYOUT. ASLR gives every process different addresses, so anything that iterates
+a container keyed by pointer, sorts by pointer, or hashes an address produces a
+different ORDER per run -- and a different order of float accumulation is a
+different model, with no RNG and no clock involved. That fits every fact here:
+deterministic seeds, deterministic maps, deterministic sim under evaluation
+(which takes different code paths), and divergence that appears only when
+learning runs.
+
+NEXT ITERATION: grep the learning and decision paths for pointer-keyed
+containers and pointer comparisons -- `unordered_map<... *`, `set<... *`,
+sorting by `.get()` or raw addresses. std::hash<int> is identity and
+std::hash<string> is stable in libc++, so integer- and string-keyed maps are
+not suspects; pointers are.
+
+PENDING COMMIT (nothing to commit; measurement only):
+
+    docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md   entry 266
+
+    Journal: the training nondeterminism is not a stray file
+
+    A run writes only the odlock lock outside its sandbox. Four more causes
+    excluded; remaining suspect is pointer/address-order in the learning path.
+
+## 267 — iteration: is the divergence in the DECISIONS or in the ARITHMETIC?
+
+BACKLOG ITEM 0. Its named next step was "grep for pointer-keyed containers".
+Done first, as reading rather than as the experiment:
+
+    unordered_map<...*>, map<...*>, set<...*>, sort by .get()/ptr   NONE
+    the learning path iterates m_pending and m_stats, both keyed by int
+
+std::hash<int> is identity and bucket order for identical insertion sequences
+is deterministic, so integer-keyed maps are not an ASLR carrier. There are no
+pointer-keyed containers in the AI at all. ADDRESS LAYOUT IS REFUTED, and with
+it the last suspect journal 266 could name.
+
+So this iteration asks a different and sharper question, because the remaining
+space is large and one measurement can halve it.
+
+HYPOTHESIS, before implementing, falsifiable both ways:
+
+  Hash the sequence of decisions a run makes -- (cid, module, action) folded
+  into a rolling hash, printed at the end.
+
+  IF two runs produce the SAME decision hash but DIFFERENT models, the
+  simulation and the policy are deterministic and the divergence is in GRADIENT
+  ACCUMULATION -- float addition order inside the update.
+
+  IF the decision hashes DIFFER, divergence enters upstream, in the simulation
+  or the policy's own forward pass, and the update is not the place to look.
+
+Either answer removes half the remaining space, which no further grep can do.
+
+PATHS I WILL TOUCH (mechanical revert on REJECT):
+  src/ai/AISystem.h    -- one static counter + one hash member
+  src/ai/AISystem.cpp  -- fold at the decision site, print at the ACTHIST dump
+Nothing else. The 12 globe/sky paths belong to another session.
+
+VERDICT: the hypothesis's first branch is CONFIRMED, and it corrects an earlier
+entry of mine.
+
+    run 1   model 9fce4f538cf0   DECHASH 14512010759760935739 / 20052
+    run 2   model 7d78d4961fe1   DECHASH 14512010759760935739 / 20052
+    run 3   model 9fce4f538cf0   DECHASH 14512010759760935739 / 20052
+    run 4   model 9fce4f538cf0   DECHASH 14512010759760935739 / 20052
+
+THE DECISION SEQUENCE IS PERFECTLY DETERMINISTIC. Same hash, same count, four
+for four. The simulation, the feature build, the forward pass and the sampler
+all reproduce exactly. Whatever diverges is downstream of every decision the AI
+makes -- in gradient accumulation or in how the model is written.
+
+AND IT IS INTERMITTENT: three of four models are BYTE-IDENTICAL and one is not.
+So this was never "training is noisy". Training is deterministic and
+occasionally is not, at roughly one run in four here.
+
+THAT CORRECTS JOURNAL 265. I concluded there that suppressing the periodic save
+did not restore determinism, from TWO runs per arm. Against an event that fires
+about a quarter of the time, two runs per arm has roughly even odds of showing
+a divergence whether or not the save matters. The save is NOT excluded; it was
+tested underpowered. Same error as journal 263's sd 112, which was three
+consecutive runs of a quantity I had not established the shape of -- and if
+divergence is a rare event rather than per-run jitter, that "sd 112" is
+describing a mixture, not a spread.
+
+WHAT THIS MAKES CHEAP. A rare, intermittent divergence with a fixed input
+sequence is a small suspect list: a race (but OD_AI_THREADS=1 serialises the
+update), an uninitialised read, or the file write. It is also now CHEAP to
+test, because identical runs cost one map and the signal is exact equality
+rather than a rating.
+
+NEXT ITERATION: re-run the journal 265 test PROPERLY POWERED -- six runs with
+OD_SAVE_INTERVAL=99999 and six without. All six identical in the no-save arm
+settles it; a divergence in both arms moves the suspect to the update or an
+uninitialised read.
+
+PENDING COMMIT -- COMMITTED as 1062e85 (user, 2026-09-11):
+
+    src/ai/AISystem.h, src/ai/AISystem.cpp
+
+    Add a decision-sequence hash behind OD_DECISION_HASH
+
+    Four identical runs give one hash over 20052 decisions while three of four
+    models match, so the sim and policy are deterministic and divergence is
+    downstream of every decision.
+
+## 268 — iteration: the periodic save, tested with enough runs this time
+
+BACKLOG ITEM 0. Journal 265 excluded the periodic save on n=2 per arm; journal
+267 showed divergence is intermittent at roughly one run in four, which makes
+n=2 worthless. Re-running it powered.
+
+POWER, stated before the measurement rather than after. If each run diverges
+from the canonical model with probability p=0.25, then k runs come back
+all-identical with probability 0.75^(k-1):
+
+    k=2   0.75     <- journal 265. A coin flip. This is why it proved nothing.
+    k=6   0.24
+    k=8   0.13
+
+So k=8 per arm. Even that leaves a 13% chance the no-save arm looks clean by
+luck, and I will say so rather than claim proof. What k=8 CAN do is compare
+the two arms: distinct-model-count in each.
+
+HYPOTHESIS, falsifiable both ways:
+
+  IF the periodic save causes the intermittent divergence, THEN eight runs with
+  OD_SAVE_INTERVAL=99999 (no save fires) yield ONE distinct model, while eight
+  runs at the default 60s yield TWO OR MORE.
+
+  IF both arms show multiple distinct models, the save is genuinely excluded
+  and the suspect moves to the update itself or an uninitialised read.
+
+PATHS I WILL TOUCH (mechanical revert):
+  src/ai/AISystem.h, src/ai/AISystem.cpp  -- re-apply the OD_SAVE_INTERVAL knob
+                                             from scratchpad/it265-...patch
+The decision-hash instrument from journal 267 is already in these files and is
+PENDING COMMIT, not mine to revert this iteration.
+
+VERDICT: INCONCLUSIVE, and saying so is the point.
+
+    DEFAULT 60s save                    8 runs -> 1 distinct model (9fce4f53)
+    NO SAVE (OD_SAVE_INTERVAL=99999)    8 runs -> 1 distinct model (9fce4f53)
+
+Sixteen consecutive runs, every one byte-identical. The arms cannot be
+compared because NEITHER diverged, so the periodic save is neither confirmed
+nor excluded. The test I designed could only answer if the control arm
+misbehaved, and it did not.
+
+THIS CONTRADICTS JOURNAL 267, which saw 1 of 4 diverge at the same one-map
+length two iterations ago. Two differences between those runs and these:
+
+  1. 267 ran with OD_DECISION_HASH=1 and OD_ACT_HIST=1 set; 268 ran with
+     neither. Both gate extra work in the decision and dump paths.
+  2. Journal 263's large divergences -- the 436/217/292 that produced "sd 112"
+     -- were EIGHT-map runs. 265's were one-map. 267's were one-map.
+
+(2) suggests the cleanest reading available: divergence is a RARE PER-UPDATE
+event whose probability accumulates with run length. One map is 20,052
+decisions and reproduces; eight maps is roughly eight times the exposure. That
+fits every observation except 267's single divergence, which (1) may explain
+or which may simply be the rare event landing.
+
+WHAT I AM NOT GOING TO CLAIM. I estimated p=0.25 from 267 and built this
+iteration's power analysis on it. Sixteen clean runs say p is far below 0.25
+under these conditions, so that estimate was one observation reported as a
+rate -- the same error as the three-seed means and the single-run comparisons.
+The honest position is that the per-run divergence probability at one map is
+UNKNOWN and small, and that journal 263's "sd 112" was measured at a length
+where it is evidently much larger.
+
+NEXT ITERATION: test at the length where divergence actually appears. Four
+runs at EIGHT maps, default settings, counting distinct models. If eight-map
+runs diverge while one-map runs do not, the carrier accumulates with exposure
+and the next question is which per-update path is not reproducible. Budget
+~30 min; that is the real cost of this question and the one-map shortcut has
+now been shown not to reach it.
+
+PENDING COMMIT -- COMMITTED as 1062e85 (user, 2026-09-11):
+
+    src/ai/AISystem.h, src/ai/AISystem.cpp
+
+    Add OD_DECISION_HASH and OD_SAVE_INTERVAL, both default-off instruments
+
+    The decision hash proved the sim and policy reproduce exactly (journal
+    267); the save interval lets a run take no checkpoint. Neither changes
+    behaviour unless its variable is set.
+
+## 269 — iteration: is it the run length or the threads?
+
+BACKLOG ITEM 0. Journal 268 asked for four runs at eight maps. Reading 263's
+config before reproducing it surfaced a confound worth fixing first:
+
+    journal 263  8 maps, DEFAULT threads      -> 3 distinct models
+    journal 268  1 map,  OD_AI_THREADS=1      -> 1 distinct model over 16 runs
+    journal 267  1 map,  OD_AI_THREADS=1      -> 2 distinct over 4 runs
+
+Two variables differ between the diverging case and the reproducing one: run
+LENGTH and THREAD COUNT. Testing eight maps at default threads would reproduce
+the divergence and still not say which. So this iteration runs both arms at
+the length where divergence is known to appear.
+
+Note also across 267+268: twenty single-threaded one-map runs produced ONE
+divergence. So p at one map is roughly 5%, not the 0.25 I estimated in 268 --
+and divergence is possible at threads=1, which already means threading is not
+the whole story.
+
+HYPOTHESIS, three-way falsifiable:
+
+  Three runs at 8 maps with OD_AI_THREADS=1, three at 8 maps with default
+  threads, counting distinct models per arm.
+
+  IF threading is the carrier   -> pinned arm 1 model, default arm 2+.
+  IF length is the carrier      -> BOTH arms diverge.
+  IF neither                    -> both give 1 model, and 263's three distinct
+                                   models need an explanation this cannot give.
+
+POWER, honestly: three runs per arm is weak. If p is ~5% per run at one map and
+scales with the eight-fold exposure, p might be ~30% at eight maps, in which
+case three runs miss a diverging arm about a third of the time. I am running
+three because six arms x eight maps is ~90 minutes and the protocol is one
+experiment per iteration. The asymmetry is what carries information: if the
+pinned arm is clean and the default arm is not, that is worth something even
+at n=3.
+
+MEASUREMENT ONLY. No source change; the instruments are already in the tree as
+PENDING COMMIT. Paths I write: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: RESOLVED. Training is deterministic when the thread count is pinned.
+
+    8 maps, OD_AI_THREADS=1      3 runs -> 1 distinct model   e803ded1
+    8 maps, default threads      3 runs -> 1 distinct model   835cedcc
+
+Both arms are internally reproducible, and the two arms produce DIFFERENT
+models. So neither run length nor "training is noisy" was the story: the thread
+count changes the result -- deterministically, through float accumulation order
+in the gradient reduction -- and each fixed count reproduces exactly.
+
+WHY 263 MEASURED sd 112. Those runs did not pin OD_AI_THREADS, and
+learningThreads() is cores-minus-one scaled by the resource limiter, capped at
+four. A thread count that moves between runs is a different summation order
+each time, which is a different model. The variance was never in the learning;
+it was in how many workers happened to run.
+
+WHAT THIS IS WORTH. Training A/Bs cost 10-40 runs per arm at sd 112
+(journal 263). With OD_AI_THREADS pinned they cost ONE run per arm, because
+the comparison is exact equality rather than a rating against noise. That is
+the single most expensive constraint on this project's training work and it
+was an environment variable.
+
+WHAT IT DOES NOT EXPLAIN, and I am not going to smooth it over: journal 267 saw
+one divergence in four runs at ONE map with OD_AI_THREADS=1 already set. Across
+267 and 268 that is one divergence in twenty pinned one-map runs. Under this
+finding those twenty should all have matched. So either that run had a
+different thread count despite the pin (m_work.size() < 64 forces 1 regardless,
+so a short run could differ from a long one in ways the pin does not control),
+or there is a second, much rarer carrier. One event is not enough to chase, but
+it is enough to record.
+
+IMMEDIATE CONSEQUENCE FOR THE RETRACTED FINDINGS. Journal 263 retracted the
+scripted-opponent result (+82), "89% of parent", and the 8/16/24 curve as
+single runs against sd 112. With threads pinned those are all re-testable at
+ONE run per arm. They are not restored -- they are now CHEAP TO SETTLE, which
+is different and better.
+
+PENDING COMMIT -- COMMITTED as 1062e85 (user, 2026-09-11):
+
+    src/ai/AISystem.h, src/ai/AISystem.cpp
+
+    Add OD_DECISION_HASH and OD_SAVE_INTERVAL, both default-off instruments
+
+## 270 — iteration: settle the scripted-opponent result with threads pinned
+
+BACKLOG ITEM 1, first of its three. Taking the scripted-opponent claim because
+it tests the fix committed in e1d7f7d and it is the one reported to the user as
+"+82" before journal 263 retracted it.
+
+WHAT PINNING DOES AND DOES NOT REMOVE, because this decides the design:
+
+  removed   TRAINING variance. With OD_AI_THREADS fixed, an arm re-run gives a
+            byte-identical model (journal 269, 3/3 twice at 8 maps). So one run
+            per arm is now exact, not a sample.
+  removed   BENCH run-to-run variance. Evaluation is deterministic: the same
+            model on the same seed gives the same score, verified repeatedly
+            (311 / 82.73% reproduced across three rebuilds).
+  NOT       SEED-SAMPLE uncertainty. Two models compared on three seeds is an
+  removed   exact comparison ON THOSE THREE WORLDS. Whether it generalises is a
+            sampling question and pinning threads does nothing for it.
+
+That last line is the error I made four times today in different costumes, so
+this iteration benches on SIX seeds -- both hold-out sets -- rather than three.
+
+HYPOTHESIS, falsifiable:
+
+  Train two arms from data/ai/model.loop-base.bin, 8 maps x 300 turns,
+  OD_LR_SCALE=0.05, OD_AI_THREADS=1, same seed; one with
+  OD_TRAIN_SCRIPTED_SHARE=0.33 and one without. Bench both on the three
+  reliable seats across BOTH hold-out seed sets (6 seeds).
+
+  IF scripted opposition helps, the scripted arm's reliable-seat rating exceeds
+  the plain arm's on BOTH seed sets, in the same direction.
+  IF it does not, or the sets disagree, the "+82" does not survive and the fix
+  is a correctness fix with no measured play benefit.
+
+Note the fix is worth having either way -- the variant mix was documented as
+TRAINING ONLY and had never executed (journal 257). This measures whether it
+also helps, which is a separate question from whether it was broken.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REJECT. The "+82" does not survive. The scripted-opponent fix is a
+correctness fix with NO measured play benefit.
+
+    arm        set    FRA    USA    CHN   reliable
+    plain       C    5.50  11.77   4.63     159
+    scripted    C   14.37  13.40   6.17     234      +74
+    plain       D    8.00  11.10   5.40     178
+    scripted    D   12.90   6.93   0.00     105      -72
+
+The two hold-out sets disagree in SIGN, at near-equal magnitude. Training was
+exact this time -- threads pinned, one run per arm, byte-reproducible -- so the
+disagreement is not training variance. It is the seed sample, and it is the
+whole effect.
+
+AND IT NAMES MY ORIGINAL ERROR PRECISELY. Journal 257 reported +82 measured on
+SET C ALONE. Set C here gives +74. The number reproduces; what never existed
+was the generalisation. I did not have a noisy measurement of a real effect, I
+had an exact measurement of one seed set reported as a property of the change.
+
+WHAT STANDS. The defect is still real and still fixed: setRandomCountries() is
+evaluation-only, so the TRAINING-ONLY variant mix had never executed
+(journal 257, verified by counting scripted country-turns: 0 in training,
+immediate in evaluation). That is a correctness bug whatever it does to play.
+What does not stand is any claim that fixing it improves the AI.
+
+FREE CROSS-CHECK ON JOURNAL 269. The scripted arm produced e803ded106cb --
+byte-identical to the pinned 8-map model from journal 269, a different
+iteration and a different script. Pinning OD_AI_THREADS reproduces ACROSS
+iterations, not merely within one run of one harness. That is stronger evidence
+for the determinism finding than the 3-of-3 that produced it.
+
+METHOD NOTE. This is the first claim in this project settled by the new regime:
+pinned training makes each arm exact, so the ONLY uncertainty left is the seed
+sample -- and measuring both hold-out sets then costs one run per arm instead
+of ten. The cost of settling +82 honestly was ~90 minutes. The cost of
+believing it for a day was most of journals 257-262.
+
+PENDING COMMIT: none. Measurement only; no source touched this iteration.
+
+## 271 — iteration: the baseline journal 270 never measured
+
+BACKLOG ITEM 1, second sub-item ("89% of parent"). Journal 270 benched two
+trained arms across both hold-out sets and did NOT bench the parent on the same
+seats and seeds. So it can compare the arms to each other and cannot say
+whether either improves on what it started from. That is the gap, and closing
+it needs no training -- 18 bench runs against the frozen reference.
+
+It also re-opens what "89% of parent" even meant. That figure (journal 259)
+came from comparing a trained model at 387 against a parent at 433 -- both on
+SET C ONLY, and the parent figure was N24-233-holdout rather than
+data/ai/model.loop-base.bin, which is the loop's declared reference. Journal 270
+already showed what one seed set is worth on this question: +74 one way, -72 the
+other.
+
+HYPOTHESIS, falsifiable:
+
+  Bench data/ai/model.loop-base.bin on the three reliable seats across both
+  hold-out sets, the same 6 seeds journal 270 used.
+
+  IF training at 8 maps improves the model, the trained arms exceed the parent
+  on BOTH sets.
+  IF the parent exceeds both arms on both sets, training degrades from this
+  parent at this length, and "89% of parent" was optimistic in the direction
+  its single seed set happened to favour.
+  IF the sets disagree about the parent too, then no claim of the form "X% of
+  parent" is available at this seed count, which is itself the finding.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: CONFIRMED, and it corrects the premise of journals 257-270.
+
+    model                set    FRA    USA    CHN   reliable
+    parent loop-base      C    0.67   1.53   0.10       14
+    plain 8 maps          C    5.50  11.77   4.63      159
+    scripted 8 maps       C   14.37  13.40   6.17      234
+    parent loop-base      D    1.03   2.97   0.00       23
+    plain 8 maps          D    8.00  11.10   5.40      178
+    scripted 8 maps       D   12.90   6.93   0.00      105
+
+TRAINING WORKS. From the loop's declared reference, eight maps multiplies the
+reliable-seat rating by 7 to 11, and BOTH hold-out sets agree. That is the
+first unambiguous training result in this project: same direction, large,
+replicated across independent seeds.
+
+WHY EVERY EARLIER ENTRY SAID THE OPPOSITE. I was not training from the loop's
+reference. Journals 257-270 used build/loop/reference/N24-233-holdout.bin --
+3,693,162 bytes, md5 4a137043 -- while data/ai/model.loop-base.bin is 4,139,506
+bytes, md5 badfe012, and scores 14/23 where N24 scores 433. They are different
+models, and LOOP.md names loop-base as the reference every journal number is
+relative to. Journal 270 compounded it: its arms were trained FROM loop-base
+while I discussed their results against N24's figures.
+
+SO "TRAINING DEGRADES THE MODEL" IS PARENT-SPECIFIC, not a property of the
+recipe. Put the two together:
+
+    from N24 (433)        8 maps -> 305 (journal 259, set C)    pulled DOWN
+    from loop-base (14)   8 maps -> 159 (this entry, set C)     pulled UP
+
+Training moves both toward a middle band and does not land them in the same
+place, so it is not a single attractor -- parent information survives. But the
+SIGN of "does training help" is set by where the parent sits relative to that
+band, which is why sixteen checkpoints from a strong parent all "failed" and
+why the same recipe from a weak one multiplies it tenfold.
+
+"89% OF PARENT" IS THEREFORE MEANINGLESS AS STATED. It compared a trained model
+to N24 on set C alone. Against the declared reference the same training reaches
+700-1100%. The figure was not wrong arithmetic; it was arithmetic about an
+undeclared baseline.
+
+THE SCRIPTED QUESTION IS UNCHANGED by this: C favours scripted (234 vs 159), D
+favours plain (178 vs 105). Journal 270's rejection stands.
+
+PENDING COMMIT: none. Measurement only.
+
+## 272 — iteration: the length curve, from the DECLARED reference this time
+
+BACKLOG ITEM 1, last sub-item. Journal 259's 8/16/24 curve (387, 380, 99) was
+trained from N24 and read on set C alone. Both of those are now known errors:
+wrong baseline (journal 271) and one seed set (journal 270). Re-running it
+properly is the last piece of that retraction.
+
+KNOWN so far from the declared reference, threads pinned, LR 0.05:
+
+    parent loop-base    setC  14   setD  23
+    plain 8 maps        setC 159   setD 178
+
+HYPOTHESIS, falsifiable three ways:
+
+  Train 16 and 24 maps from data/ai/model.loop-base.bin, OD_AI_THREADS=1,
+  OD_LR_SCALE=0.05, same seed, no scripted share. Bench the three reliable
+  seats on BOTH hold-out sets.
+
+  IF longer keeps helping   -> 24 > 16 > 8 on both sets, and the recipe is
+                               "train longer".
+  IF there is a peak        -> the curve turns at 16 or 24 on both sets, and
+                               that length is the recipe.
+  IF the sets disagree      -> length is not resolvable at three seeds per set
+                               and the honest recipe is "8 maps, measured".
+
+Journal 259's shape (up, flat, collapse) was one seed set from the wrong
+parent, so I hold no strong prior about which of these lands. What I will NOT
+do is report the set-C shape as the curve, which is exactly what 259 did.
+
+COST: ~40 min training (16 + 24 maps) + ~72 min benching (36 runs). This is the
+real price of the question; the shortcuts are what produced 259.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: "longer is better" REJECTED; "there is a peak" REJECTED; the two seed
+sets AGREE on a non-monotone curve.
+
+    maps      set C   set D
+    parent       14      23
+    8           159     178
+    16          100     108
+    24          159     158
+
+Both sets: large gain at 8, a dip at 16, recovery at 24. Set C 159/100/159,
+set D 178/108/158 -- independent seeds, same shape, and the dip is ~60 points
+on both. That is the strongest agreement between the two sets in this whole
+sequence, and it is agreement about a shape rather than about a number.
+
+WHAT THE RECIPE IS. Not "train longer": 24 maps is worth the same as 8 for
+three times the compute. Not "train to a peak": there is no peak, the curve
+oscillates. The defensible recipe from the declared reference is TRAIN 8 MAPS
+AND MEASURE, and re-measure if the length changes, because the relationship
+between length and quality is not monotone and cannot be interpolated.
+
+An oscillating curve also means a mid-run checkpoint is not a lower bound on a
+later one. Anything that stops early and keeps the result -- the ladder in
+journal 261, any bench-gated scheme -- is sampling a wave, and the gate's
+verdict depends on where it happens to land.
+
+THIS DOES NOT MATCH JOURNAL 259's SHAPE (387, 380, 99: flat then collapse),
+which is expected: 259 trained from N24 and this trains from loop-base. Journal
+271 established that the sign of "does training help" is parent-specific; this
+adds that the SHAPE of the length curve is parent-specific too. So a length
+recipe measured on one parent does not transfer to another, which retires the
+STANDING note in LOOP.md ("train ~1,000 turns, not 4,000") as a general claim
+-- it was measured on one model and is evidence about that model.
+
+WHAT IS NOW SETTLED ACROSS 270-272, all from the declared reference with
+threads pinned and both hold-out sets read:
+
+    training from loop-base   +7x to +11x, both sets agree      WORKS
+    scripted opposition       C +74, D -72                      NO BENEFIT
+    "89% of parent"           wrong baseline entirely           VOID
+    length 8 / 16 / 24        159/100/159 and 178/108/158       NON-MONOTONE
+
+PENDING COMMIT: none. Measurement only.
+
+## 273 — iteration: does training help the model that actually ships?
+
+BACKLOG ITEM 2, added this iteration as the direct successor to item 1.
+Everything settled in journals 270-272 was measured FROM loop-base, which
+scores 14/23 -- so "training works" currently means "training multiplies a weak
+model sevenfold". The model that ships is N24 (data/ai/model.bin, md5
+4a137043, reliable 433 on set C). Whether training helps THAT is a different
+question and the one that matters for the release.
+
+Journal 259 suggested it does not -- 8 maps took N24 from 433 to 305 -- but
+that was one seed set and an unpinned thread count, both since shown to
+invalidate exactly this kind of comparison (journals 269, 270).
+
+HYPOTHESIS, falsifiable:
+
+  Train 8 maps from N24 (OD_AI_THREADS=1, OD_LR_SCALE=0.05, seed 424242, no
+  scripted share -- the recipe journal 272 settled). Bench BOTH the trained
+  model and N24 itself on the three reliable seats across both hold-out sets.
+
+  IF training helps a strong parent, the trained model exceeds N24 on BOTH sets.
+  IF it degrades, the trained model is below N24 on BOTH sets, and training is
+  not usable for the release model without something that holds it up.
+  IF the sets disagree, the question is not resolvable at three seeds per set.
+
+BINARY NOTE, and it matters for comparability: another session began editing
+src/ai/AISystem.cpp at 15:41 today (a historical-AI feature). My measurement
+binary was built at 12:54 from a copy taken before that, and contains none of
+their symbols -- verified. I am NOT rebuilding this iteration, so this result
+stays comparable with journals 269-272. A rebuild would silently fold their
+work into the AI under test.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: CONFIRMED NEGATIVE. Training degrades the shipping model, on both
+hold-out sets.
+
+    model              set C   set D
+    N24 (ships)          433     398
+    trained 8 maps       379     272
+    difference           -55    -126
+
+Same direction on independent seeds, so this is not the seed sample. The
+recipe that multiplies loop-base sevenfold takes N24 down.
+
+THE COMPLETE PICTURE, all measured from the declared reference or the shipping
+model, threads pinned, both hold-out sets:
+
+    parent            8 maps            direction
+    loop-base 14/23   ->  159/178       UP,   both sets agree
+    N24     433/398   ->  379/272       DOWN, both sets agree
+
+Training moves a model toward a middle band. It does not move both parents to
+the SAME place -- 159 and 379 are far apart, so parent information survives --
+but the SIGN is set by where the parent sits. That is why sixteen historical
+checkpoints from a strong parent all read as failures while the same recipe
+rescues a weak one, and it retires "training degrades the model" as a property
+of the recipe: it is a property of the pairing.
+
+WHAT THIS SETTLES FOR THE RELEASE. Training as it currently stands is NOT a way
+to improve the shipping AI. It is a bootstrap for weak models. Improving N24
+needs either a recipe that holds a strong parent up -- the anchor built in
+journal 262 is exactly that idea and was never tuned past its first value -- or
+rules, which is where this project's one shipped win came from (+71/+42,
+journal 239).
+
+IT ALSO VINDICATES JOURNAL 259'S DIRECTION while correcting its method. 259 read
+433 -> 305 from one seed set at an unpinned thread count and called training a
+failure. The sign was right. The method could not have established it, and two
+of the five questions re-measured this way have flipped sign between sets, so
+that was luck rather than evidence.
+
+COST NOTE. Under the pinned regime this question took one training run and 36
+bench runs -- about 80 minutes -- and produced a two-set replicated answer.
+The same question consumed most of journals 257-263 and produced a retraction.
+
+PENDING COMMIT: none. Measurement only.
+
+## 274 — iteration: tune the anchor against the shipping model
+
+BACKLOG ITEM 3, added as the successor to item 2. Journal 273 settled that the
+current recipe takes N24 down by 55 and 126 on the two hold-out sets. The
+anchor (journal 262) is the one mechanism in this codebase aimed at the
+opposite -- holding a policy near a parent that already plays well -- and it
+has been tested at exactly one value.
+
+    K=0.5   reliable 37 against a parent of 433     destroyed
+    K<0.5   never tried
+
+KNOWN BASELINES on this binary, threads pinned, both sets (journal 273):
+
+    N24                  433 / 398
+    trained, no anchor   379 / 272      -55 / -126
+
+HYPOTHESIS, falsifiable:
+
+  Train 8 maps from N24 with OD_ANCHOR_K=0.05 and =0.15, threads pinned,
+  everything else as journal 273. Bench both on both hold-out sets.
+
+  IF a weak anchor helps, the anchored arms lose LESS than -55/-126 on both
+  sets, and the useful K is the one that loses least.
+  IF every K still loses on both sets, the anchor as built cannot hold a strong
+  parent and the honest conclusion is that training has no path to improving
+  the release model without a different mechanism.
+  IF the sets disagree about which K is best, the tuning is not resolvable at
+  three seeds per set and the answer is "no K is demonstrably better".
+
+A LIMITATION I AM CARRYING RATHER THAN FIXING, recorded because it bounds what
+a null result means: the anchor pulls toward the LEAGUE checkpoint, which
+training rewrites as it goes, not toward N24 itself. So it anchors to a recent
+past policy that is already drifting, not to the parent. That is weaker than
+the idea requires. If small K still loses, the next question is whether a
+PINNED anchor target -- seeded league slots plus OD_SAVE_INTERVAL high enough
+that training never overwrites them -- does better, and that is a separate
+iteration.
+
+BINARY: still the 12:54 build, which predates the other session's AISystem.cpp
+work. Not rebuilding, for comparability with journals 269-273.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REJECT. The anchor as built is harmful at every value tested, and
+monotonically so.
+
+    arm            set C   set D   vs N24 C   vs N24 D
+    N24              433     398          -          -
+    no anchor        379     272        -54       -126
+    K=0.05            70     112       -363       -286
+    K=0.15            31      42       -402       -356
+    K=0.5 (j.262)     37       -           -          -
+
+Ordering: no anchor > 0.05 > 0.15 ~ 0.5. Monotone in K on BOTH sets, and even
+the smallest value costs about 300 points. This is not a tuning problem.
+
+AND THE PRE-REGISTERED LIMITATION IS ALMOST CERTAINLY WHY. I wrote before
+measuring that the anchor pulls toward the LEAGUE CHECKPOINT -- which training
+rewrites as it goes -- rather than toward N24. So it drags the policy toward a
+recent, already-degrading copy of itself, and the harder it pulls the faster it
+degrades. That is exactly the shape of the result: more anchor, more damage.
+
+So this rejects THIS ANCHOR, not anchoring. The mechanism was built to hold a
+policy near a parent that plays well, and it was wired to a target that does
+not. Writing that limitation down before the measurement is the only reason the
+result is interpretable now rather than being read as "regularisation does not
+work here".
+
+WHAT WOULD TEST THE IDEA PROPERLY. Pin the target: seed the league slots with
+N24 and set OD_SAVE_INTERVAL high enough that training never overwrites them,
+so the anchor pulls toward the parent for the whole run. Both pieces exist --
+OD_SAVE_INTERVAL was committed in 1062e85, and journal 262 established the
+anchor fires once league weights load. Unknown: whether a hand-copied model.bin
+is a valid league file. Journal 262 saw the anchor not fire after hand-seeding,
+but that was the unsized-scratch bug, which is fixed -- so the question is open
+rather than answered.
+
+STATE OF THE TRAINING QUESTION after 269-274, all two-set replicated:
+
+    determinism      pin OD_AI_THREADS; exact per arm            RESOLVED
+    weak parent      loop-base 14/23 -> 159/178                  TRAINING WORKS
+    shipping model   N24 433/398 -> 379/272                      TRAINING HURTS
+    length           159/100/159 and 178/108/158                 NON-MONOTONE
+    scripted mix     C +74, D -72                                NO BENEFIT
+    anchor (league)  -363 / -286 at the gentlest setting         REJECTED
+
+PENDING COMMIT: none. Measurement only; no source touched this iteration.
+
+## 275 — iteration: can the anchor be pinned to the parent at all?
+
+BACKLOG ITEM 4. Its own text says to answer the cheap blocking question before
+spending a bench, which is the backlog's ordering rule: the anchor pulls toward
+the league checkpoint (journal 274's rejection), and pinning it to N24 requires
+that a hand-copied model.bin be loadable AS a league file. Journal 262 saw no
+firing after hand-seeding, but that run also had the unsized-scratch bug, so
+the question was never actually answered.
+
+HYPOTHESIS, falsifiable, and cheap either way:
+
+  Seed all six league slots with N24, set OD_SAVE_INTERVAL high enough that
+  training never overwrites them, run ONE short training with OD_ANCHOR_K set
+  and OD_ACT_HIST on.
+
+  IF "[ACTHIST] anchor pulls" is > 0, a hand-copied model.bin IS a valid league
+  file, the target is pinned to the parent, and item 4 is worth a full bench.
+  IF it is 0, the league format differs from the model format and pinning needs
+  a proper league writer -- a code change, and a different iteration.
+
+This costs one short run. Journal 274 cost ninety minutes to reject an anchor
+wired to the wrong target; finding out whether the right target is even
+reachable should cost minutes.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REFUTED, cheaply, and it found an error in my own committed work.
+
+    anchor pulls: 0
+
+A hand-copied model.bin is NOT a valid league file. The formats differ and the
+loader says so in as many words:
+
+    N24 model.bin                   magic ODAZ
+    league-0 (written by training)  magic ODLG
+    my hand copy                    magic ODAZ
+
+    AISystem.cpp:12742  "not a model file (expected ODAI; league-N.bin
+                         checkpoints are ODLG and are not full models)"
+
+So item 4 as written is BLOCKED: pinning the anchor to N24 needs a proper ODLG
+writer -- a code change that serialises the parent into league format -- not a
+copy. That is a real task, not a knob, and it is now correctly scoped instead
+of being discovered halfway through a ninety-minute bench.
+
+AND A CORRECTION TO 1062e85, which I committed two iterations ago. Its comment
+says OD_SAVE_INTERVAL lets "an experiment run with no periodic save at all".
+That is false: writeLeagueCheckpoint() has TWO callers and the knob gates only
+one. The other, AISystem.cpp:1499, fires on MAP ROTATION and is ungated -- with
+its own comment explaining why it exists, that a map is often shorter than the
+sixty-second timer. This run proves it: OD_SAVE_INTERVAL=99999 and slot 0 was
+overwritten anyway (502339db, where I had seeded 4a137043).
+
+The instrument therefore does less than its comment claims, and journal 268's
+no-save arm was NOT a no-checkpoint arm. That does not change 268's verdict --
+both arms came back 8-of-8 identical, so nothing hinged on it -- but the claim
+in the code is wrong and would mislead the next reader. PENDING COMMIT below.
+
+WHAT THIS COST: one short run and two file headers, against the ninety minutes
+journal 274 spent rejecting an anchor wired to the wrong target. The backlog's
+ordering rule -- cheap instruments before expensive changes -- paid for itself
+twice in two iterations.
+
+PENDING COMMIT -- COMMITTED as 78f8f2e (user, 2026-09-11):
+
+    src/ai/AISystem.h
+
+    Correct the OD_SAVE_INTERVAL comment: it gates one of two callers
+
+## 276 — iteration: unblock the pinned anchor without writing a format converter
+
+BACKLOG ITEM 4, blocked by journal 275 on "pinning needs code that serialises
+the parent into ODLG". Reading the loaders before writing that converter found
+a cheaper route, and the blocker as stated was wrong.
+
+WHAT IS ACTUALLY THERE:
+
+    loadLeagueOpponent()   reads league-N.bin, expects ODLG   (what training writes)
+    loadOpponentModel(p)   reads a FULL MODEL, expects ODAI after unpack
+                           -- and fills m_leagueTrunk, m_leagueStance and
+                           m_leaguePolicy[], which are EXACTLY the nets the
+                           anchor reads.
+
+So the league nets can already be filled from an ordinary model file. No ODLG
+writer is needed. The only reason it does not happen during training is that
+s_opponentModelPath is assigned in ONE place -- Game_AITrain.cpp:875, inside
+runAIEvaluation -- so `--vs-model` reaches evaluation and never reaches
+`--train-ai`. AISystem.cpp:1487 already does the rest:
+
+    if (!s_opponentModelPath.empty()) loadOpponentModel(s_opponentModelPath);
+
+HYPOTHESIS, falsifiable:
+
+  Set s_opponentModelPath during training from a new env var OD_ANCHOR_MODEL.
+
+  IF the anchor then fires (anchor pulls > 0) with OD_ANCHOR_K set, the target
+  is a full model of my choosing rather than a drifting checkpoint, and item 4
+  becomes testable for the price of a bench.
+  IF it still does not fire, the league nets are not reachable this way either
+  and the pinned anchor needs the converter after all.
+
+PATHS I WILL TOUCH (mechanical revert on REJECT):
+  src/Game_AITrain.cpp   -- honour OD_ANCHOR_MODEL before the training loop
+Nothing else.
+
+NOTE ON SCOPE: this iteration implements and verifies FIRING only. Whether a
+pinned anchor helps is the next iteration's bench -- journal 274 spent ninety
+minutes discovering its target was wrong, and the cheap check comes first.
+
+VERDICT: CONFIRMED. The pinned anchor works and needed no format converter.
+
+    [TRAIN] anchor target pinned to .../N24-233-holdout.bin
+    [AI]    Opponent model: .../N24-233-holdout.bin
+    [ACTHIST] anchor pulls: 87578
+
+Journal 275's stated blocker was wrong. loadOpponentModel() already fills
+m_leagueTrunk / m_leagueStance / m_leaguePolicy[] -- the exact nets the anchor
+reads -- from an ordinary model file. The only gap was that
+s_opponentModelPath is assigned in one place, inside runAIEvaluation, so
+`--vs-model` reaches a measurement and never reaches training. One env var,
+OD_ANCHOR_MODEL, closes it.
+
+AND THE CONTROL CORRECTS 275 FURTHER. With OD_ANCHOR_MODEL unset the anchor
+fires 80,385 times, where journal 275 measured ZERO. The difference is that 275
+seeded league-*.bin with hand-copied ODAZ files, which made
+loadLeagueOpponent() reject them and load no league at all. So the seeding did
+not merely fail to pin the target -- it disabled the mechanism under test, and
+the zero was my own doing rather than evidence about reachability.
+
+That also strengthens journal 274's rejection rather than weakening it: the
+anchor there WAS firing, against a drifting checkpoint, and WAS destructive.
+
+PENDING COMMIT -- COMMITTED as 7e75c0a (user, 2026-09-11):
+
+    src/Game_AITrain.cpp   Let training pin the anchor target with OD_ANCHOR_MODEL
+
+## 277 — iteration: does a PINNED anchor hold the shipping model up?
+
+BACKLOG ITEM 4, now unblocked (journal 276). This is the question journal 274
+could not answer because its anchor pulled toward a drifting checkpoint.
+
+BASELINES, all on this binary, threads pinned, both hold-out sets:
+
+    N24 (ships)                        433 / 398
+    trained, no anchor                 379 / 272     -54 / -126
+    trained, LEAGUE anchor K=0.05       70 / 112    -363 / -286
+    trained, LEAGUE anchor K=0.15       31 /  42    -402 / -356
+
+HYPOTHESIS, falsifiable:
+
+  Train 8 maps from N24 with OD_ANCHOR_MODEL=N24 (target pinned to the parent)
+  at K=0.05 and K=0.15, threads pinned, everything else as journal 273.
+  Bench both on both hold-out sets.
+
+  IF a pinned target is what the anchor needed, the pinned arms beat the
+  league-anchored ones decisively and lose LESS than -54/-126 -- and the
+  interesting case is any arm that loses nothing.
+  IF the pinned arms land near the league ones, the anchor mechanism is wrong
+  regardless of target, and regularisation toward a parent is not the route.
+  IF they land near "no anchor", the anchor is inert at these weights against a
+  good target, which is its own answer.
+
+A CEILING I SHOULD STATE UP FRONT so the result is not oversold either way: an
+anchor toward N24 can at best pull the policy back TO N24. It cannot exceed the
+parent by itself. The only way this beats 433/398 is if it suppresses the
+FORGETTING while letting the genuine learning through -- journal 260 saw USA
+1.28x and CHN 2.00x from N24 while FRA fell to 0.34x, so the gains and the loss
+are separable in principle. Whether an anchor separates them is exactly what
+this measures.
+
+MEASUREMENT ONLY this iteration -- the source change it depends on was made and
+verified in 276 and is PENDING COMMIT. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REJECT. A pinned target helps and does not rescue; the anchor is the
+wrong mechanism, not merely mis-wired.
+
+    arm                    set C   set D
+    N24 (ships)              433     398
+    no anchor                379     272
+    league anchor 0.05        70     112
+    league anchor 0.15        31      42
+    pinned anchor 0.05        82     213
+    pinned anchor 0.15        49       6
+
+THREE THINGS THE FULL GRID SAYS.
+
+1. PINNING IS REAL BUT PARTIAL. It beats the league target on three of four
+   cells (82>70, 213>112, 49>31) and loses on the fourth (6 vs 42). So journal
+   274's diagnosis was right that a drifting target was part of the damage, and
+   wrong that it was the whole of it.
+
+2. MORE ANCHOR IS ALWAYS WORSE, in both families and on both sets:
+   0.05 beats 0.15 four times out of four. The ordering is identical whether
+   the target is the parent or a moving checkpoint, which is what points at the
+   mechanism rather than the target.
+
+3. EVERY ANCHORED ARM IS CATASTROPHIC against simply not anchoring. The best of
+   six (pinned 0.05, 82/213) is 297 and 59 below the unanchored run, which is
+   itself already 54 and 126 below the parent.
+
+WHY, most likely: the anchor is a cross-entropy pull applied in the same batch
+at the same learning rate as the policy gradient. At any weight large enough to
+constrain forgetting it also drowns the learning signal, and at any weight small
+enough not to, it does nothing. That is a property of how it is applied, not of
+regularisation as an idea -- a trust region that bounds the STEP, or a penalty
+scaled to divergence rather than added as a fixed-weight target, are different
+mechanisms and are untested. What is now closed is THIS construction.
+
+SO THE ANCHOR LINE IS FINISHED, and with it the last untested idea for holding a
+strong parent up. State of training after journals 269-277, everything
+two-set replicated:
+
+    determinism         pin OD_AI_THREADS                      RESOLVED
+    weak parent         loop-base 14/23 -> 159/178             WORKS
+    shipping model      N24 433/398 -> 379/272                 DEGRADES
+    length              159/100/159, 178/108/158               NON-MONOTONE
+    scripted mix        C +74, D -72                           NO BENEFIT
+    anchor, league      -363 / -286 at the gentlest weight     REJECTED
+    anchor, pinned      -297 /  -59 at the gentlest weight     REJECTED
+
+Training remains a bootstrap for weak models and not a route to improving the
+release model. The one shipped AI gain this project has came from a rule
+(+71/+42, journal 239), and the rule space was mapped as exhausted in journal
+256. Both avenues are now measured rather than assumed, which is the honest
+place to leave it.
+
+PENDING COMMIT -- COMMITTED as 7e75c0a (user, 2026-09-11):
+
+    src/Game_AITrain.cpp   Let training pin the anchor target with OD_ANCHOR_MODEL
+
+## 278 — iteration: is there a training length that does NOT hurt the shipping model?
+
+BACKLOG ITEM 5, added this iteration. Journal 277 closed the anchor and listed
+untested mechanisms; this is a cheaper question it did not list. Every length
+measured from N24 under the fixed method is EIGHT MAPS OR MORE:
+
+    8 maps, pinned, both sets      379 / 272     (journal 273)
+    shorter, pinned, both sets     never measured
+
+That gap matters because journal 272 established the length curve from
+loop-base is NON-MONOTONE (8 -> 159/178, 16 -> 100/108, 24 -> 159/158). A
+non-monotone curve means "8 degrades" does not imply "1 degrades". Journal 258
+did look at one map from N24 and saw France destroyed, but that run was
+UNPINNED and read SET C ALONE -- the two flaws that invalidated five other
+claims in this sequence, so it is not evidence.
+
+HYPOTHESIS, falsifiable:
+
+  Train 1 map and 2 maps from N24, OD_AI_THREADS=1, OD_LR_SCALE=0.05, seed
+  424242, no anchor, no scripted share. Bench both on both hold-out sets.
+
+  IF a short step improves, 1 or 2 maps exceeds 433/398 on BOTH sets, and
+  training has a usable regime for the release model after all.
+  IF every length degrades, training from a strong parent has no useful length
+  and the conclusion of journal 273 is complete rather than partial.
+  IF the sets disagree, three seeds per set cannot resolve it at this effect
+  size and that is the answer.
+
+WHAT I EXPECT, recorded so it can be wrong: degradation at every length. The
+gradient from self-play does not know the parent is good, and journal 273's
+-54/-126 at 8 maps was not a cliff -- but non-monotonicity is exactly the kind
+of thing that makes an expectation cheap to test and embarrassing to assume.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: the "improves" hypothesis is REJECTED, but my recorded expectation was
+WRONG and the finding is worth more than the rejection.
+
+    from N24        set C   set D
+    0 (parent)        433     398
+    1 map             343     296
+    2 maps            433     404
+    8 maps            379     272
+
+I predicted "degradation at every length" and wrote it down. Two maps does not
+degrade: exact parity on set C, +6 on set D. That +6 is well inside N24's own
+cross-set spread (433 vs 398 is 35 points on the SAME frozen model), so this is
+PARITY, not an improvement -- but it is the first configuration in journals
+257-278 that does not cost the shipping model anything.
+
+THE LENGTH CURVE FROM N24 IS ALSO NON-MONOTONE: down at 1, level at 2, down at
+8. Journal 272 found the same shape from loop-base (8 good, 16 bad, 24 good).
+So non-monotonicity is a property of the recipe rather than of one parent, and
+"training at length L degrades" can never be extrapolated to L' in this project.
+That retires any remaining temptation to interpolate a length curve here.
+
+PARITY IS NOT A WASH, and the seat profiles say so:
+
+    set C          FRA   USA   CHN            set D          FRA   USA   CHN
+    parent         411   389   500            parent         294   399   500
+    2 maps         305   500   493            2 maps         341   457   415
+
+Same total, different model. On set C two maps trades 106 points of France for
+111 of the USA. On set D it gains on France AND the USA and loses 85 on China.
+The two sets do not agree on WHICH seats move, only that the totals land
+together -- which is what a reshuffle looks like, not a lift.
+
+SO: two maps from N24 is free, and free is not an improvement. It is worth
+recording as the only known non-destructive step from a strong parent, and
+worth nothing as a way to make the release AI better.
+
+WHAT THIS DOES NOT SUPPORT. It would be easy to read 404 > 398 as "training
+finally helps" and run a ladder of two-map steps. That reading needs the +6 to
+be real, and it is a sixth of the spread the same frozen model shows between
+two seed sets. A ladder built on it would be compounding noise, which is
+exactly what journal 261's bench-gated ladder was doing when it rejected 5 of 5.
+
+PENDING COMMIT: none. Measurement only.
+
+## 279 — iteration: how much of "the rule space is exhausted" rests on one seed set?
+
+The 2026-09-11 queue is empty -- items 0-5 all settled. Before adding new
+experiments, one question the last four iterations raised about the OLD ones.
+
+Journal 270 established that two hold-out seed sets can disagree in SIGN at
+equal magnitude (+74 / -72) on the same change. Everything measured before that
+is therefore suspect in a specific way: a change REJECTED on one seed set might
+have been accepted on the other. Journal 256 declared the rule space exhausted
+on the strength of many such rejections -- 24 attempts, 1 win, narrowings 0 for
+11 -- and if those were single-set, the conclusion is not safe and the project
+may have discarded working rules.
+
+HYPOTHESIS, falsifiable by counting:
+
+  Scan the journal for rule verdicts and classify each by how many hold-out
+  seed sets it was measured on.
+
+  IF most rule rejections are SINGLE-SET, then "the rule space is exhausted" is
+  unsafe, the cheapest remaining work in this project is re-testing rejections
+  on the second set, and that is a concrete queue rather than a guess.
+  IF most are already TWO-SET, the conclusion stands and the rule space really
+  is worked out.
+
+This is bookkeeping, not an experiment, and it is deliberately the cheap kind:
+it costs reading, and its output is either "nothing to do" or a list of
+specific things worth machine time. The backlog's own ordering rule puts it
+ahead of any new change.
+
+MEASUREMENT ONLY. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: the audit's automated form FAILED TWICE and the reading form answered
+it. The result: journal 256's map is a MIXTURE, and its load-bearing item is
+single-set.
+
+TWO BROKEN INSTRUMENTS FIRST, recorded because the pattern is the point. I
+tried to classify 38 pre-270 verdicts by seed coverage:
+
+    regex on "set C" / "setC"      4 two-set, 2 single, 32 "no set named"
+    regex on seed NUMBERS          0 two-set, 0 single, 38 "no seeds cited"
+
+Both are parser failures, not findings -- entries name their seeds in prose
+("hold-out set", 43 occurrences; explicit seed numbers appear 9 times in the
+whole file). Had I reported either, I would have published a confident count of
+something I had not measured. Two different regexes giving two incompatible
+answers is the tell.
+
+WHAT READING 256 DIRECTLY SHOWS. Its twelve closed items rest on different
+kinds of evidence, and only some are bench A/Bs at all:
+
+    two-set bench        pacification trim (-97/-85)
+    SINGLE-SET bench     research allocation optimum (0.25/0.35/0.45/0.65 ->
+                         195/237/311/292, journal 249 -- ALL SET C)
+    older single runs    pacification raise (-84 on N37, journal 40)
+    firing counts        austerity ordering, specialisation, trade, doctrine
+                         repeal, military spending -- not benches, and immune
+                         to seed choice
+    prior audits         reflex layer 11/11, narrowings 0 for 11
+
+So "the rule space is exhausted" is not one claim with one evidential standard.
+Most of it is firing counts, which seeds cannot move. But THE RESEARCH
+ALLOCATION OPTIMUM -- the subsystem containing this project's only shipped AI
+win -- was measured on set C alone, and journal 270 showed set C and set D can
+disagree in sign at equal magnitude.
+
+THAT IS THE ONE WORTH RE-TESTING, and it is cheap: a rule knob needs no
+training, so it is 27 bench runs on set D against numbers already in hand.
+
+PENDING COMMIT: none. Bookkeeping only.
+
+## 280 — iteration: does set D also peak at the shipped research bar?
+
+BACKLOG ITEM 6. Journal 279 found that journal 256's "rule space is exhausted"
+is mostly firing counts -- seed-independent -- with ONE load-bearing exception:
+the research allocation optimum, measured on SET C ALONE (journal 249/250,
+reliable-seat ratings 202/262/435/372 for bars 0.25/0.35/0.45/0.65). That is
+the subsystem holding this project's only shipped AI win, and journal 270
+showed the two sets can disagree in sign at equal magnitude.
+
+HYPOTHESIS, falsifiable:
+
+  Bench OD_RESEARCH_BAR at 0.25, 0.35, 0.45 and 0.65 on the three reliable
+  seats across HOLD-OUT SET D, using the shipping model.
+
+  IF set D also peaks at 0.45, the shipped default is safe on two seed sets and
+  journal 256's conclusion stands as written.
+  IF set D peaks elsewhere, the default I helped ship rests on one seed set and
+  deserves a second look -- and journal 256's map needs the same qualifier
+  journal 279 put on it.
+
+WHAT I AM COMPARING, stated precisely because the binaries differ. The set C
+numbers came from a binary several rebuilds ago; this one is 20:13 today and
+carries default-off instruments the old one lacked. Absolute ratings are
+therefore NOT comparable across the two. THE SHAPE IS -- which bar wins, and
+whether the curve is single-peaked -- and the shape is the whole claim. I am
+not going to quote a set D number against a set C number as a difference.
+
+This is a RULE knob: no training, so no training variance, and evaluation is
+deterministic. 4 arms x 3 seats x 3 seeds = 36 runs.
+
+MEASUREMENT ONLY. No source change. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REFUTED. Set D does not peak at 0.45; it peaks at 0.65.
+
+    bar      set C (j.250)   set D (now)
+    0.25               202           176
+    0.35               262           283
+    0.45               435           349     <- shipped default
+    0.65               372           440
+
+    set C peaks at 0.45     set D peaks at 0.65
+
+The disagreement is not marginal. Going 0.45 -> 0.65 is -63 on set C and +91 on
+set D: opposite signs, and the same shape as journal 270's +74/-72. So the
+research-bar optimum is NOT ESTABLISHED at three seeds per set, and journal
+249/250's "0.45 IS THE PEAK" was a set C statement reported as a property of
+the knob.
+
+IT ALSO RETROSPECTIVELY UNDOES A REJECTION. Journal 246 tested 0.65, measured
+-19 on set C, called it "inside the noise floor and negative-leaning", and
+closed the direction. Set D says +91. That rejection was single-set too, and it
+is the reason nobody looked upward again for four days.
+
+WHAT THIS DOES *NOT* TOUCH, stated because the distinction matters and is easy
+to lose: the AI change this project SHIPPED is the austerity ordering plus the
+siege gate (OD_SIEGE_RESEARCH off, austerityResearchLast on), measured +71 on
+hold-out C and +42 on hold-out D -- TWO SETS, same direction, journal 239. That
+is unaffected. OD_RESEARCH_BAR was never changed by anything I shipped; 0.45 is
+the pre-existing default. So the finding is "we do not know the bar's optimum",
+not "the shipped change is wrong".
+
+WHAT IT MEANS FOR JOURNAL 256's MAP. Journal 279 qualified it once: mostly
+firing counts, one single-set exception. That exception has now been tested and
+it broke. The map's other bench-based entries deserve the same treatment before
+anyone relies on them -- and the cheap ones are the rule knobs, which need no
+training.
+
+FOR THE USER, because it concerns a shipped default rather than a loop
+experiment: 0.45 is defensible -- it is the set C optimum, the status quo, and
+the middle of the tested range -- but it is not measured as optimal. Resolving
+it needs more seeds, not more knob values: two sets of three disagree, so the
+answer is a sampling question.
+
+PENDING COMMIT: none. Measurement only.
+
+## 281 — iteration: resolve the research bar on fresh seeds
+
+BACKLOG ITEM 7, promoted this iteration over "audit more map entries". Journal
+280 ended by saying the bar needs MORE SEEDS rather than more knob values, and
+auditing further entries at three seeds per set would keep producing the same
+kind of disagreement without settling whether three seeds is simply too few.
+
+BOTH HOLD-OUT SETS ARE SPENT on this question -- C chose 0.45, D chose 0.65,
+and re-reading either would be reading a set that has already answered. So:
+eight FRESH seeds, never used for the bar.
+
+HYPOTHESIS, falsifiable three ways:
+
+  Bench OD_RESEARCH_BAR at 0.45 and 0.65 -- the two candidates, not the whole
+  range -- on the three reliable seats across 8 fresh seeds, shipping model.
+
+  IF one bar wins on a clear majority of the 8 seeds, that is the optimum and
+  the shipped default is either confirmed or should change.
+  IF the seeds split near evenly, the difference is below what this bench
+  resolves at any practical seed count, and 0.45 should stand as the status quo
+  for the reason that it is the status quo -- not because it was measured best.
+  IF both bars beat the other on different SEATS consistently, the bar is a
+  seat-trade rather than an optimum, which is a different finding again.
+
+WHY 0.45 vs 0.65 ONLY: journal 280 measured all four values on set D and the
+lower two (0.25, 0.35) lost on BOTH sets. They are not candidates. Spending
+runs on them would halve the seed count on the question that is actually open.
+
+A RULE KNOB: no training, no training variance, evaluation deterministic. The
+only uncertainty is the seed sample, which is exactly what is being measured.
+2 arms x 3 seats x 8 seeds = 48 runs.
+
+MEASUREMENT ONLY. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: the MEAN difference is not significant; the ROBUSTNESS difference is
+large and one-sided. Two statistics, two answers, and the second is the useful
+one.
+
+    seed        0.45    0.65   winner
+    13579        342     330    0.45
+    246810       378     399    0.65
+    271828       382     377    0.45
+    555555       445     405    0.45
+    987654       384     352    0.45
+    1618033      224     415    0.65
+    3141592      160     396    0.65
+    8080808      375     348    0.45
+
+    seeds won            0.45 -> 5      0.65 -> 3
+    mean(0.65 - 0.45)    +42   sd 109   se 38   95% CI [-49, +132]
+
+So by the test I pre-registered -- "one bar wins a clear majority" -- 0.45 wins
+5 of 8 and the mean difference spans zero. By that test alone the answer is
+"unresolvable, keep the status quo", which is what I predicted.
+
+BUT THE DISTRIBUTIONS ARE NOT THE SAME SHAPE AT ALL:
+
+    0.45   mean 336   sd 95   min 160   max 445
+    0.65   mean 378   sd 31   min 330   max 415
+
+0.45 wins more often and loses catastrophically. Its two worst seeds score 160
+and 224; the SAME two seeds at 0.65 score 415 and 396. 0.65's worst seed over
+eight is 330 -- better than 0.45's worst by 170 points and better than 0.45's
+second-worst by 106.
+
+So the two bars are not "roughly equal with a coin-flip optimum". 0.45 is
+higher-variance: usually a little better, occasionally a disaster. 0.65 is
+tighter by a factor of three in standard deviation and has no bad worlds in
+this sample. A seed-majority test cannot see that, and it is the test I wrote.
+
+WHAT I WOULD SAY TO A DECISION-MAKER, separating what is measured from what is
+judgement: the mean is not distinguishable (CI spans zero). The worst case is
+distinguishable and favours 0.65 heavily. Which matters depends on whether an
+AI that is usually slightly stronger but sometimes collapses is better or worse
+than one that is consistently good -- and that is a design question about what
+the game should feel like, not a measurement.
+
+NOTE ALSO THAT 0.45's TWO DISASTERS ARE WHY THE HOLD-OUT SETS DISAGREED.
+Journal 280's set C and set D each contained different proportions of worlds
+where 0.45 collapses. The disagreement was never noise in the ordinary sense;
+it was two small samples of a bimodal outcome, which is [[bistable-seats-need-
+many-seeds]] one level up -- at the level of a KNOB rather than a seat.
+
+PENDING COMMIT: none. Measurement only; the default is unchanged and changing
+it is the user's call.
+
+## 282 — iteration: is the SHIPPED change robust, or just good on average?
+
+BACKLOG ITEM 8, promoted this iteration over the map audit. Journal 281's
+lesson was that a mean hides the shape: 0.45 beats 0.65 on five of eight seeds
+and has a worst case 170 points worse. Every verdict in this project has been
+read off means.
+
+The austerity-ordering + siege gate is the ONE AI change this project has
+shipped (journal 239, +71 on hold-out C and +42 on hold-out D). Both numbers
+are means of three seeds. Its DISTRIBUTION has never been looked at, and it is
+live in a release.
+
+HYPOTHESIS, falsifiable:
+
+  Bench the shipped configuration against its own absence on 8 FRESH seeds --
+  control is OD_SIEGE_RESEARCH=1 with OD_AUSTERITY_RESEARCH_LAST=0, which
+  restores the pre-change behaviour -- on the three reliable seats. Report min,
+  sd and per-seed wins, not just the mean.
+
+  IF the change wins on most seeds AND does not worsen the worst case, it is
+  robust and the release is fine as judged.
+  IF it wins on average while having a worse floor -- the 0.45 pattern -- then
+  a shipped default is usually-better-sometimes-worse, and the user should know
+  that about a released AI.
+  IF it loses on fresh seeds, the +71/+42 was two small samples and the change
+  needs re-examining.
+
+I expect robust: unlike the bar, this change was positive on BOTH hold-out sets
+in the same direction, which is weak evidence about shape but real evidence
+about sign. Recorded so it can be wrong.
+
+MEASUREMENT ONLY. No source change; the defaults are already what ships.
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: the shipped change wins 6 of 8 and gains +89 on average, and it is the
+0.45 PATTERN -- higher variance, marginally worse floor, and it CREATES two
+collapse worlds the pre-change behaviour handles fine.
+
+    seed       control  shipped    diff
+    13579          319      342     +24
+    246810         322      378     +56
+    271828         200      382    +182
+    555555         171      445    +274
+    987654         178      384    +206
+    1618033        281      224     -57
+    3141592        274      160    -114
+    8080808        236      375    +139
+
+    seeds won        shipped 6    control 2
+    control   mean 248   sd 61   min 171
+    shipped   mean 336   sd 95   min 160
+    mean diff +89   se 48   95% CI [-24, +201]
+
+MY EXPECTATION ("robust") WAS HALF RIGHT. The sign is real -- 6 of 8, and the
+average gain is large. The shape is not what I assumed: variance rises by half
+and the floor drops slightly, because the change turns two ordinary worlds into
+disasters. On 1618033 the control scores 281 and the shipped config 224; on
+3141592, 274 against 160.
+
+AND THOSE ARE THE SAME TWO WORLDS AS JOURNAL 281. The shipped config IS bar
+0.45, so its numbers on those seeds -- 224 and 160 -- are journal 281's 0.45
+numbers exactly. Journal 281 measured bar 0.65 on the same seeds: 415 and 396.
+
+So the picture across 281 and 282 is one story, not two:
+
+    the shipped change is a large average gain that introduces a failure mode
+    on a minority of worlds, and raising the research bar to 0.65 repairs
+    exactly those worlds.
+
+That is a specific, testable combination -- shipped change WITH bar 0.65 -- and
+it is the obvious next experiment. I am not running it this iteration; the
+protocol is one, and a combination needs measuring rather than inferring.
+[[ablations-dont-compose]] is on file for good reason: superadditive help and
+harm have both been measured in this project and the sign was not predictable
+from the parts.
+
+FOR THE USER, on a released default: the change is a net win on fresh seeds and
+should stay. But it is not uniformly better -- on roughly a quarter of worlds
+the AI is materially worse than before it shipped, and journal 239's +71/+42
+could not see that because both numbers were means of three seeds.
+
+PENDING COMMIT: none. Measurement only; nothing changed.
+
+## 283 — iteration: the combination was already measured
+
+BACKLOG ITEM 9 (shipped change WITH bar 0.65). Before spending 95 minutes on
+it, checked whether the runs already exist. They do.
+
+Journal 281 swept OD_RESEARCH_BAR with everything else at its SHIPPED default
+-- siege gate off, austerity-research-last on -- so its 0.65 arm is exactly
+"shipped change plus bar 0.65". Journal 282 measured the shipped config and the
+pre-change control on the SAME eight fresh seeds, same binary (20:13 build,
+untouched between the two runs), same model, same seats.
+
+CONSISTENCY CHECK PASSED, and it is what makes the reuse legitimate rather than
+convenient: journal 282's "shipped" column and journal 281's "0.45" column are
+IDENTICAL on all eight seeds (342, 378, 382, 445, 384, 224, 160, 375). Two
+independently-launched harnesses, same configuration, same numbers. If they had
+disagreed, the two runs would not have been comparable and this iteration would
+have had to re-measure.
+
+So the three-way comparison exists without running anything.
+
+VERDICT: the combination is the only configuration measured that is
+SIGNIFICANTLY better than what it replaced -- and the shipped one is not.
+
+    config          mean    sd   min   max
+    pre-change       248    60   171   322
+    shipped          336    95   160   445
+    shipped + 0.65   378    31   330   415
+
+    shipped      vs pre-change    +89   CI [-24, +201]   spans zero   6/8
+    shipped+0.65 vs pre-change   +130   CI [+73, +187]   SIGNIFICANT  8/8
+    shipped+0.65 vs shipped       +42   CI [-49, +132]   spans zero   3/8
+
+TWO THINGS THAT MATTER MORE THAN THE HEADLINE.
+
+1. THE SHIPPED CHANGE, ON FRESH SEEDS, IS NOT SIGNIFICANTLY BETTER THAN THE
+   BEHAVIOUR IT REPLACED. +89 with a CI spanning zero. Journal 239 shipped it
+   on +71 and +42, each a mean of three seeds from a set that has since been
+   used repeatedly. It is probably a real gain -- 6 of 8 seeds, large average --
+   but "probably" is the honest word and the release note says more than that.
+
+2. THE COMBINATION WINS 8 OF 8 AND TIGHTENS THE DISTRIBUTION THREEFOLD.
+   sd 95 -> 31, min 160 -> 330. It is not significantly better than the shipped
+   config by the mean (3/8 wins, CI spans zero) because it gives up a little on
+   six worlds to rescue two completely. That is the same trade journal 281 found
+   in the bar alone, and here it lands on the right side of it: never
+   catastrophic, and better than pre-change everywhere.
+
+SO THE TWO SEPARATE FINDINGS COMPOSE, and I did not have to assume it --
+ablations-dont-compose says the sign is unpredictable from parts, and the parts
+here happened to be measured together already because journal 281 swept the bar
+with shipped defaults active. Checking that before re-running saved 95 minutes
+and, more importantly, made the consistency check possible: 282's shipped column
+and 281's 0.45 column agree on all eight seeds, which is what licenses treating
+the two runs as one experiment.
+
+FOR THE USER -- a default change, so not mine to make:
+
+  OD_RESEARCH_BAR 0.45 -> 0.65 is the only configuration measured that beats
+  the pre-change behaviour on every fresh seed, with a third the variance and a
+  floor 170 points higher. It also repairs the two collapse worlds the shipped
+  change introduced (journal 282).
+
+  Limits, stated so the decision is informed rather than sold: 8 seeds, ONE
+  model (N24), three reliable seats. The gain over the CURRENT shipped config
+  is not statistically significant -- its case is variance and worst case, not
+  average. And 0.65 was rejected once already on a single seed set (journal
+  246, -19 on set C), which is exactly the kind of evidence this sequence has
+  been retracting.
+
+PENDING COMMIT: none. Changing a shipped default is outward-facing and the
+user's call; the measurement is here and the knob already exists.
+
+## 284 — iteration: does 0.65's advantage survive a change of model?
+
+BACKLOG ITEM 10. Journal 283's case for OD_RESEARCH_BAR 0.45 -> 0.65 rests
+entirely on N24. memory bench-resolution-limit is explicit that ~10 points does
+not survive a change of model and that sign agreement ACROSS MODELS is what to
+require -- and this is a candidate change to a shipped default, so the bar for
+it is higher than for a loop experiment.
+
+SECOND MODEL: N35-235-v11.bin. Chosen because it is a DIFFERENT LINEAGE -- the
+quarter-rate ladder of journal 38l -- rather than another N24 checkpoint. Every
+N24-*.bin in reference/ is 3,693,162 bytes and the same descent; N35 is 3,713,894
+and independent. Validating on a sibling checkpoint would not be validation.
+
+SAME EIGHT SEEDS as journals 281-283, deliberately: the comparison is within
+model (0.45 vs 0.65 on N35), so reusing the seeds controls world difficulty and
+lets the two models' effects be read side by side.
+
+HYPOTHESIS, falsifiable:
+
+  Bench N35 at OD_RESEARCH_BAR 0.45 and 0.65, three reliable seats, 8 seeds.
+
+  IF 0.65's advantage is a property of the RULE, N35 shows the same shape --
+  tighter distribution, better floor, mean no worse.
+  IF N35 shows no difference or the opposite, the journal 283 finding is a
+  property of N24 and the default must not change on it.
+
+WHAT WOULD MAKE ME RECOMMEND THE CHANGE: sign agreement on the floor and the
+variance across two lineages. NOT a significant mean -- journal 283 already
+showed the mean gain over the current default is not significant, and the case
+was always about worst case.
+
+MEASUREMENT ONLY. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REJECT the default change. The finding does not survive a change of
+model -- it inverts.
+
+    N24 (journal 283)              N35 (this entry)
+    0.45  mean 336 sd 95 min 160   0.45  mean 295 sd 47 min 211
+    0.65  mean 378 sd 31 min 330   0.65  mean 258 sd 68 min 177
+    0.65 wins on floor + variance  0.45 wins on mean, variance AND floor
+                                   0.65: -37 mean, 2/8 seeds
+
+EVERY METRIC THAT MADE THE N24 CASE REVERSES. There, 0.65 cut sd from 95 to 31
+and raised the floor from 160 to 330. Here it RAISES sd from 47 to 68 and DROPS
+the floor from 211 to 177. It is not that the effect is smaller on N35 -- it
+points the other way.
+
+I PRE-REGISTERED THE CRITERION AND IT SAYS REJECT. Journal 284's hypothesis was
+"what would make me recommend the change: sign agreement on the floor and the
+variance across two lineages. NOT a significant mean." N35 disagrees on both,
+so the answer is no, and it is no by the standard I set before seeing the data
+rather than one chosen afterwards.
+
+WHAT THIS COSTS AND WHAT IT SAVES. Journal 283 was one iteration from a
+recommendation to change a shipped default, on a result that looked strong:
+8/8 seeds, CI [+73,+187], a threefold variance reduction. It was a property of
+N24. memory bench-resolution-limit says exactly this -- "~10 points does not
+survive a change of model; require sign agreement across models, not a big
+number" -- and this is the first time in the sequence that gate has actually
+fired on something I wanted to be true.
+
+IT ALSO QUALIFIES THE WHOLE 281-283 ARC. Those entries are about N24:
+  - "set C and set D disagree about the bar" (280)  -- on N24
+  - "0.65 has a far better worst case" (281)        -- on N24
+  - "shipped+0.65 beats pre-change 8/8" (283)       -- on N24
+None of it transfers, and journal 283's significant +130 is a statement about
+one lineage that I was careful to hedge on seeds and seats and did NOT hedge on
+models until the backlog item forced it.
+
+THE EXISTING DEFAULT IS VINDICATED, for a reason better than inertia: 0.45 wins
+on N35 across mean, variance and floor, and on N24 it wins the seed-majority.
+0.65's case existed on exactly one lineage.
+
+FOR THE USER: no change recommended. The candidate default change from journal
+283 is withdrawn.
+
+PENDING COMMIT: none. Measurement only; nothing was changed and nothing needs
+reverting.
+
+## 285 — iteration: is fortifyReflex doing anything?
+
+> **CORRECTION (journal 296).** This entry's "+26, CI spans zero" is below the
+> instrument's floor: journal 296 measured the 8-seed resolution at ~60 points,
+> so the honest reading is **not resolvable at 24 runs**, not "no effect". The
+> verdict is unaffected — it was a decision to leave a shipped rule alone, for
+> which "cannot distinguish from zero" suffices.
+
+BACKLOG ITEM 11, added this iteration. Items 0-10 are settled and journal 284
+raised the standard: a finding on one model is a finding about that model. The
+largest body of single-model conclusions left is the reflex audit -- eleven
+verdicts, and at least one of them rests on evidence below the resolution limit
+this sequence later measured.
+
+fortifyReflex is shipped, ungated, and runs whenever a country is at war. Its
+verdicts:
+
+    +4.7 to have it        journal ~40, from the instrument later discredited
+    -6.40 to remove it     journal 191, mean of two hold-out sets -- KEEP
+
+Journal 244 then measured the bench's resolution: se 9-12 on a 3-seed rating,
+so an unpaired difference under ~28 is noise. -6.40 is a quarter of that. The
+rule's entire case is a number smaller than the instrument that produced it can
+see.
+
+HYPOTHESIS, falsifiable:
+
+  Bench N24 with and without the reflex (OD_ABLATE=fortify) on the three
+  reliable seats across the 8 fresh seeds, per-seed.
+
+  IF the reflex is load-bearing, ablating it costs on most seeds and the
+  distribution worsens -- floor, variance, or both.
+  IF ablation is indistinguishable, a shipped always-on rule is doing nothing
+  measurable, and removing it is a simplification with no cost.
+  IF ablation HELPS, the rule is actively harmful and has been since it shipped.
+
+ONE MODEL FIRST, second lineage only if this shows something. That is the
+pattern journal 284 established the hard way: a cross-model check is what
+stopped a wrong recommendation, but running it on every arm doubles every
+iteration, so it belongs after a positive rather than before one.
+
+MEASUREMENT ONLY. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: fortifyReflex's "KEEP" is NOT SUPPORTED on N24 -- removing it is
+neutral on the mean and better on the floor. But the signature is the one that
+just failed cross-model validation, so this is a CANDIDATE, not a finding.
+
+    seed        with  without   diff
+    13579        342      256    -87
+    246810       378      387     +9
+    271828       382      285    -97
+    555555       445      365    -80
+    987654       384      390     +6
+    1618033      224      397   +174
+    3141592      160      358   +198
+    8080808      375      457    +82
+
+    with     mean 336  sd 95  min 160
+    without  mean 362  sd 64  min 256
+    removing it  +26  se 41  CI [-71, +122]  spans zero  helps 5/8
+
+So a shipped, ungated, always-on rule costs nothing measurable to remove, and
+its removal RAISES the floor by 96 points and cuts variance by a third. Its
+whole case was -6.40 (journal 191) against a resolution limit of se 9-12
+(journal 244).
+
+WHY I AM NOT RECOMMENDING REMOVAL. This is precisely the shape that journal 283
+had and journal 284 destroyed: mean not significant, case resting on floor and
+variance, measured on N24 alone. That one inverted completely on a second
+lineage. Having just watched it happen, treating this as established would be
+learning nothing from the previous iteration.
+
+AND A PATTERN WORTH RECORDING ACROSS FOUR ENTRIES. Seeds 1618033 and 3141592
+keep appearing as the worlds where things go wrong:
+
+    journal 281   bar 0.45 collapses there (224, 160); 0.65 repairs them
+    journal 282   the shipped change CREATES the collapse there
+    journal 285   fortifyReflex is most harmful there (+174, +198 to remove)
+
+Three different rules, the same two worlds. That is unlikely to be coincidence
+and suggests those worlds share a property -- some configuration in which
+several defensive-ish rules all misfire together. Identifying it would be worth
+more than any single rule verdict, because it would explain a failure mode
+rather than a number. Queued.
+
+PENDING COMMIT: none. Measurement only; the reflex is untouched.
+
+## 286 — iteration: does the fortify ablation hold on a second lineage?
+
+BACKLOG ITEM 12. Journal 285 found removing fortifyReflex is neutral on the
+mean for N24 (+26, CI spans zero) while raising the floor 160 -> 256 and
+cutting sd 95 -> 64. That is a CANDIDATE and explicitly not a finding, because
+it is the same signature journal 283 carried and journal 284 destroyed.
+
+N24 RESULT TO BEAT, on the 8 fresh seeds:
+
+    with fortify     mean 336   sd 95   min 160
+    without          mean 362   sd 64   min 256   helps 5/8
+
+HYPOTHESIS, falsifiable, and the criterion is set before the data as in 284:
+
+  Bench N35-235-v11 (the other lineage) with and without OD_ABLATE=fortify,
+  three reliable seats, the same 8 seeds.
+
+  I WILL RECOMMEND REMOVAL only if N35 agrees in SIGN on the floor AND the
+  variance -- the two metrics carrying the N24 case. A better mean on N35 does
+  not qualify on its own; that would be picking whichever statistic happens to
+  agree, which is the failure unequal-standards-fake-a-hit-rate describes.
+
+  IF N35 inverts -- floor or variance worse without the reflex -- the candidate
+  is withdrawn and fortifyReflex stays, exactly as 0.65 was withdrawn.
+
+WHAT I EXPECT: inversion, on the base rate. Of the two candidates this
+sequence has cross-checked, one inverted. That is a small sample but the
+mechanism is the same -- a floor-and-variance case on eight seeds of one model
+is a claim about which worlds that model happens to fail in.
+
+MEASUREMENT ONLY. Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: WITHDRAWN. The fortify ablation inverts on the second lineage, and the
+prediction recorded before the run was correct.
+
+                     N24 (j.285)              N35 (this entry)
+    with fortify     mean 336 sd 95 min 160   mean 295 sd 47 min 211
+    without          mean 362 sd 64 min 256   mean 270 sd 84 min  92
+    removing it      +26, helps 5/8           -25, helps 3/8
+
+Every metric that carried the N24 case reverses. There, removal cut sd 95 -> 64
+and raised the floor 160 -> 256. Here it RAISES sd 47 -> 84 and collapses the
+floor 211 -> 92. By the criterion set before the data -- sign agreement on floor
+AND variance -- this is a rejection.
+
+fortifyReflex STAYS, and now on better evidence than it had. Its case was -6.40
+against an se 9-12 instrument (journal 191 vs 244), which journal 285 correctly
+called insufficient. It is now: removing it costs 25 points of mean and 119
+points of floor on a second lineage. The audit did not overturn the rule; it
+replaced a number too small to see with one that is not.
+
+TWO FOR TWO. Both candidates this sequence has cross-checked have inverted:
+
+    journal 283 -> 284   bar 0.65: floor+variance case on N24, inverted on N35
+    journal 285 -> 286   fortify ablation: same shape, same inversion
+
+Both had the identical signature -- mean difference not significant, case
+resting on floor and variance, eight seeds, ONE model. Both looked strong. Both
+were claims about which worlds that particular model happens to fail in, not
+about the rule. That is now a measured base rate rather than a worry, and it is
+worth more than either result.
+
+I predicted this inversion in journal 286's hypothesis, on that base rate. Being
+right about it is less useful than the rule it implies: A FLOOR-AND-VARIANCE
+CASE ON ONE MODEL IS NOT EVIDENCE ABOUT A RULE. It needs a second lineage before
+it is worth anyone's attention, and the cross-check costs the same as the
+original measurement -- 95 minutes to avoid recommending a change that would
+have made the AI worse on half the models it runs on.
+
+PENDING COMMIT: none. Measurement only; the reflex is untouched and stays.
+
+## 287 — iteration: what seeds 1618033 and 3141592 actually share
+
+BACKLOG ITEM 13, and it is settled by data already on disk. Item 10 sits above
+it numerically, but the backlog's own ordering rule is "cheap instruments
+before expensive changes" and item 10 is ~81 runs of the same shape that
+journals 284 and 286 have now inverted twice. Item 13 cost two runs.
+
+THE QUESTION. Journals 281, 282 and 285 each found their extreme behaviour on
+seeds 1618033 and 3141592: bar 0.45 collapses there, the shipped change creates
+the collapse there, fortifyReflex is most harmful there. Three unrelated rules,
+two worlds. Journal 285 called that "unlikely to be coincidence" and queued it.
+
+FIRST, THE TRACE THE ITEM ASKED FOR, not another A/B. The 8-seed harness printed
+per-SEAT land shares and the journal only ever recorded the summed rating. The
+raw rows were still in the run logs. Seat order is 1914:FRA / 1939:USA /
+modern:CHN:
+
+    N24, shipped defaults        N24, pre-change control
+    1618033  22.6 18.7  0.0      1618033   8.4 12.2 26.7
+    3141592  13.6 15.5  0.0      3141592   8.0 11.8 12.3
+
+France and the USA are BETTER on those seeds under the shipped config, not
+worse. The entire collapse is the third column: China at 0.0.
+
+RECONSTRUCTED, AND THE RECONSTRUCTION IS EXACT. seat_score = min(share/par,5)*100
+with FRA 6.7, USA 5.6, CHN 2.5. Feeding the logged shares back through it
+reproduces all 40 published per-seed ratings to the digit -- 342, 378, 445, 384,
+160, 382, 224, 375 for the shipped arm, and so on for four more arms. So what
+follows is arithmetic on the instrument, not a model of it.
+
+AND THE ARITHMETIC IS THE WHOLE FINDING. CHINA'S PAR IS 2.5, SO THE 5x CAP SITS
+AT A 12.5% SHARE -- and China either holds well above that or is annihilated.
+In score space, across 24 observations on N24:
+
+    shipped     500  500  500  500    0  500    0  500
+    control     500  500  184  152  492    0  500  500
+    no-fortify    0  500  500  500  500    0  500  500
+
+Twenty-two of twenty-four are EXACTLY 500 or EXACTLY 0. modern:CHN is not a
+graded seat. It is a survival bit worth 500/3 = 167 rating points, and the
+entire observed range of the 8-seed arm is 285. ONE BINARY SEAT SPANS 59% OF
+THE INSTRUMENT'S RANGE.
+
+THE PRE-REGISTERED TEST, on the same logged rows, no new runs: if the coin is
+the effect, dropping China and recomputing on FRA+USA should change the
+character of every comparison. It does.
+
+                              published (3 seats)        FRA + USA only
+    j.282 shipped change   +89  CI [ -5,+182]  6/8    +122  CI [+65,+179]  8/8
+                           sd 61->95  floor 171->160   sd 59->53  floor 104->240
+    j.285 remove fortify   +26  CI [-55,+106]  5/8     +38  CI [-18, +94]  7/8
+                           sd 95->64  floor 160->256   sd 53->55  floor 240->288
+
+And 1618033 STOPS BEING A CURSED WORLD. Ranked worst-to-best on the shipped arm
+it is 2nd worst of 8 with China in, and 2nd BEST of 8 with China out. It was
+never a hard world. It was a world where China died. (3141592 is genuinely the
+worst on FRA+USA, so one of the two is real and one is pure artefact.)
+
+ANSWER TO ITEM 13: THEY SHARE NOTHING. The two seeds are not a property of the
+worlds; they are the seeds on which the BASELINE ARM's China died. Journals 281,
+282 and 285 are not three independent rules agreeing -- all three are comparisons
+against the SAME baseline column (281's 0.45 arm IS 282's shipped arm IS 285's
+"with" arm; journal 283 verified that identity itself). Every comparison was
+therefore asking "did this change save China", and every one of them showed its
+biggest effect on the two worlds where the baseline's China was dead and had 167
+points of headroom. One coin, read three times, recorded as three findings.
+
+IT ALSO EXPLAINS BOTH CROSS-MODEL INVERSIONS, which is the part I did not
+expect. China's survival by arm:
+
+    N24 control 7/8    N24 shipped 6/8    N24 no-fortify 6/8
+    N35 with    4/8    N35 without 2/8    -- and never once above the cap
+
+On N35 the coin pays nothing: China is dead or tiny in every arm, so a third of
+the rating is a constant zero and cannot move. N35's sd of 47 against N24's 95
+is exactly that. So journals 284 and 286 did not find that the rules behave
+differently on a second lineage. They found the same rules measured on a model
+where the noisiest third of the instrument is switched off. The "inversion" I
+recorded twice as a base rate was one mechanism both times.
+
+That does NOT rescue either withdrawn candidate -- both still fail, and for a
+better reason than before: their cases were built on a coin. But the memory
+floor-variance-cases-need-two-models had the wrong mechanism, and is corrected.
+
+WHY NOBODY SAW IT: THE INSTRUMENT WAS BYPASSED. report() in tools/od_bench.py
+has had a straddle detector since journal 244. CHN's shares run 0.0 to 23.9
+against par 2.5, which trips it on the first sample. It never fired because
+journals 281-286 never called od_bench.py: they wanted the three reliable seats
+over 8 fresh seeds, od_bench.py had OD_BENCH_SEEDS but no seat filter, so each
+iteration shelled out to the server directly and summed the seats by hand. The
+hand-rolled harness got the arithmetic exactly right and threw away every
+warning. Replaying journal 282's arm through the patched instrument prints:
+
+    modern:CHN rung  13.4  2.5  500  capped  [BISTABLE 23.1/14.8/19.2/23.9/0.0/
+                                    12.6/0.0/13.8 -- only 8 seeds, mean is not
+                                    a measurement]
+
+That line was available from the first run of journal 281. Six entries later it
+is the finding.
+
+THE ONE THING I CHECKED BEFORE BELIEVING ANY OF IT. The harness collected each
+seat with `${V:-0}` -- so a CRASHED run scores 0.0 exactly like an annihilated
+China, and this whole entry rests on those zeros being real. The logs show no
+error markers and exit 0, which is not proof. The bench is deterministic, so I
+replayed two cells (seed 1618033, modern:CHN, N24):
+
+    zero-cell     expected 0.0   got  [BENCH] seat CHN  score 0.0
+    nonzero-cell  expected 27.5  got  [BENCH] seat CHN  score 27.5
+
+Both to the digit, and the zero came back as a real bench line rather than a
+missing one. The zeros are annihilations. The positive control is there because
+a replay that returned 0.0 for everything would have "confirmed" the finding
+just as well.
+
+VERDICT: KEEP the instrument change. Two edits to tools/od_bench.py:
+  1. OD_BENCH_SEATS, a seat filter mirroring the OD_BENCH_SEEDS that already
+     existed -- so a subset measurement goes THROUGH report() and keeps its
+     warnings instead of being hand-rolled around it. A filter matching no seat
+     exits rather than measuring nothing; unset, the seat list is untouched.
+  2. modern:CHN:rung added to KNOWN_BISTABLE, on 22-of-24 evidence, so the
+     3-seed hold-out runs flag it too -- those cannot straddle often enough to
+     detect it from the sample, which is the same small-n problem the list
+     exists for.
+
+Validated by discrimination, not by running green: the filter selects exactly
+the three named seats, exits loudly on a bad name, and leaves all six in place
+when unset; the BISTABLE line fires on journal 282's real data.
+
+MEASUREMENT AND INSTRUMENT ONLY. No AI source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (tools/od_bench.py only -- no other path touched):
+
+    Flag the China seat as bistable, and let a subset run through the bench
+
+    modern:CHN has par 2.5 and the cap is 5x, so the seat scores 500 for any
+    share above 12.5% and 0 when wiped: 22 of 24 observations were exactly one
+    or the other. It is a survival bit worth a third of the rating, and it was
+    on the "reliable seats" list.
+
+    OD_BENCH_SEATS mirrors OD_BENCH_SEEDS so a subset measurement goes through
+    report() instead of being hand-rolled around it -- which is how six
+    iterations missed the BISTABLE warning that was already there.
+
+CONSEQUENCES FOR THE BACKLOG, written here so the next iteration does not
+repeat the arc:
+
+  * Item 10 (re-test journal 256's remaining bench entries) must run through
+    od_bench.py with OD_BENCH_SEATS, not a shell loop, or it will produce the
+    same artefact at ~81 runs of cost.
+  * Any 3-seat "reliable" rating in journals 257-286 is (FRA + USA + 500x[China
+    survived])/3. Where an entry's case was floor or variance, the honest
+    reading is FRA+USA, which the logs still permit at zero cost.
+  * The two withdrawn candidates stay withdrawn. Both are now MORE clearly
+    wrong, not less: their cases were a coin.
+
+## 288 — iteration: re-read the whole arc with the coin removed
+
+BACKLOG ITEM 14. Journal 287 showed the 3-seat rating is
+(FRA + USA + 500 x [China survived]) / 3, and that modern:CHN contributes only
+a survival bit. Journals 281, 282, 284, 285 and 286 all left their per-seat
+land shares in the run logs, so every comparison in the arc can be recomputed
+on the two graded seats at zero cost. 283 needs no rows -- it was an identity
+between 281's and 282's columns.
+
+HYPOTHESIS, and the third part is the one that can embarrass journal 287:
+
+  1. j.282's shipped change becomes SIGNIFICANT (already shown: +122, 8/8).
+  2. j.285's fortify ablation stays non-significant, and its floor/variance
+     case disappears (already shown: sd 53->55).
+  3. THE TWO CROSS-MODEL INVERSIONS STOP INVERTING. If the coin is really what
+     made N24 and N35 disagree -- about the research bar (283 vs 284) and about
+     fortifyReflex (285 vs 286) -- then on FRA+USA the two lineages should now
+     AGREE IN SIGN on both questions.
+
+  IF (3) holds, journal 287's explanation is confirmed on data it was not
+  derived from, and "a finding on one model is a finding about that model"
+  needs rewriting: the models were never the problem.
+  IF the two lineages STILL disagree on FRA+USA, then journal 287 explained the
+  cursed seeds correctly and OVERREACHED on the inversions, and I said so in
+  three places including a memory. That is the outcome I most need to see.
+
+WHAT I EXPECT: partial. The coin is a third of the rating and it is the noisiest
+third, so I expect the disagreements to shrink a lot. I do NOT expect both to
+resolve cleanly -- FRA and USA carry real differences between the lineages too,
+and journal 286's N35 column has USA pinned at CAP 7 times out of 8, which is a
+SECOND dead seat that no amount of dropping China fixes.
+
+RE-ANALYSIS ONLY. No runs, no source, no model. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: hypothesis part 3 FAILED, and journal 287 overreached. Parts 1 and 2
+confirmed. The instrument gains a line that would have caught all of it.
+
+PART 3 FIRST, because it is the one that went against me. The two lineages
+STILL disagree in sign once the coin is removed:
+
+                          3 seats (published)      FRA+USA (coin removed)
+    bar 0.45->0.65  N24      +42  3/8                 +21  CI [-31,+73]  4/8
+                    N35      -37  2/8                 -24  CI [-119,+70] 4/8
+    remove fortify  N24      +26  5/8                 +38  CI [-18,+94]  7/8
+                    N35      -25  3/8                 -17  CI [-116,+82] 2/8
+
+Journal 287 said the coin was what made N24 and N35 disagree. It was not. I
+wrote that in the journal, in the backlog and in a memory, and it is wrong.
+
+WHAT IS ACTUALLY TRUE IS WORSE, AND IT IS THE FINDING. Look at the N35 error
+bars: se ~50, intervals of +/-100. N35 never measured anything to invert. The
+audit says why -- counting seat-seed observations that are neither wiped nor at
+the cap, and are therefore able to move at all:
+
+    arm             FRA(cap 33.5)  USA(cap 28.0)  CHN(cap 12.5)   graded
+    N24 bar0.45       8/8 graded     6/8 graded     0/8 graded    14/24
+    N24 bar0.65       8/8            7/8            1/8           16/24
+    N24 fort-off      8/8            6/8            0/8           14/24
+    N35 bar0.45       6/8            0/8 PINNED     4/8           10/24
+    N35 bar0.65       5/8            3/8            1/8            9/24
+    N35 fort-off      7/8            2/8            2/8           11/24
+
+On N24 the dead seat is CHINA. On N35 it is the USA -- pinned at the cap on
+EIGHT of eight seeds -- while France turns bistable too (0.1 to 40.4). The two
+models were not scored by one instrument giving two answers. They were scored
+by two different instruments, saturated in different places, and N35's had
+fewer than half its observations able to move.
+
+SO THE RULE IS NOT "a finding on one model is a finding about that model".
+It is: A MODEL THAT SATURATES DIFFERENT SEATS IS BEING SCORED BY A DIFFERENT
+INSTRUMENT, and a cross-model comparison between them is meaningless rather
+than negative. Journals 284 and 286 read "REJECT, it inverts" where the honest
+reading is "the second model could not measure this". The candidates stay
+rejected -- see below, they fail on N24 alone -- but not for the stated reason,
+and the cross-model gate did not do what I credited it with twice.
+
+PARTS 1 AND 2 CONFIRMED, and one published result gets STRONGER:
+
+    j.282 shipped change vs control    +89  CI [-5,+182] 6/8  ->  +122 [+65,+179] 8/8
+    j.283 control -> shipped + 0.65   +130  CI [+83,+178] 8/8 ->  +143 [+98,+188] 8/8
+    j.285 remove fortify               +26  sd 95->64          ->   +38  sd 53->55
+
+Journal 283's headline -- the only significant result in the whole arc -- was
+never the coin at all. It survives intact and gains 13 points. The shipped
+austerity+siege change is a bigger and more uniform win than published: 8 of 8
+seeds on the two graded seats. That is now the best-supported claim in the
+sequence and it was UNDERSTATED for six iterations.
+
+WHAT STAYS DEAD. OD_RESEARCH_BAR 0.65 is still not recommended, on better
+grounds: against the CURRENT default on N24's graded seats it is +21 with the
+interval spanning zero and 4/8 seeds -- a coin flip -- and the variance and
+floor case that carried it (sd 95->31, floor 160->330) shrinks to sd 53->47 and
+floor 240->272 once the China bit is out. It never needed N35. Same for the
+fortify ablation: +38, CI [-18,+94], and the "cuts variance by a third, raises
+the floor 96" case is sd 53->55 and floor 240->288. Both candidates die on the
+model they were measured on, which is where they should have died.
+
+PENDING COMMIT (tools/od_bench.py, on top of journal 287's two edits -- the same
+file, one commit or two as you prefer):
+
+    Count the graded observations, so two arms can be told apart
+
+    A seat-seed that is wiped out or at the 5x cap scores the same however the
+    arm played. N24 ran 14 of 24 graded, N35 9-11, and the dead seats were
+    DIFFERENT ones -- China on N24, the USA on N35. Three iterations compared
+    those two models and read the mismatch as the rules behaving differently.
+
+    The line prints only when something is saturated, and names the count on
+    both sides so a cross-model read can be checked before it is believed.
+
+Validated by discrimination: fires at 14/24 on N24's real arm and 10/24 on
+N35's, and prints nothing at all for a fully graded arm.
+
+MEASUREMENT AND INSTRUMENT ONLY. No AI source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 289 — iteration: is there a second lineage that can actually measure?
+
+BACKLOG ITEM 15. Journal 288 showed the cross-model gate has never fired on a
+valid comparison: N24 ran 14-16 of 24 seat-seed observations graded, N35 only
+9-11, and the dead seats were different ones. The gate is only usable if some
+second model grades comparably to N24. This iteration finds out whether one
+exists.
+
+FIRST, THE ZERO-COST SCREEN. build/od_bench_results.json holds 213 stored
+400-turn records carrying all three reliable seats. Testing each seat's MEAN
+against the 5x cap and against annihilation:
+
+    at least one seat saturated on the mean   125 / 213   (59%)
+    two or more seats saturated                30 / 213   (14%)
+    by seat:   CHN 94    USA 43    FRA 20
+
+SATURATION IS THE NORMAL STATE OF THIS INSTRUMENT, not an N24/N35 quirk. And
+that is the weak test -- it uses a 3-seed mean, so a seat sitting inside the
+band can still be pinned on individual seeds, which is precisely how N24's
+China (mean 5.4x par) behaved. The true per-seed rate is higher.
+
+The screen leaves few candidates. Of the models with a file on disk:
+
+    N43-400s1     5.70 / 11.66 /  0.12    FRA and USA pinned, China dead
+    n37-trt       1.87 /  5.46 /  5.21    USA and China pinned
+    N35-400s1     0.24 /  9.25 /  0.00    USA pinned, China dead
+    N47-400s1     0.57 /  3.07 /  0.44    all three inside the band
+
+N47 is the only one on disk with room on every seat, so it is the candidate.
+
+HYPOTHESIS, falsifiable:
+
+  Bench N47-218-v16 on the three reliable seats across the same 8 fresh seeds,
+  through od_bench.py this time (OD_BENCH_SEATS, the filter added in journal
+  287 -- this is the first run that uses the instrument rather than a shell
+  loop around it), and read the graded count.
+
+  IF N47 grades near N24's 14/24, a valid cross-model comparison exists and the
+  two withdrawn candidates can finally be tested the way journals 284 and 286
+  claimed to. Backlog 15 closes and the gate becomes usable.
+  IF N47 also grades ~10/24, then NO model on disk can second-check N24, the
+  cross-model gate is unavailable with this seat set, and item 16 (fix the
+  seats) stops being a nice-to-have and becomes a prerequisite.
+
+WHAT I EXPECT: N47 grades BETTER than N35 but not as well as N24, and the
+binding constraint is different again. N47's screen row is low across the board
+(0.57x par on France is a 3.8% share), so where N24 loses observations to the
+CAP I expect N47 to lose them to ANNIHILATION -- the same saturation from the
+other end. A model weak enough to have headroom everywhere is weak enough to
+die, and 0 is as constant as 500.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: A VALID SECOND MODEL EXISTS. N47 grades 18/24 -- better than N24's
+14/24 and far better than N35's 9-11. Backlog item 15 closes, and my prediction
+was wrong in the direction as well as the magnitude.
+
+    model        FRA      USA      CHN    total    comparable to N24?
+    N47       8/8      7/8      3/8       18/24    YES on FRA+USA
+    N24       8/8      6/8      0/8       14/24    -- the reference
+    N35       6/8      0/8      4/8       10/24    NO -- different dead seats
+
+WHAT MAKES N47 USABLE is not the total, it is WHERE the loss falls. N24 and N47
+lose observations in the SAME place -- China -- and both grade France and the
+USA nearly fully, which is the pair the graded comparisons actually run on. N35
+loses the USA entirely and keeps China: the opposite pattern, which is why
+journals 284 and 286 compared two different instruments. This is visible from
+one arm, before any A/B is run.
+
+I WAS WRONG ABOUT THE MECHANISM. I predicted N47 would grade WORSE than N24 and
+lose its observations to ANNIHILATION rather than the cap -- "a model weak
+enough to have headroom everywhere is weak enough to die". It does not. France
+runs [1.4 1.7 3.7 7.6 10.2 15.2 0.6 5.2] against par 6.7: nothing at zero,
+nothing at the cap, eight graded observations and a real spread. N47 is not a
+weak model here; it rates 253 with se 19, tighter than anything in the arc.
+
+WHY THE SCREEN MISLED ME ON THE DIRECTION. The stored row I picked N47 from
+(0.57 / 3.07 / 0.44 x par) was measured on the v16 ruler. Under the current
+binary the same model reads 0.85 / 3.59 / 3.16. The screen still chose the right
+candidate out of four, but its NUMBERS are not the ones you get today --
+bench-baseline-is-build-relative, again. Use a stale-ruler screen to rank
+candidates, never to predict what they will score.
+
+A DISTINCTION THE OUTPUT FORCED, worth keeping. N47's France is flagged
+[BISTABLE] by the straddle detector and is simultaneously 8/8 GRADED. Those are
+different properties: the straddle flag means "wide, possibly two-regime, read
+the spread not the mean"; the graded count means "these observations can move
+at all". A seat can be wide and informative (N47 France, scores 9 to 227) or
+narrow and useless (N35 USA, pinned at 500 eight times). Do not read one flag
+as the other.
+
+AND A TRAP I WALKED INTO, recorded because the next person will. od_bench.py
+defaults to TURNS = 120. Every measurement in journals 281-288 was at 400, set
+explicitly by the shell harnesses. The first launch of this iteration -- the
+first time the loop has used od_bench.py rather than a hand-rolled loop -- ran
+at 120 and I caught it only by reading the child process's command line. Killed
+and relaunched with OD_BENCH_TURNS=400. Memory long-horizon-widens-the-gap says
+120 is BIASED, not merely noisier, so that run would not have been a noisy
+version of the right answer; it would have been the wrong one. Anything moving
+off the shell harnesses onto the instrument must set OD_BENCH_TURNS.
+
+PENDING COMMIT: none this iteration. tools/od_bench.py still carries journals
+287 and 288's edits, unchanged here.
+
+NEXT, and it is now a real experiment rather than a hope: re-run the two
+withdrawn candidates -- research bar 0.65, and OD_ABLATE=fortify -- on N47, on
+the FRA+USA pair, 8 fresh seeds. That is the cross-model check journals 284 and
+286 claimed to perform. Both candidates are expected to stay dead (they fail on
+N24's own graded seats), so this is a test of THE GATE as much as of them: if
+N47 agrees with N24 that neither helps, the gate works and has simply never
+been used correctly. Filed as item 17.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 290 — iteration: the cross-model check, on a pair that can actually measure
+
+> **CORRECTION (journal 296).** The two "-- no effect" labels below should read
+> **"not resolvable at 24 runs"**. Both intervals ([-31,+73] and [-18,+94]) are
+> narrower than the instrument's ~60-point floor, so they show the effect cannot
+> be SEEN, not that it is absent. Both candidates stay rejected: each was a
+> decision to leave a default alone.
+
+BACKLOG ITEM 17. Journals 284 and 286 rejected two candidates because they
+"invert on a second lineage". Journal 288 showed N35 never measured either
+question, and journal 289 found N47 -- 18/24 graded, losing observations in the
+same seat as N24 and grading FRA 8/8, USA 7/8. This is the check those two
+entries claimed to run, on a pair where it means something.
+
+DESIGN. Three arms on N47, 8 fresh seeds, FRA+USA read as the graded pair:
+  control       -- ALREADY MEASURED, journal 289's n47-graded-8seed (same
+                   binary, unchanged since 20:13 Sep 11; same 400 turns, same
+                   seeds, same seat set). 24 runs saved.
+  bar 0.65      -- OD_RESEARCH_BAR=0.65
+  no fortify    -- OD_ABLATE=fortify
+Both new arms through od_bench.py with OD_BENCH_TURNS=400, so each prints its
+own graded count.
+
+WHAT N24 SAYS, on its graded pair (journal 288), for the two to be compared to:
+    bar 0.65      +21   CI [-31, +73]   4/8 seeds   -- no effect
+    no fortify    +38   CI [-18, +94]   7/8 seeds   -- no effect
+
+PRE-REGISTERED CRITERION, written before the runs:
+
+  THE GATE PASSES if N47 agrees with N24 that neither candidate has an effect
+  -- both point estimates small, both intervals spanning zero. Sign agreement
+  is NOT required and would be a fake standard: two estimates that both mean
+  "nothing here" can differ in sign, and demanding matching signs from noise is
+  how journals 284 and 286 manufactured their inversions in the first place.
+
+  THE GATE FAILS if N47 shows a LARGE effect with an interval clear of zero for
+  either candidate. That would be the first valid cross-model disagreement this
+  project has produced, it would revive a candidate I twice reported as dead,
+  and I would have to say the N24 reading was the incomplete one.
+
+  A THIRD OUTCOME I must check for rather than assume away: if either arm's
+  graded count differs materially from the control's 18/24, then the arms
+  within N47 are not comparable either, and the within-model A/B is as
+  compromised as the cross-model one was. Journal 289's warning line prints
+  this per arm; I will read it before reading the means.
+
+WHAT I EXPECT: the gate passes. Both candidates die on N24's own graded seats,
+and I expect N47 to return two small estimates straddling zero. I also expect
+the fortify arm to grade slightly differently from the control, because
+removing a defensive reflex should change how often seats reach the cap or die
+-- which is the outcome the third check exists to catch.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: THE GATE PASSES, by the criterion written before the runs. Both
+candidates stay rejected, and this is the first valid cross-model rejection the
+project has produced.
+
+THIRD CHECK FIRST, as pre-registered. Graded counts per arm on N47:
+control 18/24, bar 0.65 18/24, no-fortify 19/24. The arms are comparable, so
+the within-model A/B is sound. (I expected the fortify arm to drift; it moved
+by one observation.)
+
+    N47, graded pair FRA+USA, paired within seed
+      bar 0.65       -3   se 32   CI [-66, +61]   3/8
+      no fortify    +31   se 44   CI [-55, +116]  5/8
+
+    N24, same pair (journal 288)
+      bar 0.65      +21   se 26   CI [-31, +73]   4/8
+      no fortify    +38   se 29   CI [-18, +94]   7/8
+
+    pooled, inverse-variance, the two valid models
+      bar 0.65     +11.5  se 20.2  CI [-28.1, +51.0]  spans zero
+      no fortify   +35.9  se 24.2  CI [-11.6, +83.3]  spans zero
+
+Neither clears zero on either model or pooled. The candidates are dead, now on
+evidence that means something rather than on a comparison between two different
+instruments.
+
+AND THE ARTEFACT IS VISIBLE IN THIS RUN, which is the part worth keeping:
+
+    metric                 fortify on N24   fortify on N47   reads as
+    3 seats (coin in)           +26              -11         INVERSION
+    FRA+USA (coin out)          +38              +31         agreement
+
+Same models, same seeds, the same 48 runs. Scored with China in, the fortify
+result "inverts between lineages" exactly as journals 285/286 reported. Scored
+on the graded pair it does not invert at all. That is a DIRECT demonstration,
+not an inference, that the arc's inversions were manufactured by the coin.
+
+SO JOURNAL 288'S REFUTATION OF 287 WAS ITSELF MEASURED ON A BROKEN INSTRUMENT.
+The sequence, stated plainly because I have now been wrong in both directions:
+  287  claimed the coin explained the inversions -- asserted, not shown.
+  288  found N24 and N35 still disagreed on FRA+USA, and called 287 an
+       overreach. But N35 grades 10/24; it could not measure either question,
+       so that disagreement was never evidence of anything.
+  290  on a pair that CAN measure, the disagreement is gone.
+287's claim was right and its evidence was not; 288 was right that the evidence
+was missing and wrong to treat N35's non-measurement as counter-evidence. The
+lesson is not about either entry. It is that I twice reached a verdict on a
+comparison without first asking whether both sides could measure, and the
+graded count -- which now prints on every run -- is the question I should have
+asked before any of the three.
+
+WHAT THIS DOES AND DOES NOT SAY ABOUT fortifyReflex. Pooled, removing it is
++36 with the interval spanning zero: NOT an improvement, and not a KEEP by the
+loop's rule, which requires the rating up. What it does say is that a shipped,
+ungated, always-on rule costs nothing measurable to remove on two models --
+which is the simplification item 11 originally contemplated. It is NOT
+recommendable on this evidence: these 3 seats are the rung seats, and the rush
+guard (`1914:FRA:rush`, `1939:NOR:hood`) was never measured here. Removing a
+defensive reflex without those two seats is exactly the trade LOOP.md's rush
+guard exists to refuse. If it is ever put to the user it needs the full seat
+set first. Filed as item 18.
+
+PENDING COMMIT: none. tools/od_bench.py still carries journals 287-288's edits,
+untouched this iteration.
+
+FOR THE USER, a decision the loop may not take alone (LOOP.md rule 5 names the
+seat set): backlog item 16. USA grades 6/8 on N24 and 7/8 on N47, and pins 8/8
+on N35 -- the seat is one strong model away from becoming a constant, and when
+it does the 3-seat rating is a one-seat rating. The fix is to raise CAP for
+this seat set or add a seat with room above it. Left for you.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 291 — iteration: fortifyReflex against the rush guard
+
+BACKLOG ITEM 18. Journal 290 established that removing fortifyReflex costs
+nothing measurable on the three RUNG seats across two valid models (pooled +36,
+CI [-12, +83]). LOOP.md's rush guard refuses any change that gives up more than
+5 points on `1914:FRA:rush` or `1939:NOR:hood`, and neither seat has been
+measured for this rule. Until they are, the simplification cannot be put to the
+user -- trading survival for tidiness is the exact trade the guard exists to
+refuse.
+
+DESIGN. N24, the two guard seats only, 8 fresh seeds, two arms:
+control and OD_ABLATE=fortify. 32 runs. Through od_bench.py with
+OD_BENCH_SEATS=1914:FRA:rush,1939:NOR:hood -- the three-part form, because
+"1914:FRA" would match the rung seat as well. This also gets `--vs-exploit 3`
+and `--rush-neighbours 1` right from the seat table, which a shell loop has got
+wrong before (journal 259 used --vs-exploit 1 and read the rung seat's number).
+
+A CONCERN REGISTERED BEFORE THE RUNS, because it decides how to read them:
+`1939:NOR:hood` has par 1.3 -- the SMALLEST in the seat set -- so its 5x cap
+sits at a 6.5% world share. That is the same shape as modern:CHN (par 2.5,
+cap 12.5%), which journal 287 found scored exactly 500 or 0 on 22 of 24
+observations. If hood is saturated the same way, then the rush guard's second
+seat cannot measure anything, and that is a finding about LOOP.md's guard rule
+rather than about fortifyReflex.
+
+`1914:FRA:rush` is already KNOWN_BISTABLE and 8 seeds is below the 10 the
+instrument wants for a collapse rate, so it will be read PAIRED: how many of
+the 8 worlds collapse in each arm, same worlds both sides.
+
+PRE-REGISTERED READING, in order:
+  1. Graded counts per arm. If either seat is saturated, say so and do not
+     quote its mean.
+  2. `1914:FRA:rush` -- paired collapse count, control vs ablated.
+  3. `1939:NOR:hood` -- paired per-seed difference, if it is graded at all.
+  4. The guard: does removal give up more than 5 points on either seat?
+
+WHAT WOULD SETTLE IT. Removal is CLEARED for the user only if neither guard
+seat loses more than 5 points AND the rush collapse count does not rise. Any
+loss on either seat kills the simplification outright -- there is no gain to
+trade against, since journal 290 measured the rung benefit as zero.
+
+WHAT I EXPECT: hood saturated and uninformative; rush showing a real cost,
+because fortifying is a defensive reflex and the rush world is where defence is
+tested. If rush costs, item 18 closes NEGATIVE and fortifyReflex stays for a
+reason it has never actually had.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: NOT CLEARED, and not refused either -- the rush seat cannot answer this
+question at 8 seeds. fortifyReflex STAYS. Item 18 closes negative, and the
+reason is a finding about LOOP.md's guard rather than about the reflex.
+
+MY PREDICTION ABOUT hood WAS WRONG, in the good direction. I expected par 1.3
+to make it a coin like modern:CHN. It is not: it runs 0.3 to 0.6 against par
+1.3, every observation graded, nothing at zero and nothing near the 6.5% cap.
+Norway consistently holds about a third of par. Narrow, but it measures.
+
+    1939:NOR:hood     control [38 23 46 31 31 46 31 31]  mean 35
+                      ablated [31 31 23 31 38 31 23 38]  mean 31
+                      removing it  -4   se 4   CI [-12, +4]   3/8
+
+Hood CLEARS the guard: -4 points, inside the 5-point tolerance, interval
+spanning zero. The small-par seats are not all coins, and I should stop
+assuming par alone predicts it -- what made CHN a coin was that it routinely
+held FIVE TIMES par. Norway never approaches its cap because Norway never wins.
+
+THE RUSH SEAT IS THE PROBLEM, and not in the way the guard anticipates:
+
+    seed        control  ablated
+    13579          13.2      0.2    LOST by ablating
+    246810          0.2     12.8    GAINED
+    555555          9.7      0.2    LOST
+    987654          0.2      8.4    GAINED
+    3141592         0.1     11.8    GAINED
+    271828          8.2      0.1    LOST
+    1618033         0.2      8.4    GAINED
+    8080808         0.1      0.2    both die
+
+    worlds held:  control 3/8   ablated 4/8   net +1
+
+SEVEN OF EIGHT WORLDS FLIP. The collapse RATE barely moves; the collapse SET is
+rearranged completely. Agreement is 1 of 8 where independent coins predict 4.1
+(P(<=1) = 0.035 -- suggestive, and n=8, so I am not building a theory on it).
+
+That kills the pairing. od_bench's own advice for a bistable seat is "paired
+within-seed arms are the reliable comparison either way -- both sides draw the
+same worlds", and here both sides DO draw the same worlds and still disagree
+about all of them. Fixing the seed fixes the map; it does not fix the outcome,
+because the intervention re-rolls the trajectory. Pairing controls for map
+difficulty and buys no variance reduction at all when the outcome is a
+knife-edge.
+
+WHAT 8 SEEDS CAN SEE ON THIS SEAT:
+
+    n per arm     8     16     32     64    128    256
+    detectable  0.49   0.35   0.24   0.17   0.12   0.09   (rate difference, 95%)
+
+The observed difference is 0.125. Resolving it needs ~128 seeds per arm -- 256
+runs on this seat alone, about four hours. The 32 runs here were never going to
+answer it, which I should have computed before spending them rather than after.
+
+AND THE GUARD RULE IS NOT WELL-FORMED. LOOP.md says "REJECT any change that
+gives up more than 5 points on 1914:FRA:rush or 1939:NOR:hood." On the rush seat
+the two regimes are ~197 and ~3 in score space: a step of 190 points. A 5-point
+threshold on a seat that only ever returns one of two values 190 apart is not a
+threshold -- every reading is either 0 or a catastrophic violation, decided by
+which side of the knife-edge that world fell. The guard is well-formed for hood
+(graded, narrow, a -4 means something) and meaningless for rush.
+
+FOR THE USER -- a change to LOOP.md's guard, which the loop should not make
+alone. The rush half of the guard needs to be either:
+  (a) restated as a COLLAPSE RATE with a stated sample size (e.g. "reject if the
+      hold rate falls by more than X over >=64 seeds"), which costs hours per
+      candidate; or
+  (b) dropped from the routine guard and run only as a release gate, with the
+      5-point rule kept for hood where it works.
+Left for you. Until it is settled, no candidate can be "cleared past the rush
+guard" and the honest phrasing for any of them is "rush unresolved".
+
+SO: fortifyReflex STAYS. Not because removing it was shown to cost -- on the
+rung seats it is +36 pooled over two valid models, and on hood -4 -- but
+because clearing it requires ~256 rush runs, and the prize is deleting a rule
+that measurably does nothing. That is a bad trade, and saying so is the result.
+
+PENDING COMMIT: none. tools/od_bench.py unchanged this iteration.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 292 — iteration: stop the instrument giving advice that is false
+
+BACKLOG ITEM 20. Taken ahead of item 10 by the backlog's own ordering rule --
+cheap instruments before expensive changes. Item 10 is ~81 runs, and journal
+287 already flagged that it must go through od_bench.py or reproduce the
+artefact; journal 291 then showed the instrument's advice for bistable seats is
+itself wrong. Fixing that first is what keeps item 10 from being another wasted
+batch.
+
+WHAT IS WRONG. report() currently prints, for a bistable seat:
+
+    a two-regime seat has no meaningful mean. With 10+ seeds read its collapse
+    RATE; with fewer, read nothing. Paired within-seed arms are the reliable
+    comparison either way -- both sides draw the same worlds.
+
+The last sentence is false, and journal 291 measured it: on 1914:FRA:rush both
+arms drew the SAME 8 worlds and disagreed about 7 of them. Agreement was 1 of 8
+where independent coins predict 4.1. The seed fixes the map; the intervention
+re-rolls the trajectory, so pairing controls for map difficulty and buys no
+variance reduction whatever.
+
+It is also advice that ACTIVELY COSTS. It is why journal 291 ran 32 paired runs
+on a question that needs about 256 -- the instrument said pairing made 8 seeds
+reliable, so the power was never computed.
+
+THE CHANGE, two parts, both in report():
+  1. Replace the pairing sentence with what was measured.
+  2. Print the POWER at the seed count actually in hand: what collapse-rate
+     difference this many seeds can resolve. An arm that cannot see the effect
+     it is looking for should say so before the runs are spent, not after.
+
+HYPOTHESIS, falsifiable, and testable without a single game:
+  Replay journal 291's two rush arms through the patched report(). It must
+  print a power line saying 8 seeds resolve ~0.49, against the 0.125 those arms
+  actually produced -- i.e. the instrument must, on the real data, say that the
+  measurement I ran could not have worked.
+  It must stay silent on a seat that is not bistable.
+
+WHAT I EXPECT: it fires. The risk is the opposite one -- that the line is so
+loud it prints on every routine run and gets ignored. Bistable seats are
+already rare (2 named, plus straddle detection), so it should be quiet in
+normal use, and I will check that on a non-bistable arm rather than assume it.
+
+INSTRUMENT ONLY. No AI source, no model. Paths: tools/od_bench.py,
+LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP the instrument change, with a defect of my own making recorded
+against it.
+
+THE HYPOTHESIS HELD. Replaying journal 291's real rush arms through the patched
+report():
+
+    [BENCH] 1914:FRA rush: 8 seeds resolve a rate difference of ~0.49 at 95%
+            -- can only see a near-total swing.
+    [BENCH] n per arm:   8     16    32    64   128   256
+    [BENCH] resolves: 0.49  0.35  0.24  0.17  0.12  0.09  -- pick n BEFORE the runs.
+
+On the data I actually collected, the instrument now says the measurement could
+not have worked. The observed difference was 0.125.
+
+Validated by discrimination, not by running green:
+  * fires on journal 291's real rush data, at 0.49;
+  * SILENT on an arm with no bistable seat -- no bistable block, no power line;
+  * the verdict tracks n: 8 "can only see a near-total swing", 32 "coarse",
+    128 "usable", and at 10+ seeds it switches to the collapse-rate reading;
+  * journals 287 and 288's instruments still fire correctly alongside it --
+    replaying journal 282's China arm prints pinned-at-CAP, 14/24 graded,
+    bistable, and the power line together.
+
+A SECOND EDIT THE FIRST ONE MADE NECESSARY. The power line tells you to use
+64-128 seeds on a knife-edge seat; at 128 seeds the spread was printing 128
+floats on one line. The advice was unusable at the sample size it recommends.
+Long spreads now summarise: "128 seeds: 67 holding (median 9.5), 61 collapsed,
+none between". Twelve or fewer still print every value.
+
+AND THE DEFECT, which I predicted as the risk and then measured rather than
+assuming it away. A routine full-seat-set run is now 32 lines of which SIXTEEN
+are [BENCH] warnings -- half the output. Two of the six standing seats are in
+KNOWN_BISTABLE, so the bistable block fires on essentially every run, and the
+graded line fires on 59% of stored records. This is the classic way a warning
+stops being read.
+
+It is my doing, across three iterations: 287 added the bistable/seat-filter
+block, 288 the graded count, 292 the pairing and power lines. Each was
+justified by an iteration lost to its absence, and collectively they have made
+the instrument shout. I am NOT fixing it in this iteration -- choosing the
+terse format is a judgement about who reads this output and how, and I have
+already added one unplanned edit here. Filed as item 21 with a concrete
+proposal.
+
+I ALSO NOTE WHAT THIS DOES NOT FIX. The power table is worst-case (p = 0.5) and
+unpaired, which is right for a knife-edge seat by journal 291's measurement but
+CONSERVATIVE for a seat whose collapse rate is far from half. It is an upper
+bound on what you need, not an estimate. Good enough to stop another 32-run
+question that needed 256; not a substitute for thinking about the specific rate.
+
+PENDING COMMIT (tools/od_bench.py, alongside journals 287-288's edits in the
+same file):
+
+    Tell the truth about bistable seats, and print the power
+
+    The bistable advice said paired within-seed arms were reliable "either way
+    -- both sides draw the same worlds". Journal 291 measured that: both arms
+    drew the same 8 worlds and disagreed about 7 of them. The seed fixes the
+    map, not the outcome. It is an unpaired rate difference, and the line now
+    says what the seed count in hand can actually resolve -- which would have
+    stopped 32 runs being spent on a question needing 256.
+
+    Long spreads summarise, since the advice recommends 64-128 seeds and 128
+    floats on one line is not readable.
+
+MEASUREMENT AND INSTRUMENT ONLY. No AI source, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 293 — iteration: was the pacification direction really closed?
+
+> **CORRECTION (journal 296).** N47's "+17, spans zero" is below the ~60-point
+> floor and means **not resolvable at 24 runs**. The N24 result (-86, CI
+> [-124,-48]) is the one measurement in this whole sequence that DOES clear the
+> floor, and it stands.
+
+BACKLOG ITEM 10, first of its three entries. Item 21 (the bench is too loud) is
+cheaper but cosmetic, and after six consecutive instrument iterations the
+instruments are correct and the measurement should resume. Item 10 is
+numerically top among the unblocked and it is an AI question.
+
+WHAT IS BEING RE-TESTED. Journal 256 closed pacification as "a local optimum,
+BOTH directions measured". The trim direction was measured twice (-97/-85). The
+RAISE direction is `OD_PACIFY_REFLEX=1` -- off by default, sets the slider to
+worstChance/50, up to a fifth of income -- and its entire case is journal 40:
+N37 255 -> 171, ONE RUN, one model, on the pre-29b instrument. That is the
+weakest evidence in the map, and it is what closed a direction on a subsystem
+worth 10.8% of the AI's budget.
+
+DESIGN. Two arms, two valid models, the 8 fresh seeds, three rung seats,
+reading the graded FRA+USA pair:
+    N24 control  -- reuse journal 282's shipped column (same binary, unchanged
+                    since Sep 11 20:13; same 400 turns, seeds, seats, data dir)
+    N47 control  -- reuse journal 289's n47-graded-8seed
+    N24 + reflex -- OD_PACIFY_REFLEX=1
+    N47 + reflex -- OD_PACIFY_REFLEX=1
+48 new runs. The reuse is checked, not assumed: the script replays ONE control
+cell and it must reproduce journal 282's value to the digit.
+
+A PRE-REGISTERED WAY THIS FAILS TO BE A MEASUREMENT, which matters more than
+the result. The reflex is written FOR unrest-prone countries -- the comment
+describes modern China at 4-10% rebellion chance on 96 provinces, and Norway.
+France and the USA are not that. So the effect may live almost entirely on
+modern:CHN, which is the coin (journal 287: exactly 500 or 0 on 22 of 24
+observations). IF THE MOVEMENT IS ALL ON CHINA, I CANNOT MEASURE THIS KNOB ON
+THIS SEAT SET, and the honest report is "unmeasurable here", not "no effect".
+I will check the per-seat movement before quoting any pair number.
+
+PREDICTION: a null or small negative on FRA+USA, with whatever real effect
+there is sitting on China. Journal 40's -84 was on N37 across all six seats,
+where China's 500-or-0 is a sixth of the rating -- so I expect that -84 to have
+been substantially the coin, the same artefact that produced two fake
+inversions in journals 284 and 286.
+
+WHAT WOULD CHANGE THE DEFAULT: the reflex clearing zero POSITIVE on the graded
+pair on both models. I do not expect it; caution rules have traded growth for
+survival every time they have been measured here (memory:
+caution-rules-trade-growth), and this one diverts a fifth of income.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: THE DIRECTION IS CONFIRMED CLOSED -- the default stays OFF, now on
+replicated evidence instead of one run. And my prediction was wrong in the way
+that matters.
+
+FIRST, THE PRE-REGISTERED CHECK. The effect is NOT hidden on the China coin:
+
+    N24      FRA 292 -> 241 (-51)   USA 342 -> 221 (-121)   CHN 375 -> 283
+    N47      FRA  85 -> 130 (+45)   USA 330 -> 319 ( -11)   CHN 198 -> 220
+
+Both graded seats move on both models, so the pair can measure this knob and
+the failure mode I registered does not apply. Arm graded counts 19/24 and
+19/24 against controls of 14/24 and 18/24 -- comparable.
+
+    graded pair FRA+USA, paired within seed, reflex ON
+      N24      -86   se 19   CI [-124, -48]   CLEARS ZERO   1/8
+      N47      +17   se 29   CI [ -39, +73]   spans zero    5/8
+      pooled -54.2   se 16   CI [-85.6, -22.8] CLEARS ZERO
+
+I PREDICTED JOURNAL 40's -84 WAS SUBSTANTIALLY THE COIN. It is not. On N24 the
+three-seat figure is -88 and the graded pair -86 -- journal 40 measured -84 on
+a different model, one run, six seats, on the pre-29b instrument, and the
+number REPLICATES almost exactly. A single-run finding from the weakest
+evidence in journal 256's map turns out to have been right. I have spent seven
+iterations correcting over-trusted measurements and went into this one
+expecting another; the correction has a direction and it is not always the
+same one.
+
+AND THE CROSS-MODEL GATE HAS NOW FIRED FOR REAL. Journal 290 could only show
+the gate passing -- both models null on both candidates. Here the two models
+DISAGREE, on a comparable pair, with non-overlapping intervals (N24 upper -48,
+N47 lower -39). This is the first valid cross-model disagreement the project
+has produced, and it is a genuine statement about the knob: turning the
+pacification reflex on is clearly harmful to N24 and does nothing to N47.
+
+The pooled figure clears zero at -54, so the DEFAULT IS SAFE: off stays off,
+and the "local optimum, both directions measured" line in journal 256's map is
+now supported on the raise side by two models and 48 runs rather than by one
+run. Item 10's first entry closes.
+
+A CANDIDATE EXPLANATION, recorded as a hypothesis and explicitly NOT a finding.
+Sorting all 32 graded seat-seeds by how the control arm did:
+
+    control <150 (losing)     n=7    mean effect  +106
+    control 150-300           n=10   mean effect    +6
+    control >=300 (winning)   n=15   mean effect  -127
+    correlation(control score, effect) = -0.81
+
+That is exactly what an insurance rule should look like -- it pays when you are
+losing and costs when you are winning -- and it would explain why N47, the
+weaker model on France (control 85, below par), is the one that gains. It is
+also precisely the shape REGRESSION TO THE MEAN produces whenever an effect is
+sorted by its own baseline, and this project has been fooled by that before.
+Testing it properly needs the split declared in advance on seeds chosen by
+something other than this data. Filed as item 22.
+
+WHAT THIS DOES NOT SAY. Nothing here is about survival: the graded pair is
+France and the USA, both of which survive in every arm. A buffer rule's case
+would be about not dying, and the seat that dies is China -- the coin. So the
+"waste can be insurance" result (journal 255, removing pacification cost ~90)
+and this one are not in tension; they are measured on different things, and
+the instrument cannot currently see the one the insurance argument is about.
+
+PENDING COMMIT: none. tools/od_bench.py unchanged this iteration.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). Controls reused from journals 282 and
+289 after a determinism check: one replayed cell returned 21.4, matching to
+the digit.
+
+## 294 — iteration: is the "insurance" pattern real, or arithmetic?
+
+BACKLOG ITEM 22, taken ahead of item 10b's two remaining entries. Stated
+plainly so the choice can be argued with: 10b re-audits the minority gates and
+the reflex-layer audit, both already recorded as LOSSES, at ~48 runs each. Item
+22 is the only open item that could turn a rejected rule into a shipped one.
+When both cost the same, the lead is worth more than the audit.
+
+THE CLAIM TO TEST. Journal 293 sorted 32 graded seat-seeds by how the control
+arm scored and found the pacification reflex pays when you are losing:
+
+    control <150 (losing)     n=7    +106
+    control 150-300           n=10     +6
+    control >=300 (winning)   n=15   -127      r = -0.81
+
+I filed it as a hypothesis because that is also the shape regression to the
+mean produces. Item 22 proposed testing it on 8 fresh seeds with the split
+declared in advance -- 96 runs, both models, two arms.
+
+BEFORE SPENDING THEM: the arithmetic. This is what journal 291 should have done
+and did not, and the instrument now prints a power line precisely to force the
+question.
+
+Write X = control score, Y = reflex-on score. The plotted quantity is
+corr(X, Y - X), and X appears on BOTH axes. If Y were drawn independently of X
+with the same variance, then
+
+    corr(X, Y-X) = (cov(X,Y) - var X) / (sd X * sd(Y-X)) = -1/sqrt(2) = -0.71
+
+purely mechanically, with no insurance effect whatever. The observed -0.81 has
+to be read against that number, not against zero. Nobody has done that, and it
+is free.
+
+NOTE THE BENCH IS DETERMINISTIC (journal 287 replayed two cells to the digit),
+so this is NOT the classic measurement-error regression -- there is no noise in
+X to regress. It is the subtler structural version: any pair of arms whose
+scores are weakly related to each other will produce a strong negative
+correlation in the difference, because the difference is dominated by -X.
+
+PRE-REGISTERED DECISION RULE, written before computing anything:
+  * If corr(X,Y) is strongly POSITIVE and corr(X, Y-X) is clearly more negative
+    than the mechanical baseline implied by the actual variances, the
+    conditional-rule hypothesis survives and earns its 96 runs.
+  * If corr(X, Y-X) sits at or near the mechanical baseline, the pattern is
+    arithmetic, item 22 dies here, and I have saved 96 runs by doing five
+    lines of algebra.
+  * The baseline must be computed from the OBSERVED variances of X and Y, not
+    from the equal-variance shortcut, since sd(Y) need not equal sd(X).
+
+WHAT I EXPECT: the pattern is mostly mechanical. The +106/-127 split is
+dramatic and the r is close to -0.71 already, which is what a null looks like.
+
+RE-ANALYSIS ONLY. No runs, no source, no model. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: ITEM 22 DIES, by the rule written before the numbers. 96 runs saved by
+five lines of algebra. And a different, real property of the reflex survives.
+
+THE ARITHMETIC, against the pre-registered baseline:
+
+    n = 32 graded seat-seeds
+    sd(control)                145      sd(reflex-on)            86
+    corr(control, reflex-on)  +0.50     -- the arms ARE related
+
+    observed  corr(X, Y-X)    -0.81
+    MECHANICAL baseline       -0.86     (Y independent of X, observed variances)
+    equal-variance shortcut   -0.71
+
+THE OBSERVED PATTERN IS WEAKER THAN CHANCE. The rule required corr(X, Y-X) to
+be clearly MORE negative than the mechanical baseline; it is LESS negative.
+Confirmed by shuffling: reassigning the reflex-on scores at random 20,000 times
+gives a median losing-minus-winning spread of 332 against the observed 233, and
+P(shuffled >= observed) = 0.994. The +106/-127 split that looked like an
+insurance rule is what you get from arithmetic alone, and slightly less of it.
+
+That kills the conditional-rule candidate. `OD_PACIFY_REFLEX` is not a rule
+that pays when you are behind; it is a rule that costs, and journal 293's
+pooled -54 stands as the whole story of its effect on the mean.
+
+I GOT THIS ONE RIGHT AND THE LAST ONE WRONG, and the difference was not
+judgement. Journal 293 I predicted a collapse and the finding replicated; here
+I predicted arithmetic and it was arithmetic. The useful part is that both were
+settled by computing a baseline rather than by eyeballing an effect size -- and
+that journal 291 spent 32 runs precisely because that arithmetic was skipped.
+
+A MISTAKE INSIDE THIS ENTRY, recorded because it nearly shipped. I first wrote
+that the variance compression was "mostly between-seat, not within-seat: 2 of 4
+cells compress, 2 widen" -- prose composed alongside the numbers rather than
+from them. The numbers said all four compress. I caught it re-reading my own
+output, which is luck rather than method: a dismissive conclusion attracts less
+scrutiny than a positive one, which is corrections-inherit-confidence pointed
+at a null result.
+
+WHAT ACTUALLY SURVIVES, measured directly and NOT by sorting on a baseline:
+
+    N24 FRA   sd  79 ->  51  (0.64x)    mean  292 -> 241
+    N24 USA   sd 108 ->  56  (0.52x)    mean  342 -> 221
+    N47 FRA   sd  75 ->  63  (0.84x)    mean   85 -> 130
+    N47 USA   sd 143 ->  50  (0.35x)    mean  330 -> 319
+
+    compresses in 4 of 4 cells   (P = 0.062 if the direction were a coin)
+
+Within each seat, across its own 8 seeds, the reflex reduces the spread every
+time -- by a third to two thirds. This is a direct comparison of two sets of 8
+numbers, with no pooling across seats and no conditioning on the control, so
+none of the objections above touch it. It is ALSO not significant on its own
+terms at 4 cells, and it is the third "variance case" this sequence has seen
+after two were destroyed, so it gets filed, not believed.
+
+The trade it describes is clear enough to state: the reflex buys a narrower
+distribution for about 54 rating points of mean. By LOOP.md's verdict rule that
+is a REJECT -- rating down. It would only be worth revisiting if the floor were
+what mattered, and the floor lives on modern:CHN, which is the coin. The
+instrument cannot currently see the thing that would justify this rule, which
+is the same sentence journal 293 ended on.
+
+PENDING COMMIT: none. tools/od_bench.py unchanged this iteration.
+
+RE-ANALYSIS ONLY. No runs, no source, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 295 — iteration: the calming-doctrine headroom gate, on seeds and models
+
+> **CORRECTION (journal 296).** "Null" here means **not resolvable at 24 runs**
+> — both intervals ([-37,+79] and [-43,+110]) are narrower than the
+> instrument's ~60-point floor. The verdict is unaffected: the default stays
+> off, and this entry's real result is that its one-seed justification does not
+> replicate.
+
+BACKLOG ITEM 10b, second of its three entries. The entry says "the minority
+gates"; in the source there is now exactly ONE. Of journal 256's three, the
+conciliation cap and the pacification trim are no longer parameterised at all,
+and the only live knob is OD_CALM_GATE. So the entry is smaller than it reads,
+and saying so is part of settling it.
+
+WHAT THE GATE DOES. Politics case 8 enacts whatever policy most calms the
+country. Default: any affordable-by-score policy qualifies. With
+OD_CALM_GATE=1, a calming doctrine must also fit CURRENT headroom
+(income - expenses), and nothing qualifies at all while losing ground.
+
+ITS ENTIRE CASE, from the comment that keeps it off:
+    "moved 1914:SWE seed 20260801 from 3.4 to 2.4 and N24 from 227 to 209
+     (all seats)"
+One seed. One model. The all-seats metric -- which includes 1914:SWE at par 1.0
+and modern:CHN at par 2.5, both of which journal 287 showed score 500-or-0. A
+-18 on that metric is one or two coin flips wide.
+
+The REASONING behind the default is better than its measurement: "a calming
+doctrine the treasury cannot carry still calms; the cascade repeals it later at
+a price smaller than the rebellion it prevented." That is a claim about
+mechanism, and it is testable.
+
+DESIGN, identical to journal 293 so the two are comparable:
+    N24 control  -- reuse journal 282's shipped column
+    N47 control  -- reuse journal 289's n47-graded-8seed
+    N24 + gate   -- OD_CALM_GATE=1
+    N47 + gate   -- OD_CALM_GATE=1
+8 fresh seeds, three rung seats, read the graded FRA+USA pair. 48 new runs,
+with a one-cell determinism replay to justify reusing the controls.
+
+PRE-REGISTERED, and the order matters:
+  1. Graded counts per arm. If an arm's count departs from its control's, the
+     within-model comparison is compromised and I say so before any mean.
+  2. Does the effect appear on FRA and USA at all? If the movement is only on
+     CHN, this knob is unmeasurable on this seat set and the answer is
+     "unmeasurable", not "no effect" -- the check journal 293 ran and passed.
+  3. Only then the paired difference, per model and pooled.
+
+DECISION RULE: the default (gate OFF) stands unless turning it ON clears zero
+POSITIVE on both models. A null confirms the default while retiring its
+one-seed justification -- which is the point of item 10b.
+
+WHAT I EXPECT: a null on the graded pair, with the original -18 having been
+the coin. But journal 293 is the reason I write that carefully -- there I
+predicted exactly this and the single-run finding replicated almost to the
+digit. Weak evidence is uninformative, not inverted, and I have no business
+predicting the direction of a correction. If the gate does cost on both models,
+the mechanism comment was right for the right reason.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: the default stands (gate OFF), but its ONE-SEED JUSTIFICATION IS
+RETIRED -- the -18 does not replicate, and on the same metric it flips sign.
+Item 10b's second entry closes.
+
+CHECK 1 FIRST, as pre-registered, and it fired:
+
+    N24 ctl    FRA 8/8  USA 6/8  CHN 0/8   14/24
+    N24 gate   FRA 8/8  USA 6/8  CHN 0/8   14/24   <- comparable
+    N47 ctl    FRA 8/8  USA 7/8  CHN 3/8   18/24
+    N47 gate   FRA 7/8  USA 4/8  CHN 1/8   12/24   <- NOT comparable
+
+The N47 arms are not the same instrument: the gate makes the USA strong enough
+to pin (7/8 graded -> 4/8) and kills China more often. That is the condition
+journal 288 named, and this is the first time an ARM of the same model has
+tripped it rather than a second model. I read N47's number below but it is not
+evidence, and if I had skipped this check I would have quoted it as if it were.
+
+CHECK 2: the effect is on the graded pair, so the knob is measurable here.
+
+CHECK 3, the paired difference on FRA+USA, gate ON:
+
+    N24  (arms comparable)    +21  se 30  CI [-37,  +79]  spans zero  3/8
+    N47  (arms NOT comparable) +34  se 39  CI [-43, +110]  spans zero  5/8
+
+Null. By the rule set beforehand -- "the default stands unless turning it ON
+clears zero POSITIVE on both models" -- the default stands.
+
+WHAT DID NOT SURVIVE IS THE REASON FOR IT. The gate is off because of one
+measurement: N24 227 -> 209 on ONE SEED, on the all-seats metric that includes
+1914:SWE (par 1.0) and modern:CHN (par 2.5), both 500-or-0. On the same
+three-seat metric across 8 seeds it is +56, not -18. The sign is opposite. The
+gate is not harmful; it is simply not measurably anything, and the comment in
+AISystem.cpp asserts a cost that 48 runs cannot find.
+
+So the DEFAULT is right and the JUSTIFICATION was wrong, which is precisely
+what item 10b existed to separate. The mechanism argument in the comment -- "a
+calming doctrine the treasury cannot carry still calms; the cascade repeals it
+later at a price smaller than the rebellion it prevented" -- is still the best
+reason to leave the gate off, and it is now the ONLY reason, because the number
+beside it does not hold up.
+
+I PREDICTED THIS AND SAID NOT TO TRUST THE PREDICTION. Journal 293 taught that
+weak evidence is uninformative rather than inverted, and I wrote here that I
+had no business predicting a correction's direction. The prediction happened to
+be right. Two iterations, two opposite outcomes from the same class of
+evidence: journal 40's one-run -84 replicated almost exactly, and this one-seed
+-18 flipped. That is what "uninformative" looks like from the inside, and it is
+the argument for re-testing rather than for guessing.
+
+A PATTERN FILED, NOT BELIEVED. Per seat, sign-consistent on both models:
+
+    N24 FRA  -19  CI [-133, +96]      N24 USA  +61  CI [-51, +172]
+    N47 FRA  -23  CI [-123, +77]      N47 USA  +91  CI [-50, +232]
+
+Four sign agreements from four estimates (P = 0.06 if each were a coin). But
+not one interval clears zero, and the USA is the seat sitting 2 seeds from its
+cap on N24 and already 4-of-8 pinned on N47 -- so an unknown part of "+61/+91"
+is the ceiling, not the play. This is the third 4-of-4 sign pattern in three
+iterations (journal 294's compression, journal 291's flips, this) and none has
+cleared its interval. Recording that they keep appearing is worth more than
+any one of them.
+
+CHINA, for the record, since it is where the unrest mechanism actually lives:
+survival 6/8 -> 8/8 on N24 and 5/8 -> 3/8 on N47. Opposite directions, on the
+coin, which cannot be read. The seat this rule is FOR is the seat the
+instrument cannot measure -- the same closing sentence as journals 293 and 294,
+now three times in a row.
+
+PENDING COMMIT: none. tools/od_bench.py unchanged this iteration. The
+AISystem.cpp comment overstates its evidence, but I did not write that line and
+editing another session's source to correct a claim is not this iteration's
+business; filed as item 24.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). Controls reused after a determinism
+replay returning 21.4 to the digit.
+
+## 296 — iteration: is the error bar I keep quoting the right one?
+
+BACKLOG ITEM 25, taken ahead of item 10b's last entry. The ordering argument
+is not the usual cheap-before-expensive one: item 25 asks whether the
+confidence intervals quoted in every entry since 281 mean what they say. If
+they do not, the reflex-layer audit would produce eleven more mis-stated
+numbers, and every verdict in this sequence would need revisiting.
+
+THE OBSERVATION THAT PROMPTED IT. Three iterations running, a 4-of-4 sign
+pattern with no interval clearing zero:
+
+    j.291   7 of 8 worlds flipped outcome when one reflex was toggled
+    j.294   the pacify reflex compressed spread in 4 of 4 seat x model cells
+    j.295   gate helps USA / hurts FRA, sign-consistent in 4 of 4 cells
+
+Each time I wrote "P = 0.06 if each were a coin" and filed it as
+not-quite-anything. Three in a row is either a real structure my error model
+misses, or a mistake I keep making.
+
+TWO CANDIDATE EXPLANATIONS, and they have opposite consequences:
+
+  A. The per-seed interval is the WRONG error model -- there is structure
+     between seeds or seats that sd/sqrt(8) does not capture. Then the
+     intervals are too wide or too narrow and everything since 281 is
+     mis-stated. Serious.
+
+  B. The CELLS ARE NOT INDEPENDENT, so "P = 0.06" is wrong while the intervals
+     are fine. N24:FRA and N47:FRA are the same eight worlds; N24:FRA and
+     N24:USA are the same eight worlds and the same model. Four cells is not
+     four coins, and treating it as such makes agreement look surprising when
+     it is not. Then the fix is to stop quoting that P, and no verdict moves.
+
+THE TEST, on data already on disk -- five arms per model on the same 8 seeds
+(control, bar 0.65, no-fortify, pacify-on, calm-gate):
+
+  1. Correlate the RAW per-seed rating vectors across different knobs. Raw, not
+     differences: two differences against a shared control are mechanically
+     correlated, which is the trap journal 294 just caught, and I am not
+     walking into it while investigating it. A strong positive correlation
+     between unrelated knobs' arms means seeds have a persistent character.
+  2. If they do, the cells sharing seeds are correlated and explanation B holds
+     -- measure how far off "P = 0.06" actually is by permuting with the
+     structure respected.
+  3. Check the per-seed differences for the thing that would support A:
+     are the 8 seed-differences themselves iid, or does one seed dominate?
+
+PRE-REGISTERED CONSEQUENCE. If B: I retract the three P-values, keep the
+intervals, and add a line to the backlog banning that calculation. If A: every
+interval since 281 needs recomputing and I say so plainly, whatever it costs.
+
+WHAT I EXPECT: B. The raw arms should correlate strongly because a seed's world
+is the dominant term in how a seat scores -- but expecting B is convenient for
+me, since it costs one retraction instead of fifteen, and that is exactly the
+reason to compute rather than conclude.
+
+RE-ANALYSIS ONLY. No runs, no source, no model. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: THE INTERVALS ARE SOUND. Explanation A is refuted, B is refuted, and
+the real answer is one I did not pre-register -- which is the part worth
+recording, along with two findings that change how this loop should be run.
+
+A IS REFUTED. Sign-flip permutation, 50,000 draws per arm, against the t-CI:
+
+    pacify   mean  -86   t-CI [-124, -48]   permutation p = 0.015   agrees
+    nofort   mean  +38   t-CI [ -18, +94]   permutation p = 0.174   agrees
+    calmgt   mean  +21   t-CI [ -37, +79]   permutation p = 0.506   agrees
+    bar065   mean  +21   t-CI [ -31, +73]   permutation p = 0.489   agrees
+
+Four for four, including the one result that cleared zero. The per-seed
+interval is a valid error model and nothing quoted since 281 needs recomputing.
+
+B IS ALSO REFUTED, and this is where I was wrong. I expected seeds to have a
+persistent character -- an easy world staying easy -- which would make cells
+sharing seeds correlated. They do not. Correlating the RAW per-seed rating
+vectors across five unrelated configurations on N24:
+
+    mean off-diagonal correlation:  -0.09
+
+A seed that is kind to one configuration is not kind to another.
+
+THE ANSWER IS C: THE PATTERN WAS CHOSEN AFTER SEEING IT. Each entry offers
+half a dozen 4-cell groupings -- per-seat signs, per-model signs, variance
+direction, floor direction, worlds-helped, China survival -- and I reported
+whichever happened to agree. P(at least one 4-of-4 among six groupings) = 0.55.
+Three in three iterations is the expected yield of looking, not a signal. The
+"P = 0.06" I quoted three times is the probability of a NAMED grouping
+agreeing; what I was actually doing was finding some agreement anywhere, and
+those are different numbers. All three are retracted as evidence. None of them
+changed a verdict, which is luck: each was filed as "not believed", and that
+habit is the only reason this cost nothing.
+
+AND THE FINDING THAT MATTERS MORE THAN THE QUESTION ASKED. If seeds have no
+persistent character, then PAIRING BUYS NOTHING:
+
+    arm       sd paired diff   sd if unpaired   variance saved
+    bar065          75               71            -12%
+    nofort          81               76            -12%
+    pacify          55               58            +11%
+    calmgt          83               86             +7%
+
+Zero, within noise, and negative as often as positive. Toggling a knob
+re-rolls which worlds go well, so the control tells you almost nothing about
+the arm on the same seed. Journal 291 found exactly this on the bistable rush
+seat and I wrote it up as a property of that seat. It is not -- it holds on the
+GRADED RUNG SEATS too, so it is a property of the bench. The se stays honest
+because it is computed from the differences, but the matched design has been
+buying precision it does not deliver, in every A/B this sequence has run.
+
+WHICH GIVES THE REAL PRICE OF AN ANSWER HERE:
+
+    seeds   runs/arm    se   detectable at 95%
+       8         24     30          59
+      16         48     21          42
+      32         96     15          29
+      64        192     11          21
+
+THE 8-SEED STANDARD ONLY SEES EFFECTS ABOVE ABOUT 60 POINTS. Since journal 281
+exactly one measurement has cleared that: the pacification reflex at -86.
+Everything else -- the research bar, the fortify ablation, the calm gate -- came
+back under the instrument's floor, and I have repeatedly written "null" where
+"not resolvable at 24 runs" is what the data supports. Those are different
+claims: the first says the effect is absent, the second says I cannot see it.
+No verdict flips, because every one of them was a decision to LEAVE A DEFAULT
+ALONE and "cannot distinguish from zero" is sufficient grounds for that. But
+the phrasing in journals 285, 290, 293 and 295 was stronger than the evidence
+and I am correcting it here rather than leaving it.
+
+PENDING COMMIT: none. tools/od_bench.py unchanged this iteration.
+
+RE-ANALYSIS ONLY. No runs, no source, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 297 — iteration: which of the eleven reflexes does anything at all?
+
+BACKLOG ITEM 10b, last entry: the reflex-layer audit. Journal 256 recorded
+"reflex layer: 11/11 audited, defaults correct", and item 10b asks whether that
+survives seed coverage.
+
+IT CANNOT BE ANSWERED THE WAY IT WAS ASKED. Eleven A/Bs at the 8-seed standard
+is 264 runs and, by journal 296, resolves nothing below ~60 points. That would
+buy eleven more "not resolvable at 24 runs" and call them nulls. So this
+iteration asks the cheaper and prior question -- not "does each reflex help",
+but "does each reflex DO ANYTHING" -- with an instrument that is exact rather
+than statistical.
+
+THE INSTRUMENT. OD_DECISION_HASH prints `[DECHASH] <hash> over <N> decisions`:
+FNV-1a over every (country, module, action) in decision order. If ablating a
+reflex leaves that hash BYTE-IDENTICAL over a 400-turn game, the reflex did not
+change a single decision in that world. No statistics, no seeds, no floor --
+identical is identical. This is the shape that settled attrition once before
+(memory: aggregate-vs-seat-measurement, "a byte-identical aggregate proved it
+never fired").
+
+DESIGN: 12 arms (control + 11 ablations) x 2 seats, one seed (13579), 400 turns.
+24 runs. Two seats because they exercise different reflexes -- 1914:FRA:rung is
+a great power at war, modern:CHN:rung is the unrest-heavy seat the pacification
+and calming machinery is written for.
+
+PRE-REGISTERED, in order:
+  1. INSTRUMENT DISCRIMINATION FIRST. The control hash must differ from at
+     least one ablation. If every arm matches the control, the finding is
+     "OD_ABLATE is not reaching the code" -- a broken instrument -- and NOT
+     "all eleven reflexes are inert". Journal 275's zero was exactly this
+     shape and I read it as a result for an hour.
+  2. A reflex identical on BOTH seats is a CANDIDATE DEAD REFLEX.
+  3. A reflex that changes the hash is LIVE. That says nothing about whether
+     it helps -- activity is not value, and fortifyReflex is live and worth
+     nothing measurable (journals 285-291).
+
+WHAT I WILL NOT DO WITH THE ANSWER. I will not delete anything. These are
+another session's source lines, and journal 296's floor means I could not
+measure the removal's cost anyway. A dead reflex gets reported to the user as a
+simplification with the evidence attached.
+
+ONE DISTINCTION WORTH STATING because it cuts the other way from a memory here:
+masking-waste-costs records that removing a 99.9% no-op ACTION cost 59 points,
+because the freed probability went elsewhere. A reflex is not a sampled action
+-- it is straight-line code outside the policy -- so removing an inert one
+frees no probability mass. The two cases are not the same and I should not
+import that caution automatically.
+
+WHAT I EXPECT: most live, one or two dead. `withdraw` is the candidate --
+memory withdrawing-loses-battles says two withdraw rules both cost and the
+behaviour was removed, so the reflex may now be vestigial.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: FOUR OF THE ELEVEN "SHIPPED" REFLEXES ARE NOT SHIPPED. They are opt-in
+and default OFF, so ablating them is a no-op. Item 10b closes, and journal
+256's "reflex layer: 11/11 audited, defaults correct" is true in a way that
+reads as more than it says.
+
+THE MEASUREMENT, one seed, 400 turns, per seat:
+
+    reflex          1914:FRA          modern:CHN
+    garrison        LIVE   7.9        LIVE    0.0
+    fortify         LIVE  28.3        LIVE    0.0
+    redeploy        LIVE   8.7        LIVE   22.7
+    austerity       LIVE   7.5        LIVE   30.9
+    manpower        LIVE  22.7        LIVE   25.0
+    siege           LIVE  27.3        LIVE   22.2
+    campaign        LIVE  24.3        LIVE   23.5
+    peace          inert  21.4       inert   23.1
+    pacification   inert  21.4       inert   23.1
+    withdraw       inert  21.4       inert   23.1
+    callToArms     inert  21.4       inert   23.1
+    (control        21.4               23.1)
+
+"inert" is exact: the identical 64-bit hash over the identical decision count
+-- 86,188 on France, 277,784 on China. Zero decisions changed, twice.
+
+AND THE REASON IS NOT THAT THEY ARE DEAD CODE. Each of the four opens with its
+own env gate and returns immediately:
+
+    peaceReflex          OD_PEACE_REFLEX
+    pacificationReflex   OD_PACIFY_REFLEX
+    withdrawReflex       OD_WITHDRAW_REFLEX
+    callToArmsReflex     OD_CALL_REFLEX
+
+They are disabled features, not vestigial ones. I checked this BEFORE writing
+the result down, which is the only reason this entry says what it says: the
+memory llm-hooks-invisible-to-bench records four hooks that read as inert for
+exactly this reason, and "4 of 11 shipped reflexes are dead code" is a much
+more exciting sentence than the true one.
+
+THE TRAP THIS EXPOSES, and it is the reusable part. OD_ABLATE ON A DEFAULT-OFF
+REFLEX IS A SILENT NO-OP. An ablation sweep over all eleven -- the obvious way
+to run item 10b, and 264 runs at the 8-seed standard -- would have returned
+four confident nulls that mean nothing, indistinguishable in the output from
+four measured "no effect" results. That is a-skip-is-not-a-pass with a bench
+attached.
+
+TWO COMMENTS CONTRADICT THEIR OWN CODE:
+
+    line 7275   "── CALL TO ARMS REFLEX (OD_CALL_REFLEX, on by default) ──"
+    line 7369   "── WITHDRAW REFLEX (OD_WITHDRAW_REFLEX, on by default) ──"
+
+Both default OFF. callToArms contradicts itself within three lines -- the body
+comment immediately below its header says "OFF by default" and then explains
+why, with numbers. The headers are the wrong ones, and a reader skimming
+section headers to see what the AI does would get four of eleven wrong.
+
+WHAT JOURNAL 256 ACTUALLY ESTABLISHED, restated: seven reflexes ship and were
+audited; four were measured, found not to pay, and left off. "Defaults correct"
+is accurate -- the default for those four IS off. But the line sits in a list of
+things the AI does, and it reads as eleven active rules all verified. The AI has
+seven.
+
+A ONE-SEED STORY I ALMOST TOLD. Ablating fortify annihilates China on this
+seed, 23.1 -> 0.0, which invites "fortify is the survival rule for the
+pressured seat, and the rating averages it away" -- a tidy explanation for why
+journals 285-291 could find nothing. Checked against all eight seeds first:
+
+    China dies    control 2/8    without fortify 2/8
+
+On 13579 and 271828 fortify saves her; on 3141592 and 1618033 fortify is what
+kills her. Two each way, net zero. It is journal 296's re-roll, and the tidy
+explanation was me reporting the seed I happened to pick.
+
+PENDING COMMIT: none this iteration. Two defects found in another session's
+file and one in my own instrument, all filed rather than edited:
+  * the two "on by default" headers (item 28);
+  * OD_DECISION_HASH records but never prints unless OD_ACT_HIST is also set,
+    because the report lives in dumpActionHistogram's atexit hook, registered
+    only under OD_ACT_HIST. That is my defect, from 1062e85. It cost this
+    iteration one aborted 3-run batch, caught by the hash column reading NONE
+    (item 29).
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). The instrument was verified inert
+before use: control with OD_ACT_HIST and OD_DECISION_HASH set returned 21.4,
+matching the known control exactly.
+
+## 298 — iteration: make the warnings readable again
+
+BACKLOG ITEM 21, the top unblocked item -- 16 and 19 are the user's decisions.
+This is my own defect, measured in journal 292: a routine six-seat run is 32
+lines of which SIXTEEN are [BENCH] warnings. Two of the six standing seats are
+KNOWN_BISTABLE so that block fires on essentially every run, and the graded
+line fires on 59% of stored records.
+
+WHY IT MATTERS RATHER THAN BEING TIDINESS. The graded-count line is now
+load-bearing -- journal 290 used it to establish a valid model pair and journal
+295 used it to catch two arms of the SAME model saturating differently, which
+would otherwise have been quoted as evidence. A line that decides whether a
+comparison is admissible cannot be the fourteenth of sixteen. I built three
+warnings in four iterations, each justified by an iteration lost to its
+absence, and collectively made them ignorable.
+
+THE CHANGE: one terse line per condition by default, the full reasoning behind
+OD_BENCH_VERBOSE=1. The explanations are not deleted -- they are where a reader
+who wants them can get them, and the reasoning stays in the source comments
+regardless, which is where the next agent reads it.
+
+HYPOTHESIS, falsifiable without a single game:
+  On the same routine 6-seat replay journal 292 measured at 16 warning lines,
+  the patched report must print FEWER THAN SIX, must still name every condition
+  that fired, and must lose nothing under OD_BENCH_VERBOSE=1.
+
+VALIDATION BY DISCRIMINATION, not by the output looking nicer:
+  * the terse form must still FIRE on journal 282's China arm (pinned +
+    14/24 graded + bistable) and on journal 291's rush arm (the power figure);
+  * a clean arm must stay silent in both modes;
+  * verbose mode must reproduce the current text, so nothing is lost;
+  * the numbers in terse mode must equal the numbers in verbose mode -- a
+    summary that rounds differently from its detail is a new defect.
+
+WHAT I EXPECT: about four lines. The risk is the opposite failure -- terse to
+the point of being cryptic, so that the line fires and still tells nobody
+anything. The test for that is whether the terse line alone would have been
+enough in journals 290 and 295, and I will check it against those two cases
+rather than against my taste.
+
+INSTRUMENT ONLY. No AI source, no model. Paths: tools/od_bench.py,
+LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. 16 warning lines become 5, every condition still fires, and
+nothing is lost.
+
+    routine 6-seat run    16 warning lines -> 5
+    clean arm              0 -> 0, in both modes
+    OD_BENCH_VERBOSE=1    restores the full text
+
+The terse form, on journal 282's real arm:
+
+    [BENCH] pinned at CAP: modern:CHN rung -- scores the same however well it did
+    [BENCH] 14/24 observations GRADED (10 pinned at 0 or CAP) -- compare this
+            figure across arms before trusting a difference
+    [BENCH] bistable: modern:CHN rung -- no meaningful mean, read the collapse
+            RATE; UNPAIRED even on matched seeds; 8 seeds resolve a rate
+            difference of ~0.49
+    [BENCH] OD_BENCH_VERBOSE=1 explains each of the lines above.
+
+Four lines carrying everything journals 287, 288, 291 and 292 each spent an
+iteration discovering.
+
+VALIDATED BY DISCRIMINATION, as set out beforehand:
+  * fires on journal 282's China arm with all four facts, and on journal 291's
+    rush arm with the 0.49 that would have stopped 32 runs being spent;
+  * a clean arm prints nothing in either mode;
+  * every figure in the terse output appears identically in verbose -- checked
+    by extracting the numbers from both and differencing the sets, because a
+    summary that rounds differently from its detail is a new defect rather
+    than a fix;
+  * the pre-registered usefulness test: would the terse line ALONE have served
+    journals 290 and 295? Both needed only the graded count per arm (18/18/19,
+    and 18 vs 12), and that is the one line. Yes.
+
+ONE DEFECT FOUND AND FIXED INSIDE THIS ITERATION, which is the failure mode I
+said I would watch for. The first terse version printed the power figure once
+per bistable seat: "3 seeds resolve ~0.80; 3 seeds resolve ~0.80". The seats
+almost always share a seed count, so the same fact printed twice reads as two
+different results -- terse to the point of being cryptic, exactly the opposite
+failure from the one being fixed. Now one figure per distinct n.
+
+WHAT IS NOT SOLVED. The bistable block still fires on almost every full-seat
+run, because two of the six standing seats are permanently in KNOWN_BISTABLE.
+One line rather than eight is survivable; it is still a line that is always
+there, and a warning that never varies is one people stop reading. The real fix
+is the seat set (item 16), which is the user's call.
+
+PENDING COMMIT (tools/od_bench.py, alongside journals 287/288/292's edits in
+the same file -- one commit or four as you prefer):
+
+    Print one line per bench warning, with the reasoning behind a flag
+
+    Three warnings added over four iterations made a routine run 32 lines of
+    which 16 were [BENCH] text, and the graded-count line -- which decides
+    whether two arms are comparable at all -- was the fourteenth of sixteen.
+    Terse by default, OD_BENCH_VERBOSE=1 for the explanations. The reasoning
+    stays in the source comments either way.
+
+INSTRUMENT ONLY. No AI source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 299 — iteration: LOOP.md is out of date with its own journal
+
+BACKLOG ITEM 23, the top unblocked item -- 16, 19, 24, 26 and 28 are the user's
+decisions, and 29 is behind them. Item 23 asked for "a paragraph in LOOP.md's
+measurement section" recording journal 294/296's arithmetic. Auditing the file
+to place it found that the paragraph is not the main problem.
+
+LOOP.md is the FIRST thing an agent reads -- the skill says so, and every
+iteration of this sequence has started there. It carries journal-sourced
+STANDING sections (journal 26, journal 29b), so the loop has always maintained
+it. It has not been maintained since.
+
+WHAT THE AUDIT FOUND, each checked against the entry that settled it:
+
+  1. "STANDING: train ~1,000 turns, not 4,000 (journal 26)" is presented as
+     live. Journal 272 retired it -- the curve is parent-specific and
+     non-monotone, from loop-base it reads 14 / 159 / 100 / 159 at 0 / 8 / 16 /
+     24 maps. The retirement is recorded in BACKLOG.md line 479 and was never
+     carried into LOOP.md. An agent reading the protocol gets the retracted
+     claim; only one reading the backlog to line 479 gets the correction.
+     This is correct-the-index-with-the-body at protocol level.
+
+  2. "Six seats, three seeds" is given as the standard with no statement of
+     what it resolves. Journal 296: se ~30 at EIGHT seeds on the graded pair,
+     so three is worse, and only effects above ~60 are visible. Since journal
+     281 exactly one measurement has cleared that.
+
+  3. "Rush guard. REJECT any change that gives up more than 5 points on
+     1914:FRA:rush" -- journal 291 showed the seat's two regimes are ~197 and
+     ~3 in score space, so every reading is 0 or a 190-point violation. A
+     5-point threshold there is not a threshold.
+
+  4. "Read SURVIVAL and WORST SEAT" -- journal 287 showed the worst seat on the
+     rung set is modern:CHN, which scores exactly 500 or 0 on 22 of 24
+     observations. The worst seat is usually reporting a coin.
+
+  5. Missing entirely: the graded-observation count, that seed-pairing buys
+     nothing, and that a derived quantity must be read against its chance
+     value.
+
+HYPOTHESIS, and it is a claim about the document rather than the AI:
+  An agent following LOOP.md as written, with no journal access, would run a
+  3-seed bench, read its worst seat as a floor, apply a 5-point rush threshold
+  to a bistable seat, and cap training at 1,000 turns on a retired curve. Four
+  of those are wrong and the journal says so. If the audit is right, the file
+  can be corrected from entries already settled, with no new measurement.
+
+WHAT I WILL AND WILL NOT DO. LOOP.md is the loop's protocol and hard rule 5
+reserves "rewriting AGENTS.md" for the user; LOOP.md is not named, and the loop
+has added standing sections before. So: ADDITIVE ONLY. One new dated section
+with the measured facts, and a one-line SUPERSEDED pointer at the head of each
+stale claim. Nothing deleted, nothing reworded, every original sentence left
+where it is so the user can see exactly what changed and revert it in one hunk.
+
+DOCUMENT ONLY. No runs, no AI source, no model. Paths: docs/ai/LOOP.md,
+LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. LOOP.md corrected additively -- 81 lines added, ZERO removed,
+verified by differencing the original's lines against the new file.
+
+WHAT CHANGED:
+  * a new STANDING section, placed at line 97 so it is read BEFORE the
+    measurement instructions it qualifies (Orient is 153, Measure is 193);
+  * three SUPERSEDED pointers, each within 2-6 lines of the claim it corrects
+    so a skimmer cannot reach the stale text without the marker.
+
+THE FOUR THINGS AN AGENT FOLLOWING THE OLD FILE WOULD HAVE GOT WRONG:
+
+    3-seed bench, no stated resolution   -> now states it only sees above ~60
+    worst seat read as a floor           -> now flagged as the modern:CHN coin
+    5-point rush threshold               -> now flagged as not well-formed
+    training capped at ~1,000 turns      -> now marked SUPERSEDED by journal 272
+
+The fourth is the one worth dwelling on. Journal 272 retired that rule and the
+retirement was written into BACKLOG.md line 479. LOOP.md kept presenting it as
+live for 27 entries. Every iteration of this sequence read LOOP.md first, and
+the correction was only reachable by reading the backlog to line 479 -- which is
+correct-the-index-with-the-body, at the level of the protocol rather than a
+memory. The loop has been maintaining its journal and its backlog and not the
+document that governs both.
+
+SCOPE, AND WHY I STOPPED WHERE I DID. LOOP.md is the loop's protocol. Hard rule
+5 reserves "rewriting AGENTS.md" for the user and does not name LOOP.md, and the
+file already carries journal-sourced STANDING sections (journal 26, journal
+29b), so maintaining it is within what the loop has always done. But rewriting
+the protocol one runs under is the kind of thing that should be visible, so
+every edit is additive: nothing deleted, nothing reworded, each original
+sentence left exactly where it was. The user can read the diff as "what the
+journal learned that the protocol did not know" and revert any hunk
+independently.
+
+WHAT I DID NOT DO. I did not change the rush guard's threshold, the seed count,
+or the seat set -- those are decisions (items 19, 26, 16), and a document
+correction is not the place to make them. The markers say the rule is not
+well-formed and point at the item; they do not replace it with a number I chose.
+
+PENDING COMMIT (docs/ai/LOOP.md):
+
+    Bring LOOP.md up to date with its own journal
+
+    The protocol still told the next agent to cap training near 1,000 turns on
+    a curve journal 272 retired, to read the worst seat as a floor when it is
+    usually the China coin, and to apply a 5-point threshold to a seat whose
+    two regimes are 190 points apart. Adds what journals 287-298 measured
+    about what the bench can resolve. Additive only -- nothing removed.
+
+DOCUMENT ONLY. No runs, no AI source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 300 — iteration: make OD_DECISION_HASH work on its own
+
+BACKLOG ITEM 29, the top unblocked item -- 16, 19, 24, 26, 28 and 30 are the
+user's. This is my own defect, from 1062e85, found by journal 297 when it cost
+that entry an aborted batch.
+
+THE DEFECT. OD_DECISION_HASH=1 accumulates the hash but never prints it: the
+report lived inside dumpActionHistogram(), whose atexit hook is registered only
+under OD_ACT_HIST. So the knob produced total silence, which reads as "the
+instrument ran and found nothing" rather than "the instrument never reported".
+That is a-skip-is-not-a-pass with the failure mode inverted -- an absent output
+rather than an identical one -- and it is the more dangerous direction, because
+a missing line has no shape to notice.
+
+THE FIX, four hunks:
+  * a separate `dumpDecisionHash()` that prints only the [DECHASH] line and is
+    IDEMPOTENT (a static `done` flag), so both exit hooks may be registered and
+    the line appears once;
+  * the OD_DECISION_HASH block registers that hook where it records;
+  * dumpActionHistogram calls the same function instead of printing inline;
+  * the declaration, with the reason in a comment beside it.
+
+HYPOTHESIS, and it is a four-case truth table rather than a number:
+
+    env                            [DECHASH] lines    share
+    neither                              0            21.4
+    OD_DECISION_HASH=1                   1            21.4    <- the fix
+    both vars                            1            21.4    <- not 2
+    OD_ACT_HIST=1 alone                  0            21.4
+
+Any other row is a bug: 0 in row 2 means unfixed, 2 in row 3 means the
+idempotence guard failed, and a share other than 21.4 anywhere means I changed
+the game while instrumenting it.
+
+VERDICT: KEEP. The table came back exactly as written above, all four rows.
+
+AND AN UNPLANNED CONFIRMATION WORTH MORE THAN THE FIX. The hash from this
+freshly built `build/OpenDoctrinesServer` is
+
+    14669681761325311781
+
+and journal 297 recorded, from the separately built
+`build/loop/relcheck/b/OpenDoctrinesServer`:
+
+    14669681761325311781 over 86188
+
+Identical. Two independently compiled binaries, one of them carrying today's
+source edit, decide the same 86,188 decisions in the same order. That is
+simultaneously (a) proof the edit is inert, stronger than the matching 21.4
+share, and (b) a cross-binary determinism check this project has wanted since
+the flake in memory determinism-flake-was-the-model. The instrument I was
+repairing validated its own repair.
+
+WHY THIS MATTERS BEYOND THE TWO LINES. Byte-identical hashes are the strongest
+cheap test available here: they answer "did this change anything at all" with
+no seeds, no statistics and no resolution floor -- which is exactly what the
+bench cannot do, since journal 296 put its floor at ~60 points. Journal 297
+used it to establish that four of eleven reflexes never run. That instrument
+now works without knowing the incantation.
+
+PENDING COMMIT (src/ai/AISystem.cpp and src/ai/AISystem.h -- FOUR hunks, and
+the file is shared, so stage the hunks rather than the files):
+
+    Print the decision hash without needing OD_ACT_HIST
+
+    The [DECHASH] report lived in dumpActionHistogram, whose atexit hook is
+    registered only under OD_ACT_HIST, so OD_DECISION_HASH=1 alone recorded a
+    hash and printed nothing. Silence reads as "found nothing". Split the
+    report into its own idempotent hook, registered by either instrument.
+
+    Verified inert: the same seat, seed and model gives share 21.4 in all four
+    env combinations, and the hash matches the one journal 297 recorded from a
+    separately built binary.
+
+INSTRUMENT ONLY. No AI behaviour changed -- proven by an identical decision
+hash, not merely an identical score. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). Nothing else in src/ touched.
+
+## 301 — iteration: a source comment that asserts a number the bench cannot find
+
+BACKLOG ITEM 24, and it is top of the queue only because I am correcting
+myself. I filed 24 and 28 as "another session's file -- for the user to place"
+and deferred them twice. That was over-cautious: hard rule 1 governs GIT
+OPERATIONS -- commit, add, stash, checkout -- not edits, and this loop edits
+src/ as its normal mode. Journal 300 edited AISystem.cpp, built and measured.
+A comment correction backed by 48 of my own runs is smaller and more reversible
+than that. The deferral was not caution, it was avoiding a judgement call by
+relabelling it someone else's.
+
+WHAT THE COMMENT CLAIMS, above the OD_CALM_GATE default:
+
+    "OFF by default: gating the calming doctrine on current headroom moved
+     1914:SWE seed 20260801 from 3.4 to 2.4 and N24 from 227 to 209 (all
+     seats)."
+
+That is one seed, one model, on the all-seats metric containing 1914:SWE (par
+1.0) and modern:CHN (par 2.5), both of which journal 287 showed score 500 or 0.
+
+WHAT JOURNAL 295 MEASURED, two models, 8 fresh seeds, 48 runs:
+
+    graded pair FRA+USA   N24 +21 CI [-37,+79]    N47 +34 CI [-43,+110]
+    three-seat metric     N24 +56                 N47  -2
+
+On the same metric the comment quotes, the effect is +56, not -18. Opposite
+sign, and neither model can distinguish it from zero.
+
+THE DEFAULT IS STILL RIGHT. The same comment carries a mechanism argument -- "a
+calming doctrine the treasury cannot carry still calms; the cascade repeals it
+later at a price smaller than the rebellion it prevented" -- which is a claim
+about how the game works, is unaffected by any of this, and is now the ONLY
+support for the default. The number beside it is what fails.
+
+THE CHANGE: replace the one-seed figure with the 48-run result and say plainly
+that the mechanism is what carries the default. Keep every other sentence.
+Comment only -- no code, no behaviour.
+
+HYPOTHESIS, and it is the strictest available: a comment-only edit must leave
+the DECISION HASH byte-identical. Journal 300 fixed OD_DECISION_HASH so it
+prints on its own; this is its first use on a change it was not written for.
+
+    before the edit   14669681761325311781 over 86188
+    after the edit    must be identical, or I changed behaviour while
+                      editing a comment and need to find out how
+
+A matching seat share would NOT be sufficient evidence here -- scores can
+coincide. The hash is the test.
+
+SOURCE COMMENT ONLY. No model written. Paths: src/ai/AISystem.cpp,
+LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. The comment now states what was measured, and the edit is proven
+inert by the strictest test available.
+
+    before   14669681761325311781 over 86188   share 21.4
+    after    14669681761325311781 over 86188   share 21.4
+
+Byte-identical hash over an identical decision count, from a rebuilt binary.
+The same 86,188 decisions in the same order. A matching share alone would not
+have settled it -- two runs can score alike for different reasons -- and this is
+the first use of journal 300's fix on a question it was not written for.
+
+Also checked mechanically rather than by eye: stripping comment lines from both
+versions of AISystem.cpp and diffing leaves NO difference, so nothing outside
+the comment moved.
+
+WHAT THE COMMENT SAYS NOW. The mechanism argument keeps its place and is named
+as the reason for the default. The one-seed figure is replaced by journal 295's
+48 runs, with the note that gating reads +56 on the very metric the old number
+quoted -- opposite sign to the -18 it asserted -- and that the bench cannot
+resolve it either way against a ~60-point floor. It also records WHY the old
+number was wrong (the all-seats metric contains two 500-or-0 seats), so the
+next reader does not re-derive it.
+
+WHAT I GOT WRONG, and it is the reusable part of this entry. I filed items 24
+and 28 as "another session's file -- for the user to place" and skipped them
+twice while doing four iterations of harder work. Hard rule 1 lists git
+operations: commit, add, stash, checkout, restore, reset. It says nothing about
+editing, and editing src/ is what this loop DOES -- journal 300 edited the same
+file, rebuilt and measured, without hesitating. The difference was that 300's
+edit was mine and 24's was someone else's prose, and I converted a social
+hesitation into a procedural rule and wrote it into the backlog as if it were
+one. A false blocker in a backlog is worse than an open item, because it stops
+looking like work.
+
+The honest rule: correct a factual claim in shared source when you have the
+measurement, additively where possible, with the evidence in the comment so the
+owner can check it. Leave STYLE and DESIGN alone. That is what distinguishes
+item 24 -- a number contradicted by 48 runs -- from rewriting someone's
+approach.
+
+PENDING COMMIT (src/ai/AISystem.cpp, one hunk, comment only -- shared file, so
+stage the hunk):
+
+    Correct the calm-gate comment's evidence
+
+    It cited one seed on the all-seats metric (N24 227 -> 209) as the cost of
+    gating the calming doctrine. That metric contains 1914:SWE and modern:CHN,
+    which score 500 or 0; journal 295 re-measured on two models and 8 fresh
+    seeds and gating reads +56 there, not -18. The default is unchanged and
+    still right -- on the mechanism argument in the same comment, which is now
+    named as the reason.
+
+    No code change: decision hash identical over 86,188 decisions.
+
+SOURCE COMMENT ONLY. No AI behaviour changed, proven by hash. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 302 — iteration: two reflex headers that lie, and an audit that lied too
+
+BACKLOG ITEM 28, unblocked by journal 301 correcting my own false blocker.
+Journal 297 found two section headers in AISystem.cpp claiming "on by default"
+for reflexes that default OFF. Rather than fix the two I happened to have
+grepped, I audited every reflex header against its code -- fixing two and
+leaving others wrong would be the same failure journal 299 found in LOOP.md.
+
+THE AUDIT FOUND MORE THAN THE ITEM NAMED, AND ALSO GOT SOMETHING WRONG.
+
+    reflex                 real default        header
+    garrison/redeploy/fortify/austerity/campaign/manpower/amphibious
+                           on                  (no claim)
+    callToArms             OFF OD_CALL_REFLEX  "on by default"   CONTRADICTS
+    withdraw               OFF OD_WITHDRAW_..  "on by default"   CONTRADICTS
+    peace                  OFF OD_PEACE_REFLEX (names the var, no claim)
+    pacification           OFF OD_PACIFY_..    (no header claim)
+    naval                  OFF OD_NAVAL_..     "off by default"  correct
+    industry               OFF OD_INDUSTRY_..  "off by default"  correct
+    researchAusterity      OFF OD_RESEARCH_..  (no header claim)
+    siege                  ON at difficulty 3  (no wrong claim)
+
+MY AUDIT INSTRUMENT MISLABELLED SIEGE and I nearly wrote it down. The regex
+looked for `getenv("OD_...") && atoi` within 30 lines of the function and
+called that an off-by-default gate. siegeReflex's actual line is
+
+    const bool on = siegeEnv3 ? atoi(siegeEnv3) != 0 : difficulty().useSiegeReflex;
+
+-- its default comes from the DIFFICULTY TABLE, not an env var, and the regex
+had matched an unrelated OD_SIEGE_RESEARCH nearby. The tell was that the audit
+contradicted a MEASUREMENT: journal 297 ablated siege and the decision hash
+moved, so siege runs. When a reading instrument disagrees with a measured fact,
+the instrument is the suspect. This is journal 279's two-failed-regexes lesson
+arriving a third time, and the only reason it cost nothing is that there was a
+measurement to check it against.
+
+Siege is therefore ON at the bench's difficulty 3 -- established by ablation,
+not by reading the table, which memory eval-difficulty-selects-faculties says
+to distrust anyway.
+
+AND A CORRECTION TO JOURNAL 297. That entry concluded "the AI runs seven
+reflexes". That is right about the ELEVEN ABLATABLE ones, which is all it
+tested, but the dispatch calls fifteen. The full picture:
+
+    ON by default (8)   garrison redeploy fortify austerity campaign manpower
+                        siege(difficulty) amphibious
+    OFF by default (7)  callToArms withdraw peace pacification
+                        naval industry researchAusterity
+
+naval, industry and researchAusterity are not in OD_ABLATE at all, so journal
+297 could not have seen them. Three more pieces of the AI are switched off than
+that entry reported.
+
+THE CHANGE: the two contradicting headers only. naval and industry already say
+"off by default" correctly; peace, pacification and researchAusterity make no
+header claim, so there is nothing to correct -- adding claims to them is a
+different job and not this item.
+
+HYPOTHESIS: comment-only, so the decision hash must be byte-identical --
+14669681761325311781 over 86188, as journals 300 and 301 both recorded.
+
+SOURCE COMMENT ONLY. Paths: src/ai/AISystem.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. Both headers now say OFF by default, and the edit is proven
+inert: hash 14669681761325311781 over 86188, share 21.4 -- identical to
+journals 300 and 301 from a rebuilt binary. Comment-line stripping confirms no
+non-comment line moved.
+
+    7296  // ── CALL TO ARMS REFLEX (OD_CALL_REFLEX, OFF by default) ──
+    7390  // ── WITHDRAW REFLEX (OD_WITHDRAW_REFLEX, OFF by default) ──
+
+callToArms no longer contradicts itself three lines later: its body comment
+already said "OFF by default. It fills the hole it was written for -- calls go
+from 3 to 54 a world ... but it costs on both instruments" and then explains
+why, with numbers. The header was the wrong half all along.
+
+WHAT I LEFT ALONE, deliberately. naval and industry already say "off by
+default" correctly. peace, pacification and researchAusterity make no claim in
+their headers -- there is nothing to CORRECT there, and adding claims is a
+different job than fixing false ones. Item 28 was about contradictions, and
+there were exactly two.
+
+THE PART WORTH KEEPING IS THE AUDIT'S OWN FAILURE. My regex called siegeReflex
+off-by-default; it is on, and journal 297 had already ablated it and watched
+the decision hash move. A reading instrument disagreed with a measurement and
+the measurement was right. That is the third time in this project a
+quick-classification regex has produced a confident wrong answer (journal 279
+had two at once, giving incompatible counts). The pattern is now clear enough
+to state: A REGEX THAT CLASSIFIES CODE BY NEARBY TEXT IS A GUESS. It is fine
+for FINDING candidates and worthless for DECIDING them, and the only reason
+this one cost nothing is that a measured fact existed to contradict it.
+
+I also had to correct journal 297's headline. "The AI runs seven reflexes" is
+true of the eleven ablatable ones and misses the dispatch's other four. The
+count is eight on, seven off -- naval, industry and researchAusterity are
+default-off and are not in OD_ABLATE at all, so that entry could not have seen
+them. Three more pieces of the AI are switched off than it reported. Corrected
+in memory as well as here.
+
+PENDING COMMIT (src/ai/AISystem.cpp, one hunk, comment only -- shared file, so
+stage the hunk; it sits alongside journal 301's hunk in the same file):
+
+    Two reflex headers said "on by default" and are off
+
+    callToArms and withdraw both self-gate off behind their own env vars;
+    callToArms' own body comment says so three lines below the header that
+    claimed the opposite. Journal 297 confirmed both by ablation -- identical
+    decision hash, so they never run.
+
+    No code change: hash identical over 86,188 decisions.
+
+SOURCE COMMENT ONLY. No AI behaviour changed, proven by hash. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 303 — iteration: put the correction where the stale claim is read
+
+BACKLOG ITEM 27, open because I deferred it. Journal 296 established that the
+8-seed bench only resolves effects above ~60 points, and that four earlier
+entries therefore say "no effect" where the evidence supports "not resolvable
+at 24 runs". I wrote there that "the entries themselves are left as written,
+with this pointer", and filed the item.
+
+THAT IS THE EXACT FAILURE JOURNAL 299 FOUND THREE ENTRIES LATER. LOOP.md kept
+teaching a rule journal 272 retired because the retirement was written into the
+backlog and nothing carried it into the document being read. Journal 296's
+correction has the same shape: it is real, it is recorded, and it is 300 lines
+below the claims it corrects. A reader opening entry 285 to see what was
+learned about fortifyReflex has no reason to scroll to 296.
+
+WHAT THE FOUR ENTRIES SAY, and what the evidence supports:
+
+    290   "bar 0.65 +21 CI [-31,+73] 4/8 seeds -- no effect"
+          "no fortify +38 CI [-18,+94] 7/8 seeds -- no effect"
+    293   null on the graded pair for N47 (+17, CI [-39,+73])
+    295   "Null. By the rule set beforehand ... the default stands."
+    285   the fortify candidate, +26 CI spanning zero
+
+Every one of those intervals is narrower than the instrument's floor. "No
+effect" claims the effect is absent; the data says only that it cannot be seen
+at 24 runs. NO VERDICT MOVES -- each was a decision to leave a default alone,
+and "cannot distinguish from zero" is sufficient grounds for that. But the
+record should not claim more than it measured, and an entry read on its own
+currently does.
+
+THE CHANGE: a CORRECTION block immediately under each of the four headings, so
+it is read before the claims rather than after them. Additive -- nothing
+reworded, nothing deleted, exactly the approach journal 299 used on LOOP.md so
+the user can see and revert each hunk.
+
+ALSO, BOOKKEEPING I SHOULD HAVE DONE EARLIER. Two backlog parents are unstruck
+while all their children are settled: item 1 (all three sub-bullets settled in
+journals 270-272) and item 10 (superseded by 10b, all three done in 293/295/
+297). They read as open work and are not. That is the inverse of journal 301's
+false blocker -- a false OPEN item -- and it is the same defect: the queue
+misrepresents what is left. Striking them is not an experiment and I am not
+counting it as one; it is correcting the same record this iteration is about.
+
+HYPOTHESIS, checkable without a bench: after the edit, each of the four entries
+must carry the correction within its first ten lines, no original line may be
+missing from the file, and the journal's entry count must be unchanged.
+
+DOCUMENT ONLY. No runs, no source, no model. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: KEEP. The correction now sits where the claim is read.
+
+    entry 285   correction 2 lines under the heading
+    entry 290   correction 2 lines under the heading
+    entry 293   correction 2 lines under the heading
+    entry 295   correction 2 lines under the heading
+
+Verified additive: ZERO original lines absent, and 225 entry headings before
+and after, so nothing was displaced or swallowed. Each block names journal 296,
+states the ~60-point floor, gives the entry's own interval, and says plainly
+that the verdict does not move -- a reader who stops at the correction still
+gets the right answer.
+
+Journal 293's block also records the other half: its N24 result, -86 with CI
+[-124,-48], is the ONE measurement in this entire sequence that clears the
+floor. Flagging four entries as under-powered without saying which one was not
+would leave a reader thinking the whole arc measured nothing.
+
+AND THE BACKLOG WAS MISREPRESENTING ITSELF IN BOTH DIRECTIONS. Item 1's three
+sub-bullets were settled in journals 270-272 and the parent stayed unstruck;
+item 10 was superseded by 10b and 10b completed in 293/295/297, and the mangled
+parent stayed unstruck. Both read as open work for roughly thirty entries.
+Journal 301 found a FALSE BLOCKER -- an item labelled "for the user" that was
+mine to do; this is the mirror image, a FALSE OPEN -- items that look like work
+and are already done. The common failure is that settling a CHILD updates the
+child, and nothing updates the parent, which is the same missing edge journal
+299 found between the journal and LOOP.md.
+
+(Items 1 and 2 under the pacts heading are not open either: their section
+header reads "~~FOR THE USER TO DECIDE~~ — DECIDED 2026-09-04", so a reader
+meets the decision before the items. Left as they are.)
+
+THE QUEUE IS NOW EMPTY OF LOOP-ACTIONABLE WORK, and this is the first time I
+can say that having checked rather than assumed it. What remains is four items,
+all genuinely the user's:
+
+    16  the seat set -- 1939:USA is one strong model from pinning, and when it
+        does the three-seat rating becomes a one-seat rating
+    19  LOOP.md's rush guard -- a 5-point threshold on a seat whose two regimes
+        are 190 points apart
+    26  the standard seed count -- 8 seeds sees only effects above ~60, so most
+        of what this loop has tested was under-powered by a factor of four
+    30  one line in LOOP.md section 7, so a finding that contradicts the
+        protocol is carried into it in the same iteration
+
+26 is the one that decides what the loop does next. Until it is settled the
+loop can keep auditing, instrumenting and correcting -- which is what the last
+sixteen entries did, and which has genuinely improved the record -- but it
+cannot test a knob and learn anything, because almost no knob in this project
+moves the rating by 60 points.
+
+PENDING COMMIT: none new. docs/ai/LOOP_JOURNAL.md and BACKLOG.md carry this
+iteration; the earlier hunks in AISystem.cpp/.h, od_bench.py and LOOP.md are
+still pending from journals 287-302.
+
+DOCUMENT ONLY. No runs, no source, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 304 — iteration: the industry reflex, measured against the floor
+
+NO BACKLOG ITEM. Journal 303 emptied the queue of loop-actionable work -- 16,
+19, 26 and 30 are the user's -- so this iteration adds one, from a finding two
+entries old, and says so rather than idling. Journal 302 established that three
+dispatched reflexes are default-OFF and invisible to OD_ABLATE: naval, industry
+and researchAusterity. Nobody has re-priced them since the instrument was
+understood.
+
+WHY INDUSTRY AND NOT THE OTHER TWO. It is the one that matches a standing user
+request -- "we should also see the AI industrialise massively, like players
+would" -- and the one the source comment argues hardest for: industry is the
+COMPOUNDING action, the econ head is offered it on 6% of decisions and spends
+86% of its agency moving a research slider that compounds nothing. Naval has
+already been forced twice and cost ~40% of the world (memory:
+passivity-is-load-bearing), so it is not the place to start.
+
+WHAT IT RESTS ON NOW. Journal 208, hold-out C:
+
+    ind-base     308 / 81.97%
+    ind-unlock   285 / 76.33%    -5.64
+    ind-afford   230 / 52.57%   -29.40   <- OD_INDUSTRY_REFLEX=1
+    ind-both     317 / 84.77%    +2.80
+    "sum of parts -35.04, together +2.80 -- the series hypothesis is CONFIRMED"
+
+THREE SEEDS, SIX SEATS, ONE MODEL. And modern:CHN reads 18.1 / 15.7 / 15.7 /
+15.0 against a 12.5 cap, so it was PINNED AT 500 in all four arms -- an
+identical constant contributing nothing but diluting everything else by a
+sixth. Two more of the six seats are small-par (SWE 1.0, NOR 1.3).
+
+THE ARITHMETIC FIRST, which is what journal 296 exists to make routine. The
+per-seed se is ~30 at EIGHT seeds; at three it is ~30*sqrt(8/3) = 49, so the
+95% resolution is about 96 points. Journal 208's largest effect is 29 and its
+headline swing is 38. **Every number in that table is inside the noise, and the
+"series hypothesis CONFIRMED" is a statement about two differences neither of
+which the instrument could see.** That is not a criticism of journal 208, which
+predates the resolution being measured; it is why this is worth re-running.
+
+DESIGN, the established one: OD_INDUSTRY_REFLEX=1 against the existing controls
+on both valid models, 8 fresh seeds, three rung seats, read the graded FRA+USA
+pair. Controls reused from journals 282 (N24) and 289 (N47) after a one-cell
+determinism replay. 48 new runs.
+
+PRE-REGISTERED, in order:
+  1. graded counts per arm -- if an arm departs from its control's, say so
+     before quoting any mean (journal 295 caught exactly this);
+  2. does the effect appear on FRA and USA, or only on the CHN coin;
+  3. then the paired difference, per model and pooled.
+
+DECISION RULE: the default (OFF) stands unless turning it ON clears zero
+POSITIVE on both models. Given a ~60-point floor at 8 seeds, a null here means
+"not resolvable at 24 runs" and the honest conclusion is that the industry
+question CANNOT be settled by this bench at this seed count -- which is
+decision-relevant for item 26 rather than for the reflex.
+
+WHAT I EXPECT: a null on the graded pair, with the -29.40 not replicating,
+because -29 is half the floor. But journal 293 is why I write that carefully:
+there I predicted a one-run finding would collapse and it replicated almost
+exactly. I have no business predicting the direction.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: NOT RESOLVABLE AT 24 RUNS. The default (OFF) stands, and journal 208's
+-29.40 does not replicate -- but neither does anything else. This is the first
+entry where the honest answer is about the instrument rather than the rule.
+
+CHECK 1 passed cleanly, and better than the last two attempts: graded counts
+14/24 for both N24 arms and 18/24 for both N47 arms -- each arm matching its own
+control exactly. The comparison is sound on both models.
+
+CHECK 2: the effect is on the graded pair, so the knob is measurable here.
+
+CHECK 3, paired on FRA+USA, with a 20,000-draw sign-flip permutation beside
+each interval:
+
+    N24      -21   se 30   CI [-80,  +37]   4/8   perm p = 0.515
+    N47      +19   se 45   CI [-69, +107]   4/8   perm p = 0.705
+    pooled  -9.1   se 25   CI [-58, +40]
+
+    three-seat metric (what journal 208 used)
+    N24       +7   perm p = 0.878        N47   +9   perm p = 0.840
+
+Four splits of eight seeds, both models, permutation and t-interval agreeing:
+nothing. Not a small effect -- an ABSENCE OF EVIDENCE at this sample size.
+
+JOURNAL 208's -29.40 IS NOT REPRODUCED, and the arithmetic said in advance it
+could not have been a measurement. That entry ran 3 seeds on 6 seats with
+modern:CHN pinned at 500 in all four arms; the resolution there is ~96 points
+and its largest effect was 29. Its headline -- "sum of parts -35.04, together
++2.80, the series hypothesis is CONFIRMED" -- is a statement about two
+differences neither of which the instrument could see. That is not a failure of
+journal 208, which predates the floor being measured; it is what re-testing is
+for. The series hypothesis is now UNSUPPORTED rather than disproved: nobody has
+measured it with an instrument that could.
+
+WHAT I PREDICTED AND WHAT IT IS WORTH. I expected a null with the -29.40 not
+replicating, and said I had no business predicting the direction after journal
+293. The prediction was right and it is worth almost nothing: predicting "below
+the floor" for an effect of 29 against a floor of 60 is arithmetic, not insight,
+and I should have framed it that way rather than as a forecast.
+
+THE RESULT THAT MATTERS IS FOR ITEM 26. This was chosen as the best available
+candidate: a whole disabled subsystem, matching a standing user request, of a
+kind ("compounding action") that could plausibly be large. It still returns
+nothing at 24 runs per arm. At a pooled se of 25 the loop could not have
+detected a +40 industrial gain -- which would be a substantial improvement --
+and would have reported it as a null exactly as above.
+
+So the queue being empty is not the loop's real constraint; THE SEED COUNT IS.
+At 8 seeds this bench can reject a rule only when it is catastrophic and accept
+one only when it is transformative, and the entire middle -- where every
+plausible improvement lives -- is invisible. Two options, and they are the
+user's:
+
+  (a) RAISE THE STANDARD to 32 seeds: 96 runs per arm, ~100 min, se ~15,
+      resolves ~29. That makes journal 208-sized effects visible and makes each
+      question cost an iteration and a half instead of half of one.
+  (b) STOP TESTING KNOBS and spend the machine time on changes big enough to
+      clear 60 -- new mechanisms, or training, which is the only thing measured
+      to move this model by hundreds.
+
+I recommend (a) for questions already queued and (b) for new work. What I
+cannot do is keep running 24-run arms and writing "null", which is what the
+last several entries amount to and what this one would have been if I had not
+done the arithmetic first.
+
+PENDING COMMIT: none. Measurement only.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). Controls reused from journals 282 and
+289 after a determinism replay returning 21.4.
+
+## 305 — iteration: which actions can the policy not reach?
+
+NO BACKLOG ITEM -- all five open ones are the user's (32 is blocked behind 26).
+Journal 304 recommended option (b) for new work: stop testing knobs that cannot
+clear the bench's ~60-point floor, and look for changes big enough to matter.
+This iteration follows that recommendation rather than idling, and picks the
+class of question that has ACTUALLY produced this project's large wins.
+
+WHY THIS CLASS. Every big finding here was structural, not a tuning: the
+embark resolver deleting men (landings 0% -> 74%), the boat router's coast stop
+(stuck orders 71 -> 3), setRandomCountries never being called so the training
+variant mix had never executed, and journal 297's four reflexes that never run.
+None of them needed the bench, and none has a resolution floor -- a count of
+zero is zero at any sample size. That is the one instrument this project owns
+that journal 296's arithmetic does not limit.
+
+THE QUESTION: across the policy's whole action space, which actions are OFFERED
+but never PICKED, and which are never offered at all? OD_ACT_HIST reports
+picked / offered / taken-when-offered per module action, so this is two runs.
+
+WHAT IS ALREADY KNOWN, so I do not report it as new: the naval four are dead --
+the econ head is offered a port 1,914 times and a warship 6,020 times in one
+game and takes neither, while taking "raise research funding" on 95.5% of legal
+turns (the naval reflex comment records this). Memory
+navy-unreachable-not-underpriced adds 0 ships in 255,344 offers after a
+retrain. The question is whether anything ELSE is unreachable.
+
+DESIGN: OD_ACT_HIST=1 on the shipping model, 400 turns, two seats that stress
+different subsystems -- 1914:FRA:rung (a great power at war) and modern:CHN:rung
+(the unrest-heavy seat). Two runs.
+
+PRE-REGISTERED READING:
+  1. OFFERED = 0 -> the action is never legal. That is a rule or mask problem
+     and no amount of policy training can reach it.
+  2. OFFERED > 0, PICKED = 0 -> the head refuses it. Memory
+     passivity-is-load-bearing says a refusal is usually a PRICED DECISION and
+     forcing it has cost 40-90% of the world three times, so this is a finding
+     to report, NOT a thing to force.
+  3. Both seats agree -> structural. One seat only -> that seat's situation.
+
+WHAT WOULD MAKE THIS WORTH AN ITERATION: an action with offered > 0 and picked
+= 0 that is NOT one of the naval four, on both seats. That would be a piece of
+the AI that cannot be reached, found without the bench and therefore without
+the floor.
+
+WHAT I EXPECT: the naval four, and probably little else -- journal 256 audited
+the econ head and found "8 of 12 at 0.0" was one stale model, with only the
+naval four dead on N24. If that holds this entry confirms a known thing at the
+cost of two runs, which is a cheap outcome for the chance of a structural find.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: A STRUCTURAL FINDING, and a bigger one than expected. TEN of the 39
+real actions are offered and never taken -- 421,519 ignored offers across two
+runs -- and SIX of the ten are POLITICS, a head nobody has called collapsed.
+
+    module   act      offers   what it does
+    POLITICS a10     126,783   REPRESS a minority
+    POLITICS a4       94,555   cancel the costliest active policy (budget rescue)
+    POLITICS a3       70,021   pacification slider DOWN
+    POLITICS a1       30,419   enact the doctrine the mask costed
+    POLITICS a7       23,667   propose a GUARANTEE
+    ECON     a5       23,283   build a SHIP
+    ECON     a11      20,669   research node, 3rd BRANCH
+    ECON     a6       12,740   build a SHIP (2nd slot)
+    ECON     a3       11,970   found/upgrade a PORT
+    POLITICS a11       7,412   buy a province instead of invading it
+
+Zero actions are never OFFERED: every one of the 39 is legal sometimes. This is
+not a mask or rule problem. The policy is handed these and declines them.
+
+FOUR ARE ALREADY KNOWN -- the naval three (port, two ship slots) and one
+research branch. Memory econ-head-is-collapsed and
+navy-unreachable-not-underpriced cover those, and this entry confirms them at a
+second seat rather than discovering them.
+
+THE NEW PART IS POLITICS: SIX OF ITS TWELVE ACTIONS ARE UNREACHABLE. Journal
+256's map lists the econ head as the collapsed one and does not say this. The
+single largest dead action in the AI is POLITICS a10, REPRESS, at 126,783
+offers and zero takes -- which is the direct answer to the user's question from
+earlier in this sequence, "why does the AI never repress?". The answer is not
+that it repressed and it went badly; it is that in 126,783 legal opportunities
+across two games it has never once chosen to.
+
+WHAT I AM NOT CONCLUDING. A refusal here is usually a PRICED DECISION, not a
+defect -- memory passivity-is-load-bearing records that forcing war cost 90% of
+survival, forcing ships 40% of the map, and journal 256 measured repress at
+0.00% of 30,471 and read it as correct play. Three separate attempts to force
+an action the head declines have all lost heavily. So this list is a MAP OF
+WHERE THE POLICY HAS NO OPINION, not a list of things to switch on.
+
+What makes it worth an iteration is that it is floor-free. A count of zero
+takes in 126,783 offers is exact at any sample size, which is the one kind of
+statement this bench can still make after journal 296 put its resolution at ~60
+points. Whatever comes next, these ten are where the model has collapsed onto a
+corner, and a rule that depends on any of them is silently inert
+(memory: saturated-heads-return-one-number).
+
+AND THE INSTRUMENT FAILED FIRST -- the third parsing failure in this project.
+My initial audit reported "0 actions offered-but-never-picked" and "21 never
+offered at all". Both were artefacts of a greedy regex: `.*offered\s+(\d+)`
+matched through to "taken-when-**offered** 0.00%" and captured the percentage
+as the offer count, so every dead action was misfiled as never-offered. I
+caught it because the output contradicted a fact I already knew -- the naval
+comment records a warship offered 6,020 times -- and because "21 of 48 slots
+never offered" is what you would see if slots that do not exist were counted
+(NAVY has 7 real actions, WAR 8). Journal 302 said a regex classifying code by
+nearby text is a guess; this says the same about a regex parsing instrument
+output. The fixed parser was validated by reproducing a line I had read by eye
+before trusting the aggregate.
+
+PENDING COMMIT: none. Measurement only.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 306 — iteration: LOOP.md tells you to read the exponent, and the instrument is gone
+
+NO BACKLOG ITEM -- the five open ones are the user's. This follows directly from
+journal 305 and from LOOP.md's own instruction.
+
+THE PROBLEM. LOOP.md section "A dead action: '0.0' hides fifty nats" says:
+
+    "The policy-shape table prints small probabilities in exponent form since
+     journal 13 ... Before targeting a dead action, read its exponent.
+     Anything below ~1e-6 is out of reach of a bias and needs --reset-ai-head
+     and a retrain."
+
+Journal 305 produced TEN dead actions -- 421,519 offers, zero takes, six of them
+in the politics head. The very next question the protocol demands is their
+exponents, and THE TABLE DOES NOT EXIST. Nothing in src/ prints a probability
+in exponent form; grepping for it returns nothing. The instrument LOOP.md
+mandates was removed or never survived a refactor, and the protocol still cites
+it. That is journal 299's finding again in its sharpest form: not stale ADVICE
+this time, but an instruction to use a tool that is not there.
+
+WHY THE ANSWER MATTERS, and it is the difference between two very different
+projects:
+  * p ~ 1e-2 to 1e-4 -> the action is REACHABLE. A logit bias or a rule can
+    move it, and journal 305's list is a list of opportunities.
+  * p < 1e-6 -> out of reach of any bias. Those actions need --reset-ai-head
+    and a retrain, and every rule that depends on one is silently inert
+    (memory: saturated-heads-return-one-number).
+Ten dead actions are either ten candidate levers or ten reasons the head must
+be retrained, and nothing in the record distinguishes them.
+
+WHAT ALREADY EXISTS TO BUILD ON. The collapse guard accumulates exactly the
+right quantity: `nprob` is the masked softmax at temperature 1, so
+m_marginalChosen/m_marginalOffered is pi(a) = E_s[pi(a|s)] -- "what the model
+would do if nothing were added to it, which is exactly what ships", per the
+comment beside it. But those are per-instance and DECAY (MARGINAL_DECAY), so
+they are a rolling signal for the guard, not a run total I can print at exit.
+
+THE CHANGE: two static accumulators beside s_actHist, filled in the same
+OD_ACT_HIST block that journal 297 already verified inert, and printed with the
+existing per-action line in %.2e form. Six lines plus a format change. This
+restores the instrument LOOP.md assumes.
+
+HYPOTHESIS, two parts:
+  1. The edit is instrument-only, so the DECISION HASH must be unchanged:
+     14669681761325311781 over 86188, as journals 300-302 all recorded.
+  2. On journal 305's ten dead actions, the exponents will SEPARATE -- some
+     above 1e-4 and some below 1e-6. If every one of the ten came back at
+     exactly 0.0 the instrument is broken, not the policy, because a masked
+     softmax cannot return exact zero for a valid action.
+
+WHAT I EXPECT: the naval actions very small (they survived a deliberate price
+change with zero takes in 255,344 offers, memory
+navy-unreachable-not-underpriced) and the politics actions larger, because
+repress was offered 126,783 times in ONE game and the head is not otherwise
+collapsed. If politics sits near 1e-3, journal 305's list becomes a set of
+reachable levers and this loop has somewhere to go that is not blocked on
+item 26.
+
+INSTRUMENT ONLY. Paths: src/ai/AISystem.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP the instrument. AND THE ANSWER IS UNANIMOUS -- all ten dead
+actions are out of reach of a bias. Not one is a lever.
+
+    action                     offers   pi(a) FRA   pi(a) CHN
+    REPRESS a minority        126,783    0.00e+00    0.00e+00
+    cancel costliest policy    94,555    7.00e-33    7.82e-33
+    pacification slider DOWN   70,021    4.71e-10    5.73e-10
+    enact the costed doctrine  30,419    0.00e+00    0.00e+00
+    propose a GUARANTEE        23,667    0.00e+00    0.00e+00
+    build a SHIP               23,283    0.00e+00    0.00e+00
+    research node, 3rd branch  20,669    0.00e+00    0.00e+00
+    build a SHIP (2nd)         12,740    0.00e+00    0.00e+00
+    found/upgrade a PORT       11,970    0.00e+00    0.00e+00
+    buy a province, not invade  7,412    0.00e+00    0.00e+00
+
+    for contrast, actions the heads use:
+      ECON a7 research-up   9.68e-01      ECON a8 research-down 4.39e-01
+      POLITICS a8 calming   5.30e-01
+
+LOOP.md's threshold is 1e-6. The largest of the ten is 5.73e-10, four orders
+below it, and seven are zero to double precision -- the softmax underflowed,
+which means logits around -100 against the live actions. **Journal 305's list is
+not ten opportunities. It is ten things no rule can touch**, and every one needs
+`--reset-ai-head` and a retrain to become reachable at all.
+
+I WAS WRONG, AND THE WAY I WAS WRONG IS THE FINDING. I expected the politics
+actions to sit near 1e-3 and be reachable, reasoning that repress is offered
+126,783 times in one game and the head is "not otherwise collapsed". The head
+IS not otherwise collapsed -- POLITICS a8 runs at 5.30e-01 and is taken 5,384
+times. It is collapsed ONTO A SUBSET: six of its twelve actions carry
+essentially all the mass and the other six carry none. **The most-offered
+action in the entire AI has zero probability.** Frequency of opportunity told me
+nothing about reachability, and I had assumed it would.
+
+THE INSTRUMENT DISCRIMINATES, which was the pre-registered check. I wrote that
+if all ten returned exactly 0.0 the instrument would be the suspect, since a
+masked softmax cannot return exact zero. Two of the ten came back at 7e-33 and
+4.7e-10, and the live actions at 0.97 / 0.44 / 0.53, so the readout spans
+thirty-three orders of magnitude and is not stuck. The exact zeros are float
+underflow, which is a real statement about the logits rather than a missing
+value.
+
+AND IT SETTLES A QUESTION THE USER ASKED. "Why does the AI never repress?" --
+because the policy assigns repression zero probability, to the limit of double
+precision, across 126,783 legal opportunities. Not a priced refusal, not a
+close call: the action is not in the model's vocabulary any more. That also
+retires any reading of journal 256's "repress 0.00% of 30,471" as a DECISION;
+it was never a decision.
+
+WHAT THIS CHANGES FOR THE LOOP. Journal 305 read as a menu. It is instead a
+constraint: ten of 39 actions are permanently inert for this lineage, so a
+tenth of the design space is closed until a head reset, and any future rule
+touching one of them would have been silently dead (memory:
+saturated-heads-return-one-number). That is worth more than a bench result and
+it cost two runs plus an instrument that the protocol already assumed existed.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h -- shared files, stage the hunks;
+alongside journals 300-302's hunks):
+
+    Restore the policy-shape exponent LOOP.md tells you to read
+
+    LOOP.md says "before targeting a dead action, read its exponent" and cites
+    a policy-shape table that no longer exists anywhere in src/. Accumulate the
+    undecayed mean pi(a) per offered action -- the same masked-softmax quantity
+    the collapse guard reads -- and print it with the ACTHIST line in %.2e.
+
+    Filled only under OD_ACT_HIST. Verified inert: decision hash unchanged at
+    14669681761325311781 over 86,188 decisions.
+
+INSTRUMENT + MEASUREMENT. No AI behaviour changed, proven by hash. No model
+written, data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 307 — iteration: is the collapse this lineage's, or the recipe's?
+
+NO BACKLOG ITEM -- the six open ones are the user's or blocked behind item 26.
+This follows from journal 306 and answers a question that must be settled
+BEFORE the conclusion 306 reached can be acted on.
+
+WHAT 306 CONCLUDED, and the assumption inside it. Ten of 39 actions have
+pi(a) below 1e-6 on N24 -- seven at exact zero -- so none is reachable by a bias
+and "each needs --reset-ai-head and a retrain to become reachable at all". That
+recommendation assumes the collapse is a PROPERTY OF THIS LINEAGE. If every
+model collapses onto the same subset, a retrain reproduces it and the
+recommendation is worthless.
+
+THE QUESTION: do other models have the same ten dead actions?
+
+  * DIFFERENT dead sets -> the collapse is lineage-specific, a retrain can
+    plausibly land somewhere else, and 306's recommendation stands.
+  * THE SAME ten -> the collapse is structural: caused by the recipe, the
+    reward or the masks, not by where this particular descent happened to
+    land. A retrain reproduces it, 306's recommendation is wrong, and the ten
+    actions are unreachable BY CONSTRUCTION -- which is a far more important
+    finding than the one it replaces, and points at the reward rather than the
+    weights.
+
+DESIGN: OD_ACT_HIST on three models across the two seats, six runs, ~12 min.
+The models are chosen to span as much as this project has:
+
+    N24-233-holdout   the shipping model, rated 433 on the reliable seats
+    N47-218-v16       a different ladder branch, 18/24 graded (journal 289)
+    model.loop-base   the loop's declared reference, which scores 14 -- an
+                      almost untrained policy, and the one most likely to
+                      still have mass spread across its action space
+
+loop-base is the discriminating case. If even a model that plays badly enough
+to score 14 has the same ten actions at zero, they were never reachable and no
+amount of training will open them.
+
+PRE-REGISTERED, and the instrument check comes first:
+  1. Each model must show SOME live actions with pi(a) near 1 -- if a model
+     returns all zeros the readout failed for that model (a load failure would
+     look exactly like total collapse).
+  2. Then compare the dead sets: identical, overlapping, or disjoint.
+  3. A model with FEWER dead actions is evidence for lineage-specificity; one
+     with the same ten is evidence for structure.
+
+WHAT I EXPECT: partial overlap. The naval four should be dead everywhere --
+they have survived a deliberate price change and a retrain (memory
+navy-unreachable-not-underpriced) -- and I expect loop-base to have FEWER dead
+politics actions, because an undertrained policy has not yet concentrated. But
+journal 306 is why I hold that loosely: there I predicted the most-offered
+action would carry the most mass and it carried none, so my intuitions about
+this policy's shape have been wrong once already this week.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: THE COLLAPSE IS NOT THIS LINEAGE'S. Twelve actions are dead in all
+three models, including one that plays thirty times worse than the shipping
+model. Journal 306's recommendation -- "each needs --reset-ai-head and a
+retrain" -- is NOT supported, and I am withdrawing it.
+
+CHECK 1 passed: every model shows live actions at 1.00e+00 (N24 ECON a10,
+POLITICS a2, WAR a1; BASE WAR a4, NAVY a4), so no readout failed and no model
+silently failed to load -- a load failure would have looked exactly like total
+collapse, which is why the check was written first.
+
+    model   dead (pi < 1e-6 on both seats)
+    N24     16    ECON 2,3,4,5,6,9,11  NAVY 0,5  POL 1,3,4,7,10,11  WAR 6
+    N47     17    the same, plus POL 5, NAVY 1 instead of NAVY 0
+    BASE    18    ECON 2,3,4,5,6,8,11  NAVY 0    POL 1,2,3,5,6,7,9,10,11  WAR 6
+
+    DEAD IN ALL THREE (12):
+      ECON a2 a3 a4 a5 a6 a11   POLITICS a1 a3 a7 a10 a11   WAR a6
+
+REPRESS (POLITICS a10) AND THE NAVAL ACTIONS ARE DEAD IN EVERY MODEL MEASURED,
+including `model.loop-base`, which scores 14 on the reliable seats against
+N24's 433. Two policies thirty times apart in play quality agree exactly about
+which twelve actions have no mass. That is not where a descent happened to
+land.
+
+WHAT I CANNOT CONCLUDE, and it is the important limit. This does NOT show the
+architecture forbids these actions. Three trained policies agreeing could mean
+the masks or the reward make them unreachable BY CONSTRUCTION -- or it could
+mean all three learned the same correct thing, which is exactly journal 256's
+reading and memory passivity-is-load-bearing's. **The measurement separates
+"this lineage's accident" from "every lineage", and does not separate
+"structural" from "correctly learned".** The discriminating test is a freshly
+reset head: an untrained policy is near-uniform, so if `--reset-ai-head` shows
+repress at ~1/12 then the zero is LEARNED, and if it shows ~0 then it is built
+in. That is one run and I have not done it -- it needs a model file written,
+which this loop does not do without asking.
+
+MY PREDICTION WAS WRONG AGAIN, IN THE SAME DIRECTION AS 306. I expected the
+undertrained model to have FEWER dead actions, "because an undertrained policy
+has not yet concentrated". BASE has MORE (18 vs 16), and the ordering is
+monotone with play quality:
+
+    N24  23 of 39 reachable   rated 433
+    N47  22 of 39             rated 253
+    BASE 21 of 39             rated  14
+
+Better models have MORE of their action space alive, not less. Training opens
+actions rather than closing them, and the twelve common dead ones are a floor
+that none of the three has yet climbed off. That inverts the mental model I
+brought to both entries.
+
+AND A COUNTING TRAP FOUND IN PASSING. Six actions are PICKED while pi(a) is
+below 1e-6 -- ECON a2 sixty-four times, NAVY a0 nineteen thousand times. The two
+columns count different populations: `s_actHist` records the action PLAYED,
+including turns answered by the book or a scripted cohort, while `s_probSum`
+is gated on netDriven && !booked && !scripted && !league. So an action can be
+played constantly by the BOOK while the policy assigns it nothing. NAVY a0 at
+19,861 picks and pi = 2.57e-07 is the clearest case. Anyone reading the picked
+column as "what the AI does" would be reading the book.
+
+THIS ALSO CORRECTS JOURNAL 306's FRAMING. That entry called its ten "actions
+the policy never takes", derived from picked==0. The pi(a) measure gives
+SIXTEEN dead on the same model -- picks and policy mass are different questions,
+and the second is the one that decides reachability.
+
+PENDING COMMIT: none new. The instrument from journal 306 is already pending.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 308 — iteration: the flag LOOP.md prescribes has never existed
+
+BACKLOG ITEM 37, which journal 307 filed as needing the user's go-ahead because
+it "writes a model file". That was over-cautious in the same way journal 301
+diagnosed: a scratch copy under build/loop/ is what every training run in this
+project writes, hard rule 2 protects data/ai/model.bin specifically, and hard
+rule 5 reserves DELETING model files. Copying N24 to a scratch path and
+resetting the copy touches no reference and no protected file. So this is the
+loop's to do.
+
+Except it cannot be done, because the flag does not exist.
+
+    AISystem.h:2376        "Backs `--reset-ai-head`"
+    tools/ai_bench.py:582  "without a --reset-ai-head"
+    tools/ai_bench.py:951  "the head needs --reset-ai-head"
+    docs/ai/LOOP.md:301    "needs `--reset-ai-head` and a retrain"
+
+Four places instruct you to use it. `AISystem::resetModuleHead` is defined at
+AISystem.cpp:12416 and HAS NO CALLER ANYWHERE. An exhaustive grep for
+"reset-ai" across src/ and tools/ returns only those four mentions and the
+definition. The function is dead code with a documented command-line surface
+that was never wired.
+
+THIS IS THE SECOND ONE. Journal 306 found LOOP.md prescribing "read its
+exponent" from a policy-shape table that no longer existed in src/. The
+protocol now has a measured habit of naming instruments it does not have, and
+in both cases the gap sat unnoticed because nobody had needed the tool until
+this sequence started asking structural questions.
+
+WHAT THE MISSING TOOL IS FOR, in this project's own words -- the doc comment on
+resetModuleHead is a description of exactly the situation journals 305-307
+found:
+
+    "A converged softmax puts almost no mass on the actions it has learned to
+     avoid, so the corrected reward is never sampled often enough to pay --
+     the head has to be told, not persuaded."
+
+THE CHANGE: wire the flag in ServerMain.cpp, using --merge-ai three hundred
+lines above as the template -- same shape, same reasoning (static, touches no
+Game, no window, no world, so it belongs in the headless binary), handled
+before the config file because it is not a server.
+
+    --reset-ai-head <model.bin> <module>     0=econ 1=politics 2=war 3=navy
+                                             4=diplomacy
+
+THEN THE MEASUREMENT ITEM 37 ASKED FOR. Copy N24 to a scratch path, reset its
+POLITICS head, and read repress's pi(a) with the journal 306 instrument:
+
+  * repress near 1/12 (~8e-2) -> the zero in all three models is LEARNED. Every
+    one of them independently drove it to nothing, journal 256's "priced
+    refusal" reading is right, and the ten dead actions are the policy's
+    verdict rather than a defect.
+  * repress still ~0 -> it is unreachable BY CONSTRUCTION. A freshly
+    initialised head cannot sample it, so no descent ever could, and the cause
+    is upstream in the masks or the reward.
+
+VALIDATION BY DISCRIMINATION, before believing either answer:
+  1. the ORIGINAL N24 file must be byte-identical afterwards (md5), or the
+     tool edited a reference model;
+  2. the reset COPY must differ from it, or the reset did nothing;
+  3. the reset copy's POLITICS head must show many actions near 1/12 -- a
+     uniform-ish head is what "reset" means, and if it is still concentrated
+     the reset failed rather than the hypothesis resolving;
+  4. the other heads must be UNCHANGED -- resetModuleHead resets one module,
+     so ECON's pi(a) should match N24's. If every head went uniform the tool
+     reset more than asked and the politics reading means nothing.
+
+WHAT I EXPECT: near-uniform, i.e. learned. Three descents agreeing is more
+easily explained by three policies learning the same thing than by a mask,
+and a mask would more likely show as never-OFFERED, which journal 305 measured
+and found zero of. But journals 306 and 307 both inverted my expectation about
+this policy's shape, so I hold it loosely.
+
+Paths: src/server/ServerMain.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP the flag. AND THE ANSWER IS **LEARNED, NOT STRUCTURAL** -- all six
+dead politics actions come back the moment the head is reset.
+
+    action                         N24        after reset
+    a1  enact the costed doctrine  0.00e+00      6.76e-01
+    a3  pacification slider DOWN   5.73e-10      5.44e-04
+    a4  cancel costliest policy    7.82e-33      1.49e-04
+    a7  propose a GUARANTEE        0.00e+00      9.00e-02
+    a10 REPRESS a minority         0.00e+00      6.51e-01
+    a11 buy a province, not invade 0.00e+00      3.13e-02
+
+Six of six. A uniform head over 12 actions would be 8.3e-02; repress lands at
+0.65, so a fresh head does not merely permit it, it PREFERS it. **Nothing in
+the masks or the reward forbids these actions.** Three independently trained
+policies each drove them to zero on their own.
+
+ALL FOUR DISCRIMINATION CHECKS PASSED, and the fourth needed restating:
+  1. the original N24 is byte-identical afterwards -- md5 4a137043 before and
+     after, so the tool did not touch a reference model;
+  2. the copy differs (a85b5024) and the tool reported what it did: "discarded
+     436,789,020 updates; every other module kept";
+  3. the politics head went from concentrated to spread -- the reset is real;
+  4. SCOPE. The naive form of this check -- "ECON must match N24" -- FAILS on
+     three actions, and I nearly wrote that up as a defect. It is not one:
+     pi(a) is averaged over the states actually VISITED, and a different
+     politics policy visits different states, so ECON's live actions shift
+     (a1 2.81e-01 -> 5.45e-01) without its weights moving. The sharp test is
+     the DEAD set: ECON's seven dead actions are all still dead, so the reset
+     went into exactly one head. Had it reset more than asked, those seven
+     would have come alive exactly as politics' six did.
+
+WHAT THIS SETTLES, AND WHAT IT DOES NOT. It settles the question journal 307
+left open: the collapse is not built in. It does NOT make these actions a list
+of things to switch on -- "learned" is not "wrongly learned". Three descents
+agreeing, plus three separate attempts to force a declined action costing
+40-90% of the world (memory passivity-is-load-bearing), is a reasonable case
+that the policies learned something true about this game. The honest summary is
+that journal 256's "priced refusal" reading survives, on much better evidence
+than it had: it was inferred from a 0.00% rate, and it is now known that the
+alternative was available and was rejected by three independent runs.
+
+THE REMAINING PUZZLE, recorded rather than resolved. A fresh head puts 0.65 on
+repress and 0.68 on "enact the costed doctrine", and training drives BOTH to
+exactly zero. A converged softmax reaching float underflow is a long way past
+"mildly disfavoured" -- these are not marginal calls being narrowly lost. The
+reward is telling the policy something very strong about six of twelve politics
+actions, and nobody has looked at what. That is the question journals 305-308
+have been circling and it is a reward question, not a rule one.
+
+AND THE SECOND MISSING INSTRUMENT IN THREE ENTRIES. Journal 306: LOOP.md cites
+a policy-shape table that does not exist. Journal 308: LOOP.md, AISystem.h and
+tools/ai_bench.py (twice) all cite --reset-ai-head, and it had never been
+wired -- resetModuleHead sat with no caller. Both were found by trying to
+follow the protocol literally. The instruments a project documents and the
+instruments it has are different sets, and only using them tells you which.
+
+PENDING COMMIT (src/server/ServerMain.cpp, one hunk):
+
+    Wire --reset-ai-head, which four places already document
+
+    AISystem::resetModuleHead has had no caller while AISystem.h, LOOP.md and
+    ai_bench.py (twice) all tell the reader to use `--reset-ai-head`. LOOP.md's
+    rule for an action below 1e-6 is that it "needs --reset-ai-head and a
+    retrain", and journals 305-307 found twelve such actions in three models,
+    so the prescribed tool was never connected.
+
+    Same placement and argument as --merge-ai: static, no session, no port,
+    no Game. Rewrites the model in place; pass a copy.
+
+MEASUREMENT + ONE FLAG. data/ai/model.bin unchanged (md5 4a137043), every
+reference model unchanged, the reset written only to build/loop/j308/.
+
+## 309 — iteration: what the reward is telling the politics head
+
+BACKLOG ITEM 39, taken ahead of 38 and 40. Both of those are documentation
+hygiene with nothing depending on them; 39 is the open scientific question that
+journals 305-308 converged on, and the only open item that could change what
+the AI does. Saying so rather than quietly reordering.
+
+THE QUESTION. A freshly reset politics head puts 0.65 on REPRESS and 0.68 on
+"enact the costed doctrine". Training drives both to exact float underflow.
+That is far past a marginal call being narrowly lost -- something is
+annihilating six of twelve politics actions, and nobody had read the reward
+that does it.
+
+NO RUNS NEEDED. The politics reward is nine terms in one expression at
+AISystem.cpp:10362 and the repress executor is a hundred lines away. This is a
+reading, and reading is the instrument the last four entries kept reaching for
+after the bench turned out to resolve nothing under ~60 points.
+
+WHAT REPRESS ACTUALLY DOES, from the executor: it takes the DEAREST minority
+policy category and moves it to a cheaper option -- lower costPerTurn, lower
+alignmentPerTurn. **Save money, lose alignment.** That is the whole trade.
+
+WHERE THE TWO SIDES OF THAT TRADE ARE PRICED:
+
+    THE COST -- in the POLITICS reward, the head that takes the action
+      -2.5 x tanh(rebels/2)            rebellion; the largest weight here
+      -0.6 x (meanAlignment-50)/50     the alignment LEVEL
+      -0.5 x phiSgn alignment CHANGE   the potential difference
+      -> up to -3.6, continuous, through three independent channels,
+         because alignment drives rebellion chance so one act is charged twice
+         and then a third time as a level.
+
+    THE BENEFIT -- in the POLITICS reward
+      +/-0.2   a BINARY on the sign of netIncome. That is all of it.
+      -> at most +0.2, and only if the saving flips the country from deficit
+         to surplus. Memory ai-treasuries-run-at-zero says that sign sits on
+         the boundary, so it is noise rather than a gradient.
+
+    THE BENEFIT -- in the ECONOMY reward, a DIFFERENT head
+      +2.2 x (phiSgn(dNetNow) - phiSgn(netIncome))
+      +0.5 x (phiSgn(treNow)  - phiSgn(treasury))
+      -1.2 x broke
+
+**THE POLITICS HEAD PAYS THE WHOLE COST OF REPRESSION AND THE ECONOMY HEAD
+COLLECTS THE BENEFIT.** Worst case that is 3.6 against 0.2, eighteen to one,
+and the 0.2 is a sign flip rather than a magnitude. Minority spending is 18% of
+gross income (journal 252), so what politics frees is large, real, and rewarded
+in another module's return.
+
+THAT IS A CREDIT-ASSIGNMENT DEFECT, not a preference. The policy is not
+deciding repression is bad; it is being charged for an action whose payoff is
+booked elsewhere, which is a thing no amount of training can learn its way out
+of. It explains the shape journal 308 found -- underflow rather than a small
+number -- because every sample of the action returns a large negative and there
+is no counterweight in that head's return at all.
+
+AND THE SOURCE CONTRADICTS THE MEASUREMENT, which is how I found it. The
+comment beside the alignment-level term says:
+
+    "...which is exactly the state the model converged to, repressing at 207
+     per thousand country-turns against random's 88 while conciliating at a
+     twelfth of random's rate. This term does not stop pressing once the
+     damage is done."
+
+The model it describes repressed TWICE as often as random. The model that ships
+today repressed ZERO times in 126,783 offers (journal 305). So the +0.6
+alignment-level term was added to stop over-repression and it worked, and then
+kept working: the action went from 207 per thousand to exact zero. The comment
+records the disease and not the cure's overshoot, and journal 256 later read
+the resulting 0.00% as correct play.
+
+WHAT I AM NOT DOING. Not changing the reward. Every reward change this project
+has measured went badly -- memory diplomacy-rules-not-rewards records that
+shaping "only ever found the corners", and journals 05-10 moved a saturated
+head between corners without improving it. A defensible fix here is to pay the
+politics head for the money it frees, in proportion, rather than by a sign; but
+that is a reward change on a converged model, which by the comment on
+resetModuleHead means "the head has to be told, not persuaded" -- it needs the
+reset AND a retrain to be measurable at all, and journal 304 showed the bench
+cannot see anything under 60 points at the current seed count. This is
+therefore blocked on item 26 exactly as item 34 is.
+
+WHAT IT IS WORTH ANYWAY: four entries of measurement now have a mechanism, and
+it is checkable by anyone reading one expression. Journals 305-308 established
+WHAT (ten to sixteen dead actions), that it is not the masks (306), not this
+lineage (307) and not structural (308). This is WHY, for the largest of them.
+
+PENDING COMMIT: none. Reading only -- no source touched this iteration.
+
+MEASUREMENT ONLY, and not even that: no runs. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 310 — iteration: the picked column counts the book
+
+BACKLOG ITEM 38, the top unblocked item. Journal 307 found six actions PICKED
+while their policy mass is below 1e-6 -- NAVY a0 at 19,861 picks and
+pi(a) = 2.57e-07. The two numbers count different populations:
+
+    s_actHist   the action PLAYED, at the executor -- including every turn the
+                BOOK answered, and every turn played by a scripted or league
+                cohort
+    s_probSum   gated on netDriven && !booked && !m_scriptedThisCountry &&
+                !m_leagueThisCountry -- the learning policy's own decisions
+
+So the table's "picked" column is not "what the AI does". It is "what happened",
+and on a seat where the book is dense most of it is the book.
+
+THIS ALREADY COST AN ENTRY. Journal 306 built its ten-dead list from picked==0
+and called them "actions the policy never takes". The policy-mass measure gives
+SIXTEEN dead on the same model, because an action can be played constantly by
+the book while the policy assigns it nothing -- and, the other way, an action
+the policy would never choose can show a healthy pick count. I corrected the
+framing in journal 307 and filed this to stop the next reader repeating it.
+
+THE CHANGE, and it is more than the note the item asked for. A note says "this
+column includes the book"; a reader who does not read the note is still misled,
+and the whole reason this is filed is that I misread it myself with the
+knowledge fresh. So: COUNT THE POLICY'S OWN PICKS SEPARATELY and print both.
+The gate already exists -- the marginal block three hundred lines above the
+histogram has exactly the right condition -- so this is one counter incremented
+inside it and one column in the output.
+
+HYPOTHESIS, a discrimination test with a known answer on each side:
+  * NAVY a0 -- 19,861 plays at pi(a) 2.57e-07 -- must show a policy-pick count
+    at or near ZERO. If it shows 19,861 the new counter is behind the wrong
+    gate and I have built the same bug twice.
+  * ECON a7 "research funding up" -- pi(a) 0.97, the most-used action in the AI
+    -- must show policy picks close to its play count. If it shows zero the
+    counter is not incrementing at all.
+  * the decision hash must be unchanged: this is instrumentation.
+
+Paths: src/ai/AISystem.cpp, src/ai/AISystem.h, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. Both discrimination cases land exactly, the hash is unchanged,
+and the new column immediately shows the problem was much larger than the one
+action that prompted it.
+
+    ECON a7  played 41,297   BY POLICY 40,355   pi(a) 9.68e-01   the policy
+    NAVY a0  played 19,861   BY POLICY      0   pi(a) 2.57e-07   the book
+
+    [DECHASH] 14669681761325311781 over 86188 -- unchanged, instrumentation only
+
+ONLY 56% OF WHAT HAPPENS IS THE POLICY, on one seat over 400 turns:
+
+    module      played   by policy   policy share
+    ECON        98,419      81,699      83.0%
+    POLITICS    30,658      17,890      58.4%
+    WAR        105,533      50,469      47.8%
+    NAVY        38,424       3,048       7.9%
+    ALL        273,034     153,106      56.1%
+
+**THE NAVY MODULE IS 92% BOOK.** Fewer than one navy action in twelve is the
+learning policy's choice; NAVY a0 is 19,861 plays and not one of them. Anyone
+reading the histogram as "what the AI does with its fleet" has been reading the
+book almost entirely -- and the naval story in this project's记 record (memory
+navy-unreachable-not-underpriced, the naval reflex comment, journal 256's map)
+was built on a column that, for that module, is 92% somebody else.
+
+The worst single misreadings, by absolute gap:
+
+    WAR a2       64,292 played,  26,230 by policy   59% wrong
+    NAVY a0      19,861 played,       0 by policy  100% wrong
+    ECON a0      10,949 played,   2,506 by policy   77% wrong
+
+I DID NOT EXPECT THE SCALE. The item was filed off ONE action -- NAVY a0 -- and
+I wrote the change expecting it to annotate an edge case. Nearly half of all
+decisions in the run are not the policy's, and three of the four modules are
+under 60%. The fix that mattered was not the note the item asked for; it was
+splitting the column so the gap is visible without anyone having to remember
+this entry exists.
+
+WHY THE NOTE WOULD NOT HAVE BEEN ENOUGH, stated plainly because I argued myself
+out of the smaller change: I misread this column myself in journal 306, with
+the gate conditions three hundred lines away and the knowledge fresh, and had
+to correct the framing in 307. A note is read by people who are already
+suspicious. A column is read by everyone.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h, three hunks -- shared files, stage
+the hunks, alongside journals 300/302/306's):
+
+    Count the policy's own picks, not just what got played
+
+    s_actHist counts the action PLAYED, including every turn answered by the
+    book and every scripted or league cohort turn; s_probSum sits behind
+    netDriven && !booked && !scripted && !league. The histogram's "picked"
+    column was therefore "what happened", and on this seat only 56% of that is
+    the policy -- 7.9% for the NAVY module, where NAVY a0 shows 19,861 plays
+    and zero policy picks. Journal 306 built a dead-action list from the wrong
+    column. Adds a BY POLICY column behind the correct gate.
+
+    Instrumentation only: decision hash unchanged over 86,188 decisions.
+
+INSTRUMENT ONLY. No AI behaviour changed, proven by hash. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 311 — iteration: auditing the instruments LOOP.md names
+
+BACKLOG ITEM 40, filed after journals 306 and 308 each found the protocol
+prescribing a tool that did not exist. The item asks for one pass over LOOP.md
+checking that every instrument it names is real, "cheap, and the failure mode is
+silent".
+
+THE AUDIT. Extracted every OD_* variable, every --flag and every tools/ path
+LOOP.md mentions, then checked each against src/ and tools/ by content, not by
+assumption:
+
+    7 env vars named     all 7 found      (OD_ABLATE, OD_BENCH_TURNS,
+                                           OD_DIPLO_PACT_WEIGHT, OD_LR_SCALE,
+                                           OD_MAX_GAMES, OD_STAGNATION_TURNS,
+                                           OD_WAR_BIAS)
+    11 flags named       10 found, ONE MISSING
+    3 tools named        all 3 exist
+
+(The audit's own first attempt failed: `grep -rl --binary src/` has grep eating
+the flag as its own option, and it hung. Fixed with `-F -e`. That is the fourth
+tooling-parses-wrong in this project and the cheapest -- it announced itself by
+hanging rather than by returning a confident answer.)
+
+THE MISSING ONE IS `--probe-trade`, AND IT IS DOCUMENTED IN THREE PLACES:
+
+    docs/ai/LOOP.md:381                   "verified with --probe-trade"
+    docs/ai/BACKLOG.md:398                "TOOL: OpenDoctrinesServer
+                                           --probe-trade <seat> ... the ONLY way
+                                           to exercise the trade rules (no eval
+                                           proposes trades)"
+    docs/design/community-roadmap:1193    "A --probe-trade server flag EXISTS."
+
+It does not. And the third of those is the memory review-response-doc-is-a-plan
+in the wild: a design document asserting that something was built.
+
+THE MACHINERY IS THERE, exactly as with --reset-ai-head three entries ago.
+`Game::runTradeProbe(seatSpec, seed)` is defined at Game_AITrain.cpp:2782,
+declared at Game.h:383 with a full doc comment -- "Constructs trade offers a
+neighbour could make to one AI country and asks decideDiplomacy directly ...
+Verifies the trade RULES (journal 35f), which no eval exercises because nobody
+in an eval ever proposes a trade" -- and it HAS NO CALLER ANYWHERE. Someone
+wrote the probe, documented it in three places, and never connected it.
+
+WHY IT MATTERS MORE THAN THE COUNT. Journal 256's map records trade as
+"offered 7.5%, taken 0.00%" and lists it among the three big refusals. The
+trade RULES are therefore a subsystem with a 0.00% action, no eval coverage by
+construction, and its only test unreachable. That is the same shape as repress,
+which journals 305-309 spent four entries on and found a credit-assignment
+defect behind.
+
+THE CHANGE: wire it, on the same argument as journal 308. Unlike
+resetModuleHead this one needs a Game, so it goes in the block that already
+constructs one for --eval-ai rather than in the pre-config section.
+
+    --probe-trade <map:ISO> [--seed N]
+
+HYPOTHESIS: the flag runs the probe and prints PROBE_OK or PROBE_FAIL with
+[PROBE] lines. Either verdict is a result -- PROBE_FAIL would mean the trade
+rules are broken and nobody could have known; PROBE_OK means they are right and
+the 0.00% take rate is about the policy rather than the rules. I do not know
+which, and that is the point of connecting it.
+
+The decision hash must be unchanged: this adds a flag, it does not touch play.
+
+Paths: src/server/ServerMain.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. The audit found one missing instrument of twenty-one, it was
+wired, and its first run says **PROBE_OK (5/5 rule cases as expected)** --
+the trade rules are correct and had never been executed.
+
+    [PROBE] gift: B cedes a province, asks nothing      -> ACCEPT
+    [PROBE] robbery: A's province for 1 gold            -> REFUSE
+    [PROBE] robbery: A's province for nothing           -> REFUSE
+    [PROBE] sale: A's province for its price + 200      -> ACCEPT
+    [PROBE] gift: 300 gold, nothing asked               -> ACCEPT
+    [PROBE] small loss: A pays 50 for nothing           -> REFUSE (head's call)
+    [PROBE] swap at a 1-gold premium for A              -> ACCEPT (head's call)
+    PROBE_OK (5/5 rule cases as expected)
+
+THAT IS A RESULT ABOUT THE 0.00% TRADE RATE. Journal 256 lists trade among the
+three big refusals -- "offered 7.5%, taken 0.00%" -- alongside repress and
+pacify-down, and read all three as priced decisions. For trade the rules now
+have evidence: a gift is accepted, a robbery refused, a clearly favourable sale
+accepted, all by rule and before the head is consulted. The 0.00% is NOT the
+rules failing to fire. It is what it looked like: nobody in an eval ever
+proposes a trade, so the branch is never reached in play.
+
+TWO FAILURES BEFORE IT RAN, both mine, both instructive:
+
+  1. `[PROBE] load failed`. I guessed the data dir lacked maps (it did not),
+     then guessed m_headless (it gates History, Policies and TurnLogic, not
+     loading). Both guesses were wrong and cost a round trip each. Reading the
+     UNFILTERED output gave it in one line: "Failed to load land_sea.png".
+     runHeadlessAI's first statements include srvResolveDataDir and my block
+     did not call it, so the .odmap was found and its sibling assets were not.
+     I filtered the probe's output to [PROBE] lines and then debugged blind --
+     the grep that made the result readable is the grep that hid the cause.
+
+  2. The audit's own first pass HUNG, because `grep -rl --binary src/` has grep
+     eating the flag as an option. It announced itself by hanging rather than
+     by returning a confident wrong answer, which makes it the cheapest of the
+     four parsing failures this project has now had.
+
+A SIDE EFFECT WORTH RECORDING: the probe SAVES THE MODEL on exit -- "[AI] Model
+saved (4166584 bytes)" and a league checkpoint -- because it constructs a real
+AISystem and the normal teardown persists it. It wrote to the --data directory
+I passed, build/loop/safedata/ai/model.bin, which is scratch. Checked
+immediately rather than assumed:
+
+    data/ai/model.bin              4a137043...  UNCHANGED
+    N24-233-holdout.bin            4a137043...  UNCHANGED
+    model.loop-base.bin            badfe012...  UNCHANGED
+
+**Anyone running --probe-trade must pass --data to a scratch tree.** Against a
+real data directory it would overwrite that tree's model.bin, which for the
+default tree is the one file hard rule 2 protects. Filed as item 43; the honest
+fix is for the probe not to save at all, but that is a change to shared code
+with a behaviour effect, and this iteration has already spent its budget.
+
+THE AUDIT'S OTHER RESULT: 20 of 21 instruments LOOP.md names are real. The
+protocol is in better shape than two entries suggested -- journals 306 and 308
+each found a gap and I had begun to assume the file was riddled with them. It
+has three, now all closed: the policy-shape table (306, rebuilt), --reset-ai-head
+(308, wired) and --probe-trade (this entry, wired).
+
+PENDING COMMIT (src/server/ServerMain.cpp, one hunk on top of journal 308's):
+
+    Wire --probe-trade, which three documents already describe
+
+    Game::runTradeProbe has existed with no caller while LOOP.md, BACKLOG.md
+    and the community roadmap all referred to the flag -- the roadmap asserting
+    it "exists". It is the only thing that exercises the trade rules, since no
+    eval ever proposes a trade. Resolves the data dir first, as runHeadlessAI
+    does, or the map's sibling assets are not found.
+
+    First run: PROBE_OK, 5/5 rule cases. NOTE it saves the model on exit --
+    pass --data to a scratch tree.
+
+INSTRUMENT ONLY. No AI behaviour changed. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd), verified after the run.
+
+ADDENDUM to 311 -- the broken audit finished, and its answer was worse than
+"hung".
+
+The first pass was killed after it stalled and the corrected pass replaced it.
+That first run then completed in the background and printed this:
+
+    --compare        !! NOT FOUND ANYWHERE
+    --label          !! NOT FOUND ANYWHERE
+    --model          !! NOT FOUND ANYWHERE
+    --train-ai       !! NOT FOUND ANYWHERE
+    --worker         !! NOT FOUND ANYWHERE
+    ... 11 of 12 flags
+
+A clean, aligned, confident table saying LOOP.md names ELEVEN instruments that
+do not exist. Every one of those flags is real; `--train-ai` is how this
+project trains.
+
+THE MECHANISM, checked rather than assumed:
+
+    grep -rl "--train-ai" tools/
+      -> ugrep: invalid option --train-ai, did you mean --tabs, --tag, ...
+      -> empty stdout, EXIT CODE 0
+
+The pattern starts with `--`, so grep parses it as one of its own options,
+rejects it, prints to stderr and exits ZERO with no stdout. My helper read
+stdout only and returned "not found". `--binary` was the one that "worked" --
+because it IS a real grep option, so that call ran with no pattern at all and
+matched files at random (LICENSE, CMakeLists.txt).
+
+WHY THIS IS THE MOST DANGEROUS OF THE FIVE PARSING FAILURES so far. The other
+four announced themselves: two regexes disagreeing (journal 279), a hang, a
+NONE where a number belonged (297), an audit contradicting a measurement (302).
+This one produces a tidy table with plausible-looking content and exit code 0.
+Had it returned inside the timeout I would have had "eleven of LOOP.md's
+instruments are missing" in front of me -- a spectacular finding, entirely
+false, and consistent with the two REAL gaps found in journals 306 and 308,
+which is exactly what would have made it believable.
+
+What saved it was not judgement. It was that the broken version was slow.
+
+THE RULE: a subprocess helper must check the exit code AND stderr, not just
+stdout -- and when a tool is fed data that could be mistaken for its own
+options, pass it after `--` or via `-e`. A validation case with a KNOWN answer
+belongs in any such helper: had the audit included "--train-ai must be found",
+it would have failed loudly on its first run instead of producing a table.
+
+The corrected audit's result stands: 20 of 21 instruments real, `--probe-trade`
+the one gap, now wired, PROBE_OK 5/5.
+
+## 312 — iteration: the probe I wired can overwrite the one protected file
+
+BACKLOG ITEM 43, taken ahead of item 42 and the reason is safety rather than
+ordering. Item 42 is a re-read of data already on disk. Item 43 is a path I
+MADE REACHABLE LAST ITERATION that overwrites data/ai/model.bin -- the file
+hard rule 2 names as "the only copy of tens of millions of updates". Before
+journal 311 nobody could run the trade probe at all; now anyone can, and the
+default invocation destroys the model. A hazard I introduced outranks a re-read.
+
+WHAT HAPPENS. Game::runTradeProbe constructs a real AISystem, and
+~AISystem() calls saveModel() and writeLeagueCheckpoint() unconditionally. So
+the probe's exit writes <data>/ai/model.bin. Journal 311 passed --data to a
+scratch tree and checked the protected file afterwards, which is why this was
+noticed rather than suffered; run without --data it would have taken the real
+one.
+
+THE FIX IS ALREADY IN THE CODEBASE and I should have used it in 311.
+`AISystem::s_readOnlyModel` is documented as "Observation mode: load the model
+and act on it, but never write it back", and saveModel() returns early on it.
+Both existing measurement entry points set it:
+
+    Game_AITrain.cpp:901     --eval-ai
+    ServerMain.cpp:344       --bench-agent, "a hand-played seat must never..."
+
+A probe is a measurement. It belongs on that list and I did not put it there.
+
+HYPOTHESIS, three checks with known answers:
+  1. with the fix, running the probe against a scratch data tree leaves that
+     tree's ai/model.bin BYTE-IDENTICAL. Journal 311's run rewrote it to
+     4,166,584 bytes, so an unchanged md5 is a real difference and not a
+     coincidence of timing;
+  2. the probe still works -- PROBE_OK, 5/5. A fix that silences the save by
+     breaking the probe is not a fix;
+  3. data/ai/model.bin unchanged, as always.
+
+Paths: src/server/ServerMain.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. All three checks pass, and the hazard was mine alone.
+
+    scratch ai/model.bin   bd4012a9...  before
+                           bd4012a9...  after      UNCHANGED
+    probe                  PROBE_OK (5/5 rule cases as expected)
+    data/ai/model.bin      4a137043...  unchanged
+    and no "[AI] Model saved" or "league checkpoint" line at all
+
+Journal 311's run rewrote that scratch model to 4,166,584 bytes, so an
+identical md5 is a real difference rather than a coincidence of timing -- which
+is why the before-value was taken before the fix rather than after.
+
+I CHECKED THE CLASS, NOT THE INSTANCE, because the last three entries have each
+turned up a second case of whatever they were fixing. Five sites construct an
+AISystem:
+
+    Game_AITrain.cpp:482    training        SAVES -- intended
+    Game_AITrain.cpp:1262   --eval-ai       guarded, Game_AITrain.cpp:901
+    Game_AITrain.cpp:2589   runBenchAgent   guarded, ServerMain.cpp:344
+    Game_AITrain.cpp:2798   runTradeProbe   guarded, ServerMain.cpp:490 (this)
+    Game_TurnLogic.cpp:474  normal play     SAVES -- intended
+
+So the probe was the only unguarded measurement path, and it was unguarded
+because I wired it in journal 311 without noticing that the two existing
+measurement entry points both set the switch. Not an inherited defect: one I
+created and then caught by checking the protected file afterwards, which is the
+only reason it lasted one iteration rather than until someone ran it without
+--data.
+
+A FRAGILITY WORTH RECORDING, not fixing here. In BOTH measurement cases the
+guard sits at the CALL SITE -- ServerMain sets it before calling into Game --
+rather than inside runBenchAgent and runTradeProbe themselves. So the safety of
+each depends on every future caller remembering, which is precisely the thing I
+failed to do. Setting it at the top of the two probe functions would make them
+safe by construction, and the training and play paths would be untouched
+because they never call either. That is a change to shared code with a
+behaviour effect, so it is filed rather than done (item 44).
+
+PENDING COMMIT (src/server/ServerMain.cpp, folds into journal 311's hunk --
+same block, so one commit for both):
+
+    Wire --probe-trade, and do not let it write the model
+
+    Game::runTradeProbe had no caller while three documents described the flag.
+    It builds a real AISystem, and ~AISystem() saves unconditionally, so the
+    probe's exit would overwrite <data>/ai/model.bin -- with no --data, the
+    real one. Sets AISystem::s_readOnlyModel, the same switch --eval-ai and
+    --bench-agent already use, and resolves the data dir as runHeadlessAI does.
+
+    Verified: scratch model byte-identical across a run, PROBE_OK 5/5.
+
+INSTRUMENT ONLY. data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 313 — iteration: is the navy module healthy, or is that the book?
+
+BACKLOG ITEM 42. Journal 310 split the histogram's "picked" column into what
+was PLAYED and what the POLICY chose, and found the NAVY module is 7.9% policy
+on the France seat -- 92% of naval actions are the book or a scripted cohort.
+Everything this project believes about the AI's fleet was measured on the
+played column.
+
+THE CLAIM ON RECORD, in the naval reflex's own comment:
+
+    "Measured with OD_ACT_HIST on the Norway seat: the econ head is offered a
+     port 1,914 times and a warship 6,020 times in one game and takes neither,
+     ever ... THE NAVY MODULE IS HEALTHY -- it steams, bombards, embarks, lands
+     and engages -- so the AI operates a fleet it can never replace, and the
+     bench's floor seat is a coastal country."
+
+That is a two-part claim and the halves have different standing. "The econ head
+never buys a ship" is about REFUSAL -- journal 306 measured pi(a) = 0.00e+00 for
+both ship slots and the port, so it is confirmed and then some. "The navy module
+is healthy" is about ACTIVITY, and activity was read off the played column.
+
+THE TEST: re-run the exact seat the claim was measured on -- 1939:NOR:hood,
+with --vs-exploit 3 --rush-neighbours 1 as the seat table defines it -- and read
+the NAVY module's BY POLICY column beside its played column.
+
+  * policy share near the played share -> the module IS healthy and the claim
+    stands as written.
+  * policy share near zero -> the fleet is steaming, bombarding and landing
+    because the BOOK is driving it, and "the AI operates a fleet it can never
+    replace" understates the case: it does not operate the fleet at all.
+
+WHY IT MATTERS BEYOND THE WORDING. The naval reflex is off by default and the
+argument for leaving it off rests partly on the module being healthy -- if the
+policy already handles the fleet, the only gap is buying hulls. If the policy
+does not touch the fleet either, then everything naval is scripted, and the
+"AI navy" is a book with a purchase problem rather than a policy with one.
+
+WHAT I EXPECT: near zero, on the France evidence. But France is a land power
+and Norway is the coastal seat the original measurement used, so the honest
+possibility is that the policy does steer a fleet when it has one and France
+simply never has. That is exactly why this runs on Norway rather than reusing
+journal 310's numbers.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: the claim is TRUE but its evidence could not have shown it, and I
+nearly published the opposite.
+
+    seat              naval decisions   policy asked   policy takes
+    1939:NOR hood              54,879              0   nothing, never asked
+    1914:FRA rung              38,424          3,048   a1 a2 a3 a4 a6
+    modern:CHN rung            90,289          3,048   a1 a2 a3 a4 a6
+
+THE POLICY DOES OPERATE A FLEET. On France and China it is asked about 3,048
+naval questions and takes five of the seven actions. "The navy MODULE is
+healthy -- it steams, bombards, embarks, lands and engages" is correct.
+
+**IT IS CORRECT ON SEATS THE COMMENT DID NOT MEASURE.** The comment says
+"measured with OD_ACT_HIST on the Norway seat", and on Norway the policy makes
+ZERO naval decisions in a run containing 54,879 of them. Every steam, bombard,
+embark and landing observed there was somebody else's. The conclusion was right
+and the measurement behind it was of the book.
+
+That is not a cohort artefact: on the SAME Norway run the ECON module reads
+100,285 policy picks of 101,472 played -- 99%. Same countries, same split. The
+policy is asked economic questions constantly on that map and naval questions
+never, which is itself worth knowing and is not recorded anywhere.
+
+I ALMOST WROTE "THE NAVY IS ALL BOOK". The first Norway table came back with
+pi(a) = 0.00e+00 on every naval action and BY POLICY zero, and journal 310's
+France figure (NAVY 7.9% policy) made that look like confirmation of a much
+bigger claim. It was not, and the thing that stopped it was noticing that MY
+OWN INSTRUMENT COULD NOT TELL THE TWO CASES APART:
+
+    pi(a) printed 0.00e+00 both when the policy was ASKED and assigned zero,
+    and when the policy was NEVER ASKED (s_probN == 0).
+
+Those are opposite findings and rendered identically. Fixed by printing the
+sample count -- "pi(a) 0.00e+00 over 0" versus "9.79e-01 over 102455" -- which
+turned an ambiguous table into an unambiguous one and immediately said Norway's
+zeros were never-asked. This is the same defect shape as
+od-decision-hash-needs-act-hist: an ABSENT measurement rendering as a null
+result. I built it in journal 306 and it bit four entries later.
+
+AND IT QUALIFIES JOURNAL 310. That entry reported "only 56% of what happens is
+the policy" and "the NAVY module is 7.9%". Both numbers are right, but the
+played column counts every country in the world while the policy column counts
+only the model cohort, so a low share is partly just the scripted rung being
+numerous. The sharp version is the one this entry uses: not the RATIO, but
+whether the policy was asked at all, and what it did when it was. Journal 310's
+framing invited the reading I nearly took.
+
+PENDING COMMIT (src/ai/AISystem.cpp, one hunk, folds into journal 306/310's):
+
+    Print the sample count behind pi(a)
+
+    "The policy was asked and gave this action zero" and "the policy was never
+    asked" both rendered as 0.00e+00. On the Norway seat every naval action
+    reads zero, and the two readings are opposite findings -- the policy makes
+    no naval decisions there at all, while on France and China it makes ~3,048
+    and uses five of seven actions.
+
+MEASUREMENT + ONE INSTRUMENT LINE. No AI behaviour changed. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 314 — iteration: make the probes safe by construction
+
+BACKLOG ITEM 44, the top unblocked one. Journal 312 fixed --probe-trade
+overwriting the model by setting AISystem::s_readOnlyModel at the CALL SITE in
+ServerMain, which is where --eval-ai and --bench-agent already set it. That
+closed the hazard and left the shape that caused it: two measurement functions
+whose safety depends on every caller remembering a line three files away. I
+forgot it in journal 311 with the precedent two hundred lines above me.
+
+THE CHANGE: set the switch at the TOP of Game::runTradeProbe and
+Game::runBenchAgent themselves. Both construct an AISystem partway through, so
+a guard at function entry runs before construction and before the destructor
+that saves. Training and normal play never call either function, so nothing
+else can be affected.
+
+AND REMOVE THE PROBE'S CALL-SITE LINE, which is the only way to show the new
+guard is doing the work rather than riding on the old one. If the model stays
+unwritten with ServerMain no longer setting it, the function-level guard is
+real. ServerMain:344's line for --bench-agent stays: removing an untested guard
+to prove a point about a tested one is the wrong trade, and redundant safety on
+that path costs nothing.
+
+HYPOTHESIS, three checks:
+  1. with the call-site guard GONE, a probe run leaves the scratch tree's
+     ai/model.bin byte-identical. Journal 311's unguarded run rewrote it to
+     4,166,584 bytes, so unchanged is a real difference;
+  2. PROBE_OK, 5/5 -- a guard that works by breaking the probe is not a fix;
+  3. data/ai/model.bin unchanged.
+
+Paths: src/Game_AITrain.cpp, src/server/ServerMain.cpp, LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: KEEP. All three checks pass, and the first is the one that matters:
+
+    scratch ai/model.bin   bd4012a9...  before
+                           bd4012a9...  after,  WITH NO CALL-SITE GUARD
+    probe                  PROBE_OK (5/5 rule cases as expected)
+    data/ai/model.bin      4a137043...  unchanged
+
+Removing ServerMain's line was the point. With it still there, an unchanged
+model would prove nothing about the new guard; without it, the model stays
+unwritten only because runTradeProbe sets the switch itself.
+
+PLACEMENT VERIFIED rather than assumed -- each guard is the first statement of
+its function and both AISystem constructions come after it:
+
+    runBenchAgent   starts 2547, guard 2554, AISystem 2595
+    runTradeProbe   starts 2788, guard 2794, AISystem 2810
+
+ServerMain:344 stays as redundant cover on the --bench-agent path. Removing an
+untested guard to tidy up, in the same entry that is hardening against a
+forgotten guard, would be the wrong trade.
+
+WHAT THIS CLOSES. The sequence 311-314 is one mistake and its cleanup: I wired
+a flag (311) without noticing the two existing measurement entry points both
+disarmed the model save, which made a path that overwrites the file hard rule 2
+protects; caught it by checking the protected file afterwards; fixed it at the
+call site (312), which is where the precedent was; and have now moved it to
+where forgetting is impossible (314). The instructive part is that the
+call-site pattern is what made the original error available -- the precedent I
+failed to copy was itself the fragile form, so copying it correctly would only
+have deferred the problem to the next caller.
+
+PENDING COMMIT (src/Game_AITrain.cpp and src/server/ServerMain.cpp -- folds
+into journals 311/312's hunk in ServerMain, one commit for the lot):
+
+    Disarm the model save inside the probes, not at the call site
+
+    runBenchAgent and runTradeProbe both build a real AISystem, whose
+    destructor saves unconditionally. Their safety depended on ServerMain
+    setting s_readOnlyModel before calling them -- and when --probe-trade was
+    wired, that line was forgotten, leaving a path that overwrites
+    data/ai/model.bin. Set it at function entry instead; training and normal
+    play never call either.
+
+    Verified with the call-site guard removed: scratch model byte-identical
+    across a probe run, PROBE_OK 5/5.
+
+INSTRUMENT ONLY. data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 315 — iteration: why the policy is never asked a naval question on Norway
+
+BACKLOG ITEM 45. Journal 313 measured, on 1939:NOR:hood: 54,879 naval decisions
+in the run and ZERO reaching the learning policy, while the ECON module on the
+SAME run reads 100,285 policy picks of 101,472 played. Same countries, same
+cohort split, opposite answers by module. That is the bench's coastal seat and
+the one every naval argument in this project has been made on, so whether it
+can say anything about fleets depends on the reason.
+
+I AM NOT GOING TO GUESS IT. Journals 312 and 313 both cost a round trip to a
+guess -- "the data dir lacks maps" (it did not), "m_headless gates loading" (it
+does not). The gate that excludes these decisions has five conditions:
+
+    netDriven && !nprob.empty() && !booked && !m_scriptedThisCountry
+              && !m_leagueThisCountry
+
+Any one of them explains a zero and they imply completely different things: a
+booked exclusion means the opening book is answering for the fleet, a scripted
+one means the cohort split puts ships only on the control side, and !netDriven
+means the policy is not being consulted at all.
+
+THE INSTRUMENT: count the FIRST failing condition, per module. This is the
+technique that solved the identical problem before -- the anchor fired zero
+times while every gate "passed", and instrumenting each condition separately
+found a missing initScratch. s_anchorWhy[4] is still in the header from that
+day. Filled only under OD_ACT_HIST.
+
+PRE-REGISTERED READING:
+    booked dominant      -> the book drives the fleet; the naval record is
+                            about the book and the policy never had the chance
+    scripted dominant    -> the cohort split, i.e. the seat's own ships are on
+                            the control side. The seat cannot measure the
+                            policy's fleet behaviour at all.
+    !netDriven dominant  -> the navy head is not consulted on that map
+    nprob empty          -> the head returned nothing: a masking or shape bug
+    a spread             -> no single cause, and I say so
+
+AND A CHECK ON THE INSTRUMENT ITSELF: on the SAME run, the ECON module must
+show mostly PASSES, because ECON is 99% policy there. If econ's rejection
+counts are also huge the counter is measuring something other than I think.
+
+Paths: src/ai/AISystem.cpp, src/ai/AISystem.h, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: ANSWERED, and it is none of the three things item 45 listed.
+
+    1939:NOR hood        naval decisions            54,879
+                         not net-driven             29,126
+                         net-driven                 25,753
+                           in-book                     143
+                           FEWER THAN 2 LEGAL ACTIONS 25,610   99.4%
+                           a real choice                   0    0.0%
+
+    1914:FRA rung        net-driven                 15,066
+                           FEWER THAN 2 LEGAL ACTIONS 11,925   79.2%
+                           a real choice               3,048   20.2%
+
+THE POLICY IS NEVER ASKED A NAVAL QUESTION ON NORWAY BECAUSE 99.4% OF ITS
+NAVAL DECISIONS HAVE ONLY ONE LEGAL ACTION. A one-option decision is not a
+decision. Not the book (143 turns), not the cohort split (scripted 0), not a
+routing bug. France differs only in degree -- 79% no choice, 21% a real one,
+and that 21% is exactly the 3,048 decisions journal 313 found it steering a
+fleet with.
+
+AND IT IS DELIBERATE, with the reason written down beside it. pickAction fills
+nprob only when `validCount >= 2`:
+
+    "hold is valid on every turn and is usually the ONLY valid war action,
+     because most country-turns are peaceful -- so averaging P(hold) over every
+     turn it was offered averages in tens of thousands of turns where P(hold)
+     was 1 by arithmetic rather than by opinion. It read as a policy collapsed
+     onto doing nothing."
+
+So pi(a) and the BY POLICY column count CHOICES, not actions. That is the right
+denominator for "what does the policy prefer", and I did not know it when I
+built the column in journal 310.
+
+MY INSTRUMENT WAS WRONG ON THE FIRST RUN, and it took the whole entry's
+discipline not to publish it. The first attribution tested nprob.empty() before
+booked. A booked or scripted decision routes to scriptedChoice, which never
+fills nprob -- so every booked turn was counted as "nprob-empty" and the booked
+counter read ZERO on every module of every seat. "The book is not involved" was
+sitting there as a clean finding. Reordering the test causally -- booked and
+scripted BEFORE nprob-empty, because they CAUSE it -- moved 143 and 93
+decisions into the right column and left the conclusion standing, this time on
+an instrument that could have contradicted it.
+
+That is the second self-inflicted instrument defect in three entries: journal
+313's pi(a) could not distinguish "asked and answered zero" from "never asked",
+and this one attributed causes in the order of the && chain rather than the
+order of causation. Both had the same smell -- a tidy zero in a column I had
+just built.
+
+WHAT IT MEANS FOR THE SEAT. 1939:NOR:hood cannot say anything about the
+policy's fleet behaviour, because the policy makes no naval choices there. It
+remains a perfectly good seat for everything else -- ECON on that run is
+199,655 passes -- and it is the hood seat precisely because Norway is small and
+pressured. But every naval claim ever made on it is a claim about the scripted
+world, and journal 313's reading of the naval reflex comment is now fully
+explained rather than merely observed.
+
+AND IT QUALIFIES THE "56%" ONE MORE TIME. Journal 310's played-vs-policy ratio
+has a denominator that includes single-option decisions. On Norway's NAVY that
+is 99.4% of the net-driven ones. The ratio was never measuring what fraction of
+the game the AI drives; it measures what fraction of logged decisions were
+choices the policy made. Three entries have now qualified that number, which is
+a sign it should not have been stated as a headline.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h, one hunk pair, folds into the
+ACT_HIST work from journals 306/310/313):
+
+    Attribute the policy-marginal gate to its first failing condition
+
+    Counts, per module, why a decision did not reach the policy marginal:
+    !netDriven, booked, scripted, league, or fewer than two legal actions.
+    Ordered by CAUSATION, not by the && chain -- booked and scripted route to
+    scriptedChoice, which never fills nprob, so testing nprob first reports
+    every booked turn as "nprob-empty" and zeroes the booked counter.
+
+    Answers why the policy never makes a naval decision on 1939:NOR: 99.4% of
+    its net-driven naval decisions have only one legal action.
+
+MEASUREMENT + INSTRUMENT. No AI behaviour changed. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 316 — iteration: how many of those ignored offers did the policy ever see?
+
+BACKLOG ITEM 47 (item 46 is the same item, superseded, and struck as
+bookkeeping). Item 47 says to retire journal 310's ratio and "stop quoting"
+it. The literal version of that is a memory reword, which journal 315 already
+did. The version worth an iteration is the one behind it: WHERE ELSE has an
+all-countries denominator been quoted as if it were the policy's?
+
+There is an obvious candidate and it is one of this sequence's headline
+numbers. Journal 305:
+
+    "TEN of the 39 real actions are offered and never taken -- 421,519 ignored
+     offers across two runs ... POLITICS a10 REPRESS at 126,783 offers and
+     zero takes"
+
+`s_offHist` increments for every valid action on EVERY decision -- every
+country in the world, scripted cohort included, and single-option decisions
+too. So "126,783 offers" is not 126,783 chances the policy declined. It is
+every time the action was legal for anybody.
+
+Journal 315 established that the policy's own denominator is already measured:
+pi(a) prints "over N", where N is the number of decisions in which that action
+was legal AND the policy had two or more options AND was net-driven, unbooked,
+unscripted. That N is the number of times the policy could actually have
+chosen the action.
+
+THE QUESTION: restate journal 305's table with the policy's denominator and see
+how much of "421,519 ignored offers" survives.
+
+  * if N is close to the offer count, the headline stands and the denominator
+    quibble is immaterial;
+  * if N is a small fraction, then "126,783 offers, zero takes" describes the
+    scripted world's opportunities, and the true statement is much smaller --
+    still a zero, but a zero out of far fewer chances, which is a weaker fact
+    than the one in memory.
+
+EITHER WAY THE ZERO IS UNAFFECTED. pi(a) = 0.00e+00 and BY POLICY = 0 do not
+depend on the denominator; journal 308 showed a reset head takes repress at
+0.65, so the action is refused rather than unreachable. What is at stake is the
+SIZE of the claim, and this sequence has now twice found a headline number
+inflated by counting the whole world.
+
+WHAT I EXPECT: a large shrink. On the France seat NAVY's net-driven share was
+39% and only 20% of those were choices, so an order of magnitude would not
+surprise me. If instead N is most of the offers, I will say the concern was
+unfounded and the memory keeps its number.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: the headline was inflated by 47%, the finding survives, and my
+prediction about the size was wrong.
+
+    action                      offers (all)  policy CHOICES   share
+    REPRESS a minority               126,783          70,887   55.9%
+    cancel costliest policy           94,555          58,673   62.1%
+    pacification slider DOWN          70,021          68,538   97.9%
+    enact the costed doctrine         30,419           6,672   21.9%
+    propose a GUARANTEE               23,667           2,137    9.0%
+    build a SHIP                      23,283           4,639   19.9%
+    research node, 3rd branch         20,669           9,747   47.2%
+    build a SHIP (2nd)                12,740           2,000   15.7%
+    found/upgrade a PORT              11,970           1,134    9.5%
+    buy a province, not invade         7,412             780   10.5%
+    TOTAL                            421,519         225,207   53.4%
+
+"421,519 IGNORED OFFERS" IS REALLY 225,207 DECLINED CHOICES. The rest belonged
+to other countries or to decisions with a single legal action, where there was
+nothing to decline.
+
+THE CENTRAL CLAIM IS UNMOVED AND STILL STRIKING: the policy had a real choice
+that included REPRESS 70,887 times and never once took it. That is the number
+that should be in the record, and it is what journal 305 should have said.
+
+I EXPECTED AN ORDER OF MAGNITUDE AND GOT A FACTOR OF TWO. The reasoning was
+sound -- the France seat's naval decisions were 39% net-driven and 20% of those
+were choices, so ~8% survival -- and it did not generalise, because navy is the
+module where the policy is least often consulted. Politics is the opposite:
+pacification-down keeps 97.9% of its offers. **The inflation is per-action and
+ranges from 9% to 98%**, which means there is no correction factor to apply to
+journal 305's table; each row had to be measured. Propose-a-guarantee (9.0%)
+and found-a-port (9.5%) were indeed off by ten times; repress was off by two.
+
+THE ZEROS ARE UNTOUCHED, as expected: BY POLICY 0 and pi(a) 0.00e+00 do not
+depend on the denominator, and journal 308's reset head takes repress at 0.65,
+so the action is REFUSED rather than unreachable. Only the size of the claim
+moved.
+
+WHAT THIS SAYS ABOUT THE SEQUENCE. Three headline numbers from journals
+305-310 have now been corrected for the same reason -- a denominator that
+counts the whole world or counts non-decisions:
+
+    j.305  421,519 ignored offers      -> 225,207 declined choices
+    j.310  56% of what happens         -> retired; the ratio measures nothing
+    j.306  ten dead actions (by picks) -> sixteen (by policy mass), j.307
+
+Each was right in substance and wrong in magnitude, and each was found by
+building the instrument that makes the right denominator visible. The lesson is
+narrower than "check your denominators": it is that COUNTERS WRITTEN FOR ONE
+QUESTION GET QUOTED FOR ANOTHER. s_offHist was built to show which actions are
+legal; it got quoted as how often the AI declined them.
+
+PENDING COMMIT: none. Measurement only, on the instrument already pending from
+journals 306/310/313/315.
+
+MEASUREMENT ONLY. No source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 317 — iteration: the naval reflex's other number
+
+BACKLOG ITEM 48. Journal 316 corrected two headline numbers whose denominator
+was s_offHist -- a counter that increments for every valid action on every
+decision, all countries and single-option decisions included. The item lists
+the remaining quotes of that counter. The largest is in the naval reflex's own
+comment, and it is the justification for a shipped default being off:
+
+    "Measured with OD_ACT_HIST on the Norway seat: the econ head is offered a
+     port 1,914 times and a warship 6,020 times in one game and takes neither,
+     EVER, while taking 'raise research funding' on 95.5% of the turns it is
+     legal."
+
+NO NEW RUNS WERE NEEDED -- journal 313's Norway run already carries the choice
+denominator, and I checked that before designing anything.
+
+    Norway seat, N24, 400 turns
+    ECON a3  PORT         offered 6,591   policy CHOICES        0
+    ECON a5  SHIP         offered 13,389  policy CHOICES    3,583
+    ECON a6  SHIP (2nd)   offered 7,084   policy CHOICES       26
+    ECON a7  research up  offered 105,107 policy CHOICES  102,455
+
+THE PORT WAS NEVER OFFERED TO THE POLICY AS A CHOICE. Not once, on the seat the
+claim was measured on, in a run where the econ head faced 102,455 choices. "The
+econ head is offered a port 1,914 times and takes it never" describes a refusal
+that never had the opportunity to happen. The 6,591 offers belong to decisions
+that were not the policy's -- other countries, or turns with a single legal
+action.
+
+The warship half is real but smaller: 3,583 choices declined rather than 6,020
+offers, and the second ship slot is 26.
+
+The research-funding half of the sentence SURVIVES intact: 100,285 policy takes
+of 102,455 choices is 97.9%, against the 95.5% quoted. That number was always
+about an action the policy is offered constantly, so the denominator barely
+moved -- which is exactly why the same sentence can be right in one half and
+unsupported in the other.
+
+SO THE NAVAL REFLEX COMMENT HAS NOW HAD BOTH ITS CLAIMS CORRECTED, and by the
+same mechanism:
+
+    "the navy MODULE is healthy"        journal 313: on that seat the policy
+                                        makes ZERO naval decisions
+    "offered a port 1,914 times and     journal 317: on that seat the policy
+     takes it never"                    was offered a port ZERO times
+
+Both were measured on 1939:NOR, and journal 315 explained why that seat says
+nothing about the policy's fleet: 99.4% of its naval decisions have one legal
+action. The comment is a careful, numerate argument built entirely on a seat
+that cannot support it.
+
+THE REFUSAL IS STILL REAL ELSEWHERE. Journal 316's France and China runs:
+1,134 port choices and 4,639 ship choices, every one declined, pi(a) 0.00e+00.
+So "the AI will not buy a navy" holds -- on seats the comment did not use, at
+roughly a tenth of the quoted size.
+
+WHAT I AM NOT DOING. Not editing that comment. Journal 301 established that
+correcting a factual claim in shared source is in remit when the measurement is
+in hand, and I have it -- but the honest correction is not a number swap. Both
+of its measurements need replacing with seats that can carry them, and the
+conclusion it supports (leave the naval reflex off) is untouched either way
+because the refusal reproduces elsewhere. That is a rewrite of an argument
+rather than a fix to a figure, and it belongs to whoever owns the reflex.
+Filed as item 49 with the numbers attached.
+
+PENDING COMMIT: none. Measurement only, from runs already made.
+
+MEASUREMENT ONLY. No source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 318 — iteration: is the model that ships the best one on disk?
+
+NO BACKLOG ITEM -- 41, 49, 34, 32, 26, 30, 19 and 16 are all the user's or
+blocked behind 26. So this is chosen work, and it is chosen to point at the
+loop's actual goal for the first time in a while.
+
+THE DISCREPANCY. docs/ai/BACKLOG.md records "MODEL OF RECORD: N37 (224 on
+v10.3; quarter-rate ladder step 2)". What actually ships -- data/ai/model.bin,
+md5 4a137043 -- is N24-233-holdout. Two different models are described as the
+project's best, on two different rulers, and **they have never been compared on
+the current one**. Thirty entries of this sequence have used N24 as "the
+shipping model" without once asking whether it is the better of the two.
+
+WHY THIS IS WORTH A BENCH SLOT WHEN KNOB TESTS ARE NOT. Journal 296 put the
+instrument's floor at ~60 points and journal 304 concluded the loop should
+stop testing things smaller than that. Model differences are not small: N24
+reads 336 on the graded pair and N47 253, a gap of 83. A model swap is also
+the cheapest possible improvement -- no training, no rule change, no retrain,
+just a different file -- so if N37 is better it is free.
+
+DESIGN: N37-224-v103 against journal 282's existing N24 control, 8 fresh seeds,
+three rung seats, graded pair FRA+USA. 24 new runs. On build/loop/relcheck/b --
+the SAME binary the control was measured on, not the build/ tree I have been
+editing instruments into, because an A/B across two binaries measures the
+binary (memory: ab-both-arms-one-tree).
+
+PRE-REGISTERED, in the order journals 295 and 304 established:
+  1. graded count. If N37's differs materially from N24's 14/24 the two are not
+     comparable and I say so before quoting a mean -- this is the check that
+     caught N47's arms in journal 295;
+  2. does the difference appear on both graded seats, or one;
+  3. then the paired difference, with a permutation test beside the interval.
+
+DECISION RULE, set before the numbers: N37 replaces N24 as the recommendation
+only if it clears zero POSITIVE on the graded pair. Anything inside the
+interval means "not resolvable at 24 runs" -- and for a model swap that is a
+recommendation to leave the shipping model alone, since the incumbent needs no
+justification to stay.
+
+WHAT I EXPECT: N24 wins. It is what the user shipped, its 433 on the reliable
+seats is the highest figure in the journal, and N37's 224 was measured on the
+v10.3 ruler which has since moved. But those two numbers are not comparable --
+that is the entire point of running this -- and "the file we ship is the best
+one we have" is an assumption this project has never tested.
+
+MEASUREMENT ONLY. No source, no model written. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: N24 STAYS. N37 does not clear zero, so by the rule set beforehand the
+shipping model is left alone -- and the comparison is weaker than the numbers
+suggest, for a reason the first check caught.
+
+    CHECK 1, and it matters more than the result
+    model     FRA    USA    CHN    total
+    N24       8/8    6/8    0/8    14/24
+    N37       7/8    3/8    2/8    12/24
+
+The totals are close and the LOCATIONS are not. N24 loses its instrument on
+China; N37 loses it on the USA, five of eight seeds pinned at the cap. That is
+journal 288's condition for "not comparable" -- and the USA is half of the
+graded pair the comparison is run on. N37 is being scored on FRA plus a
+constant for most seeds.
+
+    N37 minus N24, paired
+      graded pair FRA+USA   -37  CI [-111, +37]  3/8  perm p = 0.369
+      all three seats       -38  CI [-150, +74]  4/8  perm p = 0.529
+      N24 317 / N37 280 on the graded pair
+
+Both intervals span zero and both permutation tests agree. **The honest reading
+is not "N37 is worse by 37" -- it is that this comparison cannot separate them,
+and half the reason is that the two models saturate different seats.**
+
+WHY N37 PINS THE USA. Its USA column is [35.4 38.3 19.5 10.7 28.4 32.9 20.3
+32.6] against a 28.0 cap -- it plays the USA BETTER than N24 does, well enough
+that the seat stops measuring. A model can be penalised by this instrument for
+being good at a seat, which is the same trap journal 287 found with China and
+is exactly what backlog item 16 is about. N37 is the second model to hit it,
+after N35 in journal 288.
+
+WHAT I GOT RIGHT AND WHAT THAT IS WORTH. I predicted N24 would win, and the
+point estimate agrees. It is worth nothing: a prediction confirmed by a result
+whose interval spans +/-111 is not evidence, and I said so beforehand about the
+decision rule rather than the forecast. The DECISION -- leave the shipping model
+alone -- is sound because an incumbent needs no justification to stay, not
+because -37 means anything.
+
+THE ASSUMPTION IS STILL UNTESTED, and that is the finding. "The file we ship is
+the best one we have" remains unverified: this run could not have detected a
+60-point N37 advantage, let alone a smaller one. The blocker is item 26 again
+and now with a second face -- not just the seed count, but that the seat set
+saturates on strong models, so the better a candidate is the less the bench can
+see it. Those two compound: raising seeds does not fix a pinned seat.
+
+FOR THE USER: backlog item 16 has now caught THREE models -- N35 (journal 288,
+USA 0/8), N37 (this entry, USA 3/8) and N24 itself (CHN 0/8). Every model this
+project has benched on these seats loses a third of the instrument somewhere.
+That is not a future risk; it is the current state.
+
+PENDING COMMIT: none. Measurement only.
+
+MEASUREMENT ONLY. No source, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd) -- and unchanged is also the
+recommendation.
+
+## 319 — iteration: what would raising the cap actually buy?
+
+NO BACKLOG ITEM the loop may take -- everything open is the user's or blocked
+behind item 26, and journal 318 showed item 16 is item 26's prerequisite: more
+seeds cannot fix a pinned seat. Item 16 asks the user to "raise CAP for this
+seat set, or add a seat with room above it", and it has sat unanswered for
+thirty entries.
+
+THE LOOP CANNOT MAKE THAT CHOICE -- LOOP.md hard rule 5 reserves changing the
+seat set -- BUT IT CAN COST IT. Turning a judgement call into a table of
+consequences is preparation, not a decision, and it is the thing most likely to
+unblock the two items gating everything else.
+
+THE QUESTION, answered with zero runs from four models already measured on the
+same 8 fresh seeds and 3 rung seats (N24, N35, N37, N47):
+
+  1. at CAP = 5 (current), how many of each model's 24 seat-seed observations
+     are lost, and to WHICH end -- pinned at the cap, or wiped out at zero?
+  2. what does raising CAP to 8, 10, 20 or removing it entirely recover?
+  3. does it change any VERDICT -- specifically journal 318's N37-vs-N24, which
+     could not separate them partly because N37 pins the USA?
+
+THE DISTINCTION THAT DECIDES THE ANSWER: raising CAP recovers observations lost
+at the TOP and does nothing for observations lost at the BOTTOM. A seat wiped
+out scores 0 at any cap. If most of the loss is annihilation, raising the cap
+buys little and "add a seat with room above it" is the wrong remedy too --
+the right one would be a seat that survives.
+
+WHAT I EXPECT: mixed, and different per model. N24's loss is China, which
+journal 287 showed is 500-or-0 -- so some of its loss is the bottom and cannot
+be recovered. N37's and N35's loss is the USA pinned at the top, which a higher
+cap recovers exactly. If that holds, raising CAP helps the strong models and
+does nothing for N24's China, which is a real asymmetry worth the user knowing
+before choosing.
+
+RE-ANALYSIS ONLY. No runs, no source, no model. Paths: LOOP_JOURNAL.md,
+BACKLOG.md.
+
+VERDICT: the cap decision is now costed, and the answer has three parts the
+user needs together.
+
+1. CAP = 8 RECOVERS ALMOST EVERYTHING RECOVERABLE.
+
+    model     CAP 5    CAP 8   CAP 10   CAP 20   ceiling
+    N24       14/24    20/24    22/24    22/24    22  (2 wiped)
+    N35       10/24    20/24    20/24    20/24    20  (4 wiped)
+    N37       12/24    20/24    20/24    21/24    21  (3 wiped)
+    N47       18/24    20/24    22/24    22/24    22  (2 wiped)
+
+Every model jumps to 20/24 at CAP 8. Ten more for N35, eight for N24, six for
+N37. Beyond 10 it buys nothing: the residue is observations WIPED OUT at zero,
+and no cap recovers an annihilated seat. So "raise CAP" is the right remedy for
+the top end and 8 is where the curve flattens.
+
+2. THE RANKING DOES NOT MOVE.
+
+    CAP      N24  N35  N37  N47     order
+      5      336  295  298  204     N24 > N37 > N35 > N47
+      8      382  342  348  240     unchanged
+     10      393  342  356  253     unchanged
+     20      393  342  361  253     unchanged
+
+That is the reassuring half: raising the cap rescales and does not reshuffle,
+so no verdict in this journal flips on a cap change alone. It also means the
+cap was never hiding a better model -- N24 is first at every setting.
+
+3. AND IT DOES NOT FIX THE PRECISION PROBLEM. Journal 318's comparison, at
+every cap:
+
+    CAP  5    -37  CI [-111,  +37]   spans zero
+    CAP  8    -11  CI [-107,  +85]   spans zero
+    CAP 10    -11  CI [-107,  +85]   spans zero
+
+The point estimate moves from -37 to -11 -- most of journal 318's apparent gap
+WAS the cap penalising N37 for playing the USA well, which is worth knowing --
+but the interval does not shrink. It widens, because the observations a higher
+cap restores are precisely the ones with the most spread. **Raising the cap
+recovers information about WHERE models differ and buys no power to decide
+WHETHER they do.**
+
+SO ITEMS 16 AND 26 ARE NOT ALTERNATIVES AND NEITHER SUBSTITUTES FOR THE OTHER.
+Item 16 (the cap) makes the instrument measure the right thing; item 26 (the
+seed count) makes it measure precisely enough to conclude. Journal 318 said the
+seat set must be fixed first, and that stands -- but doing only item 16 would
+leave the loop exactly as unable to accept a change as it is now.
+
+WHAT I EXPECTED AND WHAT I MISSED. I predicted the recovery would be asymmetric
+-- helping the strong models pinned at the top and doing nothing for N24's dead
+China. Half right: N24's two wiped observations are indeed unrecoverable, but
+it also has EIGHT pinned ones, so it gains more from a higher cap than N37 does
+(8 recovered against 6). I had N24's loss filed as "China, 500-or-0" from
+journal 287 and did not notice that its USA pins too. The model I have called
+"the shipping model" for thirty entries loses a third of its instrument to the
+cap, not to China.
+
+FOR THE USER, the concrete form of item 16:
+
+    RAISE CAP FROM 5 TO 8 in tools/od_bench.py. It recovers 6-10 observations
+    per model of the 10-14 currently lost, costs nothing to try, changes no
+    ranking, and makes every future model comparison measure the seats where
+    strong models actually differ. It does NOT reduce any interval, so item 26
+    is still required before a change can be accepted on this bench.
+
+    Every rating recorded before the change becomes incomparable with every one
+    after -- the same break journal 29b caused -- so it wants doing at a clean
+    moment, and the journal entry should say so loudly.
+
+PENDING COMMIT: none. The one-line change belongs to the user's decision, not
+to this entry.
+
+RE-ANALYSIS ONLY. No runs, no source, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 320 — iteration: does the pending stack actually work, all together?
+
+NO BACKLOG ITEM -- every open one is the user's or blocked behind item 26, and
+journal 319 costed the last thing the loop could prepare. So this iteration
+does the work that is actually outstanding: THIRTEEN ITERATIONS OF UNCOMMITTED
+CHANGES HAVE NEVER BEEN CHECKED AS A SET.
+
+    src/ai/AISystem.cpp        +124   journals 300, 306, 310, 313, 315
+    src/ai/AISystem.h           +22
+    src/server/ServerMain.cpp   +78   journals 308, 311, 312, 314
+    src/Game_AITrain.cpp        +12   journal 314
+    tools/od_bench.py          +146   journals 287, 288, 292, 298
+    docs/ai/LOOP.md             +81   journal 299
+
+Each was verified when written. Nothing has verified them TOGETHER, and they
+interact: four edits to one printf, two atexit hooks that must not double-print,
+a read-only switch moved between files, and a bench tool whose warning block was
+rewritten twice. The user is being asked to commit this, and "it worked when I
+wrote it" is not the same claim as "it works now".
+
+THE CHECKLIST, each with a known answer so a pass is informative:
+
+  1. both targets build clean -- including the WINDOWED game, which includes
+     AISystem.h and which nothing in this sequence has compiled;
+  2. the decision hash equals the reference, 14669681761325311781 over 86188.
+     That is the strongest single check available: it says every AISystem edit
+     across five journals left play byte-identical;
+  3. a NORMAL run -- no OD_* variables -- prints none of the new output. Five
+     instruments were added; if any leaks into an unflagged run it pollutes
+     every future log;
+  4. od_bench.py runs end to end and reports a rating, after four edits;
+  5. --reset-ai-head still resets a copy and leaves the original byte-identical;
+  6. --probe-trade still says PROBE_OK and still writes nothing;
+  7. data/ai/model.bin unchanged at the end of all of it.
+
+WHAT I EXPECT: all pass. But the value is not in the expectation -- it is that
+a stack this size, assembled one iteration at a time over a day, is exactly
+where a regression hides, and the alternative is the user finding it.
+
+VERIFICATION ONLY. No new source this iteration beyond a stale backlog stub.
+
+VERDICT: THE PENDING STACK IS SOUND. All seven checks pass.
+
+    1a  server target                    0 compile errors
+    1b  WINDOWED game target             builds and links -- first time in this
+                                         sequence anything compiled it
+    2   decision hash                    14669681761325311781 over 86188,
+                                         equal to the reference
+    3   unflagged run                    0 lines of new instrument output
+    4   od_bench.py end to end           rating 319 over 1/1 seats
+    5   --reset-ai-head                  resets a copy, reference byte-identical
+    6   --probe-trade                    PROBE_OK 5/5, no model write
+    7   protected files                  data/ai/model.bin 4a137043 unchanged,
+                                         scratch model bd4012a9 unchanged
+
+CHECK 2 IS THE ONE THAT MATTERS. Five journals edited AISystem.cpp -- the
+decision hash's own hook, the pi(a) accumulator, the policy-pick counter, the
+sample count, the gate attribution -- and the run still makes the same 86,188
+decisions in the same order as before any of it. That is a stronger statement
+than any per-entry check made, because it covers the interactions between them.
+
+CHECK 1b FOUND NOTHING AND WAS STILL WORTH RUNNING. Every build in this
+sequence targeted OpenDoctrinesServer; AISystem.h is included by the windowed
+binary too, and two static arrays were added to it. Nothing in thirteen
+iterations would have caught a break there.
+
+CHECK 3 IS THE ONE I WOULD HAVE SKIPPED. Five instruments were added and each
+was verified to fire; none was verified to STAY SILENT. An instrument that
+leaks into unflagged runs pollutes every future log quietly, and the cost of
+finding that later is every log written in between.
+
+AND A HUNK-BY-HUNK READ, so nothing unexplained ships. Twenty-six hunks across
+five files, every one attributable:
+
+    Game_AITrain.cpp   2    the two read-only guards            j.314
+    AISystem.cpp      13    gate attribution, pi(a) + its count,
+                            policy-pick counter, the DECHASH hook,
+                            the two reflex-header corrections,
+                            the calm-gate comment                j.300-315
+    AISystem.h         2    the counters those need              j.306-315
+    ServerMain.cpp     3    --reset-ai-head, --probe-trade, usage j.308-312
+    od_bench.py        7    seat filter, CHN bistable, graded
+                            count, pairing advice, power line,
+                            terse output                         j.287-298
+
+ONE THING IN THE DIFF IS NOT MINE and must not be swept in:
+`data/saves/Modern Day.odsv` shows as deleted. It was already deleted when this
+session started -- it is in the git status snapshot from before my first
+iteration. I have not touched it and it should not be part of any commit of
+this work.
+
+FOR THE USER -- THE STACK, as five independent commits or one, in dependency
+order. Every one is verified above and none changes AI behaviour:
+
+  1. tools/od_bench.py      the instrument fixes (j.287, 288, 292, 298)
+  2. src/ai/AISystem.{cpp,h} the ACT_HIST and DECHASH work (j.300, 306, 310,
+                            313, 315) -- decision hash proves inertness
+  3. src/ai/AISystem.cpp    two comment corrections (j.301, 302) -- included in
+                            2's file, separable by hunk
+  4. src/server/ServerMain.cpp + src/Game_AITrain.cpp
+                            --reset-ai-head, --probe-trade, the read-only
+                            guards (j.308, 311, 312, 314)
+  5. docs/ai/LOOP.md        the protocol brought up to date (j.299)
+
+docs/ai/LOOP_JOURNAL.md and docs/ai/BACKLOG.md are the record and go with
+whichever commit you prefer, or their own.
+
+VERIFICATION ONLY. No new source. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 321 — iteration: is the credit defect general, or was repress special?
+
+NO BACKLOG ITEM -- all open ones are the user's or blocked. Chosen work, and it
+is the one unifying question journals 305-309 raised and did not answer.
+
+WHAT IS ESTABLISHED. Sixteen actions on N24 have policy mass below 1e-6
+(journal 306). It is not the masks -- every one is legal sometimes (305). It is
+not this lineage -- twelve are dead in three models including one that plays
+thirty times worse (307). It is not structural -- a head reset brings the
+politics six back, repress at 0.65 (308). And for REPRESS specifically there is
+a mechanism: it saves money and loses alignment, POLITICS is charged the
+alignment three ways for up to -3.6, and the money is booked in ECONOMY's
+reward (309).
+
+THE UNTESTED GENERALISATION. Journal 309 examined ONE action. If the same shape
+holds for the others, the sixteen dead actions are not sixteen separate
+opinions -- they are one defect with sixteen faces, and that is a different and
+much more actionable statement than "the policy has learned to avoid things".
+
+THE HYPOTHESIS, stated so it can fail:
+
+    A dead action is one whose COST falls in the acting head's reward and whose
+    BENEFIT falls in another head's.
+
+  IF it holds across the dead actions, the finding is structural and points at
+  one fix -- credit assignment -- rather than sixteen.
+  IF some dead actions are cost-and-benefit in the SAME head, the hypothesis is
+  wrong and those actions are genuinely refused on their merits, which is
+  journal 256's reading and would restore it.
+  IF the LIVE actions also show split credit, the hypothesis explains nothing:
+  it would be a property of the reward design generally and not of deadness.
+
+THAT LAST CHECK IS THE ONE THAT MATTERS and it is where this kind of reasoning
+usually dies. A story that fits the ten cases you went looking for, and fits
+the ten you did not, is not a story. So the live actions get read too.
+
+NO RUNS. Four reward expressions and the executors for the actions in question.
+This is the technique that worked in journal 309 and it is the only instrument
+left that the ~60-point floor does not limit.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: THE HYPOTHESIS IS FALSE. The dead actions do not share a credit
+structure, and the check I pre-registered as "where this reasoning usually
+dies" is exactly where it died.
+
+THE DECISIVE PAIR. POLITICS a1 and POLITICS a8 both ENACT A POLICY. Both spend
+money, which is priced in ECONOMY's reward; both change unrest and opinion,
+which are priced in POLITICS'. Identical credit structure. And:
+
+    POLITICS a1  enact the doctrine the mask costed   pi(a) 0.00e+00   DEAD
+    POLITICS a8  enact whatever calms the country     pi(a) 5.30e-01   LIVE
+                                                      taken 5,384 times
+
+A hypothesis about credit assignment cannot distinguish them, so it is not the
+explanation. What DOES distinguish them is what each action selects:
+
+    a8  picks the policy maximising
+            2.0*unrestReduction + 1.0*|publicOpinionShift| + 0.5*minorityGrowth
+        -- which is, term for term, what the POLITICS reward pays for.
+    a1  picks by the country's COMPASS (enactablePolicy), gated on budget and
+        losingGround. Ideological fit is not in any reward expression.
+
+**a1 is dead because it optimises something the reward does not measure.** Not
+split credit, not an unreachable mask -- the action is well-formed and the
+policy has simply learned that a doctrine chosen for ideological fit does not
+pay, which is true given the reward as written.
+
+AND THE OTHER DEAD ACTIONS FAIL FOR DIFFERENT REASONS AGAIN. Reading the four
+reward expressions:
+
+    ECON a5/a6 SHIPS   priced in the BUYER's own reward:
+                         rewards[MOD_ECONOMY] += fleetUseful
+                             ?  0.4 * tanh(shipsBought/2)
+                             : -0.5 * tanh(shipsBought/2)
+                       Cost and benefit in the same head -- the hypothesis
+                       fails here too -- but the payoff is ADVERSELY SKEWED:
+                       the penalty for buying when no naval target exists is
+                       LARGER than the reward for buying when one does.
+
+    ECON a3 PORT       no reward term mentions ports, anywhere. Its benefit is
+                       that it unlocks hulls, which are themselves the +0.4/-0.5
+                       lottery above. An unpriced enabler of a negative-EV
+                       action.
+
+    POLITICS a10       split credit: cost in POLITICS three ways, money in
+       REPRESS         ECONOMY (journal 309). The one case the hypothesis fits.
+
+So four dead actions, four different mechanisms: split credit, adverse skew,
+unpriced benefit, and an objective the reward does not contain. **There is no
+single defect and therefore no single fix**, which is the opposite of what I
+was hoping to report and the more useful thing to know.
+
+WHAT THIS DOES TO JOURNAL 309. Nothing -- its account of repress stands, and
+the reset-head evidence from 308 still says the zero is learned. What changes
+is its SCOPE: it explained one action and I filed it as though it might explain
+the class. It does not.
+
+AND IT PARTLY RESTORES JOURNAL 256. That entry read the refusals as priced
+decisions and this sequence has been circling the idea that they are defects.
+For a1 at least, 256 is right on its own terms: given a reward with no term for
+ideological fit, declining to enact doctrines for ideological fit IS correct
+play. The policy is not broken; the reward does not want that behaviour.
+
+THE HONEST SUMMARY OF JOURNALS 305-321: sixteen actions have no policy mass;
+the cause is learned rather than structural; and the learning is CORRECT in at
+least one case, DEFECTIVE in at least one case, and driven by three different
+mechanisms in the four examined. Anyone wanting those actions back has to work
+one at a time.
+
+PENDING COMMIT: none. Reading only -- no source touched this iteration.
+
+RE-ANALYSIS ONLY. No runs, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 322 — iteration: checking my own claim from last entry
+
+NO BACKLOG ITEM. Chosen work, and the target is journal 321's own reasoning.
+
+WHAT I ASSERTED LAST ENTRY, about why the ship actions are dead:
+
+    "the payoff is ADVERSELY SKEWED: the penalty for buying when no naval
+     target exists is LARGER than the reward for buying when one does"
+
+    rewards[MOD_ECONOMY] += fleetUseful ?  0.4f * tanh(shipsBought/2)
+                                        : -0.5f * tanh(shipsBought/2)
+
+The coefficients say 0.4 against 0.5, and I read "adverse" straight off them.
+THAT IS NOT WHAT ADVERSE MEANS. The expected value of buying a ship is
+
+    E = p*(+0.4) + (1-p)*(-0.5)    where p = P(fleetUseful)
+
+which is positive whenever p > 0.5/0.9 = 55.6%. If a fleet is useful most of
+the time the term REWARDS buying ships and my explanation for their deadness is
+wrong. I stated a conclusion that depends on a frequency I never measured, in
+an entry whose whole point was that the previous entry had over-generalised.
+
+`fleetUseful = exp.atWar || now.navalTargets > 0 || now.navalWarTargets > 0`.
+Being at war at all makes it true, and these seats are at war constantly, so
+the honest prior is that p is HIGH and I got this backwards.
+
+THE CHECK: count it. One counter under OD_ACT_HIST, one run, two seats.
+
+  * p > 55.6%  -> the term is net POSITIVE, journal 321's "adverse skew" is
+                  wrong, and the ship actions are dead for some other reason.
+                  I retract and the list of four mechanisms becomes three plus
+                  an open question.
+  * p < 55.6%  -> the claim holds and now has a number instead of a pair of
+                  coefficients.
+
+PRE-REGISTERED SECONDARY: measure it at the moment the reward is computed, on
+the same seats journals 305-321 used, and report the France and China figures
+separately -- a single pooled rate could hide one seat at 0.9 and another at
+0.2, and the ship actions are dead on BOTH.
+
+WHAT I EXPECT: p high, claim wrong. Writing that down before the run because
+the value of this entry is mostly in whether I am willing to publish it.
+
+Paths: src/ai/AISystem.cpp, src/ai/AISystem.h, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: I WAS WRONG, AND I RETRACT IT.
+
+    [FLEETUSEFUL] true 5245  false 938  p 0.848
+                  ship-term EV +0.263   (break-even p 0.556)
+
+The fleet is useful on 84.8% of reward evaluations -- these seats are at war
+almost continuously, and `exp.atWar` alone makes the flag true. So the term
+pays +0.263 in expectation. **THE SHIP TERM REWARDS BUYING SHIPS.** Journal
+321's "the payoff is ADVERSELY SKEWED" is retracted: I read "0.4 against 0.5"
+off two coefficients and called it a skew without asking how often each branch
+fires, which is the same shape of error as reading an effect against zero
+instead of against its chance value (journal 294) -- stated confidently, in an
+entry whose entire subject was the previous entry over-generalising.
+
+SO THE SHIPS ARE STILL UNEXPLAINED. Journal 321's four mechanisms become three
+and an open question:
+
+    repress          split credit -- cost in POLITICS, money in ECONOMY (309)
+    ports            unpriced -- no reward term mentions a port (321)
+    enact-doctrine   selects for compass fit, which no reward measures (321)
+    SHIPS            UNKNOWN. The dedicated term is positive.
+
+The obvious next suspect is that +0.263 has to clear the cost of the hull
+through the treasury and `broke` terms, and memory ai-treasuries-run-at-zero
+says those bind hard. I am NOT writing that down as the explanation. That is
+precisely the move that produced the error this entry retracts.
+
+AND A DISCOVERY THAT COST THE FIRST ATTEMPT. The counter printed nothing on two
+eval runs: **the reward block does not execute under --eval-ai at all.** Rewards
+are computed in training, so anything instrumented inside a reward expression
+is invisible to the bench. The eval runs were not wasted -- their decision
+hashes came back 14669681761325311781 over 86188 and 1134950857311588231 over
+277784, matching journals 300-320, so the new counter is inert -- but the
+measurement needed a training run, into an isolated tree.
+
+    data/ai/model.bin  4a137043...  unchanged after a TRAINING run
+
+That is worth its own line: this is the first training run in this sequence,
+the one operation LOOP.md's hard rule 2 exists for, and the isolation held.
+
+WHAT THIS ENTRY IS WORTH. Nothing was learned about the AI. What was learned is
+that journal 321's list had a bad row in it, found by checking my own claim one
+entry later rather than after it had been quoted three times -- which is what
+happened to journals 305, 306 and 310, each corrected only once something else
+tripped over them. Checking the most recent entry's weakest claim is cheaper
+than waiting for it to propagate, and this is the first time in the sequence I
+have done it deliberately rather than by accident.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h, one hunk pair, folds into the
+ACT_HIST work already pending):
+
+    Count P(fleetUseful), the rate the ship term's sign depends on
+
+    rewards[MOD_ECONOMY] += fleetUseful ? +0.4*tanh(ships) : -0.5*tanh(ships).
+    Whether that rewards or punishes buying ships depends on how often the flag
+    is true, not on the two coefficients: break-even is p = 0.556. Measured
+    p = 0.848, EV +0.263 -- it rewards. Prints under OD_ACT_HIST only, and only
+    in training, since the reward block does not run under --eval-ai.
+
+MEASUREMENT + ONE COUNTER. No AI behaviour changed -- decision hash unchanged on
+both eval seats. data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 323 — iteration: an instrument that has been running all along
+
+BACKLOG ITEM 55's open question: the ship actions are dead, and journal 322
+retracted the explanation for it -- the dedicated reward term is +0.263, so it
+rewards buying. Three of the four dead actions examined now have mechanisms and
+ships has none.
+
+THERE IS AN INSTRUMENT FOR THIS AND I HAVE NEVER READ IT. `dumpActionHistogram`
+prints, under OD_ACT_HIST, a table I have been generating on every run since
+journal 305 and filtering out of every capture:
+
+    [GATE] econ action:  offered / blocked-by-cash / not-possible
+
+    if (!possible)   ++s_gateImpossible[i];
+    else if (!v[i])  ++s_gateNoCash[i];
+    else             ++s_gateOffered[i];
+
+Three mutually exclusive buckets. Every grep I have written captured
+`^\[ACTHIST\]   ` and `^\[BENCH\]` and dropped this. Eighteen runs produced it
+and none of them recorded it.
+
+WHY IT IS THE RIGHT INSTRUMENT. "Offered" in journal 305's table means CASH WAS
+AVAILABLE -- an action the country cannot pay for never becomes valid. So the
+23,283 ship offers are moments the hull was affordable, and journal 316's 4,639
+are moments it was affordable AND the policy had a real choice. What is missing
+is the denominator underneath: how often was a ship POSSIBLE but unaffordable?
+That separates "the AI declines ships" from "the AI can almost never buy one
+and declines on the rare occasion it can".
+
+HYPOTHESIS, and it can fail in a way that matters:
+
+  * blocked-by-cash DOMINATES -> ships are an affordability problem, the 4,639
+    refusals are a thin slice of unusual turns, and memory
+    ai-treasuries-run-at-zero is the explanation. The reward term being +0.263
+    is then irrelevant: the action is priced out before the policy sees it.
+  * offered DOMINATES -> the AI could buy ships routinely and does not, the
+    reward term rewards it, and the deadness has no explanation yet at all.
+  * not-possible DOMINATES -> there is no port, and the PORT is the binding
+    constraint rather than the hull. That would make journal 321's "ports are
+    unpriced" the root and ships a symptom.
+
+All three are decision-relevant and they point at different fixes.
+
+WHAT I EXPECT: cash-blocked, on the strength of ai-treasuries-run-at-zero and
+journal 252's finding that industry is withheld for want of money on 90.4% of
+the turns it is wanted. But journal 322 is one entry old and its lesson was
+that I state expectations about rates I have not measured, so this one is held
+loosely and written down so it can be checked against the result.
+
+One eval run, no new code -- validEconomy runs at decision time, unlike the
+reward block that made journal 322's first two runs print nothing.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: MY PREDICTION WAS WRONG AGAIN, and the table says something the record
+does not contain.
+
+    [GATE] econ action     offered   cash-blocked   not-possible
+      a1 industry            6.6%         52.7%          40.6%
+      a2 fortify            14.5%         72.9%          12.6%
+      a3 PORT                6.0%          8.2%          85.8%
+      a4 specialise          9.9%         30.3%          59.8%
+      a5 SHIP                9.1%         22.9%          68.0%
+      a6 SHIP (2nd)          6.6%         11.9%          81.5%
+
+I predicted cash-blocked would dominate for ships, on ai-treasuries-run-at-zero
+and journal 252's "industry is withheld for want of money on 90.4% of the turns
+it wants it". For INDUSTRY that is right -- 52.7% cash-blocked, and fortify is
+72.9%. For PORTS AND SHIPS IT IS NOT: they are NOT POSSIBLE 86% and 68% of the
+time, and cash blocks them on 8% and 23%.
+
+**DIFFERENT ECON ACTIONS HAVE DIFFERENT BINDING CONSTRAINTS.** Industry and
+fortify are money-bound. Ports and ships are possibility-bound. The record has
+treated "the AI will not buy X" as one phenomenon across all of them -- journal
+256's map lists military spending at 0.8% of gross as though it were a spending
+decision -- and it is at least two.
+
+AND THE ANSWER WAS ALREADY IN THE SOURCE, three lines above the gate:
+
+    "THE POLICY CHOSE IT FOUR TIMES. 0.6%. Ports built over the run: zero ...
+     The blocker is therefore the policy and not the purse ... it is why the
+     fix for ports is a retrain on the corrected action space (THE RESEARCH
+     DEADLOCK THAT CAPPED EVERY COUNTRY AT PORT LEVEL 1 WAS ONLY JUST LIFTED,
+     so no model has ever been trained in a world where port level 2 was
+     reachable), and not another rule here."
+
+That is a recorded, specific explanation for the dead port action -- no model
+has ever been trained in a world where the upgrade existed -- and nothing in
+journals 305-322 cited it while spending four entries on why naval actions are
+dead. It is the same failure as journals 308 and 311, where the tool the
+protocol prescribed had never been wired: the knowledge was in the tree and the
+search did not reach it.
+
+A DISCREPANCY I AM FLAGGING, NOT RESOLVING. That comment says the deadlock "was
+only just lifted". If port level 2 is reachable on this build, ports should not
+be impossible 85.8% of the time. Either the lift has not taken effect on the
+seats I measure, or "not possible" here is dominated by something else entirely
+-- a coastal-province condition, or ports already at their reachable maximum. I
+have not measured which, and journal 322 was one entry ago about exactly this
+kind of confident inference from a plausible mechanism. Filed as item 56.
+
+THE INSTRUMENT HAS BEEN RUNNING SINCE JOURNAL 305 AND I FILTERED IT OUT OF
+EVERY CAPTURE. Eighteen runs printed this table; every grep I wrote matched
+`^\[ACTHIST\]   ` or `^\[BENCH\]` and dropped it. The comment beside the
+counters even says "the per-country counter has recorded [this] since it was
+written and nothing has ever reported it". Something did report it -- the
+[GATE] block -- and then nobody looked. Journal 311's lesson was that a grep
+which makes output readable can hide the cause; this is the same lesson at the
+scale of a whole sequence.
+
+PENDING COMMIT: none. Measurement only, from an instrument already in the tree.
+
+MEASUREMENT ONLY. No source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 324 — iteration: is the port research deadlock actually lifted?
+
+BACKLOG ITEM 56, and it exists because journal 323 declined to answer it by
+inference. validEconomy's comment says "the research deadlock that capped every
+country at port level 1 WAS ONLY JUST LIFTED", and journal 323 measured ports
+as NOT POSSIBLE on 85.8% of econ decisions. Those two do not obviously sit
+together, and journal 322 had just retracted a claim made by exactly that kind
+of reasoning, so it was filed rather than concluded.
+
+READING THE CODE FIRST, because it narrows what needs measuring:
+
+    portCap(cid) = clamp(max(1, getResearchedPortLevel(cid)), 1, 3)
+
+    nextPortBuy is possible if
+      (a) an existing port has level < cap, OR
+      (b) some coastal province has NO port at all (needs cap >= 1, always true)
+
+So the cap is never below 1, and (b) means a country with any portless coastal
+province can always build. "NOT POSSIBLE" therefore means: **every coastal
+province already has a port, AND every one of them is at the cap.** That is a
+saturation statement, not a prohibition -- which is already different from what
+"deadlock" suggests.
+
+THE MEASURABLE QUESTION, and it is one number: what is portCap in practice? If
+getResearchedPortLevel returns 1 for everyone, the cap is 1, ports saturate at
+level 1 across the map, and the comment's deadlock is NOT lifted on these
+seats. If it returns 2 or 3, the cap is higher and 85.8% impossibility means
+something else -- that the AI has already built everything it can, which would
+be a very different finding.
+
+HYPOTHESIS:
+  * cap == 1 everywhere   -> the deadlock stands on these seats. The comment's
+                             "only just lifted" has not reached them, and the
+                             port action is dead because there is nothing to
+                             buy after the first round.
+  * cap mostly 2 or 3     -> the deadlock IS lifted, ports are impossible
+                             because they are all built, and the dead port
+                             action means the AI built them early and then had
+                             no further use -- which would make journal 305's
+                             "port offered 11,970 times, never taken" a
+                             statement about upgrades it cannot reach rather
+                             than ports it refuses.
+  * a mix                 -> report the distribution and no story.
+
+One counter, one run. I am NOT predicting this one: journal 322 and 323 were
+both wrong predictions in a row, both times because I reasoned from a plausible
+mechanism instead of measuring, and a third guess here adds nothing.
+
+Paths: src/ai/AISystem.cpp, src/ai/AISystem.h, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: THE DEADLOCK IS PARTLY LIFTED -- the mechanism works, and it reaches
+about one country-turn in eight.
+
+    [PORTCAP] 1914:FRA    cap1 82,220   cap2 3,270    cap3 12,929   above-1 16.5%
+              modern:CHN  cap1 282,814  cap2 10,912   cap3 24,729   above-1 11.2%
+
+    seat          port NOT-POSSIBLE      portCap == 1
+    1914:FRA           85.8%                 83.5%
+    modern:CHN         92.2%                 88.8%
+
+So `getResearchedPortLevel` DOES return 2 and 3 -- the research path exists and
+is reached -- but for 83-89% of country-turns the cap is still 1. The comment's
+"only just lifted" is accurate about the mechanism and misleading about the
+reach: it is lifted for a minority.
+
+AND THE TWO RATES TRACK, which is the shape you would expect if "no port
+purchase possible" is mostly "cap is 1 and every coastal province already has
+its level-1 port". **THAT IS A CORRELATION AND I AM NOT CALLING IT A CAUSE.**
+The joint distribution was not measured, and a cap-1 country with a portless
+coastal province can still build one -- nextPortBuy's second branch needs only
+cap >= 1, which always holds. Establishing causation needs the two conditions
+counted together, which is one more counter and not this entry.
+
+WHAT IT MEANS FOR THE COMMENT'S CLAIM. validEconomy says "no model has ever
+been trained in a world where port level 2 was reachable". That is now
+QUALIFIED rather than refuted: port level 2 IS reachable, on 11-16% of
+country-turns, so a model trained on these worlds has seen the upgrade -- just
+rarely. Whether 11-16% is enough exposure to learn an action is a different
+question and an open one; journal 306 showed the port action's policy mass is
+0.00e+00, which is consistent with too little exposure and equally consistent
+with several other things.
+
+I DECLINED TO PREDICT AND THAT WAS RIGHT. Journals 322 and 323 were both wrong
+predictions, each reasoning from a plausible mechanism instead of measuring, so
+this entry listed three outcomes and picked none. The answer was the third --
+"a mix, report the distribution and no story" -- which neither of the two clean
+hypotheses would have produced. Two wrong guesses in a row was enough evidence
+about my guessing on this subsystem.
+
+THE INSTRUMENT IS INERT: decision hashes 14669681761325311781 over 86188 and
+1134950857311588231 over 277784, both matching every run since journal 300.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h, one hunk pair, folds into the
+ACT_HIST work already pending):
+
+    Count the observed port cap
+
+    portCap = clamp(max(1, getResearchedPortLevel(cid)), 1, 3), and whether the
+    port research deadlock is lifted is a question about its distribution.
+    Measured: cap 1 on 83-89% of country-turns, cap 2 or 3 on 11-16%. The
+    deadlock is lifted for a minority, not for everyone.
+
+MEASUREMENT + ONE COUNTER. No AI behaviour changed, proven by hash. No model
+written, data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 325 — iteration: which of the port's two branches is actually shut?
+
+BACKLOG ITEM 58. Journal 324 measured portCap as 1 on 83-89% of country-turns
+and noted that the port NOT-POSSIBLE rate tracks it closely -- then explicitly
+refused to call that causal, because nextPortBuy has TWO branches and only one
+of them is cap-bound. This entry counts them apart. It matters for one concrete
+reason: **if the blocker is the cap, raising the cap opens the action; if it is
+the other branch, raising the cap changes nothing.**
+
+READING THE FUNCTION PROPERLY TURNED UP A THIRD POSSIBILITY I had not
+considered, and it is the interesting one:
+
+    if (found.pid < 0 && cap >= 1) {
+        ... collect every PORTLESS province, sorted by population descending
+        for (size_t i = 0; i < cands.size() && i < 4; ++i) {
+            if (!g.isProvinceCoastal(cands[i].second)) continue;
+            found.pid = ...; break;
+        }
+    }
+
+**Only the four most populous portless provinces are examined**, and each must
+be coastal. A country whose top four portless provinces are all inland finds
+nothing -- even when it has coastal portless provinces further down the list.
+That is not a cap problem and not a genuine absence of anywhere to build; it is
+a window.
+
+THREE MUTUALLY EXCLUSIVE REASONS for nextPortBuy returning false, and they
+imply three different fixes:
+
+    CAP-BOUND     the country owns ports and every one is at cap or pending.
+                  Raising portCap opens the action.
+    TOP-4 WINDOW  a coastal portless province EXISTS but is not in the top four
+                  by population. Raising the cap does nothing; widening or
+                  re-sorting the window is the fix.
+    GENUINELY NONE no portless coastal province anywhere. Nothing to fix -- the
+                  country has built everywhere it can.
+
+HYPOTHESIS: I am not predicting the split, for the reason journal 324 gave --
+two wrong mechanism-guesses in a row on this subsystem. But I will commit to
+what each outcome means, so the result cannot be reinterpreted afterwards:
+
+  * CAP-BOUND dominant   -> journal 324's correlation was causal after all, and
+                            the port cap is the lever.
+  * TOP-4 dominant       -> a defect, and the naval story changes again: ports
+                            are not refused, not unaffordable and not exhausted
+                            -- they are hidden by a four-element window.
+  * NONE dominant        -> the AI has built every port it can, and the dead
+                            port ACTION is honest: there is nothing to buy.
+
+One counter, one run, two seats. Instrumented inside nextPortBuy at the moment
+it fails, under OD_ACT_HIST only.
+
+Paths: src/ai/AISystem.cpp, src/ai/AISystem.h, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: THE CAP IS THE LEVER FOR ABOUT HALF, AND THE WINDOW I SUSPECTED IS
+NEVER THE BLOCKER.
+
+    [PORTFAIL]  1914:FRA    cap-bound 8,382 (54.6%)   top4-window 0 (0.0%)
+                            no coast / no port 6,974 (45.4%)
+                modern:CHN  cap-bound 25,147 (45.5%)  top4-window 0 (0.0%)
+                            no coast / no port 30,116 (54.5%)
+
+THE TOP-4 WINDOW IS ZERO ON BOTH SEATS. I read that code, saw that only the
+four most populous portless provinces are checked for coastality, and called it
+"bug-shaped" in the hypothesis. It never fires: on every country-turn where
+nextPortBuy failed, there was no coastal portless province ANYWHERE, so the
+window never had a candidate to miss. The suspicion was reasonable and wrong,
+and it took a counter to find that out rather than more reading.
+
+THE SPLIT IS ROUGHLY EVEN between the two real cases:
+
+    CAP-BOUND     the country owns ports, every one at cap. Raising portCap
+                  opens the action. 55% on France, 46% on China.
+    NO COAST      the country owns no port and has no coastal portless
+                  province -- landlocked, or fully built out. Nothing opens it.
+
+So journal 324's correlation was causal for about half of it. **Raising the
+port cap would open the port action on roughly half the country-turns where it
+is currently impossible, and do nothing for the other half.** That is the
+concrete answer item 58 was filed to get, and it says the cap is worth raising
+but is not a complete fix.
+
+AND A DENOMINATOR TRAP I NEARLY PRINTED. My first summary multiplied the
+cap-bound SHARE by the gate's impossible RATE to get "raising the cap addresses
+N% of all econ decisions". Those two counters have different denominators:
+nextPortBuy is cached per country per turn (m_portBuyCache), so PORTFAIL counts
+COUNTRY-TURNS -- 15,356 on France -- while the [GATE] counter increments on
+every econ DECISION, 84,472. The product is meaningless. It printed as "~0%"
+through a formatting bug, which is the only reason I looked at it twice.
+
+That is the third denominator error in this sequence -- journals 316 and 317
+were both about counters written for one question being quoted for another --
+and this one was mine, made while writing the entry that cites them. A
+formatting slip caught what the reasoning did not.
+
+THE INSTRUMENT IS INERT despite scanning provinces on every failure: decision
+hashes 14669681761325311781 over 86188 and 1134950857311588231 over 277784,
+matching every run since journal 300.
+
+PENDING COMMIT (src/ai/AISystem.cpp and .h, one hunk pair, folds into the
+ACT_HIST work already pending):
+
+    Attribute nextPortBuy's failures
+
+    Three mutually exclusive reasons, counted under OD_ACT_HIST: cap-bound
+    (every owned port at cap -- raising portCap opens it), the top-4 window
+    (a coastal portless province exists outside the population window), and
+    genuinely none. Measured 55/0/45 on France and 46/0/54 on China: the cap
+    is the lever for about half, and the window never fires.
+
+MEASUREMENT + ONE COUNTER. No AI behaviour changed, proven by hash. No model
+written, data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 326 — iteration: 58 refusals, never measured
+
+NO BACKLOG ITEM -- the port chain (56, 57, 58) closed last entry and everything
+else open is the user's. Chosen work, and chosen the same way journal 323 was:
+by looking for an instrument that has been printing all along and that nobody
+has read.
+
+There is one, and its own comment says so:
+
+    "OD_ACT_HIST counts refusals by reason. There are 58 of these across the
+     four exec functions and NOT ONE HAS EVER BEEN MEASURED. Each is a place
+     where the POLICY chose an action and a rule then declined to carry it out
+     -- the same shape as the 'repress: already hardest' no-op, which burned a
+     decision every turn and, in the source's own words, kept 'generating a
+     gradient, teaching the politics head that the action is safe and free'. A
+     refusal that fires often is not free: it costs the country its turn and
+     teaches the head something untrue."
+
+`didNothing(why)` is called from 58 places; each increments s_noopWhy[why]; and
+dumpNoopHistogram prints the lot under OD_ACT_HIST. It has printed on every run
+since journal 305 and appears in none of my captures -- the same blind spot that
+hid the [GATE] table until journal 323, and for the same reason: my greps name
+the lines I expect.
+
+WHY IT IS WORTH A RUN. A no-op is a DOUBLE cost that neither of this project's
+main instruments can see. The bench cannot see it -- the turn is simply less
+productive, worth far less than the ~60-point floor. And the ACTHIST table
+cannot see it either: a refused action still counts as PICKED, so an action
+that fires constantly and does nothing looks identical to one that works. The
+only visible trace is this histogram.
+
+WHAT WOULD MAKE IT MATTER, stated before the numbers:
+
+  * a single reason dominating -> one rule is eating a large share of the AI's
+    turns, and it is a named string pointing straight at the line;
+  * a long flat tail -> refusals are spread thin and none is worth fixing;
+  * a POLITICS or ECON reason near the top -> it lands on a head this sequence
+    has already characterised, and the "safe and free" gradient the comment
+    describes would be a candidate explanation for behaviour journals 305-321
+    attributed to the reward.
+
+WHAT I EXPECT: nothing specific, and deliberately so. Journals 322 and 323 were
+both wrong mechanism-guesses and journal 324 was right to decline. This is a
+first look at unread data; the useful discipline is to report what is there and
+resist fitting it to the dead-action story I have been building for twenty
+entries.
+
+One eval run, no new code. didNothing is called at execution time, so unlike
+journal 322's reward counter this works in a bench run.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: ONE RULE IS EATING A SIXTH OF EVERY ACTION THE AI TAKES, and a fix for
+it already exists in the tree with a comment saying it was measured.
+
+    [NOOP] 73,954 refused executions, by reason:
+             44,291   59.9%  reinforce: nothing to move
+             10,288   13.9%  recruit: too poor/small
+              4,792    6.5%  research: nothing left (army)
+              3,627    4.9%  calm: no policy would help
+              3,450    4.7%  fort: cannot afford
+              2,366    3.2%  bombard: no ammo
+             ... twelve more, none above 2.8%
+
+    73,954 refusals against 273,034 executed actions -- **27.1% of everything
+    the AI does, does nothing**, and "reinforce: nothing to move" alone is
+    16.2% of all actions.
+
+IT IS WAR ACTION 2, and it is the single most-played action in the war module:
+
+    WAR a2 reinforce   executed 64,292   did nothing 44,291   68.9%
+                       of those executions, 26,230 were the policy's own choice
+
+**Seven in ten reinforce orders move nothing.**
+
+AND THE TREE ALREADY KNOWS. Beside the mask in validWar:
+
+    "Reinforce needs somewhere to move troops FROM, not merely a frontier.
+     'st.army > 0 && has a frontier' offered this action on almost every turn
+     of the game, and execWar then answered 'reinforce: nothing to move' --
+     measured at 3,181 times in a 400-turn run, a tenth of every war decision
+     taken on the map. A masked-out action costs the policy nothing; an action
+     that is offered and does nothing costs it a turn, and teaches it that the
+     war module is mostly inert."
+
+Someone found this, diagnosed it exactly, wrote a mask, and recorded 3,181.
+I measure 44,291 -- FOURTEEN TIMES that figure.
+
+WHAT I CANNOT CONCLUDE FROM THAT. The 3,181 has no seat, model or seed beside
+it, so it may be a different configuration entirely and the comparison may be
+apples to oranges. What I can say without that: on THIS seat, model and seed,
+with the mask in place, reinforce refuses 68.9% of the time and accounts for
+16.2% of every action the AI takes. Whether the mask regressed, never covered
+this case, or was measured somewhere else is the next question and not this
+entry's. Filed as item 59.
+
+WHY THIS IS THE MOST ACTIONABLE THING THIS SEQUENCE HAS FOUND. It is invisible
+to both of the project's instruments by construction: the bench cannot see a
+wasted turn (worth far less than its ~60-point floor), and the ACTHIST table
+counts a refused action as PICKED, so reinforce looks like the war module's
+busiest action rather than its emptiest. Only this histogram shows it, and it
+has printed on every OD_ACT_HIST run since journal 305 while every grep I wrote
+dropped it -- the second such instrument in four entries, after the [GATE]
+table in journal 323.
+
+I ALSO DECLINED TO PREDICT AND SHOULD SAY WHAT THAT COST. Nothing: the entry
+listed three shapes the data could take, "a single reason dominating" was one
+of them, and it named the consequence in advance -- "one rule is eating a large
+share of the AI's turns, and it is a named string pointing straight at the
+line". That is exactly what happened, which is the first time in six entries a
+pre-registered reading has matched without a retraction attached.
+
+PENDING COMMIT: none. Measurement only, from an instrument already in the tree.
+
+MEASUREMENT ONLY. No source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 327 — iteration: the reinforce fix exists and is switched off
+
+BACKLOG ITEM 59, the highest-value item the loop could act on: journal 326
+found "reinforce: nothing to move" accounting for 16.2% of every action the AI
+takes -- WAR a2 refusing 68.9% of its 64,292 executions -- against a source
+comment recording 3,181 and a mask written to prevent it.
+
+READING THE MASK ANSWERS IT WITHOUT A RUN. validWar:
+
+    static const bool reinforceGate =
+        std::getenv("OD_REINFORCE_GATE") && atoi(...) != 0;
+    std::unordered_set<int> preOrderedSrc;
+    if (reinforceGate)
+        for (const auto& mo : g.m_pendingMoveOrders)
+            if (mo.countryId == cid) preOrderedSrc.insert(mo.fromProvince);
+    ...
+            if (preOrderedSrc.count(nid)) continue;
+            if (garrisonOf(nid, cid) >= 200) { canReinforce = true; break; }
+
+The mask has two halves. The BASE half -- require a neighbouring own province
+with a garrison of at least 200 -- runs always. The REFINEMENT -- exclude
+sources that already carry a move order, because a province cannot send twice
+-- is behind OD_REINFORCE_GATE and **DEFAULT OFF**.
+
+That refinement is precisely the residual case. execWar's own comment says "A
+source already carrying a move order cannot send again", and the set that would
+encode it is only populated when an undocumented env var is set. So the action
+is offered whenever a fat neighbour exists, including when every such
+neighbour is already moving, and execWar then answers "nothing to move".
+
+This is the fifth switched-off thing this sequence has found -- four reflexes
+(journal 297), naval/industry/researchAusterity (302), and now a mask half --
+and OD_REINFORCE_GATE is in none of LOOP.md's seven named variables, so
+journal 311's instrument audit could not have caught it.
+
+HYPOTHESIS, and it is a direct A/B on a floor-free metric:
+
+  Run the same seat, model and seed with OD_REINFORCE_GATE=1 and compare the
+  [NOOP] count for "reinforce: nothing to move".
+
+  * a large drop -> the refinement is the fix, it has been off by default, and
+    16% of the AI's actions are recoverable by setting one variable. That would
+    be the first actionable improvement this sequence has found.
+  * little or no drop -> pre-ordered sources are not the residual case, the
+    44,291 come from somewhere else in execWar, and the comment's 3,181 is
+    about a different configuration entirely.
+
+THE DECISION HASH WILL CHANGE and that is expected, not a violation: this alters
+the action mask, so it alters play. Every other entry in this sequence has used
+an unchanged hash as proof of inertness; this one is the opposite and the
+distinction is worth stating so a later reader does not mistake it for a
+regression.
+
+I will read the seat score too, but NOT judge on it: journal 296 put the bench
+floor at ~60 points and a single seed cannot resolve anything. The [NOOP] count
+is the measurement; the score is context.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: THE GATE IS NOT THE FIX -- it recovers 5% -- and the real mismatch is
+in the executor, not the mask.
+
+    arm          reinforce no-ops   total refusals   WAR a2 played
+    gate OFF          44,291            73,954          64,292
+    gate ON           42,027            73,739          65,887
+                      -5.1%             -0.3%
+
+Turning OD_REINFORCE_GATE on removes 2,264 of 44,291. Pre-ordered sources are
+NOT the residual case, so the answer to item 59 is that the mask neither
+regressed nor was it ever going to cover this. (Decision hash changed from
+14669681761325311781 to 4437316439123659911 as expected -- this alters the
+action mask, so it alters play. Every other entry in this sequence used an
+unchanged hash as proof of inertness; this one is the opposite, deliberately.)
+
+WHERE THE 44,291 ACTUALLY COME FROM. The mask and the executor ask different
+questions:
+
+    validWar    is there ANY frontier with a neighbouring own province whose
+                garrison is >= 200?  -- one global existence check
+
+    reinforceProvince(dst)
+                for THIS destination, take the neighbour with the LARGEST
+                garrison; if it is under 200, fail; if it already carries a
+                move order, FAIL -- without trying the next-largest.
+
+        int srcPid = -1; long long srcG = 0;
+        for (int nid : nIt->second) { ... if (gsz > srcG) { srcG = gsz; srcPid = nid; } }
+        if (srcPid < 0 || srcG < 200) return false;
+        for (auto& mo : g.m_pendingMoveOrders)
+            if (mo.fromProvince == srcPid && mo.countryId == cid) return false;
+
+**The executor picks the strongest neighbour and gives up if it is already
+moving, instead of falling back to the next-strongest.** execWar retries across
+destinations -- up to MAX_REINFORCE_ORDERS ranked frontiers -- but for each one
+it tries exactly one source. So a country whose largest garrisons are all in
+motion answers "nothing to move" even when adequate second-choice sources sit
+next to every frontier.
+
+That also explains why the mask-level gate cannot help. Excluding pre-ordered
+provinces from the MASK's existence check makes the action unavailable slightly
+more often; it does nothing about the executor choosing a single source per
+destination and declining to look further.
+
+WHAT I AM NOT DOING. Not changing reinforceProvince. It is game logic, it
+alters play, and LOOP.md's verdict rule wants a bench improvement to keep a
+change -- which journal 296 says this bench cannot resolve below ~60 points.
+But the [NOOP] count IS floor-free, so a fallback loop has a measurable
+success criterion that does not need the bench: does "reinforce: nothing to
+move" fall. That is a well-posed experiment and it belongs to its own iteration
+with its own pre-registered threshold. Filed as item 61.
+
+I DID NOT PREDICT THIS ONE EITHER, and the entry named both outcomes in
+advance: "a large drop -> the refinement is the fix" and "little or no drop ->
+pre-ordered sources are not the residual case, the 44,291 come from somewhere
+else in execWar". The second happened. Naming both beforehand is what made a
+5.1% result readable as an answer rather than a disappointment.
+
+PENDING COMMIT: none. Measurement only; no source touched.
+
+MEASUREMENT ONLY. No model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 328 — iteration: let reinforce fall back to the next-best source
+
+BACKLOG ITEM 61. Journal 327 located the cause of the AI's largest single
+waste: `reinforceProvince` takes the LARGEST neighbouring garrison of a
+destination and returns false if it already carries a move order, without
+trying the next-largest. "reinforce: nothing to move" is 44,291 refusals --
+16.2% of every action the AI takes.
+
+THIS IS THE FIRST CHANGE IN THIS SEQUENCE WITH A FLOOR-FREE TEST. Every knob
+since journal 281 has been judged on a rating the bench cannot resolve below
+~60 points. This one is judged on a COUNT: does the refusal fall. No seeds, no
+intervals, no cap.
+
+THE CHANGE, minimal: collect the eligible neighbours (own province, not
+at-risk, garrison >= 200), sort by garrison descending, and take the first
+without a pending move order. When the best source is free this picks exactly
+what the old code picked, so the only behaviour that changes is the case that
+used to fail.
+
+PRE-REGISTERED THRESHOLDS, written before the build:
+
+  DIAGNOSIS CONFIRMED if "reinforce: nothing to move" falls by >= 25%
+  (44,291 -> 33,218 or lower) on 1914:FRA / N24 / seed 13579. Journal 327
+  showed the mask-level gate recovers 5.1%; if the executor's single-source
+  choice is really the cause, the fallback should recover several times that.
+
+  DIAGNOSIS WRONG if it falls by < 10%. Then the sources beside those frontiers
+  are simply not there -- the garrisons are below 200 or at-risk -- and I revert
+  and say the cause is still unfound.
+
+  BETWEEN 10% AND 25%: partial. Report the number, revert, and do not claim the
+  cause is settled.
+
+AND A SEPARATE, STRICTER BAR FOR RECOMMENDING IT. A lower refusal count means
+more reinforcement ORDERS, and more orders is not automatically better --
+memory withdrawing-loses-battles records two movement rules that both cost, and
+caution-rules-trade-growth records caution lifting survival while cutting
+rating. So:
+
+    the NO-OP COUNT tests the DIAGNOSIS.
+    the SEAT SCORE decides the RECOMMENDATION, and at 8 seeds it can only
+    REJECT (a loss over ~60) -- it cannot accept.
+
+I will therefore not recommend this change on today's evidence whatever the
+count does; the most I can report is "the diagnosis holds and the bench sees no
+harm", which is a weaker claim and the honest one. Journal 296 is the reason.
+
+REVERT PLAN, written before the edit as LOOP.md requires: the change is one
+hunk in src/ai/AISystem.cpp inside reinforceProvince. If rejected I restore
+that hunk and rebuild; nothing else is touched.
+
+Paths: src/ai/AISystem.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: DIAGNOSIS CONFIRMED, RECOMMENDATION WITHHELD, CHANGE GATED OFF.
+
+    OD_REINF_FALLBACK=1, 1914:FRA / N24 / seed 13579
+      reinforce: nothing to move   44,291 -> 29,269   -33.9%
+      total refused executions     73,954 -> 53,739   -27.3%
+      France seat score              21.4 ->    9.1
+
+The refusal falls by a third, clearing the 25% threshold set before the build.
+So journal 327's diagnosis is right: the executor's refusal to try a
+second-choice source is the cause of the AI's largest single waste, and it is
+worth about 15,000 actions per run on one seat.
+
+AND THE SEAT SCORE FELL HARD. 21.4 to 9.1 is 319 to 136 in seat terms, -183 on
+one seed. By the rule I set before the run -- "the no-op count tests the
+DIAGNOSIS; the seat score decides the RECOMMENDATION, and at 8 seeds it can
+only REJECT" -- one seed cannot reject either. What it can do is stop me
+shipping this, and it does. The change is gated behind OD_REINF_FALLBACK,
+DEFAULT OFF, so the diagnosis is preserved in the tree and no behaviour moves.
+
+A COUNT THAT MEANS SOMETHING AND A SCORE THAT DOES NOT, in the same run: the
+count is exact at any sample size and the score is one draw from a distribution
+whose se at EIGHT seeds is ~30. Those two facts sit uncomfortably together and
+the honest reading is that fixing the waste may well be bad for the AI --
+memory withdrawing-loses-battles records two movement rules that both cost, and
+a country that reinforces from its second-best province is spreading force it
+might have concentrated.
+
+THE GATING WAS WRONG ON THE FIRST ATTEMPT AND THE HASH CAUGHT IT. My first
+gated version claimed to be inert when off and was not: score 18.9 against
+21.4, 61,071 refusals against 44,291, a different hash. The cause was TIE
+BREAKING -- I filtered candidates to garrison >= 200 and sorted descending with
+std::sort on a pair, which breaks ties by province id, where the original kept
+the first neighbour encountered. Equal garrisons are evidently common enough to
+change the game.
+
+The fix was to make the default path the ORIGINAL CODE VERBATIM and branch only
+when the flag is on. It now reproduces 21.4 / 44,291 / 14669681761325311781
+over 86188 exactly. **A refactor that is "obviously equivalent" is not
+equivalent until a hash says so**, and this is the second time in this sequence
+that a claim of inertness failed its own check -- journal 315's gate
+attribution was the first.
+
+PENDING COMMIT (src/ai/AISystem.cpp, one hunk in reinforceProvince):
+
+    Let reinforce fall back to the next-best source, behind a flag
+
+    reinforceProvince took the largest neighbouring garrison and gave up if
+    that province already carried a move order, so a country whose biggest
+    stacks were all moving refused to reinforce at all. "reinforce: nothing to
+    move" is 44,291 refusals in a 400-turn run -- 16.2% of every action the AI
+    takes -- and the mask-level OD_REINFORCE_GATE recovers only 5% because the
+    problem is here.
+
+    OD_REINF_FALLBACK=1 tries candidates in descending garrison order:
+    refusals 44,291 -> 29,269. DEFAULT OFF -- the same run moved the France
+    seat 21.4 -> 9.1 on one seed, which decides nothing but is not the
+    direction of a free win.
+
+    Default path is the original verbatim, verified by decision hash.
+
+NEXT: judge it on the graded pair, 8 fresh seeds, both arms on this one binary
+(the flag exists so they can be). Filed as item 62. Note the bench can only
+REJECT at that sample size; if it comes back inside the interval the honest
+report is "the waste is real and fixing it is not measurably good or bad", and
+the decision to ship becomes a judgement about game design rather than a
+measurement.
+
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 329 — iteration: judging the reinforce fallback on eight seeds
+
+BACKLOG ITEM 62. Journal 328 built OD_REINF_FALLBACK, confirmed the diagnosis
+on a count that needs no seeds -- "reinforce: nothing to move" 44,291 -> 29,269,
+-33.9% -- and gated it OFF because the France seat fell 21.4 -> 9.1 on that
+same single seed. One seed decides nothing. This entry decides what can be
+decided.
+
+DESIGN: both arms on ONE binary, which is the whole reason the flag exists.
+build/OpenDoctrinesServer, 8 fresh seeds, three rung seats, reading the graded
+FRA+USA pair. 48 runs. The control is NOT reused from journal 282 even though
+journal 328 showed this binary reproduces that control's hash exactly on seed
+13579 -- ab-both-arms-one-tree says run both, and the one place I could be
+wrong is the one seed I checked.
+
+PRE-REGISTERED, in the order journals 295 and 304 fixed:
+  1. graded counts per arm. If they differ materially the arms are not
+     comparable and I say so before quoting a mean.
+  2. the paired difference on FRA+USA, with a permutation test beside the
+     interval.
+
+THE DECISION RULE, and it is asymmetric on purpose. Journal 296 put the bench's
+resolution at ~60 points, so at 8 seeds:
+
+    REJECT          if the interval clears zero NEGATIVE. The change costs, it
+                    stays off, and the journal records a fix for a real waste
+                    that the game does not want.
+    NOT RESOLVABLE  if the interval spans zero. The change stays off -- an
+                    unproven change to game logic does not ship -- and the
+                    honest report is "the waste is real and fixing it is
+                    neither measurably good nor bad".
+    ACCEPT          is not available at this sample size and I am not going to
+                    pretend otherwise. Even a positive interval would only mean
+                    "worth testing properly", because a rating that clears zero
+                    on 8 seeds has cleared a ~60-point bar, and nothing this
+                    sequence has measured except the shipped austerity change
+                    has done that.
+
+WHAT I EXPECT: a loss, on the strength of journal 328's single seed and of
+withdrawing-loses-battles -- two movement rules that both cost -- and because
+reinforcing from a second-best province spreads force that might have been
+concentrated. But journal 328's -183 was ONE draw from a distribution whose se
+at eight seeds is ~30, so it is weak evidence about the mean and I have been
+wrong about this subsystem before.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: NOT RESOLVABLE. The change stays OFF, and journal 328's alarming single
+seed does not survive contact with the other seven.
+
+    CHECK 1  graded 14/24 (off) against 13/24 (on) -- comparable, and the
+             control reproduced journal 282's shipped column on ALL TWENTY-FOUR
+             observations, not merely the one seed journal 328 checked. So this
+             binary and build/loop/relcheck/b agree completely on the default
+             path, and running the control rather than reusing it cost 24 runs
+             to confirm something that was already true. That is the correct
+             trade: the alternative was trusting one seed.
+
+    OD_REINF_FALLBACK=1 minus OFF, 8 fresh seeds, both arms on one binary
+      graded pair FRA+USA   -21   CI [-76, +35]   2/8   perm p = 0.547
+      all three seats       +28   CI [-38, +94]   4/8   perm p = 0.402
+
+Both span zero, both permutation tests agree, and the two metrics point in
+OPPOSITE directions -- which is what a null looks like when China's coin is in
+one of them and not the other.
+
+By the rule set before the run: REJECT was reserved for an interval clearing
+zero negative, ACCEPT was not available at this sample size, and this is the
+third case -- NOT RESOLVABLE. **The change stays off**, because an unproven
+change to game logic does not ship, and the honest summary is: the waste is
+real and measured, and fixing it is neither measurably good nor bad.
+
+JOURNAL 328's -183 WAS THE ARRANGEMENT, NOT THE CHANGE. That entry ran
+1914:FRA alone and read 21.4 -> 9.1. Here the same seed in the full three-seat
+run reads 21.4 -> 19.5 on France, and -28 on the graded pair. The difference is
+that journal 328's run had only one seat in play; the seat bench's world is
+built from the seat set, so a one-seat run is a different world, not a subset
+of a three-seat one. **I nearly let a -183 from a differently-shaped run stand
+as evidence about a change**, and the only reason it did not is that the
+pre-registered rule said one seed cannot reject.
+
+WHAT THIS LEAVES. A real, exactly-measured defect -- 16.2% of the AI's actions
+refuse to do anything, and a two-line fix cuts that by a third -- whose effect
+on play this bench cannot see. That is precisely the situation journal 304
+predicted the loop would keep hitting, and it is the strongest single argument
+yet for item 26: at 32 seeds the interval would be ~29 wide instead of ~56, and
+this question would have an answer.
+
+I ALSO EXPECTED A LOSS AND DID NOT GET ONE. The prediction leaned on journal
+328's single seed and on withdrawing-loses-battles. The graded pair is -21 with
+the interval spanning zero; on all three seats it is +28. Neither is a loss and
+neither is a win.
+
+PENDING COMMIT: unchanged from journal 328 -- the one gated hunk in
+reinforceProvince, default off, inertness proven by decision hash and now by a
+24-observation control that matches journal 282 exactly.
+
+MEASUREMENT ONLY. No model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 330 — iteration: the same defect, already diagnosed, already built, switched off
+
+NO BACKLOG ITEM -- all open ones are the user's or blocked. Chosen work:
+journal 326's [NOOP] table ranked "recruit: too poor/small" second at 10,288
+refusals, 13.9%. I went to investigate it the way journals 327-329 investigated
+reinforce, and found the whole investigation already written in the source.
+
+    "The mask tests country-wide POPULATION (headcount); the executor tests the
+     chosen province's availableManpower -- what is left to conscript after
+     orders already placed this turn -- and refuses when maxRecruit =
+     manpower/5 is under 1000. A country of ten million whose provinces are
+     conscripted out passes the mask every turn and is refused every turn."
+
+    "The fallback picks the most POPULOUS province ... The biggest province is
+     exactly the one that gets conscripted out first, so the AI returns to it
+     every turn and is refused every turn.
+
+     Tightening the MASK against this does not help (measured: 108,650 ->
+     104,895 refusals) because the mask can only ask whether SOME province
+     would serve, while the executor commits to this one. THE CHOICE IS WHAT IS
+     WRONG, NOT THE GATE."
+
+THAT IS THE CONCLUSION OF JOURNALS 327 AND 328, ARRIVED AT INDEPENDENTLY, FOR A
+DIFFERENT ACTION. Reinforce: the mask asks whether any frontier has a fat
+neighbour, the executor commits to one source and gives up; OD_REINFORCE_GATE
+tightens the mask and recovers 5%. Recruit: the mask asks whether the country
+has people, the executor commits to the most populous province; tightening the
+mask recovered 3.5%. Two actions, the same defect shape, the same failed
+mask-level fix, and the recruit one was written down before I started.
+
+AND THE FIX IS ALREADY BUILT: OD_RECRUIT_PICK=1 chooses the province by MEN
+AVAILABLE instead of headcount. Default OFF. That is now the fifth switched-off
+mechanism this sequence has found -- four reflexes (297), three econ reflexes
+(302), a mask half (327), and this.
+
+THE EXPERIMENT, and it is the same shape as journal 328 because that is what
+the question deserves:
+
+    measure "recruit: too poor/small" with OD_RECRUIT_PICK=1, same seat, model
+    and seed, against journal 326's 10,288.
+
+PRE-REGISTERED THRESHOLD: the source says the CHOICE is the defect, so picking
+by available manpower should cut the refusal substantially where tightening the
+mask cut 3.5%. **CONFIRMED if the refusal falls by >= 25%.** Below 10% the
+recorded diagnosis does not reproduce on this seat and I say so.
+
+AND THE SAME ASYMMETRY AS BEFORE: the count tests the diagnosis; the seat score
+decides the recommendation and at 8 seeds can only reject. I am not going to
+recommend switching it on from a count, however good the count is -- journal
+329 just measured a 33.9% refusal cut whose effect on play the bench could not
+resolve, and there is no reason to expect this one to be different.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: BOTH FIXES WORK, MY THRESHOLD WAS THE WRONG MEASURE, AND THE SOURCE'S
+RECORDED RANKING DOES NOT REPRODUCE HERE.
+
+    arm     a1 played   refused   refusal RATE   total refusals   seat
+    off        26,019    10,288        39.5%           73,954     21.4
+    pick       39,364    11,063        28.1%           94,788     22.9
+    mask       25,995     6,415        24.7%           65,295     21.4
+
+I PRE-REGISTERED THE WRONG STATISTIC. The threshold was "the refusal falls by
+>= 25%", a raw count -- and OD_RECRUIT_PICK raises it, 10,288 -> 11,063, which
+by the letter of the rule is a failure in the wrong direction. It is not.
+Picking the province by available manpower makes recruit SUCCEED more often, so
+the policy chooses it far more often: played 26,019 -> 39,364, +51%. The
+refusal RATE falls 39.5% -> 28.1%. A count with a denominator that the
+treatment moves is not a measure of anything, which is the same error journals
+316, 317 and 325 caught in other people's numbers and in mine, and I walked
+into it while pre-registering a threshold specifically to avoid drifting.
+
+Journal 328's reinforce threshold was safe by luck: the fallback left WAR a2's
+played count nearly flat (64,292 -> 58,037), so there the count and the rate
+agree. Nothing in the rule guaranteed that.
+
+ON THE RATE, BOTH GATED FIXES WORK:
+    OD_RECRUIT_PICK   39.5% -> 28.1%   and the action is chosen 51% more often
+    OD_RECRUIT_MASK   39.5% -> 24.7%   with the action chosen as often as before
+
+AND THE MASK IS NOT A DEFINITIONAL ARTEFACT, which was my first suspicion --
+masking an action out would cut refusals trivially by removing opportunities.
+It does not: a1 is played 25,995 times against 25,995... 26,019 off, so the
+opportunity count is unchanged and the success rate genuinely rises. The mask
+is a NECESSARY condition (its own comment says so) and evidently a sharp one.
+
+SO THE SOURCE'S RANKING IS REVERSED ON THIS SEAT. The comment says "tightening
+the MASK against this does not help (measured: 108,650 -> 104,895)" -- 3.5% --
+"the choice is what is wrong, not the gate". Here the mask is the better of the
+two on the rate and much better on total refusals (73,954 -> 65,295 against the
+choice's 94,788). Its numbers came from "two 400-turn games" with no seat,
+model or seed recorded, so this is a configuration difference I cannot resolve
+rather than a refutation -- exactly the situation journal 326 flagged when it
+found the reinforce comment's 3,181 had no configuration beside it either.
+**That is now twice that an undocumented measurement has cost a comparison.**
+
+WHAT I AM NOT DOING: recommending either. Total refusals move in opposite
+directions (mask -12%, pick +28%), the seat score is one seed, and journal 329
+just showed a 33.9% refusal cut whose effect on play the bench could not
+resolve. Both stay off. Filed as item 63.
+
+PENDING COMMIT: none. No source touched -- both fixes were already in the tree,
+built and gated, by someone else.
+
+MEASUREMENT ONLY. No model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 331 — iteration: put the configuration beside the number
+
+BACKLOG ITEM 64, filed last entry after two documented measurements turned out
+to be uncomparable with fresh ones because neither recorded what it was
+measured on:
+
+    reinforce mask   "measured at 3,181 times in a 400-turn run"
+    recruit mask     "108,650 refusals in two 400-turn games"
+    recruit pick     "104,895 refusals in two 400-turn games"
+
+Both are careful, numerate observations. Journal 326 measured 44,291 against
+the first and journal 330 found the second's RANKING reversed, and in neither
+case could I say whether I had found a regression or a different world, because
+no seat, model or seed is written down.
+
+AND I DID IT MYSELF, TWO ENTRIES AFTER FILING THE ITEM. My own comment in
+reinforceProvince, added in journal 328, reads "'reinforce: nothing to move'
+fired 44,291 times in one 400-turn run". Same omission, in a comment written
+while complaining about the omission. That is worth more than the fix: the
+convention is not obvious enough to follow by intention, which is exactly why
+it needs to be written into the protocol rather than remembered.
+
+THE CHANGE: give every no-op measurement in these comments its configuration.
+Where the original figure has none I do NOT invent one -- I add my own measured
+datum beside it, with seat, model, seed and horizon, and say plainly that the
+original's configuration is unrecorded so the two cannot be differenced.
+
+    measured on 1914:FRA:rung, N24-233-holdout (md5 4a137043), seed 13579,
+    400 turns, difficulty 3
+
+HYPOTHESIS: comment-only, so the decision hash must be unchanged --
+14669681761325311781 over 86188. Journal 328 is the reason that check is not a
+formality: a change that looked like pure refactoring moved the game through
+tie-breaking, and only the hash caught it.
+
+Paths: src/ai/AISystem.cpp, LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: KEEP. Four comments now carry the configuration their numbers were
+measured on, and the edit is inert -- hash 14669681761325311781 over 86188,
+score 21.4, 44,291 refusals, all matching every run since journal 300.
+
+WHAT CHANGED, and the shape is the same in each: the original figure keeps its
+place and its wording, and gains a note saying its configuration is unrecorded
+plus a fresh datum that has one.
+
+    reinforceProvince   my own journal 328 comment -- the omission I filed
+                        item 64 about, committed two entries after filing it
+    validWar reinforce  "3,181 in a 400-turn run" now says the seat, model and
+                        seed are not recorded, and gives 44,291 on a named one
+    validWar recruit    "108,650 refusals in two 400-turn games" likewise, with
+                        10,288 of 26,019 plays -- a 39.5% RATE -- beside it
+    execWar recruit     the ranking claim "the choice is what is wrong, not the
+                        gate" now carries journal 330's three measured rates,
+                        which reverse it, and says plainly that the difference
+                        cannot be resolved because the original has no
+                        configuration
+
+I DID NOT INVENT CONFIGURATIONS FOR THE OLD FIGURES. Every one of them could
+have been guessed at -- "probably the default seat" -- and a guessed
+configuration is worse than none, because it invites exactly the differencing
+that is not valid. They are marked unrecorded and left alone.
+
+THE PART WORTH KEEPING IS NOT THE FIX. It is that I committed this omission in
+journal 328 while the sequence was already paying for it, and filed an item
+about it in journal 330 without noticing my own comment was an instance. A
+convention that gets violated by the person who just wrote it down is not a
+convention people forget -- it is one the format does not enforce. The useful
+follow-up is not "remember to record the seat" but to put the line in LOOP.md
+section 7 next to the journal instruction, where it is read once per iteration.
+Filed as item 65, for the user, since LOOP.md's protocol text is theirs.
+
+PENDING COMMIT (src/ai/AISystem.cpp, comment-only, folds into the hunks already
+pending in that file):
+
+    Record the configuration beside the no-op measurements
+
+    Two documented figures -- "3,181 times in a 400-turn run" and "108,650
+    refusals in two 400-turn games" -- could not be compared against fresh runs
+    because neither records a seat, model or seed. Journals 326 and 330 both
+    hit this. Marks them unrecorded, adds measured figures that carry
+    1914:FRA:rung / N24-233-holdout / seed 13579 / 400 turns / difficulty 3,
+    and notes that journal 330's rates reverse the recruit ranking.
+
+    No code change: decision hash unchanged over 86,188 decisions.
+
+MEASUREMENT AND COMMENTS. No AI behaviour changed, proven by hash. No model
+written, data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 332 — iteration: how much of the AI is switched off?
+
+NO BACKLOG ITEM the loop may take. Chosen work, and it generalises something
+this sequence has been finding one instance at a time:
+
+    journal 297   peace, pacification, withdraw, callToArms -- four reflexes,
+                  default off, and OD_ABLATE on them is a silent no-op
+    journal 302   naval, industry, researchAusterity -- three more, and not
+                  even ablatable
+    journal 327   OD_REINFORCE_GATE -- half a mask, default off
+    journal 330   OD_RECRUIT_PICK and OD_RECRUIT_MASK -- two built fixes for
+                  the AI's second-largest waste, both default off
+
+Nine mechanisms, found by tripping over them. src/ contains 199 distinct OD_*
+names. The question nobody has asked: WHAT FRACTION OF THE MACHINERY IS
+DORMANT, and is nine most of it or a tenth of it?
+
+WHY IT MATTERS RATHER THAN BEING TRIVIA. Every dormant mechanism is code that
+was written, argued for in a comment, and then left off -- usually because a
+measurement went against it, sometimes because nobody finished. The loop has
+spent this whole sequence discovering that the AI is smaller than it looks:
+seven of fifteen reflexes run (302), sixteen of thirty-nine actions have no
+policy mass (306), a quarter of executed actions do nothing (326). A count of
+the disabled machinery is the same kind of fact and the user has never been
+given it.
+
+METHOD, and the care is the point. A regex that classifies code by nearby text
+is a guess -- journal 302 called siegeReflex default-off on exactly that basis
+and journal 323's measurement contradicted it. So:
+
+  1. extract every getenv("OD_...") site mechanically;
+  2. classify by the EXACT idiom, not by proximity:
+        getenv(X) && atoi(getenv(X)) != 0        -> boolean gate, default OFF
+        getenv(X) ? atoi(...) != 0 : <expr>      -> default is <expr>, read it
+        getenv(X) ? atof/atoi(...) : <literal>   -> a VALUE knob, not a gate
+  3. hand-verify every one classified as a default-off GATE, because that is
+     the class the conclusion rests on;
+  4. report the value knobs separately and make no claim about them.
+
+WHAT I EXPECT: no prediction on the number. But I do expect the classifier to
+be wrong somewhere, because it has been every time, and step 3 exists for that.
+
+RE-ANALYSIS ONLY. No runs, no source, no model.
+
+VERDICT: THIRTY-THREE default-off boolean gates, and this sequence has examined
+twelve of them. The nine found by tripping over things were about a third.
+
+    199 distinct OD_* names in src/, 136 distinct getenv sites, of which
+
+      33   boolean gate, DEFAULT OFF     <- a built path that does not run
+       3   gate with a computed default
+      21   value knob (a number)
+      79   unclassified -- traces, selectors, paths, seeds
+
+The 79 are not hiding mechanisms: sampling them gives OD_ACT_HIST,
+OD_DISCORD_TRACE, OD_WORLD_SEED, OD_EVAL_MODEL, OD_WALK_LANG -- instruments,
+values and selectors. The classifier required the SAME variable name on both
+sides of the idiom, which is what journal 302's regex failed to do when it
+called siegeReflex default-off by matching a neighbouring name.
+
+    EXAMINED BY THIS SEQUENCE (12)
+      CALL_REFLEX PEACE_REFLEX PACIFY_REFLEX WITHDRAW_REFLEX      j.297
+      NAVAL_REFLEX INDUSTRY_REFLEX RESEARCH_AUSTERITY             j.302
+      CALM_GATE  REINFORCE_GATE  RECRUIT_MASK  RECRUIT_PICK       j.295/327/330
+      REINF_FALLBACK                                              j.328, mine
+
+    NEVER EXAMINED (21)
+      BOMBARD_GATE  COALITION_BAR  GUARANTOR_CLAIMED  LANDING_PICK
+      REINF_GUARD  REINF_SIZED  RESEARCH_FOCUS  SIEGE_RESEARCH
+      SUPPLY_MARGIN  THREAT_POWER  THREAT_POWER_RECRUIT  TROOP_KINDS
+      WAR_BAR_RESEARCH  WIDTH_MARGIN  and SEVEN campaign variants
+
+AND THE USEFUL SPLIT IS NOT EXAMINED-OR-NOT. Of the 21, sixteen sit beside a
+comment containing numbers -- a recorded measurement, so they are off because
+something was tried and did not pay. That is the system working: a knob left
+off with its evidence beside it is a finished experiment, not dormant code.
+
+FIVE HAVE NO NUMBERS ANYWHERE NEAR THEM:
+
+    OD_CAMPAIGN_HOMEFIRST   OD_LANDING_PICK   OD_REINF_GUARD
+    OD_REINF_SIZED          OD_WAR_BAR_RESEARCH
+
+Those are the interesting ones: a built code path, switched off, with no
+recorded reason. They are the same shape as OD_RECRUIT_PICK -- which journal
+330 found was a real fix for the AI's second-largest waste, sitting off -- and
+as OD_REINFORCE_GATE. Whether they were tried and the result went unrecorded,
+or never tried at all, the comment does not say.
+
+I AM NOT CLAIMING THEY SHOULD BE ON. Journal 330 is the caution: two gated
+fixes both improved their refusal RATE and neither is recommended, because the
+bench cannot resolve what they do to play. The value here is the INVENTORY, not
+a recommendation -- and the honest headline is that the AI has 33 switched-off
+paths, 16 of them closed with evidence, 12 examined by this sequence, and five
+that nobody can explain from the source.
+
+A CAVEAT ON THE "16 with numbers". The test is whether digits appear in nearby
+comment lines, which is a proxy and a crude one -- a comment can cite a number
+for something else entirely, and journal 331 just established that many of
+these numbers lack the configuration that would make them usable anyway. So
+read it as "has an argument beside it", not "was correctly measured".
+
+PENDING COMMIT: none. Re-analysis only, no source touched.
+
+RE-ANALYSIS ONLY. No runs, no model written, data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 333 — iteration: the five gates nobody wrote a reason for
+
+BACKLOG ITEM 67. Journal 332 counted 33 default-off boolean gates in the AI and
+split them by whether a comment near them records a measurement. Sixteen have
+numbers beside them -- off because something was tried. FIVE have none:
+
+    OD_CAMPAIGN_HOMEFIRST   OD_LANDING_PICK   OD_REINF_GUARD
+    OD_REINF_SIZED          OD_WAR_BAR_RESEARCH
+
+Built code paths, switched off, with no recorded reason. The precedent for
+caring is OD_RECRUIT_PICK: journal 330 found a real fix for the AI's
+second-largest waste sitting in exactly this state, and the only reason anybody
+looked was that the [NOOP] table pointed at it.
+
+THIS IS A READING, not an experiment: what does each one do, and is there
+evidence anywhere for why it is off? Five reads.
+
+WHAT I AM LOOKING FOR, and the three outcomes have different weights:
+
+  * a gate whose comment argues a case without numbers -> fine. A reasoned
+    default is a default, and journal 321 found exactly this for the calm gate:
+    the mechanism argument was sound and the number beside it was not.
+  * a gate with neither numbers nor argument -> unfinished work, and worth
+    listing for whoever owns it.
+  * a gate that looks like a FIX for something this sequence has measured ->
+    the OD_RECRUIT_PICK case, and the one worth acting on.
+
+WHAT I AM NOT DOING: switching any of them on to see. Journal 330 measured two
+gated fixes that both improved their own refusal rate and recommended neither,
+because the bench cannot resolve what they do to play. A fifth "this improves a
+count" result adds nothing to the queue -- the constraint is item 26, and more
+candidates do not relieve it.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: TWO OF THE FIVE WERE MEASURED, AND JOURNAL 332'S PROXY MISSED IT.
+Three are genuinely untested, and one of the two carries a warning aimed
+squarely at journal 328.
+
+    OD_REINF_GUARD      MEASURED, and badly. "Across two models and three seed
+                        sets it is +34/+19 on the fitted seeds, +24/+8 on one
+                        hold-out set, and -1/-11 on another, where it also
+                        costs N24 two thirds of its worst seat (87 -> 21).
+                        Mean +12 rating, -11 floor. Another trade, not a fix."
+
+    OD_REINF_SIZED      MEASURED, and worse: "takes the worst seat to ZERO on
+                        both models."
+
+    OD_CAMPAIGN_HOMEFIRST   untested, and says so: "This is the untested middle."
+    OD_LANDING_PICK         untested. Describes a real defect -- the landing
+                            shore is "decided by container order" -- and a
+                            scored fix, with no measurement.
+    OD_WAR_BAR_RESEARCH     untested. The war bar compares raw headcounts and
+                            ignores armyAtkPct/armyDefPct, which the game
+                            already computes.
+
+WHY THE PROXY FAILED, and it is the caveat journal 332 wrote about itself
+biting one entry later. Both REINF gates are documented in ONE comment that
+sits beside OD_REINF_GUARD and discusses BOTH. My window was 1,400 characters
+before each gate; OD_REINF_SIZED's evidence is in a different function's
+comment entirely. "Numbers near the gate" is not "numbers about the gate", and
+I said the test was crude without predicting which direction it would fail in.
+Journal 332's headline should read: of 21 unexamined gates, at least 18 have
+recorded evidence and at most three do not.
+
+AND THE WARNING I SHOULD HAVE FOUND BEFORE JOURNAL 328. The same comment:
+
+    "What IS established: the flat 50 below is load-bearing. It performs this
+     guard by accident, because moving fifty men cannot strip anything. Sizing
+     the move to the deficit (OD_REINF_SIZED, off) removes that accident and
+     takes the worst seat to ZERO on both models. DO NOT MAKE THE QUANTITY
+     DYNAMIC WITHOUT SOLVING SOURCE SELECTION PROPERLY FIRST -- they are one
+     rule, and this pair is the evidence."
+
+Journal 328 changed source selection. That is the prerequisite this comment
+names, written down before I started, in the function I edited. I did not read
+far enough up the file to find it, and the connection runs both ways:
+
+  * it is evidence FOR journal 328's direction -- source selection is the thing
+    the author says must be solved first;
+  * and a warning that the reinforce rule is a PAIR. Journal 329 measured the
+    fallback alone and got -21 with the interval spanning zero. The comment's
+    claim is that selection and quantity are one rule, so testing either half
+    alone may be the reason neither shows anything.
+
+That is a concrete, testable follow-up with a stated mechanism, which is more
+than this sequence has had for a while: run OD_REINF_FALLBACK and
+OD_REINF_SIZED TOGETHER. Filed as item 68. It also comes with its own caution
+-- sized alone took the worst seat to zero on both models -- so the pair could
+easily be worse than either, and ablations-dont-compose says the sign is not
+predictable from the parts.
+
+THE THREE UNTESTED ONES ARE NOT EQUALLY INTERESTING. OD_LANDING_PICK describes
+a defect in the same class as the ones this sequence has been finding all week
+-- a decision made by container iteration order rather than by merit, like the
+recruit fallback picking the most populous province. OD_WAR_BAR_RESEARCH is a
+proxy ignoring a number the game already keeps, which is the shape of
+expose-the-resolvers-numbers. Both are real. Neither is recommended, for the
+reason journal 330 gave and journal 332 repeated: the bench cannot resolve what
+any of them do to play, and the constraint is item 26.
+
+PENDING COMMIT: none. Reading only.
+
+RE-ANALYSIS ONLY. No runs, no source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 334 — iteration: the pair the comment says is one rule
+
+BACKLOG ITEM 68, and it is the best-motivated experiment this sequence has had.
+Not a hope that two things might interact -- a written claim, in the function
+journal 328 edited, that they ARE one rule:
+
+    "the flat 50 below is load-bearing. It performs this guard by accident,
+     because moving fifty men cannot strip anything. Sizing the move to the
+     deficit (OD_REINF_SIZED, off) removes that accident and takes the worst
+     seat to ZERO on both models. Do not make the quantity dynamic without
+     solving source selection properly first -- THEY ARE ONE RULE, and this
+     pair is the evidence."
+
+THE CELLS, three of four already filled:
+
+    selection   quantity    result
+    old         flat 50     control: graded pair 317 (journal 329)
+    NEW         flat 50     -21, CI [-76,+35], spans zero (journal 329)
+    old         SIZED       "worst seat to ZERO on both models" (the comment,
+                            configuration unrecorded -- journal 331's problem)
+    NEW         SIZED       <- this entry
+
+If the comment is right, the missing cell is the only one where sizing is safe,
+because the fallback is what makes a stripped source unlikely: the old code
+committed to the single largest garrison, so sizing it up could empty the one
+province holding a frontier; the fallback spreads the draw across candidates.
+
+DESIGN: OD_REINF_FALLBACK=1 OD_REINF_SIZED=1 against journal 329's control, 8
+fresh seeds, three rung seats, graded pair. 24 new runs. The control is reused
+-- journal 331 verified this binary still returns hash 14669681761325311781
+over 86188 and score 21.4 after the comment edits, and journals 332-333 touched
+no source -- and the script re-checks one control cell before the arm runs.
+
+PRE-REGISTERED:
+  1. graded counts per arm before any mean;
+  2. paired difference on FRA+USA with a permutation test;
+  3. the [NOOP] reinforce count, which is floor-free and tests whether the pair
+     does what it claims mechanically.
+
+DECISION RULE, unchanged and still asymmetric: REJECT if the interval clears
+zero negative; NOT RESOLVABLE if it spans zero; ACCEPT is not available at 8
+seeds. What this entry CAN settle beyond that is the INTERACTION: if the pair
+lands materially above journal 329's -21, the comment's "one rule" claim is
+supported; if it lands at or below, testing the halves separately was not the
+reason neither showed anything.
+
+WHAT I EXPECT: no prediction on the sign. The comment says sized alone is
+catastrophic and that selection must come first, which argues the pair is
+better than sized alone -- but that is a claim about a cell I am not measuring,
+and ablations-dont-compose records superadditive help AND harm in this project
+with the sign unpredictable from the parts.
+
+Paths: LOOP_JOURNAL.md, BACKLOG.md.
+
+VERDICT: REJECT, and it is the first unambiguous rejection this sequence has
+produced. The pair is far worse than either the control or the fallback alone.
+
+    graded pair FRA+USA, vs control
+      fallback alone (j.329)   -21   CI [ -76,  +35]  spans zero   2/8  p=0.54
+      fallback + SIZED        -142   CI [-209,  -75]  CLEARS ZERO  0/8  p=0.007
+
+    and against the fallback alone -- the interaction question
+      adding SIZED            -121   CI [-163,  -80]  CLEARS ZERO  0/8  p=0.007
+
+    seat means: control 317, fallback 296, pair 175
+
+Zero of eight seeds, a permutation p of 0.007, and an interval nowhere near
+zero. By the rule set before the run -- REJECT if the interval clears zero
+negative -- this is a reject, and it is the only change in journals 281-334 to
+clear the bench's ~60-point floor in either direction.
+
+THE COMMENT'S CLAIM IS FALSIFIED, AND SHARPLY. It said the flat 50 is
+load-bearing because it cannot strip a source, that sizing removes that
+accident, and "do not make the quantity dynamic WITHOUT SOLVING SOURCE
+SELECTION PROPERLY FIRST -- they are one rule". The natural reading is that
+selection is the prerequisite and sizing is safe once it is solved. It is not:
+journal 328 solved source selection, and adding sizing on top costs 121 points
+against that baseline. **Solving selection did not make sizing safe. If
+anything it made it worse** -- the fallback spreads the draw across more
+provinces, and sizing then empties several instead of one.
+
+The comment was right that they interact. It was wrong about the direction, and
+the interaction is the strongest effect measured here in fifty entries.
+
+AND THE USA SEAT IS WHERE IT DIES: 19.6 mean under control, 8.3 under the pair,
+with per-seed values [3.3 3.9 6.0 7.1 13.1 3.8 8.2 21.0] against
+[11.6 17.7 29.6 30.5 15.5 14.1 18.7 19.4]. A country that sizes reinforcements
+to the deficit strips its interior to feed frontiers and then has nothing
+behind them. That is consistent with the comment's own mechanism and with
+memory withdrawing-loses-battles.
+
+THE [NOOP] COUNT WENT THE WRONG WAY TOO: 44,291 -> 68,767 refusals, and total
+refusals 73,954 -> 104,797. So the pair does not even do what the fallback
+alone did mechanically -- sizing makes more calls fail, presumably because a
+source that must yield `want` men more often cannot. The floor-free metric and
+the rating agree for once, and both say no.
+
+GRADED COUNTS: control 14/24, fallback 13/24, pair 19/24. The pair grades MORE
+observations, which normally signals a better-behaved arm; here it is because
+the USA has stopped pinning at the cap -- it is no longer good enough to
+saturate. A rising graded count is not automatically good news, which is worth
+recording because journal 319 treated it as the thing to maximise.
+
+NOTHING TO REVERT: both flags are default OFF and were already in the tree.
+OD_REINF_FALLBACK stays off with a measured reason now instead of a cautious
+one, and OD_REINF_SIZED's existing comment is confirmed by a second
+configuration -- its "worst seat to ZERO on both models" and this -142 are the
+same finding.
+
+PENDING COMMIT: none new this iteration.
+
+MEASUREMENT ONLY. No source touched, no model written, data/ai/model.bin
+unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 335 — iteration: does journal 334's correction actually hit journal 319?
+
+BACKLOG ITEM 69, which I filed last entry against my own earlier reasoning:
+journal 334's rejected arm graded 19/24 against the control's 14/24, and I
+noted that journal 319 "treated the graded count as the thing to maximise when
+costing the cap change".
+
+BEFORE CORRECTING A CONCLUSION, CHECK THAT THE CRITICISM REACHES IT. Journal
+331 was about numbers recorded without the configuration that makes them
+usable; this is the same discipline applied to an argument. The two uses of the
+graded count are not obviously the same thing:
+
+    journal 319   ONE model, cap varied 5 -> 8 -> 10 -> 20. The model does not
+                  change; raising the cap un-pins observations that were
+                  already there. More graded = more of the same run visible.
+
+    journal 334   TWO arms, cap fixed. The arms play differently, so a change
+                  in the graded count can mean the instrument sees more OR that
+                  the arm stopped being good enough to saturate a seat.
+
+If that distinction holds, journal 319's recommendation survives and only its
+WORDING needs care. If it does not -- if the cap-raising argument also depends
+on something that could be quality rather than coverage -- then item 52's
+"raise CAP 5 -> 8" recommendation to the user is built on a confusion and has
+to be withdrawn before they act on it.
+
+TWO CHECKS, both on data already on disk:
+
+  1. verify the claim I made in journal 334 without measuring it -- that the
+     pair's higher graded count comes from the USA seat un-pinning. I asserted
+     the mechanism in the verdict and did not count it.
+  2. verify that journal 319's ranking really is cap-invariant, which is what
+     separates "coverage" from "quality" there. That entry reported it, so this
+     is re-deriving my own result rather than trusting it.
+
+RE-ANALYSIS ONLY. No runs, no source, no model.
+
+VERDICT: THE CRITICISM DOES NOT REACH JOURNAL 319, AND IT CAUGHT A DIFFERENT
+ERROR IN JOURNAL 334 INSTEAD.
+
+CHECK 2 FIRST, because it decides whether a recommendation to the user has to
+be withdrawn. Journal 319's ranking is cap-invariant, re-derived rather than
+trusted:
+
+    CAP  5   N24 336  N37 298  N35 295  N47 204
+    CAP  8   N24 382  N37 348  N35 342  N47 240
+    CAP 10   N24 393  N37 356  N35 342  N47 253
+    CAP 20   N24 393  N37 361  N35 342  N47 253
+    order unchanged at every cap: N24 > N37 > N35 > N47
+
+THE TWO USES OF THE GRADED COUNT ARE DIFFERENT THINGS and the distinction is
+the whole answer:
+
+    ONE model, cap varied      the run is FIXED. Raising the cap un-pins
+    (journal 319)              observations that were already taken. More
+                               graded = more of the same run visible. That is
+                               COVERAGE, and maximising it is correct.
+
+    TWO arms, cap fixed        the arms PLAY differently. A change in the
+    (journal 334)              graded count can mean better coverage or a worse
+                               arm that no longer reaches either extreme. That
+                               is not a quality metric and never was one.
+
+So **item 52's recommendation to the user -- raise CAP from 5 to 8 -- stands
+unchanged**, and item 69's warning applies only to cross-arm comparison. I
+filed 69 against the wrong entry.
+
+AND CHECK 1 FOUND THE REAL ERROR, in the entry I wrote yesterday. Journal 334
+explained the rejected pair's 19/24 as "because the USA has stopped pinning at
+the cap". Counted by which END of the scale the observations came from:
+
+    seat   arm        wiped   capped   graded
+    USA    control        0        2        6
+    USA    pair           0        0        8      +2 from fewer caps
+    CHN    control        2        6        0
+    CHN    pair           0        5        3      +3, of which TWO are fewer
+                                                   ANNIHILATIONS
+
+THREE OF THE FIVE ARE CHINA, and two of those are China no longer being wiped
+out -- the bottom of the scale, the opposite end from the one I named. The
+mechanism I asserted covers two of five observations. I wrote it into a verdict
+without counting it, in the same entry that rejected a change for good reasons.
+
+THAT ALSO SOFTENS JOURNAL 334's PICTURE SLIGHTLY, and I would rather say so
+than leave it. The rejected pair is worse on the rating by 142 points and it
+also stopped China being annihilated twice. Those are not contradictory --
+survival and land share are different quantities, and memory
+ceiling-and-floor-are-one-decision records exactly this trade -- but "the pair
+is worse in every way" would have been the easy reading and it is not what the
+numbers say. The REJECT stands: -142 on the graded pair, 0/8 seeds, p=0.007.
+
+THE PATTERN THIS MAKES, three entries running. Journal 332's proxy was too
+crude and journal 333 corrected it; journal 334's mechanism was asserted and
+this entry corrected it; and the item I filed to correct journal 319 turned out
+not to apply. Each was caught by checking the previous entry's weakest claim,
+which journal 322 started doing deliberately. It is the cheapest habit in this
+sequence and it has now paid four times.
+
+PENDING COMMIT: none. Re-analysis only.
+
+RE-ANALYSIS ONLY. No runs, no source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 336 — iteration: did any of the rejected changes improve SURVIVAL?
+
+NO BACKLOG ITEM the loop may take. Chosen work, from a loose end journal 335
+left: the change rejected in journal 334 lost 142 rating points AND stopped
+China being annihilated twice. I noted that survival and land share are
+different quantities and moved on.
+
+LOOP.md's verdict rule names both:
+
+    KEEP    rating up, SURVIVAL NOT DOWN, and no rush/hood seat down by >5
+    "A change that lifts the rating while survival falls has bought runaway
+     growth and paid in robustness -- treat it as a REJECT unless the growth is
+     the thing being tested."
+
+**AND THIS SEQUENCE HAS NEVER ONCE REPORTED SURVIVAL.** Fifty entries, eight
+8-seed arms measured on the three rung seats, every verdict written on the
+rating or on a refusal count. The rule has a second clause and I have been
+judging against half of it since journal 281.
+
+THE QUESTION: recompute survival for every arm on file and see whether any of
+the rejected changes was a survival win that the rating hid. Memory
+caution-rules-trade-growth says exactly this shape exists here -- "pacification,
+coalition bar, crash cuts all lifted survival and cut rating" -- so the prior is
+that at least one of them is.
+
+survival = mean over seats of min(seat_score, 100): growth above par earns
+nothing, only holding counts. It is a different statistic from the rating, not
+a transformation of it, so it can move the other way.
+
+ARMS ON FILE, all N24, 8 fresh seeds, three rung seats:
+    control · bar 0.65 · no-fortify · pacify-on · calm-gate · industry-reflex
+    · reinforce-fallback · fallback+sized
+
+WHAT I EXPECT: at least one survival win among the rejects, because the memory
+says this pattern exists and because journal 334's China result is already a
+hint. If NONE of them lifts survival, that is also worth knowing -- it would
+mean the rating and survival agree on this seat set, and the second clause of
+the rule has been costing nothing.
+
+RE-ANALYSIS ONLY. No runs, no source, no model.
+
+VERDICT: NO ARM MOVED SURVIVAL, AND THE REASON IS THAT SURVIVAL ON THIS SEAT
+SET IS CHINA'S SURVIVAL RATE WITH TWO CONSTANTS ADDED.
+
+    arm           d rating        d survival
+    bar 0.65         +42 spans        +8 spans
+    no-fortify       +26 spans        +0 spans
+    pacify-on        -88 CLEARS       -4 spans
+    calm-gate        +56 spans        +4 spans
+    industry          +7 spans        +3 spans
+    reinf-fb         +28 spans        +8 spans
+    reinf-pair       -69 spans        -0 spans
+    control: survival 92, rating 336
+
+Not one survival interval clears zero, and the largest movement is 8 points on
+a statistic whose control value is 92 of a possible 100.
+
+WHY, decomposed by seat:
+
+    arm              FRA     USA     CHN    survival
+    control          100     100      75          92
+    pacify-on        100     100      62          88
+    reinf-pair        88      87     100          92
+
+**France and the USA sit at 100 on every seed in the control** -- both are above
+par in all eight worlds, so min(seat,100) returns the cap and they contribute a
+constant. Survival is therefore (100 + 100 + China) / 3, and its whole range on
+this seat set is China's annihilation rate. Six seeds alive and two dead gives
+75, hence 92.
+
+SO LOOP.md's SECOND CLAUSE HAS BEEN COSTING NOTHING, and my failing to report
+it cost nothing either -- which is a better answer than I expected and not the
+one I predicted. I wrote that memory caution-rules-trade-growth made at least
+one survival win likely. There is none, because on THIS seat set survival
+cannot express one: a change can only move it by killing or saving China, and
+that is the coin journal 287 identified. The memory's finding came from the
+full six-seat set where SWE and NOR are small enough to fall below par.
+
+AND THE REJECTED PAIR IS THE CASE THAT PROVES THE MECHANISM. Journal 335 said
+it stopped China being annihilated twice; the survival column reads -0. Both
+are right: China rises 75 -> 100 and the USA falls 100 -> 71 because it drops
+BELOW PAR for the first time in any arm. They cancel. That is the only arm in
+which survival contains information about a seat other than China, and it is
+information about a seat being wrecked.
+
+WHAT THIS CHANGES. Nothing about any verdict -- the rating decided all of them
+and survival would have agreed or abstained in every case. What it changes is
+the reporting rule: on the three RUNG seats, survival is not a robustness
+measure, it is China's death rate rescaled, and quoting it as a second opinion
+would be quoting the same coin twice. If survival is wanted as an independent
+check it needs the seats where it can vary -- 1914:SWE (par 1.0) and
+1939:NOR:hood (par 1.3), which are exactly the small-par seats this sequence
+excluded for being bistable.
+
+That is a genuine tension and I am not going to resolve it in a verdict: the
+seats that make survival meaningful are the seats that make the RATING
+unreliable. Filed as item 70.
+
+PENDING COMMIT: none. Re-analysis only.
+
+RE-ANALYSIS ONLY. No runs, no source touched, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+## 337 — iteration: is OD_WAR_BAR_RESEARCH arithmetically live, or an inert gate?
+
+BACKLOG ITEM 67, third entry. Items 34 and 32 are both blocked behind item 26
+(the seed standard, the user's). Item 67 names three GENUINELY UNTESTED gates:
+OD_CAMPAIGN_HOMEFIRST, OD_LANDING_PICK, OD_WAR_BAR_RESEARCH. I take the last,
+because it is the only one of the three whose comment makes a checkable
+arithmetic claim rather than a preference claim.
+
+WHAT THE GATE DOES (AISystem.cpp:4724). The war bar compares headcounts:
+
+    if (mySide < theirSide * bar + 200.0) continue;      // no war
+
+With OD_WAR_BAR_RESEARCH=1 each side is scaled by the country-level research
+and doctrine modifier the game already computes:
+
+    mySide    *= 1 + getTotalEffect("armyAtkPct",  cid)        / 100
+    theirSide *= 1 + getTotalEffect("armyDefPct",  enemyCid)   / 100
+
+Sign convention CHECKED against the resolver, not assumed: Game_TurnLogic.cpp
+:6620 computes `w.atkMod = 1.0 + getTotalEffect("armyAtkPct", attackerCid)/100`
+and :6663 the same for armyDefPct on the defender. The gate's formula is the
+resolver's formula. getTotalEffect sums researched nodes AND doctrines in force
+(Game_Research.cpp:879-916), so the effect is not research-only and is not
+necessarily zero early.
+
+THE CHEAP QUESTION FIRST. Item 26 says a knob arm costs 24 runs and resolves
+nothing under ~60 points, so a bench arm on this gate is not the right first
+move. The right first move is arithmetic: **on how many war-bar evaluations
+would the multipliers FLIP the verdict?** A gate that flips nothing cannot move
+the rating and closes for free. This is memory one-seat-for-diagnosis and
+prove-an-ordering-property: answer with counters, not with a bench.
+
+HYPOTHESIS, falsifiable, pre-registered: **the flip rate is above 2% of war-bar
+evaluations** -- the gate is live. I predict 3-10%, reasoning that the army
+research nodes carry +5..+25 each (Game_Research.cpp:297-317) and doctrines add
+more, so a country well ahead on army research carries a multiplier comparable
+in size to the bar's own margin over 1.0. The competing possibility, which
+would falsify it, is that the additive `+ 200.0` floor decides most evaluations
+and the multiplicative term never reaches the boundary.
+
+I also pre-register the SPLIT, because the two directions mean opposite things:
+flip-to-PASS is the gate letting a war happen that the headcount refused
+(research makes me stronger than I look); flip-to-FAIL is the gate refusing a
+war the headcount allowed. A gate that only ever opens wars is a different
+animal from one that only closes them, and memory passivity-is-load-bearing
+says the second is the safer direction here.
+
+PATHS TOUCHED (listed before building, per LOOP.md rule 4):
+    src/ai/AISystem.cpp   -- counters + one print line
+    src/ai/AISystem.h     -- three static declarations
+
+INERTNESS. The probe is behind OD_WAR_BAR_PROBE, computes both verdicts and
+uses NEITHER: the decision below is the original line, untouched. Memory
+assert-invariants-not-baselines and gate-change-is-a-new-build both say to
+prove that rather than assert it, so the check is the decision hash with the
+probe OFF *and* with it ON, against the standing reference
+1914:FRA / N24 / seed 13579 / 400 turns = 14669681761325311781 over 86188.
+
+VERDICT: KEEP the instrument. THE HYPOTHESIS IS HALF-FALSIFIED AND THE
+BY-PRODUCT IS THE RESULT: the gate is live, it is SEAT-DEPENDENT by a factor of
+five, and 98% of everything it does is in ONE DIRECTION.
+
+Two seats, N24 (data/ai/model.bin), seed 13579, 400 turns, difficulty 3:
+
+    seat          evaluations   pass raw   pass research   FLIP pass   FLIP fail   flip %
+    1914:FRA           27,494     62.19%          62.73%         167          19     0.68%
+    modern:CHN         82,167     32.77%          36.50%       3,108          48     3.84%
+
+My pre-registered threshold was 2% and my predicted range 3-10%. FRA falsifies
+it (0.68%); CHN clears it (3.84%). The prediction was not wrong in a way that
+teaches "the gate is inert" -- it was wrong because the flip rate is not a
+property of the gate, it is a property of the world, and it moves 5.6x between
+two seats of the SAME model at the SAME seed.
+
+THE MECHANISM I GUESSED WAS WRONG. I pre-registered that the falsifying
+possibility was the additive `+ 200.0` floor deciding most evaluations. It
+decides 0.01% on both seats -- 3 of 27,494 and 8 of 82,167. The floor is
+irrelevant at these army sizes and can be struck from any future reasoning
+about this line. The modifiers are also not zero, which was the other way the
+gate could have been inert:
+
+    seat          atkPct nonzero   mean atk   defPct nonzero   mean def   discount
+    1914:FRA              83.0%      +41.42            75.8%     +14.53      1.235
+    modern:CHN            72.6%      +29.79            83.3%     +11.92      1.160
+
+**THE ATTACK MODIFIER IS ~2.5x THE DEFENCE MODIFIER, ON BOTH MAPS.** That is
+the finding, and it replicates across two eras. Because armyAtkPct multiplies
+MY side and armyDefPct multiplies THEIRS, the gate does not restore a symmetry;
+it multiplies the effective war bar by 1/1.16 to 1/1.24. **Turning
+OD_WAR_BAR_RESEARCH on lowers the war bar by 14-19%.**
+
+WHICH IS WHY IT IS ONE-DIRECTIONAL. Across both seats: 3,275 flipped
+evaluations, of which 3,208 OPEN a war and 67 CLOSE one. **98.0% to-pass.**
+Per seat the ratio is 8.8:1 and 65:1. This is not a correction that cuts both
+ways, and the comment above it describes it as though it were.
+
+AND THE FUNCTION IT SITS IN ALREADY SETTLED THAT QUESTION. Fifteen lines
+earlier, in the same block:
+
+    "Attacking a neighbour it has NO claim on now needs a real edge rather
+     than a coin-flip one -- 1.05 meant 'very slightly ahead', which is why
+     the map was permanently on fire."
+
+The war bar was RAISED deliberately, after measurement. This gate lowers it
+again by 14-19% for every country that has done army research -- 73-83% of
+evaluations -- without touching the constant, so it would read in a diff as a
+fidelity improvement and behave as a partial revert of the fix beside it. That
+is memory heuristics-outlive-the-bug in reverse: not a workaround surviving its
+bug, but a correction that silently undoes the tuning it was measured under.
+
+WHAT I AM NOT CLAIMING. 3,108 flips on modern:CHN is not 3,108 extra wars: an
+evaluation is one (country, neighbour) pair and passing the bar makes that
+neighbour a CANDIDATE, one of several, from which one target is chosen. Most
+flips are redundant with a candidate that already passed. The upper bound is
+all I have measured and I am not going to convert it into a war count without
+counting wars. Nor do I know WHY atk runs 2.5x def -- the research nodes total
++60 atk against +50 def (Game_Research.cpp:297-317), which is nowhere near 2.5x,
+so the rest is doctrines, or which countries reach this line, and I have not
+separated them. Memory unexplained-is-reportable: that is a loose end, not a
+mechanism.
+
+INERTNESS, PROVEN NOT ASSERTED, on both seats and in both settings:
+
+    1914:FRA     probe OFF   14669681761325311781 over 86188    score 21.4
+    1914:FRA     probe ON    14669681761325311781 over 86188    score 21.4
+    modern:CHN   probe ON     1134950857311588231 over 277784   score 23.1
+
+Both match the standing references from journals 300-320. The counters compute
+both verdicts and the decision reads neither.
+
+A BUG IN MY OWN INSTRUMENT, CAUGHT BY THE FIRST RUN PRINTING NOTHING. The probe
+counted correctly and reported nothing, because I had put the print inside
+dumpActionHistogram -- whose exit hook is registered only under OD_ACT_HIST.
+**That is exactly the defect journal 300 was written to fix**, rebuilt from
+scratch twenty-seven entries later in a file that contains the fix and the
+comment explaining it. Had I read the missing line as "zero evaluations" the
+entry would have closed the gate as inert and been wrong by 3,275 flips.
+Memory a-skip-is-not-a-pass is the one that made me re-run instead. The probe
+now registers its own idempotent hook, the way dumpDecisionHash does.
+
+IS IT WORTH A BENCH ARM? Yes, and it is the first candidate in a while that
+plausibly clears item 26's ~60-point floor, because war-bar changes are the
+class that has cleared it before (research bar 0.65 read +42, pacify -88).
+**Pre-registered direction, so the next iteration cannot claim a win either
+way: I predict OD_WAR_BAR_RESEARCH=1 LOWERS the rating**, because it lowers a
+bar this project raised on purpose, and because memory
+passivity-is-load-bearing says forcing this AI to fight more has cost 40-90% of
+the world three times. Filed as item 71.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT -- src/ai/AISystem.{cpp,h}, on top of the stack from journals
+300-331. The file is shared; stage hunks, not files.
+
+    Add OD_WAR_BAR_PROBE: does the research war bar change any decision?
+
+    OD_WAR_BAR_RESEARCH has been default-off and untested since it was
+    written. The probe computes both verdicts of the war bar and uses
+    neither, so it answers "how many decisions would that gate move, and
+    in which direction" for one seat instead of a bench arm. Two seats:
+    0.68% and 3.84% of evaluations flip, 98% of them toward declaring war,
+    because the attack modifier runs ~2.5x the defence one and the gate is
+    therefore a 14-19% discount on the war bar rather than a symmetry fix.
+    Its report registers its own exit hook -- the report in
+    dumpActionHistogram is silent unless OD_ACT_HIST is set, which is the
+    defect journal 300 fixed for the decision hash.
+
+## 338 — iteration: what is OD_WAR_BAR_RESEARCH worth? (the pre-registered arm)
+
+BACKLOG ITEM 71, filed by journal 337 last iteration and the top unblocked item.
+Items 16/19/26/30/32/34/41/49/51/65 are all the user's or blocked behind 26.
+
+WHAT 337 ESTABLISHED, and why this is worth 48 runs when the industry reflex
+was not. The gate is live and one-directional: it lowers the war bar by 14-19%
+for the 73-83% of countries carrying army research, flipping 0.68% of war-bar
+evaluations on 1914:FRA and 3.84% on modern:CHN, 98% of them toward declaring
+war. Bar changes are the class that has cleared item 26's ~60-point floor before
+(research bar 0.65 read +42, pacify -86/-88); the industry reflex never had a
+measured mechanism of that size behind it.
+
+HYPOTHESIS, pre-registered in backlog item 71 BEFORE any run, and restated here
+so the arm cannot be read either way after the fact:
+
+    OD_WAR_BAR_RESEARCH=1 LOWERS the rating.
+
+Two reasons, both from this tree rather than from taste. (1) The bar fifteen
+lines above the gate was raised from 1.05 on purpose, with the comment "which is
+why the map was permanently on fire"; this gate gives 14-19% of that back
+without touching the constant. (2) Memory passivity-is-load-bearing records
+three attempts to make this AI fight more costing 40-90% of the world.
+
+A NULL is the second most likely outcome and I am bound in advance to report it
+as "not resolvable at 24 runs per arm" (LOOP.md STANDING 1), not as "no effect".
+If the rating goes UP by more than 60 I am simply wrong, and the interesting
+question becomes why lowering a bar that was raised on purpose helps.
+
+DESIGN, the standard of this sequence since journal 281:
+    seats   1914:FRA (par 6.7), 1939:USA (par 5.6), modern:CHN (par 2.5)
+    seeds   13579 246810 555555 987654 3141592 271828 1618033 8080808
+    turns   400        difficulty 3        model N24 (data/ai/model.bin)
+    arms    control (default) and OD_WAR_BAR_RESEARCH=1
+BOTH ARMS RUN THIS ITERATION on this binary, rather than reusing the stored
+control: memory ab-both-arms-one-tree. The decision hash argues the stored
+control is still valid (this binary matches journals 300-320 byte for byte on
+two seats) but 24 runs is cheap enough that the argument does not need making.
+
+READ BEFORE COMPARING: the graded-observation count (LOOP.md STANDING 3). If
+the arms grade different numbers of observations they are different
+instruments. And survival is NOT an independent check on this seat set --
+journal 336 showed it is China's annihilation rate with two constants added.
+
+NOTHING IS IMPLEMENTED THIS ITERATION. The gate already exists and is
+default-off; the arm is an env var. No source touched, no paths to revert.
+
+VERDICT: **NOT RESOLVABLE AT 24 RUNS PER ARM.** And my pre-registered
+prediction is contradicted in SIGN by a difference too small to act on, which
+is the one outcome I did not name in advance.
+
+    seat set            control   warbar     d      bench's own noise floor
+    3 rung seats (pre-registered)   381      422   +42            ~60
+    4 seats (what actually ran)     301      331   +30        ~82 / ~60
+
+Per seat, with a 20,000-shuffle permutation test on the raw shares:
+
+    seat              ctl mean  trt mean       d       p    ctl med  trt med
+    1914:FRA rung        19.57     24.06   +4.49   0.544     21.35    20.45
+    1939:USA rung        19.64     22.86   +3.23   0.447     18.20    20.15
+    modern:CHN rung      13.43     23.16   +9.74   0.070     14.30    25.95
+    1914:FRA rush         3.99      3.70   -0.29   0.881      0.20     0.85
+
+Graded observations 22/32 control against 20/32 treatment (LOOP.md STANDING 3:
+close, but not the same instrument). Nothing clears 0.05. **I predicted the
+rating would go DOWN and it went up 42; the honest statement is that the arm
+did not resolve the question, not that the gate helps.**
+
+I RAN THE WRONG SEAT SET, WITH MY OWN INSTRUMENT. I pre-registered three rung
+seats and set `OD_BENCH_SEATS=1914:FRA,1939:USA,modern:CHN`. That matched FOUR
+seats: the two-part form takes EVERY world of a seat, so `1914:FRA` pulled in
+`1914:FRA:rush` as well. The filter is mine, from journal 287, and the comment
+above it offers `OD_BENCH_SEATS=1914:FRA,1939:USA` as the worked example -- the
+exact usage that expands. The header printed "4 seats x 8 seeds" and I read
+past it. Including the bistable rush seat took the control's se from 21 to 29
+and its noise floor from ~60 to ~82, so the mistake made an already-hard
+measurement harder. Both readings are above, and neither changes the verdict.
+Fixed: the filter now prints the seats it matched and says when patterns
+expanded. Validated by discrimination -- 3 patterns, 4 seats, both lines fire.
+
+THE RESULT THAT IS NOT A NULL, AND WHY THE RATING CANNOT SEE IT. China is the
+seat that moved: median share 14.3 -> 26.0, every treatment seed except the
+annihilated one above the control's median, p = 0.07 -- the only seat within
+reach of significance. **And modern:CHN is pinned at CAP in BOTH arms.** Its
+par is 2.5 against a 5x cap, so 13.4% and 23.2% of the world both score exactly
+500 and contribute an identical constant to both ratings. The largest movement
+in the experiment is arithmetically invisible to the statistic I pre-registered
+on.
+
+That is memory capped-small-par-seats-are-coins and floor-not-rating combining,
+and I had both in front of me. Journal 337 measured the mechanism as "3.84% of
+war-bar evaluations on modern:CHN flip toward war" -- more wars admitted, which
+buys LAND -- and land on that seat is precisely what the cap discards. **The
+statistic to pre-register was per-seat land share, which floor-not-rating names
+in its first line.** I pre-registered on the rating because item 71 asked "what
+is it worth", and worth is quoted in rating here.
+
+WHAT DID NOT MOVE, read the right way:
+  * **The rush seat is unchanged.** Collapse rate 5 of 8 in BOTH arms. Its
+    score falls 60 -> 55, which is a 5-point reading against LOOP.md's rush
+    guard -- but journal 291 established that guard is not well-formed on a
+    seat whose two regimes are 190 points apart, and the collapse RATE is the
+    quantity that means something. **Rush unresolved, not violated.**
+  * **Survival 90 -> 89**, and the bench now prints its own reason beside it:
+    `survival varies over only 1 of 4 seats -- the rest are at or above par and
+    constant`. On the three rung seats it reads `0 of 3`. That is journal 336's
+    finding, arriving from the instrument instead of from an analysis.
+  * China annihilated 2/8 -> 1/8. A rate difference of 0.125 against a bench
+    that resolves ~0.49 (journal 292). Not resolvable, and I am not going to
+    call one world a rescue.
+
+ONE COUNTER DID MOVE OUTSIDE ANY SEAT, and it is the bill for the gate:
+
+    world army at turn 400   220.24M units  ->  168.88M units   (-23%)
+    world population         74.33B         ->   91.16B         (+23%)
+    assaults capped at width  28.1%         ->   27.1%
+
+Fewer soldiers and more people, with the model cohort holding more ground. That
+is consistent with journal 337's mechanism -- more wars admitted, fought and
+concluded -- but it is three world aggregates from an unpaired pair of arms and
+I am not building a story on it. Memory measurements-replicate-explanations-
+dont: the numbers are the finding, the reading is a guess.
+
+PATHS TOUCHED: tools/od_bench.py (the filter now announces what it matched).
+No AI source touched. No model written; data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd). Nothing to revert -- the arm was an env
+var and the gate stays default-off, which is where it was.
+
+PENDING COMMIT (tools/od_bench.py, on top of journals 287/288/292/298's hunks
+in the same file -- stage hunks, not the file):
+
+    Make OD_BENCH_SEATS say which seats it matched
+
+    A two-part pattern takes every world of a seat, so "1914:FRA" also
+    selects 1914:FRA:rush. Journal 338 pre-registered three seats, ran
+    four, and read the wrong rating against its own hypothesis; the only
+    sign was "4 seats" in a header. Print the matched seats, and say so
+    explicitly when the patterns expanded.
+
+## 339 — iteration: build the instrument item 72 asks for
+
+BACKLOG ITEM 72, filed by journal 338 last iteration and the top unblocked
+item: **pre-register on the statistic the mechanism moves, not on the rating.**
+73 is blocked behind item 26, 74 is closed, and 16/19/26/30/32/34/41/49/51/65
+are the user's.
+
+Item 72 is a convention, and a convention with no instrument behind it is a
+note to be forgotten -- memory nothing-routes-findings-back-to-the-protocol is
+about exactly that. So this iteration builds the thing that makes the
+convention automatic, which is also LOOP.md's ordering rule (cheap instruments
+before expensive changes) and is not blocked behind item 26 because it runs no
+arms.
+
+WHAT IS MISSING, and it is worse than I assumed. `--compare` prints seat
+SCORES -- capped, par-divided -- and the rating. It cannot print raw land
+share, d, or any test, because **`od_bench.py` never stores the per-seed
+values.** SPREAD is built during a run, used for the BISTABLE warnings, and
+thrown away at exit; the store keeps one MEAN per seat. Counted just now:
+
+    stored results: 863        with per-seed spread: 0
+
+So 863 archived results have no statistics recoverable from them, and journal
+338's comparison had to be done in a scratch Python file -- which is memory
+a-hand-rolled-harness-discards-the-warnings, the exact defect the seat filter
+was built in journal 287 to stop. I did it again one iteration after fixing the
+filter, and the reason is that the harness gave me no way not to.
+
+WHAT I AM BUILDING:
+  1. `spread` persisted in the store: {seat: [share per seed]}.
+  2. `--compare` prints a per-seat LAND SHARE table -- both means, both
+     medians, d, and a two-sided unpaired permutation p over a fixed 20,000
+     shuffles so the number is reproducible -- whenever both arms carry it,
+     and says plainly when they do not.
+  3. The line item 72 exists for: **flag every seat pinned at CAP in BOTH
+     arms**, whose land movement is by construction invisible to the rating.
+  4. A multiple-comparison note, because LOOP.md STANDING 5 says a p attached
+     to one of N seats needs its N stated.
+
+HYPOTHESIS, and it is a discrimination test with a KNOWN ANSWER rather than a
+prediction about the game. Journal 338 computed these by hand from the run log:
+
+    seat              d       p        seat              d       p
+    1914:FRA rung  +4.49   0.544      modern:CHN     +9.74   0.070
+    1939:USA rung  +3.23   0.447      1914:FRA rush  -0.29   0.881
+
+**The new code must reproduce all four d exactly and all four p to within
+shuffle noise.** If it does not, the instrument is wrong and I would rather
+find that out against an answer I already have than against the next arm.
+Second case, the negative one: comparing an arm that HAS spread against one of
+the 863 that does not must say so, not print an empty table or a silent zero
+(memory a-skip-is-not-a-pass).
+
+THE BACKFILL, and why it is recovery rather than invention. The two it338 rows
+predate this change, so they carry no spread. Their per-seed values are printed
+verbatim in the run log by od_bench itself, so I parse them back out of it --
+and the parse ASSERTS that the recovered mean equals the stored mean to within
+1e-6 for every seat before writing anything. If any seat disagrees the backfill
+refuses. Nothing else in the store is touched.
+
+PATHS TOUCHED (before building, per LOOP.md rule 4): tools/od_bench.py, and the
+two it338 rows of build/od_bench_results.json (data, not source).
+
+VERDICT: KEEP. The discrimination test passes on all four seats, and building
+it turned up two defects in the comparison path that were already shipping.
+
+THE KNOWN-ANSWER TEST. Journal 338's hand-computed table against what
+`--compare` now prints unaided:
+
+    seat              by hand (j.338)      by the instrument
+    1914:FRA rung     +4.49   p 0.544      +4.49   p 0.544
+    1939:USA rung     +3.23   p 0.447      +3.23   p 0.444
+    modern:CHN rung   +9.74   p 0.070      +9.74   p 0.071
+    1914:FRA rush     -0.29   p 0.881      -0.29   p 0.886
+
+Every d exact, every p inside shuffle noise. The p is now REPRODUCIBLE rather
+than merely correct -- fixed 20,000 shuffles at a fixed seed -- so two readings
+of the same pair quote the same number, which a scratch script does not give
+you.
+
+And the line item 72 exists for prints itself:
+
+    [BENCH] PINNED AT CAP IN BOTH ARMS: modern:CHN:rung -- this seat's land
+            moves HERE and not in the rating, which scores it identically at
+            any share above 5x par (journal 338)
+
+THE NEGATIVE CASE, which matters more than the positive one. Comparing two of
+the 863 rows stored before today says so out loud:
+
+    [BENCH] no per-seed data stored for it338-control, it338-warbar -- land-
+            share statistics need a run from after journal 339
+
+An empty table would have read as "no difference". Memory a-skip-is-not-a-pass.
+
+BOTH HALVES PROVEN SEPARATELY. The backfill proves the READER; it cannot prove
+the writer, since the rows it reads were written by hand. So a fresh pair of
+runs (1 seat, 2 seeds, 30 turns) went through the whole path: the store now
+carries `"spread": {"1914:FRA:rung": [10.5, 10.4]}` written by the new code,
+and --compare reads it back. Memory break-it-on-purpose is the habit; here the
+two halves simply had to be tested by different means.
+
+TWO DEFECTS FOUND BY READING MY OWN OUTPUT, both about a wrong denominator:
+
+  1. **The multiple-comparison note counted the wrong N.** Under a 3-seat
+     filter it said "4 seats compared", because it counted seats with data
+     rather than seats PRINTED. A miscount in the one line whose entire job is
+     to state how many tests you ran is worse than no line -- LOOP.md STANDING
+     5 exists because this project attached a P to a grouping it found by
+     looking. Now counts what it shows.
+  2. **PRE-EXISTING, and not mine: "better on N/M seats" divided by the FULL
+     seat set.** The 4-seat run printed "better on 3/6", counting two seats
+     that were never run as seats it lost. Anyone reading that line takes a
+     4-of-4 sweep for a 3-of-6 split. Now "better on 3/4 seats measured by
+     both". Memory rates-need-counts: a share whose denominator is not what was
+     measured cannot be read at all.
+
+A third, cosmetic: the label columns truncated at 9 characters, so
+`j339-writeA` and `j339-writeB` printed identical headers over different
+numbers. Widened.
+
+WHAT THIS DOES NOT FIX. The 863 archived results have no per-seed data and
+never will -- it was discarded at exit, not stored badly, so there is nothing
+to recover except from a run log that still exists. Every comparison against a
+pre-339 row is limited to seat means, and the tool now says so instead of
+implying otherwise. I backfilled ONLY the two it338 rows, by parsing od_bench's
+own printed output, with an assertion that every recovered mean equals the
+stored mean to 1e-6 before anything was written; it passed 8 seats x 8 seeds.
+Those two rows carry `spread_note` saying they were backfilled.
+
+PATHS TOUCHED: tools/od_bench.py; build/od_bench_results.json (two rows
+backfilled, plus the j339-write* smoke pair). No AI source, no model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (tools/od_bench.py, on top of journals 287/288/292/298/338's
+hunks in the same file -- stage hunks, not the file):
+
+    Store the per-seed shares, and compare arms on land share
+
+    The store kept one mean per seat and threw SPREAD away at exit, so 863
+    archived results carry no statistics and journal 338 had to recompute a
+    comparison in a scratch file. Persist it, and have --compare print raw
+    per-seat land share with medians and a reproducible unpaired permutation
+    test -- the quantity a capped seat moves in and the rating cannot see.
+    It names those seats explicitly. Also: the multiple-comparison note
+    counted seats with data rather than seats printed, and "better on N/M"
+    divided by the full seat set, so a 4-seat run read "better on 3/6".
+
+## 340 — iteration: one pass over every number od_bench publishes
+
+BACKLOG ITEM 76, filed by journal 339: three defects in two iterations were all
+the same shape -- **a denominator that is not what was measured** -- so sweep
+the rest rather than wait for the fourth. 75 is filed low-priority by its own
+text, 73 is blocked behind item 26, 72/74 are closed, and 16/19/26/30/32/34/41/
+49/51/65 are the user's.
+
+NOT PRE-REGISTERED, and I am saying so rather than dressing it up. An audit is
+not an experiment: I read the code first and then wrote this entry, so there is
+no prediction here that could have failed. What makes each finding checkable is
+that every fix below has a discrimination test that FAILS on the old code --
+memory break-it-on-purpose -- and the before/after output is quoted.
+
+THE NUMBERS od_bench PUBLISHES, all six, with a verdict on each:
+
+  A. **`land N% of the world across M seats` -- BROKEN, and visible in journal
+     338's own output.** `_land` sums every seat in the STORED dict while the
+     rating one line above iterates the FILTERED SEATS. The 3-seat compare in
+     journal 338 printed, on adjacent lines:
+
+         it338-control: OD BENCH 381 over 3/3 seats
+         it338-control: land 56.62% of the world across 4 seats
+
+     56.62 is the four-seat sum, including the rush seat the filter excluded.
+     Two numbers a reader is invited to hold together, over different seat
+     sets. I read both of those lines last iteration and did not see it.
+
+  B. **`data/ai/bench_score.txt` -- BROKEN, and I broke it.** Journal 339's
+     writer test was 1 seat, 2 seeds, 30 turns, and it published itself as THE
+     rating: the file now reads `152 1 2 <epoch> 1`, over the `283 3 8 ...`
+     that was there when this session began. The line carries seats and seeds
+     but NOT turns or difficulty, so no reader can tell a 30-turn smoke from a
+     400-turn rating. Worse, the file that says of `--quick` "It is NOT
+     comparable to a full rating and must not be stored as one" publishes
+     --quick to exactly that file.
+
+  C. **`industry capacity (world, N runs): X% utilised` -- MISMATCHED.** N is
+     `len(CAP_RUNS)`; X is averaged over `len(util)`, the runs with
+     `total > 0`. When they differ the printed denominator is not the one the
+     percentage used.
+
+  D. **`goods economy (N runs)` -- MISMATCHED, twice.** `ls_mean` is over the
+     runs that reported it while N is all runs; and each good's per-run figures
+     are divided by ALL runs rather than the runs that contained that good, so
+     a good absent from half the runs reads at half its value. Off by default
+     (OD_GOODS), which is why it has never been caught.
+
+  E. **`combat width: B of A assaults capped` -- CORRECT.** A pooled ratio,
+     both sums over the same runs, and it prints its own numerator and
+     denominator.
+
+  F. **`people and armies (N runs)` -- CORRECT.** Mean and N over the same list.
+
+So: four of six. The two that are right are the two that print their own
+denominator next to the ratio, which is the whole lesson of memory
+rates-need-counts arriving from the other direction.
+
+PATHS TOUCHED (before editing, per LOOP.md rule 4): tools/od_bench.py, and
+data/ai/bench_score.txt restored to the value it held before journal 339
+clobbered it.
+
+VERDICT: KEEP. Four fixes, each with a test that fails on the old code.
+
+  A. **The land line, before and after, same command:**
+
+         before   OD BENCH 381 over 3/3 seats   /   land 56.62% across 4 seats
+         after    OD BENCH 381 over 3/3 seats   /   land 52.64% across 3 seats
+
+     and the UNFILTERED compare is unchanged at 56.62% over 4, which is the
+     other half of the test -- a fix that moves the filtered case must leave
+     the unfiltered one alone.
+
+  B. **The score file now refuses what is not a rating**, tested on the exact
+     run that broke it:
+
+         not published to data/ai/bench_score.txt: filtered to 1 of 6 seats
+         not published to data/ai/bench_score.txt: --quick is an estimate, not a rating
+
+     and the file kept `283 3 8 1789213211 3` through both. The positive half
+     matters as much: an unfiltered run still publishes, and now writes
+     `134 6 1 <epoch> 6 30 3` -- seven fields, TURNS and DIFFICULTY at the end,
+     older readers still parsing the first four.
+     **Restored** data/ai/bench_score.txt to the value it held before journal
+     339 clobbered it, epoch included, so its staleness is reported truthfully
+     rather than back-dated to now.
+
+  C, D. **The two mismatched Ns**, which a real run does not reliably produce,
+     so they were tested by injecting the case directly:
+
+         industry capacity (world, 3 runs): 60.0% utilised (over the 2 with capacity)
+         goods economy (2 runs): living standards 1.00 (over 1 of them)
+         steel produced per run: 8.0    (the old code printed 4.0 -- halved)
+
+     and each prints NOTHING extra when the two Ns agree, so the common case is
+     untouched. The goods fix is the one with teeth: a good present in half the
+     runs was reported at half its value.
+
+WHAT I AM NOT FIXING, and it is a real residual. The score file still publishes
+a **30-turn** full-seat run as a rating -- `134 6 1 ... 30 3` above is exactly
+that. Gating on turns means hard-coding a scoring standard, and this file's own
+default is 120 while every measurement since journal 281 used 400 (memory
+od-bench-defaults-to-120-turns). Writing 400 into the writer would make the
+default self-contradictory. So the line now DISCLOSES turns and a reader can
+refuse it, which is as far as I can go without deciding a policy that is not
+mine. Filed as 77.
+
+THE PATTERN, and it is the reason item 76 was worth an iteration rather than a
+note. Six published numbers, four wrong, and every one wrong the same way: the
+count printed beside a figure was not the count the figure was computed over.
+The two that were right -- combat width, population -- are the two that print
+their numerator and denominator together, where a mismatch cannot hide. That is
+memory rates-need-counts read backwards: not "quote the count beside the rate"
+as advice, but "a rate that cannot show its own count is where this file's bugs
+live". Journal 338's seat-filter expansion and 339's miscounted
+multiple-comparison note are the same defect, making SIX in three iterations.
+
+AND THE ONE THAT STINGS. B is mine, from last iteration, introduced by a test I
+added to prove an instrument worked. The test was right and the instrument
+works; the cost was a side effect I did not look for, in a file I had read the
+comment of ("where the latest rating is left"). Memory
+failures-after-the-useful-work is about tooling that runs after the measurement
+and destroys only the record -- this is that, caused by verification rather than
+by the measurement.
+
+PATHS TOUCHED: tools/od_bench.py; data/ai/bench_score.txt (restored, untracked
+and gitignored). Smoke rows j340-gatecheck/quickcheck/fullcheck added to
+build/od_bench_results.json alongside journal 339's j339-write*. No AI source,
+no model written, data/ai/model.bin unchanged (md5
+4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (tools/od_bench.py, on top of journals 287/288/292/298/338/339's
+hunks in the same file -- stage hunks, not the file):
+
+    Make every published number carry the count it was computed over
+
+    Four of the six numbers od_bench prints disagreed with the count
+    printed beside them. The land line summed the whole stored dict while
+    the rating iterates the filtered seats, so a 3-seat compare printed
+    "381 over 3/3 seats" and "land 56.62% across 4 seats" together.
+    bench_score.txt took any run: a 1-seat 2-seed 30-turn smoke published
+    itself as the rating, and the line had no turns field to give it away.
+    Capacity averaged utilisation over the runs that had capacity while
+    printing the count of all of them, and goods divided every good by all
+    runs, halving any good that only half the runs reported.
+
+## 341 — iteration: is OD_LANDING_PICK ever offered a choice?
+
+BACKLOG ITEM 67's remaining pair. Journal 337 took one of its three genuinely
+untested gates and closed it with counters instead of a bench arm; two are left,
+OD_CAMPAIGN_HOMEFIRST and OD_LANDING_PICK. I take **OD_LANDING_PICK**, one, for
+the same reason as last time: it is the one of the two whose comment makes an
+arithmetic claim I can check rather than a preference claim.
+
+Everything else in the queue is the user's (16, 19, 26, 30, 32, 34, 41, 49, 51,
+65, 77), blocked behind item 26 (32, 34, 73), or filed low-priority by its own
+text (75).
+
+WHAT THE GATE DOES (AISystem.cpp:8590). The amphibious landing action walks
+`g.m_provincePorts` and **returns on the FIRST hostile port in the hull's
+range**, so among several reachable shores the landing site is whatever the
+container yields first. With OD_LANDING_PICK=1 it collects the candidates and
+takes the weakest defence, scored `garrison x (1 + fort/10) x (1 + armyDefPct
+/100)` -- the resolver's own weighting. No landing is refused either way; only
+the destination changes.
+
+THE QUESTION, CHEAPEST FIRST. A gate that is never offered a choice cannot
+matter however good its rule is. And this one has a specific reason to fear
+that, which the war bar did not: memory navy-unreachable-not-underpriced (0
+ships in 255,344 offers), journal 310 (the NAVY module is 92% book), journal 323
+(the ship actions are rarely offered at all). So before asking whether the
+weakest shore is the right shore, ask **how often there is more than one shore**.
+
+HYPOTHESIS, pre-registered, two parts so it can fail in two ways:
+  1. **More than 20% of landing decisions have at least TWO candidate shores in
+     range.** If it is below that, the gate is inert for want of a choice and
+     closes without a bench, the way journal 337 closed the war bar on size.
+  2. **When there IS a choice, the container-order shore is at least 1.5x the
+     defence of the weakest on more than half of them.** This is the part that
+     says the current pick is not merely arbitrary but expensively arbitrary.
+     If the shores in range are all of similar strength the gate is a coin toss
+     between equals and still does not matter.
+
+I expect 1 to pass and 2 to be the interesting one. The competing outcome I
+think most likely to falsify part 1 outright is that landings are so rare on
+these seats that the whole counter reads in the dozens -- in which case the
+honest report is "not enough landings to say", NOT "no choice".
+
+THE INSTRUMENT, and it must be inert. A pre-pass under OD_LANDING_PROBE
+collects every in-range hostile port and scores it, then the ORIGINAL code runs
+untouched and decides. Both the container-order pick and the weakest are
+computed; NEITHER is used. Proof is the decision hash against the standing
+references -- 1914:FRA/N24/13579/400 = 14669681761325311781 over 86188, and
+modern:CHN = 1134950857311588231 over 277784 -- with the probe off AND on.
+
+PATHS TOUCHED (listed before building, per LOOP.md rule 4):
+    src/ai/AISystem.cpp, src/ai/AISystem.h
+
+VERDICT: **PART 1 FALSIFIED BY THREE ORDERS OF MAGNITUDE. The gate's rule may
+well be right; the decision it governs is almost never live.**
+
+    seat          hull-turns   a shore in range   A CHOICE (>=2)
+    1914:FRA          24,334            1 (0.0%)         0
+    modern:CHN        47,039           57 (0.1%)        16
+
+Across two seats the landing action considered **71,373 hull-turns and found a
+hostile shore in range 58 times -- 0.08%.** OD_LANDING_PICK can act on the 16
+of those that offered a choice: sixteen decisions out of the 277,784 that
+modern:CHN makes in a run. I pre-registered 20% and the answer is 0.02%.
+
+READ THE DENOMINATOR BEFORE THE RATE, which is the whole lesson of journal 340
+and applies to my own counter here. `hulls asked` increments once per SHIP per
+invocation of the action, not once per decision -- the block is a loop over
+`g.m_ships`. So 24,334 is hull-considerations, not 24,334 landing decisions,
+and I did not count invocations. **The 0.08% is a per-hull-turn rate and must
+not be quoted as a per-decision one.** What it does establish, which is all
+part 1 needed, is that the binding constraint is a hostile port being within
+one hull's range, and that constraint bites almost always.
+
+PART 2, and I am going to under-claim it deliberately. Given a choice:
+
+    mean 2.12 shores   container order != weakest 12 of 16 (75.0%)
+    first >= 1.5x weakest 9 of 16 (56.2%)   mean first/weakest 404.85
+
+The pre-registered threshold was "more than half" and 56.2% clears it, so part
+2 technically passes -- **on sixteen observations from one seat at one seed.**
+That is not a measurement and I will not report it as one. The mean ratio of
+404.85 is worse: it is an average of ratios with a near-zero denominator, the
+exact shape journal 294 warned about, and it describes one or two outliers
+rather than a typical case. What the sixteen do support is the weak claim the
+comment makes -- container order is not the weakest shore three times in four,
+so the pick genuinely is arbitrary. How EXPENSIVE that arbitrariness is, these
+numbers cannot say.
+
+Note the conditional rate is not small: of the 58 hull-turns that found any
+shore, 28.1% found two or more. **The gate is not inert because choices are
+rare given a shore; it is inert because shores are rare.** Those are different
+defects and only the second is worth chasing.
+
+INERTNESS, PROVEN ON BOTH SEATS:
+    1914:FRA     14669681761325311781 over 86188    score 21.4
+    modern:CHN    1134950857311588231 over 277784   score 23.1
+Both match the standing references from journals 300-320 and 337. The pre-pass
+computes both picks and the original loop decides.
+
+THE BY-PRODUCT IS BIGGER THAN THE TARGET, again. A head action that can do
+nothing on 99.92% of the hull-turns it is offered is a very large no-op -- for
+comparison journal 326 found 27.1% of everything the AI executes does nothing,
+and `reinforce: nothing to move` was the worst single line at 16.2%. **Do not
+reach for the mask.** Memory masking-waste-costs: removing a 99.9% no-op action
+cost 59 points, because the freed probability went somewhere worse. The
+question this raises is why a hostile shore is so rarely in range, not how to
+stop asking.
+
+AND AN APPARENT TENSION I AM NOT CLOSING. Memory embark-deletes-men records
+landings going "0% -> 74%" after two fixes, and landings-became-real-at-v81
+says the rung's boats land from v8.1. Both are about embarkations reaching a
+shore. This counter says the HEAD's landing action almost never has one to
+reach. The reconciliation I find most likely is that the landings those entries
+measured are the amphibious REFLEX's, not the head's -- which would fit journal
+310's finding that the NAVY module is 92% book and journal 323's that the ship
+actions are rarely offered. **I have not checked that**, and it is exactly the
+kind of plausible story memory measurements-replicate-explanations-dont says to
+register rather than believe. Filed as 79.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd). Nothing to
+revert: the probe is default-off and the gate stays where it was.
+
+PENDING COMMIT (src/ai/AISystem.{cpp,h}, on top of journals 300-337's hunks in
+the same file -- stage hunks, not the file):
+
+    Add OD_LANDING_PROBE: is the landing head ever offered a choice?
+
+    OD_LANDING_PICK replaces a container-order pick of the landing shore
+    with the weakest defence in range, and has been default-off and
+    untested since it was written. A read-only pre-pass collects every
+    reachable shore and scores it while the original loop still decides.
+    Two seats: 71,373 hull-turns considered, a hostile shore in range 58
+    times, a choice of shore 16 times. The rule is not the problem -- the
+    decision is almost never live.
+
+## 342 — iteration: why is a hostile shore so rarely in range?
+
+BACKLOG ITEM 78, the top unblocked item, filed by journal 341: the amphibious
+landing action found a hostile shore in range 58 times in 71,373 hull-turns
+across two seats. 79 and 80 are the next two and are left alone. Everything
+else is the user's (16, 19, 26, 30, 32, 34, 41, 49, 51, 65, 77), blocked behind
+item 26 (32, 34, 73), or low-priority by its own text (75).
+
+Item 78 names three candidate causes and this entry separates them:
+  (a) the hulls are not eligible -- no crew, or already ordered;
+  (b) no hostile port EXISTS to reach, at-war-ness being the binding thing;
+  (c) hostile ports exist and are simply too FAR for one hull's range.
+
+These want opposite work. (b) is a fact about diplomacy and geography and
+closes the question -- there is nothing to fix in the naval code. (c) is a
+range or a positioning problem and points at the reflex that sails the boats.
+(a) would mean the 71,373 denominator was never the right one.
+
+HYPOTHESIS, pre-registered:
+  1. **(c) dominates: on more than half the hull-turns with no shore in range,
+     at least one hostile port exists.** If (b) dominates instead, the landing
+     action is idle because the AI is not at war with anyone who has a coast,
+     and item 78 closes as geography.
+  2. **The median nearest-hostile-port distance is more than TWICE the hull's
+     range.** A ratio just above 1 would mean the boats are nearly there and a
+     small range or positioning change reaches them; a large ratio means they
+     are nowhere near and no tweak to this action helps.
+
+I expect 1 to hold and am genuinely unsure about 2, which is why it is the one
+worth measuring: it is the difference between "almost" and "not remotely", and
+those imply different work.
+
+INSTRUMENT: extends journal 341's OD_LANDING_PROBE with counters placed BEFORE
+the crew and busy filters, plus a nearest-hostile-port scan with NO range
+filter, bucketed by distance/range. Read-only; the decision is untouched, and
+the proof is the decision hash against 14669681761325311781 over 86188
+(1914:FRA) and 1134950857311588231 over 277784 (modern:CHN).
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h.
+
+VERDICT: **(b) ELIMINATED OUTRIGHT, (c) IS THE CAUSE, AND (a) WAS REAL TOO --
+journal 341's denominator was half the hull-turns.** Both pre-registered parts
+hold, the first more strongly than I asked for.
+
+    seat          own hull-turns   no crew   already ordered   reached the scan
+    1914:FRA              50,445    33.0%             18.7%              48.2%
+    modern:CHN            84,813    25.3%             19.2%              55.5%
+
+(a) IS NOT NOTHING. Journal 341 quoted 71,373 hull-turns; the true figure is
+135,258, and **half of them never reach the port scan at all** -- a third of
+this fleet has no crew and a fifth already has an order. Last iteration I
+flagged that the counter sat after the filters and that the rate was per
+hull-turn rather than per decision; that caveat was worth writing, and this is
+the size of it.
+
+(b) IS DEAD, and it is the cleanest number in the entry:
+
+    of the hull-turns that scanned: NO hostile port exists 0 (0.0%)
+    one exists 24,334 (100.0%)   mean hostile ports when any 39.8   [1914:FRA]
+    one exists 47,039 (100.0%)   mean hostile ports when any 14.8   [modern:CHN]
+
+**Not once, in 71,373 scans across two seats and three eras, was there nothing
+to reach.** There are 15 to 40 hostile ports on the board every single time. So
+this is not a fact about who the AI is at war with, and the naval code is not
+idle for want of a target.
+
+(c) IS THE ANSWER. The nearest hostile port, against the hull's OWN range:
+
+    bucket        <=1x    1-2x    2-4x    4-8x     >8x     mean near / mean range
+    1914:FRA      0.0%   28.6%   31.6%   32.2%    7.6%     41.5 deg / 10.9 deg
+    modern:CHN    0.1%   24.4%   28.4%   34.1%   13.0%     46.6 deg / 10.1 deg
+
+The median falls in the **2-4x** band on both seats, which is what part 2
+predicted (">2x"). **The AI's fleet sits about four hull-ranges from the
+nearest enemy coast, essentially always.**
+
+AND THE ONE NUMBER I WOULD NOT HAVE GUESSED: the 1-2x band is 24-29%. A quarter
+to a third of hull-turns are within DOUBLE the range of a hostile shore. So the
+answer to "almost, or not remotely?" is **both**: the median hull is nowhere
+near, and a quarter of them are one factor of two away. That is a much more
+actionable shape than a uniform "far".
+
+WHAT THIS IS A FACT ABOUT, and it is not the landing action. Ship positions are
+the same whether the head or the amphibious reflex issues the order, so "the
+fleet is 41 degrees from the nearest enemy port" describes where the navy IS,
+not who commands it. Two readings fit -- the boats never sail toward the enemy
+(positioning, the reflex's job) or the range is small for these map scales
+(a game constant, which reaches the player too) -- and this run cannot separate
+them: I have no time series and did not count sail orders. Memory
+unexplained-is-reportable. Filed as 82, with the counter that would settle it.
+
+INERTNESS, both seats, both references matched:
+    1914:FRA     14669681761325311781 over 86188    score 21.4
+    modern:CHN    1134950857311588231 over 277784   score 23.1
+
+AND IT REPLICATES JOURNAL 341 EXACTLY. The [LANDPICK] lines are identical to
+last iteration's -- 24,334 / 1 / 0 and 47,039 / 57 / 16, and the choice block
+character for character. Two builds a day apart, the second carrying new
+counters, agree on every figure. That is worth a line because journal 341's
+sixteen-observation result was the one I under-claimed, and it is at least
+stable.
+
+A THIRD OF THE FLEET HAS NO CREW. Not what I was looking for and the largest
+single filter here (33.0% and 25.3%). Memory navy-unreachable-not-underpriced
+records 0 ships bought in 255,344 offers; this is a different quantity -- hulls
+that EXIST and are empty. Filed as 81 rather than reasoned about, because
+"empty hull" could be a hull that has unloaded, a hull built without men, or a
+hull whose men died, and those are three different stories.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd). Nothing to
+revert; the probe is default-off.
+
+PENDING COMMIT (src/ai/AISystem.{cpp,h}, on top of journals 300-341's hunks in
+the same file -- stage hunks, not the file):
+
+    Extend OD_LANDING_PROBE: why is a hostile shore never in range?
+
+    Journal 341 found the landing action finds a shore on 0.08% of the
+    hull-turns it scans. This separates the three candidate causes. A
+    hostile port exists on 100.0% of scans -- 15 to 40 of them -- so there
+    is never nothing to reach; the nearest one is a median 2-4 hull-ranges
+    away, mean 41-47 degrees against a 10-degree range. Also counts the
+    hulls filtered out before the scan, which is half of them: a third of
+    the fleet has no crew and a fifth is already under orders.
+
+## 343 — iteration: whose landings were "0% -> 74%"?
+
+BACKLOG ITEM 79, the top unblocked item. 80/81/82 are the next three and are
+left alone; the rest are the user's or blocked behind item 26.
+
+THE TENSION. Memory embark-deletes-men records landings going 7% -> 74% of
+embarkations after the "unload home" fallback was deleted, and journal 342
+found the HEAD's landing action has a hostile shore in range on 0.08% of the
+hull-turns it scans. Both cannot describe the same thing.
+
+WHAT THE AI CAN ACTUALLY ORDER, read off the tree rather than assumed. Five
+sites, and the split is not the one I would have guessed:
+
+    AISystem.cpp:8319   REFLEX   disembark on a hostile shore
+    AISystem.cpp:8329   REFLEX   unload at home, when no war is left
+    AISystem.cpp:8590   HEAD     embark (case 3) -- the ONLY embark site
+    AISystem.cpp:8744   HEAD     disembark, container-order shore (case 4)
+    AISystem.cpp:8766   HEAD     disembark, weakest shore (OD_LANDING_PICK)
+
+So **every embarkation is the head's** and landings come from either. That much
+is structural and needed no run.
+
+AND THE PREDICTION I WOULD HAVE MADE IS WEAKER THAN I THOUGHT. Journal 341 and
+342 both floated "those were the reflex's landings", and I filed item 79 saying
+so. Reading the code first: the reflex's reach is `LAND_RANGE =
+g.shipMaxRangeDeg(s)` (AISystem.cpp:8254) -- **the same constant the head
+uses**, not a larger one -- and the reflex adds two conditions the head does
+not (navReachable, and the port's centre within one range of its own harbour).
+The reflex is STRICTER, and both see identical ship positions. On the geometry
+of journal 342 it should therefore find a shore about as rarely.
+
+Which leaves a third possibility I had not filed: that 74% describes neither
+path on this harness, because it was measured on one. Re-read where it came
+from -- journal 37c: **champion vs script, shipped map, 80 turns, 154
+embarkations.** My runs are --eval-ai bench seats, 400 turns, N24. Different
+harness, different map, different horizon, five times the length.
+
+HYPOTHESIS, pre-registered, in the order I will read them:
+  1. **Of hostile landings ordered, the reflex issues 90% or more.** This is the
+     claim I filed item 79 on, and the code reading above argues against it, so
+     it is a real prediction rather than a formality.
+  2. **Total hostile landings across two seats will be under 200** -- two or
+     three orders of magnitude below anything that could make "74% of
+     embarkations" true here. If so, item 79 resolves as HARNESS, not as
+     reflex-versus-head, and the memory needs its scope written in rather than
+     its number corrected.
+
+If 1 fails and 2 holds, the honest answer is that I filed item 79 with the
+wrong candidate explanation and the measurement says so -- which is what
+registering it was for.
+
+INSTRUMENT: a counter at each of the five sites plus embarkations, under
+OD_NAVY_SPLIT, incremented and never read by the decision. Proof of inertness
+is the hash against 14669681761325311781 over 86188 (1914:FRA) and
+1134950857311588231 over 277784 (modern:CHN).
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h.
+
+VERDICT: **HYPOTHESIS 1 CONFIRMED, HYPOTHESIS 2 FALSIFIED -- and the second one
+corrects journal 342's headline, which was mine from yesterday.**
+
+    seat        embarks   HOSTILE landings = reflex + head   per embarkation
+    1914:FRA      1,469     1,194 = 1,193 + 1    (99.9%)              0.813
+    modern:CHN    2,796     2,070 = 2,013 + 57   (97.2%)              0.740
+
+1. **The landings are the reflex's, 97-100% of them.** Item 79's candidate
+   explanation was right, and the code reading that argued against it was
+   wrong about which thing matters.
+
+   And the two instruments cross-check exactly. Journal 342 counted the head
+   finding a shore in range **1** time on 1914:FRA and **57** on modern:CHN.
+   This counter, written a day later against different code paths, records the
+   head ordering **1** and **57** landings. Two independent probes, same two
+   numbers. That is the strongest internal check available here and I did not
+   plan it.
+
+2. **74% REPLICATES, and my "different harness" story was wrong.** I
+   pre-registered fewer than 200 hostile landings across two seats and
+   predicted the memory's figure would prove to be an artefact of journal 37c's
+   harness. There are **3,264**, and landings per embarkation reads **0.740**
+   on modern:CHN against journal 37c's 0.74 -- three significant figures, on a
+   different harness, different map, different model and five times the
+   horizon. 0.813 on 1914:FRA. The number is far more robust than I credited.
+
+WHICH MEANS JOURNAL 342's HEADLINE IS WRONG AS WRITTEN, and I am correcting it
+here rather than letting it stand. Yesterday I wrote:
+
+> **The AI's fleet sits about four hull-ranges from the nearest enemy coast,
+> essentially always.**
+
+The measurement is fine -- mean nearest hostile port 41-47 deg against a 10 deg
+range, over hull-turns -- but "sits" is my reading and it is false. **Those are
+boats in TRANSIT**, and three-quarters of them arrive: the reflex issues sail
+orders toward hostile ports and lands the cargo on arrival, which is why the
+mean over hull-turns is large and the outcome is still 74-81%. A distance
+averaged over a journey is not a description of where the fleet is parked.
+
+Memory true-about-the-adjacent-thing is exactly this: the signal was accurate
+about something next to what I read it as. The corrected statement is narrower
+and still worth having -- **the HEAD's landing action is the thing that is idle
+for reach**, because it is a snapshot test from wherever a boat happens to be,
+and boats are usually mid-ocean. The reflex is what closes the distance.
+
+CONSEQUENCES I AM APPLYING NOW:
+  * **Item 82 is answered and struck, not by its own counter.** "Positioning or
+    scale?" was a false choice built on the wrong reading; the boats are
+    neither parked nor out of reach, they are sailing and arriving.
+  * **Do NOT raise `shipMaxRangeDeg`.** Journal 342 costed that lever at "24-29%
+    of hull-turns are within double the current range" and flagged it for the
+    user. On this entry's numbers the amphibious system already delivers
+    three-quarters of its cargo, so the lever would be aimed at a problem that
+    is not there.
+  * **Item 81 gets a likelier story.** A third of hulls having `crew <= 0` is
+    what you would expect of a fleet that lands three-quarters of what it
+    carries: those are boats that have already unloaded. Still worth counting
+    rather than assuming, but the prior has moved a long way.
+  * Memory the-fleet-is-four-ranges-away is corrected in body and in its index
+    line, per memory correct-the-index-with-the-body.
+
+A DEFECT I WROTE AND CAUGHT BY READING THE DIFF. The first draft registered
+this probe's exit hook INSIDE the `if (std::getenv("OD_DECISION_HASH"))` block,
+so `OD_NAVY_SPLIT=1` alone would have counted correctly and printed nothing --
+the defect journal 300 fixed for the hash, that journal 339 rebuilt, and that I
+had just written a comment about in the same edit. Moved out and proved with
+the discrimination run: OD_NAVY_SPLIT alone, no OD_DECISION_HASH, prints. **Three
+times in this file now.** It is not a lapse of attention, it is a shape: this
+code's instruments are registered where a nearby instrument already registers
+one, because that is where the working example is.
+
+INERTNESS, both seats: 14669681761325311781 over 86188 and 1134950857311588231
+over 277784, both matching, scores 21.4 and 23.1 unchanged.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (src/ai/AISystem.{cpp,h}, on top of journals 300-342's hunks in
+the same file -- stage hunks, not the file):
+
+    Count which navy path orders each landing
+
+    Five sites can order an embarkation or a landing and nothing said
+    which did what. Two seats: every embarkation is the head's, and 97-100%
+    of hostile landings are the amphibious reflex's -- the head orders 1
+    and 57, matching exactly the 1 and 57 times journal 342 counted it
+    finding a shore in range. Landings per embarkation reads 0.74 and 0.81,
+    replicating journal 37c's 0.74 on a different harness. The counters
+    always increment; OD_NAVY_SPLIT only decides whether they print.
+
+## 344 — iteration: OD_CAMPAIGN_HOMEFIRST, the last untested gate
+
+BACKLOG ITEM 80, the top unblocked item, and the last of item 67's three
+genuinely untested gates -- 337 closed OD_WAR_BAR_RESEARCH and 341 closed
+OD_LANDING_PICK, both on frequency rather than on merit. 81 and 75 are what is
+left after it; the rest are the user's or blocked behind item 26.
+
+WHAT THE GATE DOES (AISystem.cpp:6189). A campaign is a commitment: while one
+is open, new men are raised at `camp->stagingProvince` and the staging province
+is reinforced first, instead of wherever the turn's threat rule points. With
+OD_CAMPAIGN_HOMEFIRST=1 that commitment YIELDS when the home front is losing:
+
+    campYields = homeFirst && (st.provincesLost > 0 || st.worstDeficit > 0)
+
+and at the two sites it governs (case 1 recruit, and the reinforce block) the
+campaign stops taking the men. The attack itself is untouched -- the comment
+calls this "the untested middle" between full commitment and recall, and recall
+was measured to give back more mean than it buys floor.
+
+THE STRUCTURE OF THE ANSWER, which the last two gates taught me to look for
+before anything else. The gate's true reach is a product of three things, and
+if any one of them is small the gate is inert however good its rule is:
+
+    P(a campaign is open)  x  P(home losing | open)  x  P(the pick CHANGES)
+
+The third matters and is the one journal 337 had to learn: if the threat rule
+would have chosen the staging province anyway, the gate fires and nothing
+happens. This is the same question as "does the research multiplier flip the
+war bar" and "is there more than one shore".
+
+HYPOTHESIS, pre-registered, one number each:
+  1. **A campaign is open on more than 30% of the recruit/reinforce
+     action-turns.** If campaigns are as rare as landable shores, the gate
+     closes the way OD_LANDING_PICK did.
+  2. **Given a campaign open, the home-losing condition holds on more than
+     50%.** `provincesLost > 0 || worstDeficit > 0` is a broad disjunction --
+     worstDeficit is positive whenever any neighbour's army exceeds one of our
+     garrisons (AISystem.cpp:7439) -- and this AI is usually under pressure
+     somewhere. I expect this to be the LARGE term and would not be surprised
+     by 80%+.
+  3. **Given both, the recruit destination actually differs from the staging
+     province on more than 50%.**
+
+I also record the component split -- provincesLost against worstDeficit --
+because a disjunction that is really one term is worth knowing about: if
+worstDeficit alone carries it, the gate is "a neighbour outguns one garrison",
+which is a much weaker statement than "the home front is losing ground" and the
+comment's language would be overselling it.
+
+INSTRUMENT: counters at the two sites, always incremented, printed under
+OD_CAMPAIGN_PROBE from **its own exit hook** -- registered outside every other
+instrument's gate, which is the defect I have now written three times (journals
+300, 339, 343). Read-only; proof is the hash against 14669681761325311781 over
+86188 and 1134950857311588231 over 277784.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h.
+
+VERDICT: **PART 1 FALSIFIED, PART 2 MIXED, PART 3 CONFIRMED -- and this is the
+LIVEST of item 67's three gates by two orders of magnitude.**
+
+    term                                   1914:FRA          modern:CHN
+    P(campaign open), recruit               6.0%                8.4%      <- 1 FALSIFIED
+    P(home losing | open), recruit         51.6%               44.1%      <- 2 mixed
+    P(the pick CHANGES | both)             96.9%               72.8%      <- 3 confirmed
+    product, measured directly        782/26,019 = 3.01%   1,947/71,821 = 2.71%
+
+    P(campaign open), reinforce             7.3%                9.0%
+    P(home losing | open)                  51.9%               49.6%
+    staging reinforced anyway              39.2%               52.5%
+    so inclusion changes on             ~2.3% of decisions   ~2.1%
+
+1. I predicted campaigns open on more than 30% of these decisions. They are
+   open **6-9%** of the time. Falsified, and not marginally.
+2. I predicted the home-losing condition above 50% given a campaign open. FRA
+   reads 51.6 and 51.9 (clears), CHN 44.1 and 49.6 (does not). Approximately
+   right, strictly wrong on one seat; I am recording it as mixed rather than
+   rounding it to a pass.
+3. I predicted the pick changes on more than half. It changes on **96.9% and
+   72.8%** -- when a campaign has the recruit and the home front is under
+   pressure, the threat rule almost always wants a different province. This is
+   the term that was most in doubt for the war bar and here it is nearly one.
+
+**So the gate touches 2-3% of decisions at each of two sites.** For scale, the
+other two gates of item 67: OD_WAR_BAR_RESEARCH flipped 0.68% and 3.84% of its
+evaluations; OD_LANDING_PICK had a choice on **16 decisions in a run**. This
+one is real work, on thousands of decisions.
+
+THE FINDING I PRE-REGISTERED AS WORTH LOOKING FOR, AND IT IS THERE. The
+condition is a disjunction and it is carried by ONE term:
+
+    of campaign-open decisions      provincesLost>0    worstDeficit>0
+    1914:FRA                          12.9%  (2.7% alone)   48.9%  (38.7% alone)
+    modern:CHN                         3.3%  (1.1% alone)   43.0%  (40.8% alone)
+
+`provincesLost > 0` -- actually losing ground -- contributes **1-3% on its
+own**. The gate is, in practice, `worstDeficit > 0`: a neighbour's army exceeds
+one of our garrisons (AISystem.cpp:7439). The comment above it says the
+campaign yields "when the home front is losing ground", and that is not what
+the code tests. It is a much weaker trigger, true about half the time a
+campaign is open, and it fires long before any ground is lost. **Anyone
+benching this gate is benching a garrison-comparison, not a losing-ground
+rule**, and the comment should say so.
+
+AN INSTRUMENT THAT COULD ONLY EVER READ ZERO, caught because its line did not
+print. Part 3's counter first sat inside `if (pid < 0 && !st.frontiers.empty())`
+-- the branch that finds the threat rule's pick. With the gate OFF, which is
+the default and how I ran it, `pid` has just been set to the staging province,
+so that branch never executes while a campaign is open. The counter was
+unreachable by construction and would have reported "the pick never changes".
+Fixed by computing the threat rule's answer independently in the probe block.
+
+**That is the fourth instrument-placement defect in this file in six entries**
+(journals 300, 339, 343 registered a report inside another instrument's gate;
+this one counted inside a branch the default path does not take). Different
+sub-species, same genus: an instrument written by reaching for the nearest
+piece of working code, which is code that runs under conditions the probe does
+not share. The saving grace both times was a MISSING line rather than a wrong
+one -- memory a-skip-is-not-a-pass is why I looked instead of reading the
+absence as "never happens".
+
+INERTNESS: 14669681761325311781 over 86188 and 1134950857311588231 over
+277784, matched before AND after the instrument was rewritten.
+
+WHAT I AM NOT DOING. Benching it. At 2-3% of decisions this is a plausible
+bench candidate -- the war bar at 3.84% returned +42 against a ~60 floor, which
+is to say "unresolvable" -- so under item 26's standard an arm here would
+probably return the same. That is the seed-count decision, not a reason to
+guess. Filed as 83.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (src/ai/AISystem.{cpp,h}, on top of journals 300-343's hunks --
+stage hunks, not the file):
+
+    Add OD_CAMPAIGN_PROBE: how far does the home-first gate reach?
+
+    OD_CAMPAIGN_HOMEFIRST has been default-off and untested. Its reach is
+    a product -- a campaign open, the home front qualifying, and the pick
+    actually changing -- and measuring only the condition would have
+    overstated it. Two seats: campaigns are open 6-9% of the time, the
+    condition holds on about half of those, and the pick then changes on
+    73-97%, so the gate moves 2-3% of decisions at each of two sites.
+    Also: the condition is carried entirely by worstDeficit; provincesLost
+    contributes 1-3% alone, so the comment's "losing ground" is not what
+    the code tests.
+
+## 345 — iteration: do the measured gates' comments say what was measured?
+
+BACKLOG ITEM 84, the top unblocked item. 83 is blocked behind item 26, 81 and
+75 are below it, and the rest are the user's.
+
+THE ITEM. AISystem.cpp:6189's comment says the campaign yields "when the home
+front is losing ground"; journal 344 measured that the test is carried entirely
+by `worstDeficit > 0` -- a neighbour outgunning one garrison -- with
+`provincesLost > 0` contributing 1-3% alone. The comment names a rule the code
+does not test.
+
+SCOPE, deliberately wider than the one line and deliberately bounded. This
+sequence has now MEASURED four default-off gates. A comment that mis-describes
+a gate costs exactly when someone benches it, and journal 332 is the recorded
+case of that: it read OD_REINF_SIZED's evidence off a comment sitting beside a
+different gate and had to be corrected by journal 333. So the honest unit of
+work is not "fix line 6189" but **"check each gate I have numbers for against
+its own comment"** -- four claims, each with a measurement already in the
+journal, no new runs needed.
+
+    gate                      measured in     what I can check it against
+    OD_CAMPAIGN_HOMEFIRST     journal 344     the condition's two terms
+    OD_WAR_BAR_RESEARCH       journal 337     flip rate and DIRECTION
+    OD_LANDING_PICK           journal 341     how often there is a choice
+    OD_REINF_FALLBACK         journal 331     built and measured by this loop
+
+HYPOTHESIS, pre-registered: **at least two of the four comments overstate or
+mis-state what the measurement found.** One is already known (the campaign
+gate, which is why item 84 exists), so the prediction is really that at least
+one MORE turns up. If only the known one is wrong, this is a one-line fix and I
+will say so rather than manufacture findings.
+
+I also pre-register the rule I will apply, because "improving" a comment is
+where a documentation change turns into a behaviour change: **the code does not
+move this iteration.** If a comment and its code disagree, the comment is
+wrong until someone benches the alternative. Item 84 says this explicitly and
+it is the trap worth naming twice.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (comments only). The proof that it is
+comments only is the decision hash, unchanged, plus a diff that touches no
+executable line.
+
+VERDICT: KEEP. **The hypothesis holds -- two of the four mis-state what was
+measured -- and the pattern in WHICH two is the result.**
+
+    gate                     comment vs measurement
+    OD_CAMPAIGN_HOMEFIRST    WRONG: names a condition the code does not test
+    OD_WAR_BAR_RESEARCH      MISLEADING: a 14-19% one-way discount presented
+                             as a symmetric fidelity correction
+    OD_LANDING_PICK          INCOMPLETE: accurate about the mechanism, silent
+                             about the frequency that decides whether it matters
+    OD_REINF_FALLBACK        CORRECT, and the model for the other three
+
+1. **The campaign gate** said the campaign yields "when the home front is
+   losing ground". Journal 344: `provincesLost > 0` contributes 2.7% and 1.1%
+   alone; `worstDeficit > 0` carries 38.7% and 40.8%. Rewritten to say what the
+   test checks, with the two terms' rates and the gate's 2-3% reach beside it.
+
+2. **The war bar** was the one I did not know about when I filed item 84, and
+   it is the same defect in a different costume. Its comment argues for using
+   "the number the game keeps rather than the proxy that ignores it" -- true,
+   and it reads as a wash. Journal 337 measured the attack modifier at ~2.5x
+   the defence one on both maps, making it a 14-19% DISCOUNT on declaring war,
+   98.0% one-directional. A reader of the old comment would bench this
+   expecting a fidelity improvement and get a partial revert of the bar raised
+   fifteen lines above it. Now says so, with the numbers.
+
+3. **The landing pick** is not wrong. It says the shore is chosen "among
+   several reachable shores" by container order, which is exactly what the code
+   does -- it simply never says that "several reachable shores" happens 16
+   times in a 400-turn run. That is the difference between a true comment and a
+   useful one, and journal 341 spent an iteration establishing it. Added, with
+   journal 343's finding that the amphibious system works anyway because 97-100%
+   of landings are the REFLEX's.
+
+4. **The reinforce fallback comment is already right**, and it is the only one
+   of the four that is. It carries the seat, the model's md5, the seed, the
+   turn count, the difficulty, both journal numbers, the effect size, AND the
+   caveat that one seed decides nothing.
+
+THE PATTERN, AND IT IS NOT A COINCIDENCE. The one correct comment is the one
+**this loop wrote, under the convention journal 331 proposed** -- record seat,
+model and seed beside every number. The three that are wrong or incomplete all
+predate it. That is as close to a controlled comparison as a documentation
+question gets here, and it is an argument for backlog item 65 (the user's: put
+the convention into LOOP.md section 7) that did not exist before this entry.
+
+WHAT I DID NOT DO, and it was the trap I pre-registered against: **no code
+moved.** Where the comment and the code disagreed -- the campaign gate -- the
+comment was changed to match the code, not the other way round. "Fixing" the
+condition to test `provincesLost` alone would have been a behaviour change
+wearing a documentation change's clothes, and it would have shrunk a gate with
+2-3% reach to one with 1-3% of half of 6-9%.
+
+PROVEN COMMENTS-ONLY, TWO WAYS. Every added and removed line in the diff begins
+with `//` -- checked mechanically, not by eye -- and the decision hash on
+1914:FRA is 14669681761325311781 over 86188 with score 21.4, matching the
+standing reference. 60 lines added, 0 executable.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (comments only). No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (src/ai/AISystem.cpp, comment hunks only, on top of journals
+300-344's hunks -- stage hunks, not the file):
+
+    Make three gate comments say what was measured
+
+    Four default-off gates have now been measured; one comment described
+    them correctly. The campaign gate said it fires "when the home front is
+    losing ground" when the test is carried entirely by a garrison
+    comparison that fires long before ground is lost. The war bar argued
+    for using the game's own research numbers without saying the attack
+    modifier runs 2.5x the defence one, making it a 14-19% one-way discount
+    on a bar that was raised on purpose. The landing pick describes
+    choosing "among several reachable shores" without saying that happens
+    sixteen times in a run. Comments only; the decision hash is unchanged.
+
+## 346 — iteration: a third of the fleet has no crew. Which third?
+
+BACKLOG ITEM 81, the top unblocked item. 83 is blocked behind item 26, 75 is
+low-priority by its own text, and the rest are the user's.
+
+THE ITEM. Journal 342 counted the landing action's filters and found `crew <= 0`
+rejecting 33.0% of own hull-turns on 1914:FRA and 25.3% on modern:CHN -- the
+largest single filter on that path. I filed three candidate stories and said to
+count which: a hull that has unloaded and not reloaded, a hull built without
+men, or a hull whose men died. Journal 343 moved the prior to the first, on the
+grounds that a fleet landing 74-81% of its cargo should be full of boats that
+have already unloaded.
+
+READING THE RESOLVER FIRST KILLS THAT PRIOR, and it should have been the first
+move rather than the fourth. In `Game::processShipDisembarks`
+(Game_TurnLogic.cpp:3470-3478) a hull that lands is **ERASED**, not emptied:
+
+    m_ships.erase(m_ships.begin() + shipIdx);
+    forgetShipOrders(shipIdx);
+
+So "a boat that has already unloaded" cannot be a persistent empty hull -- that
+hull does not exist any more. My registered prior was wrong, for a reason
+visible in ten lines of a resolver I had not opened. The same is true of the
+third story: a sunk transport is set to `countryId = UNC_CID` and swept by
+cleanupSunkShips (4685-4695), so its men dying does not leave an empty hull
+either.
+
+WHICH LEAVES A FOURTH STORY I DID NOT FILE, and it is sitting in the generator
+(ProceduralGenerator.cpp:1162) and repeated on load (Game_Loading.cpp:2831):
+
+    ship.crew = ship.type == "boat" ? (int)(50 + rng() % 451) : 0;
+    if (ns.type != "boat") ns.crew = 0;
+
+**Only "boat" ships ever carry troops.** Every other hull type is built with
+crew 0 by design and stays that way. So `crew <= 0` is not a fleet of empty
+transports -- it is, probably, the warships. The landing action loops over
+`g.m_ships` and asks every hull the country owns, including the ones that
+structurally cannot carry anybody.
+
+HYPOTHESIS, pre-registered: **at least 90% of the `crew <= 0` hull-turns are
+ships whose type is not "boat".** If that holds, item 81 closes as "not a
+defect, a fleet composition", and journal 342's filter table needs re-reading:
+a third of its denominator was warships being asked to disembark.
+
+The falsifier that would make this interesting instead: if a large share of the
+crew-less hull-turns ARE boats, then there is a population of empty transports
+the two erase paths do not explain, and that is worth chasing.
+
+I also count the fleet's type mix, because "a third has no crew" and "a third
+are warships" are the same sentence only if the mix says so, and I would rather
+read it than infer it.
+
+INSTRUMENT: two counters at the existing OD_LANDING_PROBE site, split on
+`s.type == "boat"`. Read-only; proof is the hash against 14669681761325311781
+over 86188 and 1134950857311588231 over 277784.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h.
+
+VERDICT: **CONFIRMED AT THE EXTREME -- 100.0%, not 90%. All three of item 81's
+candidate stories were wrong, and the answer was the one I had not filed.**
+
+    seat          own hull-turns   type "boat"   crewless: boats   NON-boat
+    1914:FRA              50,445   33,773 (67%)          0 (0.0%)     16,672 (100%)
+    modern:CHN            84,813   63,347 (75%)          0 (0.0%)     21,466 (100%)
+
+**Zero crewless boats in 135,258 hull-turns.** And the counts are not merely
+close, they are equal:
+
+    1914:FRA     non-boat hull-turns 16,672   crewless 16,672   identical
+    modern:CHN   non-boat hull-turns 21,466   crewless 21,466   identical
+
+So the invariant is exact on this evidence: **every non-"boat" hull has crew 0,
+always, and every boat has crew > 0, always.** There is no population of empty
+transports. There never was one.
+
+WHAT THE FILTER ACTUALLY IS. `if (s.countryId != cid || s.crew <= 0) continue;`
+in the landing action is, on these numbers, a TYPE TEST wearing a crew test's
+clothes: it means "skip the warships". That is correct behaviour -- a destroyer
+cannot put troops ashore -- and it is why journal 342 read "a third of the
+fleet has no crew" as a defect when it is a fleet composition. A third of that
+fleet is warships.
+
+THE CONSEQUENCE FOR JOURNAL 342's TABLE, which I am restating with the right
+denominator rather than leaving the old one to be quoted:
+
+    the landing action's real denominator is BOAT hull-turns
+    reached the port scan   24,334 / 33,773 = 72.1%   [1914:FRA]
+                            47,039 / 63,347 = 74.3%   [modern:CHN]
+    a shore in range        1 / 33,773 = 0.003%  and  57 / 63,347 = 0.09%
+
+So about three-quarters of boats reach the scan and the remaining quarter are
+already under orders. The headline does not change -- a shore is in range
+essentially never -- but "33% of hulls have no crew" should never be quoted
+again as if it described transports.
+
+AND IT RETIRES A WORRY RATHER THAN OPENING ONE. Boats are never empty, which
+means a boat that exists is carrying troops: it was loaded at embarkation and
+stays loaded until it lands (the resolver ERASES it, Game_TurnLogic.cpp:3477)
+or is sunk (`countryId = UNC_CID`, swept by cleanupSunkShips). There is no
+"empty boat sailing around" state at all. Given the history in memory
+embark-deletes-men -- boats emptied and scrapped a turn after loading, nine
+thousand embarkations landing 0% of the time -- that is worth recording as a
+thing that is now structurally fine.
+
+THE METHOD LESSON, and it is the one I keep paying for. Ten lines of
+`processShipDisembarks` would have killed two of my three stories before any
+counter was written, and the generator line would have supplied the fourth. I
+filed three hypotheses in journal 342, registered a prior for one of them in
+journal 343, and none of the three was possible. **Read the resolver before
+enumerating causes** -- memory expose-the-resolvers-numbers says this about
+giving the AI figures; it applies just as hard to giving MYSELF figures.
+
+INERTNESS: 14669681761325311781 over 86188 and 1134950857311588231 over
+277784, both matched.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h. No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (src/ai/AISystem.{cpp,h}, on top of journals 300-345's hunks --
+stage hunks, not the file):
+
+    Split the landing probe's crewless hulls by ship type
+
+    Journal 342 found the landing action rejecting a third of own
+    hull-turns for crew <= 0 and called it a fleet of empty transports.
+    It is the warships: 100.0% of crewless hull-turns are ships whose type
+    is not "boat", and the counts are exactly equal to the non-boat
+    hull-turns, on two seats. Only "boat" is ever generated with crew
+    (ProceduralGenerator.cpp:1162), so that filter is a type test in
+    disguise and boats are never empty.
+
+## 347 — iteration: name the filter that cost an iteration, and read the queue
+
+BACKLOG ITEM 85, the top unblocked item. 75 sits above it in the file and is
+marked low-priority by its own text (the data it wants was discarded at exit
+and is not recoverable); 83 is blocked behind item 26.
+
+THE ITEM. `if (s.countryId != cid || s.crew <= 0) continue;` reads as "skip the
+hulls that happen to be empty". Journal 346 established it means "skip the
+warships": only type "boat" is ever given crew, so every warship carries crew 0
+for its whole life. Journal 342 read it the other way, reported "a third of the
+fleet has no crew", and filed three candidate causes -- all three impossible.
+
+FOUR SITES, NOT ONE, which I did not know when I filed the item:
+
+    AISystem.cpp:5201   the ship threat feature
+    AISystem.cpp:8358   the amphibious reflex        <- the note lives here
+    AISystem.cpp:8576   nearestLandingRange, the mask's "can anything land"
+    AISystem.cpp:8724   the navy executor's landing action  <- where 342 misread it
+
+All four mean "loaded boats only". The authoritative note is written once, at
+the reflex -- the path journal 343 measured as issuing 97-100% of landings --
+and the other three carry a one-line pointer to it **by name** rather than by
+line number, because a line number in a comment is a claim that rots.
+
+VERDICT: KEEP. Comments only, and proven so twice: the diff's only
+non-comment line is
+
+    -        if (s.countryId != cid || s.crew <= 0) continue;
+    +        if (s.countryId != cid || s.crew <= 0) continue;   // = loaded boats only
+
+which is the same statement with a trailing comment. The decision hash on
+modern:CHN reads 1134950857311588231 over 277784, score 23.1 -- matching the
+standing reference, on the busier of the two seats.
+
+The note carries what journal 345 showed makes a comment right: the seats, the
+model's md5, the seed, the turn count, the difficulty, the counts on both seats
+(16,672 / 21,466 crewless, identical to the non-boat hull-turns, zero crewless
+boats), the two resolver lines that make boats never empty, and -- because this
+is the point -- **why the note exists at all**, which is that a previous entry
+of this journal read the line wrongly and spent an iteration on it.
+
+## AND THE THING WORTH SAYING MORE THAN THE COMMIT: THE QUEUE IS EMPTY
+
+This is the state after ten consecutive iterations, and it is a result rather
+than a complaint. What the loop can still do unblocked:
+
+    75   863 archived results have no per-seed data -- LOW PRIORITY by its own
+         text; the values were discarded at exit and cannot be recovered
+    (nothing else)
+
+What is waiting, and on whom:
+
+    26   the SEED STANDARD -- blocks 32, 34, 73, 83.  **This is the one.**
+    16   are FRA and USA safe on N24 (seat set)       compounds with 26 via 51
+    19   the rush guard is not well-formed            LOOP.md rule, journal 291
+    77   what counts as a rating (turns)              raised by journal 340
+    65   put journal 331's convention in LOOP.md      evidenced by journal 345
+    30   who maintains LOOP.md                        journal 299
+    41, 49, 51                                        filed for their owners
+
+**Item 26 is the binding constraint and has been since journal 304.** Five of
+the last ten iterations produced a measured, mechanism-level finding and then
+stopped at the same wall: the bench resolves nothing under ~60 points at 8
+seeds, and every candidate this sequence has characterised sits below it.
+OD_CAMPAIGN_HOMEFIRST (journal 344, 2-3% of decisions at two sites) is the
+best-supported arm the loop has ever had queued and it is blocked on a decision
+about how many seeds a measurement gets.
+
+What the loop did instead, and I think correctly: closed all three of item 67's
+untested gates on FREQUENCY rather than on merit (journals 337, 341, 344),
+which needs no seeds; fixed six denominator defects in the instrument (338-340);
+corrected three comments and two of its own entries (343, 345, 346). That is
+real work and none of it moves the rating, which is the user's stated target.
+
+I am not going to manufacture an eleventh iteration of instrument polish to
+avoid saying that.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (comments only). No model written,
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (src/ai/AISystem.cpp, comment hunks only, on top of journals
+300-346's hunks -- stage hunks, not the file):
+
+    Say that crew <= 0 means "skip the warships"
+
+    Four sites filter hulls on crew <= 0 and all four mean "loaded boats
+    only": only type "boat" is ever given crew, at generation and on load,
+    so a warship carries crew 0 for its whole life. Journal 342 read the
+    line as an emptiness rate, reported a third of the fleet as empty, and
+    filed three causes that the resolvers make impossible. One note at the
+    amphibious reflex with the measurement, pointers at the other three.
+
+## 348 — iteration: is item 26 binding, or only binding for the RATING?
+
+NO UNBLOCKED BACKLOG ITEM the loop should take. 75 is low-priority by its own
+text and wants data that was discarded at exit; everything else is the user's
+or blocked behind item 26, which journal 347 recorded as the single thing
+holding the loop.
+
+But item 26 offers two options and one of them does NOT need the user:
+
+> (a) raise the standard to 32 seeds ... (b) **stop testing knobs and spend
+> machine time on changes big enough to clear 60**. Recommended: (a) for queued
+> questions, (b) for new work.
+
+Before spending machine time under (b) I want to check a premise that has gone
+unexamined since journal 296 set the floor. **"The bench resolves ~60 points at
+8 seeds" is a statement about the RATING.** The rating is a mean over seats of
+`min(share/par, 5) x 100` -- capped, par-divided, then averaged. Every one of
+those operations throws information away, and journal 338 caught the extreme
+case: modern:CHN moved a median 14.3% -> 26.0% of the world, the largest
+per-seat movement this sequence has produced, and contributed EXACTLY ZERO to
+the rating difference because it is pinned at the cap in both arms.
+
+So the question this iteration asks, with no new runs:
+
+**Does the per-seat LAND SHARE resolve effects the rating cannot, on the same
+8 seeds?** If it does, item 26 is binding for the rating and not for mechanism
+questions, and the loop is less blocked than journal 347 said it was.
+
+HYPOTHESIS, pre-registered:
+  1. **On modern:CHN the land-share test resolves an effect that the rating
+     cannot resolve at ANY number of seeds**, because a capped seat contributes
+     a constant however many seeds are run. This one is close to arithmetic and
+     I expect it to hold trivially; it is here because it is the load-bearing
+     half.
+  2. **On the two UNCAPPED seats the land-share test's minimum detectable
+     difference, converted into rating points, is smaller than 60** -- i.e. the
+     rating's floor is not purely a sample-size fact and part of it is the
+     statistic. I am genuinely unsure of this one: pooling three seats into one
+     mean is variance reduction, and it might outweigh what the cap and the
+     ratio throw away.
+
+If 2 fails, the honest conclusion is that item 26 IS binding as stated and the
+loop should tell the user so a second time rather than dress it up.
+
+DATA: the only 8-seed arms carrying per-seed values are it338-control and
+it338-warbar (journal 339 started storing spreads; the 861 rows before it kept
+means only, item 75). Two arms x 4 seats x 8 seeds = 64 observations. The sd is
+estimated per seat by POOLING both arms, which is the right move when the
+question is "how noisy is this seat", and gives 14 degrees of freedom rather
+than 7.
+
+NO RUNS, NO SOURCE, NO MODEL.
+
+VERDICT: **BOTH PARTS HOLD. The ~60-point floor is a property of the RATING,
+not of the runs, and for a concentrated effect the per-seat land test on the
+SAME eight seeds is 1.6-1.9x more sensitive -- and infinitely more sensitive on
+modern:CHN.**
+
+    3-seat rung RATING: pooled sd 94.0, MDD at 8 seeds/arm = 92 rating points
+    so a change on ONE seat must be worth 276 seat-score points to show
+
+    seat               par    ctl   land MDD   rating needs    ratio
+    1914:FRA:rung      6.7  19.57      11.75        18.51pp    1.58x
+    1939:USA:rung      5.6  19.64       8.07        15.48pp    1.92x
+    modern:CHN:rung    2.5  13.43       9.65          NEVER      inf
+
+`land MDD` is the smallest land-share change the per-seat permutation test
+resolves at 95% on eight seeds per arm; `rating needs` is the smallest change
+ON THAT SEAT ALONE the three-seat rating resolves; both from the same 64
+observations.
+
+WHY, and it is one line of statistics rather than anything about this game. The
+rating averages three seats, so an effect on one seat is DIVIDED BY THREE while
+the noise is only reduced by root three. A concentrated effect therefore loses
+a factor of root three -- 1.73 -- by being measured through the mean, and the
+measured ratios of 1.58 and 1.92 straddle it. The corollary is the important
+half and it cuts the other way: **a DIFFUSE effect, moving all three seats
+together, is better measured by the rating**, which is what a mean is for.
+
+AND modern:CHN IS NOT A HARD CASE, IT IS AN IMPOSSIBLE ONE. Its par is 2.5
+against a 5x cap, so any share above 12.5% of the world scores exactly 500. The
+control mean is 13.43 and the treatment 23.16: both above. The rating cannot
+distinguish them at eight seeds, at eighty, or at eight thousand -- more seeds
+buy nothing against a constant. What the rating still sees on that seat is
+whether China was ANNIHILATED, which is the coin journal 287 identified. The
+land test sees the whole range.
+
+I WAS WRONG ABOUT THIS ONCE IN THIS ENTRY, and it is worth recording how. My
+first reading compared the per-seat MDD converted to seat-score points (175 on
+FRA) against the rating's MDD (92) and concluded the land test was WORSE by
+nearly a factor of two. That compares a single seat's movement with a
+three-seat mean's movement -- the missing step is that the rating divides by
+three, so 92 rating points demand 276 seat-score points on one seat, not 92.
+The error inverted the conclusion of the entry. Memory
+a-rate-that-hides-its-count is about denominators in printed output; this is
+the same defect in my own arithmetic, and the thing that caught it was writing
+the comparison out with units rather than eyeballing two numbers.
+
+WHAT THIS CHANGES FOR THE LOOP, concretely:
+
+  * **Journal 347's "the loop is blocked" was half right.** Item 26 binds
+    questions asked of the RATING. A mechanism question about one seat -- which
+    is what every gate this sequence has characterised actually is -- can be
+    asked at the current eight seeds, using the instrument journal 339 already
+    built, at 1.6x to 1.9x the sensitivity.
+  * **Item 83 is no longer blocked in the same way.**
+    OD_CAMPAIGN_HOMEFIRST buys home defence, which is a per-seat quantity;
+    journal 344 measured its reach at 2-3% of decisions at two sites. Under
+    item 72's rule the arm should be pre-registered on per-seat land share, and
+    at that point it needs no seed-standard decision to be worth running.
+  * **It does NOT make item 26 go away.** A diffuse change still needs the
+    rating and the rating still resolves 92 points at eight seeds. And a
+    per-seat test answers "did this seat hold more ground", not "is the AI
+    better" -- three seats tested separately is three questions, with the
+    multiple-comparison cost journal 339's instrument already prints.
+
+THE NUMBER JOURNAL 296 QUOTED IS ALSO OFF, and I am correcting it rather than
+leaving two floors in circulation. LOOP.md STANDING 1 says "the per-seed se is
+~30 at EIGHT seeds ... detectable at 95%: 59". These runs give a per-seed
+rating sd of 94 and an se of 33, so the MDD is **92, not 59**. The se matches;
+the conversion did not carry the root-two for an unpaired DIFFERENCE. So the
+rating floor has been quoted 36% too low for twelve entries, which makes every
+"not resolvable" in journals 337-347 more true rather than less.
+
+NO RUNS, NO SOURCE, NO MODEL. data/ai/model.bin unchanged (md5
+4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT: none. Analysis only.
+
+## 349 — iteration: OD_CAMPAIGN_HOMEFIRST, on the statistic it moves
+
+BACKLOG ITEM 83, unblocked by journal 348 and now the top actionable item. It
+was filed as blocked behind item 26; 348 showed that floor belongs to the
+RATING, and this gate buys a per-seat quantity.
+
+WHY THIS GATE. Journal 344 measured its reach rather than guessing it: a
+campaign is open on 6.0% / 8.4% of recruit decisions, the condition holds on
+44-52% of those, and the threat rule then wants a different province on 96.9% /
+72.8% -- so the gate moves **2-3% of decisions at each of two sites**. That is
+the largest measured reach of any default-off gate this sequence has examined,
+against OD_WAR_BAR_RESEARCH's 0.68-3.84% of evaluations and OD_LANDING_PICK's
+sixteen decisions in a run.
+
+THE STATISTIC, PRE-REGISTERED FIRST, per item 72 and journal 348:
+
+    PRIMARY    per-seat raw LAND SHARE, with the unpaired permutation test
+               journal 339 built into --compare (20,000 shuffles, fixed seed)
+    SECONDARY  the 3-seat rating, quoted but not decided on
+
+Because the effect is CONCENTRATED -- a gate about home defence acts where the
+home front is under pressure, not evenly across three seats -- and journal 348
+measured the per-seat test at 1.58x (FRA) and 1.92x (USA) the rating's
+sensitivity for exactly that case, with modern:CHN unresolvable by the rating
+at any seed count.
+
+    minimum detectable difference, 8 seeds/arm, from journal 348:
+        1914:FRA 11.75pp    1939:USA 8.07pp    modern:CHN 9.65pp
+        the rating: 92 points
+
+DIRECTIONS, PRE-REGISTERED PER SEAT. The gate makes an open campaign stop
+taking the recruits and reinforcements while the home front is under pressure,
+and the AISystem comment records what campaigns are worth: "+66 rating on N43
+and -20 on the worst seat -- they win where the seat can afford an offensive
+and lose where it cannot."
+
+    modern:CHN    UP    the worst seat, annihilated on 2 of 8 control seeds;
+                        it is the seat that cannot afford an offensive
+    1914:FRA      DOWN  3x par, winning; yielding the campaign costs
+                        concentration it can afford to keep
+    1939:USA      DOWN  same argument
+
+All three correct by chance is 1/8. That is not significance and I will not
+present it as such -- it is a pre-registered pattern, reported without a P,
+per LOOP.md STANDING 5.
+
+AND THE MAGNITUDE I EXPECT, so a null cannot be re-read afterwards as a win:
+**I expect every seat to move by LESS than its MDD.** 2-3% of decisions at two
+sites is real reach but the war bar moved 3.84% of its evaluations and returned
+a difference the instrument could not resolve. If that happens the result is
+"direction pre-registered, magnitude not resolvable at 8 seeds per arm" -- and
+the directions are then the only reportable thing.
+
+DESIGN: three rung seats named in the THREE-PART form, because journal 338's
+two-part form expanded 3 patterns into 4 seats and read a 4-seat rating against
+a 3-seat hypothesis. The filter now announces what it matched (journal 338's
+fix) and I will check that line before trusting the run.
+
+    seats   1914:FRA:rung, 1939:USA:rung, modern:CHN:rung
+    seeds   13579 246810 555555 987654 3141592 271828 1618033 8080808
+    turns   400     difficulty 3     model N24 (data/ai/model.bin, 4a137043)
+    arms    control and OD_CAMPAIGN_HOMEFIRST=1, BOTH run this iteration
+
+NOTHING IS IMPLEMENTED. The gate exists and is default-off; the arm is an env
+var, so there are no paths to revert.
+
+VERDICT: **PARK. Not resolvable on any seat -- and my pre-registered directions
+scored 1 of 3, WORSE than the 1.5 chance expects. The trade I predicted does
+not exist; every seat went up.**
+
+    seat   ctl mean  trt mean       d     MDD  cleared?  ctl sd  trt sd   p
+    FRA       19.57     25.65   +6.08   11.75        NO    5.27   12.60  0.247
+    USA       19.64     21.79   +2.15    8.07        NO    6.91    6.19  0.522
+    CHN       13.43     16.50   +3.07    9.65        NO    9.26    7.97  0.481
+    rating      381       424     +43   73-95        NO
+
+    pre-registered, before the run:  FRA DOWN (MISS)  USA DOWN (MISS)  CHN UP (HIT)
+
+THE MAGNITUDE PREDICTION WAS RIGHT AND THE DIRECTION PREDICTION WAS WORSE THAN
+A COIN. I wrote "I expect every seat to move by LESS than its MDD" and every
+seat did -- so the arm is a null by the standard I set before seeing it, and
+the +43 rating sits under the arms' own floor of 73-95. But I also wrote that
+this gate would trade: France and the USA paying for the campaign yielding
+while China gained. **All three rose.** The reasoning came from the AISystem
+comment's own figures ("campaigns win where the seat can afford an offensive
+and lose where it cannot") and it did not transfer.
+
+Memory measurements-replicate-explanations-dont is the entry for this: the
+mechanism was measured (journal 344, 2-3% of decisions at two sites), the
+direction was reasoned, and the reasoning is what failed. Registering it is
+what makes that visible instead of reconstructible afterwards.
+
+GRADED COUNTS DIFFER -- 14/24 control against 16/24 treatment (LOOP.md STANDING
+3). Close, and in the direction that makes the treatment slightly better
+measured, but they are not the same instrument and the comparison carries that.
+
+THE FINDING THE MEANS HIDE, and the bench flagged it without being asked:
+
+    modern:CHN annihilated (<=0.05):   control 2/8  ->  treatment 0/8
+    1914:FRA   collapsed  (<1.5):      control 0/8  ->  treatment 1/8
+
+**The gate stops China being annihilated and introduces a France collapse that
+did not exist.** 1914:FRA:rung was not a bistable seat in the control -- its
+worst of eight was 10.2% of the world -- and the treatment produced a 0.9%
+world, which is why `[BISTABLE]` appears on that seat in the treatment arm and
+not the control, and why its sd goes 5.27 -> 12.60 while its mean rises.
+
+That is memory worst-seat-swaps-identity exactly: a floor that looks lifted is
+one seat leaving it and another arriving. Both rate differences (0.25 and
+0.125) are far inside the ~0.49 this bench resolves at eight seeds, so neither
+is a measurement -- but a change that makes a previously STABLE great-power
+seat bistable is a risk the mean cannot show, and the +6.08 on France is
+arithmetically compatible with "usually better, occasionally catastrophic".
+
+WHY PARK AND NOT REJECT. Nothing here is resolvable, so there is nothing to
+reject: the gate stays default-off, which is where it was, and no source
+changed. What the entry establishes is what the NEXT arm must look like, which
+is the useful output:
+
+  * The question is now a RATE question on two seats, not a mean question --
+    China's annihilation rate and France's collapse rate. Journal 292's
+    arithmetic says that needs ~128 seeds per arm to resolve a difference of
+    0.12, which is 384 runs and about nine hours.
+  * Journal 348's per-seat sensitivity gain does NOT rescue this. That gain is
+    for a mean; these are proportions, and the binomial floor is the binomial
+    floor.
+  * So this IS item 26 after all, arriving by a different road: the loop can
+    measure the gate's MECHANISM at eight seeds and cannot measure its
+    CONSEQUENCE at any seed count it is allowed to spend.
+
+I said in journal 348 that item 83 no longer needed the seed decision. That was
+true of the statistic and false of the question, because I did not know until
+running it that the effect would land on two collapse rates. Correcting it here
+rather than leaving 348's claim standing.
+
+PATHS TOUCHED: none. No source, no model, no revert.
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT: none. Two stored bench rows, it349-control and
+it349-homefirst, both carrying per-seed spreads.
+
+## 350 — iteration: the protocol teaches a floor that is 36% too low
+
+NO UNBLOCKED BACKLOG ITEM the loop should take. 86 is the user's (nine hours of
+machine time or leave the gate off), 75 is low-priority by its own text and
+wants data discarded at exit, and 16/19/26/30/41/49/51/65/77 are the user's.
+
+CHOSEN WORK, and it is item 30's substance rather than a new question. Journal
+348 found that LOOP.md's resolution table drops the root-two for an UNPAIRED
+difference: it prints the one-sample interval and calls it the detectable
+difference. That number is not decoration -- it is the line every "not
+resolvable" in journals 337-349 was written against, and it appears in the
+protocol under STANDING, which is the section that exists precisely so an agent
+running iteration 40 does not have to re-derive it.
+
+Memory nothing-routes-findings-back-to-the-protocol is the recorded version of
+this failure: LOOP.md taught a training-length rule retired 27 entries earlier,
+because the journal and backlog get updated and the governing document does
+not. That memory was written by journal 299. This is the same defect, 51
+entries later, in the section journal 299 added.
+
+HYPOTHESIS, pre-registered: **at least three claims in LOOP.md are now wrong or
+stale**, counting the floor as one. If it is only the floor, this is a one-line
+fix and I will say so rather than pad it.
+
+THE RULE I WILL APPLY, and it is the one that makes a protocol edit safe:
+**nothing here may be a new claim.** Every replacement number must come from an
+entry that measured it, cited by number. A protocol document is the worst place
+to introduce something unverified, because it is read as settled by definition.
+
+PATHS TOUCHED: docs/ai/LOOP.md.
+
+VERDICT: KEEP. **Four claims corrected, not three -- the hypothesis held and
+the floor was the smallest of them.**
+
+  1. **THE FLOOR: ~60 becomes ~90.** The table printed `1.96 x se` and called
+     it a detectable difference; an unpaired comparison needs `1.96 x se x
+     sqrt(2)`. Corrected in place, with the old column kept beside the new one
+     so a reader who remembers the old number can see what happened:
+
+         seeds   runs/arm   se   detectable at 95%   (was printed as)
+            8        24     30          83                  59
+           16        48     21          58                  42
+           32        96     15          42                  29
+
+     And it now points at the line that was always right: od_bench prints each
+     arm's own `unpaired diffs under ~N are noise`, computed correctly, which
+     disagreed with this table for twelve entries while both were on screen.
+
+  2. **"Exactly ONE measurement has cleared that floor" may be ZERO.** The one
+     was pacify at −86/−88. The corrected floor is 92. Its arms predate journal
+     339's per-seed storage so its own se cannot be recovered (item 75), and I
+     am not going to guess it: the protocol now says the count may be zero and
+     tells you not to quote the old claim. That is a larger correction than the
+     arithmetic, because "one thing has ever worked" and "nothing has ever
+     cleared the bar" are different projects.
+
+  3. **"Six seats, three seeds" was never the standard.** Every measurement
+     since journal 281 used EIGHT, set through OD_BENCH_SEEDS, and the protocol
+     still told the next agent to run three. The eight seeds are now listed in
+     the file, next to the reminder that OD_BENCH_TURNS defaults to 120.
+
+  4. **Survival's clause is nearly free on the rung seats**, and the verdict
+     table now says so rather than leaving journal 336's finding in the
+     journal. Added as a caveat under the existing survival paragraph and again
+     in the verdict table, because that is where it is applied.
+
+PLUS THE ONE THAT MATTERS OPERATIONALLY, and it is why correcting a table is
+not pedantry: **the verdict table now says a sub-floor difference is PARK, not
+KEEP.** Journals 338 (+42/+30) and 349 (+43) both produced a difference that
+looks like a win and is not a reading. Under the old table, +43 sat comfortably
+above "59" and a less careful iteration would have written KEEP.
+
+I ALSO ADDED STANDING 1b, journal 348's result, because it changes what to RUN
+and not only how to read it: concentrated effect, test the seat; diffuse
+effect, the rating; a capped seat is always a per-seat question; and none of
+that rescues a RATE question, which is the wall journal 349 hit.
+
+THE RULE I PRE-REGISTERED HELD. Nothing in the edit is a new claim: every
+number traces to an entry that measured it, and the diff's citations are
+journals 281, 292, 336, 339, 348, 349 and backlog items 70 and 75. A protocol
+document is the worst place to introduce something unverified because it is
+read as settled by definition, and a sweep like this is exactly where that
+would happen.
+
+WHAT THIS DOES NOT FIX. Item 30 asks who MAINTAINS this file, and the answer is
+still nobody: this is the second time the loop has patched the protocol after
+finding it stale (journal 299 was the first, and the section it added is the
+one that was wrong this time). A document corrected only when someone trips
+over it will be wrong again by iteration 400. That remains the user's.
+
+PATHS TOUCHED: docs/ai/LOOP.md. No source, no model, no runs.
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (docs/ai/LOOP.md, on top of journal 299's +81 in the same file):
+
+    Correct the bench's resolution floor in the protocol
+
+    The table printed 1.96 x se and called it a detectable difference; an
+    unpaired difference needs the root-two, so the floor is ~90 points at
+    eight seeds and not ~60. od_bench's own "unpaired diffs under ~N are
+    noise" line was always right and disagreed with the table for twelve
+    entries. Consequences written in: the one measurement recorded as
+    clearing the floor is below the corrected one and its se is no longer
+    recoverable; a sub-floor difference is PARK, not KEEP; the standard is
+    eight seeds and not the three this file asked for; and survival is
+    China's annihilation rate rescaled on the three rung seats.
+
+## 351 — iteration: has ANY measurement in this sequence ever cleared the floor?
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it is the direct consequence of
+journal 350 rather than a new question.
+
+THE QUESTION. LOOP.md said "since journal 281 exactly ONE measurement has
+cleared that floor". Journal 350 corrected the floor from ~60 to ~92 and
+observed that the one measurement -- pacify at −86/−88 -- sits BELOW the
+corrected figure, so the count may be zero. That is not a detail: "one thing
+has ever been resolvable here" and "nothing has ever been resolvable here" are
+different projects, and item 26 is the user's decision about exactly this.
+
+FIRST, THE RECORDED NUMBER IS WRONG. Computing the rating from the stored seat
+means on the three rung seats:
+
+    control (reinf-off)   381      FRA 19.58   USA 19.64   CHN 13.43
+    n24-pacify-on         259      FRA 16.14   USA 12.35   CHN  7.91
+    difference           −122      (journal 336 recorded it as −88)
+
+I do not know where −88 came from and I am not going to reconstruct it; what
+matters is that the arm on file reads −122 against a floor of 92, which would
+clear. But a floor is computed from the ARMS' OWN se and the pacify arm was
+stored before journal 339 began keeping per-seed values (backlog item 75), so
+its se cannot be recovered. Hence a run.
+
+ONE ARM, NOT TWO, AND HERE IS THE JUSTIFICATION. Memory ab-both-arms-one-tree
+says both arms must run in one session on one tree, and I am reusing
+it349-control instead. Three independent runs of that control -- `reinf-off`,
+`it338-control` and `it349-control`, taken on different days -- return
+IDENTICAL seat means to four decimal places (19.575 / 19.6375 / 13.425), the
+last of them on this binary and carrying per-seed values. The bench is
+deterministic given model, seed, seat and binary, and the decision hash has
+matched its standing reference on every run since journal 300. Re-running a
+byte-identical control to satisfy the letter of a rule whose purpose is to
+catch a MOVING tree would cost 25 minutes and prove nothing. If the control's
+per-seed values disagree with `reinf-off`'s means, I stop and say so.
+
+HYPOTHESIS, pre-registered:
+  1. **The pacify arm reproduces near −122 and CLEARS the corrected floor.**
+     If it does, the answer to the title is "yes, one" and LOOP.md's claim
+     survives with a different number. If it does not, the answer is "none",
+     which is the more important finding and the one that should reach the
+     user before they decide item 26.
+  2. **All three seats move DOWN** -- this is a caution rule and memory
+     caution-rules-trade-growth is unambiguous about the direction.
+  3. **At least one seat clears its own land MDD** (FRA 11.75, USA 8.07, CHN
+     9.65 from journal 348). The stored means suggest FRA −3.4, USA −7.3, CHN
+     −5.5, so on the face of it NONE of them would -- which would be a
+     genuinely odd result next to a rating difference that clears, and worth
+     the entry on its own.
+
+DESIGN: one arm, OD_PACIFY_REFLEX=1, three rung seats in the THREE-part form,
+the eight standard seeds, 400 turns, N24. Compared with it349-control.
+NOTHING IS IMPLEMENTED; the reflex exists and is default-off.
+
+VERDICT: **NO. Nothing in this sequence has ever cleared the rating floor -- the
+one that was recorded as clearing misses by two points. My hypothesis 1 is
+falsified, and the reason is a defect in the instrument that has been there the
+whole time.**
+
+FIRST, THE ARM REPRODUCES BIT-IDENTICALLY, a month and many builds later:
+
+    seat              stored (pre-339)   re-run journal 351
+    1914:FRA:rung             16.1375            16.1375     IDENTICAL
+    1939:USA:rung             12.3500            12.3500     IDENTICAL
+    modern:CHN:rung            7.9125             7.9125     IDENTICAL
+
+Every instrument added between journals 337 and 346 is inert, again, and the
+bench is deterministic given model, seed, seat and binary. That also validates
+reusing it349-control instead of re-running it.
+
+**THE RATING AND ITS ERROR BAR ARE DIFFERENT ESTIMATORS.** This is the finding
+of the entry and it explains the −88 / −122 discrepancy I could not account for
+when I pre-registered:
+
+    label             rating OF THE MEANS   mean OF THE PER-SEED ratings   gap
+    it349-control                     381                            336   +45
+    it351-pacify                      259                            248   +11
+
+`report()` computes the headline from the MEAN seat shares; the `+/- se` line
+computes per-seed ratings from the spread. `min(share/par, CAP)` is concave, so
+by Jensen the mean of the capped scores is at most the capped score of the mean
+-- and modern:CHN makes that concrete:
+
+    control CHN per-seed scores  500 500 500 500 0 500 0 500  -> mean 375
+    but score(mean share 13.43)                               -> 500
+
+**The printed rating is biased upward by 45 points on this control, and the
+error bar beside it describes a statistic 45 points away.** Journal 336's −88
+was the per-seed figure -- the one that matches the se -- and my −122 this
+morning was the printed one. Both are "the difference"; only one may be
+compared with that floor.
+
+SO, AGAINST THE FLOOR COMPUTED FROM THESE TWO ARMS' OWN se:
+
+    control se 34   pacify se 31   floor = 1.96 x sqrt(34^2 + 31^2) = 90
+    per-seed difference −88                        DOES NOT CLEAR, by 2 points
+
+**The answer to the title is zero.** LOOP.md's "exactly ONE measurement has
+cleared that floor" was true only under the arithmetic journal 350 corrected;
+under the corrected floor the single candidate misses. Journal 350 said the
+count "may be zero" and would not guess. It is zero.
+
+AND YET THE SEQUENCE'S FIRST RESOLVABLE RESULT IS IN THIS SAME RUN, on the
+statistic journal 348 said to use:
+
+    seat              d       p      MDD from THESE arms
+    1914:FRA      −3.44   0.142                     4.34
+    1939:USA      −7.29   0.010                     5.27      <- CLEARS
+    modern:CHN    −5.51   0.198                     8.05
+
+**1939:USA clears at p = 0.010**, which survives the three-comparison
+correction (0.05/3 = 0.017) that STANDING 5 requires. Hypothesis 2 (all three
+down) holds; hypothesis 3 (at least one seat clears its MDD) holds, and I had
+written that on the stored means it looked as though none would.
+
+WHICH EXPOSES A SECOND ERROR, THIS ONE MINE AND ONE ITERATION OLD. Journal 348
+printed per-seat MDDs of 11.75 / 8.07 / 9.65 and I wrote them into LOOP.md
+STANDING 1b as though they were properties of the SEAT. They are not -- they
+are properties of the ARMS:
+
+    seat              j.348 arms   these arms      sd control   sd pacify
+    1914:FRA:rung          11.75         4.34            5.27        3.39
+    1939:USA:rung           8.07         5.27            6.91        3.16
+    modern:CHN:rung         9.65         8.05            9.26        7.03
+
+The pacify arm is far TIGHTER than the homefirst arm was, so the same eight
+seeds resolve less than half as much land on France. A change that stabilises
+the world is easier to detect than one that destabilises it. Corrected in
+LOOP.md in this entry.
+
+WHAT THIS MEANS FOR ITEM 26, and it is the reason the entry was worth running.
+The user is deciding whether to raise the seed standard. The evidence to hand:
+
+  * On the RATING, at eight seeds, this sequence is 0 for ~15 measurements --
+    including the largest effect it has ever produced, a caution reflex that
+    costs a third of the world.
+  * On PER-SEAT LAND, the same 24 runs resolved one of three seats at p=0.010.
+  * So the cheapest available improvement is not more seeds. **It is to stop
+    deciding on the rating.**
+
+PATHS TOUCHED: docs/ai/LOOP.md (correcting the MDD table I added last
+iteration). No source, no model. data/ai/model.bin unchanged (md5
+4a137043e998fb8de4aae725d48f9edd).
+
+## 352 — iteration: attach the error bar to the number it describes
+
+BACKLOG ITEM 87, taking only the half that does not need the user. 88 is a
+recommendation to the user, 86 is nine hours of their machine time, 75 is
+low-priority by its own text, and the rest are theirs.
+
+THE SPLIT, because item 87 as I filed it conflated two changes of very
+different weight:
+
+    SWITCHING the headline to the per-seed figure    -- needs the user's nod:
+        it moves every number in build/od_bench_results.json relative to every
+        number in the journal, which is the disease the seat-set note exists to
+        prevent. NOT DONE HERE.
+    ATTACHING the se to the number it describes      -- a defect, not a
+        semantic change. The `+/- se` and "unpaired diffs under ~N are noise"
+        annotations currently hang off the rating computed from MEAN seat
+        shares while being computed from PER-SEED ratings, which journal 351
+        measured 45 points apart on the standard control. DONE HERE.
+
+Printing a second, clearly labelled number is additive: the headline keeps its
+value, the archive keeps its meaning, and the figure you are invited to compare
+with an error bar is the one that error bar belongs to.
+
+WHAT I AM CHANGING:
+  1. `report()` prints the per-seed mean rating on its own line, labelled, with
+     the se and the noise threshold moved onto IT.
+  2. The headline keeps the se figure only as a pointer to that line, so the
+     two are never read as the same quantity again.
+  3. `--compare` prints the per-seed rating difference against the floor built
+     from BOTH arms' se, and says whether it clears -- the comparison journals
+     336 and 351 both had to do by hand, and which journal 336 got wrong.
+
+HYPOTHESIS: this is a discrimination test with a known answer, not a prediction
+about the game. On it349-control against it351-pacify the new output must read
+
+    headline           381        and        259      (unchanged, both stored)
+    per-seed rating    336  +/-34            248 +/-31
+    difference        -88   floor 90   DOES NOT CLEAR
+
+because journal 351 computed exactly those by hand yesterday. If any of the six
+numbers differs, the implementation is wrong. And the headline must still store
+and print 381, or I have done the thing I said needed the user's nod.
+
+PATHS TOUCHED: tools/od_bench.py.
+
+VERDICT: KEEP. **All six pre-registered numbers land, and the headline is
+untouched.**
+
+    it349-control: OD BENCH 381 over 3/3 seats     <- unchanged
+    it351-pacify:  OD BENCH 259 over 3/3 seats     <- unchanged
+    PER-SEED rating: it349-control 336 (se 34)   it351-pacify 248 (se 31)
+    difference -88   floor from these two arms 90   DOES NOT CLEAR
+
+Those are the figures journal 351 computed by hand yesterday, now printed by
+the tool. The comparison journal 336 got wrong -- headline difference against a
+per-seed floor -- is no longer possible to make by accident, because
+`--compare` does it and labels both quantities.
+
+THE NEGATIVE CONTROL MATTERS AS MUCH. On a live single-seat run the two
+ratings agree exactly:
+
+    j352-livecheck: OD BENCH 154 over 1/1 seats  [see the per-seed line below]
+    j352-livecheck: PER-SEED rating 154  +/- 2 se
+
+They diverge only when a seat is capped or bistable, which is what Jensen
+predicts and what makes the +45 on the three-seat control a real bias rather
+than a coding error. A change that moved this number would have been wrong.
+
+WHAT I DELIBERATELY DID NOT DO. The headline still comes from the mean seat
+shares, is still what gets stored, and still reads 381. Switching it would
+re-scale every row in an 865-row archive against every number in 350 journal
+entries, and that is the user's call -- item 87 keeps the other half. What this
+iteration fixes is narrower and is a defect rather than a preference: **the
+`+/- se` and "unpaired diffs under ~N are noise" annotations were hanging off a
+number they were not computed from**, for twelve entries, 45 points away from
+the one they describe. They now hang off the per-seed line, and the headline
+carries a pointer to it instead of a figure it does not own.
+
+A THING I ALMOST GOT WRONG. My first version printed the per-seed line inside
+the same print as the headline, which would have put a second number on the
+line that gets grepped out of logs and into the store -- the exact shape of the
+problem being fixed. It is now its own labelled block, three lines, saying in
+words which quantity it is and that it is the one to compare.
+
+PATHS TOUCHED: tools/od_bench.py. No AI source, no model, no runs beyond one
+30-turn smoke. data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT (tools/od_bench.py, on top of journals 287/288/292/298/338/339/
+340's hunks in the same file -- stage hunks, not the file):
+
+    Put the error bar on the rating it was computed from
+
+    The +/- se line and its noise threshold come from per-seed ratings
+    while the headline comes from the mean seat shares. min(share/par, CAP)
+    is concave, so the two differ whenever a seat is capped or bistable --
+    45 points on the standard 3-seat control, where modern:CHN scores 500
+    on six seeds and 0 on two while its mean share sits above the cap.
+    Print the per-seed rating on its own labelled line with the error bar
+    on it, and have --compare report the per-seed difference against the
+    floor built from both arms. The headline and everything stored are
+    unchanged; journal 336 made exactly this comparison by hand and got a
+    clear where journal 351 gets a miss by two points.
+
+## 353 — iteration: does the sequence's ONE resolvable result hold on a second model?
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it protects the only thing journals
+281-352 have produced that clears its own floor.
+
+WHAT IS AT STAKE. Journal 351 established two things at once: **nothing this
+sequence has measured has ever cleared the RATING floor** -- the pacify reflex,
+the largest effect on file, misses by two points -- and, in the same 24 runs,
+`1939:USA` land share cleared at **p = 0.010**, surviving the three-comparison
+correction. That single p is now the entire evidential yield of fifteen
+measurements, and it rests on ONE model.
+
+This project has a specific, recorded way of losing a result like that. Memory
+bench-resolution-limit: "require sign agreement across models, not a big
+number". Memory floor-variance-cases-need-two-models: such a case has inverted
+on a second lineage 2 of 2 times. Journals 284 and 286 rejected two candidates
+for exactly this before journal 295 found the second lineage could not measure
+the question at all. A result that has not been asked of a second model is not
+yet a result here.
+
+THE SECOND MODEL: N47-218-v16, which already has both arms on file at eight
+seeds and 400 turns -- but stored before journal 339 kept per-seed values, so
+there is no spread and no test can be run on them. Hence two fresh arms.
+
+WHAT THE STORED MEANS ALREADY SAY, read before running so the run cannot be
+reinterpreted afterwards:
+
+    seat           N24 control -> pacify        N47 control -> pacify
+    1914:FRA         19.57 -> 16.14  (-3.44)      5.70 ->  8.71  (+3.01)  DISAGREES
+    1939:USA         19.64 -> 12.35  (-7.29)     20.06 -> 17.84  (-2.23)  agrees
+    modern:CHN       13.43 ->  7.91  (-5.51)      7.93 ->  7.21  (-0.71)  agrees
+
+So the sign agrees on two of three, INCLUDING the seat that carried the result
+-- and every N47 effect is much smaller, USA's by a factor of three.
+
+HYPOTHESIS, pre-registered:
+  1. **USA moves DOWN on N47**, reproducing the stored mean of about -2.2.
+  2. **It does NOT clear on N47**, because -2.2 is a third of the N24 effect
+     and journal 351 measured the USA MDD at 5.27 on arms of that kind. If it
+     clears anyway I am wrong in the useful direction.
+  3. **The graded-observation counts will be compared before anything else**
+     (LOOP.md STANDING 3). N47 has graded fewer seat-seeds than N24 before --
+     journal 295 caught 18/24 against 10/24 -- and if this pair grades badly the
+     honest answer is "N47 cannot measure this", not "it did not replicate".
+
+WHAT EACH OUTCOME MEANS, written down now:
+  * clears on both      -> the sequence has a real, replicated finding: the
+                           pacification reflex costs the USA seat land.
+  * sign agrees, N47
+    does not clear      -> the most likely outcome. Report as "one model
+                           resolves it, the second agrees in sign at a third
+                           the size" -- weaker than a replication, stronger
+                           than nothing, and NOT to be written up as confirmed.
+  * sign inverts        -> the result joins journals 284/286 and the honest
+                           conclusion is that this bench cannot establish it.
+
+DESIGN: two arms, N47-218-v16, control and OD_PACIFY_REFLEX=1, the three rung
+seats in the THREE-part form, the eight standard seeds, 400 turns. Both arms
+this iteration on this binary.
+
+VERDICT: **THE MIDDLE OUTCOME, exactly as pre-registered -- and the sequence's
+one resolvable result must be reported as NOT ESTABLISHED.** Both hypotheses
+hold; hypothesis 3's disqualification does not apply, which makes the negative
+stronger rather than weaker.
+
+    seat              N24 d       p       N47 d       p    signs
+    1914:FRA          -3.44   0.142       +3.01   0.220    INVERT
+    1939:USA          -7.29   0.010       -2.23   0.618    agree
+    modern:CHN        -5.51   0.198       -0.71   0.883    agree
+
+    per-seed rating   336 -> 248  = -88     204 -> 223  = +19    SIGN INVERTS
+    floor                         90                     69
+                        does not clear          does not clear
+
+1. USA moves DOWN on N47 as predicted, reproducing the stored -2.2.
+2. It does NOT clear: p = 0.618 against N24's 0.010, at a third the effect size.
+3. **N47 is NOT disqualified.** Its arms grade 18/24 and 19/24, against N24's
+   14/24 and 19/24 -- BETTER than the model that produced the result. Journal
+   295's escape hatch, where the second lineage could not measure the question,
+   is not available here. N47 could have seen this and did not.
+
+AND THE ARMS REPRODUCE BIT-IDENTICALLY AGAIN, both of them, against rows stored
+weeks ago: control 5.70 / 20.0625 / 7.925 and pacify 8.7125 / 17.8375 / 7.2125.
+That is now three separate arms (journals 351, 353 x2) re-running to four
+decimal places, on a binary carrying every instrument added since journal 337.
+
+UNDERPOWERED, NOT CONTRADICTORY -- and the distinction is the whole finding:
+
+    N24  d -7.29   95% CI [-12.55,  -2.02]
+    N47  d -2.23   95% CI [-10.05,  +5.60]      includes -7.29
+
+N47's interval covers N24's point estimate, so the two arms do not disagree
+about the effect; N47 simply cannot resolve it. **That is the honest status:
+one model resolves it, the second agrees in sign at a third the size and cannot
+distinguish that from zero.** Per what I wrote before running: weaker than a
+replication, stronger than nothing, and NOT to be written up as confirmed.
+
+THE RATING INVERTS SIGN BETWEEN MODELS, -88 against +19, which is memory
+floor-not-rating's recorded behaviour arriving on schedule. Nothing about the
+pacification reflex should be described from the rating on either model: it
+clears the floor on neither, and the two numbers point opposite ways.
+
+WHAT THIS DOES TO THE BALANCE SHEET. After journals 281-353:
+
+    measurements that clear the RATING floor                          0
+    measurements that clear a per-seat land test                      1
+    of those, replicated on a second model                            0
+
+Fifteen-odd measurements, one p below 0.05, and it does not survive the second
+model this project's own memory says to demand. Memory
+floor-variance-cases-need-two-models recorded two inversions out of two before
+today; this is not an inversion but it is the third time a single-model result
+has failed to carry, and the pattern is now the rule rather than the anecdote.
+
+I want to be precise about what is NOT being claimed. This does not show the
+pacification reflex is harmless -- the N24 arms are a large, consistent,
+three-seat-down effect and the N47 seat signs agree two of three. It shows that
+**this instrument cannot establish it at eight seeds on two models**, which is
+a statement about the bench, and it is the same statement item 26 has been
+waiting on since journal 304.
+
+PATHS TOUCHED: none. No source, no model, nothing to revert.
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd);
+N47-218-v16.bin unchanged (md5 e687125236ea22c8d371edbd32ce3485).
+
+PENDING COMMIT: none. Four stored bench rows with per-seed spreads.
+
+## 354 — iteration: does doubling the seeds actually buy what the table promises?
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it is the one measurement that
+turns item 26 from an argument into a number.
+
+THE PREMISE NOBODY HAS TESTED. LOOP.md STANDING 1 tells the user what more
+seeds would buy:
+
+    seeds   runs/arm   se   detectable at 95%
+       8        24     30          83
+      16        48     21          58
+      32        96     15          42
+
+**Every row of that table below the first is arithmetic, not measurement.**
+The se at 16 and 32 was obtained by dividing the 8-seed se by root two and
+root four. No run in this project has ever used more than eight seeds, so the
+root-n assumption behind item 26's whole cost/benefit has never been checked
+against this bench.
+
+WHY IT MIGHT NOT HOLD, which is what makes it worth 48 runs rather than a
+paragraph. Root-n convergence assumes the per-seed statistic is well behaved.
+On these seats it is not: `modern:CHN` scores 500 or 0 and nothing between,
+`1914:FRA:rung` became bistable under one treatment (journal 349), and journal
+292 measured the collapse-rate resolution separately for exactly this reason. A
+bimodal per-seed distribution still obeys the central limit theorem eventually,
+but its se ESTIMATE from eight draws is itself badly determined -- and that
+estimate is what the table extrapolates from.
+
+THE ARM: the pacification pair on N24, which journal 351 measured at 8 seeds
+and journal 353 failed to replicate on N47. It is the right subject because it
+is the largest effect on file and because its 8-seed numbers are known exactly,
+so the comparison is against a measurement rather than a memory.
+
+DESIGN: EIGHT FRESH SEEDS, both arms, then pooled with the existing eight to
+give sixteen. The new seeds are chosen to have no relationship to the standard
+eight:
+
+    11111, 2468135, 777777, 31415926, 5772156, 1414213, 9090909, 6180339
+
+    control  N24, default        label it354-ctl-s2
+    pacify   N24, OD_PACIFY_REFLEX=1   label it354-pac-s2
+    three rung seats, THREE-part form, 400 turns, difficulty 3
+
+HYPOTHESES, pre-registered, in the order they will be read:
+  1. **The pooled 16-seed se falls to 0.71x the 8-seed value**, within the
+     slack a small sample allows -- control 34 -> about 24, pacify 31 -> 22,
+     and the floor from 90 to about 64. This is the table's claim and the thing
+     item 26 is priced on.
+  2. **The per-seed rating difference stays near -88** and therefore CLEARS the
+     new floor. If the effect is real, doubling the seeds should convert this
+     sequence's largest measurement from unresolvable to resolved -- and that
+     would be the first thing here to clear anything.
+  3. **`1939:USA` land share holds near -7.3 with p below 0.01.** It read
+     0.010 at eight seeds, so more data should sharpen it rather than move it.
+
+AND THE OUTCOME THAT WOULD BE WORTH MOST. If the se does NOT fall by root two
+-- if the bistable seats make sixteen seeds buy materially less than the table
+promises -- then item 26's option (a) is mispriced, and the user is being asked
+to spend 96 runs for a resolution that will not arrive. I think this is less
+likely than 1, but it is the reason to run it rather than to reason about it.
+
+NO SOURCE CHANGES. data/ai/model.bin is read-only in this iteration.
+
+VERDICT: **THE SEEDS BEHAVE, THE EFFECT DOES NOT. Hypothesis 1 holds; 2 and 3
+are falsified, and the reason is that the 8-seed result was sampling noise.**
+
+    arm                     ctl (se)      pac (se)       d    floor
+    seed set 1   8 seeds    336 (33.6)    248 (31.0)    -88       90    no
+    seed set 2   8 seeds    306 (37.2)    337 (26.2)    +31       89    no
+    POOLED      16 seeds    321 (24.5)    293 (22.7)    -29       65    no
+
+**The effect INVERTS on a second set of eight seeds from the SAME MODEL.** Not
+a different lineage, not a different binary -- the same N24, the same three
+seats, the same 400 turns, eight seeds nobody had used. −88 becomes +31.
+
+1. **THE ARITHMETIC IS SOUND.** The se falls almost exactly as root-n predicts:
+
+       control  8-seed se 35.4  ->  predicted 25.0  ->  OBSERVED 24.5  (0.69x)
+       pacify   8-seed se 28.6  ->  predicted 20.2  ->  OBSERVED 22.7  (0.79x)
+
+   I flagged the bistable seats as a reason doubling might buy less than
+   promised. It does not: both ratios straddle 0.707 and the floor falls from
+   ~90 to 65 as advertised. **Item 26's option (a) is correctly priced.** That
+   is worth knowing and it is the opposite of what I thought was the risk.
+
+2. **The difference does not stay near −88; it collapses to −29** and still
+   does not clear. More seeds did not sharpen this measurement -- they revealed
+   there was less to sharpen than eight seeds suggested.
+
+3. **AND THE ONE RESULT THIS SEQUENCE HAD IS GONE.**
+
+       seat              set1 d      p     set2 d      p    POOLED d      p
+       1914:FRA:rung      -3.44  0.142     +2.50  0.428       -0.47  0.808
+       1939:USA:rung      -7.29  0.012     +3.64  0.442       -1.83  0.495
+       modern:CHN:rung    -5.51  0.200     -2.24  0.643       -3.88  0.233
+
+   `1939:USA` -- the only measurement in journals 281-353 to clear anything,
+   at p = 0.010 -- reads **+3.64 on the second seed set and −1.83 pooled at
+   p = 0.495.** Two of three seats invert sign. Journal 353 asked the second
+   model and got "underpowered, not contradictory"; the second SEED SET gives
+   the harder answer.
+
+SO WHAT WAS THAT p = 0.010? Most likely what it looks like: one comparison of
+three, on one seed set, at a threshold that expects 0.15 false positives per
+run of three. Journal 351 reported it as clearing the three-comparison
+correction and said so carefully. It was still noise, and the thing that
+established that is eight more seeds rather than any amount of care in the
+writing.
+
+**This retires the claim in journal 351 and in backlog item 89.** The balance
+sheet is now:
+
+    measurements that clear the RATING floor                        0
+    measurements that clear a per-seat land test at 8 seeds          1
+    of those, surviving a second seed set                           0
+
+Zero and zero. Fifteen-odd measurements across journals 281-354, nothing
+established.
+
+WHAT THIS DOES NOT SAY. It does not say the pacification reflex is harmless --
+pooled, every seat still trends down (−0.47, −1.83, −3.88) and the pooled
+rating difference is −29. A real effect of that size is entirely consistent
+with these data; the bench simply cannot see it at sixteen seeds either. From
+the pooled se, resolving −29 would need the floor below 29, which is
+(65/29)^2 = 5x the seeds: **about 80 seeds per arm, 240 runs, six hours.**
+
+THE HONEST SUMMARY FOR ITEM 26. The user was asked to choose between raising
+the seed count and spending machine time elsewhere. This iteration prices it
+properly for the first time:
+
+  * root-n holds, so 32 seeds really does buy a floor near 42 as the table says;
+  * but the largest effect this project has ever measured is about −29 on the
+    rating, so even 32 seeds would not resolve it;
+  * and the one sub-floor result that looked real at 8 seeds was noise.
+
+**More seeds is not a small improvement to a working method. On this evidence
+the method does not work at any seed count the loop can afford, and the
+conclusion of item 26's option (b) -- spend the machine time on changes big
+enough to clear, or on training -- is the one the data supports.**
+
+PATHS TOUCHED: none. No source, no model. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT: none. Two stored rows with per-seed spreads.
+
+## 355 — iteration: a POSITIVE control. Can this bench resolve anything at all?
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it is the question journal 354
+leaves standing: after fifteen measurements that establish nothing, **is the
+instrument broken, or is it sound and every knob simply smaller than it?**
+
+Those two readings imply opposite actions and the journal cannot currently tell
+them apart. Everything measured since journal 281 has been a knob -- a gate, a
+reflex, a bar -- and every one came back inside the floor. A tool that returns
+"no difference" to fifteen questions in a row deserves to be asked a question
+whose answer is known.
+
+THE CONTROL: `data/ai/model.loop-base.bin` (md5 badfe012...), the loop's
+declared reference, against N24 (data/ai/model.bin, 4a137043) -- the model that
+ships. Journal 271 measured these two on hold-out seed sets and the gap is not
+subtle:
+
+    loop-base    14 (set C)    23 (set D)
+    N24         433 (set C)   398 (set D)
+
+That was a different instrument -- three seeds, the older seat handling -- so
+the numbers do not transfer. What transfers is that these are two models
+separated by tens of millions of updates, and if eight seeds and three rung
+seats cannot separate THEM, the bench cannot separate anything and every
+"not resolvable" in journals 281-354 means something different from what it
+says.
+
+This is memory break-it-on-purpose applied to an instrument rather than a test:
+a measurement that only ever returns null must be shown to return non-null when
+it should.
+
+HYPOTHESES, pre-registered:
+  1. **N24 beats loop-base by more than the floor, with room to spare.** I
+     expect the per-seed rating difference to exceed 150 against a floor near
+     90 -- i.e. not a marginal clear but an obvious one. If it clears by 10
+     points that is nearly as alarming as not clearing.
+  2. **It clears on per-seat land as well**, on at least two of three seats at
+     p < 0.05. The land test is the one journal 348 argued is sharper for
+     concentrated effects, and a whole-model difference should not be
+     concentrated -- so this is a check that the two statistics agree when the
+     effect is real and large.
+  3. **loop-base grades poorly.** A much weaker model should pin more
+     observations at 0, and if it grades below ~10/24 then LOOP.md STANDING 3
+     applies and the comparison is between two different instruments -- which
+     would itself explain some of journals 284/286's cross-model troubles.
+
+THE OUTCOME THAT WOULD MATTER MOST is failure. If this does not clear, the
+right conclusion is not "knobs are small" but "this bench does not measure",
+and every conclusion drawn from it since journal 281 -- including journal 354's
+-- would need re-reading.
+
+DESIGN: one new arm only. `it349-control` is N24 on these exact seats, seeds,
+turns and binary, and has now reproduced bit-identically four times (journals
+338, 349, 351, 353 established the pattern), so it is the N24 arm. Running
+loop-base on the same eight seeds gives the pair. 24 runs, ~35 minutes.
+`data/ai/model.loop-base.bin` is copied to the scratchpad and read from there;
+neither it nor model.bin is written.
+
+VERDICT: **THE BENCH IS NOT BROKEN. It resolves a 306-point difference with a
+floor of 68 and every seat at p <= 0.007. Hypotheses 1 and 2 hold with room to
+spare; 3 is falsified in an interesting way.**
+
+    PER-SEED rating: it355-loopbase 30 (se 9)   it349-control 336 (se 34)
+    difference +306   floor from these two arms 68   CLEARS
+
+    per-seat LAND SHARE
+    seat               loop-base   N24        d   med A   med B       p
+    1914:FRA rung           2.73  19.57   +16.85    1.90   21.35   0.001
+    1939:USA rung           2.48  19.64   +17.16    1.85   18.20   0.000
+    modern:CHN rung         0.16  13.43   +13.26    0.00   14.30   0.007
+
+    loop-base:  survival  30   worst seat   6
+    N24:        survival 100   worst seat 292
+
+1. I asked for more than 150 and said a 10-point clear would be nearly as
+   alarming as a failure. It is **+306 against a floor of 68 -- four and a half
+   times over.** The instrument separates two models emphatically.
+2. All THREE seats clear, at 0.001, 0.000 and 0.007, every one surviving the
+   three-comparison correction. The rating and the land test agree completely
+   when the effect is real and large, which is the check I wanted: journal
+   348's argument that they diverge for CONCENTRATED effects is not a claim
+   that they disagree in general.
+3. **Falsified, and the detail is worth the line.** I predicted loop-base would
+   grade badly and might disqualify the comparison under STANDING 3. It grades
+   **14/24 -- exactly the same as N24's arm.** The two pin the same number of
+   observations at opposite ends: loop-base pins 10 at ZERO, N24 pins 10 at the
+   CAP. A weak model and a strong one can be equally hard to grade, for
+   opposite reasons, and the graded count alone does not say which.
+
+WHAT THIS SETTLES, and it is the reason the iteration was worth 35 minutes.
+After journal 354 there were two readings of fifteen null results and no way to
+choose between them. There is now:
+
+    the bench resolves           ~68-90 rating points at 8 seeds
+    two models differ by          306
+    the largest KNOB ever
+      measured here differs by     29  (pacification, pooled over 16 seeds)
+
+**The instrument is sound and the knobs are an order of magnitude below it.**
+Every "not resolvable at 24 runs" written in journals 337-354 means exactly
+what it says, journal 354's conclusion stands, and none of this sequence needs
+re-reading -- which was the outcome I said would matter most if it had gone the
+other way.
+
+AND IT PUTS A NUMBER ON OPTION (b). Item 26 offered "spend machine time on
+changes big enough to clear". This measures how big that is: a change must move
+the rating by more than ~70 points to be visible, knobs move it by ~30 at most,
+and a whole-model difference moves it by 300. **The gap is a factor of ten, and
+nothing between a knob and a retrained policy has been tried.** That is the
+shape of the remaining work, and it is not more seeds.
+
+A CAVEAT I WILL NOT LET THIS ENTRY HIDE. This is a POSITIVE CONTROL, not a
+finding about the game. It says the tool can see an elephant; it says nothing
+about whether the tool can see the thing anybody wants to change. The balance
+sheet of candidate findings is unchanged at zero, and I am recording the
+control separately from it rather than letting "one measurement finally
+cleared" read as progress on the AI.
+
+PATHS TOUCHED: none. No source, no model.
+data/ai/model.bin unchanged (md5 4a137043e998fb8de4aae725d48f9edd);
+data/ai/model.loop-base.bin unchanged (md5 badfe012a4b8be3d558f05b84b008171).
+
+PENDING COMMIT: none. One stored row with per-seed spreads.
+
+## 356 — iteration: the thing between a knob and a retrained policy
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it is the sentence journal 355
+ended on: "the gap is a factor of ten, and **nothing between a knob and a
+retrained policy has been tried**."
+
+There is exactly one such thing available without a training run: **several
+gates on at once**. If knob effects are real and roughly additive, a stack of
+the highest-reach gates should land somewhere between 30 and 300, which is the
+band the bench can see and nothing has ever occupied.
+
+FIRST, A CORRECTION TO MY OWN PLAN, made before running rather than after.
+My first design was "stack the five gates journal 336's table showed trending
+positive" -- bar 0.65 +42, no-fortify +26, calm-gate +56, industry +7,
+reinf-fb +28. Two problems, and I am recording both because either would have
+produced a worthless arm:
+
+  1. **Selecting on the sign of sub-floor point estimates is selecting on
+     noise.** Journal 354 proved that concretely: the pacify arm read -88 on
+     one seed set and +31 on another. Five readings picked for being positive
+     would sum their noise, and a stack built that way tests nothing.
+  2. **The table's numbers do not reproduce.** Recomputing each stored arm
+     against the common control (`reinf-off`, which is byte-identical to
+     it349-control) gives calm-gate +23 not +56, industry -6 not +7, reinf-on
+     +4 not +28, pacify -122 not -88. The stored arms predate journal 339 so
+     they have no per-seed values, which means they can only be scored by the
+     BIASED headline statistic journal 351 identified -- and `bar-65` turns out
+     to be a THREE-seed arm, not comparable at all. I am not going to
+     reconstruct journal 336's table; I am going to stop quoting it.
+
+SO THE STACK IS CHOSEN BY MEASURED MECHANISM, not by point estimate -- the
+three gates this sequence has counted as touching the most decisions:
+
+    OD_CAMPAIGN_HOMEFIRST   2-3% of decisions at each of two sites   (j.344)
+    OD_REINF_FALLBACK       cuts a 16.2%-of-all-actions no-op by 33.9%
+                            (44,291 -> 29,269 refusals, j.328)
+    OD_WAR_BAR_RESEARCH     flips 0.68% / 3.84% of war-bar evaluations,
+                            98% of them toward declaring war  (j.337)
+
+None of those three reaches was inferred from a rating; each was counted with
+a decision-hash-inert probe. That is the only basis available that journal 354
+has not discredited.
+
+HYPOTHESIS, pre-registered, and I am predicting FAILURE:
+  1. **The stack does NOT clear the floor (~70).** The largest single knob ever
+     measured here is ~29 pooled over sixteen seeds, and memory
+     ablations-dont-compose records composition producing both superadditive
+     help (+36 against 24) and superadditive harm (-19 against -12) in one day,
+     with the sign unpredictable from the parts. Three gates that individually
+     cannot be seen most likely produce something that also cannot be seen.
+  2. **The per-seat land test agrees with the rating**, as it did on journal
+     355's control, rather than showing a concentrated effect: these gates act
+     on different subsystems and on all three seats.
+
+WHY RUN SOMETHING I EXPECT TO FAIL. Because the alternative is to assert it.
+"Knob stacking does not reach the measurable band" is currently a guess sitting
+between the loop and the only other option (b) avenue, which is training; 24
+runs either removes it or produces this project's first shippable candidate.
+And if it DOES clear, that is a genuine result with a pre-registered prediction
+against it, which is the strongest form this bench can produce.
+
+DESIGN: one arm. `it349-control` is N24 on these seats, seeds, turns and binary
+and has reproduced bit-identically five times. 24 runs, ~35 minutes.
+No source changes; all three gates are env vars and stay default-off.
+
+VERDICT: **PARK, and the pre-registered prediction of failure holds. The stack
+is SMALLER than one of its parts.**
+
+    arm                         per-seed    se   d vs ctl   floor
+    control                          336    34         +0      93
+    homefirst alone (j.349)          392    26        +56      83   no
+    STACK of three (j.356)           350    26        +14      83   no
+
+    per-seat land       d       p
+    1914:FRA        -1.09   0.738
+    1939:USA        +1.40   0.662
+    modern:CHN      +6.70   0.209
+
+1. **The stack does not clear**, as pre-registered: +14 against a floor of 83,
+   and not one seat under p = 0.2.
+2. **The land test agrees with the rating**, also as pre-registered -- three
+   nulls, no concentrated effect hiding behind a null mean. Journal 355 showed
+   the two statistics agree when an effect is real and large; this shows they
+   agree when there is nothing, which is the other half of that check.
+
+**AND THE RESULT WORTH THE RUN IS SUBADDITIVITY.** The stack CONTAINS
+OD_CAMPAIGN_HOMEFIRST, which alone reads +56 on the same control, same seeds,
+same binary. Adding OD_REINF_FALLBACK and OD_WAR_BAR_RESEARCH takes it to +14:
+
+    homefirst alone   +56
+    stack of three    +14      adding two more gates cost 42 points
+
+Neither of those differences clears the floor, so I am not claiming the gates
+interfere -- the honest statement is that **three gates chosen for having the
+largest measured mechanisms produced less than one of them did, and the whole
+range from +14 to +56 is inside the noise.** That is precisely memory
+ablations-dont-compose ("superadditive HELP and superadditive HARM in one day,
+sign unpredictable from parts") arriving in the direction that closes an
+avenue rather than opening one.
+
+WHAT THIS CLOSES. Journal 355 ended with "nothing between a knob and a
+retrained policy has been tried", and named knob-stacking as the only such
+thing reachable without a training run. It has now been tried, on the three
+highest-reach gates this sequence has counted, and it lands at +14 -- the same
+place every single knob lands. **Stacking does not aggregate knob effects into
+the measurable band**, and the reason is not that the gates are too few: it is
+that their individual effects are not reliably signed, so summing them sums
+noise. Journal 354 showed one of them changing sign between seed sets.
+
+SO OPTION (b) NOW HAS ONE AVENUE LEFT, and it is training. That is the only
+intervention this project has ever measured moving a model by hundreds
+(journal 271: the declared reference 14 -> 159/178 on two hold-out sets), and
+journal 355 measured the loop-base/N24 gap at +306, which is what a
+model-scale change looks like against a floor of 68.
+
+THE DISCIPLINE I WANT ON RECORD. I predicted this would fail and it failed, so
+nothing here is a surprise -- but the +56 for homefirst alone is exactly the
+kind of number this sequence has repeatedly been tempted by, and it is worth
+noting that it sits 27 points under its own floor and that the arm containing
+it reads +14. Had I run only the stack and only homefirst, in either order, the
+other would have looked like a regression.
+
+PATHS TOUCHED: none. No source, no model. data/ai/model.bin unchanged
+(md5 4a137043e998fb8de4aae725d48f9edd).
+
+PENDING COMMIT: none. One stored row with per-seed spreads.
+
+## 357 — iteration: was "training degrades the shipping model" ever resolvable?
+
+NO UNBLOCKED BACKLOG ITEM. Chosen work, and it is forced by journal 356:
+knob-stacking is closed, so **option (b) has one avenue left and it is
+training** -- which journal 273 closed as "CONFIRMED NEGATIVE".
+
+WHAT THAT CLAIM RESTS ON, read back today:
+
+    model              set C   set D        seeds per set
+    N24 (ships)          433     398                    3
+    trained 8 maps       379     272                    3
+    difference           -54    -126
+
+Journal 273 wrote "same direction on independent seeds, so this is not the seed
+sample". Under the floor journal 350 corrected and journal 355 verified, that
+argument does not survive:
+
+  * the rating floor is ~90 at EIGHT seeds; at THREE it scales by sqrt(8/3) to
+    about **147**. Both differences are inside it. -126 is the larger and still
+    short.
+  * "both sets agree in sign" is a sign test with TWO observations. Under the
+    null its P is 0.25 -- the same strength as one coin landing heads twice.
+  * and the numbers are headline ratings, which journal 351 measured as biased
+    upward by up to 45 points wherever a seat is capped, by an amount that
+    differs between arms.
+
+So the claim blocking the last avenue has the same status as everything else
+this sequence has re-examined: **a sub-floor difference read as a result.** I
+am not saying journal 273 was wrong -- its direction may well be right, and
+memory training-degrades-the-model carries independent evidence (16 checkpoints,
+none above 45% of parent). I am saying it was never established, and it is the
+only thing standing between this loop and its last option.
+
+SO: RUN IT PROPERLY. One training run from N24 on journal 272's settled recipe,
+benched at eight seeds on the corrected instrument against a control that has
+reproduced bit-identically five times.
+
+HYPOTHESIS, pre-registered, and I predict journal 273's DIRECTION is right and
+its resolvability is the only thing that was wrong:
+  1. **The trained model scores BELOW N24.** Memory training-degrades-the-model
+     is controlled evidence independent of journal 273, and journal 271's
+     "training moves a model toward a middle band" predicts a strong parent is
+     pulled down.
+  2. **And this time the difference CLEARS the floor**, because the middle band
+     is far away: training from loop-base landed at 159 on the old instrument
+     against N24's 433, so a pull toward that band from 336 per-seed should be
+     worth well over 90 points. If it comes back inside the floor, then after
+     four journal entries the question is genuinely open and training would
+     need a different recipe rather than a verdict.
+  3. Falsifier that would matter most: the trained model scores ABOVE N24 by
+     more than the floor. That would reopen training as the route to the user's
+     rating target and make journal 273 a false negative that cost 84 entries.
+
+SAFETY, since this is the first training run in this sequence and rule 2 is the
+one that matters. `data/ai/model.bin` is NEVER the training target: an isolated
+tree at $SCRATCH/traindata carries symlinks to every entry of `data/` except
+`ai/`, and a REAL `ai/` holding a copy of N24 as the parent. The run is given
+`--data` pointing there. Parent verified at 4a137043 before launch; no stale
+`model.w*.bin` present (memory stale-worker-models). `data/ai/model.bin` will be
+re-checked after.
+
+RECIPE (journal 272, as settled): 8 maps, 3000 turns, OD_AI_THREADS=1 (journal
+269: pinned threads make training deterministic, so one run per arm suffices),
+OD_LR_SCALE=0.05, seed 424242, no scripted share, `--worker 1 --workers 2` so
+the only peer name is w0 and w0 stays empty (LOOP.md section 5).
+
+### 357, progress note (written at the next iteration, run still in flight)
+
+LOOP.md: "If a bench is still running from the previous iteration, do not start
+another one -- read its result, finish that iteration's journal entry, and
+stop." The run is still in flight, so this iteration starts nothing.
+
+    map 6 of 8, turn 1500/3000, 1.5054 s/turn, 12 alive
+    elapsed 2h10m      remaining ~3h07m      FULL RUN ~5.3 HOURS
+
+**AND THAT IS THE FINDING OF THIS NOTE.** Journal 272 recorded "~40 min
+training (16 + 24 maps)" -- forty maps in forty minutes, about 25 turns per
+second. This run is doing **0.66 turns per second, roughly 75x slower**, on the
+same recipe (8 maps, 3000 turns, OD_AI_THREADS=1, OD_LR_SCALE=0.05) and the
+same pinned single thread. I budgeted ~13 minutes from journal 272's figure and
+was wrong by a factor of twenty-four.
+
+I am not going to guess why from here, and the candidates are not equal:
+  * the tree has moved a long way since journal 272 -- the log shows
+    `embarks=6765 landings=4583`, and landings only became real at v8.1
+    (memory landings-became-real-at-v81); a self-play map that now fights
+    amphibious wars is not the map journal 272 timed;
+  * every probe added in journals 337-346 is in this binary. They are gated
+    off, except journal 343's five navy counters which I made unconditional --
+    five integer increments, which cannot be it, but it is the only thing I
+    changed that runs unconditionally and it should be said out loud;
+  * journal 272's own figure may have been for a different countries argument
+    or a different map set.
+
+WHAT IT CHANGES, and it is for the user rather than the loop. Item 26's option
+(b) was "spend machine time on changes big enough to clear", and journal 356
+established training is the only such avenue left. **The price of one training
+arm is about five hours, not forty minutes**, so a training A/B -- parent
+against trained, which is what journal 273 did -- is a five-hour run plus ~35
+minutes of benching per arm. That is the real cost of the last avenue, and the
+backlog's cost estimates for training work (item 2's "~80 minutes", journal
+272's "~40 min") are stale by more than an order of magnitude.
+
+THE RUN CONTINUES. Killing it and benching the map-6 checkpoint would answer a
+different question from the one journal 357 pre-registered, and journal 273's
+claim is specifically about 8 maps. `data/ai/model.bin` re-verified unchanged
+at 4a137043e998fb8de4aae725d48f9edd, `model.loop-base.bin` at badfe012, and the
+only files written are in the isolated tree (`league-0.bin`, `model.w1.bin`).
+
+NO NEW EXPERIMENT THIS ITERATION.
+
+## 358 — iteration: the bench step would have benched the PARENT against itself
+
+LOOP.md: a run is still in flight, so this iteration starts no experiment. It
+found and repaired a defect in the one that IS running, which would have
+destroyed five hours of work silently.
+
+STATUS: map 6 of 8, turn 1800/3000, ~3 hours remaining.
+
+**THE DEFECT.** `Game::setAIWorker` (Game_AITrain.cpp:191) redirects the model
+path whenever `--worker` is given:
+
+    m_aiModelPath = TextFormat("ai/model.w%d.bin", id);
+
+So the run writes `ai/model.w1.bin` and `<data>/ai/model.bin` stays the
+UNTOUCHED PARENT for the whole run. The evidence was on disk and I had already
+printed it twice without reading it:
+
+    league-0.bin   19:47   written once at start
+    model.bin      19:45   NEVER MODIFIED -- still md5 4a137043, i.e. N24
+    model.w1.bin   22:03   the actual training output
+
+**My it357.sh copied `model.bin` and benched that.** It would have compared N24
+against N24, returned a difference of approximately zero at 24 runs, and I
+would have written "training makes no measurable difference to the shipping
+model" -- a conclusion with a pre-registered hypothesis behind it, 5.3 hours of
+machine time, and nothing whatever to do with training.
+
+That is memory failures-after-the-useful-work exactly: a tooling bug that runs
+AFTER the expensive part, leaving the work intact and destroying only the
+record. And it would have been invisible, because "no difference" was a
+perfectly plausible outcome I had explicitly listed.
+
+WHAT MADE IT VISIBLE was checking whether the run was HEALTHY rather than
+whether it was FINISHED -- specifically asking where the trained weights were
+going to come from before three more hours elapsed. The parent's mtime had been
+in two of my own status dumps.
+
+AND THE TOOL SAYS THE WRONG THING TOO. Game_AITrain.cpp:220 prints
+
+    [TRAIN] Model: <dir>ai/model.bin  (close the window any time...)
+
+on every run, including worker runs that write somewhere else. The correct
+path IS printed, two lines later and only for workers -- "[TRAIN] worker 1 of 2
+-- model ai/model.w1.bin" -- so the log contains both the truth and a
+contradiction of it. Filed as item 92.
+
+**THE REPAIR, and a hazard I created doing it.** I first rewrote it357.sh in
+place. That script was EXECUTING: zsh reads a script incrementally by byte
+offset, so inserting text ahead of the resume point can make it continue
+mid-token. Memory sed-i-breaks-running-logs is the same family and I walked
+into it anyway. Having already shifted the bytes, the safe move was to remove
+the wrapper rather than trust it:
+
+  * killed the wrapper zsh by PID (71687), never by pattern -- LOOP.md's rule,
+    and `pkill -f it357` would have matched this journal's own editor;
+  * verified the training process (71692) survived, is still a running
+    process reparented to init, and advanced 1700 -> 1800 turns afterwards;
+  * wrote a SEPARATE script that waits on PID 71692, then benches
+    `model.w1.bin` with two refusals in front of it: no file, or a file
+    byte-identical to the parent, both abort rather than bench.
+
+The second guard is the important one. It makes the failure mode that would
+have swallowed this experiment impossible to repeat silently: if the trained
+model is ever the parent again, the run stops and says so.
+
+data/ai/model.bin re-verified at 4a137043e998fb8de4aae725d48f9edd throughout.
+
+NO NEW EXPERIMENT THIS ITERATION.
+
+### 358b — the pending bench PINS THE BINARY. Do not rebuild.
+
+Third iteration blocked on journal 357's run: map 6 of 8, turn 1900/3000,
+~2h55m remaining, `data/ai/model.bin` unchanged (4a137043).
+
+**The constraint the next iteration needs and would not otherwise have.** The
+trained model will be benched against `it349-control`, which was measured on
+the binary built in journal 347. Any rebuild before that bench runs makes the
+two arms incomparable -- memory ab-both-arms-one-tree, and journal 273 refused
+to rebuild mid-measurement for exactly this reason.
+
+So until `it357-trained8` is stored:
+
+  * **no `cmake --build`**, which rules out backlog item 92 (the one-line
+    [TRAIN] print fix) even though it is otherwise the cheapest item open;
+  * no source edits to `src/` at all, since the next build would pick them up;
+  * docs, backlog and analysis of stored rows remain safe.
+
+That is worth a line because it is precisely the kind of cross-entry
+constraint this journal loses: item 92 looks like ideal filler for a blocked
+iteration, and taking it would silently spoil a five-hour experiment.
+
+NO NEW EXPERIMENT.
+
+VERDICT (journal 357, completed): **BOTH PARTS OF THE HYPOTHESIS HOLD. Training
+degrades the shipping model, and for the first time in this sequence a
+candidate question about the AI CLEARS the rating floor.**
+
+    PER-SEED rating   N24 336 (se 34)   trained 192 (se 34)
+    difference -145   floor 94   CLEARS   95% CI [-239, -51]
+
+    seat              d        95% CI              p     three-seat correction
+    1914:FRA      -13.16   [-18.47,  -7.86]    0.001     clears
+    1939:USA       +1.18   [ -6.65,  +9.00]    0.778     no
+    modern:CHN    -10.26   [-17.57,  -2.96]    0.018     MISSES 0.0167 by 0.0013
+
+    modern:CHN annihilated     control 2/8   trained 4/8
+    1914:FRA below par (6.7)   control 0/8   trained 5/8
+
+THE BENCHED FILE IS THE TRAINED MODEL, verified rather than assumed after
+journal 358: benched copy c25f2a11 = worker output c25f2a11, parent in the tree
+still 4a137043, `data/ai/model.bin` still 4a137043, loop-base still badfe012.
+
+1. **Below N24**: 336 -> 192. Journal 273's DIRECTION was right.
+2. **Clears**: -145 against a floor of 94, CI excluding zero by 51 points.
+   Journal 273's RESOLVABILITY was what was missing -- at three seeds per set
+   its -54 and -126 sat inside a floor of ~147. On the corrected instrument the
+   same question now has an answer.
+3. The falsifier that would have mattered most (trained ABOVE N24) did not
+   occur.
+
+**CHN MISSES THE STRICT CORRECTION AND I AM NOT ROUNDING IT.** p = 0.018 against
+a three-seat Bonferroni threshold of 0.0167. France clears it; China does not,
+by a hair, and "one seat clears, one nearly does" is what gets written.
+
+WHERE THE DAMAGE IS, and it is not everywhere. The USA -- the seat that grows,
+at 3.7x par -- is untouched (+1.18, p 0.78). The loss lands on the two seats
+that can FALL: France drops below par on 5 of 8 worlds where it never did, and
+China is annihilated on 4 of 8 instead of 2. **Training cost this model its
+ability to HOLD, not its ability to expand.** Memory selfplay-erodes-rush-defence
+offers a mechanism -- nothing in the league plays a rush, so the policy sheds
+defence -- and it fits, but I have not tested it and per memory
+measurements-replicate-explanations-dont it is registered, not believed.
+
+BUT THIS IS ONE SEED SET, and journal 354 is four entries old. The pacify arm
+read -88 on the standard eight seeds and +31 on eight fresh ones. So before
+anything below is acted on, the same trained model must be benched on
+journal 354's second seed set, against `it354-ctl-s2`, which already exists on
+this binary. That costs 24 runs and no training. Filed as item 93, top of the
+queue. The prior this time is far stronger than pacify's was -- a CI clearing
+zero by 51 points, agreement in direction with journal 273's two sets, and
+independent controlled evidence in memory training-degrades-the-model -- but
+the rule that caught journal 351 does not get waived because I expect it to
+pass.
+
+A COST CORRECTION, and it goes the other way from the last one. Journals 357b
+and 358 priced this run at ~5.3 hours by multiplying 1.5 s/turn by 24,000
+turns. It finished in **168 minutes, 13,236 turns**: maps end early on
+STAGNATION_TURNS, which LOOP.md's own corrections section documents and I did
+not apply. Per map, against journal 272's figure, it is ~21x slower rather than
+75x. Item 91 corrected.
+
+WHAT IT MEANS FOR ITEM 26, provisionally, pending item 93. Option (b)'s last
+avenue was training. **On this evidence training from N24 on the settled recipe
+is not a route to the rating target -- it costs ~145 points, resolvably.** The
+anchor constructions that tried to hold a strong parent up were closed in
+journals 274 and 277. So if item 93 replicates, option (b) as currently built
+has no avenue left that points upward, and that is the user's conclusion to
+draw rather than mine to act on.
+
+THE BINARY PIN CONTINUES. Item 93 must run on the same binary as
+`it354-ctl-s2`, so journal 358b's no-rebuild constraint holds until it is
+stored. Item 92 stays blocked.
+
+PATHS TOUCHED: none in the tree. Scratchpad: the isolated training tree, and
+`trained8.bin` (c25f2a11), kept for item 93. data/ai/model.bin unchanged.
+
+PENDING COMMIT: none.
+
+## 359 — iteration: does "training degrades N24" survive a second seed set?
+
+BACKLOG ITEM 93, top of the queue. Journal 357 measured the trained model at
+-145 against a floor of 94, CI [-239, -51] -- the first candidate question in
+journals 281-358 to clear the rating floor. Journal 354 is why that is not yet
+a result: the pacify arm read -88 on the standard seeds and +31 on fresh ones,
+and the only sub-floor land result this sequence had died the same way.
+
+PRE-FLIGHT, checked rather than assumed:
+    it354-ctl-s2 binary_mtime 1789221191  ==  build/OpenDoctrinesServer now
+    trained8.bin md5 c25f2a11   ==  the file journal 357 benched
+    it354-ctl-s2 carries per-seed spread, 8 seeds, 400 turns, the 3 rung seats
+    data/ai/model.bin 4a137043, no game processes running
+
+HYPOTHESIS, pre-registered as filed in item 93:
+  1. **The rating difference CLEARS again**, same sign.
+  2. **1914:FRA and modern:CHN move DOWN; 1939:USA stays flat.** That is the
+     shape journal 357 found -- the loss lands on the seats that can fall, not
+     on the one that grows -- and a replication should reproduce the SHAPE, not
+     only the headline.
+
+WHAT EACH OUTCOME MEANS, written before the run:
+  * clears again, same shape  -> training from N24 on the settled recipe
+                                 degrades the model, established on two
+                                 independent seed sets. First replicated
+                                 candidate finding of the sequence.
+  * same sign, does not clear -> "the direction replicates, the resolution
+                                 does not"; weaker than a replication and not
+                                 to be written up as one.
+  * inverts                   -> journal 357 was a seed-set artefact, exactly
+                                 as journal 351's p = 0.010 was.
+
+ONE THING THAT MAKES THIS HARDER THAN JOURNAL 357 and should be said first.
+The control on this seed set is WEAKER: it354-ctl-s2 reads 306 per-seed against
+it349-control's 336. A degraded model has less room to fall below a control
+that is already lower, so if the gap shrinks that is partly arithmetic, not
+necessarily a failure to replicate. I will read the per-seat shape before the
+headline for exactly that reason.
+
+DESIGN: one arm, trained8.bin on journal 354's seeds (11111, 2468135, 777777,
+31415926, 5772156, 1414213, 9090909, 6180339), three rung seats in the
+three-part form, 400 turns, compared with it354-ctl-s2. 24 runs. No source, no
+rebuild, no training.
+
+VERDICT: **REPLICATES. The first candidate finding in journals 281-359 to hold
+on two INDEPENDENT seed sets.** Hypothesis 1 confirmed; hypothesis 2 confirmed
+for China and for the headline shape, and for France in direction only on the
+new seeds.
+
+                   control  trained       d   floor   95% CI
+    set 1 (j.357)      336      192    -145      94   [-239,  -51]   CLEARS
+    set 2 (j.359)      306      184    -122      93   [-215,  -29]   CLEARS
+    pooled 16          321      188    -133      64   [-197,  -69]   CLEARS
+
+    seat              set 1 d      p    set 2 d      p    pooled      p
+    1914:FRA           -13.16  0.001      -8.46  0.085    -10.81  0.000
+    1939:USA            +1.18  0.771      +9.12  0.078     +5.15  0.107
+    modern:CHN         -10.26  0.019     -15.18  0.003    -12.72  0.000
+
+    modern:CHN annihilated   set 1  2/8 -> 4/8     set 2  1/8 -> 3/8
+    1914:FRA below par       set 1  0/8 -> 5/8     set 2  1/8 -> 4/8
+
+1. **The headline clears on the independent set** and its CI excludes zero
+   by 29 points. Compare journal 354, where the pacify arm went -88 -> +31 on
+   exactly these seeds. This one did not move sign; it moved from -145 to -122.
+
+   The weaker-control worry I registered first was real and small. The TRAINED
+   model reads almost the same on both sets (192, 184); the gap narrowed
+   because this seed set's control is 30 points lower. It narrowed and still
+   cleared.
+
+2. **The shape, seat by seat, and France is where I will not overclaim.**
+   * China replicates, and more strongly than before: -15.18 at p = 0.003 on
+     the new seeds alone, clearing the three-seat correction that set 1 missed
+     by 0.0013. Annihilated more often on both sets.
+   * **France replicates in DIRECTION only on the new seeds**: -8.46 at
+     p = 0.085, which does not clear on its own. It is below par on 4 of 8
+     worlds against 1, and the pooled test is p < 0.001, but the pooled test is
+     not independent of set 1 and I am not using it to rescue set 2.
+   * The USA is flat by the test on both sets, as predicted -- but set 2 trends
+     UP (+9.12, p = 0.078; pooled +5.15, p = 0.107). If that is real, training
+     trades the seats that can fall for the one that grows. Not established;
+     registered, per memory measurements-replicate-explanations-dont.
+
+WHAT IS NOW ESTABLISHED, stated at the strength the data carry: **training
+N24 for 8 maps on the settled recipe (journal 272) costs about 130 per-seed
+rating points, and the loss lands on the seats that can fall.** Two independent
+seed sets, one training run. It is one training run -- pinned threads make
+training deterministic (journal 269), so a second run on the same seed would
+reproduce this model byte for byte, but a different training SEED is untested.
+
+FOR THE USER, ITEM 26. Option (b) said to spend machine time on changes big
+enough to clear. Journal 356 closed knob-stacking; training was the last
+avenue. **It clears, and it clears downward.** The constructions that tried to
+hold a strong parent up (the league anchor, journal 274; the pinned anchor,
+journal 277) were both closed. So option (b), as currently built, has no avenue
+pointing upward. What is open is a RECIPE question -- a training recipe that
+does not pull a strong parent down -- and that is a design decision with a
+price of ~2.8 hours plus ~35 minutes of benching per arm (item 91). Filed as 94.
+
+THE BINARY PIN IS RELEASED. No pending comparison needs the current binary, so
+item 92 is unblocked -- with the cost stated plainly: any later comparison
+against it349-control, it354-ctl-s2 or the trained rows after a rebuild needs
+its control re-run first (LOOP.md section 5, re-baseline).
+
+PATHS TOUCHED: none in the tree. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none. One stored row, it359-trained8-s2, with per-seed spread.
+
+## 360 — iteration: the binary changed under the replication; is 359 sound?
+
+BACKLOG ITEM 94, taking the part that needs no design decision: a different
+TRAINING seed on the same recipe, since journals 357 and 359 rest on one
+training run. Pre-flight stopped it before launch.
+
+**THE SERVER BINARY HAD BEEN REBUILT, NOT BY ME.** Every row since journal 347
+was measured on a binary with mtime 1789221191 (Sat 12 Sep 15:53). The one on
+disk was 1789320241 -- **Sun 13 Sep 19:24:01, twenty-six seconds before journal
+359 stored its replication**, whose row recorded the new mtime. The concurrent
+editor (memory od-tree-has-a-concurrent-editor) made eleven commits in that
+window: new scenario maps (1936cp, 1962ax, 1984, mars, tutorial), network lobby
+and host code, config, menus, and Game_Loading.cpp at 19:23. Nothing under
+`src/ai/`, nothing in the turn resolver, and none of the three bench seats'
+maps.
+
+**THE REBUILD IS DECISION-INERT ON ALL THREE BENCH SEATS**, proven rather than
+inferred from the file list:
+
+    seat         evidence on the NEW binary                              verdict
+    1914:FRA     DECHASH 14669681761325311781 over 86188, score 21.4     = reference
+    modern:CHN   DECHASH 1134950857311588231 over 277784, score 23.1     = reference
+    1939:USA     seed 13579 share 11.6   (it349-control stored 11.6)      identical
+    1939:USA     seed 11111 share 14.2   (it354-ctl-s2 stored 14.2)       identical
+
+1939:USA had no reference hash, and the old binary is overwritten so one cannot
+be made retroactively. Replaying one seed from each of two stored arms and
+matching their shares is the strongest check still available. New USA
+references recorded for next time:
+
+    1939:USA seed 13579   8015535788507488591 over 172816
+    1939:USA seed 11111   14798734256938753062 over 165972
+
+**SO JOURNAL 359 STANDS.** Its runs almost certainly all executed on the OLD
+binary: a running process keeps the image it launched with, and the final
+modern:CHN seed would have started around two minutes before the rebuild. The
+"NEW" tag on its row is a STORAGE-TIME artefact, because `od_bench` evaluates
+`os.path.getmtime(binary)` when it writes the row, not when the runs start.
+Even had the last run used the new binary, the CHN hash is identical. Filed as
+item 95: the provenance field can describe a binary no run ever used.
+
+## the training-seed run, pre-registered
+
+    parent     N24 (data/ai/model.bin, 4a137043)
+    recipe     journal 272 as settled: 8 maps, 3000 turns, OD_AI_THREADS=1,
+               OD_LR_SCALE=0.05, OD_DIPLO_PACT_WEIGHT=2.5, --worker 1 --workers 2
+    TRAINING SEED  777001   (journal 357 used 424242; the map sequence is a
+                   function of the base seed, so this trains on different worlds)
+    bench      seed set 1, three rung seats, 400 turns, against it349-control
+
+HYPOTHESIS: **it degrades again and clears.** Per-seed difference below −94,
+same sign; France and China down, the USA flat or up. If it clears, "training
+N24 degrades it" holds across two training seeds as well as two seed sets. If
+it does not clear, or inverts, journal 357's result is specific to seed
+424242's worlds, and item 94's recipe question is misframed.
+
+BINARY PINNED FOR THIS RUN. The concurrent editor has committed three times
+today, and a three-hour run launches ~24 fresh bench processes near its end,
+each of which would load whatever `build/OpenDoctrinesServer` is at that
+moment. So training AND bench run from a snapshot copy, verified by md5 and by
+a smoke test that it resolves its data from outside `build/`.
+
+CORRECTION TO THE PINNING PLAN ABOVE, before launch. The first snapshot -- a
+plain copy of the server into the scratchpad -- **failed its smoke test with
+rc=2 and no output**, while the original binary completed the same run. The
+server resolves its data at `<executable dir>/../data/` (ServerMain.cpp:358,
+"no data directory -- pass --data <dir>"), so a copy anywhere else cannot find
+its maps. odlock.py was not involved: its only non-zero exit is 75.
+
+Working layout: `pinbin/bin/OpenDoctrinesServer` beside a `pinbin/data`
+symlink to the tree's data, so `bin/../data` resolves correctly. Verified:
+
+    pinned md5 12aa7f20...  ==  build/OpenDoctrinesServer at launch
+    30-turn smoke, 1914:FRA seed 13579:
+        pinned    DECHASH 2831071961519010576 over 5624
+        original  DECHASH 2831071961519010576 over 5624
+
+Had the smoke test been skipped, the bench phase would have produced 24 failed
+seat runs and od_bench's DROPPED guard would have refused the row -- a visible
+failure rather than a silent one, but three hours of training lost. Training
+passes --data explicitly and would have worked; only the bench would have died.
+
+LAUNCHED: training seed 777001 into a fresh isolated tree (traindata2, no stale
+worker or league files), then the bench from the SAME pinned binary.
