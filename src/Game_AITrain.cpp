@@ -2546,6 +2546,12 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
 // ────────────────────────────────────────────────────────────────────────────
 bool Game::runBenchAgent(const std::string& seatSpec, const std::string& pipePath,
                          unsigned int seed, int untilTurn) {
+    // SAFE BY CONSTRUCTION, not by the caller remembering. This builds a
+    // real AISystem and ~AISystem() saves unconditionally, so without this
+    // this run's exit overwrites <data>/ai/model.bin. ServerMain used to
+    // set it at the call site; journal 311 wired a new caller and did not,
+    // which is exactly the failure a call-site guard invites. Journal 314.
+    AISystem::s_readOnlyModel = true;
     applyFpsTarget(-1);
     Audio::s_disabled = true;
 
@@ -2806,6 +2812,12 @@ bool Game::runHeadlessSimulation(const std::string& mapPath, int turns,
 // and prices are the ones the model is scored on; then, instead of playing,
 // one AI country is asked four trades by its neighbour.
 bool Game::runTradeProbe(const std::string& seatSpec, unsigned int seed) {
+    // SAFE BY CONSTRUCTION, not by the caller remembering. This builds a
+    // real AISystem and ~AISystem() saves unconditionally, so without this
+    // the probe's exit overwrites <data>/ai/model.bin. ServerMain used to
+    // set it at the call site; journal 311 wired a new caller and did not,
+    // which is exactly the failure a call-site guard invites. Journal 314.
+    AISystem::s_readOnlyModel = true;
     applyFpsTarget(-1);
     Audio::s_disabled = true;
     startBenchSeat(seatSpec, 10);

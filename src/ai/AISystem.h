@@ -134,6 +134,77 @@ public:
     static double    s_researchSum;
     static long long s_researchN;
     static int s_offHist[4][12];
+    /// Mean pi(a) per action while OFFERED, over the run: the "exponent"
+    /// LOOP.md says to read before targeting a dead action. Filled only
+    /// under OD_ACT_HIST. Journal 306 -- the policy-shape table LOOP.md
+    /// cites no longer existed. Literal dims to match s_actHist: the
+    /// MOD_COUNT/MAX_MODULE_ACTIONS constants are declared further down.
+    /// The POLICY's own picks: same gate as s_probSum, unlike s_actHist
+    /// which counts the action PLAYED including booked and scripted turns.
+    /// Journal 310 -- NAVY a0 showed 19,861 plays at pi(a) 2.57e-07.
+    /// Why the policy-marginal gate rejected a decision, by FIRST failing
+    /// condition: 0 !netDriven, 1 nprob empty, 2 booked, 3 scripted,
+    /// 4 league, 5 passed. Per module. Filled only under OD_ACT_HIST.
+    /// Journal 315 -- the same technique that found the anchor's missing
+    /// initScratch when every gate appeared to pass.
+    /// P(fleetUseful) at reward time -- [0] true, [1] false. The ship term
+    /// pays +0.4 when true and -0.5 when false, so whether it rewards or
+    /// punishes buying ships depends on this rate, not on the two
+    /// coefficients. Journal 322. Filled only under OD_ACT_HIST.
+    /// portCap(cid) observed at econ-gate time, indexed by cap 0..3.
+    /// Journal 324: decides whether the port research deadlock is lifted.
+    /// Why nextPortBuy failed: 0 cap-bound, 1 a coastal portless province
+    /// exists but sits outside the top-4-by-population window, 2 none
+    /// exists at all. Journal 325. Filled only under OD_ACT_HIST.
+    static long long s_portFail[3];
+    static long long s_portCapSeen[4];
+    static long long s_fleetUseful[2];
+    /// Journal 337: is OD_WAR_BAR_RESEARCH live? 0 evaluations, 1 pass under
+    /// the shipped headcount test, 2 pass under the research-scaled one,
+    /// 3 flips the research scaling OPENS, 4 flips it CLOSES, 5/6 how often
+    /// each modifier is nonzero, 7 refused by the additive +200 alone.
+    /// Filled only under OD_WAR_BAR_PROBE; the decision never reads them.
+    static long long s_warBar[8];
+    /// Journal 341: is the landing head ever offered a choice of shore?
+    /// 0 hulls asked, 1 at least one shore in range, 2 two or more (a
+    /// CHOICE), 3 container order differs from the weakest, 4 the container
+    /// pick is >= 1.5x the weakest defence, 5 an undefended shore was passed
+    /// over, 6 denominator of the ratio. Filled only under OD_LANDING_PROBE;
+    /// the decision never reads them.
+    static long long s_land[7];
+    /// Journal 342 (item 78): WHY a shore is so rarely in range.
+    /// s_landWhy 0 own hulls seen, 1 no crew, 2 already ordered, 3 reached
+    /// the port scan, 4 no hostile port exists at all, 5 one exists.
+    /// s_landDist buckets the nearest hostile port over the hull's own range.
+    static long long s_landWhy[6];
+    /// Journal 343: which code path orders what. 0 reflex hostile landing,
+    /// 1 reflex home unload, 2 head embark (the only embark site), 3 head
+    /// landing on the container-order shore, 4 head landing on the weakest.
+    /// Always counted; OD_NAVY_SPLIT only decides whether they are printed.
+    static long long s_navySplit[5];
+    /// Journal 344: OD_CAMPAIGN_HOMEFIRST's reach, as a product. 0 recruit
+    /// decisions, 1 campaign open, 2 open and home losing, 3/4 the two
+    /// condition terms, 5/6 each term alone, 7 where the gate could act,
+    /// 8 of those the threat rule picks elsewhere; 9/10/11 the same at the
+    /// reinforce site, 11 being "staging was in the ordinary top slots".
+    static long long s_camp[12];
+    static long long s_campReinf;
+    /// Journal 346: 0 hull-turns whose type is "boat", 1 crewless boats,
+    /// 2 crewless non-boats. Filled under OD_LANDING_PROBE.
+    static long long s_hullType[3];
+    static long long s_landDist[5];
+    static long long s_landPorts;
+    static long long s_landRatN;
+    static double s_landNearSum;
+    static double s_landRngSum;
+    static long long s_landCands;
+    static double s_landRatio;
+    static double s_warBarAtk;
+    static double s_warBarDef;
+    static long long s_gateWhy[4][6];
+    static int s_netPicked[4][12];
+    static double s_probSum[4][12];
+    static long long s_probN[4][12];
     static long long s_navalPorts;
     static long long s_navalShips;
     static long long s_industryBuys;
@@ -149,6 +220,15 @@ public:
     static long long s_decisionCount;
     static std::atomic<long long> s_anchorWhy[4];
     static void dumpActionHistogram();
+    /// Prints the decision hash, once, from whichever atexit hook runs first.
+    /// Separate from dumpActionHistogram so OD_DECISION_HASH works alone:
+    /// the histogram's hook is registered only under OD_ACT_HIST, which
+    /// meant the hash recorded and never printed (journal 297).
+    static void dumpDecisionHash();
+    static void dumpWarBarProbe();
+    static void dumpLandingProbe();
+    static void dumpNavySplit();
+    static void dumpCampaignProbe();
     void navalReflex(int cid);
     void industryReflex(int cid);
     void researchAusterityReflex(int cid);

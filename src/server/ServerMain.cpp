@@ -82,6 +82,8 @@ void usage() {
         "  --worker <id> --workers <n>   one process of a parallel pool\n"
         "  --vs-random | --vs-model <p> | --vs-script | --scenarios   what to measure against\n"
         "  --merge-ai <out> <in...>  fold worker models into one\n"
+        "  --reset-ai-head <model.bin> <module 0-4>  throw away one head\n"
+        "  --probe-trade <map:ISO> [--seed N]  exercise the trade rules\n"
         "\n"
         "  --llm-status      whether an advisor runner is installed here, and where\n  --llm-serve       run the installed runner in the foreground\n"
         "  --llm-install     download and verify the pinned runner into <data>/llm\n"
@@ -291,6 +293,38 @@ int main(int argc, char** argv) {
         return AISystem::mergeModelFiles(argv[i + 1], inputs) ? 0 : 1;
     }
 
+    // --reset-ai-head <model.bin> <module>
+    //
+    // WIRED 2026-09-12 (journal 308). AISystem::resetModuleHead has existed,
+    // documented as "Backs `--reset-ai-head`", with NO CALLER anywhere --
+    // while AISystem.h, tools/ai_bench.py (twice) and docs/ai/LOOP.md all told
+    // the reader to use the flag. LOOP.md's rule for a dead action is "below
+    // ~1e-6 is out of reach of a bias and needs --reset-ai-head and a
+    // retrain", and journals 305-307 found twelve actions below that in three
+    // different models, so the one tool the protocol prescribes for the
+    // situation turned out never to have been connected.
+    //
+    // Same placement and the same argument as --merge-ai above: static, takes
+    // no session, opens no port, touches no Game and no world.
+    //
+    // The module is a MOD_* index -- 0 economy, 1 politics, 2 war, 3 navy, and
+    // 4 (MOD_COUNT) for the diplomacy head. It rewrites the model IN PLACE, so
+    // pass a copy unless you mean it.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) != "--reset-ai-head") continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--reset-ai-head needs <model.bin> <module 0-4>\n");
+            return 2;
+        }
+        const std::string path = argv[i + 1];
+        const int mod = atoi(argv[i + 2]);
+        if (mod < 0 || mod > AISystem::MOD_COUNT) {
+            fprintf(stderr, "--reset-ai-head: module must be 0-%d\n", AISystem::MOD_COUNT);
+            return 2;
+        }
+        return AISystem::resetModuleHead(path, mod) ? 0 : 1;
+    }
+
     // ── A BENCH SEAT PLAYED BY HAND, HEADLESS ──
     //
     // `--bench-agent` existed only in main.cpp, which calls init() and therefore
@@ -420,6 +454,50 @@ int main(int argc, char** argv) {
         }
     }
 
+
+    // --probe-trade <map:ISO> [--seed N]
+    //
+    // WIRED 2026-09-12 (journal 311). Game::runTradeProbe has existed at
+    // Game_AITrain.cpp:2782, declared in Game.h with a full doc comment, with
+    // NO CALLER -- while docs/ai/LOOP.md, docs/ai/BACKLOG.md and
+    // docs/design/community-roadmap-2026-09.md all referred to the flag, the
+    // last of them asserting that it "exists".
+    //
+    // It is the only thing that exercises the trade rules: no eval proposes a
+    // trade, so decideDiplomacy's trade branch is never reached by the bench.
+    // Journal 256 records trade as "offered 7.5%, taken 0.00%" -- a subsystem
+    // with a dead action, no eval coverage by construction, and its one test
+    // unreachable.
+    //
+    // Needs a Game (runTradeProbe is a member, not static), so it sits here
+    // rather than beside --merge-ai and --reset-ai-head above.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) != "--probe-trade") continue;
+        if (i + 1 >= argc) {
+            fprintf(stderr, "--probe-trade needs a seat, e.g. 1914:FRA\n");
+            return 2;
+        }
+        const std::string seatSpec = argv[i + 1];
+        unsigned int seed = 20260801;
+        for (int k = 1; k + 1 < argc; ++k)
+            if (std::string(argv[k]) == "--seed") seed = (unsigned int)atoi(argv[k + 1]);
+        // The no-save guard now lives at the TOP of Game::runTradeProbe, so a
+        // future caller cannot reintroduce the hazard by forgetting it here --
+        // which is what happened when this flag was first wired (journal 314).
+        Game game;
+        // Same setup runHeadlessAI does before it touches a map. Without it
+        // the .odmap is found but its sibling assets are not -- the first
+        // attempt died on "Failed to load land_sea.png", which is terrain
+        // data rather than decoration.
+        std::string probeData;
+        for (int k = 1; k + 1 < argc; ++k)
+            if (std::string(argv[k]) == "--data") probeData = argv[k + 1];
+        if (!game.srvResolveDataDir(probeData)) {
+            fprintf(stderr, "--probe-trade: no data directory -- pass --data <dir>\n");
+            return 2;
+        }
+        return game.runTradeProbe(seatSpec, seed) ? 0 : 1;
+    }
 
     std::string configPath;
     std::string dataOverride, mapOverride, loadOverride, nameOverride;

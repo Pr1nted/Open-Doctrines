@@ -995,6 +995,26 @@ bool AISystem::nextPortBuy(int cid, int& outPid, float& outCost) const {
             break;
         }
     }
+    // Journal 325: when this fails, WHICH branch was shut? The three cases
+    // want three different fixes, and only the first is helped by the cap.
+    {
+        static const bool pfOn = std::getenv("OD_ACT_HIST") != nullptr;
+        if (pfOn && found.pid < 0) {
+            bool ownsPort = false, coastalPortless = false;
+            for (const auto& [pid2, port2] : g.m_provincePorts) {
+                const Province* p2 = g.m_provinces.getProvinceById(pid2);
+                if (p2 && p2->countryId == cid) { ownsPort = true; break; }
+            }
+            for (int pid2 : g.provincesOf(cid)) {
+                if (g.m_provincePorts.count(pid2)) continue;
+                if (g.isProvinceCoastal(pid2)) { coastalPortless = true; break; }
+            }
+            // A coastal portless province EXISTS and was still not found, so the
+            // top-4 window is what shut the branch -- that outranks cap-bound,
+            // because widening the window would have opened it regardless.
+            ++s_portFail[coastalPortless ? 1 : (ownsPort ? 0 : 2)];
+        }
+    }
     m_portBuyCache[cid] = found;
     outPid = found.pid; outCost = found.cost;
     return found.pid >= 0;
@@ -3661,12 +3681,60 @@ void AISystem::takeTurn(int cid) {
             // nprob is the masked softmax at temperature 1, so this measures
             // pi(a) = E_s[pi(a|s)]: what the model would do if nothing were
             // added to it, which is exactly what ships.
+            if (mod >= 0 && mod < MOD_COUNT) {
+                // Attribute the gate below to its FIRST failing condition.
+                // Journal 313 found zero naval decisions reaching the policy on
+                // the Norway seat while ECON on the same run was 99% policy;
+                // each condition implies a different explanation. Journal 315.
+                static const bool whyOn = std::getenv("OD_ACT_HIST") != nullptr;
+                if (whyOn) {
+                    // ORDER IS CAUSAL, not the order of the && chain below.
+                    // A scripted or in-book decision routes to scriptedChoice,
+                    // which never fills nprob -- so testing nprob.empty() first
+                    // reports "nprob-empty" for every booked turn and makes the
+                    // booked counter read zero. It did, on the first run, and
+                    // it very nearly became the answer. Journal 315.
+                    const int why = !netDriven            ? 0
+                                  : booked                ? 2
+                                  : m_scriptedThisCountry ? 3
+                                  : m_leagueThisCountry   ? 4
+                                  : nprob.empty()         ? 1
+                                                          : 5;
+                    ++s_gateWhy[mod][why];
+                }
+            }
             if (netDriven && !nprob.empty() && !booked && !m_scriptedThisCountry &&
                 !m_leagueThisCountry && mod >= 0 && mod < MOD_COUNT) {
+                // The POLICY'S OWN PICK, behind this same gate. s_actHist
+                // further down counts the action PLAYED -- including every turn
+                // the book answered and every scripted or league cohort turn --
+                // so it is "what happened", not "what the AI chose". Journal 307
+                // measured NAVY a0 at 19,861 plays with pi(a) = 2.57e-07: the
+                // book playing, not the policy. Journal 306 built a dead-action
+                // list from the wrong column and had to be corrected.
+                static const bool netHistOn = std::getenv("OD_ACT_HIST") != nullptr;
+                if (netHistOn && act >= 0 && act < MAX_MODULE_ACTIONS)
+                    s_netPicked[mod][act]++;
                 for (size_t vi = 0; vi < valid.size() && vi < MAX_MODULE_ACTIONS; ++vi)
                     if (valid[vi]) {
                         m_marginalOffered[mod][vi] += 1.0;
                         if (vi < nprob.size()) m_marginalChosen[mod][vi] += nprob[vi];
+                        // The COUNT is printed beside the mean, because
+                        // "the policy was asked and gave this action zero" and
+                        // "the policy was never asked" both render as
+                        // 0.00e+00 otherwise -- and on the Norway seat every
+                        // naval action reads zero, which is a completely
+                        // different finding depending on which it is
+                        // (journal 313).
+                        // Same quantity, undecayed, for the exit dump. The
+                        // marginals above decay for the guard's benefit; the
+                        // question "can a bias reach this action" needs the
+                        // run's mean, not a recent one. Journal 306.
+                        static const bool histOn = std::getenv("OD_ACT_HIST") != nullptr;
+                        if (histOn && vi < nprob.size()) {
+                            s_probSum[mod][vi] += nprob[vi];
+                            ++s_probN[mod][vi];
+                        }
                     }
             }
 
@@ -3686,8 +3754,28 @@ void AISystem::takeTurn(int cid) {
             if (k == 0) {
                 m_policy[mod].snapshotActs(exp.acts[mod]);
                 exp.action[mod] = act; exp.acted[mod] = true; exp.logProb[mod] = lp;
+                // OUTSIDE the decision-hash gate below, and deliberately. The
+                // first draft of this registered inside it, so OD_NAVY_SPLIT
+                // alone would have counted correctly and printed nothing --
+                // the exact defect journal 300 fixed for the hash and journal
+                // 339 hit again. Caught here by reading the diff, not by a run.
+                static const bool regNS = (std::getenv("OD_NAVY_SPLIT")
+                                           ? (atexit(&AISystem::dumpNavySplit), true)
+                                           : false);
+                (void)regNS;
+                static const bool regCP = (std::getenv("OD_CAMPAIGN_PROBE")
+                                           ? (atexit(&AISystem::dumpCampaignProbe), true)
+                                           : false);
+                (void)regCP;
                 // FNV-1a over (cid, module, action), in decision order.
                 if (std::getenv("OD_DECISION_HASH")) {
+                    // Its own exit hook. The report used to live only in
+                    // dumpActionHistogram, whose hook is registered under
+                    // OD_ACT_HIST -- so OD_DECISION_HASH alone recorded a hash
+                    // and printed nothing, which reads as "measured, found
+                    // nothing" rather than "never reported" (journal 297).
+                    static const bool reg = (atexit(&AISystem::dumpDecisionHash), true);
+                    (void)reg;
                     for (unsigned long long v : {(unsigned long long)cid,
                                                  (unsigned long long)mod,
                                                  (unsigned long long)act}) {
@@ -3969,6 +4057,11 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     };
     int portPid = -1; float portCost = 0.0f;
     const bool portPossible = nextPortBuy(cid, portPid, portCost);
+    {   // Journal 324: is the port cap still 1? See portCap().
+        static const bool pcOn = std::getenv("OD_ACT_HIST") != nullptr;
+        if (pcOn) { const int pc = portCap(cid);
+                    if (pc >= 0 && pc <= 3) ++s_portCapSeen[pc]; }
+    }
     // The province the executor would pick, at THAT province's price -- not a
     // country-wide proxy at the level-1 price. See nextIndustryBuy.
     int indPid = -1, indLvl = 0; float indCost = 0.0f;
@@ -4652,6 +4745,58 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         // match, a COUNTRY-level multiplier for a country-level decision.
         // Fortification, supply and depth are deliberately absent: those are
         // properties of a province, and this is a question about a war.
+        //
+        // BUT IT IS NOT A SYMMETRIC CORRECTION, WHICH THE PARAGRAPH ABOVE
+        // READS AS. Measured (journal 337) on 1914:FRA:rung and
+        // modern:CHN:rung, N24 (md5 4a137043), seed 13579, 400 turns,
+        // difficulty 3, computing both verdicts and using neither:
+        //
+        //     mean armyAtkPct  +41.42 / +29.79      nonzero on 83.0% / 72.6%
+        //     mean armyDefPct  +14.53 / +11.92      nonzero on 75.8% / 83.3%
+        //
+        // The attack modifier runs about 2.5x the defence one on both maps, so
+        // switching this on multiplies the effective bar by 1/1.16 to 1/1.24:
+        // it is a 14-19% DISCOUNT on declaring war, not a wash. Of 3,275
+        // flipped evaluations across the two seats, 3,208 OPEN a war and 67
+        // close one -- 98.0% one-directional. Flip rate 0.68% / 3.84%.
+        //
+        // Which matters because unclaimedBar above was raised from 1.05 on
+        // purpose ("the map was permanently on fire"). This gate gives 14-19%
+        // of that back without touching the constant, so it would read in a
+        // diff as fidelity and behave as a partial revert of the tuning beside
+        // it. Pair it with re-tuning the bar, or measure it knowing that.
+        // ── [PROBE] IS THAT GATE LIVE AT ALL? (OD_WAR_BAR_PROBE, off) ──
+        //
+        // Counters only. Both verdicts are computed and NEITHER is used: the
+        // test below is the original line whether this is on or off, which the
+        // decision hash proves rather than asserts. It answers "would turning
+        // OD_WAR_BAR_RESEARCH on change any war decision, and in which
+        // direction" for the price of one seat instead of a 24-run bench arm
+        // that -- see backlog 26 -- could not resolve the answer anyway.
+        static const bool barProbe = std::getenv("OD_WAR_BAR_PROBE") &&
+                                     atoi(std::getenv("OD_WAR_BAR_PROBE")) != 0;
+        if (barProbe) {
+            static const bool reg = (atexit(&AISystem::dumpWarBarProbe), true);
+            (void)reg;
+        }
+        if (barProbe) {
+            const double atk = g.getTotalEffect("armyAtkPct", cid);
+            const double def = g.getTotalEffect("armyDefPct", fr.enemyCid);
+            const bool passRaw = !((double)side < (double)ea * bar + 200.0);
+            const bool passRes = !((double)side * (1.0 + atk / 100.0) <
+                                   (double)ea * (1.0 + def / 100.0) * bar + 200.0);
+            ++s_warBar[0];
+            if (passRaw)             ++s_warBar[1];
+            if (passRes)             ++s_warBar[2];
+            if (passRaw != passRes)  ++s_warBar[passRes ? 3 : 4];
+            if (atk != 0.0)          ++s_warBar[5];
+            if (def != 0.0)          ++s_warBar[6];
+            // How often the ADDITIVE floor, not the ratio, is what refuses:
+            // headcount alone would pass the multiplicative part and the +200
+            // is the whole reason it does not.
+            if (!passRaw && (double)side >= (double)ea * bar) ++s_warBar[7];
+            s_warBarAtk += atk; s_warBarDef += def;
+        }
         static const bool barResearch = std::getenv("OD_WAR_BAR_RESEARCH") &&
                                         atoi(std::getenv("OD_WAR_BAR_RESEARCH")) != 0;
         double mySide = (double)side, theirSide = (double)ea;
@@ -4806,7 +4951,9 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // OD_RECRUIT_MASK=1: ask the question the EXECUTOR asks.
     //
     // "recruit: too poor/small" is 108,650 refusals in two 400-turn games --
-    // 50.4% of every refused execution in the AI. The mask tests country-wide
+    // 50.4% of every refused execution in the AI. (SEAT, MODEL AND SEED
+    // UNRECORDED. Journal 330 measured 10,288 refusals against 26,019 plays --
+    // a 39.5% refusal RATE -- on 1914:FRA:rung, N24-233-holdout (md5 4a137043), seed 13579, 400 turns, difficulty 3.) The mask tests country-wide
     // POPULATION (headcount); the executor tests the chosen province's
     // availableManpower (what is left to conscript after orders already placed
     // this turn) and refuses when maxRecruit = manpower/5 is under 1000. A
@@ -4837,7 +4984,11 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // "st.army > 0 && has a frontier" offered this action on almost every turn
     // of the game, and execWar then answered "reinforce: nothing to move" —
     // measured at 3,181 times in a 400-turn run, a tenth of every war decision
-    // taken on the map. A masked-out action costs the policy nothing; an action
+    // taken on the map. (THAT FIGURE'S SEAT, MODEL AND SEED ARE NOT RECORDED,
+    // so it cannot be differenced against a later run: journal 326 measured
+    // 44,291 on 1914:FRA:rung, N24-233-holdout (md5 4a137043), seed 13579, 400 turns, difficulty 3,
+    // fourteen times as many, and there is no way to tell a regression from a
+    // different world. Write the configuration beside the number.) A masked-out action costs the policy nothing; an action
     // that is offered and does nothing costs it a turn, and teaches it that the
     // war module is mostly inert.
     auto garrisonOf = [&](int pid, int owner) -> long long {
@@ -5047,6 +5198,9 @@ void AISystem::validNavy(int cid, std::vector<bool>& v) {
         auto relIt = me ? g.m_relations.find(me->isoA3) : g.m_relations.end();
         if (mapW > 0 && mapH > 0 && relIt != g.m_relations.end()) {
             for (const auto& s : g.m_ships) {
+                // Loaded boats only. `crew <= 0` skips every WARSHIP by
+                // construction, not the empty ones -- see the "CREW <= 0 IS A
+                // TYPE TEST" note in the amphibious reflex.
                 if (s.countryId != cid || s.crew <= 0) continue;
                 const double reach = g.shipMaxRangeDeg(s);
                 for (const auto& [pid, port] : g.m_provincePorts) {
@@ -5644,13 +5798,27 @@ std::string AISystem::execPolitics(int cid, int action) {
             const CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
             // A calming doctrine the country cannot pay for calms nothing: the
             // bankruptcy cascade repeals it and charges unrest for the trouble.
-            // OFF by default: gating the calming doctrine on current headroom
-            // moved 1914:SWE seed 20260801 from 3.4 to 2.4 and N24 from 227 to
-            // 209 (all seats). A calming doctrine the treasury cannot carry
-            // still calms; the cascade repeals it later at a price smaller
-            // than the rebellion it prevented. Same lesson as capping
-            // conciliation (-8.5 paired): the unrest levers are not where to
-            // save money. OD_CALM_GATE=1 to measure it again.
+            // OFF by default, and the REASON is the mechanism below, not a
+            // measurement. A calming doctrine the treasury cannot carry still
+            // calms; the cascade repeals it later at a price smaller than the
+            // rebellion it prevented. Same lesson as capping conciliation
+            // (-8.5 paired): the unrest levers are not where to save money.
+            //
+            // This comment used to cite "1914:SWE seed 20260801 from 3.4 to
+            // 2.4 and N24 from 227 to 209 (all seats)" as the cost of gating.
+            // That was ONE SEED on the all-seats metric, which includes
+            // 1914:SWE (par 1.0) and modern:CHN (par 2.5) -- both of which
+            // score 500 or 0 and nothing between (journal 287). Journal 295
+            // re-measured on two models and 8 fresh seeds, 48 runs:
+            //     graded pair FRA+USA   N24 +21 CI [-37,+79]
+            //                           N47 +34 CI [-43,+110]
+            //     the same 3-seat metric  N24 +56    N47 -2
+            // Gating is +56 on the metric the old figure quoted, not -18:
+            // opposite sign, and indistinguishable from zero on either model.
+            // The bench cannot resolve this either way -- its floor is ~60
+            // points (journal 296) -- so leave the default where the mechanism
+            // argument puts it, and do not re-derive it from the old number.
+            // OD_CALM_GATE=1 to measure it again.
             static const bool calmGate = std::getenv("OD_CALM_GATE") && atoi(std::getenv("OD_CALM_GATE")) != 0;
             const float calmHeadroom = !calmGate ? 1e9f : losingGround(cid) ? 0.0f
                                      : std::max(0.0f, inc.total - inc.expenses);
@@ -6040,9 +6208,29 @@ std::string AISystem::execWar(int cid, int action) {
     // abandoned is not one. This is the untested middle. A campaign steers
     // three things -- where new men are raised, where men are moved, and who
     // is attacked -- and only the third is the commitment. So when the home
-    // front is losing ground, the campaign keeps AIMING at its victim and
+    // front is under pressure, the campaign keeps AIMING at its victim and
     // stops SOAKING UP the reinforcements: recruit and reinforce fall back
     // to the ordinary threat rule, the attack stays constant.
+    //
+    // READ THE CONDITION, NOT THIS PARAGRAPH. It used to say "losing ground",
+    // which is not what the test below checks. Measured on 1914:FRA:rung and
+    // modern:CHN:rung, N24 (md5 4a137043), seed 13579, 400 turns, difficulty 3
+    // (journal 344), over campaign-open recruit decisions:
+    //
+    //     provincesLost > 0     12.9% / 3.3%     (2.7% / 1.1% ALONE)
+    //     worstDeficit  > 0     48.9% / 43.0%   (38.7% / 40.8% ALONE)
+    //
+    // The disjunction is carried entirely by worstDeficit -- a neighbour's
+    // army exceeding one of our garrisons, see threatened() around line 7439 --
+    // which fires long before any ground is lost. Actually losing provinces
+    // contributes one to three percent on its own. Whoever benches this is
+    // benching a garrison comparison.
+    //
+    // REACH, same run: a campaign is open on 6.0% / 8.4% of recruit decisions
+    // and 7.3% / 9.0% of reinforce ones; the condition holds on 44-52% of
+    // those; and the threat rule then wants a different province on 96.9% /
+    // 72.8%. So the gate moves 2-3% of decisions at each site -- the largest
+    // reach of the three gates this loop has measured.
     static const bool homeFirst = std::getenv("OD_CAMPAIGN_HOMEFIRST") &&
                                   atoi(std::getenv("OD_CAMPAIGN_HOMEFIRST")) != 0;
     const bool campYields = homeFirst && (st.provincesLost > 0 || st.worstDeficit > 0);
@@ -6052,6 +6240,37 @@ std::string AISystem::execWar(int cid, int action) {
             // A campaign is a commitment, and this is where it becomes one:
             // while it is open, new men are raised where the campaign is
             // staged rather than wherever the threat rule points this turn.
+            // [PROBE] journal 344: the gate's reach is a PRODUCT -- campaign
+            // open, home losing, and the pick actually changing. Counted at
+            // the site so the third term is the real one, not a guess. The
+            // staging province is remembered and compared with whatever the
+            // threat rule goes on to choose.
+            const Game::Campaign* probeCamp = g.campaignOf(cid);
+            const bool probeLosing = (st.provincesLost > 0 || st.worstDeficit > 0);
+            ++s_camp[0];
+            if (probeCamp) {
+                ++s_camp[1];
+                if (probeLosing) ++s_camp[2];
+                if (st.provincesLost > 0) ++s_camp[3];
+                if (st.worstDeficit > 0)  ++s_camp[4];
+                if (st.provincesLost > 0 && st.worstDeficit <= 0) ++s_camp[5];
+                if (st.worstDeficit > 0 && st.provincesLost <= 0) ++s_camp[6];
+                // WOULD YIELDING MOVE THE RECRUIT? The first version of this
+                // counter sat inside the `pid < 0` branch below -- which, with
+                // the gate OFF, never runs while a campaign is open, because
+                // pid has just been set to the staging province. It could only
+                // ever have read zero. So compute the threat rule's own answer
+                // here, read-only, and compare. Journal 344.
+                if (probeLosing && !st.frontiers.empty()) {
+                    float bestS = -1.0e30f; int bestPid = -1;
+                    for (auto& fr : st.frontiers) {
+                        const float sc = threatScore(fr.pid);
+                        if (sc > bestS) { bestS = sc; bestPid = fr.pid; }
+                    }
+                    ++s_camp[7];
+                    if (bestPid != probeCamp->stagingProvince) ++s_camp[8];
+                }
+            }
             if (const Game::Campaign* camp = g.campaignOf(cid))
                 if (!campYields) pid = camp->stagingProvince;
             if (pid < 0 && !st.frontiers.empty()) {
@@ -6080,6 +6299,18 @@ std::string AISystem::execWar(int cid, int action) {
                 // 108,650 -> 104,895 refusals) because the mask can only ask
                 // whether SOME province would serve, while the executor commits
                 // to this one. The choice is what is wrong, not the gate.
+                //
+                // THAT RANKING DID NOT REPRODUCE. Journal 330 measured the
+                // refusal RATE on 1914:FRA:rung, N24-233-holdout (md5 4a137043), seed 13579, 400 turns, difficulty 3:
+                //     off   39.5%   (10,288 refusals of 26,019 plays)
+                //     PICK  28.1%   (11,063 of 39,364 -- the action succeeds,
+                //                    so it is chosen 51% more often and the
+                //                    RAW count rises while the rate falls)
+                //     MASK  24.7%   (6,415 of 25,995 -- plays unchanged)
+                // Here the mask is the BETTER of the two, not the worse. The
+                // figures above carry no seat, model or seed, so this is a
+                // configuration difference that cannot be resolved rather than
+                // a refutation. Neither is on by default.
                 static const bool pickByManpower = std::getenv("OD_RECRUIT_PICK") &&
                                                    atoi(std::getenv("OD_RECRUIT_PICK")) != 0;
                 long long bp = -1;
@@ -6121,6 +6352,10 @@ std::string AISystem::execWar(int cid, int action) {
                                   ? TextFormat(", %.1f mun", price.munitions) : "");
         }
         case 2: { // reinforce EVERY threatened frontier, worst first
+            // [PROBE] journal 344: the DENOMINATOR for the reinforce-site
+            // rates below. Printing "campaign open 887" with nothing to divide
+            // by is the defect journal 340 swept this project for.
+            ++s_campReinf;
             // One order per turn could never produce a frontline. A country
             // invaded across six provinces got to top up exactly one of them,
             // and only in the turns where the policy happened to sample this
@@ -6137,6 +6372,23 @@ std::string AISystem::execWar(int cid, int action) {
             // The staging province first while a campaign is open: the
             // commitment decides where force goes, not the turn's worst
             // frontier. Everything after it is the ordinary order.
+            // [PROBE] the same three terms at the reinforce site, plus
+            // whether the staging province is in the ordinary order's top
+            // slots anyway -- if it is, yielding changes who goes FIRST and
+            // not who goes at all.
+            if (const Game::Campaign* pc = g.campaignOf(cid)) {
+                ++s_camp[9];
+                if (st.provincesLost > 0 || st.worstDeficit > 0) {
+                    ++s_camp[10];
+                    bool inTop = false;
+                    int seen = 0;
+                    for (auto& [sc, dp] : ranked) {
+                        if (seen++ >= MAX_REINFORCE_ORDERS) break;
+                        if (dp == pc->stagingProvince) { inTop = true; break; }
+                    }
+                    if (inTop) ++s_camp[11];
+                }
+            }
             if (const Game::Campaign* camp = g.campaignOf(cid))
                 if (!campYields && reinforceProvince(cid, camp->stagingProvince)) ++issued;
             for (auto& [score, dstPid] : ranked) {
@@ -6716,17 +6968,61 @@ bool AISystem::reinforceProvince(int cid, int dstPid, long long want) {
         }
         return false;
     };
+    // FALL BACK TO THE NEXT-BEST SOURCE (OD_REINF_FALLBACK=1, default OFF).
+    //
+    // The default path below is the ORIGINAL code, verbatim: take the single
+    // largest neighbouring garrison and give up if that province already
+    // carries a move order. Journal 326 measured what that costs --
+    // "reinforce: nothing to move" fired 44,291 times, 16.2% of every action
+    // the AI took, on 1914:FRA:rung, N24-233-holdout (md5 4a137043), seed 13579, 400 turns, difficulty 3
+    // -- and journal 327 showed the
+    // mask-level OD_REINFORCE_GATE recovers only 5% of it, because the problem
+    // is this single-source choice and not the mask.
+    //
+    // With the flag on, candidates are tried in descending garrison order and
+    // the first free one wins. Journal 328: the refusal falls 44,291 -> 29,269
+    // (-33.9%), confirming the diagnosis. It is OFF until it is judged on more
+    // than one seed -- the same run moved the France seat 21.4 -> 9.1, which is
+    // one seed and decides nothing, but is not the direction of a free win.
+    //
+    // The two paths must agree exactly when the flag is off, INCLUDING tie
+    // breaks: sorting equal garrisons by province id picked a different source
+    // than the original's first-encountered, which changed play on a run that
+    // was supposed to be inert. The decision hash caught it.
+    static const bool fallback = std::getenv("OD_REINF_FALLBACK") &&
+                                 atoi(std::getenv("OD_REINF_FALLBACK")) != 0;
     int srcPid = -1; long long srcG = 0;
-    for (int nid : nIt->second) {
-        if (nid < 0 || nid >= (int)g.m_provinceCountryLookup.size() ||
-            g.m_provinceCountryLookup[nid] != cid) continue;
-        if (atRisk(nid)) continue;   // see the guard above
-        long long gsz = garrisonOf(nid, cid);
-        if (gsz > srcG) { srcG = gsz; srcPid = nid; }
+    if (!fallback) {
+        for (int nid : nIt->second) {
+            if (nid < 0 || nid >= (int)g.m_provinceCountryLookup.size() ||
+                g.m_provinceCountryLookup[nid] != cid) continue;
+            if (atRisk(nid)) continue;   // see the guard above
+            long long gsz = garrisonOf(nid, cid);
+            if (gsz > srcG) { srcG = gsz; srcPid = nid; }
+        }
+        if (srcPid < 0 || srcG < 200) return false;
+        for (auto& mo : g.m_pendingMoveOrders)
+            if (mo.fromProvince == srcPid && mo.countryId == cid) return false;
+    } else {
+        std::vector<std::pair<long long, int>> srcs;
+        for (int nid : nIt->second) {
+            if (nid < 0 || nid >= (int)g.m_provinceCountryLookup.size() ||
+                g.m_provinceCountryLookup[nid] != cid) continue;
+            if (atRisk(nid)) continue;
+            const long long gsz = garrisonOf(nid, cid);
+            if (gsz >= 200) srcs.push_back({gsz, nid});
+        }
+        std::stable_sort(srcs.begin(), srcs.end(),
+                         [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (const auto& [gsz, nid] : srcs) {
+            bool ordered = false;
+            for (auto& mo : g.m_pendingMoveOrders)
+                if (mo.fromProvince == nid && mo.countryId == cid) { ordered = true; break; }
+            if (ordered) continue;
+            srcPid = nid; srcG = gsz; break;
+        }
+        if (srcPid < 0) return false;
     }
-    if (srcPid < 0 || srcG < 200) return false;
-    for (auto& mo : g.m_pendingMoveOrders)
-        if (mo.fromProvince == srcPid && mo.countryId == cid) return false;
     // ── HOW MANY MEN, NOT JUST WHERE ──
     //
     // This moved a flat 50 no matter what was asked for. garrisonReflex ranks
@@ -7272,7 +7568,7 @@ bool AISystem::besieged(const CountryStat& st) const {
 // fifth of income while it lasts. The reflex sets the slider to that,
 // bounded, and lets it decay when nothing is at risk (the austerity reflex
 // cuts it first when the treasury is short).
-// ── CALL TO ARMS REFLEX (OD_CALL_REFLEX, on by default) ──
+// ── CALL TO ARMS REFLEX (OD_CALL_REFLEX, OFF by default) ──
 //
 // Norway, 1939, one rushing Sweden: Sweden takes 13 of 17 provinces in
 // five turns and Norway never asks anyone for help. This morning's reading
@@ -7366,7 +7662,7 @@ void AISystem::callToArmsReflex(int cid) {
     }
 }
 
-// ── WITHDRAW REFLEX (OD_WITHDRAW_REFLEX, on by default) ──
+// ── WITHDRAW REFLEX (OD_WITHDRAW_REFLEX, OFF by default) ──
 //
 // A repulsed assault above the frontage no longer ends: the reserve stands
 // as a battle and fights a round a turn until somebody pulls it out. No
@@ -8060,9 +8356,38 @@ void AISystem::amphibiousReflex(int cid) {
         return false;
     };
 
+    // ── "CREW <= 0" IS A TYPE TEST, NOT AN EMPTINESS TEST ──
+    //
+    // It reads as "skip the hulls that happen to be empty". It is not: only
+    // ships of type "boat" are ever given crew, at generation
+    // (ProceduralGenerator.cpp:1162, `crew = type == "boat" ? 50 + rng() % 451
+    // : 0`) and again on load (Game_Loading.cpp:2831, `if (ns.type != "boat")
+    // ns.crew = 0;`). Every warship therefore carries crew 0 for its whole
+    // life and this line means SKIP THE WARSHIPS.
+    //
+    // Measured (journal 346) on 1914:FRA:rung and modern:CHN:rung, N24
+    // (md5 4a137043), seed 13579, 400 turns, difficulty 3 -- 135,258 own
+    // hull-turns:
+    //
+    //     crewless hull-turns    16,672 / 21,466
+    //     non-"boat" hull-turns  16,672 / 21,466      identical, both seats
+    //     crewless BOATS                  0 /      0
+    //
+    // So on this evidence the invariant is exact: **boats are never empty.**
+    // A boat is loaded at embarkation and stays loaded until it lands -- the
+    // resolver ERASES the hull, Game_TurnLogic.cpp:3477 -- or is sunk
+    // (countryId = UNC_CID, swept by cleanupSunkShips). There is no
+    // empty-transport state to find.
+    //
+    // Why this note exists: journal 342 read the filter as an emptiness rate,
+    // reported "a third of the fleet has no crew", and filed three candidate
+    // causes. All three were impossible and the real answer was fleet
+    // composition. The same filter appears in shipThreatFeature,
+    // nearestLandingRange and the navy executor's landing action; they all
+    // mean the same thing.
     for (size_t i = 0; i < g.m_ships.size(); ++i) {
         auto& s = g.m_ships[i];
-        if (s.countryId != cid || s.crew <= 0) continue;
+        if (s.countryId != cid || s.crew <= 0) continue;   // = loaded boats only
         const double LAND_RANGE = g.shipMaxRangeDeg(s);
         bool busy = false;
         for (auto& dd : g.m_pendingShipDisembarks)
@@ -8128,6 +8453,7 @@ void AISystem::amphibiousReflex(int cid) {
 
         // In range of a hostile shore: land, now. This is the whole point.
         if (enemyPid >= 0 && enemyD <= LAND_RANGE) {
+            ++s_navySplit[0];   // [PROBE] journal 343: reflex, hostile shore
             g.m_pendingShipDisembarks.push_back({(int)i, enemyPid});
             if (g.m_config.aiDebug)
                 printf("[AI] t%d %s [amphib] landing %d troops on prov %d\n",
@@ -8138,6 +8464,7 @@ void AISystem::amphibiousReflex(int cid) {
         // carrying an army around the ocean for the rest of the game.
         if (enemyPid < 0) {
             if (homePid >= 0 && homeD <= LAND_RANGE) {
+                ++s_navySplit[1];   // [PROBE] reflex, unload at home
                 g.m_pendingShipDisembarks.push_back({(int)i, homePid});
             } else if (homePid >= 0 && !sailingTo(i, homePid)) {
                 PendingShipMoveOrder ord;
@@ -8278,6 +8605,9 @@ std::string AISystem::execNavy(int cid, int action) {
         int mapW = g.m_provinces.getWidth(), mapH = g.m_provinces.getHeight();
         if (mapW <= 0 || mapH <= 0) return best;
         for (auto& s : g.m_ships) {
+            // Loaded boats only -- see the "CREW <= 0 IS A TYPE TEST" note in
+            // the amphibious reflex. Warships are excluded by type, not by
+            // being empty, so this helper asks "can any TRANSPORT land".
             if (s.countryId != cid || s.crew <= 0) continue;
             for (auto& [pid, port] : g.m_provincePorts) {
                 const Province* p = g.m_provinces.getProvinceById(pid);
@@ -8399,6 +8729,7 @@ std::string AISystem::execNavy(int cid, int action) {
             int bestPid = -1, bestG = 0;
             if (!bestEmbarkPort(cid, bestPid, bestG))
                 return didNothing("embark: no garrison at port");
+            ++s_navySplit[2];   // [PROBE] head, the only embark site
             g.m_pendingEmbarkations.push_back({bestPid, bestG / 2, 1});
             statsFor(cid).embarks++;
             return TextFormat("embark %d from prov %d", bestG / 2, bestPid);
@@ -8408,11 +8739,125 @@ std::string AISystem::execNavy(int cid, int action) {
             if (mapW <= 0 || mapH <= 0) return didNothing("disembark: no map");
             for (size_t i = 0; i < g.m_ships.size(); ++i) {
                 auto& s = g.m_ships[i];
+                // [PROBE] journal 342: counted BEFORE the filters, because
+                // journal 341's 71,373 was the count AFTER them and item 78
+                // asks whether that was the right denominator.
+                static const bool landWhy = std::getenv("OD_LANDING_PROBE") &&
+                                            atoi(std::getenv("OD_LANDING_PROBE")) != 0;
+                if (landWhy && s.countryId == cid) {
+                    ++s_landWhy[0];
+                    // Journal 346 (item 81): split the crew-less hulls by
+                    // type. Only "boat" ever carries troops -- every other
+                    // type is generated with crew 0 and stays there -- so this
+                    // says whether the filter is empty transports or warships.
+                    if (s.type == "boat") ++s_hullType[0];
+                    if (s.crew <= 0) {
+                        ++s_landWhy[1];
+                        ++s_hullType[s.type == "boat" ? 1 : 2];
+                    }
+                }
+                // Loaded boats only -- see the "CREW <= 0 IS A TYPE TEST"
+                // note in the amphibious reflex. This is the line journal 342
+                // read as an emptiness rate; it is the warship share.
                 if (s.countryId != cid || s.crew <= 0) continue;
                 bool busy = false;
                 for (auto& dd : g.m_pendingShipDisembarks)
                     if (dd.shipIndex == (int)i) { busy = true; break; }
+                if (landWhy && busy) ++s_landWhy[2];
                 if (busy) continue;
+                if (landWhy) ++s_landWhy[3];
+                // ── [PROBE] IS THIS DECISION EVER OFFERED A CHOICE? ──
+                //
+                // (OD_LANDING_PROBE, off by default.) A read-only pre-pass that
+                // collects every shore the hull could reach and scores it, then
+                // lets the ORIGINAL loop below decide. Both picks are computed
+                // and NEITHER is used; the decision hash proves that rather
+                // than asserting it. It answers "how often is there more than
+                // one shore, and how much stronger is the one container order
+                // happens to yield" without a bench arm -- journal 341.
+                static const bool landProbe = std::getenv("OD_LANDING_PROBE") &&
+                                              atoi(std::getenv("OD_LANDING_PROBE")) != 0;
+                if (landProbe) {
+                    static const bool reg = (atexit(&AISystem::dumpLandingProbe), true);
+                    (void)reg;
+                    int firstPid = -1, weakPid = -1;
+                    double firstDef = 0.0, weakDef = 1e30;
+                    int n = 0;
+                    for (auto& [ppid, pport] : g.m_provincePorts) {
+                        const Province* pp = g.m_provinces.getProvinceById(ppid);
+                        if (!pp || !atWarWith(pp->countryId)) continue;
+                        auto pc = g.m_provinceCenters.find(ppid);
+                        if (pc == g.m_provinceCenters.end()) continue;
+                        const double plon = pc->second.x / mapW * 360.0 - 180.0;
+                        const double plat = 90.0 - pc->second.y / mapH * 180.0;
+                        if (Game::seaDistanceDeg(s.lon, s.lat, plon, plat) > g.shipMaxRangeDeg(s))
+                            continue;
+                        const int owner = (ppid >= 0 && ppid < (int)g.m_provinceCountryLookup.size())
+                                              ? g.m_provinceCountryLookup[ppid] : 0;
+                        long long garrison = 0;
+                        auto ait = g.m_provinceArmies.find(ppid);
+                        if (ait != g.m_provinceArmies.end())
+                            for (const auto& u : ait->second)
+                                if (u.countryId == owner) garrison += u.count;
+                        const auto ind = g.m_provinceIndustry.find(ppid);
+                        const float fort = ind != g.m_provinceIndustry.end()
+                                             ? (float)ind->second.fortification : 0.0f;
+                        const double defence = (double)garrison * (1.0 + fort * 0.1) *
+                                               (1.0 + g.getTotalEffect("armyDefPct", owner) / 100.0);
+                        if (n == 0) { firstPid = ppid; firstDef = defence; }
+                        if (defence < weakDef) { weakDef = defence; weakPid = ppid; }
+                        ++n;
+                    }
+                    // ── HOW FAR IS THE NEAREST HOSTILE PORT, WITH NO RANGE
+                    //    FILTER AT ALL (journal 342, item 78) ──
+                    //
+                    // Separates "no hostile port exists" from "one exists and
+                    // is out of reach", which want opposite work. Bucketed by
+                    // distance over the hull's OWN range, so 1.0 is exactly at
+                    // the limit.
+                    {
+                        double nearest = 1e30;
+                        int hostilePorts = 0;
+                        for (auto& [qpid, qport] : g.m_provincePorts) {
+                            const Province* qp = g.m_provinces.getProvinceById(qpid);
+                            if (!qp || !atWarWith(qp->countryId)) continue;
+                            auto qc = g.m_provinceCenters.find(qpid);
+                            if (qc == g.m_provinceCenters.end()) continue;
+                            ++hostilePorts;
+                            const double qlon = qc->second.x / mapW * 360.0 - 180.0;
+                            const double qlat = 90.0 - qc->second.y / mapH * 180.0;
+                            const double d = Game::seaDistanceDeg(s.lon, s.lat, qlon, qlat);
+                            if (d < nearest) nearest = d;
+                        }
+                        const double rng = (double)g.shipMaxRangeDeg(s);
+                        if (hostilePorts == 0) {
+                            ++s_landWhy[4];               // (b) nothing to reach
+                        } else {
+                            ++s_landWhy[5];               // a hostile port exists
+                            s_landPorts += hostilePorts;
+                            if (rng > 0.0 && nearest < 1e29) {
+                                const double r = nearest / rng;
+                                s_landNearSum += nearest; s_landRngSum += rng;
+                                ++s_landRatN;
+                                const int b = r <= 1.0 ? 0 : r <= 2.0 ? 1 : r <= 4.0 ? 2
+                                            : r <= 8.0 ? 3 : 4;
+                                ++s_landDist[b];
+                            }
+                        }
+                    }
+                    ++s_land[0];                                  // hulls asked
+                    if (n >= 1) ++s_land[1];                      // at least one shore
+                    if (n >= 2) ++s_land[2];                      // a CHOICE
+                    if (n >= 2 && firstPid != weakPid) ++s_land[3];
+                    if (n >= 2) {
+                        s_landCands += n;
+                        // 1.5x is the threshold journal 341 pre-registered.
+                        if (firstDef >= weakDef * 1.5) ++s_land[4];
+                        if (weakDef <= 0.0 && firstDef > 0.0) ++s_land[5];  // undefended passed over
+                        if (weakDef > 0.0) s_landRatio += firstDef / weakDef;
+                        if (weakDef > 0.0) ++s_land[6];
+                    }
+                }
                 std::vector<int> landCands;   // see OD_LANDING_PICK below
                 for (auto& [pid, port] : g.m_provincePorts) {
                     const Province* p = g.m_provinces.getProvinceById(pid);
@@ -8447,9 +8892,28 @@ std::string AISystem::execNavy(int cid, int action) {
                     // the resolver weights them. No landing that would have
                     // happened is REFUSED -- making this head decline has
                     // measured badly before -- the question is only where.
+                    //
+                    // HOW OFTEN "AMONG SEVERAL REACHABLE SHORES" HAPPENS: 16
+                    // times in a run. Journal 341, 1914:FRA:rung and
+                    // modern:CHN:rung, N24 (md5 4a137043), seed 13579, 400
+                    // turns, difficulty 3 -- 71,373 hull-turns scanned, a
+                    // hostile shore in range 58 times (0.08%), two or more
+                    // shores 16 times. Given a choice, container order is not
+                    // the weakest 12 of those 16, so the arbitrariness is
+                    // real; on sixteen observations its cost is not.
+                    //
+                    // The reason is not that the AI has nothing to attack: a
+                    // hostile port existed on 100.0% of scans, 15-40 of them,
+                    // a median 2-4 hull-ranges away. Nor is the amphibious
+                    // system broken -- journal 343 counted 97-100% of landings
+                    // coming from the amphibious REFLEX, which sails the boats
+                    // in, at 0.74-0.81 landings per embarkation. This action
+                    // is a snapshot test from wherever a hull happens to be,
+                    // and hulls are usually mid-crossing. Tune it last.
                     static const bool pickWeakest = std::getenv("OD_LANDING_PICK") &&
                                                     atoi(std::getenv("OD_LANDING_PICK")) != 0;
                     if (pickWeakest) { landCands.push_back(pid); continue; }
+                    ++s_navySplit[3];   // [PROBE] head, container-order shore
                     g.m_pendingShipDisembarks.push_back({(int)i, pid});
                     return TextFormat("disembark %d troops at prov %d", s.crew * 100, pid);
                 }
@@ -8472,6 +8936,7 @@ std::string AISystem::execNavy(int cid, int action) {
                     }
                     landCands.clear();
                     if (bestPid >= 0) {
+                        ++s_navySplit[4];   // [PROBE] head, weakest shore
                         g.m_pendingShipDisembarks.push_back({(int)i, bestPid});
                         return TextFormat("disembark %d troops at prov %d", s.crew * 100, bestPid);
                     }
@@ -10635,6 +11100,10 @@ void AISystem::endTurn() {
                 // make; otherwise they are 10 to 25 a turn each.
                 const bool fleetUseful = exp.atWar || now.navalTargets > 0 ||
                                          now.navalWarTargets > 0;
+                {   // Journal 322: the ship term's sign depends on this rate.
+                    static const bool fuOn = std::getenv("OD_ACT_HIST") != nullptr;
+                    if (fuOn) ++s_fleetUseful[fleetUseful ? 0 : 1];
+                }
                 // THE FLEET, CHARGED TO WHOEVER MADE THE DECISION.
                 //
                 // This used to be one term on dShips -- the fleet's NET change
@@ -13067,6 +13536,29 @@ std::string AISystem::countrySummary(int cid) const {
 
 // Action histogram storage and dump. See OD_ACT_HIST at the module dispatch.
 int AISystem::s_actHist[AISystem::MOD_COUNT][AISystem::MAX_MODULE_ACTIONS] = {};
+long long AISystem::s_portFail[3] = {0,0,0};
+long long AISystem::s_portCapSeen[4] = {0,0,0,0};
+long long AISystem::s_fleetUseful[2] = {0,0};
+long long AISystem::s_warBar[8] = {};
+long long AISystem::s_land[7] = {};
+long long AISystem::s_landWhy[6] = {};
+long long AISystem::s_navySplit[5] = {};
+long long AISystem::s_camp[12] = {};
+long long AISystem::s_campReinf = 0;
+long long AISystem::s_hullType[3] = {};
+long long AISystem::s_landDist[5] = {};
+long long AISystem::s_landPorts = 0;
+long long AISystem::s_landRatN = 0;
+double AISystem::s_landNearSum = 0.0;
+double AISystem::s_landRngSum = 0.0;
+long long AISystem::s_landCands = 0;
+double AISystem::s_landRatio = 0.0;
+double AISystem::s_warBarAtk = 0.0;
+double AISystem::s_warBarDef = 0.0;
+long long AISystem::s_gateWhy[4][6] = {};
+int AISystem::s_netPicked[4][12] = {};
+double AISystem::s_probSum[4][12] = {};
+long long AISystem::s_probN[4][12] = {};
 int AISystem::s_offHist[AISystem::MOD_COUNT][AISystem::MAX_MODULE_ACTIONS] = {};
 long long AISystem::s_navalPorts = 0;
 long long AISystem::s_navalShips = 0;
@@ -13106,6 +13598,167 @@ long long AISystem::s_researchN = 0;
 long long AISystem::s_gateOffered[ECON_ACTIONS]    = {0};
 long long AISystem::s_gateNoCash[ECON_ACTIONS]    = {0};
 long long AISystem::s_gateImpossible[ECON_ACTIONS] = {0};
+
+// Idempotent: both exit hooks may be registered, and the line must appear once.
+void AISystem::dumpDecisionHash() {
+    static bool done = false;
+    if (done || s_decisionCount <= 0) return;
+    done = true;
+    fprintf(stderr, "[DECHASH] %llu over %lld decisions\n",
+            s_decisionHash, s_decisionCount);
+}
+
+// Idempotent, and registered by the probe itself -- journal 300's lesson: an
+// instrument whose report lives only in dumpActionHistogram is silent unless
+// OD_ACT_HIST happens to be set too, and silence reads as "found nothing".
+// Idempotent; registered by the probe itself, like dumpWarBarProbe.
+// Journal 343. Unlike the other probes these counters always increment -- five
+// integer bumps on paths that push an order are not worth an env check -- so
+// the report cannot be silently empty for want of a flag, which is the defect
+// journal 300 fixed twice.
+// Journal 344. Its OWN hook, registered outside every other instrument's gate
+// -- registering inside one is the defect journals 300, 339 and 343 all hit.
+void AISystem::dumpCampaignProbe() {
+    static bool done = false;
+    if (done || s_camp[0] <= 0) return;
+    done = true;
+    const double a = (double)s_camp[0];
+    fprintf(stderr, "[CAMPGATE] recruit decisions %lld   campaign OPEN %lld (%.1f%%)   "
+                    "open AND home losing %lld (%.1f%% of all, %.1f%% of open)\n",
+            s_camp[0], s_camp[1], 100.0 * (double)s_camp[1] / a,
+            s_camp[2], 100.0 * (double)s_camp[2] / a,
+            s_camp[1] ? 100.0 * (double)s_camp[2] / (double)s_camp[1] : 0.0);
+    if (s_camp[1] > 0) {
+        const double o = (double)s_camp[1];
+        fprintf(stderr, "[CAMPGATE] of campaign-open decisions: provincesLost>0 %lld (%.1f%%)  "
+                        "worstDeficit>0 %lld (%.1f%%)  lost-ONLY %lld (%.1f%%)  "
+                        "deficit-ONLY %lld (%.1f%%)\n",
+                s_camp[3], 100.0 * (double)s_camp[3] / o,
+                s_camp[4], 100.0 * (double)s_camp[4] / o,
+                s_camp[5], 100.0 * (double)s_camp[5] / o,
+                s_camp[6], 100.0 * (double)s_camp[6] / o);
+    }
+    if (s_camp[7] > 0)
+        fprintf(stderr, "[CAMPGATE] recruit, where the gate could act (%lld): the threat rule "
+                        "picks a DIFFERENT province %lld (%.1f%%)\n",
+                s_camp[7], s_camp[8], 100.0 * (double)s_camp[8] / (double)s_camp[7]);
+    if (s_camp[9] > 0)
+        fprintf(stderr, "[CAMPGATE] reinforce decisions %lld   campaign OPEN %lld (%.1f%%)   "
+                        "and home losing %lld (%.1f%% of open)   staging province in the "
+                        "ordinary top slots anyway %lld (%.1f%%)\n",
+                s_campReinf, s_camp[9],
+                s_campReinf ? 100.0 * (double)s_camp[9] / (double)s_campReinf : 0.0,
+                s_camp[10],
+                100.0 * (double)s_camp[10] / (double)s_camp[9],
+                s_camp[11],
+                s_camp[10] ? 100.0 * (double)s_camp[11] / (double)s_camp[10] : 0.0);
+}
+
+void AISystem::dumpNavySplit() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    const long long land = s_navySplit[0] + s_navySplit[3] + s_navySplit[4];
+    if (land + s_navySplit[1] + s_navySplit[2] <= 0) return;
+    fprintf(stderr, "[NAVYSPLIT] embarks (head, the only site) %lld   "
+                    "HOSTILE landings %lld = reflex %lld + head %lld   "
+                    "home unloads (reflex) %lld\n",
+            s_navySplit[2], land, s_navySplit[0],
+            s_navySplit[3] + s_navySplit[4], s_navySplit[1]);
+    if (land > 0)
+        fprintf(stderr, "[NAVYSPLIT] of hostile landings: reflex %.1f%%  head %.1f%%\n",
+                100.0 * (double)s_navySplit[0] / (double)land,
+                100.0 * (double)(s_navySplit[3] + s_navySplit[4]) / (double)land);
+    if (s_navySplit[2] > 0)
+        fprintf(stderr, "[NAVYSPLIT] hostile landings per embarkation %.3f "
+                        "(journal 37c measured 0.74 on a DIFFERENT harness: "
+                        "champion vs script, shipped map, 80 turns)\n",
+                (double)land / (double)s_navySplit[2]);
+}
+
+void AISystem::dumpLandingProbe() {
+    static bool done = false;
+    if (done || s_land[0] <= 0) return;
+    done = true;
+    if (s_landWhy[0] > 0 && s_landWhy[1] > 0) {
+        const double e = (double)s_landWhy[1];
+        fprintf(stderr, "[HULLTYPE] own hull-turns %lld, of which type \"boat\" %lld (%.1f%%)   "
+                        "crew<=0: boats %lld (%.1f%% of crewless)  NON-boat %lld (%.1f%%)\n",
+                s_landWhy[0], s_hullType[0],
+                100.0 * (double)s_hullType[0] / (double)s_landWhy[0],
+                s_hullType[1], 100.0 * (double)s_hullType[1] / e,
+                s_hullType[2], 100.0 * (double)s_hullType[2] / e);
+    }
+    if (s_landWhy[0] > 0) {
+        const double t = (double)s_landWhy[0];
+        fprintf(stderr, "[LANDWHY] own hulls seen %lld   no crew %lld (%.1f%%)   "
+                        "already ordered %lld (%.1f%%)   reached the port scan %lld (%.1f%%)\n",
+                s_landWhy[0], s_landWhy[1], 100.0 * (double)s_landWhy[1] / t,
+                s_landWhy[2], 100.0 * (double)s_landWhy[2] / t,
+                s_landWhy[3], 100.0 * (double)s_landWhy[3] / t);
+    }
+    if (s_landWhy[4] + s_landWhy[5] > 0) {
+        const double t = (double)(s_landWhy[4] + s_landWhy[5]);
+        fprintf(stderr, "[LANDWHY] of the hull-turns that scanned: NO hostile port exists "
+                        "%lld (%.1f%%)   one exists %lld (%.1f%%)   mean hostile ports "
+                        "when any %.1f\n",
+                s_landWhy[4], 100.0 * (double)s_landWhy[4] / t,
+                s_landWhy[5], 100.0 * (double)s_landWhy[5] / t,
+                s_landWhy[5] ? (double)s_landPorts / (double)s_landWhy[5] : 0.0);
+    }
+    if (s_landRatN > 0) {
+        const double t = (double)s_landRatN;
+        fprintf(stderr, "[LANDWHY] nearest hostile port / hull range, %lld hull-turns: "
+                        "<=1x %lld (%.1f%%)  1-2x %lld (%.1f%%)  2-4x %lld (%.1f%%)  "
+                        "4-8x %lld (%.1f%%)  >8x %lld (%.1f%%)\n",
+                s_landRatN,
+                s_landDist[0], 100.0 * (double)s_landDist[0] / t,
+                s_landDist[1], 100.0 * (double)s_landDist[1] / t,
+                s_landDist[2], 100.0 * (double)s_landDist[2] / t,
+                s_landDist[3], 100.0 * (double)s_landDist[3] / t,
+                s_landDist[4], 100.0 * (double)s_landDist[4] / t);
+        fprintf(stderr, "[LANDWHY] mean nearest %.1f deg   mean hull range %.1f deg\n",
+                s_landNearSum / t, s_landRngSum / t);
+    }
+    const double n = (double)s_land[0];
+    fprintf(stderr, "[LANDPICK] hulls asked %lld   a shore in range %lld (%.1f%%)   "
+                    "A CHOICE (>=2) %lld (%.1f%% of asked, %.1f%% of those with a shore)\n",
+            s_land[0], s_land[1], 100.0 * (double)s_land[1] / n,
+            s_land[2], 100.0 * (double)s_land[2] / n,
+            s_land[1] ? 100.0 * (double)s_land[2] / (double)s_land[1] : 0.0);
+    if (s_land[2] > 0) {
+        const double c = (double)s_land[2];
+        fprintf(stderr, "[LANDPICK] given a choice: mean %.2f shores   container order "
+                        "!= weakest %lld (%.1f%%)   first >= 1.5x weakest %lld (%.1f%%)   "
+                        "undefended shore passed over %lld (%.1f%%)   mean first/weakest %.2f\n",
+                (double)s_landCands / c,
+                s_land[3], 100.0 * (double)s_land[3] / c,
+                s_land[4], 100.0 * (double)s_land[4] / c,
+                s_land[5], 100.0 * (double)s_land[5] / c,
+                s_land[6] ? s_landRatio / (double)s_land[6] : 0.0);
+    }
+}
+
+void AISystem::dumpWarBarProbe() {
+    static bool done = false;
+    if (done || s_warBar[0] <= 0) return;
+    done = true;
+    const double n = (double)s_warBar[0];
+    fprintf(stderr, "[WARBAR] evaluations %lld   pass raw %lld (%.2f%%)  "
+                    "pass research %lld (%.2f%%)   FLIP to-pass %lld  "
+                    "to-fail %lld  (%.2f%% of evaluations)\n",
+            s_warBar[0], s_warBar[1], 100.0*(double)s_warBar[1]/n,
+            s_warBar[2], 100.0*(double)s_warBar[2]/n,
+            s_warBar[3], s_warBar[4],
+            100.0*(double)(s_warBar[3]+s_warBar[4])/n);
+    fprintf(stderr, "[WARBAR] atkPct nonzero %lld (%.1f%%)  defPct nonzero "
+                    "%lld (%.1f%%)   mean atk %+.2f  mean def %+.2f   "
+                    "refused by the +200 floor alone %lld (%.2f%%)\n",
+            s_warBar[5], 100.0*(double)s_warBar[5]/n,
+            s_warBar[6], 100.0*(double)s_warBar[6]/n,
+            s_warBarAtk/n, s_warBarDef/n,
+            s_warBar[7], 100.0*(double)s_warBar[7]/n);
+}
 
 void AISystem::dumpActionHistogram() {
     dumpNoopHistogram();
@@ -13160,9 +13813,7 @@ void AISystem::dumpActionHistogram() {
                     g_pacApplied > 0 ? 100.0 * (g_pacApplied - g_pacNeeded) / g_pacApplied : 0.0,
                     g_pacN);
     }
-    if (s_decisionCount > 0)
-        fprintf(stderr, "[DECHASH] %llu over %lld decisions\n",
-                s_decisionHash, s_decisionCount);
+    dumpDecisionHash();
     fprintf(stderr, "[ACTHIST] anchor gate: reached %lld  leagueLoaded %lld  policyValid %lld  emptyFeat %lld\n",
             s_anchorWhy[0].load(), s_anchorWhy[1].load(), s_anchorWhy[2].load(), s_anchorWhy[3].load());
     fprintf(stderr, "[ACTHIST] anchor pulls: %lld\n",
@@ -13171,6 +13822,45 @@ void AISystem::dumpActionHistogram() {
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
             s_austBranch[0], s_austBranch[1], s_austBranch[2],
             s_austBranch[3], s_austBranch[4], s_austBranch[5]);
+    if (s_portFail[0] + s_portFail[1] + s_portFail[2] > 0) {
+        const long long tp = s_portFail[0] + s_portFail[1] + s_portFail[2];
+        fprintf(stderr, "[PORTFAIL] cap-bound %lld (%.1f%%)  top4-window %lld (%.1f%%)  "
+                        "none-exists %lld (%.1f%%)\n",
+                s_portFail[0], 100.0*s_portFail[0]/tp,
+                s_portFail[1], 100.0*s_portFail[1]/tp,
+                s_portFail[2], 100.0*s_portFail[2]/tp);
+    }
+    if (s_portCapSeen[0]+s_portCapSeen[1]+s_portCapSeen[2]+s_portCapSeen[3] > 0) {
+        const long long tot = s_portCapSeen[0]+s_portCapSeen[1]+s_portCapSeen[2]+s_portCapSeen[3];
+        fprintf(stderr, "[PORTCAP] cap0 %lld  cap1 %lld  cap2 %lld  cap3 %lld   "
+                        "above-1 %.2f%%\n", s_portCapSeen[0], s_portCapSeen[1],
+                s_portCapSeen[2], s_portCapSeen[3],
+                100.0 * (double)(s_portCapSeen[2]+s_portCapSeen[3]) / (double)tot);
+    }
+    dumpWarBarProbe();
+    dumpLandingProbe();
+    dumpNavySplit();
+    dumpCampaignProbe();
+    if (s_fleetUseful[0] + s_fleetUseful[1] > 0) {
+        const long long fu = s_fleetUseful[0], nf = s_fleetUseful[1];
+        const double p = (double)fu / (double)(fu + nf);
+        fprintf(stderr, "[FLEETUSEFUL] true %lld  false %lld  p %.3f  "
+                        "ship-term EV %+.3f (break-even p 0.556)\n",
+                fu, nf, p, p * 0.4 - (1.0 - p) * 0.5);
+    }
+    {
+        const char* why[6] = {"!netDriven","nprob-empty","booked","scripted",
+                              "league","PASSED"};
+        for (int m = 0; m < MOD_COUNT; ++m) {
+            long long any = 0;
+            for (int w = 0; w < 6; ++w) any += s_gateWhy[m][w];
+            if (!any) continue;
+            fprintf(stderr, "[GATEWHY] %-8s", names[m]);
+            for (int w = 0; w < 6; ++w)
+                fprintf(stderr, "  %s %lld", why[w], s_gateWhy[m][w]);
+            fprintf(stderr, "\n");
+        }
+    }
     for (int m = 0; m < MOD_COUNT; ++m) {
         long long tot = 0;
         for (int a = 0; a < MAX_MODULE_ACTIONS; ++a) tot += s_actHist[m][a];
@@ -13178,10 +13868,13 @@ void AISystem::dumpActionHistogram() {
         fprintf(stderr, "[ACTHIST] %-8s total %lld\n", names[m], tot);
         for (int a = 0; a < MAX_MODULE_ACTIONS; ++a)
             if (s_actHist[m][a] || s_offHist[m][a] || a < 12)
-                fprintf(stderr, "[ACTHIST]   %-8s a%-2d picked %7d (%5.2f%%)  offered %8d  taken-when-offered %5.2f%%\n",
+                fprintf(stderr, "[ACTHIST]   %-8s a%-2d played %7d (%5.2f%%)  BY POLICY %7d  offered %8d  taken-when-offered %5.2f%%  pi(a) %.2e over %lld\n",
                         names[m], a, s_actHist[m][a], 100.0 * s_actHist[m][a] / (double)tot,
+                        s_netPicked[m][a],
                         s_offHist[m][a],
-                        s_offHist[m][a] ? 100.0 * s_actHist[m][a] / (double)s_offHist[m][a] : 0.0);
+                        s_offHist[m][a] ? 100.0 * s_actHist[m][a] / (double)s_offHist[m][a] : 0.0,
+                        s_probN[m][a] ? s_probSum[m][a] / (double)s_probN[m][a] : 0.0,
+                        s_probN[m][a]);
     }
 }
 

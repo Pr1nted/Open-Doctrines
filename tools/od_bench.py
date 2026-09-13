@@ -231,9 +231,19 @@ def goods_summary():
             a = per_good.setdefault(k, {"produced": 0.0, "consumed": 0.0, "demand": 0.0})
             for f in a: a[f] += g[f]
     n = len(GOODS_RUNS)
-    return {"runs": n, "ls_mean": sum(lsv) / len(lsv) if lsv else None,
+    # EACH GOOD OVER THE RUNS THAT HAD IT. Dividing every good by n understates
+    # any good that only some runs report -- a good present in half the runs
+    # read at half its value. Counted per good instead (journal 340).
+    n_good = {}
+    for r in GOODS_RUNS:
+        for k in r["goods"]:
+            n_good[k] = n_good.get(k, 0) + 1
+    return {"runs": n, "ls_runs": len(lsv),
+            "ls_mean": sum(lsv) / len(lsv) if lsv else None,
             "idle_share": idle / fac if fac else None,
-            "goods": {k: {f: v / n for f, v in a.items()} for k, a in per_good.items()}}
+            "good_runs": n_good,
+            "goods": {k: {f: v / n_good[k] for f, v in a.items()}
+                      for k, a in per_good.items()}}
 
 
 def print_goods():
@@ -242,7 +252,10 @@ def print_goods():
         return
     ls = f"{g['ls_mean']:.2f}" if g["ls_mean"] is not None else "--"
     idle = f"{100.0 * g['idle_share']:.0f}%" if g["idle_share"] is not None else "--"
-    print(f"  goods economy ({g['runs']} runs): living standards {ls}, factories idle {idle}")
+    _lr = g.get("ls_runs", g["runs"])
+    _ln = "" if _lr == g["runs"] else f" (over {_lr} of them)"
+    print(f"  goods economy ({g['runs']} runs): living standards {ls}{_ln}, "
+          f"factories idle {idle}")
     for k, a in sorted(g["goods"].items()):
         met = 100.0 * a["consumed"] / a["demand"] if a["demand"] else 0.0
         print(f"    {k:<10} produced {a['produced']:8.1f}  consumed {a['consumed']:8.1f}  "
@@ -266,7 +279,10 @@ def cap_summary():
     if not CAP_RUNS:
         return None
     util = [r["used"] / r["total"] for r in CAP_RUNS if r["total"] > 0]
-    return {"runs": len(CAP_RUNS),
+    # "runs" is what OVERCAP averages over; utilisation skips runs with no
+    # capacity, so it carries its own count. Printing one N beside two means
+    # is how a denominator stops being the one that was measured.
+    return {"runs": len(CAP_RUNS), "util_runs": len(util),
             "utilisation": sum(util) / len(util) if util else 0.0,
             "overcap": sum(r["overcap"] for r in CAP_RUNS) / len(CAP_RUNS)}
 
@@ -274,8 +290,10 @@ def cap_summary():
 def print_capacity():
     c = cap_summary()
     if c:
+        _ur = c.get("util_runs", c["runs"])
+        _un = "" if _ur == c["runs"] else f" (over the {_ur} with capacity)"
         print(f"  industry capacity (world, {c['runs']} runs): "
-              f"{100.0 * c['utilisation']:.1f}% utilised, "
+              f"{100.0 * c['utilisation']:.1f}% utilised{_un}, "
               f"{c['overcap']:.1f} grandfathered provinces per run")
 
 # ── THE SEAT SET. FIXED. ──
@@ -314,6 +332,14 @@ SEEDS = [20260801, 4242, 90210]
 # is to score it on worlds it was not chosen against.
 if os.environ.get("OD_BENCH_SEEDS"):
     SEEDS = [int(x) for x in os.environ["OD_BENCH_SEEDS"].split(",") if x.strip()]
+# OD_BENCH_VERBOSE=1 restores the full explanation under each [BENCH] warning.
+# Default is one line per condition: journal 292 measured a routine six-seat run
+# at 32 lines of which 16 were warnings, and the graded-count line -- which
+# decides whether two arms are even comparable (journals 290, 295) -- was the
+# fourteenth of sixteen. The reasoning lives in the comments beside each block
+# and is printed on request; it is not deleted.
+VERBOSE = bool(os.environ.get("OD_BENCH_VERBOSE"))
+
 # The most a single seat may score. Five times its starting size is a runaway
 # result by any standard, and the cap stops one lucky small seat from being the
 # whole rating. See READING THE NUMBER.
@@ -356,6 +382,43 @@ SEATS = [
     ("1914",   "FRA", "rush", 6.7, "the same France, in a world where everyone attacks"),
     ("1939",   "NOR", "hood", 1.3, "small and exposed, with one aggressive neighbour"),
 ]
+
+# OD_BENCH_SEATS restricts the run to a subset, comma-separated, matched as
+# "map:iso" or "map:iso:world" -- e.g. OD_BENCH_SEATS=1914:FRA,1939:USA.
+#
+# This exists because its ABSENCE cost six iterations. Journals 281-286 wanted
+# the three "reliable" seats over eight fresh seeds, could not ask for that
+# here, and so called the server directly in a shell loop and summed the seat
+# scores by hand. That hand-rolled harness reproduced the arithmetic exactly --
+# and skipped every warning in report(). modern:CHN:rung straddles its regimes
+# on those eight seeds (0.0 to 23.9, par 2.5), so the BISTABLE check below
+# would have fired on the FIRST of those runs. It never ran. Five entries then
+# read a coin flip as a floor and a variance.
+#
+# So: if a measurement needs a seat subset, take it from here and keep the
+# warnings. The stored result records its own seat_set, and the rating line
+# prints "N of M seats -- NOT COMPARABLE", so a filtered run cannot be quietly
+# compared against a full one.
+#
+# AND IT PRINTS WHAT IT MATCHED, because the two-part form EXPANDS. "1914:FRA"
+# means every world of that seat -- the ordinary one AND the rushing one -- so
+# a run asking for three seats can quietly execute four. Journal 338 did
+# exactly that: it pre-registered the three rung seats, got 1914:FRA:rush as
+# well, and read a 4-seat rating against a 3-seat hypothesis. The header said
+# "4 seats x 8 seeds" and was read past. Spell the matched seats out.
+FULL_SEAT_COUNT = len(SEATS)
+if os.environ.get("OD_BENCH_SEATS"):
+    want = {s.strip() for s in os.environ["OD_BENCH_SEATS"].split(",") if s.strip()}
+    SEATS = [s for s in SEATS
+             if f"{s[0]}:{s[1]}" in want or f"{s[0]}:{s[1]}:{s[2]}" in want]
+    if not SEATS:
+        raise SystemExit(f"OD_BENCH_SEATS={sorted(want)} matched no seat")
+    _matched = [f"{s[0]}:{s[1]}:{s[2]}" for s in SEATS]
+    print(f"[BENCH] OD_BENCH_SEATS matched {len(_matched)} seat(s): "
+          f"{', '.join(_matched)}")
+    if len(_matched) > len(want):
+        print(f"[BENCH] NOTE: {len(want)} pattern(s) expanded to {len(_matched)} "
+              f"seats -- a two-part pattern takes EVERY world of that seat")
 
 # The exploit variant --vs-exploit takes for a rushing world. 3 is SCRIPT_BLITZ.
 RUSH_VARIANT = 3
@@ -401,6 +464,7 @@ def note_ai_version(out):
         AI_VERSION.add(m.group(1))
 
 
+_pending_per_seed = []
 AI_VERSION = set()
 DROPPED = []
 # Per-seat raw seed values, so report() can tell a stable seat from a bistable
@@ -460,7 +524,15 @@ def seat_score(share, par):
 # Seats measured to have no middle: a run either holds the country or is
 # annihilated. Established for 1914:FRA:rush over 22 runs, 2026-09-10.
 # A mean over fewer than ~10 seeds here is a coin-flip estimate.
-KNOWN_BISTABLE = {"1914:FRA:rush"}
+KNOWN_BISTABLE = {"1914:FRA:rush", "modern:CHN:rung"}
+# modern:CHN:rung added 2026-09-12 (journal 287). Its par is 2.5, so the 5x cap
+# sits at a 12.5% share -- and China either holds well above that or is wiped
+# out. Across 24 observations on one model (journals 282 and 285, eight fresh
+# seeds, three arms) the seat scored EXACTLY 500 or EXACTLY 0 on 22, with two
+# intermediate readings in one arm. It is a survival bit worth a third of the
+# rating, not a graded seat, and it was on the "reliable seats" list for six
+# iterations. Dropping it from those runs moves the shipped change from
+# +89 (CI spanning zero, 6/8 seeds) to +122 (CI [+65,+179], 8/8).
 BISTABLE_SEATS = []
 
 
@@ -503,7 +575,20 @@ def report(label, scores):
             pinned_seats.append(label_)
         note = "  wiped out" if v <= 0.05 else ("  capped" if v / par > CAP else "")
         if bistable:
-            spread_s = "/".join(f"{g:.1f}" for g in raw) if raw else "?"
+            # Show every value while that is readable, and a summary past it.
+            # The power line below tells you to use 64-128 seeds on a seat like
+            # this; printing 128 floats on one line makes the advice unusable.
+            if not raw:
+                spread_s = "?"
+            elif len(raw) <= 12:
+                spread_s = "/".join(f"{g:.1f}" for g in raw)
+            else:
+                hi = [g for g in raw if g >= 0.75 * par]
+                lo = [g for g in raw if g < 0.25 * par]
+                mid = len(raw) - len(hi) - len(lo)
+                spread_s = (f"{len(raw)} seeds: {len(hi)} holding "
+                            f"(median {statistics.median(hi):.1f}), {len(lo)} collapsed"
+                            + (f", {mid} between" if mid else ", none between"))
             # n matters for the ADVICE, not for whether it is bimodal. The mean
             # of a two-regime seat describes no run that happened at any n; but
             # with enough seeds the collapse RATE is a real quantity, and below
@@ -514,7 +599,7 @@ def report(label, scores):
                          f"{coll}/{len(raw)}, not the mean]")
             else:
                 note += f"  [BISTABLE {spread_s} -- only {len(raw)} seeds, mean is not a measurement]"
-            BISTABLE_SEATS.append(label_)
+            BISTABLE_SEATS.append((label_, len(raw)))
         print(f"  {label_:<18} {v:>6.1f} {par:>6.1f} {sc:>7.0f}{note}")
     # PINNED seats carry no information about the arm. A seat whose share
     # exceeds CAP x par scores exactly CAP*100 however well it actually did,
@@ -526,18 +611,84 @@ def report(label, scores):
     # move. It also DAMPS the rating's variance, so the standard error above
     # understates how noisy the discriminating part is.
     if pinned_seats:
-        print(f"\n  [BENCH] {len(pinned_seats)} seat(s) pinned at CAP: "
-              f"{', '.join(pinned_seats)}")
-        print("  [BENCH] a pinned seat scores the same however well it did -- the rating "
-              "cannot see\n  [BENCH] improvement there, and if the other arm pins it too "
-              "it is a shared constant.")
+        print(f"\n  [BENCH] pinned at CAP: {', '.join(pinned_seats)} -- scores the same "
+              f"however well it did")
+        if VERBOSE:
+            print("  [BENCH] a pinned seat scores the same however well it did -- the rating "
+                  "cannot see\n  [BENCH] improvement there, and if the other arm pins it too "
+                  "it is a shared constant.")
+    # HOW MUCH OF THE INSTRUMENT CAN MOVE. A seat-seed observation that is
+    # wiped out (0) or at/over the cap (CAP*100) is a constant: it scores the
+    # same however the arm played. Counting them is the only way to tell that
+    # two arms were not measured by the same instrument.
+    #
+    # Journal 288 measured this across the 281-286 arc. On N24, 14 of 24
+    # seat-seeds were graded; on N35, 9 to 11 -- and the seats differed, with
+    # CHN a dead coin on N24 and USA pinned at CAP on 8 of 8 seeds on N35.
+    # Those two models were compared to each other for three iterations and
+    # read as DISAGREEING about two rules. They were saturated in different
+    # places, which makes the comparison meaningless rather than negative:
+    # N35's arms carried se ~50 and confidence intervals of +/-100.
+    #
+    # So: before comparing two models, compare THIS LINE for both. A model
+    # that pins different seats is being scored by a different instrument.
+    graded = total = 0
+    for mapname, iso, world, par, _why in SEATS:
+        for g in (SPREAD.get(f"{mapname}:{iso}:{world}") or []):
+            total += 1
+            if g > 0.05 and g / par < CAP:
+                graded += 1
+    if total and graded < total:
+        print(f"  [BENCH] {graded}/{total} observations GRADED ({total - graded} pinned at "
+              f"0 or CAP) -- compare this figure across arms before trusting a difference")
+        if VERBOSE:
+            print("  [BENCH] a saturated observation scores the same however the arm played. Two "
+                  "models\n  [BENCH] that saturate DIFFERENT seats are not comparable -- check this "
+                  "line on both\n  [BENCH] before reading a cross-model agreement or disagreement.")
+
     if BISTABLE_SEATS:
-        print(f"\n  [BENCH] {len(BISTABLE_SEATS)} seat(s) bistable: "
-              f"{', '.join(BISTABLE_SEATS)}")
-        print("  [BENCH] a two-regime seat has no meaningful mean. With 10+ seeds read "
-              "its collapse\n  [BENCH] RATE; with fewer, read nothing. Paired within-seed "
-              "arms are the reliable\n  [BENCH] comparison either way -- both sides draw the "
-              "same worlds.")
+        # One figure per distinct seed count -- the seats almost always share n,
+        # and printing it once per seat reads as two different results.
+        ns = sorted({n for _, n in BISTABLE_SEATS if n >= 2})
+        pw = "; ".join(f"{n} seeds resolve a rate difference of ~"
+                       f"{1.96 * math.sqrt(2 * 0.25 / n):.2f}" for n in ns)
+        print(f"\n  [BENCH] bistable: {', '.join(l for l, _ in BISTABLE_SEATS)} -- no meaningful "
+              f"mean, read the collapse RATE;\n  [BENCH] UNPAIRED even on matched seeds"
+              + (f"; {pw}" if pw else ""))
+        if not VERBOSE:
+            print("  [BENCH] OD_BENCH_VERBOSE=1 explains each of the lines above.")
+        if VERBOSE:
+            print("  [BENCH] a two-regime seat has no meaningful mean. Read its collapse RATE.")
+        # PAIRING DOES NOT HELP HERE, and this used to say the opposite.
+        #
+        # The old text read "paired within-seed arms are the reliable comparison
+        # either way -- both sides draw the same worlds". Journal 291 measured
+        # it on 1914:FRA:rush: both arms drew the same 8 worlds and disagreed
+        # about SEVEN of them (1 agreement where independent coins predict 4.1,
+        # P(<=1) = 0.035). Fixing the seed fixes the map and the starting
+        # position; it does not fix the outcome, because the intervention
+        # re-rolls the trajectory and the seat's result is a knife-edge.
+        #
+        # So a rate difference on such a seat is an UNPAIRED two-proportion
+        # problem however the seeds are arranged, and that is what the power
+        # line below computes. It exists because the old advice cost 32 runs on
+        # a question needing ~256: the harness believed pairing made 8 seeds
+        # enough, so nobody did this arithmetic first.
+        if VERBOSE:
+            print("  [BENCH] PAIRING DOES NOT HELP: journal 291 toggled one reflex over the same "
+                  "8\n  [BENCH] worlds and 7 of 8 outcomes flipped. The seed fixes the map, not "
+                  "the\n  [BENCH] outcome -- so treat this as an UNPAIRED rate difference.")
+            for label_, n in BISTABLE_SEATS:
+                if n >= 2:
+                    # Worst-case (p=0.5) se of a difference of two proportions.
+                    det = 1.96 * math.sqrt(2 * 0.25 / n)
+                    verdict = ("can only see a near-total swing" if det >= 0.40 else
+                               "coarse" if det >= 0.20 else "usable")
+                    print(f"  [BENCH] {label_}: {n} seeds resolve a rate difference of "
+                          f"~{det:.2f} at 95% -- {verdict}.")
+            print("  [BENCH] n per arm:   8     16    32    64   128   256")
+            print("  [BENCH] resolves: 0.49  0.35  0.24  0.17  0.12  0.09   -- pick n BEFORE "
+                  "the runs.")
         BISTABLE_SEATS.clear()
     if not vals:
         return None
@@ -550,21 +701,27 @@ def report(label, scores):
     # Paired arms -- same seeds both sides -- cancel most of this and are the
     # reason a replicated paired result can be trusted at a smaller margin.
     se_note = ""
+    per_seed_line = ""
     try:
-        n_seeds = min((len(v) for v in SPREAD.values() if v), default=0)
-        if n_seeds >= 2 and len(SPREAD) >= len(SEATS):
-            per_seed = []
-            for s in range(n_seeds):
-                sv = [min(seat_score(SPREAD[f"{m}:{i}:{w}"][s], par), CAP * 100.0)
-                      for m, i, w, par, _ in SEATS if SPREAD.get(f"{m}:{i}:{w}")]
-                if sv:
-                    per_seed.append(statistics.mean(sv))
-            if len(per_seed) >= 2:
-                se = statistics.stdev(per_seed) / math.sqrt(len(per_seed))
-                se_note = (f"  +/- {se:.0f} se   "
-                           f"(unpaired diffs under ~{2 * math.sqrt(2) * se:.0f} are noise)")
-    except (ValueError, KeyError, IndexError, ZeroDivisionError):
+        per_seed = (per_seed_ratings(SPREAD)
+                    if len(SPREAD) >= len(SEATS) else [])
+        if len(per_seed) >= 2:
+            ps = statistics.mean(per_seed)
+            se = statistics.stdev(per_seed) / math.sqrt(len(per_seed))
+            # The error bar goes on the number it was computed from, and the
+            # headline gets a pointer instead of a figure it does not own.
+            se_note = "   [see the per-seed line below for the error bar]"
+            per_seed_line = (
+                f"  {label}: PER-SEED rating {ps:.0f}  +/- {se:.0f} se   "
+                f"(unpaired diffs under ~{2 * math.sqrt(2) * se:.0f} are noise)\n"
+                f"        this is the mean of the {len(per_seed)} per-seed ratings, NOT the "
+                f"rating of the mean shares above;\n"
+                f"        they differ when a seat is capped or bistable "
+                f"(journal 351: +45 on the 3-seat control).\n"
+                f"        COMPARE THIS ONE with an se or with another arm.")
+    except (ValueError, KeyError, IndexError, ZeroDivisionError, statistics.StatisticsError):
         se_note = ""
+        per_seed_line = ""
     ver = sorted(AI_VERSION)
     # SAY HOW MANY SEATS THE MEAN IS OVER. A seat that produced no [BENCH]
     # line prints "--" in the table above and is skipped here, so the rating
@@ -577,6 +734,8 @@ def report(label, scores):
     # carry its own denominator.
     seat_note = "" if len(vals) == len(SEATS) else \
         f"   [!! {len(vals)} of {len(SEATS)} SEATS -- NOT COMPARABLE]"
+    if per_seed_line:
+        _pending_per_seed.append(per_seed_line)
     print(f"\n  {label}: OD BENCH {rating:.0f} over {len(vals)}/{len(SEATS)} seats{seat_note}{se_note}   "
           f"(100 = held every seat; 0 = annihilated everywhere)"
           + (f"   [{ver[0]}]" if len(ver) == 1 else
@@ -600,8 +759,16 @@ def report(label, scores):
     # this change help the AI hold ground" it is the closer question.
     #
     # Printed, not stored: the stored seats already carry it exactly.
-    _land = sum(v for v in scores.values() if v is not None)
-    _seats_n = sum(1 for v in scores.values() if v is not None)
+    # OVER THE SAME SEATS AS THE RATING ABOVE, which it did not used to be.
+    # This summed the whole stored dict while the rating iterates SEATS, so a
+    # filtered --compare printed "OD BENCH 381 over 3/3 seats" and "land 56.62%
+    # across 4 seats" on adjacent lines, the second including a seat the filter
+    # had excluded (journal 340, seen in journal 338's own output).
+    _lv = [scores.get(f"{m}:{i}:{w}") for m, i, w, _, _ in SEATS]
+    while _pending_per_seed:
+        print(_pending_per_seed.pop(0))
+    _land = sum(v for v in _lv if v is not None)
+    _seats_n = sum(1 for v in _lv if v is not None)
     print(f"  {label}: land {_land:.2f}% of the world across {_seats_n} seats"
           f"   (raw shares, unweighted -- see the note in report())")
 
@@ -652,6 +819,129 @@ def report(label, scores):
           f"(survival = mean of min(seat,100): growth above par earns nothing)"
           f"{surv_note}")
     return rating
+
+
+# ── THE COMPARISON THE RATING CANNOT MAKE ──
+#
+# The rating is a mean of ratios capped at 5x par, so a seat whose par is small
+# scores the SAME at 13% and at 23% of the world. Journal 338 benched a change
+# whose entire effect landed on such a seat -- modern:CHN, median share
+# 14.3 -> 26.0, the only seat near significance -- and the rating moved 42
+# against a ~60 floor, which read as a null. The land share is the quantity the
+# change actually moved, and nothing printed it.
+#
+# So: raw per-seat share, both medians, the difference, and a two-sided
+# UNPAIRED permutation test (unpaired because journal 296 measured seed-pairing
+# as worth zero here). The shuffle count and seed are fixed so two people
+# quoting this line quote the same number.
+def per_seed_ratings(spread):
+    """The rating computed PER SEED, then averaged -- which is NOT what the
+    headline is. The headline applies seat_score to each seat's MEAN share;
+    this applies it per seed and averages after. min(x, CAP) is concave, so by
+    Jensen the headline is >= this, and journal 351 measured the gap at +45
+    points on the standard 3-seat control (381 against 336) because modern:CHN
+    scores 500 on six seeds and 0 on two while its mean share is above the cap.
+
+    Everything with an error bar must use THIS one: the se has always been
+    computed from per-seed ratings, so for twelve entries it was printed beside
+    a number it does not describe."""
+    if not spread:
+        return []
+    n = min((len(v) for v in spread.values() if v), default=0)
+    if n < 2:
+        return []
+    out = []
+    for s_ in range(n):
+        sv = [min(seat_score(spread[f"{m}:{i}:{w}"][s_], par), CAP * 100.0)
+              for m, i, w, par, _ in SEATS if spread.get(f"{m}:{i}:{w}")]
+        if sv:
+            out.append(statistics.mean(sv))
+    return out
+
+
+PERM_N = 20000
+PERM_SEED = 20260912
+
+
+def _perm_p(a, b):
+    """Two-sided unpaired permutation p for mean(b) - mean(a)."""
+    import random
+    rng = random.Random(PERM_SEED)
+    obs = abs(statistics.mean(b) - statistics.mean(a))
+    pool = list(a) + list(b)
+    n = len(a)
+    hits = 0
+    for _ in range(PERM_N):
+        rng.shuffle(pool)
+        if abs(statistics.mean(pool[n:]) - statistics.mean(pool[:n])) >= obs - 1e-12:
+            hits += 1
+    return (hits + 1) / (PERM_N + 1)
+
+
+def compare_ratings(a, b, store):
+    """The per-seed rating difference against the floor built from BOTH arms.
+
+    Journal 336 compared the HEADLINE difference with a floor computed from
+    per-seed ratings and called a -88 a clear; journal 351 redid it correctly
+    and it misses by two points. Nobody should have to do this by hand again.
+    """
+    pa = per_seed_ratings((store[a] or {}).get("spread") or {})
+    pb = per_seed_ratings((store[b] or {}).get("spread") or {})
+    if len(pa) < 2 or len(pb) < 2:
+        return
+    ma, mb = statistics.mean(pa), statistics.mean(pb)
+    sa = statistics.stdev(pa) / math.sqrt(len(pa))
+    sb = statistics.stdev(pb) / math.sqrt(len(pb))
+    floor = 1.96 * math.sqrt(sa * sa + sb * sb)
+    d = mb - ma
+    print(f"\n  PER-SEED rating: {a} {ma:.0f} (se {sa:.0f})   {b} {mb:.0f} (se {sb:.0f})")
+    print(f"  difference {d:+.0f}   floor from these two arms {floor:.0f}   "
+          f"{'CLEARS' if abs(d) > floor else 'DOES NOT CLEAR'}")
+    print(f"  (the headline difference is computed from the MEAN shares and is "
+          f"a different quantity -- journal 351)")
+
+
+def compare_shares(a, b, store):
+    sa = (store[a] or {}).get("spread") or {}
+    sb = (store[b] or {}).get("spread") or {}
+    # A MISSING SPREAD IS SAID OUT LOUD. Every result stored before this
+    # existed has none, and an empty table reads as "no difference".
+    missing = [n for n, sp in ((a, sa), (b, sb)) if not sp]
+    if missing:
+        print(f"\n  [BENCH] no per-seed data stored for {', '.join(missing)} -- "
+              f"land-share statistics need a run from after journal 339; "
+              f"the seat scores above are all these rows carry")
+        return
+    shared = [k for k in sa if k in sb and len(sa[k]) > 1 and len(sb[k]) > 1]
+    if not shared:
+        print("\n  [BENCH] the two runs share no seat with per-seed data")
+        return
+    print(f"\n  per-seat LAND SHARE -- the raw quantity, before the cap and the ratio")
+    wa, wb = max(9, len(a[-14:])), max(9, len(b[-14:]))
+    print(f"  {'seat':<18}{a[-14:]:>{wa + 1}}{b[-14:]:>{wb + 1}}{'d':>8}"
+          f"{'med A':>8}{'med B':>8}{'p':>8}")
+    capped = []
+    shown = 0
+    for m, i, w, par, _why in SEATS:
+        k = f"{m}:{i}:{w}"
+        if k not in shared:
+            continue
+        shown += 1
+        va, vb = sa[k], sb[k]
+        ma, mb = statistics.mean(va), statistics.mean(vb)
+        print(f"  {m + ':' + i + ' ' + w:<18}{ma:{wa + 1}.2f}{mb:{wb + 1}.2f}{mb - ma:+8.2f}"
+              f"{statistics.median(va):8.2f}{statistics.median(vb):8.2f}"
+              f"{_perm_p(va, vb):8.3f}")
+        if (seat_score(ma, par) >= CAP * 100.0 - 1e-9 and
+                seat_score(mb, par) >= CAP * 100.0 - 1e-9):
+            capped.append(k)
+    print(f"  [BENCH] p is two-sided, unpaired, {PERM_N} shuffles, seed "
+          f"{PERM_SEED}; {shown} seat(s) compared, so expect "
+          f"{0.05 * shown:.1f} under 0.05 by chance -- LOOP.md STANDING 5")
+    if capped:
+        print(f"  [BENCH] PINNED AT CAP IN BOTH ARMS: {', '.join(capped)} -- "
+              f"this seat's land moves HERE and not in the rating, which scores "
+              f"it identically at any share above {CAP:.0f}x par (journal 338)")
 
 
 def main():
@@ -735,14 +1025,20 @@ def main():
                          f"have: {', '.join(sorted(store)) or '(none)'}")
         ca = report(a, store[a]["seats"])
         cb = report(b, store[b]["seats"])
+        compare_ratings(a, b, store)
+        compare_shares(a, b, store)
         if ca is not None and cb is not None:
             d = cb - ca
             print(f"\n  {b} is {abs(d):.0f} {'above' if d > 0 else 'below'} {a}")
-            better = sum(1 for m, i, w, _, _ in SEATS
-                         if f"{m}:{i}:{w}" in store[a]["seats"]
-                         and f"{m}:{i}:{w}" in store[b]["seats"]
-                         and store[b]["seats"][f"{m}:{i}:{w}"] > store[a]["seats"][f"{m}:{i}:{w}"])
-            print(f"  better on {better}/{len(SEATS)} seats")
+            # THE DENOMINATOR IS WHAT BOTH RUNS MEASURED, not the full seat
+            # set. A 4-seat run against the 6-seat default printed "better on
+            # 3/6", counting two seats that were never run as losses.
+            both = [f"{m}:{i}:{w}" for m, i, w, _, _ in SEATS
+                    if f"{m}:{i}:{w}" in store[a]["seats"]
+                    and f"{m}:{i}:{w}" in store[b]["seats"]]
+            better = sum(1 for k in both
+                         if store[b]["seats"][k] > store[a]["seats"][k])
+            print(f"  better on {better}/{len(both)} seats measured by both")
         return
 
     binary = binary_path(args.binary)
@@ -812,7 +1108,14 @@ def main():
     # was FOR. i18-B sits in this file at 3% of the world and nothing records
     # whether that was a deliberately bad arm or a surprise.
     _mp = os.path.abspath(args.model) if args.model else None
-    store[label] = {"seats": scores, "turns": TURNS,
+    # ── THE PER-SEED VALUES, WHICH USED TO DIE AT EXIT ──
+    #
+    # SPREAD was built for the BISTABLE warnings and thrown away, so the store
+    # kept one mean per seat and 863 archived results carried no statistics at
+    # all. Journal 338 had to recompute a comparison in a scratch file for want
+    # of this, one iteration after journal 287 built the seat filter to stop
+    # exactly that. A mean is not a measurement; the seeds behind it are.
+    store[label] = {"seats": scores, "spread": dict(SPREAD), "turns": TURNS,
                     "difficulty": DIFFICULTY, "seeds": SEEDS,
                     "model_path": _mp,
                     "model_size": (os.path.getsize(_mp) if _mp and os.path.exists(_mp) else None),
@@ -831,13 +1134,36 @@ def main():
     print(f"  stored as {label!r} in {os.path.relpath(RESULTS, ROOT)}")
 
     # Left for the training HUD; see SCORE_FILE.
-    try:
-        os.makedirs(os.path.dirname(SCORE_FILE), exist_ok=True)
-        with open(SCORE_FILE, "w") as f:
-            # Trailing field so an older reader still parses the first four.
-            f.write(f"{rating:.0f} {len(seats)} {len(seeds)} {int(time.time())} {len(SEATS)}\n")
-    except OSError:
-        pass
+    #
+    # ── AND ONLY WHEN IT IS A RATING ──
+    #
+    # This file is the answer to "what does the AI score", so a number that is
+    # not a rating must not land in it. Journal 339's writer test -- ONE seat,
+    # two seeds, thirty turns -- published itself here over a 3-seat 8-seed
+    # figure, and nothing in the line said 30 turns, because the line carried
+    # no turns field. A --quick run did the same, to the file whose own QUICK
+    # comment says it "must not be stored as one".
+    #
+    # So: a filtered seat set or --quick does not publish, and says so; and the
+    # line now carries turns and difficulty, which are the two fields that
+    # decide whether a rating means anything. Consequence, deliberately: during
+    # loop work -- which nearly always filters -- this file goes STALE rather
+    # than fresh-and-wrong, and its epoch field is what says how stale.
+    _why_not = ("--quick is an estimate, not a rating" if args.quick else
+                f"filtered to {len(SEATS)} of {FULL_SEAT_COUNT} seats"
+                if len(SEATS) != FULL_SEAT_COUNT else None)
+    if _why_not:
+        print(f"  not published to {os.path.relpath(SCORE_FILE, ROOT)}: {_why_not} "
+              f"(the file keeps the last full rating)")
+    else:
+        try:
+            os.makedirs(os.path.dirname(SCORE_FILE), exist_ok=True)
+            with open(SCORE_FILE, "w") as f:
+                # Trailing fields so an older reader still parses the first four.
+                f.write(f"{rating:.0f} {len(seats)} {len(seeds)} "
+                        f"{int(time.time())} {len(SEATS)} {TURNS} {DIFFICULTY}\n")
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
