@@ -27,6 +27,15 @@
     "hasScripts": false
   },
   {
+    "name": "Mitteleuropa",
+    "filename": "1936cp.odmap",
+    "author": "OpenDoctrines",
+    "description": "Eighteen years after the armistice at Spa. Germany holds central Europe through a ring of client kingdoms it wrote the borders of, Austria-Hungary has survived its own succession, and the Entente lost. None of it is settled.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "1936cp_thumb.png",
+    "hasScripts": false
+  },
+  {
     "name": "The Gathering Storm",
     "filename": "1939.odmap",
     "author": "OpenDoctrines",

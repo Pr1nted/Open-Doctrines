@@ -1,0 +1,647 @@
+{
+  "$comment": "A world in which the Central Powers won the First World War. Built from the terms the Central Powers actually wrote -- the Septemberprogramm of 1914, Brest-Litovsk and Bucharest in 1918 -- rather than from any later work set in the same premise. A Central Powers victory is an alternate-history idea and belongs to nobody; the specific invented nations, characters and lore of the mods set there belong to their authors and are not used, referenced or implied here. See docs/scenario-licensing.md.",
+  "schema": 1,
+  "id": "1936cp",
+  "name": "Mitteleuropa",
+  "date": "March 1936 AD",
+  "author": "OpenDoctrines",
+  "description": "Eighteen years after the armistice at Spa. Germany holds central Europe through a ring of client kingdoms it wrote the borders of, Austria-Hungary has survived its own succession, and the Entente lost. None of it is settled.",
+  "independent_default": true,
+  "independent_except": [
+    "UNC",
+    "XNC",
+    "XSO",
+    "BLC"
+  ],
+  "population_scale": 0.36,
+  "industry_scale": 0.3,
+  "industry_level_cap": 8,
+  "powers": [
+    {
+      "iso": "GER",
+      "name": "German Empire",
+      "color": "#5c6b52",
+      "owns": [
+        "DEU",
+        "LUX"
+      ],
+      "army": 1400000,
+      "navy": 44,
+      "compass": {
+        "left": -10,
+        "auth": 60
+      },
+      "policies": [
+        "state_industry",
+        "national_unity",
+        "conscription"
+      ],
+      "$comment": "Luxembourg annexed and a customs union over the client states: the Septemberprogramm of September 1914, which is a real document."
+    },
+    {
+      "iso": "BEL",
+      "name": "Kingdom of Belgium",
+      "color": "#8a7f5c",
+      "owns": [
+        "BEL"
+      ],
+      "army": 90000,
+      "navy": 2,
+      "compass": {
+        "left": 5,
+        "auth": 45
+      },
+      "policies": [
+        "censorship"
+      ],
+      "$comment": "Kept as a state and run as a vassal -- the Septemberprogramm's own words."
+    },
+    {
+      "iso": "POL",
+      "name": "Kingdom of Poland",
+      "color": "#9c6b6b",
+      "owns": [
+        "POL"
+      ],
+      "army": 240000,
+      "navy": 0,
+      "compass": {
+        "left": -5,
+        "auth": 55
+      },
+      "policies": [
+        "conscription"
+      ]
+    },
+    {
+      "iso": "LIT",
+      "name": "Kingdom of Lithuania",
+      "color": "#7a8a6b",
+      "owns": [
+        "LTU"
+      ],
+      "army": 60000,
+      "navy": 0,
+      "compass": {
+        "left": 0,
+        "auth": 50
+      },
+      "policies": [
+        "traditionalism"
+      ]
+    },
+    {
+      "iso": "BLT",
+      "name": "United Baltic Duchy",
+      "color": "#6b7a8a",
+      "owns": [
+        "LVA",
+        "EST"
+      ],
+      "army": 55000,
+      "navy": 3,
+      "compass": {
+        "left": 15,
+        "auth": 55
+      },
+      "policies": [
+        "traditionalism"
+      ]
+    },
+    {
+      "iso": "UKR",
+      "name": "Ukrainian State",
+      "color": "#c2a24a",
+      "owns": [
+        "UKR",
+        "MDA"
+      ],
+      "army": 320000,
+      "navy": 4,
+      "compass": {
+        "left": -5,
+        "auth": 50
+      },
+      "policies": [
+        "agrarian_priority",
+        "conscription"
+      ],
+      "$comment": "Brest-Litovsk, March 1918: Russia renounces Ukraine, and a German-backed government takes the grain surplus with it."
+    },
+    {
+      "iso": "RUT",
+      "name": "White Ruthenia",
+      "color": "#8a8a6b",
+      "owns": [
+        "BLR"
+      ],
+      "army": 70000,
+      "navy": 0,
+      "compass": {
+        "left": 0,
+        "auth": 50
+      },
+      "policies": [
+        "traditionalism"
+      ]
+    },
+    {
+      "iso": "FIN",
+      "name": "Finland",
+      "color": "#6b8a9c",
+      "owns": [
+        "FIN"
+      ],
+      "army": 90000,
+      "navy": 3,
+      "compass": {
+        "left": 10,
+        "auth": 20
+      },
+      "policies": [
+        "free_press"
+      ]
+    },
+    {
+      "iso": "AUH",
+      "name": "Austria-Hungary",
+      "color": "#c4a76b",
+      "owns": [
+        "AUT",
+        "HUN",
+        "CZE",
+        "SVK",
+        "SVN",
+        "HRV",
+        "BIH",
+        "SRB"
+      ],
+      "army": 900000,
+      "navy": 14,
+      "compass": {
+        "left": 0,
+        "auth": 55
+      },
+      "policies": [
+        "national_unity",
+        "internal_passports"
+      ],
+      "$comment": "Serbia occupied and administered; the Carpathian passes taken from Romania at Bucharest in May 1918."
+    },
+    {
+      "iso": "BUL",
+      "name": "Bulgaria",
+      "color": "#8a6b52",
+      "owns": [
+        "BGR",
+        "MKD"
+      ],
+      "army": 340000,
+      "navy": 3,
+      "compass": {
+        "left": -5,
+        "auth": 55
+      },
+      "policies": [
+        "conscription"
+      ],
+      "$comment": "Dobruja from Romania, Vardar from Serbia -- Bucharest again."
+    },
+    {
+      "iso": "OTT",
+      "name": "Ottoman Empire",
+      "color": "#a8894a",
+      "owns": [
+        "TUR",
+        "SYR",
+        "LBN",
+        "IRQ",
+        "ISR",
+        "PSE",
+        "JOR",
+        "ARM",
+        "AZE",
+        "GEO",
+        "SAU",
+        "YEM",
+        "KWT",
+        "QAT",
+        "ARE",
+        "OMN"
+      ],
+      "army": 700000,
+      "navy": 8,
+      "compass": {
+        "left": -10,
+        "auth": 70
+      },
+      "policies": [
+        "national_unity",
+        "conscription",
+        "internal_passports"
+      ],
+      "$comment": "Kars, Ardahan and Batumi returned by Brest-Litovsk; the Arab provinces never lost."
+    },
+    {
+      "iso": "RUS",
+      "name": "Russian State",
+      "color": "#7a5c5c",
+      "owns": [
+        "RUS",
+        "KAZ",
+        "UZB",
+        "TKM",
+        "KGZ",
+        "TJK"
+      ],
+      "army": 1100000,
+      "navy": 9,
+      "compass": {
+        "left": -35,
+        "auth": 75
+      },
+      "policies": [
+        "secret_police",
+        "conscription",
+        "collective_agriculture"
+      ],
+      "$comment": "Everything west of the Dnieper signed away, and a government that has to explain why."
+    },
+    {
+      "iso": "MAF",
+      "name": "Mittelafrika",
+      "color": "#6b8a5c",
+      "owns": [
+        "CMR",
+        "GAB",
+        "COG",
+        "COD",
+        "CAF",
+        "GNQ",
+        "TZA",
+        "RWA",
+        "BDI",
+        "NAM",
+        "TGO",
+        "AGO",
+        "MOZ"
+      ],
+      "army": 180000,
+      "navy": 6,
+      "compass": {
+        "left": 20,
+        "auth": 70
+      },
+      "policies": [
+        "colonial_office",
+        "internal_passports"
+      ],
+      "$comment": "The German central-African empire the Septemberprogramm asked for, assembled from the Belgian Congo, French Equatorial Africa and the Portuguese colonies."
+    },
+    {
+      "iso": "FRA",
+      "name": "French Republic",
+      "color": "#6b7fa8",
+      "owns": [
+        "FRA",
+        "DZA",
+        "TUN",
+        "MAR",
+        "ESH",
+        "MRT",
+        "MLI",
+        "NER",
+        "TCD",
+        "SEN",
+        "GIN",
+        "CIV",
+        "BFA",
+        "BEN",
+        "MDG",
+        "DJI",
+        "VNM",
+        "LAO",
+        "KHM",
+        "NCL",
+        "PYF"
+      ],
+      "army": 850000,
+      "navy": 26,
+      "compass": {
+        "left": -15,
+        "auth": 25
+      },
+      "policies": [
+        "free_press",
+        "conscription"
+      ],
+      "$comment": "Beaten, not dismembered: the Briey-Longwy ore basin annexed and the equatorial colonies gone, the rest intact and unreconciled."
+    },
+    {
+      "iso": "GBR",
+      "name": "British Empire",
+      "color": "#a85c5c",
+      "owns": [
+        "GBR",
+        "IRL",
+        "IND",
+        "PAK",
+        "BGD",
+        "MMR",
+        "LKA",
+        "EGY",
+        "SDN",
+        "KEN",
+        "UGA",
+        "NGA",
+        "GHA",
+        "SLE",
+        "GMB",
+        "ZAF",
+        "ZWE",
+        "ZMB",
+        "BWA",
+        "LSO",
+        "SWZ",
+        "MWI",
+        "AUS",
+        "NZL",
+        "CAN",
+        "PNG",
+        "FJI",
+        "SLB",
+        "GUY",
+        "BLZ",
+        "JAM",
+        "TTO",
+        "BHS",
+        "CYP",
+        "MYS",
+        "BRN",
+        "HKG",
+        "MUS"
+      ],
+      "army": 900000,
+      "navy": 62,
+      "compass": {
+        "left": 10,
+        "auth": 15
+      },
+      "policies": [
+        "free_trade",
+        "naval_supremacy",
+        "free_press"
+      ],
+      "$comment": "Never invaded and never quite defeated; out of Europe and still holding everything else."
+    },
+    {
+      "iso": "ITA",
+      "name": "Kingdom of Italy",
+      "color": "#5c8a6b",
+      "owns": [
+        "ITA",
+        "LBY",
+        "ERI",
+        "SOM"
+      ],
+      "army": 500000,
+      "navy": 17,
+      "compass": {
+        "left": -5,
+        "auth": 45
+      },
+      "policies": [
+        "national_unity"
+      ],
+      "$comment": "Joined in 1915 and lost."
+    },
+    {
+      "iso": "USA",
+      "name": "United States",
+      "color": "#4b82c6",
+      "owns": [
+        "USA",
+        "PRI",
+        "PHL"
+      ],
+      "army": 300000,
+      "navy": 30,
+      "compass": {
+        "left": 15,
+        "auth": -20
+      },
+      "policies": [
+        "deregulation",
+        "free_press",
+        "flat_tax"
+      ],
+      "$comment": "Late, then out again: the war ended before the American army mattered."
+    },
+    {
+      "iso": "JPN",
+      "name": "Empire of Japan",
+      "color": "#b06b7a",
+      "owns": [
+        "JPN",
+        "KOR",
+        "TWN"
+      ],
+      "army": 450000,
+      "navy": 24,
+      "compass": {
+        "left": 0,
+        "auth": 60
+      },
+      "policies": [
+        "national_unity",
+        "naval_supremacy"
+      ]
+    },
+    {
+      "iso": "CHN",
+      "name": "Republic of China",
+      "color": "#c2b06b",
+      "owns": [
+        "CHN",
+        "MNG"
+      ],
+      "army": 800000,
+      "navy": 3,
+      "compass": {
+        "left": -10,
+        "auth": 40
+      },
+      "policies": []
+    },
+    {
+      "iso": "NLD",
+      "name": "Netherlands",
+      "color": "#c48a4a",
+      "owns": [
+        "NLD",
+        "IDN",
+        "SUR"
+      ],
+      "army": 120000,
+      "navy": 9,
+      "compass": {
+        "left": 20,
+        "auth": 5
+      },
+      "policies": [
+        "free_trade",
+        "free_press"
+      ]
+    },
+    {
+      "iso": "PRT",
+      "name": "Portugal",
+      "color": "#7a6b8a",
+      "owns": [
+        "PRT",
+        "GNB",
+        "CPV",
+        "STP"
+      ],
+      "army": 80000,
+      "navy": 4,
+      "compass": {
+        "left": 0,
+        "auth": 35
+      },
+      "policies": [],
+      "$comment": "Angola and Mozambique signed over to Mittelafrika."
+    },
+    {
+      "iso": "ROU",
+      "name": "Romania",
+      "color": "#9c8a5c",
+      "owns": [
+        "ROU"
+      ],
+      "army": 160000,
+      "navy": 2,
+      "compass": {
+        "left": -5,
+        "auth": 45
+      },
+      "policies": [],
+      "$comment": "Bucharest, May 1918: Dobruja to Bulgaria, the passes to Austria, the oil to Germany."
+    },
+    {
+      "iso": "GRC",
+      "name": "Greece",
+      "color": "#6ba8b0",
+      "owns": [
+        "GRC"
+      ],
+      "army": 120000,
+      "navy": 4,
+      "compass": {
+        "left": 0,
+        "auth": 35
+      },
+      "policies": []
+    }
+  ],
+  "relations": {
+    "alliances": [
+      [
+        "GER",
+        "AUH"
+      ],
+      [
+        "GER",
+        "OTT"
+      ],
+      [
+        "GER",
+        "BUL"
+      ],
+      [
+        "AUH",
+        "BUL"
+      ],
+      [
+        "GER",
+        "POL"
+      ],
+      [
+        "GER",
+        "UKR"
+      ],
+      [
+        "GER",
+        "BLT"
+      ],
+      [
+        "GER",
+        "LIT"
+      ],
+      [
+        "GER",
+        "RUT"
+      ],
+      [
+        "GER",
+        "BEL"
+      ]
+    ],
+    "non_aggression": [
+      [
+        "GER",
+        "GBR"
+      ],
+      [
+        "GER",
+        "USA"
+      ],
+      [
+        "JPN",
+        "USA"
+      ]
+    ]
+  },
+  "claims": [
+    {
+      "by": "FRA",
+      "on": "GER"
+    },
+    {
+      "by": "RUS",
+      "on": "UKR"
+    },
+    {
+      "by": "RUS",
+      "on": "POL"
+    },
+    {
+      "by": "RUS",
+      "on": "RUT"
+    },
+    {
+      "by": "RUS",
+      "on": "BLT"
+    },
+    {
+      "by": "RUS",
+      "on": "LIT"
+    },
+    {
+      "by": "RUS",
+      "on": "FIN"
+    },
+    {
+      "by": "ROU",
+      "on": "BUL"
+    },
+    {
+      "by": "ITA",
+      "on": "AUH"
+    },
+    {
+      "by": "OTT",
+      "on": "GRC"
+    }
+  ]
+}
