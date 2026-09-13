@@ -822,8 +822,19 @@ jobs:
         shell: bash
         run: |
           set -e
-          BIN="$(ls reader/SaveRoundTripTest reader/SaveRoundTripTest.exe 2>/dev/null | head -1)"
-          [ -n "$BIN" ] || { echo "no reader arrived for ${{ matrix.name }}"; exit 1; }
+          # NOT `ls a b | head -1`. Only one of these two names ever exists, so
+          # ls always fails -- 2 on GNU, 1 on BSD -- and under `set -e -o
+          # pipefail` that killed the step on its FIRST line, before a single
+          # save was read or a single word printed. All three Unix runners died
+          # there while Windows passed, because MSYS resolves `foo` to
+          # `foo.exe` and both names appear to exist. A test that cannot run is
+          # worse than one that fails: it fails in a way that looks like the
+          # thing under test.
+          BIN=""
+          for candidate in reader/SaveRoundTripTest reader/SaveRoundTripTest.exe; do
+            if [ -f "$candidate" ]; then BIN="$candidate"; break; fi
+          done
+          [ -n "$BIN" ] || { echo "no reader arrived for ${{ matrix.name }}"; ls -R reader || true; exit 1; }
           chmod +x "$BIN" || true
           shopt -s nullglob
           found=0; bad=0
