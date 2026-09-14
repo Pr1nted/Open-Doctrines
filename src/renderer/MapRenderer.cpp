@@ -674,14 +674,26 @@ void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
     if (!provPixels) return;
 
+    // TWO BUFFERS, TWO STRIDES, AND THEY ARE NOT THE SAME ANY MORE.
+    //
+    // This one is the province image: RGBA, four bytes a pixel. The border
+    // layer is two (kBorderBpp) and must be indexed by its own stride -- the
+    // same correction 7f878d0 made to buildProvinceData when it narrowed the
+    // layer, and did not make here. Reading it at four walked twice the
+    // buffer: ASan, on a plain `--load ... --check`, reports a
+    // heap-buffer-overflow three bytes past the 67,108,864-byte region
+    // (8192 x 4096 x 2) that computeBorderTexture allocates.
+    //
+    // It only ever fired on a SAVE load, because reloadBorders() is called
+    // from replaySaveTurns and from nowhere else -- which is why every map
+    // --check passed on the runners while every save load segfaulted.
     int stride = m_mapW * 4;
 
     for (int y = 0; y < m_mapH; ++y) {
         Audio::get().pump();          // as in computeBorderTexture above
-        int rowOff = y * stride;
         for (int x = 0; x < m_mapW; ++x) {
-            int pi = rowOff + x * 4;
-            uint8_t ba = m_borderPixels[pi + 3];
+            // dst[1] is the coverage byte; see writeBorderTexel.
+            uint8_t ba = m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1];
             if (ba == 0) continue;
 
             int foundPid = 0;
