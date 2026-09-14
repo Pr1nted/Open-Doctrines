@@ -44,6 +44,8 @@ if [ ! -f "$root/CMakeLists.txt" ]; then
 fi
 fail=0
 declare -a failed_steps=()
+declare -a skipped_steps=()
+n_skipped=0
 
 step()  { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 note()  { printf '  %s\n' "$1"; }
@@ -304,37 +306,36 @@ OD_DATA_DIR="$sim_out" ${runner[@]+"${runner[@]}"} "$game" \
 sim_rc=$?
 grep -E '^\[SIM\]' "$sim_log" || true
 # "This machine has no display" and "this build is broken" are different
-# answers and must not be reported as the same one. A hosted macOS runner has
-# no usable GL context -- GLFW says "Failed to find a suitable pixel format" --
-# and there is no xvfb for a Cocoa app, so this check simply cannot run there.
+# answers and must not be reported as the same one. Telling them apart is
+# subtle enough to live in its own file, with its own test:
+# tools/qualify_play_gate.sh carries the rule and the history, and
+# tests/qualify_play_gate_test.sh holds it to the real logs of 2026-09-14 --
+# the day a SIGSEGV on both macOS runners was reported here as SKIPPED and the
+# run still ended "macos QUALIFIED -- built, tested, and played a game".
 #
-# It is a SKIP, and a loud one: the step is still printed, still says what it
-# could not do, and the other three platforms still run it for real. Silently
-# passing would turn the one check that proves a build runs into a check that
-# proves nothing.
-# Each platform words "there is no GPU here" differently, and the list has to
-# carry all of them or the step reports a broken build on a machine that simply
-# cannot draw:
-#
-#   macOS    NSGL: Failed to find a suitable pixel format
-#   Windows  WGL: The driver does not appear to support OpenGL
-#   Linux    GLX / Failed to initialize GLFW  (usually avoided by xvfb)
-#
-# On Windows the process then SEGFAULTS rather than returning: raylib's
-# InitWindow() crashes inside itself once WGL refuses, so Game::init()'s
-# IsWindowReady() check never runs. That is why the log is matched rather than
-# the exit code -- there is no clean exit to inspect.
-if grep -qE 'suitable pixel format|does not appear to support OpenGL|could not open a window|Failed to initialize GLFW|GLX' "$sim_log"; then
-    note "SKIPPED -- this machine has no usable display, so the game cannot"
-    note "          open a window here. The build and every other check above"
-    note "          still ran; only 'does it play' is unproven on this runner."
+# The short form: Game::init() opens a window in EVERY mode, --simulate
+# included, and the first [SIM] line is printed only after that succeeds. A log
+# with no [SIM] in it may be a machine that cannot draw. A log WITH [SIM] that
+# then dies is a broken build, whatever it says about OpenGL.
+gate_line="$("$root/tools/qualify_play_gate.sh" "$sim_log" "$sim_rc")"
+gate_verdict="$(printf '%s' "$gate_line" | cut -f1)"
+gate_why="$(printf '%s' "$gate_line" | cut -f2-)"
+case "$gate_verdict" in
+skip)
+    n_skipped=$((n_skipped + 1))
+    skipped_steps+=("play a real game")
+    note "SKIPPED -- $gate_why."
+    note "          The build and every other check above still ran; only"
+    note "          'does it play' is unproven on this runner."
     echo "  --- what the game said ---"
     grep -E 'GLFW|could not open a window' "$sim_log" | head -4 | sed 's/^/  /'
-elif [ "$sim_rc" -ne 0 ]; then
-    bad "play a real game (the game exited $sim_rc)"
+    ;;
+fail)
+    bad "play a real game ($gate_why)"
     echo "  --- last 25 lines of $sim_log ---"
     tail -25 "$sim_log" | sed 's/^/  /'
-else
+    ;;
+ok)
     if [ -f "$sim_out/saves/Qualify.odsv" ]; then
         turns=$(python3 - "$sim_out/saves/Qualify.odsv" <<'PY'
 import sys, zipfile
@@ -353,14 +354,28 @@ PY
     else
         bad "play a real game (no save was written)"
     fi
-fi
+    ;;
+esac
 
 # ----------------------------------------------------------------- verdict ---
 printf '\n'
-if [ "$fail" -eq 0 ]; then
-    printf '\033[32m%s QUALIFIED\033[0m -- built, tested, and played a game.\n' "$platform"
-else
+if [ "$fail" -ne 0 ]; then
     printf '\033[31m%s NOT QUALIFIED\033[0m. What failed:\n' "$platform"
     for s in "${failed_steps[@]}"; do printf '  - %s\n' "$s"; done
+elif [ "$n_skipped" -eq 0 ]; then
+    printf '\033[32m%s QUALIFIED\033[0m -- built, tested, and played a game.\n' "$platform"
+elif [ -n "${OD_QUALIFY_REQUIRE_PLAY:-}" ]; then
+    # The runs that decide a RELEASE cannot accept "unproven" for the one check
+    # that proves the build runs at all. Set this there; leave it unset for
+    # day-to-day CI on runners that genuinely cannot draw.
+    printf '\033[31m%s NOT QUALIFIED\033[0m. OD_QUALIFY_REQUIRE_PLAY is set and this was never proven:\n' "$platform"
+    for s in ${skipped_steps[@]+"${skipped_steps[@]}"}; do printf '  - %s\n' "$s"; done
+    fail=1
+else
+    # Deliberately NOT "played a game": it did not, and saying so anyway is how
+    # a segfault came to be filed as a pass.
+    printf '\033[33m%s QUALIFIED WITH GAPS\033[0m -- built and tested. NOT proven:\n' "$platform"
+    for s in ${skipped_steps[@]+"${skipped_steps[@]}"}; do printf '  - %s\n' "$s"; done
+    printf '  (OD_QUALIFY_REQUIRE_PLAY=1 makes this a failure)\n'
 fi
 exit "$fail"
