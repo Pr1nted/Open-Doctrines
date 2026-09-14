@@ -2083,9 +2083,7 @@ void Game::drawAnalysisTab() {
                 DrawText(od::i18n::properName(ma.name).c_str(),
                          leftX + mcN, dy + 1, 13, WHITE);
                 char ps[32];
-                if (ma.pop > 1000000) snprintf(ps, sizeof(ps), "%.1fM", ma.pop / 1000000.0f);
-                else if (ma.pop > 1000) snprintf(ps, sizeof(ps), "%.1fK", ma.pop / 1000.0f);
-                else snprintf(ps, sizeof(ps), "%lld", ma.pop);
+                snprintf(ps, sizeof(ps), "%s", formatPop(ma.pop).c_str());
                 DrawText(ps, leftX + mcP, dy + 1, 13, LIGHTGRAY);
 
                 float align = getMinorityAlignment(m_playerCountryId, ma.name);
@@ -2229,11 +2227,10 @@ void Game::drawEthnicTab() {
             DrawRectangle(leftX, dy, panelW, rowH, isSel ? Color{60, 60, 80, 200} : Color{30, 30, 40, 180});
             DrawRectangle(leftX, dy, 6, rowH, e.color);
             DrawText(TextFormat("%s", e.name.c_str()), leftX + 12, dy + 3, 14, WHITE);
-            char ps[32];
-            if (e.pop > 1000000) snprintf(ps, sizeof(ps), "Pop: %.1fM", e.pop / 1000000.0f);
-            else if (e.pop > 1000) snprintf(ps, sizeof(ps), "Pop: %.1fK", e.pop / 1000.0f);
-            else snprintf(ps, sizeof(ps), "Pop: %lld", e.pop);
-            DrawText(ps, leftX + 200, dy + 3, 12, LIGHTGRAY);
+            // formatPop carries the whole ladder; this used to stop at M and so
+            // printed a 9.4e20 population as "942814789632.0M".
+            const std::string ps = "Pop: " + formatPop(e.pop);
+            DrawText(ps.c_str(), leftX + 200, dy + 3, 12, LIGHTGRAY);
             DrawText(TextFormat(T("Alignment: %.0f%%"), align), leftX + 380, dy + 3, 12, ac);
             DrawText(isSel ? "▲" : "▼", leftX + panelW - 30, dy + 2, 14, LIGHTGRAY);
 

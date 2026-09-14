@@ -105,7 +105,13 @@ EM_JS(int, odFitCanvasJS, (), {
 
 std::string formatPop(long long pop) {
     struct Step { long long div; const char* suffix; };
-    static const Step steps[] = {{1000000000000LL, "t"}, {1000000000, "b"}, {1000000, "m"}, {1000, "k"}};
+    // A conquer-the-world save reached 9.4e20 people in one ethnic group, which
+    // printed as "942814789632.0M" because the panel ladder stopped at M. long
+    // long tops out near 9.2e18, so q (1e18) is the last rung that can ever be
+    // reached; past that the number itself would overflow before the label did.
+    static const Step steps[] = {{1000000000000000000LL, "q"}, {1000000000000000LL, "p"},
+                                 {1000000000000LL, "t"}, {1000000000, "b"},
+                                 {1000000, "m"}, {1000, "k"}};
     for (auto& s : steps) {
         if (pop >= s.div) {
             double val = (double)pop / s.div;
