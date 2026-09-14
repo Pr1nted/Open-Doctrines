@@ -2118,6 +2118,12 @@ target_include_directories(TouchGestureTest PRIVATE src tests)
 target_include_directories(TouchGestureTest PRIVATE
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
+# Ethnic migration has to conserve people. Pure arithmetic on shares: the
+# header is templated so this instantiates it on its own struct, with no raylib
+# and no Game behind it.
+add_executable(MinorityShareTest EXCLUDE_FROM_ALL tests/minority_share_test.cpp)
+target_include_directories(MinorityShareTest PRIVATE src tests)
+
 # The relay's framing. No network in it: the bytes are the whole risk, and a
 # peer id read the wrong way round misdelivers a turn rather than failing.
 add_executable(RelayLinkTest EXCLUDE_FROM_ALL tests/relay_link_test.cpp

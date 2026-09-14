@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "MinorityShares.h"
 #include "util/LoadLog.h"
 #include "ai/MoneyLedger.h"
 #include "PoliticalIdentity.h"
@@ -8163,6 +8164,13 @@ void Game::processPopulation() {
             // the move (rather than clamping the result) keeps migration zero-sum and
             // keeps the minority-percentage recalculation below consistent.
             moveCount = std::min(moveCount, std::max(0LL, MAX_PROVINCE_POP - dstPop));
+            {   // ...and never more of a people than the source actually holds:
+                // the cap above is against the PROVINCE, and moving more than a
+                // group has drove its share negative. See src/MinorityShares.h.
+                auto sIt = m_provinceMinorities.find(mg.sourcePid);
+                moveCount = std::min(moveCount, sIt == m_provinceMinorities.end()
+                    ? 0LL : od::groupPopAt(sIt->second, srcPop, mg.name));
+            }
             if (moveCount < 1) continue;
 
             if (m_config.aiDebug)
@@ -8188,6 +8196,7 @@ void Game::processPopulation() {
                 }
                 if (!found)
                     m_provinceMinorities[bestDst].push_back({mg.name, (float)moveCount / newDstPop * 100.0f});
+                od::renormaliseShares(m_provinceMinorities[bestDst]);
             }
             // Recalculate ALL minority percentages at source
             {
@@ -8199,8 +8208,7 @@ void Game::processPopulation() {
                         if (smg.name == mg.name) absPop -= moveCount;
                         smg.pct = (newSrcPop > 0) ? (float)absPop / newSrcPop * 100.0f : 0;
                     }
-                    sMit->second.erase(std::remove_if(sMit->second.begin(), sMit->second.end(),
-                        [](auto& g) { return g.pct <= 0; }), sMit->second.end());
+                    od::renormaliseShares(sMit->second);
                     if (sMit->second.empty()) m_provinceMinorities.erase(mg.sourcePid);
                 }
             }
@@ -8339,6 +8347,7 @@ void Game::processPopulation() {
                 // Keep the destination under the province ceiling (see within-country
                 // migration above — cap the move, don't clamp the result).
                 moveCount = std::min(moveCount, std::max(0LL, MAX_PROVINCE_POP - dstPop));
+                moveCount = std::min(moveCount, od::groupPopAt(srcGroups, srcPop, mg.name));
                 if (moveCount < 1) continue;
 
                 // Execute cross-border move
@@ -8365,6 +8374,7 @@ void Game::processPopulation() {
                     }
                     if (!found)
                         m_provinceMinorities[bestDst].push_back({mg.name, (float)moveCount / newDstPop * 100.0f});
+                    od::renormaliseShares(m_provinceMinorities[bestDst]);
                 }
                 // Recalculate ALL minority percentages at source
                 {
@@ -8376,8 +8386,7 @@ void Game::processPopulation() {
                             if (smg.name == mg.name) absPop -= moveCount;
                             smg.pct = (newSrcPop > 0) ? (float)absPop / newSrcPop * 100.0f : 0;
                         }
-                        sMit->second.erase(std::remove_if(sMit->second.begin(), sMit->second.end(),
-                            [](auto& g) { return g.pct <= 0; }), sMit->second.end());
+                        od::renormaliseShares(sMit->second);
                         if (sMit->second.empty()) m_provinceMinorities.erase(srcPid);
                     }
                 }
