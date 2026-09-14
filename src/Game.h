@@ -443,6 +443,7 @@ public:
     // change, which is the only reason the README's images can be trusted to
     // still be the game.
     void beginScreenshotTour(const std::string& outDir, const std::string& savePath);
+    void beginOjhFps(double seconds, const std::string& savePath, int turns);
 
     /**
      * "opendoctrines://join/<code>" from a stream link.
@@ -519,6 +520,7 @@ private:
     // Advances the tour by one frame. Returns false when there is nothing left
     // to shoot, which is the signal for run() to exit.
     bool tickScreenshotTour();
+    bool tickOjhFps();
     void applyLanguageForShot(const char* code);
     /// Advances the walk by one frame. False when every route has been walked.
     bool tickTutorialWalk();
@@ -3732,6 +3734,7 @@ private:
     std::string m_shotSave;              // save loaded for the in-game shots
     std::string m_shotBaseLang;          // the language the tour runs in
     int m_shotIndex = 0;                 // which shot in the list
+    bool m_ojhFps = false;             // --ojh-fps: timing frame-rate scenes
     int m_shotFrame = 0;                 // frames spent settling on it
     int m_shotProvince = 0;              // the province the panel shots describe
     int m_shotForeignProvince = 0;       // one somebody else owns, for the diplomacy shots

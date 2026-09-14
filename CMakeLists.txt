@@ -934,6 +934,7 @@ set(GAME_SOURCES
     src/Game_TurnLogic.cpp
     src/Game_AITrain.cpp
     src/Game_Screenshots.cpp
+    src/Game_OjhFps.cpp
     src/Game_TutorialWalk.cpp
     src/Game_Language.cpp
     src/i18n/Locale.cpp

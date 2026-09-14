@@ -7,6 +7,7 @@
 #include "ai/AISystem.h"
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <array>
 #include <cstdio>
 #include <random>
@@ -1294,9 +1295,24 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         int bestTerritory = 0, fewestAlive = 1 << 30, turnsSinceProgress = 0;
         auto mapStart = std::chrono::steady_clock::now();
 
+        // OD_OJH=1 prints the Objective Judge Horizon protocol: every turn's own time, so a
+        // benchmark gets the median, spread and late-game pace instead of 250-turn averages.
+        const bool ojhLines = std::getenv("OD_OJH") != nullptr;
+        if (ojhLines) {
+            printf("OJH players %d\nOJH regions %d provinces\nOJH ready\n", r.startCountries,
+                   (int)m_provinces.getAllProvinces().size());
+            fflush(stdout);
+        }
+
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
+            const auto turnStart = std::chrono::steady_clock::now();
             processTurn();
+            if (ojhLines) {
+                printf("OJH turn %d %.6f\n", t + 1,
+                       std::chrono::duration<double>(std::chrono::steady_clock::now() - turnStart).count());
+                fflush(stdout);
+            }
             r.turns = t + 1;
 
             for (auto& [cid, n] : m_rebellionsThisTurnByCid)

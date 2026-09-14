@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "Game.h"
 #include "util/LoadLog.h"
 #include "ai/MoneyLedger.h"
@@ -691,6 +692,16 @@ void Game::processTurn() {
     }
     // Persist turn delta to .odsv
     drawFrame(0.85f, "Saving turn data...");
+    // OD_OJH_NET=<clients>: report, for Objective Judge Horizon, the bytes this turn puts
+    // on the wire in a multiplayer game -- the packed delta the host broadcasts to each
+    // client (Game::mpResolveTurn), times the number of clients. Packing costs time, so it
+    // only happens when asked and never during a turn-speed run.
+    if (const char* ojhNet = std::getenv("OD_OJH_NET")) {
+        const long clients = std::max(1L, std::strtol(ojhNet, nullptr, 10));
+        const size_t packed = SaveManager::packTurn(delta).size();
+        printf("OJH data 0 %zu\n", packed * (size_t)clients);
+        fflush(stdout);
+    }
     if (!m_currentSavePath.empty()) {
         // One archive rewrite, not two: appendTurn also writes the state
         // snapshot (pending orders, claims, research, ...) and rebel flags.
