@@ -104,6 +104,18 @@ bool Game::agentBegin(const std::string& seatSpec, unsigned int seed, int untilT
     Audio::s_disabled = true;
     m_agentLoad = true;                // see Game.h: load nothing that is only drawn
 
+    // ── ONE SEED, ONE WORLD ──
+    //
+    // The map seed is derived here, BEFORE the load, because the load is where a
+    // fresh world draws its seed: with m_worldSeed unset, chooseWorldSeed() took
+    // one from random_device and jitterStartingPolitics() spent it, so two runs
+    // of the same seat and seed started from different politics and parted by
+    // turn three to five. Pinned the way --simulate pins it; OD_WORLD_SEED still
+    // wins. Derivation and reseeding below are unchanged.
+    std::mt19937 seatRng(seed);
+    m_agentMapSeed = (unsigned int)(seatRng() & 0x7FFFFFFF);
+    if (m_worldSeed == 0) m_worldSeed = m_agentMapSeed;
+
     startBenchSeat(seatSpec, untilTurn);
     while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {
         if (WindowShouldClose()) return false;
@@ -134,8 +146,6 @@ bool Game::agentBegin(const std::string& seatSpec, unsigned int seed, int untilT
     // here would produce a DIFFERENT world from the one the model was scored
     // on, while looking for all the world like the same one. The first draw is
     // the first map's seed, which is the map a one-map seat run plays.
-    std::mt19937 seatRng(seed);
-    m_agentMapSeed = (unsigned int)(seatRng() & 0x7FFFFFFF);
     srand(m_agentMapSeed);
     seedSimRng(m_agentMapSeed);
 
