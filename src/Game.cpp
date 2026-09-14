@@ -3757,7 +3757,10 @@ void Game::drawPauseMenu() {
         if (m_settingsTab == LANGUAGE_TAB) {
             const Rectangle area = settingsLanguageArea();
             drawLanguageList(area, /*withHeading=*/false);
-            const int rows = ((int)od::i18n::languages().size() + 1) / 2;
+            // NOT (n + 1) / 2: that hardcoded two columns, had already drifted
+            // from rowsFor(), and at four would drop the disclaimer eleven
+            // rows below the list it belongs to.
+            const int rows = languageListRows();
             drawLanguageDisclaimer({area.x, area.y + rows * 46.0f + 14.0f, area.width, 64.0f});
         }
 

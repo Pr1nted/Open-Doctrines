@@ -19,13 +19,22 @@
 
 namespace {
 
-// One row per language, two columns. Fourteen entries in a single column would
-// be taller than the settings panel; two columns of seven fit both surfaces
-// without either having to scroll.
+// One row per language. FOUR columns, not the two this started with.
+//
+// The list went from twenty-one languages to forty-four. At two columns that
+// is twenty-two rows: 64 + 22*46 + 92 + 48 = 1216px, which runs off a 900px
+// window, off a 1280x720 desktop by 174px, and off a portrait phone. Three
+// columns still overflow both of those. Four is eleven rows and 710px --
+// exactly the height the picker had at twenty-one languages, so nothing that
+// fitted before stops fitting now.
+//
+// It matters more than it looks: NEITHER SURFACE SCROLLS. A list that does not
+// fit is not merely ugly, it is a list whose bottom rows cannot be clicked,
+// and the languages added last would be the unreachable ones.
 constexpr int kRowH = 46;
 constexpr int kFlagW = 40;
 constexpr int kFlagH = 26;
-constexpr int kCols = 2;
+constexpr int kCols = 4;
 
 int rowsFor(int count) { return (count + kCols - 1) / kCols; }
 
@@ -48,6 +57,14 @@ void Game::unloadLanguageFlags() {
     for (auto& [iso, tex] : m_langFlags)
         if (tex.id > 0) UnloadTexture(tex);
     m_langFlags.clear();
+}
+
+// Exposed because the settings tab draws this list too, and computed its own
+// row count with a hardcoded two -- which had already drifted from rowsFor()
+// and would have put the disclaimer eleven rows adrift at four columns. One
+// answer, one place.
+int Game::languageListRows() const {
+    return rowsFor((int)od::i18n::languages().size());
 }
 
 Rectangle Game::languagePickerBounds() const {
@@ -110,8 +127,18 @@ void Game::drawLanguageList(Rectangle area, bool withHeading) {
 
         // The endonym, because a picker that says "German" to somebody looking
         // for Deutsch is a picker for people who already read English.
+        //
+        // FITTED TO THE CELL, because four columns are narrower than two and
+        // two names no longer fit at 18pt: "Norsk bokmål", and "Slovenščina"
+        // -- which has been in this list all along and would have begun
+        // clipping the moment the columns narrowed. Truncating the name a
+        // reader is scanning for is the one thing this picker must not do, so
+        // the type shrinks instead, the way the main menu handles its items.
         const int tx = (int)(dst.x + dst.width + 12.0f);
-        DrawText(l.endonym, tx, (int)(r.y + 8.0f), 18,
+        int endoSize = 18;
+        const int endoRoom = (int)(r.x + r.width - (float)tx - 8.0f);
+        const std::string endo = odText::fitToWidth(l.endonym, endoRoom, endoSize);
+        DrawText(endo.c_str(), tx, (int)(r.y + 8.0f + (18 - endoSize) * 0.5f), endoSize,
                  active ? WHITE : Color{215, 215, 225, 255});
 
         // How much of it exists. An honest number beats a flag that promises a

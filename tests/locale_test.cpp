@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     section("the languages on offer");
     {
         const auto& ls = od::i18n::languages();
-        ok(ls.size() == 21, "twenty-one languages");
+        ok(ls.size() == 44, "forty-four languages");
         ok(std::string(ls[0].code) == "en", "English is first");
         for (const auto& l : ls) {
             ok(std::string(l.code).size() == 2, std::string("two-letter code: ") + l.code);

@@ -27,7 +27,9 @@ LANG = os.path.join(ROOT, "data", "lang")
 # trusted: a language offered by the game with no file behind it is a menu
 # entry that refuses to be selected.
 CODES = ["uk", "be", "kk", "ja", "zh", "de", "it", "fr", "es", "cs", "sl", "sk", "pl",
-         "af", "ar", "hi", "ko", "bg", "tr", "ur"]
+         "af", "ar", "hi", "ko", "bg", "tr", "ur",
+         "sv", "nb", "fi", "da", "nl", "pt", "ky", "mn", "vi", "sq", "el", "hr",
+         "bs", "lv", "et", "lt", "hy", "ka", "az", "ro", "sr", "la", "eo"]
 
 
 def game_codes():
@@ -148,6 +150,18 @@ def main():
             "ar": {"Arabic"}, "hi": {"Devanagari"}, "ur": {"Arabic"},
             "uk": {"Cyrillic"}, "be": {"Cyrillic"}, "kk": {"Cyrillic"},
             "bg": {"Cyrillic"},
+            # THE OTHER THREE CYRILLIC LANGUAGES, listed before they have a
+            # word in them. A code with no entry here allows NOTHING, so the
+            # first person to translate Mongolian, Kyrgyz or Serbian would have
+            # had every letter they wrote reported as a stray and the lint
+            # would have failed the suite on a correct translation.
+            #
+            # Greek, Armenian and Georgian need no entry: STRAY has no detector
+            # for those scripts, so nothing they write can match one. They are
+            # unchecked rather than wrongly checked, which is the safe half of
+            # that trade and the same position Turkish and the other Latin
+            # languages are in.
+            "mn": {"Cyrillic"}, "ky": {"Cyrillic"}, "sr": {"Cyrillic"},
         }
         strays = 0
         # THE NAMES FILES TOO. data/lang/<code>.names.json is the country and

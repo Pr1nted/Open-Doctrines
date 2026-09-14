@@ -46,6 +46,38 @@ const std::vector<Language> kLanguages = {
     {"bg", "Български",     "Bulgarian",  "BGR"},
     {"tr", "Türkçe",       "Turkish",    "TUR"},
     {"ur", "اردو",           "Urdu",       "PAK"},
+    // ── Asked for together, so listed together, in the order they were asked
+    //    for. Every one of them passes the coverage seal; Kyrgyz, Mongolian
+    //    and Serbian only do so while their text carries the letters that
+    //    tell them apart from Russian (ң ө ү, and Serbian's ђ ћ ј љ њ џ),
+    //    which is the same rule that lets Bulgarian and Kazakh through.
+    {"sv", "Svenska",      "Swedish",    "SWE"},
+    {"nb", "Norsk bokmål", "Norwegian",  "NOR"},
+    {"fi", "Suomi",        "Finnish",    "FIN"},
+    {"da", "Dansk",        "Danish",     "DNK"},
+    {"nl", "Nederlands",   "Dutch",      "NLD"},
+    {"pt", "Português",    "Portuguese", "PRT"},
+    {"ky", "Кыргызча",     "Kyrgyz",     "KGZ"},
+    {"mn", "Монгол",       "Mongolian",  "MNG"},
+    {"vi", "Tiếng Việt",   "Vietnamese", "VNM"},
+    {"sq", "Shqip",        "Albanian",   "ALB"},
+    {"el", "Ελληνικά",     "Greek",      "GRC"},
+    {"hr", "Hrvatski",     "Croatian",   "HRV"},
+    {"bs", "Bosanski",     "Bosnian",    "BIH"},
+    {"lv", "Latviešu",     "Latvian",    "LVA"},
+    {"et", "Eesti",        "Estonian",   "EST"},
+    {"lt", "Lietuvių",     "Lithuanian", "LTU"},
+    {"hy", "Հայերեն",       "Armenian",   "ARM"},
+    {"ka", "ქართული",       "Georgian",   "GEO"},
+    {"az", "Azərbaycan",   "Azerbaijani","AZE"},
+    {"ro", "Română",       "Romanian",   "ROU"},
+    {"sr", "Српски",       "Serbian",    "SRB"},
+    // No state writes Latin and none speaks Esperanto, so neither has a flag
+    // file. The picker draws a blank swatch for a flag it cannot find -- see
+    // the else in drawLanguageList -- and the code is still three letters
+    // because LocaleTest requires it of every row.
+    {"la", "Latina",       "Latin",      "VAT"},
+    {"eo", "Esperanto",    "Esperanto",  "EPO"},
 };
 
 // THE ARENA NEVER GIVES ANYTHING BACK.

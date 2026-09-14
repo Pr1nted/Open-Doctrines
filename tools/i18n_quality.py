@@ -25,7 +25,9 @@ ROOT = os.path.dirname(HERE)
 LANG = os.path.join(ROOT, "data", "lang")
 
 CODES = ["uk", "be", "kk", "ja", "zh", "de", "it", "fr", "es", "cs", "sl", "sk",
-         "pl", "af", "ar", "hi", "ko", "bg", "tr", "ur"]
+         "pl", "af", "ar", "hi", "ko", "bg", "tr", "ur",
+         "sv", "nb", "fi", "da", "nl", "pt", "ky", "mn", "vi", "sq", "el", "hr",
+         "bs", "lv", "et", "lt", "hy", "ka", "az", "ro", "sr", "la", "eo"]
 
 CJK = ("ja", "zh")
 ARABIC_SCRIPT = ("ar", "ur")

@@ -2179,6 +2179,9 @@ public:
     Rectangle settingsLanguageArea() const;
     /// The list itself, drawn into whatever area the caller owns.
     void drawLanguageList(Rectangle area, bool withHeading);
+    /// How many rows the language list occupies, so the two surfaces that draw
+    /// it and the disclaimer beneath it cannot disagree about its height.
+    int languageListRows() const;
     bool updateLanguageList(Rectangle area, bool withHeading);
     void drawLanguageDisclaimer(Rectangle area);
     /// The main menu's modal version of the same list.
