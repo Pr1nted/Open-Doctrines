@@ -54,7 +54,7 @@ if "--binary" in sys.argv:
 CODES = ["uk", "be", "kk", "ja", "zh", "de", "it", "fr", "es", "cs", "sl", "sk",
          "pl", "af", "ar", "hi", "ko", "bg", "tr", "ur",
          "sv", "nb", "fi", "da", "nl", "pt", "ky", "mn", "vi", "sq", "el", "hr",
-         "bs", "lv", "et", "lt", "hy", "ka", "az", "ro", "sr", "la", "eo"]
+         "bs", "lv", "et", "lt", "hy", "ka", "az", "ro", "sr", "hu", "la", "eo"]
 
 # WHICH STRINGS CAN LAND IN WHICH BOX.
 #

@@ -76,6 +76,7 @@ const std::vector<Language> kLanguages = {
     // file. The picker draws a blank swatch for a flag it cannot find -- see
     // the else in drawLanguageList -- and the code is still three letters
     // because LocaleTest requires it of every row.
+    {"hu", "Magyar",       "Hungarian",  "HUN"},
     {"la", "Latina",       "Latin",      "VAT"},
     {"eo", "Esperanto",    "Esperanto",  "EPO"},
 };
