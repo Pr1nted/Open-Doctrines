@@ -1282,9 +1282,11 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         }
         m_ai->setRandomCountries(randomCids);
 
-        printf("[EVAL] map %d/%d [%s] %s=%d countries=%d%s\n",
+        // provinces= is every province on the loaded map, owned or not: the map
+        // size that Objective Judge Horizon divides turn speed by.
+        printf("[EVAL] map %d/%d [%s] %s=%d countries=%d provinces=%d%s\n",
                m + 1, numMaps, r.scenario, ship ? "rollseed" : "seed",
-               p.seed, r.startCountries,
+               p.seed, r.startCountries, (int)m_provinces.getAllProvinces().size(),
                split ? TextFormat("  (%d model vs %d %s)", r.trainedCount,
                                   r.randomCount, control) : "");
 
