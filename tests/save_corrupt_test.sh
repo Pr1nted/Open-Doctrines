@@ -130,7 +130,13 @@ if [ "$rc" -eq 0 ] && grep -q "world loaded:" "$out"; then
     note "$(grep -o 'world loaded:.*' "$out" | head -1)"
 else
     bad "a sound save still loads"
-    note "exit $rc; $(tail -2 "$out")"
+    note "exit $rc"
+    # THE WHOLE LOG, not two lines of it. A CI-only SIGSEGV was diagnosed from
+    # `tail -2` for an hour and the two lines it showed named a phase that had
+    # already finished. The load prints a [LOAD]/[MEM] line per phase, so the
+    # tail says exactly where it died -- print it.
+    echo "      --- what the server said (last 25 lines) ---"
+    tail -25 "$out" | sed 's/^/      /'
 fi
 
 # 2. THE REGRESSION. Exit 134 here was the shipped bug.
