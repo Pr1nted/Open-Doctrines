@@ -82,6 +82,7 @@ ones, which is the exact disease this exists to cure.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -422,6 +423,25 @@ if os.environ.get("OD_BENCH_SEATS"):
 
 # The exploit variant --vs-exploit takes for a rushing world. 3 is SCRIPT_BLITZ.
 RUSH_VARIANT = 3
+
+
+def binary_fingerprint(path):
+    """(md5, mtime) of the binary a run uses, or (None, None) if unreadable.
+
+    Journal 360: the stored `binary_mtime` was read when the ROW was written,
+    after every seat had run. The concurrent editor rebuilt the server 26
+    seconds before journal 359 stored, and that row recorded a binary its runs
+    almost certainly never executed. An mtime alone also cannot say whether a
+    rebuild produced the same bytes, so the md5 goes with it.
+    """
+    try:
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest(), os.path.getmtime(path)
+    except OSError:
+        return None, None
 
 
 def binary_path(explicit):
@@ -1044,6 +1064,9 @@ def main():
     binary = binary_path(args.binary)
     if not os.path.exists(binary):
         sys.exit(f"no binary at {binary}")
+    # Fingerprinted BEFORE the first seat launches, and again at store time.
+    # See binary_fingerprint and journal 360.
+    _bin_start = binary_fingerprint(binary)
 
     # ── QUICK: an estimate, deliberately not called a rating ──
     #
@@ -1108,6 +1131,22 @@ def main():
     # was FOR. i18-B sits in this file at 3% of the world and nothing records
     # whether that was a deliberately bad arm or a surprise.
     _mp = os.path.abspath(args.model) if args.model else None
+    # ── DID THE BINARY CHANGE UNDER THE RUN? ──
+    #
+    # A seat run keeps the image it launched with, so a rebuild mid-arm splits
+    # the arm across two builds with nothing in the row to say so. This tree has
+    # a concurrent editor who rebuilds (memory od-tree-has-a-concurrent-editor).
+    # Warn loudly and store both fingerprints; pin a copy of the binary for any
+    # run long enough for this to matter (LOOP.md, the training entry).
+    _bin_end = binary_fingerprint(binary)
+    _bin_changed = (_bin_start[0] is not None and _bin_end[0] is not None
+                    and _bin_start[0] != _bin_end[0])
+    if _bin_changed:
+        print("[BENCH] WARNING: THE BINARY CHANGED DURING THIS RUN -- this row may "
+              "mix two builds and is NOT comparable as it stands")
+        print(f"[BENCH]   at start  md5 {_bin_start[0]}  mtime {_bin_start[1]:.0f}")
+        print(f"[BENCH]   at store  md5 {_bin_end[0]}  mtime {_bin_end[1]:.0f}")
+        print("[BENCH]   prove the builds decision-identical (OD_DECISION_HASH) or re-run")
     # ── THE PER-SEED VALUES, WHICH USED TO DIE AT EXIT ──
     #
     # SPREAD was built for the BISTABLE warnings and thrown away, so the store
@@ -1119,7 +1158,13 @@ def main():
                     "difficulty": DIFFICULTY, "seeds": SEEDS,
                     "model_path": _mp,
                     "model_size": (os.path.getsize(_mp) if _mp and os.path.exists(_mp) else None),
-                    "binary_mtime": (os.path.getmtime(binary) if os.path.exists(binary) else None),
+                    # binary_mtime keeps its old key and its old meaning --
+                    # read at STORE time -- so existing rows stay comparable.
+                    "binary_mtime": _bin_end[1],
+                    "binary_md5": _bin_end[0],
+                    "binary_mtime_start": _bin_start[1],
+                    "binary_md5_start": _bin_start[0],
+                    "binary_changed_mid_run": _bin_changed,
                     "note": os.environ.get("OD_BENCH_NOTE"),
                     "seat_set": [f"{m}:{i}:{w}" for m, i, w, _, _ in SEATS],
                     "capacity": cap_summary(),
