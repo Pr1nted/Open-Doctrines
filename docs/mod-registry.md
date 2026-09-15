@@ -74,22 +74,79 @@ The cost, which must be stated wherever the number is: **somebody who downloads
 on Monday and again on Friday counts twice.** The API returns `uniqueBasis`
 alongside the figure so a client cannot render it as "unique people".
 
+## Review: the queue is shaped by the scanner's rate limit
+
+A new listing is **`pending`** and does not appear in the directory. A cron
+trigger drains a queue, checks it, and only then does it become `listed` — or
+`held`, if the check found something.
+
+**This is not a workflow preference. It is arithmetic.** The first version
+looked the hash up inside the publish request, and VirusTotal's free tier allows
+**four lookups a minute and 500 a day**. Two authors publishing in the same
+minute meant the second got a 429 — and a failed lookup is correctly recorded as
+*no* lookup, so that listing went up reading "unscanned" and nothing ever came
+back to it. The check quietly stopped happening exactly when the directory got
+busy enough to need it.
+
+So the rate limit shapes the process instead of breaking it:
+
+| | |
+|---|---|
+| Cron | `* * * * *` — once a minute |
+| Per drain | 4, because that is the tier's per-minute allowance |
+| Per day | 480, leaving 20 of the 500 as headroom |
+| Budget counted | at **lease** time, not on success — a lookup that 429s still spent a request |
+| Retry | the lease lapses after 5 minutes and a later tick picks it up |
+| Give up | after 3 tries it is **listed anyway**, reading "unscanned" |
+
+That last row is deliberate. Three failed lookups is evidence that VirusTotal is
+unreachable, not that the mod is bad, and holding somebody's work hostage to our
+own outage would be the wrong way round.
+
+The queue is one Durable Object, because a queue's job is to be a single line
+and the daily budget has to be counted exactly once across concurrent drains —
+a read-modify-write KV cannot do atomically. **Order is a sequence, not a
+clock**: ordering by a second-resolution timestamp ties whenever two people
+publish in the same second, and then "first come, first served" is whatever
+order SQLite happens to return.
+
+### What sends a listing back for review
+
+Only a **changed file** — a new listing, or one whose declared SHA-256 moved.
+Editing a summary does not, and that matters more than it looks: the budget is
+500 lookups a day for the whole service, so re-reviewing on every edit would let
+one author fixing typos spend the day's checks and push everybody else's first
+review to tomorrow.
+
+Replacing the file also clears any existing hold, because leaving it would
+punish the author for having fixed the problem.
+
+### What the author sees
+
+The publish response says `status: "pending"` with a queue position and a rough
+wait, and `/mods/mine` carries the position and the hold reason. A hold that
+does not say what is wrong is a listing nobody can fix.
+
 ## The security check, and what it is not
 
-If `VIRUSTOTAL_API_KEY` is set, publishing looks the declared SHA-256 up against
-VirusTotal's corpus. Three outcomes, and they stay three:
+If `VIRUSTOTAL_API_KEY` is set, the review queue looks the declared SHA-256 up
+against VirusTotal's corpus. Four outcomes, and they stay four:
 
 | State | Means |
 |---|---|
-| `flagged` | Engines have seen this hash and some call it malicious |
+| `flagged` | Engines have seen this hash and some call it malicious — the listing is **held** |
 | `clean` | Engines have seen this hash and none do |
-| `unknown` | **VirusTotal has never seen this hash** |
-| `unscanned` | We could not ask — no key, rate limited, network down |
+| `unknown` | **VirusTotal has never seen this hash.** Listed anyway — see below |
+| `unscanned` | We could not ask — no key, or we gave up after three tries |
 
-`unknown` is the normal state of a mod nobody has uploaded there. It is *also*
-the state of a file written this morning to attack somebody. Rendering it as
-clean would turn a weak signal into a false assurance, so it is its own word and
-carries its own sentence in the payload.
+`unknown` does **not** hold a listing. Never having been uploaded to VirusTotal
+is the normal state of a new mod, so holding for it would hold every mod ever
+published. What holds a listing is an engine actually reporting the file, or a
+download link that answers with an HTTP error.
+
+It is *also* the state of a file written this morning to attack somebody.
+Rendering it as clean would turn a weak signal into a false assurance, so it is
+its own word and carries its own sentence in the payload.
 
 Two further limits, both real:
 
@@ -150,6 +207,10 @@ stored display choice must not outlive the thing it displays.
 | `POST /mods/report` | account | Report a listing |
 | `GET /moderation/mods` | developer | The queue |
 | `POST /moderation/mods` | developer | `unlist` / `restrict` / `dismiss` |
+
+`GET /moderation/mods` also returns the queue's depth and remaining daily
+budget, because a drain that has stalled looks exactly like a directory nobody
+is publishing to.
 | `POST /account/tag` | account | Choose the displayed tag |
 
 Browsing and downloading need no account. Requiring one would make the directory

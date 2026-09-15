@@ -79,6 +79,40 @@ class_name = "ModCountsDO"
 tag = "v2"
 new_sqlite_classes = ["ModCountsDO"]
 
+# ----------------------------------------------------------- review queue ----
+#
+# One object for the whole service: a queue is a single line, and the scanner's
+# daily budget must be counted exactly once across concurrent drains.
+[[durable_objects.bindings]]
+name = "MOD_REVIEW"
+class_name = "ReviewDO"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["ReviewDO"]
+
+# ----------------------------------------------------- looking for a game ----
+#
+# One object for the whole board. SQLite-backed for the same free-plan reason as
+# the others: Durable Objects are only available on the free plan with SQLite.
+[[durable_objects.bindings]]
+name = "LFG_BOARD"
+class_name = "LfgBoardDO"
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["LfgBoardDO"]
+
+# ------------------------------------------------------------------ cron ----
+#
+# THE SCHEDULE IS THE SCANNER'S RATE LIMIT, NOT A PREFERENCE. VirusTotal's free
+# tier allows four lookups a minute, so the drain runs once a minute and takes
+# four. Publishing enqueues; this is what empties it. Without a trigger here
+# every new listing would sit at `pending` for ever and the directory would
+# look permanently empty.
+[triggers]
+crons = ["* * * * *"]
+
 # ------------------------------------------------------------ rate limit ----
 #
 # Free, and costs neither a KV operation nor a DO request -- the counter lives

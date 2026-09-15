@@ -187,7 +187,7 @@ export function checkShape(input: string): NickCheck {
 // classic case is a real place name that contains a rude word, and without an
 // escape hatch the only fix is weakening the filter for everyone.
 
-interface Blocklist { terms: string[]; exceptions: Set<string> }
+export interface Blocklist { terms: string[]; exceptions: Set<string> }
 
 let cached: { at: number; value: Blocklist } | null = null;
 const BLOCKLIST_TTL_MS = 60_000;

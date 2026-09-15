@@ -14,6 +14,25 @@ export interface Env {
      */
     MOD_COUNTS: DurableObjectNamespace;
 
+    /**
+     * The looking-for-a-game board: every open listing and its reports.
+     *
+     * One object, not one per listing: the board is read whole, the per-account
+     * limit is counted across listings, and expiry is one alarm. A Durable
+     * Object rather than KV for the reason in mods/counts.ts -- a listing is a
+     * write, and KV writes are the budget account creation lives on.
+     */
+    LFG_BOARD: DurableObjectNamespace;
+
+    /**
+     * The review queue, one object for the whole service.
+     *
+     * A queue's job is to be a single line, and the scanner's daily budget has
+     * to be counted exactly once across concurrent drains -- a read-modify-write
+     * KV cannot do atomically. See mods/review.ts.
+     */
+    MOD_REVIEW: DurableObjectNamespace;
+
     // Per-IP request limiters. Two rather than one because the endpoint that
     // can instantiate a Durable Object is worth an order of magnitude more than
     // one that reads KV, and a single bucket would have to be sized for the
@@ -54,6 +73,15 @@ export interface Env {
     GOOGLE_CLIENT_SECRET?: string;
     DISCORD_CLIENT_ID?: string;
     DISCORD_CLIENT_SECRET?: string;
+
+    // The looking-for-a-game bot. All three unset means the board still works
+    // in the game and simply has no Discord side, which is what a fork gets.
+    /** Bot token, for posting and editing the bot's own messages. */
+    DISCORD_BOT_TOKEN?: string;
+    /** The application's public key, which every interaction is verified against. */
+    DISCORD_PUBLIC_KEY?: string;
+    /** The channel listings are posted in. */
+    DISCORD_LFG_CHANNEL_ID?: string;
     GITHUB_CLIENT_ID?: string;
     GITHUB_CLIENT_SECRET?: string;
 
@@ -96,6 +124,10 @@ export interface Env {
      * Optional like every other integration here. Unset means listings are
      * shown as "unscanned", which is the truth, rather than the endpoint
      * failing or -- far worse -- defaulting to "clean". See mods/scan.ts.
+     *
+     * Its FREE TIER IS WHAT SHAPES THE REVIEW QUEUE: four lookups a minute and
+     * 500 a day, which is why review is a cron-drained queue rather than a
+     * check inside the publish request. See mods/review.ts.
      */
     VIRUSTOTAL_API_KEY?: string;
 }

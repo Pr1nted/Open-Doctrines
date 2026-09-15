@@ -76,7 +76,7 @@ cp packaging/web/_headers "$out/_headers"
 # The site itself: a handful of static pages sharing one stylesheet.
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/press.html \
-   packaging/web/site/mods.html \
+   packaging/web/site/mods.html packaging/web/site/publish.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
    packaging/web/site/sitemap.xml packaging/web/site/llms.txt "$out/"
@@ -364,6 +364,15 @@ if probe "$site/mods" --bytes 32768 'opendoctrines-net.opendoctrines.workers.dev
 else
     echo "  FAIL  /mods is not the mod directory -- it is probably serving index.html" >&2
     echo "        (check mods.html is in the cp list above)" >&2
+    fail=1
+fi
+
+# The publish form, asserted by the dropzone -- the one thing no other page has.
+if probe "$site/publish" --bytes 32768 'Drop your'; then
+    echo "  ok    /publish serves the publishing form"
+else
+    echo "  FAIL  /publish is not the publishing form -- probably serving index.html" >&2
+    echo "        (check publish.html is in the cp list above)" >&2
     fail=1
 fi
 

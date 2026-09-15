@@ -2,6 +2,7 @@
 #include "GameStructs.h"
 #include "ReleaseRules.h"
 #include "net/Announcements.h"
+#include "net/Lfg.h"
 #include "stream/ChatReader.h"
 #include "stream/ChatVote.h"
 #include "stream/DiscordRpc.h"
@@ -804,10 +805,15 @@ private:
 
     // --- multiplayer (src/Game_Multiplayer.cpp) ------------------------------
     //
-    // One screen with four pages rather than four screens: the whole flow is
-    // hub -> host/join -> lobby, and back always means "the previous page",
-    // which a single screen expresses and four separate ones would not.
-    enum class MpPage : uint8_t { Hub = 0, Join, HostSetup, Lobby };
+    // One screen with a handful of pages rather than a screen each: the whole
+    // flow is hub -> host/join -> lobby, and back always means "the previous
+    // page", which a single screen expresses and separate ones would not.
+    //
+    // Board and Post came later, for the looking-for-a-game board, and they
+    // belong here for the same reason: a player who finds a game on the board
+    // goes straight to Join, and a host who has just opened a lobby goes
+    // straight to Post. Both are steps in this flow, not destinations.
+    enum class MpPage : uint8_t { Hub = 0, Join, HostSetup, Lobby, Board, Post };
 
     void openMultiplayerMenu();
     void updateMultiplayerMenu();
@@ -816,6 +822,8 @@ private:
     void drawMpJoin(Vector2 mouse, bool click);
     void drawMpHostSetup(Vector2 mouse, bool click);
     void drawMpLobby(Vector2 mouse, bool click);
+    void drawMpBoard(Vector2 mouse, bool click);
+    void drawMpPost(Vector2 mouse, bool click);
     /** The store the host has selected, as a kind rather than an index. */
     TurnStoreKind mpStoreKind() const;
     void mpStartHosting();
@@ -1023,6 +1031,34 @@ private:
     std::vector<odnews::Item> m_announcements;
     int         m_announcementScroll = 0;
     std::string m_pendingJoinCode;
+
+    // ─── Looking for a game (src/Game_Lfg.cpp) ────────────────────────────
+    //
+    // The same board as #looking-for-a-game on Discord, drawn in the game.
+    // What a listing may CONTAIN is decided in src/net/Lfg.h; this is the
+    // part that asks, holds and draws. No service and no internet both mean
+    // an empty board, which is not an error worth showing anybody.
+    void lfgOpenBoard();
+    /** Ask the service, at most once every few seconds. `force` ignores that. */
+    void lfgRefresh(bool force);
+    void pumpLfg();
+    /** Fill the draft from the lobby this player is hosting, if they are. */
+    void lfgDraftFromLobby();
+    void lfgSubmitDraft();
+    void lfgCloseMine();
+    void lfgSendReport(const std::string& id, const std::string& note);
+    void lfgJoin(const odlfg::Listing& listing);
+    void drawLfgCallToAction(int x, int y, int w, Vector2 mouse, bool click);
+
+    std::vector<odlfg::Listing> m_lfgListings;
+    odlfg::Draft m_lfgDraft;
+    /// My own open listing's id, so the board offers to take it down.
+    std::string m_lfgMineId;
+    int         m_lfgScroll = 0;
+    /// Which row's report box is open, by id. Empty means none.
+    std::string m_lfgReporting;
+    std::string m_lfgReportNote;
+    bool        m_lfgBusy = false;
 
     MpPage      m_mpPage = MpPage::Hub;
     std::string m_mpNote;

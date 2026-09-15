@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Publish a mod for OpenDoctrines</title>
+<meta name="description" content="List a mod in the OpenDoctrines directory. Your file stays on your own host; drop the .odmod here and the form reads its manifest and hash without uploading it.">
+<link rel="icon" href="/favicon.png">
+<!-- Not indexed: this is a tool for signed-in authors, not a page to find in a
+     search result. It still carries a link card, because the button on /mods
+     points here and a bare link in a Discord message looks broken. -->
+<meta name="robots" content="noindex, follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenDoctrines">
+<meta property="og:locale" content="en">
+<meta property="og:title" content="Publish a mod for OpenDoctrines">
+<meta property="og:description" content="List a mod in the directory. Your file stays on your own host — the form reads the manifest and hash out of your .odmod locally, without uploading it.">
+<meta property="og:url" content="https://opendoctrines.pages.dev/publish">
+<meta property="og:image" content="https://opendoctrines.pages.dev/card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Publish a mod for OpenDoctrines">
+<meta name="twitter:description" content="List a mod in the directory. Your file stays on your own host — the form reads the manifest and hash out of your .odmod locally, without uploading it.">
+<meta name="twitter:image" content="https://opendoctrines.pages.dev/card.png">
+<meta name="twitter:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="theme-color" content="#C9A227">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Source+Sans+3:wght@400;600&family=Spectral:wght@600&display=swap">
+<link rel="stylesheet" href="/site.css">
+<script src="/analytics.js" defer></script>
+<style>
+  /* A form inside the site's chrome. site.css has no input styling -- nothing
+     on the site took typed input until now -- so the field styles live here
+     rather than being added to the shared sheet for one page. */
+  :root { --ok: #6FA86B; --warn: #C9922A; --bad: #C4584E; }
+
+  .step { border-top: 1px solid var(--rule); padding: 26px 0 0; margin: 30px 0 0; }
+  .step[hidden] { display: none !important; }
+  .step > h2 { margin: 0 0 6px; font-size: 22px; }
+  .step > h2 .n {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; letter-spacing: .14em; color: var(--faint);
+    display: block; margin-bottom: 4px; font-weight: 400;
+  }
+
+  label { display: block; margin: 16px 0 0; font-size: 14.5px; font-weight: 600; }
+  label .hint { display: block; font-weight: 400; color: var(--faint); font-size: 13.5px; margin-top: 2px; }
+  input[type=text], input[type=url], textarea, select {
+    width: 100%; margin-top: 7px; padding: 10px 12px;
+    background: var(--sunken); color: var(--ink);
+    border: 1px solid var(--rule-firm); border-radius: 3px;
+    font-family: inherit; font-size: 15px; line-height: 1.5;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--gold-dim); outline: none; }
+  textarea { resize: vertical; min-height: 96px; }
+  .mono, input.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
+  .row { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  fieldset { border: 0; padding: 0; margin: 16px 0 0; }
+  fieldset legend { font-size: 14.5px; font-weight: 600; padding: 0; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 9px; }
+  .checks label { margin: 0; font-weight: 400; font-size: 14px; display: flex; gap: 7px; align-items: center; }
+  .checks input { accent-color: var(--gold); }
+
+  button { font-family: inherit; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn.plain {
+    background: transparent; color: var(--muted); border-color: var(--rule-firm);
+    padding: 7px 14px; font-size: 13.5px; cursor: pointer;
+  }
+  .btn.plain:hover { color: var(--ink); border-color: var(--gold-dim); }
+
+  /* ── the dropzone ──
+     The most important thing on the page, because it is what makes this form
+     short: the manifest and the hash both come out of the file the author
+     already has, and the file never leaves their machine. */
+  .drop {
+    border: 1px dashed var(--rule-firm); border-radius: 4px;
+    padding: 30px 24px; text-align: center; margin-top: 16px;
+    background: var(--sunken); cursor: pointer;
+    transition: border-color .18s ease, background .18s ease;
+  }
+  .drop:hover, .drop.over { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 6%, var(--sunken)); }
+  .drop p { margin: 0; color: var(--muted); font-size: 15px; }
+  .drop .big { color: var(--ink); font-weight: 600; margin-bottom: 4px; }
+  .drop input[type=file] { display: none; }
+
+  .said { margin-top: 14px; padding: 13px 16px; border-radius: 3px; font-size: 14.5px; }
+  .said.good { background: color-mix(in srgb, var(--ok) 12%, var(--raise));   border-left: 2px solid var(--ok); }
+  .said.bad  { background: color-mix(in srgb, var(--bad) 12%, var(--raise));  border-left: 2px solid var(--bad); }
+  .said.info { background: color-mix(in srgb, var(--gold) 9%, var(--raise));  border-left: 2px solid var(--gold-dim); }
+  .said b { color: var(--ink); }
+  .said code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; word-break: break-all; }
+
+  .who {
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    background: var(--raise); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 14px 18px; margin-top: 16px;
+  }
+  .who .nick { font-family: Spectral, Georgia, serif; font-weight: 600; font-size: 18px; }
+  .who .sp { margin-left: auto; }
+
+  .tag {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 2px; border: 1px solid var(--rule-firm);
+    color: var(--faint); background: none; cursor: pointer;
+  }
+  .tag[aria-pressed=true] { color: var(--gold); border-color: var(--gold); }
+
+  .mine { display: grid; gap: 12px; margin-top: 18px; }
+  .mine-row {
+    display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+    background: var(--raise); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 14px 18px;
+  }
+  .mine-row .nm { font-weight: 600; }
+  .mine-row .meta { font-size: 13.5px; color: var(--faint); }
+  .mine-row .sp { margin-left: auto; display: flex; gap: 8px; }
+  .mine-row.off { opacity: .6; }
+
+  .provs { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  .spin { color: var(--faint); font-size: 14.5px; margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="mark" href="/">Open<span>Doctrines</span></a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/classroom">For teachers</a>
+      <!-- OPEN-FLY:BEGIN --><a href="/#open-fly">Open Fly</a><!-- OPEN-FLY:END -->
+      <a href="/mods" aria-current="page">Mods</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a class="play" href="/play/">Play now</a>
+    </nav>
+  </div>
+</header>
+
+<main class="narrow">
+  <section class="hero">
+    <p class="label">Mod directory</p>
+    <h1>Publish a mod</h1>
+    <p class="lede">
+      This lists your mod. <strong>It does not upload it.</strong> The file stays
+      wherever you put it, and the directory points people there.
+    </p>
+    <p class="note">
+      Drop your <code>.odmod</code> below and the form reads its manifest and computes
+      its SHA-256 <em>in your browser</em> — nothing is sent anywhere. A new listing
+      is checked automatically before it appears in the directory.
+      <a href="/mods">Back to the directory</a>
+    </p>
+  </section>
+
+  <noscript>
+    <div class="said bad">
+      Publishing needs JavaScript: it signs you in, reads your manifest locally and
+      posts one JSON record. You can do the same by hand against
+      <code>POST /mods</code> — see
+      <a href="https://github.com/Pr1nted/Open-Doctrines/blob/main/docs/mod-registry.md">docs/mod-registry.md</a>.
+    </div>
+  </noscript>
+
+  <!-- ─────────────────────────── 1. sign in ─────────────────────────── -->
+  <section class="step" id="s-auth">
+    <h2><span class="n">Step one</span>Sign in</h2>
+    <p class="note" style="margin-top:0">
+      The same account you use in the game. We never see your email address —
+      <a href="/privacy">what we store</a> is a nickname and a one-way hash.
+    </p>
+    <div class="provs" id="provs"></div>
+    <div id="auth-said"></div>
+  </section>
+
+  <!-- ──────────────────────── 1b. pick a nickname ───────────────────── -->
+  <section class="step" id="s-signup" hidden>
+    <h2><span class="n">Step one</span>Choose a nickname</h2>
+    <p class="note" style="margin-top:0">This is the name shown on your listings.</p>
+    <label for="nick">Nickname
+      <input type="text" id="nick" autocomplete="off" maxlength="40">
+    </label>
+    <div id="nick-said"></div>
+    <div class="cta"><button class="btn" id="nick-go" type="button">Create the account</button></div>
+  </section>
+
+  <!-- ─────────────────────────── 2. guidelines ─────────────────────── -->
+  <section class="step" id="s-rules" hidden>
+    <h2><span class="n">Step two</span>The guidelines</h2>
+    <div class="who" id="who"></div>
+    <div id="rules-box"></div>
+    <div id="rules-said"></div>
+  </section>
+
+  <!-- ────────────────────────── 3. the listing ─────────────────────── -->
+  <section class="step" id="s-form" hidden>
+    <h2><span class="n">Step three</span>The mod</h2>
+
+    <div class="drop" id="drop" role="button" tabindex="0"
+         aria-label="Choose or drop your .odmod file">
+      <p class="big">Drop your <code>.odmod</code> here</p>
+      <p>or click to choose it — it is read locally and never uploaded</p>
+      <input type="file" id="file" accept=".odmod,application/zip">
+    </div>
+    <div id="file-said"></div>
+
+    <div class="row">
+      <label for="f-id">Mod id
+        <span class="hint">Reverse-DNS, from MANIFEST.json. It cannot change later.</span>
+        <input type="text" id="f-id" class="mono" autocomplete="off" placeholder="com.example.better-ai">
+      </label>
+      <label for="f-version">Version
+        <span class="hint">semver</span>
+        <input type="text" id="f-version" class="mono" autocomplete="off" placeholder="1.0.0">
+      </label>
+    </div>
+
+    <label for="f-name">Name
+      <input type="text" id="f-name" autocomplete="off" maxlength="80">
+    </label>
+
+    <label for="f-summary">One-line summary
+      <span class="hint">Shown on the card in the directory. Up to 160 characters.</span>
+      <input type="text" id="f-summary" autocomplete="off" maxlength="160">
+    </label>
+
+    <label for="f-desc">Description
+      <span class="hint">Optional. Plain text; line breaks are kept.</span>
+      <textarea id="f-desc" maxlength="4000"></textarea>
+    </label>
+
+    <label for="f-page">Page about the mod
+      <span class="hint">Where someone reads about it — a repo, a forum thread, your site. This is what the directory links to.</span>
+      <input type="url" id="f-page" class="mono" autocomplete="off" placeholder="https://github.com/you/your-mod">
+    </label>
+
+    <label for="f-download">Download link
+      <span class="hint">Straight at the .odmod file. https only.</span>
+      <input type="url" id="f-download" class="mono" autocomplete="off" placeholder="https://github.com/you/your-mod/releases/download/v1.0.0/your-mod.odmod">
+    </label>
+
+    <label for="f-sha">SHA-256 of the .odmod
+      <span class="hint">Filled in from the file you dropped. It is what the security check is run against.</span>
+      <input type="text" id="f-sha" class="mono" autocomplete="off" spellcheck="false">
+    </label>
+
+    <div class="row">
+      <label for="f-gearbox">Gearbox API
+        <input type="text" id="f-gearbox" class="mono" autocomplete="off" placeholder="1.2">
+      </label>
+      <label for="f-side">Runs on
+        <select id="f-side">
+          <option value="client">the client</option>
+          <option value="both">client and server</option>
+          <option value="server">the host only</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Capabilities it asks for</legend>
+      <span class="hint" style="font-weight:400;color:var(--faint);font-size:13.5px">
+        From your manifest. Shown on the listing, because it tells people what the
+        mod can reach.
+      </span>
+      <div class="checks" id="f-modules"></div>
+    </fieldset>
+
+    <div class="row">
+      <label for="f-tags">Tags
+        <span class="hint">Comma separated, up to 8.</span>
+        <input type="text" id="f-tags" autocomplete="off" placeholder="ai, scenario">
+      </label>
+      <label for="f-thumb">Thumbnail URL
+        <span class="hint">Optional, https. 16:9 looks best.</span>
+        <input type="url" id="f-thumb" class="mono" autocomplete="off">
+      </label>
+    </div>
+
+    <div class="cta">
+      <button class="btn" id="publish" type="button">Publish the listing</button>
+      <a class="btn ghost" href="/mods">Cancel</a>
+    </div>
+    <div id="form-said"></div>
+  </section>
+
+  <!-- ─────────────────────────── 4. your listings ──────────────────── -->
+  <section class="step" id="s-mine" hidden>
+    <h2>Your listings</h2>
+    <div class="mine" id="mine"></div>
+  </section>
+</main>
+
+<footer>
+  <div class="top-in">
+    <div class="flinks">
+      <a href="/play/">Play</a>
+      <a href="/">Home</a>
+      <a href="/mods">Mods</a>
+      <a href="/press">Press</a>
+      <a href="https://pr1nted.itch.io/open-doctrines">itch.io</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/cookies">Cookies</a>
+    </div>
+    <p>
+      Free to play, modify and share non-commercially under the OpenDoctrines
+      Non-Commercial License. Mods are their authors' own work, on their authors'
+      own terms.
+    </p>
+  </div>
+</footer>
+
+<script>
+/* Publishing.
+ *
+ * THE FILE NEVER LEAVES THE BROWSER. The registry stores a link, not a mod, so
+ * there is nothing to upload -- but the two fields that are most annoying to
+ * fill in by hand, the manifest details and the SHA-256, both live inside the
+ * .odmod the author already has. So the page reads them locally: crypto.subtle
+ * for the digest, and a zip local-header parse for MANIFEST.json, which the
+ * loader guarantees is the archive's FIRST entry (ModPackage.cpp refuses one
+ * that is not). No fetch is involved and no byte is sent.
+ *
+ * NOTHING FROM THE API IS WRITTEN AS HTML. Same rule as /mods: every value here
+ * came from a person, including one's own nickname, and this page shows other
+ * people's listings back to them.
+ */
+(function () {
+  "use strict";
+
+  var API = "https://opendoctrines-net.opendoctrines.workers.dev";
+  /* sessionStorage, not localStorage: a publishing token is worth more than a
+     remembered filter, and closing the tab should end it. */
+  var KEY = "od-publish-token";
+
+  var MODULES = ["Core", "UI", "GameState.Read", "GameState.Write", "GameProcess",
+                 "Assets", "Neural", "Diplomacy", "Map", "Storage"];
+
+  var token = null, account = null, guidelinesVersion = null, poller = null;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function show(id, on) { $(id).hidden = !on; }
+
+  function say(where, kind, text, extra) {
+    var box = el("div", "said " + kind);
+    box.appendChild(el("span", null, text));
+    if (extra) { box.appendChild(document.createTextNode(" ")); box.appendChild(extra); }
+    $(where).replaceChildren(box);
+  }
+  function clear(where) { $(where).replaceChildren(); }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var headers = { "content-type": "application/json" };
+    if (token) headers.authorization = "Bearer " + token;
+    return fetch(API + path, {
+      method: opts.method || "GET", headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) {
+        if (!r.ok) throw Object.assign(new Error(b.message || ("HTTP " + r.status)), b);
+        return b;
+      });
+    });
+  }
+
+  // ─────────────────────────────── sign in ───────────────────────────────
+
+  function startAuth() {
+    api("/").then(function (info) {
+      var box = $("provs");
+      box.replaceChildren();
+      (info.providers || []).forEach(function (p) {
+        var b = el("button", "btn ghost", "Continue with " + p.label);
+        b.type = "button";
+        b.addEventListener("click", function () { device(p.id, p.label, p.canCreate); });
+        box.appendChild(b);
+      });
+      /* canCreate false means the provider can only be ADDED to an account that
+         already exists. Saying so here beats a consent screen followed by a
+         refusal two steps from its cause. */
+      var linkOnly = (info.providers || []).filter(function (p) { return !p.canCreate; })
+        .map(function (p) { return p.label; });
+      if (linkOnly.length) {
+        say("auth-said", "info",
+            linkOnly.join(" and ") + " can only be used to sign in to an account that "
+            + "already exists. To make a new one, use one of the others.");
+      }
+    }).catch(function () {
+      say("auth-said", "bad", "The account service is not answering, so signing in is not possible right now.");
+    });
+  }
+
+  function device(provider, label, canCreate) {
+    clear("auth-said");
+    api("/auth/device", { method: "POST", body: { provider: provider } })
+      .then(function (d) {
+        /* A popup, opened in the click handler so it is not blocked. If the
+           browser blocks it anyway, the link below is the fallback rather than
+           a dead end. */
+        var w = window.open(d.verifyUrl, "od-auth", "width=520,height=680");
+        var link = el("a", null, "Open the sign-in page");
+        link.href = d.verifyUrl;
+        link.target = "_blank";
+        link.rel = "noopener";
+        say("auth-said", "info",
+            w ? "Finish signing in with " + label + " in the window that opened."
+              : "Your browser blocked the popup.", link);
+        pollFor(d.pollSecret, d.interval || 2);
+      })
+      .catch(function (e) { say("auth-said", "bad", e.message); });
+  }
+
+  function pollFor(secret, interval) {
+    if (poller) clearInterval(poller);
+    var waited = 0;
+    poller = setInterval(function () {
+      waited += interval;
+      if (waited > 600) { clearInterval(poller); say("auth-said", "bad", "That sign-in timed out. Try again."); return; }
+      api("/auth/poll", { method: "POST", body: { pollSecret: secret } })
+        .then(function (r) {
+          if (r.status === "pending") return;
+          clearInterval(poller);
+          if (r.status === "error") { say("auth-said", "bad", r.message || "That sign-in failed."); return; }
+          if (r.kind === "session") { signedIn(r.token, r.account); return; }
+          if (r.kind === "signup") { needNickname(r.ticket, r.suggested); return; }
+          say("auth-said", "bad", "That sign-in returned something unexpected.");
+        })
+        .catch(function () { /* a blip; the next tick tries again */ });
+    }, interval * 1000);
+  }
+
+  function needNickname(ticket, suggested) {
+    clear("auth-said");
+    show("s-auth", false);
+    show("s-signup", true);
+    if (suggested) $("nick").value = suggested;
+
+    var t = null;
+    $("nick").addEventListener("input", function () {
+      clearTimeout(t);
+      var v = $("nick").value.trim();
+      if (!v) { clear("nick-said"); return; }
+      t = setTimeout(function () {
+        fetch(API + "/nickname/check?n=" + encodeURIComponent(v))
+          .then(function (r) { return r.json(); })
+          .then(function (c) {
+            if (c.ok) say("nick-said", "good", "“" + (c.canonical || v) + "” is available.");
+            else say("nick-said", "bad", c.message || "That name cannot be used.");
+          }).catch(function () { clear("nick-said"); });
+      }, 300);
+    });
+
+    $("nick-go").addEventListener("click", function () {
+      var v = $("nick").value.trim();
+      if (!v) { say("nick-said", "bad", "Type a nickname first."); return; }
+      $("nick-go").disabled = true;
+      api("/account/create", { method: "POST", body: { signupTicket: ticket, nickname: v } })
+        .then(function (r) { show("s-signup", false); signedIn(r.token, r.account); })
+        .catch(function (e) { $("nick-go").disabled = false; say("nick-said", "bad", e.message); });
+    });
+  }
+
+  function signedIn(t, acct) {
+    token = t; account = acct;
+    try { sessionStorage.setItem(KEY, t); } catch (e) { /* private mode: this session only */ }
+    show("s-auth", false);
+    show("s-signup", false);
+    show("s-rules", true);
+    drawWho();
+    loadGuidelines();
+    loadMine();
+  }
+
+  function drawWho() {
+    var box = $("who");
+    box.replaceChildren();
+    box.appendChild(el("span", "nick", account.nickname));
+
+    /* The held tags come back from /account/tag, which is also the only thing
+       that knows whether `modmaker` applies -- it is computed from listings
+       rather than stored, so it cannot be read off the account record. */
+    api("/account/tag", { method: "POST", body: { tag: account.displayTag || null } })
+      .then(function (r) { drawTags(box, r.held || [], r.displayTag || null); })
+      .catch(function () { /* leave the nickname alone */ });
+
+    var out = el("button", "btn plain", "Sign out");
+    out.type = "button";
+    out.classList.add("sp");
+    out.addEventListener("click", function () {
+      try { sessionStorage.removeItem(KEY); } catch (e) {}
+      location.reload();
+    });
+    box.appendChild(out);
+  }
+
+  function drawTags(box, held, current) {
+    if (!held.length) return;
+    var wrap = el("span", "chips");
+    wrap.style.display = "flex";
+    wrap.style.gap = "6px";
+    held.forEach(function (tag) {
+      var b = el("button", "tag", tag);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(tag === current));
+      b.title = "Show this tag beside your name";
+      b.addEventListener("click", function () {
+        var next = b.getAttribute("aria-pressed") === "true" ? null : tag;
+        api("/account/tag", { method: "POST", body: { tag: next } })
+          .then(function (r) {
+            account.displayTag = r.displayTag;
+            wrap.querySelectorAll(".tag").forEach(function (o) {
+              o.setAttribute("aria-pressed", String(o.textContent === r.displayTag));
+            });
+          }).catch(function () {});
+      });
+      wrap.appendChild(b);
+    });
+    box.insertBefore(wrap, box.querySelector(".sp"));
+  }
+
+  // ───────────────────────────── guidelines ─────────────────────────────
+
+  function loadGuidelines() {
+    api("/mods/guidelines").then(function (g) {
+      guidelinesVersion = g.version;
+
+      if (account.restricted && account.restricted.mods) {
+        say("rules-said", "bad",
+            "This account cannot publish mods at the moment: "
+            + (account.restricted.mods.reason || "no reason recorded") + ".");
+        return;
+      }
+
+      var box = $("rules-box");
+      box.replaceChildren();
+      /* The guidelines are markdown and are shown as the text they are, in the
+         mono face, rather than half-rendered. Turning them into HTML here would
+         be a second renderer for one document. */
+      var pre = el("pre", "copy");
+      pre.style.maxHeight = "320px";
+      pre.style.overflow = "auto";
+      pre.style.whiteSpace = "pre-wrap";
+      pre.style.fontFamily = '"IBM Plex Mono", ui-monospace, monospace';
+      pre.style.fontSize = "13px";
+      pre.textContent = g.text;
+      box.appendChild(pre);
+
+      var cta = el("div", "cta");
+      var agree = el("button", "btn", "I agree — let me publish");
+      agree.type = "button";
+      agree.addEventListener("click", function () {
+        agree.disabled = true;
+        api("/mods/guidelines", { method: "POST", body: { version: g.version } })
+          .then(function () {
+            clear("rules-said");
+            box.replaceChildren();
+            say("rules-said", "good", "Agreed to version " + g.version + ".");
+            show("s-form", true);
+            $("drop").scrollIntoView({ behavior: "smooth", block: "center" });
+          })
+          .catch(function (e) { agree.disabled = false; say("rules-said", "bad", e.message); });
+      });
+      cta.appendChild(agree);
+      box.appendChild(cta);
+    }).catch(function (e) { say("rules-said", "bad", e.message); });
+  }
+
+  // ──────────────────────── reading the .odmod ─────────────────────────
+
+  function hex(buf) {
+    var out = "", b = new Uint8Array(buf);
+    for (var i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, "0");
+    return out;
+  }
+
+  /* MANIFEST.json out of the archive, locally.
+   *
+   * The loader REQUIRES it to be the first entry -- ModPackage.cpp refuses an
+   * archive where it is not -- so the local file header at offset 0 is it, and
+   * there is no need to find the central directory.
+   *
+   * Returns null for anything unexpected rather than guessing. The form works
+   * perfectly well typed in by hand; this is a convenience, and a convenience
+   * that invents values would be worse than one that gives up. */
+  function readManifest(file) {
+    return file.slice(0, 30).arrayBuffer().then(function (head) {
+      if (head.byteLength < 30) return null;
+      var v = new DataView(head);
+      if (v.getUint32(0, true) !== 0x04034b50) return null;     // not a zip
+      var flags = v.getUint16(6, true);
+      var method = v.getUint16(8, true);
+      var csize = v.getUint32(18, true);
+      var nameLen = v.getUint16(26, true);
+      var extraLen = v.getUint16(28, true);
+      // Bit 3 means the sizes live in a trailing data descriptor, so they are
+      // not knowable from here. Give up rather than read the wrong bytes.
+      if ((flags & 0x08) || !csize) return null;
+
+      return file.slice(30, 30 + nameLen).arrayBuffer().then(function (nameBuf) {
+        var name = new TextDecoder().decode(nameBuf);
+        if (name !== "MANIFEST.json") return null;
+        var start = 30 + nameLen + extraLen;
+        var blob = file.slice(start, start + csize);
+        if (method === 0) return blob.text();
+        if (method !== 8) return null;
+        if (typeof DecompressionStream === "undefined") return null;
+        return new Response(blob.stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      });
+    }).then(function (text) {
+      if (!text) return null;
+      try { return JSON.parse(text); } catch (e) { return null; }
+    }).catch(function () { return null; });
+  }
+
+  function fillModules(chosen) {
+    var box = $("f-modules");
+    box.replaceChildren();
+    MODULES.forEach(function (m) {
+      var lab = el("label");
+      var cb = el("input");
+      cb.type = "checkbox";
+      cb.value = m;
+      cb.checked = chosen.indexOf(m) >= 0;
+      lab.appendChild(cb);
+      lab.appendChild(el("span", null, m));
+      box.appendChild(lab);
+    });
+  }
+
+  function takeFile(file) {
+    if (!file) return;
+    say("file-said", "info", "Reading " + file.name + "…");
+
+    Promise.all([
+      file.arrayBuffer().then(function (b) { return crypto.subtle.digest("SHA-256", b); }),
+      readManifest(file),
+    ]).then(function (r) {
+      var sha = hex(r[0]), m = r[1];
+      $("f-sha").value = sha;
+      $("f-sha").dataset.size = String(file.size);
+
+      if (!m) {
+        say("file-said", "info",
+            "Hashed it, but the manifest could not be read out of the archive — "
+            + "fill the fields in by hand. Nothing was uploaded.");
+        return;
+      }
+      if (m.id) $("f-id").value = String(m.id).toLowerCase();
+      if (m.version) $("f-version").value = m.version;
+      if (m.name) $("f-name").value = m.name;
+      if (m.description && !$("f-desc").value) $("f-desc").value = m.description;
+      if (m.gearbox) $("f-gearbox").value = m.gearbox;
+      if (m.side) $("f-side").value = m.side;
+      if (m.updateUrl) $("f-thumb").dataset.updateUrl = m.updateUrl;
+      fillModules(Array.isArray(m.modules) ? m.modules : ["Core"]);
+
+      var note = el("span");
+      note.appendChild(document.createTextNode(" SHA-256 "));
+      note.appendChild(el("code", null, sha));
+      say("file-said", "good",
+          "Read " + (m.name || m.id) + " v" + (m.version || "?") + " from the manifest.", note);
+    }).catch(function () {
+      say("file-said", "bad", "That file could not be read. It stays on your machine either way.");
+    });
+  }
+
+  var drop = $("drop");
+  drop.addEventListener("click", function () { $("file").click(); });
+  drop.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); }
+  });
+  $("file").addEventListener("change", function (e) { takeFile(e.target.files[0]); });
+  ["dragenter", "dragover"].forEach(function (n) {
+    drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (n) {
+    drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) takeFile(e.dataTransfer.files[0]);
+  });
+
+  // ───────────────────────────── publishing ─────────────────────────────
+
+  $("publish").addEventListener("click", function () {
+    var modules = [];
+    $("f-modules").querySelectorAll("input:checked").forEach(function (c) { modules.push(c.value); });
+    if (modules.indexOf("Core") < 0) modules.unshift("Core");
+
+    var tags = $("f-tags").value.split(",").map(function (s) { return s.trim(); })
+      .filter(Boolean).slice(0, 8);
+
+    var body = {
+      id: $("f-id").value.trim().toLowerCase(),
+      name: $("f-name").value.trim(),
+      version: $("f-version").value.trim(),
+      summary: $("f-summary").value.trim(),
+      description: $("f-desc").value,
+      page: $("f-page").value.trim(),
+      downloadUrl: $("f-download").value.trim(),
+      sha256: $("f-sha").value.trim().toLowerCase(),
+      gearbox: $("f-gearbox").value.trim(),
+      side: $("f-side").value,
+      modules: modules,
+      tags: tags,
+    };
+    var thumb = $("f-thumb").value.trim();
+    if (thumb) body.thumbnail = thumb;
+    var upd = $("f-thumb").dataset.updateUrl;
+    if (upd) body.updateUrl = upd;
+    var size = $("f-sha").dataset.size;
+    if (size) body.sizeBytes = Number(size);
+
+    $("publish").disabled = true;
+    say("form-said", "info", "Publishing…");
+
+    api("/mods", { method: "POST", body: body })
+      .then(function (r) {
+        $("publish").disabled = false;
+
+        /* A new or re-uploaded listing is CHECKED BEFORE IT APPEARS, so the
+           honest thing to report is "in review", not "published". Saying
+           published and then showing nothing in the directory is how you get a
+           bug report from somebody whose mod was fine all along. */
+        if (r.status === "pending") {
+          var q = r.queue || {}, mins = q.aboutMinutes || 1;
+          say("form-said", "info",
+              (r.created ? "Submitted " : "Updated ") + r.mod.name
+              + " — it is in the review queue"
+              + (q.position ? " at number " + q.position : "")
+              + ". An automated check looks at the file and the download link, "
+              + "usually within " + mins + (mins === 1 ? " minute" : " minutes")
+              + ". It appears in the directory once that passes.");
+        } else {
+          var link = el("a", null, "See it in the directory");
+          link.href = "/mods?mod=" + encodeURIComponent(r.mod.id);
+          say("form-said", "good", "Updated " + r.mod.name + ".", link);
+        }
+        loadMine();
+      })
+      .catch(function (e) {
+        $("publish").disabled = false;
+        say("form-said", "bad", e.message);
+      });
+  });
+
+  // ──────────────────────────── your listings ──────────────────────────
+
+  function loadMine() {
+    api("/mods/mine").then(function (r) {
+      var mods = r.mods || [];
+      show("s-mine", mods.length > 0);
+      var box = $("mine");
+      box.replaceChildren();
+      mods.forEach(function (m) {
+        var row = el("div", "mine-row" + (m.status === "listed" ? "" : " off"));
+        row.appendChild(el("span", "nm", m.name));
+        var meta = "v" + m.version;
+        if (m.status === "pending") {
+          meta += " · in review" + (m.queue && m.queue.position
+            ? " (number " + m.queue.position + " in the queue)" : "");
+        } else if (m.status === "held") {
+          meta += " · held";
+        } else if (m.status !== "listed") {
+          meta += " · " + m.status;
+        }
+        if (typeof m.downloads === "number" && m.status === "listed") {
+          meta += " · " + m.downloads + " downloads, " + (m.uniqueDownloads || 0) + " unique";
+        }
+        row.appendChild(el("span", "meta", meta));
+
+        /* Why it was held, in the author's own view. A hold that does not say
+           what is wrong is a listing nobody can fix. */
+        if (m.hold && m.hold.reason) {
+          var why = el("div", "said bad");
+          why.style.flexBasis = "100%";
+          why.textContent = m.hold.reason
+            + " Upload a fixed file and publish again — a new file goes back for review.";
+          row.appendChild(why);
+        }
+
+        var sp = el("span", "sp");
+        var view = el("a", "btn plain", "View");
+        view.href = "/mods?mod=" + encodeURIComponent(m.id);
+        sp.appendChild(view);
+
+        /* Withdrawing takes the counts with it, so it asks first. */
+        var wd = el("button", "btn plain", "Withdraw");
+        wd.type = "button";
+        wd.addEventListener("click", function () {
+          if (!confirm("Withdraw “" + m.name + "”? Its download counts go too, "
+                       + "and this cannot be undone.")) return;
+          wd.disabled = true;
+          api("/mods/" + encodeURIComponent(m.id) + "/withdraw", { method: "POST" })
+            .then(loadMine)
+            .catch(function (e) { wd.disabled = false; alert(e.message); });
+        });
+        sp.appendChild(wd);
+        row.appendChild(sp);
+        box.appendChild(row);
+      });
+    }).catch(function () { /* not fatal: the form still works */ });
+  }
+
+  // ──────────────────────────────── start ──────────────────────────────
+
+  var saved = null;
+  try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (saved) {
+    token = saved;
+    /* Refresh rather than trust: it proves the token is still good AND slides
+       its window, in one request that costs no storage. */
+    api("/auth/refresh", { method: "POST" })
+      .then(function (r) { signedIn(r.token, r.account); })
+      .catch(function () {
+        token = null;
+        try { sessionStorage.removeItem(KEY); } catch (e) {}
+        startAuth();
+      });
+  } else {
+    startAuth();
+  }
+})();
+</script>
+</body>
+</html>

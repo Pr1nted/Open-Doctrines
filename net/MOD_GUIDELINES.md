@@ -48,10 +48,19 @@ with different names to sit higher on the page.
 
 ## What we do
 
-We look up your declared hash with a third-party scanner and show what comes
-back. **A clean result is not an endorsement** — it means nobody has reported
-those particular bytes yet. We say that on the listing too, because a badge that
-reads "clean" and means "unknown" is worse than no badge.
+**Your listing is checked before it appears.** It joins a queue; an automated
+check looks your declared hash up with a third-party scanner and tests that your
+download link answers. That is usually a minute or two, and the publish page
+shows where you are in the line.
+
+If the scanner flags the file, or the link does not answer, the listing is
+**held** and you are told which of the two it was. Fix it and publish again — a
+new file goes back through the queue.
+
+**A clean result is not an endorsement** — it means nobody has reported those
+particular bytes yet. We say that on the listing too, because a badge that reads
+"clean" and means "unknown" is worse than no badge. A file nobody has ever
+scanned is listed rather than held: that is the ordinary state of a new mod.
 
 We count how many people follow your download link, and show you the number.
 

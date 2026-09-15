@@ -39,6 +39,9 @@ import { checkNickname } from "./accounts/nickname.js";
 import { isAdmin, setBadge } from "./accounts/badges.js";
 import { applyEdit, forClients, readAll, type Announcement, type Edit } from "./announcements/store.js";
 import { isLive } from "./live/lookup.js";
+import {
+    discordInteractions, joinPage, lfgClose, lfgList, lfgModerate, lfgModerationList, lfgPost, lfgReport,
+} from "./lfg/routes.js";
 import { createLink, useLink } from "./live/viewerlink.js";
 import { safeChannel } from "./live/platforms.js";
 import {
@@ -64,11 +67,16 @@ import { randomId } from "./util/crypto.js";
 import { hmacId } from "./util/crypto.js";
 import {
     browse, countOwned, getListing, GUIDELINES_VERSION, listOwned, LIMITS as MOD_LIMITS,
-    MODMAKER_THRESHOLD, parseDraft, publicListing, publish, setScan, tagsFrom,
+    MODMAKER_THRESHOLD, parseDraft, publicListing, publish, reviewed, tagsFrom,
     withdraw,
 } from "./mods/registry.js";
 import { dayNumber, forgetCounts, readCounts, recordHit } from "./mods/counts.js";
 import { lookup as scanLookup, reachable } from "./mods/scan.js";
+import {
+    complete as reviewDone, enqueue as reviewEnqueue, exhausted as reviewExhausted,
+    lease as reviewLease, position as reviewPosition, stats as reviewStats,
+    verdict, waitMinutes,
+} from "./mods/review.js";
 import {
     checkReporterQuota as checkModQuota, decideModReport, fileModReport, getModReport,
     listModReports, parseModReportInput,
@@ -80,11 +88,21 @@ import TERMS_OF_USE from "../TERMS.md";
 
 export { LobbyDO } from "./lobby/LobbyDO.js";
 export { ModCountsDO } from "./mods/counts.js";
+export { ReviewDO } from "./mods/review.js";
+export { LfgBoardDO } from "./lfg/BoardDO.js";
 
 /** Recommended poll interval, seconds. Mirrors RFC 8628's `interval`. */
 const POLL_INTERVAL = 2;
 
 export default {
+    /**
+     * The review drain. Once a minute, four at a time -- see mods/review.ts for
+     * why those are the scanner's numbers rather than ours.
+     */
+    async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+        ctx.waitUntil(drainReviewQueue(env));
+    },
+
     async fetch(request: Request, env: Env): Promise<Response> {
         if (request.method === "OPTIONS") return preflight();
         const url = new URL(request.url);
@@ -228,6 +246,25 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // The main-menu board. Public and cacheable: it is the same handful of
     // sentences for everybody, and the client asks once per launch.
     if (get && path === "/announcements") return announcements(env);
+
+    // ------------------------------------------- looking for a game ----
+    //
+    // The same board from both sides: the game posts here, /lfg in Discord
+    // posts here, and a listing made either way expires and is reported the
+    // same way. See lfg/board.ts for the rules it must pass.
+
+    if (get  && path === "/lfg") return lfgList(env);
+    if (post && path === "/lfg") return lfgPost(request, env);
+    if (post && path === "/lfg/close") return lfgClose(request, env);
+    if (post && path === "/lfg/report") return lfgReport(request, env);
+    if (get  && path === "/moderation/lfg") return lfgModerationList(request, env);
+    if (post && path === "/moderation/lfg") return lfgModerate(request, env);
+    if (post && path === "/discord/interactions") return discordInteractions(request, env);
+
+    // The page behind a Join button in Discord: a button can only open a URL,
+    // and the game's own opendoctrines:// scheme is not one Discord accepts.
+    const lfgJoinMatch = /^\/join\/([^/]+)$/.exec(path);
+    if (get && lfgJoinMatch) return joinPage(env, lfgJoinMatch[1]!);
     if (post && path === "/admin/announcement") return adminAnnouncement(request, env);
 
     if (post && path === "/admin/badge") return adminBadge(request, env);
@@ -1738,21 +1775,25 @@ async function modPublish(request: Request, env: Env): Promise<Response> {
     }
     const listing = (result as { listing: Awaited<ReturnType<typeof getListing>> }).listing!;
 
-    // A dead link is the most common thing wrong with a listing, and the
-    // cheapest moment to say so is while the author is still looking at the
-    // form. A host that refuses HEAD is not a failure -- see scan.ts.
-    const reach = await reachable(listing.downloadUrl);
-
-    // The scan is a lookup of the DECLARED hash, so it can run now. A null
-    // result -- no key, rate limited, network down -- is deliberately NOT
-    // recorded: an absent scan renders as "unscanned", which is true.
-    const scan = await scanLookup(env, listing.sha256);
-    const finished = scan ? await setScan(env, listing, scan) : listing;
+    // THE SCAN DOES NOT HAPPEN HERE, AND THAT IS THE POINT.
+    //
+    // It used to. VirusTotal's free tier allows four lookups a minute, so two
+    // authors publishing in the same minute meant the second got a 429 -- and a
+    // failed lookup is correctly recorded as NO lookup, so that listing went up
+    // reading "unscanned" and nothing ever came back to it. The check quietly
+    // stopped happening exactly when the directory got busy enough to need it.
+    //
+    // So a new or re-uploaded listing is `pending` and joins the queue, and the
+    // cron drains it at the rate the scanner allows. Nobody is refused; a busy
+    // day makes the queue longer rather than the checks weaker.
+    let position = 0;
+    if (listing.status === "pending") position = await reviewEnqueue(env, listing.id);
 
     return json({
-        mod: publicListing(finished),
+        mod: publicListing(listing),
         created: (result as { created: boolean }).created,
-        downloadReachable: reach.ok,
+        status: listing.status,
+        ...(position ? { queue: { position, aboutMinutes: waitMinutes(position) } } : {}),
     }, 200);
 }
 
@@ -1767,7 +1808,14 @@ async function modMine(request: Request, env: Env): Promise<Response> {
         const listing = await getListing(env, id);
         if (!listing) continue;
         const counts = await readCounts(env, id);
-        mods.push({ ...publicListing(listing, counts), status: listing.status });
+        mods.push({
+            ...publicListing(listing, counts),
+            status: listing.status,
+            ...(listing.hold ? { hold: listing.hold } : {}),
+            ...(listing.status === "pending"
+                ? { queue: { position: await reviewPosition(env, id) } }
+                : {}),
+        });
     }
     return json({ mods, uniqueBasis: "first download per address per day, summed over days" });
 }
@@ -1839,7 +1887,9 @@ async function modReport(request: Request, env: Env): Promise<Response> {
 async function modReportList(request: Request, env: Env): Promise<Response> {
     const account = await authenticate(request, env);
     if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
-    return json({ reports: await listModReports(env) });
+    // The queue's health belongs beside the queue of complaints: a drain that
+    // has stalled looks exactly like a directory nobody is publishing to.
+    return json({ reports: await listModReports(env), review: await reviewStats(env) });
 }
 
 async function modReportDecide(request: Request, env: Env): Promise<Response> {
@@ -1904,4 +1954,45 @@ async function accountTag(request: Request, env: Env): Promise<Response> {
         ...(tag === null ? { displayTag: undefined } : { displayTag: tag }),
     });
     return json({ ok: true, displayTag: tag, held });
+}
+
+// ========================================================= review queue ====
+
+/**
+ * Check the listings that are waiting, at the rate the scanner allows.
+ *
+ * An item is LEFT in the queue when the lookup could not be made at all -- its
+ * lease lapses and a later tick retries it -- until it has been tried enough
+ * times that the problem is plainly ours, at which point it goes live reading
+ * "unscanned". Holding somebody's work hostage to our own outage would be the
+ * wrong way round.
+ */
+async function drainReviewQueue(env: Env): Promise<void> {
+    const items = await reviewLease(env);
+
+    for (const item of items) {
+        const listing = await getListing(env, item.id);
+        // Withdrawn between joining the queue and being reached, or already
+        // decided. Neither is an error.
+        if (!listing || listing.status !== "pending") {
+            await reviewDone(env, item.id);
+            continue;
+        }
+
+        const [reach, scan] = await Promise.all([
+            reachable(listing.downloadUrl),
+            scanLookup(env, listing.sha256),
+        ]);
+
+        // No verdict with no key configured is not a failure worth retrying --
+        // it is the permanent answer on a service that has no scanner.
+        const noScanner = !env.VIRUSTOTAL_API_KEY;
+        if (!scan && !noScanner && !(await reviewExhausted(env, item.id))) continue;
+
+        // Only a real HTTP error holds a listing: reachable() reports ok when
+        // it could not tell, so a host that refuses HEAD is fine.
+        const v = verdict(scan, reach.ok);
+        await reviewed(env, listing, v.status, scan ?? undefined, v.hold);
+        await reviewDone(env, item.id);
+    }
 }

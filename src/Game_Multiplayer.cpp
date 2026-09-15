@@ -22,6 +22,7 @@
 #include <emscripten.h>   // odDiscordInvite bridge, see shell.html
 #endif
 #include "BuildCosts.h"
+#include "MpWidgets.h"
 #include "TextInput.h"
 
 #include <cstring>
@@ -110,92 +111,8 @@ int drawBadgeTags(const std::string& badgesCsv, bool officialIssuer, int rightX,
     return rightX;
 }
 
-struct MpButton {
-    Rectangle rect;
-    bool      hovered = false;
-};
-
-MpButton buttonAt(float x, float y, float w, float h, Vector2 mouse) {
-    MpButton b{{x, y, w, h}, false};
-    b.hovered = CheckCollisionPointRec(mouse, b.rect);
-    return b;
-}
-
-void drawButton(const MpButton& b, const char* label, int fontSize,
-                Color base, Color border, bool enabled = true) {
-    const Color bg = !enabled ? Color{30, 30, 34, 200}
-                   : b.hovered ? Color{(unsigned char)(base.r + 20), (unsigned char)(base.g + 20),
-                                       (unsigned char)(base.b + 20), 240}
-                               : base;
-    DrawRectangleRounded(b.rect, 0.15f, 8, bg);
-    DrawRectangleRoundedLines(b.rect, 0.15f, 8, enabled ? border : Color{70, 70, 80, 180});
-    const char* shown = T(label);
-    // THE LABEL IS TRANSLATED HERE, not at the hundred call sites.
-    //
-    // Every button on this screen comes through this function, so this is the
-    // one place that has to know about the language -- the same reasoning that
-    // put the shadowed DrawText in i18n/Text.h rather than editing 970 draw
-    // sites. A caller passing a literal gets it translated for free; the
-    // extractor is told about this function so those literals reach en.json.
-    const int tw = MeasureText(shown, fontSize);
-    DrawText(shown, (int)(b.rect.x + (b.rect.width - tw) / 2),
-             (int)(b.rect.y + (b.rect.height - fontSize) / 2), fontSize,
-             enabled ? (b.hovered ? WHITE : LIGHTGRAY) : Color{110, 110, 120, 255});
-
-    // Every multiplayer button is drawn through here, and the call sites test
-    // `click && b.hovered` themselves -- so pressing inside a drawn button is
-    // exactly the event they act on, and this is the one place to say so.
-    if (b.hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        Audio::get().playSfx(enabled ? "click_heavy" : "deny");
-}
-
-/** A text box. `focused` draws the caret; the caller owns the string. */
-void drawField(float x, float y, float w, float h, const std::string& text,
-               const char* placeholder, bool focused, int fontSize = 18) {
-    DrawRectangleRounded({x, y, w, h}, 0.15f, 8, Color{22, 24, 30, 230});
-    DrawRectangleRoundedLines({x, y, w, h}, 0.15f, 8,
-                              focused ? Color{150, 180, 220, 230} : Color{80, 85, 100, 200});
-    const int ty = (int)(y + (h - fontSize) / 2);
-    if (text.empty() && !focused) {
-        DrawText(placeholder, (int)x + 12, ty, fontSize, Color{110, 115, 130, 255});
-        return;
-    }
-    // Show the tail when it overflows: the end is what someone is typing.
-    std::string shown = text;
-    while (!shown.empty() && MeasureText(shown.c_str(), fontSize) > (int)w - 26)
-        shown.erase(shown.begin());
-    DrawText(shown.c_str(), (int)x + 12, ty, fontSize, RAYWHITE);
-    if (focused && ((int)(GetTime() * 2) % 2) == 0) {
-        DrawText("_", (int)x + 12 + MeasureText(shown.c_str(), fontSize), ty, fontSize, RAYWHITE);
-    }
-}
-
-/** Wraps text to a width and draws it, returning the y below the last line. */
-int wrapText(const std::string& text, int x, int y, int width, int fontSize,
-             Color color, bool draw) {
-    std::string line;
-    size_t at = 0;
-    while (at <= text.size()) {
-        const size_t space = text.find(' ', at);
-        const std::string word = text.substr(at, space == std::string::npos
-                                                 ? std::string::npos : space - at);
-        const std::string candidate = line.empty() ? word : line + " " + word;
-        if (MeasureText(candidate.c_str(), fontSize) > width && !line.empty()) {
-            if (draw) DrawText(line.c_str(), x, y, fontSize, color);
-            y += fontSize + 5;
-            line = word;
-        } else {
-            line = candidate;
-        }
-        if (space == std::string::npos) break;
-        at = space + 1;
-    }
-    if (!line.empty()) {
-        if (draw) DrawText(line.c_str(), x, y, fontSize, color);
-        y += fontSize + 5;
-    }
-    return y;
-}
+// MpButton, buttonAt, drawButton, drawField and wrapText now live in
+// src/MpWidgets.h, because the looking-for-a-game board draws with them too.
 
 int drawWrapped(const std::string& text, int x, int y, int width, int fontSize,
                 Color color) {
@@ -295,6 +212,11 @@ void Game::openMultiplayerMenu() {
     }
     if (m_mpPortField.empty()) m_mpPortField = "27015";
     if (m_mpTurnField.empty()) m_mpTurnField = "0";
+
+    // Asked once, on the way in, so the hub can say how many games are open
+    // instead of offering a board that might be empty. It is not polled from
+    // the hub -- only the board itself does that, and only while it is open.
+    lfgRefresh(false);
 }
 
 int Game::mpTurnSeconds() const {
@@ -988,6 +910,7 @@ void Game::updateMultiplayerMenu() {
 
     mpDrainEvents();
     mpUpdateReachTest();
+    pumpLfg();
 
     // Typing goes to whichever box has focus. Fields are indexed so one
     // handler serves every page.
@@ -1001,6 +924,11 @@ void Game::updateMultiplayerMenu() {
             case 3: target = &m_mpPortField;    limit = 5;   break;
             case 4: target = &m_mpTurnField;    limit = 7;   break;
             case 5: target = &m_mpMapSearch;    limit = 32;  break;
+            // The looking-for-a-game board's boxes. Indexed into the same
+            // handler as everything else so one place knows about typing.
+            case 6: target = &m_lfgDraft.map;   limit = odlfg::Limits::kMapChars;  break;
+            case 7: target = &m_lfgReportNote;  limit = 240; break;
+            case 8: target = &m_lfgDraft.note;  limit = odlfg::Limits::kNoteChars; break;
             default: break;
         }
         if (target) {
@@ -1016,7 +944,18 @@ void Game::updateMultiplayerMenu() {
                 c = GetCharPressed();
             }
             odTextEditKeys(*target, (size_t)limit);
-            if (IsKeyPressed(KEY_TAB)) m_mpFocus = (m_mpFocus + 1) % 6;
+            // Tab moves within the page's own boxes. Cycling through all of
+            // them would land the caret in a field that is not on screen,
+            // which reads as the key doing nothing.
+            if (IsKeyPressed(KEY_TAB)) {
+                if (m_mpPage == MpPage::Post) {
+                    m_mpFocus = (m_mpFocus == 6) ? 8 : 6;
+                } else if (m_mpPage == MpPage::Board) {
+                    m_mpFocus = 7;
+                } else {
+                    m_mpFocus = (m_mpFocus + 1) % 6;
+                }
+            }
         }
     }
 
@@ -1043,6 +982,8 @@ void Game::drawMultiplayerMenu() {
     const char* title = m_mpPage == MpPage::Hub       ? "Multiplayer"
                       : m_mpPage == MpPage::Join      ? "Join a game"
                       : m_mpPage == MpPage::HostSetup ? "Host a game"
+                      : m_mpPage == MpPage::Board     ? "Looking for a game"
+                      : m_mpPage == MpPage::Post      ? "Post your game"
                                                       : "Lobby";
     DrawText(title, m_screenW / 2 - MeasureText(title, 40) / 2, 60, 40, RAYWHITE);
 
@@ -1050,6 +991,8 @@ void Game::drawMultiplayerMenu() {
         case MpPage::Hub:       drawMpHub(mouse, click); break;
         case MpPage::Join:      drawMpJoin(mouse, click); break;
         case MpPage::HostSetup: drawMpHostSetup(mouse, click); break;
+        case MpPage::Board:     drawMpBoard(mouse, click); break;
+        case MpPage::Post:      drawMpPost(mouse, click); break;
         case MpPage::Lobby:
             drawMpLobby(mouse, click);
             // Down the right-hand side, out of the way of the roster. Drawn
@@ -1120,6 +1063,37 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     }
 
     y += 20;
+
+    // ── THE WAY TO MEET SOMEBODY ──
+    //
+    // Above Join and Host, because both of those assume you already know who
+    // you are playing with. This is the one that answers "I have nobody to
+    // play with", which was the thing this screen could not answer at all.
+    {
+        const int boardH = 58;
+        const MpButton board = buttonAt((float)(centerX - listW / 2), (float)y,
+                                        (float)listW, (float)boardH, mouse);
+        DrawRectangleRounded(board.rect, 0.12f, 8,
+                             board.hovered ? Color{44, 56, 74, 235} : Color{34, 44, 60, 220});
+        DrawRectangleRoundedLines(board.rect, 0.12f, 8, Color{120, 160, 200, 210});
+        DrawText(T("Looking for a game"), (int)board.rect.x + 16, (int)board.rect.y + 10, 20,
+                 RAYWHITE);
+
+        // The count is the whole invitation: "3 games open" is a reason to
+        // press, "browse the board" is a chore. Nothing is claimed when the
+        // board has not answered yet.
+        const size_t open = m_lfgListings.size();
+        const std::string sub =
+            open == 0 ? std::string("See who is playing, or post your own game")
+                      : (std::to_string(open) + (open == 1 ? " game open right now"
+                                                           : " games open right now"));
+        DrawText(sub.c_str(), (int)board.rect.x + 16, (int)board.rect.y + 34, 14,
+                 open == 0 ? Color{140, 148, 165, 255} : Color{150, 200, 165, 255});
+        if (board.hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            Audio::get().playSfx("click_heavy");
+        if (click && board.hovered) lfgOpenBoard();
+        y += boardH + 22;
+    }
 
 #ifdef __EMSCRIPTEN__
     // Say it here, before the buttons, rather than letting a player find out by

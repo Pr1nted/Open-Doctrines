@@ -98,7 +98,15 @@ export function isPublishableUrl(u: string): boolean {
 export type Side = "client" | "server" | "both";
 export const SIDES: Side[] = ["client", "server", "both"];
 
-export type Status = "listed" | "unlisted" | "removed";
+/**
+ * Where a listing is in its life.
+ *
+ * `pending` is the state everything starts in and the reason the queue exists:
+ * a listing is checked BEFORE it is shown, not after. `held` is what a failed
+ * check produces -- the author is told why and can fix it and republish, which
+ * is different from `removed`, which a moderator did and the author cannot undo.
+ */
+export type Status = "pending" | "listed" | "held" | "unlisted" | "removed";
 
 export interface Scan {
     /** When we asked. */
@@ -166,6 +174,10 @@ export interface Listing {
     status: Status;
     /** Absent until a scan has been attempted. */
     scan?: Scan;
+    /** When the review queue last looked at it. */
+    reviewedAt?: number;
+    /** Why it is `held`, in words the author is shown. */
+    hold?: { reason: string; at: number };
     /** Which guidelines the owner had agreed to when this was last written. */
     guidelines: string;
 }
@@ -399,20 +411,38 @@ export async function publish(
     }
 
     const created = existing?.created ?? now;
+
+    // WHAT NEEDS REVIEWING: anything new, and anything whose FILE changed.
+    //
+    // Fixing a typo in a summary does not, and that matters more than it looks:
+    // the scanner's budget is 500 lookups a day for the whole service, so
+    // re-reviewing on every edit would let one author editing their description
+    // spend the day's checks and push everybody else's first review to tomorrow.
+    const fileChanged = !existing || existing.sha256 !== draft.sha256;
+
     const listing: Listing = {
         ...draft,
         ownerId: owner.id,
         ownerNick: owner.nick,
         created,
         updated: now,
-        status: existing?.status === "unlisted" ? "unlisted" : "listed",
+        status: fileChanged
+            ? "pending"
+            : (existing.status === "held" ? "held" : existing.status),
         ...(existing?.scan ? { scan: existing.scan } : {}),
+        ...(existing?.hold ? { hold: existing.hold } : {}),
         guidelines: GUIDELINES_VERSION,
     };
 
-    // A CHANGED HASH INVALIDATES THE SCAN. Carrying the old verdict across a new
-    // upload would be the registry vouching for bytes nothing ever looked at.
-    if (existing && existing.sha256 !== listing.sha256) delete listing.scan;
+    // A CHANGED HASH INVALIDATES THE SCAN AND ANY HOLD. Carrying the old verdict
+    // across a new upload would be the registry vouching for bytes nothing ever
+    // looked at -- and leaving a hold on a file that has since been replaced
+    // would punish the author for having fixed it.
+    if (fileChanged) {
+        delete listing.scan;
+        delete listing.hold;
+        delete listing.reviewedAt;
+    }
 
     await env.OD_ACCOUNTS.put(modKey(listing.id), JSON.stringify(listing));
     if (!existing) {
@@ -432,6 +462,28 @@ export async function setStatus(
 
 export async function setScan(env: Env, listing: Listing, scan: Scan): Promise<Listing> {
     const updated = { ...listing, scan };
+    await env.OD_ACCOUNTS.put(modKey(listing.id), JSON.stringify(updated));
+    return updated;
+}
+
+/**
+ * Write back what the review decided. One KV write, and only from the drain.
+ *
+ * `scan` is written even when the verdict is "let it through unscanned", so the
+ * record says when we last looked rather than staying silent about it.
+ */
+export async function reviewed(
+    env: Env, listing: Listing, status: Status, scan?: Scan, hold?: string,
+    now = Math.floor(Date.now() / 1000),
+): Promise<Listing> {
+    const updated: Listing = {
+        ...listing,
+        status,
+        reviewedAt: now,
+        ...(scan ? { scan } : {}),
+        ...(hold ? { hold: { reason: hold, at: now } } : {}),
+    };
+    if (!hold) delete updated.hold;
     await env.OD_ACCOUNTS.put(modKey(listing.id), JSON.stringify(updated));
     return updated;
 }

@@ -917,6 +917,7 @@ set(GAME_SOURCES
     src/stream/DiscordRpc.cpp
     src/Game_ChatPlays.cpp
     src/Game_Announcements.cpp
+    src/Game_Lfg.cpp
     src/Game_AdminAnnounce.cpp
     src/Game_Llm.cpp
     # Threads on desktop, an ASYNCIFY queue in the browser. See its header.
@@ -985,6 +986,7 @@ set(GAME_SOURCES
     src/net/BadgeStyle.cpp
     src/net/Host.cpp
     src/net/Announcements.cpp
+    src/net/Lfg.cpp
     src/net/HttpClient.cpp
     src/net/JoinTicket.cpp
     src/net/Lobby.cpp
@@ -2138,6 +2140,19 @@ target_include_directories(AnnouncementsTest PRIVATE src tests)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_compile_definitions(AnnouncementsTest PRIVATE OD_ENABLE_NET=1)
     target_link_libraries(AnnouncementsTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
+# --- looking for a game ---
+# The board's rules, as a parser. No socket: a listing is a string, and every
+# refusal it makes is testable without a service to refuse it.
+add_executable(LfgTest EXCLUDE_FROM_ALL tests/lfg_test.cpp
+               src/net/Lfg.cpp src/net/Announcements.cpp src/net/HttpClient.cpp
+               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(LfgTest PRIVATE src tests)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_compile_definitions(LfgTest PRIVATE OD_ENABLE_NET=1)
+    target_link_libraries(LfgTest PRIVATE
                           MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
 endif()
 

@@ -18,7 +18,7 @@ import { modsRestricted, setModsRestricted, banInForce } from "../src/accounts/s
 import {
     browse, countOwned, GUIDELINES_VERSION, getListing, isModId, isPublishableUrl,
     isSha256, isVersion, MODMAKER_THRESHOLD, parseDraft, publicListing, publish,
-    scanForClients, setScan, tagsFrom, withdraw, type Draft, type Listing,
+    reviewed, scanForClients, setScan, tagsFrom, withdraw, type Draft, type Listing,
 } from "../src/mods/registry.js";
 import { dayNumber, readCounts, recordHit } from "../src/mods/counts.js";
 import {
@@ -209,6 +209,41 @@ describe("publishing", () => {
         expect(r.code).toBe("removed");
     });
 
+    it("does not re-review an edit that leaves the file alone", async () => {
+        // The scanner's budget is 500 lookups a day for the whole service. If a
+        // typo fix cost one, a single author editing a description could spend
+        // the day's checks and push everyone else's first review to tomorrow.
+        const jane = await makeAccount("acct-jane", "Jane");
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        await reviewed(env, p.listing, "listed");
+
+        const again = await publish(env, jane, asDraft({ summary: "A better summary of it." })) as
+            { listing: Listing };
+        expect(again.listing.status).toBe("listed");
+    });
+
+    it("sends a changed file back for review", async () => {
+        const jane = await makeAccount("acct-jane", "Jane");
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        await reviewed(env, p.listing, "listed");
+
+        const again = await publish(env, jane, asDraft({ sha256: "c".repeat(64) })) as
+            { listing: Listing };
+        expect(again.listing.status).toBe("pending");
+    });
+
+    it("clears a hold when the file is replaced", async () => {
+        // Leaving it would punish the author for having fixed the problem.
+        const jane = await makeAccount("acct-jane", "Jane");
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        await reviewed(env, p.listing, "held", undefined, "Engines flagged it.");
+
+        await publish(env, jane, asDraft({ sha256: "d".repeat(64) }));
+        const stored = await getListing(env, p.listing.id);
+        expect(stored?.status).toBe("pending");
+        expect(stored?.hold).toBeUndefined();
+    });
+
     it("drops the scan when the declared hash changes", async () => {
         // Carrying a verdict across a new upload would be the registry
         // vouching for bytes nothing ever looked at.
@@ -224,7 +259,11 @@ describe("publishing", () => {
     it("withdrawing removes the record and both index keys", async () => {
         const jane = await makeAccount("acct-jane", "Jane");
         const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        await reviewed(env, p.listing, "listed");
         expect(await countOwned(env, jane.id)).toBe(1);
+        // Visible BEFORE, so "gone after" means something. Without this the
+        // assertion below passes on a directory that never showed it at all.
+        expect((await browse(env)).mods).toHaveLength(1);
 
         await withdraw(env, p.listing);
         expect(await getListing(env, p.listing.id)).toBeNull();
@@ -234,13 +273,38 @@ describe("publishing", () => {
 });
 
 describe("browse", () => {
-    it("returns newest first", async () => {
+    it("returns newest first, once reviewed", async () => {
         const jane = await makeAccount("acct-jane", "Jane");
-        await publish(env, jane, asDraft({ id: "com.example.old" }), 1000);
-        await publish(env, jane, asDraft({ id: "com.example.new" }), 2000);
+        const a = await publish(env, jane, asDraft({ id: "com.example.old" }), 1000) as
+            { listing: Listing };
+        const b = await publish(env, jane, asDraft({ id: "com.example.new" }), 2000) as
+            { listing: Listing };
+        await reviewed(env, a.listing, "listed");
+        await reviewed(env, b.listing, "listed");
 
         const page = await browse(env);
         expect(page.mods.map((m) => m.id)).toEqual(["com.example.new", "com.example.old"]);
+    });
+
+    it("SHOWS NOTHING until the review queue has looked at it", async () => {
+        // The property the whole queue exists for. If this ever passes by
+        // accident, an unreviewed mod is on the front page of the directory.
+        const jane = await makeAccount("acct-jane", "Jane");
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        expect(p.listing.status).toBe("pending");
+        expect((await browse(env)).mods).toHaveLength(0);
+
+        await reviewed(env, p.listing, "listed");
+        expect((await browse(env)).mods).toHaveLength(1);
+    });
+
+    it("keeps a held listing out of the directory", async () => {
+        const jane = await makeAccount("acct-jane", "Jane");
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        await reviewed(env, p.listing, "held", undefined, "Engines flagged it.");
+        expect((await browse(env)).mods).toHaveLength(0);
+        const stored = await getListing(env, p.listing.id);
+        expect(stored?.hold?.reason).toContain("flagged");
     });
 
     it("hides an unlisted mod", async () => {
@@ -356,7 +420,9 @@ describe("reporting a mod is scoped, and cannot reach the account ban", () => {
     async function reported() {
         const jane = await makeAccount("acct-jane", "Jane");
         const bob = await makeAccount("acct-bob", "Bob");
-        await publish(env, jane, asDraft());
+        const p = await publish(env, jane, asDraft()) as { listing: Listing };
+        // Through review, because a complaint is about something people can see.
+        await reviewed(env, p.listing, "listed");
         const input = parseModReportInput({
             modId: "com.example.better-ai", reason: "malware",
             note: "Flagged by three engines.",
@@ -429,6 +495,7 @@ describe("reporting a mod is scoped, and cannot reach the account ban", () => {
 
         expect(decided.status).toBe("dismissed");
         expect(decided.outcome).toBe("dismissed");
+        // Untouched: it was listed before the complaint and is listed after.
         expect((await getListing(env, "com.example.better-ai"))?.status).toBe("listed");
     });
 

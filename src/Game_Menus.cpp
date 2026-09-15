@@ -498,7 +498,9 @@ struct CommunityLink {
 };
 
 const CommunityLink kCommunityLinks[] = {
-    {"https://discord.gg/wqS65jzVv5", "discord.png",
+    // The same invite the looking-for-a-game board sends people to; see
+    // odlfg::kDiscordInvite for why it is one constant and not two literals.
+    {odlfg::kDiscordInvite, "discord.png",
      {40, 35, 55, 220}, {60, 50, 80, 240}, {100, 80, 140, 200}, {130, 100, 180, 255}},
     {"https://pr1nted.itch.io/open-doctrines", "itch.png",
      {58, 34, 38, 220}, {84, 46, 52, 240}, {170, 92, 100, 200}, {220, 120, 130, 255}},
