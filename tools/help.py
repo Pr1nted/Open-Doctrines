@@ -41,6 +41,10 @@ GROUPS = [
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
+        # The verdict qualify.sh's 5-turn game gets: it played, it could not be
+        # tried, or it crashed. Its own file so tests/qualify_play_gate_test.sh
+        # can feed it the real logs from the day a segfault was read as a skip.
+        "qualify_play_gate.sh",
         "gen_server_raylib_stubs.py",
         # Serves the web build and collects the phone's console over the
         # network, because Safari's inspector needs a cable and the failure
