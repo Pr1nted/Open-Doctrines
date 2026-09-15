@@ -41,6 +41,7 @@
 
 #include "llm/Advisor.h"          // isLocal: plain HTTP on loopback only
 #include "net/AccountClient.h"
+#include "net/Host.h"     // the lobby a listing is prefilled from
 #include "net/HttpClient.h"
 #include "net/Lfg.h"
 #include "util/Async.h"
@@ -328,8 +329,10 @@ void Game::drawLfgCallToAction(int x, int y, int w, Vector2 mouse, bool click) {
                               Color{100, 80, 140, 190});
     DrawText(T("The same board is a Discord channel"), x + 16, y + 12, 17,
              Color{200, 185, 230, 255});
-    wrapText("Listings posted here show up in #looking-for-a-game, and listings posted "
-             "there show up here. Most games get their players in an evening.",
+    // ONE LITERAL PER CALL, not a concatenation: tools/i18n_extract.py reads
+    // the source for T() literals, and the halves of a split string reach
+    // en.json as two fragments a translator cannot make a sentence out of.
+    wrapText(T("Listings posted here show up in #looking-for-a-game, and listings posted there show up here."),
              x + 16, y + 36, w - 180, 14, Color{150, 150, 170, 255}, true);
 
     const MpButton go = buttonAt((float)(x + w - 156), (float)(y + h / 2 - 19), 140.0f, 38.0f, mouse);
@@ -394,9 +397,7 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
         DrawText(T("Nobody is looking for a game right now."), left, y, 19,
                  Color{170, 180, 200, 255});
         y += 28;
-        wrapText("Post yours and it appears here and in Discord at the same time. "
-                 "You do not have to be hosting yet -- a listing that says you are "
-                 "looking for a game works the same way.",
+        wrapText(T("Post yours and it appears here and in Discord at the same time. You do not have to be hosting yet: a listing that says you are looking for a game works the same way."),
                  left, y, listW - 20, 15, Color{130, 135, 150, 255}, true);
         drawLfgCallToAction(left, y + 64, listW, mouse, click);
         return;
