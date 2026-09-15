@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <string>
 #include <cstdio>
+#include <cstdlib>
+#include <map>
 
 bool ResearchNode::isAvailable(const std::vector<ResearchNode>& nodes) const {
     if (researched || inProgress) return false;
@@ -58,9 +60,39 @@ bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
         for (const auto& req : node.deps)
             if (!has(req)) return false;
     }
-    if (node.mutexGroup > 0)
+    if (node.mutexGroup > 0) {
         for (const auto& n : m_researchNodes)
             if (n.id != node.id && n.mutexGroup == node.mutexGroup && has(n.id)) return false;
+        // ── A FORK SIBLING IN PROGRESS IS TAKEN TOO (OD_RESEARCH_MUTEX_FIX=0 turns it off) ──
+        //
+        // The check above sees only what is RESEARCHED. The player's
+        // ResearchNode::isAvailable also refuses a sibling that is IN PROGRESS;
+        // this per-country version did not, so an extra research group could
+        // start off_tactics while the main slot was still on def_tactics and
+        // the country finished holding both. Measured, journal 373: 41 / 71 / 52
+        // fork nodes held beside their sibling per 400-turn world, off_tactics
+        // 13/13, 25/25, 12/12. ON by default since journal 382, the user's call after
+        // journal 376: 128 seeds per arm found no harm on any statistic and a land
+        // gain on 1914:FRA (+3.33, p 0.003). OD_RESEARCH_MUTEX_FIX=0 restores the old
+        // rule, for reproducing results measured before the flip.
+        static const bool inProgressBlocks = [] {
+            const char* e = std::getenv("OD_RESEARCH_MUTEX_FIX");
+            return !(e && *e == '0');
+        }();
+        if (inProgressBlocks) {
+            auto sibling = [&](int idx) {
+                return idx >= 0 && idx < (int)m_researchNodes.size() &&
+                       m_researchNodes[idx].id != node.id &&
+                       m_researchNodes[idx].mutexGroup == node.mutexGroup;
+            };
+            auto act = m_countryResearchActive.find(countryId);
+            if (act != m_countryResearchActive.end() && sibling(act->second)) return false;
+            auto ext = m_countryResearchExtra.find(countryId);
+            if (ext != m_countryResearchExtra.end())
+                for (const auto& sl : ext->second)
+                    if (sibling(sl.activeNode)) return false;
+        }
+    }
     return true;
 }
 
@@ -68,6 +100,57 @@ bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
 // player block in processUpgrades: allocation buys research points
 // (rp = 1 + sqrt(spend/2)), points sink into the active node, completion
 // lands in m_countryResearched where all the effect queries pick it up.
+// ── [PROBE] WHICH SIDE OF A RESEARCH FORK, AND CAN ONE COUNTRY HOLD BOTH?
+//    (OD_RESEARCH_PROBE, off) ──
+//
+// Journal 372 / backlog 100. Every mutex pair in the tree ties on cost and both
+// AI choosers take the cheapest node with a strict `<`, so the first-declared
+// side is always chosen. And isNodeAvailableFor blocks a sibling only once it
+// is RESEARCHED, so an extra research group can start the other side while the
+// main slot is still on the first. These counters say how often each happens.
+// Counters only: nothing here is read by any decision, which the decision
+// hash proves rather than asserts.
+namespace {
+struct ResearchProbeRow { int group = 0; long long mainSlot = 0, extraSlot = 0, siblingHeld = 0; };
+std::map<std::string, ResearchProbeRow> s_researchProbe;
+long long s_researchProbeDone[2] = {};      // completions: main slot, extra groups
+long long s_researchProbeBeside = 0;        // extra group STARTED the main slot's mutex sibling
+bool researchProbeOn() {
+    static const bool on = std::getenv("OD_RESEARCH_PROBE") &&
+                           atoi(std::getenv("OD_RESEARCH_PROBE")) != 0;
+    return on;
+}
+void dumpResearchProbe() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[RPROBE] AI research completions: main slot %lld, extra groups %lld; "
+                    "extra group started the main slot's mutex sibling %lld times\n",
+            s_researchProbeDone[0], s_researchProbeDone[1], s_researchProbeBeside);
+    for (const auto& [id, r] : s_researchProbe)
+        fprintf(stderr, "[RPROBE] mutex %d  %-20s completed main %lld  extra %lld  "
+                        "with its sibling already held %lld\n",
+                r.group, id.c_str(), r.mainSlot, r.extraSlot, r.siblingHeld);
+}
+void researchProbeNote(const Game& g, int cid, const ResearchNode& node, bool extra) {
+    if (!researchProbeOn()) return;
+    static const bool reg = (atexit(&dumpResearchProbe), true);
+    (void)reg;
+    ++s_researchProbeDone[extra ? 1 : 0];
+    if (node.mutexGroup <= 0) return;
+    auto& row = s_researchProbe[node.id];
+    row.group = node.mutexGroup;
+    ++(extra ? row.extraSlot : row.mainSlot);
+    auto it = g.m_countryResearched.find(cid);
+    if (it == g.m_countryResearched.end()) return;
+    for (const auto& sib : g.m_researchNodes)
+        if (sib.id != node.id && sib.mutexGroup == node.mutexGroup && it->second.count(sib.id)) {
+            ++row.siblingHeld;
+            break;
+        }
+}
+}  // namespace
+
 void Game::progressCountryResearch(int countryId) {
     if (countryId == m_playerCountryId) return;
     auto raIt = m_countryResearchAllocation.find(countryId);
@@ -132,6 +215,10 @@ void Game::progressCountryResearch(int countryId) {
             if (taken) continue;
             if (n.cost < bestCost) { bestCost = n.cost; best = (int)i; }
         }
+        if (researchProbeOn() && best >= 0 && active >= 0 && active < (int)m_researchNodes.size() &&
+            m_researchNodes[best].mutexGroup > 0 &&
+            m_researchNodes[best].mutexGroup == m_researchNodes[active].mutexGroup)
+            ++s_researchProbeBeside;
         sl.activeNode = best;
         sl.invested = 0;
     }
@@ -145,6 +232,7 @@ void Game::progressCountryResearch(int countryId) {
     if (toSpend > 0) { invested += toSpend; pts -= toSpend; }
     if (invested >= node.cost) {
         if (m_ai) m_ai->noteResearchDone(countryId);
+        researchProbeNote(*this, countryId, node, false);
         m_countryResearched[countryId].insert(node.id);
         active = -1;
         invested = 0;
@@ -164,6 +252,7 @@ void Game::progressCountryResearch(int countryId) {
         pts -= spend;
         if (sl.invested >= n2.cost) {
             if (m_ai) m_ai->noteResearchDone(countryId);
+            researchProbeNote(*this, countryId, n2, true);
             m_countryResearched[countryId].insert(n2.id);
             sl.activeNode = -1;
             sl.invested = 0;
@@ -876,7 +965,7 @@ int Game::getResearchedPortLevel(int countryId) const {
 // The per-country set is authoritative when it exists, with the same fallback
 // to the shared flag that getResearchedFortLevel and its siblings use, so a map
 // or save that predates per-country research still behaves as it did.
-float Game::getTotalEffect(const std::string& effectField, int countryId) const {
+float Game::getResearchEffect(const std::string& effectField, int countryId) const {
     const int cid = (countryId >= 0) ? countryId : m_playerCountryId;
     auto cit = m_countryResearched.find(cid);
     const std::unordered_set<std::string>* own =
@@ -902,6 +991,15 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
         else if (effectField == "navyDefPct") total += n.navyDefPct;
         else if (effectField == "navySpeedPct") total += n.navySpeedPct;
     }
+    return total;
+}
+
+// Research plus doctrines. The research sum is taken first and the doctrine
+// levers added to it in the same order as before the split, so the float
+// result is unchanged -- which the decision hash checks (journal 373).
+float Game::getTotalEffect(const std::string& effectField, int countryId) const {
+    const int cid = (countryId >= 0) ? countryId : m_playerCountryId;
+    float total = getResearchEffect(effectField, countryId);
     // ...AND THE DOCTRINES IN FORCE. See Policy::levers: these were parsed into
     // nothing and summed nowhere, so every doctrine's advertised effects were
     // decoration. Only doctrines that have finished implementing count --

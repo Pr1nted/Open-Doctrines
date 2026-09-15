@@ -4584,6 +4584,10 @@ private:
     int getResearchedPortLevel(int countryId = -1) const;
     /** Sum of one modifier over `countryId`'s researched nodes (-1 = player). */
     float getTotalEffect(const std::string& effectField, int countryId = -1) const;
+    // The research half of getTotalEffect on its own -- getTotalEffect is this
+    // plus the doctrines in force. Split out so a probe can separate the two
+    // without a second copy of the sum (journal 373).
+    float getResearchEffect(const std::string& effectField, int countryId = -1) const;
 
     // ── Per-country research (AI countries; the player keeps the global tree
     // UI). Completion lands in m_countryResearched, which every effect query
