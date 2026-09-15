@@ -1,5 +1,247 @@
 # Changelog
 
+## game 1.2.1a
+
+- **Twenty-four more languages, and the twenty already there finished.** The
+  interface shipped in twenty languages at 1.2.0a. It now ships in forty-four --
+  Albanian, Azerbaijani, Bosnian, Croatian, Danish, Dutch, Esperanto, Estonian,
+  Finnish, Greek, Hungarian, Armenian, Georgian, Kyrgyz, Latin, Latvian,
+  Lithuanian, Mongolian, Norwegian Bokmal, Portuguese, Romanian, Serbian,
+  Swedish and Vietnamese are new.
+
+  The twenty that were already there did not stay where they were: between them
+  they gained 5,980 strings, going from 83.6% to 99.1% of the interface measured
+  against today's string list, which itself grew by 74. Across all forty-four,
+  83,980 of 84,964 strings are present.
+
+  Every string that passes through the translation layer is now translated in
+  all forty-four. What is left cannot be reached from a language file at all:
+  the advisor's refusal phrases, which are matched against the model's English
+  output and would stop working if they were translated; four mangled escape
+  sequences; and a handful of literals drawn straight to the screen without a
+  lookup.
+
+  Arabic and Urdu mean right-to-left layout was done properly rather than
+  skipped, and Armenian, Georgian, Kyrgyz, Mongolian and Latin each bring their
+  own script.
+
+- **Ethnic migration conserves people.** A province's minority shares partition
+  its population, and migration was capped against the province rather than
+  against the group actually leaving. Move more people than a group has and its
+  head count went negative, the group was dropped as empty, and its share left
+  the numerator while the denominator kept the hole — inflating everyone who
+  stayed, compounding every turn.
+
+  Replayed over the 116 turns of a conquer-the-world save, one province's shares
+  reached 6,111,403% and the Ethnic Management panel multiplied an ordinary
+  population by them: 9.4e20 Belarusians, with the titular Poles — the group that
+  had been emigrating all game — listed smaller than their own minorities.
+
+- **A country can no longer hold both sides of a research fork.** The
+  per-country availability check saw only what was already researched, so an
+  extra research group could start `off_tactics` while the main slot was still on
+  `def_tactics`, and the country finished with both. Measured at 41, 71 and 52
+  fork nodes held beside their sibling per 400-turn world. On by default after
+  128 seeds per arm found no harm on any statistic and a land gain for France in
+  1914; `OD_RESEARCH_MUTEX_FIX=0` restores the old rule.
+
+- **The release gate stops reading a crash as a skipped step.** The check that
+  asks whether the game can actually start looked at the log before the exit
+  code, so any death on a machine that had also printed an OpenGL message was
+  excused — including a real one. A macOS runner took SIGSEGV and the run
+  reported "built, tested, and played a game". The window opening is now what
+  separates the two cases, and the decision has its own tests.
+
+- **Development instrumentation.** Counters for why the AI declines to declare
+  war, scoped to one country; a bench that fingerprints its binary at both ends
+  of a run so a rebuild mid-run cannot be mistaken for a result; and hooks for an
+  external benchmark to time turns. All off by default and read by no decision.
+
+
+- **The map as a globe.** Press **F7** and the world wraps onto a sphere you can
+  turn: drag to spin it, wheel to zoom, click a province exactly as before. The
+  ground you were looking at stays in front of you across the switch, both ways.
+
+  It costs less than it sounds because of two things the map already was. The
+  political layer is an **equirectangular raster**, which is the projection a
+  sphere wants — so the globe needs no new art and no second copy of the map.
+  And a province is identified by its **pixel colour**, so picking is ray→sphere,
+  sphere→latitude and longitude, then the same lookup the flat map already does.
+  There is no second pick path to keep in step with the first.
+
+  Every overlay comes across for the same reason: both views composite the same
+  stack of full-map textures, so claims, population, resources, districts,
+  borders and the editor's own layers all arrive without a line of globe-specific
+  code. The one thing the flat projection never had to say is *this point is
+  behind the planet* — that is answered once, where map positions become screen
+  positions, rather than at each of the places that draw a marker.
+
+- **Day and night, and the season.** A terminator you can tune: how dark the
+  unlit half goes, how bright the lit half is, how wide dawn is, and what colour
+  the sun is. `night_floor` defaults well above black on purpose — a fully dark
+  night side makes half an empire invisible, and the map is a working document
+  before it is a picture.
+
+  The month moves the sun's **declination**, not its longitude: longitude is time
+  of day, declination is the season. In June the northern hemisphere leans into
+  the light; in December the reverse.
+
+- **Weather, in the air rather than on the ground.** Cloud sits inside the
+  atmosphere at a settable height and casts shadows on the ground beneath it —
+  which is what puts it above the map instead of on it. It thickens as you zoom
+  in, because from orbit you want the ground through the pattern and close in you
+  are looking along a much longer path of air.
+
+  The field is built from **cellular noise** organised by cyclonic rotation.
+  Summed smooth noise gives torn wool however many octaves you add: real weather
+  turns around lows, and a cumulus field is discrete cells with clear air between
+  them. Both are generated, not shipped, and both are baked on a worker thread —
+  on a browser, where there are no threads to bake on, at a quarter the size.
+
+- **A sky each map carries.** Stars, a moon that takes the same light as the
+  planet and therefore shows a phase, and a sun you can turn towards. Eclipses
+  fall out of the same term asked from two places: the moon shadowing the ground
+  is a solar eclipse, the planet shadowing the moon is a lunar one.
+
+  All of it is authored per map in the editor's Metadata panel and stored as
+  `sky.json` inside the `.odmap`. Every field is optional, so a map written
+  before any of this existed loads with Earth-like defaults rather than being
+  refused — which matters in a format that already carries 118 files.
+
+- **Bots can be asked to act like the countries they are.** A map may carry a
+  `history.json` saying, for dated windows, which neighbours a power pushed into
+  and which it left alone. Off by default, under Settings - Experimental, and
+  inert unless both the switch is on and the map says something.
+
+  It does not tell the AI what to do. It scales the resolver's own winnability
+  score, and the ordinary bar is applied to the result: a historical target gets
+  more tempting, a country that power did not attack gets less, and nothing is
+  added that the rules refuse or masked off that they allow.
+
+- **The world unrolls into the globe instead of cutting to it.** F7 no longer
+  swaps one picture for another: the map lifts off the flat, curls, and closes
+  into a sphere over about seven tenths of a second, with the camera swinging
+  round to the longitude you end up looking at. The same vertex knows both of
+  its homes — where it sits on the sphere, and where it sits on a flat sheet cut
+  from the same texture coordinates — so the whole move is one blend between
+  them and costs nothing but the blend. Daylight comes back as it flattens,
+  because a flat map has no night side, and the cloud and atmosphere shells hold
+  off until the planet is round enough to wear them. Counters, labels and clicks
+  sit the animation out: mid-unroll a place is at neither of the two positions
+  those paths know how to compute, and half a second of nothing reads as part of
+  the move where half a second of markers in the wrong place reads as a fault.
+
+- **A button for the globe, not just a function key.** Under Settings in the
+  right-hand column, labelled with where it will take you rather than where you
+  are. F7 still works; a function key is a thing you have to be told about.
+
+- **The unroll starts from where you were looking.** The animation used to open
+  on a whole-world shot no matter how far in you were zoomed, so its first frame
+  was itself a jump. The sheet is now framed on a camera that reproduces the 2D
+  view exactly -- same centre, same zoom -- and the same is done in reverse, with
+  the flat camera settled on the globe's position and zoom before the sphere
+  starts to unroll. Asserted rather than eyeballed: the map pixels the 2D view
+  puts on each screen edge land on those same edges here.
+
+- **The night side is darker.** The floor it sits at went from 0.34 of full
+  brightness to 0.18, so the terminator reads as a real edge and a planet at
+  night looks like one. It is not zero and should not be: the political colours
+  underneath still have to be readable, because the map is a working document
+  before it is a picture.
+
+  The note explaining why it sat so high claimed a dark night side would take
+  unit markers with it. That was never true -- markers, counters, arrows and
+  country names are screen-space overlays drawn after the sphere and are not
+  touched by the terminator at all. Only the map dims, which is a smaller price
+  than the note had been charging for.
+
+- **And the dark side is still a map you can govern from.** One multiplier over
+  the whole night side is a choice nobody wants: dark enough to look like night,
+  or bright enough to work in. It is a false choice, because the two halves of
+  the picture are not the same kind of thing. Sea, ice and empty ground are
+  scenery and can go as dark as looks right; a country's colour is information,
+  and dimming that is the only part that costs the player anything.
+
+  So they are dimmed separately -- scenery to 0.18, political colouring to 0.62.
+  Telling them apart by colour cannot work, because this map's ocean is as
+  saturated as any province, so the composite records it instead: the base map
+  and the layers drawn over it are composited with different alpha blending, and
+  the alpha channel -- which carried nothing, the sphere being opaque -- comes
+  out holding how much of each texel is something a player put there.
+
+  Both numbers, and the width of dawn, are carried in a map's `sky.json`.
+
+- **The globe is sharp when you zoom in.** Its surface was composited at half
+  the map's resolution, on the reasoning that the whole planet is never more
+  than a screen wide -- true looking at the whole planet, and false the moment
+  you go close, which is exactly when anyone would notice. Close in you were
+  looking at a small patch of a half-size texture stretched over the screen, and
+  it read as a low-resolution map because it was one.
+
+  Zoomed in it now composites only the ground actually on screen, at the full
+  resolution of the raster, and the shader samples that patch instead of the
+  whole map. The far view is unchanged -- there a window would cost the wrap
+  handling and buy nothing. The patch is bounded by the VIEWPORT rather than by
+  the horizon, which at the nearest zoom is the difference between 21 degrees of
+  planet and 42, and it goes in as two pieces when it straddles the
+  antimeridian, where the map wraps and a patch cannot. Close in this costs
+  about 16 MB against the 134 MB a full-resolution copy of the whole map would
+  need, and resolves coastlines and islands that neither of the earlier sizes
+  could.
+
+- **Shells arc.** Artillery and naval bombardment no longer draw as a straight
+  line from gun to target: the flight leaves the ground, rises and comes down on
+  what it is hitting, and the barbed head is aimed along the descent rather than
+  along the line between the two ends. An army march stays straight, because a
+  march is something you could meet on the road.
+
+  The path is the great circle between gun and target -- the way a shell
+  actually goes -- lifted off the surface in between, so a flight fired from
+  beyond the horizon can be watched climbing into view before its target is
+  visible. Seen from directly overhead the climb alone shows almost nothing, as
+  a real trajectory would not, so the flight is also bowed on screen away from
+  the middle of the disc: the direction comes from the planet's own outward and
+  only the amount is a drawing convention.
+
+- **Ship routes stay on the planet.** Route tracks and army arrows were still
+  projected with the flat map's tile-wrapping, which on a globe drew lines
+  straight off the edge of the screen. They go through the projection now, a leg
+  with an end round the back is dropped rather than drawn to a sentinel, and long
+  legs are subdivided so a track from the Channel to the Cape follows the ocean
+  instead of chording through the planet. The flat map draws exactly the line it
+  drew before.
+
+- **Country names follow the surface of the globe.** Each letter is placed
+  through the same projection as everything else, so a name bends with the ground
+  it sits on and a country past the horizon takes its name with it. Two things
+  the flat map never needed: names shrink and fade toward the limb, where a
+  continent's worth of ground is seen edge-on and occupies a few pixels; and
+  where names would overprint — thirty countries in a hand's breadth of Europe,
+  with no zooming in to escape it — the larger country keeps its name and the
+  smaller ones yield. The flat map's labelling is untouched.
+
+  Every name is written ON the globe -- none of them turn to face the camera.
+  Where a country is too small on screen to hold its name at a readable size,
+  the run is widened along the surface until the letters fit, which is ordinary
+  cartography: the name reaches past its own borders rather than being crushed
+  inside them. The width is found by iteration, because the map-to-screen
+  relation along an arc is not linear and one division undershoots it. Where
+  even that cannot work -- ground seen almost edge-on near the limb, which would
+  need a name wrapped a fifth of the way round the world -- the country simply
+  goes unnamed, as it would in an atlas.
+
+  Names are also decluttered against the run they actually occupy, sampled
+  through the projection, rather than against a box guessed from their letter
+  count: a country's name is set along its own axis and usually bowed, so the
+  box claimed room the name did not use and missed room it did.
+
+- **The Admin screen says how many accounts exist.** Counted by walking the keys
+  rather than kept as a running total: the store has no atomic increment, so two
+  sign-ups landing together would both read the same number and write the same
+  number back, losing one permanently with nothing able to notice afterwards. A
+  count that drifts quietly downward is worse than no count, because it still
+  looks like a fact.
+
 ## game 1.2.0a
 
 - **OpenDoctrines plays inside Discord.** The game is an Activity now: launch it
