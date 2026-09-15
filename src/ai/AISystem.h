@@ -201,6 +201,8 @@ public:
     static double s_landRatio;
     static double s_warBarAtk;
     static double s_warBarDef;
+    static double s_warBarAtkRes;   // the research share of the two above (journal 373)
+    static double s_warBarDefRes;
     static long long s_gateWhy[4][6];
     static int s_netPicked[4][12];
     static double s_probSum[4][12];
@@ -4976,9 +4978,25 @@ private:
      *
      * `OD_LEAGUE_EXPLOIT=0.25` caps it at a quarter of the draw. Bare
      * `OD_LEAGUE_EXPLOIT=1` is read as "on at the default cap" rather than
-     * "always", which is the reading that produced journal 20.
+     * "always", which is the reading that produced journal 20. Any value
+     * outside (0,1) is read as 0.25; there is no uncapped setting.
+     *
+     * **Without OD_LEAGUE_FIX the cap bounds the rusher's draw WEIGHT, not its
+     * realised share of maps** (journal 366, backlog item 97). The rusher's
+     * outcomes are never recorded, so its weight never adapts, and the AISystem
+     * is rebuilt before every training map, so the draw's RNG restarts. A cap of
+     * 0.5 produced 8 of 8 rusher maps in journal 366 and 7 of 8 in journal 368.
+     * Do not pick a cap expecting that share of maps unless OD_LEAGUE_FIX is on.
      */
     static float s_leagueExploitCap;
+    /**
+     * OD_LEAGUE_FIX=1 (off by default; journal 377, backlog item 97) repairs both
+     * defects: the rusher's outcomes are recorded like any checkpoint's, and the
+     * league draw uses its own process-lifetime RNG, so it no longer restarts
+     * with each map's AISystem. With it on, the cap bounds the rusher's expected
+     * share of draws. Off keeps journal 366's recipe reproducible.
+     */
+    static bool s_leagueFix;
     std::unordered_set<int> m_leagueCids;
     bool m_leagueThisCountry = false;
     /**

@@ -217,8 +217,15 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
            infinite ? "endless maps" : TextFormat("%d map(s)", numMaps), turnsPerMap,
            numCountries > 0 ? TextFormat(", %d countries fixed", numCountries) : ", scenario-sized countries",
            baseSeed);
-    printf("[TRAIN] Model: %sai/model.bin  (close the window any time — progress is saved)\n",
-           m_dataDir.c_str());
+    // The file this run WRITES. setAIWorker redirects m_aiModelPath to
+    // ai/model.w<id>.bin whenever --worker is given, and runs before this
+    // (runHeadlessAI), so the literal "ai/model.bin" that used to be here named
+    // the untouched PARENT on every worker run -- two lines below the worker
+    // line that said otherwise. Journal 358 nearly benched that parent against
+    // itself on the strength of it. Non-worker runs still print ai/model.bin,
+    // the default.
+    printf("[TRAIN] Model: %s%s  (close the window any time — progress is saved)\n",
+           m_dataDir.c_str(), m_aiModelPath.c_str());
 
     auto runStart = std::chrono::steady_clock::now();
     std::mt19937 rng(baseSeed);

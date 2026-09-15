@@ -3085,6 +3085,56 @@ static bool reflexAblated(const char* name) {
     return hay.find(std::string(",") + name + ",") != std::string::npos;
 }
 
+// OD_ACT_HIST_CID=<cid> restricts the OD_ACT_HIST action counters (offered, gate
+// reasons, policy picks, policy probabilities, plays) to one country. Without it the
+// counters are process-wide and sum every net-driven country in the world, which
+// cannot answer a question about one seat (journal 386). Counters only; no decision
+// reads it.
+static bool actHistCountsCid(int cid) {
+    static const int only = std::getenv("OD_ACT_HIST_CID")
+                                 ? atoi(std::getenv("OD_ACT_HIST_CID")) : -1;
+    return only < 0 || only == cid;
+}
+
+// ── [PROBE] WHICH CONDITION KEEPS "DECLARE WAR" OFF THE MENU (OD_WARMASK_PROBE, off) ──
+//
+// Journal 387. war action 4 is valid iff findWarTarget() finds a target. These count,
+// only for calls made by validWar() (the mask, not execution) and only for the country
+// OD_ACT_HIST_CID names, which exit each call takes and why each neighbour is rejected.
+// Counters only; nothing here is read by a decision.
+static thread_local bool s_wmFromMask = false;
+static std::atomic<long long> s_wm[16];
+static std::atomic<long long> s_wmSide{0}, s_wmNeed{0};
+static void dumpWarMaskProbe() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    auto v = [](int i) { return (long long)s_wm[i].load(); };
+    const long long bars = v(10);
+    fprintf(stderr, "[WARMASK] mask calls %lld: exit no-country %lld, army<=0 %lld, pending-declaration %lld, "
+                    "at max wars %lld, war-weary %lld\n", v(0), v(1), v(2), v(3), v(4), v(5));
+    fprintf(stderr, "[WARMASK] land: neighbours examined %lld; rejected at-war-or-friendly %lld, pending-diplomacy %lld, "
+                    "bigger guarantor %lld, WAR BAR %lld; land target found %lld\n", v(6), v(7), v(8), v(9), bars, v(11));
+    fprintf(stderr, "[WARMASK] war bar fails: mean own army %.0f vs needed %.0f (ratio %.3f)\n",
+            bars ? (double)s_wmSide.load() / bars : 0.0, bars ? (double)s_wmNeed.load() / bars : 0.0,
+            s_wmNeed.load() ? (double)s_wmSide.load() / (double)s_wmNeed.load() : 0.0);
+    fprintf(stderr, "[WARMASK] naval: no port or army<=1000 %lld, no naval target %lld, naval target found %lld\n",
+            v(12), v(13), v(14));
+}
+static bool wmCounting(int cid) {
+    static const bool on = std::getenv("OD_WARMASK_PROBE") && atoi(std::getenv("OD_WARMASK_PROBE")) != 0;
+    if (!on || !s_wmFromMask || !actHistCountsCid(cid)) return false;
+    static const bool reg = (atexit(&dumpWarMaskProbe), true);
+    (void)reg;
+    return true;
+}
+static void wmNote(int cid, int i) { if (wmCounting(cid)) ++s_wm[i]; }
+static void wmBar(int cid, double side, double need) {
+    if (!wmCounting(cid)) return;
+    s_wmSide += (long long)side;
+    s_wmNeed += (long long)need;
+}
+
 void AISystem::takeTurn(int cid) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -3537,7 +3587,7 @@ void AISystem::takeTurn(int cid) {
                 static const bool offHist = std::getenv("OD_ACT_HIST") != nullptr;
                 if (offHist && mod >= 0 && mod < MOD_COUNT)
                     for (int a = 0; a < MAX_MODULE_ACTIONS && a < (int)valid.size(); ++a)
-                        if (valid[a]) s_offHist[mod][a]++;
+                        if (valid[a] && actHistCountsCid(cid)) s_offHist[mod][a]++;
             }
             float lp = 0.0f;
             nprob.clear();
@@ -3700,7 +3750,7 @@ void AISystem::takeTurn(int cid) {
                                   : m_leagueThisCountry   ? 4
                                   : nprob.empty()         ? 1
                                                           : 5;
-                    ++s_gateWhy[mod][why];
+                    if (actHistCountsCid(cid)) ++s_gateWhy[mod][why];
                 }
             }
             if (netDriven && !nprob.empty() && !booked && !m_scriptedThisCountry &&
@@ -3713,7 +3763,7 @@ void AISystem::takeTurn(int cid) {
                 // book playing, not the policy. Journal 306 built a dead-action
                 // list from the wrong column and had to be corrected.
                 static const bool netHistOn = std::getenv("OD_ACT_HIST") != nullptr;
-                if (netHistOn && act >= 0 && act < MAX_MODULE_ACTIONS)
+                if (netHistOn && act >= 0 && act < MAX_MODULE_ACTIONS && actHistCountsCid(cid))
                     s_netPicked[mod][act]++;
                 for (size_t vi = 0; vi < valid.size() && vi < MAX_MODULE_ACTIONS; ++vi)
                     if (valid[vi]) {
@@ -3731,7 +3781,7 @@ void AISystem::takeTurn(int cid) {
                         // question "can a bias reach this action" needs the
                         // run's mean, not a recent one. Journal 306.
                         static const bool histOn = std::getenv("OD_ACT_HIST") != nullptr;
-                        if (histOn && vi < nprob.size()) {
+                        if (histOn && vi < nprob.size() && actHistCountsCid(cid)) {
                             s_probSum[mod][vi] += nprob[vi];
                             ++s_probN[mod][vi];
                         }
@@ -3820,7 +3870,7 @@ void AISystem::takeTurn(int cid) {
                 act >= 0 && act < MAX_MODULE_ACTIONS) {
                 static const bool reg = (atexit(&AISystem::dumpActionHistogram), true);
                 (void)reg;
-                s_actHist[mod][act]++;
+                if (actHistCountsCid(cid)) s_actHist[mod][act]++;
             }
             switch (mod) {
                 case MOD_ECONOMY:  label = execEconomy(cid, act);  break;
@@ -4543,10 +4593,11 @@ int AISystem::chooseWarTarget(int cid, const std::vector<WarCandidate>& cands) {
 
 bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     Game& g = *m_g;
+    wmNote(cid, 0);
     const Country* c = g.m_countries.getCountry(cid);
-    if (!c) return false;
+    if (!c) { wmNote(cid, 1); return false; }
     const CountryStat& st = m_stats[cid];
-    if (st.army <= 0) return false;
+    if (st.army <= 0) { wmNote(cid, 2); return false; }
     auto relIt = g.m_relations.find(c->isoA3);
 
     // RESTRAINT, WITHOUT PACIFISM.
@@ -4580,7 +4631,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     // Checked here rather than in exec because validWar asks this same
     // function: a rule enforced only at exec would leave "declare war" offered
     // to the policy all turn and refused every time.
-    if (g.hasPendingDeclaration(c->isoA3)) return false;
+    if (g.hasPendingDeclaration(c->isoA3)) { wmNote(cid, 3); return false; }
 
     // Already fighting two? Nothing is worth a third front.
     //
@@ -4600,12 +4651,12 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
                               ? atoi(std::getenv("OD_BIG_PROVINCES")) : 0;
     const int effMaxWars = (bigProvW > 0 && (int)g.provincesOf(cid).size() < bigProvW)
                          ? 1 : std::max(1, maxWars);
-    if (myWars >= effMaxWars) return false;
+    if (myWars >= effMaxWars) { wmNote(cid, 4); return false; }
     // A country coming apart at home does not go looking for more.
     static const float wearyBlock = std::getenv("OD_WEARY_BLOCK")
                                   ? (float)atof(std::getenv("OD_WEARY_BLOCK"))
                                   : AI_WAR_WEARINESS_BLOCK;
-    if (g.warWearinessOf(cid) >= wearyBlock) return false;
+    if (g.warWearinessOf(cid) >= wearyBlock) { wmNote(cid, 5); return false; }
 
     // Which neighbours hold provinces we claim?
     std::unordered_set<int> claimTargets;
@@ -4625,6 +4676,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     std::unordered_set<int> napBlocked;   // wanted, but under a pact
     for (auto& fr : st.frontiers) {
         if (!seen.insert(fr.enemyCid).second) continue;
+        wmNote(cid, 6);
         const Country* ec = g.m_countries.getCountry(fr.enemyCid);
         if (!ec) continue;
         bool friendly = false, war = false, nap = false;
@@ -4636,7 +4688,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
                 nap = rr->second.nonAggression;
             }
         }
-        if (war || friendly) continue;
+        if (war || friendly) { wmNote(cid, 7); continue; }
         // ONE CONVERSATION AT A TIME, and this is the half of that rule the
         // war module kept breaking. The politics module runs first and may
         // already have offered this neighbour an alliance, a pact or a
@@ -4644,7 +4696,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         // with is the confusion the player sees, and it is also how a pact got
         // broken and the war declared in the same breath, since a pending
         // break_nap lands here too.
-        if (g.hasPendingDiplomacy(c->isoA3, ec->isoA3)) continue;
+        if (g.hasPendingDiplomacy(c->isoA3, ec->isoA3)) { wmNote(cid, 8); continue; }
         // A NAP does not make this target off-limits, but it does mean the pact
         // has to be broken FIRST -- see the break-then-declare note where the
         // action is issued. The target is still chosen here so the AI can want
@@ -4706,7 +4758,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
                                                    : bs->second.provinces > st.provinces;
                     if (bigger) { bigGuarantor = true; break; }
                 }
-                if (bigGuarantor) continue;
+                if (bigGuarantor) { wmNote(cid, 9); continue; }
             }
         }
         bool claimed = claimTargets.count(fr.enemyCid) > 0;
@@ -4796,6 +4848,10 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             // is the whole reason it does not.
             if (!passRaw && (double)side >= (double)ea * bar) ++s_warBar[7];
             s_warBarAtk += atk; s_warBarDef += def;
+            // Split into research and doctrine (journal 373): the rest of each
+            // modifier is the levers of doctrines in force.
+            s_warBarAtkRes += g.getResearchEffect("armyAtkPct", cid);
+            s_warBarDefRes += g.getResearchEffect("armyDefPct", fr.enemyCid);
         }
         static const bool barResearch = std::getenv("OD_WAR_BAR_RESEARCH") &&
                                         atoi(std::getenv("OD_WAR_BAR_RESEARCH")) != 0;
@@ -4804,7 +4860,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             mySide    *= 1.0 + g.getTotalEffect("armyAtkPct", cid) / 100.0;
             theirSide *= 1.0 + g.getTotalEffect("armyDefPct", fr.enemyCid) / 100.0;
         }
-        if (mySide < theirSide * bar + 200.0) continue;
+        if (mySide < theirSide * bar + 200.0) { wmNote(cid, 10); wmBar(cid, mySide, theirSide * bar + 200.0); continue; }
         // EVERY neighbour that clears the bars is a candidate, not just the
         // best one by the old rule. The rule still decides who is ALLOWED to be
         // attacked; which of them actually is, is chosen below.
@@ -4826,6 +4882,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         }
     }
     if (target >= 0) {
+        wmNote(cid, 11);
         // ── THE ADVISOR'S NAMED TARGET, WHEN IT IS ADMISSIBLE ──
         //
         // Chosen HERE rather than as a weight inside chooseWarTarget, and the
@@ -4887,7 +4944,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     // owns a port to land at) so the navy module can embark, sail, and invade
     // it. This is the unlock that lets the AI cross water for territory instead
     // of only fighting land borders.
-    if (st.maxPort < 1 || st.army <= 1000) return false;
+    if (st.maxPort < 1 || st.army <= 1000) { wmNote(cid, 12); return false; }
     std::unordered_set<int> landNbr;
     for (auto& fr : st.frontiers) landNbr.insert(fr.enemyCid);
     std::unordered_set<int> seenC;
@@ -4927,11 +4984,12 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             navalTarget = oc; bestArmy = ea; navalClaimed = claimed;
         }
     }
-    if (navalTarget < 0) return false;
+    if (navalTarget < 0) { wmNote(cid, 13); return false; }
     out.cid = navalTarget;
     out.claimed = navalClaimed;
     out.naval = true;
     out.napBlocked = napBlocked.count(navalTarget) > 0;
+    wmNote(cid, 14);
     return true;
 }
 
@@ -5082,7 +5140,9 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // a separate navalDeclarable test here that did not match exec's.
     {
         WarTarget wt;
+        s_wmFromMask = true;
         v[4] = findWarTarget(cid, wt);
+        s_wmFromMask = false;
     }
     // Artillery needs SHELLS. The comment used to say "ammo checked at exec",
     // which is true and is exactly the problem: exec answered "artillery: no
@@ -10047,6 +10107,43 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                                    sourceIso.c_str(), (double)cfNet));
             return refuse(REFUSE_NO_INTEREST);
         }
+        // C. A WAR THAT HAS STALLED AND IS ALL THAT FILLS THE WAR SLOT
+        //    (OD_CEASEFIRE_STALL=<turns>, off by default; journal 388).
+        //
+        //    AI_MAX_CONCURRENT_WARS is 1, so an unfinished war blocks every other
+        //    declaration. Journals 385-387b traced 2894ddfc's Sweden refusing
+        //    Norway's ceasefire every ~25 turns, from a "winning" state it never
+        //    pressed (6 of 7 asks refused by the head). Its turn-1 war never
+        //    ended, so it never expanded and was destroyed by rebellion, while
+        //    N24's Sweden took the first offer and grew. Accept when the peace
+        //    costs nothing, we are not losing (rule A covers that), the war
+        //    fills the slot, and we have been at war for at least <turns>.
+        static const int stallTurns = [] {
+            const char* e = std::getenv("OD_CEASEFIRE_STALL");
+            return e ? atoi(e) : 0;
+        }();
+        if (stallTurns > 0 && cfState != 1 && cfNet >= 0.0f && !cfCedes &&
+            foreignWarCount(targetCid) >= AI_MAX_CONCURRENT_WARS) {
+            auto ws = m_warSince.find(targetCid);
+            if (ws != m_warSince.end() && m_turn - ws->second >= stallTurns) {
+                static std::atomic<long long> stallAccepts{0};
+                static const bool reg = (atexit([] {
+                    fprintf(stderr, "[CFSTALL] ceasefires accepted by the stall rule: %lld\n",
+                            stallAccepts.load());
+                }), true);
+                (void)reg;
+                ++stallAccepts;
+                statsFor(targetCid).cfAsked[cfState]++;
+                statsFor(targetCid).cfYes[cfState]++;
+                statsFor(targetCid).diploAccepted++;
+                statsFor(targetCid).diploSaidYes[offerKind]++;
+                if (askerIsStronger) statsFor(targetCid).diploYesToStronger[offerKind]++;
+                logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
+                            TextFormat("ACCEPT request_ceasefire from %s by rule (stalled %d turns, war slot full, net %.0f)",
+                                       sourceIso.c_str(), m_turn - ws->second, (double)cfNet));
+                return accept();
+            }
+        }
     }
     feats[93] = std::tanh(netProv / 500.0f);
     feats[94] = std::tanh(netMoney / 500.0f);
@@ -12563,6 +12660,11 @@ float AISystem::s_leagueExploitCap = [] {
     if (f > 0.0f && f < 1.0f) return f;
     return 0.25f;
 }();
+// See s_leagueFix. Off = the league draw behaves as in journals 366-368.
+bool AISystem::s_leagueFix = [] {
+    const char* e = std::getenv("OD_LEAGUE_FIX");
+    return e && atoi(e) != 0;
+}();
 float AISystem::s_warBias[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 float AISystem::s_navyBias[7] = {0, 0, 0, 0, 0, 0, 0};
 static const bool s_navyBiasParsed = [] {
@@ -13025,7 +13127,10 @@ void AISystem::recordLeagueOutcome() {
     // policy being trained. Land per country rather than total, because the
     // league is only ever given a third of the map (LEAGUE_SHARE) and comparing
     // totals would score it as losing every time by construction.
-    if (m_leagueSlot < 0 || m_leagueSlot >= LEAGUE_CHECKPOINTS) return;
+    // The exploiter is slot LEAGUE_CHECKPOINTS, and the arrays are sized for it.
+    // Without OD_LEAGUE_FIX it is excluded here, which is defect 1 of backlog 97.
+    const int lastRecorded = s_leagueFix ? LEAGUE_CHECKPOINTS : LEAGUE_CHECKPOINTS - 1;
+    if (m_leagueSlot < 0 || m_leagueSlot > lastRecorded) return;
     if (m_leagueCids.empty() || !m_g) return;
     long long leagueLand = 0, ourLand = 0;
     int leagueN = 0, ourN = 0;
@@ -13103,11 +13208,28 @@ bool AISystem::loadLeagueOpponent() {
 
     // ── THE EXPLOITER IS A LEAGUE MEMBER, NOT A SCREEN ──
     //
-    // A virtual slot meaning "the hand-written rusher". It carries the same
-    // PFSP bookkeeping as a real checkpoint, so the pool plays it more often
-    // exactly while the policy is losing to it — which is the property the
-    // merge guard cannot provide, because a guard rejects a bad run after
-    // paying for it while this stops the run going bad.
+    // A virtual slot meaning "the hand-written rusher". It was meant to carry
+    // the same PFSP bookkeeping as a real checkpoint, so the pool would play
+    // it more often exactly while the policy is losing to it — which is the
+    // property the merge guard cannot provide, because a guard rejects a bad
+    // run after paying for it while this stops the run going bad.
+    //
+    // **IT DOES NOT, as of journal 366.** Two things break that intent:
+    //   1. recordLeagueOutcome returns early for any slot >= LEAGUE_CHECKPOINTS,
+    //      and this slot IS LEAGUE_CHECKPOINTS, so the rusher's wins and losses
+    //      are never recorded. Its weight stays at the no-data prior (loss rate
+    //      0.5) forever and never responds to the policy losing.
+    //   2. unloadGameData() deletes the AISystem before every training map, so
+    //      m_rng restarts at its seed before this first-turn draw. With both
+    //      slots' weights frozen, every map draws from the same weights in the
+    //      same random state, and the same slot wins every time.
+    // Net effect: the cap below bounds the rusher's WEIGHT, not how often it
+    // is drawn. Measured: OD_LEAGUE_EXPLOIT=0.5 gave the rusher 8 of 8 maps
+    // (journal 366) and 7 of 8 (journal 368). Backlog item 97.
+    // **OD_LEAGUE_FIX=1 repairs both** (journal 377): recordLeagueOutcome
+    // accepts the exploiter slot, and the draw below takes a process-lifetime
+    // RNG instead of m_rng. Off by default so the journal 366 recipe still
+    // reproduces; turning it on changes what OD_LEAGUE_EXPLOIT does.
     //
     // Always available: unlike a checkpoint it needs no file, so a young run
     // that has never checkpointed still trains against a rusher from turn one.
@@ -13136,7 +13258,20 @@ bool AISystem::loadLeagueOpponent() {
     }
 
     std::discrete_distribution<size_t> pick(weight.begin(), weight.end());
-    m_leagueSlot = present[pick(m_rng)];
+    if (s_leagueFix) {
+        // Defect 2: m_rng is a member, and this object is rebuilt before every
+        // training map, so drawing from it repeats the first map's draw. A
+        // static survives the rebuild and advances once per map.
+        static std::mt19937 leagueDraw{1337};
+        m_leagueSlot = present[pick(leagueDraw)];
+        double tot = 0.0;
+        for (double w : weight) tot += w;
+        printf("[AI] league draw: slot %d of %zu candidate(s), exploiter weight share %.3f\n",
+               m_leagueSlot, present.size(),
+               present.back() == EXPLOIT_SLOT && tot > 0.0 ? weight.back() / tot : 0.0);
+    } else {
+        m_leagueSlot = present[pick(m_rng)];
+    }
     m_leagueIsExploiter = (m_leagueSlot == EXPLOIT_SLOT);
     if (m_leagueIsExploiter) {
         // No weights to read. m_leagueLoaded must still be set, because it is
@@ -13555,6 +13690,8 @@ long long AISystem::s_landCands = 0;
 double AISystem::s_landRatio = 0.0;
 double AISystem::s_warBarAtk = 0.0;
 double AISystem::s_warBarDef = 0.0;
+double AISystem::s_warBarAtkRes = 0.0;
+double AISystem::s_warBarDefRes = 0.0;
 long long AISystem::s_gateWhy[4][6] = {};
 int AISystem::s_netPicked[4][12] = {};
 double AISystem::s_probSum[4][12] = {};
@@ -13758,6 +13895,9 @@ void AISystem::dumpWarBarProbe() {
             s_warBar[6], 100.0*(double)s_warBar[6]/n,
             s_warBarAtk/n, s_warBarDef/n,
             s_warBar[7], 100.0*(double)s_warBar[7]/n);
+    fprintf(stderr, "[WARBAR] of which research: atk %+.2f  def %+.2f   doctrine: atk %+.2f  def %+.2f\n",
+            s_warBarAtkRes/n, s_warBarDefRes/n,
+            (s_warBarAtk - s_warBarAtkRes)/n, (s_warBarDef - s_warBarDefRes)/n);
 }
 
 void AISystem::dumpActionHistogram() {
