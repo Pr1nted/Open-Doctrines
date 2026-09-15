@@ -1035,6 +1035,16 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         return n;
     };
 
+    // OD_EVAL_MAP=<file.odmap>: every map of the run is that one file. For a
+    // benchmark that has to put Open Doctrines on the same world as another
+    // game (Objective Judge Horizon converts one with Dragoman), where neither
+    // a generated archetype nor a shipped scenario is the map being compared.
+    const char* evalMap = std::getenv("OD_EVAL_MAP");
+    if (evalMap && !*evalMap) evalMap = nullptr;
+    std::string evalMapName = evalMap ? evalMap : "";
+    evalMapName = evalMapName.substr(evalMapName.find_last_of("/\\") + 1);
+    evalMapName = evalMapName.substr(0, evalMapName.rfind('.'));
+
     for (int m = 0; m < numMaps && !aborted; ++m) {
         // Which world this map is. Under --scenarios the run walks the shipped
         // list instead of the archetypes; the two are never mixed inside one
@@ -1088,7 +1098,13 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
 
         unloadGameData();
         std::string odmPath;
-        if (ship) {
+        if (evalMap) {
+            odmPath = evalMap;
+            if (!FileExists(odmPath.c_str())) {
+                printf("[EVAL] map %d: %s not found, skipping\n", m + 1, odmPath.c_str());
+                continue;
+            }
+        } else if (ship) {
             // Loaded, not generated -- but still seeded above, because the map
             // being fixed does not make the GAME deterministic: combat rolls,
             // rebellion chances and breakaway names all come from rand(), and
@@ -1130,7 +1146,7 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         m_aiTraining = true;
 
         MapResult r;
-        r.scenario = ship ? ship->name : sc.name;
+        r.scenario = evalMap ? evalMapName.c_str() : ship ? ship->name : sc.name;
         r.seed = p.seed;
         // COUNTED, not requested. numCountries is what the generator was asked
         // for; a shipped map was never asked anything, and every per-country
