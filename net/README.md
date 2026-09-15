@@ -2,13 +2,16 @@
 
 Accounts and the multiplayer relay, on Cloudflare's free plan.
 
-Two jobs, deliberately kept apart:
+Three jobs, deliberately kept apart:
 
 - **Accounts** — sign in with Google, Discord or GitHub; hold a unique nickname;
   carry developer and playtester badges. A Worker with one KV namespace.
 - **Relay** — one Durable Object per game session. Everyone dials *out* to it
   over `wss://`, including the host, which is the whole answer to "no UPnP, no
   port forwarding, no NAT punchthrough, works from a browser".
+
+- **Mod registry** — a directory of mods. It stores a listing and a link; it
+  never stores a mod. See `docs/mod-registry.md`, and `src/mods/`.
 
 The relay never parses a game payload. Rules live in the C++ game, which is the
 authoritative server; this moves bytes and vouches for who sent them.
@@ -243,7 +246,7 @@ The limits that actually bind, and what the design does about them:
 | KV writes | **1,000/day** | Account creation costs 3. Logging in costs **0** — no `lastSeen`, no counters. Minting a join ticket costs 0. |
 | KV reads | 100,000/day | Everything reads. Not a constraint. |
 | Worker requests | 100,000/day | One per login, one per join. |
-| Durable Object requests | 100,000/day | Incoming WebSocket messages bill at 20:1, so a game session is cheap. |
+| Durable Object requests | 100,000/day | Incoming WebSocket messages bill at 20:1, so a game session is cheap. Mod download counts live here **because** they cannot live in KV — one click would otherwise cost a KV write out of the same 1,000 that account creation spends. |
 
 So the practical ceiling is roughly **330 new accounts a day**, with logins
 effectively unlimited. If that ever binds, the fix is to move the login handoff

@@ -62,6 +62,23 @@ class_name = "LobbyDO"
 tag = "v1"
 new_sqlite_classes = ["LobbyDO"]
 
+# ---------------------------------------------------------- mod counters ----
+#
+# One object per published mod, holding how many times people followed its
+# download link. It is a Durable Object for a hard reason rather than a
+# preference: counting is a read-modify-write, KV cannot do one atomically, and
+# the free plan's 1,000 KV writes a day are the same budget account creation
+# spends -- a few hundred clicks would exhaust it and start failing signups.
+#
+# SQLite-backed for the same free-plan reason as LobbyDO above.
+[[durable_objects.bindings]]
+name = "MOD_COUNTS"
+class_name = "ModCountsDO"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ModCountsDO"]
+
 # ------------------------------------------------------------ rate limit ----
 #
 # Free, and costs neither a KV operation nor a DO request -- the counter lives
@@ -116,6 +133,9 @@ simple = { limit = 40, period = 10 }
 #   IDENT_KEY            HMAC key that hashes provider user ids before storage
 #   PAIRWISE_KEY         HMAC key behind the per-server pseudonym (psid)
 #   ADMIN_SECRET         gates badge grants
+#   VIRUSTOTAL_API_KEY   optional; looks up a mod's declared hash. Unset means
+#                        listings read "unscanned", which is true, rather than
+#                        defaulting to "clean", which would not be
 #   GOOGLE_CLIENT_ID     GOOGLE_CLIENT_SECRET
 #   DISCORD_CLIENT_ID    DISCORD_CLIENT_SECRET
 #   GITHUB_CLIENT_ID     GITHUB_CLIENT_SECRET

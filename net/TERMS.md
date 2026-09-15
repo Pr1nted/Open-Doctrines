@@ -95,6 +95,27 @@ civil — there is a profanity filter, and it is not a substitute for judgement.
 You keep whatever rights you have in what you write; you give us permission to
 show it to other players, which is the whole point of typing it.
 
+## Publishing a mod
+
+The mod directory lists mods; it does not hold them. You publish a description
+and a link, and the file stays on your own host. Before your first listing you
+agree to the modding guidelines, which are short and are served at `/mods/guidelines`.
+
+- **What you list must be yours to list**, and the download link must fetch the
+  mod you described and keep doing so.
+- **We do not check that a mod works, is any good, or is safe.** Nobody here has
+  run it. A security check is shown where we have one, and a "clean" result
+  means nobody has reported those bytes — not that the mod is safe.
+- **Downloading is at your own risk**, exactly as it would be from any other
+  site. The game will not install a mod by itself, from here or anywhere.
+- **We can take a listing down**, and we can withdraw an account's ability to
+  publish, without withdrawing anything else about the account. Somebody who
+  should not be publishing is not automatically somebody who should not be
+  playing.
+
+You keep every right you have in your mod. Listing it gives us permission to
+show what you wrote about it and to count how many people followed your link.
+
 ## What other players say
 
 **We do not moderate what players write to each other, and we are not

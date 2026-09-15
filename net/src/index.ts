@@ -61,10 +61,25 @@ import {
     type Rejected as ModRejected,
 } from "./moderation/reports.js";
 import { randomId } from "./util/crypto.js";
+import { hmacId } from "./util/crypto.js";
+import {
+    browse, countOwned, getListing, GUIDELINES_VERSION, listOwned, LIMITS as MOD_LIMITS,
+    MODMAKER_THRESHOLD, parseDraft, publicListing, publish, setScan, tagsFrom,
+    withdraw,
+} from "./mods/registry.js";
+import { dayNumber, forgetCounts, readCounts, recordHit } from "./mods/counts.js";
+import { lookup as scanLookup, reachable } from "./mods/scan.js";
+import {
+    checkReporterQuota as checkModQuota, decideModReport, fileModReport, getModReport,
+    listModReports, parseModReportInput,
+} from "./mods/reports.js";
+import { modsRestricted, putAccount, type Account } from "./accounts/store.js";
+import MOD_GUIDELINES from "../MOD_GUIDELINES.md";
 import PRIVACY_POLICY from "../PRIVACY.md";
 import TERMS_OF_USE from "../TERMS.md";
 
 export { LobbyDO } from "./lobby/LobbyDO.js";
+export { ModCountsDO } from "./mods/counts.js";
 
 /** Recommended poll interval, seconds. Mirrors RFC 8628's `interval`. */
 const POLL_INTERVAL = 2;
@@ -223,6 +238,21 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (post && path === "/feedback") return feedbackSubmit(request, env);
     if (post && path === "/feedback/github") return feedbackGithubHook(request, env);
     if (post && path === "/moderation/report") return moderationReport(request, env);
+
+    // ------------------------------------------------------------- mods ----
+    //
+    // A directory of listings. No mod file is stored, proxied or served here --
+    // see mods/registry.ts for why that is the game's decision and not only a
+    // storage one.
+    if (get  && path === "/mods/guidelines") return modGuidelines();
+    if (post && path === "/mods/guidelines") return modAcceptGuidelines(request, env);
+    if (get  && path === "/mods/mine") return modMine(request, env);
+    if (post && path === "/mods/report") return modReport(request, env);
+    if (get  && path === "/mods") return modBrowse(env, url);
+    if (post && path === "/mods") return modPublish(request, env);
+    if (post && path === "/account/tag") return accountTag(request, env);
+    if (get  && path === "/moderation/mods") return modReportList(request, env);
+    if (post && path === "/moderation/mods") return modReportDecide(request, env);
     // The board's editing view, and the one write that changes it. Signed in
     // with the same session token the reports screen uses, and gated on the
     // same badge -- so posting an announcement from inside the game needs no
@@ -303,6 +333,18 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
         }
         if (get) return withCors(await stub.fetch(new Request("https://lobby/info")));
     }
+
+    // Following a mod's download link. The ONLY reason this redirect exists
+    // rather than the page linking straight to the author's host is that a
+    // download nobody passes through is a download nobody can count.
+    const modGetMatch = /^\/mods\/([a-z0-9._-]{3,128})\/get$/.exec(path);
+    if (get && modGetMatch) return modDownload(request, env, modGetMatch[1]!);
+
+    const modWithdrawMatch = /^\/mods\/([a-z0-9._-]{3,128})\/withdraw$/.exec(path);
+    if (post && modWithdrawMatch) return modWithdraw(request, env, modWithdrawMatch[1]!);
+
+    const modOneMatch = /^\/mods\/([a-z0-9._-]{3,128})$/.exec(path);
+    if (get && modOneMatch) return modOne(env, modOneMatch[1]!);
 
     // ------------------------------------------------------- long form ----
     //
@@ -1602,4 +1644,264 @@ async function usageForget(request: Request, env: Env): Promise<Response> {
         } while (cursor);
     }
     return json({ ok: true, removed });
+}
+
+
+// ================================================================= mods ====
+//
+// The registry's HTTP surface. Everything that decides anything lives in
+// src/mods/; this is routing, authentication and shaping.
+
+/** The guidelines themselves, and the version a publisher is agreeing to. */
+function modGuidelines(): Response {
+    return json({ version: GUIDELINES_VERSION, text: MOD_GUIDELINES });
+}
+
+/**
+ * Agree to them.
+ *
+ * One KV write, and only when the version actually changes -- re-agreeing to
+ * the version already on the record writes nothing.
+ */
+async function modAcceptGuidelines(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const body = await readJson<{ version?: string }>(request);
+    if (body?.version !== GUIDELINES_VERSION) {
+        return fail(409, "stale_guidelines",
+                    "The guidelines have changed. Fetch and show the current ones.",
+                    { version: GUIDELINES_VERSION });
+    }
+    if (account.modGuidelines?.version === GUIDELINES_VERSION) {
+        return json({ ok: true, version: GUIDELINES_VERSION });
+    }
+    await putAccount(env, {
+        ...account,
+        modGuidelines: { version: GUIDELINES_VERSION, at: Math.floor(Date.now() / 1000) },
+    });
+    return json({ ok: true, version: GUIDELINES_VERSION });
+}
+
+/** One page of the directory, newest first. Open to everybody, signed in or not. */
+async function modBrowse(env: Env, url: URL): Promise<Response> {
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+    const limit = Number(url.searchParams.get("limit") ?? MOD_LIMITS.page);
+    const page = await browse(env, cursor, Number.isFinite(limit) ? limit : MOD_LIMITS.page);
+    return json(page);
+}
+
+/**
+ * One listing, with its counts.
+ *
+ * The counts come from the Durable Object rather than the record, so a listing
+ * read never writes and the number is always the live one.
+ */
+async function modOne(env: Env, id: string): Promise<Response> {
+    const listing = await getListing(env, id);
+    if (!listing || listing.status !== "listed") return fail(404, "not_found", "No such mod.");
+    const counts = await readCounts(env, listing.id);
+    return json({
+        mod: publicListing(listing, counts),
+        uniqueBasis: counts.uniqueBasis,
+    });
+}
+
+async function modPublish(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    // The scoped restriction. Note what is NOT checked here: banInForce. A ban
+    // stops somebody joining a game and is decided on different evidence; this
+    // is the publishing power alone.
+    if (modsRestricted(account)) {
+        return fail(403, "mods_restricted",
+                    "Your account cannot publish mods at the moment.",
+                    { restricted: account.restricted?.mods });
+    }
+    if (account.modGuidelines?.version !== GUIDELINES_VERSION) {
+        return fail(403, "guidelines",
+                    "Read and agree to the modding guidelines first.",
+                    { version: GUIDELINES_VERSION });
+    }
+
+    const body = await readJson<unknown>(request, 16 * 1024);
+    const draft = parseDraft(body);
+    if ("ok" in (draft as object) && (draft as { ok: false }).ok === false) {
+        const r = draft as { status: number; code: string; message: string };
+        return fail(r.status, r.code, r.message);
+    }
+
+    const result = await publish(env, account, draft as Parameters<typeof publish>[2]);
+    if ("ok" in result && result.ok === false) {
+        return fail(result.status, result.code, result.message);
+    }
+    const listing = (result as { listing: Awaited<ReturnType<typeof getListing>> }).listing!;
+
+    // A dead link is the most common thing wrong with a listing, and the
+    // cheapest moment to say so is while the author is still looking at the
+    // form. A host that refuses HEAD is not a failure -- see scan.ts.
+    const reach = await reachable(listing.downloadUrl);
+
+    // The scan is a lookup of the DECLARED hash, so it can run now. A null
+    // result -- no key, rate limited, network down -- is deliberately NOT
+    // recorded: an absent scan renders as "unscanned", which is true.
+    const scan = await scanLookup(env, listing.sha256);
+    const finished = scan ? await setScan(env, listing, scan) : listing;
+
+    return json({
+        mod: publicListing(finished),
+        created: (result as { created: boolean }).created,
+        downloadReachable: reach.ok,
+    }, 200);
+}
+
+/** The caller's own listings, including any that are unlisted. */
+async function modMine(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const ids = await listOwned(env, account.id);
+    const mods = [];
+    for (const id of ids) {
+        const listing = await getListing(env, id);
+        if (!listing) continue;
+        const counts = await readCounts(env, id);
+        mods.push({ ...publicListing(listing, counts), status: listing.status });
+    }
+    return json({ mods, uniqueBasis: "first download per address per day, summed over days" });
+}
+
+async function modWithdraw(request: Request, env: Env, id: string): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const listing = await getListing(env, id);
+    if (!listing) return fail(404, "not_found", "No such mod.");
+    // Not "that is not yours": the same 404 either way, so this cannot be used
+    // to find out which ids exist.
+    if (listing.ownerId !== account.id) return fail(404, "not_found", "No such mod.");
+
+    await withdraw(env, listing);
+    await forgetCounts(env, id);
+    return json({ ok: true });
+}
+
+/**
+ * Follow a mod's download link.
+ *
+ * Counts, then redirects. Open to everyone -- signed in or not -- because
+ * requiring an account to download would make the directory useless to exactly
+ * the people it exists to reach.
+ *
+ * WHAT IS STORED TO COUNT A UNIQUE DOWNLOAD: a keyed hash of the address AND
+ * THE DATE, held for two days. Not the address, and nothing that outlives the
+ * day it answers. See mods/counts.ts for why "unique" therefore means
+ * per-day-unique, and why that number must never be shown as "unique people".
+ */
+async function modDownload(request: Request, env: Env, id: string): Promise<Response> {
+    const listing = await getListing(env, id);
+    if (!listing || listing.status !== "listed") return fail(404, "not_found", "No such mod.");
+
+    const ip = request.headers.get("cf-connecting-ip");
+    const day = dayNumber();
+    const marker = ip ? await hmacId(env.IDENT_KEY, `dl:${day}:${id}:${ip}`, 22) : "";
+    await recordHit(env, id, marker, day);
+
+    return withCors(new Response(null, {
+        status: 302,
+        headers: { location: listing.downloadUrl, "cache-control": "no-store" },
+    }));
+}
+
+/** Report a listing. Separate queue and separate powers -- see mods/reports.ts. */
+async function modReport(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const quota = await checkModQuota(env, account);
+    if (quota) return fail(quota.status, quota.code, quota.message);
+
+    const input = parseModReportInput(await readJson<unknown>(request, 4 * 1024));
+    if ("ok" in (input as object) && (input as { ok: false }).ok === false) {
+        const r = input as { status: number; code: string; message: string };
+        return fail(r.status, r.code, r.message);
+    }
+    const report = await fileModReport(env, account, input as Parameters<typeof fileModReport>[2]);
+    if ("ok" in report && (report as { ok: false }).ok === false) {
+        const r = report as unknown as { status: number; code: string; message: string };
+        return fail(r.status, r.code, r.message);
+    }
+    return json({ ok: true, id: (report as { id: string }).id });
+}
+
+/** The mod queue. Developer badge only, and 404 to everybody else. */
+async function modReportList(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
+    return json({ reports: await listModReports(env) });
+}
+
+async function modReportDecide(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!isModerator(account)) return fail(404, "not_found", "No such endpoint.");
+
+    const body = await readJson<{
+        id?: string; action?: string; days?: number; reason?: string;
+    }>(request);
+    if (!body?.id || !body.action) return fail(400, "bad_request", "Missing id or action.");
+    if (!["unlist", "restrict", "dismiss"].includes(body.action)) {
+        return fail(400, "bad_action", "Unknown action.");
+    }
+    const report = await getModReport(env, body.id);
+    if (!report) return fail(404, "not_found", "No such report.");
+
+    const decided = await decideModReport(env, report, {
+        action: body.action as "unlist" | "restrict" | "dismiss",
+        days: body.days,
+        reason: (body.reason ?? "").slice(0, 500),
+    }, account!);
+    if ("ok" in decided && (decided as { ok: false }).ok === false) {
+        const r = decided as unknown as { status: number; code: string; message: string };
+        return fail(r.status, r.code, r.message);
+    }
+    return json({ report: decided });
+}
+
+/**
+ * Every tag this account currently holds.
+ *
+ * `modmaker` is COMPUTED, not granted, and that is the point. badges.ts is
+ * explicit that a badge means somebody decided, with no self-serve path and no
+ * automation -- so an automatically-earned tag must not be a badge, or the word
+ * stops meaning what that file says it means.
+ *
+ * Computing it also costs no KV write and cannot drift: it is derived from the
+ * listings the account holds right now, so it appears at the fifth and goes
+ * away again if listings are withdrawn.
+ */
+async function heldTags(env: Env, account: Account): Promise<string[]> {
+    const owned = await countOwned(env, account.id, MODMAKER_THRESHOLD + 1);
+    return tagsFrom(account.badges, owned);
+}
+
+/** Choose which held tag is shown beside the nickname. */
+async function accountTag(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const body = await readJson<{ tag?: string | null }>(request);
+    const tag = body?.tag ?? null;
+    const held = await heldTags(env, account);
+
+    if (tag !== null && !held.includes(tag)) {
+        return fail(403, "not_held", "You do not hold that tag.", { held });
+    }
+    if ((account.displayTag ?? null) === tag) return json({ ok: true, displayTag: tag, held });
+
+    await putAccount(env, {
+        ...account,
+        ...(tag === null ? { displayTag: undefined } : { displayTag: tag }),
+    });
+    return json({ ok: true, displayTag: tag, held });
 }

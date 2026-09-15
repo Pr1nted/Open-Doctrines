@@ -5,6 +5,15 @@ export interface Env {
     OD_ACCOUNTS: KVNamespace;
     LOBBY: DurableObjectNamespace;
 
+    /**
+     * Download counters for the mod registry, one object per mod.
+     *
+     * A Durable Object rather than KV because counting is a read-modify-write
+     * and the free plan's 1,000 KV writes a day are the budget that account
+     * creation lives on. See mods/counts.ts.
+     */
+    MOD_COUNTS: DurableObjectNamespace;
+
     // Per-IP request limiters. Two rather than one because the endpoint that
     // can instantiate a Durable Object is worth an order of magnitude more than
     // one that reads KV, and a single bucket would have to be sized for the
@@ -80,4 +89,13 @@ export interface Env {
     FEEDBACK_GITHUB_WEBHOOK_SECRET?: string;
     /** Where bans and timeouts are announced. See moderation/reports.ts. */
     MODERATION_DISCORD_WEBHOOK?: string;
+
+    /**
+     * VirusTotal, for looking up a mod's declared SHA-256.
+     *
+     * Optional like every other integration here. Unset means listings are
+     * shown as "unscanned", which is the truth, rather than the endpoint
+     * failing or -- far worse -- defaulting to "clean". See mods/scan.ts.
+     */
+    VIRUSTOTAL_API_KEY?: string;
 }

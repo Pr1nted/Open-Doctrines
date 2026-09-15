@@ -359,6 +359,8 @@ account; only the account service can, and only through the process above.
 | A report about another player, including the message reported | 90 days |
 | How many reports one account has filed today | 2 days |
 | A note linking a server pseudonym to your account, so reports can be acted on | 30 days |
+| A report about a published mod | 90 days |
+| The keyed hash that counts one address as a unique download, per mod per day | 2 days |
 
 The 30-day nickname hold stores a nickname and a date, and nothing that links it
 back to you or your deleted account.
@@ -423,6 +425,10 @@ beyond being signed in.
 - **Google, Discord or GitHub** — whichever you chose to sign in with. Your
   dealings with them are covered by their own policies. We tell them nothing
   about you; the flow only goes the other way.
+- **VirusTotal** (Google LLC), and **only if a mod is published**. We send them
+  the SHA-256 the mod's author declared, and nothing else — no account, no
+  nickname, nothing about you. It is a hash of somebody's file; it says nothing
+  about anybody who downloads it.
 
 There are no analytics, no advertising networks, no third-party scripts and no
 cookies in the game, or on any page **this service** serves. That includes
@@ -455,6 +461,9 @@ that age — nobody has to remember to run anything.
 | Bug reports and suggestions: the issue thread they became | 180 days |
 | Duplicate-report suppression, and the daily send counters | 6 hours and 2 days |
 | Anonymous usage and lobby rows, if you turned reporting on | 90 days |
+| A mod listing you published | Until you withdraw it or delete your account |
+| Reports about a published mod | 90 days |
+| The keyed hash behind a unique-download count | **2 days** |
 
 **Deleting your account is immediate and it is real.** It removes the account
 record, the nickname index, and the link to every provider you signed in with,

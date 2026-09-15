@@ -52,6 +52,26 @@ export interface LinkedIdentity {
     linkedAt: number;
 }
 
+/**
+ * One power withdrawn, rather than the account closed.
+ *
+ * `banned` above is all-or-nothing and is checked at ticket minting, so it
+ * stops somebody playing at all. That is the right answer to harassment and the
+ * wrong answer to a bad mod listing: somebody who published malware should stop
+ * being able to publish, not stop being able to play a game they paid nothing
+ * for and have done nothing else wrong in.
+ *
+ * So restrictions are per-power and live in their own field. Nothing on the
+ * join path reads them, which is the entire point -- adding one here must never
+ * become a second way to ban somebody by accident.
+ */
+export interface Restriction {
+    reason: string;
+    at: number;
+    /** Unix seconds when it lifts. Absent means indefinite. */
+    until?: number;
+}
+
 export interface Account {
     id: string;
     nick: string;          // canonical form, as displayed
@@ -60,6 +80,33 @@ export interface Account {
     nickChangedAt: number;
     badges: Badge[];
     identities: LinkedIdentity[];
+
+    /**
+     * Powers withdrawn one at a time. See Restriction above.
+     *
+     * An object rather than a flag so a second restrictable power does not
+     * mean a second field and a second place to forget to check.
+     */
+    restricted?: { mods?: Restriction };
+
+    /**
+     * Which of the tags this account holds it wants shown beside its name.
+     *
+     * Stored as the tag's name and validated AGAIN when it is rendered, not
+     * only when it is set. A tag can be earned and then lost -- `modmaker` is
+     * computed from how many listings the account currently holds -- and a
+     * stored display choice must not be able to outlive the thing it displays.
+     */
+    displayTag?: string;
+
+    /**
+     * The mod guidelines version this account agreed to.
+     *
+     * Publishing checks it against the current version, so changing the
+     * guidelines asks everybody again rather than silently binding them to text
+     * they never saw.
+     */
+    modGuidelines?: { version: string; at: number };
 
     /**
      * Set when this account may not join any game.
@@ -425,6 +472,47 @@ export function banInForce(
     return account.banned.until === undefined || account.banned.until > now;
 }
 
+/**
+ * Whether a restriction is in force right now.
+ *
+ * Same shape as banInForce and for the same reason: an expired restriction is
+ * left on the record rather than swept, because erasing it would cost a KV
+ * write on a read path and the history is worth keeping.
+ */
+export function restrictionInForce(
+    r: Restriction | undefined, now = Math.floor(Date.now() / 1000),
+): boolean {
+    if (!r) return false;
+    return r.until === undefined || r.until > now;
+}
+
+export function modsRestricted(
+    account: Account, now = Math.floor(Date.now() / 1000),
+): boolean {
+    return restrictionInForce(account.restricted?.mods, now);
+}
+
+export async function setModsRestricted(
+    env: Env, account: Account, on: boolean, reason: string,
+    days?: number, now = Math.floor(Date.now() / 1000),
+): Promise<Account> {
+    const rest = { ...(account.restricted ?? {}) };
+    if (on) {
+        rest.mods = {
+            reason, at: now,
+            ...(days && days > 0 ? { until: now + Math.floor(days * 86400) } : {}),
+        };
+    } else {
+        delete rest.mods;
+    }
+    const updated: Account = {
+        ...account,
+        ...(Object.keys(rest).length ? { restricted: rest } : { restricted: undefined }),
+    };
+    await putAccount(env, updated);
+    return updated;
+}
+
 /** The public view of an account. Never includes `identities[].subHash`. */
 export function publicAccount(account: Account): Record<string, unknown> {
     return {
@@ -437,5 +525,9 @@ export function publicAccount(account: Account): Record<string, unknown> {
         // Shown so a banned player is told why and for how long, rather than
         // silently failing to join every server they try.
         ...(banInForce(account) ? { banned: account.banned } : {}),
+        // Same reasoning one level down: somebody who cannot publish should be
+        // told that, rather than meeting a 403 with no account of itself.
+        ...(modsRestricted(account) ? { restricted: { mods: account.restricted!.mods } } : {}),
+        ...(account.displayTag ? { displayTag: account.displayTag } : {}),
     };
 }
