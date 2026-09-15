@@ -435,8 +435,21 @@ again.
   Two traps, both nearly taken: a `--worker` run writes `ai/model.w1.bin` and
   leaves `ai/model.bin` as the untouched PARENT (Game_AITrain.cpp:191), so
   bench the worker file; and a training arm takes ~2.8 hours because maps end
-  early on STAGNATION_TURNS -- do not price it as turns x 3000. One training
-  run so far; a different training seed is untested.
+  early on STAGNATION_TURNS -- do not price it as turns x 3000. It also holds
+  on a second TRAINING seed (journal 360: seed 777001, -92, CI [-175, -8]);
+  the two seeds' costs are indistinguishable. The consistent casualty is
+  modern:CHN, down on every arm. **Length is not the lever**: 2 maps costs
+  -113 (journal 363, CI [-203, -23]), indistinguishable from 8 maps, which
+  retires journal 278's three-seed "two maps is free". **The first exception
+  is a rusher league** (journals 366-368) -- **and it is NOT established.** On training
+  seed 424242 the recipe plus `OD_LEAGUE_EXPLOIT` produced a model at parity
+  with N24 on two bench seed sets, +143 / +165 over the matching self-play run.
+  On training seed 777001 the same recipe gave -18 against its self-play run
+  and -110 against N24, CI [-193, -26]. **Bench-seed replication establishes one
+  MODEL; a claim about a training RECIPE needs several training seeds.** That league was 100% rusher -- the cap
+  does not bind (backlog item 97) -- so the claim is about that league only. A binary for a long run must be PINNED
+  (a copy beside a `data` symlink -- the server resolves `<exe dir>/../data/`),
+  because this tree has a concurrent editor who rebuilds.
 - **Passivity is load-bearing.** The war head declines most attacks; a reflex
   taking only the "free" 2.5x-margin assaults collapsed France 6.5 → 0.5. The
   AI is not losing because it is passive, it is passive because it is losing.

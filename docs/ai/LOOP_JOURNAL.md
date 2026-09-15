@@ -26356,3 +26356,2615 @@ passes --data explicitly and would have worked; only the bench would have died.
 
 LAUNCHED: training seed 777001 into a fresh isolated tree (traindata2, no stale
 worker or league files), then the bench from the SAME pinned binary.
+
+VERDICT (journal 360, completed): **THE HYPOTHESIS HOLDS, NARROWLY. Training
+N24 degrades it on a second TRAINING seed as well -- by less.**
+
+    arm, seed set 1                  per-seed      d   floor   95% CI
+    N24 control                           336
+    trained, seed 424242 (j.357)          192   -145      94   [-239, -51]  CLEARS
+    trained, seed 777001 (j.360)          245    -92      83   [-175,  -8]  CLEARS
+
+    seat              seed 424242 d      p   seed 777001 d      p   pre-registered
+    1914:FRA                 -13.16  0.001           -4.90  0.267   DOWN
+    1939:USA                  +1.18  0.770           +6.96  0.155   flat/up
+    modern:CHN               -10.26  0.021          -10.88  0.010   DOWN
+
+    modern:CHN annihilated   control 2/8   seed 424242 4/8   seed 777001 4/8
+    1914:FRA below par       control 0/8   seed 424242 5/8   seed 777001 3/8
+
+RUN HEALTH, checked before trusting any of it: training exited rc=0 after 14,348
+turns in 218.6 minutes; the trained model is 86bd193f, distinct from the parent
+(4a137043) and from seed 424242's c25f2a11; the pinned binary read 12aa7f20 at
+both ends; data/ai/model.bin never moved.
+
+**IT CLEARS, AND THE MARGIN IS SMALL ENOUGH TO SAY SO FIRST.** -92 against a
+floor of 83, and the CI's upper bound is -8. This is a clear by nine points, not
+the -145 that motivated it. Graded counts 15/24 against the control's 14/24.
+
+**THE TWO TRAINING SEEDS' COSTS CANNOT BE TOLD APART.** 192 against 245 is a
+difference of 53 with a floor of ~84 from those two arms' own se. So the honest
+statement is not "seed 777001 hurts less"; it is "both hurt, by an amount this
+bench places somewhere around 90-145 points".
+
+THE SHAPE, and the part that is robust is China, not France:
+  * **China is down on every arm this question has produced** -- p 0.021 and
+    0.010 on seed set 1 under both training seeds, 0.003 on seed set 2 -- and
+    annihilated on 4 of 8 worlds under BOTH training seeds against 2 of 8. It
+    clears the three-seat correction here (0.010 < 0.0167).
+  * **France is down in DIRECTION only** under seed 777001 (-4.90, p 0.267),
+    below par on 3 of 8 worlds against none. Its one significant reading
+    remains seed 424242 on seed set 1. The pre-registered "France DOWN" holds
+    as a direction and not as a measurement.
+  * **The USA trends UP on two of the three arms** (+6.96 here, +9.12 in
+    journal 359) and is never significant. Registered, not believed.
+
+COMPARABILITY, stated rather than assumed. This bench ran on the pinned NEW
+binary; it349-control ran on the old one. The comparison rests on journal 360's
+audit, which found the two decision-identical on all three seats (FRA and CHN
+by hash, USA by exact share on two seeds from two stored arms).
+
+WHAT IS NOW ESTABLISHED: **training N24 for 8 maps on the settled recipe
+degrades it, across two training seeds and, for the first of them, two
+independent bench seed sets. The consistent casualty is China; the cost sits
+somewhere around 90-145 per-seed rating points.**
+
+FOR THE USER, ITEM 94. The recipe question stands, and this sharpens it: the
+loss is in the seats that can FALL, most reliably China, on both training
+worlds. Memory selfplay-erodes-rush-defence records that nothing in the league
+plays a rush, so the policy sheds defence; a recipe that trains against
+something that pressures the weak seats is the hypothesis this points at. It is
+a design decision at ~3.6 hours per training arm plus ~20 minutes of bench, and
+it is not the loop's to start unasked.
+
+NOTHING IS PINNED ANY MORE. No chain is running od_bench, so item 95 (the
+provenance fix, Python only) is unblocked, and item 92 can be rebuilt and proven
+decision-inert by hash before any stored comparison is trusted again.
+
+PATHS TOUCHED: none in the tree. Scratchpad: pinbin/, traindata2/,
+trained8-t777001.bin (86bd193f). data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none. One stored row, it360-trained8-t777001, with spread.
+
+## 361 — iteration: make the stored binary provenance describe the runs
+
+BACKLOG ITEM 95, the top unblocked item. 94 is the user's design decision; 92
+is below it.
+
+FIRST, THE STACK THIS JOURNAL HAS CARRIED FOR SIXTY ENTRIES IS COMMITTED. The
+user committed it on Sun 13 Sep 21:20 -- `30a8441` "Wire --reset-ai-head and
+--probe-trade, and add the loop's AI probes" and `04b8f6d` "Journal the AI loop
+through iteration 360". Verified present rather than assumed: per_seed_ratings
+and compare_shares in od_bench.py, dumpNavySplit / OD_WAR_BAR_PROBE /
+OD_CAMPAIGN_PROBE in AISystem.cpp, s_readOnlyModel in Game_AITrain.cpp,
+--probe-trade in ServerMain.cpp, and no diff against HEAD on any of them. Every
+PENDING COMMIT from journals 287-352 is therefore done. The uncommitted
+1936cp map and scenario changes now in the tree belong to the concurrent editor
+and are not touched.
+
+THE DEFECT. `od_bench.py` evaluates `os.path.getmtime(binary)` inside the store
+dict, AFTER every seat has run. Journal 360 caught the consequence: the server
+was rebuilt 26 seconds before journal 359 stored, and that row recorded a
+binary its runs almost certainly never used. The field can describe the wrong
+build in either direction, and nothing says so.
+
+THE FIX: fingerprint the binary (md5 and mtime) once, immediately after it is
+resolved and before the first seat launches; fingerprint it again at store
+time; store both; print a warning and set `binary_changed_mid_run` when the md5
+differs. `binary_mtime` keeps its key and meaning-at-store so the 870 existing
+rows and every reader of them stay valid.
+
+HYPOTHESIS -- a discrimination test with a known answer, which must FAIL on the
+old code:
+  1. **A binary swapped DURING a run is detected.** One seat, one seed, 30
+     turns, with the pinned binary replaced by a byte-different copy while
+     that single run is in flight (atomic `mv`, so the running process keeps
+     its inode and the run itself is unaffected). New code must print the
+     warning and store md5_start != md5 with `binary_changed_mid_run: true`.
+     The old code stored the new mtime silently -- exactly journal 359's row.
+  2. **An untouched run is not flagged**: md5_start == md5, flag false, no
+     warning. A detector that also fires on clean runs is worse than none.
+  3. **Existing rows still compare**: --compare on it349-control against
+     it360-trained8-t777001 prints as before.
+
+PATHS TOUCHED: tools/od_bench.py.
+
+VERDICT: KEEP. **All three pre-registered checks pass, and the swap test also
+proved the thing the fix depends on.**
+
+    1. swapped mid-run   WARNING printed
+                         md5_start 12aa7f20  !=  md5 at store 1d76c510
+                         binary_changed_mid_run: True
+    2. untouched run     no warning, md5_start == md5, flag False
+    3. existing rows     it349-control vs it360-trained8-t777001 still reads
+                         -92, floor 83, CLEARS -- unchanged from journal 360
+
+The swap was real, not simulated: the seat process was confirmed live on
+`pinA` before its binary was atomically replaced by a copy one byte longer.
+
+**AND THE RUN ITSELF WAS UNAFFECTED**: 1914:FRA held 10.5 in the swapped run and
+10.5 in the clean one. That is the evidence behind journal 360's reasoning --
+"a running process keeps the image it launched with" -- which until now was
+inferred from how the OS works. It is now measured, on this machine.
+
+WHY THE OLD CODE FAILS THIS TEST, without re-running it: it wrote
+`os.path.getmtime(binary)` at store time and printed nothing. That is not a
+hypothetical -- it is journal 359's stored row, which recorded a build its runs
+almost certainly never used and said nothing. The discrimination is between that
+real row and test 1 above.
+
+BACKWARD COMPATIBLE BY CONSTRUCTION. `binary_mtime` keeps its key and its
+meaning -- read at store time -- so the 870 rows written before this, and every
+reader of them, are untouched. The new fields sit beside it. The live-process
+check in test 1 used `grep "[p]inA"` rather than `pgrep -f`: memory
+pgrep-matches-my-own-command, which here would have matched the test's own
+command line and fired the swap before the seat ever launched.
+
+WHAT THIS DOES NOT DO. It detects a changed binary; it does not prevent one.
+Pinning a copy (a `bin/` beside a `data` symlink, journal 360) is still the only
+protection for a long run, and the warning is what tells you the pin was
+needed.
+
+PATHS TOUCHED: tools/od_bench.py (+46 / -1). Scratchpad pinA (deliberately
+corrupted, deleted) and pinB. Two 30-turn smoke rows stored, j361-swap (flagged)
+and j361-clean. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT (tools/od_bench.py):
+
+    Record which binary a bench actually ran, not the one on disk at the end
+
+    binary_mtime was read when the row was written, after every seat had
+    run. A rebuild 26 seconds before journal 359 stored left that row naming
+    a build its runs never used, and said nothing. Fingerprint the binary
+    (md5 and mtime) before the first seat and again at store time, store
+    both, and warn when they differ. Tested by swapping the binary under a
+    live run: flagged, and the run's own result was unaffected.
+
+## 362 — iteration: make [TRAIN] name the file the run writes
+
+BACKLOG ITEM 92, the top unblocked item (95 struck, 94 the user's, 93 struck).
+
+THE DEFECT. Game_AITrain.cpp:220 prints
+
+    [TRAIN] Model: <dataDir>ai/model.bin  (close the window any time ...)
+
+as a literal, on every training run. Whenever `--worker` is given -- which the
+recipe of record always passes -- setAIWorker has already redirected the run to
+`ai/model.w1.bin`, so the line names the UNTOUCHED PARENT. Both real training
+logs in this sequence show the contradiction two lines apart:
+
+    [TRAIN] worker 1 of 2 — model ai/model.w1.bin       (true)
+    [TRAIN] Model: .../traindata/ai/model.bin            (false)
+
+Journal 358 nearly benched the parent against itself on the strength of it.
+
+PRE-FLIGHT, which decides whether the obvious fix is correct:
+  * setAIWorker runs BEFORE runAITraining (Game_Server.cpp:144, inside
+    runHeadlessAI), and both logs print the worker line first -- so at print
+    time m_aiModelPath already holds the redirected path. Printing it is right.
+  * m_aiModelPath defaults to "ai/model.bin" (Game.h:4505), so a non-worker run
+    prints exactly what it prints today.
+  * The `m_aiModelPath.clear()` at line 948 is on the EVAL override path
+    (OD_EVAL_MODEL), not training. It is also why the look-alike `[EVAL] Model:`
+    line must NOT get the same edit: there it would print an empty path.
+    Scope stays at the one training line.
+  * No uncommitted src/ changes from the concurrent editor, so the rebuild
+    folds in nothing but this edit.
+
+HYPOTHESIS -- a discrimination test; the two logs above are the old code
+failing it:
+  1. **A worker run prints `ai/model.w1.bin`.**
+  2. **A non-worker run still prints `ai/model.bin`.**
+  3. **Decision-inert**: DECHASH unchanged on 1914:FRA
+     (14669681761325311781 over 86188) and modern:CHN (1134950857311588231
+     over 277784). A printf cannot move a decision, and journal 360 is the
+     reason this gets proven rather than asserted.
+
+PATHS TOUCHED: src/Game_AITrain.cpp (one print).
+
+VERDICT: KEEP. **All three pre-registered checks pass, on all three seats.**
+
+    1. worker run      [TRAIN] Model: .../j362-treeW/ai/model.w1.bin   (was model.bin)
+    2. non-worker run  [TRAIN] Model: .../j362-treeN/ai/model.bin      (unchanged)
+    3. decision hash on the new binary (84d15b60):
+         1914:FRA    14669681761325311781 over 86188     = reference   21.4
+         modern:CHN   1134950857311588231 over 277784    = reference   23.1
+         1939:USA     8015535788507488591 over 172816    = journal 360  11.6
+
+Both training runs wrote only inside their isolated trees -- the non-worker
+run wrote its tree's model.bin (b8f879bd), exactly as it should, and
+`data/ai/model.bin` never moved (4a137043). Trees deleted afterwards.
+
+**A GAP IN MY PRE-FLIGHT, and why check 3 became the important one.** I checked
+for UNCOMMITTED src/ changes that a rebuild would fold in, found none, and wrote
+"the rebuild folds in nothing but this edit". That was wrong. The previous
+binary (12aa7f20) was built by the concurrent editor at 19:24, and COMMITTED
+src/ changes landed after it: 13b2cd5 (agent seats in server and browser),
+c4ce926 (agent seat action budget), 2bf5c04 (a turn-resolver fix), plus my own
+stack in 30a8441. The CMake reconfigure lines in the build output were the tell.
+**The right pre-flight is `git log --since=<binary mtime> -- src`, not
+`git status -- src`.** So this binary contains more than one printf, and check 3
+is testing all of it.
+
+WHICH IS WHY USA WAS ADDED. One absorbed commit, 2bf5c04, changes
+`processArmyMovement` in Game_TurnLogic.cpp -- the resolver, which LOOP.md says
+forces a re-baseline. It fixes an erase-by-index defect: when an assault
+captures a province, queued move orders are dropped out of that ground, and the
+old code then erased whichever order had slid into slot i, or one past the end,
+which crashes under libc++ (1914:SWE seed 20260801, turn 30). It changes
+behaviour only when a capture drops orders queued AHEAD of the one being
+resolved. **None of the three reference runs changed a decision because of it**
+-- all three hashes are identical -- which is an observation about these runs,
+not a claim that the fix is irrelevant elsewhere.
+
+CONSEQUENCE: every stored comparison in this sequence remains valid against
+this binary on all three bench seats, and the reference triple is now:
+
+    1914:FRA seed 13579    14669681761325311781 over 86188
+    modern:CHN seed 13579   1134950857311588231 over 277784
+    1939:USA seed 13579     8015535788507488591 over 172816
+
+PATHS TOUCHED: src/Game_AITrain.cpp (+9 / -2, one print and its comment).
+data/ai/model.bin unchanged.
+
+PENDING COMMIT (src/Game_AITrain.cpp):
+
+    Print the model file a training run actually writes
+
+    The [TRAIN] Model line printed a literal ai/model.bin, but setAIWorker
+    has already redirected the run to ai/model.w<id>.bin whenever --worker
+    is given -- which the training recipe always passes. The log named the
+    untouched parent two lines below the worker line that said otherwise,
+    and a bench nearly compared that parent against itself. Print
+    m_aiModelPath, which non-worker runs still resolve to ai/model.bin.
+
+## 363 — iteration: does a SHORT training step hold N24 up? (item 94's prerequisite)
+
+QUEUE VERIFIED, not assumed. Of the unstruck items: 75 is low-priority by its own
+text; 87's remaining half, 94's design question, 86 and 77 are the user's; 73,
+32 and 34 are blocked behind item 26; 16, 19, 26, 30, 41, 49, 51 and 65 are the
+user's. Item 94 names one step as coming BEFORE any recipe design, and it needs
+no decision: re-read journal 278's short-step result on the corrected
+instrument.
+
+WHAT JOURNAL 278 CLAIMS. Two maps from N24 read 433/404 against the parent's
+433/398 -- "PARITY ... the first configuration in journals 257-278 that does not
+cost the shipping model anything", "the only known non-destructive step from a
+strong parent". One map read 343/296, so the curve was non-monotone. **It was
+measured exactly as journal 273 was: three seeds per set, headline statistic.**
+Journal 357 showed 273's verdict was unresolvable at that standard. 278's parity
+is therefore unverified, and it is the only lead item 94 has.
+
+DESIGN -- isolate length. Journal 357's recipe EXACTLY, with 8 maps changed to 2:
+OD_AI_THREADS=1, OD_LR_SCALE=0.05, OD_DIPLO_PACT_WEIGHT=2.5, seed 424242,
+`--worker 1 --workers 2`, isolated tree. The base seed fixes the map sequence, so
+these are the same first two worlds 357 trained on (pangaea, then continents).
+The only difference from the arm that measured -145 is where training stopped.
+Bench on seed set 1 against it349-control, three rung seats, 400 turns,
+per-seed statistic -- directly comparable with it357-trained8.
+
+HYPOTHESIS, pre-registered:
+  1. **The 2-map model is inside the floor of N24 -- not resolvably below it.**
+     Journal 278's parity, reproduced on the corrected instrument.
+  2. **It is resolvably ABOVE the 8-map model** (192 per-seed). If a short step
+     is genuinely non-destructive and 8 maps costs ~145, the two should
+     separate.
+
+WHAT EACH OUTCOME MEANS, written before the run:
+  * inside N24's floor, above the 8-map arm -> length is the lever: harm
+                                  accrues with training length, and item 94's
+                                  recipe question has a starting point.
+  * inside N24's floor, NOT above 8-map    -> a null against both; this bench
+                                  cannot place the 2-map model at all.
+  * clears BELOW N24                       -> 278's parity was three-seed noise,
+                                  and training from N24 degrades at every
+                                  length tested on this instrument.
+  * clears ABOVE N24                       -> the first training result to lift
+                                  the shipping model. Would need a second seed
+                                  set before anyone believed it.
+
+**AND WHAT "INSIDE THE FLOOR" DOES NOT MEAN**: harmless. A floor of ~90 hides a
+real loss of 50. Parity here reads "no harm this bench can resolve at 8 seeds",
+and gets written that way.
+
+COST: two maps (357's first two ran 2900 and 2000 turns) at ~1-1.5 s/turn,
+~1.5 h, plus ~20 min of bench. Pinned binary: the current build (84d15b60),
+proven decision-identical on all three seats in journal 362.
+
+VERDICT: **BOTH HYPOTHESES FALSIFIED. Journal 278's "parity" was three-seed
+noise: two maps of training cost N24 about as much as eight.**
+
+    per-seed rating, seed set 1       N24 336   2 maps 223   8 maps 192
+
+    H1  N24 -> 2 maps       d -113   floor 90   CI [-203, -23]   CLEARS BELOW
+    H2  8 maps -> 2 maps    d  +32   floor 91   CI [ -59, +122]  inside floor
+    ref N24 -> 8 maps       d -145   floor 94   CI [-239, -51]   CLEARS
+
+    seat              2 maps vs N24      p
+    1914:FRA                  -9.75  0.005    clears the three-seat correction
+    1939:USA                  +2.82  0.475
+    modern:CHN                -9.24  0.040    does not clear it (0.0167)
+
+    modern:CHN annihilated   N24 2/8   2 maps 4/8   8 maps 4/8
+    1914:FRA below par       N24 0/8   2 maps 2/8   8 maps 5/8
+
+RUN HEALTH: training rc=0, 5,181 turns in 69.3 min; trained model a56f93fc,
+distinct from the parent (4a137043) and the 8-map model (c25f2a11);
+`binary_changed_mid_run` False on binary 84d15b60; data/ai/model.bin unchanged.
+Graded 18/24 against the control's 14/24. **And item 92's fix was observed in
+production**: `[TRAIN] Model: .../traindata3/ai/model.w1.bin`, the file the run
+actually wrote.
+
+1. **H1 falsified.** I predicted the 2-map model would sit inside N24's floor,
+   reproducing journal 278. It clears below it by 23 points at the CI's edge.
+   Journal 278 called two maps "the only known non-destructive step from a
+   strong parent". On the corrected instrument it is destructive, and the claim
+   is retired.
+
+2. **H2 falsified.** I predicted 2 maps would sit resolvably above 8. The gap is
+   +32 against a floor of 91: the two lengths cannot be told apart.
+
+**WHAT THAT MEANS, and it is the reason this was worth running.** Two maps costs
+about 113 points and eight maps about 145, and the difference between them is
+not resolvable. **The harm is already there after two maps rather than
+accumulating with length.** Journal 272 found the length curve non-monotone and
+retired extrapolation along it; this goes further for the case that matters --
+from the SHIPPING model there is no short, safe length on this recipe.
+France's collapse fits the same picture partially: below par on 2 of 8 worlds
+at two maps and 5 of 8 at eight, so some damage may still grow with length --
+but the rating says most of it arrives early.
+
+FOR THE USER, ITEM 94. **Training length is not the lever**, so "just train
+less" is off the table as a recipe fix. What remains is WHAT the model trains
+against or how the update is applied, not for how long -- and the consistent
+casualty, again, is the seats that can fall (China annihilated 4/8 at both
+lengths). Journal 360's pointer at memory selfplay-erodes-rush-defence stands,
+now with length ruled out as the alternative explanation.
+
+PATHS TOUCHED: none in the tree. Scratchpad: pin363/, traindata3/, trained2.bin
+(a56f93fc). data/ai/model.bin unchanged.
+
+PENDING COMMIT: none new. Still outstanding from journals 361 and 362:
+tools/od_bench.py and src/Game_AITrain.cpp.
+
+## 364 — investigation: has the recipe of record EVER trained against a rusher?
+
+NO LOOP-ACTIONABLE BACKLOG ITEM. Item 94 is the user's design decision, and I
+recorded that a new recipe at ~3.6 h per arm is not the loop's to start unasked.
+This entry stays on the right side of that line: read-only, no game processes,
+no source. The question is whether item 94's leading hypothesis can be tested
+with machinery that ALREADY EXISTS -- which would make it a priced choice rather
+than a design problem.
+
+**TREE STATE FIRST, because it constrains everything after it.** The concurrent
+editor now has 25 uncommitted src/ files (196+/54-), including simulation code:
+Game_Economy.cpp, Game_Policies.cpp, Game_Research.cpp, Game_Update.cpp,
+Game_Loading.cpp, plus CMakeLists.txt. **Any rebuild would absorb game-rule
+changes** and every stored comparison would need re-baselining, so there is no
+rebuild. The binary on disk is still 84d15b60, so the stored comparisons remain
+valid. My pending src/Game_AITrain.cpp is clean: its diff against HEAD is
+exactly the item-92 hunk, and the other editor has not touched that file, so it
+can still be committed on its own.
+
+**FINDING 1: THE RECIPE HAS NEVER FACED A RUSHER.** All three training logs in
+this sequence (journals 357, 360, 363) contain 12 league-opponent lines, every one
+`league slot 0` -- a past copy of the model -- and ZERO rusher-slot lines and ZERO
+`scripted opposition` lines. The comment beside the scripted variant mix
+(AISystem.cpp:3150) says it outright: "across an entire training run the policy
+faced exactly one strategy ... 29.0% against SCRIPT_BLITZ ... nothing in training
+ever asked the question." The recipe that degraded N24 in all four arms is pure
+self-play against past selves.
+
+**FINDING 2: TWO ROUTES ALREADY EXIST, both off by default.**
+
+    OD_LEAGUE_EXPLOIT     a virtual league slot that plays SCRIPT_BLITZ, drawn by
+                          the same loss-weighted sampling as a real checkpoint, so
+                          it is played MORE while the policy is losing to it.
+                          Needs no checkpoint file, so it joins from turn one.
+                          =0.25 caps its share of the draw; =1 is "on at the
+                          default cap". Default: OFF ("the league is past selves
+                          only, as shipped").
+    OD_TRAIN_SCRIPTED_SHARE  a fraction of countries play scripted; a quarter of
+                          those (AI_TRAINING_VARIANT_SHARE = 0.25) get a variant
+                          mix of five, one of which is BLITZ. So the rushing dose
+                          is ~share x 0.25 x 0.2 -- about 1.7% of countries at a
+                          share of 0.33. **A weak test of this hypothesis.**
+                          Journal 270 tested it from loop-base, not N24.
+
+The bench's own rusher (`--vs-exploit`, `--rush-neighbours`) does NOT reach
+training: `s_exploitCids` is filled only inside runAIEvaluation.
+
+**FINDING 3: THE LEAGUE RUSHER HAS NEVER BEEN TESTED ON N24 ON THIS INSTRUMENT.**
+Three earlier runs, 4 Sep, all compromised:
+
+    run  configuration                              rusher drawn   result        why it does not count
+    E    OD_VALUE_MC=0.25 + OD_LEAGUE_EXPLOIT=1     7 of 8 maps    162 -> 102    confounded with value-MC
+    H    OD_LEAGUE_EXPLOIT=0.25                     0 times        void          a bug kept it out
+    H2   OD_LEAGUE_EXPLOIT=0.25                     1 of 6 maps    162 -> 166    barely dosed
+
+All three trained from the i10/i11 lineage, not N24, and were benched at ONE seed
+on the six-seat headline rating before journal 29b's correction -- a standard
+journals 350-351 showed cannot resolve differences of this size. H2 was rejected
+on composition (Sweden -113, the rush seat -26, USA +111); none of those
+per-seat figures is resolvable either.
+
+WHAT THIS MAKES OF ITEM 94. The hypothesis "training erodes N24 because nothing
+in training pressures the weak seats" has a direct, existing, never-properly-run
+test: journal 357's recipe with `OD_LEAGUE_EXPLOIT` switched on. Priced in item
+94, together with the one design question it genuinely leaves open -- the dose,
+since H2's cap let the rusher in once in six maps -- and a measurement catch:
+a rusher threatens the RUSH and HOOD seats most, and the three rung seats this
+sequence has benched on exclude both.
+
+PATHS TOUCHED: docs only. No source, no runs, no model.
+data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362, confirmed clean against the other editor's work).
+
+## 365 — does training without a rusher erode rush defence? (item 94's mechanism, on existing models)
+
+NO LOOP-ACTIONABLE BACKLOG ITEM, and item 94's recipe choice remains the user's:
+this entry trains nothing and chooses no dose. It measures an ALREADY-TRAINED
+model on the two seats item 94's hypothesis is actually about.
+
+THE GAP. Item 94's leading hypothesis is memory selfplay-erodes-rush-defence:
+nothing in the league plays a rush, so the policy sheds its defence. Journal 364
+confirmed the recipe of record never faces a rusher. But every measurement of
+that recipe (journals 357, 359, 360, 363) was on the three RUNG seats, which
+exclude 1914:FRA:rush and 1939:NOR:hood -- the two seats a rusher threatens. The
+mechanism has never been looked for where it would show.
+
+DESIGN. Two arms, both seats, seed set 1, 400 turns, pinned binary 84d15b60:
+    control     N24 (n24.bin, 4a137043)                     it365-n24-rushhood
+    treatment   the 8-map no-rusher model (c25f2a11, j.357)  it365-t8-rushhood
+The control is run FRESH rather than reusing it338-control's 1914:FRA:rush
+spread: that row is on the OLD binary, journals 360/362 proved decision-identity
+on the three rung seats only, and the rush world runs a different path
+(--vs-exploit) through the capture-heavy resolver that 2bf5c04 changed. Matching
+it338-control's stored FRA:rush seed values is then a free cross-binary check on
+that path.
+
+HYPOTHESIS, pre-registered:
+  1. **Both seats move DOWN** under the trained model -- rush defence eroded.
+  2. **1914:FRA:rush is the informative seat.** N24 already sits near the floor
+     on 1939:NOR:hood (stored mean 0.45% against par 1.3), so a further drop
+     there has little room to appear. A null on hood is expected and says
+     nothing.
+
+AND WHAT THIS CANNOT DO, written first: both seats are BISTABLE (journal 291:
+FRA:rush holds ~8 or collapses below 1.5, nothing between). A collapse-RATE
+difference needs ~128 seeds per arm; at eight the bench resolves only ~0.49. So
+this reports the DIRECTION and the per-seat land permutation p, and makes no
+rate claim unless collapse is close to total. A null here is "not resolvable
+at 8 seeds on a bistable seat", not "no erosion".
+
+VERDICT: **NOT RESOLVABLE, as the pre-registered caveat said -- and the result
+worth recording is about N24 itself: the shipping model already loses the rush
+seat on 5 of 8 worlds.**
+
+    seat             N24    8-map      d     95% CI            p
+    1914:FRA:rush    3.99    2.69  -1.30   [-7.01, +4.41]   0.699
+    1939:NOR:hood    0.45    0.53  +0.08   [-0.04, +0.19]   0.311
+    per-seed rating    47      40     -7   floor 46   does not clear
+
+    1914:FRA:rush   N24   13.2  0.2  9.7  0.2  0.1  8.2  0.2  0.1   collapsed 5/8
+                    8-map  0.2  2.7 17.8  0.2  0.2  0.1  0.2  0.1   collapsed 6/8
+    1939:NOR:hood   below par on 8/8 worlds in BOTH arms; annihilated 0/8 in both
+
+1. **Hypothesis 1 half-falsified.** The rush seat moves down (-1.30) but the
+   hood seat moves UP (+0.08). Neither is resolvable, and I am not reading a
+   direction into p = 0.70 and p = 0.31.
+2. **Hypothesis 2 held.** The hood seat is pinned below par on every world for
+   both models -- it cannot show erosion in either direction, as predicted.
+
+**THE RUSH-SEAT RESULT IS ONE WORLD.** N24 holds France on three worlds (13.2,
+9.7, 8.2); the trained model holds it on one (17.8), with a borderline 2.7.
+Collapse 5/8 -> 6/8 is a rate difference of 0.125 against the ~0.49 this bench
+resolves at eight seeds (journal 292). No rate claim is made.
+
+**THE FINDING THAT CHANGES ITEM 94: N24 IS ALREADY WEAK AGAINST A RUSHER.** It
+loses the rush seat on 5 of 8 worlds and sits below par on the hood seat on all
+8. The shipping model has little rush defence left for training to erode --
+which is consistent with memory selfplay-erodes-rush-defence having happened
+LONG before these runs rather than in them. That cuts both ways for item 94:
+  * a rusher in training has real room to HELP, since N24 is failing there now;
+  * but showing that help on the rush seat is a RATE question -- 3 holds in 8
+    moving to, say, 5 in 8 needs ~128 seeds per arm to resolve -- so any
+    OD_LEAGUE_EXPLOIT arm must be judged on the rung seats (where 357's damage
+    was measured and resolved), or pay for the rate test.
+
+**CROSS-BINARY CHECK ON THE RUSH PATH: IDENTICAL.** The fresh N24 control's
+1914:FRA:rush seeds match it338-control (old binary) exactly --
+[13.2, 0.2, 9.7, 0.2, 0.1, 8.2, 0.2, 0.1] -- and both seat means match
+n24-guard-ctl (old binary) exactly, 3.9875 and 0.45. So the --vs-exploit path
+is decision-identical across the two builds, and every stored rush/hood row in
+this sequence stays valid on 84d15b60. Both rows: binary_changed_mid_run False.
+
+PATHS TOUCHED: none in the tree. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 366 — iteration: train N24 WITH the league rusher (item 94)
+
+ITEM 94, and the decision behind taking it. Journals 364 and 365 left item 94
+as a priced choice and said the loop would hold rather than start a 3.6-hour
+training run unasked. The user invoked the loop again without choosing. Having
+raised the concern and had the request repeated, I am treating that as the
+decision to proceed with item 94's first option, and saying so here rather than
+leaving it implicit. Nothing about it touches the protocol's hard rules:
+isolated tree, data/ai/model.bin never written, odlock, no commit.
+
+**A CORRECTION TO ITEM 94'S OPTIONS, found before launch.** I listed (b) as
+"`OD_LEAGUE_EXPLOIT=1` (E's dose, rusher 7 of 8 maps)". That is wrong. The
+parser (AISystem.cpp:12557) returns the value as the cap only when it lies
+strictly in (0,1); ANY other positive value, including 1, is read as the default
+cap of 0.25. So (a) and (b) are the same dose, no setting is uncapped, and run
+E's 7-of-8 cannot be reproduced -- E predates the cap. The header comment says
+this; I did not read it before writing the options.
+
+**THE DOSE, and why 0.25 is the wrong one.** The cap bounds the rusher's share
+of each league draw, and the recipe of record makes very few draws: 6, 5 and 1
+in journals 357, 360 and 363 -- about 0.7 per map. At a 25% cap an 8-map run
+expects roughly 1.5 rusher draws, and could get 0 or 1; journal 23's H2 got 1 of
+6 and was barely a test. **This run uses OD_LEAGUE_EXPLOIT=0.5**: an expected
+~2.5-3 rusher draws, while keeping the league at most half rusher -- short of
+the 88%-rusher league that sank run E. That dose is my judgment call.
+
+DESIGN -- a true A/B against an arm that already exists. Journal 357's recipe
+AND SEED exactly -- 8 maps x 3000, OD_AI_THREADS=1, OD_LR_SCALE=0.05,
+OD_DIPLO_PACT_WEIGHT=2.5, seed 424242, `--worker 1 --workers 2` -- plus
+OD_LEAGUE_EXPLOIT=0.5. Same seed means the same 8 training worlds as
+it357-trained8 (c25f2a11). **The rusher is the only difference.** Fresh tree
+traindata4, pinned binary pin363 (84d15b60). Bench on seed set 1, three rung
+seats, 400 turns -- the seats journal 365 said to judge this on -- as
+it366-rusher8, compared with it349-control (N24) and it357-trained8 (no rusher).
+
+VALIDITY CONDITION, pre-registered: **the rusher must be drawn at least twice**,
+counted from `[AI] league slot N: the RUSHER` lines. Fewer, and the run is VOID
+and says so -- journal 22's run H is the precedent for a rusher run that never
+ran the rusher.
+
+HYPOTHESIS, pre-registered:
+  1. **The rusher-trained model scores ABOVE the no-rusher model (192).** The
+     mechanism: journal 357's damage landed on the seats that can fall, and
+     N24 already loses the rush seat 5/8 (journal 365). Resolvability is
+     doubtful -- the floor between two trained arms has run ~90.
+  2. **It still sits BELOW N24.** A rusher is one opponent in a league of past
+     selves; I expect it to reduce the damage, not remove it.
+  3. **The gain, if any, is on 1914:FRA and modern:CHN, not 1939:USA** --
+     the seats journal 357 hurt.
+
+WHAT EACH OUTCOME MEANS:
+  * above no-rusher, resolvably       -> the rusher is a real lever on item 94.
+  * above no-rusher, not resolvably   -> direction only; needs a second seed set.
+  * not above no-rusher               -> a rusher at this dose does not
+                                         address the damage; the hypothesis
+                                         loses its only test.
+  * above N24, resolvably             -> the first training run to lift the
+                                         shipping model. Second seed set first.
+
+COST: ~3 h training (357's run took 168 min) + ~20 min bench.
+
+VERDICT: **TRAINING N24 AGAINST THE RUSHER REMOVES THE DAMAGE SELF-PLAY CAUSED
+-- on one seed set, and against a league that turned out to be ENTIRELY rusher,
+not the capped half I designed.**
+
+    per-seed rating, seed set 1     N24 336   no-rusher 8-map 192   rusher 8-map 335
+
+    H1  no-rusher -> rusher    d +143   floor 91   CI [+52, +234]   CLEARS
+    H2  N24 -> rusher          d   -1   floor 90   CI [-91,  +89]   inside floor
+
+    seat              rusher vs no-rusher      p     rusher vs N24      p
+    1914:FRA                       +12.66  0.012             -0.50  0.914
+    1939:USA                        +9.06  0.087            +10.24  0.046
+    modern:CHN                      +6.01  0.090             -4.25  0.338
+
+    modern:CHN annihilated   N24 2/8   no-rusher 4/8   rusher 2/8
+    1914:FRA below par       N24 0/8   no-rusher 5/8   rusher 1/8
+
+RUN HEALTH: training rc=0, 11,614 turns in 143.4 min; trained model c429f777,
+distinct from the parent (4a137043) and the no-rusher model (c25f2a11); binary
+84d15b60 unchanged at both ends, binary_changed_mid_run False; data/ai/model.bin
+unchanged. Graded 15/24 against the control's 14/24. Validity condition (>= 2
+rusher draws) met: 8.
+
+1. **H1 CONFIRMED, and this is a true A/B.** Same recipe, same seed, same eight
+   training worlds as the no-rusher arm; the rusher is the only difference, and
+   it is worth +143 with the CI clearing zero by 52.
+2. **H2 FALSIFIED, in the direction that matters.** I predicted the rusher would
+   reduce the damage but leave the model below N24. It sits at 335 against 336:
+   **the first training run from N24 in this sequence that is not resolvably
+   below its parent.** That is parity inside a floor of 90, not an improvement.
+3. **H3 partly.** The gain over the no-rusher model is largest and only
+   resolvable on France (+12.66, clearing the three-seat correction), but the USA
+   and China rise too. Against N24, the USA's +10.24 (p 0.046) does not clear the
+   correction. China's annihilations return to N24's 2 of 8; France falls below
+   par on 1 of 8 instead of 5.
+
+**THE DOSE WAS NOT WHAT I DESIGNED, AND I TRACED WHY BEFORE BELIEVING ANY OF IT.**
+The rusher was drawn on **all 8 maps**: one draw announcement at the start of
+every map, and zero past-self result lines (a past-self draw prints nothing until
+its game ends -- the no-rusher run's `(n/m lost)` counter climbs to 6 games). The
+0.5 cap should have given it about half. Both `league-0.bin` checkpoints are
+valid (ODLG, version 2, byte 5 = MOD_COUNT+1), and this run's existed from map 1,
+so from map 2 the league had two candidates. The cap failed to bind because of
+**two defects in the league draw**, both measured from the code:
+
+  1. **The rusher's outcomes are never recorded.** `recordLeagueOutcome`
+     (AISystem.cpp:13028) returns immediately for any slot >= LEAGUE_CHECKPOINTS,
+     and the rusher IS slot LEAGUE_CHECKPOINTS. Its game count stays 0 forever,
+     so its loss-weighted draw weight never leaves the no-data prior. The header
+     comment -- the rusher is "played MORE often exactly while the policy is
+     losing to it" -- is false.
+  2. **The draw's random state restarts every map.** `unloadGameData()`
+     (Game_Loading.cpp:2422) deletes m_ai, runAITraining calls it before every map
+     (Game_AITrain.cpp:344), and Game_TurnLogic.cpp:474 builds a fresh AISystem on
+     the first turn -- so `m_rng{1337}` restarts at 1337 before each map's draw,
+     which happens on that first turn. With both slots' weights frozen, every map
+     draws from the same weights in the same RNG state, and the same slot wins
+     every time.
+
+So **the cap bounds the rusher's WEIGHT, not how often it is actually drawn.**
+Checked and ruled out on the way: an out-of-bounds read (the arrays are sized
+LEAGUE_CHECKPOINTS + 1, so slot 6 is valid). Possibly relevant, NOT claimed:
+journal 20's run E "uncapped took 7 of 8" may be the same determinism rather
+than loss-weighting feeding the rusher, as its entry concluded.
+
+**WHAT THIS RESULT IS, THEREFORE:** training N24 for 8 maps against a league
+that is 100% SCRIPT_BLITZ restores parity with the parent on the three rung
+seats, where the identical run against past selves lost 145. It is not evidence
+about a capped or mixed league.
+
+CAVEATS, stated at their real size:
+  * **One bench seed set.** Journal 354 is why that is not yet a result. The
+    replication is cheap -- both comparison arms already exist on seed set 2
+    (it354-ctl-s2 and it359-trained8-s2), so it costs 24 bench runs and no
+    training. Filed as item 96.
+  * **One training seed** (424242).
+  * **Parity, not a gain.** A floor of 90 hides a real difference of 50 either
+    way.
+
+PATHS TOUCHED: none in the tree. Scratchpad: traindata4/, trained8-rusher.bin
+(c429f777). data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 367 — iteration: does the rusher result survive seed set 2?
+
+BACKLOG ITEM 96, the top loop-actionable item. Journal 366 found that training
+N24 against a (100%-rusher) league reads 335 against N24's 336 and +143 over the
+identical self-play run, CI [+52, +234] -- on ONE bench seed set. Journal 354 is
+the precedent for why that is not yet a result: the pacify arm read -88 on seed
+set 1 and +31 on seed set 2.
+
+DESIGN. No training. Bench the rusher-trained model (trained8-rusher.bin,
+c429f777) on seed set 2 -- 11111, 2468135, 777777, 31415926, 5772156, 1414213,
+9090909, 6180339 -- three rung seats, 400 turns, pinned binary 84d15b60, as
+it367-rusher8-s2. Both comparison arms already exist on these seeds:
+    it354-ctl-s2        N24, per-seed 306
+    it359-trained8-s2   the no-rusher 8-map model (c25f2a11), per-seed 184
+Comparability: those rows ran on binaries 1789221191 and 12aa7f20; journals 360
+and 362 proved both decision-identical to 84d15b60 on all three rung seats.
+
+HYPOTHESIS, pre-registered as filed in item 96:
+  1. **The rusher model clears above the no-rusher model again.**
+  2. **It sits inside N24's floor again** -- parity, not resolvably below.
+
+Seed set 2's N24 control is 30 points weaker than seed set 1's (306 vs 336),
+which journal 359 found narrows gaps against it by arithmetic. I will read the
+per-seat shape and the collapse counts before the headline for that reason.
+
+WHAT EACH OUTCOME MEANS:
+  * clears over no-rusher, inside N24's floor -> REPLICATED on two independent
+                                  seed sets: a rusher league removes the damage.
+  * above no-rusher, not clearing -> the direction replicates, the resolution
+                                  does not; not to be written up as replicated.
+  * not above no-rusher, or inverts -> journal 366 was a seed-set artefact, as
+                                  journal 351's p = 0.010 was.
+  * resolvably below N24          -> the gain over self-play may hold, the parity
+                                  does not.
+
+VERDICT: **REPLICATED ON THE INDEPENDENT SEED SET. Both hypotheses hold: a
+rusher league removes the damage self-play does to N24, on two independent
+bench seed sets.**
+
+    per-seed rating      seed set 1 (j.366)           seed set 2 (j.367)
+    N24                  336                           306
+    no-rusher 8-map      192                           184
+    rusher 8-map         335                           349
+
+                              seed set 1               seed set 2               pooled 16
+    H1 no-rusher -> rusher    +143  CI [+52, +234]     +165  CI [+79, +250]     +154  CI [+93, +214]
+    H2 N24 -> rusher            -1  CI [-91,  +89]      +43  CI [-54, +139]      +21  CI [-44,  +85]
+
+    seed set 2, per seat     rusher vs no-rusher    p     rusher vs N24    p
+    1914:FRA                       +9.35         0.117        +0.89     0.859
+    1939:USA                       +4.95         0.361       +14.07     0.003
+    modern:CHN                    +13.02         0.003        -2.15     0.706
+
+    seed set 2   CHN annihilated   N24 1/8   no-rusher 3/8   rusher 0/8
+    seed set 2   FRA below par     N24 1/8   no-rusher 4/8   rusher 1/8
+
+RUN HEALTH: pre-flight passed (binary 84d15b60, model c429f777, both comparison
+rows present with spread on these exact seeds); binary_changed_mid_run False;
+data/ai/model.bin unchanged. Graded 16/24.
+
+1. **H1 CONFIRMED on the independent set: +165, CI clearing zero by 79.** It is
+   larger than seed set 1's +143, and the pooled CI clears zero by 93. Journal
+   354's pacify arm went -88 -> +31 on exactly these seeds; this went +143 ->
+   +165.
+2. **H2 CONFIRMED: inside N24's floor on both sets** (-1, then +43). Parity
+   with the parent, not a resolvable gain -- the pooled +21 sits well inside a
+   floor of 64.
+
+**THE SHAPE, and one part of it I did not predict.**
+  * **China is the resolvable gain over self-play** on this set (+13.02, p
+    0.003, clearing the three-seat correction), and it is annihilated on 0 of
+    8 worlds -- against 3 for the self-play model and 1 for N24.
+  * **France** is up in direction only here (+9.35, p 0.117); on seed set 1 it
+    was the resolvable seat. Below par on 1 of 8, level with N24.
+  * **The USA against N24 is +14.07 at p 0.003, clearing the correction on this
+    set** -- and +10.24 on seed set 1. **Journal 366 pre-registered that the gain
+    would NOT be on the USA.** So this is an unpredicted pattern that has held its
+    direction twice, which makes it an observation to test, not a claim. The
+    three-seat rating against N24 stays inside the floor on both sets, and I am
+    not describing the model as better than N24.
+
+WHAT IS NOW ESTABLISHED: **training N24 for 8 maps against a 100%-rusher league
+(journal 357's recipe + OD_LEAGUE_EXPLOIT, which does not cap -- item 97)
+restores parity with the parent, where the identical self-play run loses about
+150. Replicated on two independent bench seed sets.** It is the first training
+result in this sequence to replicate in the good direction.
+
+CAVEATS, at their real size:
+  * **One training seed (424242).** Journal 360 showed self-play's damage held on
+    a second training seed; the rusher's repair has not been asked that. Filed as
+    item 98, the next loop-actionable step.
+  * **A 100%-rusher league**, because of the cap defects (item 97). Nothing here
+    speaks for a mixed league.
+  * **Parity, not improvement.** The rusher model is not shown to beat N24.
+
+PATHS TOUCHED: none in the tree. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 368 — iteration: does the rusher repair hold on a second TRAINING seed?
+
+BACKLOG ITEM 98, the top loop-actionable item. Journals 366-367 replicated the
+rusher league's repair of N24 on two bench seed sets -- but from ONE training
+run, seed 424242. Journal 360 asked self-play's damage the same question on
+training seed 777001 and it held. This asks the repair.
+
+DESIGN -- a true A/B against an arm that already exists. Journal 360's recipe
+exactly -- 8 maps x 3000, OD_AI_THREADS=1, OD_LR_SCALE=0.05,
+OD_DIPLO_PACT_WEIGHT=2.5, seed 777001, `--worker 1 --workers 2` -- plus
+OD_LEAGUE_EXPLOIT=0.5. Same seed means the same 8 training worlds as
+it360-trained8-t777001 (self-play, 86bd193f), so **the rusher is again the only
+difference.** Fresh tree traindata5, pinned binary pin363 (84d15b60). Bench on
+seed set 1, three rung seats, 400 turns, as it368-rusher8-t777001, compared with
+it349-control (N24, 336) and it360-trained8-t777001 (self-play on this seed, 245).
+
+VALIDITY, pre-registered: the rusher drawn at least twice, or VOID. Expected 8 of
+8, given item 97's two defects.
+
+HYPOTHESIS, pre-registered:
+  1. **The rusher model scores ABOVE the seed-777001 self-play model (245).**
+  2. **It sits inside N24's floor** -- parity again.
+
+**WHY 1 MAY NOT RESOLVE EVEN IF THE REPAIR IS REAL, stated before the result.**
+Self-play on this training seed cost N24 only -92 (journal 360) against -145 on
+seed 424242. A COMPLETE repair here is therefore about +92 -- right at the ~90
+floor between two trained arms. So:
+
+  * above self-play resolvably, inside N24's floor  -> the repair REPLICATES on
+                                   a second training seed.
+  * above self-play but not resolvably, and inside N24's floor -> CONSISTENT with
+                                   a full repair of a smaller damage; the
+                                   direction replicates, and it is written that
+                                   way, not as a replication.
+  * at or below self-play          -> the repair is specific to seed 424242's
+                                   worlds.
+  * resolvably below N24           -> the repair fails on this training seed.
+
+COST: ~2.5-3.5 h training (journal 360's self-play run took 218 min; journal
+366's rusher run took 143) + ~20 min bench.
+
+VERDICT: **BOTH HYPOTHESES FALSIFIED. The rusher repair does NOT hold on a second
+training seed. Journals 366-367 established a fact about ONE MODEL, not about the
+recipe.**
+
+    seed set 1, per-seed rating      self-play -> rusher      N24 -> rusher          N24 -> self-play
+    training seed 424242 (366-367)   +143  CI [+52, +234]      -1  inside floor       -145
+    training seed 777001 (this run)   -18  CI [-90,  +54]    -110  CI [-193, -26]      -92
+                                      (245 -> 227)            CLEARS BELOW
+
+    training seed 777001, per seat   rusher vs self-play    p     rusher vs N24    p
+    1914:FRA                               -3.98        0.449          -8.88     0.044
+    1939:USA                              -10.22        0.100          -3.26     0.522
+    modern:CHN                             +4.04        0.116          -6.84     0.112
+
+    modern:CHN annihilated   N24 2/8   self-play 4/8   rusher 1/8
+    1914:FRA below par       N24 0/8   self-play 3/8   rusher 2/8
+
+RUN HEALTH: valid and clean. Training rc=0, 11,656 turns in 130.9 min. Rusher
+drawn 7 of 8 maps, with one past-self draw -- unlike journal 366's 8 of 8, and
+above the pre-registered minimum of 2. Trained model 1a43100e, distinct from the
+parent, the seed-777001 self-play model and the seed-424242 rusher model. Binary
+84d15b60 unchanged, binary_changed_mid_run False, data/ai/model.bin unchanged.
+**Graded 21/24 against the control's 14/24** (LOOP.md STANDING 3): the two arms
+are not scored by quite the same instrument.
+
+1. **H1 falsified.** I predicted the rusher model would score above this seed's
+   self-play model. It scores slightly BELOW it (227 vs 245), well inside the
+   floor. The caveat I pre-registered -- a full repair here would only be ~+92,
+   near the floor -- does not apply: there is no repair to under-resolve.
+2. **H2 falsified.** It sits resolvably BELOW N24, by 110, CI clearing zero by 26.
+
+Both match outcomes I wrote before the run: "at or below self-play -> the repair
+is specific to seed 424242's worlds" and "resolvably below N24 -> the repair
+fails on this training seed".
+
+**WHAT THIS DOES TO JOURNALS 366-367, stated precisely.** Their measurements stand
+and replicated: the rusher-trained model c429f777 sits at parity with N24 and
+~150 above the matching self-play model, on two independent BENCH seed sets.
+What I then wrote -- "a rusher league removes the damage self-play does to N24",
+"the first training result to replicate in the good direction" -- claimed the
+RECIPE. A recipe is a claim across training seeds, and on the second one it
+fails. **Replicating on bench seeds established that one model is good; it said
+nothing about whether the recipe reliably produces one.** Journal 360 made exactly
+this check for self-play's damage and it held; I filed the same check for the
+rusher as item 98, and it is the check that failed.
+
+**THE ONE SUB-SIGNAL THAT HELD ON BOTH TRAINING SEEDS:** China's annihilations
+fall under the rusher -- 4/8 to 2/8 on seed 424242 and 4/8 to 1/8 here. That is
+the mechanism the rusher was meant to address, pointing the same way twice; as a
+rate difference it is far below what eight seeds resolve (~0.49). Recorded as a
+direction, not a finding.
+
+WHAT IS AND IS NOT ESTABLISHED NOW:
+  * self-play training degrades N24: established (2 training seeds, 2 bench
+    seed sets, 2 lengths).
+  * a rusher league repairs it: NOT established. 1 of 2 training seeds.
+  * c429f777 is a parity model with N24 on two seed sets: established, and it
+    is parity, not a gain -- nothing to ship.
+
+PATHS TOUCHED: none in the tree. Scratchpad: traindata5/,
+trained8-rusher-t777001.bin (1a43100e). data/ai/model.bin unchanged.
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 369 — do the rusher-trained models defend the rush seat better?
+
+NO LOOP-ACTIONABLE BACKLOG ITEM. Item 99 is a strategic choice put to the user --
+more training seeds, return to rules, or fix item 97 first. I am NOT taking one
+of those on a bare re-invocation: they point the project in different directions
+at ~2.5 h a training seed, and I cannot tell whether these invocations are the
+user or a /loop schedule. Journal 366 treated a re-invocation as a decision to
+proceed; that was a stretch for a single option, and it would be a larger one
+for choosing between three.
+
+This entry takes the one step that needs no decision and bears on item 99.
+
+THE GAP. The rusher was added to training to restore RUSH DEFENCE (memory
+selfplay-erodes-rush-defence). The two rusher-trained models -- c429f777 (seed
+424242, at parity with N24) and 1a43100e (seed 777001, 110 below N24) -- have
+only ever been benched on the three RUNG seats. Nobody has asked whether they
+defend the seats the rusher was about: 1914:FRA:rush and 1939:NOR:hood.
+
+WHY IT MATTERS FOR ITEM 99:
+  * both rusher models defend better than their self-play counterparts
+      -> the mechanism works, and seed 777001's rung-seat miss looks like
+         training noise; supports item 99's options (a) and (c).
+  * neither does -> the rusher does not buy rush defence on this recipe,
+         and supports option (b).
+
+DESIGN. No training. Seed set 1, both seats, 400 turns, pinned binary 84d15b60.
+New arms:
+    it369-rusher424-rh     c429f777   rusher, training seed 424242
+    it369-rusher777-rh     1a43100e   rusher, training seed 777001
+    it369-selfplay777-rh   86bd193f   self-play, training seed 777001
+Existing controls, same binary and seeds (journal 365):
+    it365-n24-rushhood     N24
+    it365-t8-rushhood      c25f2a11   self-play, training seed 424242
+So each training seed gets a true rusher-vs-self-play A/B on the same worlds.
+
+HYPOTHESIS, pre-registered:
+  1. **On 1914:FRA:rush, each rusher model collapses on FEWER worlds than its
+     matching self-play model** (self-play 424242 collapsed 6/8, journal 365).
+  2. **1939:NOR:hood is uninformative**: every model measured so far sits below
+     par on all 8 worlds there.
+
+RESOLUTION, written first: both seats are bistable. At eight seeds a
+collapse-rate difference resolves only at ~0.49 (journal 292). This reports the
+collapse COUNTS and the land-share direction, and makes no rate claim unless the
+difference is near-total. A null is "not resolvable at 8 seeds", not "no effect".
+
+VERDICT: **BOTH PRE-REGISTERED PREDICTIONS HOLD IN DIRECTION; NEITHER DIFFERENCE
+IS RESOLVABLE.** The rusher models collapse on fewer worlds on the rush seat than
+their matching self-play models, on both training seeds.
+
+    model                FRA:rush collapsed   held >= 5   NOR:hood below par
+    N24                          5/8             3/8             8/8
+    self-play  424242            6/8             1/8             8/8
+    rusher     424242            3/8             4/8             8/8
+    self-play  777001            5/8             2/8             8/8
+    rusher     777001            4/8             2/8             8/8
+
+    rusher vs matching self-play, land share on 1914:FRA:rush
+      seed 424242   +3.55   p 0.251
+      seed 777001   +0.56   p 0.870
+
+RUN HEALTH: pre-flight passed (pinned binary, all three model fingerprints, both
+control rows on these seeds); binary_changed_mid_run False on all three new rows;
+data/ai/model.bin unchanged.
+
+1. **H1 holds in direction on both training seeds**: 6 -> 3 collapses on seed
+   424242 and 5 -> 4 on seed 777001. Rate differences of 0.375 and 0.125, both
+   below the ~0.49 eight seeds resolve. Not a finding.
+2. **H2 holds**: every model is below par on 1939:NOR:hood on all 8 worlds, as
+   in journal 365. That seat carries no information about any of these models.
+
+**THE SHAPE IS INFORMATIVE EVEN THOUGH THE SIZE IS NOT.** The larger rush-seat
+difference (6 -> 3, and holds 1 -> 4) is on seed 424242 -- the training run whose
+three-seat rating also recovered. Seed 777001, whose rating did NOT recover
+(journal 368), shows one world's difference and the same number of holds as its
+self-play model. So the training seed that failed on the rung seats also
+barely moved on the rush seat. That fits "the rusher mechanism worked on one
+training run and mostly did not on the other", not "the mechanism works and the
+rung-seat miss was noise".
+
+**COUNTING HONESTLY (LOOP.md STANDING 5).** Four signals across journals 368-369
+point the same way -- China's annihilations fall under the rusher on both seeds,
+and rush-seat collapses fall on both seeds. Only this entry's two were
+pre-registered, and for two independent coin flips both landing the predicted
+way the chance probability is 1 in 4. China's were noticed after the fact. None
+is resolvable. This is a consistent direction, not evidence of an effect.
+
+FOR ITEM 99. The probe leans toward the mechanism being real but unreliable
+across training runs, which is what options (a) more training seeds and (c) fix
+the league-draw defects first would address. It does not settle anything, and
+it does not choose between them.
+
+PATHS TOUCHED: none in the tree. Three stored bench rows with spread.
+data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: none new. Still outstanding: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 370 — iteration: make the league-exploiter comments describe what happens
+
+BACKLOG ITEM 97, its decision-free half only. Item 99 (the strategic choice) has
+no decision recorded after three checks, and 97's BEHAVIOUR fix changes what
+OD_LEAGUE_EXPLOIT does, so that stays the user's. What does not need a decision
+is that two comments state behaviour the code does not have, and one of them
+misled this loop's own design.
+
+THE COMMENTS. AISystem.cpp says the rusher slot "carries the same PFSP
+bookkeeping as a real checkpoint, so the pool plays it more often exactly while
+the policy is losing to it". AISystem.h documents the cap as limiting the rusher
+to a share of the draw. Journal 366 measured otherwise: the rusher's outcomes
+are never recorded (recordLeagueOutcome returns early for its slot), and the
+AISystem is rebuilt before every map, so the draw's RNG restarts. I chose
+OD_LEAGUE_EXPLOIT=0.5 in journal 366 expecting about half the maps, and got 8 of 8.
+
+HYPOTHESIS, a discrimination check rather than a prediction about the game:
+**the edit is comments only** -- every added or removed line in the diff is a
+comment line. No rebuild: a comments-only change cannot move a decision, the
+proof is the diff, and a rebuild would absorb the other editor's commits since
+binary 84d15b60 and need its own three-seat hash check.
+
+Same rule as items 84 and 85: the comment changes to match the code, never the
+code to match the comment.
+
+PATHS TOUCHED: src/ai/AISystem.h, src/ai/AISystem.cpp (comments).
+
+VERDICT: KEEP. **Comments only, proven mechanically: every added and removed line
+in the diff is a comment line** (+28 / -6). Both files were unmodified against
+HEAD before the edit, so the whole diff is this change.
+
+    src/ai/AISystem.cpp   the exploiter block now says the PFSP bookkeeping was
+                          the INTENT, then states the two defects that defeat
+                          it, the measured 8/8 and 7/8, and that it is
+                          documented, not fixed
+    src/ai/AISystem.h     the cap's documentation now says it bounds the draw
+                          WEIGHT, not the share of maps; that any value outside
+                          (0,1) reads as 0.25 with no uncapped setting; and not
+                          to pick a cap expecting that share of maps
+
+The edit used exact-text anchors that refuse to write if the code had moved;
+both matched once. No rebuild and no runs: a comment cannot move a decision, and
+a rebuild would absorb the other editor's commits since 84d15b60.
+
+WHY IT WAS WORTH AN ITERATION. The false comment is not hypothetical harm: it is
+what journal 366's dose choice was built on. A reader choosing OD_LEAGUE_EXPLOIT
+for a mixed league would now be told, at the line they would read, that the
+setting does not deliver one.
+
+PATHS TOUCHED: src/ai/AISystem.h, src/ai/AISystem.cpp (comments).
+data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT (src/ai/AISystem.h and src/ai/AISystem.cpp, comment hunks):
+
+    Say that the league rusher's cap bounds its weight, not its share
+
+    The exploiter slot was documented as carrying loss-weighted draw
+    bookkeeping, so it would be played more while the policy loses to it,
+    and the cap as limiting its share of the draw. Neither holds: its
+    outcomes are never recorded, and the AISystem is rebuilt before every
+    training map so the draw's RNG restarts. A cap of 0.5 produced the
+    rusher on 8 of 8 and 7 of 8 maps. Comments only.
+
+Still outstanding from earlier: tools/od_bench.py (journal 361) and
+src/Game_AITrain.cpp (journal 362).
+
+## 371 — iteration: backlog 75, recover per-seed data from the logs that survive
+
+WHY THIS ITEM. Item 99, the top of the list, is the user's decision and has had
+none recorded across several invocations. Every other open item is either
+for the user or blocked behind item 26. Item 75 is neither: it needs no game
+process and no decision, and item 99's own evidence runs through `--compare`,
+which reports "no per-seed data stored" for any row older than journal 339.
+
+WHAT WAS DONE. A scratch parser (scratchpad/backfill_spread.py, not for the
+tree) read every `.log`/`.txt`/`.out` under build/ and /private/tmp/claude-501
+that contains od_bench's `stored as` line: 36 files after de-duplicating the
+/tmp symlink. It pairs each `[BENCH] <label>:` header with its seat lines and
+the closing `stored as '<label>'`. A row was backfilled ONLY if all held:
+it had no spread; the block printed exactly the row's seat set; the header's
+turns equalled the row's; every seat had as many values as the row has seeds;
+**every seat's parsed values averaged to the stored mean within 1e-6**; and every
+block for that label agreed. The means were re-asserted under the store's own
+flock at write time.
+
+THE PARSER WAS TESTED BEFORE IT WROTE. Positive control: on the 25 rows that
+already carry spread and have a surviving log, the parser recovered the stored
+values exactly, 25 of 25, with 0 mean-assert failures. Discrimination: shifting
+one seat's stored mean by 0.05, below the log's print precision, was caught 25
+of 25 times. This matters because the log prints to 1 decimal: a check that only
+compares printed means would pass a wrong row.
+
+RESULT. **22 of 861 spread-less rows recovered; 0 ambiguous; 0 rejected.** The
+other 839 have no surviving log and stay seat-means only, as item 75 said.
+Recovered: loop-base, i05-final, i05-resetonly, i06-rebase, i06-rebase2,
+austerity-step-0.05/0.15-setC (6 seats x 3 seeds each); n24-/n47-graded,
+calmgate, industry, pacify-on, n47-bar065, n47-nofort, n37-graded-8seed,
+reinf-off/on/pair, n24-guard-ctl/-nofort (2-3 seats x 8 seeds).
+Diff against a backup taken first: the label set is unchanged, 22 rows changed, and
+each gained only `spread` and `spread_note`. Every other field is byte-identical
+after parse. 53 rows now carry spread. Each note names its source log and states
+the 1-decimal precision. That precision is the same as the values od_bench stores
+natively: the control matched them without rounding loss.
+
+CHECKED IN USE. `--compare reinf-off reinf-on` now prints the per-seed rating
+line (336 se 34 vs 364 se 16, +28, floor 73, DOES NOT CLEAR) and the per-seat
+land table. Before today it printed "no per-seed data stored". **I draw no
+conclusion from that table.** Its one p = 0.030 (modern:CHN) is one of three
+seats compared, with 0.2 expected under 0.05 by chance, and it was not
+pre-registered (memory count-the-groupings-you-looked-at).
+
+PATHS TOUCHED: build/od_bench_results.json (22 rows gained spread; git-ignored;
+pre-image at scratchpad/od_bench_results.pre-j371.json, md5 a49d9b8a);
+docs/ai/LOOP_JOURNAL.md; docs/ai/BACKLOG.md. No source, no build, no game
+process, data/ai/model.bin unchanged (4a137043).
+
+VERDICT: KEEP. Data recovery, not a play change; nothing to bench.
+
+PENDING COMMIT: nothing new. Still outstanding: tools/od_bench.py (journal 361),
+src/Game_AITrain.cpp (journal 362), src/ai/AISystem.h/.cpp comments (journal 370).
+
+## 372 — iteration: why the army attack modifier runs ~2.5x the defence one
+
+WHY THIS ITEM. Item 99 still has no decision. The loose end journal 337 filed
+under backlog 74 is a counting question, not a bench arm, so it is not
+blocked behind item 26: "WHY atk runs 2.5x def is unknown ... Separating them
+is a counter, not a bench arm, and it is the more interesting question".
+
+PART OF IT IS SETTLED BY READING THE CODE, AND TWO SEAT RUNS CONFIRM IT.
+
+  1. armyAtkPct/armyDefPct have exactly two sources (Game::getTotalEffect,
+     Game_Research.cpp:879): research nodes a country holds, plus the levers of
+     doctrines in force. Starting research (initResearchTrees) grants no army
+     atk/def node.
+  2. Journal 337's "+60 atk against +50 def" summed BOTH sides of the two
+     mutex groups. No country can hold that. The army line is
+     def_tactics D10 | off_tactics A10 (mutex 2, both cost 8), combined_arms
+     A5 D5, elite_training A15, modern_warfare A10 D10, then total_war A20 |
+     fortress_doctrine D25 (mutex 3, both cost 30).
+  3. **Mutex sides are chosen by declaration order, not by the model.** The
+     research action (AISystem.cpp, case 9-11) takes the cheapest available
+     node with a strict `<`, iterating in index order. Both pairs tie on cost,
+     so the first-declared node always wins: def_tactics over off_tactics,
+     total_war over fortress_doctrine, and arty4a/arty6a over arty4b/arty6b.
+     The extra research groups' chooser (Game_Research.cpp:122-136) uses the
+     same rule. The policy picks a BRANCH (army 98-100%), never a side.
+  4. So the AI's army line tops out at **+50 atk / +25 def from research: 2:1
+     by construction**. This is not a doctrine artefact and not a selection
+     effect. It is the node order combined with elite_training being attack-only.
+  5. Doctrines cannot supply the rest by availability: across the 59 policies
+     embedded in 1914.odmap and 1939.odmap, the 19 with army levers sum to
+     **+14 atk / +72 def**. If doctrines push the mean toward attack, it is by
+     which ones the AI enacts, and that is NOT measured here.
+
+CONFIRMED IN PLAY, OD_ECON_TRACE on the seat country (main slot armings only),
+N24 copy (md5 4a137043), pinned binary 84d15b60, seed 13579, 400 turns, d3:
+
+    1914:FRA (cid 60072)   8 armings    def_tactics t98                      1 of 1 mutex picks first-declared
+      ^ CORRECTED journal 375: cid 60072 is NOT the seat. It is a one-province REBEL
+        state (cid >= REBEL_CID_MIN 60000) that appears at t94 named "France"; the
+        seat is cid 6 "French Republic". The row is a true pick by the wrong country.
+    modern:CHN (cid 23)    49 armings   def_tactics t24, total_war t41,
+                                        arty4a t75, arty6a t89               4 of 4 first-declared
+
+5 of 5 (CORRECTED journal 375: 4 of 4 on the CHN seat plus 1 on a rebel state), and 0 second-declared armings. INERTNESS: both traced runs, and both
+probe runs, reproduce the reference decision hashes exactly (FRA
+14669681761325311781/86188, CHN 1134950857311588231/277784). The probe runs
+reproduce journal 337's [WARBAR] lines to the digit (+41.42/+14.53,
++29.79/+11.92).
+
+A SECOND DEFECT, FOUND BY READING AND NOT YET SEEN IN A RUN. The extra-group
+chooser excludes the main slot's node by INDEX, `(int)i == active`, and
+checks availability with isNodeAvailableFor. That function blocks a mutex
+sibling only when it is already RESEARCHED, not when it is IN PROGRESS.
+Completion (Game_Research.cpp:148, :167) inserts without a mutex check. So
+while def_tactics is in progress in the main slot, an extra group can start
+off_tactics, and the country can hold BOTH. The player's
+ResearchNode::isAvailable does count inProgress; the per-country AI version
+does not. It needs a country with >= 2 research groups
+(researchGroupsUnlocked: gross income above the median multiple and not
+under the poverty gate). **Frequency unknown**: extra slots never print, and
+aiDebug's `[RESEARCH] ... completed` line is unreachable from --eval-ai
+because that path never loads config.json (I tried a pinned data tree with
+aiDebug=true: 0 lines). Suggestive only: CHN armed combined_arms one turn
+after def_tactics. That fits either a fast completion or off_tactics
+completing in an extra slot.
+
+WHAT I AM NOT CLAIMING. That research explains the full 2.5-2.85x. The probe
+mean is over (country, neighbour) evaluations weighted by how often each
+country evaluates, and over time. The research ceiling is 2:1 on a completed
+line, and early on the line is def-leaning (def_tactics first). The rest is
+doctrines enacted, or double-held mutex nodes, or who evaluates most, and none of these
+is separated. Memory unexplained-is-reportable.
+
+Unexplained and recorded: FRA armed basic_training at t95, although
+initResearchTrees grants it to tier-1 ISO FRA. Either the 1914 map's France
+does not carry ISO FRA, or the grant is cleared before play. It does not bear
+on atk/def.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. Scratch only
+otherwise: scratchpad/pin371 (a copy of pin363's binary plus a symlinked data tree with
+a scratch config.json; it proved the config is not read), j371-*.log,
+j371_research.py, j371_trace.py, doctrine_levers.py. No source, no build.
+data/ai/model.bin unchanged (4a137043); no files written under data/ after
+the run marker.
+
+VERDICT: KEEP (finding). Filed as backlog 100 with the instrument and the
+two decisions it raises.
+
+PENDING COMMIT: nothing new. Still outstanding: tools/od_bench.py (journal
+361), src/Game_AITrain.cpp (journal 362), src/ai/AISystem.h/.cpp comments
+(journal 370).
+
+## 373 — iteration: backlog 100, count the research forks
+
+WHAT WAS BUILT. Two env-gated instruments, counters only:
+
+  - `OD_RESEARCH_PROBE` (Game_Research.cpp): at the two AI completion sites
+    it counts main-slot vs extra-group completions. For every node in a mutex
+    group it records whether the country ALREADY HELD its sibling. It also
+    counts how often an extra group STARTS the main slot's mutex sibling.
+    Printed at exit as `[RPROBE]`.
+  - A research/doctrine split on the existing `OD_WAR_BAR_PROBE`, as a third
+    `[WARBAR]` line. To avoid a second copy of the sum (memory
+    expose-the-resolvers-numbers), getTotalEffect was split: new
+    Game::getResearchEffect is its research half, and getTotalEffect is that
+    plus the doctrine loop, summed in the same order.
+
+BUILD. Scratch build dir (scratchpad/build373), offline from build/_deps, target
+OpenDoctrinesServer, pinned as scratchpad/pin373/bin (md5 a20336a3). It
+absorbs b8dcd21 and 5e2788a, committed since pin363. b8dcd21 touches
+Game_Research.cpp and Game_Loading.cpp. build/ was not touched: two
+servertest processes run from it. No src file other than the four edited here
+changed during the build.
+
+INERTNESS AND THE TWO NEW COMMITS, ONE CHECK. All three reference seats, every
+probe ON, N24 copy, seed 13579, 400 turns, d3:
+
+    1914:FRA     14669681761325311781 over 86188    score 21.4
+    modern:CHN    1134950857311588231 over 277784   score 23.1
+    1939:USA      8015535788507488591 over 172816   score 11.6
+
+All three equal the reference triple. That proves the probes and the split
+read nothing into any decision, and that b8dcd21/5e2788a moved no decision on
+these seats. FRA and CHN also reproduce journal 337's [WARBAR] lines to the digit.
+
+RESULT 1 -- THE TIE-BREAK, WORLD-WIDE. In 14,089 main-slot completions across the
+three worlds, the model's research action completed a SECOND-declared fork
+node **0 times** (off_tactics, fortress_doctrine, arty4b, arty6b, navy5,
+navy8, volunteer_force, ind_res, ind_res2, ind_eff_auto). Journal 372's 5 of 5
+holds for every AI country, not just the seats.
+
+RESULT 2 -- THE DOUBLE-HOLD IS REAL AND COMMON. Every second-declared node held
+by any country came from an EXTRA research group, and nearly always ALONGSIDE
+its sibling:
+
+    node (mutex)            FRA world          CHN world          USA world
+                        extra / both held  extra / both held  extra / both held
+    off_tactics (2)            13 / 13            25 / 25            12 / 12
+    navy5 (5)                   7 / 7             13 / 13             9 / 9
+    volunteer_force (4)         7 / 7              9 / 9              9 / 9
+    arty4b (6)                  3 / 3              7 / 7              6 / 6
+    navy8 (8)                   3 / 3              6 / 6              5 / 5
+    ind_res (9)                 2 / 1             11 / 11             7 / 7
+    fortress_doctrine (3)       1 / 1                --               1 / 1
+    fork nodes held with their sibling, per world:   41                 71                 52
+
+Extra groups started the main slot's in-progress sibling 32 / 56 / 38 times.
+This is the defect journal 372 derived from the code: isNodeAvailableFor
+blocks a sibling only once it is researched, and completion never re-checks.
+The player's ResearchNode::isAvailable counts inProgress, so the rule is
+enforced for the player and not for the AI.
+
+RESULT 3 -- JOURNAL 337'S QUESTION, CLOSED. Evaluation-weighted means at the war
+bar, split:
+
+    seat         research atk / def     doctrine atk / def     total atk / def
+    1914:FRA        +43.62 / +16.44         -2.20 / -1.91        +41.42 / +14.53
+    modern:CHN      +31.89 / +18.79         -2.10 / -6.87        +29.79 / +11.92
+    1939:USA        +43.74 / +22.97         -0.14 / -1.32        +43.60 / +21.66
+
+**The attack lean is research, entirely.** The causes are node order (the
+attack side of fork 3 always wins), elite_training being attack-only, and the
+extra-group double-hold adding off_tactics (+10 atk) on top of def_tactics.
+Doctrines are net slightly NEGATIVE on both modifiers. The gap between the
+research ratio (2.65 / 1.70 / 1.90) and the total ratio comes from doctrines
+cutting defence harder than attack. Not separated: how much of research atk
+is the double-hold rather than the line; the counters give holdings, not
+holders' evaluation weight.
+
+VERDICT: KEEP the instruments (inert, proven on three seats). The fix is NOT
+made here: it changes a rule every AI plays under, so it is a bench arm of
+its own, and it is one iteration.
+
+PATHS TOUCHED: src/Game.h (+4), src/Game_Research.cpp (probe block,
+getResearchEffect split, 3 call sites), src/ai/AISystem.h (+2),
+src/ai/AISystem.cpp (split accumulators and the dump line); docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md. Pre-edit copies: scratchpad/pre373/. data/ai/model.bin
+unchanged (4a137043). Logs: scratchpad/j373-{fra,chn,usa}.log.
+
+PENDING COMMIT (src/Game.h, src/Game_Research.cpp, and the journal-373 hunks
+of src/ai/AISystem.h/.cpp -- those two files also carry journal 370's comment
+hunks, so stage hunks, not files):
+
+    Count which side of a research fork the AI takes
+
+    Every mutex pair ties on cost and both AI choosers take the cheapest
+    node, so the first-declared side always wins; and an extra research
+    group can start the other side while the main slot is still on the
+    first, so a country ends up holding both. OD_RESEARCH_PROBE counts
+    both, and OD_WAR_BAR_PROBE now splits the army modifiers into research
+    and doctrine. Counters only; decision hashes unchanged on three seats.
+
+Still outstanding: tools/od_bench.py (journal 361), src/Game_AITrain.cpp
+(journal 362), src/ai/AISystem.h/.cpp comments (journal 370).
+
+## 374 — iteration: backlog 100, close the research-fork double-hold (bench arm)
+
+PRE-REGISTERED, written before any run.
+
+CHANGE. `OD_RESEARCH_MUTEX_FIX` (off by default), in Game::isNodeAvailableFor: a
+fork node is refused when its mutex sibling is IN PROGRESS in the country's
+main slot or any extra research group, not only when it is researched. That
+matches the player's ResearchNode::isAvailable. Both AI choosers go through
+this function (the extra-group chooser and the model's research action); the
+only other caller is the screenshot tour.
+
+GATES, IN ORDER, EACH STOPS THE CHAIN. Gate off: the three reference hashes
+must match. Gate on, modern:CHN with OD_RESEARCH_PROBE: "with its sibling
+already held" must total 0 (journal 373 measured 71 on this world).
+
+ARMS. Same binary (build373 incremental, pinned as pin374), N24 copy, 1914:FRA,
+1939:USA and modern:CHN rung, seed set 1 (8 seeds), 400 turns, d3. Control
+j374-ctl, treatment j374-fix, run side by side through odlock's two slots.
+
+PREDICTION. **Per-seat land share: null, or slightly DOWN.** Every AI country loses
+the free off_tactics (+10 atk) and the other second sides it got through the
+double-hold, but the seat's neighbours lose them too. The fix is symmetric
+across the world except that the seat's own research is the model's. Rating: a
+null at 8 seeds (floor ~90), which would be "not resolvable", not "no effect".
+The decision rule is LOOP.md's: a sub-floor result PARKS. **This is a
+correctness fix to a rule the player already obeys**, so a null is an argument
+for shipping it WITH the model question, not for leaving the AI exempt.
+
+RESULT (journal 374, the pre-registration above was written before any run).
+
+GATES. Both passed. Gate off, pinned pin374 (md5 53df4145): FRA
+14669681761325311781/86188, CHN 1134950857311588231/277784 and USA
+8015535788507488591/172816 all equal the reference, so the gate is inert when
+off. Gate on, modern:CHN with OD_RESEARCH_PROBE: "sibling already held" totals
+**0** (71 on the same world without it). Extra groups started the main slot's
+sibling 0 times (56 before). No second-declared fork node was completed
+anywhere (before: off_tactics 25, navy5 13, ind_res 11, volunteer_force 9,
+arty4b 7, navy8 6). The fix does what it says. Gate-on hash
+1314902981031947838/266836: it changes play, as it should.
+
+BENCH. 24 runs per arm, 0 seeds lost, control and treatment on the same binary:
+
+    seat              j374-ctl   j374-fix       d      p
+    1914:FRA rung       19.57      18.70     -0.88   0.820
+    1939:USA rung       19.64      20.40     +0.76   0.891
+    modern:CHN rung     13.43      18.20     +4.77   0.350
+    PER-SEED rating  336 (se 34)  337 (se 22)   +1   floor 78   DOES NOT CLEAR
+
+**The control reproduces the stored N24 control exactly** (reinf-off: 19.57 /
+19.64 / 13.43, 336 se 34), built two binaries and two commits apart. That
+extends journal 373's hash check beyond seed 13579 to all 8 seeds.
+
+VERDICT: **PARK. The prediction (null or slightly down) is met as a null.** No seat moves
+beyond chance, the rating difference is +1 against a floor of 78, and LOOP.md
+makes a sub-floor result PARK. The gate stays in the tree, off by default, proven inert.
+
+WHAT THE NULL DOES NOT SAY. It does not say the fix is free, and it does not
+say it helps. Two collapse rates moved in opposite directions, and neither is
+resolvable at 8 seeds (backlog 86: a 0.12 rate difference needs ~128 seeds per arm):
+modern:CHN annihilated 2/8 -> 0/8 (lowest seed 4.2), and 1914:FRA collapsed
+0/8 -> 1/8 (seed 13579: 21.4 -> 1.7). That is the same shape as journal 349's
+homefirst gate, and memory worst-seat-swaps-identity says a mean will read a
+swap as a lift. I am not quoting CHN's +4.77 as a gain.
+
+WHY IT IS STILL WORTH HAVING. It is a correctness fix to a rule the player
+already obeys. The AI's exemption is a bug, not a strategy the model chose:
+the double-hold happens in the extra-group chooser, which has no model input.
+Shipping it is the user's call because it changes the game every AI plays,
+and a null at this resolution is permission to consider it, not evidence of
+safety.
+
+PATHS TOUCHED: src/Game_Research.cpp (the gated check in isNodeAvailableFor;
+pre-edit copy scratchpad/pre374-Game_Research.cpp); docs/ai/LOOP_JOURNAL.md;
+docs/ai/BACKLOG.md; build/od_bench_results.json (labels j374-ctl, j374-fix).
+data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT (src/Game_Research.cpp, the isNodeAvailableFor hunk -- the same
+file carries journal 373's probe hunks, which can go in the same commit or
+before it):
+
+    Let the AI fork check see research in progress, behind a gate
+
+    isNodeAvailableFor refused a mutex sibling only once it was researched,
+    so an extra research group could start off_tactics while the main slot
+    was on def_tactics, and AI countries held both sides of a fork 41-71
+    times per world. OD_RESEARCH_MUTEX_FIX makes an in-progress sibling
+    count, as the player's check already does. Off by default; benched as
+    a null at 8 seeds.
+
+Still outstanding: journals 361, 362, 370, 373.
+
+## 375 — iteration: close journal 372's loose end, and correct which France was traced
+
+WHY THIS ITEM. Item 99 has no decision and item 100 is now the user's. Every other
+open item is the user's or blocked behind item 26. Journal 372 recorded one
+loose end that needs neither: "FRA armed basic_training at t95, although
+initResearchTrees grants it to tier-1 ISO FRA."
+
+THE HYPOTHESIS I TESTED FIRST WAS WRONG. I expected several 1914 countries to share
+ISO FRA and findCid to return a splinter. The 1914 map has exactly one FRA:
+id 6, "French Republic".
+
+WHAT IS ACTUALLY TRUE. **The country journal 372 traced as the France seat was
+not the seat.** I picked cid 60072 from an `[IDENTITY] cid=60072 France -> Free
+State of France` line. 60072 is in the rebel band (REBEL_CID_MIN = 60000). Its
+first trace line is `[ECON] turn 94 cid=60072 provinces=1`, a one-province
+state created mid-game. Rebel states are built by createRebelCountry and
+synthesizeMissingRebels, and neither assigns research, so it started with none and armed
+basic_training, navy1, navy2 and arty1 from scratch. The loose end is fully
+explained, and it was never about starting grants.
+
+WHAT THE CORRECTION CHANGES. Journal 372's "5 of 5" is 4 of 4 on the CHN seat
+(cid 23 "China" on map.odmap, correct) plus 1 pick by a rebel state. That pick
+is still a true first-declared pick, just not the seat's. **No conclusion moves.** Journal 373 counted
+every AI country world-wide: 0 second-declared main-slot completions in 14,089,
+independent of which cid was traced. Journal 374 benched by seat, not by cid.
+Both corrections are marked inline in journal 372 and in backlog 100.
+
+HOW THE MISTAKE HAPPENED. I chose the cid by grepping a name, and [IDENTITY]
+prints the country's CURRENT name, which a rebel state can share with the
+seat. od_bench's seat is resolved by ISO inside the game; I resolved it by name
+outside it. **Take the seat cid from the map's own countries.json by ISO, never
+from a grep of names in the log** (memory true-about-the-adjacent-thing: an
+accurate trace of the country next to the one meant).
+
+TWO SMALL THINGS FOUND ON THE WAY, filed as backlog 101, not acted on:
+  - basic_training's description says "Unlocks army", but nothing gates on it.
+    Across src, the only hasResearched checks on a named node are navy1 and arty1.
+    It is a -10% conscription-cost node and a prerequisite, so the text claims a
+    rule the game does not have.
+  - Countries created mid-game (rebel states) start with EMPTY research, not even
+    the tier-3 grant (ind1, basic_training) that every map country gets at
+    load. Whether a rebel state should inherit something from its parent is a
+    design question.
+  - Also: countries.json's per-country "research" array is loaded into
+    Country::research (CountryMap.cpp:159) and read only by the map editor. The
+    game never applies it. The 1914 and 1939 maps do not set it, so it is inert today.
+
+No runs. PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md (this entry plus two inline
+correction marks in journal 372), docs/ai/BACKLOG.md. data/ai/model.bin
+unchanged (4a137043).
+
+VERDICT: KEEP (correction and explanation).
+
+PENDING COMMIT: nothing new. Still outstanding: journals 361, 362, 370, 373, 374.
+
+## 376 — iteration: backlog 100, settle the research-fork fix's collapse rates (user decision)
+
+USER DECISIONS, 2026-09-14 13:57, recorded in the backlog: item 100 -> settle the
+collapse rates before deciding; item 99 -> option (c), fix the league-draw defects
+(item 97) first. Item 100 sits above 99 in the file, so it goes first; item 97 is next.
+
+PRE-REGISTERED, written before any run.
+
+QUESTION. Journal 374 saw two collapse rates move in opposite directions at 8
+seeds: modern:CHN annihilated 2/8 -> 0/8, and 1914:FRA below par 0/8 -> 1/8.
+Are either of them real?
+
+DESIGN. Same pinned binary as journal 374 (pin374, md5 53df4145, fix gated), N24
+copy, d3, 400 turns. Control j376-ctl vs OD_RESEARCH_MUTEX_FIX=1 j376-fix. Seats
+1914:FRA:rung and modern:CHN:rung only: the rate question lives there, and USA
+showed no collapse in either arm. **128 FRESH seeds, the same for both arms**:
+seed_k = (2654435761 * k) mod 2147483647 for k = 1..128, so none overlap sets 1
+or 2 and the 8 seeds that raised the question are not reused. Two od_bench arms
+side by side through odlock's two slots, ~512 runs, ~4 h.
+
+STATISTICS, fixed now:
+  - PRIMARY, per seat: collapse = seat share BELOW PAR (FRA < 6.7, CHN < 2.5).
+    Two-sided Fisher exact test on the 2x2 table (arm x collapsed). Two seats,
+    so alpha 0.025 each (Bonferroni).
+  - SECONDARY: annihilation, share < 0.5.
+  - Per-seat mean land share via od_bench --compare's permutation test, quoted after the rates.
+
+PREDICTION. **Both rate differences shrink toward zero; neither clears 0.025.**
+The 8-seed moves were 2 events and 1 event, which is what chance produces at this
+base rate. If one clears, the pre-registered reading is: CHN's lift is the only
+plausible mechanism-backed one, because CHN held the most double-held fork
+nodes (71) and loses the most free research. A FRA collapse increase would need an
+explanation I do not have. Memory unexplained-is-reportable.
+
+DECISION RULE. Neither clears: the fix is rate-neutral at this resolution, and the
+ship-or-gate choice returns to the user with that stated. A significant HARM on
+either seat: keep it gated. A significant BENEFIT with no harm: recommend shipping.
+
+RESULT (journal 376). The pre-registration above was written before any run.
+
+RUN. 16:04 -> 20:40, 128 fresh seeds x 2 seats x 2 arms = 512 runs, 0 seeds lost,
+pinned binary and model md5-guarded at start.
+
+    seat          statistic            j376-ctl        j376-fix        test
+    1914:FRA      below par (PRIMARY)   8/128  6.2%     1/128  0.8%    Fisher p = 0.036  (alpha 0.025: does not clear)
+                  annihilated <0.5      2/128           0/128          Fisher p = 0.498
+                  mean land share       20.36           23.69  +3.33   perm p = 0.003
+    modern:CHN    below par (PRIMARY)  10/128  7.8%     7/128  5.5%    Fisher p = 0.617
+                  annihilated <0.5      9/128           5/128          Fisher p = 0.411
+                  mean land share       18.02           20.16  +2.14   perm p = 0.047
+    PER-SEED rating (both seats)        366 (se 8)      399 (se 7)     +33, floor 21, CLEARS
+
+Fisher's test was checked against known tables before use: 2/8 vs 0/8 gives 0.4667, and
+identical tables give 1.0.
+
+VERDICT ON THE PRE-REGISTERED RULE: **neither primary rate clears, so the fix is
+rate-neutral at this resolution and the ship-or-gate decision returns to the user.**
+The prediction ("both shrink toward zero; neither clears") is half right. Neither
+clears. But FRA did not shrink toward zero: it REVERSED, from 0/8 -> 1/8 at 8 seeds to
+8/128 -> 1/128. **Journal 374's FRA harm signal is refuted**, not merely unconfirmed:
+the one extra collapse was a single draw against a rate that runs the other way.
+
+WHAT THE SECONDARY STATISTICS SAY, quoted second as registered. No statistic in
+either seat moves toward harm. FRA's mean land share rises 3.33 points at p = 0.003,
+which clears even a two-seat correction. CHN's rises 2.14 at p = 0.047, which does
+not. The per-seed rating clears its floor by 12 (+33 vs 21). The 128-seed bench
+resolves what the 8-seed one could not (floor 78 at journal 374). Journal
+374's per-seat means (FRA -0.88, CHN +4.77) were noise in both directions, which is
+memory pairing-buys-nothing-on-this-bench again.
+
+WHY THE SEAT GAINS, as a hypothesis, NOT MEASURED: the fix removes a free research
+node from every AI country, and the scripted rung world uses extra research groups
+at least as much as the seat does. Memory seat-score-is-a-share: a rule that takes
+something from everyone raises the share of whoever relied on it least. I have not
+counted seat vs world double-holds separately, so this stays a hypothesis.
+
+RECOMMENDATION TO THE USER: **ship OD_RESEARCH_MUTEX_FIX on by default.** It is a
+correctness fix to a rule the player already obeys. The 128-seed bench shows no
+harm on any statistic, and a land-share gain on one seat that clears correction. The
+recommendation rests on the secondary statistics and on the absence of harm, not on
+the pre-registered primary, which did not clear. Shipping it changes the reference
+hashes, so the three-seat triple must be re-recorded when the default flips.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md,
+build/od_bench_results.json (j376-ctl, j376-fix). No source change this iteration.
+data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: nothing new. Still outstanding: journals 361, 362, 370, 373, 374.
+
+## 377 — iteration: backlog 97, fix the two league-draw defects (user decision on item 99)
+
+USER DECISION, recorded under item 99: option (c), fix the league-draw defects
+first, then re-run the rusher recipe. This entry is the fix and its mechanical
+verification. The recipe re-run is the next iteration.
+
+PRE-REGISTERED, written before any run.
+
+CHANGE, behind OD_LEAGUE_FIX (off by default, so journal 366's recipe still
+reproduces):
+  1. recordLeagueOutcome accepts the exploiter slot (LEAGUE_CHECKPOINTS). The
+     arrays are already sized LEAGUE_CHECKPOINTS + 1.
+  2. The league draw takes a static std::mt19937 that survives the per-map
+     AISystem rebuild, instead of the member m_rng.
+  3. Every draw prints `[AI] league draw: slot N of K candidate(s), exploiter
+     weight share S`. Without it a past-self draw prints nothing until its game
+     ends, which is how journal 366 had to infer the draws.
+The draw runs only under selfPlayLearning() (m_aiTraining && !s_evaluating), so no
+eval or bench decision can change. The rebuild does absorb six commits since
+pin374 (languages, map renderer, agent seat seed), so the three reference hashes
+are re-checked and any change is attributed to those commits, not to this gate.
+
+VERIFICATION. Two short training arms, same binary, seed 424242, 12 maps x 40
+turns, OD_LEAGUE_EXPLOIT=0.5, isolated trees holding the N24 parent plus journal
+366's valid league-0.bin, so every map has two candidates. That is the recipe's
+own state from map 2. Arm OFF has no OD_LEAGUE_FIX; arm ON has OD_LEAGUE_FIX=1.
+
+PREDICTIONS:
+  - OFF: the same slot on every map, i.e. the rusher on >= 11 of 12 (journal 366's
+    8/8 was this state), and 0 `league slot 6:` outcome lines.
+  - ON: both slots drawn at least once; one `league slot 6: ... lost` line per
+    rusher map; the printed exploiter weight share <= 0.500 on every draw.
+    Rusher maps between 2 and 10 of 12 (~96% interval for p <= 0.5).
+  - ON fails if any of these does not hold: all 12 draws the same slot, a rusher
+    map without an outcome line, or a share above 0.5.
+
+BUILD INCIDENT (journal 377, before any run). **The shared working tree does not
+compile.** src/Game_Agent.cpp:105 and Game_Loading.cpp use `m_agentLoad`, which HEAD's
+src/Game.h declares (line 4554, from commit b79b865), but the WORKING-TREE Game.h does
+not: its diff against HEAD replaces that 6-line block with journal 373's
+getResearchEffect declaration. **Not caused by this loop's edits:** the pre-edit copy
+saved before journal 373 (scratchpad/pre373/Game.h) already lacked the declaration.
+The sequence I can reconstruct: history was rewritten (b8dcd21 no longer exists; its
+content is now a984dcc), and at 18:07 the working copies of Game_Agent.cpp,
+Game_Loading.cpp, Locale.cpp and MapRenderer.cpp were updated to HEAD. Game.h, which
+carries uncommitted loop hunks, was not. I did NOT edit the missing block back into the
+shared Game.h: it is the other editor's line, and the tree may be mid-operation.
+**For the user: when committing journal 373's Game.h hunk, restore HEAD's m_agentLoad
+block beside it**, or the tree will not build.
+
+WORKAROUND FOR THIS ITERATION. Build from an export of HEAD (git archive, read-only,
+minus data/docs/wiki/android/png) into scratchpad/src377. On top of it: this loop's
+four uncommitted files (AISystem.h, AISystem.cpp, Game_Research.cpp, Game_AITrain.cpp;
+their diffs against HEAD were checked to hold only loop hunks) and HEAD's Game.h plus
+the one getResearchEffect declaration. The export differs from HEAD's src in exactly
+those five files. guard/ is untracked maintainer source, so it was copied in to match
+the real build's odseal path. Full offline build in scratchpad/build377.
+
+RESULT (journal 377). The pre-registration above was written before any run.
+
+BUILD. From scratchpad/src377, the HEAD export plus loop hunks, pinned as pin377
+(md5 d36f3236). The binary contains the fix: the ON arm printed its draw lines.
+
+EVAL UNCHANGED. 1914:FRA 14669681761325311781/86188, modern:CHN
+1134950857311588231/277784 and 1939:USA 8015535788507488591/172816 all equal the
+reference. The six commits since pin374 and the league fix move no eval decision.
+
+TRAINING ARMS. Seed 424242, 12 maps x 40 turns, OD_LEAGUE_EXPLOIT=0.5, N24 parent plus
+journal 366's league-0.bin, side by side; both rc=0, data/ai/model.bin unchanged:
+
+    arm                      rusher maps   draw lines   slot-6 outcomes   past-self outcomes   max rusher share
+    OFF (as shipped)            12 / 12         0              0                  0                 --
+    ON  (OD_LEAGUE_FIX=1)        4 / 12        12              4                  8               0.500
+
+**EVERY PREDICTION HOLDS.** OFF reproduces journal 366's state: the same slot on every map,
+and no rusher outcome ever recorded. ON draws both slots (past self 8, rusher 4). It
+records exactly one outcome per rusher map, and the rusher's weight share never exceeds
+the cap. The ON arm's draw and outcome lines, in order:
+    [AI] league draw: slot 6 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 6: 17.4 vs our 13.2 provinces/country (1/1 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 7.0 vs our 7.5 provinces/country (0/1 lost)
+    [AI] league draw: slot 6 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 6: 23.4 vs our 41.6 provinces/country (1/2 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 6.7 vs our 7.1 provinces/country (0/2 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 4.6 vs our 6.1 provinces/country (0/3 lost)
+    [AI] league draw: slot 6 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 6: 36.4 vs our 21.5 provinces/country (2/3 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 97.0 vs our 100.7 provinces/country (0/4 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 68.7 vs our 23.9 provinces/country (1/5 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 19.8 vs our 28.7 provinces/country (1/6 lost)
+    [AI] league draw: slot 6 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 6: 9.9 vs our 11.8 provinces/country (2/4 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 8.8 vs our 7.9 provinces/country (2/7 lost)
+    [AI] league draw: slot 0 of 2 candidate(s), exploiter weight share 0.500
+    [AI] league slot 0: 19.8 vs our 31.9 provinces/country (2/8 lost)
+
+VERDICT: **KEEP. Both defects are fixed behind OD_LEAGUE_FIX, proven mechanically, and
+inert in eval.** With the fix on, OD_LEAGUE_EXPLOIT's cap bounds the rusher's expected
+share of draws, as its documentation always said. Journal 366's recipe with the fix on
+is a MIXED league (at most half rusher at 0.5 with one checkpoint), not the ~100%-rusher
+league that produced the parity model c429f777. So the re-run is a different experiment.
+
+NEXT (the user's item 99 decision, part two): re-run the rusher recipe WITH
+OD_LEAGUE_FIX=1: 8 maps x 3000 turns, OD_LEAGUE_EXPLOIT=0.5, the two training seeds
+424242 and 777001, bench on the standard 3 seats x 8 seeds, compared with c429f777 /
+1a43100e and N24. ~3 h per training arm.
+
+PATHS TOUCHED: src/ai/AISystem.h and src/ai/AISystem.cpp (OD_LEAGUE_FIX: gate, outcome
+guard, draw RNG, draw print, comment updates; pre-edit copies scratchpad/pre377/);
+docs/ai/LOOP_JOURNAL.md; docs/ai/BACKLOG.md. Scratch only: src377, build377, pin377,
+tree377off/on. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT (the journal-377 hunks of src/ai/AISystem.h/.cpp; those files also carry
+journals 370 and 373 hunks):
+
+    Record the league rusher's games and stop its draw repeating, behind a gate
+
+    The rusher slot was excluded from recordLeagueOutcome, so its weight never
+    left the no-data prior, and the draw used an RNG that restarts with every
+    map's AISystem, so one slot won every map: a 0.5 cap gave 12 of 12 rusher
+    maps. OD_LEAGUE_FIX records its games and draws from a process-lifetime
+    RNG; the same run gives 4 of 12, with every draw and outcome printed.
+    Off by default, so earlier training recipes still reproduce.
+
+**AND, BEFORE ANY COMMIT: the shared src/Game.h is missing HEAD's m_agentLoad block**
+(see BUILD INCIDENT above). The working tree does not compile until it is restored.
+Still outstanding: journals 361, 362, 370, 373, 374.
+
+## 378 — iteration: backlog 99 part two, re-run the rusher recipe with the league draw fixed
+
+PRE-REGISTERED, written before any run.
+
+WHAT. Journal 366's recipe exactly: N24 parent, fresh isolated tree with no
+checkpoints, 8 maps x 3000 turns, OD_AI_THREADS=1, OD_LR_SCALE=0.05,
+OD_DIPLO_PACT_WEIGHT=2.5, OD_LEAGUE_EXPLOIT=0.5, --worker 1 --workers 2. The one
+change is **OD_LEAGUE_FIX=1**. Both training seeds, 424242 and 777001, side by side.
+Binary pin377 (md5 d36f3236), whose eval hashes equal the reference (journal 377).
+Each trained model is then benched on the standard seat set: 1914:FRA, 1939:USA and
+modern:CHN rung, seed set 1, 400 turns.
+
+VOID IF, per arm: fewer than 2 rusher draws; or every draw on the same slot (the fix
+not working in a long run); or a trained model byte-equal to its parent.
+
+COMPARISONS, per training seed, all on seed set 1. The older rows were benched on
+pin363. That binary is decision-identical to pin377 on the three hash seats, and
+journal 374's control reproduced the stored N24 control on all 8 seeds, so the rows
+are treated as comparable, stated rather than re-measured:
+  (a) vs the DEFECT-league rusher model of the same seed: it366-rusher8 (c429f777) and
+      it368-rusher8-t777001 (1a43100e). This is the fix's effect.
+  (b) vs N24, it349-control.
+  (c) vs self-play of the same seed: it357-trained8 and it360-trained8-t777001.
+
+PREDICTION. With the fix, the 0.5 cap gives a MIXED league: rusher on roughly 3-5
+of 8 maps, where the defect league was ~8/8. The rusher is what removed self-play's
+damage in journal 366, and only on one seed. So **each fixed-league model lands
+between its self-play model and its defect-league model, and below N24.** Against the
+same seed's defect-league model: a small negative for 424242 (the parity model); for
+777001, where the defect league did not help, about zero.
+
+DECISION RULE (LOOP.md: a sub-floor result PARKS; a floor of ~90 at 8 seeds between
+two arms). A claim that the fixed league helps or hurts needs BOTH training seeds to
+agree in sign on the per-seed rating (memory bench-resolution-limit). One seed alone
+establishes nothing (memory training-runs-need-repeats).
+
+RESULT (journal 378). The pre-registration above was written before any run.
+
+TRAINING. Both arms rc=0, 8 maps each; seed 777001 exited 23:53, 424242 at 00:05. Neither
+is VOID: the rusher was drawn 2/8 in each run, 2 distinct slots, every rusher game
+recorded (424242: 2 rusher + 6 past-self outcomes; 777001: 2 + 4). The fixed draw
+worked in the long run, and it produced a much LESS rusher-heavy league than the 0.5
+cap allows. The exploiter's weight share went 1.000 (map 1, no checkpoint yet) ->
+0.143 -> 0.500 -> 0.500 -> 0.500 -> 0.237 -> 0.077/0.143. Once the policy started
+beating the rusher, PFSP turned it down, which is the bookkeeping journal 366 found
+missing. The two seeds' draw sequences are nearly identical (rusher on maps 1 and 3).
+Models: 424242 -> 2894ddfc, 777001 -> d371d0ac. data/ai/model.bin unchanged.
+
+BENCH, seed set 1, 3 rung seats x 8 seeds, 400 turns, pin377; per-seed ratings:
+
+    training seed   fixed league   vs defect-league rusher   vs N24 (336)           vs self-play, same seed
+    424242          419 (se 21)    335 -> +85  CLEARS (74)   +83  CLEARS (78)       192 -> +228  CLEARS
+    777001          167 (se 35)    227 -> -59  no   (85)     -169 CLEARS (95)       245 -> -77   no
+
+    424242 vs N24, land share: FRA 19.57 -> 29.26 (p 0.097), USA 19.64 -> 33.81 (p 0.003),
+                               CHN 13.43 -> 17.82 (p 0.438); better on 3/3 seats
+    777001 vs N24, land share: FRA 19.57 -> 6.69 (p 0.003), USA 19.64 -> 16.93 (p 0.62),
+                               CHN 13.43 -> 3.05 (p 0.018); better on 0/3 seats
+
+VERDICT: **NOT ESTABLISHED. The two training seeds disagree in sign on every
+comparison**, and the pre-registered rule requires agreement. The prediction was wrong
+on both: 424242 did not land below N24, and 777001 did not land above its self-play model.
+
+WHAT IS TRUE, AND WHAT IT IS NOT.
+  - **2894ddfc (seed 424242) is the first trained model in this sequence to score above
+    N24** on its own, at +83 against a floor of 78 and 3/3 seats. That is one training run
+    on one seed set, just clearing the floor, and the other seed is -169. Memory
+    training-runs-need-repeats and single-run-findings-are-not-all-wrong point opposite
+    ways here, and neither settles it. It needs seed set 2 before anyone quotes it.
+  - The spread between the seeds is not explained by the league. Both drew the rusher on
+    the same two maps. What differs is the eight training WORLDS, which the seed chooses. So
+    this is the training variance journal 368 already saw (c429f777 parity vs 1a43100e
+    below), now larger: +83 vs -169.
+  - CONFOUND, not separated: the comparison models (c429f777, 1a43100e, and the self-play
+    models) were trained on pin363. These were trained on pin377, which also carries
+    a984dcc's load-path changes and later commits. Eval decisions are identical between the
+    binaries on the hash seats. TRAINING decisions were never compared. So "(a) vs the
+    defect-league model" measures fix plus binary, not the fix alone.
+
+NEXT, unblocked and cheap: bench 2894ddfc on seed set 2 (24 runs, ~25 min), the same
+check journal 367 gave c429f777. If it holds, a third training seed is the next spend
+(~3 h). If it falls to parity or below, the fixed league is one more training recipe
+whose sign depends on the seed.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json
+(j378-fixleague-424242, j378-fixleague-777001). Models kept at
+scratchpad/trained8-fixleague-{424242,777001}.bin. No source change this iteration.
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374, 377, and the
+shared Game.h m_agentLoad block (journal 377's BUILD INCIDENT).
+
+## 379 — iteration: does 2894ddfc's +83 over N24 hold on seed set 2?
+
+PRE-REGISTERED, written before any run.
+
+WHAT. Bench 2894ddfc (journal 378: fixed league, training seed 424242) on seed set 2
+(11111, 2468135, 777777, 31415926, 5772156, 1414213, 9090909, 6180339), the 3 rung
+seats, 400 turns. Alongside it, N24 on the same set with the same binary (pin377,
+md5 d36f3236), so the primary comparison shares a binary. The stored it354-ctl-s2
+predates binary provenance. Label j379-fix424-s2 vs control j379-n24-s2.
+
+PRIMARY: per-seed rating difference, fixleague vs same-binary N24, against the
+floor --compare prints. Per-seat land share quoted second.
+SECONDARY, context only: vs it367-rusher8-s2 (c429f777 on set 2) and it359-trained8-s2
+(self-play 424242 on set 2), both on older binaries.
+
+PREDICTION. **Smaller than +83, still positive, and below the floor.** 2894ddfc was
+picked as the better of two training seeds, so some of its +83 is selection, and a
+fresh seed set should give part of it back (winner's curse).
+
+DECISION RULE. Clears the floor with the same sign: the gain holds on two seed sets,
+and a third TRAINING seed is the next spend (~3 h). Does not clear or flips: not
+established, and the fixed league joins the recipes whose sign depends on the seed.
+Only the user decides whether to spend more training hours after that.
+
+RESULT (journal 379). The pre-registration above was written before any run.
+
+Both arms 24 runs on pin377 (md5-guarded), 00:27 -> 00:50, no seeds lost:
+
+    arm                 per-seed rating   FRA land   USA land   CHN land
+    j379-n24-s2 (N24)       306 (se 37)      17.38      14.50      16.25
+    j379-fix424-s2          439 (se  9)      22.36      32.25      23.32
+    difference              +133, floor 75, CLEARS
+    land p (perm)                            0.140      <0.001     0.214     better on 3/3
+
+**THE PREDICTION WAS WRONG, IN THE DIRECTION THAT MATTERS.** I predicted a smaller gain
+below the floor, from winner's curse. On a fresh seed set the gain is LARGER: +133 against
+set 1's +83, with se 9, which makes it the most consistent model this bench has recorded.
+USA moves 17.75 points at p < 0.001.
+
+CONTROL CHECK: j379-n24-s2 reproduces the stored it354-ctl-s2 exactly (306, se 37,
+17.38/14.50/16.25). So N24's set-2 row is binary-independent between that build and pin377,
+as set 1 was in journal 374.
+
+CONTEXT, older binaries: +90 over c429f777 on set 2 (it367-rusher8-s2: 349), CLEARS; +254
+over self-play 424242 (it359-trained8-s2: 184), CLEARS.
+
+VERDICT ON THE PRE-REGISTERED RULE: **the gain holds on two seed sets; the third training
+seed is the next spend.** Two separate claims, kept separate:
+  - **THE MODEL 2894ddfc beats N24 on this bench: ESTABLISHED on two seed sets** (+83 CLEARS,
+    +133 CLEARS, 3/3 seats both times, 48 runs). It is the first trained model to do so.
+  - **THE RECIPE (fixed league) is NOT established.** Training seed 777001 gave -169. The
+    third training seed tests the recipe; it cannot un-establish this model.
+
+BEFORE ANYONE SHIPS 2894ddfc: the rung seats are not the whole story. Memory
+selfplay-erodes-rush-defence, and backlog's top entry ("a 206-rating model that fails
+the robustness guard"): the rush and hood seats (1914:FRA:rush, 1939:NOR:hood) must be
+benched against N24 on the same binary. Shipping replaces data/ai/model.bin, which is the
+user's call. The loop never writes it.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md,
+build/od_bench_results.json (j379-fix424-s2, j379-n24-s2). No source change. data/ai/model.bin
+unchanged (4a137043). Candidate model kept at scratchpad/trained8-fixleague-424242.bin.
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374, 377; and the
+shared Game.h m_agentLoad block (journal 377).
+
+## 380 — iteration: the rush/hood guard for the candidate 2894ddfc
+
+PRE-REGISTERED, written before any run.
+
+WHY. 2894ddfc beats N24 on the rung seats on two seed sets (journal 379). Before it can be
+offered as a replacement for data/ai/model.bin, it has to be checked on the seats training
+has broken before: 1914:FRA:rush and 1939:NOR:hood (memory selfplay-erodes-rush-defence).
+
+DESIGN. Backlog item 19 says the 5-point rush guard is not well-formed on a bistable seat, and
+asks for a collapse RATE with a sample size. So: **32 seeds**, made of seed set 1 + seed set 2 + the
+first 16 seeds of journal 376's formula ((2654435761*k) mod 2147483647, k = 1..16), asserted
+distinct. 2894ddfc vs a same-binary N24 control, pin377 (md5 d36f3236), 400 turns, d3,
+side by side through odlock. 128 runs.
+
+STATISTICS, fixed now:
+  - 1914:FRA:rush COLLAPSE = share < 1.5 (the seat holds ~8 or dies below 1.5;
+    memory bistable-seats-need-many-seeds). Fisher exact, two-sided, on collapsed/32.
+    Also "held >= par 6.7", as journal 369 counted it.
+  - 1939:NOR:hood: mean land share, permutation test (every model has been below par
+    on all 8 worlds there, so the rate carries nothing).
+  - FRA:rush land share, permutation test, quoted second.
+
+VERDICT WORDING, fixed now. **FAILS the guard** if 2894ddfc is significantly WORSE (p < 0.05)
+on the FRA:rush collapse rate or on NOR:hood land share. Otherwise **"no harm detected at 32
+seeds"**, with the smallest rate difference 32 seeds can see stated beside it. Never "passes".
+
+PREDICTION: **not worse.** Its training league contained the rusher (2 of 8 maps), and journal
+369's rusher-league model collapsed less on this seat than N24 (3/8 vs 5/8). Direction better
+on FRA:rush, not significant; NOR:hood within noise.
+
+RESULT (journal 380). The pre-registration above was written before any run.
+
+Both arms 64 runs on pin377 (md5-guarded), 00:52 -> 01:36, 32 distinct seeds, none lost:
+
+    seat / statistic                 N24        2894ddfc     test
+    1914:FRA:rush collapsed (<1.5)   17/32      13/32        Fisher p = 0.453
+    1914:FRA:rush below par (6.7)    21/32      14/32        Fisher p = 0.131
+    1914:FRA:rush mean land share     5.17       8.21        perm p = 0.092 (+3.04)
+    1939:NOR:hood below par (1.3)    32/32      32/32        Fisher p = 1.000
+    1939:NOR:hood mean land share     0.42       0.41        perm p = 0.564
+
+VERDICT, in the wording fixed before the run: **NO HARM DETECTED AT 32 SEEDS.** Nothing is
+worse; every FRA:rush statistic points toward 2894ddfc (4 fewer collapses, 7 fewer
+below par, +3.04 land share), and none clears 0.05. The prediction ("not worse, direction better
+on FRA:rush, NOR:hood within noise") holds. The resolution limit, stated as registered: at a
+~0.5 base rate with 32 per arm, a collapse-rate difference below ~0.35 is not visible (80%
+power, two-sided), so this rules out a LARGE rush regression, not a small one.
+
+NOR:hood remains uninformative: both models below par on all 32 worlds, same mean share. That
+seat cannot distinguish any model measured so far and should not be read as a pass for either.
+
+WHERE THE CANDIDATE STANDS. 2894ddfc (scratchpad/trained8-fixleague-424242.bin):
+  - rung seats: +83 (set 1) and +133 (set 2) over same-era N24, both CLEAR, 3/3 seats each time;
+  - rush/hood: no harm detected at 32 seeds, FRA:rush pointing better;
+  - recipe: NOT established (training seed 777001 gave -169).
+**Shipping it as data/ai/model.bin is the user's decision; the loop does not write that file.**
+If shipped, the reference hash triple must be re-recorded against the new model.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json
+(j380-fix424-rh, j380-n24-rh). No source change. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374, 377; and the shared
+Game.h m_agentLoad block (journal 377).
+
+## 381 — iteration: backlog 99 (2), is the fixed-league RECIPE real? Two more training seeds
+
+PRE-REGISTERED, written before any run.
+
+WHY. The model 2894ddfc is established (journals 378-380); the recipe that made it is not.
+Training seed 424242 gave +83, seed 777001 gave -169. Two more training seeds, run side by
+side, turn that into four.
+
+WHAT. The recipe exactly as journal 378: N24 parent, fresh isolated tree, 8 maps x 3000 turns,
+OD_AI_THREADS=1, OD_LR_SCALE=0.05, OD_DIPLO_PACT_WEIGHT=2.5, OD_LEAGUE_EXPLOIT=0.5,
+OD_LEAGUE_FIX=1, pin377 (md5 d36f3236). **New training seeds: 555001 and 888001.** VOID rules as
+journal 378. Each model benched on the standard 3 rung seats x seed set 1 x 400 turns, and
+compared with j374-ctl (N24 on set 1, pin374, whose eval decisions equal pin377's).
+
+DECISION RULE, over all four training seeds (424242: +83, 777001: -169, plus these two):
+  - **Recipe WORKS** if both new seeds score above N24 and at least one clears the floor.
+    3 or 4 of 4 above N24.
+  - **Recipe FAILS** if both new seeds score below N24. Then 1 of 4, and 2894ddfc was a lucky draw.
+  - **Anything else is NOT ESTABLISHED.** Then the swing between training worlds is the finding.
+
+PREDICTION: **not established, 2 of 4.** Journal 378's +83/-169 spread on nearly identical
+league draws says the training worlds dominate the recipe, so a coin per seed is the honest prior.
+
+RESULT (journal 381). The pre-registration above was written before any run.
+
+TRAINING. Both arms rc=0, 8 maps; 888001 exited 04:01, 555001 05:42. Neither VOID. 555001 drew
+the rusher 3/8 over 3 distinct slots; 888001 drew it 2/8 over 2 slots. Every rusher game was
+recorded. Models: 555001 -> e9c2fc9d, 888001 -> 79d71fdd. data/ai/model.bin unchanged.
+
+BENCH, seed set 1, 3 rung seats x 8 seeds, pin377, vs j374-ctl (N24 336, se 34):
+
+    training seed   model      per-seed rating   vs N24               land FRA / USA / CHN (d, p)
+    555001          e9c2fc9d    292 (se 26)      -44, floor 83, no    -11.35 p0.002 / +11.21 p0.009 / -3.81 p0.42
+    888001          79d71fdd    310 (se 42)      -27, floor 105, no   +2.68 p0.59   / +3.55 p0.37   / -5.10 p0.34
+
+ALL FOUR TRAINING SEEDS OF THE FIXED-LEAGUE RECIPE, vs N24 on seed set 1:
+
+    424242  +83  (CLEARS)    777001  -169 (CLEARS)    555001  -44    888001  -27
+
+VERDICT, by the rule fixed before the run: **the RECIPE FAILS. Both new seeds score below N24,
+so 1 of 4 is above N24.** The prediction (not established, 2 of 4) was wrong, and in the
+pessimistic direction.
+
+WHAT THIS DOES AND DOES NOT TOUCH.
+  - **2894ddfc is still the only established improvement over N24**, and this does not weaken
+    it. It was SELECTED on seed set 1 alone. Its seed set 2 result (+133, journal 379) and
+    its rush/hood guard (journal 380) were both measured after selection, on seeds that played
+    no part in choosing it. The winner's-curse worry applies to set 1's +83, not to those.
+  - "Train 8 maps with the fixed league" is not a way to improve N24. **"Train several seeds,
+    select on one seed set, confirm on another" produced one model in four here.** At ~3 h per
+    training seed plus ~25 min per confirmation, that is a search procedure, not a recipe, and
+    whether to spend on it is the user's call.
+  - Not claimed: the fixed-league models (-27, -44) sit closer to N24 than journal 357-360's
+    self-play models (-92, -145). With a -169 among them and training-world swings this large,
+    that is not a comparison four seeds can make.
+  - 555001's per-seat trade is large and opposite in sign: FRA -11.35 (p 0.002), USA +11.21
+    (p 0.009). A model can move 11 points on two seats and net out below the floor. The
+    rating hides it and the land table does not (memory aggregate-vs-seat-measurement).
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json
+(j381-fixleague-555001, j381-fixleague-888001). Models kept in the scratchpad. No source change.
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374, 377; and the shared
+Game.h m_agentLoad block (journal 377).
+
+USER DECISIONS after journal 381 (2026-09-15 ~06:05), recorded in the backlog:
+  - **2894ddfc: MORE CHECKS FIRST.** Bench a third seed set and the 1914:SWE seat before any ship.
+  - **SEARCH 4 MORE TRAINING SEEDS (~14 h).** The user notes a new OD version may be released
+    inside that window, so every result names its binary, and a release mid-search means
+    re-checking the reference hashes before comparing across it.
+  - **Item 100: OD_RESEARCH_MUTEX_FIX ships ON by default**, with an env var to turn it off, and the
+    reference hash triple re-recorded.
+  - **Restore the shared Game.h m_agentLoad block.** Done in this iteration at the user's
+    instruction: HEAD's exact 6 lines were re-inserted between m_agentUntilTurn and
+    m_agentMapSeed, with no git operation. `git diff HEAD -- src/Game.h` now shows only journal
+    373's getResearchEffect hunk. Pre-edit copy: scratchpad/pre-restore-Game.h.
+
+ORDER FOR THE NEXT ITERATIONS, because each change moves the game the later ones measure:
+(1) flip the fork fix on by default and re-record the reference hashes; (2) the 2894ddfc checks
+against a same-binary N24 on that build; (3) the 4-seed search on that build.
+
+## 382 — iteration: ship the research-fork fix ON by default (user decision), re-record the reference
+
+PRE-REGISTERED, written before any run.
+
+CHANGE. Game::isNodeAvailableFor: OD_RESEARCH_MUTEX_FIX is now ON unless set to 0, the same
+convention as OD_SCRIPT_LOOM_FIX. Comment updated with journal 376's evidence and the user's
+decision. Pre-edit copy: scratchpad/pre382-Game_Research.cpp.
+
+BUILD. Incremental, scratchpad/build373, whose source is the shared tree (it compiles again now
+that Game.h is restored). Pinned as pin382. The build absorbs three commits since pin377:
+8727ca5 "Make ethnic migration conserve people" (a game rule), e21dcd2 (UI) and 393c23e (eval
+print). So the old reference triple is NOT expected to survive, even with the fix off.
+
+RUNS, seed 13579, N24 copy, 400 turns, d3, OD_DECISION_HASH, two at a time:
+  A. default (fix ON), on FRA, CHN and USA -> the NEW reference triple;
+  B. OD_RESEARCH_MUTEX_FIX=0, on FRA, CHN and USA -> the new fix-off triple.
+
+READINGS, fixed now:
+  - A != B on every seat: the flip is live. If any seat shows A == B, the default did not change.
+  - B == old triple (FRA 14669681761325311781/86188, CHN 1134950857311588231/277784,
+    USA 8015535788507488591/172816): the three commits moved no decision. B != old triple:
+    they did, and that is attributed to them, not to the flip.
+  - A(CHN) == journal 374's gate-on hash 1314902981031947838/266836: same statement for the
+    fix-on world.
+PREDICTION: B differs from the old triple, because a migration rule that conserves people
+changes populations and so decisions. A differs from B on all three seats.
+
+RESULT (journal 382). The pre-registration above was written before any run.
+
+BUILD. From the shared tree, which compiles again after the Game.h restore. HEAD be34afe plus the
+loop's uncommitted hunks. Pinned as pin382, md5 b3e162c6.
+
+    seat          fix ON (default)                    fix OFF (=0)                         old reference (pin363-377)
+    1914:FRA      2684914276584272262/81340   27.2    12049374040547256197/100636   16.9    14669681761325311781/86188
+    modern:CHN    7982296607771096629/237960  14.4    5035313448694512117/253008    16.4    1134950857311588231/277784
+    1939:USA      10540971485333803371/163204 14.0    3263382586068585204/198352    13.7    8015535788507488591/172816
+
+EVERY READING AS PRE-REGISTERED:
+  - **The flip is live**: ON != OFF on all three seats.
+  - **OFF != old triple on all three seats**, and ON(CHN) != journal 374's gate-on hash. The commits
+    since pin377 moved decisions, as predicted. The only game-rule change among them is 8727ca5
+    "Make ethnic migration conserve people", which stops an oversized move from driving a minority
+    group negative (its message cites 9.4e20 populations). This is attributed to that commit, not to
+    the flip, because the =0 runs change the old triple too.
+
+**NEW REFERENCE TRIPLE**, for every hash check from here (fix ON, pin382, N24 copy, seed 13579,
+400 turns, d3):
+    1914:FRA    2684914276584272262 over 81340
+    modern:CHN  7982296607771096629 over 237960
+    1939:USA    10540971485333803371 over 163204
+
+**THE BASELINE MOVED** (memory bench-baseline-is-build-relative). Every stored bench row belongs to the
+pre-8727ca5 game: N24's controls, 2894ddfc's +83/+133, the rush guard, the fork-fix bench. None of
+them is comparable with a pin382 run. The next step (2894ddfc checks) therefore benches BOTH models on
+pin382, and asks first whether 2894ddfc still beats N24 in the migration-fixed game. Single-seed scores
+(FRA 27.2 vs 16.9) are quoted above only as run health, not as an effect.
+
+VERDICT: KEEP. The fix ships on by default in the source, the off switch is proven, and the reference is re-recorded.
+
+PATHS TOUCHED: src/Game_Research.cpp (default flip plus comment), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT (src/Game_Research.cpp, the journal-374 and journal-382 hunks together, after or with
+journal 373's probe hunks in the same file):
+
+    Stop AI countries holding both sides of a research fork
+
+    The per-country availability check ignored a sibling in progress, so an
+    extra research group could start the other side and a country ended up
+    holding both. It now counts in-progress work, as the player's check does.
+    Benched at 128 seeds per arm: no harm on any statistic, and 1914 France
+    gains land. OD_RESEARCH_MUTEX_FIX=0 restores the old rule.
+
+Outstanding as well: journals 361, 362, 370, 373, 377.
+
+## 383 — iteration: does 2894ddfc still beat N24 in the migration-fixed game? Third seed set plus 1914:SWE
+
+PRE-REGISTERED, written before any run.
+
+WHY. The user asked for more checks before shipping 2894ddfc: a third seed set and 1914:SWE. Journal 382
+moved the baseline. Commit 8727ca5 (migration conserves people) changed every decision, so 2894ddfc's +83
+and +133 were measured in a game that no longer exists. This run re-asks the question on the current game.
+
+DESIGN. pin382 (md5 b3e162c6; fork fix on by default; reference triple from journal 382), 400 turns, d3.
+Seats: 1914:FRA:rung, 1939:USA:rung, modern:CHN:rung, and 1914:SWE:rung (par 1.0). **Seed set 3**: 8 seeds
+from (1000000007 * k) mod 2147483629, k = 1..8, asserted distinct from sets 1 and 2, journal 376's 128 and
+journal 380's 32. N24 (j383-n24-s3) and 2894ddfc (j383-fix424-s3) run side by side.
+
+STATISTICS, fixed now:
+  - PRIMARY: the per-seed rating difference over the three standard rung seats, against the floor
+    --compare prints. That keeps it comparable in kind with journals 378-379.
+  - Per-seat land share with permutation p, all four seats.
+  - 1914:SWE is a small-par capped seat (memory capped-small-par-seats-are-coins). Read its land share
+    and its below-par count, never its score.
+
+PREDICTION: **2894ddfc still above N24 on the three rung seats, by less than +133, probably still clearing
+the floor.** Migration conservation acts on populations, which bear on unrest and economy for both models
+alike. Nothing obvious removes the policy difference that produced the gain, but a changed game is a new
+test. On SWE: no prediction beyond "not worse".
+
+DECISION RULE. Clears the floor, same sign: the candidate holds on the current game (three seed sets,
+two builds), and the ship question goes back to the user with SWE's reading beside it. Does not clear:
+the old gain does not transfer to the migration-fixed game. Ship is not recommended, and the
+4-seed search starts on this build either way.
+
+RESULT (journal 383). The pre-registration above was written before any run.
+
+Both arms 32 runs on pin382 (md5-guarded), 13:07 -> 13:35, seed set 3 asserted fresh, none lost:
+
+    seat              N24 land   2894ddfc land      d       p
+    1914:FRA rung       22.77       24.89         +2.11   0.718
+    1939:USA rung       23.00       34.92        +11.92   0.013
+    modern:CHN rung     12.32       18.29         +5.96   0.235
+    1914:SWE rung        9.14        2.44         -6.70   0.036
+    PRIMARY, 3 rung seats: per-seed rating 351 (se 29) -> 431 (se 20), +80, floor 69, CLEARS, 3/3 seats
+    all 4 seats:           per-seed rating 359 (se 24) -> 384 (se 24), +25, floor 67, does not clear
+    1914:SWE below par (1.0):  N24 1/8   2894ddfc 3/8
+      shares N24      13.4 23.7 0.0 8.9 3.2 3.2 4.4 16.3
+      shares 2894ddfc  4.4  0.0 4.5 2.7 0.0 2.9 0.0  5.0
+
+VERDICT ON THE PRE-REGISTERED RULE: **the candidate holds on the current game.** On the three rung seats
+2894ddfc beats N24 by +80, which clears the floor with the same sign. That now covers three seed sets
+(+83, +133, +80) and two builds, the second being the migration-fixed game. The prediction ("less than
++133, probably still clearing") held.
+
+**BUT 1914:SWE READS AGAINST IT, and that is what goes to the user beside the ship question.** Land share
+falls 6.70 points (p 0.036), below-par worlds rise 1/8 -> 3/8, and 2894ddfc never exceeds 5.0 on any world
+where N24 reached 8.9-23.7 on four. Not established: four seats were compared, so ~0.2 are
+expected under 0.05 by chance, and a Bonferroni cut would be 0.0125. SWE is also the small neutral that
+"has room to expand if it dares", and a model that expands less there fits a policy that learned the
+opposite of daring. That is a story, NOT measured (memory measurements-replicate-explanations-dont).
+
+NEXT, unblocked and cheap, before the ship question can be answered honestly: **1914:SWE at 32 seeds**,
+N24 vs 2894ddfc on pin382. The same design as journal 380's rush guard, which found eight seeds unable
+to settle a seat like this. ~64 runs, ~35 min. The 4-seed training search follows.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j383-n24-s3,
+j383-fix424-s3). No source change. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374+382, 377.
+
+## 384 — iteration: is 2894ddfc worse on 1914:SWE? 32 seeds
+
+PRE-REGISTERED, written before any run.
+
+WHY. Journal 383: 2894ddfc beats N24 on the three rung seats (+80, CLEARS), but on 1914:SWE its land share
+fell 9.14 -> 2.44 (p 0.036, one of four seats) and below-par worlds rose 1/8 -> 3/8. That signal is the one
+thing standing between the candidate and the ship question.
+
+DESIGN. pin382 (md5 b3e162c6), 400 turns, d3, seat 1914:SWE:rung only. **32 fresh seeds**:
+(1234567891 * k) mod 2147483587, k = 1..32, asserted distinct from every set used before, including the 8
+of journal 383 that raised the question. It is not scored on the data that prompted it. N24
+(j384-n24-swe) vs 2894ddfc (j384-fix424-swe), side by side through odlock.
+
+STATISTICS, fixed now:
+  - PRIMARY: SWE mean land share, permutation test, two-sided, alpha 0.05. One comparison.
+  - Below par (share < 1.0) and annihilated (< 0.5), Fisher exact, quoted second.
+
+VERDICT WORDING, fixed now. **"2894ddfc is worse on 1914:SWE"** if its share is lower at p < 0.05.
+**"No SWE difference detected at 32 seeds"** otherwise, with the smallest detectable difference stated.
+
+PREDICTION, committed: **lower, by less than 6.7 points, and it clears 0.05.** The 8-seed gap is
+probably partly real and partly a high draw for N24: its 23.7 and 16.3 worlds are its two highest.
+
+WHAT EACH OUTCOME MEANS FOR THE USER. Worse: 2894ddfc trades a small neutral seat for gains on the great
+powers, and the ship question is a judgment about that trade, put to the user without a recommendation.
+No difference detected: recommend shipping, with the resolution limit stated. Either way the 4-seed search
+follows.
+
+RESULT (journal 384). The pre-registration above was written before any run.
+
+Both arms 32 runs on pin382 (md5-guarded), 13:37 -> 14:00, 32 fresh seeds asserted unused, none lost:
+
+    1914:SWE rung             N24             2894ddfc        test
+    mean land share           10.67 (med 6.00)  2.98 (med 2.25)  -7.70, perm p = 0.001   (PRIMARY)
+    below par (< 1.0)          6/32             15/32            Fisher p = 0.032
+    annihilated (< 0.5)        6/32             15/32            Fisher p = 0.032
+    sd                        11.25              6.68
+    smallest detectable mean difference at this design: ~6.48 (80% power)
+
+VERDICT, in the wording fixed before the run: **2894ddfc IS WORSE ON 1914:SWE.** The one pre-registered
+comparison clears at p = 0.001, on 32 seeds that played no part in raising the question. The prediction
+was half right: it cleared 0.05, but the gap is LARGER than journal 383's 6.7, not smaller. Every
+below-par SWE world is an annihilation (below-par count = annihilated count, in both arms), so this seat
+is binary for both models. 2894ddfc loses Sweden outright on 47% of worlds against N24's 19%, and
+where it survives it rarely grows: sd 6.68 against 11.25.
+
+WHAT THE CANDIDATE IS, THEREFORE: **a trade, not an improvement.**
+  - Great-power rung seats (FRA, USA, CHN): +83, +133, +80 over N24 on three seed sets and two builds,
+    all clearing, USA carrying most of it.
+  - Rush and hood seats: no harm detected at 32 seeds (journal 380, on the pre-migration-fix build).
+  - Small neutral 1914:SWE: annihilated 15/32 against 6/32, land -7.70, p 0.001.
+The ship question goes to the user WITHOUT a recommendation, as registered. It is a judgment about which
+seats matter to players, not something the bench can rank. The rating cannot rank it either: SWE is
+a capped small-par seat, and journal 383's four-seat rating (+25, did not clear) is exactly that trade
+averaged into one number.
+
+NOT MEASURED: why. The story "a policy that learned not to dare" is unmeasured. The mechanism is
+unknown, and the seat's annihilation-only failure mode points at a war or rebellion death rather than slow
+decline, which a one-seat trace could tell apart (memory one-seat-for-diagnosis). The 4-seed training search
+does not wait on this. Any new candidate from it must also be benched on 1914:SWE.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j384-n24-swe,
+j384-fix424-swe). No source change. data/ai/model.bin unchanged (4a137043).
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374+382, 377.
+
+USER DECISION after journal 384 (2026-09-15 ~14:00): **DIAGNOSE SWE FIRST** before deciding whether to
+ship 2894ddfc. Next iteration: trace how 2894ddfc loses 1914:SWE where N24 does not (war, rebellion,
+bankruptcy), on a few of journal 384's seeds where the arms split, one seat at a time
+(memory one-seat-for-diagnosis). The 4-seed search follows.
+
+## 385 — iteration: how does 2894ddfc lose Sweden? (user: diagnose SWE first)
+
+PRE-REGISTERED, written before any run.
+
+SELECTION, from journal 384's stored per-seed shares: on 9 of 32 seeds N24 holds 1914:SWE (5.9-32.2)
+while 2894ddfc is annihilated (0.0). On 3 both are annihilated, and there is no seed where only N24 loses it. Traced: the four
+widest splits, seeds 1556220086, 799427057, 156122667, 1121079252 (N24 32.2 / 27.6 / 26.7 / 21.1).
+
+RUNS. pin382, 400 turns, d3, --bench-seat 1914:SWE, OD_ECON_TRACE=39 (Sweden's id taken from 1914.odmap
+countries.json by ISO, per journal 375), both models, 8 runs. The seat score must reproduce journal 384's
+stored value for each (model, seed), or the trace describes a different game.
+
+CLASSIFICATION, fixed now, for each 2894ddfc run:
+  - DEATH TURN T: the first [ECON] turn for cid 39 with provinces=0, or the last [ECON] line if the
+    country is gone before one prints.
+  - In the 40 turns before T, count: wars SWE DECLARED ("[WAR] SWE declares war on X"); wars declared ON
+    SWE ("[WAR] X declares war on SWE"); rebellion wars involving SWE ("SWE vs R.."); bankruptcies
+    ("[ECONOMY] 39 bankrupt"). Also Sweden's provinces at T-40.
+  - CAUSE: **REBELLION** if rebellion wars occur and no foreign war; **CONQUEST** if any foreign war is
+    active and no rebellion war; **MIXED** if both; **UNCLEAR** if neither. Record separately whether
+    Sweden started the fatal war and whether bankruptcy came first.
+  - The same counts over the whole game for the N24 run of the same seed, as the contrast.
+
+PREDICTION, committed: **CONQUEST in a war Sweden itself declared, on at least 3 of the 4 seeds.** N24 on
+the same seeds declares fewer or no wars. Reason: 2894ddfc gains land on the great powers, which suggests
+more aggression, and a small neutral that picks fights dies.
+
+RESULT (journal 385). The pre-registration above was written before any run.
+
+RUN HEALTH: all 8 traced runs reproduce journal 384's stored score for their (model, seed), so the traces describe the
+same games. data/ai/model.bin unchanged.
+
+    seed         2894ddfc: death turn, peak provs   SWE wars declared   rebellion wars   bankrupt   N24: end provinces, wars declared, rebellion wars
+    1556220086   246, peak 36 (28 at T-40)          1 (t1 NOR)          10               2          306, 30, 1
+    799427057    233, peak 25 (11 at T-40)          1 (t1 NOR)          19               8          258, 15, 0
+    156122667    373, peak 25 (14 at T-40)          1 (t1 NOR)          24               5          211, 10, 0
+    1121079252   367, peak 25 (12 at T-40)          1 (t1 NOR)          21               4          199,  8, 2
+
+CLASSIFICATION BY THE REGISTERED RULE: REBELLION on 2 seeds, MIXED on 2. **Correction, stated plainly: every
+"declared on SWE" event in the two MIXED windows comes from a REBEL state** (R17, R34, R149, R130). The rule
+counted any declarer as a foreign war, and none of them is one. In substance **all four are REBELLION
+deaths**, with bankruptcy inside the window on all four.
+
+**THE PREDICTION IS FALSIFIED, and in the opposite direction.** I predicted conquest in a war Sweden declared. Under
+2894ddfc Sweden declares exactly ONE war per game on all four seeds, and it is turn 1's book opening on Norway. It never
+expands past 25-36 provinces, and it is eaten from inside: 10-24 rebellion wars, starting around turns 120-180 and
+multiplying. Under N24, on the same worlds, Sweden declares 8-30 wars, grows to 199-306 provinces, and sees 0-2
+rebellion wars.
+
+ORDER OF EVENTS, on both seeds where it is visible: rebellion wars begin long before the first bankruptcy
+(t122 vs t245; t3 and t177 vs t192). **Bankruptcy is a late consequence, not the trigger.** This is not memory
+chn-dies-to-rebellion's bankruptcy -> minority cuts -> unrest chain, at least not in that order.
+
+WHAT THIS SAYS ABOUT THE CANDIDATE. 2894ddfc's small-neutral failure is PASSIVITY followed by internal collapse, not
+recklessness. It sits still where N24 expands, and a stagnant country with a restive population rebels itself to
+death. That fits memory passivity-is-load-bearing's flip side: on this seat, N24's expansion is what keeps
+Sweden alive.
+
+NOT MEASURED, the next diagnostic if the user wants it: WHY the war head stops on this seat while it gains land on the
+great powers. The candidates are that the war action is never picked, or never offered, or that the war bar refuses it.
+OD_ACT_HIST on 1914:SWE for both models answers "offered vs picked" in two runs (memory act-hist-instrument).
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. Logs: scratchpad/j385-{fix,n24}-<seed>.log.
+No source change.
+
+PENDING COMMIT: nothing new. Outstanding: journals 361, 362, 370, 373, 374+382, 377.
+
+USER DECISION after journal 385 (2026-09-15 ~14:10): **DIAGNOSE THE WAR HEAD** before deciding whether to ship.
+Next iteration: OD_ACT_HIST on 1914:SWE for N24 and 2894ddfc (one of journal 385's split seeds, then decide
+whether more are needed). Question: is Sweden's war action never offered to 2894ddfc, or offered and refused?
+
+## 386 — iteration: is Sweden's war declaration never offered to 2894ddfc, or offered and refused? (user decision)
+
+PRE-REGISTERED, written before any run.
+
+ALREADY KNOWN, from journal 385's traces (seed 1556220086, OD_ECON_TRACE=39, war-module labels as executed):
+2894ddfc's Sweden executes "declare war" ONCE in 246 turns (the turn-1 book). N24's Sweden does it 20+ times in 400,
+plus 234 multi-front attacks, 396 recruits and 813 reinforcements, against 36, 108 and 275. Those are PICKS. What was
+OFFERED is not in the trace.
+
+RUNS. pin382, 1914:SWE, seed 1556220086, 400 turns, d3, OD_ACT_HIST=1, both models, side by side. Each run's score must
+equal journal 384's stored value (N24 32.2, 2894ddfc 0.0), or the histogram describes a different game. In
+--bench-seat the rest of the world is scripted (memory absolute-bench-seats), so the model histogram should be
+Sweden's alone. Confirm that from the output before reading it.
+
+READING, fixed now. For the war module's DECLARE action(s):
+  - offered count ~0 for 2894ddfc while N24's is large: **NEVER OFFERED.** The cause is upstream of the
+    policy: a mask, bar or precondition that 2894ddfc's Sweden never meets, likely because it never grows.
+  - offered often, but 2894ddfc's pi(declare) ~0 against N24's clearly above 0: **OFFERED AND REFUSED.** The policy
+    learned not to declare on this seat.
+  - Per-turn normalisation: 2894ddfc's Sweden lives ~246 turns and N24's 400. Compare rates, not totals.
+PREDICTION, committed: **OFFERED AND REFUSED.** Sweden starts the same world at the same size under both models, so the
+first offers should match. A trained policy that never takes them has learned refusal (memory
+passivity-is-load-bearing: refusal is a priced decision).
+
+RESULT, part 1 (journal 386). The pre-registration above was written before any run.
+
+Both runs reproduce journal 384's stored scores (2894ddfc 0.0, N24 32.2), so they are the same games.
+
+**THE INSTRUMENT IS NOT SEAT-SPECIFIC, SO THE REGISTERED QUESTION IS NOT ANSWERED BY THIS RUN.** The registration
+required confirming the histogram was Sweden's alone before reading it, and it is not. WAR totals are 134,423 and
+112,119 decisions, the war gate PASSED 57,359 and 48,627 times, and Sweden lived 246 and 400 turns. The counters are
+process-wide statics with no country filter, and in --bench-seat many countries besides the seat are net-driven. My
+assumption from memory absolute-bench-seats ("the rest is scripted") was wrong for this purpose.
+
+WORLD-WIDE, recorded but NOT read as Sweden's (war action 4 = declare):
+
+    model       offered   policy evaluations   picked by policy   pi(declare) when evaluated
+    2894ddfc      3,680          198                  76                 0.385
+    N24           7,634        3,547                 187                 0.053
+
+Across the model-driven world, 2894ddfc's countries are offered a declaration half as often and put it to the policy
+eighteen times less often. When they are asked, the policy says yes far MORE often (0.385 vs 0.053). If that pattern
+held for Sweden it would point at NEVER (OR RARELY) OFFERED, not refused, but these are different worlds with
+different survivors, and it cannot be read as Sweden's.
+
+FIX FOR THE INSTRUMENT, this iteration: OD_ACT_HIST_CID=<cid> (off by default) restricts every OD_ACT_HIST counter
+to one country. Verified inert by the reference hash, then both models rerun on Sweden (cid 39).
+
+RESULT, part 2 (journal 386): Sweden's own histogram.
+
+INSTRUMENT. OD_ACT_HIST_CID=<cid> added (counters only, 5 increment sites in takeTurn). Built from the shared tree
+(HEAD 1abbdcd plus loop hunks), pinned as pin386 (md5 25437e4e). **Inert, proven:** 1914:FRA seed 13579 gives
+2684914276584272262/81340 both with and without OD_ACT_HIST=1 OD_ACT_HIST_CID=39, which equals journal 382's
+reference. Both Sweden runs reproduce journal 384's stored scores (2894ddfc 0.0, N24 32.2).
+
+SWEDEN ONLY, seed 1556220086, war module (a1 recruit, a2 reinforce, a3 attack, a4 declare):
+
+                  2894ddfc (alive ~246 turns)                 N24 (400 turns)
+    action   offered  policy-picked  taken-when-offered   offered  policy-picked  taken-when-offered  pi(a) when evaluated
+    a1          268        101            40.3%              564        412            74.3%           0.89 vs 1.00
+    a2         1968       1668            91.8%             3200       2112            70.3%           0.92 vs 0.69
+    a3           57         47            93.0%              834        493            59.8%           0.88 vs 0.60
+    a4 DECLARE     1          0           (the book)          256         31            12.5%           -- vs 0.122
+    war decisions total 1969 (gate PASSED 1817)          3200 (PASSED 3048)
+
+VERDICT, by the registered reading: **NEVER OFFERED.** 2894ddfc's Sweden is offered a war declaration ONCE in 1,969
+war decisions, and that is turn 1's book. N24's Sweden is offered one on 256 decisions (0.64 per turn) and takes
+it 12.5% of the time. **The prediction ("offered and refused") is FALSIFIED.** The policy is not refusing wars on
+this seat. The declaration is simply not legal for it. Attacks tell the same story: offered 57 vs 834, and taken
+93% of the time when offered. **When 2894ddfc's Sweden is given an aggressive option it takes it MORE readily
+than N24.** Journal 386 part 1's world-wide pattern (pi(declare) 0.385 vs 0.053) holds for the seat.
+
+WHAT SITS UPSTREAM, NOT MEASURED YET. Something in the validity mask for a4 is never satisfied. The visible
+difference upstream is RECRUITMENT: recruit is offered 268 vs 564 times and taken 40% vs 74%. A Sweden that recruits
+less fields a smaller army, and the war bar compares armies (journal 337: `side < ea * bar + 200`). So a small army
+would keep every neighbour below the bar and the declaration masked off. That chain is a HYPOTHESIS: mask ->
+war bar -> army size -> recruitment. Its first link is checkable by counting which a4 validity condition fails
+for cid 39.
+
+ALSO NOTED: memory absolute-bench-seats' "the rest of the world is scripted" is wrong for OD_ACT_HIST purposes. Many
+countries are net-driven in --bench-seat. Use OD_ACT_HIST_CID for any per-seat reading.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (OD_ACT_HIST_CID; pre-edit copy scratchpad/pre386/), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md. data/ai/model.bin unchanged.
+
+PENDING COMMIT (src/ai/AISystem.cpp, the journal-386 hunks; this file also carries journals 370, 373 and 377 hunks):
+
+    Let OD_ACT_HIST count one country
+
+    The action histogram summed every net-driven country in the world, so
+    on a bench seat it could not say what the seat itself was offered.
+    OD_ACT_HIST_CID=<cid> restricts all five counters to that country.
+    Counters only; the decision hash is unchanged.
+
+USER DECISION after journal 386 (2026-09-15 ~14:25): **TRACE THE WAR MASK** before deciding whether to ship. Next
+iteration: find where war action 4's validity is computed, and count per failing condition for cid 39 under both
+models on seed 1556220086 (counters only, hash-verified). Question: which condition keeps "declare war" off
+2894ddfc's Sweden's menu? Is it the war bar (army ratio), no eligible neighbour, or something else?
+
+## 387 — iteration: which condition keeps "declare war" off 2894ddfc's Sweden's menu? (user decision)
+
+PRE-REGISTERED, written before any run.
+
+WHERE THE MASK IS. validWar sets war a4 = findWarTarget(cid, ...). That returns false at: army <= 0, a pending
+declaration, being at the concurrent-war limit, or being war-weary. Otherwise it walks each unique frontier
+neighbour and rejects it for being at war or allied, for pending diplomacy, for a bigger guarantor, or for the
+WAR BAR (`mySide < theirSide * bar + 200`). With no land target it falls back to a naval target, which needs a
+port and an army above 1000.
+
+INSTRUMENT. OD_WARMASK_PROBE (off; counters only): per exit and per rejection, counted ONLY for calls from validWar
+(the mask) and only for OD_ACT_HIST_CID=39. It also sums own army against the army the bar demanded on bar
+failures. Inertness is checked on 1914:FRA against journal 382's reference 2684914276584272262/81340. Sweden runs
+on seed 1556220086, both models, and each must reproduce journal 384's stored score.
+
+READING, fixed now. The dominant exit for 2894ddfc's Sweden, compared with N24's on the same seed:
+  - WAR BAR dominant, with own army well below the needed army: the size hypothesis holds.
+  - Early exits (max wars, war-weary, pending declaration) dominant: a different mechanism. Say which.
+  - Neighbours mostly rejected as at-war or friendly: Sweden's diplomacy, not its army, closes the menu.
+PREDICTION, committed: **WAR BAR, on the large majority of mask calls, with 2894ddfc's Sweden at well under half the
+army the bar needs.** N24's Sweden fails the bar less often and nearer the line.
+
+RESULT, part 1 (journal 387). The pre-registration above was written before any run.
+
+BUILD pin387 (md5 adbe59d8), shared tree HEAD 1abbdcd plus loop hunks. **Inert, proven:** 1914:FRA gives
+2684914276584272262/81340 with and without OD_WARMASK_PROBE, equal to journal 382's reference. Both Sweden runs
+reproduce their stored scores (0.0, 32.2).
+
+SWEDEN (cid 39), seed 1556220086, mask calls only:
+
+    exit / rejection                     2894ddfc    N24
+    mask calls                             1969      3200
+    at max concurrent wars (limit 1)       1961      2784
+    pending declaration                       7       160
+    neighbours examined                       2      1771
+      rejected at war or friendly             0       458
+      rejected by the WAR BAR                 1       550  (own army at 0.298 of the needed army, N24)
+      land target found                       1       206
+    naval target found                        0        50
+
+**THE PREDICTION (war bar) IS FALSIFIED.** 99.6% of 2894ddfc's Sweden's mask calls exit at the concurrent-war limit
+(AI_MAX_CONCURRENT_WARS = 1, counting non-rebel wars from the game's own relations each turn, so not stale). The war
+bar is reached ONCE. N24's Sweden is at the limit on 87% of calls, and in the other 13% it finds 206 land and 50 naval
+targets.
+
+WHAT HOLDS THE SLOT, from journal 385's traces of the same four seeds (war lines involving SWE):
+
+    seed         model     Norway war (turn-1 book)   other wars SWE declared after   foreign wars declared ON SWE
+    1556220086   2894ddfc  t1 -> ceasefire t212        0                              1 (GER, t203)
+                 N24       t1 -> ceasefire t166        29, first at t169              0
+    799427057    2894ddfc  t1 -> ceasefire t67         0                              0
+                 N24       t1 -> ceasefire t145        14, first at t147              1
+    156122667    2894ddfc  t1 -> ceasefire t204        0                              0
+                 N24       t1 -> ceasefire t94         9, first at t96                1
+    1121079252   2894ddfc  t1 -> ceasefire t197        0                              0
+                 N24       t1 -> ceasefire t230        7, first at t234               1
+
+THIS SPLITS THE STORY IN TWO, and the tidy version ("an endless opening war locks the slot") is only half true:
+  - BOTH models' turn-1 Norway war drags on for a long time: t67-212 for 2894ddfc, t94-230 for N24. No consistent
+    difference in length.
+  - THE DIFFERENCE IS AFTER THE CEASEFIRE. N24's Sweden declares a new war within 2-4 turns every time.
+    2894ddfc's never declares again. On seed 1556220086 the lock explains the whole game (Norway, then Germany
+    until death). On seed 799427057, 2894ddfc's Sweden was free of foreign wars from t67 to its death at t233,
+    and still declared nothing. The limit cannot be why there.
+
+## 387b — extension: what blocks the declaration AFTER the ceasefire? Seed 799427057
+
+PRE-REGISTERED, written before the run. The same probe and binary (pin387, inert as proven above), OD_ACT_HIST_CID=39,
+seed 799427057, both models. Scores must reproduce the stored 0.0 (2894ddfc) and 27.6 (N24). 2894ddfc's Sweden is at
+the war limit only from t1 to t67, roughly 540 of its ~1,900 mask calls at ~8 per turn, so the post-ceasefire exits
+dominate its totals.
+
+READING, fixed now. If 2894ddfc's max-wars exits are near ~540 or below, the rest split among the exits that remain:
+  - neighbours mostly rejected AT WAR OR FRIENDLY: its diplomacy (alliances, guarantees) closes the menu;
+  - mostly WAR BAR, with own army far below needed: the size hypothesis holds after all, just later;
+  - early exits other than max wars (pending declaration, war-weary): name it;
+  - max-wars exits far above ~540: a war I did not see in the trace holds the slot, which is a trace-reading error to chase.
+PREDICTION, committed: **WAR BAR dominates after the ceasefire**, with Sweden's army well under half the needed army,
+because recruitment is offered and taken about half as often as under N24 (journal 386).
+
+RESULT (journal 387b). The pre-registration above was written before the run.
+
+Both runs reproduce their stored scores (2894ddfc 0.0, N24 27.6). Seed 799427057, Sweden (cid 39), mask calls:
+
+    exit / rejection                     2894ddfc    N24
+    mask calls                             1865      3200
+    at max concurrent wars                 1768      3016
+    neighbours examined                     203       814
+      at war or friendly                     97       144
+      bigger guarantor                       40         0
+      WAR BAR                                57       424   (own army / needed: 0.012 vs 0.341)
+      land target found                       1        78
+    naval target found                        0        32
+    provinces t70 / t100 / t150 / t200   25/25/25/11   24/24/25/50
+
+BY THE REGISTERED READING: **max-wars exits (1,768) far above ~540, so a war I did not see held the slot, and my
+trace reading was wrong.** The prediction (war bar after the ceasefire) is FALSIFIED too: the bar is reached 57 times.
+When it is, Sweden fields 1.2% of the army it needs.
+
+**THE TRACE-READING ERROR, AND IT IS A LOG LABEL.** Game_TurnLogic.cpp prints `[CEASEFIRE] War ended: <src> vs <tgt>
+(aiAccepts=A ...)` AFTER BOTH branches of the ceasefire decision. With aiAccepts=0 the rejection branch runs (its player
+popup reads "The war continues"), yet the line still says "War ended". Journal 387 part 1's table took the FIRST such
+line as the end of the Norway war. **That table is wrong, and it is corrected here.**
+
+WHO DECIDES: `aiAccepts = m_ai->decideDiplomacy(cfTgtCid, "request_ceasefire", ...)`, where cfTgtCid is the TARGET. In
+"NOR vs SWE", Norway requests a ceasefire and Sweden decides.
+
+CORRECTED NORWAY-WAR TIMELINE, all four split seeds (a1 = accepted, a0 = Sweden refused):
+
+    seed         2894ddfc's Sweden                                         N24's Sweden
+    1556220086   at war t1 -> accepts t212; dies t246; no later war        accepts t166; next war t169
+    799427057    REFUSES t67 t92 t117 t142 t167 t194; accepts t222; dies t233  accepts t145 (paid 139); next war t147
+    156122667    REFUSES t204 t229 t254 t279 t304; NEVER at peace; dies t373  accepts t94; next war t96
+    1121079252   REFUSES t197 t222 t247 t272 t297 t322; NEVER at peace; dies t367  accepts t230; next war t234
+
+**THE MECHANISM, as far as it is measured.** 2894ddfc's Sweden REFUSES Norway's repeated ceasefire requests, every ~25
+turns. It stays in a stalemated turn-1 war, which fills AI_MAX_CONCURRENT_WARS = 1. Declaring any other war
+therefore stays off its menu (journals 386-387), it never expands past ~25 provinces, and it is destroyed by
+rebellion (journal 385). N24's Sweden accepts the first request, often with Norway paying, and declares its next
+war within 2-4 turns. **The small-seat loss runs through the DIPLOMACY head's ceasefire decision, not the war head.**
+
+NOT MEASURED: why the diplomacy head refuses here (its inputs and probability on request_ceasefire for cid 39); whether
+the endless war also feeds the rebellions (war weariness, unrest); and whether the same refusal happens on the great
+powers, where it may be what WINS land.
+
+SMALL DEFECT, filed, not fixed: the `[CEASEFIRE] War ended` label on a rejected request. It misled this analysis for
+a whole iteration. A logging change only.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (OD_WARMASK_PROBE; pre-edit copy scratchpad/pre387-AISystem.cpp),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. data/ai/model.bin unchanged.
+
+PENDING COMMIT (src/ai/AISystem.cpp, the journal-387 hunks; the file also carries journals 370, 373, 377 and 386 hunks):
+
+    Count why the AI's war declaration is off the menu
+
+    OD_WARMASK_PROBE counts, for the mask's own calls and the country
+    OD_ACT_HIST_CID names, which exit findWarTarget takes: the war limit,
+    the war bar, a guarantor, diplomacy. Counters only; hash unchanged.
+
+USER DECISION after journal 387b (2026-09-15 ~14:35): **TEST A CEASEFIRE RULE.** Next iteration: a hand-written,
+gated rule in the AI's request_ceasefire decision. Accept when the war has stalled for N turns and is the only thing
+filling the one-war slot (memory rules-beat-training; diplomacy-rules-not-rewards: fixed ends are resolver rules).
+Pre-register N, the stall test and the prediction before any run. Bench on the three rung seats plus 1914:SWE, for
+both 2894ddfc and N24, same binary, gate off as the control.
+
+## 388 — iteration: a stalled-war ceasefire rule (user decision), benched on both models
+
+PRE-REGISTERED, written before any run.
+
+WHAT THE EVAL ALREADY SAID, found while designing this (the MODEL cohort in --bench-seat is the seat alone, "0/1 alive").
+Seed 799427057, the ceasefire block of the [EVAL] report:
+    2894ddfc's Sweden: asked 7; by state winning 0/6, losing 1/1; accepted by rule A 1, refused by rule B 0
+    N24's Sweden:      asked 6; by state winning 5/6, losing 0/0; accepted by rule A 0, refused by rule B 1
+So the six refusals were the HEAD's, all in cfState "winning" (army > 1.25x the asker's, no provinces lost). The
+existing rules did not cause them. N24's head accepts 5 of 6 in the same state.
+
+CHANGE. **Rule C**, after rules A and B in decideDiplomacy's ceasefire block, gated OD_CEASEFIRE_STALL=<turns> (off by
+default). Accept request_ceasefire when: the peace costs nothing (cfNet >= 0, no land ceded); we are not losing
+(cfState != 1; rule A covers losing); foreignWarCount >= AI_MAX_CONCURRENT_WARS (the war fills the slot); and
+m_turn - m_warSince >= <turns>. **N = 50, fixed now:** every refusal traced came at war age >= 66 (the earliest request
+reached was t67), and N24 accepted from t94 on. At exit: `[CFSTALL] ceasefires accepted by the stall rule: n`.
+The rule is WORLD-WIDE: decideDiplomacy's rules bind the scripted cohort too (the comment above rule A says so),
+so the world moves, not just the seat (memory global-knobs-move-the-world).
+
+DESIGN. New pin (pin388). Gate off must reproduce the 1914:FRA reference 2684914276584272262/81340, which makes the stored
+gate-off rows usable as controls: j383-*-s3 (seed set 3, 4 seats) and j384-*-swe (1914:SWE, 32 seeds). Gate on
+(OD_CEASEFIRE_STALL=50), for 2894ddfc and N24:
+    j388-fix-s3, j388-n24-s3     seed set 3, 1914:FRA/1939:USA/modern:CHN/1914:SWE rung
+    j388-fix-swe, j388-n24-swe   1914:SWE, journal 384's 32 seeds
+Plus one firing check: 1914:SWE seed 799427057, both models, reading [CFSTALL] and the [EVAL] ceasefire lines.
+
+PREDICTIONS:
+  - **2894ddfc + rule: 1914:SWE land share rises significantly from 2.98** (32 seeds, permutation p < 0.05), and its
+    annihilations fall from 15/32. On the three rung seats it stays within the floor of its gate-off row (j383: 431).
+  - **N24 + rule: little change.** SWE is not significantly different from 10.67, and the rung seats are within the floor of
+    j383's 351. N24 already accepts in this state.
+DECISION RULE. KEEP (for the 2894ddfc candidacy) if its SWE rises at p < 0.05 AND its 3-seat per-seed rating does not fall
+beyond the floor AND N24 shows no significant harm on SWE or beyond-floor harm on the rung seats. Otherwise PARK, with the
+reason stated.
+
+RESULT (journal 388). The pre-registration above was written before any run.
+
+BUILD pin388 (md5 f2776041), shared tree HEAD 31c5ae4 plus loop hunks. **Gate off reproduces the reference**: 1914:FRA
+2684914276584272262/81340. HEAD's move since pin387 changed no decision there, and the stored gate-off rows stand as
+controls. Gate on changes play (FRA 3854077948475212806/99120).
+
+FIRING (OD_CEASEFIRE_STALL=50): 23 accepts in 2894ddfc's world, 33 in N24's (1914:FRA seed 13579: 23). World-wide, as
+registered. Firing check on 1914:SWE seed 799427057: 2894ddfc's Sweden still 0.0 (the seed-799427057 case is NOT
+rescued); N24's 27.6 -> 30.5.
+
+    comparison (gate on vs stored gate off, same seeds)          2894ddfc                        N24
+    1914:SWE, 32 seeds, land (PRIMARY)                     2.98 -> 7.73  +4.75  p 0.031        10.67 -> 12.51  +1.83  p 0.547
+    1914:SWE, 32 seeds, annihilated                          15/32 -> 13/32                      6/32 -> 8/32
+    3 rung seats, seed set 3, per-seed rating              431 -> 462  +31  floor 59  no       351 -> 407  +56  floor 96  no
+      FRA / USA / CHN land                                 +6.94 / +0.49 / +5.46 (p .14/.93/.29)  +5.79 / +2.18 / +0.94
+    with the rule on in both, 2894ddfc vs N24: rung +55 (floor 89, no), 1914:SWE -4.78 (p 0.107)
+
+VERDICT, by the rule fixed before the run: **KEEP.** Every clause holds: 2894ddfc's Sweden rises at p = 0.031, one
+pre-registered comparison; its rung rating does not fall (+31); N24 shows no significant harm on Sweden (+1.83,
+p 0.55) or on the rung seats (+56). The prediction held on both models.
+
+WHAT IT DOES NOT DO, stated beside the KEEP:
+  - **It narrows 2894ddfc's Sweden gap, and does not close it.** Gate off it was -7.70 (p 0.001, journal 384). With the
+    rule on in both models it is -4.78 (p 0.107), no longer significant but not gone. Annihilations barely move
+    (15 -> 13). The mean rises more than the median (2.25 -> 3.45), so a few worlds carry the gain. The traced seed
+    799427057 is not rescued.
+  - **Both models' rung ratings rose** (+31, +56). Neither clears, and a world-wide rule that ends stalled wars for
+    everyone moves the world too. Not claimed as a seat gain.
+  - Set 3's 8-seed SWE row for N24 reads 9.14 -> 3.36 (p 0.09). The 32-seed SWE test is the registered statistic, and it
+    says +1.83. Quoted so the 8-seed number cannot be found later and read as harm.
+
+WHERE THE CANDIDATE STANDS: with rule C on for both, 2894ddfc leads N24 by +55 on the rung seats (set 3, not clearing)
+and trails by -4.78 on 1914:SWE (32 seeds, not significant). The trade has shrunk from "great powers vs a lost Sweden" to
+two differences the bench cannot resolve at these sizes. Nothing here has been re-run on seed sets 1/2 or the rush/hood
+seats with the rule on.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (rule C, gated; pre-edit copy scratchpad/pre388-AISystem.cpp),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j388-{fix,n24}-{s3,swe}).
+data/ai/model.bin unchanged.
+
+PENDING COMMIT (src/ai/AISystem.cpp, the journal-388 hunk):
+
+    Accept a ceasefire from a stalled war that fills the war slot, behind a gate
+
+    With one concurrent war allowed, an unfinished war blocks every other
+    declaration; a trained model's Sweden refused Norway's ceasefire for
+    200 turns from a 'winning' position it never pressed, never expanded
+    and was destroyed by rebellion. OD_CEASEFIRE_STALL=<turns> accepts a
+    free ceasefire when not losing, the war fills the slot and it has run
+    that long. At 50 turns: that Sweden 2.98 -> 7.73 land (p 0.031, 32
+    seeds), no significant harm to N24. Off by default.
+
+USER DECISION after journal 388 (2026-09-15 ~15:50): **RE-CHECK 2894ddfc WITH RULE C ON.** Next iteration, on pin388 with
+OD_CEASEFIRE_STALL=50 for both models: 2894ddfc vs N24 on seed sets 1 and 2 (3 rung seats) and the rush/hood guard
+(1914:FRA:rush, 1939:NOR:hood, journal 380's 32 seeds). Pre-register the comparisons first. If 2894ddfc still leads on the
+rung seats and is not worse elsewhere, the ship question goes back to the user.
+
+## 389 — iteration: re-check 2894ddfc against N24 with rule C on (user decision)
+
+PRE-REGISTERED, written before any run.
+
+DESIGN. pin388 (md5 f2776041; fork fix on by default; rule C available). OD_CEASEFIRE_STALL=50 for BOTH models, so the
+comparison is model vs model inside the game the rule creates. 400 turns, d3, arms side by side:
+  - seed set 1 (13579 ... 8080808) and seed set 2 (11111 ... 6180339), 1914:FRA, 1939:USA, modern:CHN rung:
+    j389-{fix,n24}-s1, j389-{fix,n24}-s2
+  - 1914:FRA:rush and 1939:NOR:hood on journal 380's 32 seeds: j389-{fix,n24}-rh
+Already in hand for this game (journal 388): seed set 3, rung +55 (floor 89, did not clear), and 1914:SWE 32 seeds, -4.78 (p 0.107).
+
+STATISTICS, fixed now:
+  - RUNG, per seed set: per-seed rating difference 2894ddfc - N24 against the floor --compare prints, plus land per seat.
+  - RUSH: 1914:FRA:rush collapsed (< 1.5) out of 32, Fisher exact two-sided; land share by permutation test.
+  - HOOD: 1939:NOR:hood land share, permutation test.
+
+DECISION, fixed now. **"Still leads and not worse elsewhere"** means ALL of:
+  (a) a positive rung difference on both seed sets 1 and 2, clearing the floor on at least one; set 3's +55 is counted
+      as a third, non-clearing positive;
+  (b) FRA:rush and NOR:hood not significantly WORSE (p < 0.05) for 2894ddfc;
+  (c) the SWE result of journal 388 (-4.78, p 0.107) stands as it is, not re-run.
+All three hold: the ship question goes to the user with the full table. Otherwise: not recommended, with the failing clause named.
+
+PREDICTION, committed: (a) holds, with differences smaller than the rule-off +83/+133 because rule C lifted N24 more than
+2894ddfc on set 3 (+56 vs +31); probably one set clears. (b) holds: no harm, and FRA:rush points 2894ddfc's way as in journal 380.
