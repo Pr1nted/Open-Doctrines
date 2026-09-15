@@ -25,12 +25,12 @@ channel as an Activity.
   licence and needs no permission.
 - Scale: 1,641 provinces, six historical scenarios (1914, 1918, 1939, 1945, 1962 and
   a present-day map), plus a map editor.
-- Languages: 21, including Arabic, Chinese, Czech, German, Hindi, Japanese, Korean,
+- Languages: 44, including Arabic, Chinese, Czech, German, Hindi, Japanese, Korean,
   Polish, Turkish, Ukrainian and Urdu.
 - Platforms: web browser, Windows, macOS, Linux, Android, Discord Activity.
 - Multiplayer joins by invite code and needs no port forwarding.
 - Mods are compiled to WebAssembly from Go, Rust, Zig, C and others, and run sandboxed.
-- Current version: 1.2.0a.
+- Current version: 1.2.1a.
 
 ## Links
 

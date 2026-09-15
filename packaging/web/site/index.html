@@ -42,7 +42,7 @@
      crawlers behind AI assistants. Not decoration: chatgpt.com sent more visits to
      the itch page last month than Bing did, and an assistant can only recommend a
      game accurately if it can read the facts somewhere. Everything here is checked
-     against the build -- 21 languages from data/lang, version from VERSION. -->
+     against the build -- 44 languages from data/lang, version from VERSION. -->
 <script type="application/ld+json">
 {
  "@context": "https://schema.org",
@@ -78,28 +78,52 @@
   "SinglePlayer",
   "MultiPlayer"
  ],
- "softwareVersion": "1.2.0a",
+ "softwareVersion": "1.2.1a",
  "inLanguage": [
   "af",
   "ar",
+  "az",
   "be",
   "bg",
+  "bs",
   "cs",
+  "da",
   "de",
+  "el",
   "en",
+  "eo",
   "es",
+  "et",
+  "fi",
   "fr",
   "hi",
+  "hr",
+  "hu",
+  "hy",
   "it",
   "ja",
+  "ka",
   "kk",
   "ko",
+  "ky",
+  "la",
+  "lt",
+  "lv",
+  "mn",
+  "nb",
+  "nl",
   "pl",
+  "pt",
+  "ro",
   "sk",
   "sl",
+  "sq",
+  "sr",
+  "sv",
   "tr",
   "uk",
   "ur",
+  "vi",
   "zh"
  ],
  "author": {
@@ -158,6 +182,7 @@
     <nav>
       <a href="/" aria-current="page">Home</a>
       <a href="/classroom">For teachers</a>
+      <!-- OPEN-FLY:BEGIN --><a href="/#open-fly">Open Fly</a><!-- OPEN-FLY:END -->
       <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
       <a href="https://discord.gg/wqS65jzVv5">Discord</a>
       <a class="play" href="/play/">Play now</a>
@@ -232,12 +257,65 @@
            anything, and everyone is on whatever was last deployed.</p>
       </div>
       <div class="card">
-        <h3>Translated into 21 languages</h3>
+        <h3>Translated into 44 languages</h3>
         <p>Arabic, Chinese, Czech, German, Hindi, Japanese, Korean, Polish,
            Turkish, Ukrainian, Urdu and more — the interface, not just the menus.</p>
       </div>
     </div>
   </section>
+
+  <!-- OPEN-FLY:BEGIN -->
+  <!-- ── THE SIDE PROJECT, FRAMED BUT NEVER AUTO-LOADED ──
+       The framed page is about 65 MB and pins a core simulating 138,639
+       neurons. `loading="lazy"` is NOT enough: lazy loading fires the moment
+       the box scrolls into view, which is every visitor who reads this far.
+       The iframe is created on click, so a visitor who scrolls past pays for
+       one still image.
+
+       No `sandbox` attribute, deliberately. Open Fly needs module workers,
+       crypto.subtle and a file picker for .odmap import; a sandbox loose
+       enough to allow those (allow-scripts allow-same-origin) protects
+       nothing, so it would be decoration.
+
+       Everything between the OPEN-FLY markers is removed at deploy time by
+       tools/deploy-web.sh when open-fly.pages.dev is not serving yet. -->
+  <section class="narrow" id="open-fly">
+    <p class="label">Side project · Open Fly</p>
+    <h2>A fruit-fly brain plays Open Doctrines</h2>
+    <p>
+      138,639 simulated neurons, wired from the FlyWire connectome of a real
+      fruit fly, playing the game live in your browser. It is not trained, it
+      has no concept of a country, and it plays badly — that is the interesting
+      part. You can watch it think while it does.
+    </p>
+    <div class="fly-frame" data-src="https://open-fly.pages.dev/?ref=opendoctrines">
+      <img src="/img/open-fly-thumbnail.webp" width="1280" height="720" loading="lazy"
+           alt="A fly sat at a computer playing Open Doctrines, its brain lit up beside it">
+      <button type="button" class="play">
+        Watch the fly play <small>about 65 MB</small>
+      </button>
+    </div>
+    <p class="note">
+      <a href="https://open-fly.pages.dev/" rel="noopener">Open it full screen</a> ·
+      <a href="https://pr1nted.itch.io/open-fly" rel="noopener">itch.io</a> ·
+      <a href="https://open-fly.pages.dev/devlog/" rel="noopener">Devlog</a>
+    </p>
+  </section>
+  <script>
+  /* Swap the still for the page only on a click. Nothing downloads for the
+     visitor who scrolls past, which is most of them. */
+  document.querySelectorAll(".fly-frame").forEach(function (box) {
+    box.querySelector("button").addEventListener("click", function () {
+      var f = document.createElement("iframe");
+      f.src = box.dataset.src;
+      f.title = "Open Fly: a simulated fruit-fly brain playing Open Doctrines";
+      f.allow = "fullscreen";
+      box.replaceChildren(f);
+      f.focus();
+    });
+  });
+  </script>
+  <!-- OPEN-FLY:END -->
 
   <section class="narrow">
     <h2>It is an alpha, and says so</h2>

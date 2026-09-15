@@ -90,6 +90,52 @@ test ! -e "$out/play/analytics.js" || {
 mkdir -p "$out/img"
 cp docs/img/timelapse-political.gif "$out/img/timelapse.gif"
 
+# ── OPEN FLY IS A SEPARATE SITE, AND MAY NOT BE UP YET ──
+#
+# index.html carries a section that frames https://open-fly.pages.dev, and
+# every page's nav links to it. That site is its own Cloudflare Pages project
+# on its own release trigger, so the two can fall out of step in the direction
+# that matters: this site can ship the section before Open Fly exists, leaving
+# a button on the front page that opens a 404.
+#
+# Open-Fly/docs/website.md handles that with a checklist item -- "merge the
+# website section after confirming Open Fly is live". A checklist is a thing to
+# forget, and this site has fixes queued that must be deployable TODAY, before
+# Open Fly goes live. So the decision is made mechanically, on every deploy,
+# rather than remembered once.
+#
+# ASK WHAT THE PAGE IS, NOT WHETHER IT ANSWERS. Cloudflare Pages replies 200
+# with index.html for paths it does not have, and an empty project answers too
+# -- this script already carries two scars from exactly that, above. So the
+# test is the title a real Open Fly deploy serves (Open-Fly/web/index.html),
+# not the status code.
+fly_body=$(curl -fsS --max-time 15 "https://open-fly.pages.dev/" 2>/dev/null || true)
+if printf '%s' "$fly_body" | grep -qi '<title>[[:space:]]*Open Fly'; then
+    echo "  open fly: live -- keeping the section"
+    # Fail loudly rather than ship the section with a broken still: a missing
+    # image here is invisible in testing and obvious to a visitor.
+    [ -f docs/img/open-fly-thumbnail.webp ] || {
+        echo "the Open Fly section is being kept, but docs/img/open-fly-thumbnail.webp is missing" >&2
+        exit 1
+    }
+    cp docs/img/open-fly-thumbnail.webp "$out/img/open-fly-thumbnail.webp"
+else
+    echo "  open fly: not serving yet -- stripping the section and its nav links"
+    python3 - "$out" <<'STRIP'
+import pathlib, re, sys
+out = pathlib.Path(sys.argv[1])
+pat = re.compile(r"[ \t]*<!-- OPEN-FLY:BEGIN -->.*?<!-- OPEN-FLY:END -->\n?", re.S)
+for p in sorted(out.glob("*.html")):
+    s = p.read_text(encoding="utf-8")
+    s2, n = pat.subn("", s)
+    if n:
+        p.write_text(s2, encoding="utf-8")
+        print(f"     stripped {n} block(s) from {p.name}")
+    if "OPEN-FLY" in s2:
+        raise SystemExit(f"an OPEN-FLY marker survived the strip in {p.name}")
+STRIP
+fi
+
 # ── THE LINK CARD, SERVED FROM THE ROOT FOR EVERY PAGE ──
 #
 # One image for the whole site: the og:image tags in every page point at this
