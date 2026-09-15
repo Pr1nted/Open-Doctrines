@@ -228,6 +228,19 @@ async function lfgCommand(env: Env, interaction: any): Promise<Record<string, un
             : "Posted. Hosts will see it in the game too.");
 }
 
+/**
+ * The /lfg command's definition, for the script that registers it.
+ *
+ * Served rather than duplicated in tools/register-lfg-command.mjs: the options
+ * Discord SHOWS and the options lfgCommand() READS have to be the same list,
+ * and a hand-copied JSON file in a tools directory is exactly the copy that
+ * silently stops matching the day somebody adds a field. Nothing here is
+ * secret -- Discord shows this shape to everyone who types a slash.
+ */
+export function lfgCommandDefinition(): Response {
+    return json(LFG_COMMAND, 200, { "cache-control": "public, max-age=300" });
+}
+
 // ---------------------------------------------------------------------- join
 
 /**

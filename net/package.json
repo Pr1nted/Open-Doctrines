@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "e2e": "node test/e2e.mjs"
+    "e2e": "node test/e2e.mjs",
+    "register-lfg": "node tools/register-lfg-command.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",

@@ -289,7 +289,41 @@
     <div id="form-said"></div>
   </section>
 
-  <!-- ─────────────────────────── 4. your listings ──────────────────── -->
+  <!-- ─────────────────────────── 4. automate it ────────────────────── -->
+  <section class="step" id="s-keys" hidden>
+    <h2><span class="n">Optional</span>Publish from your release pipeline</h2>
+    <p class="note" style="margin-top:0">
+      A <strong>publish key</strong> lets a build server update this listing without a
+      browser. It can publish and read your own listings — and nothing else: it cannot
+      withdraw a listing, touch your account, or agree to the guidelines on your behalf.
+      Treat it like any other CI secret.
+    </p>
+
+    <div class="row" style="align-items:end">
+      <label for="k-label">Name a new key
+        <span class="hint">So you know which one to revoke later.</span>
+        <input type="text" id="k-label" autocomplete="off" placeholder="GitHub Actions" maxlength="60">
+      </label>
+      <div><button class="btn ghost" id="k-new" type="button">Create a key</button></div>
+    </div>
+    <div id="k-said"></div>
+    <div class="mine" id="k-list"></div>
+
+    <h3>What to run</h3>
+    <p class="note" style="margin-top:0">
+      Built from the form above, so it already carries your details. The hash is
+      computed from the file at release time — which is what makes this worth
+      automating.
+    </p>
+    <pre class="copy" id="k-snippet" style="white-space:pre-wrap;overflow:auto;max-height:340px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px"></pre>
+    <p class="note">
+      A changed file goes back into the review queue automatically, so a release
+      appears once the check passes. Poll
+      <code>GET /mods/mine</code> with the same key if your pipeline wants to wait for it.
+    </p>
+  </section>
+
+  <!-- ─────────────────────────── 5. your listings ──────────────────── -->
   <section class="step" id="s-mine" hidden>
     <h2>Your listings</h2>
     <div class="mine" id="mine"></div>
@@ -484,6 +518,7 @@
     drawWho();
     loadGuidelines();
     loadMine();
+    loadKeys();
   }
 
   function drawWho() {
@@ -758,6 +793,95 @@
         say("form-said", "bad", e.message);
       });
   });
+
+  // ───────────────────────────── publish keys ─────────────────────────
+
+  function loadKeys() {
+    api("/mods/keys").then(function (r) {
+      show("s-keys", true);
+      var box = $("k-list");
+      box.replaceChildren();
+      (r.keys || []).forEach(function (k) {
+        var row = el("div", "mine-row");
+        row.appendChild(el("span", "nm", k.label));
+        row.appendChild(el("span", "meta",
+          "created " + new Date(k.created * 1000).toISOString().slice(0, 10)));
+        var sp = el("span", "sp");
+        var rv = el("button", "btn plain", "Revoke");
+        rv.type = "button";
+        rv.addEventListener("click", function () {
+          if (!confirm("Revoke “" + k.label + "”? Anything using it stops publishing.")) return;
+          rv.disabled = true;
+          api("/mods/keys/revoke", { method: "POST", body: { id: k.id } })
+            .then(loadKeys)
+            .catch(function (e) { rv.disabled = false; alert(e.message); });
+        });
+        sp.appendChild(rv);
+        row.appendChild(sp);
+        box.appendChild(row);
+      });
+      snippet(null);
+    }).catch(function () { /* not fatal: publishing by hand still works */ });
+  }
+
+  $("k-new").addEventListener("click", function () {
+    $("k-new").disabled = true;
+    api("/mods/keys", { method: "POST", body: { label: $("k-label").value.trim() } })
+      .then(function (r) {
+        $("k-new").disabled = false;
+        $("k-label").value = "";
+        /* Shown ONCE, because it is not stored. Said plainly rather than in
+           small print: there is no way to recover it afterwards. */
+        var box = el("div", "said good");
+        box.appendChild(el("b", null, "Copy this now — it cannot be shown again. "));
+        box.appendChild(el("code", null, r.token));
+        $("k-said").replaceChildren(box);
+        snippet(r.token);
+        loadKeys();
+      })
+      .catch(function (e) { $("k-new").disabled = false; say("k-said", "bad", e.message); });
+  });
+
+  /* The command to run, built from whatever is in the form.
+   *
+   * Filled in from the author's own fields rather than left as placeholders,
+   * because a snippet somebody has to hand-edit in six places is a snippet they
+   * get wrong once and then abandon. */
+  function snippet(token) {
+    var modules = [];
+    $("f-modules").querySelectorAll("input:checked").forEach(function (c) { modules.push(c.value); });
+    var tags = $("f-tags").value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+
+    var body = {
+      id: $("f-id").value.trim() || "com.example.your-mod",
+      name: $("f-name").value.trim() || "Your Mod",
+      version: "$VERSION",
+      summary: $("f-summary").value.trim() || "What it does, in one line.",
+      page: $("f-page").value.trim() || "https://example.com/your-mod",
+      downloadUrl: $("f-download").value.trim() || "https://example.com/your-mod.odmod",
+      sha256: "$SHA",
+      gearbox: $("f-gearbox").value.trim() || "1.2",
+      side: $("f-side").value,
+      modules: modules.length ? modules : ["Core"],
+      tags: tags
+    };
+    /* The heredoc below is UNQUOTED, so the shell expands $SHA and $VERSION
+       inside it. They therefore go in as plain "$SHA" -- an earlier version
+       wrapped them in '"..."' as well, which would have emitted the quotes
+       literally into the JSON and produced a hash nothing could match. */
+    var json = JSON.stringify(body, null, 2);
+
+    $("k-snippet").textContent =
+      "# In your release job, after the .odmod is built.\n" +
+      "# OD_PUBLISH_KEY is " + (token ? "the key above" : "the key you create above")
+        + ", kept as a CI secret.\n\n" +
+      "SHA=$(shasum -a 256 your-mod.odmod | cut -d' ' -f1)\n" +
+      "VERSION=${GITHUB_REF_NAME#v}\n\n" +
+      "curl -fsS " + API + "/mods \\\n" +
+      "  -H \"authorization: Bearer $OD_PUBLISH_KEY\" \\\n" +
+      "  -H \"content-type: application/json\" \\\n" +
+      "  -d \"$(cat <<JSON\n" + json + "\nJSON\n)\"\n";
+  }
 
   // ──────────────────────────── your listings ──────────────────────────
 

@@ -527,6 +527,34 @@ the server, so the link exists at that instant regardless. It is used in exactly
 one place, is never given to servers, and after 30 days a report can no longer
 be connected to anyone. The route says so rather than guessing.
 
+## Looking for a game
+
+`/lfg` is one board with two windows onto it: a listing posted from the game
+appears in `#looking-for-a-game`, and a listing posted there with the slash
+command appears in the game. The rules the channel pins are enforced in
+`src/lfg/board.ts` and nowhere else; `test/lfg.test.ts` has one test per rule.
+
+| Secret | What it does |
+|---|---|
+| `DISCORD_BOT_TOKEN` | Posts and edits the channel's listing messages |
+| `DISCORD_PUBLIC_KEY` | Verifies that an interaction really came from Discord |
+| `DISCORD_LFG_CHANNEL_ID` | Which channel listings are posted in |
+
+**All three are optional.** With none of them set the board still works in the
+game and simply has no Discord half — the right behaviour for a fork that has
+not set one up. Reports go to `MODERATION_DISCORD_WEBHOOK`, the same place ban
+notices already go.
+
+It is an HTTP-interactions app, so there is no gateway connection and nothing to
+keep running. The trade-off is that it cannot read ordinary messages, only
+`/lfg` and button presses — which is why the channel should be locked to the
+command. Setup, in order, is in
+[docs/looking-for-a-game.md](../docs/looking-for-a-game.md).
+
+Listings live in a SQLite Durable Object rather than KV: a listing is a write,
+and the free plan's 1,000 KV writes a day are the same budget account creation
+spends, so a board people used would start failing signups.
+
 ## Running a game server
 
 `POST /server/register` once, signed in, and keep the `serverCredential` it

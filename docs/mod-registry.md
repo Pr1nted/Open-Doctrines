@@ -160,6 +160,70 @@ A lookup that fails is never recorded. An absent scan renders as `unscanned`,
 which is true; writing a verdict because the lookup failed is the one thing this
 must not do.
 
+## Automating a release
+
+Publishing needs a session token, which comes from a device flow that opens a
+consent screen. That is right for a person and useless in CI, so an author can
+mint a **publish key** and hand it to their release job.
+
+```
+POST /mods/keys          mint one (session only; shown once, never stored)
+GET  /mods/keys          list your own
+POST /mods/keys/revoke   revoke by id
+```
+
+A key is `odmp_` + 43 base64url characters, stored only as
+`HMAC(IDENT_KEY, "pkgkey:" + token)`. A copy of the database lets nobody publish
+as anybody.
+
+### It is a third kind of credential, and the narrowest
+
+`auth/token.ts` says the session token "is the only thing that can call
+`/account/*`", and the audience split is what makes that true. A publish key
+that could stand in for a session token would quietly undo it — so
+`authenticate()` never returns an account for one, and only the publish path
+resolves it.
+
+| Can | Cannot |
+|---|---|
+| Publish or update a listing | Withdraw a listing |
+| Read `/mods/mine` | Mint another publish key |
+| | Anything under `/account/*`, `/ticket` or `/moderation` — **including when the account carries the developer badge** |
+
+Withdrawing is left out deliberately. It is the one irreversible thing an author
+can do to their own work — the download counts go with it — automating it buys
+nobody anything, and a leaked key that can only ever *add* is a far smaller
+problem than one that can delete.
+
+**Agreeing to the guidelines is still a person's act.** A key cannot accept
+them. When they change, the pipeline starts failing with a message saying so and
+a human goes and reads them. That is the correct failure: consent a script can
+give on your behalf is not consent.
+
+### What a release job runs
+
+The publish page generates this from the author's own form values, so there is
+nothing to hand-edit:
+
+```bash
+SHA=$(shasum -a 256 your-mod.odmod | cut -d' ' -f1)
+VERSION=${GITHUB_REF_NAME#v}
+
+curl -fsS https://opendoctrines-net.opendoctrines.workers.dev/mods \
+  -H "authorization: Bearer $OD_PUBLISH_KEY" \
+  -H "content-type: application/json" \
+  -d "$(cat <<JSON
+{ "id": "com.example.your-mod", "version": "$VERSION", "sha256": "$SHA", ... }
+JSON
+)"
+```
+
+The heredoc is unquoted so the shell expands `$SHA` and `$VERSION` inside it.
+
+A changed hash re-enters the review queue automatically, so a release appears
+once the check passes. A job that wants to wait can poll `GET /mods/mine` with
+the same key and watch `status` go from `pending` to `listed`.
+
 ## Moderation is scoped, and that is the feature
 
 Mod reports have their own queue (`pkg:report:`), their own reasons

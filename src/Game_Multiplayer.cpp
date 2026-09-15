@@ -2018,6 +2018,38 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                 mpBeginReachTest();
             y += bh + 6;
 
+            // ── WHERE A HOST ACTUALLY IS WHEN THEY WANT PLAYERS ──
+            //
+            // Sitting in an empty lobby, with the code on screen and nobody to
+            // give it to. Asking them to leave this page, find the board and
+            // retype what the lobby already knows is asking most people to
+            // give up instead. The listing is filled in from this lobby and
+            // shown for editing, not posted behind their back.
+            {
+                const bool listed = !m_lfgMineId.empty();
+                const MpButton advertise = buttonAt((float)(centerX - bw - 6), (float)y,
+                                                    (float)(bw * 2 + 12), (float)bh, mouse);
+                // Both labels on one line: tools/i18n_extract.py reads the
+                // literals off the drawButton call, and one pushed onto a
+                // continuation line is a button that is English in every
+                // language while the report says the file is done.
+                drawButton(advertise, listed ? "Take my listing down" : "Find players for this game",
+                           15, listed ? Color{58, 40, 40, 230} : Color{44, 62, 50, 230},
+                           listed ? Color{190, 130, 130, 210} : Color{130, 190, 140, 210});
+                if (click && advertise.hovered) {
+                    if (listed) {
+                        lfgCloseMine();
+                    } else if (!AccountClient::get().account().valid()) {
+                        mpNote("Sign in first -- a listing is posted under your nickname.", true);
+                    } else {
+                        lfgDraftFromLobby();
+                        m_mpPage = MpPage::Post;
+                        m_mpFocus = -1;
+                    }
+                }
+                y += bh + 6;
+            }
+
             if (!m_mpReachNote.empty()) {
                 const Color c = m_mpReach == MpReach::Reachable ? Color{150, 210, 170, 255}
                               : m_mpReach == MpReach::Testing   ? Color{200, 200, 150, 255}

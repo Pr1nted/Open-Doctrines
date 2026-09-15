@@ -14,7 +14,8 @@
 
 import type { Env } from "./env.js";
 import {
-    authenticate, fail, json, preflight, rateLimit, readJson, text, wantsHtml, withCors,
+    authenticate, bearer, fail, json, preflight, rateLimit, readJson, text, wantsHtml,
+    withCors,
 } from "./http.js";
 import {
     clientCredentials, isProviderId, PROVIDERS, type ProviderId,
@@ -40,7 +41,8 @@ import { isAdmin, setBadge } from "./accounts/badges.js";
 import { applyEdit, forClients, readAll, type Announcement, type Edit } from "./announcements/store.js";
 import { isLive } from "./live/lookup.js";
 import {
-    discordInteractions, joinPage, lfgClose, lfgList, lfgModerate, lfgModerationList, lfgPost, lfgReport,
+    discordInteractions, joinPage, lfgClose, lfgCommandDefinition, lfgList, lfgModerate,
+    lfgModerationList, lfgPost, lfgReport,
 } from "./lfg/routes.js";
 import { createLink, useLink } from "./live/viewerlink.js";
 import { safeChannel } from "./live/platforms.js";
@@ -72,6 +74,10 @@ import {
 } from "./mods/registry.js";
 import { dayNumber, forgetCounts, readCounts, recordHit } from "./mods/counts.js";
 import { lookup as scanLookup, reachable } from "./mods/scan.js";
+import {
+    list as listKeys, looksLikeKey, mint as mintKey, publicKey, publisher,
+    revoke as revokeKey,
+} from "./mods/keys.js";
 import {
     complete as reviewDone, enqueue as reviewEnqueue, exhausted as reviewExhausted,
     lease as reviewLease, position as reviewPosition, stats as reviewStats,
@@ -260,6 +266,7 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (get  && path === "/moderation/lfg") return lfgModerationList(request, env);
     if (post && path === "/moderation/lfg") return lfgModerate(request, env);
     if (post && path === "/discord/interactions") return discordInteractions(request, env);
+    if (get  && path === "/discord/command") return lfgCommandDefinition();
 
     // The page behind a Join button in Discord: a button can only open a URL,
     // and the game's own opendoctrines:// scheme is not one Discord accepts.
@@ -284,6 +291,11 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     if (get  && path === "/mods/guidelines") return modGuidelines();
     if (post && path === "/mods/guidelines") return modAcceptGuidelines(request, env);
     if (get  && path === "/mods/mine") return modMine(request, env);
+    // Publish keys, for a release pipeline. Session-only, deliberately: a key
+    // that could mint another key would be a credential that renews itself.
+    if (get  && path === "/mods/keys") return modKeyList(request, env);
+    if (post && path === "/mods/keys") return modKeyCreate(request, env);
+    if (post && path === "/mods/keys/revoke") return modKeyRevoke(request, env);
     if (post && path === "/mods/report") return modReport(request, env);
     if (get  && path === "/mods") return modBrowse(env, url);
     if (post && path === "/mods") return modPublish(request, env);
@@ -1744,9 +1756,23 @@ async function modOne(env: Env, id: string): Promise<Response> {
     });
 }
 
+/**
+ * Whoever is allowed to publish: a signed-in person, or their release pipeline.
+ *
+ * Only the two mod routes that ADD something call this. Everything else keeps
+ * using authenticate(), so a publish key reaches nothing under /account,
+ * /moderation or /ticket -- see mods/keys.ts for why that separation is the
+ * whole design rather than a detail of it.
+ */
+function publisherOrAccount(request: Request, env: Env): Promise<Account | null> {
+    return looksLikeKey(bearer(request))
+        ? publisher(request, env)
+        : authenticate(request, env);
+}
+
 async function modPublish(request: Request, env: Env): Promise<Response> {
-    const account = await authenticate(request, env);
-    if (!account) return fail(401, "unauthorized", "Sign in first.");
+    const account = await publisherOrAccount(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in, or send a publish key.");
 
     // The scoped restriction. Note what is NOT checked here: banInForce. A ban
     // stops somebody joining a game and is decided on different evidence; this
@@ -1757,8 +1783,12 @@ async function modPublish(request: Request, env: Env): Promise<Response> {
                     { restricted: account.restricted?.mods });
     }
     if (account.modGuidelines?.version !== GUIDELINES_VERSION) {
+        // A publish key cannot agree on your behalf, so this is what a pipeline
+        // sees when the guidelines change. That is the intended failure:
+        // consent a script can give for you is not consent.
         return fail(403, "guidelines",
-                    "Read and agree to the modding guidelines first.",
+                    "The modding guidelines need agreeing to before publishing. "
+                    + "Open the publish page and read them.",
                     { version: GUIDELINES_VERSION });
     }
 
@@ -1799,8 +1829,9 @@ async function modPublish(request: Request, env: Env): Promise<Response> {
 
 /** The caller's own listings, including any that are unlisted. */
 async function modMine(request: Request, env: Env): Promise<Response> {
-    const account = await authenticate(request, env);
-    if (!account) return fail(401, "unauthorized", "Sign in first.");
+    // A pipeline reads this to see whether its last publish passed review.
+    const account = await publisherOrAccount(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in, or send a publish key.");
 
     const ids = await listOwned(env, account.id);
     const mods = [];
@@ -1995,4 +2026,49 @@ async function drainReviewQueue(env: Env): Promise<void> {
         await reviewed(env, listing, v.status, scan ?? undefined, v.hold);
         await reviewDone(env, item.id);
     }
+}
+
+
+/** An author's own publish keys. Never the keys themselves -- they are gone. */
+async function modKeyList(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+    return json({ keys: (await listKeys(env, account.id)).map(publicKey) });
+}
+
+/**
+ * Mint one.
+ *
+ * SESSION ONLY. A publish key must not be able to mint another publish key, or
+ * revoking the one that leaked would not end anything.
+ *
+ * The token comes back once and is never stored, so it cannot be shown again.
+ */
+async function modKeyCreate(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const body = await readJson<{ label?: string }>(request);
+    const result = await mintKey(env, account, (body?.label ?? "").trim());
+    if ("ok" in result && result.ok === false) {
+        return fail(result.status, result.code, result.message);
+    }
+    const m = result as { token: string; key: Parameters<typeof publicKey>[0] };
+    return json({
+        key: publicKey(m.key),
+        token: m.token,
+        note: "Copy this now. It is not stored and cannot be shown again.",
+    });
+}
+
+async function modKeyRevoke(request: Request, env: Env): Promise<Response> {
+    const account = await authenticate(request, env);
+    if (!account) return fail(401, "unauthorized", "Sign in first.");
+
+    const body = await readJson<{ id?: string }>(request);
+    if (!body?.id) return fail(400, "bad_request", "Which key?");
+    // Same answer whether it was never there or belongs to somebody else, so
+    // this cannot be used to find out which keys exist.
+    const gone = await revokeKey(env, account.id, body.id);
+    return gone ? json({ ok: true }) : fail(404, "not_found", "No such key.");
 }

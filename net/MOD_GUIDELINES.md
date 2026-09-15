@@ -64,6 +64,12 @@ scanned is listed rather than held: that is the ordinary state of a new mod.
 
 We count how many people follow your download link, and show you the number.
 
+If you cut releases from a pipeline, you can mint a **publish key** on the
+publish page and let it update your listing. It can publish and read your own
+listings and nothing else — it cannot withdraw anything, touch your account, or
+agree to these guidelines for you. If they change, your pipeline stops and asks
+you to come and read them.
+
 We take reports. If a moderator agrees with one, your listing comes down; if the
 problem is you rather than one mod, your ability to publish is withdrawn while
 your account carries on working normally everywhere else in the game.

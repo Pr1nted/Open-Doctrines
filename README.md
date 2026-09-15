@@ -106,8 +106,14 @@ and a client never computes a turn. A player who disconnects keeps their seat
 and their country: the turn resolves without them, and they get that same
 country back when they return.
 
+**Finding people to play with** is the other half, and used to be nobody's job.
+Multiplayer → *Looking for a game* is a board of open games: post that you are
+hosting and it appears in the game and in the Discord channel at the same time,
+because it is one board with two windows onto it.
+
 Detail in [docs/multiplayer.md](docs/multiplayer.md), hosting in
-[docs/multiplayer-hosting.md](docs/multiplayer-hosting.md).
+[docs/multiplayer-hosting.md](docs/multiplayer-hosting.md), the board in
+[docs/looking-for-a-game.md](docs/looking-for-a-game.md).
 
 ## Mods
 
