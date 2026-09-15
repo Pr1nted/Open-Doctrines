@@ -76,6 +76,7 @@ cp packaging/web/_headers "$out/_headers"
 # The site itself: a handful of static pages sharing one stylesheet.
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/press.html \
+   packaging/web/site/mods.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
    packaging/web/site/sitemap.xml packaging/web/site/llms.txt "$out/"
@@ -340,7 +341,7 @@ fi
 # shell and redeploying without rebuilding leaves the site fine, the game fine,
 # and every join link pasted into a chat still bare text. Nothing else in this
 # script would notice.
-for page in "" "play/" "classroom" "press"; do
+for page in "" "play/" "classroom" "press" "mods"; do
     if probe "$site/$page" --bytes 8192 'og:image'; then
         echo "  ok    /$page has a link card"
     else
@@ -349,6 +350,22 @@ for page in "" "play/" "classroom" "press"; do
         fail=1
     fi
 done
+
+# ── THE MOD DIRECTORY, ASSERTED BY SOMETHING ONLY IT HAS ──
+#
+# The og:image loop above does NOT prove /mods shipped. A missing path answers
+# 200 with index.html, which has an og:image of its own -- so if mods.html were
+# left out of the cp list, that check would pass wearing the front page's card
+# and the only symptom would be a nav link that quietly goes home.
+#
+# The API origin appears on no other page, so it is the marker.
+if probe "$site/mods" --bytes 32768 'opendoctrines-net.opendoctrines.workers.dev/mods'; then
+    echo "  ok    /mods is the directory, and points at the registry"
+else
+    echo "  FAIL  /mods is not the mod directory -- it is probably serving index.html" >&2
+    echo "        (check mods.html is in the cp list above)" >&2
+    fail=1
+fi
 
 # The card itself, asserted to BE a PNG rather than merely to exist: Pages
 # answers 200 with index.html for anything missing, so "it downloads" proves

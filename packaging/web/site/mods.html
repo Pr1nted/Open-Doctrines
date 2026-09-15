@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mods for OpenDoctrines — the mod directory</title>
+<meta name="description" content="Browse mods for OpenDoctrines. Every mod is hosted by the person who made it; this is a directory that points at them. Free to browse, no account needed to download.">
+<link rel="icon" href="/favicon.png">
+<!-- The link card. See packaging/web/site/index.html for why these are
+     absolute URLs and why theme-color is here. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenDoctrines">
+<meta property="og:locale" content="en">
+<meta property="og:title" content="Mods for OpenDoctrines — the mod directory">
+<meta property="og:description" content="Browse mods for OpenDoctrines. Every mod is hosted by the person who made it; this is a directory that points at them. No account needed to download.">
+<meta property="og:url" content="https://opendoctrines.pages.dev/mods">
+<meta property="og:image" content="https://opendoctrines.pages.dev/card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mods for OpenDoctrines — the mod directory">
+<meta name="twitter:description" content="Browse mods for OpenDoctrines. Every mod is hosted by the person who made it; this is a directory that points at them. No account needed to download.">
+<meta name="twitter:image" content="https://opendoctrines.pages.dev/card.png">
+<meta name="twitter:image:alt" content="A political map of Europe and the Near East in scenario colours, titled OpenDoctrines.">
+<meta name="theme-color" content="#C9A227">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Source+Sans+3:wght@400;600&family=Spectral:wght@600&display=swap">
+<link rel="stylesheet" href="/site.css">
+<script src="/analytics.js" defer></script>
+<style>
+  /* A catalogue inside the site's chrome. Everything below reuses site.css's
+     tokens; the only new colours are SEMANTIC ones for the security check,
+     which must not be the page's gold accent -- "this file is flagged" and
+     "this is the brand" have no business being the same colour. */
+  :root {
+    --ok:   #6FA86B;
+    --warn: #C9922A;
+    --bad:  #C4584E;
+  }
+
+  /* ── the shelf ──
+     minmax(clamp(...)) rather than a fixed minimum: a mod card holds a title,
+     a sentence and a row of chips, and below ~270px the chips wrap into a
+     ragged stack. */
+  .shelf {
+    display: grid; gap: 18px; margin: 26px 0 0;
+    grid-template-columns: repeat(auto-fill, minmax(clamp(270px, 30vw, 330px), 1fr));
+  }
+
+  /* A card is a button that opens the detail dialog, so it is a <button>: it
+     performs an action rather than going anywhere, and the two links it holds
+     (the author's page, the download) are inside the dialog where they can be
+     read before they are pressed. Buttons do not inherit the page font. */
+  .mod {
+    font: inherit; text-align: left; cursor: pointer; color: inherit;
+    background: var(--raise); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: border-color .18s ease;
+  }
+  .mod:hover { border-color: var(--gold-dim); }
+
+  /* 16:9 and object-fit, so an author's oversized or off-shape thumbnail
+     cannot stretch one card taller than the rest of its row. */
+  .mod-shot {
+    aspect-ratio: 16 / 9; background: var(--sunken);
+    border-bottom: 1px solid var(--rule);
+    display: grid; place-items: center; overflow: hidden;
+  }
+  .mod-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mod-shot .none {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--rule-firm);
+  }
+
+  .mod-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .mod-name {
+    font-family: Spectral, Georgia, serif; font-weight: 600; font-size: 17.5px;
+    line-height: 1.25; margin: 0; text-wrap: balance;
+  }
+  .mod-by { font-size: 13px; color: var(--faint); }
+  .mod-by b { color: var(--muted); font-weight: 600; }
+  .mod-sum { font-size: 14.5px; color: var(--muted); margin: 0; flex: 1; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 2px;
+    border: 1px solid var(--rule-firm); color: var(--faint); white-space: nowrap;
+  }
+  .chip.ok      { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .chip.warn    { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .chip.bad     { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 55%, transparent);
+                  background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  /* The capability that changes how turns resolve. Worth its own weight: it is
+     the single most useful thing a browsing player can be told about a mod. */
+  .chip.deep    { color: var(--gold); border-color: var(--gold-dim); }
+
+  /* ── the detail dialog ── */
+  dialog {
+    background: var(--raise); color: var(--ink);
+    border: 1px solid var(--rule-firm); border-radius: 5px;
+    padding: 0; max-width: 640px; width: calc(100% - 32px);
+    box-shadow: 0 18px 60px rgba(0,0,0,.6);
+  }
+  dialog::backdrop { background: rgba(6,8,13,.72); }
+  .d-in { padding: 26px 28px 28px; }
+  .d-in h2 { font-size: 24px; margin: 0 0 4px; }
+  .d-close {
+    position: absolute; top: 12px; right: 14px; font: inherit; cursor: pointer;
+    background: none; border: 0; color: var(--faint); font-size: 22px; line-height: 1;
+    padding: 4px 8px; border-radius: 3px;
+  }
+  .d-close:hover { color: var(--ink); }
+  .d-desc { font-size: 15px; color: var(--muted); white-space: pre-wrap; margin: 14px 0 0; }
+
+  .d-facts { border-top: 1px solid var(--rule); margin: 20px 0 0; }
+  .d-facts div {
+    display: grid; grid-template-columns: 150px 1fr; gap: 14px;
+    padding: 11px 0; border-bottom: 1px solid var(--rule); align-items: baseline;
+  }
+  .d-facts dt { font-size: 13px; font-weight: 600; color: var(--gold); }
+  .d-facts dd { margin: 0; color: var(--muted); font-size: 14.5px; }
+  /* A hash is compared character by character or not at all, so it wraps
+     rather than being clipped with an ellipsis. */
+  .d-facts dd.hash {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; word-break: break-all; color: var(--ink);
+  }
+  .d-facts dd b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .d-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+
+  /* ── states ──
+     The empty state is not an afterthought here: the directory is empty on the
+     day it opens, and that is the first thing most people will ever see of it. */
+  .state {
+    border: 1px dashed var(--rule-firm); border-radius: 4px;
+    padding: 34px 28px; margin: 26px 0 0; text-align: center;
+  }
+  .state h2 { margin: 0 0 8px; font-size: 21px; }
+  .state p { margin: 0 auto; max-width: 52ch; color: var(--muted); font-size: 15.5px; }
+  .state .cta { justify-content: center; }
+
+  .skeleton { background: var(--raise); border: 1px solid var(--rule); border-radius: 4px; height: 268px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: .5; } 50% { opacity: .85; } }
+  }
+  .sentinel { height: 1px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="mark" href="/">Open<span>Doctrines</span></a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/classroom">For teachers</a>
+      <!-- OPEN-FLY:BEGIN --><a href="/#open-fly">Open Fly</a><!-- OPEN-FLY:END -->
+      <a href="/mods" aria-current="page">Mods</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a class="play" href="/play/">Play now</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero narrow">
+    <p class="label">Mod directory</p>
+    <h1>Mods for OpenDoctrines</h1>
+    <p class="lede">
+      Every mod here is <strong>hosted by the person who made it</strong>. This page is
+      a directory: it tells you what exists and sends you to them.
+    </p>
+    <div class="cta">
+      <a class="btn ghost" href="https://opendoctrines-net.opendoctrines.workers.dev/mods/guidelines">Publish a mod</a>
+      <a class="btn ghost" href="https://github.com/Pr1nted/Open-Doctrines/blob/main/docs/modding.md">Write one</a>
+    </div>
+    <p class="note">
+      Newest first. No account needed to browse or download.
+    </p>
+  </section>
+
+  <div class="alert">
+    <strong>Nobody here has run these mods.</strong> They are not reviewed, not tested
+    and not approved. Where a security check is shown it is a lookup of the hash the
+    author declared — a <em>clean</em> result means nobody has reported those bytes,
+    not that the mod is safe. The game will never install a mod by itself; you add it
+    yourself, and that is on purpose.
+  </div>
+
+  <noscript>
+    <div class="state">
+      <h2>The directory needs JavaScript</h2>
+      <p>
+        It is a list fetched from the account service. You can read the raw listing at
+        <a href="https://opendoctrines-net.opendoctrines.workers.dev/mods">/mods</a>,
+        which is plain JSON and needs nothing at all.
+      </p>
+    </div>
+  </noscript>
+
+  <div id="shelf" class="shelf" aria-busy="true"></div>
+  <div id="state"></div>
+  <div id="sentinel" class="sentinel"></div>
+</main>
+
+<dialog id="detail" aria-labelledby="d-name">
+  <button class="d-close" id="d-close" aria-label="Close">&times;</button>
+  <div class="d-in" id="d-in"></div>
+</dialog>
+
+<footer>
+  <div class="top-in">
+    <div class="flinks">
+      <a href="/play/">Play</a>
+      <a href="/">Home</a>
+      <a href="/mods">Mods</a>
+      <a href="/press">Press</a>
+      <a href="https://pr1nted.itch.io/open-doctrines">itch.io</a>
+      <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
+      <a href="https://discord.gg/wqS65jzVv5">Discord</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/cookies">Cookies</a>
+    </div>
+    <p>
+      Free to play, modify and share non-commercially under the OpenDoctrines
+      Non-Commercial License. Mods are their authors' own work, on their authors'
+      own terms.
+    </p>
+  </div>
+</footer>
+
+<script>
+/* The directory.
+ *
+ * NOTHING HERE USES innerHTML ON ANYTHING THAT CAME BACK FROM THE API.
+ * Every field on a listing -- name, summary, tags, the author's nickname -- was
+ * typed by a stranger. Building these cards with a template string would be a
+ * stored-XSS hole on a page that exists to show strangers' text, so every value
+ * goes in through textContent and every URL through a checked setter below.
+ */
+(function () {
+  "use strict";
+
+  var API = "https://opendoctrines-net.opendoctrines.workers.dev";
+
+  var shelf = document.getElementById("shelf");
+  var stateBox = document.getElementById("state");
+  var sentinel = document.getElementById("sentinel");
+  var dialog = document.getElementById("detail");
+  var dIn = document.getElementById("d-in");
+
+  var cursor = null, done = false, loading = false, shown = 0;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+
+  /* An author-supplied URL reaches an href only if it is https.
+   *
+   * The registry already refuses anything else at publish time, so this is the
+   * second of two checks rather than the only one -- but it is the one standing
+   * between a listing and `javascript:` in somebody's browser, and it costs a
+   * line. rel is "noopener nofollow ugc": user-generated, so it does not pass
+   * the site's ranking to whatever a publisher points at. */
+  function safeHref(a, url) {
+    if (typeof url !== "string" || url.slice(0, 8) !== "https://") return false;
+    a.href = url;
+    a.rel = "noopener nofollow ugc";
+    return true;
+  }
+
+  /* The security check, rendered so it cannot be mistaken for approval.
+   * `unknown` gets its own word and its own colour, never the clean one. */
+  function scanChip(scan) {
+    var s = (scan && scan.state) || "unscanned";
+    if (s === "clean")   return { cls: "chip ok",   text: "check: clean" };
+    if (s === "flagged") return { cls: "chip bad",  text: "check: flagged" };
+    if (s === "unknown") return { cls: "chip warn", text: "check: unknown" };
+    return { cls: "chip", text: "check: none" };
+  }
+
+  var DEEP = { "GameProcess": 1, "GameState.Write": 1 };
+
+  function card(mod) {
+    var b = el("button", "mod");
+    b.type = "button";
+
+    var shot = el("div", "mod-shot");
+    if (typeof mod.thumbnail === "string" && mod.thumbnail.slice(0, 8) === "https://") {
+      var img = el("img");
+      img.src = mod.thumbnail;
+      img.alt = "";
+      img.loading = "lazy";
+      img.decoding = "async";
+      /* A thumbnail is on somebody else's host and may simply be gone. Drop it
+         and leave the placeholder rather than showing a broken-image glyph. */
+      img.addEventListener("error", function () { shot.replaceChildren(el("span", "none", "no image")); });
+      shot.appendChild(img);
+    } else {
+      shot.appendChild(el("span", "none", "no image"));
+    }
+    b.appendChild(shot);
+
+    var body = el("div", "mod-body");
+    body.appendChild(el("h2", "mod-name", mod.name));
+
+    var by = el("div", "mod-by");
+    by.appendChild(document.createTextNode("v" + (mod.version || "?") + " by "));
+    by.appendChild(el("b", null, mod.by));
+    body.appendChild(by);
+
+    body.appendChild(el("p", "mod-sum", mod.summary));
+
+    var chips = el("div", "chips");
+    var sc = scanChip(mod.scan);
+    chips.appendChild(el("span", sc.cls, sc.text));
+    if (mod.side && mod.side !== "client") chips.appendChild(el("span", "chip", mod.side));
+    (mod.modules || []).forEach(function (m) {
+      if (DEEP[m]) chips.appendChild(el("span", "chip deep", "changes turns"));
+    });
+    (mod.tags || []).slice(0, 3).forEach(function (t) {
+      chips.appendChild(el("span", "chip", t));
+    });
+    body.appendChild(chips);
+
+    b.appendChild(body);
+    b.addEventListener("click", function () { open(mod.id); });
+    return b;
+  }
+
+  /* One detail view costs ONE Durable Object read, which is why the counts are
+     here and not on every card in the grid: twenty cards would be twenty reads
+     per page view, against a budget the relay also lives on. */
+  function open(id) {
+    history.replaceState(null, "", "/mods?mod=" + encodeURIComponent(id));
+    dIn.replaceChildren(el("p", "mod-sum", "Loading…"));
+    if (!dialog.open) dialog.showModal();
+
+    fetch(API + "/mods/" + encodeURIComponent(id))
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) { detail(data.mod, data.uniqueBasis); })
+      .catch(function () {
+        dIn.replaceChildren(el("p", "mod-sum", "That mod could not be loaded just now."));
+      });
+  }
+
+  function fact(dl, term, value, cls) {
+    var row = el("div");
+    row.appendChild(el("dt", null, term));
+    var dd = el("dd", cls || null);
+    if (value instanceof Node) dd.appendChild(value); else dd.textContent = value;
+    row.appendChild(dd);
+    dl.appendChild(row);
+  }
+
+  function detail(mod, basis) {
+    var frag = document.createDocumentFragment();
+
+    var h = el("h2", null, mod.name);
+    h.id = "d-name";
+    frag.appendChild(h);
+
+    var by = el("div", "mod-by");
+    by.appendChild(document.createTextNode("v" + (mod.version || "?") + " by "));
+    by.appendChild(el("b", null, mod.by));
+    frag.appendChild(by);
+
+    var chips = el("div", "chips");
+    chips.style.marginTop = "12px";
+    var sc = scanChip(mod.scan);
+    chips.appendChild(el("span", sc.cls, sc.text));
+    (mod.modules || []).forEach(function (m) {
+      chips.appendChild(el("span", DEEP[m] ? "chip deep" : "chip", m));
+    });
+    frag.appendChild(chips);
+
+    if (mod.description) frag.appendChild(el("p", "d-desc", mod.description));
+
+    var dl = el("dl", "d-facts");
+
+    if (typeof mod.downloads === "number") {
+      var d = el("span");
+      d.appendChild(el("b", null, mod.downloads.toLocaleString()));
+      d.appendChild(document.createTextNode(
+        " · " + (mod.uniqueDownloads || 0).toLocaleString() + " unique"));
+      fact(dl, "Downloads", d);
+      /* The number's basis travels with the number. "Unique" here is per day,
+         so one person downloading twice in a week is two -- printing it bare
+         would be a count that quietly means something else. */
+      if (basis) fact(dl, "", el("span", "note", "Unique counts the " + basis + "."));
+    }
+
+    fact(dl, "Capabilities", (mod.modules || []).join(", ") || "none declared");
+    fact(dl, "Runs on", mod.side === "both" ? "client and server"
+                      : mod.side === "server" ? "the host only" : "the client");
+    fact(dl, "Gearbox API", mod.gearbox || "?");
+    if (mod.sizeBytes) fact(dl, "Size", (mod.sizeBytes / 1048576).toFixed(1) + " MB");
+
+    /* Shown so it can be compared by hand after downloading. The word
+       "declared" is not decoration: we never fetched the file. */
+    if (mod.declaredSha256) fact(dl, "Declared SHA-256", mod.declaredSha256, "hash");
+
+    var scan = mod.scan || {};
+    if (scan.state === "flagged") {
+      fact(dl, "Security check",
+           scan.malicious + " of " + scan.engines + " engines call this file malicious.");
+    } else if (scan.state === "clean") {
+      fact(dl, "Security check",
+           "No engine of " + scan.engines + " reports this file. That is not a review.");
+    } else if (scan.state === "unknown") {
+      fact(dl, "Security check",
+           "VirusTotal has never seen this file. That is not the same as clean.");
+    } else {
+      fact(dl, "Security check", "Not checked.");
+    }
+    frag.appendChild(dl);
+
+    var cta = el("div", "d-cta");
+    var about = el("a", "btn ghost", "About this mod");
+    if (safeHref(about, mod.page)) cta.appendChild(about);
+
+    var get = el("a", "btn", "Download");
+    get.href = API + "/mods/" + encodeURIComponent(mod.id) + "/get";
+    get.rel = "noopener nofollow ugc";
+    cta.appendChild(get);
+    frag.appendChild(cta);
+
+    frag.appendChild(el("p", "note",
+      "The download is on the author's own host. Add it to the game yourself — " +
+      "OpenDoctrines never installs a mod for you."));
+
+    dIn.replaceChildren(frag);
+  }
+
+  function skeletons(n) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < n; i++) frag.appendChild(el("div", "skeleton"));
+    shelf.appendChild(frag);
+  }
+
+  function clearSkeletons() {
+    shelf.querySelectorAll(".skeleton").forEach(function (s) { s.remove(); });
+  }
+
+  function empty(title, body, retry) {
+    var box = el("div", "state");
+    box.appendChild(el("h2", null, title));
+    box.appendChild(el("p", null, body));
+    if (retry) {
+      var cta = el("div", "cta");
+      var b = el("button", "btn ghost", "Try again");
+      b.type = "button";
+      b.addEventListener("click", function () { stateBox.replaceChildren(); done = false; load(); });
+      cta.appendChild(b);
+      box.appendChild(cta);
+    }
+    stateBox.replaceChildren(box);
+  }
+
+  function load() {
+    if (loading || done) return;
+    loading = true;
+    shelf.setAttribute("aria-busy", "true");
+    skeletons(shown === 0 ? 6 : 3);
+
+    fetch(API + "/mods" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""))
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        clearSkeletons();
+        var mods = data.mods || [];
+        var frag = document.createDocumentFragment();
+        mods.forEach(function (m) { frag.appendChild(card(m)); });
+        shelf.appendChild(frag);
+        shown += mods.length;
+
+        cursor = data.cursor || null;
+        if (!cursor) done = true;
+
+        if (shown === 0) {
+          empty("No mods yet",
+                "Nothing has been published here. If you have made one, the guidelines " +
+                "are short and publishing takes a name, a page and a link — the file " +
+                "stays on your own host.");
+        }
+        loading = false;
+        shelf.setAttribute("aria-busy", "false");
+        /* A first page shorter than the viewport never triggers the observer,
+           so the next page would wait for a scroll that never comes. */
+        if (!done && sentinel.getBoundingClientRect().top < window.innerHeight) load();
+      })
+      .catch(function () {
+        clearSkeletons();
+        loading = false;
+        done = true;
+        shelf.setAttribute("aria-busy", "false");
+        if (shown === 0) {
+          empty("The directory is not answering",
+                "The account service could not be reached. This is the directory being " +
+                "down, not the mods.", true);
+        }
+      });
+  }
+
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      if (entries[0].isIntersecting) load();
+    }, { rootMargin: "400px" }).observe(sentinel);
+  }
+
+  document.getElementById("d-close").addEventListener("click", function () { dialog.close(); });
+  /* Clicking the backdrop closes it. The dialog element itself is the click
+     target when the backdrop is pressed, so this compares against it directly. */
+  dialog.addEventListener("click", function (e) { if (e.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", function () { history.replaceState(null, "", "/mods"); });
+
+  load();
+
+  /* A shareable link to one mod: /mods?mod=com.example.better-ai */
+  var wanted = new URLSearchParams(location.search).get("mod");
+  if (wanted) open(wanted);
+})();
+</script>
+</body>
+</html>
