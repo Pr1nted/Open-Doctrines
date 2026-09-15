@@ -110,7 +110,12 @@ bool Game::tickOjhFps() {
                 fflush(stdout);
                 return false;
             }
-            startLoadedGame(g_ojh.save);
+            // A save continues a game; a map file (.odmap) starts a new one on that
+            // world, the way the eval does, so a benchmark can put Open Doctrines on
+            // the same map as another game.
+            const bool mapFile = g_ojh.save.size() > 6 && g_ojh.save.compare(g_ojh.save.size() - 6, 6, ".odmap") == 0;
+            if (mapFile) startLoading(g_ojh.save);
+            else startLoadedGame(g_ojh.save);
             while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {
                 if (WindowShouldClose()) return false;
                 updateLoading();
